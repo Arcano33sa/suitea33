@@ -14,13 +14,15 @@
 <body>
 <header class="brandbar">
   <div class="brandwrap">
-    <img src="logo.png" alt="Arcano 33" class="brand-left">
+    <img src="brand_symbol.jpg" alt="Arcano 33 símbolo" class="brand-left">
+    <img src="brand_wordmark.jpg" alt="Arcano 33 Sangría Artesanal" class="brand-right">
   </div>
   <h1 class="app-title">A33 POS <span class="badge">Offline</span></h1>
 </header>
-<div style="text-align:right; padding: 0.25rem 1rem 0;">
-  <button onclick="window.location.href='../index.html'" class="btn-ok" type="button">← Menú principal</button>
+<div class="top-menu-main">
+  <button onclick="window.location.href='../index.html'" class="btn-secondary small">Menú principal</button>
 </div>
+
 <div id="offlineBar" class="offline">Trabajando sin conexión</div>
 <div class="container">
 
@@ -73,7 +75,7 @@
         </div>
       </div>
       <div>
-        <label>Descuento por unidad (C$)</label>
+        <label>Descuento (C$)</label>
         <input id="sale-discount" type="number" inputmode="decimal" step="0.01" value="0">
       </div>
       <div>
@@ -139,7 +141,6 @@
       <div class="row">
         <button id="btn-inv-csv" class="btn-primary">CSV Inventario</button>
         <button id="btn-inv-ref" class="btn-ok">Actualizar</button>
-        <button id="btn-inv-from-lote" class="btn-ok" type="button">Agregar desde lote</button>
       </div>
     </div>
     <table id="tbl-inv">
@@ -286,3 +287,13 @@
 </script>
 </body>
 </html>
+.top-menu-main {
+  display:flex;
+  justify-content:flex-end;
+  padding:0.25rem 0.75rem 0;
+}
+.btn-secondary.small {
+  padding:0.15rem 0.6rem;
+  font-size:0.75rem;
+}
+
