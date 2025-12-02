@@ -238,10 +238,10 @@
     </p>
     <main>
       <div class="cards-grid">
-        <div class="card" data-target="calculadora/">
+        <div class="card" data-target="calculadora_a33/">
           <span class="tag"><i></i>Producción</span>
           <h3>Calculadora de Producción</h3>
-          <p>Define recetas, calcula materia prima, costos y fecha hebrea del lote.</p>
+          <p>Define recetas y calcula materia prima para tus lotes.</p>
         </div>
         <div class="card" data-target="lotes/">
           <span class="tag"><i></i>Lotes</span>
@@ -251,40 +251,47 @@
         <div class="card" data-target="pos/">
           <span class="tag"><i></i>Ventas</span>
           <h3>A33 POS Offline</h3>
-          <p>Registra ventas por evento, controla inventario por presentación, descuentos y utilidad.</p>
+          <p>Registra ventas por evento y controla inventario por presentación.</p>
         </div>
       </div>
     </main>
     <footer>
       <span>Arcano 33 · <strong>Sangría Artesanal Premium</strong></span>
-      <span>Suite A33 v4 · Uso interno</span>
+      <span>Suite A33 v5 · Uso interno</span>
     </footer>
   </div>
 
   <div id="pinOverlay" class="pin-overlay">
     <div class="pin-card">
-      <h2>Suite A33 protegida</h2>
-      <p>Ingresa el PIN interno para acceder al laboratorio de Arcano 33.</p>
+      <h2 id="pinTitle">Configurar PIN de acceso</h2>
+      <p id="pinMessage">Crea tu PIN de 6 dígitos para proteger la Suite A33.</p>
       <div class="pin-input-wrap">
         <input id="pinInput" type="password" inputmode="numeric" maxlength="6" autocomplete="off" />
-        <button id="pinBtn">Entrar</button>
+        <button id="pinBtn">Guardar PIN</button>
       </div>
       <div id="pinError" class="pin-error"></div>
-      <div class="pin-hint">PIN de 6 dígitos definido por El Alquimista.</div>
+      <div class="pin-hint" id="pinHint">La primera vez defines el PIN. Guárdalo en un lugar seguro.</div>
     </div>
   </div>
 
   <script>
     const SUITE_PIN_KEY = 'suite_a33_pin_v1';
     const SUITE_SESSION_OK = 'suite_a33_session_ok_v1';
-    const DEFAULT_PIN = '333999';
 
+    function hasStoredPin(){
+      try {
+        const v = localStorage.getItem(SUITE_PIN_KEY);
+        return !!(v && v.length === 6);
+      } catch(e){
+        return false;
+      }
+    }
     function getStoredPin(){
       try {
         const v = localStorage.getItem(SUITE_PIN_KEY);
-        return v && v.length === 6 ? v : DEFAULT_PIN;
+        return (v && v.length === 6) ? v : null;
       } catch(e){
-        return DEFAULT_PIN;
+        return null;
       }
     }
     function isSessionOpen(){
@@ -303,23 +310,52 @@
       const ov = document.getElementById('pinOverlay');
       if (ov) ov.style.display = 'flex';
     }
+    function updatePinUI(){
+      const hasPin = hasStoredPin();
+      const title = document.getElementById('pinTitle');
+      const msg = document.getElementById('pinMessage');
+      const hint = document.getElementById('pinHint');
+      const btn = document.getElementById('pinBtn');
+      if (!title || !msg || !hint || !btn) return;
+      if (hasPin){
+        title.textContent = 'Suite A33 protegida';
+        msg.textContent = 'Ingresa el PIN interno para acceder al laboratorio de Arcano 33.';
+        hint.textContent = 'PIN de 6 dígitos definido por El Alquimista.';
+        btn.textContent = 'Entrar';
+      } else {
+        title.textContent = 'Configurar PIN de acceso';
+        msg.textContent = 'Crea tu PIN de 6 dígitos para proteger la Suite A33.';
+        hint.textContent = 'La primera vez defines el PIN. Guárdalo en un lugar seguro.';
+        btn.textContent = 'Guardar PIN';
+      }
+    }
     function checkStartup(){
       if (isSessionOpen()){
         hidePinOverlay();
       } else {
         showPinOverlay();
       }
+      updatePinUI();
     }
     function handlePinSubmit(){
       const input = document.getElementById('pinInput');
       const err = document.getElementById('pinError');
       const value = (input.value || '').trim();
-      const pinReal = getStoredPin();
-      if (value.length !== 6){
-        err.textContent = 'El PIN debe tener 6 dígitos.';
+      if (value.length !== 6 || !/^[0-9]+$/.test(value)){
+        err.textContent = 'El PIN debe tener exactamente 6 dígitos numéricos.';
         return;
       }
-      if (value !== pinReal){
+      if (!hasStoredPin()){
+        try {
+          localStorage.setItem(SUITE_PIN_KEY, value);
+        } catch(e) {}
+        err.textContent = '';
+        openSession();
+        hidePinOverlay();
+        return;
+      }
+      const realPin = getStoredPin();
+      if (!realPin || value !== realPin){
         err.textContent = 'PIN incorrecto. Intenta de nuevo.';
         return;
       }
@@ -341,6 +377,7 @@
         card.addEventListener('click', ()=>{
           if (!isSessionOpen()){
             showPinOverlay();
+            updatePinUI();
             return;
           }
           const target = card.getAttribute('data-target');

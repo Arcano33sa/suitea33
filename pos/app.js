@@ -618,11 +618,8 @@ async function exportEventSalesCSV(eventId){
   const safeName = (ev?ev.name:'evento').replace(/[^a-z0-9_\- ]/gi,'_');
   downloadCSV(`ventas_${safeName}.csv`, rows);
 }
-async function buildCorteSummaryRows(eName, sales){
+function buildCorteSummaryRows(eName, sales){
   let efectivo=0, trans=0, credito=0, descuentos=0, cortesiasU=0, cortesiasVal=0, devolU=0, devolVal=0, bruto=0;
-  let costoTotal=0;
-  const products = await getAll('products');
-  const prodMap = new Map(products.map(p=>[p.id, p]));
   for (const s of sales){
     const absQty = Math.abs(s.qty||0);
     const absTotal = Math.abs(s.total||0);
@@ -633,24 +630,17 @@ async function buildCorteSummaryRows(eName, sales){
     if (s.payment==='efectivo') efectivo += s.total;
     else if (s.payment==='transferencia') trans += s.total;
     else if (s.payment==='credito'){ credito += s.total; }
-    const prod = prodMap.get(s.productId);
-    const costUnit = prod && typeof prod.costUnit === 'number' ? prod.costUnit : 0;
-    if (costUnit > 0){
-      const signo = s.isReturn || s.courtesy ? -1 : 1;
-      costoTotal += signo * costUnit * absQty;
-    }
   }
   const cobrado = efectivo + trans;
   const neto = cobrado;
-  const utilidad = bruto - costoTotal;
-  return {efectivo, trans, credito, descuentos, cortesiasU, cortesiasVal, devolU, devolVal, bruto, cobrado, neto, costoTotal, utilidad};
+  return {efectivo, trans, credito, descuentos, cortesiasU, cortesiasVal, devolU, devolVal, bruto, cobrado, neto};
 }
 async function generateCorteCSV(eventId){
   const events = await getAll('events');
   const ev = events.find(e=>e.id===eventId);
   if (!ev){ alert('Evento no encontrado'); return; }
   const sales = (await getAll('sales')).filter(s=>s.eventId===eventId);
-  const sum = await buildCorteSummaryRows(ev.name, sales);
+  const sum = buildCorteSummaryRows(ev.name, sales);
   const rows = [];
   rows.push(['Corte de evento', ev.name]);
   rows.push(['Generado', new Date().toLocaleString()]);
@@ -669,8 +659,6 @@ async function generateCorteCSV(eventId){
   rows.push(['Devoluciones (C$)', sum.devolVal.toFixed(2)]);
   rows.push([]);
   rows.push(['Ventas brutas ref. (aprox.)', sum.bruto.toFixed(2)]);
-  rows.push(['Costo estimado de productos', sum.costoTotal.toFixed(2)]);
-  rows.push(['Utilidad estimada', sum.utilidad.toFixed(2)]);
   rows.push(['Neto cobrado', sum.neto.toFixed(2)]);
   rows.push([]);
   rows.push(['Detalle de ventas']);
