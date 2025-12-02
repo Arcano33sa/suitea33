@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Suite A33 · Arcano 33</title>
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-a33-192.png">
+  <link rel="apple-touch-icon" href="icon-a33-192.png">
+  <style>
+    :root{
+      --bg:#000000;
+      --bg-alt:#111111;
+      --card:#1b1b1b;
+      --primary:#7b1818;
+      --primary-soft:#b28d38;
+      --accent:#ddbf64;
+      --text:#fefefe;
+      --muted:#aaaaaa;
+      --danger:#b00020;
+      --radius:18px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+    body{
+      min-height:100vh;
+      background:radial-gradient(circle at top,#1b1b1b 0,#000000 55%,#000000 100%);
+      color:var(--text);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:1.5rem;
+    }
+    .shell{
+      width:100%;
+      max-width:960px;
+      background:rgba(0,0,0,0.75);
+      border-radius:24px;
+      border:1px solid rgba(221,191,100,0.25);
+      box-shadow:0 20px 40px rgba(0,0,0,0.7);
+      padding:1.75rem 1.5rem 1.5rem;
+      backdrop-filter:blur(10px);
+    }
+    header{
+      display:flex;
+      align-items:center;
+      gap:1rem;
+      margin-bottom:1rem;
+    }
+    header img{
+      width:60px;
+      height:60px;
+      border-radius:999px;
+      object-fit:contain;
+      border:1px solid rgba(221,191,100,0.5);
+      padding:4px;
+      background:#000;
+    }
+    .title-block h1{
+      font-family:"Cinzel",serif;
+      font-size:1.4rem;
+      letter-spacing:0.07em;
+      text-transform:uppercase;
+    }
+    .title-block p{
+      font-size:0.85rem;
+      color:var(--muted);
+    }
+    main{
+      margin-top:0.75rem;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+      gap:1rem;
+      margin-top:0.75rem;
+    }
+    .card{
+      background:linear-gradient(135deg,rgba(27,27,27,0.95),rgba(16,16,16,0.98));
+      border-radius:var(--radius);
+      border:1px solid rgba(178,141,56,0.45);
+      padding:1rem;
+      position:relative;
+      overflow:hidden;
+      cursor:pointer;
+      transition:transform 0.18s ease,box-shadow 0.18s ease,border-color 0.18s ease;
+    }
+    .card::before{
+      content:"";
+      position:absolute;
+      inset:-40%;
+      background:radial-gradient(circle at top,var(--primary) 0,transparent 55%);
+      opacity:0;
+      transition:opacity 0.25s ease;
+      pointer-events:none;
+    }
+    .card:hover{
+      transform:translateY(-3px);
+      box-shadow:0 18px 35px rgba(0,0,0,0.85);
+      border-color:var(--accent);
+    }
+    .card:hover::before{
+      opacity:0.25;
+    }
+    .card h2{
+      font-size:1.05rem;
+      margin-bottom:0.4rem;
+    }
+    .card p{
+      font-size:0.85rem;
+      color:var(--muted);
+      margin-bottom:0.6rem;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:0.25rem;
+      padding:0.18rem 0.55rem;
+      border-radius:999px;
+      font-size:0.72rem;
+      background:rgba(0,0,0,0.6);
+      border:1px solid rgba(221,191,100,0.5);
+      color:var(--accent);
+    }
+    .pill span{
+      font-size:0.85rem;
+    }
+    .footer-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-size:0.75rem;
+      color:var(--muted);
+      margin-top:0.35rem;
+    }
+    .link-btn{
+      border:none;
+      border-radius:999px;
+      padding:0.35rem 0.9rem;
+      font-size:0.78rem;
+      background:var(--primary);
+      color:#fff;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:0.25rem;
+    }
+    .link-btn span{
+      font-size:0.9rem;
+    }
+    .link-btn.secondary{
+      background:transparent;
+      border:1px solid rgba(255,255,255,0.18);
+      color:var(--text);
+    }
+    .lock-overlay{
+      position:fixed;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:radial-gradient(circle at top,#1b1b1b 0,#000 55%,#000 100%);
+      z-index:20;
+    }
+    .lock-card{
+      width:100%;
+      max-width:380px;
+      background:linear-gradient(145deg,#111111,#1c1414);
+      border-radius:20px;
+      padding:1.4rem 1.3rem 1.2rem;
+      border:1px solid rgba(221,191,100,0.45);
+      box-shadow:0 18px 40px rgba(0,0,0,0.9);
+    }
+    .lock-title{
+      font-size:1.05rem;
+      margin-bottom:0.35rem;
+    }
+    .lock-sub{
+      font-size:0.8rem;
+      color:var(--muted);
+      margin-bottom:0.75rem;
+    }
+    .field{
+      margin-bottom:0.6rem;
+    }
+    .field label{
+      display:block;
+      font-size:0.78rem;
+      margin-bottom:0.22rem;
+      color:var(--accent);
+      letter-spacing:0.04em;
+      text-transform:uppercase;
+    }
+    .field input[type="password"]{
+      width:100%;
+      padding:0.45rem 0.65rem;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,0.16);
+      background:#050505;
+      color:var(--text);
+      font-size:0.95rem;
+      letter-spacing:0.25em;
+      text-align:center;
+    }
+    .field input[type="password"]::placeholder{
+      color:#444;
+      letter-spacing:0.25em;
+    }
+    .btn-row{
+      display:flex;
+      gap:0.5rem;
+      margin-top:0.4rem;
+      align-items:center;
+    }
+    .btn{
+      flex:1;
+      border-radius:999px;
+      border:none;
+      padding:0.45rem 0.9rem;
+      font-size:0.82rem;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:0.25rem;
+    }
+    .btn-primary{ background:var(--primary); color:#fff; }
+    .btn-ghost{ background:transparent; border:1px solid rgba(255,255,255,0.18); color:var(--text); }
+    .btn-danger{ background:transparent; border:1px solid rgba(176,0,32,0.8); color:#ff8a80; }
+    .hint{
+      font-size:0.72rem;
+      color:var(--muted);
+      margin-top:0.4rem;
+    }
+    .pin-mode-switch{
+      text-align:right;
+      margin-top:0.35rem;
+      font-size:0.75rem;
+    }
+    .pin-mode-switch button{
+      background:none;
+      border:none;
+      color:var(--accent);
+      cursor:pointer;
+      font-size:0.75rem;
+      text-decoration:underline;
+    }
+    @media (max-width:600px){
+      .shell{padding:1.25rem 1rem 1rem;}
+      header img{width:52px;height:52px;}
+      .grid{grid-template-columns:1fr;}
+    }
+  </style>
+</head>
+<body>
+  <div class="lock-overlay" id="lock-overlay">
+    <div class="lock-card">
+      <div id="lock-setup">
+        <h2 class="lock-title">Configurar PIN de acceso</h2>
+        <p class="lock-sub">Crea un PIN de 6 dígitos para proteger la Suite A33 en este dispositivo.</p>
+        <div class="field">
+          <label for="pin-new">Nuevo PIN (6 dígitos)</label>
+          <input id="pin-new" type="password" inputmode="numeric" maxlength="6" placeholder="••••••">
+        </div>
+        <div class="field">
+          <label for="pin-confirm">Confirmar PIN</label>
+          <input id="pin-confirm" type="password" inputmode="numeric" maxlength="6" placeholder="••••••">
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-save-pin">Guardar PIN</button>
+          <button class="btn btn-ghost" id="btn-skip-pin">Usar sin PIN</button>
+        </div>
+        <p class="hint">Este PIN se guarda solo en este navegador. Si borras los datos, tendrás que volver a configurarlo.</p>
+      </div>
+
+      <div id="lock-unlock" style="display:none;">
+        <h2 class="lock-title">Desbloquear Suite A33</h2>
+        <p class="lock-sub">Ingresa tu PIN de 6 dígitos para acceder a los módulos.</p>
+        <div class="field">
+          <label for="pin-input">PIN</label>
+          <input id="pin-input" type="password" inputmode="numeric" maxlength="6" placeholder="••••••">
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-unlock">Entrar</button>
+          <button class="btn btn-danger" id="btn-reset">Resetear PIN y datos</button>
+        </div>
+        <p class="hint">El PIN solo se pedirá de nuevo cuando cierres o recargues la Suite.</p>
+      </div>
+
+      <div class="pin-mode-switch" id="pin-mode-switch" style="display:none;">
+        <button id="btn-change-pin">Cambiar PIN</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="shell" id="app-shell" style="display:none;">
+    <header>
+      <img src="icon-a33-192.png" alt="Arcano 33">
+      <div class="title-block">
+        <h1>Suite A33 · Arcano 33</h1>
+        <p>Panel interno para producción, control de lotes y ventas.</p>
+      </div>
+    </header>
+
+    <main>
+      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.35rem;">
+        Selecciona un módulo para trabajar. Puedes fijar esta Suite en la pantalla de inicio de tu teléfono para acceder más rápido.
+      </p>
+
+      <div class="grid">
+        <article class="card" data-link="calculadora/index.html">
+          <div class="pill"><span>🧪</span><span>Producción</span></div>
+          <h2>Calculadora de Producción</h2>
+          <p>Define cuántos Pulsos, Medias, Djebas, Litros y Galones harás y obtén la materia prima y volumen final.</p>
+          <div class="footer-row">
+            <span>Basado en recetas A33.</span>
+            <button class="link-btn"><span>Ir</span> →</button>
+          </div>
+        </article>
+
+        <article class="card" data-link="lotes/index.html">
+          <div class="pill"><span>📦</span><span>Lotes</span></div>
+          <h2>Control de Lotes</h2>
+          <p>Registra cada lote producido con fechas, volúmenes y presentaciones. Exporta CSV y consulta historial.</p>
+          <div class="footer-row">
+            <span>Seguimiento interno.</span>
+            <button class="link-btn"><span>Ir</span> →</button>
+          </div>
+        </article>
+
+        <article class="card" data-link="pos/index.html">
+          <div class="pill"><span>🧾</span><span>Ventas</span></div>
+          <h2>A33 POS · Eventos</h2>
+          <p>Registra ventas por evento, manejo de inventario y métodos de pago. Funciona offline.</p>
+          <div class="footer-row">
+            <span>Incluye descuentos por unidad.</span>
+            <button class="link-btn"><span>Ir</span> →</button>
+          </div>
+        </article>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const PIN_KEY = 'suite_a33_pin';
+    const SESSION_KEY = 'suite_a33_unlocked';
+
+    function onlyDigits(str){
+      return /^[0-9]{6}$/.test(str);
+    }
+
+    function showApp(){
+      const overlay = document.getElementById('lock-overlay');
+      const shell = document.getElementById('app-shell');
+      overlay.style.display = 'none';
+      shell.style.display = 'block';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const overlay = document.getElementById('lock-overlay');
+      const setup = document.getElementById('lock-setup');
+      const unlock = document.getElementById('lock-unlock');
+      const modeSwitch = document.getElementById('pin-mode-switch');
+
+      const storedPin = localStorage.getItem(PIN_KEY);
+      const sessionOk = sessionStorage.getItem(SESSION_KEY) === '1';
+
+      if (!storedPin){
+        // No hay PIN, mostrar configuración
+        setup.style.display = 'block';
+        unlock.style.display = 'none';
+        modeSwitch.style.display = 'none';
+      } else if (sessionOk){
+        // Sesión ya desbloqueada
+        overlay.style.display = 'none';
+        showApp();
+      } else {
+        // Hay PIN guardado pero no sesión
+        setup.style.display = 'none';
+        unlock.style.display = 'block';
+        modeSwitch.style.display = 'block';
+      }
+
+      document.getElementById('btn-save-pin').addEventListener('click', () => {
+        const p1 = document.getElementById('pin-new').value.trim();
+        const p2 = document.getElementById('pin-confirm').value.trim();
+        if (!onlyDigits(p1)){
+          alert('El PIN debe tener exactamente 6 dígitos numéricos.');
+          return;
+        }
+        if (p1 !== p2){
+          alert('Los PIN no coinciden.');
+          return;
+        }
+        localStorage.setItem(PIN_KEY, p1);
+        sessionStorage.setItem(SESSION_KEY, '1');
+        showApp();
+        overlay.style.display = 'none';
+      });
+
+      document.getElementById('btn-skip-pin').addEventListener('click', () => {
+        // Usar sin PIN: solo se desbloquea la sesión actual
+        sessionStorage.setItem(SESSION_KEY, '1');
+        overlay.style.display = 'none';
+        showApp();
+      });
+
+      document.getElementById('btn-unlock').addEventListener('click', () => {
+        const input = document.getElementById('pin-input').value.trim();
+        const stored = localStorage.getItem(PIN_KEY);
+        if (input === stored){
+          sessionStorage.setItem(SESSION_KEY, '1');
+          showApp();
+        } else {
+          alert('PIN incorrecto.');
+        }
+      });
+
+      document.getElementById('btn-reset').addEventListener('click', () => {
+        if (!confirm('Esto borrará el PIN y los datos locales de la Suite A33 en este navegador (lotes, configuraciones, etc.). ¿Continuar?')) return;
+        try{
+          localStorage.clear();
+          sessionStorage.clear();
+        }catch(e){}
+        location.reload();
+      });
+
+      document.getElementById('btn-change-pin').addEventListener('click', () => {
+        // Volver al modo de configuración para cambiar PIN
+        document.getElementById('pin-new').value = '';
+        document.getElementById('pin-confirm').value = '';
+        document.getElementById('pin-input').value = '';
+        setup.style.display = 'block';
+        unlock.style.display = 'none';
+      });
+
+      // Activar switch "Cambiar PIN" solo si existe PIN
+      if (localStorage.getItem(PIN_KEY)){
+        modeSwitch.style.display = 'block';
+      }
+
+      // Navegación por tarjetas
+      document.querySelectorAll('.card[data-link]').forEach(card => {
+        card.addEventListener('click', () => {
+          const href = card.getAttribute('data-link');
+          if (href) window.location.href = href;
+        });
+      });
+    });
+  </script>
+</body>
+</html>

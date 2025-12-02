@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A33 POS</title>
+<link rel="manifest" href="manifest.webmanifest?v=3.18">
+<link rel="apple-touch-icon" href="logo.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f0f0f"/>
+<link rel="stylesheet" href="styles.css?v=3.18">
+</head>
+<body>
+<header class="brandbar">
+  <div class="brandwrap">
+    <img src="logo.png" alt="Arcano 33" class="brand-left">
+  </div>
+  <h1 class="app-title">A33 POS <span class="badge">Offline</span></h1>
+</header>
+<div style="text-align:right; padding: 0.25rem 1rem 0;">
+  <button onclick="window.location.href='../index.html'" class="btn-ok" type="button">← Menú principal</button>
+</div>
+<div id="offlineBar" class="offline">Trabajando sin conexión</div>
+<div class="container">
+
+  <section id="tab-venta" class="tab card">
+    <h2>Vender</h2>
+
+    <div class="row">
+      <div>
+        <label>Evento activo</label>
+        <div class="row">
+          <select id="sale-event">
+            <option value="">— Selecciona evento —</option>
+          </select>
+          <input id="new-event" placeholder="Nuevo evento">
+        </div>
+        <div class="row">
+          <button id="btn-add-event" class="btn-primary">+ Crear y activar evento</button>
+          <button id="btn-close-event" class="btn-warn">Cerrar evento (Corte)</button>
+          <button id="btn-reopen-event" class="btn-ok">Reabrir evento</button>
+        </div>
+        <div id="event-status" class="info" style="display:none"></div>
+        <div id="no-active-note" class="disabled-note" style="display:none">Sin evento activo. Crea o selecciona uno para comenzar.</div>
+      </div>
+      <div>
+        <label>Fecha</label>
+        <input id="sale-date" type="date" value="2025-11-27">
+      </div>
+    </div>
+
+    <div class="row" id="sell-block">
+      <div>
+        <label>Producto</label>
+        <select id="sale-product"></select>
+        <div id="product-chips" class="chips"></div>
+      </div>
+      <div>
+        <label>Precio (C$)</label>
+        <input id="sale-price" type="number" inputmode="decimal" step="0.01">
+        <div><small class="muted">Stock: <span id="sale-stock">—</span></small></div>
+      </div>
+    </div>
+
+    <div class="row4">
+      <div>
+        <label>Cantidad</label>
+        <div class="stepper">
+          <button id="qty-minus">−</button>
+          <input id="sale-qty" type="number" inputmode="numeric" step="1" value="1" min="1">
+          <button id="qty-plus">+</button>
+        </div>
+      </div>
+      <div>
+        <label>Descuento por unidad (C$)</label>
+        <input id="sale-discount" type="number" inputmode="decimal" step="0.01" value="0">
+      </div>
+      <div>
+        <label>Método de pago</label>
+        <select id="sale-payment">
+          <option value="efectivo" selected>Efectivo</option>
+          <option value="transferencia">Transferencia</option>
+          <option value="credito">Crédito</option>
+        </select>
+      </div>
+      <div>
+        <label>Total (C$)</label>
+        <input id="sale-total" type="number" inputmode="decimal" step="0.01" disabled>
+      </div>
+    </div>
+
+    <details class="card">
+      <summary>Más opciones</summary>
+      <div class="row">
+        <div>
+          <label class="flag"><input id="sale-courtesy" type="checkbox"> Cortesía</label>
+          <label class="flag"><input id="sale-return" type="checkbox"> Devolución</label>
+        </div>
+        <div>
+          <label>Cliente (si es Crédito)</label>
+          <input id="sale-customer" placeholder="Nombre del cliente (crédito)" disabled>
+          <label style="margin-top:6px">Cortesía a</label>
+          <input id="sale-courtesy-to" placeholder="Nombre (si marcaste cortesía)" disabled>
+        </div>
+      </div>
+      <label>Notas (opcional)</label>
+      <textarea id="sale-notes" rows="2" placeholder="ej. promo, ref. de pago, etc."></textarea>
+    </details>
+
+    <div class="row">
+      <button id="btn-add" class="btn-ok">+ Agregar venta</button>
+      <button id="btn-undo" class="btn-warn">↩︎ Deshacer última</button>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div><strong>Listado del día</strong></div>
+        <div style="text-align:right"><strong>Total día: C$ <span id="day-total">0</span></strong></div>
+      </div>
+      <table id="tbl-day" class="compact">
+        <thead>
+          <tr>
+            <th>Hora</th><th>Producto</th><th>Cant.</th><th>PU</th><th>Desc</th><th>Total</th><th>Pago</th><th>C</th><th>Dev</th><th>Cliente</th><th>Cortesía a</th><th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-inventario" class="tab card" style="display:none">
+    <h2>Inventario por evento</h2>
+    <div class="row">
+      <div>
+        <label>Evento</label>
+        <select id="inv-event"></select>
+      </div>
+      <div class="row">
+        <button id="btn-inv-csv" class="btn-primary">CSV Inventario</button>
+        <button id="btn-inv-ref" class="btn-ok">Actualizar</button>
+        <button id="btn-inv-from-lote" class="btn-ok" type="button">Agregar desde lote</button>
+      </div>
+    </div>
+    <table id="tbl-inv">
+      <thead>
+        <tr>
+          <th>Producto</th><th>Activo</th><th>Manejar</th><th>Inicial</th><th>Reposición</th><th>Ajuste ±</th><th>Stock</th><th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="info"><small>“Manejar” desactiva inventario para productos como <i>Vaso</i>. Inicial se guarda por evento. Reposición y Ajuste crean movimientos fechados.</small></div>
+  </section>
+
+  <section id="tab-eventos" class="tab card" style="display:none">
+    <h2>Eventos e historial</h2>
+    <div class="row">
+      <select id="filtro-eventos">
+        <option value="todos" selected>Mostrar: Todos</option>
+        <option value="abiertos">Solo abiertos</option>
+        <option value="cerrados">Solo cerrados</option>
+      </select>
+      <button id="btn-exportar-eventos" class="btn-primary">Exportar lista (CSV)</button>
+    </div>
+    <table id="tbl-eventos">
+      <thead><tr><th>Evento</th><th>Estado</th><th>Creado</th><th>Cerrado</th><th>Total</th><th>Acciones</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section id="tab-resumen" class="tab card" style="display:none">
+    <h2>Resumen</h2>
+    <div class="card">
+      <strong>Total general: C$ <span id="grand-total">0</span></strong>
+    </div>
+    <div class="row">
+      <div class="card">
+        <h3>Por evento</h3>
+        <table id="tbl-por-evento">
+          <thead><tr><th>Evento</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Por día</h3>
+        <table id="tbl-por-dia">
+          <thead><tr><th>Fecha</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="row">
+      <div class="card">
+        <h3>Por producto</h3>
+        <table id="tbl-por-prod">
+          <thead><tr><th>Producto</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Por método de pago</h3>
+        <table id="tbl-por-pago">
+          <thead><tr><th>Método</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-productos" class="tab card" style="display:none">
+    <h2>Productos</h2>
+    <div id="productos-list"></div>
+    <div class="row">
+      <input id="new-name" placeholder="Nombre">
+      <input id="new-price" type="number" inputmode="decimal" step="0.01" placeholder="Precio">
+    </div>
+    <div class="row">
+      <button id="btn-add-prod" class="btn-ok">+ Agregar producto</button>
+      <button id="btn-restore-seed" class="btn-warn">Restaurar productos base (A33)</button>
+    </div>
+    <div class="info"><small>Si por cualquier razón solo ves “Vaso”, usa el botón <b>Restaurar productos base (A33)</b>. No borra ventas.</small></div>
+  </section>
+
+  <section id="tab-ayuda" class="tab card" style="display:none">
+    <h2>Ayuda</h2>
+    <ul>
+      <li>Los <b>botones de producto</b> muestran <b>todos los Activos</b>. Tocar = seleccionar. Tocar de nuevo = +1 cantidad (venta rápida).</li>
+      <li>Al cerrar un evento: la app queda en blanco sin evento activo. El evento cerrado conserva su info y puedes verla con <b>VER</b> en la pestaña Eventos.</li>
+    </ul>
+  </section>
+
+</div>
+
+<!-- Modal VER evento -->
+<div id="event-view" class="modal">
+  <div class="panel">
+    <button id="ev-close" class="close btn-warn">Cerrar</button>
+    <h3 id="ev-title">Evento</h3>
+    <div class="grid">
+      <div class="card" id="ev-meta"></div>
+      <div class="card" id="ev-totals"></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h4>Por día</h4>
+        <table id="ev-byday"><thead><tr><th>Fecha</th><th>Total</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div class="card">
+        <h4>Por producto</h4>
+        <table id="ev-byprod"><thead><tr><th>Producto</th><th>Total</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <h4>Ventas</h4>
+      <div class="scroll">
+        <table id="ev-sales">
+          <thead><tr><th>ID</th><th>Fecha</th><th>Hora</th><th>Producto</th><th>Cant</th><th>PU</th><th>Desc</th><th>Total</th><th>Pago</th><th>C</th><th>Dev</th><th>Cliente</th><th>Cortesía a</th><th>Notas</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="totalbar">
+  <div class="tot">Total ítem: C$ <span id="sticky-total">0.00</span></div>
+  <div class="grow"></div>
+  <button id="btn-add-sticky" class="btn-primary">Agregar venta</button>
+</div>
+
+<div id="toast" class="toast">Hecho</div>
+<footer></footer>
+<nav class="tabbar">
+  <button data-tab="venta" class="active">Vender</button>
+  <button data-tab="inventario">Inventario</button>
+  <button data-tab="eventos">Eventos</button>
+  <button data-tab="resumen">Resumen</button>
+  <button data-tab="productos">Productos</button>
+  <button data-tab="ayuda">Ayuda</button>
+</nav>
+
+<script src="app.js?v=3.18"></script>
+<script>
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js?v=3.18'); }
+</script>
+</body>
+</html>

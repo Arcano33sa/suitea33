@@ -1,0 +1,16 @@
+{
+  "name": "A33 POS",
+  "short_name": "A33 POS",
+  "description": "Control de ventas por evento, inventario y métodos de pago. Funciona offline.",
+  "start_url": "./index.html?v=3.18",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#0f0f0f",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

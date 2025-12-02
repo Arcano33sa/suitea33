@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arcano 33 · Control de Lotes</title>
+  <meta name="description" content="Control de lotes de producción de Sangría Artesanal Premium Arcano 33." />
+  <meta name="theme-color" content="#7b1818" />
+
+  <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
+  <link rel="apple-touch-icon" href="images/logo.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="images/logo.png" alt="Logo Arcano 33" class="logo" />
+      <div class="brand-text">
+        <h1>Arcano 33</h1>
+        <p>Control de Lotes · Sangría Artesanal Premium</p>
+      </div>
+    </div>
+  </header>
+
+  <div style="text-align:right; margin: 0.25rem 1rem 0;">
+    <a href="../index.html" class="btn-secondary" style="display:inline-block; text-decoration:none;">← Menú principal</a>
+  </div>
+
+  <main class="app-main">
+    <section class="card form-card">
+      <h2>Nuevo lote</h2>
+      <form id="lote-form">
+        <div class="form-grid">
+          <div class="field">
+            <label for="fecha">Fecha de elaboración</label>
+            <input type="date" id="fecha" name="fecha" required />
+          </div>
+
+          <div class="field">
+            <label for="codigo">Código de lote</label>
+            <input type="text" id="codigo" name="codigo" placeholder="Ej: A33-2025-12-01-01" required />
+          </div>
+
+          <div class="field">
+            <label for="caducidad">Fecha de caducidad (2 meses)</label>
+            <input type="date" id="caducidad" name="caducidad" readonly />
+          </div>
+        </div>
+
+        <h3>Volúmenes (ml)</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="volTotal">Volumen total</label>
+            <input type="number" id="volTotal" name="volTotal" min="0" step="1" />
+          </div>
+          <div class="field">
+            <label for="volVino">Volumen vino</label>
+            <input type="number" id="volVino" name="volVino" min="0" step="1" />
+          </div>
+          <div class="field">
+            <label for="volVodka">Volumen vodka</label>
+            <input type="number" id="volVodka" name="volVodka" min="0" step="1" />
+          </div>
+          <div class="field">
+            <label for="volJugo">Volumen jugo</label>
+            <input type="number" id="volJugo" name="volJugo" min="0" step="1" />
+          </div>
+          <div class="field">
+            <label for="volSirope">Volumen sirope</label>
+            <input type="number" id="volSirope" name="volSirope" min="0" step="1" />
+          </div>
+          <div class="field">
+            <label for="volAgua">Volumen agua pura</label>
+            <input type="number" id="volAgua" name="volAgua" min="0" step="1" />
+          </div>
+        </div>
+
+        <h3>Presentaciones (unidades)</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="pulso">Pulso 250 ml</label>
+            <input type="number" id="pulso" name="pulso" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label for="media">Media 375 ml</label>
+            <input type="number" id="media" name="media" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label for="djeba">Djeba 750 ml</label>
+            <input type="number" id="djeba" name="djeba" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label for="litro">Litro 1000 ml</label>
+            <input type="number" id="litro" name="litro" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label for="galon">Galón 3800 ml</label>
+            <input type="number" id="galon" name="galon" min="0" step="1" value="0" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="notas">Notas</label>
+          <textarea id="notas" name="notas" rows="3" placeholder="Observaciones del lote, ajustes en la receta, destino, etc."></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn primary" id="save-btn">Guardar lote</button>
+          <button type="button" class="btn secondary" id="reset-btn">Limpiar formulario</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card table-card">
+      <div class="table-header">
+        <h2>Lotes registrados</h2>
+        <div class="table-actions">
+          <button type="button" class="btn secondary" id="export-btn">Exportar CSV</button>
+          <button type="button" class="btn danger" id="clear-all-btn">Borrar todo</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table id="lotes-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Código</th>
+              <th>Vol. total (ml)</th>
+              <th>Pulso</th>
+              <th>Media</th>
+              <th>Djeba</th>
+              <th>Litro</th>
+              <th>Galón</th>
+              <th>Caducidad</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Arcano 33 · Control interno de producción</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
