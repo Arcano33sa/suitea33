@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arcano 33 · Inventario</title>
+  <meta name="description" content="Inventario interno de materia prima líquida y botellas de Arcano 33." />
+  <meta name="theme-color" content="#7b1818" />
+
+  <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
+  <link rel="apple-touch-icon" href="images/logo.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="images/logo.png" alt="Logo Arcano 33" class="logo" />
+      <div class="brand-text">
+        <h1>Arcano 33</h1>
+        <p>Inventario · Sangría Artesanal Premium</p>
+      </div>
+    </div>
+  </header>
+
+  <div style="text-align:right; margin: 0.25rem 1rem 0;">
+    <a href="../index.html" class="btn-secondary" style="display:inline-block; text-decoration:none;">← Menú principal</a>
+  </div>
+
+  <main class="app-main">
+    <section class="card form-card">
+      <h2>Inventario de materia prima líquida</h2>
+      <p class="hint">Control en mililitros de los líquidos base que se utilizan en las recetas y producción.</p>
+      <div class="table-wrapper">
+        <table class="inv-table">
+          <thead>
+            <tr>
+              <th>Ingrediente</th>
+              <th>Stock actual (ml)</th>
+              <th>Stock máximo (ml)</th>
+              <th>% restante</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inv-liquidos-body">
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+      <p class="legend">
+        Alerta cuando un ingrediente esté por debajo del <strong>20&nbsp;%</strong> de su stock máximo configurado.
+      </p>
+    </section>
+
+    <section class="card table-card">
+      <h2>Inventario de botellas por presentación</h2>
+      <p class="hint">Control de unidades de botellas por presentación (vacías listas para producción).</p>
+      <div class="table-wrapper">
+        <table class="inv-table">
+          <thead>
+            <tr>
+              <th>Presentación</th>
+              <th>Stock actual (unid.)</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inv-botellas-body">
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+      <p class="legend">
+        Alerta cuando una presentación tenga <strong>10 botellas o menos</strong> en inventario.
+      </p>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Arcano 33 · Inventario interno de insumos y botellas</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

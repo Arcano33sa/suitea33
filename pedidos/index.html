@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arcano 33 · Planificación de Pedidos</title>
+  <meta name="description" content="Planificación y registro de pedidos y entregas de Sangría Artesanal Premium Arcano 33." />
+  <meta name="theme-color" content="#7b1818" />
+
+  <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
+  <link rel="apple-touch-icon" href="images/logo.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="images/logo.png" alt="Logo Arcano 33" class="logo" />
+      <div class="brand-text">
+        <h1>Arcano 33</h1>
+        <p>Planificación de Pedidos · Sangría Artesanal Premium</p>
+      </div>
+    </div>
+  </header>
+
+  <div style="text-align:right; margin: 0.25rem 1rem 0;">
+    <a href="../index.html" class="btn-secondary" style="display:inline-block; text-decoration:none;">← Menú principal</a>
+  </div>
+
+  <main class="app-main">
+    <section class="card form-card">
+      <h2>Nuevo pedido</h2>
+      <form id="pedido-form">
+        <div class="form-grid">
+          <div class="field">
+            <label for="fechaCreacion">Fecha de creación</label>
+            <input type="date" id="fechaCreacion" name="fechaCreacion" required />
+          </div>
+
+          <div class="field">
+            <label for="fechaEntrega">Fecha de entrega</label>
+            <input type="date" id="fechaEntrega" name="fechaEntrega" required />
+          </div>
+
+          <div class="field">
+            <label for="codigoPedido">Código de pedido</label>
+            <input type="text" id="codigoPedido" name="codigoPedido" placeholder="Se autogenera" readonly />
+          </div>
+
+          <div class="field">
+            <label for="prioridad">Prioridad</label>
+            <select id="prioridad" name="prioridad">
+              <option value="normal">Normal</option>
+              <option value="urgente">Urgente</option>
+              <option value="programado">Programado</option>
+            </select>
+          </div>
+        </div>
+
+        <h3>Datos del cliente</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="clienteNombre">Nombre del cliente / negocio</label>
+            <input type="text" id="clienteNombre" name="clienteNombre" placeholder="Ej: Bar El Eclipse" required />
+          </div>
+
+          <div class="field">
+            <label for="clienteTipo">Tipo de cliente</label>
+            <select id="clienteTipo" name="clienteTipo">
+              <option value="individual">Individual</option>
+              <option value="bar">Bar</option>
+              <option value="restaurante">Restaurante</option>
+              <option value="evento">Evento</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="clienteTelefono">Teléfono de contacto</label>
+            <input type="tel" id="clienteTelefono" name="clienteTelefono" placeholder="Ej: 8888-0000" />
+          </div>
+
+          <div class="field">
+            <label for="clienteDireccion">Dirección de entrega</label>
+            <input type="text" id="clienteDireccion" name="clienteDireccion" placeholder="Dirección principal de entrega" />
+          </div>
+
+          <div class="field" style="grid-column:1/-1;">
+            <label for="clienteReferencia">Referencia de ubicación</label>
+            <textarea id="clienteReferencia" name="clienteReferencia" rows="2" placeholder="Punto de referencia, indicaciones extra (opcional)"></textarea>
+          </div>
+        </div>
+
+        <h3>Detalle del pedido · Presentaciones</h3>
+        <p class="hint">Registra cantidades, precios unitarios y descuentos por presentación. Los totales se calcularán automáticamente al guardar.</p>
+
+        <div class="form-grid-compact">
+          <div class="field">
+            <label>Pulso 250 ml · Cantidad</label>
+            <input type="number" id="pulsoCant" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label>Pulso · Precio unitario (C$)</label>
+            <input type="number" id="pulsoPrecio" min="0" step="0.01" value="120" />
+          </div>
+          <div class="field">
+            <label>Pulso · Descuento (C$)</label>
+            <input type="number" id="pulsoDesc" min="0" step="0.01" value="0" />
+          </div>
+
+          <div class="field">
+            <label>Media 375 ml · Cantidad</label>
+            <input type="number" id="mediaCant" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label>Media · Precio unitario (C$)</label>
+            <input type="number" id="mediaPrecio" min="0" step="0.01" value="150" />
+          </div>
+          <div class="field">
+            <label>Media · Descuento (C$)</label>
+            <input type="number" id="mediaDesc" min="0" step="0.01" value="0" />
+          </div>
+
+          <div class="field">
+            <label>Djeba 750 ml · Cantidad</label>
+            <input type="number" id="djebaCant" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label>Djeba · Precio unitario (C$)</label>
+            <input type="number" id="djebaPrecio" min="0" step="0.01" value="300" />
+          </div>
+          <div class="field">
+            <label>Djeba · Descuento (C$)</label>
+            <input type="number" id="djebaDesc" min="0" step="0.01" value="0" />
+          </div>
+
+          <div class="field">
+            <label>Litro 1000 ml · Cantidad</label>
+            <input type="number" id="litroCant" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label>Litro · Precio unitario (C$)</label>
+            <input type="number" id="litroPrecio" min="0" step="0.01" value="330" />
+          </div>
+          <div class="field">
+            <label>Litro · Descuento (C$)</label>
+            <input type="number" id="litroDesc" min="0" step="0.01" value="0" />
+          </div>
+
+          <div class="field">
+            <label>Galón 3800 ml · Cantidad</label>
+            <input type="number" id="galonCant" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label>Galón · Precio unitario (C$)</label>
+            <input type="number" id="galonPrecio" min="0" step="0.01" value="800" />
+          </div>
+          <div class="field">
+            <label>Galón · Descuento (C$)</label>
+            <input type="number" id="galonDesc" min="0" step="0.01" value="0" />
+          </div>
+        </div>
+
+        <h3>Totales y pago</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="envio">Envío (C$)</label>
+            <input type="number" id="envio" name="envio" min="0" step="0.01" value="0" />
+          </div>
+          <div class="field">
+            <label for="subtotal">Subtotal (C$)</label>
+            <input type="number" id="subtotal" name="subtotal" readonly />
+          </div>
+          <div class="field">
+            <label for="descuentoTotal">Descuento total (C$)</label>
+            <input type="number" id="descuentoTotal" name="descuentoTotal" readonly />
+          </div>
+          <div class="field">
+            <label for="totalPagar">Total a pagar (C$)</label>
+            <input type="number" id="totalPagar" name="totalPagar" readonly />
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="metodoPago">Método de pago</label>
+            <select id="metodoPago" name="metodoPago">
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="estadoPago">Estado de pago</label>
+            <select id="estadoPago" name="estadoPago">
+              <option value="pagado">Pagado</option>
+              <option value="adelanto">Adelanto</option>
+              <option value="contraentrega">Contraentrega</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="montoPagado">Monto pagado (C$)</label>
+            <input type="number" id="montoPagado" name="montoPagado" min="0" step="0.01" value="0" />
+          </div>
+
+          <div class="field">
+            <label for="saldoPendiente">Saldo pendiente (C$)</label>
+            <input type="number" id="saldoPendiente" name="saldoPendiente" readonly />
+          </div>
+        </div>
+
+        <h3>Relación con lotes y entrega</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="lotesRelacionados">Códigos de lote relacionados</label>
+            <input type="text" id="lotesRelacionados" name="lotesRelacionados" placeholder="Ej: A33-2025-12-01-01, A33-2025-12-02-02" />
+          </div>
+          <div class="field checkbox-row">
+            <input type="checkbox" id="entregado" name="entregado" />
+            <label for="entregado">Pedido entregado</label>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="save-btn">Guardar pedido</button>
+          <button type="button" class="btn-secondary" id="reset-btn">Limpiar formulario</button>
+          <button type="button" class="btn-danger" id="clear-all-btn">Borrar todos</button>
+          <button type="button" class="btn-secondary" id="calc-totals-btn">Calcular totales</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card table-card">
+      <div class="table-header">
+        <h2>Pedidos registrados</h2>
+        <div class="table-actions">
+          <button type="button" class="btn-secondary" id="export-btn">Exportar CSV</button>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="pedidos-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Código</th>
+              <th>Cliente</th>
+              <th>Entrega</th>
+              <th>Total (C$)</th>
+              <th>Entregado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Arcano 33 · Planificación interna de pedidos y entregas</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

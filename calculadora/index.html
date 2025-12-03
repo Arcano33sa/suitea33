@@ -295,6 +295,130 @@
     const STORAGE_LOTE_KEY = "arcano33_lote_actual";
     const STORAGE_FECHA_PROD_KEY = "arcano33_fecha_produccion";
     const STORAGE_NOTAS_KEY = "arcano33_notas_lote";
+    const STORAGE_KEY_INVENTARIO = "arcano33_inventario";
+
+    function invParseNumber(value) {
+      const n = parseFloat(String(value).replace(",", "."));
+      return Number.isNaN(n) ? 0 : n;
+    }
+
+    function invDefault() {
+      return {
+        liquids: {
+          vino:   { stock: 0, max: 0 },
+          vodka:  { stock: 0, max: 0 },
+          jugo:   { stock: 0, max: 0 },
+          sirope: { stock: 0, max: 0 },
+          agua:   { stock: 0, max: 0 }
+        },
+        bottles: {
+          pulso: { stock: 0 },
+          media: { stock: 0 },
+          djeba: { stock: 0 },
+          litro: { stock: 0 },
+          galon: { stock: 0 }
+        }
+      };
+    }
+
+    function invLoad() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_INVENTARIO);
+        let data = raw ? JSON.parse(raw) : null;
+        if (!data || typeof data !== "object") data = invDefault();
+        if (!data.liquids) data.liquids = {};
+        if (!data.bottles) data.bottles = {};
+        const d = invDefault();
+        Object.keys(d.liquids).forEach((k) => {
+          if (!data.liquids[k]) data.liquids[k] = { stock: 0, max: 0 };
+          data.liquids[k].stock = invParseNumber(data.liquids[k].stock || 0);
+          data.liquids[k].max = invParseNumber(data.liquids[k].max || 0);
+        });
+        Object.keys(d.bottles).forEach((k) => {
+          if (!data.bottles[k]) data.bottles[k] = { stock: 0 };
+          data.bottles[k].stock = invParseNumber(data.bottles[k].stock || 0);
+        });
+        return data;
+      } catch (e) {
+        console.warn("No se pudo leer inventario, usando valores por defecto.", e);
+        return invDefault();
+      }
+    }
+
+    function invSave(inv) {
+      try {
+        localStorage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(inv));
+      } catch (e) {
+        console.warn("No se pudo guardar el inventario.", e);
+      }
+    }
+
+    function invBuildAlertLines(inv) {
+      const lines = [];
+      // Líquidos por debajo de 20 %
+      Object.entries(inv.liquids || {}).forEach(([id, info]) => {
+        const stock = invParseNumber(info.stock);
+        const max = invParseNumber(info.max);
+        if (max > 0) {
+          const pct = (stock / max) * 100;
+          if (pct <= 20) {
+            let nombre = id;
+            if (id === "vino") nombre = "Vino";
+            if (id === "vodka") nombre = "Vodka";
+            if (id === "jugo") nombre = "Jugo";
+            if (id === "sirope") nombre = "Sirope";
+            if (id === "agua") nombre = "Agua pura";
+            lines.push("• " + nombre + ": " + stock.toFixed(0) + " ml (" + pct.toFixed(1) + "% restante)");
+          }
+        }
+      });
+      // Botellas con 10 o menos unidades
+      Object.entries(inv.bottles || {}).forEach(([id, info]) => {
+        const stock = invParseNumber(info.stock);
+        if (stock <= 10) {
+          let nombre = id;
+          if (id === "pulso") nombre = "Pulso 250 ml";
+          if (id === "media") nombre = "Media 375 ml";
+          if (id === "djeba") nombre = "Djeba 750 ml";
+          if (id === "litro") nombre = "Litro 1000 ml";
+          if (id === "galon") nombre = "Galón 3800 ml";
+          lines.push("• " + nombre + ": " + stock.toFixed(0) + " botellas");
+        }
+      });
+      return lines;
+    }
+
+    function aplicarConsumoInventarioDesdeLote(datos, mapUnits) {
+      if (!datos || !datos.totalesIngredientes) return;
+      let inv = invLoad();
+
+      // Restar líquidos
+      ["vino","vodka","jugo","sirope","agua"].forEach((ing) => {
+        const uso = typeof datos.totalesIngredientes[ing] === "number" ? datos.totalesIngredientes[ing] : 0;
+        if (!inv.liquids[ing]) {
+          inv.liquids[ing] = { stock: 0, max: 0 };
+        }
+        inv.liquids[ing].stock = invParseNumber(inv.liquids[ing].stock) - uso;
+      });
+
+      // Restar botellas por presentación
+      const map = mapUnits || {};
+      ["pulso","media","djeba","litro","galon"].forEach((id) => {
+        const uso = typeof map[id] === "number" ? map[id] : 0;
+        if (!inv.bottles[id]) {
+          inv.bottles[id] = { stock: 0 };
+        }
+        inv.bottles[id].stock = invParseNumber(inv.bottles[id].stock) - uso;
+      });
+
+      invSave(inv);
+
+      const lines = invBuildAlertLines(inv);
+      if (lines.length > 0) {
+        alert("Alerta de inventario (después de registrar el lote):\n\n" + lines.join("\\n"));
+      }
+    }
+
 
     function getNumberValue(id) {
       const el = document.getElementById(id);
@@ -571,35 +695,6 @@
         notas
       };
     }
-
-    function calcularCostos(datos) {
-      let costoTotal = 0;
-      const filas = [];
-      datos.unidadesPorPresentacion.forEach(item => {
-        const costoUnit = getNumberValue("costo-unit-" + item.id);
-        if (costoUnit > 0 && item.unidades > 0) {
-          const subtotal = costoUnit * item.unidades;
-          costoTotal += subtotal;
-          filas.push({
-            id: item.id,
-            nombre: item.nombre,
-            unidades: item.unidades,
-            costoUnidad: costoUnit,
-            subtotal: subtotal
-          });
-        }
-      });
-      let costoPorLitro = 0;
-      if (costoTotal > 0 && datos.totalVolumenFinalMl > 0) {
-        costoPorLitro = costoTotal / (datos.totalVolumenFinalMl / 1000);
-      }
-      return {
-        costoTotal: costoTotal,
-        costoPorLitro: costoPorLitro,
-        filas: filas
-      };
-    }
-
     function calcularTotales() {
       const datos = calcularDatosLote();
       const resultadosDiv = document.getElementById("resultados");
@@ -648,16 +743,28 @@
 
       const resumenCostosDiv = document.getElementById("resumen-costos");
       if (resumenCostosDiv) {
-        const costos = calcularCostos(datos);
-        const costoTotal = costos.costoTotal;
-        const costoPorLitro = costos.costoPorLitro;
-        const filas = costos.filas;
+        let costoTotal = 0;
+        const filas = [];
+        datos.unidadesPorPresentacion.forEach(item => {
+          const costoUnit = getNumberValue("costo-unit-" + item.id);
+          if (costoUnit > 0 && item.unidades > 0) {
+            const subtotal = costoUnit * item.unidades;
+            costoTotal += subtotal;
+            filas.push({
+              nombre: item.nombre,
+              unidades: item.unidades,
+              costoUnidad: costoUnit,
+              subtotal
+            });
+          }
+        });
 
         let htmlCostos = "";
         if (filas.length) {
           htmlCostos += "<div class='flex-row'>";
           htmlCostos += "<div class='badge'>Costo total estimado del lote: <strong>C$ " + costoTotal.toFixed(2) + "</strong></div>";
-          if (costoPorLitro > 0) {
+          if (datos.totalVolumenFinalMl > 0) {
+            const costoPorLitro = costoTotal / (datos.totalVolumenFinalMl / 1000);
             htmlCostos += "<div class='badge'>Costo aprox. por litro: <strong>C$ " + costoPorLitro.toFixed(2) + "</strong></div>";
           }
           htmlCostos += "</div>";
@@ -725,15 +832,6 @@
       texto += "- Agua pura: " + datos.totalesIngredientes.agua.toFixed(0) + " ml (" + formatLitros(datos.totalesIngredientes.agua) + ")\n";
       texto += "\n";
       texto += "Volumen final teórico: " + formatLitros(datos.totalVolumenFinalMl) + "\n";
-      const costosTxt = calcularCostos(datos);
-      if (costosTxt.costoTotal > 0) {
-        texto += "\nCostos estimados:\n";
-        texto += "- Costo total del lote: C$ " + costosTxt.costoTotal.toFixed(2) + "\n";
-        if (costosTxt.costoPorLitro > 0) {
-          texto += "- Costo aproximado por litro: C$ " + costosTxt.costoPorLitro.toFixed(2) + "\n";
-        }
-      }
-
       if (datos.notas) {
         texto += "\nNotas del lote:\n" + datos.notas + "\n";
       }
@@ -792,11 +890,7 @@
       } catch (e) {
         caducidadIso = "";
       }
-      
-      const costosLote = calcularCostos(datos);
-      const costoTotalLote = costosLote.costoTotal;
-      const costoPorLitroLote = costosLote.costoPorLitro;
-const nuevoLote = {
+      const nuevoLote = {
         id: "lote_" + Date.now(),
         fecha: fechaProdIso,
         codigo: loteNombre,
@@ -812,13 +906,12 @@ const nuevoLote = {
         djeba: (mapUnits.djeba || 0).toString(),
         litro: (mapUnits.litro || 0).toString(),
         galon: (mapUnits.galon || 0).toString(),
-        costoTotal: costoTotalLote > 0 ? costoTotalLote.toFixed(2) : "",
-        costoPorLitro: costoPorLitroLote > 0 ? costoPorLitroLote.toFixed(2) : "",
-
         notas: datos.notas || "",
         createdAt: new Date().toISOString()
       };
       lotes.push(nuevoLote);
+      // Ajustar inventario global según este lote
+      aplicarConsumoInventarioDesdeLote(datos, mapUnits);
       try {
         localStorage.setItem("arcano33_lotes", JSON.stringify(lotes));
         alert("Lote guardado en el Control de Lotes interno.");

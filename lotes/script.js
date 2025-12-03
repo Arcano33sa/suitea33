@@ -68,16 +68,6 @@ function showLoteDetails(lote) {
   lines.push(`  Djeba 750 ml: ${lote.djeba ?? "0"}`);
   lines.push(`  Litro 1000 ml: ${lote.litro ?? "0"}`);
   lines.push(`  Galón 3800 ml: ${lote.galon ?? "0"}`);
-  if (lote.costoTotal || lote.costoPorLitro) {
-    lines.push("");
-    lines.push("Costos estimados:");
-    if (lote.costoTotal) {
-      lines.push(`  Costo total del lote: C$ ${lote.costoTotal}`);
-    }
-    if (lote.costoPorLitro) {
-      lines.push(`  Costo aprox. por litro: C$ ${lote.costoPorLitro}`);
-    }
-  }
   if (lote.notas) {
     lines.push("");
     lines.push("Notas:");
@@ -280,8 +270,6 @@ function exportToCSV() {
     "Galón 3800 ml",
     "Fecha caducidad",
     "Notas",
-    "Costo total (C$)",
-    "Costo por litro (C$)",
   ];
 
   const rows = lotes.map((l) => [
@@ -300,8 +288,6 @@ function exportToCSV() {
     l.galon ?? "",
     formatDate(l.caducidad),
     (l.notas || "").replace(/\r?\n/g, " "),
-    l.costoTotal ?? "",
-    l.costoPorLitro ?? "",
   ]);
 
   const all = [headers, ...rows]
