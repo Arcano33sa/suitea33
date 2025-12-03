@@ -49,6 +49,46 @@ async function getMeta(key){ const all = await getAll('meta'); const row = all.f
 // Normalizar nombres
 function normName(s){ return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
 
+const RECETAS_KEY = 'arcano33_recetas_v1';
+
+function leerCostosPresentacion() {
+  try {
+    const raw = localStorage.getItem(RECETAS_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (data && data.costosPresentacion) {
+      return data.costosPresentacion;
+    }
+    return null;
+  } catch (e) {
+    console.warn('No se pudieron leer los costos de presentación desde la Calculadora:', e);
+    return null;
+  }
+}
+
+function mapProductNameToPresId(name) {
+  const n = normName(name);
+  if (!n) return null;
+  if (n.includes('pulso')) return 'pulso';
+  if (n.includes('media')) return 'media';
+  if (n.includes('djeba')) return 'djeba';
+  if (n.includes('litro')) return 'litro';
+  if (n.includes('galon')) return 'galon';
+  if (n.includes('galón')) return 'galon';
+  return null;
+}
+
+function getCostoUnitarioProducto(productName) {
+  const costos = leerCostosPresentacion();
+  if (!costos) return 0;
+  const presId = mapProductNameToPresId(productName);
+  if (!presId) return 0;
+  const info = costos[presId];
+  if (!info) return 0;
+  const val = typeof info.costoUnidad === 'number' ? info.costoUnidad : 0;
+  return val > 0 ? val : 0;
+}
+
 // Defaults (SKUs Arcano 33)
 const SEED = [
   {name:'Vaso', price:100, manageStock:false, active:true},
@@ -337,6 +377,64 @@ async function addRestock(eventId, productId, qty){ if (qty<=0) throw new Error(
 async function addAdjust(eventId, productId, qty, notes){ if (!qty) throw new Error('Ajuste no puede ser 0'); await put('inventory', {eventId, productId, type:'adjust', qty, notes: notes||'Ajuste', time:new Date().toISOString()}); }
 async function computeStock(eventId, productId){ const inv = await getInventoryEntries(eventId); const ledger = inv.filter(i=>i.productId===productId).reduce((a,b)=>a+(b.qty||0),0); const sales = (await getAll('sales')).filter(s=>s.eventId===eventId && s.productId===productId).reduce((a,b)=>a+(b.qty||0),0); return ledger - sales; }
 
+
+// Importar inventario desde Control de Lotes
+async function importFromLoteToInventory(){
+  const evSel = $('#inv-event');
+  let evId = evSel && evSel.value ? parseInt(evSel.value,10) : null;
+  if (!evId){
+    alert('Primero selecciona un evento.');
+    return;
+  }
+  let lotes = [];
+  try {
+    const raw = localStorage.getItem('arcano33_lotes');
+    if (raw) lotes = JSON.parse(raw) || [];
+    if (!Array.isArray(lotes)) lotes = [];
+  } catch (e) {
+    alert('No se pudo leer la información de lotes guardada en el navegador.');
+    return;
+  }
+  if (!lotes.length){
+    alert('No hay lotes registrados en el Control de Lotes.');
+    return;
+  }
+  const listaCodigos = lotes
+    .map(l => (l.codigo || '').trim())
+    .filter(c => c)
+    .join(', ');
+  const codigo = prompt('Escribe el CÓDIGO del lote que quieres asignar a este evento (códigos disponibles: ' + (listaCodigos || 'ninguno') + '):');
+  if (!codigo) return;
+  const codigoNorm = (codigo || '').toString().toLowerCase().trim();
+  const lote = lotes.find(l => ((l.codigo || '').toString().toLowerCase().trim() === codigoNorm));
+  if (!lote){
+    alert('No se encontró un lote con ese código.');
+    return;
+  }
+  const map = [
+    { field: 'pulso', name: 'Pulso 250ml' },
+    { field: 'media', name: 'Media 375ml' },
+    { field: 'djeba', name: 'Djeba 750ml' },
+    { field: 'litro', name: 'Litro 1000ml' },
+    { field: 'galon', name: 'Galón 3800ml' }
+  ];
+  const products = await getAll('products');
+  const norm = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  let total = 0;
+  for (const m of map){
+    const rawQty = (lote[m.field] ?? '0').toString();
+    const qty = parseInt(rawQty, 10);
+    if (!(qty > 0)) continue;
+    const prod = products.find(p => norm(p.name) === norm(m.name));
+    if (!prod) continue;
+    await addRestock(evId, prod.id, qty);
+    total += qty;
+  }
+  await renderInventario();
+  await refreshSaleStockLabel();
+  alert('Se agregó inventario desde el lote "' + (lote.codigo || '') + '" al evento seleccionado.');
+}
+
 // Inventario UI
 async function renderInventario(){
   const tbody = $('#tbl-inv tbody');
@@ -585,8 +683,23 @@ async function openEventView(eventId){
   <div><b># Ventas:</b> ${sales.length}</div>`;
 
   const total = sales.reduce((a,b)=>a+b.total,0);
+
+  // cálculo de costo de producto usando el costo unitario por presentación
+  let costoProductos = 0;
+  for (const s of sales) {
+    const unitCost = getCostoUnitarioProducto(s.productName);
+    const absQty = Math.abs(s.qty || 0);
+    const qtyParaCosto = s.isReturn ? -absQty : absQty;
+    if (unitCost > 0 && qtyParaCosto !== 0) {
+      costoProductos += unitCost * qtyParaCosto;
+    }
+  }
+  const utilidadBruta = total - costoProductos;
+
   const byPay = sales.reduce((m,s)=>{ m[s.payment]=(m[s.payment]||0)+s.total; return m; },{});
-  $('#ev-totals').innerHTML = `<div><b>Total:</b> C$ ${fmt(total)}</div>
+  $('#ev-totals').innerHTML = `<div><b>Total vendido:</b> C$ ${fmt(total)}</div>
+  <div><b>Costo estimado de producto:</b> C$ ${fmt(costoProductos)}</div>
+  <div><b>Utilidad bruta aprox.:</b> C$ ${fmt(utilidadBruta)}</div>
   <div><b>Efectivo:</b> C$ ${fmt(byPay.efectivo||0)}</div>
   <div><b>Transferencia:</b> C$ ${fmt(byPay.transferencia||0)}</div>
   <div><b>Crédito:</b> C$ ${fmt(byPay.credito||0)}</div>`;
@@ -804,19 +917,30 @@ async function init(){
   $('#inv-event').addEventListener('change', renderInventario);
   $('#btn-inv-ref').addEventListener('click', renderInventario);
   $('#btn-inv-csv').addEventListener('click', async()=>{ const id = parseInt($('#inv-event').value||'0',10); if (!id) return alert('Selecciona un evento'); await generateInventoryCSV(id); });
+  const btnFromLote = document.getElementById('btn-inv-from-lote');
+  if (btnFromLote) btnFromLote.addEventListener('click', importFromLoteToInventory);
+
 }
 
 // Totales y ventas
 function recomputeTotal(){
   const price = parseFloat($('#sale-price').value||'0');
   const qty = Math.max(0, parseFloat($('#sale-qty').value||'0'));
-  const discount = Math.max(0, parseFloat($('#sale-discount').value||'0'));
+  const discountPerUnit = Math.max(0, parseFloat($('#sale-discount').value||'0'));
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
-  let total = price * qty;
-  if (courtesy) total = 0;
-  else total = Math.max(0, total - discount);
-  if (isReturn) total = -total;
+
+  // Precio efectivo por unidad luego del descuento fijo
+  const effectiveUnit = Math.max(0, price - discountPerUnit);
+  let total = effectiveUnit * qty;
+
+  if (courtesy) {
+    total = 0;
+  }
+  if (isReturn) {
+    total = -total;
+  }
+
   const t = total.toFixed(2);
   $('#sale-total').value = t;
   $('#sticky-total').textContent = t;
@@ -830,7 +954,7 @@ async function addSale(){
   const qtyIn = parseFloat($('#sale-qty').value||'0');
   const qty = Math.abs(qtyIn);
   const price = parseFloat($('#sale-price').value||'0');
-  const discount = Math.max(0, parseFloat($('#sale-discount').value||'0'));
+  const discountPerUnit = Math.max(0, parseFloat($('#sale-discount').value||'0'));
   const payment = $('#sale-payment').value;
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
@@ -857,6 +981,10 @@ async function addSale(){
   }
 
   let subtotal = price * qty;
+  let discount = discountPerUnit * qty;
+  if (courtesy) {
+    discount = 0;
+  }
   let total = courtesy ? 0 : Math.max(0, subtotal - discount);
   const finalQty = isReturn ? -qty : qty;
   if (isReturn) total = -total;

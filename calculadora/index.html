@@ -179,23 +179,16 @@
         padding: 0.25rem;
       }
     }
-  
-    .top-menu-main {
-      display:flex;
-      justify-content:flex-end;
-      padding:0.25rem 0.75rem 0;
-    }
-</style>
+  </style>
 </head>
 <body>
   <div class="app-container">
     <div class="logo-container">
       <img src="logo-icon-192.png" alt="Arcano 33" />
     </div>
-    <div class="top-menu-main">
-      <button class="btn-secondary" onclick="window.location.href='../index.html'">Menú principal</button>
+    <div style="text-align:right; margin-top:0.25rem;">
+      <a href="../index.html" class="btn-secondary" style="display:inline-block; text-decoration:none;">← Menú principal</a>
     </div>
-
     <h1>Calculadora de Producción – Arcano 33</h1>
     <p class="subtitle">
       Define la receta por presentación y luego indica cuántas vas a producir. La app te suma la materia prima 🔮
@@ -215,13 +208,9 @@
           <label for="fecha-produccion">Fecha de producción</label>
           <input type="date" id="fecha-produccion" />
         </div>
-        <div>
-          <label for="fecha-hebrea">Fecha hebrea</label>
-          <input type="text" id="fecha-hebrea" readonly placeholder="Se calculará automáticamente" />
-          <p class="hint">Requiere conexión a internet para calcularse.</p>
-        </div>
       </div>
       <p class="hint" id="texto-caducidad">Fecha de caducidad: —</p>
+      <p class="hint" id="texto-fecha-hebreo">Fecha hebrea de hoy: —</p>
 
       <h3>Notas del lote</h3>
       <textarea id="notas" placeholder="Ej: Pedido para evento, sabor clásico, entrega sábado por la tarde..."></textarea>
@@ -279,10 +268,13 @@
       <div id="resumen-lote"></div>
       <div id="resumen-fechas"></div>
       <div id="totales-ingredientes"></div>
+      <div id="resumen-costos"></div>
 
       <div class="results-title" style="margin-top:0.8rem;">Resumen de volumen final</div>
       <div id="resumen-volumen"></div>
 
+      <button id="btn-guardar-lote" class="btn-secondary">Guardar cálculo como lote</button>
+      <p class="hint">Guardará este cálculo en el Control de Lotes interno.</p>
       <button id="btn-exportar" class="btn-secondary">Exportar información del lote (TXT)</button>
       <p class="hint">Se descargará un archivo .txt con el resumen del lote.</p>
     </div>
@@ -302,7 +294,6 @@
     const STORAGE_RECETAS_KEY = "arcano33_recetas_v1";
     const STORAGE_LOTE_KEY = "arcano33_lote_actual";
     const STORAGE_FECHA_PROD_KEY = "arcano33_fecha_produccion";
-    const STORAGE_FECHA_HEB_KEY = "arcano33_fecha_hebreo";
     const STORAGE_NOTAS_KEY = "arcano33_notas_lote";
 
     function getNumberValue(id) {
@@ -344,50 +335,7 @@
       const y = date.getFullYear();
       return d + "/" + m + "/" + y;
     }
-    
-    async function actualizarFechaHebrea() {
-      const input = document.getElementById("fecha-produccion");
-      const out = document.getElementById("fecha-hebrea");
-      if (!input || !out) return;
-      const valor = input.value;
-      if (!valor) {
-        out.value = "";
-        try { localStorage.removeItem(STORAGE_FECHA_HEB_KEY); } catch(e) {}
-        return;
-      }
-      const partes = valor.split("-");
-      if (partes.length !== 3) {
-        out.value = "";
-        return;
-      }
-      const gy = parseInt(partes[0], 10);
-      const gm = parseInt(partes[1], 10);
-      const gd = parseInt(partes[2], 10);
-      if (!gy || !gm || !gd) {
-        out.value = "";
-        return;
-      }
-      try {
-        const url = "https://www.hebcal.com/converter?cfg=json&g2h=1&gy=" +
-          encodeURIComponent(gy) + "&gm=" + encodeURIComponent(gm) + "&gd=" + encodeURIComponent(gd);
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error("Respuesta no válida");
-        const data = await resp.json();
-        if (data && data.hy && data.hm && data.hd) {
-          const texto = data.hd + " " + data.hm + " " + data.hy;
-          out.value = texto;
-          try {
-            localStorage.setItem(STORAGE_FECHA_HEB_KEY, texto);
-          } catch(e) {}
-        } else {
-          out.value = "";
-        }
-      } catch (e) {
-        out.value = "No disponible (sin conexión)";
-      }
-    }
-
-function calcularCaducidad(fechaProdStr) {
+    function calcularCaducidad(fechaProdStr) {
       if (!fechaProdStr) return null;
       const partes = fechaProdStr.split("-");
       if (partes.length !== 3) return null;
@@ -414,6 +362,37 @@ function calcularCaducidad(fechaProdStr) {
         textoCad.textContent = "Fecha de caducidad: " + formatearFechaBonita(cad);
       }
     }
+    function actualizarFechaHebrea() {
+      const span = document.getElementById("texto-fecha-hebreo");
+      if (!span) return;
+      try {
+        const hoy = new Date();
+        const y = hoy.getFullYear();
+        const m = hoy.getMonth() + 1;
+        const d = hoy.getDate();
+        const url = "https://www.hebcal.com/converter?cfg=json&g2h=1&gy=" + y + "&gm=" + m + "&gd=" + d + "&lang=es";
+        fetch(url)
+          .then(res => {
+            if (!res.ok) throw new Error("Respuesta no válida");
+            return res.json();
+          })
+          .then(data => {
+            if (data && typeof data.hd !== "undefined" && data.hm && data.hy) {
+              span.textContent = "Fecha hebrea de hoy: " + data.hd + " " + data.hm + " " + data.hy;
+            } else {
+              span.textContent = "Fecha hebrea de hoy: —";
+            }
+          })
+          .catch(err => {
+            console.warn("No se pudo obtener la fecha hebrea:", err);
+            span.textContent = "Fecha hebrea de hoy: —";
+          });
+      } catch (e) {
+        console.warn("No se pudo obtener la fecha hebrea:", e);
+        span.textContent = "Fecha hebrea de hoy: —";
+      }
+    }
+
     function construirTablaRecetas() {
       const tbody = document.querySelector("#recetas-table tbody");
       tbody.innerHTML = "";
@@ -434,18 +413,21 @@ function calcularCaducidad(fechaProdStr) {
           td.appendChild(input);
           tr.appendChild(td);
         });
+        // columna de costo unitario por presentación
         const tdCosto = document.createElement("td");
         const inputCosto = document.createElement("input");
         inputCosto.type = "number";
         inputCosto.min = "0";
         inputCosto.step = "0.01";
-        inputCosto.id = "costo-" + p.id;
-        inputCosto.placeholder = "0.00";
+        inputCosto.id = "costo-unit-" + p.id;
+        inputCosto.placeholder = "0";
         tdCosto.appendChild(inputCosto);
         tr.appendChild(tdCosto);
+
         tbody.appendChild(tr);
       });
     }
+
     function construirTablaPlan() {
       const tbody = document.querySelector("#plan-table tbody");
       tbody.innerHTML = "";
@@ -468,58 +450,77 @@ function calcularCaducidad(fechaProdStr) {
       });
     }
     function guardarRecetas() {
-      const data = {};
+      const recetas = {};
+      const costosPresentacion = {};
       PRESENTACIONES.forEach(p => {
-        data[p.id] = {};
+        recetas[p.id] = {};
         INGREDIENTES.forEach(ing => {
           const val = getNumberValue("receta-" + p.id + "-" + ing);
-          data[p.id][ing] = val;
+          recetas[p.id][ing] = val;
         });
-        const costoVal = getNumberValue("costo-" + p.id);
-        data[p.id].costoUnitario = isNaN(costoVal) ? 0 : costoVal;
+        const costoUnit = getNumberValue("costo-unit-" + p.id);
+        costosPresentacion[p.id] = {
+          id: p.id,
+          nombre: p.nombre,
+          costoUnidad: costoUnit
+        };
       });
-      localStorage.setItem(STORAGE_RECETAS_KEY, JSON.stringify(data));
-      alert("Recetas guardadas en este navegador ✅");
+      const payload = {
+        version: 2,
+        recetas,
+        costosPresentacion
+      };
+      localStorage.setItem(STORAGE_RECETAS_KEY, JSON.stringify(payload));
+      alert("Recetas y costos guardados en este navegador ✅");
     }
+
     function cargarRecetas() {
       const raw = localStorage.getItem(STORAGE_RECETAS_KEY);
       if (!raw) return;
       try {
         const data = JSON.parse(raw);
+        const recetas = data && data.recetas ? data.recetas : data;
+        const costosPresentacion = data && data.costosPresentacion ? data.costosPresentacion : null;
+
+        // cargar recetas (ml)
         PRESENTACIONES.forEach(p => {
-          if (!data[p.id]) return;
+          const rec = recetas[p.id];
+          if (!rec) return;
           INGREDIENTES.forEach(ing => {
             const input = document.getElementById("receta-" + p.id + "-" + ing);
             if (!input) return;
-            const val = data[p.id][ing];
+            const val = rec[ing];
             if (typeof val === "number") {
               input.value = val;
             }
           });
-          const inputCosto = document.getElementById("costo-" + p.id);
-          if (inputCosto && typeof data[p.id].costoUnitario === "number") {
-            inputCosto.value = data[p.id].costoUnitario;
-          }
         });
+
+        // cargar costos por presentación si existen
+        if (costosPresentacion) {
+          PRESENTACIONES.forEach(p => {
+            const info = costosPresentacion[p.id];
+            if (!info) return;
+            const inputCosto = document.getElementById("costo-unit-" + p.id);
+            if (inputCosto && typeof info.costoUnidad === "number") {
+              inputCosto.value = info.costoUnidad;
+            }
+          });
+        }
       } catch (e) {
         console.warn("Error cargando recetas:", e);
       }
     }
+
     function guardarMetaLote() {
       const loteInput = document.getElementById("lote");
       const fechaProdInput = document.getElementById("fecha-produccion");
-      const fechaHebInput = document.getElementById("fecha-hebrea");
       const notasInput = document.getElementById("notas");
       if (loteInput) {
         localStorage.setItem(STORAGE_LOTE_KEY, loteInput.value || "");
       }
       if (fechaProdInput) {
         localStorage.setItem(STORAGE_FECHA_PROD_KEY, fechaProdInput.value || "");
-      }
-      if (fechaHebInput) {
-        try {
-          localStorage.setItem(STORAGE_FECHA_HEB_KEY, fechaHebInput.value || "");
-        } catch(e) {}
       }
       if (notasInput) {
         localStorage.setItem(STORAGE_NOTAS_KEY, notasInput.value || "");
@@ -529,15 +530,12 @@ function calcularCaducidad(fechaProdStr) {
     function cargarMetaLote() {
       const loteInput = document.getElementById("lote");
       const fechaProdInput = document.getElementById("fecha-produccion");
-      const fechaHebInput = document.getElementById("fecha-hebrea");
       const notasInput = document.getElementById("notas");
       const loteVal = localStorage.getItem(STORAGE_LOTE_KEY);
       const fechaVal = localStorage.getItem(STORAGE_FECHA_PROD_KEY);
-      const fechaHebVal = localStorage.getItem(STORAGE_FECHA_HEB_KEY);
       const notasVal = localStorage.getItem(STORAGE_NOTAS_KEY);
       if (loteInput && loteVal !== null) loteInput.value = loteVal;
       if (fechaProdInput && fechaVal !== null) fechaProdInput.value = fechaVal;
-      if (fechaHebInput && fechaHebVal !== null) fechaHebInput.value = fechaHebVal;
       if (notasInput && notasVal !== null) notasInput.value = notasVal;
       actualizarTextoCaducidad();
     }
@@ -545,8 +543,6 @@ function calcularCaducidad(fechaProdStr) {
       const totalesIngredientes = { vino: 0, vodka: 0, jugo: 0, sirope: 0, agua: 0 };
       let totalVolumenFinalMl = 0;
       const unidadesPorPresentacion = [];
-      const costosPorPresentacion = [];
-      let costoTotalLote = 0;
       PRESENTACIONES.forEach(p => {
         const unidades = getNumberValue("plan-" + p.id);
         if (unidades > 0) {
@@ -558,39 +554,52 @@ function calcularCaducidad(fechaProdStr) {
           totalesIngredientes[ing] += unidades * mlPorUnidad;
         });
         totalVolumenFinalMl += unidades * p.volumenMl;
-        const costoUnit = getNumberValue("costo-" + p.id);
-        if (costoUnit > 0) {
-          const subtotal = unidades * costoUnit;
-          costosPorPresentacion.push({
-            id: p.id,
-            nombre: p.nombre,
-            unidades,
-            costoUnit,
-            costoTotal: subtotal
-          });
-          costoTotalLote += subtotal;
-        }
       });
       const loteNombre = (document.getElementById("lote").value || "").trim();
       const fechaProdStr = document.getElementById("fecha-produccion").value || "";
       const fechaProd = fechaProdStr ? new Date(fechaProdStr + "T00:00:00") : null;
       const fechaCad = calcularCaducidad(fechaProdStr);
-      const fechaHebStr = (document.getElementById("fecha-hebrea") && document.getElementById("fecha-hebrea").value) || "";
       const notas = document.getElementById("notas").value || "";
       return {
         totalesIngredientes,
         totalVolumenFinalMl,
         unidadesPorPresentacion,
-        costosPorPresentacion,
-        costoTotalLote,
         loteNombre,
         fechaProd,
         fechaProdStr,
         fechaCad,
-        fechaHebStr,
         notas
       };
     }
+
+    function calcularCostos(datos) {
+      let costoTotal = 0;
+      const filas = [];
+      datos.unidadesPorPresentacion.forEach(item => {
+        const costoUnit = getNumberValue("costo-unit-" + item.id);
+        if (costoUnit > 0 && item.unidades > 0) {
+          const subtotal = costoUnit * item.unidades;
+          costoTotal += subtotal;
+          filas.push({
+            id: item.id,
+            nombre: item.nombre,
+            unidades: item.unidades,
+            costoUnidad: costoUnit,
+            subtotal: subtotal
+          });
+        }
+      });
+      let costoPorLitro = 0;
+      if (costoTotal > 0 && datos.totalVolumenFinalMl > 0) {
+        costoPorLitro = costoTotal / (datos.totalVolumenFinalMl / 1000);
+      }
+      return {
+        costoTotal: costoTotal,
+        costoPorLitro: costoPorLitro,
+        filas: filas
+      };
+    }
+
     function calcularTotales() {
       const datos = calcularDatosLote();
       const resultadosDiv = document.getElementById("resultados");
@@ -621,11 +630,8 @@ function calcularCaducidad(fechaProdStr) {
       } else {
         htmlFechas += "<div class='badge'>Caducidad: —</div>";
       }
-      if (datos.fechaHebStr) {
-        htmlFechas += "<div class='badge'>Fecha hebrea: <strong>" + escapeHtml(datos.fechaHebStr) + "</strong></div>";
-      }
       if (datos.notas) {
-        htmlFechas += "<div class='badge'>Notas: " + escapeHtml(datos.notas.slice(0, 60)) + (datos.notas.length > 60 ? "..." : "") + "</div>";
+        htmlFechas += "<div class='badge'>Notas: " + escapeHtml(datos.notas.substring(0, 60)) + (datos.notas.length > 60 ? "..." : "") + "</div>";
       }
       htmlFechas += "</div>";
       resumenFechasDiv.innerHTML = htmlFechas;
@@ -635,20 +641,50 @@ function calcularCaducidad(fechaProdStr) {
       htmlTotales += "<tr><td style='text-align:left;'>Vodka</td><td>" + formatMl(datos.totalesIngredientes.vodka) + "</td><td>" + formatLitros(datos.totalesIngredientes.vodka) + "</td></tr>";
       htmlTotales += "<tr><td style='text-align:left;'>Jugo</td><td>" + formatMl(datos.totalesIngredientes.jugo) + "</td><td>" + formatLitros(datos.totalesIngredientes.jugo) + "</td></tr>";
       htmlTotales += "<tr><td style='text-align:left;'>Sirope</td><td>" + formatMl(datos.totalesIngredientes.sirope) + "</td><td>" + formatLitros(datos.totalesIngredientes.sirope) + "</td></tr>";
-      htmlTotales += "<tr><td style='text-align:left.;'>Agua pura</td><td>" + formatMl(datos.totalesIngredientes.agua) + "</td><td>" + formatLitros(datos.totalesIngredientes.agua) + "</td></tr>";
+      htmlTotales += "<tr><td style='text-align:left;'>Agua pura</td><td>" + formatMl(datos.totalesIngredientes.agua) + "</td><td>" + formatLitros(datos.totalesIngredientes.agua) + "</td></tr>";
       htmlTotales += "</tbody></table>";
       totalesDiv.innerHTML = htmlTotales;
 
+
+      const resumenCostosDiv = document.getElementById("resumen-costos");
+      if (resumenCostosDiv) {
+        const costos = calcularCostos(datos);
+        const costoTotal = costos.costoTotal;
+        const costoPorLitro = costos.costoPorLitro;
+        const filas = costos.filas;
+
+        let htmlCostos = "";
+        if (filas.length) {
+          htmlCostos += "<div class='flex-row'>";
+          htmlCostos += "<div class='badge'>Costo total estimado del lote: <strong>C$ " + costoTotal.toFixed(2) + "</strong></div>";
+          if (costoPorLitro > 0) {
+            htmlCostos += "<div class='badge'>Costo aprox. por litro: <strong>C$ " + costoPorLitro.toFixed(2) + "</strong></div>";
+          }
+          htmlCostos += "</div>";
+
+          htmlCostos += "<table><thead><tr><th>Presentación</th><th>Unidades</th><th>Costo unitario (C$)</th><th>Subtotal (C$)</th></tr></thead><tbody>";
+          filas.forEach(f => {
+            htmlCostos += "<tr>";
+            htmlCostos += "<td style='text-align:left;'>" + escapeHtml(f.nombre) + "</td>";
+            htmlCostos += "<td>" + f.unidades + "</td>";
+            htmlCostos += "<td>" + f.costoUnidad.toFixed(2) + "</td>";
+            htmlCostos += "<td>" + f.subtotal.toFixed(2) + "</td>";
+            htmlCostos += "</tr>";
+          });
+          htmlCostos += "</tbody></table>";
+        } else {
+          htmlCostos = "<p class='hint'>Para ver costos, llena la columna de costo unitario y el plan de producción.</p>";
+        }
+
+        resumenCostosDiv.innerHTML = htmlCostos;
+      }
+
       let htmlResumen = "<div class='flex-row'><div class='badge'>Volumen final teórico: <strong>" +
         formatLitros(datos.totalVolumenFinalMl) +
-        "</strong></div>";
-      if (datos.costoTotalLote && datos.costoTotalLote > 0) {
-        htmlResumen += "<div class='badge'>Costo total estimado: <strong>C$ " + datos.costoTotalLote.toFixed(2) + "</strong></div>";
-      }
-      htmlResumen += "</div>";
+        "</strong></div></div>";
       resumenVolumenDiv.innerHTML = htmlResumen;
 
-resultadosDiv.style.display = "block";
+      resultadosDiv.style.display = "block";
       guardarMetaLote();
     }
     function exportarLote() {
@@ -671,9 +707,6 @@ resultadosDiv.style.display = "block";
       } else {
         texto += "Fecha de caducidad: —\n";
       }
-      if (datos.fechaHebStr) {
-        texto += "Fecha hebrea: " + datos.fechaHebStr + "\n";
-      }
       texto += "\n";
       texto += "Unidades por presentación:\n";
       if (datos.unidadesPorPresentacion.length === 0) {
@@ -691,15 +724,16 @@ resultadosDiv.style.display = "block";
       texto += "- Sirope: " + datos.totalesIngredientes.sirope.toFixed(0) + " ml (" + formatLitros(datos.totalesIngredientes.sirope) + ")\n";
       texto += "- Agua pura: " + datos.totalesIngredientes.agua.toFixed(0) + " ml (" + formatLitros(datos.totalesIngredientes.agua) + ")\n";
       texto += "\n";
-      if (datos.costosPorPresentacion && datos.costosPorPresentacion.length > 0) {
-        texto += "Costos por presentación (estimado):\n";
-        datos.costosPorPresentacion.forEach(item => {
-          texto += "- " + item.nombre + ": " + item.unidades + " x C$ " + item.costoUnit.toFixed(2) +
-            " = C$ " + item.costoTotal.toFixed(2) + "\n";
-        });
-        texto += "Costo total estimado del lote: C$ " + datos.costoTotalLote.toFixed(2) + "\n\n";
-      }
       texto += "Volumen final teórico: " + formatLitros(datos.totalVolumenFinalMl) + "\n";
+      const costosTxt = calcularCostos(datos);
+      if (costosTxt.costoTotal > 0) {
+        texto += "\nCostos estimados:\n";
+        texto += "- Costo total del lote: C$ " + costosTxt.costoTotal.toFixed(2) + "\n";
+        if (costosTxt.costoPorLitro > 0) {
+          texto += "- Costo aproximado por litro: C$ " + costosTxt.costoPorLitro.toFixed(2) + "\n";
+        }
+      }
+
       if (datos.notas) {
         texto += "\nNotas del lote:\n" + datos.notas + "\n";
       }
@@ -721,7 +755,78 @@ resultadosDiv.style.display = "block";
       });
       document.getElementById("resultados").style.display = "none";
     }
-    function init() {
+    
+    function guardarCalculoComoLote() {
+      const datos = calcularDatosLote();
+      const loteNombre = datos.loteNombre || "";
+      if (!loteNombre) {
+        alert("Primero escribe un nombre o código para el lote.");
+        return;
+      }
+      if (!datos.unidadesPorPresentacion.length) {
+        if (!confirm("No hay unidades indicadas en el plan de producción. ¿Guardar de todas formas?")) {
+          return;
+        }
+      }
+      let lotes = [];
+      try {
+        const raw = localStorage.getItem("arcano33_lotes");
+        if (raw) lotes = JSON.parse(raw) || [];
+        if (!Array.isArray(lotes)) lotes = [];
+      } catch (e) {
+        lotes = [];
+      }
+      const mapUnits = { pulso: 0, media: 0, djeba: 0, litro: 0, galon: 0 };
+      datos.unidadesPorPresentacion.forEach((item) => {
+        if (item.id === "pulso") mapUnits.pulso = item.unidades;
+        if (item.id === "media") mapUnits.media = item.unidades;
+        if (item.id === "djeba") mapUnits.djeba = item.unidades;
+        if (item.id === "litro") mapUnits.litro = item.unidades;
+        if (item.id === "galon") mapUnits.galon = item.unidades;
+      });
+      const fechaProdIso = datos.fechaProdStr || new Date().toISOString().slice(0, 10);
+      let caducidadIso = "";
+      try {
+        const cad = calcularCaducidad(fechaProdIso);
+        if (cad) caducidadIso = cad.toISOString().slice(0, 10);
+      } catch (e) {
+        caducidadIso = "";
+      }
+      
+      const costosLote = calcularCostos(datos);
+      const costoTotalLote = costosLote.costoTotal;
+      const costoPorLitroLote = costosLote.costoPorLitro;
+const nuevoLote = {
+        id: "lote_" + Date.now(),
+        fecha: fechaProdIso,
+        codigo: loteNombre,
+        caducidad: caducidadIso || fechaProdIso,
+        volTotal: Math.round(datos.totalVolumenFinalMl || 0).toString(),
+        volVino: Math.round(datos.totalesIngredientes.vino || 0).toString(),
+        volVodka: Math.round(datos.totalesIngredientes.vodka || 0).toString(),
+        volJugo: Math.round(datos.totalesIngredientes.jugo || 0).toString(),
+        volSirope: Math.round(datos.totalesIngredientes.sirope || 0).toString(),
+        volAgua: Math.round(datos.totalesIngredientes.agua || 0).toString(),
+        pulso: (mapUnits.pulso || 0).toString(),
+        media: (mapUnits.media || 0).toString(),
+        djeba: (mapUnits.djeba || 0).toString(),
+        litro: (mapUnits.litro || 0).toString(),
+        galon: (mapUnits.galon || 0).toString(),
+        costoTotal: costoTotalLote > 0 ? costoTotalLote.toFixed(2) : "",
+        costoPorLitro: costoPorLitroLote > 0 ? costoPorLitroLote.toFixed(2) : "",
+
+        notas: datos.notas || "",
+        createdAt: new Date().toISOString()
+      };
+      lotes.push(nuevoLote);
+      try {
+        localStorage.setItem("arcano33_lotes", JSON.stringify(lotes));
+        alert("Lote guardado en el Control de Lotes interno.");
+      } catch (e) {
+        alert("No se pudo guardar el lote en el navegador.");
+      }
+    }
+function init() {
       construirTablaRecetas();
       construirTablaPlan();
       cargarRecetas();
@@ -729,6 +834,8 @@ resultadosDiv.style.display = "block";
       document.getElementById("btn-guardar-receta").addEventListener("click", guardarRecetas);
       document.getElementById("btn-calcular").addEventListener("click", calcularTotales);
       document.getElementById("btn-limpiar").addEventListener("click", limpiarCantidades);
+      const btnGuardarLote = document.getElementById("btn-guardar-lote");
+      if (btnGuardarLote) btnGuardarLote.addEventListener("click", guardarCalculoComoLote);
       document.getElementById("btn-exportar").addEventListener("click", exportarLote);
       const loteInput = document.getElementById("lote");
       const fechaProdInput = document.getElementById("fecha-produccion");
@@ -740,15 +847,10 @@ resultadosDiv.style.display = "block";
       notasInput.addEventListener("change", guardarMetaLote);
       notasInput.addEventListener("keyup", guardarMetaLote);
       fechaProdInput.addEventListener("change", actualizarTextoCaducidad);
-      fechaProdInput.addEventListener("change", actualizarFechaHebrea);
-      if (fechaProdInput.value) {
-        actualizarFechaHebrea();
-      } else {
-        const almacenada = localStorage.getItem(STORAGE_FECHA_HEB_KEY);
-        const out = document.getElementById("fecha-hebrea");
-        if (out && almacenada) out.value = almacenada;
-      }
+      actualizarTextoCaducidad();
+      actualizarFechaHebrea();
     }
+
     document.addEventListener("DOMContentLoaded", init);
   </script>
 </body>

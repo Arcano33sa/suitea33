@@ -10,35 +10,17 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
 <link rel="stylesheet" href="styles.css?v=3.18">
-
-<style>
-  .top-menu-main{
-    display:flex;
-    justify-content:flex-end;
-    padding:0.25rem 0.75rem 0;
-  }
-  .top-menu-main .btn-secondary{
-    padding:0.25rem 0.8rem;
-    font-size:0.8rem;
-    border-radius:999px;
-    border:1px solid #
-  <div class="top-menu-main">
-    <button class="btn-secondary" onclick="window.location.href='../index.html'">Menú principal</button>
-  </div>555;
-    background:#222;
-    color:#f5f5f5;
-    cursor:pointer;
-  }
-</style>
 </head>
 <body>
 <header class="brandbar">
   <div class="brandwrap">
-    <img src="brand_symbol.jpg" alt="Arcano 33 símbolo" class="brand-left">
-    <img src="brand_wordmark.jpg" alt="Arcano 33 Sangría Artesanal" class="brand-right">
+    <img src="logo.png" alt="Arcano 33" class="brand-left">
   </div>
   <h1 class="app-title">A33 POS <span class="badge">Offline</span></h1>
 </header>
+<div style="text-align:right; padding: 0.25rem 1rem 0;">
+  <button onclick="window.location.href='../index.html'" class="btn-ok" type="button">← Menú principal</button>
+</div>
 <div id="offlineBar" class="offline">Trabajando sin conexión</div>
 <div class="container">
 
@@ -91,7 +73,7 @@
         </div>
       </div>
       <div>
-        <label>Descuento (C$)</label>
+        <label>Descuento por unidad (C$)</label>
         <input id="sale-discount" type="number" inputmode="decimal" step="0.01" value="0">
       </div>
       <div>
@@ -157,6 +139,7 @@
       <div class="row">
         <button id="btn-inv-csv" class="btn-primary">CSV Inventario</button>
         <button id="btn-inv-ref" class="btn-ok">Actualizar</button>
+        <button id="btn-inv-from-lote" class="btn-ok" type="button">Agregar desde lote</button>
       </div>
     </div>
     <table id="tbl-inv">

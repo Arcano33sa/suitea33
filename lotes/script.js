@@ -47,6 +47,45 @@ function calculateCaducidad(fechaStr) {
   return cad.toISOString().slice(0, 10);
 }
 
+
+function showLoteDetails(lote) {
+  const lines = [];
+  lines.push(`Lote: ${lote.codigo || ""}`);
+  lines.push(`Fecha de elaboración: ${formatDate(lote.fecha)}`);
+  lines.push(`Fecha de caducidad: ${formatDate(lote.caducidad)}`);
+  lines.push("");
+  lines.push("Volúmenes (ml):");
+  lines.push(`  Total: ${lote.volTotal || "0"}`);
+  lines.push(`  Vino: ${lote.volVino || "0"}`);
+  lines.push(`  Vodka: ${lote.volVodka || "0"}`);
+  lines.push(`  Jugo: ${lote.volJugo || "0"}`);
+  lines.push(`  Sirope: ${lote.volSirope || "0"}`);
+  lines.push(`  Agua: ${lote.volAgua || "0"}`);
+  lines.push("");
+  lines.push("Unidades por presentación:");
+  lines.push(`  Pulso 250 ml: ${lote.pulso ?? "0"}`);
+  lines.push(`  Media 375 ml: ${lote.media ?? "0"}`);
+  lines.push(`  Djeba 750 ml: ${lote.djeba ?? "0"}`);
+  lines.push(`  Litro 1000 ml: ${lote.litro ?? "0"}`);
+  lines.push(`  Galón 3800 ml: ${lote.galon ?? "0"}`);
+  if (lote.costoTotal || lote.costoPorLitro) {
+    lines.push("");
+    lines.push("Costos estimados:");
+    if (lote.costoTotal) {
+      lines.push(`  Costo total del lote: C$ ${lote.costoTotal}`);
+    }
+    if (lote.costoPorLitro) {
+      lines.push(`  Costo aprox. por litro: C$ ${lote.costoPorLitro}`);
+    }
+  }
+  if (lote.notas) {
+    lines.push("");
+    lines.push("Notas:");
+    lines.push(lote.notas);
+  }
+  alert(lines.join("\n"));
+}
+
 function clearForm() {
   const form = $("lote-form");
   form.reset();
@@ -178,6 +217,14 @@ function renderTable() {
     const actionsTd = document.createElement("td");
     actionsTd.className = "actions-cell";
 
+    const viewBtn = document.createElement("button");
+    viewBtn.type = "button";
+    viewBtn.textContent = "Ver";
+    viewBtn.className = "btn";
+    viewBtn.addEventListener("click", () => {
+      showLoteDetails(lote);
+    });
+
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.textContent = "Editar";
@@ -201,6 +248,7 @@ function renderTable() {
       renderTable();
     });
 
+    actionsTd.appendChild(viewBtn);
     actionsTd.appendChild(editBtn);
     actionsTd.appendChild(deleteBtn);
     tr.appendChild(actionsTd);
@@ -232,6 +280,8 @@ function exportToCSV() {
     "Galón 3800 ml",
     "Fecha caducidad",
     "Notas",
+    "Costo total (C$)",
+    "Costo por litro (C$)",
   ];
 
   const rows = lotes.map((l) => [
@@ -250,6 +300,8 @@ function exportToCSV() {
     l.galon ?? "",
     formatDate(l.caducidad),
     (l.notas || "").replace(/\r?\n/g, " "),
+    l.costoTotal ?? "",
+    l.costoPorLitro ?? "",
   ]);
 
   const all = [headers, ...rows]

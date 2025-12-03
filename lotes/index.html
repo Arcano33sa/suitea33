@@ -12,24 +12,6 @@
   <link rel="manifest" href="manifest.webmanifest" />
 
   <link rel="stylesheet" href="style.css" />
-
-  <style>
-    .top-menu-main{
-      display:flex;
-      justify-content:flex-end;
-      padding:0.25rem 0.75rem 0;
-    }
-    .top-menu-main .btn-secondary{
-      padding:0.25rem 0.8rem;
-      font-size:0.8rem;
-      border-radius:999px;
-      border:1px solid #555;
-      background:#222;
-      color:#f5f5f5;
-      cursor:pointer;
-    }
-  </style>
-
 </head>
 <body>
   <header class="app-header">
@@ -41,8 +23,9 @@
       </div>
     </div>
   </header>
-  <div class="top-menu-main">
-    <button class="btn-secondary" onclick="window.location.href='../index.html'">Menú principal</button>
+
+  <div style="text-align:right; margin: 0.25rem 1rem 0;">
+    <a href="../index.html" class="btn-secondary" style="display:inline-block; text-decoration:none;">← Menú principal</a>
   </div>
 
   <main class="app-main">
