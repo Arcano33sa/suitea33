@@ -317,6 +317,13 @@
           djeba: { stock: 0 },
           litro: { stock: 0 },
           galon: { stock: 0 }
+        },
+        finished: {
+          pulso: { stock: 0 },
+          media: { stock: 0 },
+          djeba: { stock: 0 },
+          litro: { stock: 0 },
+          galon: { stock: 0 }
         }
       };
     }
@@ -328,6 +335,7 @@
         if (!data || typeof data !== "object") data = invDefault();
         if (!data.liquids) data.liquids = {};
         if (!data.bottles) data.bottles = {};
+        if (!data.finished) data.finished = {};
         const d = invDefault();
         Object.keys(d.liquids).forEach((k) => {
           if (!data.liquids[k]) data.liquids[k] = { stock: 0, max: 0 };
@@ -337,6 +345,10 @@
         Object.keys(d.bottles).forEach((k) => {
           if (!data.bottles[k]) data.bottles[k] = { stock: 0 };
           data.bottles[k].stock = invParseNumber(data.bottles[k].stock || 0);
+        });
+        Object.keys(d.finished).forEach((k) => {
+          if (!data.finished[k]) data.finished[k] = { stock: 0 };
+          data.finished[k].stock = invParseNumber(data.finished[k].stock || 0);
         });
         return data;
       } catch (e) {
@@ -411,12 +423,31 @@
         inv.bottles[id].stock = invParseNumber(inv.bottles[id].stock) - uso;
       });
 
+      // Sumar producto terminado (central)
+      if (!inv.finished) {
+        inv.finished = {
+          pulso: { stock: 0 },
+          media: { stock: 0 },
+          djeba: { stock: 0 },
+          litro: { stock: 0 },
+          galon: { stock: 0 }
+        };
+      }
+      ["pulso","media","djeba","litro","galon"].forEach((id) => {
+        const unidades = typeof map[id] === "number" ? map[id] : 0;
+        if (!inv.finished[id]) {
+          inv.finished[id] = { stock: 0 };
+        }
+        inv.finished[id].stock = invParseNumber(inv.finished[id].stock) + unidades;
+      });
+
       invSave(inv);
 
       const lines = invBuildAlertLines(inv);
       if (lines.length > 0) {
-        alert("Alerta de inventario (después de registrar el lote):\n\n" + lines.join("\\n"));
+        alert("Alerta de inventario (después de registrar el lote):\n\n" + lines.join("\n"));
       }
+
     }
 
 

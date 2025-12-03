@@ -76,10 +76,33 @@
         Alerta cuando una presentación tenga <strong>10 botellas o menos</strong> en inventario.
       </p>
     </section>
+
+    <section class="card table-card">
+      <h2>Inventario de producto terminado (central)</h2>
+      <p class="hint">Unidades de Arcano 33 listas para venta, a nivel general (no por evento).</p>
+      <div class="table-wrapper">
+        <table class="inv-table">
+          <thead>
+            <tr>
+              <th>Presentación</th>
+              <th>Stock actual (unid.)</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inv-finished-body">
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+      <p class="legend">
+        Este inventario se ajusta automáticamente con la producción (Calculadora) y las ventas/devoluciones (POS).
+      </p>
+    
   </main>
 
   <footer class="app-footer">
-    <p>Arcano 33 · Inventario interno de insumos y botellas</p>
+    <p>Arcano 33 · Inventario interno de insumos, botellas y producto terminado</p>
   </footer>
 
   <script src="script.js"></script>

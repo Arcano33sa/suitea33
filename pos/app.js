@@ -89,6 +89,87 @@ function getCostoUnitarioProducto(productName) {
   return val > 0 ? val : 0;
 }
 
+
+
+// Inventario central de producto terminado (localStorage compartido con módulo Inventario)
+const INV_CENTRAL_KEY = 'arcano33_inventario';
+
+function invCentralParseNumber(value){
+  const n = parseFloat(String(value).replace(',', '.'));
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function invCentralDefault(){
+  return {
+    liquids:{},
+    bottles:{},
+    finished:{
+      pulso:{stock:0},
+      media:{stock:0},
+      djeba:{stock:0},
+      litro:{stock:0},
+      galon:{stock:0}
+    }
+  };
+}
+
+function invCentralLoad(){
+  try{
+    const raw = localStorage.getItem(INV_CENTRAL_KEY);
+    let data = raw ? JSON.parse(raw) : null;
+    if (!data || typeof data!=='object') data = invCentralDefault();
+    if (!data.finished) data.finished = {};
+    const def = invCentralDefault();
+    Object.keys(def.finished).forEach((k)=>{
+      if (!data.finished[k]) data.finished[k] = {stock:0};
+      data.finished[k].stock = invCentralParseNumber(data.finished[k].stock||0);
+    });
+    return data;
+  }catch(e){
+    console.warn('No se pudo leer inventario central, usando valores por defecto.', e);
+    return invCentralDefault();
+  }
+}
+
+function invCentralSave(inv){
+  try{
+    localStorage.setItem(INV_CENTRAL_KEY, JSON.stringify(inv));
+  }catch(e){
+    console.warn('No se pudo guardar inventario central.', e);
+  }
+}
+
+// Ajustar producto terminado central (delta puede ser positivo o negativo)
+function invAjustarProductoTerminado(presId, delta){
+  if (!delta) return;
+  const inv = invCentralLoad();
+  if (!inv.finished) inv.finished = {};
+  if (!inv.finished[presId]) inv.finished[presId] = {stock:0};
+  inv.finished[presId].stock = invCentralParseNumber(inv.finished[presId].stock) + delta;
+  invCentralSave(inv);
+}
+
+// Render de inventario central en POS (solo lectura)
+function renderCentralFinishedPOS(){
+  const tbody = document.querySelector('#tbl-central-finished tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const inv = invCentralLoad();
+  const defs = [
+    {id:'pulso', label:'Pulso 250 ml'},
+    {id:'media', label:'Media 375 ml'},
+    {id:'djeba', label:'Djeba 750 ml'},
+    {id:'litro', label:'Litro 1000 ml'},
+    {id:'galon', label:'Galón 3800 ml'}
+  ];
+  for (const def of defs){
+    const info = inv.finished && inv.finished[def.id] ? inv.finished[def.id] : {stock:0};
+    const tr = document.createElement('tr');
+    const tdN = document.createElement('td'); tdN.textContent = def.label; tr.appendChild(tdN);
+    const tdS = document.createElement('td'); tdS.textContent = invCentralParseNumber(info.stock).toFixed(0); tr.appendChild(tdS);
+    tbody.appendChild(tr);
+  }
+}
 // Defaults (SKUs Arcano 33)
 const SEED = [
   {name:'Vaso', price:100, manageStock:false, active:true},
@@ -851,6 +932,7 @@ async function init(){
     await renderProductos();
     await renderEventos();
     await renderInventario();
+    renderCentralFinishedPOS();
     await updateSellEnabled();
   }catch(err){ 
     alert('Error inicializando base de datos');
@@ -883,8 +965,8 @@ async function init(){
   $('#sale-date').addEventListener('change', renderDay);
   $('#btn-add').addEventListener('click', addSale);
   $('#btn-add-sticky').addEventListener('click', addSale);
-  $('#btn-undo').addEventListener('click', async()=>{ const curId = await getMeta('currentEventId'); if (!curId) return; const d=$('#sale-date').value; const items = await new Promise((res,rej)=>{ const r=tx('sales').index('by_date').getAll(d); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); }); const filtered = items.filter(s=>s.eventId===curId); if (!filtered.length) return; const last = filtered.sort((a,b)=>a.id-b.id)[filtered.length-1]; await del('sales', last.id); await renderDay(); await renderSummary(); await refreshSaleStockLabel(); await renderInventario(); toast('Venta eliminada'); });
-  $('#tbl-day').addEventListener('click', async (e)=>{ const btn = e.target.closest('.del-sale'); if (!btn) return; const id = parseInt(btn.dataset.id,10); if (!confirm('¿Eliminar esta venta?')) return; await del('sales', id); await renderDay(); await renderSummary(); await refreshSaleStockLabel(); await renderInventario(); toast('Venta eliminada'); });
+  $('#btn-undo').addEventListener('click', async()=>{ const curId = await getMeta('currentEventId'); if (!curId) return; const d=$('#sale-date').value; const items = await new Promise((res,rej)=>{ const r=tx('sales').index('by_date').getAll(d); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); }); const filtered = items.filter(s=>s.eventId===curId); if (!filtered.length) return; const last = filtered.sort((a,b)=>a.id-b.id)[filtered.length-1]; await del('sales', last.id); await renderDay(); await renderSummary(); await refreshSaleStockLabel(); await renderInventario(); renderCentralFinishedPOS(); toast('Venta eliminada'); });
+  $('#tbl-day').addEventListener('click', async (e)=>{ const btn = e.target.closest('.del-sale'); if (!btn) return; const id = parseInt(btn.dataset.id,10); if (!confirm('¿Eliminar esta venta?')) return; await del('sales', id); await renderDay(); await renderSummary(); await refreshSaleStockLabel(); await renderInventario(); renderCentralFinishedPOS(); toast('Venta eliminada'); });
 
   // Stepper
   $('#qty-minus').addEventListener('click', ()=>{ const v = Math.max(1, parseInt($('#sale-qty').value||'1',10) - 1); $('#sale-qty').value = v; recomputeTotal(); });
@@ -915,7 +997,7 @@ async function init(){
 
   // Inventario tab
   $('#inv-event').addEventListener('change', renderInventario);
-  $('#btn-inv-ref').addEventListener('click', renderInventario);
+  $('#btn-inv-ref').addEventListener('click', ()=>{ renderInventario(); renderCentralFinishedPOS(); });
   $('#btn-inv-csv').addEventListener('click', async()=>{ const id = parseInt($('#inv-event').value||'0',10); if (!id) return alert('Selecciona un evento'); await generateInventoryCSV(id); });
   const btnFromLote = document.getElementById('btn-inv-from-lote');
   if (btnFromLote) btnFromLote.addEventListener('click', importFromLoteToInventory);
@@ -989,9 +1071,16 @@ async function addSale(){
   const finalQty = isReturn ? -qty : qty;
   if (isReturn) total = -total;
 
+  // Ajuste de inventario central de producto terminado
+  const presId = mapProductNameToPresId(productName);
+  if (presId) {
+    // Venta normal: baja stock. Devolución: sube stock.
+    invAjustarProductoTerminado(presId, -finalQty);
+  }
+
   const eventName = event ? event.name : 'General';
   const now = new Date(); const time = now.toTimeString().slice(0,5);
-  await put('sales', { date, time, eventId:curId, eventName, productId, productName, unitPrice:price, qty:finalQty, discount, payment, courtesy, isReturn, customer, courtesyTo, total, notes });
+  await put('sales', { date, time, eventId:curId, eventName, productId, productName, unitPrice:price, qty:finalQty, subtotal, discount, payment, courtesy, isReturn, customer, courtesyTo, total, notes });
 
   // limpiar campos para el siguiente registro (incluye NOTAS)
   $('#sale-qty').value=1; 
@@ -1002,8 +1091,9 @@ async function addSale(){
   $('#sale-total').value = (courtesy?0:price).toFixed(2); 
   $('#sticky-total').textContent = (courtesy?0:price).toFixed(2);
 
-  await renderDay(); await renderSummary(); await refreshSaleStockLabel(); await renderInventario();
+  await renderDay(); await renderSummary(); await refreshSaleStockLabel(); await renderInventario(); renderCentralFinishedPOS();
   toast('Venta agregada');
 }
+
 
 document.addEventListener('DOMContentLoaded', init);
