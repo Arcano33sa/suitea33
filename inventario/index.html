@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Arcano 33 · Inventario</title>
-  <meta name="description" content="Inventario interno de materia prima líquida y botellas de Arcano 33." />
+  <meta name="description" content="Inventario interno de insumos, botellas y producto terminado de Arcano 33." />
   <meta name="theme-color" content="#7b1818" />
 
   <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
@@ -76,10 +76,10 @@
         Alerta cuando una presentación tenga <strong>10 botellas o menos</strong> en inventario.
       </p>
     </section>
-
+  
     <section class="card table-card">
-      <h2>Inventario de producto terminado (central)</h2>
-      <p class="hint">Unidades de Arcano 33 listas para venta, a nivel general (no por evento).</p>
+      <h2>Inventario de producto terminado</h2>
+      <p class="hint">Botellas listas de Sangría Artesanal Premium por presentación. Este inventario se actualiza automáticamente desde la Calculadora de Producción y el POS.</p>
       <div class="table-wrapper">
         <table class="inv-table">
           <thead>
@@ -87,19 +87,18 @@
               <th>Presentación</th>
               <th>Stock actual (unid.)</th>
               <th>Estado</th>
-              <th>Acciones</th>
             </tr>
           </thead>
-          <tbody id="inv-finished-body">
-            <!-- Filas dinámicas -->
+          <tbody id="inv-productos-body">
+            <!-- Filas dinámicas de producto terminado -->
           </tbody>
         </table>
       </div>
       <p class="legend">
-        Este inventario se ajusta automáticamente con la producción (Calculadora) y las ventas/devoluciones (POS).
+        Este bloque es solo de consulta. Se alimenta de la producción registrada y de las ventas / devoluciones del POS.
       </p>
-    
-  </main>
+    </section>
+</main>
 
   <footer class="app-footer">
     <p>Arcano 33 · Inventario interno de insumos, botellas y producto terminado</p>

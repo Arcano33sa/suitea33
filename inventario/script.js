@@ -17,12 +17,13 @@ const BOTTLES = [
 ];
 
 const FINISHED = [
-  { id: "pulso", nombre: "Pulso 250 ml" },
-  { id: "media", nombre: "Media 375 ml" },
-  { id: "djeba", nombre: "Djeba 750 ml" },
-  { id: "litro", nombre: "Litro 1000 ml" },
-  { id: "galon", nombre: "Galón 3800 ml" },
+  { id: "pulso", nombre: "Pulso 250 ml (listo)" },
+  { id: "media", nombre: "Media 375 ml (lista)" },
+  { id: "djeba", nombre: "Djeba 750 ml (lista)" },
+  { id: "litro", nombre: "Litro 1000 ml (lista)" },
+  { id: "galon", nombre: "Galón 3800 ml (lista)" },
 ];
+
 
 function $(id) {
   return document.getElementById(id);
@@ -40,8 +41,8 @@ function defaultInventario() {
   BOTTLES.forEach((b) => {
     inv.bottles[b.id] = { stock: 0 };
   });
-  FINISHED.forEach((f) => {
-    inv.finished[f.id] = { stock: 0 };
+  FINISHED.forEach((p) => {
+    inv.finished[p.id] = { stock: 0 };
   });
   return inv;
 }
@@ -78,10 +79,10 @@ function loadInventario() {
         data.bottles[b.id].stock = parseNumber(data.bottles[b.id].stock || 0);
       }
     });
-    FINISHED.forEach((f) => {
-      if (!data.finished[f.id]) data.finished[f.id] = { stock: 0 };
-      if (typeof data.finished[f.id].stock !== "number") {
-        data.finished[f.id].stock = parseNumber(data.finished[f.id].stock || 0);
+    FINISHED.forEach((p) => {
+      if (!data.finished[p.id]) data.finished[p.id] = { stock: 0 };
+      if (typeof data.finished[p.id].stock !== "number") {
+        data.finished[p.id].stock = parseNumber(data.finished[p.id].stock || 0);
       }
     });
 
@@ -262,72 +263,9 @@ function renderBotellas(inv) {
   });
 }
 
-
-
-function renderFinished(inv) {
-  const tbody = $("inv-finished-body");
-  if (!tbody) return;
-  tbody.innerHTML = "";
-  FINISHED.forEach((fDef) => {
-    const info = inv.finished && inv.finished[fDef.id] ? inv.finished[fDef.id] : { stock: 0 };
-    const tr = document.createElement("tr");
-
-    const tdNombre = document.createElement("td");
-    tdNombre.textContent = fDef.nombre;
-    tr.appendChild(tdNombre);
-
-    const tdStock = document.createElement("td");
-    const inputStock = document.createElement("input");
-    inputStock.type = "number";
-    inputStock.step = "1";
-    inputStock.min = "0";
-    inputStock.value = typeof info.stock === "number" ? info.stock : parseNumber(info.stock);
-    inputStock.dataset.id = fDef.id;
-    inputStock.dataset.kind = "finished-stock";
-    tdStock.appendChild(inputStock);
-    tr.appendChild(tdStock);
-
-    const tdEstado = document.createElement("td");
-    const estado = calcularEstadoBotella(info);
-    const span = document.createElement("span");
-    span.className = "status-chip " + estado.className;
-    span.textContent = estado.label;
-    tdEstado.appendChild(span);
-    tr.appendChild(tdEstado);
-
-    const tdAcciones = document.createElement("td");
-    const divAcc = document.createElement("div");
-    divAcc.className = "inv-actions";
-
-    const btnEntrada = document.createElement("button");
-    btnEntrada.type = "button";
-    btnEntrada.textContent = "Entrada";
-    btnEntrada.className = "btn-secondary btn-mini";
-    btnEntrada.dataset.action = "entrada";
-    btnEntrada.dataset.id = fDef.id;
-    btnEntrada.dataset.kind = "finished";
-
-    const btnSalida = document.createElement("button");
-    btnSalida.type = "button";
-    btnSalida.textContent = "Salida";
-    btnSalida.className = "btn-danger btn-mini";
-    btnSalida.dataset.action = "salida";
-    btnSalida.dataset.id = fDef.id;
-    btnSalida.dataset.kind = "finished";
-
-    divAcc.appendChild(btnEntrada);
-    divAcc.appendChild(btnSalida);
-    tdAcciones.appendChild(divAcc);
-    tr.appendChild(tdAcciones);
-
-    tbody.appendChild(tr);
-  });
-}
-
 function attachListeners(inv) {
   const liquidosBody = $("inv-liquidos-body");
   const botellasBody = $("inv-botellas-body");
-  const finishedBody = $("inv-finished-body");
 
   liquidosBody.addEventListener("change", (e) => {
     const target = e.target;
@@ -354,22 +292,6 @@ function attachListeners(inv) {
       renderBotellas(inv);
     }
   });
-
-  if (finishedBody) {
-    finishedBody.addEventListener("change", (e) => {
-      const target = e.target;
-      if (!target.dataset || !target.dataset.kind) return;
-      const id = target.dataset.id;
-      const kind = target.dataset.kind;
-      if (kind === "finished-stock") {
-        if (!inv.finished) inv.finished = {};
-        if (!inv.finished[id]) inv.finished[id] = { stock: 0 };
-        inv.finished[id].stock = parseNumber(target.value);
-        saveInventario(inv);
-        renderFinished(inv);
-      }
-    });
-  }
 
   function handleAccion(e) {
     const target = e.target;
@@ -409,27 +331,12 @@ function attachListeners(inv) {
       inv.bottles[id] = item;
       saveInventario(inv);
       renderBotellas(inv);
-    } else if (kind === "finished") {
-      if (!inv.finished) inv.finished = {};
-      const item = inv.finished[id] || { stock: 0 };
-      if (action === "entrada") {
-        item.stock = parseNumber(item.stock) + cantidad;
-      } else {
-        item.stock = parseNumber(item.stock) - cantidad;
-      }
-      inv.finished[id] = item;
-      saveInventario(inv);
-      renderFinished(inv);
     }
   }
 
   liquidosBody.addEventListener("click", handleAccion);
   botellasBody.addEventListener("click", handleAccion);
-  if (finishedBody) {
-    finishedBody.addEventListener("click", handleAccion);
-  }
 }
-
 
 function buildAlertLines(inv) {
   const lines = [];
@@ -457,24 +364,70 @@ function buildAlertLines(inv) {
   });
 
   // Producto terminado en alerta (<=10 unidades)
-  if (inv.finished) {
-    Object.entries(inv.finished).forEach(([id, info]) => {
-      const stock = parseNumber(info.stock);
-      if (stock <= 10) {
-        let nombre = id;
-        if (id === "pulso") nombre = "Pulso 250 ml";
-        if (id === "media") nombre = "Media 375 ml";
-        if (id === "djeba") nombre = "Djeba 750 ml";
-        if (id === "litro") nombre = "Litro 1000 ml";
-        if (id === "galon") nombre = "Galón 3800 ml";
-        lines.push(`• ${nombre} (producto terminado): ${stock.toFixed(0)} unid.`);
-      }
-    });
-  }
+  FINISHED.forEach((p) => {
+    const info = (inv.finished && inv.finished[p.id]) || { stock: 0 };
+    const stock = parseNumber(info.stock);
+    if (stock <= 10) {
+      lines.push(`• ${p.nombre}: ${stock.toFixed(0)} botellas listas`);
+    }
+  });
 
   return lines;
 }
-   .catch((err) => console.error("SW error", err));
+
+
+function calcularEstadoProductoTerminado(item) {
+  const stock = parseNumber(item.stock);
+  if (stock <= 0) {
+    return { label: "Sin stock", className: "status-critical" };
+  }
+  if (stock <= 10) {
+    return { label: `Bajo (${stock} unid.)`, className: "status-warn" };
+  }
+  return { label: `OK (${stock} unid.)`, className: "status-ok" };
+}
+
+function renderProductosTerminados(inv) {
+  const tbody = document.getElementById("inv-productos-body");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  FINISHED.forEach((pDef) => {
+    const info = (inv.finished && inv.finished[pDef.id]) || { stock: 0 };
+    const stock = parseNumber(info.stock);
+    const tr = document.createElement("tr");
+
+    const tdNombre = document.createElement("td");
+    tdNombre.textContent = pDef.nombre;
+    tr.appendChild(tdNombre);
+
+    const tdStock = document.createElement("td");
+    tdStock.textContent = stock.toFixed(0);
+    tr.appendChild(tdStock);
+
+    const tdEstado = document.createElement("td");
+    const estado = calcularEstadoProductoTerminado(info);
+    const span = document.createElement("span");
+    span.className = "status-chip " + estado.className;
+    span.textContent = estado.label;
+    tdEstado.appendChild(span);
+    tr.appendChild(tdEstado);
+
+    tbody.appendChild(tr);
+  });
+}
+
+function checkAndAlert(inv) {
+  const lines = buildAlertLines(inv);
+  if (lines.length > 0) {
+    alert("Alerta de inventario:\n\n" + lines.join("\n"));
+  }
+}
+
+function registerServiceWorker() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker
+      .register("./sw.js")
+      .catch((err) => console.error("SW error", err));
   }
 }
 
@@ -482,7 +435,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const inv = loadInventario();
   renderLiquidos(inv);
   renderBotellas(inv);
-  renderFinished(inv);
+  renderProductosTerminados(inv);
   attachListeners(inv);
   checkAndAlert(inv);
   registerServiceWorker();
