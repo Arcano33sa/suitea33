@@ -42,42 +42,7 @@ function openDB() {
 function tx(name, mode='readonly'){ return db.transaction(name, mode).objectStore(name); }
 function getAll(name){ return new Promise((res,rej)=>{ const r=tx(name).getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); }); }
 function put(name, val){ return new Promise((res,rej)=>{ const r=tx(name,'readwrite').put(val); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
-function del(name, key){ 
-  return new Promise((resolve, reject)=>{ 
-    if (name === 'sales'){
-      try{
-        const store = tx('sales','readwrite');
-        const getReq = store.get(key);
-        getReq.onsuccess = ()=>{
-          const sale = getReq.result;
-          if (sale){
-            try{
-              applyFinishedFromSalePOS(sale, -1); // revertir efecto de la venta
-            }catch(e){
-              console.error('Error revertiendo inventario central al eliminar venta', e);
-            }
-          }
-          const delReq = store.delete(key);
-          delReq.onsuccess = ()=>resolve();
-          delReq.onerror = ()=>reject(delReq.error);
-        };
-        getReq.onerror = ()=>{
-          const delReq = store.delete(key);
-          delReq.onsuccess = ()=>resolve();
-          delReq.onerror = ()=>reject(delReq.error);
-        };
-      }catch(e){
-        console.error('Error en del(sales,key)', e);
-        resolve();
-      }
-    } else {
-      const store = tx(name,'readwrite');
-      const r = store.delete(key);
-      r.onsuccess = ()=>resolve();
-      r.onerror = ()=>reject(r.error);
-    }
-  });
-}
+function del(name, key){ return new Promise((res,rej)=>{ const r=tx(name,'readwrite').delete(key); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); }
 async function setMeta(key, value){ return put('meta', {id:key, value}); }
 async function getMeta(key){ const all = await getAll('meta'); const row = all.find(x=>x.id===key); return row ? row.value : null; }
 
@@ -85,101 +50,6 @@ async function getMeta(key){ const all = await getAll('meta'); const row = all.f
 function normName(s){ return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
 
 const RECETAS_KEY = 'arcano33_recetas_v1';
-
-const STORAGE_KEY_INVENTARIO = 'arcano33_inventario';
-
-function invParseNumberPOS(value){
-  const n = parseFloat(String(value).replace(',', '.'));
-  return Number.isNaN(n) ? 0 : n;
-}
-function invCentralDefaultPOS(){
-  return {
-    liquids: {},
-    bottles: {},
-    finished: {
-      pulso: { stock: 0 },
-      media: { stock: 0 },
-      djeba: { stock: 0 },
-      litro: { stock: 0 },
-      galon: { stock: 0 },
-    },
-  };
-}
-function invCentralLoadPOS(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY_INVENTARIO);
-    let data = raw ? JSON.parse(raw) : null;
-    if (!data || typeof data !== 'object') data = invCentralDefaultPOS();
-    if (!data.liquids) data.liquids = {};
-    if (!data.bottles) data.bottles = {};
-    if (!data.finished) data.finished = {};
-    ['pulso','media','djeba','litro','galon'].forEach((id)=>{
-      if (!data.finished[id]) data.finished[id] = { stock: 0 };
-      const info = data.finished[id];
-      if (typeof info.stock !== 'number') info.stock = invParseNumberPOS(info.stock||0);
-    });
-    return data;
-  }catch(e){
-    console.warn('Error leyendo inventario central', e);
-    return invCentralDefaultPOS();
-  }
-}
-function invCentralSavePOS(inv){
-  try{
-    localStorage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(inv));
-  }catch(e){
-    console.warn('Error guardando inventario central', e);
-  }
-}
-function mapProductNameToFinishedId(name){
-  const n = (name||'').toString().toLowerCase();
-  if (n.includes('pulso') && n.includes('250')) return 'pulso';
-  if (n.includes('media') && n.includes('375')) return 'media';
-  if (n.includes('djeba') && n.includes('750')) return 'djeba';
-  if (n.includes('litro') && n.includes('1000')) return 'litro';
-  if (n.includes('gal') && (n.includes('3800') || n.includes('galon') || n.includes('galón'))) return 'galon';
-  return null;
-}
-function applyFinishedFromSalePOS(sale, direction){
-  try{
-    const dir = direction === -1 ? -1 : 1;
-    const productName = sale.productName || '';
-    const finishedId = mapProductNameToFinishedId(productName);
-    if (!finishedId) return;
-    const q = typeof sale.qty === 'number' ? sale.qty : parseFloat(sale.qty||'0');
-    const qty = Number.isNaN(q) ? 0 : q;
-    if (!qty) return;
-    const delta = -dir * qty; // dir=+1: registrar venta/devolución; dir=-1: revertir
-    const inv = invCentralLoadPOS();
-    if (!inv.finished) inv.finished = {};
-    if (!inv.finished[finishedId]) inv.finished[finishedId] = { stock: 0 };
-    inv.finished[finishedId].stock = invParseNumberPOS(inv.finished[finishedId].stock) + delta;
-    invCentralSavePOS(inv);
-  }catch(e){
-    console.error('Error ajustando inventario central desde venta', e);
-  }
-}
-async function renderCentralFinishedPOS(){
-  const tbody = document.querySelector('#tbl-inv-central tbody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  const inv = invCentralLoadPOS();
-  const defs = [
-    { id:'pulso', label:'Pulso 250 ml' },
-    { id:'media', label:'Media 375 ml' },
-    { id:'djeba', label:'Djeba 750 ml' },
-    { id:'litro', label:'Litro 1000 ml' },
-    { id:'galon', label:'Galón 3800 ml' },
-  ];
-  defs.forEach(d=>{
-    const info = (inv.finished && inv.finished[d.id]) || { stock: 0 };
-    const stock = invParseNumberPOS(info.stock);
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${d.label}</td><td>${stock}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-
 
 function leerCostosPresentacion() {
   try {
@@ -1121,12 +991,6 @@ async function addSale(){
 
   const eventName = event ? event.name : 'General';
   const now = new Date(); const time = now.toTimeString().slice(0,5);
-  // Ajustar inventario central de producto terminado
-  try{
-    applyFinishedFromSalePOS({ productName, qty: finalQty }, +1);
-  }catch(e){
-    console.error('No se pudo actualizar inventario central desde venta', e);
-  }
   await put('sales', { date, time, eventId:curId, eventName, productId, productName, unitPrice:price, qty:finalQty, discount, payment, courtesy, isReturn, customer, courtesyTo, total, notes });
 
   // limpiar campos para el siguiente registro (incluye NOTAS)

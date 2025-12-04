@@ -235,6 +235,13 @@ function renderTable() {
     verBtn.type = "button";
     verBtn.addEventListener("click", () => verPedido(p.id));
 
+    const calBtn = document.createElement("button");
+    calBtn.textContent = "Calendario";
+    calBtn.className = "btn-secondary";
+    calBtn.type = "button";
+    calBtn.style.marginLeft = "0.25rem";
+    calBtn.addEventListener("click", () => exportPedidoToCalendar(p.id));
+
     const editarBtn = document.createElement("button");
     editarBtn.textContent = "Editar";
     editarBtn.className = "btn-primary";
@@ -250,6 +257,7 @@ function renderTable() {
     borrarBtn.addEventListener("click", () => deletePedido(p.id));
 
     accionesTd.appendChild(verBtn);
+    accionesTd.appendChild(calBtn);
     accionesTd.appendChild(editarBtn);
     accionesTd.appendChild(borrarBtn);
     tr.appendChild(accionesTd);
@@ -318,6 +326,104 @@ function deletePedido(id) {
   savePedidos(pedidos);
   renderTable();
   clearForm();
+}
+
+
+function createICSEventFromPedido(p) {
+  const fechaEntrega = p.fechaEntrega || p.fechaCreacion;
+  if (!fechaEntrega) return null;
+  const parts = String(fechaEntrega).slice(0, 10).split("-");
+  if (parts.length !== 3) return null;
+  const [y, m, d] = parts;
+  if (!y || !m || !d) return null;
+  const startDate = y + m.padStart(2, "0") + d.padStart(2, "0");
+
+  const dateObj = new Date(Date.UTC(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10) + 1));
+  const endY = dateObj.getUTCFullYear();
+  const endM = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
+  const endD = String(dateObj.getUTCDate()).padStart(2, "0");
+  const endDate = `${endY}${endM}${endD}`;
+
+  const nowIso = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+  const summaryBase = `Entrega pedido Arcano 33`;
+  const summary = (p.clienteNombre ? `${summaryBase} - ${p.clienteNombre}` : summaryBase).substring(0, 120);
+
+  const location = (p.clienteDireccion || "").replace(/\r?\n/g, ", ").substring(0, 200);
+
+  const descLines = [];
+  descLines.push(`Código: ${p.codigo || ""}`);
+  descLines.push(`Cliente: ${p.clienteNombre || ""}`);
+  if (p.clienteTelefono) descLines.push(`Teléfono: ${p.clienteTelefono}`);
+  if (p.clienteTipo) descLines.push(`Tipo: ${p.clienteTipo}`);
+  if (p.clienteDireccion) descLines.push(`Dirección: ${p.clienteDireccion.replace(/\r?\n/g, " ")}`);
+  if (p.lotesRelacionados) descLines.push(`Lotes: ${p.lotesRelacionados.replace(/\r?\n/g, " ")}`);
+  const total = typeof p.totalPagar === "number" ? p.totalPagar.toFixed(2) : "";
+  if (total) descLines.push(`Total a cobrar: C$ ${total}`);
+  const descRaw = descLines.join("\n");
+
+  function icsEscape(str) {
+    return String(str || "")
+      .replace(/\\/g, "\\\\")
+      .replace(/\n/g, "\\n")
+      .replace(/,/g, "\\,")
+      .replace(/;/g, "\\;");
+  }
+
+  const description = icsEscape(descRaw);
+  const uid = `${p.id || ("pedido-" + startDate)}@arcano33`;
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Arcano 33//Pedidos//ES",
+    "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${nowIso}`,
+    `SUMMARY:${icsEscape(summary)}`,
+  ];
+  if (location) {
+    lines.push(`LOCATION:${icsEscape(location)}`);
+  }
+  lines.push(
+    `DESCRIPTION:${description}`,
+    `DTSTART;VALUE=DATE:${startDate}`,
+    `DTEND;VALUE=DATE:${endDate}`,
+    "END:VEVENT",
+    "END:VCALENDAR"
+  );
+  return lines.join("\r\n");
+}
+
+function exportPedidoToCalendar(id) {
+  const pedidos = loadPedidos();
+  const p = pedidos.find((x) => x.id === id);
+  if (!p) return;
+
+  const ics = createICSEventFromPedido(p);
+  if (!ics) {
+    alert("No se pudo generar el evento de calendario. Revisá que el pedido tenga fecha de entrega.");
+    return;
+  }
+
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+
+  const fecha = (p.fechaEntrega || p.fechaCreacion || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const safeCodigo = String(p.codigo || "pedido")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_");
+  a.href = url;
+  a.download = `pedido_${safeCodigo}_${fecha}.ics`;
+
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 0);
 }
 
 function exportToCSV() {
