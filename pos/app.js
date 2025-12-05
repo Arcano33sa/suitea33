@@ -1119,6 +1119,11 @@ async function addSale(){
   const finalQty = isReturn ? -qty : qty;
   if (isReturn) total = -total;
 
+  const unitCost = getCostoUnitarioProducto(productName);
+  const lineCost = unitCost * finalQty;
+  const lineProfit = total - lineCost;
+
+
   const eventName = event ? event.name : 'General';
   const now = new Date(); const time = now.toTimeString().slice(0,5);
   // Ajustar inventario central de producto terminado
@@ -1127,7 +1132,27 @@ async function addSale(){
   }catch(e){
     console.error('No se pudo actualizar inventario central desde venta', e);
   }
-  await put('sales', { date, time, eventId:curId, eventName, productId, productName, unitPrice:price, qty:finalQty, discount, payment, courtesy, isReturn, customer, courtesyTo, total, notes });
+  await put('sales', {
+    date,
+    time,
+    eventId:curId,
+    eventName,
+    productId,
+    productName,
+    unitPrice:price,
+    qty:finalQty,
+    discount,
+    payment,
+    courtesy,
+    isReturn,
+    customer,
+    courtesyTo,
+    total,
+    notes,
+    costPerUnit:unitCost,
+    lineCost,
+    lineProfit
+  });
 
   // limpiar campos para el siguiente registro (incluye NOTAS)
   $('#sale-qty').value=1; 
