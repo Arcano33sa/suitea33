@@ -317,6 +317,13 @@
           djeba: { stock: 0 },
           litro: { stock: 0 },
           galon: { stock: 0 }
+        },
+        finished: {
+          pulso: { stock: 0 },
+          media: { stock: 0 },
+          djeba: { stock: 0 },
+          litro: { stock: 0 },
+          galon: { stock: 0 }
         }
       };
     }
@@ -328,6 +335,7 @@
         if (!data || typeof data !== "object") data = invDefault();
         if (!data.liquids) data.liquids = {};
         if (!data.bottles) data.bottles = {};
+        if (!data.finished) data.finished = {};
         const d = invDefault();
         Object.keys(d.liquids).forEach((k) => {
           if (!data.liquids[k]) data.liquids[k] = { stock: 0, max: 0 };
@@ -337,6 +345,10 @@
         Object.keys(d.bottles).forEach((k) => {
           if (!data.bottles[k]) data.bottles[k] = { stock: 0 };
           data.bottles[k].stock = invParseNumber(data.bottles[k].stock || 0);
+        });
+        Object.keys(d.finished || {}).forEach((k) => {
+          if (!data.finished[k]) data.finished[k] = { stock: 0 };
+          data.finished[k].stock = invParseNumber(data.finished[k].stock || 0);
         });
         return data;
       } catch (e) {
@@ -385,6 +397,19 @@
           lines.push("• " + nombre + ": " + stock.toFixed(0) + " botellas");
         }
       });
+      // Producto terminado con 10 o menos unidades
+      Object.entries(inv.finished || {}).forEach(([id, info]) => {
+        const stock = invParseNumber(info.stock);
+        if (stock <= 10) {
+          let nombre = id;
+          if (id === "pulso") nombre = "Pulso 250 ml listo";
+          if (id === "media") nombre = "Media 375 ml lista";
+          if (id === "djeba") nombre = "Djeba 750 ml lista";
+          if (id === "litro") nombre = "Litro 1000 ml listo";
+          if (id === "galon") nombre = "Galón 3800 ml listo";
+          lines.push("• " + nombre + ": " + stock.toFixed(0) + " botellas listas");
+        }
+      });
       return lines;
     }
 
@@ -409,6 +434,12 @@
           inv.bottles[id] = { stock: 0 };
         }
         inv.bottles[id].stock = invParseNumber(inv.bottles[id].stock) - uso;
+        // Sumar producto terminado (botellas listas)
+        if (!inv.finished) inv.finished = {};
+        if (!inv.finished[id]) {
+          inv.finished[id] = { stock: 0 };
+        }
+        inv.finished[id].stock = invParseNumber(inv.finished[id].stock) + uso;
       });
 
       invSave(inv);

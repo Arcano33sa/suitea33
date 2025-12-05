@@ -16,6 +16,15 @@ const BOTTLES = [
   { id: "galon", nombre: "Galón 3800 ml" },
 ];
 
+const FINISHED = [
+  { id: "pulso", nombre: "Pulso 250 ml (listo)" },
+  { id: "media", nombre: "Media 375 ml (lista)" },
+  { id: "djeba", nombre: "Djeba 750 ml (lista)" },
+  { id: "litro", nombre: "Litro 1000 ml (lista)" },
+  { id: "galon", nombre: "Galón 3800 ml (lista)" },
+];
+
+
 function $(id) {
   return document.getElementById(id);
 }
@@ -24,12 +33,16 @@ function defaultInventario() {
   const inv = {
     liquids: {},
     bottles: {},
+    finished: {},
   };
   LIQUIDS.forEach((l) => {
     inv.liquids[l.id] = { stock: 0, max: 0 };
   });
   BOTTLES.forEach((b) => {
     inv.bottles[b.id] = { stock: 0 };
+  });
+  FINISHED.forEach((p) => {
+    inv.finished[p.id] = { stock: 0 };
   });
   return inv;
 }
@@ -47,6 +60,7 @@ function loadInventario() {
 
     if (!data.liquids) data.liquids = {};
     if (!data.bottles) data.bottles = {};
+    if (!data.finished) data.finished = {};
 
     // asegurar todas las claves
     const def = defaultInventario();
@@ -63,6 +77,12 @@ function loadInventario() {
       if (!data.bottles[b.id]) data.bottles[b.id] = { stock: 0 };
       if (typeof data.bottles[b.id].stock !== "number") {
         data.bottles[b.id].stock = parseNumber(data.bottles[b.id].stock || 0);
+      }
+    });
+    FINISHED.forEach((p) => {
+      if (!data.finished[p.id]) data.finished[p.id] = { stock: 0 };
+      if (typeof data.finished[p.id].stock !== "number") {
+        data.finished[p.id].stock = parseNumber(data.finished[p.id].stock || 0);
       }
     });
 
@@ -343,7 +363,57 @@ function buildAlertLines(inv) {
     }
   });
 
+  // Producto terminado en alerta (<=10 unidades)
+  FINISHED.forEach((p) => {
+    const info = (inv.finished && inv.finished[p.id]) || { stock: 0 };
+    const stock = parseNumber(info.stock);
+    if (stock <= 10) {
+      lines.push(`• ${p.nombre}: ${stock.toFixed(0)} botellas listas`);
+    }
+  });
+
   return lines;
+}
+
+
+function calcularEstadoProductoTerminado(item) {
+  const stock = parseNumber(item.stock);
+  if (stock <= 0) {
+    return { label: "Sin stock", className: "status-critical" };
+  }
+  if (stock <= 10) {
+    return { label: `Bajo (${stock} unid.)`, className: "status-warn" };
+  }
+  return { label: `OK (${stock} unid.)`, className: "status-ok" };
+}
+
+function renderProductosTerminados(inv) {
+  const tbody = document.getElementById("inv-productos-body");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  FINISHED.forEach((pDef) => {
+    const info = (inv.finished && inv.finished[pDef.id]) || { stock: 0 };
+    const stock = parseNumber(info.stock);
+    const tr = document.createElement("tr");
+
+    const tdNombre = document.createElement("td");
+    tdNombre.textContent = pDef.nombre;
+    tr.appendChild(tdNombre);
+
+    const tdStock = document.createElement("td");
+    tdStock.textContent = stock.toFixed(0);
+    tr.appendChild(tdStock);
+
+    const tdEstado = document.createElement("td");
+    const estado = calcularEstadoProductoTerminado(info);
+    const span = document.createElement("span");
+    span.className = "status-chip " + estado.className;
+    span.textContent = estado.label;
+    tdEstado.appendChild(span);
+    tr.appendChild(tdEstado);
+
+    tbody.appendChild(tr);
+  });
 }
 
 function checkAndAlert(inv) {
@@ -365,6 +435,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const inv = loadInventario();
   renderLiquidos(inv);
   renderBotellas(inv);
+  renderProductosTerminados(inv);
   attachListeners(inv);
   checkAndAlert(inv);
   registerServiceWorker();
