@@ -13,6 +13,17 @@
   let costosPresentacion = null;
   const INVENTARIO_KEY = 'arcano33_inventario';
 
+  // Umbrales para cortesías (porcentaje sobre total)
+  const COURTESY_GREEN_PCT = 5;   // <5% verde
+  const COURTESY_YELLOW_PCT = 10; // 5–10% amarillo, >10% rojo
+
+  function getCourtesyLevel(percent){
+    const p = (typeof percent === 'number' && isFinite(percent)) ? percent : 0;
+    if (p >= COURTESY_YELLOW_PCT) return { code:'red', label:'🔴 Alto' };
+    if (p >= COURTESY_GREEN_PCT) return { code:'yellow', label:'🟡 Medio' };
+    return { code:'green', label:'🟢 Bajo' };
+  }
+
   // Últimos agregados calculados (para reusar en cambios de orden)
   let lastFilteredSales = [];
   let lastPresStats = null;
@@ -27,6 +38,7 @@
     setupPeriodFilter();
     setupOrdenEventos();
     setupHorasUI();
+    setupCortesiasUI();
     setupAgotamientoUI();
     setupExportButtons();
 
@@ -286,11 +298,11 @@
 
   function buildPresentationStats(filteredSales){
     const presAgg = {
-      pulso: { id:'pulso', label:'Pulso', unidades:0, ventas:0, costo:0, profit:0 },
-      media: { id:'media', label:'Media', unidades:0, ventas:0, costo:0, profit:0 },
-      djeba: { id:'djeba', label:'Djeba', unidades:0, ventas:0, costo:0, profit:0 },
-      litro: { id:'litro', label:'Litro', unidades:0, ventas:0, costo:0, profit:0 },
-      galon: { id:'galon', label:'Galón', unidades:0, ventas:0, costo:0, profit:0 }
+      pulso: { id:'pulso', label:'Pulso', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 },
+      media: { id:'media', label:'Media', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 },
+      djeba: { id:'djeba', label:'Djeba', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 },
+      litro: { id:'litro', label:'Litro', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 },
+      galon: { id:'galon', label:'Galón', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 }
     };
 
     let totalVentas = 0;
@@ -301,10 +313,21 @@
       const presId = mapPresentation(s.productName);
       if (!presId || !presAgg[presId]) continue;
 
-      presAgg[presId].unidades += finalQty;
-      presAgg[presId].ventas += revenue;
-      presAgg[presId].costo += lineCost;
-      presAgg[presId].profit += lineProfit;
+      const agg = presAgg[presId];
+      agg.unidades += finalQty;
+      agg.ventas += revenue;
+      agg.costo += lineCost;
+      agg.profit += lineProfit;
+
+      if (s && s.courtesy){
+        const absQty = Math.abs(finalQty);
+        const unitPrice = Number(s.unitPrice || 0);
+        const sign = s.isReturn ? -1 : 1;
+        const courtesyValue = sign * absQty * unitPrice;
+        agg.courtesyUnits += absQty;
+        agg.courtesyValue += courtesyValue;
+        agg.courtesyCost += lineCost;
+      }
 
       totalVentas += revenue;
       totalUnits += finalQty;
@@ -317,6 +340,9 @@
       const ventas = agg.ventas;
       const costo = agg.costo;
       const profit = agg.profit;
+      const courtesyUnits = agg.courtesyUnits || 0;
+      const courtesyValue = agg.courtesyValue || 0;
+      const courtesyCost = agg.courtesyCost || 0;
 
       const unitPrice = unidades ? (ventas / unidades) : 0;
       // Si no hay unidades, tratamos de usar el costo configurado en recetas
@@ -324,6 +350,7 @@
       const utilUnit = unitPrice - unitCost;
       const marginUnit = unitPrice ? (utilUnit / unitPrice * 100) : 0;
       const ventasPerc = totalVentas ? (ventas / totalVentas * 100) : 0;
+      const cortesiasPerc = courtesyValue ? (courtesyValue / (ventas + courtesyValue) * 100) : 0;
 
       rows.push({
         id: agg.id,
@@ -336,7 +363,11 @@
         unitCost,
         utilUnit,
         marginUnit,
-        ventasPerc
+        ventasPerc,
+        courtesyUnits,
+        courtesyValue,
+        courtesyCost,
+        cortesiasPerc
       });
     }
 
@@ -366,6 +397,9 @@
           ventasPagadas: 0,
           ticketsPagados: 0,
           botellas: 0,
+          courtesyUnits: 0,
+          courtesyValue: 0,
+          courtesyCost: 0,
           closedAt: null,
           eventNameFull: null
         });
@@ -376,6 +410,16 @@
       bucket.profit += lineProfit;
       bucket.botellas += finalQty;
       totalVentasPeriodo += revenue;
+
+      if (s && s.courtesy){
+        const absQty = Math.abs(finalQty);
+        const unitPrice = Number(s.unitPrice || 0);
+        const sign = s.isReturn ? -1 : 1;
+        const courtesyValue = sign * absQty * unitPrice;
+        bucket.courtesyUnits += absQty;
+        bucket.courtesyValue += courtesyValue;
+        bucket.courtesyCost += lineCost;
+      }
 
       if (revenue > 0) {
         bucket.ventasPagadas += revenue;
@@ -395,9 +439,11 @@
     }
 
     const rows = Array.from(byEvent.values());
-    // Precalcular margen para cada evento
+    // Precalcular margen y % cortesías para cada evento
     for (const ev of rows){
       ev.margin = ev.ventas ? (ev.profit / ev.ventas * 100) : 0;
+      const cv = ev.courtesyValue || 0;
+      ev.cortesiasPerc = cv ? (cv / (ev.ventas + cv) * 100) : 0;
     }
 
     return {
@@ -424,6 +470,7 @@
     const resumenStats = updateResumen(filteredSales, presStats, eventStats);
     updateEventos(eventStats);
     updatePresentaciones(presStats);
+    updateCortesias();
     rebuildHorasEventOptions(filteredSales);
     updateHoras();
     updateAgotamiento();
@@ -443,6 +490,9 @@
     const kpiTotalCosto = document.getElementById('kpi-total-costo');
     const kpiTotalUtilidad = document.getElementById('kpi-total-utilidad');
     const kpiMargenGlobal = document.getElementById('kpi-margen-global');
+    const kpiCortesiasTotal = document.getElementById('kpi-cortesias-total');
+    const kpiCortesiasSub = document.getElementById('kpi-cortesias-sub');
+    const kpiCortesiasNivel = document.getElementById('kpi-cortesias-nivel');
 
     const tbody = document.getElementById('tbody-resumen-mensual');
 
@@ -457,6 +507,9 @@
     let countTicketsPagados = 0;
 
     const totalPres = { pulso:0, media:0, djeba:0, litro:0, galon:0 };
+    let courtesyUnitsAbsTotal = 0;
+    let courtesyValueTotal = 0;
+    let courtesyCostTotal = 0;
 
     for (const s of filteredSales){
       const d = parseSaleDate(s.date);
@@ -470,6 +523,9 @@
           profit: 0,
           events: new Set(),
           pres: { pulso:0, media:0, djeba:0, litro:0, galon:0 },
+          courtesyUnits: 0,
+          courtesyValue: 0,
+          courtesyCost: 0,
           sumTicketsPagados: 0,
           countTicketsPagados: 0
         });
@@ -482,6 +538,20 @@
       bucket.ventas += revenue;
       bucket.costo += lineCost;
       bucket.profit += lineProfit;
+
+      if (s && s.courtesy){
+        const absQty = Math.abs(finalQty);
+        const unitPrice = Number(s.unitPrice || 0);
+        const sign = s.isReturn ? -1 : 1;
+        const courtesyValue = sign * absQty * unitPrice;
+        bucket.courtesyUnits += absQty;
+        bucket.courtesyValue += courtesyValue;
+        bucket.courtesyCost += lineCost;
+
+        courtesyUnitsAbsTotal += absQty;
+        courtesyValueTotal += courtesyValue;
+        courtesyCostTotal += lineCost;
+      }
 
       totalVentas += revenue;
       totalCosto += lineCost;
@@ -528,6 +598,19 @@
     const margenGlobal = totalVentas ? (totalProfit / totalVentas * 100) : 0;
     if (kpiMargenGlobal) kpiMargenGlobal.textContent = formatPercent(margenGlobal);
 
+    // KPIs de cortesías globales
+    const courtesyRatioGlobal = courtesyValueTotal ? (courtesyValueTotal / (totalVentas + courtesyValueTotal) * 100) : 0;
+    const courtesyLevelGlobal = getCourtesyLevel(courtesyRatioGlobal);
+    if (kpiCortesiasTotal) kpiCortesiasTotal.textContent = formatCurrency(courtesyValueTotal);
+    if (kpiCortesiasSub) {
+      kpiCortesiasSub.textContent =
+        'Unidades ' + courtesyUnitsAbsTotal + ' · Costo ' + formatCurrency(courtesyCostTotal);
+    }
+    if (kpiCortesiasNivel) {
+      kpiCortesiasNivel.textContent =
+        courtesyLevelGlobal.label + ' (' + formatPercent(courtesyRatioGlobal) + ')';
+    }
+
     // Tabla mensual
     tbody.innerHTML = '';
     const sortedKeys = Array.from(byMonth.keys()).sort();
@@ -544,6 +627,7 @@
       const margenMes = bucket.ventas ? (bucket.profit / bucket.ventas * 100) : 0;
 
       const tr = document.createElement('tr');
+      const cortesiasPercMes = bucket.courtesyValue ? (bucket.courtesyValue / (bucket.ventas + bucket.courtesyValue) * 100) : 0;
       tr.innerHTML = [
         '<td>' + formatMonthKey(key) + '</td>',
         '<td>' + formatCurrency(bucket.ventas) + '</td>',
@@ -556,7 +640,11 @@
         '<td>' + (bucket.pres.litro || 0) + '</td>',
         '<td>' + (bucket.pres.galon || 0) + '</td>',
         '<td>' + bucket.events.size + '</td>',
-        '<td>' + formatCurrency(ticketPromMes) + '</td>'
+        '<td>' + formatCurrency(ticketPromMes) + '</td>',
+        '<td>' + (bucket.courtesyUnits || 0) + '</td>',
+        '<td>' + formatCurrency(bucket.courtesyValue || 0) + '</td>',
+        '<td>' + formatCurrency(bucket.courtesyCost || 0) + '</td>',
+        '<td>' + formatPercent(cortesiasPercMes) + '</td>'
       ].join('');
       tbody.appendChild(tr);
     }
@@ -567,7 +655,11 @@
       totalVentas,
       totalCosto,
       totalProfit,
-      margenGlobal
+      margenGlobal,
+      courtesyUnitsAbsTotal,
+      courtesyValueTotal,
+      courtesyCostTotal,
+      courtesyRatioGlobal
     };
 
     lastResumenStats = resumenStats;
@@ -776,6 +868,8 @@
       const margen = ev.margin || 0;
 
       const tr = document.createElement('tr');
+      const cortesiasPerc = ev.cortesiasPerc || 0;
+      const lvl = getCourtesyLevel(cortesiasPerc);
       tr.innerHTML = [
         '<td>' + escapeHtml(nombre) + '</td>',
         '<td>' + estado + '</td>',
@@ -785,7 +879,12 @@
         '<td>' + formatPercent(margen) + '</td>',
         '<td>' + (ev.botellas || 0) + '</td>',
         '<td>' + formatCurrency(ticketProm) + '</td>',
-        '<td>' + formatPercent(perc) + '</td>'
+        '<td>' + formatPercent(perc) + '</td>',
+        '<td>' + (ev.courtesyUnits || 0) + '</td>',
+        '<td>' + formatCurrency(ev.courtesyValue || 0) + '</td>',
+        '<td>' + formatCurrency(ev.courtesyCost || 0) + '</td>',
+        '<td>' + formatPercent(cortesiasPerc) + '</td>',
+        '<td>' + lvl.label + '</td>'
       ].join('');
       tbody.appendChild(tr);
     }
@@ -845,7 +944,11 @@
         '<td>' + formatCurrency(row.utilUnit) + '</td>',
         '<td>' + formatPercent(row.marginUnit) + '</td>',
         '<td>' + formatCurrency(row.ventas) + '</td>',
-        '<td>' + formatPercent(perc) + '</td>'
+        '<td>' + formatPercent(perc) + '</td>',
+        '<td>' + (row.courtesyUnits || 0) + '</td>',
+        '<td>' + formatCurrency(row.courtesyValue || 0) + '</td>',
+        '<td>' + formatCurrency(row.courtesyCost || 0) + '</td>',
+        '<td>' + formatPercent(row.cortesiasPerc || 0) + '</td>'
       ].join('');
       tbody.appendChild(tr);
 
@@ -881,7 +984,14 @@
     }
   }
 
-  function rebuildHorasEventOptions(filteredSales){
+  
+  function setupCortesiasUI(){
+    const selEvent = document.getElementById('cortesias-event-select');
+    if (!selEvent) return;
+    selEvent.addEventListener('change', () => updateCortesias());
+  }
+
+function rebuildHorasEventOptions(filteredSales){
     const selEvent = document.getElementById('horas-event-select');
     if (!selEvent) return;
 
@@ -995,6 +1105,101 @@
           msg = 'La distribución por hora es relativamente uniforme en este rango.';
         }
         resumenEl.textContent = msg;
+      }
+    }
+  }
+
+  function updateCortesias(){
+    const tbody = document.getElementById('tbody-cortesias');
+    const resumenTop = document.getElementById('resumen-cortesias-top');
+    const selEvent = document.getElementById('cortesias-event-select');
+    if (!tbody || !selEvent) return;
+
+    const salesList = Array.isArray(lastFilteredSales) ? lastFilteredSales : [];
+    const cortesias = salesList.filter(s => s && s.courtesy);
+
+    // Construir opciones de eventos disponibles para cortesías
+    const map = new Map();
+    for (const s of cortesias){
+      const id = s.eventId != null ? String(s.eventId) : 'sin-evento';
+      const name = s.eventName || 'General';
+      if (!map.has(id)) map.set(id, name);
+    }
+
+    const prevValue = selEvent.value || 'all';
+    selEvent.innerHTML = '';
+    const optAll = document.createElement('option');
+    optAll.value = 'all';
+    optAll.textContent = 'Todos los eventos';
+    selEvent.appendChild(optAll);
+    for (const [id, name] of map.entries()){
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = name;
+      selEvent.appendChild(opt);
+    }
+    if (Array.from(selEvent.options).some(o => o.value === prevValue)) {
+      selEvent.value = prevValue;
+    } else {
+      selEvent.value = 'all';
+    }
+
+    const eventFilter = selEvent.value || 'all';
+
+    tbody.innerHTML = '';
+    if (!cortesias.length){
+      if (resumenTop) {
+        resumenTop.textContent = 'No se registran cortesías en este periodo.';
+      }
+      return;
+    }
+
+    let totalUnidades = 0;
+    let totalValor = 0;
+    let totalCosto = 0;
+
+    for (const s of cortesias){
+      const id = s.eventId != null ? String(s.eventId) : 'sin-evento';
+      if (eventFilter !== 'all' && id !== eventFilter) continue;
+
+      const { finalQty, lineCost } = computeLineMetrics(s);
+      const absQty = Math.abs(finalQty);
+      const unitPrice = Number(s.unitPrice || 0);
+      const courtesyValue = absQty * unitPrice;
+
+      const fecha = s.date || '';
+      const hora = s.time || '';
+      const nombre = s.eventName || 'General';
+      const prod = s.productName || '';
+      const dest = s.courtesyTo || '';
+      const notas = s.notes || '';
+
+      totalUnidades += absQty;
+      totalValor += courtesyValue;
+      totalCosto += lineCost;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = [
+        '<td>' + escapeHtml(fecha) + '</td>',
+        '<td>' + escapeHtml(hora) + '</td>',
+        '<td>' + escapeHtml(nombre) + '</td>',
+        '<td>' + escapeHtml(prod) + '</td>',
+        '<td>' + absQty + '</td>',
+        '<td>' + escapeHtml(dest) + '</td>',
+        '<td>' + formatCurrency(courtesyValue) + '</td>',
+        '<td>' + formatCurrency(lineCost) + '</td>',
+        '<td>' + escapeHtml(notas) + '</td>'
+      ].join('');
+      tbody.appendChild(tr);
+    }
+
+    if (resumenTop) {
+      if (totalUnidades === 0){
+        resumenTop.textContent = 'No se registran cortesías para el filtro seleccionado.';
+      } else {
+        resumenTop.textContent =
+          'Cortesías en este periodo: ' + totalUnidades + ' unidades, valor lista ' +
+          formatCurrency(totalValor) + ', costo estimado ' + formatCurrency(totalCosto) + '.';
       }
     }
   }
@@ -1171,6 +1376,35 @@
             ' (' + formatPercent(ev.margin) + ', ventas ' + formatCurrency(ev.ventas) + ').');
           hasAlert = true;
         }
+      }
+    }
+
+    // Alertas por nivel global de cortesías
+    if (resumenStats && typeof resumenStats.courtesyRatioGlobal === 'number'){
+      const p = resumenStats.courtesyRatioGlobal;
+      if (p >= COURTESY_YELLOW_PCT && p < COURTESY_YELLOW_PCT + 5){
+        addItem('warn', 'Las cortesías del periodo representan ' + formatPercent(p) +
+          ' del total. Revisa si ese nivel está dentro de lo aceptable.');
+        hasAlert = true;
+      } else if (p >= COURTESY_YELLOW_PCT + 5){
+        addItem('critico', 'Nivel alto de cortesías en el periodo: ' + formatPercent(p) +
+          '. Considera reducir cortesías o ajustar tu estrategia.');
+        hasAlert = true;
+      }
+    }
+
+    // Alertas por evento con cortesías altas
+    for (const ev of evRows){
+      const nombre = ev.eventNameFull || ev.name || 'General';
+      const p = ev.cortesiasPerc || 0;
+      if (p >= COURTESY_YELLOW_PCT && p < COURTESY_YELLOW_PCT + 5){
+        addItem('warn', 'Cortesías medias en el evento ' + nombre + ': ' + formatPercent(p) +
+          ' del total del evento.');
+        hasAlert = true;
+      } else if (p >= COURTESY_YELLOW_PCT + 5){
+        addItem('critico', 'Cortesías altas en el evento ' + nombre + ': ' + formatPercent(p) +
+          ' del total del evento. Revisa si fue estratégico o excesivo.');
+        hasAlert = true;
       }
     }
 

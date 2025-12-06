@@ -63,6 +63,7 @@
         <button class="tab-btn active" data-tab="resumen">Resumen</button>
         <button class="tab-btn" data-tab="eventos">Eventos</button>
         <button class="tab-btn" data-tab="presentaciones">Presentaciones</button>
+        <button class="tab-btn" data-tab="cortesias">Cortesías</button>
         <button class="tab-btn" data-tab="avanzado">Avanzado</button>
       </section>
 
@@ -98,6 +99,12 @@
             <p class="kpi-label">Margen global</p>
             <p class="kpi-value" id="kpi-margen-global">0.0%</p>
           </article>
+          <article class="kpi-card">
+            <p class="kpi-label">Cortesías (valor lista)</p>
+            <p class="kpi-value" id="kpi-cortesias-total">C$ 0.00</p>
+            <p class="kpi-sub" id="kpi-cortesias-sub">Unidades 0 · Costo C$ 0.00</p>
+            <p class="kpi-sub" id="kpi-cortesias-nivel">🟢 Bajo (0.0%)</p>
+          </article>
         </div>
 
         <div class="analytics-layout">
@@ -125,6 +132,10 @@
                     <th>Galón</th>
                     <th># Eventos</th>
                     <th>Ticket prom.</th>
+                    <th>Cortesías (unid.)</th>
+                    <th>Cortesías valor (C$)</th>
+                    <th>Cortesías costo (C$)</th>
+                    <th>Cortesías %</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-resumen-mensual">
@@ -188,6 +199,11 @@
                     <th>Botellas</th>
                     <th>Ticket prom.</th>
                     <th>% del total</th>
+                    <th>Cortesías (unid.)</th>
+                    <th>Cortesías valor (C$)</th>
+                    <th>Cortesías costo (C$)</th>
+                    <th>Cortesías %</th>
+                    <th>Semáforo cortesías</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-eventos">
@@ -230,6 +246,10 @@
                     <th>Margen unitario %</th>
                     <th>Ventas totales (C$)</th>
                     <th>% de ventas</th>
+                    <th>Cortesías (unid.)</th>
+                    <th>Cortesías valor (C$)</th>
+                    <th>Cortesías costo (C$)</th>
+                    <th>Cortesías %</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-presentaciones">
@@ -240,6 +260,44 @@
           </div>
         </div>
 
+
+      <!-- TAB CORTESÍAS -->
+      <section class="tab-content" id="tab-cortesias">
+        <section class="card advanced-block">
+          <h3>Listado de cortesías</h3>
+          <p class="hint small" id="resumen-cortesias-top">
+            Muestra todas las líneas marcadas como cortesía en el periodo seleccionado. Usa el filtro de evento para afinar el análisis.
+          </p>
+          <div class="advanced-filters-row">
+            <div class="field small">
+              <label for="cortesias-event-select">Evento</label>
+              <select id="cortesias-event-select">
+                <option value="all">Todos los eventos</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table class="inv-table analytics-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Evento</th>
+                  <th>Producto / presentación</th>
+                  <th>Cantidad</th>
+                  <th>Destinatario</th>
+                  <th>Valor lista (C$)</th>
+                  <th>Costo estimado (C$)</th>
+                  <th>Notas</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-cortesias">
+                <!-- Filas dinámicas -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
       <!-- TAB AVANZADO -->
       <section class="tab-content" id="tab-avanzado">
         <section class="card advanced-block">
