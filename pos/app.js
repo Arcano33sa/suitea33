@@ -974,6 +974,16 @@ async function init(){
   try{
     await openDB();
     await ensureDefaults();   // migra + resiembra
+
+    const dateInput = document.getElementById('sale-date');
+    if (dateInput && !dateInput.value){
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth()+1).padStart(2,'0');
+      const d = String(now.getDate()).padStart(2,'0');
+      dateInput.value = `${y}-${m}-${d}`;
+    }
+
     await refreshEventUI();
     await refreshProductSelect();
     await renderDay();
