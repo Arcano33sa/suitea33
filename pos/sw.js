@@ -1,11 +1,11 @@
 
-const CACHE = 'a33-pos-v3_18';
+const CACHE = 'a33-pos-v3_20_1';
 const ASSETS = [
   './',
-  './index.html?v=3.18',
-  './styles.css?v=3.18',
-  './app.js?v=3.18',
-  './manifest.webmanifest?v=3.18',
+  './index.html?v=3.20.1',
+  './styles.css?v=3.20.1',
+  './app.js?v=3.20.1',
+  './manifest.webmanifest?v=3.20.1',
   './logo.png',
   './brand_symbol.jpg',
   './brand_wordmark.jpg'
@@ -26,6 +26,6 @@ self.addEventListener('fetch', (e)=>{
         caches.open(CACHE).then(c=>c.put(e.request, copy));
       }
       return resp;
-    }).catch(()=>caches.match('./index.html?v=3.18')))
+    }).catch(()=>caches.match('./index.html?v=3.20.1')))
   );
 });

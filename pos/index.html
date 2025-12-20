@@ -4,12 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=3.18">
+<link rel="manifest" href="manifest.webmanifest?v=3.20">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=3.18">
+<link rel="stylesheet" href="styles.css?v=3.20">
 </head>
 <body>
 <header class="brandbar">
@@ -36,11 +37,37 @@
           </select>
           <input id="new-event" placeholder="Nuevo evento">
         </div>
+
+<div class="row">
+  <label>Evento maestro / Grupo</label>
+</div>
+<div class="row">
+  <select id="event-group-select">
+    <option value="">— Selecciona grupo —</option>
+    <option value="__new__">+ Crear nuevo grupo</option>
+  </select>
+  <input id="event-group-new" placeholder="Nombre de nuevo grupo" style="display:none">
+</div>
+<div class="row">
+  <button type="button" id="btn-manage-groups" class="btn-link">Gestionar grupos</button>
+</div>
+<small class="muted">Usa el mismo nombre de grupo para todos los días del mismo evento maestro. Puedes ocultar grupos antiguos desde “Gestionar grupos”.</small>
+
         <div class="row">
           <button id="btn-add-event" class="btn-primary">+ Crear y activar evento</button>
           <button id="btn-close-event" class="btn-warn">Cerrar evento (Corte)</button>
           <button id="btn-reopen-event" class="btn-ok">Reabrir evento</button>
         </div>
+	        <div class="row" style="grid-template-columns:1fr; align-items:center">
+	          <div class="petty-toggle-wrap">
+	            <span class="petty-toggle-title">Caja Chica</span>
+	            <label class="switch" title="Activar / desactivar Caja Chica para este evento">
+	              <input type="checkbox" id="pc-event-toggle">
+	              <span class="slider"></span>
+	            </label>
+	            <span id="pc-event-toggle-text" class="muted"></span>
+	          </div>
+	        </div>
         <div id="event-status" class="info" style="display:none"></div>
         <div id="no-active-note" class="disabled-note" style="display:none">Sin evento activo. Crea o selecciona uno para comenzar.</div>
       </div>
@@ -90,6 +117,16 @@
       </div>
     </div>
 
+    <div class="row" id="sale-bank-row" style="display:none">
+      <div>
+        <label>Banco (solo Transferencia)</label>
+        <select id="sale-bank">
+          <option value="">— Selecciona banco —</option>
+        </select>
+        <small id="sale-bank-note" class="muted"></small>
+      </div>
+    </div>
+
     <details class="card">
       <summary>Más opciones</summary>
       <div class="row">
@@ -113,11 +150,61 @@
       <button id="btn-undo" class="btn-warn">↩︎ Deshacer última</button>
     </div>
 
+    <div class="card" id="cup-block">
+      <h3>Venta por vaso</h3>
+
+      <div class="row">
+        <div><strong>Vasos disponibles: <span id="cup-available">0</span></strong></div>
+        <div style="text-align:right"><strong>Galones fraccionados: <span id="cup-gallons">0</span></strong></div>
+      </div>
+
+      <div class="row3">
+        <div>
+          <label>Galones a fraccionar</label>
+          <input id="cup-fraction-gallons" type="number" inputmode="numeric" step="1" min="1" value="1">
+        </div>
+        <div>
+          <label>Vasos por galón</label>
+          <input id="cup-yield" type="number" inputmode="numeric" step="1" min="1" value="22">
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="btn-fraction" class="btn-primary">Fraccionar</button>
+        </div>
+      </div>
+
+      <div class="row3">
+        <div>
+          <label>Cantidad de vasos</label>
+          <input id="cup-qty" type="number" inputmode="numeric" step="1" min="1" value="1">
+        </div>
+        <div>
+          <label>Precio por vaso (C$)</label>
+          <input id="cup-price" type="number" inputmode="decimal" step="0.01" min="0" value="0">
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <div class="row" style="grid-template-columns:1fr 1fr; gap:8px">
+            <button id="btn-sell-cups" class="btn-ok">Vender vasos</button>
+            <button id="btn-courtesy-cups" class="btn-warn">Registrar cortesía</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="info" style="margin-top:10px">
+        <div><b>Vasos creados:</b> <span id="cup-created">0</span> · <b>Vendidos:</b> <span id="cup-sold">0</span> · <b>Cortesía:</b> <span id="cup-courtesy">0</span> · <b>Restantes:</b> <span id="cup-remaining">0</span></div>
+        <div><b>Remanente exacto:</b> <span id="cup-remnant">0</span> ml</div>
+      </div>
+
+      <small class="muted">Nota: esto controla porciones vendibles (vasos de sangría). No es inventario de vasos plásticos.</small>
+    </div>
+
     <div class="card">
       <div class="row">
         <div><strong>Listado del día</strong></div>
         <div style="text-align:right"><strong>Total día: C$ <span id="day-total">0</span></strong></div>
       </div>
+      <div class="table-scroll">
       <table id="tbl-day" class="compact">
         <thead>
           <tr>
@@ -126,6 +213,7 @@
         </thead>
         <tbody></tbody>
       </table>
+      </div>
     </div>
   </section>
 
@@ -142,6 +230,31 @@
         <button id="btn-inv-from-lote" class="btn-ok" type="button">Agregar desde lote</button>
       </div>
     </div>
+    <div id="lotes-evento-block" class="lotes-block">
+      <div class="lotes-block-head">
+        <div>
+          <h3 style="margin:0">Lotes cargados en este evento <span class="badge" id="lotes-count">0</span></h3>
+          <small class="muted">Se registra cuando usas “Agregar desde lote”.</small>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table id="tbl-lotes-evento" class="compact">
+          <thead>
+            <tr>
+              <th>Código/Nombre</th>
+              <th>Fecha/Hora</th>
+              <th>P</th>
+              <th>M</th>
+              <th>D</th>
+              <th>L</th>
+              <th>G</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
     <table id="tbl-inv">
       <thead>
         <tr>
@@ -150,26 +263,337 @@
       </thead>
       <tbody></tbody>
     </table>
-    <div class="info"><small>“Manejar” desactiva inventario para productos como <i>Vaso</i>. Inicial se guarda por evento. Reposición y Ajuste crean movimientos fechados.</small></div>
+    <div class="info"><small>“Manejar” desactiva inventario para productos que no se controlan aquí. Inicial se guarda por evento. Reposición y Ajuste crean movimientos fechados. <b>Nota:</b> la <i>Venta por vaso</i> se gestiona en el bloque “Venta por vaso” (no aparece en este inventario).</small></div>
   </section>
 
   <section id="tab-eventos" class="tab card" style="display:none">
     <h2>Eventos e historial</h2>
-    <div class="row">
+    <div class="topbar">
       <select id="filtro-eventos">
         <option value="todos" selected>Mostrar: Todos</option>
         <option value="abiertos">Solo abiertos</option>
         <option value="cerrados">Solo cerrados</option>
       </select>
-      <button id="btn-exportar-eventos" class="btn-primary">Exportar lista (CSV)</button>
+      <select id="filtro-grupo">
+        <option value="">Grupos: Todos</option>
+      </select>
+      <button id="btn-exportar-eventos" class="btn-primary">Exportar lista (Excel)</button>
+      <button id="btn-exportar-evento-excel" class="btn-ok">Exportar evento activo (Excel)</button>
     </div>
+    <div class="table-scroll">
     <table id="tbl-eventos">
-      <thead><tr><th>Evento</th><th>Estado</th><th>Creado</th><th>Cerrado</th><th>Total</th><th>Acciones</th></tr></thead>
+      <thead><tr><th>Evento</th><th>Grupo</th><th>Estado</th><th>Creado</th><th>Cerrado</th><th>Total</th><th>Acciones</th></tr></thead>
       <tbody></tbody>
     </table>
+    </div>
+    <div id="cierre-total-card" class="card inner">
+      <h3>Cierre Total por grupo</h3>
+      <p class="muted">Selecciona un grupo arriba y genera un corte consolidado de todos sus eventos diarios.</p>
+      <div class="row">
+        <button id="btn-cierre-total" class="btn-ok">Cierre Total del grupo</button>
+        <button id="btn-cierre-total-excel" class="btn-primary">Exportar Cierre Total (Excel)</button>
+      </div>
+      <div id="cierre-total-resumen" class="summary"></div>
+      <div id="cierre-total-presentaciones" class="table-wrapper"></div>
+    </div>
+    <div id="cierre-caja-card" class="card inner">
+      <h3>Caja Chica · Cierre Total por grupo</h3>
+      <p class="muted">Usa este resumen para ver la caja chica consolidada de todos los días del mismo evento maestro.</p>
+      <div class="row">
+        <button id="btn-cierre-caja-grupo" class="btn-ok">Cierre Caja Chica del grupo</button>
+        <button id="btn-cierre-caja-excel" class="btn-primary">Exportar Caja Chica (Excel)</button>
+      </div>
+      <div id="cierre-caja-resumen" class="summary"></div>
+      <div id="cierre-caja-eventos" class="table-wrapper"></div>
+    </div>
   </section>
 
-  <section id="tab-resumen" class="tab card" style="display:none">
+  
+  <section id="tab-caja" class="tab card" style="display:none">
+    <h2>Caja Chica</h2>
+
+    <p><span id="pc-event-info" class="info-strong">Evento activo: —</span></p>
+    <p id="pc-no-event-note" class="disabled-note" style="display:none">Activa un evento en la pestaña Vender para usar Caja Chica.</p>
+
+    <div id="pc-disabled-banner" class="warn" style="display:none">
+      Caja Chica está <b>desactivada</b> para este evento.
+      <button id="pc-btn-activate" class="btn-ok btn-inline" type="button">Activar Caja Chica</button>
+    </div>
+    <div class="row" id="pc-day-row">
+      <div>
+        <label>Día operativo</label>
+        <input id="pc-day" type="date">
+        <small class="muted">Caja Chica se guarda por día dentro del mismo evento (saldo inicial, movimientos y arqueo final).</small>
+      </div>
+      <div style="text-align:right">
+        <label>&nbsp;</label>
+        <button id="pc-btn-use-prev" class="btn-primary" type="button" style="display:none">Usar cierre anterior</button>
+        <div id="pc-prev-note" class="muted" style="margin-top:6px"></div>
+      </div>
+    </div>
+
+    <div class="row" id="pc-history-row">
+      <div>
+        <label>Histórico (cierres guardados · solo lectura)</label>
+        <select id="pc-history-select">
+          <option value="">— Ver un día cerrado —</option>
+        </select>
+        <small id="pc-history-hint" class="muted"></small>
+      </div>
+      <div style="text-align:right">
+        <label>&nbsp;</label>
+        <div class="pc-history-actions">
+          <button id="pc-history-back" class="btn-warn" type="button" style="display:none">Volver al día operativo</button>
+          <button id="pc-history-use" class="btn-primary" type="button" style="display:none">Usar este cierre como inicio</button>
+        </div>
+        <div id="pc-history-note" class="muted" style="margin-top:6px"></div>
+      </div>
+    </div>
+
+    <div id="pc-history-banner" class="warn" style="display:none"></div>
+
+    <div id="pc-main" class="pc-main">
+      <div class="row petty-summary">
+        <div class="card">
+          <h3>Córdobas (C$)</h3>
+          <table class="pc-table">
+            <tbody>
+              <tr><th>Saldo inicial</th><td>C$ <span id="pc-nio-inicial">0.00</span></td></tr>
+              <tr><th>Entradas</th><td>C$ <span id="pc-nio-entradas">0.00</span></td></tr>
+              <tr><th>Salidas</th><td>C$ <span id="pc-nio-salidas">0.00</span></td></tr>
+              <tr><th>Ventas en efectivo</th><td>C$ <span id="pc-nio-ventas">0.00</span></td></tr>
+              <tr><th>Saldo teórico</th><td>C$ <span id="pc-nio-teorico">0.00</span></td></tr>
+              <tr><th>Saldo final contado</th><td>C$ <span id="pc-nio-final">—</span></td></tr>
+              <tr><th>Diferencia</th><td>C$ <span id="pc-nio-diferencia">—</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h3>Dólares (US$)</h3>
+          <table class="pc-table">
+            <tbody>
+              <tr><th>Saldo inicial</th><td>US$ <span id="pc-usd-inicial">0.00</span></td></tr>
+              <tr><th>Entradas</th><td>US$ <span id="pc-usd-entradas">0.00</span></td></tr>
+              <tr><th>Salidas</th><td>US$ <span id="pc-usd-salidas">0.00</span></td></tr>
+              <tr><th>Saldo teórico</th><td>US$ <span id="pc-usd-teorico">0.00</span></td></tr>
+              <tr><th>Saldo final contado</th><td>US$ <span id="pc-usd-final">—</span></td></tr>
+              <tr><th>Diferencia</th><td>US$ <span id="pc-usd-diferencia">—</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card petty-inicial">
+        <h3>Saldo inicial</h3>
+        <div class="row">
+          <div class="petty-block">
+            <h4>Córdobas (C$)</h4>
+            <table class="pc-table" id="pc-table-nio">
+              <thead>
+                <tr><th>Denominación</th><th>Cantidad</th><th>Subtotal</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>C$ 1</td><td><input id="pc-nio-q-1" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-nio-sub-1">0.00</span></td></tr>
+                <tr><td>C$ 5</td><td><input id="pc-nio-q-5" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-nio-sub-5">0.00</span></td></tr>
+                <tr><td>C$ 10</td><td><input id="pc-nio-q-10" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-nio-sub-10">0.00</span></td></tr>
+                <tr><td>C$ 20</td><td><input id="pc-nio-q-20" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-nio-sub-20">0.00</span></td></tr>
+                <tr><td>C$ 50</td><td><input id="pc-nio-q-50" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-nio-sub-50">0.00</span></td></tr>
+                <tr><td>C$ 100</td><td><input id="pc-nio-q-100" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-nio-sub-100">0.00</span></td></tr>
+                <tr><td>C$ 200</td><td><input id="pc-nio-q-200" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-nio-sub-200">0.00</span></td></tr>
+                <tr><td>C$ 500</td><td><input id="pc-nio-q-500" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-nio-sub-500">0.00</span></td></tr>
+                <tr><td>C$ 1000</td><td><input id="pc-nio-q-1000" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-nio-sub-1000">0.00</span></td></tr>
+              </tbody>
+              <tfoot>
+                <tr><td colspan="2">Total inicial C$</td><td>C$ <span id="pc-nio-total">0.00</span></td></tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="petty-block">
+            <h4>Dólares (US$)</h4>
+            <table class="pc-table" id="pc-table-usd">
+              <thead>
+                <tr><th>Denominación</th><th>Cantidad</th><th>Subtotal</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>US$ 1</td><td><input id="pc-usd-q-1" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-usd-sub-1">0.00</span></td></tr>
+                <tr><td>US$ 5</td><td><input id="pc-usd-q-5" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-usd-sub-5">0.00</span></td></tr>
+                <tr><td>US$ 10</td><td><input id="pc-usd-q-10" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-usd-sub-10">0.00</span></td></tr>
+                <tr><td>US$ 20</td><td><input id="pc-usd-q-20" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-usd-sub-20">0.00</span></td></tr>
+                <tr><td>US$ 50</td><td><input id="pc-usd-q-50" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-usd-sub-50">0.00</span></td></tr>
+                <tr><td>US$ 100</td><td><input id="pc-usd-q-100" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-usd-sub-100">0.00</span></td></tr>
+              </tbody>
+              <tfoot>
+                <tr><td colspan="2">Total inicial US$</td><td>US$ <span id="pc-usd-total">0.00</span></td></tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <button id="pc-btn-save-initial" class="btn-ok">Guardar saldo inicial</button>
+          <button id="pc-btn-clear-initial" class="btn-warn">Limpiar</button>
+        </div>
+      </div>
+
+      <div class="card petty-mov">
+        <h3>Movimientos de Caja Chica</h3>
+        <div class="row">
+          <div class="col">
+            <label for="pc-mov-date">Fecha</label>
+            <input id="pc-mov-date" type="date">
+          </div>
+          <div class="col">
+            <label for="pc-mov-type">Tipo</label>
+            <select id="pc-mov-type">
+              <option value="entrada">Entrada</option>
+              <option value="salida">Salida</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="pc-mov-currency">Moneda</label>
+            <select id="pc-mov-currency">
+              <option value="NIO">C$</option>
+              <option value="USD">US$</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="pc-mov-amount">Monto</label>
+            <input id="pc-mov-amount" type="number" min="0" step="0.01" value="0.00">
+          </div>
+          <div class="col">
+            <label for="pc-mov-desc">Descripción</label>
+            <input id="pc-mov-desc" type="text" placeholder="Detalle del movimiento">
+          </div>
+          <div class="col">
+            <button id="pc-mov-add" class="btn-ok">Agregar movimiento</button>
+          </div>
+        </div>
+
+        <table class="pc-table" id="pc-mov-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Tipo</th>
+              <th>Moneda</th>
+              <th>Monto</th>
+              <th>Descripción</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="pc-mov-tbody">
+          </tbody>
+        </table>
+      </div>
+    
+      <div class="card petty-final">
+        <h3>Arqueo final</h3>
+        <div class="row">
+          <div class="petty-block">
+            <h4>Córdobas (C$)</h4>
+            <table class="pc-table" id="pc-table-fnio">
+              <thead>
+                <tr><th>Denominación</th><th>Cantidad</th><th>Subtotal</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>C$ 1</td><td><input id="pc-fnio-q-1" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-fnio-sub-1">0.00</span></td></tr>
+                <tr><td>C$ 5</td><td><input id="pc-fnio-q-5" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-fnio-sub-5">0.00</span></td></tr>
+                <tr><td>C$ 10</td><td><input id="pc-fnio-q-10" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-fnio-sub-10">0.00</span></td></tr>
+                <tr><td>C$ 20</td><td><input id="pc-fnio-q-20" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-fnio-sub-20">0.00</span></td></tr>
+                <tr><td>C$ 50</td><td><input id="pc-fnio-q-50" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-fnio-sub-50">0.00</span></td></tr>
+                <tr><td>C$ 100</td><td><input id="pc-fnio-q-100" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-fnio-sub-100">0.00</span></td></tr>
+                <tr><td>C$ 200</td><td><input id="pc-fnio-q-200" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-fnio-sub-200">0.00</span></td></tr>
+                <tr><td>C$ 500</td><td><input id="pc-fnio-q-500" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-fnio-sub-500">0.00</span></td></tr>
+                <tr><td>C$ 1000</td><td><input id="pc-fnio-q-1000" type="number" min="0" step="1" value="0"></td><td>C$ <span id="pc-fnio-sub-1000">0.00</span></td></tr>
+              </tbody>
+              <tfoot>
+                <tr><td colspan="2">Total final C$</td><td>C$ <span id="pc-fnio-total">0.00</span></td></tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="petty-block">
+            <h4>Dólares (US$)</h4>
+            <table class="pc-table" id="pc-table-fusd">
+              <thead>
+                <tr><th>Denominación</th><th>Cantidad</th><th>Subtotal</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>US$ 1</td><td><input id="pc-fusd-q-1" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-fusd-sub-1">0.00</span></td></tr>
+                <tr><td>US$ 5</td><td><input id="pc-fusd-q-5" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-fusd-sub-5">0.00</span></td></tr>
+                <tr><td>US$ 10</td><td><input id="pc-fusd-q-10" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-fusd-sub-10">0.00</span></td></tr>
+                <tr><td>US$ 20</td><td><input id="pc-fusd-q-20" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-fusd-sub-20">0.00</span></td></tr>
+                <tr><td>US$ 50</td><td><input id="pc-fusd-q-50" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-fusd-sub-50">0.00</span></td></tr>
+                <tr><td>US$ 100</td><td><input id="pc-fusd-q-100" type="number" min="0" step="1" value="0"></td><td>US$ <span id="pc-fusd-sub-100">0.00</span></td></tr>
+              </tbody>
+              <tfoot>
+                <tr><td colspan="2">Total final US$</td><td>US$ <span id="pc-fusd-total">0.00</span></td></tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <button id="pc-btn-save-final" class="btn-ok">Guardar arqueo final</button>
+          <button id="pc-btn-clear-final" class="btn-warn">Limpiar</button>
+        </div>
+      </div>
+
+      <div class="card petty-cierre">
+        <h3>Cierre definitivo del día</h3>
+        <div class="row">
+          <div class="col">
+            <label><b>T/C:</b></label>
+            <input id="pc-fx-rate" type="number" inputmode="decimal" step="0.01" min="0" placeholder="T/C: (C$ por 1 US$)">
+            <small class="muted">C$ por 1 US$. Se requiere solo si hubo USD en Caja Chica hoy.</small>
+          </div>
+          <div class="col" style="min-width:160px">
+            <label>&nbsp;</label>
+            <button id="pc-btn-save-fx" class="btn-primary" type="button">Guardar T/C</button>
+          </div>
+        </div>
+
+        <div id="pc-close-status" class="info" style="margin-top:8px"></div>
+        <div id="pc-close-blocker" class="warn" style="display:none; margin-top:8px"></div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="petty-block">
+            <h4>Ajuste de arqueo C$</h4>
+            <div class="row" style="gap:8px">
+              <input id="pc-adj-nio-amount" type="number" inputmode="decimal" step="0.01" placeholder="Monto ajuste (obligatorio)">
+              <input id="pc-adj-nio-concept" type="text" placeholder="Concepto (obligatorio)">
+              <input id="pc-adj-nio-notes" type="text" placeholder="Notas (opcional)">
+            </div>
+            <div class="row" style="gap:8px">
+              <button id="pc-btn-adj-nio" class="btn-ok" type="button">Registrar ajuste C$</button>
+              <button id="pc-btn-clear-adj-nio" class="btn-link" type="button">Quitar ajuste</button>
+            </div>
+            <div id="pc-adj-nio-status" class="muted"></div>
+          </div>
+
+          <div class="petty-block">
+            <h4>Ajuste de arqueo US$</h4>
+            <div class="row" style="gap:8px">
+              <input id="pc-adj-usd-amount" type="number" inputmode="decimal" step="0.01" placeholder="Monto ajuste (obligatorio)">
+              <input id="pc-adj-usd-concept" type="text" placeholder="Concepto (obligatorio)">
+              <input id="pc-adj-usd-notes" type="text" placeholder="Notas (opcional)">
+            </div>
+            <div class="row" style="gap:8px">
+              <button id="pc-btn-adj-usd" class="btn-ok" type="button">Registrar ajuste US$</button>
+              <button id="pc-btn-clear-adj-usd" class="btn-link" type="button">Quitar ajuste</button>
+            </div>
+            <div id="pc-adj-usd-status" class="muted"></div>
+          </div>
+        </div>
+
+        <div id="pc-adj-records" class="pc-adj-records" style="display:none"></div>
+
+        <div class="row" style="margin-top:10px">
+          <button id="pc-btn-close-day" class="btn-ok" type="button">Cierre definitivo del día</button>
+          <button id="pc-btn-reopen-day" class="btn-warn" type="button" style="display:none">Reabrir día</button>
+        </div>
+        <small class="muted">Regla: si existe diferencia entre el efectivo contado y el esperado, debes registrar movimientos faltantes o un ajuste de arqueo antes de poder cerrar.</small>
+      </div>
+</div>
+  </section>
+
+<section id="tab-resumen" class="tab card" style="display:none">
     <h2>Resumen</h2>
     <div class="card">
       <strong>Total general: C$ <span id="grand-total">0</span></strong>
@@ -206,10 +630,70 @@
         </table>
       </div>
     </div>
+
+    <div class="row">
+      <div class="card">
+        <h3>Transferencias por banco</h3>
+        <table id="tbl-transfer-bank">
+          <thead><tr><th>Banco</th><th>Total</th><th>#</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
   <section id="tab-productos" class="tab card" style="display:none">
     <h2>Productos</h2>
+
+    <div class="card" id="extras-card">
+      <h3>✨ Extras por evento</h3>
+      <div class="info"><small>Para vender ítems ad-hoc (ej. <b>Charcutería</b>) sin crearlos en Inventario central. Estos extras son <b>solo del evento activo</b>.</small></div>
+
+      <div class="row">
+        <div>
+          <label>Evento activo</label>
+          <div id="extras-event-label" class="info-strong">—</div>
+        </div>
+        <div>
+          <label>Alerta stock bajo (default)</label>
+          <input id="extra-low-default" type="number" inputmode="numeric" step="1" min="0" value="5">
+        </div>
+      </div>
+
+      <div class="row3">
+        <div>
+          <label>Nombre</label>
+          <input id="extra-name" placeholder="Ej: Charcutería">
+        </div>
+        <div>
+          <label>Cantidad (stock)</label>
+          <input id="extra-stock" type="number" inputmode="numeric" step="1" min="0" placeholder="0">
+        </div>
+        <div>
+          <label>Precio venta (C$)</label>
+          <input id="extra-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Costo unitario (C$)</label>
+          <input id="extra-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
+        </div>
+        <div>
+          <label>Alerta stock bajo (este extra)</label>
+          <input id="extra-low" type="number" inputmode="numeric" step="1" min="0" placeholder="5">
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="btn-save-extra" class="btn-ok">+ Agregar extra</button>
+        <button id="btn-cancel-extra" class="btn-warn" style="display:none">Cancelar edición</button>
+      </div>
+
+      <div id="extras-list"></div>
+      <div class="warn" id="extras-disabled-note" style="display:none"></div>
+    </div>
     <div id="productos-list"></div>
     <div class="row">
       <input id="new-name" placeholder="Nombre">
@@ -220,6 +704,16 @@
       <button id="btn-restore-seed" class="btn-warn">Restaurar productos base (A33)</button>
     </div>
     <div class="info"><small>Si por cualquier razón solo ves “Vaso”, usa el botón <b>Restaurar productos base (A33)</b>. No borra ventas.</small></div>
+
+    <div class="card">
+      <h3>Bancos</h3>
+      <div id="banks-list"></div>
+      <div class="row">
+        <input id="bank-new-name" placeholder="Nombre del banco">
+        <button id="btn-add-bank" class="btn-ok">+ Agregar banco</button>
+      </div>
+      <div class="info"><small>Consejo: mejor <b>desactivar</b> bancos en lugar de borrarlos, para que el historial no quede huérfano.</small></div>
+    </div>
   </section>
 
   <section id="tab-ayuda" class="tab card" style="display:none">
@@ -263,26 +757,22 @@
   </div>
 </div>
 
-<div class="totalbar">
-  <div class="tot">Total ítem: C$ <span id="sticky-total">0.00</span></div>
-  <div class="grow"></div>
-  <button id="btn-add-sticky" class="btn-primary">Agregar venta</button>
-</div>
-
 <div id="toast" class="toast">Hecho</div>
 <footer></footer>
 <nav class="tabbar">
   <button data-tab="venta" class="active">Vender</button>
   <button data-tab="inventario">Inventario</button>
   <button data-tab="eventos">Eventos</button>
+  <button data-tab="caja">Caja Chica</button>
   <button data-tab="resumen">Resumen</button>
   <button data-tab="productos">Productos</button>
   <button data-tab="ayuda">Ayuda</button>
 </nav>
 
-<script src="app.js?v=3.18"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="app.js?v=3.20"></script>
 <script>
-  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js?v=3.18'); }
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js?v=3.20'); }
 </script>
 </body>
 </html>

@@ -433,6 +433,11 @@ function exportToCSV() {
     return;
   }
 
+  if (typeof XLSX === "undefined") {
+    alert("No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.");
+    return;
+  }
+
   const headers = [
     "Fecha creación",
     "Fecha entrega",
@@ -442,22 +447,22 @@ function exportToCSV() {
     "Teléfono",
     "Dirección",
     "Referencia",
-    "Pulso cant",
-    "Pulso precio",
-    "Pulso desc",
-    "Media cant",
-    "Media precio",
-    "Media desc",
-    "Djeba cant",
-    "Djeba precio",
-    "Djeba desc",
-    "Litro cant",
-    "Litro precio",
-    "Litro desc",
-    "Galón cant",
-    "Galón precio",
-    "Galón desc",
-    "Subtotal",
+    "Pulso - Cantidad",
+    "Pulso - Precio",
+    "Pulso - Descuento",
+    "Media - Cantidad",
+    "Media - Precio",
+    "Media - Descuento",
+    "Djeba - Cantidad",
+    "Djeba - Precio",
+    "Djeba - Descuento",
+    "Litro - Cantidad",
+    "Litro - Precio",
+    "Litro - Descuento",
+    "Galón - Cantidad",
+    "Galón - Precio",
+    "Galón - Descuento",
+    "Subtotal presentaciones",
     "Descuento total",
     "Envío",
     "Total a pagar",
@@ -468,6 +473,8 @@ function exportToCSV() {
     "Lotes relacionados",
     "Entregado",
   ];
+
+  const numOrEmpty = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : "");
 
   const rows = pedidos.map((p) => [
     formatDate(p.fechaCreacion),
@@ -493,50 +500,26 @@ function exportToCSV() {
     p.galonCant ?? 0,
     p.galonPrecio ?? 0,
     p.galonDesc ?? 0,
-    typeof p.subtotal === "number" ? p.subtotal.toFixed(2) : "",
-    typeof p.descuentoTotal === "number" ? p.descuentoTotal.toFixed(2) : "",
-    typeof p.envio === "number" ? p.envio.toFixed(2) : "",
-    typeof p.totalPagar === "number" ? p.totalPagar.toFixed(2) : "",
+    numOrEmpty(p.subtotalPresentaciones),
+    numOrEmpty(p.descuentoTotal),
+    numOrEmpty(p.envio),
+    numOrEmpty(p.totalPagar),
     p.metodoPago || "",
     p.estadoPago || "",
-    typeof p.montoPagado === "number" ? p.montoPagado.toFixed(2) : "",
-    typeof p.saldoPendiente === "number" ? p.saldoPendiente.toFixed(2) : "",
+    numOrEmpty(p.montoPagado),
+    numOrEmpty(p.saldoPendiente),
     (p.lotesRelacionados || "").replace(/\r?\n/g, " "),
     p.entregado ? "Sí" : "No",
   ]);
 
-  const all = [headers, ...rows]
-    .map((row) =>
-      row
-        .map((cell) => {
-          const text = String(cell ?? "");
-          if (text.includes(";") || text.includes('"') || text.includes(",")) {
-            return '"' + text.replace(/"/g, '""') + '"';
-          }
-          return text;
-        })
-        .join(";")
-    )
-    .join("\n");
+  const aoa = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Pedidos");
 
-  const blob = new Blob([all], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
   const timestamp = new Date().toISOString().slice(0, 10);
-  a.href = url;
-  a.download = `arcano33_pedidos_${timestamp}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function registerServiceWorker() {
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker
-      .register("./sw.js")
-      .catch((err) => console.error("SW error", err));
-  }
+  const filename = `arcano33_pedidos_${timestamp}.xlsx`;
+  XLSX.writeFile(wb, filename);
 }
 
 document.addEventListener("DOMContentLoaded", () => {

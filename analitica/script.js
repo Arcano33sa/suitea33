@@ -3,7 +3,10 @@
 
 (function(){
   const DB_NAME = 'a33-pos';
-  const DB_VER = 19;
+  // IMPORTANTE:
+  // Analítica solo lee el DB del POS. Para evitar errores cuando el POS sube la versión
+  // (por ejemplo al agregar stores nuevos como 'banks'), abrimos el DB SIN especificar versión.
+  // Si especificamos una versión menor a la existente, IndexedDB lanza VersionError.
   const RECETAS_KEY = 'arcano33_recetas_v1';
 
   let db = null;
@@ -30,6 +33,11 @@
   let lastEventStats = null;
   let lastResumenStats = null;
   let lastAgotamiento = null;
+
+  // Canvas charts (custom): keep last data to allow safe re-render on tab switch / resize.
+  const CHART_CACHE = new Map(); // canvasId -> { labels, values, opts }
+  const HOVER_CACHE = new Map(); // canvasId -> [{x,y,w,h,label,value}]
+
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -67,7 +75,8 @@
       if (!('indexedDB' in window)) {
         return reject(new Error('IndexedDB no disponible'));
       }
-      const req = indexedDB.open(DB_NAME, DB_VER);
+      // Abrir sin versión = usa la versión actual existente (y evita VersionError si el POS ya migró).
+      const req = indexedDB.open(DB_NAME);
       req.onerror = () => reject(req.error || new Error('No se pudo abrir la base de datos'));
       req.onsuccess = () => {
         db = req.result;
@@ -97,7 +106,6 @@
   }
 
   // --- UI helpers ---
-
   function setupTabs(){
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
@@ -108,9 +116,34 @@
         contents.forEach(sec => {
           sec.classList.toggle('active', sec.id === 'tab-' + target);
         });
+        // Redraw charts when a tab becomes visible (canvas needs real size)
+        requestAnimationFrame(redrawVisibleCharts);
       });
     });
   }
+
+
+  function redrawVisibleCharts(){
+    // Only redraw charts that are currently visible (avoid 0px canvas sizing).
+    const activeTab = document.querySelector('.tab-content.active');
+    const scope = activeTab || document;
+    const canvases = scope.querySelectorAll('canvas[id]');
+    canvases.forEach(c => {
+      const id = c.id;
+      const cached = CHART_CACHE.get(id);
+      if (cached) {
+        // redraw with cached data
+        drawBarChart(id, cached.labels, cached.values, cached.opts, true);
+      }
+    });
+  }
+
+  // Debounced resize redraw (presentation only)
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => requestAnimationFrame(redrawVisibleCharts), 120);
+  });
 
   function setupPeriodFilter(){
     const periodSelect = document.getElementById('period-select');
@@ -1521,7 +1554,21 @@ function rebuildHorasEventOptions(filteredSales){
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 0);
+  
+
+  function downloadExcel(filename, sheetName, rows){
+    if (!rows || !rows.length) return;
+    if (typeof XLSX === 'undefined'){
+      alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+      return;
+    }
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Hoja1');
+    XLSX.writeFile(wb, filename);
   }
+
+}
 
   function exportResumenCsv(){
     const filtered = lastFilteredSales || [];
@@ -1578,7 +1625,7 @@ function rebuildHorasEventOptions(filteredSales){
       ]);
     }
 
-    downloadCsv('analitica_resumen.csv', rows);
+    downloadExcel('analitica_resumen.xlsx', 'Resumen', rows);
   }
 
   function exportEventosCsv(){
@@ -1611,7 +1658,7 @@ function rebuildHorasEventOptions(filteredSales){
       ]);
     }
 
-    downloadCsv('analitica_eventos.csv', rows);
+    downloadExcel('analitica_eventos.xlsx', 'Eventos', rows);
   }
 
   function exportPresentacionesCsv(){
@@ -1639,116 +1686,335 @@ function rebuildHorasEventOptions(filteredSales){
       ]);
     }
 
-    downloadCsv('analitica_presentaciones.csv', rows);
+    downloadExcel('analitica_presentaciones.xlsx', 'Presentaciones', rows);
   }
 
   // --- Gráficas simples en canvas ---
 
-  function drawBarChart(canvasId, labels, values, opts){
+
+  // --- Gráficas en canvas (mejoradas: ejes + grid + tooltip + sizing estable) ---
+
+  function getCssVar(name, fallback){
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name);
+    return (v && v.trim()) ? v.trim() : fallback;
+  }
+
+  function formatAxisNumber(n){
+    const abs = Math.abs(n);
+    if (abs >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (abs >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+    if (abs >= 100) return Math.round(n).toString();
+    return (Math.round(n * 10) / 10).toString();
+  }
+
+  function niceStep(range, tickCount){
+    const raw = range / Math.max(1, tickCount);
+    const exp = Math.floor(Math.log10(Math.max(1e-9, raw)));
+    const f = raw / Math.pow(10, exp);
+    let nf = 1;
+    if (f <= 1) nf = 1;
+    else if (f <= 2) nf = 2;
+    else if (f <= 5) nf = 5;
+    else nf = 10;
+    return nf * Math.pow(10, exp);
+  }
+
+  function roundedRectPath(ctx, x, y, w, h, r){
+    const rr = Math.min(r, Math.abs(w)/2, Math.abs(h)/2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr);
+    ctx.quadraticCurveTo(x, y, x + rr, y);
+    ctx.closePath();
+  }
+
+  function ensureTooltip(canvas){
+    if (canvas.dataset.tooltipInit === '1') return;
+    canvas.dataset.tooltipInit = '1';
+
+    const wrap = canvas.closest('.chart-wrap') || canvas.parentElement;
+    if (!wrap) return;
+    wrap.style.position = wrap.style.position || 'relative';
+
+    let tip = wrap.querySelector('.chart-tooltip');
+    if (!tip){
+      tip = document.createElement('div');
+      tip.className = 'chart-tooltip';
+      tip.style.display = 'none';
+      wrap.appendChild(tip);
+    }
+
+    function hide(){ tip.style.display = 'none'; }
+
+    canvas.addEventListener('mouseleave', hide);
+
+    canvas.addEventListener('mousemove', (ev) => {
+      const bars = HOVER_CACHE.get(canvas.id);
+      if (!bars || !bars.length) return hide();
+
+      const rect = canvas.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const y = ev.clientY - rect.top;
+
+      let hit = null;
+      for (const b of bars){
+        if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h){
+          hit = b; break;
+        }
+      }
+      if (!hit) return hide();
+
+      const valueStr = typeof hit.value === 'number'
+        ? (Number.isInteger(hit.value) ? hit.value.toLocaleString('es-NI') : hit.value.toLocaleString('es-NI', { maximumFractionDigits: 2 }))
+        : String(hit.value);
+
+      tip.innerHTML = `<div class="tt-label">${escapeHtml(hit.label || '')}</div><div class="tt-value">${escapeHtml(valueStr)}</div>`;
+      tip.style.display = 'block';
+
+      const wrapRect = wrap.getBoundingClientRect();
+      const localX = ev.clientX - wrapRect.left;
+      const localY = ev.clientY - wrapRect.top;
+
+      const pad = 10;
+      const tipRect = tip.getBoundingClientRect();
+      let left = localX + 12;
+      let top = localY + 12;
+
+      if (left + tipRect.width + pad > wrapRect.width) left = localX - tipRect.width - 12;
+      if (top + tipRect.height + pad > wrapRect.height) top = localY - tipRect.height - 12;
+
+      tip.style.left = Math.max(pad, left) + 'px';
+      tip.style.top = Math.max(pad, top) + 'px';
+    });
+  }
+
+  function drawBarChart(canvasId, labels, values, opts, fromCache){
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const useHorizontal = !!(opts && opts.horizontal);
     const maxBars = opts && opts.maxBars ? opts.maxBars : null;
-    let dataLabels = labels.slice();
-    let dataValues = values.slice();
+
+    let dataLabels = Array.isArray(labels) ? labels.slice() : [];
+    let dataValues = Array.isArray(values) ? values.slice() : [];
 
     if (maxBars && dataValues.length > maxBars){
       dataLabels = dataLabels.slice(-maxBars);
       dataValues = dataValues.slice(-maxBars);
     }
 
-    const width = canvas.clientWidth || 400;
-    const height = canvas.clientHeight || 220;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!fromCache){
+      CHART_CACHE.set(canvasId, { labels: dataLabels.slice(), values: dataValues.slice(), opts: Object.assign({}, opts || {}) });
+    }
 
+    ensureTooltip(canvas);
+
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width || canvas.clientWidth || 520));
+    const height = Math.max(1, Math.floor(rect.height || canvas.clientHeight || 320));
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const hasData = dataValues.some(v => Math.abs(v) > 0.0001);
+    const hasData = dataValues.some(v => typeof v === 'number' && Math.abs(v) > 0.0001);
     if (!hasData){
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.font = '12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      HOVER_CACHE.set(canvasId, []);
+      ctx.fillStyle = 'rgba(254,254,254,0.72)';
+      ctx.font = '600 12px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Sin datos en este periodo', width/2, height/2);
+      ctx.fillText('Sin datos para graficar en este rango', width/2, height/2);
       return;
     }
 
-    const margin = { top: 18, right: 10, bottom: 40, left: 50 };
-    const chartW = width - margin.left - margin.right;
-    const chartH = height - margin.top - margin.bottom;
+    const gold = getCssVar('--color-accent-soft', '#ddbf64');
+    const text = getCssVar('--color-text', 'rgba(254,254,254,0.92)');
+    const muted = getCssVar('--color-text-muted', 'rgba(254,254,254,0.68)');
+    const grid = 'rgba(254,254,254,0.09)';
 
     const maxVal = Math.max(...dataValues, 0);
     const minVal = Math.min(...dataValues, 0);
-    const useHorizontal = opts && opts.horizontal;
+
+    const tickCount = 5;
+    const low = Math.min(0, minVal);
+    const high = Math.max(0, maxVal);
+    const range = Math.max(1e-9, high - low);
+    const step = niceStep(range, tickCount);
+    const niceLow = Math.floor(low / step) * step;
+    const niceHigh = Math.ceil(high / step) * step;
+
+    let margin = { top: 14, right: 14, bottom: 38, left: 56 };
+    if (useHorizontal){
+      const longest = dataLabels.reduce((m, s) => Math.max(m, String(s||'').length), 0);
+      margin.left = Math.min(190, Math.max(90, 8 * longest));
+      margin.bottom = 30;
+    }
+
+    const chartW = Math.max(10, width - margin.left - margin.right);
+    const chartH = Math.max(10, height - margin.top - margin.bottom);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.015)';
+    roundedRectPath(ctx, margin.left, margin.top, chartW, chartH, 14);
+    ctx.fill();
+
+    ctx.font = '11px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+    ctx.fillStyle = muted;
+    ctx.strokeStyle = grid;
+    ctx.lineWidth = 1;
 
     if (!useHorizontal){
-      const base = minVal < 0 ? minVal : 0;
-      const scale = chartH / (maxVal - base || 1);
-      const zeroY = margin.top + chartH - (0 - base) * scale;
-      const n = dataValues.length;
-      const barSpace = chartW / (n || 1);
-      const barWidth = Math.max(12, barSpace * 0.6);
+      for (let i = 0; i <= tickCount; i++){
+        const v = niceLow + (i * (niceHigh - niceLow) / tickCount);
+        const y = margin.top + chartH - ((v - niceLow) / (niceHigh - niceLow || 1)) * chartH;
+        ctx.beginPath();
+        ctx.moveTo(margin.left, y);
+        ctx.lineTo(margin.left + chartW, y);
+        ctx.stroke();
 
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(formatAxisNumber(v), margin.left - 10, y);
+      }
+    } else {
+      for (let i = 0; i <= tickCount; i++){
+        const v = niceLow + (i * (niceHigh - niceLow) / tickCount);
+        const x = margin.left + ((v - niceLow) / (niceHigh - niceLow || 1)) * chartW;
+        ctx.beginPath();
+        ctx.moveTo(x, margin.top);
+        ctx.lineTo(x, margin.top + chartH);
+        ctx.stroke();
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(formatAxisNumber(v), x, margin.top + chartH + 10);
+      }
+    }
+
+    ctx.strokeStyle = 'rgba(221,191,100,0.22)';
+    ctx.lineWidth = 1.2;
+
+    const bars = [];
+    if (!useHorizontal){
+      const n = dataValues.length || 1;
+      const barSpace = chartW / n;
+      const barW = Math.max(10, barSpace * 0.62);
+      const zeroY = margin.top + chartH - ((0 - niceLow) / (niceHigh - niceLow || 1)) * chartH;
+
       ctx.beginPath();
       ctx.moveTo(margin.left, zeroY);
-      ctx.lineTo(width - margin.right, zeroY);
+      ctx.lineTo(margin.left + chartW, zeroY);
       ctx.stroke();
 
-      ctx.font = '10px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-      ctx.textAlign = 'center';
+      const maxLabels = Math.floor(chartW / 70);
+      const stepLbl = Math.max(1, Math.ceil(n / Math.max(1, maxLabels)));
 
       dataValues.forEach((val, i) => {
-        const barHeight = (val - base) * scale;
-        const x = margin.left + barSpace * i + (barSpace - barWidth)/2;
-        const y = zeroY - barHeight;
+        const norm = (val - niceLow) / (niceHigh - niceLow || 1);
+        const yVal = margin.top + chartH - norm * chartH;
+        const x = margin.left + barSpace * i + (barSpace - barW)/2;
 
-        ctx.fillStyle = 'rgba(221,191,100,0.9)';
-        if (val < 0){
-          ctx.fillStyle = 'rgba(123,24,24,0.9)';
+        const y = Math.min(yVal, zeroY);
+        const h = Math.abs(zeroY - yVal);
+
+        const isNeg = val < 0;
+        const grad = ctx.createLinearGradient(0, y, 0, y + h);
+        if (isNeg){
+          grad.addColorStop(0, 'rgba(123,24,24,0.40)');
+          grad.addColorStop(1, 'rgba(123,24,24,0.18)');
+        } else {
+          grad.addColorStop(0, 'rgba(221,191,100,0.34)');
+          grad.addColorStop(1, 'rgba(221,191,100,0.14)');
         }
-        ctx.fillRect(x, Math.min(y, zeroY), barWidth, Math.abs(barHeight));
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = isNeg ? 'rgba(123,24,24,0.85)' : 'rgba(221,191,100,0.85)';
+        ctx.lineWidth = 1.2;
 
-        const lbl = dataLabels[i];
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        const labelY = height - 10;
-        ctx.save();
-        ctx.translate(x + barWidth/2, labelY);
-        ctx.rotate(-Math.PI / 6);
-        ctx.fillText(lbl, 0, 0);
-        ctx.restore();
+        roundedRectPath(ctx, x, y, barW, Math.max(1, h), 10);
+        ctx.fill();
+        ctx.stroke();
+
+        bars.push({ x, y, w: barW, h: Math.max(1, h), label: String(dataLabels[i] ?? ''), value: val });
+
+        if (i % stepLbl === 0){
+          const lbl = String(dataLabels[i] ?? '');
+          ctx.fillStyle = muted;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          const maxLen = 12;
+          const shown = lbl.length > maxLen ? (lbl.slice(0, maxLen - 1) + '…') : lbl;
+          ctx.fillText(shown, x + barW/2, margin.top + chartH + 8);
+        }
       });
-    } else {
-      const base = minVal < 0 ? minVal : 0;
-      const scale = chartW / (maxVal - base || 1);
-      const n = dataValues.length;
-      const barSpace = chartH / (n || 1);
-      const barHeight = Math.max(10, barSpace * 0.6);
 
-      ctx.font = '10px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    } else {
+      const n = dataValues.length || 1;
+      const barSpace = chartH / n;
+      const barH = Math.max(10, barSpace * 0.62);
+
+      const zeroX = margin.left + ((0 - niceLow) / (niceHigh - niceLow || 1)) * chartW;
+
+      ctx.beginPath();
+      ctx.moveTo(zeroX, margin.top);
+      ctx.lineTo(zeroX, margin.top + chartH);
+      ctx.stroke();
+
+      ctx.fillStyle = muted;
       ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
 
       dataValues.forEach((val, i) => {
-        const barW = (val - base) * scale;
-        const y = margin.top + barSpace * i + (barSpace - barHeight)/2;
-        const x = margin.left;
+        const norm = (val - niceLow) / (niceHigh - niceLow || 1);
+        const xVal = margin.left + norm * chartW;
+        const y = margin.top + barSpace * i + (barSpace - barH)/2;
 
-        ctx.fillStyle = 'rgba(221,191,100,0.9)';
-        if (val < 0){
-          ctx.fillStyle = 'rgba(123,24,24,0.9)';
+        const x = Math.min(xVal, zeroX);
+        const w = Math.abs(zeroX - xVal);
+
+        const isNeg = val < 0;
+        const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+        if (isNeg){
+          grad.addColorStop(0, 'rgba(123,24,24,0.40)');
+          grad.addColorStop(1, 'rgba(123,24,24,0.18)');
+        } else {
+          grad.addColorStop(0, 'rgba(221,191,100,0.34)');
+          grad.addColorStop(1, 'rgba(221,191,100,0.14)');
         }
-        ctx.fillRect(x, y, Math.abs(barW), barHeight);
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = isNeg ? 'rgba(123,24,24,0.85)' : 'rgba(221,191,100,0.85)';
+        ctx.lineWidth = 1.2;
 
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.textAlign = 'right';
-        ctx.fillText(dataLabels[i], x - 4, y + barHeight*0.7);
+        roundedRectPath(ctx, x, y, Math.max(1, w), barH, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        const lbl = String(dataLabels[i] ?? '');
+        const maxLen = Math.floor((margin.left - 16) / 7);
+        const shown = lbl.length > maxLen ? (lbl.slice(0, Math.max(6, maxLen - 1)) + '…') : lbl;
+        ctx.fillStyle = muted;
+        ctx.fillText(shown, margin.left - 10, y + barH/2);
+
+        bars.push({ x, y, w: Math.max(1, w), h: barH, label: lbl, value: val });
       });
     }
+
+    HOVER_CACHE.set(canvasId, bars);
+
+    ctx.fillStyle = text;
+    ctx.font = '600 11px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
   }
+
 
   function escapeHtml(str){
     if (str == null) return '';

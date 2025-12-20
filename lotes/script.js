@@ -47,6 +47,32 @@ function calculateCaducidad(fechaStr) {
   return cad.toISOString().slice(0, 10);
 }
 
+// Helpers para ordenar (más reciente arriba)
+function toTimestamp(value) {
+  if (!value) return NaN;
+  const d = new Date(value);
+  const t = d.getTime();
+  return Number.isFinite(t) ? t : NaN;
+}
+
+function getCreatedTimestamp(lote) {
+  // Preferir createdAt si existe
+  const tCreated = toTimestamp(lote?.createdAt);
+  if (Number.isFinite(tCreated)) return tCreated;
+
+  // Fallback: id con timestamp (lote_1734567890123)
+  if (typeof lote?.id === "string" && lote.id.startsWith("lote_")) {
+    const n = Number(lote.id.slice(5));
+    if (Number.isFinite(n)) return n;
+  }
+
+  // Fallback final: fecha de elaboración
+  const tFecha = toTimestamp(lote?.fecha);
+  if (Number.isFinite(tFecha)) return tFecha;
+
+  return 0;
+}
+
 
 function showLoteDetails(lote) {
   const lines = [];
@@ -121,8 +147,14 @@ function readFormData() {
     galon: $("galon").value || "0",
 
     notas: $("notas").value.trim(),
-    createdAt: editingId ? undefined : new Date().toISOString(),
   };
+
+  // Mantener createdAt estable (no borrarlo al editar). Agregamos updatedAt opcional.
+  if (!editingId) {
+    data.createdAt = new Date().toISOString();
+  } else {
+    data.updatedAt = new Date().toISOString();
+  }
 
   return data;
 }
@@ -168,12 +200,18 @@ function renderTable() {
     return;
   }
 
-  // Ordenar por fecha descendente y luego por código
+  // Ordenar por el registro más reciente arriba.
+  // Preferimos createdAt (o el timestamp incrustado en id) y caemos a fecha.
   const sorted = [...lotes].sort((a, b) => {
-    if (a.fecha === b.fecha) {
-      return (a.codigo || "").localeCompare(b.codigo || "");
-    }
-    return (b.fecha || "").localeCompare(a.fecha || "");
+    const ta = getCreatedTimestamp(a);
+    const tb = getCreatedTimestamp(b);
+    if (ta !== tb) return tb - ta;
+
+    // Tie-breakers: fecha desc, luego código asc
+    const fa = toTimestamp(a?.fecha);
+    const fb = toTimestamp(b?.fecha);
+    if (Number.isFinite(fa) && Number.isFinite(fb) && fa !== fb) return fb - fa;
+    return (a.codigo || "").localeCompare(b.codigo || "");
   });
 
   for (const lote of sorted) {
@@ -254,6 +292,11 @@ function exportToCSV() {
     return;
   }
 
+  if (typeof XLSX === "undefined") {
+    alert("No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.");
+    return;
+  }
+
   const headers = [
     "Fecha",
     "Código",
@@ -272,7 +315,18 @@ function exportToCSV() {
     "Notas",
   ];
 
-  const rows = lotes.map((l) => [
+  const sorted = [...lotes].sort((a, b) => {
+    const ta = getCreatedTimestamp(a);
+    const tb = getCreatedTimestamp(b);
+    if (ta !== tb) return tb - ta;
+
+    const fa = toTimestamp(a?.fecha);
+    const fb = toTimestamp(b?.fecha);
+    if (Number.isFinite(fa) && Number.isFinite(fb) && fa !== fb) return fb - fa;
+    return (a.codigo || "").localeCompare(b.codigo || "");
+  });
+
+  const rows = sorted.map((l) => [
     formatDate(l.fecha),
     l.codigo || "",
     l.volTotal || "",
@@ -290,30 +344,14 @@ function exportToCSV() {
     (l.notas || "").replace(/\r?\n/g, " "),
   ]);
 
-  const all = [headers, ...rows]
-    .map((row) =>
-      row
-        .map((cell) => {
-          const text = String(cell ?? "");
-          if (text.includes(";") || text.includes('"') || text.includes(",")) {
-            return '"' + text.replace(/"/g, '""') + '"';
-          }
-          return text;
-        })
-        .join(";")
-    )
-    .join("\n");
+  const aoa = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Lotes");
 
-  const blob = new Blob([all], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
   const timestamp = new Date().toISOString().slice(0, 10);
-  a.href = url;
-  a.download = `arcano33_lotes_${timestamp}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const filename = `arcano33_lotes_${timestamp}.xlsx`;
+  XLSX.writeFile(wb, filename);
 }
 
 function registerServiceWorker() {

@@ -249,7 +249,209 @@
       header img{width:52px;height:52px;}
       .grid{grid-template-columns:1fr;}
     }
-  </style>
+  
+    .menu-section{
+      margin-top:1.25rem;
+    }
+    .menu-title{
+      font-size:0.85rem;
+      letter-spacing:0.12em;
+      text-transform:uppercase;
+      color:var(--muted);
+      margin:0 0 0.4rem;
+    }
+
+    /* --- Respaldo (Backup) --- */
+    .modal-overlay{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.72);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:1.25rem;
+      z-index:50;
+      backdrop-filter:blur(6px);
+    }
+    .modal-card{
+      width:100%;
+      max-width:720px;
+      background:linear-gradient(145deg,#101010,#1c1414);
+      border-radius:20px;
+      padding:1.2rem 1.1rem 1.05rem;
+      border:1px solid rgba(221,191,100,0.45);
+      box-shadow:0 18px 40px rgba(0,0,0,0.9);
+    }
+    .modal-title{
+      font-size:1.05rem;
+      margin-bottom:0.35rem;
+    }
+    .modal-body{
+      font-size:0.85rem;
+      color:var(--text);
+      line-height:1.35;
+      max-height:60vh;
+      overflow:auto;
+      padding-right:0.2rem;
+    }
+    .modal-body .muted{ color:var(--muted); }
+    .modal-body hr{ border:none;border-top:1px solid rgba(255,255,255,0.12); margin:0.7rem 0; }
+    .modal-body ul{ margin:0.35rem 0 0.6rem 1.15rem; }
+    .modal-body li{ margin:0.15rem 0; }
+    .modal-actions{
+      display:flex;
+      gap:0.5rem;
+      margin-top:0.8rem;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+    }
+    .badge-warn{
+      display:inline-flex;
+      align-items:center;
+      gap:0.35rem;
+      padding:0.18rem 0.55rem;
+      border-radius:999px;
+      border:1px solid rgba(176,0,32,0.75);
+      color:#ff8a80;
+      background:rgba(0,0,0,0.35);
+      font-size:0.75rem;
+      margin-top:0.35rem;
+    }
+    .kv{
+      display:grid;
+      grid-template-columns:150px 1fr;
+      gap:0.25rem 0.75rem;
+      margin-top:0.4rem;
+    }
+    .kv div{ padding:0.15rem 0; }
+    .kv .k{ color:var(--accent); font-size:0.78rem; letter-spacing:0.02em; }
+    .kv .v{ color:var(--text); font-size:0.85rem; word-break:break-word; }
+    .small-note{ font-size:0.75rem; color:var(--muted); margin-top:0.4rem; }
+    details summary{
+      cursor:pointer;
+      color:var(--accent);
+      margin-top:0.35rem;
+    }
+
+
+    /* --- Manuales (Guía) --- */
+    .toolbar{
+      display:flex;
+      gap:0.5rem;
+      align-items:center;
+      justify-content:flex-start;
+      flex-wrap:wrap;
+      margin:0.35rem 0 0.85rem;
+    }
+    .card.disabled{
+      opacity:0.55;
+      cursor:not-allowed;
+    }
+    .card.disabled:hover{
+      transform:none;
+      box-shadow:none;
+      border-color:rgba(178,141,56,0.45);
+    }
+    .manual-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:0.35rem;
+      padding:0.18rem 0.55rem;
+      border-radius:999px;
+      font-size:0.72rem;
+      background:rgba(0,0,0,0.6);
+      border:1px solid rgba(255,255,255,0.16);
+      color:var(--muted);
+      margin-top:0.4rem;
+    }
+
+    .manual-actions{
+      display:flex;
+      gap:0.35rem;
+      align-items:center;
+    }
+    a.link-btn{
+      text-decoration:none;
+    }
+    a.link-btn:visited{
+      color:inherit;
+    }
+    .disabled-link{
+      opacity:0.6;
+      cursor:not-allowed;
+    }
+
+
+
+    /* --- Visor interno de PDFs (evita quedar atrapado en iPad/PWA) --- */
+    body.pdf-open{ overflow:hidden; }
+    .pdf-overlay{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.78);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:0.85rem;
+      z-index:60;
+      backdrop-filter:blur(6px);
+    }
+    .pdf-card{
+      width:100%;
+      max-width:980px;
+      height:min(86vh,900px);
+      background:linear-gradient(145deg,#0f0f0f,#1a1414);
+      border-radius:20px;
+      border:1px solid rgba(221,191,100,0.45);
+      box-shadow:0 18px 40px rgba(0,0,0,0.92);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+    .pdf-topbar{
+      display:flex;
+      align-items:flex-start;
+      gap:0.6rem;
+      padding:0.75rem 0.75rem 0.6rem;
+      border-bottom:1px solid rgba(255,255,255,0.10);
+      background:rgba(0,0,0,0.35);
+    }
+    .pdf-topbar-mid{ flex:1; min-width:0; }
+    .pdf-title{
+      font-size:0.95rem;
+      letter-spacing:0.02em;
+      margin-top:0.1rem;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .pdf-ios-hint{
+      margin-top:0.35rem;
+      font-size:0.75rem;
+      color:var(--muted);
+      line-height:1.25;
+    }
+    .pdf-topbar-actions{
+      display:flex;
+      gap:0.45rem;
+      align-items:center;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .pdf-body{ flex:1; background:#0b0b0b; }
+    #pdf-frame{
+      width:100%;
+      height:100%;
+      border:0;
+      background:#0b0b0b;
+    }
+    @media (max-width:600px){
+      .pdf-card{ height:92vh; }
+      .pdf-topbar{ flex-direction:column; align-items:stretch; }
+      .pdf-topbar-actions{ justify-content:flex-start; }
+    }
+
+</style>
 </head>
 <body>
   <div class="lock-overlay" id="lock-overlay">
@@ -302,11 +504,14 @@
     </header>
 
     <main>
+      <div id="home-view">
       <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.35rem;">
         Selecciona un módulo para trabajar. Puedes fijar esta Suite en la pantalla de inicio de tu teléfono para acceder más rápido.
       </p>
 
-      <div class="grid">
+      <section class="menu-section">
+        <h2 class="menu-title">Suite A33</h2>
+        <div class="grid">
         <article class="card" data-link="calculadora/index.html">
           <div class="pill"><span>🧪</span><span>Producción</span></div>
           <h2>Calculadora de Producción</h2>
@@ -365,8 +570,145 @@
         </article>
 
       </div>
-    </main>
+      </section>
+
+      <section class="menu-section">
+        <h2 class="menu-title">Finanzas</h2>
+        <div class="grid">
+          <article class="card" data-link="finanzas/index.html#tab=tablero">
+            <div class="pill"><span>💰</span><span>Finanzas</span></div>
+            <h2>Tablero Finanzas</h2>
+            <p>Resumen mensual de ingresos, egresos, resultado y saldos de Caja y Banco.</p>
+            <div class="footer-row">
+              <span>Visión rápida del mes.</span>
+              <button class="link-btn"><span>Ir</span> →</button>
+            </div>
+          </article>
+
+          <article class="card" data-link="finanzas/index.html#tab=diario">
+            <div class="pill"><span>📓</span><span>Diario</span></div>
+            <h2>Diario y Ajustes</h2>
+            <p>Registra ingresos, egresos y ajustes manuales con doble partida.</p>
+            <div class="footer-row">
+              <span>Mini contabilidad manual.</span>
+              <button class="link-btn"><span>Ir</span> →</button>
+            </div>
+          </article>
+
+          <article class="card" data-link="finanzas/index.html#tab=estados">
+            <div class="pill"><span>📑</span><span>Estados</span></div>
+            <h2>Estados Financieros</h2>
+            <p>Estado de Resultados y Balance General globales de Arcano 33.</p>
+            <div class="footer-row">
+              <span>Solo lectura desde Finanzas.</span>
+              <button class="link-btn"><span>Ir</span> →</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="menu-section">
+        <h2 class="menu-title">RESPALDO Y GUÍA</h2>
+        <div class="grid">
+          <article class="card" id="card-export-backup">
+            <div class="pill"><span>💾</span><span>Backup</span></div>
+            <h2>Exportar Respaldo</h2>
+            <p>Descarga un archivo JSON con todos los datos (IndexedDB + localStorage) para moverlo a otro dispositivo.</p>
+            <div class="footer-row">
+              <span>Manual (no sync).</span>
+              <button class="link-btn secondary"><span>Exportar</span> →</button>
+            </div>
+          </article>
+
+          <article class="card" id="card-import-backup">
+            <div class="pill"><span>📥</span><span>Backup</span></div>
+            <h2>Importar Respaldo</h2>
+            <p>Carga un respaldo previo y reemplaza todos los datos actuales de este navegador.</p>
+            <div class="footer-row">
+              <span>Reemplaza todo.</span>
+              <button class="link-btn secondary"><span>Importar</span> →</button>
+            </div>
+          </article>
+        
+          <article class="card" id="card-user-manual">
+            <div class="pill"><span>📘</span><span>Guía</span></div>
+            <h2>Manual de Usuario</h2>
+            <p>Accede a los manuales oficiales por módulo y al manual compilado de la Suite A33 v3.20.1.</p>
+            <div class="footer-row">
+              <span>PDFs oficiales.</span>
+              <button class="link-btn secondary"><span>Ver</span> →</button>
+            </div>
+          </article>
+
+</div>
+      </section>
+
+      </div>
+
+      <!-- Vista: Manuales (se abre desde RESPALDO Y GUÍA → Manual de Usuario) -->
+      <div id="manuals-view" style="display:none;">
+        <div class="toolbar">
+          <button class="btn btn-ghost" id="btn-manuals-back-home">← Menú principal</button>
+        </div>
+
+        <section class="menu-section" style="margin-top:0;">
+          <h2 class="menu-title">Manuales · Suite A33</h2>
+          <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.6rem;">
+            Descarga o abre los PDFs oficiales (compilado + módulos). Si un PDF no está en <b>manuales/</b>, aparecerá como no disponible.
+          </p>
+
+          <div class="grid" id="manuals-grid">
+            <!-- Se llena por JS para aplicar disponibilidad -->
+          </div>
+
+          <p class="small-note" style="margin-top:0.6rem;">
+            Tip: los PDFs deben estar en la carpeta <b>manuales/</b> (raíz de la Suite) con los nombres definidos en el mapeo.
+          </p>
+        </section>
+      </div>
+
+    </main
   </div>
+
+
+  <div class="modal-overlay" id="backup-modal" style="display:none;">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
+      <h2 class="modal-title" id="backup-modal-title">Respaldo</h2>
+      <div class="modal-body" id="backup-modal-body"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="backup-modal-cancel">Cancelar</button>
+        <button class="btn btn-ghost" id="backup-modal-secondary" style="display:none;">Secundario</button>
+        <button class="btn btn-primary" id="backup-modal-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  
+
+  <!-- Visor interno de PDF (para volver sin quedar atrapado en iPad) -->
+  <div class="pdf-overlay" id="pdf-viewer" style="display:none;">
+    <div class="pdf-card" role="dialog" aria-modal="true" aria-labelledby="pdf-title">
+      <div class="pdf-topbar">
+        <button class="btn btn-ghost" id="pdf-close">✕ Cerrar</button>
+        <div class="pdf-topbar-mid">
+          <div class="pdf-title" id="pdf-title">Manual</div>
+          <div class="pdf-ios-hint" id="pdf-ios-hint" style="display:none;">
+            En iPad (modo app), si el PDF no carga aquí, usa <b>Abrir afuera</b> para verlo en Safari y luego regresa a la Suite.
+          </div>
+        </div>
+        <div class="pdf-topbar-actions">
+          <a class="btn btn-ghost" id="pdf-open-external" href="#" target="_blank" rel="noopener">Abrir afuera</a>
+          <button class="btn btn-primary" id="pdf-download-btn">Descargar</button>
+        </div>
+      </div>
+      <div class="pdf-body">
+        <iframe id="pdf-frame" title="PDF" src="about:blank"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <input id="backup-file-input" type="file" accept="application/json" style="display:none;">
+
 
   <script>
     const PIN_KEY = 'suite_a33_pin';
@@ -383,8 +725,1060 @@
       shell.style.display = 'block';
     }
 
+    // --- Respaldo manual (Exportar / Importar) ---
+    const BACKUP_APP_NAME = 'Suite A33';
+    const SUITE_LS_PREFIXES = ['arcano33_', 'a33_', 'suite_a33_']; 
+
+    function isSuiteLocalStorageKey(key){
+      if (!key) return false;
+      return SUITE_LS_PREFIXES.some(p => key.startsWith(p));
+    }
+
+    function isSuiteDbName(name){
+      if (!name) return false;
+      if (name === 'finanzasDB') return true;
+      const n = String(name).toLowerCase();
+      return n.includes('a33') || n.includes('arcano') || n.includes('finanzas');
+    }
+
+    function escapeHtml(str){
+      return String(str ?? '')
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
+    }
+
+    function formatBytes(bytes){
+      const b = Number(bytes || 0);
+      if (!Number.isFinite(b) || b <= 0) return '0 B';
+      const units = ['B','KB','MB','GB'];
+      let v = b;
+      let i = 0;
+      while (v >= 1024 && i < units.length - 1){
+        v = v / 1024;
+        i++;
+      }
+      return `${v.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
+    }
+
+    function reqToPromise(req){
+      return new Promise((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error('IndexedDB request error'));
+      });
+    }
+
+    function txDone(tx){
+      return new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve(true);
+        tx.onabort = () => reject(tx.error || new Error('Transacción abortada'));
+        tx.onerror = () => reject(tx.error || new Error('Error en transacción'));
+      });
+    }
+
+    async function safeListIndexedDBDatabases(){
+      if (indexedDB.databases){
+        try{
+          const list = await indexedDB.databases();
+          if (Array.isArray(list)) return list.filter(d => d && d.name);
+        }catch(e){}
+      }
+      // Fallback (navegadores sin indexedDB.databases)
+      return [
+        { name: 'a33-pos' },
+        { name: 'finanzasDB' }
+      ];
+    }
+
+    function openExistingDB(dbName){
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(dbName);
+        // Si no existe, esto intentaría crearlo: abortamos para NO mutar el navegador al solo "leer"
+        req.onupgradeneeded = (e) => {
+          try{ e.target.transaction.abort(); }catch(_){}
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error(`No se pudo abrir la base de datos: ${dbName}`));
+      });
+    }
+
+    async function getAllFromStore(store){
+      if (store.getAll){
+        return await reqToPromise(store.getAll());
+      }
+      // Fallback cursor
+      return await new Promise((resolve, reject) => {
+        const out = [];
+        const req = store.openCursor();
+        req.onerror = () => reject(req.error || new Error('Error leyendo cursor'));
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor){
+            out.push(cursor.value);
+            cursor.continue();
+          } else {
+            resolve(out);
+          }
+        };
+      });
+    }
+
+    async function snapshotDatabase(dbName){
+      const db = await openExistingDB(dbName);
+      const snapshot = {
+        name: dbName,
+        version: db.version,
+        stores: {}
+      };
+
+      const storeNames = Array.from(db.objectStoreNames || []);
+      for (const storeName of storeNames){
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+
+        const schema = {
+          keyPath: store.keyPath ?? null,
+          autoIncrement: !!store.autoIncrement,
+          indices: []
+        };
+
+        try{
+          const indexNames = Array.from(store.indexNames || []);
+          for (const idxName of indexNames){
+            const idx = store.index(idxName);
+            schema.indices.push({
+              name: idxName,
+              keyPath: idx.keyPath ?? null,
+              unique: !!idx.unique,
+              multiEntry: !!idx.multiEntry
+            });
+          }
+        }catch(_){}
+
+        const records = await getAllFromStore(store);
+        await txDone(tx);
+
+        snapshot.stores[storeName] = {
+          count: Array.isArray(records) ? records.length : 0,
+          schema,
+          records: Array.isArray(records) ? records : []
+        };
+      }
+
+      try{ db.close(); }catch(_){}
+      return snapshot;
+    }
+
+    function getSuiteLocalStorageSnapshot(){
+      const out = {};
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++){
+        const k = localStorage.key(i);
+        if (!k) continue;
+        if (!isSuiteLocalStorageKey(k)) continue;
+        keys.push(k);
+        out[k] = localStorage.getItem(k);
+      }
+      keys.sort();
+      return { data: out, keys, count: keys.length };
+    }
+
+    function buildSummaryHtmlFromSnapshot({ dbSnapshots, lsKeys, exportedAt, estimatedBytes, warnings, appName }){
+      const totalDbRecords = dbSnapshots.reduce((acc, d) => {
+        const stores = Object.values(d.stores || {});
+        return acc + stores.reduce((a, s) => a + (Number(s.count) || 0), 0);
+      }, 0);
+
+      const dbHtml = dbSnapshots.length
+        ? dbSnapshots.map(d => {
+            const stores = Object.entries(d.stores || {});
+            const storeLines = stores.length
+              ? `<ul>${stores.map(([sn, s]) => `<li><b>${escapeHtml(sn)}</b>: ${Number(s.count)||0}</li>`).join('')}</ul>`
+              : `<div class="muted">Sin stores detectados.</div>`;
+            return `
+              <div style="margin-top:0.35rem;">
+                <div><b>${escapeHtml(d.name)}</b> <span class="muted">(versión ${escapeHtml(d.version)})</span></div>
+                ${storeLines}
+              </div>
+            `;
+          }).join('')
+        : `<div class="muted">No se detectaron bases de datos de la Suite en este navegador.</div>`;
+
+      const warnHtml = (warnings && warnings.length)
+        ? `<div class="badge-warn">⚠️ ${escapeHtml(warnings.join(' · '))}</div>`
+        : '';
+
+      const lsDetails = lsKeys && lsKeys.length
+        ? `<details><summary>Ver keys (${lsKeys.length})</summary><ul>${lsKeys.map(k => `<li>${escapeHtml(k)}</li>`).join('')}</ul></details>`
+        : `<div class="muted">0 keys</div>`;
+
+      const exportedAtPretty = exportedAt ? new Date(exportedAt).toLocaleString() : '';
+
+      return `
+        <div>
+          <div class="kv">
+            <div class="k">App</div><div class="v">${escapeHtml(appName || BACKUP_APP_NAME)}</div>
+            <div class="k">Fecha</div><div class="v">${escapeHtml(exportedAtPretty)}</div>
+            <div class="k">Registros</div><div class="v">${totalDbRecords}</div>
+            <div class="k">Keys localStorage</div><div class="v">${lsKeys ? lsKeys.length : 0}</div>
+            <div class="k">Tamaño aprox.</div><div class="v">${escapeHtml(formatBytes(estimatedBytes || 0))}</div>
+          </div>
+
+          ${warnHtml}
+
+          <hr>
+
+          <div><b>IndexedDB</b></div>
+          ${dbHtml}
+
+          <hr>
+
+          <div><b>localStorage (Suite)</b></div>
+          ${lsDetails}
+
+          <div class="small-note">Nota: este respaldo es manual (no sincroniza). Al importar, se reemplaza TODO lo de este navegador.</div>
+        </div>
+      `;
+    }
+
+    function showModal({ title, bodyHtml, primaryText, onPrimary, secondaryText, onSecondary, cancelText, onCancel, disableCancel, disablePrimary }){
+      const modal = document.getElementById('backup-modal');
+      const titleEl = document.getElementById('backup-modal-title');
+      const bodyEl = document.getElementById('backup-modal-body');
+      const btnCancel = document.getElementById('backup-modal-cancel');
+      const btnPrimary = document.getElementById('backup-modal-primary');
+      const btnSecondary = document.getElementById('backup-modal-secondary');
+
+      titleEl.textContent = title || 'Respaldo';
+      bodyEl.innerHTML = bodyHtml || '';
+
+      btnPrimary.textContent = primaryText || 'OK';
+      btnPrimary.style.display = disablePrimary ? 'none' : 'inline-flex';
+      btnPrimary.onclick = null;
+      btnPrimary.onclick = async () => {
+        if (typeof onPrimary === 'function') await onPrimary();
+      };
+
+      if (secondaryText && typeof onSecondary === 'function'){
+        btnSecondary.style.display = 'inline-flex';
+        btnSecondary.textContent = secondaryText;
+        btnSecondary.onclick = null;
+        btnSecondary.onclick = async () => {
+          await onSecondary();
+        };
+      } else {
+        btnSecondary.style.display = 'none';
+        btnSecondary.onclick = null;
+      }
+
+      btnCancel.textContent = cancelText || 'Cancelar';
+      btnCancel.style.display = disableCancel ? 'none' : 'inline-flex';
+      btnCancel.onclick = null;
+      btnCancel.onclick = () => {
+        if (typeof onCancel === 'function') onCancel();
+        hideModal();
+      };
+
+      modal.style.display = 'flex';
+    }
+
+    function hideModal(){
+      const modal = document.getElementById('backup-modal');
+      modal.style.display = 'none';
+    }
+
+    function downloadTextFile(filename, content){
+      const blob = new Blob([content], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function buildBackupFilename(){
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2,'0');
+      const stamp = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+      return `suitea33-backup-${stamp}.json`;
+    }
+
+    async function buildFullBackup(){
+      const all = await safeListIndexedDBDatabases();
+      const suiteDbList = (Array.isArray(all) ? all : []).filter(d => d && d.name && isSuiteDbName(d.name));
+
+      const dbSnapshots = [];
+      const dataIndexedDB = {};
+      const dbVersions = {};
+      const dbSchemas = {};
+
+      for (const d of suiteDbList){
+        try{
+          const snap = await snapshotDatabase(d.name);
+          dbSnapshots.push(snap);
+
+          dataIndexedDB[d.name] = {};
+          dbSchemas[d.name] = {};
+          dbVersions[d.name] = snap.version;
+
+          for (const [storeName, s] of Object.entries(snap.stores || {})){
+            dataIndexedDB[d.name][storeName] = s.records || [];
+            dbSchemas[d.name][storeName] = s.schema || {};
+          }
+        }catch(e){
+          console.warn('No se pudo leer DB', d.name, e);
+        }
+      }
+
+      const lsSnap = getSuiteLocalStorageSnapshot();
+
+      const backup = {
+        meta: {
+          appName: BACKUP_APP_NAME,
+          exportedAt: new Date().toISOString(),
+          dbVersions,
+          dbSchemas
+        },
+        data: {
+          indexedDB: dataIndexedDB,
+          localStorage: lsSnap.data
+        }
+      };
+
+      const jsonString = JSON.stringify(backup, null, 2);
+      const estimatedBytes = new Blob([jsonString]).size;
+
+      return {
+        backup,
+        jsonString,
+        estimatedBytes,
+        dbSnapshots,
+        lsKeys: lsSnap.keys
+      };
+    }
+
+    function validateBackupStructure(obj){
+      if (!obj || typeof obj !== 'object') return { ok:false, reason:'Archivo inválido (no es un objeto JSON).' };
+      if (!obj.meta || typeof obj.meta !== 'object') return { ok:false, reason:'Falta meta.' };
+      if (!obj.data || typeof obj.data !== 'object') return { ok:false, reason:'Falta data.' };
+      if (obj.meta.appName !== BACKUP_APP_NAME) return { ok:false, reason:`appName inválido: se esperaba "${BACKUP_APP_NAME}".` };
+      if (!obj.data.indexedDB || typeof obj.data.indexedDB !== 'object') return { ok:false, reason:'Falta data.indexedDB.' };
+      if (!obj.data.localStorage || typeof obj.data.localStorage !== 'object') return { ok:false, reason:'Falta data.localStorage.' };
+      return { ok:true };
+    }
+
+    function summarizeBackupObject(obj){
+      const dbSnapshots = [];
+      const indexed = obj?.data?.indexedDB || {};
+      const versions = obj?.meta?.dbVersions || {};
+      const schemas = obj?.meta?.dbSchemas || {};
+
+      for (const [dbName, stores] of Object.entries(indexed)){
+        const snap = { name: dbName, version: versions?.[dbName] ?? '', stores: {} };
+        if (stores && typeof stores === 'object'){
+          for (const [storeName, records] of Object.entries(stores)){
+            const arr = Array.isArray(records) ? records : [];
+            snap.stores[storeName] = {
+              count: arr.length,
+              schema: (schemas?.[dbName]?.[storeName]) || {},
+              records: [] // no duplicar aquí
+            };
+          }
+        }
+        dbSnapshots.push(snap);
+      }
+
+      const lsKeys = Object.keys(obj?.data?.localStorage || {}).sort();
+      let estimatedBytes = 0;
+      try{
+        estimatedBytes = new Blob([JSON.stringify(obj)]).size;
+      }catch(_){}
+
+      return { dbSnapshots, lsKeys, estimatedBytes, exportedAt: obj?.meta?.exportedAt, appName: obj?.meta?.appName };
+    }
+
+    async function buildDbVersionWarnings(backupObj){
+      const warnings = [];
+      const bVersions = backupObj?.meta?.dbVersions || {};
+      const dbNames = Object.keys(backupObj?.data?.indexedDB || {});
+      for (const dbName of dbNames){
+        const b = bVersions?.[dbName];
+        if (typeof b !== 'number') continue;
+        try{
+          const db = await openExistingDB(dbName);
+          const c = db.version;
+          try{ db.close(); }catch(_){}
+          if (typeof c === 'number' && b !== c){
+            warnings.push(`${dbName}: respaldo v${b} / este navegador v${c}`);
+          }
+        }catch(_){
+          // Si no existe o no se puede abrir, no advertimos: se creará al importar.
+        }
+      }
+      return warnings;
+    }
+
+
+    function getSuiteLocalStorageKeysInThisBrowser(){
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++){
+        const k = localStorage.key(i);
+        if (k && isSuiteLocalStorageKey(k)) keys.push(k);
+      }
+      return keys;
+    }
+
+    function deleteDatabase(dbName){
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.deleteDatabase(dbName);
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => reject(req.error || new Error(`No se pudo borrar la DB: ${dbName}`));
+        req.onblocked = () => reject(new Error(`Bloqueado: cierra otras pestañas de la Suite y reintenta (DB: ${dbName}).`));
+      });
+    }
+
+    function openDBForRestore(dbName, version, schemaByStore){
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(dbName, Number(version) || 1);
+
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+
+          const stores = schemaByStore && typeof schemaByStore === 'object'
+            ? Object.entries(schemaByStore)
+            : [];
+
+          for (const [storeName, sch] of stores){
+            if (db.objectStoreNames.contains(storeName)) continue;
+
+            const keyPath = (sch && ('keyPath' in sch)) ? sch.keyPath : null;
+            const autoIncrement = !!(sch && sch.autoIncrement);
+
+            const opts = {};
+            if (keyPath) opts.keyPath = keyPath;
+            if (autoIncrement) opts.autoIncrement = true;
+
+            let os;
+            try{
+              os = db.createObjectStore(storeName, opts);
+            }catch(err){
+              // fallback súper defensivo
+              os = db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+            }
+
+            try{
+              const indices = Array.isArray(sch?.indices) ? sch.indices : [];
+              for (const idx of indices){
+                if (!idx?.name) continue;
+                try{
+                  os.createIndex(idx.name, idx.keyPath, { unique: !!idx.unique, multiEntry: !!idx.multiEntry });
+                }catch(_){}
+              }
+            }catch(_){}
+          }
+        };
+
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error(`No se pudo abrir la DB para restaurar: ${dbName}`));
+      });
+    }
+
+    async function restoreDatabase(dbName, dbPayload, dbVersion, dbSchemas){
+      const schemaByStore = dbSchemas?.[dbName] || {};
+      const version = dbVersion?.[dbName] || 1;
+
+      const schemaAvailable = schemaByStore && typeof schemaByStore === 'object' && Object.keys(schemaByStore).length > 0;
+
+      // Si hay esquema: recreamos DB y stores con total seguridad.
+      // Si NO hay esquema: intentamos importar sobre una DB ya existente (sin crear / sin cambiar versión).
+      const db = schemaAvailable
+        ? await openDBForRestore(dbName, version, schemaByStore)
+        : await openExistingDB(dbName);
+
+      // Insertar registros por store
+      const stores = dbPayload && typeof dbPayload === 'object'
+        ? Object.entries(dbPayload)
+        : [];
+
+      for (const [storeName, records] of stores){
+        if (!db.objectStoreNames.contains(storeName)) continue;
+
+        const arr = Array.isArray(records) ? records : [];
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+
+        // limpiar store antes de insertar
+        try{ store.clear(); }catch(_){}
+
+        for (const rec of arr){
+          try{ store.put(rec); }catch(_){}
+        }
+        await txDone(tx);
+      }
+
+      try{ db.close(); }catch(_){}
+    } 
+    async function performImport(obj){ 
+      const dbPayload = obj?.data?.indexedDB || {};
+      const dbVersions = obj?.meta?.dbVersions || {};
+      const dbSchemas = obj?.meta?.dbSchemas || {};
+
+      // DBs del archivo que pertenecen a la Suite
+      const fileSuite = Object.keys(dbPayload || {}).filter(isSuiteDbName);
+
+      // DBs con esquema disponible (podemos borrar y recrear sin miedo)
+      const schemaSupported = new Set(
+        fileSuite.filter((dbName) => {
+          const sch = dbSchemas?.[dbName];
+          return sch && typeof sch === 'object' && Object.keys(sch).length > 0;
+        })
+      );
+
+      // 2) Detectar DBs actuales de la Suite y borrarlas (solo si hay esquema para recrear)
+      const current = await safeListIndexedDBDatabases();
+      const currentSuite = (Array.isArray(current) ? current : [])
+        .filter(d => d?.name && isSuiteDbName(d.name))
+        .map(d => d.name);
+
+      const toDelete = Array.from(new Set([...currentSuite, ...fileSuite]))
+        .filter(dbName => schemaSupported.has(dbName));
+
+      for (const dbName of toDelete){
+        try{
+          await deleteDatabase(dbName);
+        }catch(e){
+          // Si no existía, ok; si está bloqueado, es crítico
+          if (String(e?.message || '').toLowerCase().includes('bloqueado')){
+            throw e;
+          }
+        }
+      }
+
+      // 3) Restaurar DBs desde el archivo (con o sin esquema)
+      for (const dbName of fileSuite){
+        await restoreDatabase(dbName, dbPayload[dbName], dbVersions, dbSchemas);
+      }
+
+      // 4) Restaurar localStorage (solo keys Suite)
+      const currentLsKeys = getSuiteLocalStorageKeysInThisBrowser();
+      for (const k of currentLsKeys){
+        try{ localStorage.removeItem(k); }catch(_){}
+      }
+
+      const incoming = obj?.data?.localStorage || {};
+      for (const [k, v] of Object.entries(incoming)){
+        if (!isSuiteLocalStorageKey(k)) continue;
+        try{ localStorage.setItem(k, String(v ?? '')); }catch(_){}
+      }
+
+      return true;
+    }
+
+
     document.addEventListener('DOMContentLoaded', () => {
-      const overlay = document.getElementById('lock-overlay');
+      
+      // --- Vistas: Home vs Manuales ---
+      const homeView = document.getElementById('home-view');
+      const manualsView = document.getElementById('manuals-view');
+      const btnManualsBackHome = document.getElementById('btn-manuals-back-home');
+      const headerTitle = document.querySelector('header .title-block h1');
+      const headerSub = document.querySelector('header .title-block p');
+      const originalHeaderTitle = headerTitle ? headerTitle.textContent : '';
+      const originalHeaderSub = headerSub ? headerSub.textContent : '';
+
+      function showHome(setHash = true){
+        if (homeView) homeView.style.display = 'block';
+        if (manualsView) manualsView.style.display = 'none';
+        if (headerTitle) headerTitle.textContent = originalHeaderTitle || 'Suite A33 · Arcano 33';
+        if (headerSub) headerSub.textContent = originalHeaderSub || 'Panel interno para producción, control de lotes y ventas.';
+        if (setHash){
+          // limpiar hash sin recargar
+          try{
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+          }catch(_){
+            // fallback
+            window.location.hash = '';
+          }
+        }
+      }
+
+      function showManuals(setHash = true){
+        if (homeView) homeView.style.display = 'none';
+        if (manualsView) manualsView.style.display = 'block';
+        if (headerTitle) headerTitle.textContent = 'Manuales · Suite A33';
+        if (headerSub) headerSub.textContent = 'Guías oficiales por módulo y manual compilado.';
+        if (setHash){
+          try{
+            history.replaceState(null, '', '#manuales');
+          }catch(_){
+            window.location.hash = '#manuales';
+          }
+        }
+        renderManualCards();
+      }
+
+      if (btnManualsBackHome){
+        btnManualsBackHome.addEventListener('click', () => showHome(true));
+      }
+
+      window.addEventListener('hashchange', () => {
+        if (window.location.hash === '#manuales') showManuals(false);
+        else showHome(false);
+      });
+
+      
+      // --- Manuales: mapeo de PDFs (carpeta /manuales/) ---
+      // Si cambias nombres de archivos, edita SOLO este mapa.
+      // NOTA: cada módulo acepta varios nombres (candidatos) para evitar bloqueos por diferencias de nombre.
+      const MANUALS = [
+        {
+          key: 'compilado',
+          icon: '📘',
+          title: 'Manual de Usuario — Suite A33 (v3.20.1)',
+          desc: 'Manual compilado (completo).',
+          candidates: [
+            'manuales/Manual de Usuario Suite A33 v3.20.1.pdf',
+            'manuales/Manual de Usuario Suite A33 (v3.20.1).pdf',
+            'manuales/00- Manual de Usuario Suite A33 v3.20.1.pdf',
+            'manuales/00- Manual de Usuario Suite A33 (v3.20.1).pdf',
+            'manuales/Manual Suite A33 v3.20.1.pdf',
+            'manuales/Manual de Usuario Suite A33 v3.20.1.PDF'
+          ]
+        },
+        {
+          key:'inventario', icon:'📊', title:'Inventario', desc:'Guía del módulo Inventario.',
+          candidates:[
+            'manuales/Manual Inventario Suite A33 v3.20.1.pdf',
+            'manuales/01- Manual Inventario Suite A33 v3.20.1.pdf',
+            'manuales/Inventario.pdf',
+            'manuales/Manual Inventario.pdf',
+            'manuales/Manual Inventario Suite A33 v3.20.1.PDF'
+          ]
+        },
+        {
+          key:'calculadora', icon:'🧪', title:'Calculadora de Producción', desc:'Guía de recetas y producción.',
+          candidates:[
+            'manuales/Manual Calculadora de Producción Suite A33 v3.20.1.pdf',
+            'manuales/02- Manual Calculadora de Producción Suite A33 v3.20.1.pdf',
+            'manuales/Manual Calculadora de Produccion Suite A33 v3.20.1.pdf',
+            'manuales/02- Manual Calculadora de Produccion Suite A33 v3.20.1.pdf',
+            'manuales/Calculadora.pdf',
+            'manuales/Manual Calculadora.pdf',
+            'manuales/Manual Calculadora de Producción Suite A33 v3.20.1.PDF'
+          ]
+        },
+        {
+          key:'lotes', icon:'📦', title:'Control de Lotes', desc:'Guía de registro y exportación de lotes.',
+          candidates:[
+            'manuales/Manual Control de Lotes Suite A33 v3.20.1.pdf',
+            'manuales/03- Manual Control de Lotes Suite A33 v3.20.1.pdf',
+            'manuales/Control de Lotes.pdf',
+            'manuales/Manual Lotes.pdf',
+            'manuales/Manual Control de Lotes Suite A33 v3.20.1.PDF'
+          ]
+        },
+        {
+          key:'pos', icon:'🧾', title:'POS · Eventos', desc:'Guía de ventas y eventos.',
+          candidates:[
+            'manuales/Manual POS · Eventos Suite A33 v3.20.1.pdf',
+            'manuales/Manual POS Eventos Suite A33 v3.20.1.pdf',
+            'manuales/Manual POS Ventas Suite A33 v3.20.1.pdf',
+            'manuales/04- Manual POS Ventas Suite A33 v3.20.1.pdf',
+            'manuales/POS Eventos.pdf',
+            'manuales/POS.pdf',
+            'manuales/Manual POS · Eventos Suite A33 v3.20.1.PDF'
+          ]
+        },
+        {
+          key:'analitica', icon:'📈', title:'Analítica', desc:'Guía de lectura y reportes.',
+          candidates:[
+            'manuales/Manual Analítica Suite A33 v3.20.1.pdf',
+            'manuales/Manual Analitica Suite A33 v3.20.1.pdf',
+            'manuales/05- Manual Analitica Suite A33 v3.20.1.pdf',
+            'manuales/Analitica.pdf',
+            'manuales/Manual Analítica Suite A33 v3.20.1.PDF'
+          ]
+        },
+        {
+          key:'planificacion', icon:'📅', title:'Planificación', desc:'Guía del planificador de pedidos.',
+          candidates:[
+            'manuales/Manual Planificación Suite A33 v3.20.1.pdf',
+            'manuales/Manual Planificacion Suite A33 v3.20.1.pdf',
+            'manuales/Manual Planificador Suite A33 v3.20.1.pdf',
+            'manuales/06- Manual Planificador Suite A33 v3.20.1.pdf',
+            'manuales/Planificacion.pdf',
+            'manuales/Manual Planificación Suite A33 v3.20.1.PDF'
+          ]
+        },
+        {
+          key:'finanzas', icon:'💰', title:'Finanzas', desc:'Guía del módulo Finanzas.',
+          candidates:[
+            'manuales/Manual Finanzas Suite A33 v3.20.1.pdf',
+            'manuales/07- Manual Finanzas Suite A33 v3.20.1.pdf',
+            'manuales/Finanzas.pdf',
+            'manuales/Manual Finanzas Suite A33 v3.20.1.PDF'
+          ]
+        },
+        {
+          key:'respaldo', icon:'💾', title:'Respaldo', desc:'Guía de exportar/importar respaldo.',
+          candidates:[
+            'manuales/Manual Respaldo Suite A33 v3.20.1.pdf',
+            'manuales/08- Manual Respaldo Suite A33 v3.20.1.pdf',
+            'manuales/Respaldo.pdf',
+            'manuales/Manual Respaldo.pdf',
+            'manuales/Manual Respaldo Suite A33 v3.20.1.PDF'
+          ]
+        },
+      ];
+
+      // resolved path cache: string=ok, false=no existe, null=no verificado (ej. sin conexión o sin soporte HEAD)
+      const manualResolvedPath = new Map();
+
+      // --- Manifest opcional ---
+      // Si existe /manuales/manifest.json, la app usa esos nombres EXACTOS.
+      // Esto evita el clásico: “el PDF existe pero se llama distinto”.
+      // Formato esperado (valores = nombre de archivo dentro de /manuales/):
+      // {
+      //   "compilado": "00- Manual de Usuario Suite A33 v3.20.1.pdf",
+      //   "inventario": "01- Manual Inventario Suite A33 v3.20.1.pdf",
+      //   "calculadora": "02- Manual Calculadora de Producción Suite A33 v3.20.1.pdf",
+      //   "lotes": "03- Manual Control de Lotes Suite A33 v3.20.1.pdf",
+      //   "pos": "04- Manual POS Ventas Suite A33 v3.20.1.pdf",
+      //   "analitica": "05- Manual Analitica Suite A33 v3.20.1.pdf",
+      //   "planificacion": "06- Manual Planificador Suite A33 v3.20.1.pdf",
+      //   "finanzas": "07- Manual Finanzas Suite A33 v3.20.1.pdf",
+      //   "respaldo": "08- Manual Respaldo Suite A33 v3.20.1.pdf"
+      // }
+      async function headExists(url){
+        try{
+          const res = await fetch(url, { method:'HEAD', cache:'no-store' });
+          if (res.ok) return true;
+          if (res.status === 404) return false;
+          return null; // otros códigos (405, 403, etc.)
+        }catch(_){
+          return null;
+        }
+      }
+
+      async function resolveFirstExisting(candidates){
+        let unknown = false;
+        for (const p of candidates){
+          const v = await headExists(p);
+          if (v === true) return p;
+          if (v === null) unknown = true;
+        }
+        return unknown ? null : false;
+      }
+
+      async function loadManualManifest(){
+        try{
+          const res = await fetch('manuales/manifest.json', { cache:'no-store' });
+          if (!res.ok) return false;
+          const data = await res.json();
+          if (!data || typeof data !== 'object') return false;
+
+          for (const m of MANUALS){
+            const raw = data[m.key];
+            const add = [];
+            if (typeof raw === 'string' && raw.trim()) add.push(raw.trim());
+            if (Array.isArray(raw)){
+              raw.forEach(x => { if (typeof x === 'string' && x.trim()) add.push(x.trim()); });
+            }
+            if (!add.length) continue;
+
+            const normalized = add
+              .map(x => x.replace(/^\/*manuales\//i, '').replace(/^\/*/,'').trim())
+              .filter(Boolean)
+              .map(x => `manuales/${x}`);
+
+            const existing = Array.isArray(m.candidates) ? m.candidates : [];
+            // Poner primero lo definido en el manifest, luego lo demás (sin duplicados)
+            const merged = [];
+            for (const p of [...normalized, ...existing]){
+              if (!p || merged.includes(p)) continue;
+              merged.push(p);
+            }
+            m.candidates = merged;
+          }
+
+          return true;
+        }catch(_){
+          return false;
+        }
+      }
+
+      async function computeAvailability(){
+        for (const m of MANUALS){
+          const c = Array.isArray(m.candidates) ? m.candidates.filter(Boolean) : [];
+          if (!c.length){
+            manualResolvedPath.set(m.key, false);
+            continue;
+          }
+          const resolved = await resolveFirstExisting(c);
+          manualResolvedPath.set(m.key, resolved);
+        }
+      }
+
+      function firstCandidate(meta){
+        const c = Array.isArray(meta?.candidates) ? meta.candidates : [];
+        return c[0] || '';
+      }
+
+      function getUsablePath(meta){
+        const resolved = manualResolvedPath.get(meta.key);
+        if (typeof resolved === 'string') return resolved;
+        // si no se pudo verificar, igual dejamos intentar con el primer candidato
+        return firstCandidate(meta);
+      }
+
+      function showPdfMissing(meta){
+        const candidates = Array.isArray(meta?.candidates) ? meta.candidates : [];
+        const list = candidates.length
+          ? `<div class="small-note" style="margin-top:0.35rem;">Nombres aceptados (colócalo en <b>manuales/</b>):</div>
+             <ul style="margin:0.35rem 0 0 1.1rem; color: var(--muted);">
+               ${candidates.map(p => `<li><code>${escapeHtml(p.replace(/^manuales\//,''))}</code></li>`).join('')}
+             </ul>`
+          : '';
+
+        showModal({
+          title:'PDF aún no disponible',
+          bodyHtml:`<div class="badge-warn">⚠️ No se encontró el PDF para <b>${escapeHtml(meta?.title || 'este módulo')}</b>.</div>
+                   <div class="small-note" style="margin-top:0.4rem;">Revisá que el archivo exista y que el nombre coincida exactamente.</div>
+                   ${list}`,
+          primaryText:'Cerrar',
+          onPrimary: hideModal,
+          disableCancel:true
+        });
+      }
+
+      function openInNewTab(url){
+        if (!url) return;
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+
+      function forceDownload(url){
+        if (!url) return;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+
+
+      // --- Visor interno de PDF (para volver sin quedar atrapado en iPad) ---
+      function isIOSDevice(){
+        return /iPad|iPhone|iPod/.test(navigator.userAgent || '');
+      }
+      function isStandaloneMode(){
+        try{
+          if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+        }catch(_){ }
+        try{
+          if (window.navigator && window.navigator.standalone) return true;
+        }catch(_){ }
+        return false;
+      }
+
+      const pdfOverlay = document.getElementById('pdf-viewer');
+      const pdfFrame = document.getElementById('pdf-frame');
+      const pdfTitleEl = document.getElementById('pdf-title');
+      const pdfHintEl = document.getElementById('pdf-ios-hint');
+      const pdfOpenExternal = document.getElementById('pdf-open-external');
+      const pdfDownloadBtn = document.getElementById('pdf-download-btn');
+      const pdfCloseBtn = document.getElementById('pdf-close');
+
+      function closePdfViewer(){
+        if (!pdfOverlay) return;
+        pdfOverlay.style.display = 'none';
+        document.body.classList.remove('pdf-open');
+        try{ if (pdfFrame) pdfFrame.src = 'about:blank'; }catch(_){ }
+        try{ pdfOverlay.removeAttribute('data-current-url'); }catch(_){ }
+      }
+
+      function openPdfViewer(meta){
+        if (!meta) return;
+        const resolved = manualResolvedPath.get(meta.key);
+        if (resolved === false){
+          showPdfMissing(meta);
+          return;
+        }
+        const url = getUsablePath(meta);
+        if (!url){
+          showPdfMissing(meta);
+          return;
+        }
+
+        // Si por alguna razón no existe el overlay, fallback a abrir afuera
+        if (!pdfOverlay){
+          openInNewTab(url);
+          return;
+        }
+
+        try{ pdfOverlay.setAttribute('data-current-url', url); }catch(_){ }
+        if (pdfTitleEl) pdfTitleEl.textContent = meta.title || 'Manual';
+        if (pdfOpenExternal) pdfOpenExternal.href = url;
+
+        if (pdfHintEl){
+          const show = isIOSDevice() && isStandaloneMode();
+          pdfHintEl.style.display = show ? 'block' : 'none';
+        }
+
+        // Intentar render inline en el iframe. Si iOS decide abrirlo externo, igual queda el botón "Abrir afuera".
+        if (pdfFrame){
+          try{ pdfFrame.src = url; }catch(_){ }
+        }
+
+        pdfOverlay.style.display = 'flex';
+        document.body.classList.add('pdf-open');
+      }
+
+      if (pdfCloseBtn){
+        pdfCloseBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          closePdfViewer();
+        });
+      }
+
+      if (pdfDownloadBtn){
+        pdfDownloadBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (!pdfOverlay) return;
+          const url = pdfOverlay.getAttribute('data-current-url') || '';
+          if (!url) return;
+          forceDownload(url);
+        });
+      }
+
+      if (pdfOverlay){
+        pdfOverlay.addEventListener('click', (e) => {
+          // cerrar solo si das click en el fondo, no en la tarjeta
+          if (e.target === pdfOverlay) closePdfViewer();
+        });
+      }
+
+      let manualsRendered = false;
+
+      function renderManualCards(){
+        const grid = document.getElementById('manuals-grid');
+        if (!grid) return;
+
+        if (!manualsRendered){
+          grid.innerHTML = MANUALS.map(m => {
+            const safeTitle = escapeHtml(m.title);
+            const safeDesc = escapeHtml(m.desc);
+            return `
+              <article class="card" data-manual-key="${escapeHtml(m.key)}">
+                <div class="pill"><span>${escapeHtml(m.icon)}</span><span>Manual</span></div>
+                <h2>${safeTitle}</h2>
+                <p>${safeDesc}</p>
+                <div class="footer-row">
+                  <span class="manual-status" style="color:var(--muted);">Verificando...</span>
+                  <div class="manual-actions">
+                    <button class="link-btn secondary manual-view-btn" type="button"><span>Ver</span> →</button>
+                    <button class="link-btn secondary manual-download-btn" type="button"><span>Descargar</span> ↓</button>
+                  </div>
+                </div>
+              </article>
+            `;
+          }).join('');
+          manualsRendered = true;
+
+          grid.querySelectorAll('.card[data-manual-key]').forEach(card => {
+            const key = card.getAttribute('data-manual-key');
+            const meta = MANUALS.find(x => x.key === key);
+            const viewBtn = card.querySelector('.manual-view-btn');
+            const dlBtn = card.querySelector('.manual-download-btn');
+
+            // Click en tarjeta = abrir
+            card.addEventListener('click', () => {
+              if (!meta) return;
+              const resolved = manualResolvedPath.get(meta.key);
+              if (resolved === false){
+                showPdfMissing(meta);
+                return;
+              }
+              openPdfViewer(meta);
+            });
+
+            if (viewBtn){
+              viewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!meta) return;
+                const resolved = manualResolvedPath.get(meta.key);
+                if (resolved === false){
+                  e.preventDefault();
+                  showPdfMissing(meta);
+                  return;
+                }
+                openPdfViewer(meta);
+              });
+            }
+
+            if (dlBtn){
+              dlBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!meta) return;
+                const resolved = manualResolvedPath.get(meta.key);
+                if (resolved === false){
+                  e.preventDefault();
+                  showPdfMissing(meta);
+                  return;
+                }
+                // forzar descarga (si el navegador lo respeta)
+                e.preventDefault();
+                forceDownload(getUsablePath(meta));
+              });
+            }
+          });
+        }
+
+        // aplicar estado (disponible / no disponible / no verificado) y configurar hrefs
+        grid.querySelectorAll('.card[data-manual-key]').forEach(card => {
+          const key = card.getAttribute('data-manual-key');
+          const statusEl = card.querySelector('.manual-status');
+          const viewBtn = card.querySelector('.manual-view-btn');
+          const dlBtn = card.querySelector('.manual-download-btn');
+          const meta = MANUALS.find(x => x.key === key);
+          if (!meta) return;
+
+          const resolved = manualResolvedPath.has(key) ? manualResolvedPath.get(key) : null;
+          const usable = getUsablePath(meta);
+
+          // Por defecto quitamos estado "disabled" a la tarjeta (para que no se vea bloqueada)
+          card.classList.remove('disabled');
+          if (viewBtn) viewBtn.classList.remove('disabled-link');
+          if (dlBtn) dlBtn.classList.remove('disabled-link');
+          if (resolved === false){
+            if (statusEl) statusEl.textContent = 'PDF aún no disponible';
+            if (viewBtn) viewBtn.classList.add('disabled-link');
+            if (dlBtn) dlBtn.classList.add('disabled-link');
+            return;
+          }
+
+          if (typeof resolved === 'string'){
+            if (statusEl) statusEl.textContent = 'Disponible';
+            return;
+          }
+
+          // null o desconocido: permitir intentar con el primer candidato
+          if (statusEl) statusEl.textContent = 'No verificado (igual podés intentar)';
+        });
+      }
+
+const overlay = document.getElementById('lock-overlay');
       const setup = document.getElementById('lock-setup');
       const unlock = document.getElementById('lock-unlock');
       const modeSwitch = document.getElementById('pin-mode-switch');
@@ -473,6 +1867,194 @@
           if (href) window.location.href = href;
         });
       });
+
+      // --- Respaldo: Exportar / Importar ---
+      const exportCard = document.getElementById('card-export-backup');
+      const importCard = document.getElementById('card-import-backup');
+      const fileInput = document.getElementById('backup-file-input');
+
+      
+
+      // Card: Manual de Usuario (abre vista de manuales)
+      const manualCard = document.getElementById('card-user-manual');
+      if (manualCard){
+        manualCard.addEventListener('click', () => showManuals(true));
+      }
+
+      // Preparar disponibilidad de PDFs (sin bloquear si estás offline)
+      loadManualManifest()
+        .then(() => computeAvailability())
+        .then(() => renderManualCards())
+        .catch(() => renderManualCards());
+
+      // Si se entra con hash #manuales, abrir manuales
+      if (window.location.hash === '#manuales'){
+        showManuals(false);
+      } else {
+        showHome(false);
+      }
+if (exportCard){
+        exportCard.addEventListener('click', async () => {
+          showModal({
+            title: 'Resumen del respaldo',
+            bodyHtml: '<div class="muted">Generando resumen...</div>',
+            primaryText: 'Cerrar',
+            onPrimary: hideModal,
+            cancelText: 'Cancelar',
+            onCancel: hideModal
+          });
+
+          try{
+            const { backup, jsonString, estimatedBytes, dbSnapshots, lsKeys } = await buildFullBackup();
+
+            const totalDbRecords = dbSnapshots.reduce((acc, d) => {
+              const stores = Object.values(d.stores || {});
+              return acc + stores.reduce((a, s) => a + (Number(s.count) || 0), 0);
+            }, 0);
+
+            const hasAnyData = totalDbRecords > 0 || (lsKeys && lsKeys.length > 0);
+
+            if (!hasAnyData){
+              showModal({
+                title: 'Resumen del respaldo',
+                bodyHtml: '<div class="badge-warn">⚠️ No hay datos para respaldar.</div>',
+                primaryText: 'Cerrar',
+                onPrimary: hideModal,
+                disableCancel: true
+              });
+              return;
+            }
+
+            const summaryHtml = buildSummaryHtmlFromSnapshot({
+              dbSnapshots,
+              lsKeys,
+              exportedAt: backup?.meta?.exportedAt,
+              estimatedBytes,
+              warnings: [],
+              appName: backup?.meta?.appName
+            });
+
+            showModal({
+              title: 'Resumen del respaldo',
+              bodyHtml: summaryHtml,
+              primaryText: 'Descargar respaldo',
+              onPrimary: async () => {
+                downloadTextFile(buildBackupFilename(), jsonString);
+                hideModal();
+              },
+              cancelText: 'Cancelar',
+              onCancel: hideModal
+            });
+          }catch(e){
+            showModal({
+              title: 'Error',
+              bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(e?.message || e)}</div>`,
+              primaryText: 'Cerrar',
+              onPrimary: hideModal,
+              disableCancel: true
+            });
+          }
+        });
+      }
+
+      if (importCard && fileInput){
+        importCard.addEventListener('click', () => {
+          fileInput.value = '';
+          fileInput.click();
+        });
+
+        fileInput.addEventListener('change', async () => {
+          const file = fileInput.files && fileInput.files[0];
+          if (!file) return;
+
+          showModal({
+            title: 'Resumen del archivo',
+            bodyHtml: '<div class="muted">Leyendo archivo...</div>',
+            primaryText: 'Cerrar',
+            onPrimary: hideModal,
+            cancelText: 'Cancelar',
+            onCancel: hideModal
+          });
+
+          try{
+            const text = await file.text();
+            let obj;
+            try{
+              obj = JSON.parse(text);
+            }catch(_){
+              throw new Error('JSON inválido o corrupto.');
+            }
+
+            const v = validateBackupStructure(obj);
+            if (!v.ok) throw new Error(v.reason);
+
+            const sum = summarizeBackupObject(obj);
+
+            // Comparar versiones del respaldo vs las DB existentes en ESTE navegador (solo advertencia, no bloqueo)
+            const warnings = await buildDbVersionWarnings(obj);
+
+            const summaryHtml = buildSummaryHtmlFromSnapshot({
+              dbSnapshots: sum.dbSnapshots,
+              lsKeys: sum.lsKeys,
+              exportedAt: sum.exportedAt,
+              estimatedBytes: sum.estimatedBytes,
+              warnings: warnings,
+              appName: sum.appName
+            }) + `
+              <hr>
+              <div class="badge-warn">⚠️ Esto reemplazará todos los datos actuales de este navegador.</div>
+            `;
+
+            showModal({
+              title: 'Resumen del archivo',
+              bodyHtml: summaryHtml,
+              primaryText: 'Importar y reemplazar',
+              onPrimary: async () => {if (!confirm('Esto reemplazará TODOS los datos actuales de la Suite A33 en este navegador. ¿Importar y reemplazar?')) return;
+
+                showModal({
+                  title: 'Importando...',
+                  bodyHtml: '<div class="muted">Aplicando respaldo... No cierres esta pestaña.</div>',
+                  disableCancel: true,
+                  disablePrimary: true
+                });
+
+                try{
+                  await performImport(obj);
+
+                  showModal({
+                    title: 'Importación exitosa',
+                    bodyHtml: '<div>✅ Respaldo importado correctamente.</div><div class="small-note">Recomendado: recargar para que todos los módulos lean los nuevos datos.</div>',
+                    primaryText: 'Recargar ahora',
+                    onPrimary: () => location.reload(),
+                    cancelText: 'Más tarde',
+                    onCancel: hideModal
+                  });
+                }catch(err){
+                  showModal({
+                    title: 'Error de importación',
+                    bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(err?.message || err)}</div><div class="small-note">Tip: cierra otras pestañas de la Suite y vuelve a intentar.</div>`,
+                    primaryText: 'Cerrar',
+                    onPrimary: hideModal,
+                    disableCancel: true
+                  });
+                }
+              },
+              cancelText: 'Cancelar',
+              onCancel: hideModal
+            });
+
+          }catch(e){
+            showModal({
+              title: 'Error',
+              bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(e?.message || e)}</div>`,
+              primaryText: 'Cerrar',
+              onPrimary: hideModal,
+              disableCancel: true
+            });
+          }
+        });
+      }
+
     });
   </script>
 </body>

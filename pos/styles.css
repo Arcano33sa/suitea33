@@ -1,7 +1,9 @@
 
 :root{--bg:#0f0f0f;--panel:#171717;--muted:#9a9a9a;--text:#f0f0f0;--accent:#ffd700;--ok:#1db954;--warn:#f0a31a;--danger:#e74c3c;--chip:#222;--chip-bd:#2d2d2d}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:100%}
+/* Evita “sensación” de overflow horizontal por tablas/acciones que se estiran */
+body{overflow-x:hidden}
 /* Header compuesto */
 header.brandbar{position:sticky;top:0;background:#121212;border-bottom:1px solid #2a2a2a;padding:10px 14px;z-index:10;display:flex;align-items:center;gap:14px;min-height:72px}
 .brandwrap{display:flex;align-items:center;gap:10px}
@@ -17,24 +19,65 @@ header.brandbar{position:sticky;top:0;background:#121212;border-bottom:1px solid
   header.brandbar{flex-wrap:wrap}
   .app-title{order:3;width:100%;margin-top:6px}
 }
-.container{padding:12px 12px 80px}
+.container{padding:12px 12px 80px;width:100%;max-width:100%}
 .card{background:var(--panel);border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin:12px 0}
 label{font-size:13px;color:var(--muted);display:block;margin:8px 0 6px}
 input,select,button,textarea{width:100%;padding:12px;border-radius:12px;border:1px solid #333;background:#141414;color:#f0f0f0;font-size:16px;line-height:1.2}
 input[type="date"]{padding:10px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}
-.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-.row4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:end}
+.row3{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:12px}
+.row4{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:12px}
+/* Permite que inputs/selects/botones dentro de grid/flex puedan encogerse sin desbordar */
+.row > *, .row3 > *, .row4 > *{min-width:0}
+
+/* Barra superior (Vender/Eventos): alinea y permite wrap en pantallas angostas */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.topbar > *{flex:1 1 180px;min-width:0}
+.topbar > button:first-of-type{margin-left:auto; flex:0 0 auto}
+.topbar > button{flex:0 0 auto; width:auto}
+.topbar > select{min-width:180px}
+
+/* Tablas anchas: evita overflow del viewport y mantiene acciones visibles */
+.table-scroll{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;position:relative}
+.table-scroll table{min-width:720px}
+@media (max-width:560px){
+  .table-scroll table{min-width:640px}
+}
+
+/* Columna de acciones sticky (botones rojos a la derecha siempre dentro del viewport) */
+#tbl-day, #tbl-eventos{border-collapse:separate; border-spacing:0}
+#tbl-day th:last-child, #tbl-day td:last-child,
+#tbl-eventos th:last-child, #tbl-eventos td:last-child{
+  position:sticky;
+  right:0;
+  background:var(--panel);
+  z-index:3;
+  box-shadow:-10px 0 10px rgba(0,0,0,.35);
+}
+#tbl-day thead th:last-child, #tbl-eventos thead th:last-child{z-index:4}
+
+/* Acciones dentro de tablas: que sean compactas y wrap sin empujar el ancho */
+.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.actions button{width:auto}
+.btn-mini{width:auto; padding:8px 10px; border-radius:10px; font-size:13px}
+
+@media (max-width:420px){
+  .container{padding-left:10px;padding-right:10px}
+  .topbar > *{flex-basis:140px}
+  .topbar > select{min-width:140px}
+  .actions button{font-size:12px;padding:8px 9px}
+  .btn-mini{font-size:12px;padding:7px 9px}
+}
 button{cursor:pointer}
 .btn-primary{background:var(--accent);color:#000;font-weight:700}
 .btn-ok{background:var(--ok);color:#000;font-weight:700}
 .btn-warn{background:var(--warn);color:#000;font-weight:700}
 .btn-danger{background:var(--danger);color:#fff;font-weight:700}
 .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#2a2a2a;color:var(--accent);font-weight:600}
-table{width:100%;border-collapse:collapse;margin-top:10px;overflow:auto}
+table{width:100%;border-collapse:collapse;margin-top:10px}
 th,td{border-bottom:1px solid #2a2a2a;padding:10px;text-align:left;font-size:14px;white-space:nowrap}
 tfoot td{font-weight:700}
-.tabbar{position:fixed;bottom:0;left:0;right:0;background:#121212;border-top:1px solid #2a2a2a;display:grid;grid-template-columns:repeat(6,1fr);gap:0;z-index:11}
+.tabbar{position:fixed;bottom:0;left:0;right:0;background:#121212;border-top:1px solid #2a2a2a;display:grid;grid-template-columns:repeat(7,1fr);gap:0;z-index:11}
 .tabbar button{border-radius:0;border:none;padding:12px 6px;background:transparent;color:#f0f0f0}
 .tabbar button.active{color:var(--accent);font-weight:700}
 footer{height:58px}
@@ -71,6 +114,17 @@ small.muted{color:var(--muted)}
 .offline{position:fixed;top:72px;left:0;right:0;background:#2a2a2a;color:#ffd;display:none;padding:6px 10px;text-align:center;font-size:12px;z-index:10}
 .dim input,.dim select,.dim textarea,.dim button{opacity:.7}
 .disabled-note{margin-top:8px;font-size:13px;color:#ffd7a1}
+
+/* Toggle (Caja Chica por evento) */
+.petty-toggle-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.petty-toggle-title{font-weight:700;color:var(--text)}
+.switch{position:relative;display:inline-block;width:52px;height:28px}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#d0d0d0;transition:.2s;border-radius:999px}
+.slider:before{position:absolute;content:"";height:22px;width:22px;left:3px;bottom:3px;background:white;transition:.2s;border-radius:50%}
+.switch input:checked + .slider{background:var(--ok)}
+.switch input:checked + .slider:before{transform:translateX(24px)}
+.btn-inline{width:auto;display:inline-block;padding:8px 12px;border-radius:12px;margin-left:10px}
 /* Modal */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
 .modal .panel{background:#151515;border:1px solid #2a2a2a;border-radius:14px;max-width:1000px;width:100%;max-height:85vh;overflow:auto;padding:16px}
@@ -79,3 +133,229 @@ small.muted{color:var(--muted)}
 .modal .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .modal table{max-width:100%}
 .modal .scroll{max-height:40vh;overflow:auto;border:1px solid #2a2a2a;border-radius:10px;padding:6px}
+/* Caja Chica POS */
+.info-strong{
+  font-size:14px;
+  font-weight:600;
+  color:var(--text);
+}
+
+.pc-main.disabled{
+  opacity:.5;
+  pointer-events:none;
+}
+
+.petty-summary h3,
+.petty-inicial h3{
+  margin-top:0;
+}
+
+.petty-summary .card{
+  margin:8px 0;
+}
+
+.petty-block h4{
+  margin:0 0 6px 0;
+}
+
+.pc-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+
+.pc-table th,
+.pc-table td{
+  padding:4px 6px;
+  border-bottom:1px solid #2a2a2a;
+}
+
+.pc-table tfoot td{
+  font-weight:700;
+}
+
+.pc-table input[type="number"]{
+  width:80px;
+}
+
+.petty-mov h3{
+  margin-top:0;
+}
+
+.petty-mov .row{
+  margin-top:8px;
+  gap:8px;
+  align-items:flex-end;
+}
+
+.petty-mov .row label{
+  display:block;
+  font-size:12px;
+  margin-bottom:2px;
+}
+
+.petty-mov .row input[type="number"],
+.petty-mov .row input[type="date"],
+.petty-mov .row input[type="text"],
+.petty-mov .row select{
+  width:100%;
+}
+
+.btn-small{
+  font-size:11px;
+  padding:2px 6px;
+}
+.petty-final h3{
+  margin-top:0;
+}
+
+.pc-history-actions{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
+
+.pc-history-actions button{
+  width:auto;
+}
+
+
+.btn-link {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: #e0b300;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.btn-link:hover {
+  color: #ffd85e;
+}
+
+
+/* Lotes cargados en evento (POS > Inventario) */
+.lotes-block{
+  margin-top:10px;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid #2a2a2a;
+  background:#121212;
+}
+.lotes-block-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.lotes-block .badge{margin-left:8px}
+#tbl-lotes-evento th,#tbl-lotes-evento td{white-space:nowrap}
+#tbl-lotes-evento th:nth-child(n+3),
+#tbl-lotes-evento td:nth-child(n+3){
+  text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+
+/* Caja Chica - Ajuste registrado */
+.pc-adj-records{
+  margin-top:10px;
+  border:1px solid #2a2a2a;
+  border-radius:14px;
+  padding:10px 12px;
+  background: rgba(255,255,255,0.02);
+}
+.pc-adj-records .title{
+  font-weight:800;
+  margin-bottom:6px;
+}
+.pc-adj-record{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  padding:6px 0;
+  border-top:1px dashed #2a2a2a;
+}
+.pc-adj-record:first-of-type{border-top:none;}
+.pc-adj-record .amt{
+  font-weight:800;
+  white-space:nowrap;
+}
+
+
+/* =========================
+   Extras por evento (POS > Productos)
+   ========================= */
+#extras-list{
+  margin-top:10px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.extra-row{
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) 110px 110px 90px auto;
+  gap:10px;
+  align-items:center;
+  padding:10px 12px;
+  border:1px solid #2a2a2a;
+  border-radius:12px;
+  background:#141414;
+}
+
+.extra-row.low{border-color:#5a3d3d}
+.extra-row.out{border-color:#5a3d12}
+
+.extra-col{
+  min-width:0;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+
+.extra-name{
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.extra-cost,.extra-price,.extra-stock{ text-align:right; }
+
+.extra-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:nowrap;
+}
+
+.extra-actions button{
+  width:auto;
+}
+
+/* Botones compactos dentro del listado de extras (sin afectar otros btn-small fuera de esta zona) */
+.extra-actions .btn-small{
+  padding:6px 10px;
+  border-radius:10px;
+  font-size:12px;
+}
+
+.pill{
+  display:inline-block;
+  margin-left:8px;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:700;
+  line-height:1.6;
+  border:1px solid #333;
+  background:#222;
+  color:#ddd;
+  vertical-align:middle;
+}
+.pill.warn{border-color:#5a3d12;color:#ffd7a1}
+.pill.danger{border-color:#5a3d3d;color:#ffb3b3}
+
+@media (max-width:560px){
+  .extra-row{grid-template-columns:minmax(140px,1fr) 90px 90px 70px auto}
+  .extra-actions{gap:6px}
+  .extra-actions .btn-small{padding:6px 8px;font-size:11px}
+}
+
+@media (max-width:420px){
+  .extra-row{grid-template-columns:1fr 80px 80px 60px auto}
+}
