@@ -3,13 +3,28 @@ const STORAGE_KEY = "arcano33_lotes";
 
 let editingId = null;
 
+// Abreviaturas para compactar columnas (UI) sin tocar datos
+const PROD_ABBR = {
+  Pulso: "P",
+  Media: "M",
+  Djeba: "D",
+  Litro: "L",
+  "Galón": "G",
+  Galon: "G",
+};
+
+function abbrProducto(nombre) {
+  if (!nombre) return "";
+  return PROD_ABBR[nombre] || nombre.trim().charAt(0).toUpperCase();
+}
+
 function $(id) {
   return document.getElementById(id);
 }
 
 function loadLotes() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = A33Storage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -21,7 +36,7 @@ function loadLotes() {
 }
 
 function saveLotes(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  A33Storage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
 function formatDate(value) {
@@ -232,6 +247,13 @@ function renderTable() {
     fields.forEach((value, idx) => {
       const td = document.createElement("td");
       td.textContent = value;
+
+      // Compactar visualmente las columnas de productos (Pulso/Media/Djeba/Litro/Galón)
+      // idx: 0 Fecha, 1 Código, 2 VolTotal, 3 Pulso, 4 Media, 5 Djeba, 6 Litro, 7 Galón, 8 Caducidad
+      if (idx >= 3 && idx <= 7) {
+        td.classList.add("col-producto-abbr");
+      }
+
       if (idx === 8 && value) {
         // caducidad
         const today = new Date().toISOString().slice(0, 10);
@@ -247,16 +269,20 @@ function renderTable() {
 
     const viewBtn = document.createElement("button");
     viewBtn.type = "button";
-    viewBtn.textContent = "Ver";
-    viewBtn.className = "btn";
+    viewBtn.textContent = "👁";
+    viewBtn.title = "Ver";
+    viewBtn.setAttribute("aria-label", "Ver");
+    viewBtn.className = "btn icon";
     viewBtn.addEventListener("click", () => {
       showLoteDetails(lote);
     });
 
     const editBtn = document.createElement("button");
     editBtn.type = "button";
-    editBtn.textContent = "Editar";
-    editBtn.className = "btn secondary";
+    editBtn.textContent = "✎";
+    editBtn.title = "Editar";
+    editBtn.setAttribute("aria-label", "Editar");
+    editBtn.className = "btn secondary icon";
     editBtn.addEventListener("click", () => {
       populateForm(lote);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -264,8 +290,10 @@ function renderTable() {
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
-    deleteBtn.textContent = "Borrar";
-    deleteBtn.className = "btn danger";
+    deleteBtn.textContent = "🗑";
+    deleteBtn.title = "Borrar";
+    deleteBtn.setAttribute("aria-label", "Borrar");
+    deleteBtn.className = "btn danger icon";
     deleteBtn.addEventListener("click", () => {
       if (!confirm(`¿Borrar el lote ${lote.codigo}?`)) return;
       const current = loadLotes().filter((l) => l.id !== lote.id);
@@ -276,9 +304,13 @@ function renderTable() {
       renderTable();
     });
 
-    actionsTd.appendChild(viewBtn);
-    actionsTd.appendChild(editBtn);
-    actionsTd.appendChild(deleteBtn);
+    // Wrapper para asegurar que las acciones no hagan overflow y queden en una sola línea
+    const actionsWrap = document.createElement("div");
+    actionsWrap.className = "acciones";
+    actionsWrap.appendChild(viewBtn);
+    actionsWrap.appendChild(editBtn);
+    actionsWrap.appendChild(deleteBtn);
+    actionsTd.appendChild(actionsWrap);
     tr.appendChild(actionsTd);
 
     tbody.appendChild(tr);
@@ -397,7 +429,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("clear-all-btn").addEventListener("click", () => {
     if (!confirm("¿Borrar todos los lotes registrados?")) return;
-    localStorage.removeItem(STORAGE_KEY);
+    A33Storage.removeItem(STORAGE_KEY);
     clearForm();
     renderTable();
   });

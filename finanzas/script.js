@@ -1166,7 +1166,8 @@ async function exportDiarioExcel() {
     const tipo = e.tipoMovimiento || 'otro';
     if (tipoFilter !== 'todos' && tipo !== tipoFilter) continue;
 
-    const origen = e.origen || 'Manual';
+    const origenRaw = e.origen || 'Interno';
+    const origen = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
     const fechaMov = String(e.fecha || e.date || '').slice(0, 10);
     if ((diarioDesde || diarioHasta) && !fechaMov) continue;
     if (diarioDesde && fechaMov < diarioDesde) continue;
@@ -1744,7 +1745,8 @@ function renderDiario(data) {
 
   for (const e of sorted) {
     const tipoMov = e.tipoMovimiento || '';
-    const origen = e.origen || 'Manual';
+    const origenRaw = e.origen || 'Interno';
+    const origen = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
 
     const fechaMov = String(e.fecha || e.date || '').slice(0, 10);
     if ((diarioDesde || diarioHasta) && !fechaMov) continue;
@@ -1804,6 +1806,8 @@ function openDetalleModal(entryId) {
 const ref = (entry.reference || '').toString().trim();
 const pm = (entry.paymentMethod || '').toString().trim();
 const pmLabel = pm === 'bank' ? 'Banco' : (pm === 'cash' ? 'Caja' : (pm ? pm : '—'));
+	const origenRaw = entry.origen || 'Interno';
+	const origenLabel = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
 
 meta.innerHTML = `
   <p><strong>Fecha:</strong> ${entry.fecha || entry.date || ''}</p>
@@ -1813,7 +1817,7 @@ meta.innerHTML = `
   <p><strong>Proveedor:</strong> ${supplierLabel}</p>
   <p><strong>Pago:</strong> ${pmLabel}</p>
   <p><strong>Referencia:</strong> ${ref || '—'}</p>
-  <p><strong>Origen:</strong> ${entry.origen || 'Manual'}</p>
+	  <p><strong>Origen:</strong> ${origenLabel}</p>
 `;
 
 tbody.innerHTML = '';
@@ -1966,7 +1970,7 @@ async function guardarMovimientoManual() {
     descripcion: descripcion || `Movimiento ${tipo}`,
     tipoMovimiento: tipo,
     evento,
-    origen: 'Manual',
+    origen: 'Interno',
     origenId: null,
     totalDebe: monto,
     totalHaber: monto
@@ -2271,7 +2275,7 @@ async function guardarCompraProveedor() {
     descripcion: desc || `Compra a proveedor: ${supplierName}`,
     tipoMovimiento: 'egreso',
     evento: normalizeEventForPurchases(),
-    origen: 'Manual',
+    origen: 'Interno',
     origenId: null,
     totalDebe: monto,
     totalHaber: monto,

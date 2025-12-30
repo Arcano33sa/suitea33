@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Arcano 33 · Centro de Mando</title>
+  <meta name="description" content="Centro de Mando (Operativo v1): alertas accionables, panel Hoy y navegación rápida por evento." />
+  <meta name="theme-color" content="#7b1818" />
+
+  <link rel="stylesheet" href="/assets/css/a33-header.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- HEADER PREMIUM -->
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Centro de Mando</div>
+    <div class="a33-version">
+      <span class="cmd-today-label">Hoy: <b id="cmdToday">—</b></span>
+      <span class="cmd-version">v4.20.4</span>
+    </div>
+  </header>
+
+  <main class="cmd-main" role="main">
+    <!-- SELECTOR EVENTO -->
+    <section class="cmd-card cmd-focus" aria-label="Selector de evento">
+      <div class="cmd-focus-left">
+        <div class="cmd-section-title">Enfocado:</div>
+        <div class="cmd-muted">Cambia el evento global del POS. Si un dato no existe, verás “—”.</div>
+      </div>
+
+      <div class="cmd-focus-right">
+        <label class="cmd-label" for="eventSearch">Evento</label>
+        <div class="cmd-picker" id="eventPicker">
+          <input id="eventSearch" class="cmd-input" autocomplete="off" placeholder="Buscar evento…" />
+          <button class="cmd-picker-btn" id="eventPickerBtn" type="button" aria-label="Abrir lista">▾</button>
+          <div class="cmd-picker-list" id="eventList" role="listbox" aria-label="Eventos" hidden></div>
+        </div>
+        <div class="cmd-muted cmd-picker-hint" id="focusHint">—</div>
+      </div>
+    </section>
+
+    <!-- ALERTAS ACCIONABLES -->
+    <section class="cmd-alerts" id="alerts" aria-label="Alertas accionables" hidden>
+      <div class="cmd-card cmd-alerts-inner">
+        <div class="cmd-section-head">
+          <div class="cmd-section-title">Alertas accionables</div>
+          <button class="cmd-pill" id="btnSyncAlerts" type="button" aria-label="Sincronizar alertas">
+            <span class="cmd-pill-ico" aria-hidden="true">⟳</span>
+            <span>Sincronizar</span>
+          </button>
+        </div>
+        <div class="cmd-alert-list" id="alertList"></div>
+      </div>
+    </section>
+
+    <!-- ESTADO VACÍO -->
+    <section class="cmd-card cmd-empty" id="emptyState" hidden>
+      <div class="cmd-empty-title">No hay eventos disponibles</div>
+      <div class="cmd-muted">Abre <b>POS → Eventos</b> y crea/selecciona uno. Luego vuelve aquí.</div>
+      <div class="cmd-empty-actions">
+        <a class="cmd-btn cmd-btn-primary" href="../pos/index.html">Ir a POS</a>
+      </div>
+    </section>
+
+    <!-- PANEL HOY (2x2) -->
+    <section class="cmd-grid" id="todayPanel" aria-label="Panel Hoy">
+      <article class="cmd-card cmd-metric">
+        <div class="cmd-metric-top">
+          <div class="cmd-metric-label">Ventas hoy</div>
+          <div class="cmd-pill" id="salesTodaySub">—</div>
+        </div>
+        <div class="cmd-metric-value" id="salesToday">—</div>
+        <div class="cmd-muted" id="salesTodayHint">No disponible</div>
+      </article>
+
+      <article class="cmd-card cmd-metric">
+        <div class="cmd-metric-top">
+          <div class="cmd-metric-label">Caja Chica</div>
+          <div class="cmd-pill" id="pettyDayState">—</div>
+        </div>
+        <div class="cmd-metric-value" id="pettyState">—</div>
+        <div class="cmd-muted" id="pettyHint">No disponible</div>
+      </article>
+
+      <article class="cmd-card cmd-metric">
+        <div class="cmd-metric-top">
+          <div class="cmd-metric-label">Checklist</div>
+          <button class="cmd-mini-btn" id="btnOpenChecklist" type="button">Abrir</button>
+        </div>
+        <div class="cmd-metric-value" id="checklistProgress">—</div>
+        <div class="cmd-muted" id="checklistHint">No disponible</div>
+      </article>
+
+      <article class="cmd-card cmd-metric">
+        <div class="cmd-metric-top">
+          <div class="cmd-metric-label">Top productos (hoy)</div>
+          <div class="cmd-pill" id="topHint">—</div>
+        </div>
+        <div class="cmd-top3" id="topProducts">—</div>
+        <div class="cmd-muted" id="topProductsHint">No disponible</div>
+      </article>
+    </section>
+
+
+    <!-- PEDIDOS OPERATIVO (HOY + MAÑANA) -->
+    <section class="cmd-ops" id="ordersOps" aria-label="Pedidos operativo">
+      <div class="cmd-ops-grid">
+        <article class="cmd-card cmd-op" aria-label="Pedidos (Hoy)">
+          <div class="cmd-section-head">
+            <div class="cmd-section-title">Pedidos</div>
+            <button class="cmd-pill cmd-pill-btn" id="btnGoPedidosToday" type="button">Ver Pedidos</button>
+          </div>
+
+          <div class="cmd-op-kpi" id="ordersPending">Pendientes: —</div>
+          <div class="cmd-muted" id="ordersTodayHint">No disponible</div>
+
+          <div class="cmd-order-list" id="ordersTopToday"></div>
+        </article>
+
+        <article class="cmd-card cmd-op" id="ordersTomorrowCard" aria-label="Mañana" hidden>
+          <div class="cmd-section-head">
+            <div class="cmd-section-title">Mañana <span class="cmd-muted" id="ordersTomorrowDate">—</span></div>
+            <button class="cmd-pill cmd-pill-btn" id="btnGoPedidosTomorrow" type="button">Ver Pedidos</button>
+          </div>
+
+          <div class="cmd-op-rows">
+            <div class="cmd-op-row"><span>Fabricar mañana:</span><strong id="tomorrowMake">—</strong></div>
+            <div class="cmd-op-row"><span>Entregar mañana:</span><strong id="tomorrowDeliver">—</strong></div>
+          </div>
+
+          <div class="cmd-order-list" id="ordersTopTomorrow"></div>
+        </article>
+      </div>
+    </section>
+
+
+    <!-- INVENTARIO EN RIESGO -->
+    <section class="cmd-inv-risk" id="invRiskBlock" aria-label="Inventario en riesgo">
+      <div class="cmd-section-head cmd-inv-risk-head">
+        <div class="cmd-section-title">INVENTARIO EN RIESGO</div>
+        <div class="cmd-inv-risk-tools">
+          <span class="cmd-inv-updated">Actualizado: <b id="invRiskUpdatedAt">--:--</b></span>
+          <button class="cmd-pill cmd-pill-mini" id="invRiskRecalcBtn" type="button" aria-label="Recalcular inventario en riesgo">
+            <span class="cmd-pill-ico" aria-hidden="true">⟲</span>
+            <span>Recalcular</span>
+          </button>
+        </div>
+      </div>
+      <div class="cmd-muted cmd-inv-risk-desc">Semáforo: <b>OK</b> (verde), <b>Cerca</b> (amarillo), <b>Bajo</b> (rojo). Por defecto muestra solo accionables (rojo/amarillo).</div>
+
+      <div class="cmd-inv-risk-grid" role="group" aria-label="Listas de inventario en riesgo">
+        <article class="cmd-card cmd-inv-card" aria-label="Líquidos en riesgo">
+          <div class="cmd-inv-head">
+            <div class="cmd-inv-title">LÍQUIDOS</div>
+            <div class="cmd-inv-actions">
+              <button class="cmd-mini-btn cmd-inv-toggle" id="invLiquidsToggle" type="button" aria-expanded="false">Ver todo</button>
+              <a class="cmd-mini-btn cmd-inv-link" href="../inventario/index.html">Abrir Inventario</a>
+            </div>
+          </div>
+          <div class="cmd-muted cmd-inv-summary" id="invRiskLiquidsSummary">—</div>
+          <div class="cmd-inv-list" id="invRiskLiquidsList"></div>
+        </article>
+
+        <article class="cmd-card cmd-inv-card" aria-label="Botellas en riesgo">
+          <div class="cmd-inv-head">
+            <div class="cmd-inv-title">BOTELLAS</div>
+            <div class="cmd-inv-actions">
+              <button class="cmd-mini-btn cmd-inv-toggle" id="invBottlesToggle" type="button" aria-expanded="false">Ver todo</button>
+              <a class="cmd-mini-btn cmd-inv-link" href="../inventario/index.html">Abrir Inventario</a>
+            </div>
+          </div>
+          <div class="cmd-muted cmd-inv-summary" id="invRiskBottlesSummary">—</div>
+          <div class="cmd-inv-list" id="invRiskBottlesList"></div>
+        </article>
+      </div>
+    </section>
+
+
+    <!-- BOTONES RÁPIDOS -->
+    <section class="cmd-card cmd-quick" aria-label="Botones rápidos">
+      <div class="cmd-quick-grid">
+        <button class="cmd-btn cmd-btn-primary" id="btnGoSell" type="button">Ir a POS (Vender)</button>
+        <button class="cmd-btn" id="btnGoCaja" type="button">Ir a Caja Chica</button>
+        <button class="cmd-btn" id="btnGoResumen" type="button">Ir a Resumen</button>
+        <button class="cmd-btn" id="btnGoChecklist" type="button">Abrir Checklist</button>
+      </div>
+      <div class="cmd-muted cmd-quick-note" id="navNote">—</div>
+    </section>
+
+    <!-- MINI RADAR GLOBAL -->
+    <section class="cmd-radar" aria-label="Mini radar global">
+      <div class="cmd-radar-item">
+        <div class="cmd-radar-k" id="radarEvents">—</div>
+        <div class="cmd-radar-l">Eventos</div>
+      </div>
+      <div class="cmd-radar-item">
+        <div class="cmd-radar-k" id="radarEventName">—</div>
+        <div class="cmd-radar-l">Evento actual</div>
+      </div>
+      <div class="cmd-radar-item">
+        <div class="cmd-radar-k" id="radarUnclosed">—</div>
+        <div class="cmd-radar-l">Días sin cierre (7d)</div>
+      </div>
+      <div class="cmd-radar-item">
+        <div class="cmd-radar-k" id="radarNoStock">—</div>
+        <div class="cmd-radar-l">Productos sin stock</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Auth gate (mismo patrón del POS) -->
+  <script src="/assets/js/a33-auth.js"></script>
+  <script src="/assets/js/a33-storage.js"></script>
+  <script>
+    try{
+      if (window.A33Auth && A33Auth.isConfigured && A33Auth.isConfigured()){
+        if (!A33Auth.isAuthenticated()) window.location.href = '../index.html';
+      }
+    }catch(_){ }
+  </script>
+  <script src="app.js"></script>
+  <!-- Sync report modal -->
+  <div class="cmd-modal" id="syncReport" hidden>
+    <div class="cmd-modal-overlay" data-close="1"></div>
+    <div class="cmd-modal-card" role="dialog" aria-modal="true" aria-labelledby="syncReportTitle">
+      <div class="cmd-modal-head">
+        <div class="cmd-modal-title" id="syncReportTitle">Resumen</div>
+        <button class="cmd-icon-btn" type="button" data-close="1" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="cmd-modal-body" id="syncReportBody"></div>
+      <div class="cmd-modal-actions">
+        <button class="cmd-pill" id="syncReportOk" type="button" data-close="1">Aceptar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cmd-toast" id="cmdToast" aria-live="polite" aria-atomic="true" hidden></div>
+</body>
+</html>

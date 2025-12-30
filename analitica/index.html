@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Arcano 33 · Analítica</title>
   <meta name="description" content="Analítica interna de ventas por evento y presentación para Arcano 33, solo lectura desde el POS." />
   <meta name="theme-color" content="#7b1818" />
@@ -16,22 +16,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css" />
 </head>
 <body class="a33-analytics-page">
-  <header class="app-header">
-    <div class="brand">
-      <img src="../inventario/images/logo.png" alt="Logo Arcano 33" class="logo" />
-      <div class="brand-text">
-        <h1>Arcano 33</h1>
-        <p>Analítica · Sangría Artesanal Premium</p>
-      </div>
-    </div>
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Analítica</div>
+    <div class="a33-version">v4.20.4</div>
   </header>
-
-  <div class="top-actions">
-    <a href="../index.html" class="btn-secondary">← Menú principal</a>
-  </div>
-
   <main class="app-main analytics-main">
     <section class="card analytics-panel">
       <div class="panel-head">
@@ -452,6 +444,14 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="/assets/js/a33-storage.js"></script>
+  <script src="/assets/js/a33-auth.js"></script>
+  <script>
+    if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
+      location.href = "../index.html";
+    }
+  </script>
   <script src="script.js"></script>
+  <script src="/assets/js/a33-input-ux.js"></script>
 </body>
 </html>

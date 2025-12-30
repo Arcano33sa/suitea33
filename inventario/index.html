@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Arcano 33 · Inventario</title>
   <meta name="description" content="Inventario interno de insumos, botellas y producto terminado de Arcano 33." />
   <meta name="theme-color" content="#7b1818" />
@@ -12,28 +12,20 @@
   <link rel="manifest" href="manifest.webmanifest" />
 
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css" />
 </head>
 <body>
-  <header class="app-header">
-    <div class="brand">
-      <img src="images/logo.png" alt="Logo Arcano 33" class="logo" />
-      <div class="brand-text">
-        <h1>Arcano 33</h1>
-        <p>Inventario · Sangría Artesanal Premium</p>
-      </div>
-    </div>
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Inventario</div>
+    <div class="a33-version">v4.20.4</div>
   </header>
-
-  <div style="text-align:right; margin: 0.25rem 1rem 0;">
-    <a href="../index.html" class="btn-secondary" style="display:inline-block; text-decoration:none;">← Menú principal</a>
-  </div>
-
   <main class="app-main">
     <section class="card form-card">
       <h2>Inventario de materia prima líquida</h2>
       <p class="hint">Control en mililitros de los líquidos base que se utilizan en las recetas y producción.</p>
       <div class="table-wrapper">
-        <table class="inv-table">
+        <table class="inv-table has-actions">
           <thead>
             <tr>
               <th>Ingrediente</th>
@@ -58,7 +50,7 @@
       <h2>Inventario de botellas por presentación</h2>
       <p class="hint">Control de unidades de botellas por presentación (vacías listas para producción).</p>
       <div class="table-wrapper">
-        <table class="inv-table">
+        <table class="inv-table has-actions">
           <thead>
             <tr>
               <th>Presentación</th>
@@ -104,6 +96,14 @@
     <p>Arcano 33 · Inventario interno de insumos, botellas y producto terminado</p>
   </footer>
 
+  <script src="/assets/js/a33-storage.js"></script>
+  <script src="/assets/js/a33-auth.js"></script>
+  <script>
+    if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
+      location.href = "../index.html";
+    }
+  </script>
   <script src="script.js"></script>
+  <script src="/assets/js/a33-input-ux.js"></script>
 </body>
 </html>

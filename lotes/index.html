@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Arcano 33 · Control de Lotes</title>
   <meta name="description" content="Control de lotes de producción de Sangría Artesanal Premium Arcano 33." />
   <meta name="theme-color" content="#7b1818" />
@@ -12,22 +12,14 @@
   <link rel="manifest" href="manifest.webmanifest" />
 
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css" />
 </head>
 <body>
-  <header class="app-header">
-    <div class="brand">
-      <img src="images/logo.png" alt="Logo Arcano 33" class="logo" />
-      <div class="brand-text">
-        <h1>Arcano 33</h1>
-        <p>Control de Lotes · Sangría Artesanal Premium</p>
-      </div>
-    </div>
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Control de Lotes</div>
+    <div class="a33-version">v4.20.4</div>
   </header>
-
-  <div style="text-align:right; margin: 0.25rem 1rem 0;">
-    <a href="../index.html" class="btn-secondary" style="display:inline-block; text-decoration:none;">← Menú principal</a>
-  </div>
-
   <main class="app-main">
     <section class="card form-card">
       <h2>Nuevo lote</h2>
@@ -81,23 +73,23 @@
         <div class="form-grid">
           <div class="field">
             <label for="pulso">Pulso 250 ml</label>
-            <input type="number" id="pulso" name="pulso" min="0" step="1" value="0" />
+            <input type="number" id="pulso" name="pulso" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
           <div class="field">
             <label for="media">Media 375 ml</label>
-            <input type="number" id="media" name="media" min="0" step="1" value="0" />
+            <input type="number" id="media" name="media" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
           <div class="field">
             <label for="djeba">Djeba 750 ml</label>
-            <input type="number" id="djeba" name="djeba" min="0" step="1" value="0" />
+            <input type="number" id="djeba" name="djeba" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
           <div class="field">
             <label for="litro">Litro 1000 ml</label>
-            <input type="number" id="litro" name="litro" min="0" step="1" value="0" />
+            <input type="number" id="litro" name="litro" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
           <div class="field">
             <label for="galon">Galón 3800 ml</label>
-            <input type="number" id="galon" name="galon" min="0" step="1" value="0" />
+            <input type="number" id="galon" name="galon" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
         </div>
 
@@ -122,17 +114,17 @@
         </div>
       </div>
       <div class="table-wrapper">
-        <table id="lotes-table">
+        <table id="lotes-table" class="table-lotes">
           <thead>
             <tr>
               <th>Fecha</th>
               <th>Código</th>
-              <th>Vol. total (ml)</th>
-              <th>Pulso</th>
-              <th>Media</th>
-              <th>Djeba</th>
-              <th>Litro</th>
-              <th>Galón</th>
+              <th title="VOL. TOTAL (ML)">Vol. ML</th>
+              <th class="col-producto-abbr" title="Pulso 250 ml">P</th>
+              <th class="col-producto-abbr" title="Media 375 ml">M</th>
+              <th class="col-producto-abbr" title="Djeba 750 ml">D</th>
+              <th class="col-producto-abbr" title="Litro 1000 ml">L</th>
+              <th class="col-producto-abbr" title="Galón 3800 ml">G</th>
               <th>Caducidad</th>
               <th>Acciones</th>
             </tr>
@@ -150,6 +142,14 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="/assets/js/a33-storage.js"></script>
+  <script src="/assets/js/a33-auth.js"></script>
+  <script>
+    if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
+      location.href = "../index.html";
+    }
+  </script>
   <script src="script.js"></script>
+  <script src="/assets/js/a33-input-ux.js"></script>
 </body>
 </html>

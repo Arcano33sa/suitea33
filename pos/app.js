@@ -5,8 +5,19 @@ let db;
 
 // --- Finanzas: conexión a finanzasDB para asientos automáticos
 const FIN_DB_NAME = 'finanzasDB';
-const FIN_DB_VER = 1;
 let finDb;
+let finanzasBridgeWarned = false;
+let finanzasBridgeBlockedWarned = false;
+function notifyFinanzasBridge(msg, { force = false } = {}) {
+  try {
+    if (!force && finanzasBridgeWarned) return;
+    finanzasBridgeWarned = true;
+    if (typeof toast === 'function') toast(msg);
+    else alert(msg);
+  } catch (e) {
+    console.warn('No se pudo notificar problema POS→Finanzas', e);
+  }
+}
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -61,7 +72,14 @@ function openDB() {
 function openFinanzasDB() {
   return new Promise((resolve, reject) => {
     if (finDb) return resolve(finDb);
-    const req = indexedDB.open(FIN_DB_NAME, FIN_DB_VER);
+    const req = indexedDB.open(FIN_DB_NAME);
+    req.onblocked = () => {
+      console.warn('Apertura de finanzasDB bloqueada (POS). Cierra otras pestañas con Suite A33/Finanzas abiertas.');
+      if (!finanzasBridgeBlockedWarned) {
+        finanzasBridgeBlockedWarned = true;
+        notifyFinanzasBridge('⚠️ POS no puede conectar con Finanzas porque otra pestaña está bloqueando la base de datos. Cerrá otras pestañas de la Suite y reintentá.', { force: true });
+      }
+    };
     req.onupgradeneeded = (e) => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('accounts')) {
@@ -84,10 +102,18 @@ function openFinanzasDB() {
     };
     req.onsuccess = (e) => {
       finDb = e.target.result;
+      // Si Finanzas actualiza el esquema mientras POS está abierto, cerramos para no bloquear el upgrade
+      finDb.onversionchange = () => {
+        try { finDb.close(); } catch (e) {}
+        finDb = null;
+        console.warn('finanzasDB cambió de versión mientras POS estaba abierto; se cerró la conexión para permitir el upgrade.');
+      };
+      console.info(`POS conectado a finanzasDB (versión ${finDb.version})`);
       resolve(finDb);
     };
     req.onerror = () => {
       console.error('Error abriendo finanzasDB desde POS', req.error);
+      notifyFinanzasBridge('⚠️ POS no pudo abrir Finanzas para asientos automáticos. Abrí el módulo Finanzas una vez, y si hay otra pestaña abierta, cerrala y reintentá.');
       reject(req.error);
     };
   });
@@ -98,6 +124,7 @@ async function ensureFinanzasDB() {
     await openFinanzasDB();
   } catch (e) {
     console.error('No se pudo abrir finanzasDB para asientos automáticos', e);
+    notifyFinanzasBridge('⚠️ No se pudo conectar con Finanzas. Las ventas se guardaron, pero el asiento contable no se pudo generar. Revisá consola / versión de la BD y reintentá.');
     throw e;
   }
 }
@@ -113,71 +140,111 @@ function mapSaleToCuentaCobro(sale) {
 
 // Crea/actualiza asiento automático en Finanzas por una venta / devolución del POS
 async function createJournalEntryForSalePOS(sale) {
-  try {
-    if (!sale) return;
-    // Cortesías: por ahora NO se contabilizan ingresos ni costo de venta
-    if (sale.courtesy) return;
+  // Crea/actualiza el asiento automático en Finanzas para una venta del POS.
+  // Reglas:
+  // - Venta normal: ingreso + COGS
+  // - Cortesía: SOLO costo (gasto por cortesía), nunca ingreso
+  // - Devolución: asiento inverso
 
+  if (!sale) return;
+
+  // Nos aseguramos de tener un ID (origenId) para vincular el asiento
+  const saleId = (sale.id != null) ? sale.id : (sale.createdAt != null ? sale.createdAt : null);
+  if (saleId == null) {
+    console.warn('Venta sin id/createdAt, no se genera asiento automático.');
+    return;
+  }
+
+  try {
     await ensureFinanzasDB();
 
-    const saleId = sale.id != null ? sale.id : null;
+    // --- Datos base ---
+    const isCourtesy = !!sale.courtesy;
+    const isReturn = !!sale.isReturn;
+    const amount = round2(Math.abs(Number(sale.total || 0)));
 
-    // Importe de ingreso (venta neta)
-    const amount = Math.abs(Number(sale.total) || 0);
+    const qtyAbs = Math.abs(Number(sale.qty || 0)) || 0;
 
-    // Costo de venta basado en costo por presentación
-    let unitCost = 0;
-    if (typeof sale.costPerUnit === 'number' && sale.costPerUnit > 0) {
-      unitCost = sale.costPerUnit;
+    // Preferimos lineCost si existe (más robusto). Si no, lo calculamos por costo unitario.
+    let amountCost = 0;
+    const lc = Number(sale.lineCost);
+    if (Number.isFinite(lc) && Math.abs(lc) > 0.000001) {
+      amountCost = round2(Math.abs(lc));
     } else {
-      unitCost = getCostoUnitarioProducto(sale.productName || '');
+      const unitCostFromSale = (typeof sale.costPerUnit === 'number' && sale.costPerUnit > 0) ? sale.costPerUnit : 0;
+      const unitCost = unitCostFromSale > 0 ? unitCostFromSale : getCostoUnitarioProducto(sale.productName);
+      amountCost = round2((unitCost > 0 ? unitCost : 0) * qtyAbs);
     }
-    const qtyAbs = Math.abs(Number(sale.qty) || 0);
-    const amountCost = unitCost > 0 && qtyAbs > 0 ? unitCost * qtyAbs : 0;
 
-    // Si no hay ni ingreso ni costo, no hay nada que registrar
-    if (!amount && !amountCost) return;
+    // Si no hay nada que registrar, salimos.
+    // (Venta sin monto y sin costo no aporta asiento.)
+    if (!(amount > 0) && !(amountCost > 0)) return;
 
-    const cashAccount = mapSaleToCuentaCobro(sale);
-    const evento = sale.eventName || '';
-    const descripcionBase = sale.productName || 'Venta POS';
-    const descripcion = sale.isReturn
-      ? `Devolución POS - ${descripcionBase}`
-      : `Venta POS - ${descripcionBase}`;
+    // Selección de cuenta de caja/banco según método de pago
+    const payment = (sale.payment || 'efectivo').toString();
+    let cashAccount = '1100';
+    if (payment === 'transferencia') cashAccount = '1200';
+    if (payment === 'credito') cashAccount = '1300';
 
-    // Para devoluciones lo marcamos como "ajuste" para diferenciarlo visualmente
-    const tipoMovimiento = sale.isReturn ? 'ajuste' : 'ingreso';
+    // Descripción / tipo
+    const prodName = (sale.productName || '').toString();
+    const eventName = (sale.eventName || '').toString();
+    const courtesyTo = (sale.courtesyTo || '').toString().trim();
 
-    const totalsDebe = amount + amountCost;
-    const totalsHaber = amount + amountCost;
+    const baseParts = [];
+    if (prodName) baseParts.push(prodName);
+    if (sale && sale.seqId) baseParts.push('N° ' + sale.seqId);
+    if (courtesyTo) baseParts.push('Para: ' + courtesyTo);
+    const descripcionBase = baseParts.join(' | ');
 
-    // Buscar si ya existe un asiento para este origen/origenId
+    let descripcion = '';
+    let tipoMovimiento = '';
+    if (isCourtesy) {
+      descripcion = 'Cortesía POS' + (descripcionBase ? (' - ' + descripcionBase) : '');
+      tipoMovimiento = 'egreso';
+    } else if (isReturn) {
+      descripcion = 'Devolución POS - ' + (descripcionBase || '');
+      tipoMovimiento = 'ajuste';
+    } else {
+      descripcion = 'Venta POS - ' + (descripcionBase || '');
+      tipoMovimiento = 'ingreso';
+    }
+
+    const evento = eventName || 'General';
+
+    // Totales del asiento
+    let totalsDebe = 0;
+    let totalsHaber = 0;
+
+    if (isCourtesy) {
+      totalsDebe = amountCost;
+      totalsHaber = amountCost;
+    } else {
+      totalsDebe = amount + amountCost;
+      totalsHaber = amount + amountCost;
+    }
+
+    // --- Crear o actualizar el journalEntry (mismo origenId) ---
+    let entryId = null;
     let existingEntry = null;
-    if (saleId != null) {
-      await new Promise((resolve) => {
-        const txRead = finDb.transaction(['journalEntries'], 'readonly');
-        const storeRead = txRead.objectStore('journalEntries');
-        const req = storeRead.getAll();
-        req.onsuccess = () => {
-          const list = req.result || [];
-          existingEntry = list.find(
-            (e) => e && e.origen === 'POS' && e.origenId === saleId
-          ) || null;
-        };
-        txRead.oncomplete = () => resolve();
-        txRead.onerror = () => resolve();
-      });
-    }
 
-    let entryId = existingEntry ? existingEntry.id : null;
+    await new Promise((resolve) => {
+      const txRead = finDb.transaction(['journalEntries'], 'readonly');
+      const store = txRead.objectStore('journalEntries');
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const all = req.result || [];
+        existingEntry = all.find(e => e && e.origen === 'POS' && e.origenId === saleId);
+      };
+      txRead.oncomplete = () => resolve();
+      txRead.onerror = () => resolve();
+    });
 
-    // Crear/actualizar encabezado del asiento
     await new Promise((resolve) => {
       const txWrite = finDb.transaction(['journalEntries'], 'readwrite');
       const storeWrite = txWrite.objectStore('journalEntries');
 
       if (existingEntry) {
-        // Alinear con Finanzas: usar "fecha" y mantener "date" para compatibilidad
         existingEntry.fecha = sale.date;
         existingEntry.date = sale.date;
         existingEntry.descripcion = descripcion;
@@ -187,11 +254,13 @@ async function createJournalEntryForSalePOS(sale) {
         existingEntry.origenId = saleId;
         existingEntry.totalDebe = totalsDebe;
         existingEntry.totalHaber = totalsHaber;
-        storeWrite.put(existingEntry);
+
+        const reqPut = storeWrite.put(existingEntry);
+        reqPut.onsuccess = () => { entryId = existingEntry.id; };
       } else {
         const entry = {
-          fecha: sale.date,   // campo que Finanzas espera
-          date: sale.date,    // compatibilidad con índices previos
+          fecha: sale.date,
+          date: sale.date,
           descripcion,
           tipoMovimiento,
           evento,
@@ -201,19 +270,15 @@ async function createJournalEntryForSalePOS(sale) {
           totalHaber: totalsHaber
         };
         const reqAdd = storeWrite.add(entry);
-        reqAdd.onsuccess = (ev) => {
-          entryId = ev.target.result;
-        };
+        reqAdd.onsuccess = (ev) => { entryId = ev.target.result; };
       }
 
       txWrite.oncomplete = () => {
-        if (!entryId && existingEntry && existingEntry.id != null) {
-          entryId = existingEntry.id;
-        }
+        if (!entryId && existingEntry && existingEntry.id != null) entryId = existingEntry.id;
         resolve();
       };
-      txWrite.onerror = (e) => {
-        console.error('Error guardando asiento automático desde POS', e && e.target && e.target.error);
+      txWrite.onerror = () => {
+        console.error('Error guardando asiento automático desde POS');
         resolve();
       };
     });
@@ -223,7 +288,7 @@ async function createJournalEntryForSalePOS(sale) {
       return;
     }
 
-    // Borrar líneas anteriores de este asiento (para evitar duplicados)
+    // --- Borrar líneas anteriores de este asiento (evita duplicados) ---
     await new Promise((resolve) => {
       const txDel = finDb.transaction(['journalLines'], 'readwrite');
       const storeDel = txDel.objectStore('journalLines');
@@ -233,18 +298,14 @@ async function createJournalEntryForSalePOS(sale) {
         lines
           .filter((l) => String(l.entryId) === String(entryId) || String(l.idEntry) === String(entryId))
           .forEach((l) => {
-            try {
-              storeDel.delete(l.id);
-            } catch (err) {
-              console.error('Error borrando línea contable POS existente', err);
-            }
+            try { storeDel.delete(l.id); } catch (err) {}
           });
       };
       txDel.oncomplete = () => resolve();
       txDel.onerror = () => resolve();
     });
 
-    // Crear nuevas líneas (ingreso + costo de venta si aplica)
+    // --- Crear nuevas líneas ---
     await new Promise((resolve) => {
       const txLines = finDb.transaction(['journalLines'], 'readwrite');
       const storeLines = txLines.objectStore('journalLines');
@@ -258,32 +319,55 @@ async function createJournalEntryForSalePOS(sale) {
         }
       };
 
-      if (!sale.isReturn) {
+      if (isCourtesy) {
+        // Cortesía: SOLO costo
+        //   DEBE: 6105 POS Cortesía
+        //   HABER: 1500 Inventario
+        if (!isReturn) {
+          if (amountCost > 0) {
+            addLine({ accountCode: '6105', debe: amountCost, haber: 0 });
+            addLine({ accountCode: '1500', debe: 0, haber: amountCost });
+          }
+        } else {
+          // Reverso (por si alguna vez se usa):
+          //   DEBE: 1500
+          //   HABER: 6105
+          if (amountCost > 0) {
+            addLine({ accountCode: '1500', debe: amountCost, haber: 0 });
+            addLine({ accountCode: '6105', debe: 0, haber: amountCost });
+          }
+        }
+
+        txLines.oncomplete = () => resolve();
+        txLines.onerror = () => resolve();
+        return;
+      }
+
+      if (!isReturn) {
         // Venta normal:
         // Ingreso:
         //   DEBE: Caja/Banco/Clientes
-        //   HABER: 4100 Ingresos por ventas Arcano 33
-        addLine({ accountCode: cashAccount, debe: amount, haber: 0 });
-        addLine({ accountCode: '4100', debe: 0, haber: amount });
+        //   HABER: 4100 Ingresos
+        if (amount > 0) {
+          addLine({ accountCode: cashAccount, debe: amount, haber: 0 });
+          addLine({ accountCode: '4100', debe: 0, haber: amount });
+        }
 
         // Costo de venta (si hay costo disponible):
-        //   DEBE: 5100 Costo de ventas Arcano 33
-        //   HABER: 1500 Inventario producto terminado A33
+        //   DEBE: 5100 Costo de ventas
+        //   HABER: 1500 Inventario
         if (amountCost > 0) {
           addLine({ accountCode: '5100', debe: amountCost, haber: 0 });
           addLine({ accountCode: '1500', debe: 0, haber: amountCost });
         }
       } else {
         // Devolución: asiento inverso
-        // Ingreso inverso:
-        //   DEBE: 4100
-        //   HABER: Caja/Banco/Clientes
-        addLine({ accountCode: '4100', debe: amount, haber: 0 });
-        addLine({ accountCode: cashAccount, debe: 0, haber: amount });
+        if (amount > 0) {
+          addLine({ accountCode: '4100', debe: amount, haber: 0 });
+          addLine({ accountCode: cashAccount, debe: 0, haber: amount });
+        }
 
-        // Costo de venta inverso:
-        //   DEBE: 1500
-        //   HABER: 5100
+        // Costo inverso:
         if (amountCost > 0) {
           addLine({ accountCode: '1500', debe: amountCost, haber: 0 });
           addLine({ accountCode: '5100', debe: 0, haber: amountCost });
@@ -359,6 +443,279 @@ async function deleteFinanzasEntriesForSalePOS(saleId) {
       resolve();
     }
   });
+}
+
+
+// ------------------------------
+// POS → Finanzas: Caja Chica (movimientos manuales)
+// ------------------------------
+async function ensureFinanzasPettyCashAccounts(preferredIncomeCode){
+  try{
+    await ensureFinanzasDB();
+  }catch(e){
+    return;
+  }
+  return new Promise((resolve)=>{
+    try{
+      const txa = finDb.transaction(['accounts'], 'readwrite');
+      const store = txa.objectStore('accounts');
+      const req = store.getAll();
+      req.onsuccess = ()=>{
+        const all = req.result || [];
+        const has = new Set(all.map(a => String(a && a.code || '')));
+        const reqAccounts = [
+          { code: '1100', nombre: 'Caja general', tipo: 'activo', systemProtected: true },
+          { code: '1110', nombre: 'Caja eventos', tipo: 'activo', systemProtected: true },
+          { code: '1200', nombre: 'Banco', tipo: 'activo', systemProtected: true },
+          { code: '6100', nombre: 'Gastos de eventos – generales', tipo: 'gasto', systemProtected: true },
+          { code: '6130', nombre: 'Gastos varios / ajuste caja', tipo: 'gasto', systemProtected: true },
+        ];
+        // Ingreso/reposición (si hace falta)
+        if (preferredIncomeCode === '4200' && !has.has('4200')){
+          reqAccounts.push({ code: '4200', nombre: 'Otros ingresos / reposición caja', tipo: 'ingreso', systemProtected: true });
+        }
+        for (const acc of reqAccounts){
+          if (!has.has(String(acc.code))) store.put(acc);
+        }
+      };
+      txa.oncomplete = ()=>resolve();
+      txa.onerror = ()=>resolve();
+      txa.onabort = ()=>resolve();
+    }catch(err){
+      resolve();
+    }
+  });
+}
+
+async function resolvePettyCashIncomeAccountCode(){
+  try{
+    await ensureFinanzasDB();
+  }catch(e){
+    return '4200';
+  }
+  return new Promise((resolve)=>{
+    let chosen = null;
+    try{
+      const txa = finDb.transaction(['accounts'], 'readwrite');
+      const store = txa.objectStore('accounts');
+      const req = store.getAll();
+      req.onsuccess = ()=>{
+        const all = req.result || [];
+        const hasCode = (c)=> all.some(a => a && String(a.code) === c);
+        // Preferir 7100 (suele ser "Otros ingresos varios") si existe, sino 4200.
+        if (hasCode('7100')) chosen = '7100';
+        else if (hasCode('4200')) chosen = '4200';
+        else {
+          const byName = all.find(a => {
+            const name = String(a && (a.nombre || a.name) || '').toLowerCase();
+            return name.includes('otros ingresos') || name.includes('reposición') || name.includes('reposicion') || name.includes('aporte') || name.includes('reembolso');
+          });
+          if (byName && byName.code != null) chosen = String(byName.code);
+          else {
+            chosen = '4200';
+            store.put({ code: '4200', nombre: 'Otros ingresos / reposición caja', tipo: 'ingreso', systemProtected: true });
+          }
+        }
+      };
+      txa.oncomplete = ()=>resolve(chosen || '4200');
+      txa.onerror = ()=>resolve(chosen || '4200');
+      txa.onabort = ()=>resolve(chosen || '4200');
+    }catch(err){
+      resolve(chosen || '4200');
+    }
+  });
+}
+
+async function postPettyCashMovementToFinanzas(eventId, dayKey, mov){
+  if (!eventId || !mov) return;
+
+  const mvDate = String(mov.date || dayKey || '').slice(0,10);
+  const stamp = (mov.createdAt != null) ? mov.createdAt : (mov.id != null ? mov.id : Date.now());
+  const sourceId = `pc_${eventId}_${mvDate}_${stamp}`;
+
+  // Abrir Finanzas (best-effort)
+  try{
+    await ensureFinanzasDB();
+  }catch(e){
+    return;
+  }
+
+  // Anti-duplicados (source/sourceId)
+  const exists = await new Promise((resolve)=>{
+    try{
+      const txr = finDb.transaction(['journalEntries'], 'readonly');
+      const store = txr.objectStore('journalEntries');
+      const req = store.getAll();
+      req.onsuccess = ()=>{
+        const all = req.result || [];
+        const ok = all.some(e => e && (
+          (e.source === 'pos_pettycash' && e.sourceId === sourceId) ||
+          (e.origen === 'POS' && e.origenId === sourceId) ||
+          (e.source === 'pos_pettycash' && e.origenId === sourceId)
+        ));
+        resolve(ok);
+      };
+      req.onerror = ()=>resolve(false);
+    }catch(err){
+      resolve(false);
+    }
+  });
+  if (exists) return;
+
+  // Evento (nombre + fxRate)
+  let eventName = 'Evento';
+  let fxRate = null;
+  try{
+    const evs = await getAll('events');
+    const ev = (evs || []).find(e => e && e.id === eventId);
+    if (ev){
+      eventName = (ev.name || ev.nombre || ev.title || ev.eventName || eventName);
+      const fx = Number(ev.fxRate);
+      if (Number.isFinite(fx) && fx > 0) fxRate = fx;
+    }
+  }catch(e){}
+
+  // Monto en C$ (Finanzas está en C$)
+  const amountOrig = Number(mov.amount) || 0;
+  if (!Number.isFinite(amountOrig) || amountOrig <= 0) return;
+
+  let amountNio = amountOrig;
+  let fxUsed = null;
+  if (mov.currency === 'USD'){
+    if (!fxRate){
+      notifyFinanzasBridge('⚠️ Movimiento guardado en POS, pero NO se registró en Finanzas: falta Tipo de Cambio del evento para convertir USD a C$.');
+      return;
+    }
+    fxUsed = fxRate;
+    amountNio = round2(amountOrig * fxRate);
+  }
+  amountNio = round2(amountNio);
+  if (!Number.isFinite(amountNio) || amountNio <= 0) return;
+
+  const incomeCode = await resolvePettyCashIncomeAccountCode();
+  await ensureFinanzasPettyCashAccounts(incomeCode);
+
+  // Mapeo contable DEFAULT fijo
+  const cashEvents = '1110';
+  const cashGeneral = '1100';
+  const bank = '1200';
+  const expenseEvents = '6100';
+  const adjustExpense = '6130';
+
+  const isTransfer = !!mov.isTransfer || mov.uiType === 'transferencia';
+  const isAdjust = !!mov.isAdjust;
+
+  let tipoMovimiento = 'egreso';
+  let debeCode = expenseEvents;
+  let haberCode = cashEvents;
+  let kindTag = 'EGRESO';
+
+  if (isTransfer){
+    tipoMovimiento = 'transferencia';
+    kindTag = 'TRANSFERENCIA';
+    const tk = mov.transferKind || 'to_bank';
+    if (tk === 'from_general'){
+      debeCode = cashEvents;
+      haberCode = cashGeneral;
+    } else if (tk === 'to_general'){
+      debeCode = cashGeneral;
+      haberCode = cashEvents;
+    } else {
+      debeCode = bank;
+      haberCode = cashEvents;
+    }
+  } else if (isAdjust){
+    tipoMovimiento = 'ajuste';
+    if (mov.type === 'entrada'){
+      kindTag = 'AJUSTE SOBRANTE';
+      debeCode = cashEvents;
+      haberCode = incomeCode;
+    } else {
+      kindTag = 'AJUSTE FALTANTE';
+      debeCode = adjustExpense;
+      haberCode = cashEvents;
+    }
+  } else if (mov.type === 'entrada'){
+    tipoMovimiento = 'ingreso';
+    kindTag = 'INGRESO';
+    debeCode = cashEvents;
+    haberCode = incomeCode;
+  } else {
+    tipoMovimiento = 'egreso';
+    kindTag = 'EGRESO';
+    debeCode = expenseEvents;
+    haberCode = cashEvents;
+  }
+
+  // Memo / descripción
+  let desc = String(mov.description || '').trim();
+  if (mov.currency === 'USD' && fxUsed){
+    desc = `${desc} (USD ${round2(amountOrig)} @ ${round2(fxUsed)} = C$ ${amountNio.toFixed(2)})`;
+  }
+  const memo = `[POS Caja Chica] ${kindTag} - ${desc || '—'} - ${eventName} - ${mvDate}`;
+
+  // Crear asiento + líneas (doble partida)
+  await new Promise((resolve)=>{
+    try{
+      const txw = finDb.transaction(['journalEntries','journalLines'], 'readwrite');
+      const eStore = txw.objectStore('journalEntries');
+      const lStore = txw.objectStore('journalLines');
+
+      const entry = {
+        fecha: mvDate,
+        date: mvDate,
+        tipoMovimiento,
+        descripcion: memo,
+        evento: eventName,
+        origen: 'POS',
+        origenId: sourceId,
+        source: 'pos_pettycash',
+        sourceId,
+        debeCode,
+        haberCode,
+        monto: amountNio,
+        totalDebe: amountNio,
+        totalHaber: amountNio,
+        createdAt: Date.now(),
+        meta: {
+          posEventId: eventId,
+          posDay: mvDate,
+          posMovement: {
+            id: mov.id,
+            createdAt: mov.createdAt,
+            uiType: mov.uiType,
+            type: mov.type,
+            isAdjust: !!mov.isAdjust,
+            adjustKind: mov.adjustKind || null,
+            isTransfer: !!mov.isTransfer,
+            transferKind: mov.transferKind || null,
+            currency: mov.currency || 'NIO',
+            amount: amountOrig,
+            fxRateUsed: fxUsed
+          }
+        }
+      };
+
+      const reqAdd = eStore.add(entry);
+      reqAdd.onsuccess = (ev)=>{
+        const entryId = ev.target.result;
+        try{
+          lStore.add({ idEntry: entryId, accountCode: debeCode, debe: amountNio, haber: 0 });
+          lStore.add({ idEntry: entryId, accountCode: haberCode, debe: 0, haber: amountNio });
+        }catch(e){}
+      };
+      reqAdd.onerror = ()=>{};
+
+      txw.oncomplete = ()=>resolve();
+      txw.onerror = ()=>resolve();
+      txw.onabort = ()=>resolve();
+    }catch(err){
+      resolve();
+    }
+  });
+
+  // Aviso discreto (solo si Finanzas está disponible)
+  // notifyFinanzasBridge('Movimiento registrado en Finanzas (Diario)');
 }
 
 function tx(name, mode='readonly'){ return db.transaction(name, mode).objectStore(name); }
@@ -482,7 +839,7 @@ const HIDDEN_GROUPS_KEY = 'a33_pos_hiddenGroups';
 
 function getLastGroupName() {
   try {
-    return localStorage.getItem(LAST_GROUP_KEY) || '';
+    return A33Storage.getItem(LAST_GROUP_KEY) || '';
   } catch (e) {
     return '';
   }
@@ -490,7 +847,7 @@ function getLastGroupName() {
 
 function setLastGroupName(name) {
   try {
-    localStorage.setItem(LAST_GROUP_KEY, name || '');
+    A33Storage.setItem(LAST_GROUP_KEY, name || '');
   } catch (e) {
     console.warn('No se pudo guardar último grupo usado', e);
   }
@@ -498,7 +855,7 @@ function setLastGroupName(name) {
 
 function getHiddenGroups() {
   try {
-    const raw = localStorage.getItem(HIDDEN_GROUPS_KEY);
+    const raw = A33Storage.getItem(HIDDEN_GROUPS_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr : [];
@@ -511,7 +868,7 @@ function getHiddenGroups() {
 function setHiddenGroups(list) {
   try {
     const clean = Array.from(new Set((list || []).filter(Boolean)));
-    localStorage.setItem(HIDDEN_GROUPS_KEY, JSON.stringify(clean));
+    A33Storage.setItem(HIDDEN_GROUPS_KEY, JSON.stringify(clean));
   } catch (e) {
     console.warn('No se pudieron guardar grupos ocultos', e);
   }
@@ -584,8 +941,10 @@ function coercePettyCashRecord(eventId, raw){
     const pc = { eventId, version: 2, days: {} };
     for (const k in raw.days){
       if (!raw.days[k]) continue;
-      const dayKey = safeYMD(k);
-      pc.days[dayKey] = normalizePettyDay(raw.days[k]);
+      const dayKey = normalizePcDayKey(k, raw.days[k]);
+      if (!dayKey) continue;
+      const norm = normalizePettyDay(raw.days[k]);
+      pc.days[dayKey] = pc.days[dayKey] ? mergePettyDay(pc.days[dayKey], norm) : norm;
     }
     return pc;
   }
@@ -673,32 +1032,173 @@ function guessPettyDayKey(obj){
   return todayYMD();
 }
 
+
+function normalizePcDayKey(key, dayObj){
+  // Preferimos NO convertir llaves inválidas a "hoy" porque eso puede sobrescribir (colisión)
+  // y perder datos (ej: arqueoAdjust recién guardado).
+  if (typeof key === 'string'){
+    const t = key.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+
+    // ISO prefix: 2025-12-21T...
+    const m = t.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+
+    // dd/mm/yyyy o dd-mm-yyyy
+    const m2 = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (m2){
+      const dd = String(m2[1]).padStart(2,'0');
+      const mm = String(m2[2]).padStart(2,'0');
+      const yy = String(m2[3]).padStart(4,'0');
+      const ymd = `${yy}-${mm}-${dd}`;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
+    }
+  }
+
+  // Fallback: intentar adivinar según contenido del día
+  const g = guessPettyDayKey(dayObj || {});
+  if (typeof g === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(g)) return g;
+
+  return null;
+}
+
+function mergePettyMovements(a, b){
+  const A = Array.isArray(a) ? a : [];
+  const B = Array.isArray(b) ? b : [];
+  const out = [];
+  const seen = new Set();
+
+  const keyOf = (m)=>{
+    if (!m || typeof m !== 'object') return '';
+    if (m.id != null) return `id:${m.id}`;
+    const d = (m.date || '').toString();
+    const t = (m.time || '').toString();
+    const ty = (m.type || '').toString();
+    const cur = (m.currency || '').toString();
+    const amt = String(m.amount != null ? m.amount : '');
+    const desc = (m.desc || m.description || m.concept || m.reason || '').toString();
+    const ca = (m.createdAt || m.ts || '').toString();
+    return `${d}|${t}|${ty}|${cur}|${amt}|${desc}|${ca}`.trim();
+  };
+
+  const push = (m)=>{
+    const k = keyOf(m);
+    if (k && seen.has(k)) return;
+    if (k) seen.add(k);
+    out.push(m);
+  };
+
+  A.forEach(push);
+  B.forEach(push);
+  return out;
+}
+
+function mergePettyDay(dayA, dayB){
+  const a = normalizePettyDay(dayA || {});
+  const b = normalizePettyDay(dayB || {});
+
+  // Initial: preferir el que tenga savedAt
+  if (!a.initial?.savedAt && b.initial?.savedAt) a.initial = b.initial;
+
+  // Final: preferir el más reciente si ambos existen
+  const aF = a.finalCount?.savedAt ? a.finalCount.savedAt : null;
+  const bF = b.finalCount?.savedAt ? b.finalCount.savedAt : null;
+  if (!aF && bF) a.finalCount = b.finalCount;
+  else if (aF && bF){
+    try{
+      if (new Date(bF).getTime() > new Date(aF).getTime()) a.finalCount = b.finalCount;
+    }catch(e){}
+  }
+
+  // fxRate / closedAt: preferir el existente, o el nuevo si el anterior falta
+  if (a.fxRate == null && b.fxRate != null) a.fxRate = b.fxRate;
+  if (!a.closedAt && b.closedAt) a.closedAt = b.closedAt;
+
+  // Movements: unir y deduplicar
+  a.movements = mergePettyMovements(a.movements, b.movements);
+
+  // Ajuste de arqueo: por moneda, preferir el que exista; si existen ambos, preferir el más reciente
+  if (!a.arqueoAdjust) a.arqueoAdjust = { NIO: null, USD: null };
+  const pickAdj = (x, y)=>{
+    if (!x && y) return y;
+    if (x && !y) return x;
+    if (!x && !y) return null;
+    // ambos: preferir el más reciente por createdAt si se puede
+    const xc = x.createdAt ? x.createdAt : '';
+    const yc = y.createdAt ? y.createdAt : '';
+    try{
+      if (xc && yc && new Date(yc).getTime() > new Date(xc).getTime()) return y;
+    }catch(e){}
+    return x;
+  };
+  const bAdj = b.arqueoAdjust || {};
+  a.arqueoAdjust.NIO = pickAdj(a.arqueoAdjust.NIO, bAdj.NIO || null);
+  a.arqueoAdjust.USD = pickAdj(a.arqueoAdjust.USD, bAdj.USD || null);
+
+  return a;
+}
+
 async function savePettyCash(pc){
-  if (!pc || pc.eventId == null) return;
+  // IMPORTANTE: esta función debe FALLAR si no se pudo persistir en IndexedDB.
+  // Antes resolvía “silenciosamente” en error y eso hacía que “Cerrar día” pareciera funcionar,
+  // pero al recargar seguía “Día abierto” (closedAt null).
+  if (!pc || pc.eventId == null) throw new Error('pettyCash inválido');
   if (!db) await openDB();
 
-  return new Promise((resolve)=>{
-    try{
-      const store = tx('pettyCash','readwrite');
-      const cleaned = { eventId: pc.eventId, version: 2, days: {} };
+  // Normalizar / limpiar para evitar basura y mantener esquema estable
+  const cleaned = { eventId: pc.eventId, version: 2, days: {} };
 
-      const days = pc.days && typeof pc.days === 'object' ? pc.days : {};
-      for (const k in days){
-        const dayKey = safeYMD(k);
-        cleaned.days[dayKey] = normalizePettyDay(days[k]);
-      }
+  const days = pc.days && typeof pc.days === 'object' ? pc.days : {};
+  for (const k in days){
+    const dayKey = normalizePcDayKey(k, days[k]);
+    if (!dayKey) continue;
+    const norm = normalizePettyDay(days[k]);
+    cleaned.days[dayKey] = cleaned.days[dayKey] ? mergePettyDay(cleaned.days[dayKey], norm) : norm;
+  }
+
+  const putOnce = () => new Promise((resolve, reject)=>{
+    // Resolver SOLO cuando el put confirmó (tx.oncomplete) y fallar ante cualquier error.
+    let settled = false;
+    const ok = ()=>{ if (settled) return; settled = true; resolve(); };
+    const fail = (err)=>{ if (settled) return; settled = true; reject(err); };
+
+    try{
+      const tr = db.transaction('pettyCash', 'readwrite');
+      const store = tr.objectStore('pettyCash');
+
+      tr.oncomplete = ()=> ok();
+      tr.onabort = ()=> fail(tr.error || new Error('Transacción abortada (pettyCash).'));
+      tr.onerror = ()=> fail(tr.error || new Error('Error de transacción (pettyCash).'));
 
       const req = store.put(cleaned);
-      req.onsuccess = ()=>resolve();
-      req.onerror = ()=>{
-        console.error('Error guardando pettyCash', req.error);
-        resolve();
+      req.onerror = ()=> {
+        // Rechazo inmediato (sin “swallow errors”).
+        console.error('Error guardando pettyCash (put)', req.error);
+        try{ tr.abort(); }catch(e){}
+        fail(req.error || new Error('Error guardando pettyCash (put).'));
       };
     }catch(err){
-      console.error('Error savePettyCash', err);
-      resolve();
+      fail(err);
     }
   });
+
+  try{
+    await putOnce();
+  }catch(err){
+    // Si la BD estaba cerrada / en estado inválido, reabrimos y reintentamos una vez.
+    const name = (err && err.name) ? err.name : '';
+    if (name === 'InvalidStateError' || name === 'TransactionInactiveError'){
+      try{
+        db = null;
+        await openDB();
+        await putOnce();
+        return;
+      }catch(e2){
+        throw e2;
+      }
+    }
+    throw err;
+  }
 }
 
 function ensurePcDay(pc, dayKey){
@@ -954,7 +1454,7 @@ function invCentralDefaultPOS(){
 }
 function invCentralLoadPOS(){
   try{
-    const raw = localStorage.getItem(STORAGE_KEY_INVENTARIO);
+    const raw = A33Storage.getItem(STORAGE_KEY_INVENTARIO);
     let data = raw ? JSON.parse(raw) : null;
     if (!data || typeof data !== 'object') data = invCentralDefaultPOS();
     if (!data.liquids) data.liquids = {};
@@ -973,7 +1473,7 @@ function invCentralLoadPOS(){
 }
 function invCentralSavePOS(inv){
   try{
-    localStorage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(inv));
+    A33Storage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(inv));
   }catch(e){
     console.warn('Error guardando inventario central', e);
   }
@@ -1030,7 +1530,7 @@ async function renderCentralFinishedPOS(){
 
 function leerCostosPresentacion() {
   try {
-    const raw = localStorage.getItem(RECETAS_KEY);
+    const raw = A33Storage.getItem(RECETAS_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (data && data.costosPresentacion) {
@@ -1102,7 +1602,42 @@ async function seedMissingDefaults(force=false){
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 function fmt(n){ return (n||0).toLocaleString('es-NI', {minimumFractionDigits:2, maximumFractionDigits:2}); }
-function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); }
+let toastTimerId = null;
+function showToast(msg, type='ok', durationMs=5000){
+  const t = document.getElementById('toast');
+  if (!t) return;
+  // Accesibilidad
+  if (!t.hasAttribute('role')) t.setAttribute('role','status');
+  if (!t.hasAttribute('aria-live')) t.setAttribute('aria-live','polite');
+  if (!t.hasAttribute('aria-atomic')) t.setAttribute('aria-atomic','true');
+
+  const d = Math.max(800, Number(durationMs || 0) || 0);
+
+  // Limpiar timeout previo si hay otro toast en curso
+  if (toastTimerId){
+    clearTimeout(toastTimerId);
+    toastTimerId = null;
+  }
+
+  // Reset clases de tipo
+  t.classList.remove('ok','error');
+  t.classList.add(type === 'error' ? 'error' : 'ok');
+
+  t.textContent = String(msg || '');
+  t.style.setProperty('--toast-duration', d + 'ms');
+
+  // Reiniciar animación
+  t.classList.remove('show');
+  void t.offsetWidth; // force reflow
+  t.classList.add('show');
+
+  toastTimerId = setTimeout(()=>{
+    t.classList.remove('show');
+  }, d);
+}
+
+// Compat: toasts rápidos existentes
+function toast(msg){ showToast(msg, 'ok', 1800); }
 
 // --- Helpers POS: hora/orden robustos (para listas y export)
 function pad2POS(n){
@@ -1302,24 +1837,138 @@ window.addEventListener('online', setOfflineBar);
 window.addEventListener('offline', setOfflineBar);
 
 // Enable/disable selling block depending on current event
+// + Candado por Caja Chica: si el día está cerrado, NO se puede vender (UI + guard en lógica)
+let __A33_SELL_STATE = { enabled:false, dayKey: todayYMD(), dayClosed:false, pettyEnabled:false, eventId:null };
+
+function getSaleDayKeyPOS(){
+  try{
+    const v = document.getElementById('sale-date')?.value || '';
+    return safeYMD(v);
+  }catch(e){
+    return todayYMD();
+  }
+}
+
+function isSellEnabledNowPOS(){
+  try{
+    if (typeof window.__A33_SELL_ENABLED === 'boolean') return !!window.__A33_SELL_ENABLED;
+    if (typeof __A33_SELL_STATE === 'object' && __A33_SELL_STATE) return !!__A33_SELL_STATE.enabled;
+    return true;
+  }catch(e){ return true; }
+}
+
+function showSellDayClosedToastPOS(){
+  showToast('Día cerrado. Reabrí el día en Caja Chica para vender.', 'error', 5000);
+}
+
+function setSellControlsDisabledPOS(disabled){
+  const tab = document.getElementById('tab-venta');
+  if (tab) tab.classList.toggle('sell-locked', !!disabled);
+
+  const ids = [
+    'sale-product','sale-price','sale-qty','qty-minus','qty-plus','sale-discount',
+    'sale-payment','sale-bank','sale-courtesy','sale-return','sale-customer','sale-courtesy-to','sale-notes',
+    'btn-add','btn-add-sticky','btn-undo',
+    'btn-fraction','cup-fraction-gallons','cup-yield','cup-qty','cup-qty-minus','cup-qty-plus','cup-price','btn-sell-cups','btn-courtesy-cups'
+  ];
+  for (const id of ids){
+    const el = document.getElementById(id);
+    if (el) el.disabled = !!disabled;
+  }
+
+  // Chips (productos + extras)
+  document.querySelectorAll('#product-chips button.chip').forEach(btn=>{
+    btn.disabled = !!disabled;
+    btn.classList.toggle('disabled', !!disabled);
+  });
+
+  // Botones borrar en tabla del día
+  document.querySelectorAll('#tbl-day button.del-sale').forEach(btn=>{
+    btn.disabled = !!disabled;
+  });
+
+  // Bloque Venta por vaso
+  const cupBlock = document.getElementById('cup-block');
+  if (cupBlock){
+    cupBlock.classList.toggle('disabled', !!disabled);
+    cupBlock.querySelectorAll('input, button, select, textarea').forEach(el=>{
+      el.disabled = !!disabled;
+    });
+  }
+}
+
+function setSellDayClosedBannerPOS(show, dayKey){
+  const banner = document.getElementById('sell-day-closed-banner');
+  if (!banner) return;
+  if (show){
+    const t = document.getElementById('sell-day-closed-title');
+    if (t) t.textContent = `Día cerrado (${dayKey})`;
+    const s = document.getElementById('sell-day-closed-sub');
+    if (s) s.textContent = 'Para vender aquí, reabrí el día en Caja Chica.';
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+async function computeSellDayLockPOS(curEvent, dayKey){
+  const dk = safeYMD(dayKey || getSaleDayKeyPOS());
+  if (!curEvent || !eventPettyEnabled(curEvent)) return { pettyEnabled:false, dayKey: dk, dayClosed:false, closedAt:null, created:false };
+
+  const pc = await getPettyCash(curEvent.id);
+  const existed = !!(pc && pc.days && pc.days[dk]);
+  const day = ensurePcDay(pc, dk);
+
+  // Día nuevo abierto: si no existía, lo persistimos como abierto
+  if (!existed){
+    try{ await savePettyCash(pc); }catch(e){}
+  }
+
+  const closedAt = day ? day.closedAt : null;
+  return { pettyEnabled:true, dayKey: dk, dayClosed: !!closedAt, closedAt: closedAt || null, created: !existed };
+}
+
+async function guardSellDayOpenOrToastPOS(curEvent, dayKey){
+  if (!curEvent || !eventPettyEnabled(curEvent)) return true;
+  const info = await computeSellDayLockPOS(curEvent, dayKey);
+  if (info.dayClosed){
+    showSellDayClosedToastPOS();
+    try{ await updateSellEnabled(); }catch(e){}
+    return false;
+  }
+  return true;
+}
+
 async function updateSellEnabled(){
   const current = await getMeta('currentEventId');
   const evs = await getAll('events');
-  const cur = evs.find(e=>e.id===current);
-  const enabled = !!(current && cur && !cur.closedAt);
-  const chips = $$('#product-chips .chip');
-  chips.forEach(c=> c.classList.toggle('disabled', !enabled));
-  $('#no-active-note').style.display = enabled ? 'none' : 'block';
+  const cur = evs.find(e=>e.id===current) || null;
 
-  // Bloque Venta por vaso: habilitar/inhabilitar según evento activo
-  const cupBlock = document.getElementById('cup-block');
-  if (cupBlock){
-    cupBlock.classList.toggle('disabled', !enabled);
-    cupBlock.querySelectorAll('input, button, select, textarea').forEach(el=>{
-      el.disabled = !enabled;
-    });
+  const hasEvent = !!(current && cur);
+  const eventOpen = !!(hasEvent && !cur.closedAt);
+
+  const dayKey = getSaleDayKeyPOS();
+  let lockInfo = { pettyEnabled:false, dayKey, dayClosed:false, closedAt:null, created:false };
+  if (eventOpen && cur && eventPettyEnabled(cur)) {
+    lockInfo = await computeSellDayLockPOS(cur, dayKey);
   }
 
+  const sellEnabled = !!(eventOpen && !(lockInfo.pettyEnabled && lockInfo.dayClosed));
+
+  __A33_SELL_STATE = { enabled: sellEnabled, dayKey: lockInfo.dayKey, dayClosed: lockInfo.dayClosed, pettyEnabled: lockInfo.pettyEnabled, eventId: (current || null) };
+  window.__A33_SELL_ENABLED = sellEnabled;
+
+  // Nota "sin evento activo": solo depende del evento (no del día)
+  const noActive = document.getElementById('no-active-note');
+  if (noActive) noActive.style.display = eventOpen ? 'none' : 'block';
+
+  // Banner: solo cuando el evento está abierto y Caja Chica está ON
+  setSellDayClosedBannerPOS(!!(eventOpen && lockInfo.pettyEnabled && lockInfo.dayClosed), lockInfo.dayKey);
+
+  // Candado real de controles
+  setSellControlsDisabledPOS(!sellEnabled);
+
+  // Refrescar cup-block labels/stock sin romper nada
   try{ await refreshCupBlock(); }catch(e){}
 }
 
@@ -1511,7 +2160,7 @@ async function renderProductos(){
       <div class="row">
         <input data-id="${p.id}" class="p-name" value="${p.name}">
         <div class="row">
-          <input data-id="${p.id}" class="p-price" type="number" inputmode="decimal" step="0.01" value="${p.price}">
+          <input data-id="${p.id}" class="p-price a33-num" data-a33-default="${p.price}" type="number" inputmode="decimal" step="0.01" value="${p.price}">
           <label class="flag"><input type="checkbox" class="p-active" data-id="${p.id}" ${p.active===false?'':'checked'}> Activo</label>
           <label class="flag"><input type="checkbox" class="p-manage" data-id="${p.id}" ${p.manageStock===false?'':'checked'}> Inventario</label>
           <button data-id="${p.id}" class="btn-danger btn-del">Eliminar</button>
@@ -1558,7 +2207,7 @@ async function renderProductChips(){
   const current = await getMeta('currentEventId');
   const evs = await getAll('events');
   const cur = evs.find(e=>e.id===current);
-  const enabled = !!(current && cur && !cur.closedAt);
+  const enabled = (typeof window.__A33_SELL_ENABLED === 'boolean') ? window.__A33_SELL_ENABLED : !!(current && cur && !cur.closedAt);
 
   const sel = $('#sale-product');
   const selected = parseSelectedSellItemValue(sel ? sel.value : '');
@@ -1574,7 +2223,7 @@ async function renderProductChips(){
     if (selected && selected.kind==='product' && p.id === selected.id) c.classList.add('active');
 
     c.onclick = async()=>{
-      if (!enabled) return;
+      if (!isSellEnabledNowPOS()) return;
       const prev = parseSelectedSellItemValue(sel.value);
       sel.value = String(p.id);
       const same = prev && prev.kind==='product' && prev.id === p.id;
@@ -1613,7 +2262,7 @@ async function renderProductChips(){
         if (selected && selected.kind==='extra' && Number(selected.id) === Number(x.id)) c.classList.add('active');
 
         c.onclick = async()=>{
-          if (!enabled) return;
+          if (!isSellEnabledNowPOS()) return;
           const prev = parseSelectedSellItemValue(sel.value);
           sel.value = `extra:${x.id}`;
           const same = prev && prev.kind==='extra' && prev.id === x.id;
@@ -1693,17 +2342,547 @@ document.addEventListener('click', async (e)=>{
 
 // Tabs
 function setTab(name){
-  $$('.tab').forEach(el=> el.style.display='none');
+  const tabs = $$('.tab');
   const target = document.getElementById('tab-'+name);
-  if (target) target.style.display='block';
+  if (!target) return;
+
+  // Botón activo en tabbar
   $$('.tabbar button').forEach(b=>b.classList.remove('active'));
   const btn = document.querySelector(`.tabbar button[data-tab="${name}"]`);
   if (btn) btn.classList.add('active');
+
+  // Tab actual visible (fallback robusto)
+  let current = null;
+  if (window.__A33_ACTIVE_TAB){
+    const el = document.getElementById('tab-'+window.__A33_ACTIVE_TAB);
+    if (el && el !== target && el.style.display !== 'none' && getComputedStyle(el).display !== 'none'){
+      current = el;
+    }
+  }
+  if (!current){
+    current = tabs.find(el => el !== target && el.style.display !== 'none' && getComputedStyle(el).display !== 'none') || null;
+  }
+
+  // Mostrar target con micro animación (sin reestructurar layout)
+  if (current && current !== target){
+    target.style.display = 'block';
+    target.classList.add('a33-tab-prep');
+    void target.offsetHeight; // reflow
+    target.classList.remove('a33-tab-prep');
+
+    current.classList.add('a33-tab-out');
+    setTimeout(()=>{
+      current.style.display = 'none';
+      current.classList.remove('a33-tab-out');
+    }, 160);
+  } else {
+    // Primer render / estado inconsistente: asegura solo uno visible
+    tabs.forEach(el=> el.style.display='none');
+    target.style.display='block';
+    target.classList.add('a33-tab-prep');
+    requestAnimationFrame(()=> target.classList.remove('a33-tab-prep'));
+  }
+
+  window.__A33_ACTIVE_TAB = name;
+
+  // Render específico por pestaña (misma lógica de antes)
   if (name==='resumen') renderSummary();
   if (name==='productos') renderProductos();
   if (name==='eventos') renderEventos();
   if (name==='inventario') renderInventario();
   if (name==='caja') renderCajaChica();
+  if (name==='calculadora') onOpenPosCalculatorTab().catch(err=>console.error(err));
+  if (name==='checklist') renderChecklistTab().catch(err=>console.error(err));
+  if (name==='vender') initVasosPanelPOS().catch(err=>console.error(err));
+}
+
+// --- Vasos panel (colapsable persistente)
+async function syncVasosPanelKeyPOS(){
+  const toggle = document.getElementById('vasosPanelToggle');
+  if (!toggle) return 'pos_vasos_panel_open';
+
+  let evId = null;
+  try{
+    if (window.__A33_SELL_STATE && window.__A33_SELL_STATE.eventId != null){
+      evId = parseInt(window.__A33_SELL_STATE.eventId, 10);
+    }
+  }catch(_){ }
+
+  if (!evId){
+    try{
+      const cur = await getMeta('currentEventId');
+      if (cur != null && cur !== '') evId = parseInt(cur, 10);
+    }catch(_){ }
+  }
+
+  const key = (evId && Number.isFinite(evId)) ? `pos_vasos_panel_open_${evId}` : 'pos_vasos_panel_open';
+  toggle.dataset.storageKey = key;
+  return key;
+}
+
+function setVasosPanelStatePOS(isOpen, opts){
+  const o = (opts || {});
+  const save = (o.save !== false);
+  const toggle = document.getElementById('vasosPanelToggle');
+  const body = document.getElementById('vasosPanelBody');
+  if (!toggle || !body) return;
+
+  const open = !!isOpen;
+  body.classList.toggle('is-collapsed', !open);
+  body.setAttribute('aria-hidden', open ? 'false' : 'true');
+  toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+  const caret = toggle.querySelector('.vasos-panel-caret');
+  if (caret) caret.textContent = open ? '▾' : '▸';
+  const stateLbl = toggle.querySelector('.vasos-panel-state');
+  if (stateLbl) stateLbl.textContent = open ? 'Ocultar' : 'Mostrar';
+
+  if (save){
+    const key = toggle.dataset.storageKey || 'pos_vasos_panel_open';
+    try{ localStorage.setItem(key, open ? '1' : '0'); }catch(_){ }
+  }
+}
+
+async function loadVasosPanelStatePOS(){
+  const toggle = document.getElementById('vasosPanelToggle');
+  const body = document.getElementById('vasosPanelBody');
+  if (!toggle || !body) return;
+
+  const key = await syncVasosPanelKeyPOS();
+  let raw = null;
+  try{ raw = localStorage.getItem(key); }catch(_){ raw = null; }
+  const isOpen = (raw === '1');
+  setVasosPanelStatePOS(isOpen, { save:false });
+}
+
+function bindVasosPanelOncePOS(){
+  // Re-render safe: se enlaza por elemento (no global)
+  const toggle = document.getElementById('vasosPanelToggle');
+  if (toggle && !toggle.dataset.bound){
+    toggle.dataset.bound = '1';
+    toggle.addEventListener('click', async ()=>{
+      await syncVasosPanelKeyPOS();
+      const expanded = (toggle.getAttribute('aria-expanded') === 'true');
+      setVasosPanelStatePOS(!expanded, { save:true });
+    });
+  }
+
+  const closeBtn = document.getElementById('vasosPanelCloseBtn');
+  if (closeBtn && !closeBtn.dataset.bound){
+    closeBtn.dataset.bound = '1';
+    closeBtn.addEventListener('click', async ()=>{
+      await syncVasosPanelKeyPOS();
+      setVasosPanelStatePOS(false, { save:true });
+    });
+  }
+}
+
+async function initVasosPanelPOS(){
+  bindVasosPanelOncePOS();
+  await loadVasosPanelStatePOS();
+}
+
+// --- Deep-link mínimo (Centro de Mando -> POS)
+// Soporta: ?tab=vender | #tab=vender (sin librerías, sin romper navegación existente)
+function getTabFromUrlPOS(){
+  try{
+    const allowed = new Set(['vender','inventario','eventos','caja','resumen','productos','calculadora','checklist']);
+    // Querystring
+    const qs = new URLSearchParams(window.location.search || '');
+    const qTab = (qs.get('tab') || '').trim();
+    if (qTab && allowed.has(qTab)) return qTab;
+
+    // Hash: #tab=vender o #vender
+    const h = (window.location.hash || '').replace(/^#/, '').trim();
+    if (!h) return null;
+    if (h.startsWith('tab=')){
+      const ht = h.slice(4).trim();
+      if (allowed.has(ht)) return ht;
+    }
+    if (allowed.has(h)) return h;
+  }catch(_){ }
+  return null;
+}
+
+// --- Checklist (POS)
+const CHECKLIST_SECTIONS_POS = [
+  { key: 'pre', listId: 'chk-pre', addId: 'chk-add-pre' },
+  { key: 'evento', listId: 'chk-evento', addId: 'chk-add-evento' },
+  { key: 'cierre', listId: 'chk-cierre', addId: 'chk-add-cierre' },
+];
+
+function makeChecklistItemIdPOS(){
+  try{ return (crypto && crypto.randomUUID) ? crypto.randomUUID() : null; }catch(e){}
+  return 'chk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+}
+
+function normalizeChecklistTemplatePOS(t){
+  const out = (t && typeof t === 'object') ? t : {};
+  const normArr = (arr)=>{
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(x=>x && typeof x === 'object')
+      .map(x=>({ id: String(x.id || makeChecklistItemIdPOS()), text: String(x.text || '').trim() }))
+      .filter(x=>x.text.length>0 || x.id);
+  };
+  return {
+    pre: normArr(out.pre),
+    evento: normArr(out.evento),
+    cierre: normArr(out.cierre),
+  };
+}
+
+function ensureChecklistDataPOS(ev, dayKey){
+  let changed = false;
+  if (!ev || typeof ev !== 'object') return { changed:false, template:{pre:[],evento:[],cierre:[]}, state:{checkedIds:[], notes:''} };
+
+  if (!ev.checklistTemplate || typeof ev.checklistTemplate !== 'object') {
+    ev.checklistTemplate = { pre: [], evento: [], cierre: [] };
+    changed = true;
+  }
+  const tpl = normalizeChecklistTemplatePOS(ev.checklistTemplate);
+  // Persistir normalización si cambia estructura
+  if (JSON.stringify(tpl) !== JSON.stringify(ev.checklistTemplate)) {
+    ev.checklistTemplate = tpl;
+    changed = true;
+  }
+
+  if (!ev.days || typeof ev.days !== 'object') {
+    ev.days = {};
+    changed = true;
+  }
+  if (!ev.days[dayKey] || typeof ev.days[dayKey] !== 'object') {
+    ev.days[dayKey] = {};
+    changed = true;
+  }
+  if (!ev.days[dayKey].checklistState || typeof ev.days[dayKey].checklistState !== 'object') {
+    ev.days[dayKey].checklistState = { checkedIds: [], notes: '' };
+    changed = true;
+  }
+  const st = ev.days[dayKey].checklistState;
+  if (!Array.isArray(st.checkedIds)) { st.checkedIds = []; changed = true; }
+  if (typeof st.notes !== 'string') { st.notes = String(st.notes || ''); changed = true; }
+
+  // Limpieza: checkedIds solo válidos según template
+  const allIds = new Set([
+    ...tpl.pre.map(x=>x.id),
+    ...tpl.evento.map(x=>x.id),
+    ...tpl.cierre.map(x=>x.id),
+  ]);
+  const filtered = st.checkedIds.map(String).filter(id=>allIds.has(id));
+  if (filtered.length !== st.checkedIds.length) {
+    st.checkedIds = filtered;
+    changed = true;
+  }
+
+  return { changed, template: tpl, state: st };
+}
+
+function renderChecklistSectionPOS(sectionKey, listEl, items, checkedSet){
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'muted';
+    empty.style.padding = '8px 4px';
+    empty.textContent = 'Sin ítems. Usa “+ Agregar ítem”.';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  items.forEach((it, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'chk-row';
+    row.dataset.section = sectionKey;
+    row.dataset.id = it.id;
+    row.dataset.idx = String(idx);
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'chk-box';
+    cb.checked = checkedSet.has(it.id);
+    cb.dataset.section = sectionKey;
+    cb.dataset.id = it.id;
+
+    const txt = document.createElement('input');
+    txt.type = 'text';
+    txt.className = 'chk-text';
+    txt.value = it.text || '';
+    txt.placeholder = 'Ítem…';
+    txt.dataset.section = sectionKey;
+    txt.dataset.id = it.id;
+
+    const actions = document.createElement('div');
+    actions.className = 'chk-actions';
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'btn-mini chk-mini chk-up';
+    up.textContent = '↑';
+    up.disabled = idx === 0;
+    up.dataset.section = sectionKey;
+    up.dataset.id = it.id;
+
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.className = 'btn-mini chk-mini chk-down';
+    down.textContent = '↓';
+    down.disabled = idx === items.length - 1;
+    down.dataset.section = sectionKey;
+    down.dataset.id = it.id;
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn-mini chk-mini chk-del';
+    del.textContent = '✕';
+    del.dataset.section = sectionKey;
+    del.dataset.id = it.id;
+
+    actions.appendChild(up);
+    actions.appendChild(down);
+    actions.appendChild(del);
+
+    row.appendChild(cb);
+    row.appendChild(txt);
+    row.appendChild(actions);
+
+    listEl.appendChild(row);
+  });
+}
+
+async function renderChecklistTab(){
+  bindChecklistEventsOncePOS();
+
+  const empty = document.getElementById('checklist-empty');
+  const grid = document.getElementById('checklist-grid');
+  const sel = document.getElementById('checklist-event');
+
+  const current = await getMeta('currentEventId');
+  const currentId = (current === null || current === undefined || current === '') ? null : parseInt(current, 10);
+
+  if (sel) sel.value = currentId ? String(currentId) : '';
+
+  if (!currentId) {
+    if (empty) empty.style.display = 'block';
+    if (grid) grid.style.display = 'none';
+    return;
+  }
+
+  const ev = await getEventByIdPOS(currentId);
+  if (!ev) {
+    if (empty) empty.style.display = 'block';
+    if (grid) grid.style.display = 'none';
+    return;
+  }
+
+  const dayKey = safeYMD(getSaleDayKeyPOS());
+  const { changed, template, state } = ensureChecklistDataPOS(ev, dayKey);
+  if (changed) {
+    try{ await put('events', ev); }catch(e){ console.error('Checklist: no se pudo persistir inicialización', e); }
+  }
+
+  if (empty) empty.style.display = 'none';
+  if (grid) grid.style.display = 'grid';
+
+  const checkedSet = new Set((state.checkedIds || []).map(String));
+
+  // Render columnas
+  for (const sec of CHECKLIST_SECTIONS_POS){
+    const listEl = document.getElementById(sec.listId);
+    renderChecklistSectionPOS(sec.key, listEl, template[sec.key] || [], checkedSet);
+  }
+
+  const notes = document.getElementById('checklist-notes');
+  if (notes) notes.value = state.notes || '';
+}
+
+function bindChecklistEventsOncePOS(){
+  if (window.__A33_CHECKLIST_BOUND) return;
+  window.__A33_CHECKLIST_BOUND = true;
+
+  const sel = document.getElementById('checklist-event');
+  if (sel){
+    sel.addEventListener('change', async ()=>{
+      const val = (sel.value || '').trim();
+      if (!val) {
+        await setMeta('currentEventId', null);
+      } else {
+        await setMeta('currentEventId', parseInt(val,10));
+      }
+      await refreshEventUI();
+      try{ await refreshSaleStockLabel(); }catch(e){}
+      try{ await renderDay(); }catch(e){}
+      try{ await renderChecklistTab(); }catch(e){}
+      try{ showToast('Evento actualizado en todo el POS.'); }catch(e){}
+    });
+  }
+
+  const go = document.getElementById('checklist-go-events');
+  if (go){
+    go.addEventListener('click', ()=> setTab('eventos'));
+  }
+
+  // + Agregar ítem (por sección)
+  for (const sec of CHECKLIST_SECTIONS_POS){
+    // Soporta tanto IDs fijos (recomendado) como botones por clase/data-section (fallback)
+    const btn = document.getElementById(sec.addId) || document.querySelector(`#tab-checklist .chk-add[data-section="${sec.key}"]`);
+    if (!btn) continue;
+    btn.addEventListener('click', async ()=>{
+      const current = await getMeta('currentEventId');
+      const currentId = current ? parseInt(current,10) : null;
+      if (!currentId){
+        try{ showToast('Selecciona un evento primero.'); }catch(e){}
+        return;
+      }
+      const dayKey = safeYMD(getSaleDayKeyPOS());
+      const ev = await getEventByIdPOS(currentId);
+      if (!ev) return;
+      const { template } = ensureChecklistDataPOS(ev, dayKey);
+      const id = makeChecklistItemIdPOS();
+      template[sec.key] = Array.isArray(template[sec.key]) ? template[sec.key] : [];
+      template[sec.key].push({ id, text: 'Nuevo ítem' });
+      ev.checklistTemplate = template;
+      await put('events', ev);
+      await renderChecklistTab();
+      const input = document.querySelector(`#${sec.listId} .chk-text[data-id="${CSS.escape(id)}"]`);
+      if (input){
+        input.focus();
+        try{ input.select(); }catch(e){}
+      }
+    });
+  }
+
+  // Delegación de acciones dentro del tab
+  const tab = document.getElementById('tab-checklist');
+  if (tab){
+    tab.addEventListener('click', async (e)=>{
+      const up = e.target.closest('.chk-up');
+      const down = e.target.closest('.chk-down');
+      const del = e.target.closest('.chk-del');
+      const reset = e.target.closest('#checklist-reset-day');
+
+      if (reset){
+        const cur = await getMeta('currentEventId');
+        const curId = cur ? parseInt(cur,10) : null;
+        if (!curId) return;
+        const ok = confirm('¿Reiniciar checks del día? (solo desmarca)');
+        if (!ok) return;
+        const dayKey = safeYMD(getSaleDayKeyPOS());
+        const ev = await getEventByIdPOS(curId);
+        if (!ev) return;
+        const { state } = ensureChecklistDataPOS(ev, dayKey);
+        state.checkedIds = [];
+        ev.days[dayKey].checklistState = state;
+        await put('events', ev);
+        await renderChecklistTab();
+        try{ showToast('Checks reiniciados.'); }catch(e){}
+        return;
+      }
+
+      if (!(up || down || del)) return;
+      const btn = up || down || del;
+      const sectionKey = btn.dataset.section;
+      const id = btn.dataset.id;
+      const cur = await getMeta('currentEventId');
+      const curId = cur ? parseInt(cur,10) : null;
+      if (!curId || !sectionKey || !id) return;
+
+      const dayKey = safeYMD(getSaleDayKeyPOS());
+      const ev = await getEventByIdPOS(curId);
+      if (!ev) return;
+      const { template, state } = ensureChecklistDataPOS(ev, dayKey);
+
+      const arr = Array.isArray(template[sectionKey]) ? template[sectionKey] : [];
+      const idx = arr.findIndex(x=>String(x.id)===String(id));
+      if (idx < 0) return;
+
+      if (del){
+        const ok = confirm('¿Eliminar este ítem?');
+        if (!ok) return;
+        arr.splice(idx,1);
+        template[sectionKey] = arr;
+        // limpiar del estado del día
+        state.checkedIds = (state.checkedIds||[]).map(String).filter(cid=>cid!==String(id));
+        ev.checklistTemplate = template;
+        ev.days[dayKey].checklistState = state;
+        await put('events', ev);
+        await renderChecklistTab();
+        try{ showToast('Ítem eliminado.'); }catch(e){}
+        return;
+      }
+
+      const dir = up ? -1 : 1;
+      const j = idx + dir;
+      if (j < 0 || j >= arr.length) return;
+      [arr[idx], arr[j]] = [arr[j], arr[idx]];
+      template[sectionKey] = arr;
+      ev.checklistTemplate = template;
+      await put('events', ev);
+      await renderChecklistTab();
+    });
+
+    tab.addEventListener('change', async (e)=>{
+      const cb = e.target.closest('.chk-box');
+      const txt = e.target.closest('.chk-text');
+      if (!(cb || txt)) return;
+      const cur = await getMeta('currentEventId');
+      const curId = cur ? parseInt(cur,10) : null;
+      if (!curId) return;
+      const dayKey = safeYMD(getSaleDayKeyPOS());
+      const ev = await getEventByIdPOS(curId);
+      if (!ev) return;
+      const { template, state } = ensureChecklistDataPOS(ev, dayKey);
+
+      if (cb){
+        const id = cb.dataset.id;
+        if (!id) return;
+        const set = new Set((state.checkedIds||[]).map(String));
+        if (cb.checked) set.add(String(id));
+        else set.delete(String(id));
+        state.checkedIds = Array.from(set);
+        ev.days[dayKey].checklistState = state;
+        await put('events', ev);
+        return;
+      }
+
+      if (txt){
+        const id = txt.dataset.id;
+        const sectionKey = txt.dataset.section;
+        const val = (txt.value || '').trim();
+        if (!id || !sectionKey) return;
+        const arr = Array.isArray(template[sectionKey]) ? template[sectionKey] : [];
+        const it = arr.find(x=>String(x.id)===String(id));
+        if (!it) return;
+        it.text = val || it.text || 'Ítem';
+        template[sectionKey] = arr;
+        ev.checklistTemplate = template;
+        await put('events', ev);
+        return;
+      }
+    });
+  }
+
+  // Notas (debounced)
+  const notes = document.getElementById('checklist-notes');
+  if (notes){
+    let t = null;
+    notes.addEventListener('input', ()=>{
+      clearTimeout(t);
+      t = setTimeout(async ()=>{
+        const cur = await getMeta('currentEventId');
+        const curId = cur ? parseInt(cur,10) : null;
+        if (!curId) return;
+        const dayKey = safeYMD(getSaleDayKeyPOS());
+        const ev = await getEventByIdPOS(curId);
+        if (!ev) return;
+        const { state } = ensureChecklistDataPOS(ev, dayKey);
+        state.notes = notes.value || '';
+        ev.days[dayKey].checklistState = state;
+        await put('events', ev);
+      }, 350);
+    });
+  }
 }
 
 // Event UI
@@ -1813,10 +2992,25 @@ async function refreshEventUI(){
     else if (evs.length) invSel.value = evs[0].id;
   }
 
+  // Selector de evento en Checklist (usa el mismo evento activo global del POS)
+  const chkSel = document.getElementById('checklist-event');
+  if (chkSel){
+    chkSel.innerHTML = '<option value="">— Selecciona evento —</option>';
+    for (const ev of evs){
+      const o = document.createElement('option');
+      o.value = ev.id;
+      o.textContent = ev.name + (ev.closedAt ? ' (cerrado)' : '');
+      chkSel.appendChild(o);
+    }
+    if (current) chkSel.value = current;
+    else chkSel.value = '';
+  }
+
   await updateSellEnabled();
   try{ await refreshProductSelect({ keepSelection:true }); }catch(e){ try{ await renderProductChips(); }catch(_){ } }
   try{ await renderExtrasUI(); }catch(e){}
   try{ await renderCajaChica(); }catch(e){}
+  try{ await initVasosPanelPOS(); }catch(e){}
 }
 
 // --- Caja Chica por evento (toggle + helpers)
@@ -2478,6 +3672,10 @@ async function fractionGallonsToCupsPOS(){
   if (!ev){ alert('Evento no encontrado'); return; }
   if (ev.closedAt){ alert('Este evento está cerrado. Reábrelo o activa otro.'); return; }
 
+  const saleDate = document.getElementById('sale-date')?.value || '';
+  // Candado: no permitir fraccionamiento ni operaciones de venta si el día está cerrado
+  if (!(await guardSellDayOpenOrToastPOS(ev, saleDate))) return;
+
   const gallonsToFraction = safeInt(document.getElementById('cup-fraction-gallons')?.value, 0);
   const yieldCupsPerGallon = safeInt(document.getElementById('cup-yield')?.value, 22);
 
@@ -2562,6 +3760,10 @@ async function sellCupsPOS(isCourtesy){
   if (!ev){ alert('Evento no encontrado'); return; }
   if (ev.closedAt){ alert('Este evento está cerrado. Reábrelo o activa otro.'); return; }
 
+  const saleDate = document.getElementById('sale-date')?.value || '';
+  // Candado: no permitir fraccionamiento ni operaciones de venta si el día está cerrado
+  if (!(await guardSellDayOpenOrToastPOS(ev, saleDate))) return;
+
   const qty = safeInt(document.getElementById('cup-qty')?.value, 0);
   if (!(qty >= 1)) { alert('Cantidad de vasos debe ser un entero >= 1'); return; }
 
@@ -2584,6 +3786,9 @@ async function sellCupsPOS(isCourtesy){
 
   const date = document.getElementById('sale-date')?.value || '';
   if (!date){ alert('Selecciona una fecha'); return; }
+
+  // Candado: si Caja Chica está activada y el día está cerrado, NO permitir ventas por vaso
+  if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
 
   const payment = document.getElementById('sale-payment')?.value || 'efectivo';
   const customer = (payment === 'credito') ? (document.getElementById('sale-customer')?.value || '').trim() : '';
@@ -2632,6 +3837,27 @@ async function sellCupsPOS(isCourtesy){
   const now = new Date();
   const time = now.toTimeString().slice(0,5);
 
+  // Costo por vaso (COGS): derivado del costo del Galón configurado en Calculadora (Recetas).
+  // Usamos el breakdown FIFO (mlPerCup) para estimar el costo exacto por ml servido.
+  const costoGallon = getCostoUnitarioProducto('Galón 3800ml') || getCostoUnitarioProducto('Galón') || 0;
+  let lineCost = 0;
+  if (costoGallon > 0) {
+    const costPerMl = costoGallon / ML_PER_GALON;
+    let totalMl = 0;
+    for (const it of (taken.breakdown || [])) {
+      const cupsTaken = Number(it && it.cupsTaken) || 0;
+      const mlPerCup = Number(it && it.mlPerCup) || 0;
+      if (cupsTaken > 0 && mlPerCup > 0) totalMl += cupsTaken * mlPerCup;
+    }
+    if (!(totalMl > 0)) {
+      // fallback ultra seguro
+      totalMl = qty * (ML_PER_GALON / 22);
+    }
+    lineCost = round2(costPerMl * totalMl);
+  }
+  const costPerUnit = (qty > 0) ? round2(lineCost / qty) : 0;
+  const lineProfit = round2(total - lineCost);
+
   const saleRecord = {
     date,
     time,
@@ -2653,9 +3879,9 @@ async function sellCupsPOS(isCourtesy){
     courtesyTo: isCourtesy ? ((document.getElementById('sale-courtesy-to')?.value || '').trim()) : '',
     total,
     notes: isCourtesy ? 'Cortesía por vaso' : 'Venta por vaso',
-    costPerUnit: 0,
-    lineCost: 0,
-    lineProfit: total,
+    costPerUnit,
+    lineCost,
+    lineProfit,
     vaso: true,
     fifoBreakdown: taken.breakdown
   };
@@ -2756,7 +3982,7 @@ async function importFromLoteToInventory(){
   }
   let lotes = [];
   try {
-    const raw = localStorage.getItem('arcano33_lotes');
+    const raw = A33Storage.getItem('arcano33_lotes');
     if (raw) lotes = JSON.parse(raw) || [];
     if (!Array.isArray(lotes)) lotes = [];
   } catch (e) {
@@ -2937,7 +4163,7 @@ async function renderInventario(){
       <td>${p.name}</td>
       <td><input type="checkbox" class="inv-active" data-id="${p.id}" ${p.active===false?'':'checked'}></td>
       <td><input type="checkbox" class="inv-manage" data-id="${p.id}" ${p.manageStock===false?'':'checked'}></td>
-      <td><input class="inv-inicial" data-id="${p.id}" type="number" inputmode="numeric" step="1" value="${init?init.qty:0}" ${disabled}></td>
+      <td><input class="inv-inicial a33-num" data-a33-default="${init?init.qty:0}" data-id="${p.id}" type="number" inputmode="numeric" step="1" value="${init?init.qty:0}" ${disabled}></td>
       <td><input class="inv-repo" data-id="${p.id}" type="number" inputmode="numeric" step="1" placeholder="+" ${disabled}></td>
       <td><input class="inv-ajuste" data-id="${p.id}" type="number" inputmode="numeric" step="1" placeholder="+/-" ${disabled}></td>
       <td><span class="stockpill ${st<=0?'low':''}">${st}</span></td>
@@ -3059,106 +4285,256 @@ async function renderDay(){
 async function renderSummary(){
   const sales = await getAll('sales');
   const events = await getAll('events');
+  const products = await getAll('products');
+
+  const productById = new Map();
+  const productByName = new Map();
+  for (const p of (products || [])){
+    if (!p) continue;
+    if (p.id != null) productById.set(Number(p.id), p);
+    if (p.name) productByName.set(String(p.name), p);
+  }
+
+  const isCourtesySale = (s) => !!(s && (s.courtesy || s.isCourtesy));
+  const normalizeCourtesyProductName = (name) => String(name || '—').replace(/\s*\(Cortesía\)\s*$/i, '').trim() || '—';
+
+  const getLineCost = (s) => {
+    if (!s) return 0;
+    if (typeof s.lineCost === 'number' && Number.isFinite(s.lineCost)) return Number(s.lineCost || 0);
+    if (typeof s.costPerUnit === 'number' && Number.isFinite(s.costPerUnit)){
+      const qty = Number(s.qty || 0);
+      return Number(s.costPerUnit || 0) * qty;
+    }
+    return 0;
+  };
+
+  const getListUnitPrice = (s) => {
+    if (!s) return 0;
+    const unit = Number(s.unitPrice || 0);
+    if (unit > 0) return unit;
+
+    const pid = (s.productId != null) ? Number(s.productId) : null;
+    if (pid != null && productById.has(pid)){
+      const p = productById.get(pid);
+      const pr = Number(p && p.price) || 0;
+      if (pr > 0) return pr;
+    }
+
+    const n = normalizeCourtesyProductName(s.productName || '');
+    if (n && productByName.has(n)){
+      const p = productByName.get(n);
+      const pr = Number(p && p.price) || 0;
+      if (pr > 0) return pr;
+    }
+
+    return 0;
+  };
 
   const banks = await getAllBanksSafe();
   const bankMap = new Map();
   for (const b of banks){
     if (b && b.id != null) bankMap.set(Number(b.id), b.name || '');
   }
+
   const transferByBank = new Map();
+
+  // Ventas reales (ingresos)
   let grand = 0;
   let grandCost = 0;
   let grandProfit = 0;
 
-  const byDay=new Map(); 
-  const byProd=new Map(); 
-  const byPay=new Map(); 
-  const byEvent=new Map();
+  // Cortesías (impacto real + equivalente informativo)
+  let courtesyCost = 0;
+  let courtesyQty = 0; // unidades (suma de qty abs)
+  let courtesyEquiv = 0;
+  let courtesyTx = 0;
 
-  for (const s of sales){
+  const courtesyByProd = new Map(); // name -> { qty, cost, equiv }
+
+  const byDay = new Map();
+  const byProd = new Map();
+  const byPay = new Map();
+  const byEvent = new Map();
+
+  for (const s of (sales || [])){
+    if (!s) continue;
+
     const total = Number(s.total || 0);
-    grand += total;
+    const courtesy = isCourtesySale(s);
 
-    byDay.set(s.date,(byDay.get(s.date)||0)+total);
-    byProd.set(s.productName,(byProd.get(s.productName)||0)+total);
-    byPay.set(s.payment||'efectivo',(byPay.get(s.payment||'efectivo')||0)+total);
-    byEvent.set(s.eventName||'General',(byEvent.get(s.eventName||'General')||0)+total);
+    if (!courtesy){
+      grand += total;
 
-    // Transferencias por banco
-    if ((s.payment || '') === 'transferencia'){
-      const label = getSaleBankLabel(s, bankMap);
-      const cur = transferByBank.get(label) || { total: 0, count: 0 };
-      cur.total += total;
-      cur.count += 1;
-      transferByBank.set(label, cur);
-    }
+      byDay.set(s.date, (byDay.get(s.date) || 0) + total);
+      byProd.set(s.productName, (byProd.get(s.productName) || 0) + total);
+      byPay.set(s.payment || 'efectivo', (byPay.get(s.payment || 'efectivo') || 0) + total);
+      byEvent.set(s.eventName || 'General', (byEvent.get(s.eventName || 'General') || 0) + total);
 
-    // Costo y utilidad aproximada (solo ventas/no cortesías)
-    if (!s.courtesy) {
-      let lineCost = 0;
-      if (typeof s.lineCost === 'number') {
-        lineCost = Number(s.lineCost || 0);
-      } else if (typeof s.costPerUnit === 'number') {
-        const qty = Number(s.qty || 0);
-        lineCost = s.costPerUnit * qty;
+      // Transferencias por banco
+      if ((s.payment || '') === 'transferencia'){
+        const label = getSaleBankLabel(s, bankMap);
+        const cur = transferByBank.get(label) || { total: 0, count: 0 };
+        cur.total += total;
+        cur.count += 1;
+        transferByBank.set(label, cur);
       }
 
+      // Costo y utilidad aproximada (ventas reales)
+      const lineCost = getLineCost(s);
       let lineProfit = 0;
-      if (typeof s.lineProfit === 'number') {
+      if (typeof s.lineProfit === 'number' && Number.isFinite(s.lineProfit)) {
         lineProfit = Number(s.lineProfit || 0);
       } else {
         lineProfit = total - lineCost;
       }
-
       grandCost += lineCost;
       grandProfit += lineProfit;
+
+    } else {
+      courtesyTx += 1;
+
+      const qRaw = Number(s.qty || 0);
+      const absQty = Math.abs(qRaw);
+      const sign = (s.isReturn || qRaw < 0) ? -1 : 1;
+
+      courtesyQty += absQty;
+
+      const lineCost = getLineCost(s);
+      courtesyCost += lineCost;
+
+      const listUnit = getListUnitPrice(s);
+      const eq = sign * absQty * listUnit;
+      courtesyEquiv += eq;
+
+      const pname = normalizeCourtesyProductName(s.productName);
+      const prev = courtesyByProd.get(pname) || { qty: 0, cost: 0, equiv: 0 };
+      prev.qty += absQty;
+      prev.cost += lineCost;
+      prev.equiv += eq;
+      courtesyByProd.set(pname, prev);
     }
   }
 
-  // Acumular también lo archivado por evento en grand / tablas de resumen
-  for (const ev of events){
+  // Acumular también lo archivado por evento (si existiera)
+  for (const ev of (events || [])){
     if (ev.archive && ev.archive.totals){
       const t = ev.archive.totals;
-      grand += (t.grand||0);
-      byEvent.set(ev.name,(byEvent.get(ev.name)||0)+(t.grand||0));
-      if (t.byPay){ for (const k of Object.keys(t.byPay)){ byPay.set(k,(byPay.get(k)||0)+(t.byPay[k]||0)); } }
-      if (t.byProduct){ for (const k of Object.keys(t.byProduct)){ byProd.set(k,(byProd.get(k)||0)+(t.byProduct[k]||0)); } }
-      if (t.byDay){ for (const k of Object.keys(t.byDay)){ byDay.set(k,(byDay.get(k)||0)+(t.byDay[k]||0)); } }
-      // Nota: por ahora no tenemos costo/utilidad archivados, así que grandCost/grandProfit reflejan ventas vivas.
+
+      grand += (t.grand || 0);
+      byEvent.set(ev.name, (byEvent.get(ev.name) || 0) + (t.grand || 0));
+
+      if (t.byPay){
+        for (const k of Object.keys(t.byPay)){
+          byPay.set(k, (byPay.get(k) || 0) + (t.byPay[k] || 0));
+        }
+      }
+
+      // Por producto: excluir cualquier llave tipo "(Cortesía)"
+      if (t.byProduct){
+        for (const k of Object.keys(t.byProduct)){
+          if (/\(Cortesía\)/i.test(String(k))) continue;
+          byProd.set(k, (byProd.get(k) || 0) + (t.byProduct[k] || 0));
+        }
+      }
+
+      if (t.byDay){
+        for (const k of Object.keys(t.byDay)){
+          byDay.set(k, (byDay.get(k) || 0) + (t.byDay[k] || 0));
+        }
+      }
+
+      // Nota: por ahora no tenemos costo/utilidad/cortesías archivados.
     }
   }
 
-  // Total vendido
-  $('#grand-total').textContent = fmt(grand);
+  const profitAfterCourtesy = grandProfit - courtesyCost;
 
-  // Crear/actualizar bloque extra para costo y utilidad si no existe en el HTML
-  const totalSpan = document.getElementById('grand-total');
-  if (totalSpan) {
-    let extraBlock = document.getElementById('grand-extra-block');
-    if (!extraBlock) {
+  // --- Top KPIs ---
+  const grandTotalEl = document.getElementById('grand-total');
+  if (grandTotalEl) grandTotalEl.textContent = fmt(grand);
+
+  const costEl = document.getElementById('grand-cost');
+  if (costEl) costEl.textContent = fmt(grandCost);
+
+  const profitEl = document.getElementById('grand-profit');
+  if (profitEl) profitEl.textContent = fmt(grandProfit);
+
+  const courCostEl = document.getElementById('grand-courtesy-cost');
+  if (courCostEl) courCostEl.textContent = fmt(courtesyCost);
+
+  const profitAfterEl = document.getElementById('grand-profit-after-courtesy');
+  if (profitAfterEl) profitAfterEl.textContent = fmt(profitAfterCourtesy);
+
+  // Compat: si no existe el bloque superior nuevo, intentamos crearlo sin romper el HTML viejo
+  if (!costEl || !profitEl || !courCostEl || !profitAfterEl){
+    const totalSpan = document.getElementById('grand-total');
+    if (totalSpan){
       const card = totalSpan.closest('.card') || totalSpan.parentElement || document.getElementById('tab-resumen') || document.body;
-      extraBlock = document.createElement('div');
-      extraBlock.id = 'grand-extra-block';
-      if (card) card.appendChild(extraBlock);
+      let extraBlock = document.getElementById('grand-extra-block');
+      if (!extraBlock){
+        extraBlock = document.createElement('div');
+        extraBlock.id = 'grand-extra-block';
+        if (card) card.appendChild(extraBlock);
+      }
+      extraBlock.innerHTML = `
+        <p>Costo estimado de producto: C$ <span id="grand-cost">${fmt(grandCost)}</span></p>
+        <p>Utilidad bruta aproximada: C$ <span id="grand-profit">${fmt(grandProfit)}</span></p>
+        <p>Cortesías (Costo real): C$ <span id="grand-courtesy-cost">${fmt(courtesyCost)}</span></p>
+        <p>Utilidad después de cortesías: C$ <span id="grand-profit-after-courtesy">${fmt(profitAfterCourtesy)}</span></p>
+      `;
     }
-    extraBlock.innerHTML = `
-      <p>Costo estimado de producto: C$ <span id="grand-cost">${fmt(grandCost)}</span></p>
-      <p>Utilidad bruta aproximada: C$ <span id="grand-profit">${fmt(grandProfit)}</span></p>
-    `;
   }
 
-  const tbE=$('#tbl-por-evento tbody'); tbE.innerHTML='';
-  [...byEvent.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([k,v])=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${k}</td><td>${fmt(v)}</td>`; tbE.appendChild(tr); });
+  // --- Tablas existentes (solo ventas reales) ---
+  const tbE = document.querySelector('#tbl-por-evento tbody');
+  if (tbE){
+    tbE.innerHTML = '';
+    [...byEvent.entries()]
+      .sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'es-NI'))
+      .forEach(([k,v])=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(k)}</td><td>${fmt(v)}</td>`;
+        tbE.appendChild(tr);
+      });
+  }
 
-  const tbD=$('#tbl-por-dia tbody'); tbD.innerHTML='';
-  // Más reciente primero (YYYY-MM-DD)
-  [...byDay.entries()].sort((a,b)=>b[0].localeCompare(a[0])).forEach(([k,v])=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${k}</td><td>${fmt(v)}</td>`; tbD.appendChild(tr); });
+  const tbD = document.querySelector('#tbl-por-dia tbody');
+  if (tbD){
+    tbD.innerHTML = '';
+    // Más reciente primero (YYYY-MM-DD)
+    [...byDay.entries()]
+      .sort((a,b)=>String(b[0]).localeCompare(String(a[0])))
+      .forEach(([k,v])=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(k)}</td><td>${fmt(v)}</td>`;
+        tbD.appendChild(tr);
+      });
+  }
 
-  const tbP=$('#tbl-por-prod tbody'); tbP.innerHTML='';
-  [...byProd.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([k,v])=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${k}</td><td>${fmt(v)}</td>`; tbP.appendChild(tr); });
+  const tbP = document.querySelector('#tbl-por-prod tbody');
+  if (tbP){
+    tbP.innerHTML = '';
+    [...byProd.entries()]
+      .filter(([k,_v])=> !(/\(Cortesía\)/i.test(String(k))))
+      .sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'es-NI'))
+      .forEach(([k,v])=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(k)}</td><td>${fmt(v)}</td>`;
+        tbP.appendChild(tr);
+      });
+  }
 
-  const tbPay=$('#tbl-por-pago tbody'); tbPay.innerHTML='';
-  [...byPay.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([k,v])=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${k}</td><td>${fmt(v)}</td>`; tbPay.appendChild(tr); });
+  const tbPay = document.querySelector('#tbl-por-pago tbody');
+  if (tbPay){
+    tbPay.innerHTML = '';
+    [...byPay.entries()]
+      .sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'es-NI'))
+      .forEach(([k,v])=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(k)}</td><td>${fmt(v)}</td>`;
+        tbPay.appendChild(tr);
+      });
+  }
 
   // Tabla: Transferencias por banco (Resumen)
   const tbBank = document.querySelector('#tbl-transfer-bank tbody');
@@ -3169,13 +4545,54 @@ async function renderSummary(){
         .sort((a,b)=> (Number((b[1]||{}).total||0) - Number((a[1]||{}).total||0)));
       for (const [label, obj] of entries){
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${label}</td><td>${fmt(Number(obj.total||0))}</td><td>${obj.count||0}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(label)}</td><td>${fmt(Number(obj.total||0))}</td><td>${obj.count||0}</td>`;
         tbBank.appendChild(tr);
       }
     } else {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td colspan="3" class="muted">(sin transferencias)</td>`;
       tbBank.appendChild(tr);
+    }
+  }
+
+  // --- Nueva sección: Cortesías ---
+  const courTotalCostEl = document.getElementById('courtesy-total-cost');
+  if (courTotalCostEl) courTotalCostEl.textContent = fmt(courtesyCost);
+
+  const courTotalQtyEl = document.getElementById('courtesy-total-qty');
+  if (courTotalQtyEl) courTotalQtyEl.textContent = String(Math.round(courtesyQty));
+
+  const courTotalEquivEl = document.getElementById('courtesy-total-equiv');
+  if (courTotalEquivEl) courTotalEquivEl.textContent = fmt(courtesyEquiv);
+
+  const courTxEl = document.getElementById('courtesy-total-tx');
+  if (courTxEl) courTxEl.textContent = String(courtesyTx);
+
+  const tbCour = document.querySelector('#tbl-courtesy-byprod tbody');
+  if (tbCour){
+    tbCour.innerHTML = '';
+    if (courtesyByProd.size){
+      const entries = Array.from(courtesyByProd.entries())
+        .sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'es-NI'));
+
+      for (const [name, obj] of entries){
+        const q = obj ? Number(obj.qty || 0) : 0;
+        const c = obj ? Number(obj.cost || 0) : 0;
+        const e = obj ? Number(obj.equiv || 0) : 0;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(name)}</td>
+          <td>${Math.round(q)}</td>
+          <td>${fmt(c)}</td>
+          <td>${fmt(e)}</td>
+        `;
+        tbCour.appendChild(tr);
+      }
+    } else {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="4" class="muted">(sin cortesías)</td>`;
+      tbCour.appendChild(tr);
     }
   }
 }
@@ -3747,7 +5164,13 @@ async function exportEventExcel(eventId){
         detRows.push(['(sin movimientos)','','','']);
       } else {
         for (const m of movs){
-          const tipoText = m.type === 'salida' ? 'Salida' : 'Entrada';
+          let tipoText;
+          if (m && m.isAdjust){
+            const k = m.adjustKind === 'sobrante' ? 'Sobrante' : 'Faltante';
+            tipoText = `Ajuste (${k})`;
+          } else {
+            tipoText = m.type === 'salida' ? 'Egreso' : 'Ingreso';
+          }
           const monedaText = m.currency === 'USD' ? 'US$' : 'C$';
           detRows.push([tipoText, monedaText, m.amount || 0, m.description || '']);
         }
@@ -3787,20 +5210,18 @@ async function exportEventExcel(eventId){
       detRows.push(['Inicial', sumDay.usd.initial, 'Entradas', sumDay.usd.entradas, 'Salidas', sumDay.usd.salidas, 'Teórico', sumDay.usd.teorico, 'Final', sumDay.usd.final != null ? sumDay.usd.final : '', 'Dif', sumDay.usd.diferencia != null ? sumDay.usd.diferencia : '' ]);
 
       detRows.push([]);
-      // Ajuste de arqueo (si aplica)
-      detRows.push(['Ajuste de arqueo']);
-      detRows.push(['Moneda','AjusteMonto','AjusteConcepto','AjusteNotas','Creado']);
-      const adjN = day && day.arqueoAdjust ? day.arqueoAdjust.NIO : null;
-      const adjU = day && day.arqueoAdjust ? day.arqueoAdjust.USD : null;
-      if (adjN){
-        detRows.push(['C$', adjN.amount, adjN.concept, adjN.notes || '', adjN.createdAt || '']);
+      // Ajustes (movimientos tipo Ajuste)
+      detRows.push(['Ajustes (Movimientos tipo Ajuste)']);
+      detRows.push(['Moneda','Tipo','Monto','Descripción','Creado']);
+      const adjMovs = (movs || []).filter(m => m && m.isAdjust);
+      if (!adjMovs.length){
+        detRows.push(['', '(sin ajustes)', '', '', '']);
       } else {
-        detRows.push(['C$', '', '', '', '']);
-      }
-      if (adjU){
-        detRows.push(['US$', adjU.amount, adjU.concept, adjU.notes || '', adjU.createdAt || '']);
-      } else {
-        detRows.push(['US$', '', '', '', '']);
+        for (const m of adjMovs){
+          const monedaText = m.currency === 'USD' ? 'US$' : 'C$';
+          const k = m.adjustKind === 'sobrante' ? 'Sobrante' : 'Faltante';
+          detRows.push([monedaText, k, m.amount || 0, m.description || '', m.createdAt || '']);
+        }
       }
 
       detRows.push([]);
@@ -3812,22 +5233,22 @@ async function exportEventExcel(eventId){
   const wsCaja = XLSX.utils.aoa_to_sheet(detRows);
   XLSX.utils.book_append_sheet(wb, wsCaja, 'CajaChica_Detalle');
 
-  // --- Hoja: CajaChica_Ajustes (solo ajustes registrados) ---
+  // --- Hoja: CajaChica_Ajustes (movimientos tipo Ajuste) ---
   const adjRows = [];
   adjRows.push(['dia','moneda','AjusteMonto','AjusteConcepto','AjusteNotas','AjusteResumen','creado']);
   if (dayKeys && dayKeys.length){
     for (const dk of dayKeys){
       const day = ensurePcDay(pc, dk);
-      const aN = day && day.arqueoAdjust ? day.arqueoAdjust.NIO : null;
-      const aU = day && day.arqueoAdjust ? day.arqueoAdjust.USD : null;
-
-      if (aN){
-        const resumen = `Ajuste: ${formatAdjLine(aN.amount,'C$')} — Concepto: ${aN.concept}${aN.notes ? (' · ' + aN.notes) : ''}`;
-        adjRows.push([dk,'C$', aN.amount, aN.concept, aN.notes || '', resumen, aN.createdAt || '']);
-      }
-      if (aU){
-        const resumen = `Ajuste: ${formatAdjLine(aU.amount,'US$')} — Concepto: ${aU.concept}${aU.notes ? (' · ' + aU.notes) : ''}`;
-        adjRows.push([dk,'US$', aU.amount, aU.concept, aU.notes || '', resumen, aU.createdAt || '']);
+      const movs = (day && Array.isArray(day.movements)) ? day.movements : [];
+      const adjMovs = movs.filter(m => m && m.isAdjust);
+      for (const m of adjMovs){
+        const monedaText = m.currency === 'USD' ? 'US$' : 'C$';
+        const signed = (m.type === 'salida') ? -Math.abs(Number(m.amount || 0)) : Math.abs(Number(m.amount || 0));
+        const concept = m.description || '';
+        const notes = '';
+        const kind = m.adjustKind === 'sobrante' ? 'Sobrante' : 'Faltante';
+        const resumen = `Ajuste: ${formatAdjLine(signed, monedaText)} — ${kind}${concept ? (' · ' + concept) : ''}`;
+        adjRows.push([dk, monedaText, signed, concept, notes, resumen, m.createdAt || '']);
       }
     }
   }
@@ -3836,6 +5257,7 @@ async function exportEventExcel(eventId){
   }
   const wsAdj = XLSX.utils.aoa_to_sheet(adjRows);
   XLSX.utils.book_append_sheet(wb, wsAdj, 'CajaChica_Ajustes');
+
 
   // --- Hoja 3 opcional: Ventas_Detalle ---
   const ventasRows = [];
@@ -3912,10 +5334,11 @@ async function closeEvent(eventId){
         for (const dayKey of sorted){
           const cashSalesNio = cashByDay.get(dayKey) || 0;
           const day = ensurePcDay(pc, dayKey);
-          const check = await getPettyCloseCheck(eventId, pc, dayKey, cashSalesNio);
+          const fx = ev ? Number(ev.fxRate || 0) : null;
+          const check = await getPettyCloseCheck(eventId, pc, dayKey, cashSalesNio, fx);
 
           if (!day.closedAt){
-            pending.push({ dayKey, reason: 'Falta Cierre definitivo del día.' });
+            pending.push({ dayKey, reason: 'Falta cierre del día.' });
             continue;
           }
           // Si por alguna razón hay errores aún estando cerrado, bloquear cierre del evento
@@ -3928,9 +5351,9 @@ async function closeEvent(eventId){
           const lines = pending.slice(0, 25).map(p => `- ${p.dayKey}: ${p.reason}`).join('\n');
           const more = pending.length > 25 ? `\n... y ${pending.length - 25} más.` : '';
           alert(
-            'No se puede cerrar el evento porque faltan cierres definitivos de Caja Chica:\n\n' +
+            'No se puede cerrar el evento porque faltan cierres del día de Caja Chica:\n\n' +
             lines + more +
-            '\n\nVe a Caja Chica y realiza “Cierre definitivo del día”.'
+            '\n\nVe a Caja Chica y realiza “Cierre del día”.'
           );
           return;
         }
@@ -4058,6 +5481,7 @@ async function init(){
   await runStep('renderInventario', renderInventario);
   await runStep('renderCajaChica', renderCajaChica);
   await runStep('updateSellEnabled', updateSellEnabled);
+  await runStep('initVasosPanel', initVasosPanelPOS);
 
   // Paso 5: barra offline y eventos de Caja Chica
   try{
@@ -4082,6 +5506,12 @@ async function init(){
       if (tab) setTab(tab);
     });
   }
+
+  // Deep-link desde Centro de Mando: abrir pestaña específica si viene en la URL
+  try{
+    const deepTab = getTabFromUrlPOS();
+    if (deepTab) setTab(deepTab);
+  }catch(_){ }
 
   // Vender tab
 
@@ -4265,7 +5695,24 @@ async function init(){
     if (!isCred) $('#sale-customer').value='';
     await refreshSaleBankSelect();
   });
-  $('#sale-date').addEventListener('change', renderDay);
+  $('#sale-date').addEventListener('change', async()=>{
+    await renderDay();
+    await updateSellEnabled();
+    try{ await refreshSaleStockLabel(); }catch(e){}
+    try{ if (window.__A33_ACTIVE_TAB === 'checklist') await renderChecklistTab(); }catch(e){}
+  });
+  const btnGoCaja = document.getElementById('btn-go-caja');
+  if (btnGoCaja){
+    btnGoCaja.addEventListener('click', ()=>{
+      try{
+        const dk = getSaleDayKeyPOS();
+        const pcDay = document.getElementById('pc-day');
+        if (pcDay) pcDay.value = dk;
+      }catch(e){}
+      setTab('caja');
+    });
+  }
+
   $('#btn-add').addEventListener('click', addSale);
   const stickyBtn = $('#btn-add-sticky');
   if (stickyBtn) {
@@ -4290,6 +5737,14 @@ async function init(){
       return;
     }
     const d = $('#sale-date').value;
+
+    // Candado: si Caja Chica está activada y el día está cerrado, NO permitir cambios de ventas
+    try{
+      const ev = await getEventByIdPOS(curId);
+      if (!ev || ev.closedAt){ alert('No hay un evento activo válido.'); return; }
+      if (!(await guardSellDayOpenOrToastPOS(ev, d))) return;
+    }catch(e){}
+
     const allSales = await getAll('sales');
     const filtered = allSales.filter(s => s.eventId === curId && s.date === d);
     if (!filtered.length) {
@@ -4324,6 +5779,17 @@ async function init(){
     }
 
     const saleToDelete = (await getAll('sales')).find(s=>s.id===id) || null;
+    if (!saleToDelete){
+      alert('No pude cargar la venta a eliminar. Recarga el POS y vuelve a intentar.');
+      return;
+    }
+
+    // Candado: si Caja Chica está activada y el día está cerrado, NO permitir cambios de ventas
+    try{
+      const ev = await getEventByIdPOS(saleToDelete.eventId);
+      if (!ev || ev.closedAt){ alert('No hay un evento activo válido.'); return; }
+      if (!(await guardSellDayOpenOrToastPOS(ev, saleToDelete.date))) return;
+    }catch(e){}
 
     if (!confirm('¿Eliminar esta venta?')) return;
 
@@ -4361,6 +5827,19 @@ async function init(){
   // Stepper
   $('#qty-minus').addEventListener('click', ()=>{ const v = Math.max(1, parseInt($('#sale-qty').value||'1',10) - 1); $('#sale-qty').value = v; recomputeTotal(); });
   $('#qty-plus').addEventListener('click', ()=>{ const v = Math.max(1, parseInt($('#sale-qty').value||'1',10) + 1); $('#sale-qty').value = v; recomputeTotal(); });
+
+  // Stepper (Venta por vaso)
+  const cupQtyInp = document.getElementById('cup-qty');
+  const cupMinus = document.getElementById('cup-qty-minus');
+  const cupPlus = document.getElementById('cup-qty-plus');
+  if (cupMinus && cupQtyInp) cupMinus.addEventListener('click', ()=>{
+    const v = Math.max(1, parseInt(cupQtyInp.value || '1', 10) - 1);
+    cupQtyInp.value = v;
+  });
+  if (cupPlus && cupQtyInp) cupPlus.addEventListener('click', ()=>{
+    const v = Math.max(1, parseInt(cupQtyInp.value || '1', 10) + 1);
+    cupQtyInp.value = v;
+  });
 
   // Productos: agregar + restaurar
   document.getElementById('btn-add-prod').onclick = async()=>{ const name = $('#new-name').value.trim(); const price = parseFloat($('#new-price').value||'0'); if (!name || !(price>0)) return alert('Nombre y precio'); try{ await put('products', {name, price, manageStock:true, active:true}); $('#new-name').value=''; $('#new-price').value=''; await renderProductos(); await refreshProductSelect(); await renderInventario(); toast('Producto agregado'); }catch(err){ alert('No se pudo agregar. ¿Nombre duplicado?'); } };
@@ -4561,6 +6040,9 @@ async function addSale(){
   const event = events.find(e=>e.id===curId);
   if (!event || event.closedAt){ alert('Este evento está cerrado. Reábrelo o activa otro.'); return; }
 
+  // Candado: si Caja Chica está activada y el día está cerrado, NO permitir ventas
+  if (!(await guardSellDayOpenOrToastPOS(event, date))) return;
+
   const products = await getAll('products');
   const prod = products.find(p=>p.id===productId);
   const productName = prod ? prod.name : 'N/D';
@@ -4673,6 +6155,9 @@ async function addExtraSale(extraId){
   const notes = $('#sale-notes').value || '';
 
   if (!date || !qty) { alert('Completa fecha y cantidad'); return; }
+
+  // Candado: si Caja Chica está activada y el día está cerrado, NO permitir ventas
+  if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
   if (payment==='credito' && !customer){ alert('Ingresa el nombre del cliente (crédito)'); return; }
 
   // Banco (obligatorio si es Transferencia)
@@ -4837,8 +6322,6 @@ function hasPettyDayActivity(day){
   if (day.initial && day.initial.savedAt) return true;
   if (day.finalCount && day.finalCount.savedAt) return true;
   if (Array.isArray(day.movements) && day.movements.length) return true;
-  if (day.fxRate != null) return true;
-  if (day.arqueoAdjust && (day.arqueoAdjust.NIO || day.arqueoAdjust.USD)) return true;
   return false;
 }
 
@@ -4851,8 +6334,6 @@ function hasUsdActivity(day, sum){
     if (Math.abs(Number(sum.usd.salidas || 0)) > eps) return true;
     if (sum.usd.final != null && Math.abs(Number(sum.usd.final || 0)) > eps) return true;
   }
-  if (day.fxRate != null) return true;
-  if (day.arqueoAdjust && day.arqueoAdjust.USD) return true;
   if (Array.isArray(day.movements) && day.movements.some(m => m && m.currency === 'USD' && Math.abs(Number(m.amount || 0)) > eps)) return true;
   return false;
 }
@@ -4884,179 +6365,107 @@ function diffKind(diff){
   return v > 0 ? 'Sobrante' : 'Faltante';
 }
 
-async function getPettyCloseCheck(eventId, pc, dayKey, cashSalesNio){
-  const day = ensurePcDay(pc, dayKey);
-  const sum = computePettyCashSummary(pc, dayKey, { cashSalesNio: Number(cashSalesNio || 0) });
-
-  const diffNio = (sum.nio.final != null) ? round2(sum.nio.final - sum.nio.teorico) : null;
-  const diffUsd = (sum.usd.final != null) ? round2(sum.usd.final - sum.usd.teorico) : null;
-
-  const usdActive = hasUsdActivity(day, sum);
-
+async function getPettyCloseCheck(eventId, pc, dayKey, cashSalesNio, eventFxRate){
   const errors = [];
   const warnings = [];
 
-  if (!day.finalCount || !day.finalCount.savedAt){
-    errors.push('Falta guardar el arqueo final.');
+  if (!eventId){
+    errors.push('No hay evento activo.');
+    return { canClose:false, errors, warnings, day:null, sum:null, diffNio:null, diffUsd:null, fxRate:null };
   }
 
-  if (usdActive && !(day.fxRate && day.fxRate > 0)){
-    errors.push('Falta guardar el T/C del día (C$ por 1 US$) porque hubo USD en Caja Chica.');
+  const pcSafe = pc || (await getPettyCash(eventId));
+  const day = ensurePcDay(pcSafe, dayKey);
+
+  const fxRaw = Number(eventFxRate || 0);
+  const fxRate = (Number.isFinite(fxRaw) && fxRaw > 0) ? fxRaw : null;
+
+  const sum = computePettyCashSummary(pcSafe, dayKey, { cashSalesNio });
+
+  const diffNio = (sum && sum.nio && sum.nio.diferencia != null) ? Number(sum.nio.diferencia) : null;
+  const diffUsd = (sum && sum.usd && sum.usd.diferencia != null) ? Number(sum.usd.diferencia) : null;
+
+  const hasFinal = !!(day && day.finalCount && day.finalCount.savedAt);
+  if (!hasFinal) errors.push('Guarda el arqueo final antes de cerrar el día.');
+
+  const usdActive = hasUsdActivity(day, sum);
+  if (usdActive && !(fxRate && fxRate > 0)){
+    errors.push('Define el tipo de cambio (USD → C$) para este evento.');
   }
 
-  if (diffNio != null && !moneyEquals(diffNio, 0)){
-    const adj = day.arqueoAdjust ? day.arqueoAdjust.NIO : null;
-    if (!adjustMatches(adj, diffNio)){
-      errors.push(`Hay diferencia en C$ (${diffKind(diffNio)} ${diffLabel(diffNio,'C$')}). Registra movimientos faltantes o un ajuste de arqueo igual a la diferencia.`);
+  const eps = 0.005;
+  if (hasFinal){
+    if (diffNio != null && Math.abs(diffNio) > eps){
+      const kind = (diffNio > 0) ? 'Sobrante' : 'Faltante';
+      errors.push(`Hay diferencia en C$ (${kind} C$ ${fmt(Math.abs(round2(diffNio)))}). Registra movimientos faltantes o un ajuste de caja igual a la diferencia.`);
     }
-  } else {
-    const adj = day.arqueoAdjust ? day.arqueoAdjust.NIO : null;
-    if (adj) warnings.push('Hay un ajuste C$ guardado pero no hay diferencia actual. (Puedes quitarlo si no aplica).');
-  }
 
-  if (diffUsd != null && !moneyEquals(diffUsd, 0)){
-    const adj = day.arqueoAdjust ? day.arqueoAdjust.USD : null;
-    if (!adjustMatches(adj, diffUsd)){
-      errors.push(`Hay diferencia en US$ (${diffKind(diffUsd)} ${diffLabel(diffUsd,'US$')}). Registra movimientos faltantes o un ajuste de arqueo igual a la diferencia.`);
+    // USD: si hay USD activo, también debe cuadrar
+    if (usdActive && diffUsd != null && Math.abs(diffUsd) > eps){
+      const kind = (diffUsd > 0) ? 'Sobrante' : 'Faltante';
+      errors.push(`Hay diferencia en US$ (${kind} US$ ${fmt(Math.abs(round2(diffUsd)))}). Registra movimientos faltantes o un ajuste de caja igual a la diferencia.`);
     }
-  } else {
-    const adj = day.arqueoAdjust ? day.arqueoAdjust.USD : null;
-    if (adj) warnings.push('Hay un ajuste US$ guardado pero no hay diferencia actual. (Puedes quitarlo si no aplica).');
   }
 
-  return { day, sum, diffNio, diffUsd, usdActive, errors, warnings, canClose: errors.length === 0 };
+  const canClose = errors.length === 0;
+  return { canClose, errors, warnings, day, sum, diffNio, diffUsd, fxRate };
 }
 
 function setPettyCloseUIEmpty(){
   const status = document.getElementById('pc-close-status');
   const blocker = document.getElementById('pc-close-blocker');
-  const fx = document.getElementById('pc-fx-rate');
-
-  const adjNioAmt = document.getElementById('pc-adj-nio-amount');
-  const adjNioConcept = document.getElementById('pc-adj-nio-concept');
-  const adjNioNotes = document.getElementById('pc-adj-nio-notes');
-
-  const adjUsdAmt = document.getElementById('pc-adj-usd-amount');
-  const adjUsdConcept = document.getElementById('pc-adj-usd-concept');
-  const adjUsdNotes = document.getElementById('pc-adj-usd-notes');
-
-  const adjN = document.getElementById('pc-adj-nio-status');
-  const adjU = document.getElementById('pc-adj-usd-status');
-  const rec = document.getElementById('pc-adj-records');
+  const btnClose = document.getElementById('pc-btn-close-day');
+  const btnReopen = document.getElementById('pc-btn-reopen-day');
 
   if (status) status.textContent = '';
-  if (blocker){ blocker.style.display = 'none'; blocker.textContent = ''; }
+  if (blocker){
+    blocker.style.display = 'none';
+    blocker.textContent = '';
+  }
+  if (btnClose) btnClose.disabled = true;
+  if (btnReopen){
+    btnReopen.style.display = 'none';
+    btnReopen.disabled = true;
+  }
+
+  // También limpiar UI del tipo de cambio por evento
+  const fx = document.getElementById('pc-event-fx-rate');
   if (fx) fx.value = '';
-
-  if (adjNioAmt) adjNioAmt.value = '';
-  if (adjNioConcept) adjNioConcept.value = '';
-  if (adjNioNotes) adjNioNotes.value = '';
-
-  if (adjUsdAmt) adjUsdAmt.value = '';
-  if (adjUsdConcept) adjUsdConcept.value = '';
-  if (adjUsdNotes) adjUsdNotes.value = '';
-
-  if (adjN) adjN.textContent = '';
-  if (adjU) adjU.textContent = '';
-  if (rec){ rec.style.display = 'none'; rec.innerHTML = ''; }
-  const btnRe = document.getElementById('pc-btn-reopen-day');
-  if (btnRe) btnRe.style.display = 'none';
 }
 
 function renderPettyCloseUI(check, isHistory){
   const status = document.getElementById('pc-close-status');
   const blocker = document.getElementById('pc-close-blocker');
-  const fx = document.getElementById('pc-fx-rate');
   const btnClose = document.getElementById('pc-btn-close-day');
   const btnReopen = document.getElementById('pc-btn-reopen-day');
+
+  if (!status || !blocker) return;
+  if (!check || !check.day || !check.sum){
+    status.textContent = '';
+    blocker.style.display = 'none';
+    blocker.textContent = '';
+    if (btnClose) btnClose.disabled = true;
+    if (btnReopen){
+      btnReopen.style.display = 'none';
+      btnReopen.disabled = true;
+    }
+    return;
+  }
 
   const day = check.day;
   const sum = check.sum;
 
-  if (fx){
-    fx.value = (day.fxRate && day.fxRate > 0) ? String(day.fxRate) : '';
-    fx.disabled = isHistory || !!day.closedAt;
-  }
+  const fxLine = (check.fxRate && check.fxRate > 0) ? (` · T/C: C$ ${fmt(check.fxRate)} por US$ 1`) : '';
+  const closedLine = day.closedAt ? ('Día cerrado') : ('Día abierto');
 
-  const fmtIso = (iso)=>{
-    try{ return new Date(iso).toLocaleString(); }catch(e){ return iso || ''; }
-  };
+  status.textContent = `${closedLine} · Teórico C$ ${fmt(sum.nio.teorico)} / Final C$ ${fmt(sum.nio.final ?? 0)}${fxLine}`;
 
-  if (status){
-    if (day.closedAt){
-      status.innerHTML = `<b>Estado:</b> Cerrado el ${fmtIso(day.closedAt)}.`;
-    } else {
-      status.innerHTML = `<b>Estado:</b> Abierto. <span class="muted">Esperado hoy: C$ ${fmt(sum.nio.teorico)} (incluye ventas efectivo C$ ${fmt(sum.nio.ventasEfectivo || 0)}) · US$ ${fmt(sum.usd.teorico)}</span>`;
-    }
-  }
-
-  if (blocker){
-    if (check.errors.length){
-      blocker.style.display = 'block';
-      blocker.innerHTML = '<b>No se puede cerrar:</b><ul style="margin:6px 0 0 18px">' + check.errors.map(e=>`<li>${e}</li>`).join('') + '</ul>';
-    } else if (check.warnings.length){
-      blocker.style.display = 'block';
-      blocker.innerHTML = '<b>Avisos:</b><ul style="margin:6px 0 0 18px">' + check.warnings.map(e=>`<li>${e}</li>`).join('') + '</ul>';
-    } else {
-      blocker.style.display = 'none';
-      blocker.textContent = '';
-    }
-  }
-
-  const adjN = document.getElementById('pc-adj-nio-status');
-  if (adjN){
-    const d = check.diffNio;
-    const adj = day.arqueoAdjust ? day.arqueoAdjust.NIO : null;
-    const diffTxt = (d == null) ? '—' : `${diffKind(d)} ${diffLabel(d,'C$')}`;
-    const adjTxt = adj ? (`Ajuste: ${formatAdjLine(adj.amount,'C$')} — Concepto: ${adj.concept}${adj.notes ? (' · ' + adj.notes) : ''}`) : 'Ajuste: (no registrado)';
-    adjN.textContent = `Diferencia actual: ${diffTxt}. ${adjTxt}.`;
-  }
-
-  const adjU = document.getElementById('pc-adj-usd-status');
-  const rec = document.getElementById('pc-adj-records');
-  if (adjU){
-    const d = check.diffUsd;
-    const adj = day.arqueoAdjust ? day.arqueoAdjust.USD : null;
-    const diffTxt = (d == null) ? '—' : `${diffKind(d)} ${diffLabel(d,'US$')}`;
-    const adjTxt = adj ? (`Ajuste: ${formatAdjLine(adj.amount,'US$')} — Concepto: ${adj.concept}${adj.notes ? (' · ' + adj.notes) : ''}`) : 'Ajuste: (no registrado)';
-    adjU.textContent = `Diferencia actual: ${diffTxt}. ${adjTxt}.`;
-  }
-
-    // Mostrar registro de ajuste(s) solo cuando existan
-  if (rec){
-    const items = [];
-    const pushAdj = (sym, adj)=>{
-      if (!adj) return;
-      const when = (adj.createdAt) ? (()=>{ try{ return new Date(adj.createdAt).toLocaleString(); }catch(e){ return adj.createdAt; } })() : '';
-      const concept = escapeHtml(adj.concept || '');
-      const notes = (adj.notes || '').trim();
-      items.push({
-        sym,
-        amtLine: formatAdjLine(adj.amount, sym),
-        concept,
-        notesHtml: notes ? escapeHtml(notes) : '',
-        when
-      });
-    };
-    if (day.arqueoAdjust && day.arqueoAdjust.NIO) pushAdj('C$', day.arqueoAdjust.NIO);
-    if (day.arqueoAdjust && day.arqueoAdjust.USD) pushAdj('US$', day.arqueoAdjust.USD);
-
-    if (items.length){
-      rec.style.display = 'block';
-      rec.innerHTML = `<div class="title">Ajuste registrado</div>` + items.map(i => (
-        `<div class="pc-adj-record">
-          <div class="left">
-            <div><b>Ajuste:</b> ${escapeHtml(i.amtLine)} — <b>Concepto:</b> ${i.concept}</div>
-            ${i.notesHtml ? (`<div class="muted" style="font-size:0.85rem; margin-top:2px">${i.notesHtml}</div>`) : ''}
-            <small class="muted">${escapeHtml(i.when)}</small>
-          </div>
-          <div class="amt">${escapeHtml(i.amtLine)}</div>
-        </div>`
-      )).join('');
-    } else {
-      rec.style.display = 'none';
-      rec.innerHTML = '';
-    }
+  if (check.errors && check.errors.length){
+    blocker.style.display = 'block';
+    blocker.textContent = 'No se puede cerrar:\n- ' + check.errors.join('\n- ');
+  } else {
+    blocker.style.display = 'none';
+    blocker.textContent = '';
   }
 
   if (btnClose){
@@ -5069,139 +6478,44 @@ function renderPettyCloseUI(check, isHistory){
   }
 }
 
-async function onSavePettyFxRate(){
+async function onSaveEventFxRate(){
+  const fx = document.getElementById('pc-event-fx-rate');
+
   if (isPettyHistoryMode()){
     alert('Estás en Vista histórica (solo lectura). Pulsa “Volver al día operativo” para editar.');
     return;
   }
+
   const evId = await getMeta('currentEventId');
   if (!evId){
     alert('Debes activar un evento antes de guardar el T/C.');
     return;
   }
 
-  if (!(await ensurePettyEnabledForEvent(evId))) return;
-  const dayKey = getSelectedPcDay();
-  const pc = await getPettyCash(evId);
-  const day = ensurePcDay(pc, dayKey);
-  if (day.closedAt){
-    alert('Este día está cerrado. Reábrelo para editar.');
+  const evs = await getAll('events');
+  const ev = (evs || []).find(e => e && e.id === evId);
+  if (!ev){
+    alert('No se encontró el evento activo.');
     return;
   }
 
-  const fx = document.getElementById('pc-fx-rate');
-  const raw = fx ? Number(fx.value || 0) : 0;
-  const rate = (Number.isFinite(raw) && raw > 0) ? raw : null;
+  const raw = fx ? Number((fx.value || '').toString().replace(',', '.')) : 0;
+  const rate = (Number.isFinite(raw) && raw > 0) ? round2(raw) : null;
 
-  day.fxRate = rate;
-  await savePettyCash(pc);
+  ev.fxRate = rate;
+  await put('events', ev);
+
   await renderCajaChica();
-  toast('T/C guardado');
+  toast('Tipo de cambio guardado');
 }
 
-async function onRegisterArqueoAdjust(currency){
-  if (isPettyHistoryMode()){
-    alert('Estás en Vista histórica (solo lectura). Pulsa “Volver al día operativo” para editar.');
-    return;
-  }
-  const evId = await getMeta('currentEventId');
-  if (!evId){
-    alert('Debes activar un evento antes de registrar ajuste.');
-    return;
-  }
-
-  if (!(await ensurePettyEnabledForEvent(evId))) return;
-  const dayKey = getSelectedPcDay();
-  const pc = await getPettyCash(evId);
-  const day = ensurePcDay(pc, dayKey);
-  if (day.closedAt){
-    alert('Este día está cerrado. Reábrelo para editar.');
-    return;
-  }
-
-  const cashSales = await getCashSalesNioForDay(evId, dayKey);
-  const check = await getPettyCloseCheck(evId, pc, dayKey, cashSales);
-
-  const isNio = currency === 'NIO';
-  const diff = isNio ? check.diffNio : check.diffUsd;
-
-  if (diff == null){
-    alert('Primero guarda el arqueo final para poder calcular la diferencia.');
-    return;
-  }
-  if (moneyEquals(diff, 0)){
-    alert('No hay diferencia actual para ajustar.');
-    return;
-  }
-
-  const amtEl = document.getElementById(isNio ? 'pc-adj-nio-amount' : 'pc-adj-usd-amount');
-  const conceptEl = document.getElementById(isNio ? 'pc-adj-nio-concept' : 'pc-adj-usd-concept');
-  const notesEl = document.getElementById(isNio ? 'pc-adj-nio-notes' : 'pc-adj-usd-notes');
-
-  const rawAmt = amtEl ? Number((amtEl.value || '').toString().replace(',', '.')) : NaN;
-  const amount = Number.isFinite(rawAmt) ? round2(rawAmt) : NaN;
-  const concept = conceptEl ? (conceptEl.value || '').trim() : '';
-  const notes = notesEl ? (notesEl.value || '').trim() : '';
-
-  if (!Number.isFinite(amount) || Math.abs(amount) < 0.005){
-    alert('Debes ingresar el monto del ajuste.');
-    return;
-  }
-  if (!concept){
-    alert('Debes ingresar el concepto del ajuste.');
-    return;
-  }
-
-  if (!moneyEquals(amount, diff)){
-    const sym = isNio ? 'C$' : 'US$';
-    alert(`El monto del ajuste debe igualar la diferencia actual (${formatAdjLine(diff, sym)}).`);
-    return;
-  }
-
-  if (!day.arqueoAdjust) day.arqueoAdjust = { NIO: null, USD: null };
-  day.arqueoAdjust[isNio ? 'NIO' : 'USD'] = {
-    amount: round2(amount),
-    concept,
-    notes,
-    createdAt: new Date().toISOString()
-  };
-
-  await savePettyCash(pc);
-  await renderCajaChica();
-  toast('Ajuste de arqueo registrado');
-}
-
-async function onClearArqueoAdjust(currency){
-  if (isPettyHistoryMode()){
-    alert('Estás en Vista histórica (solo lectura). Pulsa “Volver al día operativo” para editar.');
-    return;
-  }
-  const evId = await getMeta('currentEventId');
-  if (!evId) return;
-  if (!(await ensurePettyEnabledForEvent(evId))) return;
-  const dayKey = getSelectedPcDay();
-  const pc = await getPettyCash(evId);
-  const day = ensurePcDay(pc, dayKey);
-  if (day.closedAt){
-    alert('Este día está cerrado. Reábrelo para editar.');
-    return;
-  }
-
-  if (!day.arqueoAdjust) day.arqueoAdjust = { NIO: null, USD: null };
-  if (currency === 'NIO') day.arqueoAdjust.NIO = null;
-  if (currency === 'USD') day.arqueoAdjust.USD = null;
-
-  const isNio = currency === 'NIO';
-  const amtEl = document.getElementById(isNio ? 'pc-adj-nio-amount' : 'pc-adj-usd-amount');
-  const conceptEl = document.getElementById(isNio ? 'pc-adj-nio-concept' : 'pc-adj-usd-concept');
-  const notesEl = document.getElementById(isNio ? 'pc-adj-nio-notes' : 'pc-adj-usd-notes');
-  if (amtEl) amtEl.value = '';
-  if (conceptEl) conceptEl.value = '';
-  if (notesEl) notesEl.value = '';
-
-  await savePettyCash(pc);
-  await renderCajaChica();
-  toast('Ajuste removido');
+function updatePettyMovementTypeUI(){
+  const typeSel = document.getElementById('pc-mov-type');
+  const adjustWrap = document.getElementById('pc-adjust-kind-wrap');
+  const transferWrap = document.getElementById('pc-transfer-kind-wrap');
+  if (!typeSel) return;
+  if (adjustWrap) adjustWrap.style.display = (typeSel.value === 'ajuste') ? 'block' : 'none';
+  if (transferWrap) transferWrap.style.display = (typeSel.value === 'transferencia') ? 'block' : 'none';
 }
 
 async function onClosePettyDay(){
@@ -5217,15 +6531,23 @@ async function onClosePettyDay(){
 
   if (!(await ensurePettyEnabledForEvent(evId))) return;
   const dayKey = getSelectedPcDay();
-  const pc = await getPettyCash(evId);
-  const day = ensurePcDay(pc, dayKey);
-  if (day.closedAt){
+  let pc = await getPettyCash(evId);
+
+  // IMPORTANTE:
+  // ensurePcDay() normaliza y REEMPLAZA el objeto del día dentro de pc.days.
+  // Si guardamos una referencia (day) y luego otra función vuelve a llamar ensurePcDay(pc, dayKey),
+  // esa referencia puede quedar “stale” y los cambios (closedAt) NO se persistirán.
+  // Por eso, al mutar closedAt, siempre lo hacemos vía ensurePcDay(pc, dayKey) justo antes del save.
+  if (ensurePcDay(pc, dayKey).closedAt){
     alert('Este día ya está cerrado.');
     return;
   }
 
   const cashSales = await getCashSalesNioForDay(evId, dayKey);
-  const check = await getPettyCloseCheck(evId, pc, dayKey, cashSales);
+  const evs = await getAll('events');
+  const ev = (evs || []).find(e => e && e.id === evId);
+  const fx = ev ? Number(ev.fxRate || 0) : null;
+  const check = await getPettyCloseCheck(evId, pc, dayKey, cashSales, fx);
 
   if (!check.canClose){
     alert('No se puede cerrar:\n\n- ' + check.errors.join('\n- '));
@@ -5233,15 +6555,37 @@ async function onClosePettyDay(){
     return;
   }
 
-  const ok = confirm(`¿Cerrar definitivamente el día ${dayKey}?
+  const ok = confirm(`¿Cerrar el día ${dayKey}?
 
 Esto bloqueará edición de Caja Chica para este día.`);
   if (!ok) return;
 
-  day.closedAt = new Date().toISOString();
-  await savePettyCash(pc);
-  await renderCajaChica();
-  toast('Día cerrado definitivamente');
+  const stamp = new Date().toISOString();
+  // Setear el flag de cierre en el objeto REAL que se va a persistir
+  ensurePcDay(pc, dayKey).closedAt = stamp;
+
+  try{
+    await savePettyCash(pc);
+
+    // Confirmar persistencia real (anti “falsos positivos”)
+    const pcReload = await getPettyCash(evId);
+    const persisted = ensurePcDay(pcReload, dayKey).closedAt;
+    if (!persisted){
+      throw new Error('Persistencia no confirmada: closedAt sigue null.');
+    }
+    // Refrescar UI desde IDB
+    await renderCajaChica();
+
+    try{ await updateSellEnabled(); }catch(e){}
+    showToast('Día cerrado', 'ok', 5000);
+  }catch(err){
+    console.error('onClosePettyDay save/confirm error', err);
+    // Revertir en memoria (y NO marcar cerrado en UI)
+    try{ ensurePcDay(pc, dayKey).closedAt = null; }catch(e){}
+    showToast('No se pudo cerrar el día: ' + humanizeError(err), 'error', 5000);
+    await renderCajaChica();
+    return;
+  }
 }
 
 async function onReopenPettyDay(){
@@ -5260,13 +6604,33 @@ async function onReopenPettyDay(){
   }
   const ok = confirm(`¿Reabrir el día ${dayKey}?
 
-Podrás editar Caja Chica y el cierre definitivo quedará removido.`);
+Podrás editar Caja Chica y el cierre del día quedará removido.`);
   if (!ok) return;
 
+  const prevStamp = day.closedAt;
+
   day.closedAt = null;
-  await savePettyCash(pc);
+  try{
+    await savePettyCash(pc);
+
+    // Confirmar persistencia real (anti “falsos positivos”)
+    const pcReload = await getPettyCash(evId);
+    const persisted = ensurePcDay(pcReload, dayKey).closedAt;
+    if (persisted){
+      throw new Error('Persistencia no confirmada: closedAt sigue con valor.');
+    }
+  }catch(err){
+    console.error('onReopenPettyDay save/confirm error', err);
+    // Revertir en memoria (y NO marcar abierto en UI)
+    try{ day.closedAt = prevStamp; }catch(e){}
+    showToast('No se pudo reabrir el día: ' + humanizeError(err), 'error', 5000);
+    await renderCajaChica();
+    return;
+  }
   await renderCajaChica();
-  toast('Día reabierto');
+
+  try{ await updateSellEnabled(); }catch(e){}
+  showToast('Día reabierto', 'ok', 5000);
 }
 
 // --- Caja Chica: histórico (solo lectura)
@@ -5292,6 +6656,12 @@ function getClosedPcDayKeys(pc){
 }
 
 function setPettyReadOnly(isReadOnly, allowReopen){
+  // Bloqueo robusto por fieldsets (cubre inputs dinámicos y cualquier control nuevo)
+  const fsCount = document.getElementById('pc-count-fieldset');
+  const fsMov = document.getElementById('pc-mov-fieldset');
+  if (fsCount) fsCount.disabled = !!isReadOnly;
+  if (fsMov) fsMov.disabled = !!isReadOnly;
+
   const lockAll = (sel) => {
     document.querySelectorAll(sel).forEach(el => { el.disabled = !!isReadOnly; });
   };
@@ -5301,17 +6671,18 @@ function setPettyReadOnly(isReadOnly, allowReopen){
   [
     'pc-btn-save-initial','pc-btn-clear-initial',
     'pc-btn-save-final','pc-btn-clear-final',
-    'pc-mov-type','pc-mov-currency','pc-mov-amount','pc-mov-desc','pc-mov-add',
-    'pc-fx-rate','pc-btn-save-fx',
-    'pc-adj-nio-amount','pc-adj-nio-concept','pc-adj-nio-notes',
-    'pc-adj-usd-amount','pc-adj-usd-concept','pc-adj-usd-notes',
-    'pc-btn-adj-nio','pc-btn-clear-adj-nio',
-    'pc-btn-adj-usd','pc-btn-clear-adj-usd',
+    'pc-mov-type','pc-mov-adjust-kind','pc-mov-transfer-kind','pc-mov-currency','pc-mov-amount','pc-mov-desc','pc-mov-add',
     'pc-btn-close-day','pc-btn-reopen-day'
   ].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = !!isReadOnly;
   });
+
+  // El tipo de cambio se edita dentro de Caja Chica: bloquear en histórico o día cerrado
+  const fx = document.getElementById('pc-event-fx-rate');
+  const fxBtn = document.getElementById('pc-btn-save-event-fx');
+  if (fx) fx.disabled = !!isReadOnly;
+  if (fxBtn) fxBtn.disabled = !!isReadOnly;
 
   if (allowReopen){
     const reopen = document.getElementById('pc-btn-reopen-day');
@@ -5459,9 +6830,15 @@ async function onUseHistoryFinalAsInitial(){
     savedAt: new Date().toISOString()
   });
 
-  await savePettyCash(pc);
-
-  // Volver al día operativo (objetivo) y renderizar
+    try{
+    await savePettyCash(pc);
+  }catch(err){
+    console.error('onUseHistoryFinalAsInitial save error', err);
+    showToast('No se pudo precargar el saldo inicial', 'error', 5000);
+    await renderCajaChica();
+    return;
+  }
+ // Volver al día operativo (objetivo) y renderizar
   const dayInput = document.getElementById('pc-day');
   pettyHistoryMode = false;
   pettyHistoryDayKey = null;
@@ -5593,6 +6970,9 @@ async function renderCajaChica(){
   fillPettyInitialFromPc(pc, dayKey);
   fillPettyFinalFromPc(pc, dayKey);
 
+  
+  updateCopyInitialButtonState(pc, dayKey, cashSalesNio);
+
   const readOnlyDay = hist || !!day.closedAt;
   renderPettyMovements(pc, dayKey, readOnlyDay);
 
@@ -5604,8 +6984,27 @@ async function renderCajaChica(){
 
   renderPettyHistoryControls(pc);
 
-  // Cierre definitivo
-  const check = await getPettyCloseCheck(evId, pc, dayKey, cashSalesNio);
+  // Cierre del día (candado)
+  // Tipo de cambio persistente por evento (fallback: último fxRate legado en Caja Chica)
+  let fx = Number(ev.fxRate || 0);
+  if (!(Number.isFinite(fx) && fx > 0)) fx = null;
+  if (!fx && pc && pc.days){
+    const keys = listPcDayKeys(pc).sort((a,b)=> b.localeCompare(a));
+    for (const k of keys){
+      const d = pc.days[k];
+      const legacy = d ? Number(d.fxRate || 0) : 0;
+      if (Number.isFinite(legacy) && legacy > 0){ fx = legacy; break; }
+    }
+    if (fx && !(Number(ev.fxRate||0) > 0)){
+      ev.fxRate = fx;
+      await put('events', ev);
+    }
+  }
+
+  const fxInput = document.getElementById('pc-event-fx-rate');
+  if (fxInput) fxInput.value = (fx && fx > 0) ? String(fx) : '';
+
+  const check = await getPettyCloseCheck(evId, pc, dayKey, cashSalesNio, fx);
   renderPettyCloseUI(check, hist);
 
   setPettyReadOnly(readOnlyDay, (!hist && !!day.closedAt));
@@ -5750,6 +7149,65 @@ function fillPettyFinalFromPc(pc, dayKey){
   if (tu) tu.textContent = fmt(fin.totalUsd || 0);
 }
 
+function getPettyMovementsNet(day){
+  let netNio = 0;
+  let netUsd = 0;
+  let hasMov = false;
+
+  const movs = (day && Array.isArray(day.movements)) ? day.movements : [];
+  for (const m of movs){
+    if (!m || typeof m.amount === 'undefined') continue;
+    const amt = Number(m.amount) || 0;
+    if (!amt) continue;
+    hasMov = true;
+
+    const sign = (m.type === 'salida') ? -1 : 1; // entrada = +, salida = -
+    if (m.currency === 'USD') netUsd += sign * amt;
+    else netNio += sign * amt;
+  }
+
+  return { netNio: round2(netNio), netUsd: round2(netUsd), hasMov };
+}
+
+function updateCopyInitialButtonState(pc, dayKey, cashSalesNio){
+  const btn = document.getElementById('pc-btn-copy-initial');
+  if (!btn) return;
+
+  const day = (pc && dayKey) ? ensurePcDay(pc, dayKey) : null;
+
+  // Bloquear en histórico o cuando el día ya está cerrado.
+  const isRO = isPettyHistoryMode() || !!(day && day.closedAt);
+  if (isRO){
+    btn.disabled = true;
+    btn.title = isPettyHistoryMode()
+      ? 'Vista histórica (solo lectura).'
+      : 'Este día está cerrado. Reabre el día para editar.';
+    return;
+  }
+
+  const cash = Number(cashSalesNio || 0);
+  const hasCashSales = Number.isFinite(cash) && cash > 0.005;
+
+  const net = getPettyMovementsNet(day);
+  const hasNetMov = (Math.abs(net.netNio) > 0.005) || (Math.abs(net.netUsd) > 0.005);
+
+  if (hasCashSales){
+    btn.disabled = true;
+    btn.title = 'Copiar Inicial solo aplica para días sin ventas en efectivo.';
+    return;
+  }
+
+  // Si no hay ventas, permitir. Si hay movimientos netos, permitir pero avisar.
+  btn.disabled = false;
+  if (hasNetMov){
+    btn.title = `Hay movimientos de caja en este día (neto C$ ${fmt(net.netNio)} / neto US$ ${fmt(net.netUsd)}). Copiar Inicial puede no permitir cerrar.`;
+  } else {
+    btn.title = 'Copia el saldo inicial al arqueo final (ideal para días sin ventas).';
+  }
+}
+
+
+
 function recalcPettyInitialTotalsFromInputs(){
   if (typeof NIO_DENOMS === 'undefined' || typeof USD_DENOMS === 'undefined') return;
   let totalNio = 0;
@@ -5852,12 +7310,105 @@ async function onSavePettyInitial(){
     savedAt: new Date().toISOString()
   });
 
+  try{
   await savePettyCash(pc);
-  updatePettySummaryUI(pc, dayKey);
+}catch(err){
+  console.error('onSavePettyInitial save error', err);
+  showToast('No se pudo guardar el saldo inicial', 'error', 5000);
+  return;
+}
+
+updatePettySummaryUI(pc, dayKey);
   fillPettyInitialFromPc(pc, dayKey);
   setPrevCierreUI(pc, dayKey);
-  toast('Saldo inicial de Caja Chica guardado');
+  showToast('Saldo inicial guardado', 'ok', 5000);
 }
+
+async function onCopyPettyInitialToFinal(){
+  if (isPettyHistoryMode()){
+    alert('Estás en Vista histórica (solo lectura). Pulsa “Volver al día operativo” para editar.');
+    return;
+  }
+
+  const evId = await getMeta('currentEventId');
+  if (!evId){
+    alert('Debes activar un evento en la pestaña Vender antes de usar “Copiar Inicial”.');
+    return;
+  }
+
+  if (!(await ensurePettyEnabledForEvent(evId))) return;
+
+  const dayKey = getSelectedPcDay();
+  const pc = await getPettyCash(evId);
+  const day = ensurePcDay(pc, dayKey);
+
+  if (day.closedAt){
+    alert('Este día está cerrado. Reabre el día para editar Caja Chica.');
+    return;
+  }
+
+  // Restricción: solo para día sin ventas en efectivo
+  const cashSalesNio = await getCashSalesNioForDay(evId, dayKey);
+  if (Number(cashSalesNio || 0) > 0.005){
+    alert('Copiar Inicial solo aplica para días sin ventas en efectivo.');
+    return;
+  }
+
+  // Si hay movimientos netos, avisar: copiar inicial al final podría dejar diferencia y no cerrar.
+  const net = getPettyMovementsNet(day);
+  const hasNetMov = (Math.abs(net.netNio) > 0.005) || (Math.abs(net.netUsd) > 0.005);
+  if (hasNetMov){
+    const ok = confirm(
+      `Hay movimientos de caja registrados en este día (neto C$ ${fmt(net.netNio)} / neto US$ ${fmt(net.netUsd)}).
+
+` +
+      `Copiar Inicial al arqueo final puede dejar diferencia y no permitirá cerrar.
+
+` +
+      `¿Deseas continuar?`
+    );
+    if (!ok) return;
+  }
+
+  // Si ya existe arqueo final guardado, confirmar reemplazo
+  if (day.finalCount && day.finalCount.savedAt){
+    const ok = confirm('Este día ya tiene un arqueo final guardado. ¿Reemplazarlo con el saldo inicial?');
+    if (!ok) return;
+  }
+
+  const init = day.initial ? normalizePettySection(day.initial) : normalizePettySection(null);
+
+  day.finalCount = normalizePettySection({
+    nio: { ...init.nio },
+    usd: { ...init.usd },
+    savedAt: new Date().toISOString()
+  });
+
+    try{
+    await savePettyCash(pc);
+  }catch(err){
+    console.error('onCopyPettyInitialToFinal save error', err);
+    showToast('No se pudo guardar el arqueo final', 'error', 5000);
+    await renderCajaChica();
+    return;
+  }
+
+  // Refrescar UI inmediatamente
+  fillPettyFinalFromPc(pc, dayKey);
+  updatePettySummaryUI(pc, dayKey, { cashSalesNio });
+  setPrevCierreUI(pc, dayKey);
+
+  // Refrescar candado de cierre
+  const evs = await getAll('events');
+  const ev = (evs || []).find(e => e && e.id === evId);
+  const fx = ev ? Number(ev.fxRate || 0) : null;
+  const check = await getPettyCloseCheck(evId, pc, dayKey, cashSalesNio, fx);
+  renderPettyCloseUI(check, false);
+
+  updateCopyInitialButtonState(pc, dayKey, cashSalesNio);
+  toast('Arqueo final copiado desde el saldo inicial');
+}
+
 
 async function onSavePettyFinal(){
   if (isPettyHistoryMode()){
@@ -5899,11 +7450,18 @@ async function onSavePettyFinal(){
     savedAt: new Date().toISOString()
   });
 
+  try{
   await savePettyCash(pc);
-  updatePettySummaryUI(pc, dayKey);
+}catch(err){
+  console.error('onSavePettyFinal save error', err);
+  showToast('No se pudo guardar el arqueo final', 'error', 5000);
+  return;
+}
+
+updatePettySummaryUI(pc, dayKey);
   fillPettyFinalFromPc(pc, dayKey);
   setPrevCierreUI(pc, dayKey);
-  toast('Arqueo final de Caja Chica guardado');
+  showToast('Arqueo final guardado', 'ok', 5000);
 }
 
 function renderPettyMovements(pc, dayKey, readOnly){
@@ -5925,11 +7483,28 @@ function renderPettyMovements(pc, dayKey, readOnly){
   for (const m of ordered){
     const tr = document.createElement('tr');
 
+    // Identificadores para enfocar/evitar duplicados (arqueo)
+    if (m && m.id != null){
+      tr.id = 'pc-mov-row-' + String(m.id);
+      tr.dataset.pcMovId = String(m.id);
+    }
+
     const tdDate = document.createElement('td');
     tdDate.textContent = m.date || dk;
 
     const tdType = document.createElement('td');
-    tdType.textContent = (m.type === 'salida') ? 'Salida' : 'Entrada';
+    // Tipo visible: Ingreso / Egreso / Ajuste
+    let typeLabel = (m && m.type === 'salida') ? 'Egreso' : 'Ingreso';
+    if (m && m.isAdjust){
+      const k = (m.adjustKind === 'sobrante') ? 'Sobrante' : 'Faltante';
+      typeLabel = `Ajuste (${k})`;
+    }
+    if (m && m.isTransfer){
+      const tk = m.transferKind || 'to_bank';
+      const t = (tk === 'from_general') ? 'De Caja general' : (tk === 'to_general') ? 'A Caja general' : 'A Banco';
+      typeLabel = `Transferencia (${t})`;
+    }
+    tdType.textContent = typeLabel;
 
     const tdCur = document.createElement('td');
     tdCur.textContent = (m.currency === 'USD') ? 'US$' : 'C$';
@@ -5945,6 +7520,7 @@ function renderPettyMovements(pc, dayKey, readOnly){
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn small danger';
+      btn.dataset.movid = String(m.id || '');
       btn.textContent = 'Eliminar';
       btn.addEventListener('click', ()=> onDeletePettyMovement(m.id));
       tdAct.appendChild(btn);
@@ -5977,26 +7553,64 @@ async function onAddPettyMovement(){
   const dayKey = getSelectedPcDay();
 
   const typeSel = document.getElementById('pc-mov-type');
+  const kindSel = document.getElementById('pc-mov-adjust-kind');
+  const transferSel = document.getElementById('pc-mov-transfer-kind');
   const curSel  = document.getElementById('pc-mov-currency');
   const amtInput = document.getElementById('pc-mov-amount');
   const descInput = document.getElementById('pc-mov-desc');
 
-  const type = typeSel ? typeSel.value : 'entrada';
+  const uiType = typeSel ? typeSel.value : 'entrada';
   const currency = curSel ? curSel.value : 'NIO';
   const rawAmt = amtInput ? Number(amtInput.value || 0) : 0;
   const amount = Number.isFinite(rawAmt) ? rawAmt : 0;
-  const description = descInput ? (descInput.value || '').trim() : '';
+  let description = descInput ? (descInput.value || '').trim() : '';
 
   if (!amount || amount <= 0){
     alert('Ingresa un monto mayor a cero.');
     return;
   }
-  if (type !== 'entrada' && type !== 'salida'){
-    alert('Tipo de movimiento inválido.');
-    return;
-  }
   if (currency !== 'NIO' && currency !== 'USD'){
     alert('Moneda inválida.');
+    return;
+  }
+
+  // Nuevo tipo: Ajuste (se guarda internamente como entrada/salida, con bandera isAdjust)
+  let type = uiType;
+  let isAdjust = false;
+  let adjustKind = null;
+
+  if (uiType === 'ajuste'){
+    isAdjust = true;
+    adjustKind = kindSel ? kindSel.value : 'faltante';
+    if (adjustKind !== 'sobrante') adjustKind = 'faltante';
+    type = (adjustKind === 'sobrante') ? 'entrada' : 'salida';
+
+    if (!description){
+      description = `Ajuste — ${adjustKind === 'sobrante' ? 'Sobrante' : 'Faltante'}`;
+    }
+  }
+
+  // Nuevo tipo: Transferencia (se guarda internamente como entrada/salida, con bandera isTransfer)
+  let isTransfer = false;
+  let transferKind = null;
+
+  if (uiType === 'transferencia'){
+    isTransfer = true;
+    transferKind = transferSel ? transferSel.value : 'to_bank';
+    if (transferKind !== 'to_bank' && transferKind !== 'to_general' && transferKind !== 'from_general') transferKind = 'to_bank';
+
+    // Impacto en Caja Chica (entrada/salida)
+    type = (transferKind === 'from_general') ? 'entrada' : 'salida';
+
+    if (!description){
+      description = (transferKind === 'to_bank') ? 'Transferencia a banco'
+        : (transferKind === 'to_general') ? 'Transferencia a caja general'
+        : 'Transferencia desde caja general';
+    }
+  }
+
+  if (type !== 'entrada' && type !== 'salida'){
+    alert('Tipo de movimiento inválido.');
     return;
   }
 
@@ -6006,21 +7620,52 @@ async function onAddPettyMovement(){
 
   const newId = day.movements.length ? Math.max(...day.movements.map(m=>m.id||0)) + 1 : 1;
 
-  day.movements.push({
+  const mov = {
     id: newId,
+    createdAt: Date.now(),
     date: dayKey,
+    uiType,
     type,
     currency,
     amount,
     description
-  });
+  };
 
-  await savePettyCash(pc);
-  updatePettySummaryUI(pc, dayKey);
-  renderPettyMovements(pc, dayKey, false);
+  if (isAdjust){
+    mov.isAdjust = true;
+    mov.adjustKind = adjustKind;
+  }
+
+  if (isTransfer){
+    mov.isTransfer = true;
+    mov.transferKind = transferKind;
+  }
+
+  day.movements.push(mov);
+
+  try{
+    await savePettyCash(pc);
+  }catch(err){
+    console.error('onAddPettyMovement save error', err);
+    showToast('No se pudo guardar el movimiento', 'error', 5000);
+    await renderCajaChica();
+    return;
+  }
+
+  // Integración mínima: POS Caja Chica → Finanzas (Diario)
+  try{
+    await postPettyCashMovementToFinanzas(evId, dayKey, mov);
+  }catch(e){
+    console.warn('Finanzas bridge (pettycash) error', e);
+  }
+
+  // Re-render completo para refrescar candado de cierre
+  await renderCajaChica();
 
   if (amtInput) amtInput.value = '0.00';
   if (descInput) descInput.value = '';
+  if (typeSel) typeSel.value = 'entrada';
+  updatePettyMovementTypeUI();
 }
 
 async function onDeletePettyMovement(id){
@@ -6038,10 +7683,17 @@ async function onDeletePettyMovement(id){
   if (!Array.isArray(day.movements)) day.movements = [];
   day.movements = day.movements.filter(m => m.id !== id);
 
-  await savePettyCash(pc);
-  updatePettySummaryUI(pc, dayKey);
-  renderPettyMovements(pc, dayKey, false);
+  try{
+    await savePettyCash(pc);
+  }catch(err){
+    console.error('onDeletePettyMovement save error', err);
+    showToast('No se pudo eliminar el movimiento', 'error', 5000);
+    await renderCajaChica();
+    return;
+  }
+  await renderCajaChica();
 }
+
 
 async function onUsePrevCierre(){
   if (isPettyHistoryMode()){
@@ -6079,7 +7731,14 @@ async function onUsePrevCierre(){
     savedAt: new Date().toISOString()
   });
 
-  await savePettyCash(pc);
+  try{
+    await savePettyCash(pc);
+  }catch(err){
+    console.error('onUsePrevCierre save error', err);
+    showToast('No se pudo precargar el saldo inicial', 'error', 5000);
+    await renderCajaChica();
+    return;
+  }
   updatePettySummaryUI(pc, dayKey);
   fillPettyInitialFromPc(pc, dayKey);
   setPrevCierreUI(pc, dayKey);
@@ -6141,7 +7800,18 @@ function bindCajaChicaEvents(){
     });
   }
 
-  const btnAddMov = document.getElementById('pc-mov-add');
+  
+
+  // Copiar Inicial → Arqueo final (solo para día sin ventas)
+  const btnCopyInitial = document.getElementById('pc-btn-copy-initial');
+  if (btnCopyInitial){
+    btnCopyInitial.addEventListener('click', (e)=>{
+      e.preventDefault();
+      onCopyPettyInitialToFinal().catch(err=>console.error(err));
+    });
+  }
+
+const btnAddMov = document.getElementById('pc-mov-add');
   if (btnAddMov){
     btnAddMov.addEventListener('click', (e)=>{
       e.preventDefault();
@@ -6203,45 +7873,19 @@ function bindCajaChicaEvents(){
       onUseHistoryFinalAsInitial().catch(err=>console.error(err));
     });
   }
+  // Tipo de movimiento: mostrar/ocultar opciones de Ajuste
+  const typeSel = document.getElementById('pc-mov-type');
+  if (typeSel){
+    typeSel.addEventListener('change', updatePettyMovementTypeUI);
+    updatePettyMovementTypeUI();
+  }
 
-  // Cierre definitivo (T/C + ajuste + candado)
-  const btnSaveFx = document.getElementById('pc-btn-save-fx');
+  // Tipo de cambio (USD → C$) por evento (persistente)
+  const btnSaveFx = document.getElementById('pc-btn-save-event-fx');
   if (btnSaveFx){
     btnSaveFx.addEventListener('click', (e)=>{
       e.preventDefault();
-      onSavePettyFxRate();
-    });
-  }
-
-  const btnAdjNio = document.getElementById('pc-btn-adj-nio');
-  if (btnAdjNio){
-    btnAdjNio.addEventListener('click', (e)=>{
-      e.preventDefault();
-      onRegisterArqueoAdjust('NIO');
-    });
-  }
-
-  const btnClrAdjNio = document.getElementById('pc-btn-clear-adj-nio');
-  if (btnClrAdjNio){
-    btnClrAdjNio.addEventListener('click', (e)=>{
-      e.preventDefault();
-      onClearArqueoAdjust('NIO');
-    });
-  }
-
-  const btnAdjUsd = document.getElementById('pc-btn-adj-usd');
-  if (btnAdjUsd){
-    btnAdjUsd.addEventListener('click', (e)=>{
-      e.preventDefault();
-      onRegisterArqueoAdjust('USD');
-    });
-  }
-
-  const btnClrAdjUsd = document.getElementById('pc-btn-clear-adj-usd');
-  if (btnClrAdjUsd){
-    btnClrAdjUsd.addEventListener('click', (e)=>{
-      e.preventDefault();
-      onClearArqueoAdjust('USD');
+      onSaveEventFxRate();
     });
   }
 
@@ -6834,6 +8478,344 @@ async function exportCierreCajaChicaGrupoExcel(){
   const safeGroup = data.groupLabel.replace(/[\/:*?\[\]]/g,' ');
   const filename = `caja_chica_${safeGroup || 'grupo'}.xlsx`;
   XLSX.writeFile(wb, filename);
+}
+
+
+// -----------------------------
+// POS · Calculadora (tab) — lógica aislada
+// -----------------------------
+
+let __A33_POS_CALC_INIT = false;
+
+function posCalcTrimDec(s){
+  const t = String(s || '');
+  if (!t.includes('.')) return t || '0';
+  return t.replace(/0+$/,'').replace(/\.$/,'') || '0';
+}
+
+function posCalcReadNum(el){
+  if (!el) return null;
+  const raw = String(el.value || '').trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function posCalcRound2(n){
+  const x = Number(n);
+  if (!Number.isFinite(x)) return null;
+  return Math.round(x * 100) / 100;
+}
+
+function posCalcFmt2(n){
+  const x = Number(n);
+  if (!Number.isFinite(x)) return '';
+  return (Math.round(x * 100) / 100).toFixed(2);
+}
+
+// REQUISITO CLAVE: source of truth = Caja Chica (solo lectura)
+// Devuelve el tipo de cambio actual usado por Caja Chica para el evento activo.
+async function getFxRateFromCajaChica(){
+  try{
+    const ev = await getActiveEventPOS();
+    if (!ev) return null;
+
+    const direct = Number(ev.fxRate || 0);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+
+    const pc = await getPettyCash(ev.id);
+    const keys = listPcDayKeys(pc).sort((a,b)=> b.localeCompare(a));
+    for (const k of keys){
+      const day = pc && pc.days ? pc.days[k] : null;
+      const legacy = day ? Number(day.fxRate || 0) : 0;
+      if (Number.isFinite(legacy) && legacy > 0) return legacy;
+    }
+    return null;
+  }catch(err){
+    console.warn('getFxRateFromCajaChica error', err);
+    return null;
+  }
+}
+
+function initPosCalculatorTabOnce(){
+  if (__A33_POS_CALC_INIT) return;
+  __A33_POS_CALC_INIT = true;
+
+  const els = {
+    hist: document.getElementById('calc-history'),
+    out: document.getElementById('calc-output'),
+    keys: document.getElementById('calc-keys'),
+    fxRate: document.getElementById('fx-rate'),
+    fxUsd: document.getElementById('fx-usd'),
+    fxNio: document.getElementById('fx-nio'),
+    fxMeta: document.getElementById('fx-meta'),
+    fxStatus: document.getElementById('fx-status'),
+    fxRefresh: document.getElementById('fx-refresh'),
+    fxClear: document.getElementById('fx-clear')
+  };
+
+  const calc = {
+    acc: null,
+    op: null,
+    lastOp: null,
+    lastOperand: null,
+    newEntry: true,
+    display: '0'
+  };
+
+  const fx = {
+    lock: false,
+    lastEdited: 'usd'
+  };
+
+  function setHistory(txt){ if (els.hist) els.hist.textContent = txt || ''; }
+  function setOutput(txt){ if (els.out) els.out.textContent = (txt == null ? '0' : String(txt)); }
+
+  function setDisplay(txt){
+    calc.display = String(txt == null ? '0' : txt);
+    setOutput(calc.display);
+  }
+
+  function getDisplayNumber(){
+    const n = Number(calc.display);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function applyOp(a, b, op){
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return NaN;
+    if (op === '+') return a + b;
+    if (op === '-') return a - b;
+    if (op === '*') return a * b;
+    if (op === '/') return (b === 0) ? NaN : (a / b);
+    return b;
+  }
+
+  function formatResult(n){
+    if (!Number.isFinite(n)) return 'Error';
+    // Reduce ruido típico de floats sin ponernos poetas.
+    const rounded = Math.round(n * 1e12) / 1e12;
+    let s = String(rounded);
+    if (!s.includes('e')) s = posCalcTrimDec(s);
+    return s;
+  }
+
+  function pressDigit(d){
+    const ch = String(d);
+    if (calc.newEntry){
+      setDisplay(ch === '.' ? '0.' : ch);
+      calc.newEntry = false;
+      return;
+    }
+    if (ch === '.' && calc.display.includes('.')) return;
+    if (calc.display === '0' && ch !== '.') setDisplay(ch);
+    else setDisplay(calc.display + ch);
+  }
+
+  function clearAll(){
+    calc.acc = null;
+    calc.op = null;
+    calc.lastOp = null;
+    calc.lastOperand = null;
+    calc.newEntry = true;
+    setHistory('');
+    setDisplay('0');
+  }
+
+  function backspace(){
+    if (calc.newEntry) return;
+    if (calc.display.length <= 1) { setDisplay('0'); calc.newEntry = true; return; }
+    setDisplay(calc.display.slice(0, -1));
+  }
+
+  function setOp(op){
+    // Si el usuario está cambiando de operador sin ingresar el segundo número.
+    if (calc.op && calc.newEntry){
+      calc.op = op;
+      setHistory(posCalcTrimDec(calc.acc) + ' ' + op);
+      return;
+    }
+
+    const b = getDisplayNumber();
+    if (calc.acc == null){
+      calc.acc = b;
+    } else if (calc.op){
+      const r = applyOp(calc.acc, b, calc.op);
+      calc.acc = r;
+      setDisplay(formatResult(r));
+    }
+    calc.op = op;
+    calc.newEntry = true;
+    calc.lastOp = null;
+    calc.lastOperand = null;
+    setHistory(formatResult(calc.acc) + ' ' + op);
+  }
+
+  function equals(){
+    let b = getDisplayNumber();
+    let op = calc.op;
+
+    // Repetir "=" usa el último operando (comportamiento clásico)
+    if (!op && calc.lastOp){
+      op = calc.lastOp;
+      b = calc.lastOperand;
+    }
+
+    if (!op) return;
+    if (calc.acc == null) calc.acc = 0;
+    const r = applyOp(calc.acc, b, op);
+    calc.lastOp = op;
+    calc.lastOperand = b;
+    calc.op = null;
+    calc.acc = r;
+    calc.newEntry = true;
+    setHistory('');
+    setDisplay(formatResult(r));
+  }
+
+  function ensureRate(){
+    const rate = posCalcReadNum(els.fxRate);
+    if (!rate || !(rate > 0)) return null;
+    return rate;
+  }
+
+  function fxShowStatus(msg){
+    if (!els.fxStatus) return;
+    if (msg){
+      els.fxStatus.style.display = 'block';
+      els.fxStatus.textContent = msg;
+    } else {
+      els.fxStatus.style.display = 'none';
+      els.fxStatus.textContent = '';
+    }
+  }
+
+  function fxUpdateFromUSD(){
+    if (fx.lock) return;
+    fx.lastEdited = 'usd';
+    const rate = ensureRate();
+    const usd = posCalcReadNum(els.fxUsd);
+    fx.lock = true;
+    try{
+      if (!rate){
+        if (els.fxNio) els.fxNio.value = '';
+        fxShowStatus('Ingresa un tipo de cambio válido para convertir.');
+      } else {
+        fxShowStatus('');
+        if (els.fxNio) els.fxNio.value = (usd == null) ? '' : posCalcFmt2(usd * rate);
+      }
+    } finally {
+      fx.lock = false;
+    }
+  }
+
+  function fxUpdateFromNIO(){
+    if (fx.lock) return;
+    fx.lastEdited = 'nio';
+    const rate = ensureRate();
+    const nio = posCalcReadNum(els.fxNio);
+    fx.lock = true;
+    try{
+      if (!rate){
+        if (els.fxUsd) els.fxUsd.value = '';
+        fxShowStatus('Ingresa un tipo de cambio válido para convertir.');
+      } else {
+        fxShowStatus('');
+        if (els.fxUsd) els.fxUsd.value = (nio == null) ? '' : posCalcFmt2(nio / rate);
+      }
+    } finally {
+      fx.lock = false;
+    }
+  }
+
+  function fxRecompute(){
+    if (fx.lastEdited === 'nio') fxUpdateFromNIO();
+    else fxUpdateFromUSD();
+  }
+
+  // Bind teclado calculadora (delegación)
+  if (els.keys){
+    els.keys.addEventListener('click', (e)=>{
+      const b = e.target.closest('button');
+      if (!b) return;
+      const k = b.dataset.k;
+      if (!k) return;
+
+      if (/^\d$/.test(k)) return pressDigit(k);
+      if (k === '.') return pressDigit('.');
+      if (k === 'C') return clearAll();
+      if (k === 'back') return backspace();
+      if (k === '=') return equals();
+      if (k === '+' || k === '-' || k === '*' || k === '/') return setOp(k);
+    });
+  }
+
+  // Bind conversor FX
+  if (els.fxUsd) els.fxUsd.addEventListener('input', fxUpdateFromUSD);
+  if (els.fxNio) els.fxNio.addEventListener('input', fxUpdateFromNIO);
+  if (els.fxRate) els.fxRate.addEventListener('input', ()=>{ fxShowStatus(''); fxRecompute(); });
+
+  if (els.fxRefresh) els.fxRefresh.addEventListener('click', ()=>{ onOpenPosCalculatorTab().catch(err=>console.error(err)); });
+  if (els.fxClear) els.fxClear.addEventListener('click', ()=>{
+    if (els.fxUsd) els.fxUsd.value = '';
+    if (els.fxNio) els.fxNio.value = '';
+    fxShowStatus('');
+  });
+
+  document.querySelectorAll('.fx-q').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const usd = Number(btn.dataset.usd || 0);
+      if (els.fxUsd) els.fxUsd.value = (usd && usd > 0) ? String(usd) : '';
+      fxUpdateFromUSD();
+    });
+  });
+
+  // Render inicial
+  clearAll();
+  fxShowStatus('');
+}
+
+async function onOpenPosCalculatorTab(){
+  initPosCalculatorTabOnce();
+
+  const rateEl = document.getElementById('fx-rate');
+  const metaEl = document.getElementById('fx-meta');
+  const statusEl = document.getElementById('fx-status');
+  if (!rateEl || !metaEl || !statusEl) return;
+
+  const ev = await getActiveEventPOS();
+  const rate = await getFxRateFromCajaChica();
+
+  if (ev && rate && rate > 0){
+    rateEl.value = String(posCalcRound2(rate));
+    rateEl.readOnly = true;
+    rateEl.title = 'Tomado de Caja Chica (solo lectura)';
+    metaEl.textContent = `Evento activo: ${ev.name} · Tipo de cambio desde Caja Chica`;
+    statusEl.style.display = 'none';
+    statusEl.textContent = '';
+  } else {
+    rateEl.readOnly = false;
+    rateEl.title = 'Temporal (no se guarda en Caja Chica)';
+
+    if (ev){
+      metaEl.textContent = `Evento activo: ${ev.name} · Sin tipo de cambio guardado`;
+      statusEl.textContent = 'Caja Chica aún no tiene tipo de cambio. Puedes usar un valor temporal aquí (no se guarda).';
+    } else {
+      metaEl.textContent = 'Sin evento activo · No se puede leer Caja Chica';
+      statusEl.textContent = 'Activa un evento para leer el tipo de cambio de Caja Chica. Mientras tanto, puedes usar un valor temporal aquí (no se guarda).';
+    }
+
+    statusEl.style.display = 'block';
+  }
+
+  // Recalcular si hay montos escritos.
+  try{
+    const usdEl = document.getElementById('fx-usd');
+    const nioEl = document.getElementById('fx-nio');
+    const usd = usdEl ? String(usdEl.value||'').trim() : '';
+    const nio = nioEl ? String(nioEl.value||'').trim() : '';
+    if (nio && !usd && nioEl) nioEl.dispatchEvent(new Event('input', { bubbles:true }));
+    else if (usdEl) usdEl.dispatchEvent(new Event('input', { bubbles:true }));
+  }catch(e){ /* no-op */ }
 }
 
 

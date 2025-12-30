@@ -190,7 +190,8 @@
       letter-spacing:0.04em;
       text-transform:uppercase;
     }
-    .field input[type="password"]{
+    .field input[type="password"],
+    .field input[type="text"]{
       width:100%;
       padding:0.45rem 0.65rem;
       border-radius:12px;
@@ -198,12 +199,12 @@
       background:#050505;
       color:var(--text);
       font-size:0.95rem;
-      letter-spacing:0.25em;
-      text-align:center;
+      letter-spacing:0.02em;
+      text-align:left;
     }
     .field input[type="password"]::placeholder{
       color:#444;
-      letter-spacing:0.25em;
+      letter-spacing:0.02em;
     }
     .btn-row{
       display:flex;
@@ -226,6 +227,32 @@
     .btn-primary{ background:var(--primary); color:#fff; }
     .btn-ghost{ background:transparent; border:1px solid rgba(255,255,255,0.18); color:var(--text); }
     .btn-danger{ background:transparent; border:1px solid rgba(176,0,32,0.8); color:#ff8a80; }
+
+    /* --- Toast (mensajes rápidos) --- */
+    .a33-toast{
+      position:fixed;
+      left:50%;
+      bottom:18px;
+      transform:translateX(-50%) translateY(0);
+      background:rgba(8,8,8,0.92);
+      border:1px solid rgba(221,191,100,0.35);
+      color:var(--text);
+      padding:0.55rem 0.85rem;
+      border-radius:14px;
+      font-size:0.82rem;
+      z-index:9999;
+      box-shadow:0 16px 40px rgba(0,0,0,0.65);
+      max-width:min(560px, calc(100vw - 24px));
+      opacity:0;
+      pointer-events:none;
+      transition:opacity 160ms ease, transform 160ms ease;
+      text-align:center;
+    }
+    .a33-toast.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(-4px);
+    }
+
     .hint{
       font-size:0.72rem;
       color:var(--muted);
@@ -260,6 +287,16 @@
       color:var(--muted);
       margin:0 0 0.4rem;
     }
+
+
+    /* --- NÚCLEO A33: fila fija 3 tiles (iPad) --- */
+    .hidden{ display:none !important; }
+    #support-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+    #support-grid .card{ min-width:0; }
+    @media (max-width:720px){
+      #support-grid{ grid-template-columns:1fr; }
+    }
+
 
     /* --- Respaldo (Backup) --- */
     .modal-overlay{
@@ -333,164 +370,100 @@
       margin-top:0.35rem;
     }
 
-
-    /* --- Manuales (Guía) --- */
-    .toolbar{
-      display:flex;
-      gap:0.5rem;
-      align-items:center;
-      justify-content:flex-start;
-      flex-wrap:wrap;
-      margin:0.35rem 0 0.85rem;
-    }
-    .card.disabled{
-      opacity:0.55;
-      cursor:not-allowed;
-    }
-    .card.disabled:hover{
-      transform:none;
-      box-shadow:none;
-      border-color:rgba(178,141,56,0.45);
-    }
-    .manual-badge{
-      display:inline-flex;
-      align-items:center;
-      gap:0.35rem;
-      padding:0.18rem 0.55rem;
-      border-radius:999px;
-      font-size:0.72rem;
-      background:rgba(0,0,0,0.6);
-      border:1px solid rgba(255,255,255,0.16);
-      color:var(--muted);
-      margin-top:0.4rem;
-    }
-
-    .manual-actions{
-      display:flex;
-      gap:0.35rem;
-      align-items:center;
-    }
-    a.link-btn{
-      text-decoration:none;
-    }
-    a.link-btn:visited{
-      color:inherit;
-    }
-    .disabled-link{
-      opacity:0.6;
-      cursor:not-allowed;
-    }
-
-
-
-    /* --- Visor interno de PDFs (evita quedar atrapado en iPad/PWA) --- */
-    body.pdf-open{ overflow:hidden; }
-    .pdf-overlay{
+    /* --- Boot splash (evita flashazo de login al volver al menú) --- */
+    .boot-splash{
       position:fixed;
       inset:0;
-      background:rgba(0,0,0,0.78);
+      z-index:9998;
       display:flex;
       align-items:center;
       justify-content:center;
-      padding:0.85rem;
-      z-index:60;
-      backdrop-filter:blur(6px);
+      background:radial-gradient(900px 480px at 30% 20%, rgba(221,191,100,0.12), transparent 60%),
+                 radial-gradient(700px 420px at 80% 0%, rgba(171,0,0,0.12), transparent 65%),
+                 linear-gradient(145deg,#0b0b0b,#151010);
+      color:#f2f2f2;
     }
-    .pdf-card{
-      width:100%;
-      max-width:980px;
-      height:min(86vh,900px);
-      background:linear-gradient(145deg,#0f0f0f,#1a1414);
+    .boot-splash .boot-card{
+      width:min(520px, 92vw);
+      padding:1.15rem 1.15rem 1.0rem;
       border-radius:20px;
       border:1px solid rgba(221,191,100,0.45);
       box-shadow:0 18px 40px rgba(0,0,0,0.92);
-      overflow:hidden;
-      display:flex;
-      flex-direction:column;
+      background:rgba(0,0,0,0.40);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      text-align:left;
     }
-    .pdf-topbar{
-      display:flex;
-      align-items:flex-start;
-      gap:0.6rem;
-      padding:0.75rem 0.75rem 0.6rem;
-      border-bottom:1px solid rgba(255,255,255,0.10);
-      background:rgba(0,0,0,0.35);
+    .boot-splash .boot-title{
+      font-size:1.1rem;
+      margin:0;
+      letter-spacing:0.03em;
     }
-    .pdf-topbar-mid{ flex:1; min-width:0; }
-    .pdf-title{
-      font-size:0.95rem;
-      letter-spacing:0.02em;
-      margin-top:0.1rem;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-    .pdf-ios-hint{
-      margin-top:0.35rem;
-      font-size:0.75rem;
+    .boot-splash .boot-sub{
+      margin:0.35rem 0 0;
+      font-size:0.85rem;
       color:var(--muted);
-      line-height:1.25;
+      line-height:1.35;
     }
-    .pdf-topbar-actions{
-      display:flex;
-      gap:0.45rem;
-      align-items:center;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
-    .pdf-body{ flex:1; background:#0b0b0b; }
-    #pdf-frame{
-      width:100%;
-      height:100%;
-      border:0;
-      background:#0b0b0b;
-    }
-    @media (max-width:600px){
-      .pdf-card{ height:92vh; }
-      .pdf-topbar{ flex-direction:column; align-items:stretch; }
-      .pdf-topbar-actions{ justify-content:flex-start; }
-    }
+    .boot-splash .boot-dots{ display:inline-block; width:1.4em; text-align:left; }
 
 </style>
 </head>
 <body>
-  <div class="lock-overlay" id="lock-overlay">
+  <!-- Splash inicial: evita el "flashazo" del login al volver al menú principal -->
+  <div class="boot-splash" id="boot-splash" aria-live="polite">
+    <div class="boot-card">
+      <h2 class="boot-title">Suite A33</h2>
+      <p class="boot-sub">Verificando sesión<span class="boot-dots">…</span></p>
+    </div>
+  </div>
+
+  <div class="lock-overlay" id="lock-overlay" style="display:none;">
     <div class="lock-card">
       <div id="lock-setup">
-        <h2 class="lock-title">Configurar PIN de acceso</h2>
-        <p class="lock-sub">Crea un PIN de 6 dígitos para proteger la Suite A33 en este dispositivo.</p>
+        <h2 class="lock-title">Configurar acceso</h2>
+        <p class="lock-sub">Crea <b>usuario</b> y <b>contraseña</b> para proteger la Suite A33 en este dispositivo.</p>
         <div class="field">
-          <label for="pin-new">Nuevo PIN (6 dígitos)</label>
-          <input id="pin-new" type="password" inputmode="numeric" maxlength="6" placeholder="••••••">
+          <label for="auth-user">Usuario</label>
+          <input id="auth-user" type="text" autocomplete="username" placeholder="Ej: alquimista" />
         </div>
         <div class="field">
-          <label for="pin-confirm">Confirmar PIN</label>
-          <input id="pin-confirm" type="password" inputmode="numeric" maxlength="6" placeholder="••••••">
+          <label for="auth-pass">Contraseña</label>
+          <input id="auth-pass" type="password" autocomplete="new-password" placeholder="Tu contraseña" />
+        </div>
+        <div class="field">
+          <label for="auth-pass2">Confirmar contraseña</label>
+          <input id="auth-pass2" type="password" autocomplete="new-password" placeholder="Repite la contraseña" />
+        </div>
+        <div class="field">
+          <label for="auth-name">Nombre (opcional)</label>
+          <input id="auth-name" type="text" autocomplete="name" placeholder="Ej: El Alquimista" />
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="btn-save-pin">Guardar PIN</button>
-          <button class="btn btn-ghost" id="btn-skip-pin">Usar sin PIN</button>
+          <button class="btn btn-primary" id="btn-auth-setup">Guardar acceso</button>
         </div>
-        <p class="hint">Este PIN se guarda solo en este navegador. Si borras los datos, tendrás que volver a configurarlo.</p>
+        <p class="hint">Se guarda solo en este navegador (modo app/PWA). Si borras los datos, tendrás que configurarlo de nuevo.</p>
       </div>
 
       <div id="lock-unlock" style="display:none;">
-        <h2 class="lock-title">Desbloquear Suite A33</h2>
-        <p class="lock-sub">Ingresa tu PIN de 6 dígitos para acceder a los módulos.</p>
+        <h2 class="lock-title">Iniciar sesión</h2>
+        <p class="lock-sub">Ingresa tus credenciales para acceder a los módulos.</p>
         <div class="field">
-          <label for="pin-input">PIN</label>
-          <input id="pin-input" type="password" inputmode="numeric" maxlength="6" placeholder="••••••">
+          <label for="login-user">Usuario</label>
+          <input id="login-user" type="text" autocomplete="username" placeholder="Tu usuario" />
+        </div>
+        <div class="field">
+          <label for="login-pass">Contraseña</label>
+          <input id="login-pass" type="password" autocomplete="current-password" placeholder="Tu contraseña" />
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="btn-unlock">Entrar</button>
-          <button class="btn btn-danger" id="btn-reset">Resetear PIN y datos</button>
+          <button class="btn btn-primary" id="btn-login">Entrar</button>
+          <button class="btn btn-danger" id="btn-reset-credentials">Resetear acceso</button>
         </div>
-        <p class="hint">El PIN solo se pedirá de nuevo cuando cierres o recargues la Suite.</p>
+        <p class="hint">La sesión vive en este navegador y expira (por defecto) en 12 horas.</p>
       </div>
 
-      <div class="pin-mode-switch" id="pin-mode-switch" style="display:none;">
-        <button id="btn-change-pin">Cambiar PIN</button>
-      </div>
+      <div class="pin-mode-switch" id="pin-mode-switch" style="display:none;"></div>
     </div>
   </div>
 
@@ -510,7 +483,7 @@
       </p>
 
       <section class="menu-section">
-        <h2 class="menu-title">Suite A33</h2>
+        <h2 class="menu-title">Suite A33 Hecha por El Alquimista</h2>
         <div class="grid">
         <article class="card" data-link="calculadora/index.html">
           <div class="pill"><span>🧪</span><span>Producción</span></div>
@@ -588,9 +561,9 @@
           <article class="card" data-link="finanzas/index.html#tab=diario">
             <div class="pill"><span>📓</span><span>Diario</span></div>
             <h2>Diario y Ajustes</h2>
-            <p>Registra ingresos, egresos y ajustes manuales con doble partida.</p>
+            <p>Registra ingresos, egresos y ajustes directos con doble partida.</p>
             <div class="footer-row">
-              <span>Mini contabilidad manual.</span>
+              <span>Mini contabilidad.</span>
               <button class="link-btn"><span>Ir</span> →</button>
             </div>
           </article>
@@ -607,67 +580,52 @@
         </div>
       </section>
 
+      
       <section class="menu-section">
-        <h2 class="menu-title">RESPALDO Y GUÍA</h2>
-        <div class="grid">
-          <article class="card" id="card-export-backup">
-            <div class="pill"><span>💾</span><span>Backup</span></div>
-            <h2>Exportar Respaldo</h2>
-            <p>Descarga un archivo JSON con todos los datos (IndexedDB + localStorage) para moverlo a otro dispositivo.</p>
+        <h2 class="menu-title">NÚCLEO A33</h2>
+        <div class="grid support-grid" id="support-grid">
+
+          <article class="card" id="card-backup-hub">
+            <div class="pill"><span>🗄️</span><span>Respaldo</span></div>
+            <h2>Respaldo</h2>
+            <p>Exporta o importa un JSON con todos los datos locales (IndexedDB + localStorage) de esta Suite.</p>
             <div class="footer-row">
-              <span>Manual (no sync).</span>
-              <button class="link-btn secondary"><span>Exportar</span> →</button>
+              <span>Exportar / Importar</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
             </div>
           </article>
 
-          <article class="card" id="card-import-backup">
-            <div class="pill"><span>📥</span><span>Backup</span></div>
-            <h2>Importar Respaldo</h2>
-            <p>Carga un respaldo previo y reemplaza todos los datos actuales de este navegador.</p>
+          <article class="card" id="card-user-panel">
+            <div class="pill"><span>👤</span><span>Usuario</span></div>
+            <h2>Usuario</h2>
+            <p>Nombre actual: <b id="user-card-name">—</b>. Cambia nombre o contraseña sin borrar datos.</p>
             <div class="footer-row">
-              <span>Reemplaza todo.</span>
-              <button class="link-btn secondary"><span>Importar</span> →</button>
-            </div>
-          </article>
-        
-          <article class="card" id="card-user-manual">
-            <div class="pill"><span>📘</span><span>Guía</span></div>
-            <h2>Manual de Usuario</h2>
-            <p>Accede a los manuales oficiales por módulo y al manual compilado de la Suite A33 v3.20.1.</p>
-            <div class="footer-row">
-              <span>PDFs oficiales.</span>
-              <button class="link-btn secondary"><span>Ver</span> →</button>
+              <span id="user-card-sub">Gestionar</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
             </div>
           </article>
 
-</div>
+          <article class="card" id="card-centro-mando" data-link="centro-mando/index.html">
+            <div class="pill"><span>🧭</span><span>Centro</span></div>
+            <h2>Centro de Mando</h2>
+            <p>Radar ligero por evento: Caja Chica, ventas, top productos e inventario crítico.</p>
+            <div class="footer-row">
+              <span>Evento enfocado + accesos rápidos.</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
+            </div>
+          </article>
+
+          <!-- Elementos ocultos (reuso de handlers existentes) -->
+          <button id="card-export-backup" class="hidden" type="button" aria-hidden="true"></button>
+          <button id="card-import-backup" class="hidden" type="button" aria-hidden="true"></button>
+
+        </div>
       </section>
 
+
       </div>
 
-      <!-- Vista: Manuales (se abre desde RESPALDO Y GUÍA → Manual de Usuario) -->
-      <div id="manuals-view" style="display:none;">
-        <div class="toolbar">
-          <button class="btn btn-ghost" id="btn-manuals-back-home">← Menú principal</button>
-        </div>
-
-        <section class="menu-section" style="margin-top:0;">
-          <h2 class="menu-title">Manuales · Suite A33</h2>
-          <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.6rem;">
-            Descarga o abre los PDFs oficiales (compilado + módulos). Si un PDF no está en <b>manuales/</b>, aparecerá como no disponible.
-          </p>
-
-          <div class="grid" id="manuals-grid">
-            <!-- Se llena por JS para aplicar disponibilidad -->
-          </div>
-
-          <p class="small-note" style="margin-top:0.6rem;">
-            Tip: los PDFs deben estar en la carpeta <b>manuales/</b> (raíz de la Suite) con los nombres definidos en el mapeo.
-          </p>
-        </section>
-      </div>
-
-    </main
+    </main>
   </div>
 
 
@@ -683,49 +641,86 @@
     </div>
   </div>
 
-  
-
-  <!-- Visor interno de PDF (para volver sin quedar atrapado en iPad) -->
-  <div class="pdf-overlay" id="pdf-viewer" style="display:none;">
-    <div class="pdf-card" role="dialog" aria-modal="true" aria-labelledby="pdf-title">
-      <div class="pdf-topbar">
-        <button class="btn btn-ghost" id="pdf-close">✕ Cerrar</button>
-        <div class="pdf-topbar-mid">
-          <div class="pdf-title" id="pdf-title">Manual</div>
-          <div class="pdf-ios-hint" id="pdf-ios-hint" style="display:none;">
-            En iPad (modo app), si el PDF no carga aquí, usa <b>Abrir afuera</b> para verlo en Safari y luego regresa a la Suite.
-          </div>
-        </div>
-        <div class="pdf-topbar-actions">
-          <a class="btn btn-ghost" id="pdf-open-external" href="#" target="_blank" rel="noopener">Abrir afuera</a>
-          <button class="btn btn-primary" id="pdf-download-btn">Descargar</button>
-        </div>
-      </div>
-      <div class="pdf-body">
-        <iframe id="pdf-frame" title="PDF" src="about:blank"></iframe>
-      </div>
-    </div>
-  </div>
-
   <input id="backup-file-input" type="file" accept="application/json" style="display:none;">
+  <input id="calc-only-file-input" type="file" accept="application/json" style="display:none;">
+  <div id="a33-toast" class="a33-toast" aria-live="polite"></div>
 
 
+  <script src="assets/js/a33-storage.js"></script>
+  <script src="assets/js/a33-auth.js"></script>
   <script>
-    const PIN_KEY = 'suite_a33_pin';
-    const SESSION_KEY = 'suite_a33_unlocked';
+    // --- Auth (usuario + contraseña, 1 usuario) ---
+    const AUTH_DEFAULT_NAME = 'Usuario';
 
-    function onlyDigits(str){
-      return /^[0-9]{6}$/.test(str);
+    function readAuth(){
+      return {
+        configured: A33Auth.isConfigured(),
+        authenticated: A33Auth.isAuthenticated(),
+        username: A33Auth.getUsername() || '',
+        name: A33Auth.getDisplayName() || AUTH_DEFAULT_NAME
+      };
+    }
+
+    function getStoredName(){
+      return A33Auth.getDisplayName() || AUTH_DEFAULT_NAME;
+    }
+
+    function setStoredName(newName){
+      A33Auth.setDisplayName((newName || '').trim() || AUTH_DEFAULT_NAME);
+    }
+
+    function hideBootSplash(){
+      const bs = document.getElementById('boot-splash');
+      if (bs) bs.style.display = 'none';
     }
 
     function showApp(){
+      hideBootSplash();
       const overlay = document.getElementById('lock-overlay');
       const shell = document.getElementById('app-shell');
       overlay.style.display = 'none';
       shell.style.display = 'block';
     }
 
-    // --- Respaldo manual (Exportar / Importar) ---
+    function showLock(){
+      hideBootSplash();
+      const overlay = document.getElementById('lock-overlay');
+      const shell = document.getElementById('app-shell');
+      overlay.style.display = 'flex';
+      shell.style.display = 'none';
+    }
+
+    async function initAuthUi(){
+      await A33Auth.ensureMigrated();
+      const overlay = document.getElementById('lock-overlay');
+      const setup = document.getElementById('lock-setup');
+      const unlock = document.getElementById('lock-unlock');
+      const modeSwitch = document.getElementById('pin-mode-switch');
+
+      const a = readAuth();
+      if (a.configured && a.authenticated){
+        overlay.style.display = 'none';
+        showApp();
+        if (modeSwitch) modeSwitch.style.display = 'none';
+        return;
+      }
+
+      showLock();
+      if (!a.configured){
+        setup.style.display = 'block';
+        unlock.style.display = 'none';
+        if (modeSwitch) modeSwitch.style.display = 'none';
+      } else {
+        setup.style.display = 'none';
+        unlock.style.display = 'block';
+        if (modeSwitch) modeSwitch.style.display = 'none';
+        const u = a.username;
+        const uEl = document.getElementById('login-user');
+        if (uEl && u) uEl.value = u;
+      }
+    }
+
+    // --- Respaldo local (Exportar / Importar) ---
     const BACKUP_APP_NAME = 'Suite A33';
     const SUITE_LS_PREFIXES = ['arcano33_', 'a33_', 'suite_a33_']; 
 
@@ -874,12 +869,12 @@
     function getSuiteLocalStorageSnapshot(){
       const out = {};
       const keys = [];
-      for (let i = 0; i < localStorage.length; i++){
-        const k = localStorage.key(i);
+      const allKeys = A33Storage.keys({ scope: 'local' });
+      for (const k of allKeys){
         if (!k) continue;
         if (!isSuiteLocalStorageKey(k)) continue;
         keys.push(k);
-        out[k] = localStorage.getItem(k);
+        out[k] = A33Storage.getItem(k);
       }
       keys.sort();
       return { data: out, keys, count: keys.length };
@@ -938,7 +933,7 @@
           <div><b>localStorage (Suite)</b></div>
           ${lsDetails}
 
-          <div class="small-note">Nota: este respaldo es manual (no sincroniza). Al importar, se reemplaza TODO lo de este navegador.</div>
+          <div class="small-note">Nota: este respaldo es local (no sincroniza). Al importar, se reemplaza TODO lo de este navegador.</div>
         </div>
       `;
     }
@@ -1000,6 +995,179 @@
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
+
+    // --- Toast ---
+    let __toastTimer = null;
+    function showToast(message, ms=4000){
+      const el = document.getElementById('a33-toast');
+      if (!el) { try{ alert(message); }catch(_){ } return; }
+      el.textContent = String(message || '');
+      el.classList.add('show');
+      if (__toastTimer) clearTimeout(__toastTimer);
+      __toastTimer = setTimeout(() => {
+        try{ el.classList.remove('show'); }catch(_){ }
+      }, Math.max(1500, Number(ms) || 4000));
+    }
+
+    // --- Calculadora (ONLY) : export + reset blindado ---
+    // Calculadora ONLY (estricto): NO incluye inventario.
+    // Compat: backups viejos podrían traer arcano33_inventario; lo aceptamos pero lo IGNORAMOS al restaurar.
+    const CALC_ONLY_KEYS = [
+      'arcano33_recetas_v1',
+      'arcano33_lote_actual',
+      'arcano33_fecha_produccion',
+      'arcano33_notas_lote',
+      'arcano33_lotes'
+    ];
+    const CALC_ONLY_LEGACY_IGNORED_KEYS = ['arcano33_inventario'];
+    const CALC_ONLY_ALLOWED_KEYS = CALC_ONLY_KEYS.concat(CALC_ONLY_LEGACY_IGNORED_KEYS);
+
+    function snapshotCalculatorLocalStorage(){
+      const data = {};
+      for (const k of CALC_ONLY_KEYS){
+        const v = A33Storage.getItem(k);
+        if (v != null) data[k] = String(v);
+      }
+      return data;
+    }
+
+    function buildCalcOnlyFilename(){
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2,'0');
+      const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+      return `A33_Calculadora_ONLY_${stamp}.json`;
+    }
+
+    function buildCalculatorOnlyExport(){
+      return {
+        app: 'Suite A33',
+        module: 'calculadora',
+        exportedAt: new Date().toISOString(),
+        schemaVersion: 1,
+        data: {
+          localStorage: snapshotCalculatorLocalStorage()
+        }
+      };
+    }
+
+    function validateCalculatorOnlyBackup(obj){
+      if (!obj || typeof obj !== 'object') return { ok:false, reason:'Archivo inválido (no es un objeto JSON).' };
+
+      // metadata mínima (estricta)
+      const app = obj.app;
+      const module = obj.module;
+      if (app !== 'Suite A33') return { ok:false, reason:'Metadata inválida: app debe ser "Suite A33".' };
+      if (module !== 'calculadora') return { ok:false, reason:'Metadata inválida: module debe ser "calculadora".' };
+
+      const data = obj.data;
+      if (!data || typeof data !== 'object') return { ok:false, reason:'Falta data.' };
+
+      const ls = data.localStorage;
+      if (!ls || typeof ls !== 'object') return { ok:false, reason:'Falta data.localStorage.' };
+
+      // Debe contener solo claves permitidas (y al menos 1)
+      const keys = Object.keys(ls);
+      if (keys.length === 0) return { ok:false, reason:'data.localStorage está vacío.' };
+
+      for (const k of keys){
+        if (!CALC_ONLY_ALLOWED_KEYS.includes(k)){
+          return { ok:false, reason:`Clave no permitida en data.localStorage: ${k}` };
+        }
+        const v = ls[k];
+        if (typeof v !== 'string'){
+          return { ok:false, reason:`Valor inválido para ${k}: se esperaba string.` };
+        }
+      }
+
+      // Filtrar solo lo estrictamente permitido (sin inventario)
+      const filtered = {};
+      for (const k of CALC_ONLY_KEYS){
+        if (typeof ls[k] === 'string') filtered[k] = ls[k];
+      }
+      return { ok:true, payload:{ app, module, exportedAt: obj.exportedAt, schemaVersion: obj.schemaVersion, localStorage: filtered } };
+    }
+
+    function normalizeJsonText(s){
+      return String(s || '').replace(/^﻿/, '').trim();
+    }
+
+    function safeJsonParse(text){
+      const t = normalizeJsonText(text);
+      try{ return { ok:true, obj: JSON.parse(t) }; }catch(e){ return { ok:false, error:e }; }
+    }
+
+    function shallowEqualStringsObj(a,b){
+      const ak = Object.keys(a||{}).sort();
+      const bk = Object.keys(b||{}).sort();
+      if (ak.length !== bk.length) return false;
+      for (let i=0;i<ak.length;i++){
+        if (ak[i] !== bk[i]) return false;
+        if (String(a[ak[i]]) !== String(b[bk[i]])) return false;
+      }
+      return true;
+    }
+
+    async function deleteAllSuiteCaches(){
+      if (!('caches' in window)) return;
+      try{
+        const names = await caches.keys();
+        await Promise.all(names.map(n => caches.delete(n)));
+      }catch(_){ }
+    }
+
+    function clearSuiteStorageExceptCalculator(keepCalculator){
+      // localStorage: solo claves suite
+      const suiteKeys = getSuiteLocalStorageKeysInThisBrowser();
+      for (const k of suiteKeys){
+        if (keepCalculator && CALC_ONLY_KEYS.includes(k)) continue;
+        try{ A33Storage.removeItem(k); }catch(_){ }
+      }
+
+      // sessionStorage: solo claves suite
+      try{
+        const toRemove = A33Storage.keys({ scope:'session' }).filter(k => k && isSuiteLocalStorageKey(k));
+        toRemove.forEach(k => { try{ A33Storage.removeItem(k, 'session'); }catch(_){ } });
+      }catch(_){ }
+    }
+
+    function restoreCalculatorLocalStorage(lsObj){
+      const entries = Object.entries(lsObj || {});
+      for (const [k,v] of entries){
+        if (!CALC_ONLY_KEYS.includes(k)) continue;
+        try{ A33Storage.setItem(k, String(v)); }catch(_){ }
+      }
+    }
+
+    async function resetSuitePreservingCalculator(validCalcPayload){
+      // Anti-duplicado: si el respaldo coincide con lo actual, no borramos las claves de calculadora.
+      const currentCalc = snapshotCalculatorLocalStorage();
+      const incomingCalc = validCalcPayload?.localStorage || {};
+      const keepCalculator = shallowEqualStringsObj(currentCalc, incomingCalc);
+
+      // 1) IndexedDB (Suite)
+      const all = await safeListIndexedDBDatabases();
+      const suiteDbList = (Array.isArray(all) ? all : [])
+        .filter(d => d && d.name && isSuiteDbName(d.name))
+        .map(d => d.name);
+
+      for (const dbName of suiteDbList){
+        await deleteDatabase(dbName);
+      }
+
+      // 2) localStorage / sessionStorage
+      clearSuiteStorageExceptCalculator(keepCalculator);
+
+      // 3) caches (SW)
+      await deleteAllSuiteCaches();
+
+      // 4) Restaurar Calculadora (si no la mantuvimos)
+      if (!keepCalculator){
+        restoreCalculatorLocalStorage(incomingCalc);
+      }
+
+      return { kept: keepCalculator };
+    }
+
 
     function buildBackupFilename(){
       const d = new Date();
@@ -1125,12 +1293,7 @@
 
 
     function getSuiteLocalStorageKeysInThisBrowser(){
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++){
-        const k = localStorage.key(i);
-        if (k && isSuiteLocalStorageKey(k)) keys.push(k);
-      }
-      return keys;
+      return A33Storage.keys({ scope: 'local' }).filter(k => k && isSuiteLocalStorageKey(k));
     }
 
     function deleteDatabase(dbName){
@@ -1267,13 +1430,13 @@
       // 4) Restaurar localStorage (solo keys Suite)
       const currentLsKeys = getSuiteLocalStorageKeysInThisBrowser();
       for (const k of currentLsKeys){
-        try{ localStorage.removeItem(k); }catch(_){}
+        try{ A33Storage.removeItem(k); }catch(_){}
       }
 
       const incoming = obj?.data?.localStorage || {};
       for (const [k, v] of Object.entries(incoming)){
         if (!isSuiteLocalStorageKey(k)) continue;
-        try{ localStorage.setItem(k, String(v ?? '')); }catch(_){}
+        try{ A33Storage.setItem(k, String(v ?? '')); }catch(_){}
       }
 
       return true;
@@ -1281,619 +1444,665 @@
 
 
     document.addEventListener('DOMContentLoaded', () => {
-      
-      // --- Vistas: Home vs Manuales ---
-      const homeView = document.getElementById('home-view');
-      const manualsView = document.getElementById('manuals-view');
-      const btnManualsBackHome = document.getElementById('btn-manuals-back-home');
-      const headerTitle = document.querySelector('header .title-block h1');
-      const headerSub = document.querySelector('header .title-block p');
-      const originalHeaderTitle = headerTitle ? headerTitle.textContent : '';
-      const originalHeaderSub = headerSub ? headerSub.textContent : '';
 
-      function showHome(setHash = true){
-        if (homeView) homeView.style.display = 'block';
-        if (manualsView) manualsView.style.display = 'none';
-        if (headerTitle) headerTitle.textContent = originalHeaderTitle || 'Suite A33 · Arcano 33';
-        if (headerSub) headerSub.textContent = originalHeaderSub || 'Panel interno para producción, control de lotes y ventas.';
-        if (setHash){
-          // limpiar hash sin recargar
-          try{
-            history.replaceState(null, '', window.location.pathname + window.location.search);
-          }catch(_){
-            // fallback
-            window.location.hash = '';
-          }
-        }
-      }
-
-      function showManuals(setHash = true){
-        if (homeView) homeView.style.display = 'none';
-        if (manualsView) manualsView.style.display = 'block';
-        if (headerTitle) headerTitle.textContent = 'Manuales · Suite A33';
-        if (headerSub) headerSub.textContent = 'Guías oficiales por módulo y manual compilado.';
-        if (setHash){
-          try{
-            history.replaceState(null, '', '#manuales');
-          }catch(_){
-            window.location.hash = '#manuales';
-          }
-        }
-        renderManualCards();
-      }
-
-      if (btnManualsBackHome){
-        btnManualsBackHome.addEventListener('click', () => showHome(true));
-      }
-
-      window.addEventListener('hashchange', () => {
-        if (window.location.hash === '#manuales') showManuals(false);
-        else showHome(false);
-      });
-
-      
-      // --- Manuales: mapeo de PDFs (carpeta /manuales/) ---
-      // Si cambias nombres de archivos, edita SOLO este mapa.
-      // NOTA: cada módulo acepta varios nombres (candidatos) para evitar bloqueos por diferencias de nombre.
-      const MANUALS = [
-        {
-          key: 'compilado',
-          icon: '📘',
-          title: 'Manual de Usuario — Suite A33 (v3.20.1)',
-          desc: 'Manual compilado (completo).',
-          candidates: [
-            'manuales/Manual de Usuario Suite A33 v3.20.1.pdf',
-            'manuales/Manual de Usuario Suite A33 (v3.20.1).pdf',
-            'manuales/00- Manual de Usuario Suite A33 v3.20.1.pdf',
-            'manuales/00- Manual de Usuario Suite A33 (v3.20.1).pdf',
-            'manuales/Manual Suite A33 v3.20.1.pdf',
-            'manuales/Manual de Usuario Suite A33 v3.20.1.PDF'
-          ]
-        },
-        {
-          key:'inventario', icon:'📊', title:'Inventario', desc:'Guía del módulo Inventario.',
-          candidates:[
-            'manuales/Manual Inventario Suite A33 v3.20.1.pdf',
-            'manuales/01- Manual Inventario Suite A33 v3.20.1.pdf',
-            'manuales/Inventario.pdf',
-            'manuales/Manual Inventario.pdf',
-            'manuales/Manual Inventario Suite A33 v3.20.1.PDF'
-          ]
-        },
-        {
-          key:'calculadora', icon:'🧪', title:'Calculadora de Producción', desc:'Guía de recetas y producción.',
-          candidates:[
-            'manuales/Manual Calculadora de Producción Suite A33 v3.20.1.pdf',
-            'manuales/02- Manual Calculadora de Producción Suite A33 v3.20.1.pdf',
-            'manuales/Manual Calculadora de Produccion Suite A33 v3.20.1.pdf',
-            'manuales/02- Manual Calculadora de Produccion Suite A33 v3.20.1.pdf',
-            'manuales/Calculadora.pdf',
-            'manuales/Manual Calculadora.pdf',
-            'manuales/Manual Calculadora de Producción Suite A33 v3.20.1.PDF'
-          ]
-        },
-        {
-          key:'lotes', icon:'📦', title:'Control de Lotes', desc:'Guía de registro y exportación de lotes.',
-          candidates:[
-            'manuales/Manual Control de Lotes Suite A33 v3.20.1.pdf',
-            'manuales/03- Manual Control de Lotes Suite A33 v3.20.1.pdf',
-            'manuales/Control de Lotes.pdf',
-            'manuales/Manual Lotes.pdf',
-            'manuales/Manual Control de Lotes Suite A33 v3.20.1.PDF'
-          ]
-        },
-        {
-          key:'pos', icon:'🧾', title:'POS · Eventos', desc:'Guía de ventas y eventos.',
-          candidates:[
-            'manuales/Manual POS · Eventos Suite A33 v3.20.1.pdf',
-            'manuales/Manual POS Eventos Suite A33 v3.20.1.pdf',
-            'manuales/Manual POS Ventas Suite A33 v3.20.1.pdf',
-            'manuales/04- Manual POS Ventas Suite A33 v3.20.1.pdf',
-            'manuales/POS Eventos.pdf',
-            'manuales/POS.pdf',
-            'manuales/Manual POS · Eventos Suite A33 v3.20.1.PDF'
-          ]
-        },
-        {
-          key:'analitica', icon:'📈', title:'Analítica', desc:'Guía de lectura y reportes.',
-          candidates:[
-            'manuales/Manual Analítica Suite A33 v3.20.1.pdf',
-            'manuales/Manual Analitica Suite A33 v3.20.1.pdf',
-            'manuales/05- Manual Analitica Suite A33 v3.20.1.pdf',
-            'manuales/Analitica.pdf',
-            'manuales/Manual Analítica Suite A33 v3.20.1.PDF'
-          ]
-        },
-        {
-          key:'planificacion', icon:'📅', title:'Planificación', desc:'Guía del planificador de pedidos.',
-          candidates:[
-            'manuales/Manual Planificación Suite A33 v3.20.1.pdf',
-            'manuales/Manual Planificacion Suite A33 v3.20.1.pdf',
-            'manuales/Manual Planificador Suite A33 v3.20.1.pdf',
-            'manuales/06- Manual Planificador Suite A33 v3.20.1.pdf',
-            'manuales/Planificacion.pdf',
-            'manuales/Manual Planificación Suite A33 v3.20.1.PDF'
-          ]
-        },
-        {
-          key:'finanzas', icon:'💰', title:'Finanzas', desc:'Guía del módulo Finanzas.',
-          candidates:[
-            'manuales/Manual Finanzas Suite A33 v3.20.1.pdf',
-            'manuales/07- Manual Finanzas Suite A33 v3.20.1.pdf',
-            'manuales/Finanzas.pdf',
-            'manuales/Manual Finanzas Suite A33 v3.20.1.PDF'
-          ]
-        },
-        {
-          key:'respaldo', icon:'💾', title:'Respaldo', desc:'Guía de exportar/importar respaldo.',
-          candidates:[
-            'manuales/Manual Respaldo Suite A33 v3.20.1.pdf',
-            'manuales/08- Manual Respaldo Suite A33 v3.20.1.pdf',
-            'manuales/Respaldo.pdf',
-            'manuales/Manual Respaldo.pdf',
-            'manuales/Manual Respaldo Suite A33 v3.20.1.PDF'
-          ]
-        },
-      ];
-
-      // resolved path cache: string=ok, false=no existe, null=no verificado (ej. sin conexión o sin soporte HEAD)
-      const manualResolvedPath = new Map();
-
-      // --- Manifest opcional ---
-      // Si existe /manuales/manifest.json, la app usa esos nombres EXACTOS.
-      // Esto evita el clásico: “el PDF existe pero se llama distinto”.
-      // Formato esperado (valores = nombre de archivo dentro de /manuales/):
-      // {
-      //   "compilado": "00- Manual de Usuario Suite A33 v3.20.1.pdf",
-      //   "inventario": "01- Manual Inventario Suite A33 v3.20.1.pdf",
-      //   "calculadora": "02- Manual Calculadora de Producción Suite A33 v3.20.1.pdf",
-      //   "lotes": "03- Manual Control de Lotes Suite A33 v3.20.1.pdf",
-      //   "pos": "04- Manual POS Ventas Suite A33 v3.20.1.pdf",
-      //   "analitica": "05- Manual Analitica Suite A33 v3.20.1.pdf",
-      //   "planificacion": "06- Manual Planificador Suite A33 v3.20.1.pdf",
-      //   "finanzas": "07- Manual Finanzas Suite A33 v3.20.1.pdf",
-      //   "respaldo": "08- Manual Respaldo Suite A33 v3.20.1.pdf"
-      // }
-      async function headExists(url){
-        try{
-          const res = await fetch(url, { method:'HEAD', cache:'no-store' });
-          if (res.ok) return true;
-          if (res.status === 404) return false;
-          return null; // otros códigos (405, 403, etc.)
-        }catch(_){
-          return null;
-        }
-      }
-
-      async function resolveFirstExisting(candidates){
-        let unknown = false;
-        for (const p of candidates){
-          const v = await headExists(p);
-          if (v === true) return p;
-          if (v === null) unknown = true;
-        }
-        return unknown ? null : false;
-      }
-
-      async function loadManualManifest(){
-        try{
-          const res = await fetch('manuales/manifest.json', { cache:'no-store' });
-          if (!res.ok) return false;
-          const data = await res.json();
-          if (!data || typeof data !== 'object') return false;
-
-          for (const m of MANUALS){
-            const raw = data[m.key];
-            const add = [];
-            if (typeof raw === 'string' && raw.trim()) add.push(raw.trim());
-            if (Array.isArray(raw)){
-              raw.forEach(x => { if (typeof x === 'string' && x.trim()) add.push(x.trim()); });
-            }
-            if (!add.length) continue;
-
-            const normalized = add
-              .map(x => x.replace(/^\/*manuales\//i, '').replace(/^\/*/,'').trim())
-              .filter(Boolean)
-              .map(x => `manuales/${x}`);
-
-            const existing = Array.isArray(m.candidates) ? m.candidates : [];
-            // Poner primero lo definido en el manifest, luego lo demás (sin duplicados)
-            const merged = [];
-            for (const p of [...normalized, ...existing]){
-              if (!p || merged.includes(p)) continue;
-              merged.push(p);
-            }
-            m.candidates = merged;
-          }
-
-          return true;
-        }catch(_){
-          return false;
-        }
-      }
-
-      async function computeAvailability(){
-        for (const m of MANUALS){
-          const c = Array.isArray(m.candidates) ? m.candidates.filter(Boolean) : [];
-          if (!c.length){
-            manualResolvedPath.set(m.key, false);
-            continue;
-          }
-          const resolved = await resolveFirstExisting(c);
-          manualResolvedPath.set(m.key, resolved);
-        }
-      }
-
-      function firstCandidate(meta){
-        const c = Array.isArray(meta?.candidates) ? meta.candidates : [];
-        return c[0] || '';
-      }
-
-      function getUsablePath(meta){
-        const resolved = manualResolvedPath.get(meta.key);
-        if (typeof resolved === 'string') return resolved;
-        // si no se pudo verificar, igual dejamos intentar con el primer candidato
-        return firstCandidate(meta);
-      }
-
-      function showPdfMissing(meta){
-        const candidates = Array.isArray(meta?.candidates) ? meta.candidates : [];
-        const list = candidates.length
-          ? `<div class="small-note" style="margin-top:0.35rem;">Nombres aceptados (colócalo en <b>manuales/</b>):</div>
-             <ul style="margin:0.35rem 0 0 1.1rem; color: var(--muted);">
-               ${candidates.map(p => `<li><code>${escapeHtml(p.replace(/^manuales\//,''))}</code></li>`).join('')}
-             </ul>`
-          : '';
-
-        showModal({
-          title:'PDF aún no disponible',
-          bodyHtml:`<div class="badge-warn">⚠️ No se encontró el PDF para <b>${escapeHtml(meta?.title || 'este módulo')}</b>.</div>
-                   <div class="small-note" style="margin-top:0.4rem;">Revisá que el archivo exista y que el nombre coincida exactamente.</div>
-                   ${list}`,
-          primaryText:'Cerrar',
-          onPrimary: hideModal,
-          disableCancel:true
-        });
-      }
-
-      function openInNewTab(url){
-        if (!url) return;
-        const a = document.createElement('a');
-        a.href = url;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      }
-
-      function forceDownload(url){
-        if (!url) return;
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = '';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      }
-
-
-      // --- Visor interno de PDF (para volver sin quedar atrapado en iPad) ---
-      function isIOSDevice(){
-        return /iPad|iPhone|iPod/.test(navigator.userAgent || '');
-      }
-      function isStandaloneMode(){
-        try{
-          if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
-        }catch(_){ }
-        try{
-          if (window.navigator && window.navigator.standalone) return true;
-        }catch(_){ }
-        return false;
-      }
-
-      const pdfOverlay = document.getElementById('pdf-viewer');
-      const pdfFrame = document.getElementById('pdf-frame');
-      const pdfTitleEl = document.getElementById('pdf-title');
-      const pdfHintEl = document.getElementById('pdf-ios-hint');
-      const pdfOpenExternal = document.getElementById('pdf-open-external');
-      const pdfDownloadBtn = document.getElementById('pdf-download-btn');
-      const pdfCloseBtn = document.getElementById('pdf-close');
-
-      function closePdfViewer(){
-        if (!pdfOverlay) return;
-        pdfOverlay.style.display = 'none';
-        document.body.classList.remove('pdf-open');
-        try{ if (pdfFrame) pdfFrame.src = 'about:blank'; }catch(_){ }
-        try{ pdfOverlay.removeAttribute('data-current-url'); }catch(_){ }
-      }
-
-      function openPdfViewer(meta){
-        if (!meta) return;
-        const resolved = manualResolvedPath.get(meta.key);
-        if (resolved === false){
-          showPdfMissing(meta);
-          return;
-        }
-        const url = getUsablePath(meta);
-        if (!url){
-          showPdfMissing(meta);
-          return;
-        }
-
-        // Si por alguna razón no existe el overlay, fallback a abrir afuera
-        if (!pdfOverlay){
-          openInNewTab(url);
-          return;
-        }
-
-        try{ pdfOverlay.setAttribute('data-current-url', url); }catch(_){ }
-        if (pdfTitleEl) pdfTitleEl.textContent = meta.title || 'Manual';
-        if (pdfOpenExternal) pdfOpenExternal.href = url;
-
-        if (pdfHintEl){
-          const show = isIOSDevice() && isStandaloneMode();
-          pdfHintEl.style.display = show ? 'block' : 'none';
-        }
-
-        // Intentar render inline en el iframe. Si iOS decide abrirlo externo, igual queda el botón "Abrir afuera".
-        if (pdfFrame){
-          try{ pdfFrame.src = url; }catch(_){ }
-        }
-
-        pdfOverlay.style.display = 'flex';
-        document.body.classList.add('pdf-open');
-      }
-
-      if (pdfCloseBtn){
-        pdfCloseBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          closePdfViewer();
-        });
-      }
-
-      if (pdfDownloadBtn){
-        pdfDownloadBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          if (!pdfOverlay) return;
-          const url = pdfOverlay.getAttribute('data-current-url') || '';
-          if (!url) return;
-          forceDownload(url);
-        });
-      }
-
-      if (pdfOverlay){
-        pdfOverlay.addEventListener('click', (e) => {
-          // cerrar solo si das click en el fondo, no en la tarjeta
-          if (e.target === pdfOverlay) closePdfViewer();
-        });
-      }
-
-      let manualsRendered = false;
-
-      function renderManualCards(){
-        const grid = document.getElementById('manuals-grid');
-        if (!grid) return;
-
-        if (!manualsRendered){
-          grid.innerHTML = MANUALS.map(m => {
-            const safeTitle = escapeHtml(m.title);
-            const safeDesc = escapeHtml(m.desc);
-            return `
-              <article class="card" data-manual-key="${escapeHtml(m.key)}">
-                <div class="pill"><span>${escapeHtml(m.icon)}</span><span>Manual</span></div>
-                <h2>${safeTitle}</h2>
-                <p>${safeDesc}</p>
-                <div class="footer-row">
-                  <span class="manual-status" style="color:var(--muted);">Verificando...</span>
-                  <div class="manual-actions">
-                    <button class="link-btn secondary manual-view-btn" type="button"><span>Ver</span> →</button>
-                    <button class="link-btn secondary manual-download-btn" type="button"><span>Descargar</span> ↓</button>
-                  </div>
-                </div>
-              </article>
-            `;
-          }).join('');
-          manualsRendered = true;
-
-          grid.querySelectorAll('.card[data-manual-key]').forEach(card => {
-            const key = card.getAttribute('data-manual-key');
-            const meta = MANUALS.find(x => x.key === key);
-            const viewBtn = card.querySelector('.manual-view-btn');
-            const dlBtn = card.querySelector('.manual-download-btn');
-
-            // Click en tarjeta = abrir
-            card.addEventListener('click', () => {
-              if (!meta) return;
-              const resolved = manualResolvedPath.get(meta.key);
-              if (resolved === false){
-                showPdfMissing(meta);
-                return;
-              }
-              openPdfViewer(meta);
-            });
-
-            if (viewBtn){
-              viewBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (!meta) return;
-                const resolved = manualResolvedPath.get(meta.key);
-                if (resolved === false){
-                  e.preventDefault();
-                  showPdfMissing(meta);
-                  return;
-                }
-                openPdfViewer(meta);
-              });
-            }
-
-            if (dlBtn){
-              dlBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (!meta) return;
-                const resolved = manualResolvedPath.get(meta.key);
-                if (resolved === false){
-                  e.preventDefault();
-                  showPdfMissing(meta);
-                  return;
-                }
-                // forzar descarga (si el navegador lo respeta)
-                e.preventDefault();
-                forceDownload(getUsablePath(meta));
-              });
-            }
-          });
-        }
-
-        // aplicar estado (disponible / no disponible / no verificado) y configurar hrefs
-        grid.querySelectorAll('.card[data-manual-key]').forEach(card => {
-          const key = card.getAttribute('data-manual-key');
-          const statusEl = card.querySelector('.manual-status');
-          const viewBtn = card.querySelector('.manual-view-btn');
-          const dlBtn = card.querySelector('.manual-download-btn');
-          const meta = MANUALS.find(x => x.key === key);
-          if (!meta) return;
-
-          const resolved = manualResolvedPath.has(key) ? manualResolvedPath.get(key) : null;
-          const usable = getUsablePath(meta);
-
-          // Por defecto quitamos estado "disabled" a la tarjeta (para que no se vea bloqueada)
-          card.classList.remove('disabled');
-          if (viewBtn) viewBtn.classList.remove('disabled-link');
-          if (dlBtn) dlBtn.classList.remove('disabled-link');
-          if (resolved === false){
-            if (statusEl) statusEl.textContent = 'PDF aún no disponible';
-            if (viewBtn) viewBtn.classList.add('disabled-link');
-            if (dlBtn) dlBtn.classList.add('disabled-link');
-            return;
-          }
-
-          if (typeof resolved === 'string'){
-            if (statusEl) statusEl.textContent = 'Disponible';
-            return;
-          }
-
-          // null o desconocido: permitir intentar con el primer candidato
-          if (statusEl) statusEl.textContent = 'No verificado (igual podés intentar)';
-        });
-      }
-
-const overlay = document.getElementById('lock-overlay');
-      const setup = document.getElementById('lock-setup');
-      const unlock = document.getElementById('lock-unlock');
-      const modeSwitch = document.getElementById('pin-mode-switch');
-
-      const storedPin = localStorage.getItem(PIN_KEY);
-      const sessionOk = sessionStorage.getItem(SESSION_KEY) === '1';
-
-      if (!storedPin){
-        // No hay PIN, mostrar configuración
-        setup.style.display = 'block';
-        unlock.style.display = 'none';
-        modeSwitch.style.display = 'none';
-      } else if (sessionOk){
-        // Sesión ya desbloqueada
-        overlay.style.display = 'none';
-        showApp();
-      } else {
-        // Hay PIN guardado pero no sesión
-        setup.style.display = 'none';
-        unlock.style.display = 'block';
-        modeSwitch.style.display = 'block';
-      }
-
-      document.getElementById('btn-save-pin').addEventListener('click', () => {
-        const p1 = document.getElementById('pin-new').value.trim();
-        const p2 = document.getElementById('pin-confirm').value.trim();
-        if (!onlyDigits(p1)){
-          alert('El PIN debe tener exactamente 6 dígitos numéricos.');
-          return;
-        }
-        if (p1 !== p2){
-          alert('Los PIN no coinciden.');
-          return;
-        }
-        localStorage.setItem(PIN_KEY, p1);
-        sessionStorage.setItem(SESSION_KEY, '1');
-        showApp();
-        overlay.style.display = 'none';
-      });
-
-      document.getElementById('btn-skip-pin').addEventListener('click', () => {
-        // Usar sin PIN: solo se desbloquea la sesión actual
-        sessionStorage.setItem(SESSION_KEY, '1');
-        overlay.style.display = 'none';
-        showApp();
-      });
-
-      document.getElementById('btn-unlock').addEventListener('click', () => {
-        const input = document.getElementById('pin-input').value.trim();
-        const stored = localStorage.getItem(PIN_KEY);
-        if (input === stored){
-          sessionStorage.setItem(SESSION_KEY, '1');
-          showApp();
-        } else {
-          alert('PIN incorrecto.');
-        }
-      });
-
-      document.getElementById('btn-reset').addEventListener('click', () => {
-        if (!confirm('Esto borrará el PIN y los datos locales de la Suite A33 en este navegador (lotes, configuraciones, etc.). ¿Continuar?')) return;
-        try{
-          localStorage.clear();
-          sessionStorage.clear();
-        }catch(e){}
-        location.reload();
-      });
-
-      document.getElementById('btn-change-pin').addEventListener('click', () => {
-        // Volver al modo de configuración para cambiar PIN
-        document.getElementById('pin-new').value = '';
-        document.getElementById('pin-confirm').value = '';
-        document.getElementById('pin-input').value = '';
-        setup.style.display = 'block';
-        unlock.style.display = 'none';
-      });
-
-      // Activar switch "Cambiar PIN" solo si existe PIN
-      if (localStorage.getItem(PIN_KEY)){
-        modeSwitch.style.display = 'block';
-      }
-
-      // Navegación por tarjetas
-      document.querySelectorAll('.card[data-link]').forEach(card => {
+      // Navegación: tarjetas del menú principal
+      document.querySelectorAll('[data-link]').forEach(card => {
         card.addEventListener('click', () => {
           const href = card.getAttribute('data-link');
           if (href) window.location.href = href;
         });
       });
 
+
+      // --- Auth UI (Setup + Login) ---
+      const btnAuthSetup = document.getElementById('btn-auth-setup');
+      const btnLogin = document.getElementById('btn-login');
+      const btnResetCred = document.getElementById('btn-reset-credentials');
+
+      async function safeRun(btn, fn){
+        if (btn){ btn.disabled = true; btn.classList.add('is-loading'); }
+        try{ await fn(); }
+        finally{
+          if (btn){ btn.disabled = false; btn.classList.remove('is-loading'); }
+        }
+      }
+
+      async function doSetup(){
+        const u = (document.getElementById('auth-user')?.value || '').trim();
+        const p1 = String(document.getElementById('auth-pass')?.value || '');
+        const p2 = String(document.getElementById('auth-pass2')?.value || '');
+        const name = (document.getElementById('auth-name')?.value || '').trim();
+
+        if (!u){ alert('Usuario requerido.'); return; }
+        if (p1.length < 4){ alert('Contraseña muy corta (mínimo 4).'); return; }
+        if (p1 !== p2){ alert('Las contraseñas no coinciden.'); return; }
+
+        await A33Auth.setup({ username: u, password: p1, displayName: name || AUTH_DEFAULT_NAME });
+        // Iniciar sesión de inmediato para evitar doble paso
+        await A33Auth.login({ username: u, password: p1 });
+
+        // Limpieza y refresco UI
+        const pEl = document.getElementById('auth-pass'); if (pEl) pEl.value = '';
+        const p2El = document.getElementById('auth-pass2'); if (p2El) p2El.value = '';
+        await initAuthUi();
+      }
+
+      async function doLogin(){
+        const u = (document.getElementById('login-user')?.value || '').trim();
+        const p = String(document.getElementById('login-pass')?.value || '');
+
+        if (!u){ alert('Usuario requerido.'); return; }
+        if (!p){ alert('Contraseña requerida.'); return; }
+
+        await A33Auth.login({ username: u, password: p });
+        const pEl = document.getElementById('login-pass'); if (pEl) pEl.value = '';
+        await initAuthUi();
+      }
+
+      if (btnAuthSetup){
+        btnAuthSetup.addEventListener('click', () => safeRun(btnAuthSetup, async () => {
+          try{ await doSetup(); }
+          catch(e){ alert(e?.message || 'No se pudo configurar el acceso.'); }
+        }));
+      }
+
+      if (btnLogin){
+        btnLogin.addEventListener('click', () => safeRun(btnLogin, async () => {
+          try{ await doLogin(); }
+          catch(e){ alert(e?.message || 'Credenciales incorrectas.'); }
+        }));
+      }
+
+      if (btnResetCred){
+        btnResetCred.addEventListener('click', () => {
+          const ok = confirm('¿Resetear acceso? Esto eliminará usuario/contraseña de este dispositivo.');
+          if (!ok) return;
+          try{ A33Auth.resetCredentials(); }catch(_){}
+          initAuthUi();
+        });
+      }
+
+      // Enter-to-submit (iPad friendly)
+      const authPass2 = document.getElementById('auth-pass2');
+      if (authPass2){
+        authPass2.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter'){ e.preventDefault(); btnAuthSetup?.click(); }
+        });
+      }
+      const loginPass = document.getElementById('login-pass');
+      if (loginPass){
+        loginPass.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter'){ e.preventDefault(); btnLogin?.click(); }
+        });
+      }
+
+      // iPad PWA (Keychain/huella): auto-ingresar cuando iOS autocompleta usuario+contraseña.
+      // Nota: iOS a veces NO dispara input/change al autocompletar; usamos triggers + polling corto.
+      (function setupAutoLoginWithAutofill(){
+        const unlockEl = document.getElementById('lock-unlock');
+        const userEl = document.getElementById('login-user');
+        const passEl = document.getElementById('login-pass');
+        if (!unlockEl || !userEl || !passEl || !btnLogin) return;
+
+        let lastAttemptSig = null; // firma en memoria (no persistente); evita reintentos infinitos.
+        let pollId = null;
+        let pollTimeoutId = null;
+
+        function isUnlockVisible(){
+          // unlockEl vive dentro de lock-overlay; initAuthUi lo alterna con style.display.
+          return unlockEl.style.display !== 'none' && unlockEl.offsetParent !== null;
+        }
+
+        function getSig(){
+          const u = (userEl.value || '').trim();
+          const p = String(passEl.value || '');
+          if (!u || !p) return null;
+          // Evitamos guardar contraseña: solo longitud (suficiente para evitar loops).
+          return `${u}::${p.length}`;
+        }
+
+        function stopPoll(){
+          if (pollId){ clearInterval(pollId); pollId = null; }
+          if (pollTimeoutId){ clearTimeout(pollTimeoutId); pollTimeoutId = null; }
+        }
+
+        function startPoll(){
+          if (pollId) return;
+          const startedAt = Date.now();
+          pollId = setInterval(() => {
+            // Máx 3s para evitar loops/consumo.
+            if (Date.now() - startedAt > 3000){ stopPoll(); return; }
+            maybeAutoLogin('poll');
+          }, 200);
+          pollTimeoutId = setTimeout(stopPoll, 3200);
+        }
+
+        function maybeAutoLogin(source){
+          try{
+            if (!isUnlockVisible()) return;
+            if (btnLogin.disabled) return;
+            const sig = getSig();
+            if (!sig) return;
+            if (sig === lastAttemptSig) return;
+            lastAttemptSig = sig;
+
+            // iOS puede tardar un instante en “asentar” el autocompletado.
+            setTimeout(() => {
+              if (!isUnlockVisible()) return;
+              if (btnLogin.disabled) return;
+              const sig2 = getSig();
+              if (!sig2 || sig2 !== sig) return;
+              btnLogin.click(); // reutiliza el mismo flujo (safeRun + doLogin)
+            }, 350);
+          }catch(_){
+            // silencio: esto nunca debe romper el login.
+          }
+        }
+
+        function onFieldActivity(){
+          // Si el usuario borra/cambia, permitir un nuevo intento cuando vuelva a estar completo.
+          if (!getSig()) lastAttemptSig = null;
+          maybeAutoLogin('field');
+        }
+
+        // Triggers: focus (cuando el usuario toca y aparece Keychain), y eventos estándar.
+        userEl.addEventListener('focus', () => { startPoll(); setTimeout(() => maybeAutoLogin('focus-u'), 0); });
+        passEl.addEventListener('focus', () => { startPoll(); setTimeout(() => maybeAutoLogin('focus-p'), 0); });
+        userEl.addEventListener('input', onFieldActivity);
+        passEl.addEventListener('input', onFieldActivity);
+        userEl.addEventListener('change', onFieldActivity);
+        passEl.addEventListener('change', onFieldActivity);
+        userEl.addEventListener('blur', () => setTimeout(() => maybeAutoLogin('blur-u'), 0));
+        passEl.addEventListener('blur', () => setTimeout(() => maybeAutoLogin('blur-p'), 0));
+
+        // Al volver desde background o al mostrar la página, iOS a veces rellena tarde.
+        window.addEventListener('pageshow', () => {
+          setTimeout(() => { if (isUnlockVisible()) startPoll(); maybeAutoLogin('pageshow'); }, 250);
+        });
+
+        // Arranque suave: si ya hay credenciales (por username prefill + Keychain rápido).
+        setTimeout(() => { if (isUnlockVisible()) startPoll(); maybeAutoLogin('boot'); }, 600);
+
+      })();
+
+
+
       // --- Respaldo: Exportar / Importar ---
       const exportCard = document.getElementById('card-export-backup');
       const importCard = document.getElementById('card-import-backup');
       const fileInput = document.getElementById('backup-file-input');
 
-      
+      // Card: Respaldo (hub)
+      const backupHubCard = document.getElementById('card-backup-hub');
+      if (backupHubCard){
+        backupHubCard.addEventListener('click', () => {
+          showModal({
+            title: 'Respaldo',
+            bodyHtml: `
+              <div>Elegí una acción. Esto trabaja <b>solo en este dispositivo</b> (no hay sync).</div>
+              <div class="small-note">Tip: exportá antes de importar, por si acaso.</div>
+            `,
+            primaryText: 'Exportar',
+            onPrimary: () => {
+              hideModal();
+              if (exportCard) exportCard.click();
+            },
+            secondaryText: 'Importar',
+            onSecondary: () => {
+              hideModal();
+              if (importCard) importCard.click();
+            },
+            cancelText: 'Cerrar',
+            onCancel: hideModal
+          });
 
-      // Card: Manual de Usuario (abre vista de manuales)
-      const manualCard = document.getElementById('card-user-manual');
-      if (manualCard){
-        manualCard.addEventListener('click', () => showManuals(true));
+        });
       }
 
-      // Preparar disponibilidad de PDFs (sin bloquear si estás offline)
-      loadManualManifest()
-        .then(() => computeAvailability())
-        .then(() => renderManualCards())
-        .catch(() => renderManualCards());
+      // Card: Usuario (panel)
+      const userPanelCard = document.getElementById('card-user-panel');
+      const userCardNameEl = document.getElementById('user-card-name');
+      const userCardSubEl = document.getElementById('user-card-sub');
 
-      // Si se entra con hash #manuales, abrir manuales
-      if (window.location.hash === '#manuales'){
-        showManuals(false);
-      } else {
-        showHome(false);
+      function refreshUserCard(){
+        const a = readAuth();
+        const name = a.name || AUTH_DEFAULT_NAME;
+        if (userCardNameEl) userCardNameEl.textContent = name;
+        if (userCardSubEl){
+          if (!a.configured) userCardSubEl.textContent = 'Sin acceso';
+          else userCardSubEl.textContent = a.authenticated ? 'Sesión activa' : 'Sesión expirada';
+        }
       }
-if (exportCard){
+
+      function openChangeName(){
+        const current = getStoredName();
+        showModal({
+          title: 'Cambiar nombre',
+          bodyHtml: `
+            <div class="field">
+              <label for="user-name-input">Nombre</label>
+              <input id="user-name-input" type="text" maxlength="40" value="${escapeHtml(current)}" placeholder="Ej. El Alquimista">
+            </div>
+            <div class="small-note">Se guarda solo en este navegador. No afecta datos de módulos.</div>
+          `,
+          primaryText: 'Guardar',
+          onPrimary: () => {
+            const el = document.getElementById('user-name-input');
+            const v = (el && el.value ? el.value.trim() : '');
+            if (!v){
+              alert('Escribe un nombre.');
+              return;
+            }
+            setStoredName(v);
+            refreshUserCard();
+            hideModal();
+            alert('Nombre actualizado.');
+          },
+          cancelText: 'Cancelar',
+          onCancel: hideModal
+        });
+        setTimeout(() => {
+          const el = document.getElementById('user-name-input');
+          if (el){ el.focus(); el.select(); }
+        }, 0);
+      }
+
+      function openChangePassword(){
+        const a = readAuth();
+        if (!a.configured){
+          alert('No hay acceso configurado todavía.');
+          return;
+        }
+
+        showModal({
+          title: 'Cambiar contraseña',
+          bodyHtml: `
+            <div class="field">
+              <label for="pw-current">Contraseña actual</label>
+              <input id="pw-current" type="password" autocomplete="current-password" placeholder="Actual">
+            </div>
+            <div class="field">
+              <label for="pw-new">Nueva contraseña</label>
+              <input id="pw-new" type="password" autocomplete="new-password" placeholder="Nueva">
+            </div>
+            <div class="field">
+              <label for="pw-new2">Confirmar nueva contraseña</label>
+              <input id="pw-new2" type="password" autocomplete="new-password" placeholder="Repite">
+            </div>
+            <div class="small-note">Por seguridad se cerrará la sesión y tendrás que iniciar de nuevo.</div>
+          `,
+          primaryText: 'Guardar',
+          onPrimary: async () => {
+            const cur = (document.getElementById('pw-current')?.value || '');
+            const p1 = (document.getElementById('pw-new')?.value || '');
+            const p2 = (document.getElementById('pw-new2')?.value || '');
+            if (!cur){ alert('Escribe la contraseña actual.'); return; }
+            if (!p1 || p1.length < 4){ alert('Nueva contraseña muy corta (mínimo 4).'); return; }
+            if (p1 !== p2){ alert('Las contraseñas no coinciden.'); return; }
+            try{
+              await A33Auth.changePassword({ username: A33Auth.getUsername(), currentPassword: cur, newPassword: p1 });
+              hideModal();
+              alert('Contraseña actualizada. Inicia sesión de nuevo.');
+              await initAuthUi();
+            }catch(e){
+              alert(e?.message || 'No se pudo cambiar la contraseña.');
+            }
+          },
+          cancelText: 'Cancelar',
+          onCancel: hideModal
+        });
+
+        setTimeout(() => {
+          const el = document.getElementById('pw-current');
+          if (el){ el.focus(); }
+        }, 0);
+      }
+
+      function openChangeUsername(){
+        const a = readAuth();
+        if (!a.configured){
+          alert('No hay acceso configurado todavía.');
+          return;
+        }
+        showModal({
+          title: 'Cambiar usuario',
+          bodyHtml: `
+            <div class="field">
+              <label for="u-current-pw">Contraseña actual</label>
+              <input id="u-current-pw" type="password" autocomplete="current-password" placeholder="Actual">
+            </div>
+            <div class="field">
+              <label for="u-new">Nuevo usuario</label>
+              <input id="u-new" type="text" autocomplete="username" maxlength="40" placeholder="Nuevo usuario">
+            </div>
+            <div class="small-note">Es 1 solo usuario: al cambiarlo, el login pedirá el nuevo nombre.</div>
+          `,
+          primaryText: 'Guardar',
+          onPrimary: async () => {
+            const curPw = (document.getElementById('u-current-pw')?.value || '');
+            const newU = (document.getElementById('u-new')?.value || '').trim();
+            if (!curPw){ alert('Escribe la contraseña actual.'); return; }
+            if (!newU){ alert('Escribe un usuario.'); return; }
+            try{
+              await A33Auth.changeUsername({ currentUsername: A33Auth.getUsername(), password: curPw, newUsername: newU });
+              hideModal();
+              alert('Usuario actualizado. Inicia sesión de nuevo.');
+              await initAuthUi();
+            }catch(e){
+              alert(e?.message || 'No se pudo cambiar el usuario.');
+            }
+          },
+          cancelText: 'Cancelar',
+          onCancel: hideModal
+        });
+        setTimeout(() => {
+          const el = document.getElementById('u-current-pw');
+          if (el){ el.focus(); }
+        }, 0);
+      }
+
+      // --- Usuario (panel) + Calculadora ONLY (export/reset) ---
+      const calcOnlyFileInput = document.getElementById('calc-only-file-input');
+      let calcOnlySelected = { fileName: '', valid: null, payload: null };
+
+      async function pickCalcOnlyFile(){
+        return new Promise((resolve) => {
+          if (!calcOnlyFileInput){
+            resolve(null);
+            return;
+          }
+          calcOnlyFileInput.value = '';
+          const onChange = async () => {
+            calcOnlyFileInput.removeEventListener('change', onChange);
+            const f = calcOnlyFileInput.files && calcOnlyFileInput.files[0];
+            resolve(f || null);
+          };
+          calcOnlyFileInput.addEventListener('change', onChange, { once:false });
+          calcOnlyFileInput.click();
+        });
+      }
+
+      async function readTextFile(file){
+        return new Promise((resolve, reject) => {
+          try{
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result || ''));
+            r.onerror = () => reject(r.error || new Error('No se pudo leer el archivo.'));
+            r.readAsText(file);
+          }catch(e){ reject(e); }
+        });
+      }
+
+      function renderCalcOnlyState(){
+        const status = document.getElementById('calc-only-status');
+        const resetBtn = document.getElementById('btn-reset-suite-keep-calc');
+        if (status){
+          if (calcOnlySelected && calcOnlySelected.valid && calcOnlySelected.valid.ok){
+            status.innerHTML = `✅ <b>${escapeHtml(calcOnlySelected.fileName || 'respaldo')}</b> (válido)`;
+          } else if (calcOnlySelected && calcOnlySelected.fileName){
+            status.innerHTML = `⚠️ <b>${escapeHtml(calcOnlySelected.fileName)}</b> — <span class="muted">${escapeHtml(calcOnlySelected.valid?.reason || 'inválido')}</span>`;
+          } else {
+            status.textContent = 'Sin archivo seleccionado.';
+          }
+        }
+        if (resetBtn){
+          resetBtn.disabled = !(calcOnlySelected && calcOnlySelected.valid && calcOnlySelected.valid.ok);
+        }
+      }
+
+      function openUserPanel(){
+        const a = readAuth();
+        const name = a.name || AUTH_DEFAULT_NAME;
+        const accessStatus = a.configured ? 'Configurado' : 'No configurado';
+        const sessionStatus = a.configured ? (a.authenticated ? 'Activa' : 'Expirada') : 'N/A';
+        const username = a.username || '—';
+
+        showModal({
+          title: 'Usuario',
+          bodyHtml: `
+            <div class="kv">
+              <div class="k">Nombre</div><div class="v">${escapeHtml(name)}</div>
+              <div class="k">Usuario</div><div class="v">${escapeHtml(username)}</div>
+              <div class="k">Acceso</div><div class="v">${escapeHtml(accessStatus)}</div>
+              <div class="k">Sesión</div><div class="v">${escapeHtml(sessionStatus)}</div>
+              <div class="k">Dominio</div><div class="v"><span class="muted">${escapeHtml(location.origin)}</span></div>
+            </div>
+
+            <hr>
+
+            <div><b>Calculadora</b></div>
+            <div class="small-note">Exporta SOLO la Calculadora para guardarla aparte o para restablecer la Suite.</div>
+
+            <div class="btn-row" style="margin-top:0.55rem;">
+              <button class="btn btn-ghost" id="btn-export-calc-only">Exportar Calculadora (JSON)</button>
+            </div>
+
+            <div style="height:0.35rem;"></div>
+
+            <div><b>Restablecer Suite (conservar Calculadora)</b></div>
+            <div class="small-note">Blindado: primero seleccioná un respaldo válido. Luego confirmación doble.</div>
+
+            <div class="btn-row" style="margin-top:0.55rem;">
+              <button class="btn btn-ghost" id="btn-pick-calc-only">Seleccionar respaldo Calculadora (JSON)</button>
+              <button class="btn btn-danger" id="btn-reset-suite-keep-calc" disabled>Restablecer…</button>
+            </div>
+
+            <div class="small-note" id="calc-only-status" style="margin-top:0.45rem;">Sin archivo seleccionado.</div>
+
+            <hr>
+
+            <div><b>Seguridad</b></div>
+            <div class="small-note">Acceso local (PWA). Si querés, podés cambiar el usuario/contraseña o cerrar la sesión.</div>
+
+            <div class="btn-row" style="margin-top:0.55rem;">
+              <button class="btn btn-ghost" id="btn-change-username">Cambiar usuario</button>
+              <button class="btn btn-ghost" id="btn-logout">Cerrar sesión</button>
+            </div>
+
+            <hr>
+
+            <div><b>Autocompletado del navegador</b></div>
+            <div class="small-note">Si al escribir la contraseña te aparece <b>“Contraseña de este sitio — Chrome”</b> con un usuario viejo (ej. <b>a1</b>), eso está guardado en el navegador, no en la Suite.</div>
+
+            <div class="btn-row" style="margin-top:0.55rem;">
+              <button class="btn btn-ghost" id="btn-open-pw-manager">Abrir gestor</button>
+              <button class="btn btn-ghost" id="btn-copy-domain">Copiar dominio</button>
+            </div>
+
+            <details style="margin-top:0.55rem;">
+              <summary>Ver pasos (iPad)</summary>
+              <div class="small-note" style="margin-top:0.35rem;">
+                1) Abrí <b>Chrome</b> → Configuración → <b>Administrador de contraseñas</b>.<br>
+                2) Buscá <b>${escapeHtml(location.host)}</b> y eliminá/editar la entrada guardada.<br>
+                3) Si aún aparece, revisá <b>Ajustes del iPad</b> → <b>Contraseñas</b>.
+              </div>
+            </details>
+
+            <div class="small-note">Todo se guarda localmente en este navegador (modo app / PWA).</div>
+          `,
+          primaryText: 'Cambiar nombre',
+          onPrimary: () => openChangeName(),
+          secondaryText: 'Cambiar contraseña',
+          onSecondary: () => openChangePassword(),
+          cancelText: 'Cerrar',
+          onCancel: hideModal
+        });
+
+        setTimeout(() => {
+          // botones existentes
+          const btnOpen = document.getElementById('btn-open-pw-manager');
+          if (btnOpen){
+            btnOpen.onclick = () => {
+              try{ window.open('https://passwords.google.com', '_blank', 'noopener'); }
+              catch(e){ window.location.href = 'https://passwords.google.com'; }
+            };
+          }
+
+          const btnCopy = document.getElementById('btn-copy-domain');
+          if (btnCopy){
+            btnCopy.onclick = async () => {
+              const dom = location.origin;
+              try{
+                if (navigator.clipboard && navigator.clipboard.writeText){
+                  await navigator.clipboard.writeText(dom);
+                  showToast('Dominio copiado.', 3000);
+                } else {
+                  prompt('Copiá el dominio:', dom);
+                }
+              }catch(e){
+                prompt('Copiá el dominio:', dom);
+              }
+            };
+          }
+
+          const btnChangeU = document.getElementById('btn-change-username');
+          if (btnChangeU){
+            btnChangeU.onclick = () => openChangeUsername();
+          }
+
+          const btnLogout = document.getElementById('btn-logout');
+          if (btnLogout){
+            btnLogout.onclick = () => {
+              A33Auth.logout();
+              location.reload();
+            };
+          }
+
+          // Calculadora: export
+          const btnExportCalc = document.getElementById('btn-export-calc-only');
+          if (btnExportCalc){
+            btnExportCalc.onclick = () => {
+              try{
+                const payload = buildCalculatorOnlyExport();
+                const json = JSON.stringify(payload, null, 2);
+                downloadTextFile(buildCalcOnlyFilename(), json);
+                showToast('✅ Calculadora exportada (JSON).', 4500);
+              }catch(e){
+                showToast(`⚠️ No se pudo exportar: ${e?.message || e}`, 5500);
+              }
+            };
+          }
+
+          // Calculadora: seleccionar archivo
+          const btnPick = document.getElementById('btn-pick-calc-only');
+          if (btnPick){
+            btnPick.onclick = async () => {
+              const f = await pickCalcOnlyFile();
+              if (!f) return;
+
+              calcOnlySelected = { fileName: f.name, valid: null, payload: null };
+              renderCalcOnlyState();
+
+              try{
+                const text = await readTextFile(f);
+                const parsed = safeJsonParse(text);
+                if (!parsed.ok){
+                  calcOnlySelected.valid = { ok:false, reason:'JSON inválido.' };
+                  renderCalcOnlyState();
+                  showToast('⚠️ JSON inválido.', 4500);
+                  return;
+                }
+
+                const v = validateCalculatorOnlyBackup(parsed.obj);
+                calcOnlySelected.valid = v;
+                calcOnlySelected.payload = v.ok ? v.payload : null;
+
+                renderCalcOnlyState();
+                if (v.ok) showToast('✅ Respaldo de Calculadora validado.', 3500);
+                else showToast(`⚠️ Respaldo inválido: ${v.reason}`, 6500);
+              }catch(e){
+                calcOnlySelected.valid = { ok:false, reason: e?.message || String(e) };
+                renderCalcOnlyState();
+                showToast(`⚠️ No se pudo leer/validar: ${e?.message || e}`, 6500);
+              }
+            };
+          }
+
+          // Restablecer Suite (blindado)
+          const btnReset = document.getElementById('btn-reset-suite-keep-calc');
+          if (btnReset){
+            btnReset.onclick = async () => {
+              if (!(calcOnlySelected && calcOnlySelected.valid && calcOnlySelected.valid.ok && calcOnlySelected.payload)){
+                showToast('Seleccioná un JSON válido de Calculadora primero.', 4500);
+                return;
+              }
+
+              const goBack = () => openUserPanel();
+
+              showModal({
+                title: 'Restablecer Suite',
+                bodyHtml: `
+                  <div class="badge-warn">⚠️ Esto borrará <b>TODO</b> en este navegador (POS, Finanzas, Pedidos, etc.).</div>
+                  <div class="small-note" style="margin-top:0.4rem;">Se conservará la Calculadora usando el JSON validado.</div>
+                  <div class="small-note">Tip: cerrá otras pestañas de la Suite para evitar bloqueo.</div>
+                `,
+                primaryText: 'Continuar',
+                onPrimary: () => {
+                  showModal({
+                    title: 'Confirmación final',
+                    bodyHtml: `
+                      <div class="small-note">Escribí exactamente <b>BORRAR</b> para confirmar.</div>
+                      <div class="field" style="margin-top:0.55rem;">
+                        <label for="confirm-borrar">Confirmación</label>
+                        <input id="confirm-borrar" type="text" placeholder="BORRAR" maxlength="12" style="letter-spacing:0.08em;text-align:center;">
+                      </div>
+                      <div class="small-note">Si te equivocas, no pasa nada: la Suite se queda intacta.</div>
+                    `,
+                    primaryText: 'Borrar todo y reiniciar',
+                    onPrimary: async () => {
+                      const v = (document.getElementById('confirm-borrar')?.value || '').trim();
+                      if (v !== 'BORRAR'){
+                        showToast('Confirmación incorrecta. Escribí BORRAR (tal cual).', 4500);
+                        return;
+                      }
+
+                      showModal({
+                        title: 'Restableciendo...',
+                        bodyHtml: '<div class="muted">Borrando datos y restaurando Calculadora. No cierres esta pestaña.</div>',
+                        disableCancel: true,
+                        disablePrimary: true
+                      });
+
+                      try{
+                        await resetSuitePreservingCalculator(calcOnlySelected.payload);
+                        location.reload();
+                      }catch(err){
+                        showModal({
+                          title: 'No se pudo restablecer',
+                          bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(err?.message || err)}</div><div class="small-note">Cierra otras pestañas de la Suite y reintenta.</div>`,
+                          primaryText: 'Volver',
+                          onPrimary: () => goBack(),
+                          cancelText: 'Cerrar',
+                          onCancel: hideModal
+                        });
+                      }
+                    },
+                    cancelText: 'Cancelar',
+                    onCancel: () => goBack()
+                  });
+
+                  setTimeout(() => {
+                    const el = document.getElementById('confirm-borrar');
+                    if (el) el.focus();
+                  }, 0);
+                },
+                cancelText: 'Cancelar',
+                onCancel: () => goBack()
+              });
+            };
+          }
+
+          renderCalcOnlyState();
+        }, 0);
+      }
+
+      if (userPanelCard){
+        userPanelCard.addEventListener('click', openUserPanel);
+      }
+// Inicializar UI de Usuario
+      refreshUserCard();
+
+      if (exportCard){
         exportCard.addEventListener('click', async () => {
           showModal({
             title: 'Resumen del respaldo',
@@ -2055,7 +2264,29 @@ if (exportCard){
         });
       }
 
+      // --- Boot: verificar sesión y decidir si mostrar la app o el lock ---
+      // Nota: si esto no corre, el splash de "Verificando sesión..." queda pegado.
+      (async () => {
+        try{
+          await initAuthUi();
+        }catch(e){
+          console.error('Error al verificar sesión:', e);
+          // Fail-safe: no dejar el splash colgado.
+          try{ showLock(); }catch(_){ hideBootSplash(); }
+        }
+      })();
+
+      // Fail-safe extra: por si algún await se cuelga (ej. storage/crypto), nunca bloquear el acceso.
+      setTimeout(() => {
+        const bs = document.getElementById('boot-splash');
+        if (bs && bs.style.display !== 'none'){
+          console.warn('Fail-safe: ocultando splash de arranque.');
+          try{ showLock(); }catch(_){ hideBootSplash(); }
+        }
+      }, 2500);
+
     });
   </script>
+  <script src="/assets/js/a33-input-ux.js"></script>
 </body>
 </html>

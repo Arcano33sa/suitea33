@@ -142,6 +142,7 @@
               <option value="ingreso">Ingresos</option>
               <option value="egreso">Egresos</option>
               <option value="ajuste">Ajustes</option>
+                          <option value="transferencia">Transferencias</option>
             </select>
           </label>
 
@@ -154,7 +155,7 @@
             Origen
             <select id="filtro-origen">
               <option value="todos">Todos</option>
-              <option value="Manual">Manual</option>
+              <option value="Interno">Interno</option>
               <option value="POS">POS</option>
             </select>
           </label>
@@ -196,7 +197,8 @@
                 <option value="ingreso">Ingreso</option>
                 <option value="egreso">Egreso</option>
                 <option value="ajuste">Ajuste</option>
-              </select>
+                            <option value="transferencia">Transferencia</option>
+            </select>
             </label>
 
             <label>
@@ -673,6 +675,14 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="/assets/js/a33-storage.js"></script>
+  <script src="/assets/js/a33-auth.js"></script>
+  <script>
+    if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
+      location.href = "../index.html";
+    }
+  </script>
   <script src="script.js"></script>
+  <script src="/assets/js/a33-input-ux.js"></script>
 </body>
 </html>

@@ -1,14 +1,17 @@
-
-const CACHE = 'a33-pos-v3_20_1';
+const CACHE = 'a33-pos-v4_20_4_fix1';
 const ASSETS = [
   './',
-  './index.html?v=3.20.1',
-  './styles.css?v=3.20.1',
-  './app.js?v=3.20.1',
-  './manifest.webmanifest?v=3.20.1',
+  './index.html?v=4.20.4',
+  './styles.css?v=4.20.4',
+  './app.js?v=4.20.4',
+  './manifest.webmanifest?v=4.20.4',
   './logo.png',
   './brand_symbol.jpg',
-  './brand_wordmark.jpg'
+  './brand_wordmark.jpg',
+  '/assets/js/a33-input-ux.js',
+  '/assets/js/a33-storage.js',
+  '/assets/js/a33-auth.js',
+  '/assets/css/a33-header.css'
 ];
 
 self.addEventListener('install', (e)=>{
@@ -26,6 +29,6 @@ self.addEventListener('fetch', (e)=>{
         caches.open(CACHE).then(c=>c.put(e.request, copy));
       }
       return resp;
-    }).catch(()=>caches.match('./index.html?v=3.20.1')))
+    }).catch(()=>caches.match('./index.html?v=4.20.4')))
   );
 });

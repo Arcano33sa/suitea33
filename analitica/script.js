@@ -277,7 +277,7 @@
 
   function loadCostosPresentacion(){
     try {
-      const raw = localStorage.getItem(RECETAS_KEY);
+      const raw = A33Storage.getItem(RECETAS_KEY);
       if (!raw) {
         costosPresentacion = null;
         return;
@@ -998,7 +998,7 @@
 
   function loadInventarioFinished(){
     try {
-      const raw = localStorage.getItem(INVENTARIO_KEY);
+      const raw = A33Storage.getItem(INVENTARIO_KEY);
       if (!raw) return null;
       const data = JSON.parse(raw);
       if (data && data.finished && typeof data.finished === 'object') {

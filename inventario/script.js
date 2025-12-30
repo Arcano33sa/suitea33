@@ -52,9 +52,19 @@ function parseNumber(value) {
   return Number.isNaN(n) ? 0 : n;
 }
 
+function markA33Num(input, { defaultValue = '0', mode = 'decimal' } = {}) {
+  try {
+    if (!input || !(input instanceof HTMLInputElement)) return;
+    if (input.readOnly || input.disabled) return;
+    input.classList.add('a33-num');
+    input.dataset.a33Default = String(defaultValue);
+    input.inputMode = mode;
+  } catch (e) {}
+}
+
 function loadInventario() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_INVENTARIO);
+    const raw = A33Storage.getItem(STORAGE_KEY_INVENTARIO);
     let data = raw ? JSON.parse(raw) : null;
     if (!data || typeof data !== "object") data = defaultInventario();
 
@@ -94,7 +104,7 @@ function loadInventario() {
 }
 
 function saveInventario(inv) {
-  localStorage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(inv));
+  A33Storage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(inv));
 }
 
 function calcularEstadoLiquido(liq) {
@@ -146,6 +156,7 @@ function renderLiquidos(inv) {
     inputStock.value = typeof info.stock === "number" ? info.stock : parseNumber(info.stock);
     inputStock.dataset.id = l.id;
     inputStock.dataset.kind = "liquid-stock";
+    markA33Num(inputStock, { defaultValue: '0', mode: 'decimal' });
     tdStock.appendChild(inputStock);
     tr.appendChild(tdStock);
 
@@ -157,6 +168,7 @@ function renderLiquidos(inv) {
     inputMax.value = typeof info.max === "number" ? info.max : parseNumber(info.max);
     inputMax.dataset.id = l.id;
     inputMax.dataset.kind = "liquid-max";
+    markA33Num(inputMax, { defaultValue: '0', mode: 'decimal' });
     tdMax.appendChild(inputMax);
     tr.appendChild(tdMax);
 
@@ -181,7 +193,9 @@ function renderLiquidos(inv) {
 
     const btnEntrada = document.createElement("button");
     btnEntrada.type = "button";
-    btnEntrada.textContent = "Entrada";
+    btnEntrada.textContent = "+";
+    btnEntrada.title = "Entrada";
+    btnEntrada.setAttribute("aria-label", "Entrada");
     btnEntrada.className = "btn-secondary btn-mini";
     btnEntrada.dataset.action = "entrada";
     btnEntrada.dataset.id = l.id;
@@ -189,7 +203,9 @@ function renderLiquidos(inv) {
 
     const btnSalida = document.createElement("button");
     btnSalida.type = "button";
-    btnSalida.textContent = "Salida";
+    btnSalida.textContent = "−";
+    btnSalida.title = "Salida";
+    btnSalida.setAttribute("aria-label", "Salida");
     btnSalida.className = "btn-danger btn-mini";
     btnSalida.dataset.action = "salida";
     btnSalida.dataset.id = l.id;
@@ -223,6 +239,7 @@ function renderBotellas(inv) {
     inputStock.value = typeof info.stock === "number" ? info.stock : parseNumber(info.stock);
     inputStock.dataset.id = bDef.id;
     inputStock.dataset.kind = "bottle-stock";
+    markA33Num(inputStock, { defaultValue: '0', mode: 'numeric' });
     tdStock.appendChild(inputStock);
     tr.appendChild(tdStock);
 
@@ -240,7 +257,9 @@ function renderBotellas(inv) {
 
     const btnEntrada = document.createElement("button");
     btnEntrada.type = "button";
-    btnEntrada.textContent = "Entrada";
+    btnEntrada.textContent = "+";
+    btnEntrada.title = "Entrada";
+    btnEntrada.setAttribute("aria-label", "Entrada");
     btnEntrada.className = "btn-secondary btn-mini";
     btnEntrada.dataset.action = "entrada";
     btnEntrada.dataset.id = bDef.id;
@@ -248,7 +267,9 @@ function renderBotellas(inv) {
 
     const btnSalida = document.createElement("button");
     btnSalida.type = "button";
-    btnSalida.textContent = "Salida";
+    btnSalida.textContent = "−";
+    btnSalida.title = "Salida";
+    btnSalida.setAttribute("aria-label", "Salida");
     btnSalida.className = "btn-danger btn-mini";
     btnSalida.dataset.action = "salida";
     btnSalida.dataset.id = bDef.id;

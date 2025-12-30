@@ -331,6 +331,99 @@ tr:nth-child(even) td {
 
 
 /* Inventario: estilos adicionales */
+
+/* FIX UI: evitar overflow en columna Acciones (iPad/PWA) */
+.inv-table.has-actions {
+  table-layout: fixed;
+}
+
+.inv-table.has-actions th,
+.inv-table.has-actions td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-table.has-actions th:last-child,
+.inv-table.has-actions td:last-child {
+  width: 112px;
+}
+
+.inv-table.has-actions input[type="number"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.inv-table.has-actions .inv-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.inv-table.has-actions .inv-actions .btn-secondary,
+.inv-table.has-actions .inv-actions .btn-danger {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  line-height: 1;
+  font-size: 1.05rem;
+}
+
+.inv-table.has-actions .inv-actions .btn-secondary {
+  color: var(--color-accent-soft);
+  border-color: rgba(221, 191, 100, 0.45);
+  background: rgba(221, 191, 100, 0.08);
+}
+
+.inv-table.has-actions .inv-actions .btn-danger {
+  color: #ff8a80;
+  border-color: rgba(255, 138, 128, 0.55);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.inv-table.has-actions .inv-actions .btn-secondary:hover,
+.inv-table.has-actions .inv-actions .btn-danger:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.55);
+}
+
+.inv-table.has-actions .inv-actions .btn-secondary:active,
+.inv-table.has-actions .inv-actions .btn-danger:active {
+  transform: translateY(0px) scale(0.98);
+}
+
+.inv-table.has-actions .inv-actions .btn-secondary:focus-visible,
+.inv-table.has-actions .inv-actions .btn-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(221, 191, 100, 0.55), 0 10px 20px rgba(0,0,0,0.55);
+}
+
+@media (max-width: 640px) {
+  .inv-table.has-actions th:last-child,
+  .inv-table.has-actions td:last-child {
+    width: 96px;
+  }
+
+  .inv-table.has-actions .inv-actions .btn-secondary,
+  .inv-table.has-actions .inv-actions .btn-danger {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+    font-size: 1rem;
+  }
+}
+
 .inv-table th:nth-child(1),
 .inv-table td:nth-child(1) {
   white-space: nowrap;

@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Arcano 33 · Planificación de Pedidos</title>
   <meta name="description" content="Planificación y registro de pedidos y entregas de Sangría Artesanal Premium Arcano 33." />
   <meta name="theme-color" content="#7b1818" />
@@ -12,29 +12,21 @@
   <link rel="manifest" href="manifest.webmanifest" />
 
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css" />
 </head>
 <body>
-  <header class="app-header">
-    <div class="brand">
-      <img src="images/logo.png" alt="Logo Arcano 33" class="logo" />
-      <div class="brand-text">
-        <h1>Arcano 33</h1>
-        <p>Planificación de Pedidos · Sangría Artesanal Premium</p>
-      </div>
-    </div>
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Planificación de Pedidos</div>
+    <div class="a33-version">v4.20.4</div>
   </header>
-
-  <div style="text-align:right; margin: 0.25rem 1rem 0;">
-    <a href="../index.html" class="btn-secondary" style="display:inline-block; text-decoration:none;">← Menú principal</a>
-  </div>
-
   <main class="app-main">
     <section class="card form-card">
       <h2>Nuevo pedido</h2>
       <form id="pedido-form">
         <div class="form-grid">
           <div class="field">
-            <label for="fechaCreacion">Fecha de creación</label>
+            <label for="fechaCreacion">Fecha de Fabricación</label>
             <input type="date" id="fechaCreacion" name="fechaCreacion" required />
           </div>
 
@@ -97,67 +89,67 @@
         <div class="form-grid-compact">
           <div class="field">
             <label>Pulso 250 ml · Cantidad</label>
-            <input type="number" id="pulsoCant" min="0" step="1" value="0" />
+            <input type="number" id="pulsoCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
           <div class="field">
             <label>Pulso · Precio unitario (C$)</label>
-            <input type="number" id="pulsoPrecio" min="0" step="0.01" value="120" />
+            <input type="number" id="pulsoPrecio" min="0" step="0.01" value="120" class="a33-num" data-a33-default="120" inputmode="decimal">
           </div>
           <div class="field">
             <label>Pulso · Descuento (C$)</label>
-            <input type="number" id="pulsoDesc" min="0" step="0.01" value="0" />
+            <input type="number" id="pulsoDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
 
           <div class="field">
             <label>Media 375 ml · Cantidad</label>
-            <input type="number" id="mediaCant" min="0" step="1" value="0" />
+            <input type="number" id="mediaCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
           <div class="field">
             <label>Media · Precio unitario (C$)</label>
-            <input type="number" id="mediaPrecio" min="0" step="0.01" value="150" />
+            <input type="number" id="mediaPrecio" min="0" step="0.01" value="150" class="a33-num" data-a33-default="150" inputmode="decimal">
           </div>
           <div class="field">
             <label>Media · Descuento (C$)</label>
-            <input type="number" id="mediaDesc" min="0" step="0.01" value="0" />
+            <input type="number" id="mediaDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
 
           <div class="field">
             <label>Djeba 750 ml · Cantidad</label>
-            <input type="number" id="djebaCant" min="0" step="1" value="0" />
+            <input type="number" id="djebaCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
           <div class="field">
             <label>Djeba · Precio unitario (C$)</label>
-            <input type="number" id="djebaPrecio" min="0" step="0.01" value="300" />
+            <input type="number" id="djebaPrecio" min="0" step="0.01" value="300" class="a33-num" data-a33-default="300" inputmode="decimal">
           </div>
           <div class="field">
             <label>Djeba · Descuento (C$)</label>
-            <input type="number" id="djebaDesc" min="0" step="0.01" value="0" />
+            <input type="number" id="djebaDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
 
           <div class="field">
             <label>Litro 1000 ml · Cantidad</label>
-            <input type="number" id="litroCant" min="0" step="1" value="0" />
+            <input type="number" id="litroCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
           <div class="field">
             <label>Litro · Precio unitario (C$)</label>
-            <input type="number" id="litroPrecio" min="0" step="0.01" value="330" />
+            <input type="number" id="litroPrecio" min="0" step="0.01" value="330" class="a33-num" data-a33-default="330" inputmode="decimal">
           </div>
           <div class="field">
             <label>Litro · Descuento (C$)</label>
-            <input type="number" id="litroDesc" min="0" step="0.01" value="0" />
+            <input type="number" id="litroDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
 
           <div class="field">
             <label>Galón 3800 ml · Cantidad</label>
-            <input type="number" id="galonCant" min="0" step="1" value="0" />
+            <input type="number" id="galonCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
           </div>
           <div class="field">
             <label>Galón · Precio unitario (C$)</label>
-            <input type="number" id="galonPrecio" min="0" step="0.01" value="800" />
+            <input type="number" id="galonPrecio" min="0" step="0.01" value="800" class="a33-num" data-a33-default="800" inputmode="decimal">
           </div>
           <div class="field">
             <label>Galón · Descuento (C$)</label>
-            <input type="number" id="galonDesc" min="0" step="0.01" value="0" />
+            <input type="number" id="galonDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
         </div>
 
@@ -165,7 +157,7 @@
         <div class="form-grid">
           <div class="field">
             <label for="envio">Envío (C$)</label>
-            <input type="number" id="envio" name="envio" min="0" step="0.01" value="0" />
+            <input type="number" id="envio" name="envio" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
           <div class="field">
             <label for="subtotal">Subtotal (C$)</label>
@@ -203,7 +195,7 @@
 
           <div class="field">
             <label for="montoPagado">Monto pagado (C$)</label>
-            <input type="number" id="montoPagado" name="montoPagado" min="0" step="0.01" value="0" />
+            <input type="number" id="montoPagado" name="montoPagado" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
 
           <div class="field">
@@ -251,7 +243,7 @@
               <th>Entrega</th>
               <th>Total (C$)</th>
               <th>Entregado</th>
-              <th>Acciones</th>
+              <th class="actions-col">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -267,6 +259,15 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="/assets/js/a33-storage.js"></script>
+  <script src="/assets/js/a33-auth.js"></script>
+  <script>
+    // Guard (sin async): si no hay sesión, volver al Home.
+    if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
+      location.href = "../index.html";
+    }
+  </script>
   <script src="script.js"></script>
+  <script src="/assets/js/a33-input-ux.js"></script>
 </body>
 </html>

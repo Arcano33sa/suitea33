@@ -7,7 +7,7 @@ function $(id) {
 
 function loadPedidos() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_PEDIDOS);
+    const raw = A33Storage.getItem(STORAGE_KEY_PEDIDOS);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -18,7 +18,7 @@ function loadPedidos() {
 }
 
 function savePedidos(list) {
-  localStorage.setItem(STORAGE_KEY_PEDIDOS, JSON.stringify(list));
+  A33Storage.setItem(STORAGE_KEY_PEDIDOS, JSON.stringify(list));
 }
 
 function formatDate(d) {
@@ -122,7 +122,7 @@ function clearForm() {
   $("entregado").checked = false;
   editingId = null;
 
-  // fecha de creación por defecto hoy
+  // fecha de fabricación por defecto hoy
   const hoy = new Date().toISOString().slice(0, 10);
   $("fechaCreacion").value = hoy;
   if (!$("fechaEntrega").value) $("fechaEntrega").value = hoy;
@@ -227,33 +227,38 @@ function renderTable() {
     tr.appendChild(entregadoTd);
 
     const accionesTd = document.createElement("td");
-    accionesTd.style.whiteSpace = "nowrap";
+    accionesTd.className = "actions-cell";
 
     const verBtn = document.createElement("button");
-    verBtn.textContent = "Ver";
-    verBtn.className = "btn-secondary";
+    verBtn.textContent = "👁";
+    verBtn.className = "btn-secondary a33-icon-btn";
     verBtn.type = "button";
+    verBtn.title = "Ver";
+    verBtn.setAttribute("aria-label", "Ver");
     verBtn.addEventListener("click", () => verPedido(p.id));
 
     const calBtn = document.createElement("button");
-    calBtn.textContent = "Calendario";
-    calBtn.className = "btn-secondary";
+    calBtn.textContent = "📅";
+    calBtn.className = "btn-secondary a33-icon-btn";
     calBtn.type = "button";
-    calBtn.style.marginLeft = "0.25rem";
+    calBtn.title = "Calendario";
+    calBtn.setAttribute("aria-label", "Calendario");
     calBtn.addEventListener("click", () => exportPedidoToCalendar(p.id));
 
     const editarBtn = document.createElement("button");
-    editarBtn.textContent = "Editar";
-    editarBtn.className = "btn-primary";
+    editarBtn.textContent = "✏️";
+    editarBtn.className = "btn-primary a33-icon-btn";
     editarBtn.type = "button";
-    editarBtn.style.marginLeft = "0.25rem";
+    editarBtn.title = "Editar";
+    editarBtn.setAttribute("aria-label", "Editar");
     editarBtn.addEventListener("click", () => editPedido(p.id));
 
     const borrarBtn = document.createElement("button");
-    borrarBtn.textContent = "Borrar";
-    borrarBtn.className = "btn-danger";
+    borrarBtn.textContent = "🗑";
+    borrarBtn.className = "btn-danger a33-icon-btn";
     borrarBtn.type = "button";
-    borrarBtn.style.marginLeft = "0.25rem";
+    borrarBtn.title = "Borrar";
+    borrarBtn.setAttribute("aria-label", "Borrar");
     borrarBtn.addEventListener("click", () => deletePedido(p.id));
 
     accionesTd.appendChild(verBtn);
@@ -274,7 +279,7 @@ function verPedido(id) {
   const lines = [];
 
   lines.push(`Código: ${p.codigo || ""}`);
-  lines.push(`Fecha creación: ${formatDate(p.fechaCreacion)}`);
+  lines.push(`Fecha fabricación: ${formatDate(p.fechaCreacion)}`);
   lines.push(`Fecha entrega: ${formatDate(p.fechaEntrega)}`);
   lines.push(`Prioridad: ${p.prioridad || "normal"}`);
   lines.push("");
@@ -439,7 +444,7 @@ function exportToCSV() {
   }
 
   const headers = [
-    "Fecha creación",
+    "Fecha fabricación",
     "Fecha entrega",
     "Código",
     "Cliente",
@@ -594,7 +599,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("export-btn").addEventListener("click", () => exportToCSV());
   $("clear-all-btn").addEventListener("click", () => {
     if (!confirm("¿Borrar todos los pedidos registrados?")) return;
-    localStorage.removeItem(STORAGE_KEY_PEDIDOS);
+    A33Storage.removeItem(STORAGE_KEY_PEDIDOS);
     renderTable();
     clearForm();
   });

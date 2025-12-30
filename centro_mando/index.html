@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Arcano 33 · Centro de Mando</title>
+  <meta name="description" content="Centro de mando operativo para eventos: estado del día, caja chica, checklist y radar rápido." />
+  <meta name="theme-color" content="#0f0f0f" />
+
+  <link rel="icon" type="image/png" sizes="192x192" href="../inventario/images/logo.png" />
+  <link rel="apple-touch-icon" href="../inventario/images/logo.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.3" />
+  <link rel="stylesheet" href="style.css?v=4.20.3" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css" />
+</head>
+<body class="a33-cm-page">
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Centro de Mando</div>
+    <div class="a33-version">v4.20.3</div>
+  </header>
+
+  <main class="cm-main">
+    <section class="card cm-hero">
+      <div class="cm-hero-top">
+        <div>
+          <h2>Evento Enfocado</h2>
+          <p class="hint">Selecciona el evento que quieres “tener en la mira”. Lo demás se ajusta solo.</p>
+        </div>
+        <div class="cm-focus">
+          <label for="cm-event">Enfocado</label>
+          <select id="cm-event"></select>
+        </div>
+      </div>
+
+      <div id="cm-empty" class="empty" style="display:none;">
+        <h3>Aún no hay eventos</h3>
+        <p>Crea tu primer evento desde POS para que el Centro de Mando tenga combustible.</p>
+        <a class="btn btn-primary" href="../pos/index.html#eventos">Ir a POS → Eventos</a>
+      </div>
+
+      <div id="cm-focus-block" style="display:none;">
+        <div class="cm-kpis">
+          <article class="kpi">
+            <div class="kpi-label">Estado del día</div>
+            <div class="kpi-value" id="cm-day-status">—</div>
+            <div class="kpi-sub" id="cm-day-sub">—</div>
+          </article>
+          <article class="kpi">
+            <div class="kpi-label">Ventas hoy (evento)</div>
+            <div class="kpi-value" id="cm-sales-today">—</div>
+            <div class="kpi-sub" id="cm-sales-today-sub">—</div>
+          </article>
+          <article class="kpi">
+            <div class="kpi-label">Checklist hoy</div>
+            <div class="kpi-value" id="cm-check-progress">—</div>
+            <div class="kpi-sub" id="cm-check-sub">—</div>
+          </article>
+        </div>
+
+        <div class="cm-actions">
+          <a class="btn btn-primary" id="cm-go-pos" href="../pos/index.html#venta">Ir a POS (Vender)</a>
+          <a class="btn btn-ghost" id="cm-go-caja" href="../pos/index.html#caja">Ir a Caja Chica</a>
+          <a class="btn btn-ghost" id="cm-go-check" href="../pos/index.html#checklist">Ir a Checklist</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="card cm-radar">
+      <div class="panel-head">
+        <h2>Radar global</h2>
+        <p class="hint">Resumen ligero. Si algo no es trivial de calcular, aquí verás “—” en lugar de bugs.</p>
+      </div>
+
+      <div class="cm-radar-grid">
+        <article class="kpi">
+          <div class="kpi-label">Eventos con día abierto</div>
+          <div class="kpi-value" id="cm-open-days">—</div>
+          <div class="kpi-sub" id="cm-open-days-sub">Hoy</div>
+        </article>
+        <article class="kpi">
+          <div class="kpi-label">Alertas de inventario</div>
+          <div class="kpi-value" id="cm-inv-alerts">—</div>
+          <div class="kpi-sub" id="cm-inv-alerts-sub">Líquidos (Inventario general)</div>
+        </article>
+        <article class="kpi">
+          <div class="kpi-label">Ventas hoy (global)</div>
+          <div class="kpi-value" id="cm-sales-global">—</div>
+          <div class="kpi-sub" id="cm-sales-global-sub">Todo POS</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="card cm-detail" id="cm-detail" style="display:none;">
+      <div class="panel-head">
+        <h2>Detalle del evento enfocado</h2>
+        <p class="hint" id="cm-detail-title">—</p>
+      </div>
+
+      <div class="cm-detail-grid">
+        <article class="card inner">
+          <h3>Caja Chica (hoy)</h3>
+          <div class="rows" id="cm-pc"></div>
+        </article>
+
+        <article class="card inner">
+          <h3>Ventas (evento)</h3>
+          <div class="rows" id="cm-sales"></div>
+        </article>
+
+        <article class="card inner">
+          <h3>Top productos</h3>
+          <ol class="top" id="cm-top"></ol>
+          <div class="hint">Top por total vendido. Si no hay ventas, se queda vacío (sin drama).</div>
+        </article>
+
+        <article class="card inner">
+          <h3>Inventario crítico</h3>
+          <div class="rows" id="cm-inv"></div>
+          <div class="hint">Por ahora se muestra inventario general (líquidos). Inventario por evento se puede conectar luego.</div>
+        </article>
+      </div>
+    </section>
+
+    <p id="cm-error" class="hint error" style="display:none;"></p>
+  </main>
+
+  <script src="/assets/js/a33-storage.js"></script>
+  <script src="/assets/js/a33-auth.js"></script>
+  <script>
+    if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
+      location.href = "../index.html";
+    }
+  </script>
+  <script src="script.js?v=4.20.3"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js?v=4.20.3');
+    }
+  </script>
+</body>
+</html>
