@@ -605,8 +605,11 @@ async function postPettyCashMovementToFinanzas(eventId, dayKey, mov){
   const expenseEvents = '6100';
   const adjustExpense = '6130';
 
-  const isTransfer = !!mov.isTransfer || mov.uiType === 'transferencia';
-  const isAdjust = !!mov.isAdjust;
+  const isReversal = !!mov.isReversal;
+  const baseMov = (isReversal && mov.reversalOriginal && typeof mov.reversalOriginal === 'object') ? mov.reversalOriginal : mov;
+
+  const isTransfer = !!baseMov.isTransfer || baseMov.uiType === 'transferencia';
+  const isAdjust = !!baseMov.isAdjust;
 
   let tipoMovimiento = 'egreso';
   let debeCode = expenseEvents;
@@ -616,7 +619,7 @@ async function postPettyCashMovementToFinanzas(eventId, dayKey, mov){
   if (isTransfer){
     tipoMovimiento = 'transferencia';
     kindTag = 'TRANSFERENCIA';
-    const tk = mov.transferKind || 'to_bank';
+    const tk = baseMov.transferKind || 'to_bank';
     if (tk === 'from_general'){
       debeCode = cashEvents;
       haberCode = cashGeneral;
@@ -629,7 +632,7 @@ async function postPettyCashMovementToFinanzas(eventId, dayKey, mov){
     }
   } else if (isAdjust){
     tipoMovimiento = 'ajuste';
-    if (mov.type === 'entrada'){
+    if (baseMov.type === 'entrada'){
       kindTag = 'AJUSTE SOBRANTE';
       debeCode = cashEvents;
       haberCode = incomeCode;
@@ -638,7 +641,7 @@ async function postPettyCashMovementToFinanzas(eventId, dayKey, mov){
       debeCode = adjustExpense;
       haberCode = cashEvents;
     }
-  } else if (mov.type === 'entrada'){
+  } else if (baseMov.type === 'entrada'){
     tipoMovimiento = 'ingreso';
     kindTag = 'INGRESO';
     debeCode = cashEvents;
@@ -650,12 +653,31 @@ async function postPettyCashMovementToFinanzas(eventId, dayKey, mov){
     haberCode = cashEvents;
   }
 
+  // Reverso: invertir Debe/Haber usando el mismo mapeo del movimiento original.
+  if (isReversal){
+    const tmp = debeCode;
+    debeCode = haberCode;
+    haberCode = tmp;
+    kindTag = `REVERSO ${kindTag}`;
+  }
+
   // Memo / descripción
   let desc = String(mov.description || '').trim();
   if (mov.currency === 'USD' && fxUsed){
     desc = `${desc} (USD ${round2(amountOrig)} @ ${round2(fxUsed)} = C$ ${amountNio.toFixed(2)})`;
   }
-  const memo = `[POS Caja Chica] ${kindTag} - ${desc || '—'} - ${eventName} - ${mvDate}`;
+
+  let memo = `[POS Caja Chica] ${kindTag} - ${desc || '—'} - ${eventName} - ${mvDate}`;
+  if (isReversal){
+    const motivo = String(mov.reversalMotivo || '').trim();
+    const o = (mov.reversalOf != null) ? `#${mov.reversalOf}` : '—';
+    memo = `ANULACIÓN Caja Chica POS — Reverso de movimiento ${o} — Motivo: ${motivo || '—'}`;
+    // Mantener contexto del evento/fecha para auditoría
+    memo += ` — ${eventName} — ${mvDate}`;
+    if (mov.currency === 'USD' && fxUsed){
+      memo += ` (USD ${round2(amountOrig)} @ ${round2(fxUsed)} = C$ ${amountNio.toFixed(2)})`;
+    }
+  }
 
   // Crear asiento + líneas (doble partida)
   await new Promise((resolve)=>{
@@ -688,6 +710,10 @@ async function postPettyCashMovementToFinanzas(eventId, dayKey, mov){
             createdAt: mov.createdAt,
             uiType: mov.uiType,
             type: mov.type,
+            isReversal: !!mov.isReversal,
+            reversalOf: (mov.reversalOf != null) ? mov.reversalOf : null,
+            reversalMotivo: mov.reversalMotivo || null,
+            reversalOriginal: (mov.reversalOriginal && typeof mov.reversalOriginal === 'object') ? mov.reversalOriginal : null,
             isAdjust: !!mov.isAdjust,
             adjustKind: mov.adjustKind || null,
             isTransfer: !!mov.isTransfer,
@@ -6815,7 +6841,10 @@ function setPettyReadOnly(isReadOnly, allowReopen){
   const fsCount = document.getElementById('pc-count-fieldset');
   const fsMov = document.getElementById('pc-mov-fieldset');
   if (fsCount) fsCount.disabled = !!isReadOnly;
-  if (fsMov) fsMov.disabled = !!isReadOnly;
+  // IMPORTANTE (contabilidad): Caja Chica ya no se “borra”.
+  // Incluso en días cerrados/histórico, permitimos el botón “Revertir” por movimiento.
+  // Por eso NO deshabilitamos el fieldset completo de movimientos; se bloquean inputs específicos abajo.
+  if (fsMov) fsMov.disabled = false;
 
   const lockAll = (sel) => {
     document.querySelectorAll(sel).forEach(el => { el.disabled = !!isReadOnly; });
@@ -6915,13 +6944,13 @@ function renderPettyHistoryControls(pc){
     const target = pettyReturnDayKey || '';
     if (banner){
       banner.style.display = 'block';
-      banner.textContent = `Vista histórica (solo lectura): ${from}. Día objetivo: ${target}.`;
+      banner.textContent = `Vista histórica: ${from}. Día objetivo: ${target}.`;
     }
     if (btnUse){
       btnUse.textContent = target ? `Usar cierre del ${from} como inicio del ${target}` : 'Usar este cierre como inicio';
     }
     if (note){
-      note.textContent = 'Nota: en histórico no se puede editar. Usa “Volver al día operativo” para registrar cambios.';
+      note.textContent = 'Nota: en histórico no se editan conteos ni se agregan movimientos manuales. Correcciones: usa “Revertir” en el movimiento que corresponda.';
     }
   } else {
     if (banner){
@@ -7633,6 +7662,15 @@ function renderPettyMovements(pc, dayKey, readOnly){
   const movs = Array.isArray(day.movements) ? day.movements : [];
   if (!movs.length) return;
 
+  // Índice rápido: qué movimientos ya tienen reverso (para compatibilidad con datos viejos)
+  const hasReversalFor = new Set();
+  for (const x of movs){
+    if (x && x.isReversal && x.reversalOf != null){
+      const oid = Number(x.reversalOf);
+      if (Number.isFinite(oid)) hasReversalFor.add(oid);
+    }
+  }
+
   // Más reciente primero
   const ordered = [...movs].sort((a,b)=> (Number(b.id||0) - Number(a.id||0)));
   for (const m of ordered){
@@ -7650,6 +7688,10 @@ function renderPettyMovements(pc, dayKey, readOnly){
     const tdType = document.createElement('td');
     // Tipo visible: Ingreso / Egreso / Ajuste
     let typeLabel = (m && m.type === 'salida') ? 'Egreso' : 'Ingreso';
+    if (m && m.isReversal){
+      typeLabel = 'Reverso';
+      if (m.reversalOf != null) typeLabel += ` (#${m.reversalOf})`;
+    }
     if (m && m.isAdjust){
       const k = (m.adjustKind === 'sobrante') ? 'Sobrante' : 'Faltante';
       typeLabel = `Ajuste (${k})`;
@@ -7671,13 +7713,27 @@ function renderPettyMovements(pc, dayKey, readOnly){
     tdDesc.textContent = m.description || '';
 
     const tdAct = document.createElement('td');
-    if (!readOnly){
+    const idNum = (m && m.id != null) ? Number(m.id) : NaN;
+    const alreadyAdjusted = !!(m && (m.isAdjusted || m.isReverted || m.reversedBy != null)) || (Number.isFinite(idNum) && hasReversalFor.has(idNum));
+
+    // UI: Eliminamos borrado. Correcciones solo por reverso.
+    if (m && m.isReversal){
+      const b = document.createElement('span');
+      b.className = 'badge';
+      b.textContent = 'Reverso';
+      tdAct.appendChild(b);
+    } else if (alreadyAdjusted){
+      const b = document.createElement('span');
+      b.className = 'badge';
+      b.textContent = 'Revertido';
+      tdAct.appendChild(b);
+    } else if (Number.isFinite(idNum)){
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'btn small danger';
-      btn.dataset.movid = String(m.id || '');
-      btn.textContent = 'Eliminar';
-      btn.addEventListener('click', ()=> onDeletePettyMovement(m.id));
+      btn.className = 'btn-warn btn-mini btn-pill';
+      btn.dataset.movid = String(idNum);
+      btn.textContent = 'Revertir';
+      btn.addEventListener('click', ()=> onRevertPettyMovement(idNum));
       tdAct.appendChild(btn);
     }
 
@@ -7690,6 +7746,113 @@ function renderPettyMovements(pc, dayKey, readOnly){
 
     tbody.appendChild(tr);
   }
+}
+
+async function onRevertPettyMovement(originalId){
+  const oid = Number(originalId);
+  if (!Number.isFinite(oid)) return;
+
+  const evId = await getMeta('currentEventId');
+  if (!evId){
+    alert('Activa un evento antes de revertir movimientos de Caja Chica.');
+    return;
+  }
+
+  const dayKey = getSelectedPcDay();
+  const pc = await getPettyCash(evId);
+  const day = ensurePcDay(pc, dayKey);
+  if (!Array.isArray(day.movements)) day.movements = [];
+
+  const movs = day.movements;
+  const orig = movs.find(m => m && Number(m.id) === oid);
+  if (!orig){
+    alert('No se encontró el movimiento a revertir.');
+    return;
+  }
+
+  if (orig.isReversal){
+    alert('Este movimiento ya es un reverso.');
+    return;
+  }
+
+  const hasReversal = movs.some(m => m && m.isReversal && Number(m.reversalOf) === oid);
+  const alreadyAdjusted = !!(orig.isAdjusted || orig.isReverted || orig.reversedBy != null) || hasReversal;
+  if (alreadyAdjusted){
+    // Auto-curar datos viejos: si ya existe un reverso pero el original no quedó marcado.
+    if (hasReversal && !(orig.isAdjusted || orig.reversedBy != null)){
+      const rev = movs.find(m => m && m.isReversal && Number(m.reversalOf) === oid);
+      orig.isAdjusted = true;
+      orig.adjustedAt = orig.adjustedAt || Date.now();
+      if (rev && rev.id != null) orig.reversedBy = rev.id;
+      try{ await savePettyCash(pc); }catch(e){}
+      await renderCajaChica();
+    }
+    alert('Este movimiento ya fue ajustado/revertido. No se puede revertir dos veces.');
+    return;
+  }
+
+  const curTxt = (orig.currency === 'USD') ? 'US$' : 'C$';
+  const kindTxt = (orig.type === 'salida') ? 'Egreso' : 'Ingreso';
+  const amtTxt = fmt(Number(orig.amount || 0));
+  const motivo = prompt(`Revertir movimiento #${oid}\n${kindTxt} · ${curTxt} ${amtTxt}\n\nMotivo (opcional):`, '');
+  if (motivo === null) return;
+  const motivoClean = String(motivo || '').trim();
+
+  // Nuevo movimiento inverso (mismo monto/moneda/fecha, tipo invertido)
+  const nextId = movs.reduce((mx, m)=>{
+    const n = Number(m && m.id);
+    return Number.isFinite(n) ? Math.max(mx, n) : mx;
+  }, 0) + 1;
+
+  const revType = (orig.type === 'salida') ? 'entrada' : 'salida';
+  const desc = `AJUSTE / REVERSO de movimiento #${oid} — Motivo:` + (motivoClean ? ` ${motivoClean}` : '');
+
+  const reverso = {
+    id: nextId,
+    createdAt: Date.now(),
+    date: orig.date || dayKey,
+    uiType: 'reverso',
+    type: revType,
+    currency: orig.currency || 'NIO',
+    amount: Number(orig.amount) || 0,
+    description: desc,
+    isReversal: true,
+    reversalOf: oid,
+    reversalMotivo: motivoClean,
+    // Snapshot para mapeo contable (se usa en Finanzas para invertir cuentas sin cambiar reglas base)
+    reversalOriginal: {
+      type: orig.type,
+      uiType: orig.uiType || null,
+      isAdjust: !!orig.isAdjust,
+      adjustKind: orig.adjustKind || null,
+      isTransfer: !!orig.isTransfer,
+      transferKind: orig.transferKind || null
+    }
+  };
+
+  // Marcar original como AJUSTADO/REVERTIDO
+  orig.isAdjusted = true;
+  orig.adjustedAt = Date.now();
+  orig.reversedBy = nextId;
+
+  day.movements.push(reverso);
+
+  try{
+    await savePettyCash(pc);
+  }catch(err){
+    console.error('onRevertPettyMovement save error', err);
+    showToast('No se pudo guardar el reverso', 'error', 5000);
+    await renderCajaChica();
+    return;
+  }
+
+  // POS → Finanzas (Diario): registrar reverso como un asiento nuevo (no se borra nada)
+  try{
+    await postPettyCashMovementToFinanzas(evId, dayKey, reverso);
+  }catch(e){}
+
+  await renderCajaChica();
+  showToast('Reverso creado y movimiento original marcado como REVERTIDO', 'ok', 5000);
 }
 
 async function onAddPettyMovement(){
@@ -7823,33 +7986,6 @@ async function onAddPettyMovement(){
   updatePettyMovementTypeUI();
 }
 
-async function onDeletePettyMovement(id){
-  if (isPettyHistoryMode()){
-    alert('Estás en Vista histórica (solo lectura). Pulsa “Volver al día operativo” para editar.');
-    return;
-  }
-  const evId = await getMeta('currentEventId');
-  if (!evId) return;
-
-  const dayKey = getSelectedPcDay();
-  const pc = await getPettyCash(evId);
-  const day = ensurePcDay(pc, dayKey);
-
-  if (!Array.isArray(day.movements)) day.movements = [];
-  day.movements = day.movements.filter(m => m.id !== id);
-
-  try{
-    await savePettyCash(pc);
-  }catch(err){
-    console.error('onDeletePettyMovement save error', err);
-    showToast('No se pudo eliminar el movimiento', 'error', 5000);
-    await renderCajaChica();
-    return;
-  }
-  await renderCajaChica();
-}
-
-
 async function onUsePrevCierre(){
   if (isPettyHistoryMode()){
     alert('Estás en Vista histórica (solo lectura). Pulsa “Volver al día operativo” para editar.');
@@ -7971,17 +8107,6 @@ const btnAddMov = document.getElementById('pc-mov-add');
     btnAddMov.addEventListener('click', (e)=>{
       e.preventDefault();
       onAddPettyMovement();
-    });
-  }
-
-  const tbody = document.getElementById('pc-mov-tbody');
-  if (tbody){
-    tbody.addEventListener('click', (e)=>{
-      const btn = e.target.closest('button[data-movid]');
-      if (!btn) return;
-      const id = Number(btn.dataset.movid);
-      if (!id) return;
-      onDeletePettyMovement(id);
     });
   }
 

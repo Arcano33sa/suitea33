@@ -456,6 +456,17 @@ small.muted{color:var(--muted)}
   width:80px;
 }
 
+/* Caja Chica — Tabla de movimientos (evitar overflow horizontal en iPad) */
+#pc-mov-table{ table-layout:fixed; }
+#pc-mov-table th,
+#pc-mov-table td{ white-space:normal; }
+#pc-mov-table th:nth-child(1), #pc-mov-table td:nth-child(1){ width:110px; white-space:nowrap; }
+#pc-mov-table th:nth-child(2), #pc-mov-table td:nth-child(2){ width:140px; white-space:nowrap; }
+#pc-mov-table th:nth-child(3), #pc-mov-table td:nth-child(3){ width:70px; white-space:nowrap; }
+#pc-mov-table th:nth-child(4), #pc-mov-table td:nth-child(4){ width:110px; white-space:nowrap; }
+#pc-mov-table th:nth-child(6), #pc-mov-table td:nth-child(6){ width:120px; white-space:nowrap; text-align:right; }
+#pc-mov-table td:nth-child(5){ word-break:break-word; }
+
 .petty-mov h3{
   margin-top:0;
 }
