@@ -40,6 +40,34 @@
       </div>
     </section>
 
+
+    <!-- RECOMENDACIONES HOY (desde Analítica: cache a33_analytics_recos_v1) -->
+    <section class="cmd-recos" id="recosBlock" aria-label="Recomendaciones hoy">
+      <div class="cmd-card cmd-recos-inner">
+        <div class="cmd-section-head cmd-inv-risk-head">
+          <div class="cmd-section-title">RECOMENDACIONES HOY</div>
+          <div class="cmd-inv-risk-tools">
+            <span class="cmd-inv-updated">Actualizado: <b id="recosUpdatedAt">--:--</b></span>
+            <button class="cmd-pill cmd-pill-mini" id="recosRecalcBtn" type="button" aria-label="Recalcular recomendaciones">
+              <span class="cmd-pill-ico" aria-hidden="true">⟲</span>
+              <span>Recalcular</span>
+            </button>
+          </div>
+        </div>
+        <div class="cmd-muted cmd-recos-desc">Se muestran desde Analítica (cache). Aquí no se recalcula lógica pesada.</div>
+
+        <div class="cmd-recos-empty" id="recosEmpty" hidden>
+          <div class="cmd-recos-empty-title">Sin recomendaciones aún</div>
+          <div class="cmd-muted">Abre Analítica para generarlas y volverlas a ver aquí.</div>
+          <div class="cmd-recos-empty-actions">
+            <button class="cmd-mini-btn" id="btnOpenAnalytics" type="button">Abrir Analítica</button>
+          </div>
+        </div>
+
+        <div class="cmd-recos-list" id="recosList"></div>
+      </div>
+    </section>
+
     <!-- ALERTAS ACCIONABLES -->
     <section class="cmd-alerts" id="alerts" aria-label="Alertas accionables" hidden>
       <div class="cmd-card cmd-alerts-inner">

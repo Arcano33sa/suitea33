@@ -64,6 +64,7 @@
         <button class="tab-btn active" data-tab="resumen" type="button">Resumen</button>
         <button class="tab-btn" data-tab="eventos" type="button">Eventos</button>
         <button class="tab-btn" data-tab="presentaciones" type="button">Presentaciones</button>
+        <button class="tab-btn" data-tab="clientes" type="button">Clientes</button>
         <button class="tab-btn" data-tab="cortesias" type="button">Cortesías</button>
         <button class="tab-btn" data-tab="avanzado" type="button">Avanzado</button>
       </section>
@@ -305,6 +306,112 @@
           <button type="button" id="btn-export-presentaciones" class="btn-secondary">Exportar Excel · Presentaciones</button>
         </div>
       </section>
+
+
+      <!-- TAB CLIENTES -->
+      <section class="tab-content" id="tab-clientes">
+        <div class="clientes-top">
+          <div class="field" style="max-width:320px;">
+            <label for="clientes-buscar">Buscar cliente</label>
+            <input type="text" id="clientes-buscar" placeholder="Nombre del cliente…" autocomplete="off" />
+          </div>
+
+          <div class="field small" style="max-width:220px;">
+            <label for="clientes-dormidos-dias">Dormidos si no compra desde</label>
+            <select id="clientes-dormidos-dias">
+              <option value="14">14 días</option>
+              <option value="30">30 días</option>
+              <option value="60" selected>60 días</option>
+              <option value="90">90 días</option>
+              <option value="180">180 días</option>
+            </select>
+          </div>
+
+          <div class="clientes-actions">
+            <button type="button" id="btn-clientes-recalcular" class="btn-secondary">Recalcular cache</button>
+          </div>
+        </div>
+
+        <p class="hint small" id="clientes-resumen">Sin datos.</p>
+
+        <div class="clientes-layout">
+          <section class="card clientes-list-card">
+            <div class="card-head">
+              <h3>Listado</h3>
+              <span class="hint small" id="clientes-count"></span>
+            </div>
+            <ul id="clientes-list" class="clientes-list"></ul>
+            <p class="hint small" id="clientes-empty" style="display:none;">Sin datos de clientes en el periodo.</p>
+          </section>
+
+          <section class="card clientes-detail-card">
+            <div class="card-head">
+              <h3 id="cliente-nombre">Cliente</h3>
+              <div class="clientes-badges" id="cliente-badges"></div>
+            </div>
+
+            <p class="hint small" id="cliente-sin-seleccion">Selecciona un cliente para ver su ficha.</p>
+
+            <div id="cliente-detalle" style="display:none;">
+              <div class="kpi-grid kpi-grid--clientes">
+                <article class="kpi-card">
+                  <p class="kpi-label">Gasto neto</p>
+                  <p class="kpi-value" id="cliente-gasto">C$ 0.00</p>
+                  <p class="kpi-sub" id="cliente-devs">Devoluciones: C$ 0.00</p>
+                </article>
+                <article class="kpi-card">
+                  <p class="kpi-label">Compras</p>
+                  <p class="kpi-value" id="cliente-compras">0</p>
+                  <p class="kpi-sub" id="cliente-transacciones">Transacciones: 0</p>
+                </article>
+                <article class="kpi-card">
+                  <p class="kpi-label">Ticket promedio</p>
+                  <p class="kpi-value" id="cliente-ticket">C$ 0.00</p>
+                  <p class="kpi-sub" id="cliente-ultima">Última compra: —</p>
+                </article>
+              </div>
+
+              <div class="clientes-subgrid">
+                <div class="clientes-favoritos">
+                  <h4>Formatos favoritos</h4>
+                  <ul id="cliente-favoritos" class="mini-list"></ul>
+                  <p class="hint small" id="cliente-favoritos-empty" style="display:none;">Aún no hay suficientes compras para definir favoritos.</p>
+                </div>
+
+                <div class="clientes-segmento">
+                  <h4>Segmento</h4>
+                  <ul class="mini-list" id="cliente-segmento"></ul>
+                </div>
+              </div>
+
+              <div class="table-wrapper" style="margin-top:0.75rem;">
+                <table class="analytics-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Evento</th>
+                      <th>Presentación</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-cliente-historial"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="card clientes-recos-card" style="margin-top:1rem;">
+          <div class="card-head">
+            <h3>Cache de recomendaciones</h3>
+            <span class="hint small" id="reco-updated">—</span>
+          </div>
+          <p class="hint small">Este cache se guarda en localStorage para que otros módulos (ej. Centro de Mando) lo consuman.</p>
+          <ul id="clientes-recos-preview" class="recs-list"></ul>
+          <p class="hint small" id="clientes-recos-empty" style="display:none;">Sin recomendaciones por ahora.</p>
+        </section>
+      </section>
+
 
       <!-- TAB CORTESÍAS -->
       <section class="tab-content" id="tab-cortesias">

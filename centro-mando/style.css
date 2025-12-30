@@ -781,3 +781,70 @@ button.cmd-pill{ cursor: pointer; }
 @media (max-width: 560px){
   .cmd-inv-risk-grid{ grid-template-columns: 1fr; }
 }
+
+
+/* --- Recomendaciones hoy (Analítica: cache) --- */
+.cmd-recos{ margin-top: 12px; }
+.cmd-recos-inner{ padding: 14px; }
+.cmd-recos-desc{ margin-bottom: 10px; }
+
+.cmd-recos-list{
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cmd-reco-item{
+  display:flex;
+  align-items:flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.18);
+  min-width: 0;
+}
+
+.cmd-reco-main{ flex: 1 1 auto; min-width: 0; }
+
+.cmd-reco-top{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.cmd-reco-title{
+  font-weight: 900;
+  font-size: 13.5px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.cmd-reco-reason{ margin-top: 4px; overflow-wrap: anywhere; }
+
+.cmd-reco-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.cmd-recos-empty{
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px dashed rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.12);
+  margin-bottom: 10px;
+}
+
+.cmd-recos-empty-title{ font-weight: 950; font-size: 14.5px; }
+.cmd-recos-empty-actions{ margin-top: 10px; }
+
+/* Afinar mini botones para anchors/botones sin subrayado */
+.cmd-mini-btn{ text-decoration: none; display:inline-flex; align-items:center; justify-content:center; }

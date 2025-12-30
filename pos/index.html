@@ -124,6 +124,22 @@
       </div>
     </div>
 
+    <!-- Cliente (opcional) + modo pegajoso -->
+    <div class="row" id="sale-customer-row">
+      <div>
+        <label>Cliente (opcional)</label>
+        <input id="sale-customer" list="customer-datalist" placeholder="Escribe o selecciona…">
+        <datalist id="customer-datalist"></datalist>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <div class="customer-controls">
+          <label class="flag"><input id="sale-customer-sticky" type="checkbox"> Cliente pegajoso</label>
+          <button id="btn-clear-customer" class="btn-mini btn-outline" type="button">Limpiar cliente</button>
+        </div>
+      </div>
+    </div>
+
     <div class="row" id="sale-bank-row" style="display:none">
       <div>
         <label>Banco (solo Transferencia)</label>
@@ -142,9 +158,7 @@
           <label class="flag"><input id="sale-return" type="checkbox"> Devolución</label>
         </div>
         <div>
-          <label>Cliente (si es Crédito)</label>
-          <input id="sale-customer" placeholder="Nombre del cliente (crédito)" disabled>
-          <label style="margin-top:6px">Cortesía a</label>
+          <label>Cortesía a</label>
           <input id="sale-courtesy-to" placeholder="Nombre (si marcaste cortesía)" disabled>
         </div>
       </div>

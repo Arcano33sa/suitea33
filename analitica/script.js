@@ -15,6 +15,7 @@
   let products = [];
   let costosPresentacion = null;
   const INVENTARIO_KEY = 'arcano33_inventario';
+  const ANALYTICS_RECOS_KEY = 'a33_analytics_recos_v1';
 
   // Umbrales para cortesías (porcentaje sobre total)
   const COURTESY_GREEN_PCT = 5;   // <5% verde
@@ -33,6 +34,10 @@
   let lastEventStats = null;
   let lastResumenStats = null;
   let lastAgotamiento = null;
+  let lastClientsIndex = null;
+  let selectedClientKey = null;
+  let dormidosDays = 60;
+  let clientesSearch = '';
 
   // Canvas charts (custom): keep last data to allow safe re-render on tab switch / resize.
   const CHART_CACHE = new Map(); // canvasId -> { labels, values, opts }
@@ -49,6 +54,8 @@
     setupCortesiasUI();
     setupAgotamientoUI();
     setupExportButtons();
+    setupClientesUI();
+    applyTabFromURL();
 
     try {
       await openDB();
@@ -509,6 +516,7 @@
     updateAgotamiento();
     updateAlertas(presStats, eventStats, resumenStats);
     updateProyecciones(presStats, resumenStats);
+    updateClientes(filteredSales, presStats, eventStats, range);
   }
 
   // --- Resumen (incluye rentabilidad mensual y recomendaciones) ---
@@ -2016,6 +2024,538 @@ function rebuildHorasEventOptions(filteredSales){
   }
 
 
+
+
+  // --- Clientes (MVP) + cache de recomendaciones ---
+
+  function applyTabFromURL(){
+    try{
+      const url = new URL(window.location.href);
+      const tab = (url.searchParams.get('tab') || '').trim();
+      if (!tab) return;
+      const btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+      if (btn) btn.click();
+    }catch(_){ }
+  }
+
+  function setupClientesUI(){
+    const input = document.getElementById('clientes-buscar');
+    const dormidosSel = document.getElementById('clientes-dormidos-dias');
+    const btnRecalc = document.getElementById('btn-clientes-recalcular');
+
+    if (input){
+      input.addEventListener('input', () => {
+        clientesSearch = (input.value || '').trim();
+        if (lastClientsIndex) renderClientList(lastClientsIndex);
+      });
+    }
+
+    if (dormidosSel){
+      dormidosSel.addEventListener('change', () => {
+        dormidosDays = Math.max(1, parseInt(dormidosSel.value, 10) || 60);
+        if (lastClientsIndex){
+          // Recalcular solo segmento/estado sobre el mismo dataset
+          lastClientsIndex = annotateDormidos(lastClientsIndex, dormidosDays);
+          renderClientList(lastClientsIndex);
+          if (selectedClientKey) renderClientDetail(selectedClientKey, lastClientsIndex);
+          // El cache de recos depende de dormidos
+          writeRecosCache(lastClientsIndex, lastPresStats, lastEventStats, getCurrentRange());
+          renderRecosPreview();
+        }
+      });
+    }
+
+    if (btnRecalc){
+      btnRecalc.addEventListener('click', () => {
+        writeRecosCache(lastClientsIndex, lastPresStats, lastEventStats, getCurrentRange(), { force:true });
+        renderRecosPreview();
+      });
+    }
+
+    // Pintar preview al entrar
+    renderRecosPreview();
+  }
+
+  function sanitizeCustomerName(raw){
+    const s = (raw == null) ? '' : String(raw);
+    return s.replace(/\s+/g, ' ').trim();
+  }
+
+  function normalizeKey(str){
+    const s = sanitizeCustomerName(str).toLowerCase();
+    try{
+      // Quitar acentos para agrupar y buscar mejor.
+      return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }catch(_){
+      return s;
+    }
+  }
+
+  function parseSaleDateTime(sale){
+    const d = parseSaleDate(sale && sale.date);
+    if (!d) return null;
+    const t = String(sale && sale.time || '').trim();
+    if (t && /^\d{2}:\d{2}/.test(t)){
+      const hh = parseInt(t.slice(0,2),10); const mm = parseInt(t.slice(3,5),10);
+      if (!isNaN(hh) && !isNaN(mm)){
+        d.setHours(hh, mm, 0, 0);
+      }
+    }
+    return d;
+  }
+
+  function daysBetween(a, b){
+    if (!(a instanceof Date) || !(b instanceof Date)) return 0;
+    const ms = b.getTime() - a.getTime();
+    return Math.floor(ms / (1000*60*60*24));
+  }
+
+  function annotateDormidos(index, thresholdDays){
+    const now = new Date();
+    const rows = (index && Array.isArray(index.rows)) ? index.rows : [];
+    for (const c of rows){
+      const last = c.lastPaidAt;
+      const days = last ? daysBetween(last, now) : 999999;
+      c.daysSinceLast = days;
+      c.isDormido = days >= thresholdDays;
+    }
+    index.dormidosDays = thresholdDays;
+    index.dormidosCount = rows.filter(r => r.isDormido).length;
+    return index;
+  }
+
+  function buildClientsIndex(filteredSales){
+    const map = new Map();
+
+    for (const s of (filteredSales || [])){
+      const rawName = (s && (s.customerName || s.customer)) || '';
+      const name = sanitizeCustomerName(rawName);
+      if (!name) continue;
+      const key = normalizeKey(name);
+      if (!key) continue;
+
+      if (!map.has(key)){
+        map.set(key, {
+          key,
+          name,
+          totalNet: 0,
+          paidCount: 0,
+          txCount: 0,
+          returnsValueAbs: 0,
+          lastPaidAt: null,
+          lines: [],
+          pres: new Map()
+        });
+      }
+
+      const c = map.get(key);
+      // Mantener el displayName “más reciente” si viene diferente
+      if (name.length > c.name.length) c.name = name;
+
+      const total = Number(s.total || 0) || 0;
+      const isCourtesy = !!(s.courtesy || s.isCourtesy);
+      const isReturn = !!s.isReturn;
+
+      c.txCount += 1;
+      if (!isCourtesy){
+        c.totalNet += total;
+        if (total > 0 && !isReturn) c.paidCount += 1;
+        if (isReturn && total < 0) c.returnsValueAbs += Math.abs(total);
+      }
+
+      // última compra (solo pagada, no devolución, no cortesía)
+      if (!isCourtesy && !isReturn && total > 0){
+        const dt = parseSaleDateTime(s) || new Date(s.createdAt || 0);
+        if (dt && (!c.lastPaidAt || dt > c.lastPaidAt)) c.lastPaidAt = dt;
+      }
+
+      // favoritos: neto por presentación/producto
+      const presLabel = String(s.productName || '—');
+      const qtyRaw = Number(s.qty || 0) || 0;
+      const qtyAbs = Math.abs(qtyRaw);
+      const sign = isReturn ? -1 : 1;
+      const deltaUnits = sign * qtyAbs;
+      if (!c.pres.has(presLabel)) c.pres.set(presLabel, 0);
+      c.pres.set(presLabel, (c.pres.get(presLabel) || 0) + deltaUnits);
+
+      // historial
+      const dtHist = parseSaleDateTime(s) || new Date(s.createdAt || 0);
+      c.lines.push({
+        date: s.date || '',
+        time: s.time || '',
+        dt: dtHist,
+        eventName: s.eventName || 'General',
+        productName: s.productName || '—',
+        total: total,
+        isReturn,
+        isCourtesy
+      });
+    }
+
+    const rows = Array.from(map.values());
+    // Orden base por gasto neto desc
+    rows.sort((a,b) => (b.totalNet || 0) - (a.totalNet || 0));
+
+    // Ordenar historial desc por fecha
+    rows.forEach(c => {
+      c.lines.sort((x,y) => {
+        const ax = x.dt ? x.dt.getTime() : 0;
+        const ay = y.dt ? y.dt.getTime() : 0;
+        return ay - ax;
+      });
+    });
+
+    return { rows, totalClients: rows.length, dormidosDays: dormidosDays, dormidosCount: 0 };
+  }
+
+  function updateClientes(filteredSales, presStats, eventStats, range){
+    const res = document.getElementById('clientes-resumen');
+    const listEl = document.getElementById('clientes-list');
+    const emptyEl = document.getElementById('clientes-empty');
+
+    if (!listEl || !res || !emptyEl) return;
+
+    lastClientsIndex = buildClientsIndex(filteredSales);
+    lastClientsIndex = annotateDormidos(lastClientsIndex, dormidosDays);
+
+    const total = lastClientsIndex.totalClients || 0;
+    const dormidos = lastClientsIndex.dormidosCount || 0;
+
+    if (!total){
+      res.textContent = 'Sin datos: aún no hay ventas con Cliente en el periodo seleccionado.';
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+      renderClientDetail(null, lastClientsIndex);
+      writeRecosCache(lastClientsIndex, presStats, eventStats, range);
+      renderRecosPreview();
+      return;
+    }
+
+    emptyEl.style.display = 'none';
+    res.textContent = `Clientes: ${total} · Dormidos (≥${dormidosDays} días): ${dormidos}`;
+
+    renderClientList(lastClientsIndex);
+
+    // Autoselección estable
+    if (selectedClientKey && lastClientsIndex.rows.some(r => r.key === selectedClientKey)){
+      renderClientDetail(selectedClientKey, lastClientsIndex);
+    } else {
+      const first = lastClientsIndex.rows[0];
+      selectedClientKey = first ? first.key : null;
+      renderClientDetail(selectedClientKey, lastClientsIndex);
+    }
+
+    // Cache recos (auto)
+    writeRecosCache(lastClientsIndex, presStats, eventStats, range);
+    renderRecosPreview();
+  }
+
+  function renderClientList(index){
+    const listEl = document.getElementById('clientes-list');
+    const countEl = document.getElementById('clientes-count');
+    const emptyEl = document.getElementById('clientes-empty');
+
+    if (!listEl) return;
+
+    const q = normalizeKey(clientesSearch || '');
+    const rowsAll = (index && Array.isArray(index.rows)) ? index.rows : [];
+    const rows = q ? rowsAll.filter(c => normalizeKey(c.name).includes(q)) : rowsAll;
+
+    if (countEl) countEl.textContent = rows.length ? `${rows.length} visibles` : '';
+
+    if (!rows.length){
+      listEl.innerHTML = '';
+      if (emptyEl) emptyEl.style.display = 'block';
+      return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    const html = rows.map(c => {
+      const last = c.lastPaidAt ? formatDateCompact(c.lastPaidAt) : '—';
+      const dormChip = c.isDormido ? `<span class="chip red">Dormido</span>` : `<span class="chip green">Activo</span>`;
+      const active = (selectedClientKey === c.key) ? 'active' : '';
+      return `
+        <li class="cliente-row ${active}" data-client="${escapeHtml(c.key)}">
+          <div class="cliente-main">
+            <div class="cliente-name">${escapeHtml(c.name)}</div>
+            <div class="cliente-meta">Última compra: ${escapeHtml(last)}</div>
+          </div>
+          <div class="cliente-side">
+            <div class="cliente-meta">${formatCurrency(c.totalNet || 0)}</div>
+            ${dormChip}
+          </div>
+        </li>
+      `;
+    }).join('');
+
+    listEl.innerHTML = html;
+
+    // listeners
+    listEl.querySelectorAll('.cliente-row').forEach(li => {
+      li.addEventListener('click', () => {
+        const key = li.getAttribute('data-client');
+        selectedClientKey = key;
+        // marcar activo
+        listEl.querySelectorAll('.cliente-row').forEach(x => x.classList.toggle('active', x === li));
+        renderClientDetail(key, index);
+      });
+    });
+  }
+
+  function renderClientDetail(key, index){
+    const nameEl = document.getElementById('cliente-nombre');
+    const badgesEl = document.getElementById('cliente-badges');
+    const empty = document.getElementById('cliente-sin-seleccion');
+    const detail = document.getElementById('cliente-detalle');
+
+    const gastoEl = document.getElementById('cliente-gasto');
+    const devsEl = document.getElementById('cliente-devs');
+    const comprasEl = document.getElementById('cliente-compras');
+    const txEl = document.getElementById('cliente-transacciones');
+    const ticketEl = document.getElementById('cliente-ticket');
+    const ultimaEl = document.getElementById('cliente-ultima');
+
+    const favEl = document.getElementById('cliente-favoritos');
+    const favEmptyEl = document.getElementById('cliente-favoritos-empty');
+    const segEl = document.getElementById('cliente-segmento');
+    const histEl = document.getElementById('tbody-cliente-historial');
+
+    if (!nameEl || !empty || !detail) return;
+
+    if (!key){
+      nameEl.textContent = 'Cliente';
+      if (badgesEl) badgesEl.innerHTML = '';
+      empty.style.display = 'block';
+      detail.style.display = 'none';
+      return;
+    }
+
+    const rows = (index && Array.isArray(index.rows)) ? index.rows : [];
+    const c = rows.find(x => x.key === key);
+    if (!c){
+      empty.style.display = 'block';
+      detail.style.display = 'none';
+      return;
+    }
+
+    nameEl.textContent = c.name;
+    empty.style.display = 'none';
+    detail.style.display = 'block';
+
+    // Badges
+    if (badgesEl){
+      const lastText = c.lastPaidAt ? `Última: ${formatDateCompact(c.lastPaidAt)}` : 'Sin compras pagadas';
+      const dormText = c.isDormido ? `Dormido (≥${dormidosDays}d)` : 'Activo';
+      badgesEl.innerHTML = `
+        <span class="chip ${c.isDormido ? 'red' : 'green'}">${escapeHtml(dormText)}</span>
+        <span class="chip">${escapeHtml(lastText)}</span>
+      `;
+    }
+
+    const gasto = Number(c.totalNet || 0) || 0;
+    const compras = Number(c.paidCount || 0) || 0;
+    const txs = Number(c.txCount || 0) || 0;
+    const ticket = compras ? (gasto / compras) : 0;
+
+    if (gastoEl) gastoEl.textContent = formatCurrency(gasto);
+    if (devsEl) devsEl.textContent = 'Devoluciones: ' + formatCurrency((c.returnsValueAbs || 0));
+    if (comprasEl) comprasEl.textContent = String(compras);
+    if (txEl) txEl.textContent = 'Transacciones: ' + String(txs);
+    if (ticketEl) ticketEl.textContent = formatCurrency(ticket);
+    if (ultimaEl) ultimaEl.textContent = 'Última compra: ' + (c.lastPaidAt ? formatDateCompact(c.lastPaidAt) : '—');
+
+    // Segmento
+    if (segEl){
+      const segItems = [];
+      if (c.isDormido) segItems.push(['Dormido', `≥${dormidosDays} días sin comprar`]);
+      else segItems.push(['Activo', `${Math.max(0, c.daysSinceLast || 0)} días desde la última compra`]);
+      if (compras >= 5) segItems.push(['Frecuente', '5+ compras en el rango']);
+      if (ticket >= 250) segItems.push(['Ticket alto', 'Promedio ≥ C$ 250']);
+      segEl.innerHTML = segItems.map(([a,b]) => `<li><span>${escapeHtml(a)}</span><span class="mini-muted">${escapeHtml(b)}</span></li>`).join('');
+    }
+
+    // Favoritos (top 5)
+    if (favEl){
+      const arr = Array.from(c.pres.entries())
+        .map(([k,v]) => ({ name:k, units: Number(v||0) || 0 }))
+        .filter(x => x.units !== 0)
+        .sort((a,b) => Math.abs(b.units) - Math.abs(a.units))
+        .slice(0,5);
+      if (!arr.length){
+        favEl.innerHTML = '';
+        if (favEmptyEl) favEmptyEl.style.display = 'block';
+      } else {
+        if (favEmptyEl) favEmptyEl.style.display = 'none';
+        favEl.innerHTML = arr.map(x => `<li><span>${escapeHtml(x.name)}</span><span class="mini-muted">${escapeHtml(String(x.units))} unid.</span></li>`).join('');
+      }
+    }
+
+    // Historial (top 80)
+    if (histEl){
+      const lines = (c.lines || []).slice(0, 80);
+      if (!lines.length){
+        histEl.innerHTML = `<tr><td colspan="4" class="hint small">Sin historial.</td></tr>`;
+      } else {
+        histEl.innerHTML = lines.map(l => {
+          const dt = l.dt instanceof Date ? formatDateCompact(l.dt) : (l.date || '');
+          let totalText = formatCurrency(l.total || 0);
+          if (l.isReturn) totalText = '↩ ' + totalText;
+          if (l.isCourtesy) totalText = '🎁 ' + totalText;
+          return `<tr>
+            <td>${escapeHtml(dt)}</td>
+            <td>${escapeHtml(l.eventName || 'General')}</td>
+            <td>${escapeHtml(l.productName || '—')}</td>
+            <td>${escapeHtml(totalText)}</td>
+          </tr>`;
+        }).join('');
+      }
+    }
+  }
+
+  function formatDateCompact(d){
+    if (!(d instanceof Date)) return '—';
+    try{
+      return d.toLocaleDateString('es-NI', { year:'numeric', month:'short', day:'2-digit' });
+    }catch(_){
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${dd}`;
+    }
+  }
+
+  function safeStorageSetJSON(key, value){
+    try{
+      if (window.A33Storage && A33Storage.setJSON) return A33Storage.setJSON(key, value);
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    }catch(_){
+      return false;
+    }
+  }
+
+  function safeStorageGetJSON(key, fallback=null){
+    try{
+      if (window.A33Storage && A33Storage.getJSON) return A33Storage.getJSON(key, fallback);
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+      return JSON.parse(raw);
+    }catch(_){
+      return fallback;
+    }
+  }
+
+  function buildAnalyticsRecos(clientsIndex, presStats, eventStats, range){
+    const updatedAt = new Date().toISOString();
+    const items = [];
+
+    const clients = (clientsIndex && Array.isArray(clientsIndex.rows)) ? clientsIndex.rows : [];
+    const dormidos = clients.filter(c => c.isDormido);
+
+    if (clients.length){
+      if (dormidos.length){
+        const topDorm = dormidos.slice().sort((a,b)=> (b.totalNet||0)-(a.totalNet||0)).slice(0,3).map(c=>c.name);
+        items.push({
+          type: 'clientes_dormidos',
+          title: `Reactivar ${dormidos.length} clientes dormidos`,
+          reason: `No compran desde hace ≥${dormidosDays} días. Prioriza: ${topDorm.join(', ') || '—'}.`,
+          actionLink: './index.html?tab=clientes',
+          updatedAt
+        });
+      } else {
+        items.push({
+          type: 'clientes_activos',
+          title: 'Clientes activos en el periodo',
+          reason: `Todos los clientes con compras recientes están “activos” bajo el umbral de ${dormidosDays} días. Mantén el ritmo con follow-up post-evento.`,
+          actionLink: './index.html?tab=clientes',
+          updatedAt
+        });
+      }
+    }
+
+    // Presentaciones
+    const presRows = presStats && Array.isArray(presStats.rows) ? presStats.rows : [];
+    if (presRows.length){
+      const topVentas = presRows.slice().sort((a,b)=> (b.ventas||0)-(a.ventas||0))[0];
+      const topMargen = presRows.slice().sort((a,b)=> (b.marginUnit||0)-(a.marginUnit||0))[0];
+
+      if (topVentas){
+        items.push({
+          type: 'top_presentacion',
+          title: `Tu motor del periodo: ${topVentas.label}`,
+          reason: `Es la #1 en ventas (${formatCurrency(topVentas.ventas)}). Mantén stock y dale visibilidad.`,
+          actionLink: './index.html?tab=presentaciones',
+          updatedAt
+        });
+      }
+      if (topMargen){
+        items.push({
+          type: 'mejor_margen',
+          title: `Mayor margen: ${topMargen.label}`,
+          reason: `Margen unitario prom.: ${Number(topMargen.marginUnit||0).toFixed(1)}%. Úsalo para empujar utilidad (bundles / upsell).`,
+          actionLink: './index.html?tab=presentaciones',
+          updatedAt
+        });
+      }
+    }
+
+    // Eventos
+    const evRows = eventStats && Array.isArray(eventStats.rows) ? eventStats.rows : [];
+    if (evRows.length){
+      const topEv = evRows.slice().sort((a,b)=> (b.ventas||0)-(a.ventas||0))[0];
+      if (topEv){
+        items.push({
+          type: 'evento_top',
+          title: `Evento más fuerte: ${topEv.name}`,
+          reason: `Ventas del evento: ${formatCurrency(topEv.ventas)}. Replicar ese formato/ubicación puede darte otro salto.`,
+          actionLink: './index.html?tab=eventos',
+          updatedAt
+        });
+      }
+    }
+
+    return items.slice(0,5);
+  }
+
+  function writeRecosCache(clientsIndex, presStats, eventStats, range, { force=false } = {}){
+    // Evitar re-escrituras frenéticas: si ya se actualizó hace poco, no molestamos.
+    const prev = safeStorageGetJSON(ANALYTICS_RECOS_KEY, null);
+    const now = Date.now();
+    const prevTs = prev && prev[0] && prev[0].updatedAt ? Date.parse(prev[0].updatedAt) : 0;
+    if (!force && prevTs && (now - prevTs) < 60000) return;
+
+    const items = buildAnalyticsRecos(clientsIndex, presStats, eventStats, range);
+    safeStorageSetJSON(ANALYTICS_RECOS_KEY, items);
+  }
+
+  function renderRecosPreview(){
+    const list = document.getElementById('clientes-recos-preview');
+    const empty = document.getElementById('clientes-recos-empty');
+    const updated = document.getElementById('reco-updated');
+    if (!list || !empty || !updated) return;
+
+    const items = safeStorageGetJSON(ANALYTICS_RECOS_KEY, []) || [];
+
+    if (!Array.isArray(items) || !items.length){
+      list.innerHTML = '';
+      empty.style.display = 'block';
+      updated.textContent = '—';
+      return;
+    }
+
+    empty.style.display = 'none';
+
+    const ts = items[0] && items[0].updatedAt ? items[0].updatedAt : null;
+    updated.textContent = ts ? ('Actualizado: ' + ts.replace('T',' ').slice(0,16)) : '—';
+
+    list.innerHTML = items.map(it => {
+      const title = escapeHtml(it.title || 'Recomendación');
+      const reason = escapeHtml(it.reason || '');
+      const link = String(it.actionLink || '').trim();
+      const action = link ? `<a class="btn-secondary" style="padding:0.28rem 0.65rem; font-size:0.78rem;" href="${escapeHtml(link)}">Abrir</a>` : '';
+      return `<li class="recs-item"><div><strong>${title}</strong><div class="hint small" style="margin-top:0.25rem;">${reason}</div></div>${action}</li>`;
+    }).join('');
+  }
   function escapeHtml(str){
     if (str == null) return '';
     return String(str)

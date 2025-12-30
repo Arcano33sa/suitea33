@@ -190,10 +190,13 @@ async function createJournalEntryForSalePOS(sale) {
     const prodName = (sale.productName || '').toString();
     const eventName = (sale.eventName || '').toString();
     const courtesyTo = (sale.courtesyTo || '').toString().trim();
+    // Etapa 5: referencia de cliente (NO CxC / no afecta montos ni cuentas)
+    const customerName = (sale.customerName || '').toString().trim();
 
     const baseParts = [];
     if (prodName) baseParts.push(prodName);
     if (sale && sale.seqId) baseParts.push('N° ' + sale.seqId);
+    if (customerName) baseParts.push('Cliente: ' + customerName);
     if (courtesyTo) baseParts.push('Para: ' + courtesyTo);
     const descripcionBase = baseParts.join(' | ');
 
@@ -836,6 +839,150 @@ async function getMeta(key){
 
 const LAST_GROUP_KEY = 'a33_pos_lastGroupName';
 const HIDDEN_GROUPS_KEY = 'a33_pos_hiddenGroups';
+
+// --- Ventas: Cliente (autocomplete + pegajoso)
+const CUSTOMER_CATALOG_KEY = 'a33_pos_customersCatalog';
+const CUSTOMER_STICKY_KEY  = 'a33_pos_customerSticky';
+const CUSTOMER_LAST_KEY    = 'a33_pos_customerLast';
+
+function normalizeCustomerKeyPOS(name){
+  let s = (name || '').toString();
+  try{ if (s.normalize) s = s.normalize('NFD'); }catch(_){ }
+  return s
+    .replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+function sanitizeCustomerDisplayPOS(name){
+  return (name || '').toString().replace(/\s+/g,' ').trim();
+}
+
+function loadCustomerCatalogPOS(){
+  const list = A33Storage.getJSON(CUSTOMER_CATALOG_KEY, [], 'local');
+  if (!Array.isArray(list)) return [];
+  // limpiar: strings no vacíos y dedupe por key normalizada
+  const out = [];
+  const seen = new Set();
+  for (const it of list){
+    const raw = sanitizeCustomerDisplayPOS(it);
+    if (!raw) continue;
+    const key = normalizeCustomerKeyPOS(raw);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(raw);
+  }
+  return out;
+}
+
+function saveCustomerCatalogPOS(list){
+  try{ A33Storage.setJSON(CUSTOMER_CATALOG_KEY, Array.isArray(list) ? list : [], 'local'); }catch(_){ }
+}
+
+function updateCustomerDatalistPOS(list){
+  const dl = document.getElementById('customer-datalist');
+  if (!dl) return;
+  dl.innerHTML = '';
+  (list || []).slice(0, 250).forEach(name=>{
+    const opt = document.createElement('option');
+    opt.value = name;
+    dl.appendChild(opt);
+  });
+}
+
+function addCustomerToCatalogPOS(name){
+  const n = sanitizeCustomerDisplayPOS(name);
+  if (!n) return;
+  const key = normalizeCustomerKeyPOS(n);
+  if (!key) return;
+
+  const cur = loadCustomerCatalogPOS();
+  const exists = cur.some(x => normalizeCustomerKeyPOS(x) === key);
+  if (exists) return;
+
+  cur.push(n);
+  // Ordenar (A→Z) sin ser agresivos
+  cur.sort((a,b)=> normalizeCustomerKeyPOS(a).localeCompare(normalizeCustomerKeyPOS(b)));
+  saveCustomerCatalogPOS(cur);
+  updateCustomerDatalistPOS(cur);
+}
+
+function isCustomerStickyPOS(){
+  const el = document.getElementById('sale-customer-sticky');
+  return !!(el && el.checked);
+}
+
+function getCustomerNameFromUI_POS(){
+  const inp = document.getElementById('sale-customer');
+  return sanitizeCustomerDisplayPOS(inp ? inp.value : '');
+}
+
+function setCustomerNameUI_POS(val){
+  const inp = document.getElementById('sale-customer');
+  if (!inp) return;
+  inp.value = sanitizeCustomerDisplayPOS(val);
+}
+
+function persistCustomerStickyStatePOS(){
+  try{
+    A33Storage.setItem(CUSTOMER_STICKY_KEY, isCustomerStickyPOS() ? '1' : '0');
+  }catch(_){ }
+}
+
+function persistCustomerLastPOS(val){
+  try{ A33Storage.setItem(CUSTOMER_LAST_KEY, sanitizeCustomerDisplayPOS(val || '')); }catch(_){ }
+}
+
+function initCustomerUXPOS(){
+  const inp = document.getElementById('sale-customer');
+  const sticky = document.getElementById('sale-customer-sticky');
+  const clearBtn = document.getElementById('btn-clear-customer');
+  if (!inp || !sticky) return;
+
+  const list = loadCustomerCatalogPOS();
+  updateCustomerDatalistPOS(list);
+
+  // Estado pegajoso + último cliente
+  const stickyOn = (A33Storage.getItem(CUSTOMER_STICKY_KEY) === '1');
+  sticky.checked = stickyOn;
+  if (stickyOn){
+    const last = A33Storage.getItem(CUSTOMER_LAST_KEY) || '';
+    if (last) inp.value = sanitizeCustomerDisplayPOS(last);
+  }
+
+  sticky.addEventListener('change', ()=>{
+    persistCustomerStickyStatePOS();
+    if (sticky.checked){
+      persistCustomerLastPOS(inp.value || '');
+    }
+  });
+
+  // Guardar último escrito (sirve cuando encienden "pegajoso" a mitad)
+  inp.addEventListener('input', ()=>{
+    if (isCustomerStickyPOS()) persistCustomerLastPOS(inp.value || '');
+  });
+
+  if (clearBtn){
+    clearBtn.addEventListener('click', ()=>{
+      inp.value = '';
+      persistCustomerLastPOS('');
+      inp.focus();
+    });
+  }
+}
+
+function afterSaleCustomerHousekeepingPOS(customerName){
+  const n = sanitizeCustomerDisplayPOS(customerName);
+  if (n) addCustomerToCatalogPOS(n);
+
+  // Persistir "último" solo si es pegajoso; si no, igual lo guardamos para autocompletar
+  persistCustomerLastPOS(n);
+
+  if (!isCustomerStickyPOS()){
+    setCustomerNameUI_POS('');
+  }
+}
 
 function getLastGroupName() {
   try {
@@ -3791,8 +3938,7 @@ async function sellCupsPOS(isCourtesy){
   if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
 
   const payment = document.getElementById('sale-payment')?.value || 'efectivo';
-  const customer = (payment === 'credito') ? (document.getElementById('sale-customer')?.value || '').trim() : '';
-  if (payment === 'credito' && !customer){ alert('Ingresa el nombre del cliente (crédito)'); return; }
+  const customerName = getCustomerNameFromUI_POS();
 
   // Banco (obligatorio si es Transferencia)
   let bankId = null;
@@ -3875,7 +4021,9 @@ async function sellCupsPOS(isCourtesy){
     courtesy: !!isCourtesy,
     isCourtesy: !!isCourtesy,
     isReturn: false,
-    customer,
+    // Compat: mantenemos "customer" y añadimos "customerName" (nuevo)
+    customer: customerName,
+    customerName,
     courtesyTo: isCourtesy ? ((document.getElementById('sale-courtesy-to')?.value || '').trim()) : '',
     total,
     notes: isCourtesy ? 'Cortesía por vaso' : 'Venta por vaso',
@@ -3896,6 +4044,9 @@ async function sellCupsPOS(isCourtesy){
   }catch(e){
     console.error('No se pudo generar asiento contable para venta por vaso', e);
   }
+
+  // Cliente: catálogo + modo pegajoso
+  afterSaleCustomerHousekeepingPOS(customerName);
 
   const qtyInp = document.getElementById('cup-qty');
   if (qtyInp) qtyInp.value = 1;
@@ -4267,7 +4418,7 @@ async function renderDay(){
         <td><span class="tag ${payClass}">${payTxt}</span></td>
         <td>${s.courtesy?'✓':''}</td>
         <td>${s.isReturn?'✓':''}</td>
-        <td>${s.customer||''}</td>
+        <td>${s.customerName||s.customer||''}</td>
         <td>${s.courtesyTo||''}</td>
         <td><button data-id="${s.id}" title="Eliminar venta" class="btn-danger btn-mini del-sale">Eliminar</button></td>`;
       tbody.appendChild(tr);
@@ -4915,7 +5066,7 @@ async function openEventView(eventId){
     const payLabel = (s.payment === 'transferencia')
       ? (`Transferencia · ${getSaleBankLabel(s, bankMap)}`)
       : (s.payment || '');
-    const tr=document.createElement('tr'); tr.innerHTML = `<td>${getSaleSeqDisplayPOS(s)}</td><td>${s.date}</td><td>${getSaleTimeTextPOS(s)}</td><td>${s.productName}</td><td>${s.qty}</td><td>${fmt(s.unitPrice)}</td><td>${fmt(getSaleDiscountTotalPOS(s))}</td><td>${fmt(s.total)}</td><td>${payLabel}</td><td>${s.courtesy?'✓':''}</td><td>${s.isReturn?'✓':''}</td><td>${s.customer||''}</td><td>${s.courtesyTo||''}</td><td>${s.notes||''}</td>`;
+    const tr=document.createElement('tr'); tr.innerHTML = `<td>${getSaleSeqDisplayPOS(s)}</td><td>${s.date}</td><td>${getSaleTimeTextPOS(s)}</td><td>${s.productName}</td><td>${s.qty}</td><td>${fmt(s.unitPrice)}</td><td>${fmt(getSaleDiscountTotalPOS(s))}</td><td>${fmt(s.total)}</td><td>${payLabel}</td><td>${s.courtesy?'✓':''}</td><td>${s.isReturn?'✓':''}</td><td>${s.customerName||s.customer||''}</td><td>${s.courtesyTo||''}</td><td>${s.notes||''}</td>`;
     tb.appendChild(tr);
   });
 
@@ -4931,11 +5082,11 @@ async function exportEventSalesCSV(eventId){
   const bankMap = new Map();
   for (const b of banks){ if (b && b.id != null) bankMap.set(Number(b.id), b.name || ''); }
 
-  const rows = [['N°','id','fecha','hora','producto','cant','PU','desc_C$','total','pago','banco','cortesia','devolucion','cliente','cortesia_a','notas']];
+  const rows = [['N°','id','fecha','hora','producto','cant','PU','desc_C$','total','pago','banco','cortesia','devolucion','cortesia_a','notas','cliente']];
   const ordered = [...sales].sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a)));
   for (const s of ordered){
     const bank = (s.payment === 'transferencia') ? getSaleBankLabel(s, bankMap) : '';
-    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), s.productName, s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, (s.payment||''), bank, s.courtesy?1:0, s.isReturn?1:0, s.customer||'', s.courtesyTo||'', s.notes||'']);
+    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), s.productName, s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, (s.payment||''), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', s.customerName||s.customer||'']);
   }
   const safeName = (ev?ev.name:'evento').replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
@@ -5009,10 +5160,10 @@ async function generateCorteCSV(eventId){
   rows.push(['Neto cobrado', sum.neto.toFixed(2)]);
   rows.push([]);
   rows.push(['Detalle de ventas']);
-  rows.push(['id','fecha','hora','producto','cant','PU','desc_C$','total','pago','banco','cortesia','devolucion','cliente','cortesia_a','notas']);
+  rows.push(['id','fecha','hora','producto','cant','PU','desc_C$','total','pago','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
   for (const s of sales){
     const bank = (s.payment === 'transferencia') ? getSaleBankLabel(s, bankMap) : '';
-    rows.push([s.id, s.date, getSaleTimeTextPOS(s), s.productName, s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, (s.payment||''), bank, s.courtesy?1:0, s.isReturn?1:0, s.customer||'', s.courtesyTo||'', s.notes||'']);
+    rows.push([s.id, s.date, getSaleTimeTextPOS(s), s.productName, s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, (s.payment||''), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', s.customerName||s.customer||'']);
   }
   const safeName = ev.name.replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`corte_${safeName}.xlsx`, 'Corte', rows);
@@ -5261,7 +5412,7 @@ async function exportEventExcel(eventId){
 
   // --- Hoja 3 opcional: Ventas_Detalle ---
   const ventasRows = [];
-  ventasRows.push(['N°','id','fecha','hora','producto','cantidad','PU_C$','descuento_C$','total_C$','costo_unit_C$','costo_total_C$','pago','banco','cortesia','devolucion','cliente','cortesia_a','notas']);
+  ventasRows.push(['N°','id','fecha','hora','producto','cantidad','PU_C$','descuento_C$','total_C$','costo_unit_C$','costo_total_C$','pago','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
   for (const s of sales){
     const qty = Number(s.qty || 0);
     const costUnit = Number.isFinite(Number(s.costPerUnit)) ? Number(s.costPerUnit) : 0;
@@ -5282,9 +5433,9 @@ async function exportEventExcel(eventId){
       (s.payment === 'transferencia') ? getSaleBankLabel(s, bankMap) : '',
       s.courtesy ? 1 : 0,
       s.isReturn ? 1 : 0,
-      s.customer || '',
       s.courtesyTo || '',
-      s.notes || ''
+      s.notes || '',
+      s.customerName || s.customer || ''
     ]);
   }
   const wsVentas = XLSX.utils.aoa_to_sheet(ventasRows);
@@ -5482,6 +5633,7 @@ async function init(){
   await runStep('renderCajaChica', renderCajaChica);
   await runStep('updateSellEnabled', updateSellEnabled);
   await runStep('initVasosPanel', initVasosPanelPOS);
+  await runStep('initCustomerUX', async()=>{ initCustomerUXPOS(); });
 
   // Paso 5: barra offline y eventos de Caja Chica
   try{
@@ -5690,9 +5842,7 @@ async function init(){
   $('#sale-courtesy').addEventListener('change', ()=>{ $('#sale-courtesy-to').disabled = !$('#sale-courtesy').checked; recomputeTotal(); });
   $('#sale-return').addEventListener('change', recomputeTotal);
   $('#sale-payment').addEventListener('change', async ()=>{
-    const isCred = $('#sale-payment').value==='credito';
-    $('#sale-customer').disabled = !isCred;
-    if (!isCred) $('#sale-customer').value='';
+    // Cliente ahora es opcional para cualquier método de pago
     await refreshSaleBankSelect();
   });
   $('#sale-date').addEventListener('change', async()=>{
@@ -6009,11 +6159,10 @@ async function addSale(){
   const payment = $('#sale-payment').value;
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
-  const customer = (payment==='credito') ? ($('#sale-customer').value||'').trim() : '';
+  const customerName = getCustomerNameFromUI_POS();
   const courtesyTo = $('#sale-courtesy-to').value || '';
   const notes = $('#sale-notes').value || '';
   if (!date || !productId || !qty) { alert('Completa fecha, producto y cantidad'); return; }
-  if (payment==='credito' && !customer){ alert('Ingresa el nombre del cliente (crédito)'); return; }
 
   // Banco (obligatorio si es Transferencia)
   let bankId = null;
@@ -6094,7 +6243,9 @@ async function addSale(){
     bankName: (payment === 'transferencia') ? bankName : null,
     courtesy,
     isReturn,
-    customer,
+    // Compat: mantenemos "customer" y añadimos "customerName" (nuevo)
+    customer: customerName,
+    customerName,
     courtesyTo,
     total,
     notes,
@@ -6118,7 +6269,7 @@ async function addSale(){
   // limpiar campos para el siguiente registro (incluye NOTAS)
   $('#sale-qty').value=1; 
   $('#sale-discount').value=0; 
-  if (payment==='credito') $('#sale-customer').value=''; 
+  afterSaleCustomerHousekeepingPOS(customerName);
   $('#sale-courtesy-to').value='';
   $('#sale-notes').value=''; // limpiar notas
   const nextTotal = (courtesy?0:price).toFixed(2);
@@ -6150,7 +6301,7 @@ async function addExtraSale(extraId){
   const payment = $('#sale-payment').value;
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
-  const customer = (payment==='credito') ? ($('#sale-customer').value||'').trim() : '';
+  const customerName = getCustomerNameFromUI_POS();
   const courtesyTo = $('#sale-courtesy-to').value || '';
   const notes = $('#sale-notes').value || '';
 
@@ -6158,7 +6309,6 @@ async function addExtraSale(extraId){
 
   // Candado: si Caja Chica está activada y el día está cerrado, NO permitir ventas
   if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
-  if (payment==='credito' && !customer){ alert('Ingresa el nombre del cliente (crédito)'); return; }
 
   // Banco (obligatorio si es Transferencia)
   let bankId = null;
@@ -6260,7 +6410,9 @@ async function addExtraSale(extraId){
     payment,
     bankId,
     bankName,
-    customer,
+    // Compat: mantenemos "customer" y añadimos "customerName" (nuevo)
+    customer: customerName,
+    customerName,
     courtesy,
     courtesyTo,
     notes,
@@ -6275,6 +6427,9 @@ async function addExtraSale(extraId){
 
   await put('sales', saleRecord);
   await createJournalEntryForSalePOS(saleRecord);
+
+  // Cliente: catálogo + modo pegajoso
+  afterSaleCustomerHousekeepingPOS(customerName);
 
   // Reset mínimos
   $('#sale-qty').value = '1';

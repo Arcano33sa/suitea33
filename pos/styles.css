@@ -266,6 +266,22 @@ footer{
 small.muted{color:var(--muted)}
 .flag{display:flex;align-items:center;gap:8px}
 .flag input[type="checkbox"]{width:auto}
+
+/* Cliente (Ventas) */
+.customer-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-start}
+.customer-controls .flag{margin:0}
+
+.btn-outline{
+  width:auto;
+  border-radius:999px;
+  padding:8px 12px;
+  border:1px solid rgba(212,175,55,0.35);
+  background:#141414;
+  color:var(--accent);
+  font-weight:800;
+  box-shadow:0 6px 16px rgba(0,0,0,0.18);
+}
+.btn-outline:active{filter:brightness(.98)}
 .compact th, .compact td{font-size:13px}
 .info{padding:9px;border-radius:10px;background:#0f1b0f;border:1px solid #214021;color:#b6f0b6;margin-top:8px}
 .warn{padding:9px;border-radius:10px;background:#2a1b0f;border:1px solid #5a3d12;color:#ffd7a1;margin-top:8px}

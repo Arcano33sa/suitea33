@@ -17,6 +17,10 @@ const ORDERS_LS_KEY = 'arcano33_pedidos';
 const ORDERS_ROUTE = '../pedidos/index.html';
 const SAFE_SCAN_LIMIT = 4000; // seguridad: evitar loops gigantes
 
+// --- Recomendaciones (desde Analítica: cache en localStorage)
+const ANALYTICS_RECOS_KEY = 'a33_analytics_recos_v1';
+const ANALYTICS_ROUTE = '../analitica/index.html';
+
 // --- Inventario (localStorage) — solo lectura (NO tocar estructura)
 const INV_LS_KEY = 'arcano33_inventario';
 const INV_ROUTE = '../inventario/index.html';
@@ -503,6 +507,187 @@ function fmtMoneyNIO(n){
 function safeStr(x){
   const s = (x == null) ? '' : String(x);
   return s.trim();
+}
+
+
+// --- Recomendaciones (Analítica: cache)
+function safeLSGetJSON(key, fallback=null){
+  try{
+    if (window.A33Storage && typeof A33Storage.getJSON === 'function') return A33Storage.getJSON(key, fallback);
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  }catch(_){
+    return fallback;
+  }
+}
+
+function resolveAnalyticsLink(actionLink){
+  const s = safeStr(actionLink);
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('?') || s.startsWith('#')) return ANALYTICS_ROUTE + s;
+  if (s.startsWith('./')) return '../analitica/' + s.slice(2);
+  if (/^index\.html/i.test(s)) return '../analitica/' + s;
+  if (s.startsWith('analitica/')) return '../' + s;
+  if (s.startsWith('/')) return s;
+  // default: asumir ruta dentro de Analítica
+  return '../analitica/' + s.replace(/^\.\//,'');
+}
+
+function parseRecoUpdatedAt(items){
+  // Preferir updatedAt del primer item (Analítica escribe el mismo para todos)
+  try{
+    const ts = items && items[0] && items[0].updatedAt ? Date.parse(items[0].updatedAt) : 0;
+    if (ts && isFinite(ts)) return new Date(ts);
+  }catch(_){ }
+  // fallback: buscar el primero válido
+  for (const it of (Array.isArray(items) ? items : [])){
+    try{
+      const t = it && it.updatedAt ? Date.parse(it.updatedAt) : 0;
+      if (t && isFinite(t)) return new Date(t);
+    }catch(_){ }
+  }
+  return null;
+}
+
+function readAnalyticsRecos(){
+  const raw = safeLSGetJSON(ANALYTICS_RECOS_KEY, null);
+  let items = [];
+  if (Array.isArray(raw)) items = raw;
+  else if (raw && typeof raw === 'object' && Array.isArray(raw.items)) items = raw.items;
+  items = (Array.isArray(items) ? items : []).filter(x=> x && typeof x === 'object').slice(0, 5);
+  const updatedAt = parseRecoUpdatedAt(items);
+  return { items, updatedAt };
+}
+
+function recoTypeClass(type){
+  const t = safeStr(type).toLowerCase();
+  if (!t) return 'cmd-chip-neutral';
+  if (t.includes('dorm') || t.includes('react')) return 'cmd-chip-red';
+  if (t.includes('margen') || t.includes('top') || t.includes('upsell') || t.includes('cross')) return 'cmd-chip-yellow';
+  return 'cmd-chip-neutral';
+}
+
+function renderRecos(){
+  const list = $('recosList');
+  const empty = $('recosEmpty');
+  const updated = $('recosUpdatedAt');
+  if (!list || !empty || !updated) return;
+
+  const { items, updatedAt } = readAnalyticsRecos();
+
+  if (!Array.isArray(items) || items.length === 0){
+    list.innerHTML = '';
+    empty.hidden = false;
+    updated.textContent = '--:--';
+    return;
+  }
+
+  empty.hidden = true;
+  updated.textContent = updatedAt ? fmtHHMM(updatedAt) : '--:--';
+
+  list.innerHTML = '';
+  for (const it of items){
+    const row = document.createElement('div');
+    row.className = 'cmd-reco-item';
+
+    const main = document.createElement('div');
+    main.className = 'cmd-reco-main';
+
+    const top = document.createElement('div');
+    top.className = 'cmd-reco-top';
+
+    const chip = document.createElement('span');
+    chip.className = 'cmd-chip ' + recoTypeClass(it.type);
+    chip.textContent = safeStr(it.type) ? safeStr(it.type).replace(/_/g,' ') : 'reco';
+
+    const title = document.createElement('div');
+    title.className = 'cmd-reco-title';
+    title.textContent = safeStr(it.title) || 'Recomendación';
+
+    top.appendChild(chip);
+    top.appendChild(title);
+
+    const reason = document.createElement('div');
+    reason.className = 'cmd-reco-reason cmd-muted';
+    reason.textContent = safeStr(it.reason) || '';
+
+    main.appendChild(top);
+    if (reason.textContent) main.appendChild(reason);
+
+    const actions = document.createElement('div');
+    actions.className = 'cmd-reco-actions';
+
+    const link = resolveAnalyticsLink(it.actionLink);
+    const btnView = document.createElement('button');
+    btnView.className = 'cmd-mini-btn';
+    btnView.type = 'button';
+    btnView.textContent = 'Ver';
+    btnView.disabled = !link;
+    if (link){
+      btnView.addEventListener('click', ()=>{
+        try{ window.location.href = link; }catch(_){ }
+      });
+    }
+    actions.appendChild(btnView);
+
+    const copyText = safeStr(it.copyText || it.text || it.suggestedText);
+    if (copyText){
+      const btnCopy = document.createElement('button');
+      btnCopy.className = 'cmd-mini-btn';
+      btnCopy.type = 'button';
+      btnCopy.textContent = 'Copiar';
+      btnCopy.addEventListener('click', async ()=>{
+        try{
+          await navigator.clipboard.writeText(copyText);
+          showToast('Copiado ✅', 1200);
+        }catch(_){
+          showToast('No se pudo copiar', 1400);
+        }
+      });
+      actions.appendChild(btnCopy);
+    }
+
+    row.appendChild(main);
+    row.appendChild(actions);
+    list.appendChild(row);
+  }
+}
+
+async function recalcRecos(){
+  const btn = $('recosRecalcBtn');
+  if (btn) btn.disabled = true;
+
+  // Si existe un método global de Analítica, úsalo. Si no, mínimo re-lee el cache.
+  const callers = [
+    ()=> (window.A33Analytics && typeof A33Analytics.recalcRecommendations === 'function') ? A33Analytics.recalcRecommendations() : null,
+    ()=> (window.A33Analytics && typeof A33Analytics.recalcRecos === 'function') ? A33Analytics.recalcRecos() : null,
+    ()=> (window.Analytics && typeof Analytics.recalcRecommendations === 'function') ? Analytics.recalcRecommendations() : null,
+    ()=> (typeof window.A33AnalyticsRecalcRecos === 'function') ? window.A33AnalyticsRecalcRecos() : null,
+  ];
+
+  let invoked = false;
+  for (const fn of callers){
+    try{
+      const out = fn();
+      if (out != null){
+        invoked = true;
+        await Promise.resolve(out);
+        break;
+      }
+    }catch(_){ }
+  }
+
+  renderRecos();
+  const { items } = readAnalyticsRecos();
+  if (!items.length){
+    showToast(invoked ? 'Sin recomendaciones aún. Abre Analítica.' : 'No hay cache. Abre Analítica.', 1700);
+  } else {
+    showToast('Recomendaciones actualizadas', 1400);
+  }
+
+  if (btn) btn.disabled = false;
 }
 
 function uniq(arr){
@@ -1631,6 +1816,9 @@ async function refreshAll(){
   clearMetricsToDash();
   clearOrdersToDash();
 
+  // Recomendaciones (cache Analítica)
+  renderRecos();
+
   // Inventario en riesgo (localStorage, solo lectura)
   refreshInvRiskBlock();
 
@@ -1731,6 +1919,20 @@ async function refreshAll(){
 async function init(){
   // Header: hoy
   setText('cmdToday', state.today);
+
+  // Recomendaciones (cache desde Analítica)
+  renderRecos();
+
+  const recoRecalcBtn = $('recosRecalcBtn');
+  if (recoRecalcBtn){
+    recoRecalcBtn.addEventListener('click', ()=>{ recalcRecos(); });
+  }
+  const openAnaBtn = $('btnOpenAnalytics');
+  if (openAnaBtn){
+    openAnaBtn.addEventListener('click', ()=>{
+      try{ window.location.href = ANALYTICS_ROUTE; }catch(_){ }
+    });
+  }
 
   // Inventario en riesgo (no depende de POS/IndexedDB)
   refreshInvRiskBlock();
