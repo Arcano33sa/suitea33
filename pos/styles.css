@@ -875,6 +875,35 @@ small.muted{color:var(--muted)}
 }
 
 
+/* --- Resumen: filtro por Cliente + top clientes --- */
+.summary-customer-card{padding:12px}
+.summary-customer-card .customer-v2-field label{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.summary-customer-card #summary-customer-hint{display:block;margin-top:6px}
+
+.customers-card .customers-kpis{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+  margin:8px 0 6px 0;
+}
+@media (max-width: 700px){
+  .customers-card .customers-kpis{grid-template-columns:1fr}
+}
+.customers-card .customers-kpis > div{
+  background:#141414;
+  border:1px solid #2a2a2a;
+  border-radius:12px;
+  padding:10px 12px;
+  font-size:13px;
+}
+
+#tbl-top-clientes{width:100%;table-layout:fixed}
+#tbl-top-clientes th:nth-child(1), #tbl-top-clientes td:nth-child(1){width:55%;white-space:normal;word-break:break-word}
+#tbl-top-clientes th:nth-child(2), #tbl-top-clientes td:nth-child(2){width:25%;white-space:nowrap}
+#tbl-top-clientes th:nth-child(3), #tbl-top-clientes td:nth-child(3){width:20%;white-space:nowrap}
+#tbl-top-clientes tbody tr{cursor:pointer}
+#tbl-top-clientes tbody tr:active{filter:brightness(.98)}
+
 /* --- Resumen: controles de período y archivo --- */
 .summary-controls{
   display:flex;

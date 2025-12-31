@@ -770,6 +770,23 @@
       </div>
     </div>
 
+    <!-- Resumen · Cliente (filtro) -->
+    <div class="card summary-customer-card">
+      <div class="customer-v2">
+        <div class="customer-v2-field">
+          <label>Cliente <span class="muted">(opcional)</span></label>
+          <input id="summary-customer" placeholder="Selecciona o escribe…">
+          <small class="muted" id="summary-customer-hint">Filtra este resumen por cliente usando historial real.</small>
+        </div>
+
+        <div class="customer-v2-actions">
+          <button id="btn-summary-customer-pick" class="btn-outline btn-pill btn-pill-mini" type="button">Seleccionar</button>
+          <button id="btn-summary-customer-clear" class="btn-outline btn-pill btn-pill-mini" type="button">Limpiar</button>
+          <span id="summary-customer-badge" class="tag small" style="margin-left:0">Sin filtro</span>
+        </div>
+      </div>
+    </div>
+
     <div class="card summary-top">
       <div class="summary-metrics">
         <div class="metric">
@@ -794,6 +811,26 @@
         </div>
       </div>
     </div>
+
+    <!-- Resumen · Clientes (MVP) -->
+    <div class="row">
+      <div class="card customers-card">
+        <h3>Clientes</h3>
+
+        <div class="customers-kpis">
+          <div><b>Clientes únicos:</b> <span id="summary-customers-unique">0</span></div>
+          <div><b>Ventas con cliente:</b> <span id="summary-sales-with-customer">0</span> <span class="muted">(<span id="summary-sales-with-customer-pct">0</span>%)</span></div>
+        </div>
+
+        <table id="tbl-top-clientes">
+          <thead><tr><th>Cliente</th><th>Total vendido</th><th>Compras</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <div class="info"><small>Tip: toca un cliente del Top para filtrar todo el Resumen.</small></div>
+      </div>
+    </div>
+
     <div class="row">
       <div class="card">
         <h3>Por evento</h3>

@@ -1631,6 +1631,8 @@ function isCustomerPickerOpenPOS(){
 function closeCustomerPickerPOS(){
   const modal = document.getElementById('customer-picker-modal');
   if (modal) modal.style.display = 'none';
+  // Si el picker fue abierto con callback (ej. Resumen), lo limpiamos al cerrar.
+  try{ window.__A33_CUSTOMER_PICKER_ONSELECT = null; }catch(_){ }
 }
 
 function renderCustomerPickerListPOS(){
@@ -1656,6 +1658,14 @@ function renderCustomerPickerListPOS(){
     btn.className = 'customer-picker-item';
     btn.textContent = c.name;
     btn.addEventListener('click', ()=>{
+      const cb = (typeof window !== 'undefined') ? window.__A33_CUSTOMER_PICKER_ONSELECT : null;
+      if (typeof cb === 'function'){
+        try{ cb(c); }catch(err){ console.warn('customer picker onSelect error', err); }
+        try{ window.__A33_CUSTOMER_PICKER_ONSELECT = null; }catch(_){ }
+        closeCustomerPickerPOS();
+        return;
+      }
+
       setCustomerSelectionUI_POS(c);
       // El último cliente se guarda siempre; el modo pegajoso decide si se limpia tras la venta.
       persistCustomerLastPOS(c.name);
@@ -1667,9 +1677,12 @@ function renderCustomerPickerListPOS(){
   if (count) count.textContent = filtered.length + ' cliente' + (filtered.length === 1 ? '' : 's');
 }
 
-function openCustomerPickerPOS(){
+function openCustomerPickerPOS(onSelect){
   const modal = document.getElementById('customer-picker-modal');
   if (!modal) return;
+
+  // Permite reutilizar el mismo picker en otros contextos (ej. Resumen)
+  try{ window.__A33_CUSTOMER_PICKER_ONSELECT = (typeof onSelect === 'function') ? onSelect : null; }catch(_){ }
 
   // reset búsqueda
   const search = document.getElementById('customer-picker-search');
@@ -6516,6 +6529,228 @@ async function renderDay(){
 }
 
 // Summary (extendido con costo y utilidad)
+
+// --- Resumen: filtro por Cliente (POS) ---
+const POS_SUMMARY_CUSTOMER_FILTER_KEY = 'pos_summary_customer_filter_v1';
+
+function normalizeSummaryCustomerFilterPOS(obj){
+  if (!obj || typeof obj !== 'object') return null;
+  const type = (obj.type === 'id' || obj.type === 'name') ? obj.type : '';
+  const value = (obj.value != null) ? String(obj.value).trim() : '';
+  if (!type || !value) return null;
+  const displayName = (obj.displayName != null) ? sanitizeCustomerDisplayPOS(obj.displayName) : '';
+  return { type, value, displayName };
+}
+
+function getSummaryCustomerFilterPOS(){
+  try{
+    if (typeof window !== 'undefined' && window.__A33_SUMMARY_CUSTOMER_FILTER){
+      const n = normalizeSummaryCustomerFilterPOS(window.__A33_SUMMARY_CUSTOMER_FILTER);
+      if (n) return n;
+    }
+  }catch(_){ }
+
+  let stored = null;
+  try{ stored = A33Storage.getJSON(POS_SUMMARY_CUSTOMER_FILTER_KEY, null, 'local'); }catch(_){ stored = null; }
+  const n = normalizeSummaryCustomerFilterPOS(stored);
+  try{ if (typeof window !== 'undefined') window.__A33_SUMMARY_CUSTOMER_FILTER = n; }catch(_){ }
+  return n;
+}
+
+function setSummaryCustomerFilterPOS(filter, { silentUI = false } = {}){
+  const n = normalizeSummaryCustomerFilterPOS(filter);
+  try{ if (typeof window !== 'undefined') window.__A33_SUMMARY_CUSTOMER_FILTER = n; }catch(_){ }
+  try{ A33Storage.setJSON(POS_SUMMARY_CUSTOMER_FILTER_KEY, n, 'local'); }catch(_){ }
+  if (!silentUI) syncSummaryCustomerFilterUI_POS(n);
+  return n;
+}
+
+function clearSummaryCustomerFilterPOS({ silentUI = false } = {}){
+  try{ if (typeof window !== 'undefined') window.__A33_SUMMARY_CUSTOMER_FILTER = null; }catch(_){ }
+  try{ A33Storage.setJSON(POS_SUMMARY_CUSTOMER_FILTER_KEY, null, 'local'); }catch(_){ }
+  if (!silentUI) syncSummaryCustomerFilterUI_POS(null);
+}
+
+function syncSummaryCustomerFilterUI_POS(filter, resolver){
+  const inp = document.getElementById('summary-customer');
+  const badge = document.getElementById('summary-customer-badge');
+
+  // Input
+  if (inp){
+    if (!filter){
+      inp.value = '';
+      try{ if (inp.dataset) delete inp.dataset.customerId; }catch(_){ }
+    } else if (filter.type === 'id'){
+      const fid = String(filter.value || '').trim();
+      const dn = resolver ? (resolver.getDisplayName(fid) || filter.displayName || '') : (filter.displayName || '');
+      if (dn) inp.value = dn;
+      try{ if (inp.dataset) inp.dataset.customerId = fid; }catch(_){ }
+    } else {
+      // type=name
+      try{ if (inp.dataset) delete inp.dataset.customerId; }catch(_){ }
+      // No forzamos el valor: mantenemos lo que el usuario escribió
+      if (!inp.value && filter.displayName) inp.value = filter.displayName;
+    }
+  }
+
+  // Badge
+  if (badge){
+    if (!filter){
+      badge.textContent = 'Sin filtro';
+      badge.classList.remove('closed');
+      badge.classList.add('open');
+    } else {
+      let label = '';
+      if (filter.type === 'id'){
+        label = resolver ? (resolver.getDisplayName(filter.value) || filter.displayName || '') : (filter.displayName || '');
+        if (!label) label = 'Cliente';
+      } else {
+        label = filter.displayName || 'Texto';
+      }
+      badge.textContent = 'Filtrando: ' + label + (filter.type === 'name' ? ' (texto)' : '');
+      badge.classList.remove('open');
+      badge.classList.add('closed');
+    }
+  }
+}
+
+function deriveSaleCustomerIdentityForSummaryPOS(s, resolver){
+  let finalId = '';
+  try{
+    const rawId = (s && s.customerId != null) ? String(s.customerId).trim() : '';
+    if (rawId){
+      finalId = resolver ? (resolver.resolveFinalId(rawId) || rawId) : rawId;
+    } else {
+      const nm = sanitizeCustomerDisplayPOS(s && s.customerName || '');
+      if (nm && resolver){
+        finalId = resolver.matchNameToFinalId(nm) || '';
+      }
+    }
+  }catch(_){ }
+
+  const rawName = sanitizeCustomerDisplayPOS(s && s.customerName || '');
+  let displayName = rawName;
+  if (finalId && resolver){
+    displayName = resolver.getDisplayName(finalId) || rawName || displayName;
+  }
+  const nameKey = normalizeCustomerKeyPOS(displayName || rawName);
+  const hasCustomer = !!(finalId || rawName);
+  return { finalId, displayName, nameKey, rawName, hasCustomer };
+}
+
+function initSummaryCustomerFilterPOS(){
+  const inp = document.getElementById('summary-customer');
+  const pickBtn = document.getElementById('btn-summary-customer-pick');
+  const clearBtn = document.getElementById('btn-summary-customer-clear');
+  const tblTop = document.getElementById('tbl-top-clientes');
+
+  if (!inp && !pickBtn && !clearBtn && !tblTop) return;
+
+  // Restaurar UI desde storage
+  try{
+    const catalog = loadCustomerCatalogPOS();
+    const resolver = buildCustomerResolverPOS(catalog);
+    const f0 = getSummaryCustomerFilterPOS();
+    if (f0 && f0.type === 'id'){
+      const fid = resolver.resolveFinalId(f0.value) || f0.value;
+      const dn = resolver.getDisplayName(fid) || f0.displayName || '';
+      const n = { type: 'id', value: String(fid), displayName: dn };
+      setSummaryCustomerFilterPOS(n, { silentUI: true });
+      syncSummaryCustomerFilterUI_POS(n, resolver);
+    } else {
+      syncSummaryCustomerFilterUI_POS(f0, resolver);
+    }
+  }catch(_){
+    syncSummaryCustomerFilterUI_POS(getSummaryCustomerFilterPOS());
+  }
+
+  if (pickBtn){
+    pickBtn.addEventListener('click', ()=>{
+      openCustomerPickerPOS((c)=>{
+        try{
+          const catalog = loadCustomerCatalogPOS();
+          const resolver = buildCustomerResolverPOS(catalog);
+          const rawId = String((c && c.id) || '').trim();
+          const fid = resolver.resolveFinalId(rawId) || rawId;
+          const dn = resolver.getDisplayName(fid) || sanitizeCustomerDisplayPOS((c && c.name) || '');
+          setSummaryCustomerFilterPOS({ type:'id', value: fid, displayName: dn });
+          renderSummary();
+        }catch(err){
+          console.warn('Error al seleccionar cliente para Resumen', err);
+        }
+      });
+    });
+  }
+
+  if (clearBtn){
+    clearBtn.addEventListener('click', ()=>{
+      clearSummaryCustomerFilterPOS();
+      renderSummary();
+      try{ inp && inp.focus(); }catch(_){ }
+    });
+  }
+
+  if (inp){
+    const applyTyped = ()=>{
+      const raw = sanitizeCustomerDisplayPOS(inp.value || '');
+      if (!raw){
+        clearSummaryCustomerFilterPOS();
+        renderSummary();
+        return;
+      }
+      try{
+        const catalog = loadCustomerCatalogPOS();
+        const resolver = buildCustomerResolverPOS(catalog);
+
+        // Si el usuario pega un ID exacto
+        let fid = '';
+        const maybeId = String(raw).trim();
+        try{ if (resolver && resolver.byId && resolver.byId.has(maybeId)) fid = resolver.resolveFinalId(maybeId) || maybeId; }catch(_){ }
+
+        if (!fid) fid = resolver ? (resolver.matchNameToFinalId(raw) || '') : '';
+
+        if (fid){
+          const dn = resolver.getDisplayName(fid) || raw;
+          if (dn) inp.value = dn;
+          setSummaryCustomerFilterPOS({ type:'id', value: fid, displayName: dn || raw });
+        } else {
+          // Fallback por nombre (no crea clientes)
+          const key = normalizeCustomerKeyPOS(raw);
+          setSummaryCustomerFilterPOS({ type:'name', value: key, displayName: raw });
+        }
+
+        renderSummary();
+      }catch(_){
+        const key = normalizeCustomerKeyPOS(raw);
+        setSummaryCustomerFilterPOS({ type:'name', value: key, displayName: raw });
+        renderSummary();
+      }
+    };
+
+    inp.addEventListener('blur', applyTyped);
+    inp.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter'){
+        e.preventDefault();
+        try{ inp.blur(); }catch(_){ }
+      }
+    });
+  }
+
+  if (tblTop){
+    tblTop.addEventListener('click', (e)=>{
+      const tr = e.target.closest('tr');
+      if (!tr) return;
+      const type = (tr.dataset && tr.dataset.filterType) ? tr.dataset.filterType : '';
+      const value = (tr.dataset && tr.dataset.filterValue) ? tr.dataset.filterValue : '';
+      const name = (tr.dataset && tr.dataset.filterName) ? tr.dataset.filterName : '';
+      if (!type || !value) return;
+      setSummaryCustomerFilterPOS({ type, value, displayName: name });
+      renderSummary();
+      try{ document.getElementById('summary-customer')?.focus(); }catch(_){ }
+    });
+  }
+}
+
 async function renderSummary(){
   const sales = await getAll('sales');
   const events = await getAll('events');
@@ -6590,8 +6825,51 @@ async function renderSummary(){
   const byPay = new Map();
   const byEvent = new Map();
 
+  // --- Cliente: resolver + filtro activo ---
+  let resolver = null;
+  try{
+    const catalog = loadCustomerCatalogPOS();
+    resolver = buildCustomerResolverPOS(catalog);
+  }catch(_){ resolver = null; }
+
+  let summaryCustomerFilter = getSummaryCustomerFilterPOS();
+  try{
+    if (summaryCustomerFilter && summaryCustomerFilter.type === 'name'){
+      const key = normalizeCustomerKeyPOS(summaryCustomerFilter.value || summaryCustomerFilter.displayName || '');
+      if (key && key !== summaryCustomerFilter.value){
+        summaryCustomerFilter = setSummaryCustomerFilterPOS({ type:'name', value: key, displayName: summaryCustomerFilter.displayName || '' }, { silentUI: true });
+      }
+    }
+    if (summaryCustomerFilter && summaryCustomerFilter.type === 'id' && resolver){
+      const fid = resolver.resolveFinalId(summaryCustomerFilter.value) || summaryCustomerFilter.value;
+      const dn = resolver.getDisplayName(fid) || summaryCustomerFilter.displayName || '';
+      if (fid !== summaryCustomerFilter.value || dn !== summaryCustomerFilter.displayName){
+        summaryCustomerFilter = setSummaryCustomerFilterPOS({ type:'id', value: String(fid), displayName: dn || summaryCustomerFilter.displayName || '' }, { silentUI: true });
+      }
+    }
+  }catch(_){ }
+
+  syncSummaryCustomerFilterUI_POS(summaryCustomerFilter, resolver);
+  const isCustomerFilterActive = !!(summaryCustomerFilter && summaryCustomerFilter.value);
+
+  // KPIs/Top clientes (solo ventas reales)
+  const customersAgg = new Map(); // key -> { total, count, filterType, filterValue, name }
+  let realSalesCount = 0;
+  let salesWithCustomerCount = 0;
+
   for (const s of (sales || [])){
+
     if (!s) continue;
+
+    const ident = deriveSaleCustomerIdentityForSummaryPOS(s, resolver);
+    if (isCustomerFilterActive && summaryCustomerFilter){
+      if (summaryCustomerFilter.type === 'id'){
+        if (!ident.finalId || ident.finalId !== summaryCustomerFilter.value) continue;
+      } else if (summaryCustomerFilter.type === 'name'){
+        const key = normalizeCustomerKeyPOS(ident.rawName || ident.displayName);
+        if (!key || key !== summaryCustomerFilter.value) continue;
+      }
+    }
 
     const total = Number(s.total || 0);
     const courtesy = isCourtesySale(s);
@@ -6624,6 +6902,40 @@ async function renderSummary(){
       grandCost += lineCost;
       grandProfit += lineProfit;
 
+      // --- Clientes (MVP) ---
+      realSalesCount += 1;
+      if (ident && (ident.finalId || ident.rawName)) salesWithCustomerCount += 1;
+
+      let custKey = '';
+      let custFilterType = '';
+      let custFilterValue = '';
+      let custName = '';
+
+      if (ident && ident.finalId){
+        custKey = 'id:' + ident.finalId;
+        custFilterType = 'id';
+        custFilterValue = ident.finalId;
+        custName = (resolver ? (resolver.getDisplayName(ident.finalId) || '') : '') || ident.rawName || ident.displayName || 'Cliente';
+      } else {
+        const nk = normalizeCustomerKeyPOS((ident && (ident.rawName || ident.displayName)) || '');
+        if (nk){
+          custKey = 'name:' + nk;
+          custFilterType = 'name';
+          custFilterValue = nk;
+          custName = (ident && (ident.rawName || ident.displayName)) || nk;
+        }
+      }
+
+      if (custKey){
+        const curCust = customersAgg.get(custKey) || { total: 0, count: 0, filterType: custFilterType, filterValue: custFilterValue, name: custName };
+        curCust.total += total;
+        curCust.count += 1;
+        if (custName && (!curCust.name || custName.length > curCust.name.length)) curCust.name = custName;
+        curCust.filterType = custFilterType;
+        curCust.filterValue = custFilterValue;
+        customersAgg.set(custKey, curCust);
+      }
+
     } else {
       courtesyTx += 1;
 
@@ -6650,7 +6962,8 @@ async function renderSummary(){
   }
 
   // Acumular también lo archivado por evento (si existiera)
-  for (const ev of (events || [])){
+  if (!isCustomerFilterActive){
+    for (const ev of (events || [])){
     if (ev.archive && ev.archive.totals){
       const t = ev.archive.totals;
 
@@ -6680,6 +6993,7 @@ async function renderSummary(){
       // Nota: por ahora no tenemos costo/utilidad/cortesías archivados.
     }
   }
+  }
 
   const profitAfterCourtesy = grandProfit - courtesyCost;
 
@@ -6698,6 +7012,44 @@ async function renderSummary(){
 
   const profitAfterEl = document.getElementById('grand-profit-after-courtesy');
   if (profitAfterEl) profitAfterEl.textContent = fmt(profitAfterCourtesy);
+
+
+  // --- Clientes (MVP) ---
+  const uniqueCustomersEl = document.getElementById('summary-customers-unique');
+  if (uniqueCustomersEl) uniqueCustomersEl.textContent = String(customersAgg.size);
+
+  const salesWithCustomerEl = document.getElementById('summary-sales-with-customer');
+  if (salesWithCustomerEl) salesWithCustomerEl.textContent = String(salesWithCustomerCount);
+
+  const salesWithCustomerPctEl = document.getElementById('summary-sales-with-customer-pct');
+  if (salesWithCustomerPctEl){
+    const pct = realSalesCount ? (salesWithCustomerCount / realSalesCount * 100) : 0;
+    salesWithCustomerPctEl.textContent = String(Math.round(pct));
+  }
+
+  const topCustomersBody = document.querySelector('#tbl-top-clientes tbody');
+  if (topCustomersBody){
+    topCustomersBody.innerHTML = '';
+    const entries = Array.from(customersAgg.values())
+      .sort((a,b)=>Number((b&&b.total)||0) - Number((a&&a.total)||0))
+      .slice(0, 10);
+
+    if (!entries.length){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="3" class="muted">(sin datos)</td>`;
+      topCustomersBody.appendChild(tr);
+    } else {
+      for (const it of entries){
+        if (!it) continue;
+        const tr = document.createElement('tr');
+        tr.dataset.filterType = it.filterType || '';
+        tr.dataset.filterValue = it.filterValue || '';
+        tr.dataset.filterName = it.name || '';
+        tr.innerHTML = `<td>${escapeHtml(it.name||'')}</td><td>${fmt(Number(it.total||0))}</td><td>${it.count||0}</td>`;
+        topCustomersBody.appendChild(tr);
+      }
+    }
+  }
 
   // Compat: si no existe el bloque superior nuevo, intentamos crearlo sin romper el HTML viejo
   if (!costEl || !profitEl || !courCostEl || !profitAfterEl){
@@ -7717,6 +8069,7 @@ async function init(){
   await runStep('updateSellEnabled', updateSellEnabled);
   await runStep('initVasosPanel', initVasosPanelPOS);
   await runStep('initCustomerUX', async()=>{ initCustomerUXPOS(); });
+  await runStep('initSummaryCustomerFilter', async()=>{ initSummaryCustomerFilterPOS(); });
 
   // Paso 5: barra offline y eventos de Caja Chica
   try{
