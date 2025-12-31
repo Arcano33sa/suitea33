@@ -317,18 +317,15 @@
           </div>
 
           <div class="field small" style="max-width:220px;">
-            <label for="clientes-dormidos-dias">Dormidos si no compra desde</label>
-            <select id="clientes-dormidos-dias">
+            <label for="clientes-dormidos-days">Dormidos si no compra desde</label>
+            <select id="clientes-dormidos-days">
               <option value="14">14 días</option>
               <option value="30">30 días</option>
-              <option value="60" selected>60 días</option>
+              <option value="45" selected>45 días</option>
+              <option value="60">60 días</option>
               <option value="90">90 días</option>
               <option value="180">180 días</option>
             </select>
-          </div>
-
-          <div class="clientes-actions">
-            <button type="button" id="btn-clientes-recalcular" class="btn-secondary">Recalcular cache</button>
           </div>
         </div>
 
@@ -403,10 +400,13 @@
 
         <section class="card clientes-recos-card" style="margin-top:1rem;">
           <div class="card-head">
-            <h3>Cache de recomendaciones</h3>
-            <span class="hint small" id="reco-updated">—</span>
+            <h3>Recomendaciones</h3>
+            <div class="head-right">
+              <button type="button" id="btn-clientes-recalcular" class="btn-secondary">Recalcular</button>
+              <span class="hint small" id="reco-updated">Actualizado: —</span>
+            </div>
           </div>
-          <p class="hint small">Este cache se guarda en localStorage para que otros módulos (ej. Centro de Mando) lo consuman.</p>
+          <p class="hint small">Basado en ventas reales. Se guarda en localStorage para que otros módulos (ej. Centro de Mando) lo consuman.</p>
           <ul id="clientes-recos-preview" class="recs-list"></ul>
           <p class="hint small" id="clientes-recos-empty" style="display:none;">Sin recomendaciones por ahora.</p>
         </section>

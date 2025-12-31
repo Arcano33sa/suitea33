@@ -1172,6 +1172,67 @@
   </div>
 </div>
 
+<!-- Modal Editar Cliente (Clientes v3) -->
+<div id="customer-edit-modal" class="modal">
+  <div class="panel panel-compact">
+    <button id="customer-edit-close" class="close btn-warn btn-pill btn-pill-mini" type="button">Cerrar</button>
+    <h3>Editar cliente</h3>
+
+    <p class="hint small" id="customer-edit-current" style="margin-top:0.25rem;">Actual: —</p>
+
+    <div class="row" style="grid-template-columns:1fr; gap:10px">
+      <input id="customer-edit-name" placeholder="Nuevo nombre…" autocomplete="off">
+      <input id="customer-edit-reason" placeholder="Motivo (opcional)…" autocomplete="off">
+      <small id="customer-edit-msg" class="muted"></small>
+    </div>
+
+    <div class="row" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:10px">
+      <button id="customer-edit-save" class="btn-ok btn-pill" type="button">Guardar</button>
+      <button id="customer-edit-cancel" class="btn-secondary btn-pill" type="button">Cancelar</button>
+    </div>
+
+    <div class="warn"><small>Editar cambia <b>solo</b> el nombre. El ID se mantiene y el historial no se reescribe.</small></div>
+  </div>
+</div>
+
+<!-- Modal Fusionar Clientes (Clientes v3) -->
+<div id="customer-merge-modal" class="modal">
+  <div class="panel panel-compact">
+    <button id="customer-merge-close" class="close btn-warn btn-pill btn-pill-mini" type="button">Cerrar</button>
+    <h3>Fusionar clientes</h3>
+
+    <div class="warn" style="margin-top:8px">
+      <small><b>Advertencia:</b> Esto NO borra ventas históricas. La “Fuente” quedará desactivada y apuntará al “Destino”.</small>
+    </div>
+
+    <div class="grid" style="margin-top:10px">
+      <div>
+        <label class="muted" for="customer-merge-source">Fuente (se absorbe)</label>
+        <select id="customer-merge-source"></select>
+      </div>
+      <div>
+        <label class="muted" for="customer-merge-dest">Destino (se queda)</label>
+        <select id="customer-merge-dest"></select>
+      </div>
+    </div>
+
+    <div class="row" style="grid-template-columns:1fr; gap:10px; margin-top:10px">
+      <input id="customer-merge-reason" placeholder="Motivo (opcional)…" autocomplete="off">
+      <label class="muted" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <input id="customer-merge-confirm" type="checkbox"> Confirmo que entiendo y quiero fusionar.
+      </label>
+      <small id="customer-merge-msg" class="muted"></small>
+    </div>
+
+    <div class="row" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:10px">
+      <button id="customer-merge-run" class="btn-warn btn-pill" type="button">Fusionar</button>
+      <button id="customer-merge-cancel" class="btn-secondary btn-pill" type="button">Cancelar</button>
+    </div>
+
+    <div class="info"><small>Consejo: si te equivocas, podés revertir creando una nueva identidad y fusionando de nuevo (no es ideal, pero mantiene trazabilidad).</small></div>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
 <footer></footer>
 <nav class="tabbar">

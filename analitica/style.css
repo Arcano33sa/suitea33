@@ -114,6 +114,14 @@ body{ display:flex; flex-direction:column; }
   margin-bottom: 0.35rem;
 }
 
+.head-right{
+  display:flex;
+  align-items:center;
+  gap: 0.55rem;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
 .card h2{
   margin: 0 0 0.4rem;
   font-size: 1.05rem;

@@ -949,7 +949,15 @@ function coerceCustomerObjectPOS(raw, disabledSet, existingIds){
       name,
       isActive: !disabledSet.has(normalizedName),
       createdAt: Date.now(),
-      normalizedName
+      updatedAt: null,
+      normalizedName,
+      // Clientes v3 (Identidad): campos opcionales (migración suave)
+      aliases: [],
+      nameHistory: [],
+      mergedIntoId: null,
+      mergedAt: null,
+      mergeReason: '',
+      mergeHistory: []
     };
   }
 
@@ -974,13 +982,143 @@ function coerceCustomerObjectPOS(raw, disabledSet, existingIds){
   const createdAtNum = Number(raw.createdAt);
   const createdAt = (Number.isFinite(createdAtNum) && createdAtNum > 0) ? createdAtNum : Date.now();
 
+  const updatedAtNum = Number(raw.updatedAt);
+  const updatedAt = (Number.isFinite(updatedAtNum) && updatedAtNum > 0) ? updatedAtNum : null;
+
+  const aliases = Array.isArray(raw.aliases) ? raw.aliases.map(sanitizeCustomerDisplayPOS).filter(Boolean) : [];
+  const nameHistory = Array.isArray(raw.nameHistory)
+    ? raw.nameHistory
+      .map(h => {
+        if (!h || typeof h !== 'object') return null;
+        const from = sanitizeCustomerDisplayPOS(h.from || '');
+        const to = sanitizeCustomerDisplayPOS(h.to || '');
+        const atNum = Number(h.at);
+        const at = (Number.isFinite(atNum) && atNum > 0) ? atNum : null;
+        const reason = sanitizeCustomerDisplayPOS(h.reason || '');
+        if (!from && !to) return null;
+        return { from, to, at, reason };
+      })
+      .filter(Boolean)
+    : [];
+
+  const mergeHistory = Array.isArray(raw.mergeHistory)
+    ? raw.mergeHistory
+      .map(h => {
+        if (!h || typeof h !== 'object') return null;
+        const fromId = (h.fromId != null) ? String(h.fromId).trim() : '';
+        const fromName = sanitizeCustomerDisplayPOS(h.fromName || '');
+        const atNum = Number(h.at);
+        const at = (Number.isFinite(atNum) && atNum > 0) ? atNum : null;
+        const reason = sanitizeCustomerDisplayPOS(h.reason || '');
+        if (!fromId && !fromName) return null;
+        return { fromId, fromName, at, reason };
+      })
+      .filter(Boolean)
+    : [];
+
+  const mergedIntoId = (raw.mergedIntoId != null && String(raw.mergedIntoId).trim()) ? String(raw.mergedIntoId).trim() : null;
+  const mergedAtNum = Number(raw.mergedAt);
+  const mergedAt = (Number.isFinite(mergedAtNum) && mergedAtNum > 0) ? mergedAtNum : null;
+  const mergeReason = sanitizeCustomerDisplayPOS(raw.mergeReason || '');
+
   return {
     id,
     name,
     isActive: !!isActive,
     createdAt,
-    normalizedName
+    updatedAt,
+    normalizedName,
+    aliases,
+    nameHistory,
+    mergedIntoId,
+    mergedAt,
+    mergeReason,
+    mergeHistory
   };
+}
+
+function resolveFinalCustomerIdPOS(id, byId){
+  const start = (id != null) ? String(id).trim() : '';
+  if (!start) return '';
+  const seen = new Set();
+  let cur = start;
+  while (cur){
+    if (seen.has(cur)) break;
+    seen.add(cur);
+    const c = byId.get(cur);
+    if (!c) break;
+    const next = (c.mergedIntoId != null) ? String(c.mergedIntoId).trim() : '';
+    if (!next) break;
+    cur = next;
+  }
+  return cur;
+}
+
+function collectCustomerAllNamesPOS(c){
+  const out = [];
+  if (!c) return out;
+  if (c.name) out.push(String(c.name));
+  if (Array.isArray(c.aliases)) out.push(...c.aliases);
+  if (Array.isArray(c.nameHistory)){
+    for (const h of c.nameHistory){
+      if (!h || typeof h !== 'object') continue;
+      if (h.from) out.push(String(h.from));
+      if (h.to) out.push(String(h.to));
+    }
+  }
+  return out.map(sanitizeCustomerDisplayPOS).filter(Boolean);
+}
+
+function buildCustomerResolverPOS(catalog){
+  const list = Array.isArray(catalog) ? catalog : [];
+  const byId = new Map();
+  for (const c of list){
+    if (c && c.id != null){
+      const id = String(c.id).trim();
+      if (id) byId.set(id, c);
+    }
+  }
+
+  const keyToFinalId = new Map();
+  const ambiguous = new Set();
+
+  const addKey = (k, finalId)=>{
+    if (!k) return;
+    if (ambiguous.has(k)) return;
+    const prev = keyToFinalId.get(k);
+    if (prev && prev !== finalId){
+      keyToFinalId.delete(k);
+      ambiguous.add(k);
+      return;
+    }
+    keyToFinalId.set(k, finalId);
+  };
+
+  for (const c of list){
+    if (!c || c.id == null) continue;
+    const finalId = resolveFinalCustomerIdPOS(c.id, byId);
+    const names = collectCustomerAllNamesPOS(c);
+    for (const nm of names){
+      addKey(normalizeCustomerKeyPOS(nm), finalId);
+    }
+  }
+
+  const matchNameToFinalId = (name)=>{
+    const n = sanitizeCustomerDisplayPOS(name);
+    if (!n) return '';
+    const k = normalizeCustomerKeyPOS(n);
+    if (!k) return '';
+    return keyToFinalId.get(k) || '';
+  };
+
+  const getDisplayName = (finalId)=>{
+    const fid = (finalId != null) ? String(finalId).trim() : '';
+    if (!fid) return '';
+    const c = byId.get(fid);
+    return c && c.name ? sanitizeCustomerDisplayPOS(c.name) : '';
+  };
+
+  return { byId, resolveFinalId:(id)=> resolveFinalCustomerIdPOS(id, byId), matchNameToFinalId, getDisplayName, keyToFinalId, ambiguous };
 }
 
 function migrateCustomerCatalogToObjectsPOS(){
@@ -1174,29 +1312,32 @@ function persistCustomerLastPOS(val){
 
 function resolveCustomerIdForSalePOS(customerName, uiHintId){
   const name = sanitizeCustomerDisplayPOS(customerName);
-  if (!name) return { id: null, isNew: false };
+  if (!name) return { id: null, displayName: '', isNew: false };
 
-  const norm = normalizeCustomerKeyPOS(name);
   const catalog = loadCustomerCatalogPOS();
+  const resolver = buildCustomerResolverPOS(catalog);
 
-  // 1) Si viene hint de UI, validarlo
+  // 1) Hint de UI: si existe el ID, lo respetamos (y resolvemos merges)
   if (uiHintId){
-    const byId = catalog.find(c => c && String(c.id) === String(uiHintId));
-    if (byId && byId.normalizedName === norm){
-      return { id: String(byId.id), isNew: false };
+    const hid = String(uiHintId).trim();
+    if (hid && resolver.byId.has(hid)){
+      const finalId = resolver.resolveFinalId(hid);
+      const displayName = resolver.getDisplayName(finalId) || name;
+      return { id: String(finalId), displayName, isNew: false };
     }
   }
 
-  // 2) Buscar por nombre normalizado
-  const found = catalog.find(c => c && c.normalizedName === norm);
-  if (found){
-    return { id: String(found.id), isNew: false };
+  // 2) Match robusto por nombre (name / aliases / nameHistory / clientes fusionados)
+  const finalId2 = resolver.matchNameToFinalId(name);
+  if (finalId2){
+    const displayName = resolver.getDisplayName(finalId2) || name;
+    return { id: String(finalId2), displayName, isNew: false };
   }
 
   // 3) Nuevo (se agregará al catálogo al completar la venta)
   const existingIds = new Set(catalog.map(c => c && c.id).filter(Boolean).map(String));
   const newId = generateCustomerIdPOS(existingIds);
-  return { id: String(newId), isNew: true };
+  return { id: String(newId), displayName: name, isNew: true };
 }
 
 function ensureCustomerInCatalogPOS(name, preferredId){
@@ -1207,16 +1348,34 @@ function ensureCustomerInCatalogPOS(name, preferredId){
   if (!norm) return { ok:false, id:null };
 
   const list = loadCustomerCatalogPOS();
-  const existing = list.find(c => c && c.normalizedName === norm);
+  const resolver = buildCustomerResolverPOS(list);
+  const matchFinal = resolver.matchNameToFinalId(n);
 
-  if (existing){
-    // Reactivar si estaba desactivado
-    if (existing.isActive === false){
-      existing.isActive = true;
-      saveCustomerCatalogPOS(sortCustomerObjectsAZ_POS(list));
-      syncDisabledLegacyFromCatalogPOS(list);
+  if (matchFinal){
+    const existing = resolver.byId.get(String(matchFinal));
+    if (existing){
+      // Reactivar si estaba desactivado
+      if (existing.isActive === false){
+        existing.isActive = true;
+        existing.updatedAt = Date.now();
+      }
+
+      // Si el usuario escribió una variante (alias), la guardamos como alias del ID final
+      const kTyped = normalizeCustomerKeyPOS(n);
+      const kMain = normalizeCustomerKeyPOS(existing.name);
+      if (kTyped && kMain && kTyped !== kMain){
+        if (!Array.isArray(existing.aliases)) existing.aliases = [];
+        if (!existing.aliases.some(a => normalizeCustomerKeyPOS(a) === kTyped)){
+          existing.aliases.push(n);
+          existing.updatedAt = Date.now();
+        }
+      }
+
+      const sorted = sortCustomerObjectsAZ_POS(list);
+      saveCustomerCatalogPOS(sorted);
+      syncDisabledLegacyFromCatalogPOS(sorted);
+      return { ok:true, id: String(existing.id) };
     }
-    return { ok:true, id: String(existing.id) };
   }
 
   const existingIds = new Set(list.map(c => c && c.id).filter(Boolean).map(String));
@@ -1229,7 +1388,14 @@ function ensureCustomerInCatalogPOS(name, preferredId){
     name: n,
     isActive: true,
     createdAt: Date.now(),
-    normalizedName: norm
+    updatedAt: null,
+    normalizedName: norm,
+    aliases: [],
+    nameHistory: [],
+    mergedIntoId: null,
+    mergedAt: null,
+    mergeReason: '',
+    mergeHistory: []
   };
 
   list.push(obj);
@@ -1254,8 +1420,12 @@ function addCustomerToCatalogPOS(name, preferredId){
   if (!norm) return { ok:false, reason:'empty', id:null };
 
   const list = loadCustomerCatalogPOS();
-  const exists = list.some(c => c && c.normalizedName === norm);
-  if (exists) return { ok:false, reason:'exists', id: (list.find(c=>c && c.normalizedName===norm)?.id || null) };
+  const resolver = buildCustomerResolverPOS(list);
+  const matchFinal = resolver.matchNameToFinalId(n);
+  if (matchFinal) {
+    const ex = resolver.byId.get(String(matchFinal));
+    return { ok:false, reason:'exists', id: (ex && ex.id) ? String(ex.id) : String(matchFinal) };
+  }
 
   const existingIds = new Set(list.map(c => c && c.id).filter(Boolean).map(String));
   let id = preferredId ? String(preferredId) : '';
@@ -1268,7 +1438,14 @@ function addCustomerToCatalogPOS(name, preferredId){
     name: n,
     isActive: true,
     createdAt: Date.now(),
-    normalizedName: norm
+    updatedAt: null,
+    normalizedName: norm,
+    aliases: [],
+    nameHistory: [],
+    mergedIntoId: null,
+    mergedAt: null,
+    mergeReason: '',
+    mergeHistory: []
   });
 
   const sorted = sortCustomerObjectsAZ_POS(list);
@@ -1287,11 +1464,157 @@ function setCustomerActiveByIdPOS(id, isActive){
   const c = list.find(x => x && String(x.id) === cid);
   if (!c) return;
 
+  // ABS: un cliente fusionado (fuente) no se reactiva ni se toca
+  if (c.mergedIntoId){
+    toast('Este cliente está fusionado. Administra el destino final.');
+    return;
+  }
+
   c.isActive = !!isActive;
+  c.updatedAt = Date.now();
   const sorted = sortCustomerObjectsAZ_POS(list);
   saveCustomerCatalogPOS(sorted);
   syncDisabledLegacyFromCatalogPOS(sorted);
   refreshCustomerUI_POS();
+}
+
+function editCustomerNamePOS(customerId, newName, reason){
+  const cid = (customerId != null) ? String(customerId).trim() : '';
+  const nn = sanitizeCustomerDisplayPOS(newName || '');
+  if (!cid || !nn) return { ok:false, reason:'empty' };
+
+  const list = loadCustomerCatalogPOS();
+  const resolver = buildCustomerResolverPOS(list);
+  const c = resolver.byId.get(cid);
+  if (!c) return { ok:false, reason:'not_found' };
+
+  // Solo se edita el ID final (no la fuente fusionada)
+  if (c.mergedIntoId) return { ok:false, reason:'merged_source' };
+
+  const newNorm = normalizeCustomerKeyPOS(nn);
+  if (!newNorm) return { ok:false, reason:'empty' };
+
+  // Evitar renombres que choquen con otro cliente (mejor: fusionar)
+  const matchFinal = resolver.matchNameToFinalId(nn);
+  if (matchFinal && String(matchFinal) !== String(cid)){
+    return { ok:false, reason:'name_conflict', conflictId: String(matchFinal) };
+  }
+
+  const oldName = sanitizeCustomerDisplayPOS(c.name || '');
+  if (oldName && normalizeCustomerKeyPOS(oldName) === newNorm){
+    return { ok:true, id: cid, noChange:true };
+  }
+
+  if (!Array.isArray(c.nameHistory)) c.nameHistory = [];
+  c.nameHistory.push({
+    from: oldName,
+    to: nn,
+    at: Date.now(),
+    reason: sanitizeCustomerDisplayPOS(reason || '')
+  });
+
+  // Guardar el nombre viejo también como alias para resolver escritura manual
+  if (oldName){
+    if (!Array.isArray(c.aliases)) c.aliases = [];
+    const kOld = normalizeCustomerKeyPOS(oldName);
+    if (kOld && !c.aliases.some(a => normalizeCustomerKeyPOS(a) === kOld)){
+      c.aliases.push(oldName);
+    }
+  }
+
+  c.name = nn;
+  c.normalizedName = newNorm;
+  c.updatedAt = Date.now();
+
+  const sorted = sortCustomerObjectsAZ_POS(list);
+  saveCustomerCatalogPOS(sorted);
+  syncDisabledLegacyFromCatalogPOS(sorted);
+  refreshCustomerUI_POS();
+
+  // Si estaba seleccionado en la venta, refrescar el input
+  const inp = document.getElementById('sale-customer');
+  if (inp && inp.dataset && String(inp.dataset.customerId||'') === cid){
+    setCustomerSelectionUI_POS({ id: cid, name: nn });
+    if (isCustomerStickyPOS()) persistCustomerLastPOS(nn);
+  }
+
+  return { ok:true, id: cid };
+}
+
+function mergeCustomersPOS(sourceId, destId, reason){
+  const sid = (sourceId != null) ? String(sourceId).trim() : '';
+  const did = (destId != null) ? String(destId).trim() : '';
+  if (!sid || !did) return { ok:false, reason:'empty' };
+  if (sid === did) return { ok:false, reason:'same' };
+
+  const list = loadCustomerCatalogPOS();
+  const resolver = buildCustomerResolverPOS(list);
+  const source = resolver.byId.get(sid);
+  const destRaw = resolver.byId.get(did);
+  if (!source || !destRaw) return { ok:false, reason:'not_found' };
+
+  // Bloqueos
+  if (source.mergedIntoId) return { ok:false, reason:'source_already_merged' };
+  if (destRaw.isActive === false) return { ok:false, reason:'dest_inactive' };
+  if (destRaw.mergedIntoId) return { ok:false, reason:'dest_is_source' };
+
+  const destFinalId = resolver.resolveFinalId(did);
+  if (!destFinalId) return { ok:false, reason:'not_found' };
+  if (String(destFinalId) === sid) return { ok:false, reason:'same' };
+
+  const dest = resolver.byId.get(String(destFinalId));
+  if (!dest) return { ok:false, reason:'not_found' };
+  if (dest.isActive === false) return { ok:false, reason:'dest_inactive' };
+  if (dest.mergedIntoId) return { ok:false, reason:'dest_is_source' };
+
+  const now = Date.now();
+  const mergeReason = sanitizeCustomerDisplayPOS(reason || '');
+
+  // Fuente
+  source.isActive = false;
+  source.mergedIntoId = String(destFinalId);
+  source.mergedAt = now;
+  source.mergeReason = mergeReason;
+  source.updatedAt = now;
+
+  // Destino
+  if (!Array.isArray(dest.mergeHistory)) dest.mergeHistory = [];
+  dest.mergeHistory.push({ fromId: String(source.id), fromName: sanitizeCustomerDisplayPOS(source.name||''), at: now, reason: mergeReason });
+  if (!Array.isArray(dest.aliases)) dest.aliases = [];
+
+  const pushAlias = (txt)=>{
+    const v = sanitizeCustomerDisplayPOS(txt||'');
+    if (!v) return;
+    const k = normalizeCustomerKeyPOS(v);
+    if (!k) return;
+    if (!dest.aliases.some(a => normalizeCustomerKeyPOS(a) === k)) dest.aliases.push(v);
+  };
+
+  // Agregar nombre de la fuente + sus aliases + su historial
+  pushAlias(source.name);
+  if (Array.isArray(source.aliases)) for (const a of source.aliases) pushAlias(a);
+  if (Array.isArray(source.nameHistory)){
+    for (const h of source.nameHistory){
+      if (h && h.from) pushAlias(h.from);
+      if (h && h.to) pushAlias(h.to);
+    }
+  }
+
+  dest.updatedAt = now;
+
+  const sorted = sortCustomerObjectsAZ_POS(list);
+  saveCustomerCatalogPOS(sorted);
+  syncDisabledLegacyFromCatalogPOS(sorted);
+  refreshCustomerUI_POS();
+
+  // Si el cliente seleccionado era la fuente, saltamos al destino
+  const inp = document.getElementById('sale-customer');
+  if (inp && inp.dataset && String(inp.dataset.customerId||'') === sid){
+    setCustomerSelectionUI_POS({ id: String(destFinalId), name: sanitizeCustomerDisplayPOS(dest.name||'') });
+    if (isCustomerStickyPOS()) persistCustomerLastPOS(dest.name);
+  }
+
+  return { ok:true, destId: String(destFinalId) };
 }
 
 function isCustomerDisabledKeyPOS(normKey){
@@ -1392,6 +1715,7 @@ function renderCustomerManageListPOS(){
 
   const makeRow = (c)=>{
     const isOff = (c.isActive === false);
+    const isMerged = !!(c && c.mergedIntoId);
 
     const row = document.createElement('div');
     row.className = 'customer-manage-item';
@@ -1410,16 +1734,52 @@ function renderCustomerManageListPOS(){
     left.appendChild(nm);
     left.appendChild(badge);
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = (isOff ? 'btn-ok' : 'btn-warn') + ' btn-pill btn-pill-mini';
-    btn.textContent = isOff ? 'Reactivar' : 'Desactivar';
-    btn.addEventListener('click', ()=>{
-      setCustomerActiveByIdPOS(c.id, isOff);
-    });
+    if (isMerged){
+      const b2 = document.createElement('span');
+      b2.className = 'badge badge-off';
+      b2.textContent = 'Fusionado';
+      left.appendChild(b2);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'customer-manage-item-actions';
+
+    const btnEdit = document.createElement('button');
+    btnEdit.type = 'button';
+    btnEdit.className = 'btn-secondary btn-pill btn-pill-mini' + (isMerged ? ' btn-disabled' : '');
+    btnEdit.textContent = 'Editar';
+    if (!isMerged){
+      btnEdit.addEventListener('click', ()=> openCustomerEditModalPOS(String(c.id)));
+    } else {
+      btnEdit.disabled = true;
+    }
+
+    const btnMerge = document.createElement('button');
+    btnMerge.type = 'button';
+    btnMerge.className = 'btn-outline btn-pill btn-pill-mini' + (isMerged ? ' btn-disabled' : '');
+    btnMerge.textContent = 'Fusionar';
+    if (!isMerged){
+      btnMerge.addEventListener('click', ()=> openCustomerMergeModalPOS({ sourceId: String(c.id) }));
+    } else {
+      btnMerge.disabled = true;
+    }
+
+    const btnToggle = document.createElement('button');
+    btnToggle.type = 'button';
+    btnToggle.className = (isOff ? 'btn-ok' : 'btn-warn') + ' btn-pill btn-pill-mini' + (isMerged ? ' btn-disabled' : '');
+    btnToggle.textContent = isOff ? 'Reactivar' : 'Desactivar';
+    if (!isMerged){
+      btnToggle.addEventListener('click', ()=> setCustomerActiveByIdPOS(c.id, isOff));
+    } else {
+      btnToggle.disabled = true;
+    }
+
+    actions.appendChild(btnEdit);
+    actions.appendChild(btnMerge);
+    actions.appendChild(btnToggle);
 
     row.appendChild(left);
-    row.appendChild(btn);
+    row.appendChild(actions);
     return row;
   };
 
@@ -1573,10 +1933,218 @@ function setupCustomerPickerModalPOS(){
 
   // Escape
   document.addEventListener('keydown', (e)=>{
-    if (e.key === 'Escape' && isCustomerPickerOpenPOS()){
-      closeCustomerPickerPOS();
-    }
+    if (e.key !== 'Escape') return;
+    if (isCustomerPickerOpenPOS()) closeCustomerPickerPOS();
+    if (isCustomerEditOpenPOS()) closeCustomerEditModalPOS();
+    if (isCustomerMergeOpenPOS()) closeCustomerMergeModalPOS();
   });
+}
+
+function isCustomerEditOpenPOS(){
+  const modal = document.getElementById('customer-edit-modal');
+  return !!(modal && modal.style.display === 'flex');
+}
+
+function closeCustomerEditModalPOS(){
+  const modal = document.getElementById('customer-edit-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function openCustomerEditModalPOS(customerId){
+  const modal = document.getElementById('customer-edit-modal');
+  if (!modal) return;
+
+  const list = loadCustomerCatalogPOS();
+  const resolver = buildCustomerResolverPOS(list);
+  const c = resolver.byId.get(String(customerId||'').trim());
+  if (!c){ toast('Cliente no encontrado'); return; }
+  if (c.mergedIntoId){ toast('Este cliente está fusionado. Edita el destino.'); return; }
+
+  modal.dataset.editId = String(c.id);
+  const cur = document.getElementById('customer-edit-current');
+  if (cur) cur.textContent = sanitizeCustomerDisplayPOS(c.name||'');
+  const inp = document.getElementById('customer-edit-name');
+  if (inp) inp.value = sanitizeCustomerDisplayPOS(c.name||'');
+  const rsn = document.getElementById('customer-edit-reason');
+  if (rsn) rsn.value = '';
+  const msg = document.getElementById('customer-edit-msg');
+  if (msg) msg.textContent = '';
+
+  modal.style.display = 'flex';
+  setTimeout(()=>{ try{ inp?.focus(); inp?.select(); }catch(_){ } }, 60);
+}
+
+function setupCustomerEditModalPOS(){
+  const modal = document.getElementById('customer-edit-modal');
+  if (!modal) return;
+
+  const closeBtn = document.getElementById('customer-edit-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeCustomerEditModalPOS);
+
+  modal.addEventListener('click', (e)=>{ if (e.target === modal) closeCustomerEditModalPOS(); });
+
+  const btn = document.getElementById('customer-edit-save');
+  if (btn){
+    btn.addEventListener('click', ()=>{
+      const id = String(modal.dataset.editId || '').trim();
+      const nn = document.getElementById('customer-edit-name')?.value || '';
+      const reason = document.getElementById('customer-edit-reason')?.value || '';
+      const msg = document.getElementById('customer-edit-msg');
+      const r = editCustomerNamePOS(id, nn, reason);
+      if (!r || !r.ok){
+        if (r && r.reason === 'name_conflict'){
+          if (msg) msg.textContent = 'Ese nombre ya existe. Mejor usa Fusionar.';
+          return;
+        }
+        if (msg) msg.textContent = 'No se pudo editar.';
+        return;
+      }
+      toast(r.noChange ? 'Sin cambios.' : 'Cliente editado.');
+      closeCustomerEditModalPOS();
+      renderCustomerManageListPOS();
+      if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
+    });
+  }
+
+  const cancelBtn = document.getElementById('customer-edit-cancel');
+  if (cancelBtn) cancelBtn.addEventListener('click', closeCustomerEditModalPOS);
+}
+
+function isCustomerMergeOpenPOS(){
+  const modal = document.getElementById('customer-merge-modal');
+  return !!(modal && modal.style.display === 'flex');
+}
+
+function closeCustomerMergeModalPOS(){
+  const modal = document.getElementById('customer-merge-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function fillCustomerMergeSelectsPOS(sourceId){
+  const srcSel = document.getElementById('customer-merge-source');
+  const dstSel = document.getElementById('customer-merge-dest');
+  if (!srcSel || !dstSel) return;
+
+  const list = loadCustomerCatalogPOS();
+  const resolver = buildCustomerResolverPOS(list);
+
+  // Fuente: cualquier cliente que NO sea ya fuente fusionada
+  const sources = list
+    .filter(c => c && !c.mergedIntoId)
+    .map(c => ({ id: String(c.id), name: sanitizeCustomerDisplayPOS(c.name||''), isActive: c.isActive !== false }));
+
+  // Destino: solo activos y no fusionados
+  const dests = list
+    .filter(c => c && c.isActive !== false && !c.mergedIntoId)
+    .map(c => ({ id: String(c.id), name: sanitizeCustomerDisplayPOS(c.name||'') }));
+
+  const sortByName = (a,b)=> (a.name||'').localeCompare(b.name||'');
+  sources.sort(sortByName);
+  dests.sort(sortByName);
+
+  srcSel.innerHTML = '';
+  dstSel.innerHTML = '';
+
+  for (const s of sources){
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.name + (s.isActive ? '' : ' (desactivado)');
+    srcSel.appendChild(opt);
+  }
+  for (const d of dests){
+    const opt = document.createElement('option');
+    opt.value = d.id;
+    opt.textContent = d.name;
+    dstSel.appendChild(opt);
+  }
+
+  // Preselección
+  const sid = String(sourceId||'').trim();
+  if (sid && sources.some(s => s.id === sid)) srcSel.value = sid;
+
+  // Si destino queda igual a fuente, movemos destino al primer distinto
+  if (dstSel.value === srcSel.value){
+    const firstOk = dests.find(d => d.id !== srcSel.value);
+    if (firstOk) dstSel.value = firstOk.id;
+  }
+
+  // En caso de que el usuario escoja una fuente, evitamos que destino sea el mismo
+  const sync = ()=>{
+    if (dstSel.value === srcSel.value){
+      const firstOk2 = dests.find(d => d.id !== srcSel.value);
+      if (firstOk2) dstSel.value = firstOk2.id;
+    }
+  };
+  srcSel.onchange = sync;
+  dstSel.onchange = sync;
+}
+
+function openCustomerMergeModalPOS(opts){
+  const modal = document.getElementById('customer-merge-modal');
+  if (!modal) return;
+  const sourceId = opts && opts.sourceId ? String(opts.sourceId) : '';
+  modal.dataset.sourcePreset = sourceId || '';
+
+  fillCustomerMergeSelectsPOS(sourceId);
+
+  const chk = document.getElementById('customer-merge-confirm');
+  if (chk) chk.checked = false;
+  const rsn = document.getElementById('customer-merge-reason');
+  if (rsn) rsn.value = '';
+  const msg = document.getElementById('customer-merge-msg');
+  if (msg) msg.textContent = '';
+
+  modal.style.display = 'flex';
+  setTimeout(()=>{ try{ document.getElementById('customer-merge-source')?.focus(); }catch(_){ } }, 60);
+}
+
+function setupCustomerMergeModalPOS(){
+  const modal = document.getElementById('customer-merge-modal');
+  if (!modal) return;
+
+  const closeBtn = document.getElementById('customer-merge-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeCustomerMergeModalPOS);
+
+  modal.addEventListener('click', (e)=>{ if (e.target === modal) closeCustomerMergeModalPOS(); });
+
+  const confirmChk = document.getElementById('customer-merge-confirm');
+  const doBtn = document.getElementById('customer-merge-run');
+  const gate = ()=>{
+    if (doBtn) doBtn.disabled = !(confirmChk && confirmChk.checked);
+  };
+  if (confirmChk){
+    confirmChk.addEventListener('change', gate);
+  }
+  gate();
+
+  if (doBtn){
+    doBtn.addEventListener('click', ()=>{
+      const srcId = document.getElementById('customer-merge-source')?.value || '';
+      const dstId = document.getElementById('customer-merge-dest')?.value || '';
+      const reason = document.getElementById('customer-merge-reason')?.value || '';
+      const msg = document.getElementById('customer-merge-msg');
+
+      const r = mergeCustomersPOS(srcId, dstId, reason);
+      if (!r || !r.ok){
+        const why = (r && r.reason) ? r.reason : 'error';
+        let human = 'No se pudo fusionar.';
+        if (why === 'source_already_merged') human = 'La fuente ya está fusionada.';
+        else if (why === 'dest_inactive') human = 'El destino no puede estar desactivado.';
+        else if (why === 'same') human = 'No puedes fusionar un cliente consigo mismo.';
+        else if (why === 'dest_is_source') human = 'El destino seleccionado no es válido (está fusionado).';
+        if (msg) msg.textContent = human;
+        return;
+      }
+
+      toast('Fusión aplicada. Historia intacta.');
+      closeCustomerMergeModalPOS();
+      renderCustomerManageListPOS();
+      if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
+    });
+  }
+
+  const cancelBtn = document.getElementById('customer-merge-cancel');
+  if (cancelBtn) cancelBtn.addEventListener('click', closeCustomerMergeModalPOS);
 }
 
 function initCustomerUXPOS(){
@@ -1589,6 +2157,8 @@ function initCustomerUXPOS(){
   if (!inp || !sticky) return;
 
   setupCustomerPickerModalPOS();
+  setupCustomerEditModalPOS();
+  setupCustomerMergeModalPOS();
   refreshCustomerUI_POS();
 
   // Estado pegajoso + último cliente
@@ -1600,7 +2170,10 @@ function initCustomerUXPOS(){
       inp.value = sanitizeCustomerDisplayPOS(last);
       // restaurar customerId si existe por match normalizado
       const r = resolveCustomerIdForSalePOS(inp.value, null);
-      if (r && r.id && inp.dataset) inp.dataset.customerId = String(r.id);
+      if (r && r.id && inp.dataset){
+        inp.dataset.customerId = String(r.id);
+        if (!r.isNew && r.displayName) inp.value = r.displayName;
+      }
     }
   }
 
@@ -1615,6 +2188,18 @@ function initCustomerUXPOS(){
   inp.addEventListener('input', ()=>{
     if (inp.dataset) delete inp.dataset.customerId;
     if (isCustomerStickyPOS()) persistCustomerLastPOS(inp.value || '');
+  });
+
+  // Si el usuario escribe un alias / nombre viejo / cliente fusionado, lo resolvemos al destino final
+  inp.addEventListener('blur', ()=>{
+    const raw = sanitizeCustomerDisplayPOS(inp.value || '');
+    if (!raw) return;
+    const r = resolveCustomerIdForSalePOS(raw, null);
+    if (r && r.id && !r.isNew){
+      if (inp.dataset) inp.dataset.customerId = String(r.id);
+      if (r.displayName) inp.value = r.displayName;
+      if (isCustomerStickyPOS()) persistCustomerLastPOS(inp.value || '');
+    }
   });
 
   if (clearBtn){
@@ -1645,22 +2230,23 @@ function initCustomerUXPOS(){
         addInp.focus();
         return;
       }
-      const key = normalizeCustomerKeyPOS(name);
-      const all = loadCustomerCatalogPOS();
-      const exists = all.some(c => c && c.normalizedName === key);
-
-      if (exists){
-        // Si existe pero está desactivado, ayuda visual
-        const off = isCustomerDisabledKeyPOS(key);
-        if (addMsg) addMsg.textContent = off ? 'Ya existe (está desactivado).' : 'Ya existe.';
+      const res = addCustomerToCatalogPOS(name);
+      if (!res || !res.ok){
+        if (res && res.reason === 'exists'){
+          // Si existe pero estaba desactivado, reactivar
+          const list2 = loadCustomerCatalogPOS();
+          const ex = list2.find(c => c && String(c.id) === String(res.id));
+          if (ex && ex.isActive === false && !ex.mergedIntoId){
+            setCustomerActiveByIdPOS(ex.id, true);
+            if (addMsg) addMsg.textContent = 'Ya existía (reactivado).';
+          } else {
+            if (addMsg) addMsg.textContent = 'Ya existe.';
+          }
+          return;
+        }
+        if (addMsg) addMsg.textContent = 'No se pudo guardar.';
         return;
       }
-
-      addCustomerToCatalogPOS(name);
-      // Por si existiera en disabled legacy, lo dejamos consistente
-      const list2 = loadCustomerCatalogPOS();
-      const found2 = list2.find(c=>c && c.normalizedName===key);
-      if (found2) setCustomerActiveByIdPOS(found2.id, true);
 
       addInp.value = '';
       if (addMsg) addMsg.textContent = 'Guardado.';
@@ -4716,8 +5302,10 @@ async function sellCupsPOS(isCourtesy){
   if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
 
   const payment = document.getElementById('sale-payment')?.value || 'efectivo';
-  const customerName = getCustomerNameFromUI_POS();
-  const customerId = resolveCustomerIdForSalePOS(customerName, getCustomerIdHintFromUI_POS()).id;
+  const customerInputName = getCustomerNameFromUI_POS();
+  const customerResolved = resolveCustomerIdForSalePOS(customerInputName, getCustomerIdHintFromUI_POS());
+  const customerId = customerResolved ? customerResolved.id : null;
+  const customerName = (customerResolved && customerResolved.displayName) ? customerResolved.displayName : customerInputName;
 
   // Banco (obligatorio si es Transferencia)
   let bankId = null;
@@ -7679,8 +8267,10 @@ async function addSale(){
   const payment = $('#sale-payment').value;
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
-  const customerName = getCustomerNameFromUI_POS();
-  const customerId = resolveCustomerIdForSalePOS(customerName, getCustomerIdHintFromUI_POS()).id;
+  const customerInputName = getCustomerNameFromUI_POS();
+  const customerResolved = resolveCustomerIdForSalePOS(customerInputName, getCustomerIdHintFromUI_POS());
+  const customerId = customerResolved ? customerResolved.id : null;
+  const customerName = (customerResolved && customerResolved.displayName) ? customerResolved.displayName : customerInputName;
   const courtesyTo = $('#sale-courtesy-to').value || '';
   const notes = $('#sale-notes').value || '';
   if (!date || !productId || !qty) { alert('Completa fecha, producto y cantidad'); return; }
@@ -7823,8 +8413,10 @@ async function addExtraSale(extraId){
   const payment = $('#sale-payment').value;
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
-  const customerName = getCustomerNameFromUI_POS();
-  const customerId = resolveCustomerIdForSalePOS(customerName, getCustomerIdHintFromUI_POS()).id;
+  const customerInputName = getCustomerNameFromUI_POS();
+  const customerResolved = resolveCustomerIdForSalePOS(customerInputName, getCustomerIdHintFromUI_POS());
+  const customerId = customerResolved ? customerResolved.id : null;
+  const customerName = (customerResolved && customerResolved.displayName) ? customerResolved.displayName : customerInputName;
   const courtesyTo = $('#sale-courtesy-to').value || '';
   const notes = $('#sale-notes').value || '';
 

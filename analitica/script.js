@@ -15,7 +15,30 @@
   let products = [];
   let costosPresentacion = null;
   const INVENTARIO_KEY = 'arcano33_inventario';
-  const ANALYTICS_RECOS_KEY = 'a33_analytics_recos_v1';
+  const POS_CUSTOMERS_KEY = 'a33_pos_customersCatalog';
+  // Recomendaciones (Clientes v3)
+  const ANALYTICS_RECOS_KEY_V2 = 'a33_analytics_recos_v2';
+  const ANALYTICS_RECOS_KEY_V1 = 'a33_analytics_recos_v1'; // legacy: Centro de Mando u otros lectores
+  const ANALYTICS_RECOS_KEY = ANALYTICS_RECOS_KEY_V2;
+
+  const RECO_CFG = {
+    vipTopPct: 0.20,
+    vipNoBuyDays: 21,
+    postEventMinDays: 2,
+    postEventMaxDays: 5,
+    upsellWindowDays: 30,
+    upsellMinSmallBuys: 2,
+    lowTicketThreshold: 180, // C$ (para detectar compras repetidas "bajas")
+    lowTicketMinBuys: 3,
+    cycles: {
+      pulso: { min: 7, max: 14 },
+      media: { min: 7, max: 14 },
+      djeba: { min: 14, max: 21 },
+      litro: { min: 14, max: 21 },
+      galon: { min: 21, max: 30 }
+    }
+  };
+
 
   // Umbrales para cortesías (porcentaje sobre total)
   const COURTESY_GREEN_PCT = 5;   // <5% verde
@@ -36,8 +59,13 @@
   let lastAgotamiento = null;
   let lastClientsIndex = null;
   let selectedClientKey = null;
-  let dormidosDays = 60;
+  let dormidosDays = 45;
   let clientesSearch = '';
+
+  // Navegación por URL (desde actionLink)
+  let urlTargetClientKey = null;
+  let urlTargetClientId = null;
+  let urlClientApplied = false;
 
   // Canvas charts (custom): keep last data to allow safe re-render on tab switch / resize.
   const CHART_CACHE = new Map(); // canvasId -> { labels, values, opts }
@@ -55,6 +83,7 @@
     setupAgotamientoUI();
     setupExportButtons();
     setupClientesUI();
+    readURLTargets();
     applyTabFromURL();
 
     try {
@@ -2028,6 +2057,17 @@ function rebuildHorasEventOptions(filteredSales){
 
   // --- Clientes (MVP) + cache de recomendaciones ---
 
+  function readURLTargets(){
+    try{
+      const url = new URL(window.location.href);
+      urlTargetClientKey = (url.searchParams.get('client') || '').trim() || null;
+      urlTargetClientId = (url.searchParams.get('clientId') || '').trim() || null;
+    }catch(_){
+      urlTargetClientKey = null;
+      urlTargetClientId = null;
+    }
+  }
+
   function applyTabFromURL(){
     try{
       const url = new URL(window.location.href);
@@ -2038,9 +2078,48 @@ function rebuildHorasEventOptions(filteredSales){
     }catch(_){ }
   }
 
+  function applyClientSelectionFromURL(index){
+    if (urlClientApplied) return;
+    if (!index || !Array.isArray(index.rows) || !index.rows.length) return;
+
+    let targetKey = null;
+
+    const clean = (v)=>{
+      if (!v) return '';
+      try{ return decodeURIComponent(String(v)); }catch(_){ return String(v); }
+    };
+
+    const id = clean(urlTargetClientId).trim();
+    if (id){
+      const k = `id:${id}`;
+      if (index.rows.some(r => r.key === k)) targetKey = k;
+    }
+
+    if (!targetKey){
+      const raw = clean(urlTargetClientKey).trim();
+      if (raw){
+        if (raw.startsWith('id:') || raw.startsWith('name:')){
+          if (index.rows.some(r => r.key === raw)) targetKey = raw;
+        } else {
+          const kId = `id:${raw}`;
+          if (index.rows.some(r => r.key === kId)) targetKey = kId;
+          else {
+            const kName = `name:${normalizeKey(raw) || raw}`;
+            if (index.rows.some(r => r.key === kName)) targetKey = kName;
+          }
+        }
+      }
+    }
+
+    if (targetKey){
+      selectedClientKey = targetKey;
+      urlClientApplied = true;
+    }
+  }
+
   function setupClientesUI(){
     const input = document.getElementById('clientes-buscar');
-    const dormidosSel = document.getElementById('clientes-dormidos-dias');
+    const dormidosSel = document.getElementById('clientes-dormidos-days');
     const btnRecalc = document.getElementById('btn-clientes-recalcular');
 
     if (input){
@@ -2052,14 +2131,16 @@ function rebuildHorasEventOptions(filteredSales){
 
     if (dormidosSel){
       dormidosSel.addEventListener('change', () => {
-        dormidosDays = Math.max(1, parseInt(dormidosSel.value, 10) || 60);
+        dormidosDays = Math.max(1, parseInt(dormidosSel.value, 10) || 45);
         if (lastClientsIndex){
           // Recalcular solo segmento/estado sobre el mismo dataset
           lastClientsIndex = annotateDormidos(lastClientsIndex, dormidosDays);
+
+    applyClientSelectionFromURL(lastClientsIndex);
           renderClientList(lastClientsIndex);
           if (selectedClientKey) renderClientDetail(selectedClientKey, lastClientsIndex);
           // El cache de recos depende de dormidos
-          writeRecosCache(lastClientsIndex, lastPresStats, lastEventStats, getCurrentRange());
+          writeRecosCache(lastClientsIndex, getCurrentRange());
           renderRecosPreview();
         }
       });
@@ -2067,7 +2148,7 @@ function rebuildHorasEventOptions(filteredSales){
 
     if (btnRecalc){
       btnRecalc.addEventListener('click', () => {
-        writeRecosCache(lastClientsIndex, lastPresStats, lastEventStats, getCurrentRange(), { force:true });
+        writeRecosCache(lastClientsIndex, getCurrentRange(), { force:true });
         renderRecosPreview();
       });
     }
@@ -2124,33 +2205,165 @@ function rebuildHorasEventOptions(filteredSales){
     return index;
   }
 
+  function loadPosCustomerCatalog(){
+    const list = safeStorageGetJSON(POS_CUSTOMERS_KEY, []);
+    return Array.isArray(list) ? list : [];
+  }
+
+  function collectAllCustomerNames(c){
+    const out = [];
+    if (!c || typeof c !== 'object') return out;
+    if (c.name) out.push(String(c.name));
+    if (Array.isArray(c.aliases)){
+      for (const a of c.aliases){
+        if (a) out.push(String(a));
+      }
+    }
+    if (Array.isArray(c.nameHistory)){
+      for (const h of c.nameHistory){
+        if (h && h.from) out.push(String(h.from));
+        if (h && h.to) out.push(String(h.to));
+      }
+    }
+    return out;
+  }
+
+  function buildCustomerResolver(catalog){
+    const byId = new Map();
+    for (const c of (catalog || [])){
+      if (c && c.id != null){
+        const id = String(c.id).trim();
+        if (id) byId.set(id, c);
+      }
+    }
+
+    const resolveFinalId = (id)=>{
+      let cur = (id != null) ? String(id).trim() : '';
+      if (!cur) return '';
+      const seen = new Set();
+      while (cur){
+        if (seen.has(cur)) break;
+        seen.add(cur);
+        const c = byId.get(cur);
+        if (!c) break;
+        const nxt = (c.mergedIntoId != null) ? String(c.mergedIntoId).trim() : '';
+        if (nxt){ cur = nxt; continue; }
+        break;
+      }
+      return cur;
+    };
+
+    const keyToFinal = new Map();
+    const ambiguous = new Set();
+    const addKey = (k, finalId)=>{
+      if (!k) return;
+      if (ambiguous.has(k)) return;
+      if (keyToFinal.has(k) && keyToFinal.get(k) !== finalId){
+        keyToFinal.delete(k);
+        ambiguous.add(k);
+        return;
+      }
+      keyToFinal.set(k, finalId);
+    };
+
+    for (const c of (catalog || [])){
+      if (!c || c.id == null) continue;
+      const finalId = resolveFinalId(c.id);
+      if (!finalId) continue;
+      const names = collectAllCustomerNames(c);
+      for (const nm of names){
+        const k = normalizeKey(nm);
+        addKey(k, finalId);
+      }
+    }
+
+    const matchNameToFinalId = (name)=>{
+      const k = normalizeKey(name);
+      if (!k || ambiguous.has(k)) return '';
+      return keyToFinal.get(k) || '';
+    };
+
+    const getDisplayName = (finalId)=>{
+      const c = byId.get(finalId);
+      return c && c.name ? String(c.name) : '';
+    };
+
+    return { byId, resolveFinalId, matchNameToFinalId, getDisplayName };
+  }
+
+  function classifyFormat(productName){
+    const s = String(productName || '').toLowerCase();
+    if (!s) return '';
+    if (s.includes('gal')) return 'galon';
+    if (s.includes('litro') || s.includes('1000')) return 'litro';
+    if (s.includes('djeba') || s.includes('750')) return 'djeba';
+    if (s.includes('media') || s.includes('375')) return 'media';
+    if (s.includes('pulso') || s.includes('250')) return 'pulso';
+    // vasos u otros no aplican para reglas de recompra
+    return '';
+  }
+
   function buildClientsIndex(filteredSales){
     const map = new Map();
+
+    const catalog = loadPosCustomerCatalog();
+    const resolver = buildCustomerResolver(catalog);
 
     for (const s of (filteredSales || [])){
       const rawName = (s && (s.customerName || s.customer)) || '';
       const name = sanitizeCustomerName(rawName);
       if (!name) continue;
-      const key = normalizeKey(name);
-      if (!key) continue;
 
+      const saleCustomerId = (s && s.customerId != null) ? String(s.customerId).trim() : '';
+      let finalId = '';
+      let idSource = 'none'; // id | derived | none
+
+      if (saleCustomerId){
+        const resolved = resolver.resolveFinalId(saleCustomerId);
+        if (resolved && resolver.byId.has(resolved)){
+          finalId = resolved;
+          idSource = 'id';
+        }
+      }
+
+      if (!finalId){
+        const matched = resolver.matchNameToFinalId(name);
+        if (matched && resolver.byId.has(matched)){
+          finalId = matched;
+          idSource = 'derived';
+        }
+      }
+
+      const key = finalId ? `id:${finalId}` : `name:${normalizeKey(name) || name}`;
       if (!map.has(key)){
+        const disp = finalId ? (resolver.getDisplayName(finalId) || name) : name;
         map.set(key, {
           key,
-          name,
+          customerId: finalId || null,
+          idSource,
+          name: disp,
           totalNet: 0,
           paidCount: 0,
           txCount: 0,
           returnsValueAbs: 0,
           lastPaidAt: null,
-          lines: [],
-          pres: new Map()
+          lastPaidSale: null,
+          smallBuysLast30: 0,
+          lowTicketBuysLast30: 0,
+          lastByFormat: {},
+          pres: new Map(),
+          lines: []
         });
       }
 
       const c = map.get(key);
-      // Mantener el displayName “más reciente” si viene diferente
-      if (name.length > c.name.length) c.name = name;
+      // Mantener displayName desde catálogo si hay ID
+      if (c.customerId){
+        const dispNow = resolver.getDisplayName(c.customerId) || c.name;
+        if (dispNow && dispNow !== c.name) c.name = dispNow;
+      } else {
+        if (name.length > c.name.length) c.name = name;
+      }
 
       const total = Number(s.total || 0) || 0;
       const isCourtesy = !!(s.courtesy || s.isCourtesy);
@@ -2163,10 +2376,36 @@ function rebuildHorasEventOptions(filteredSales){
         if (isReturn && total < 0) c.returnsValueAbs += Math.abs(total);
       }
 
+      const dt = parseSaleDateTime(s) || new Date(s.createdAt || 0);
+
       // última compra (solo pagada, no devolución, no cortesía)
       if (!isCourtesy && !isReturn && total > 0){
-        const dt = parseSaleDateTime(s) || new Date(s.createdAt || 0);
-        if (dt && (!c.lastPaidAt || dt > c.lastPaidAt)) c.lastPaidAt = dt;
+        if (dt && (!c.lastPaidAt || dt > c.lastPaidAt)){
+          c.lastPaidAt = dt;
+          c.lastPaidSale = {
+            dt,
+            eventName: s.eventName || 'General',
+            productName: s.productName || '—',
+            total
+          };
+        }
+        // upsell: compras repetidas en ventana reciente
+        const f = classifyFormat(s.productName);
+        const now = new Date();
+        const days = dt ? daysBetween(dt, now) : 999999;
+
+        if (days <= RECO_CFG.upsellWindowDays && (f === 'pulso' || f === 'media')){
+          c.smallBuysLast30 += 1;
+        }
+        if (days <= RECO_CFG.upsellWindowDays && total > 0 && total <= RECO_CFG.lowTicketThreshold){
+          c.lowTicketBuysLast30 += 1;
+        }
+
+        // lastByFormat
+        if (f){
+          const prev = c.lastByFormat[f];
+          if (!prev || dt > prev) c.lastByFormat[f] = dt;
+        }
       }
 
       // favoritos: neto por presentación/producto
@@ -2179,14 +2418,13 @@ function rebuildHorasEventOptions(filteredSales){
       c.pres.set(presLabel, (c.pres.get(presLabel) || 0) + deltaUnits);
 
       // historial
-      const dtHist = parseSaleDateTime(s) || new Date(s.createdAt || 0);
       c.lines.push({
         date: s.date || '',
         time: s.time || '',
-        dt: dtHist,
+        dt,
         eventName: s.eventName || 'General',
         productName: s.productName || '—',
-        total: total,
+        total,
         isReturn,
         isCourtesy
       });
@@ -2445,87 +2683,210 @@ function rebuildHorasEventOptions(filteredSales){
     }
   }
 
-  function buildAnalyticsRecos(clientsIndex, presStats, eventStats, range){
-    const updatedAt = new Date().toISOString();
-    const items = [];
-
-    const clients = (clientsIndex && Array.isArray(clientsIndex.rows)) ? clientsIndex.rows : [];
-    const dormidos = clients.filter(c => c.isDormido);
-
-    if (clients.length){
-      if (dormidos.length){
-        const topDorm = dormidos.slice().sort((a,b)=> (b.totalNet||0)-(a.totalNet||0)).slice(0,3).map(c=>c.name);
-        items.push({
-          type: 'clientes_dormidos',
-          title: `Reactivar ${dormidos.length} clientes dormidos`,
-          reason: `No compran desde hace ≥${dormidosDays} días. Prioriza: ${topDorm.join(', ') || '—'}.`,
-          actionLink: './index.html?tab=clientes',
-          updatedAt
-        });
-      } else {
-        items.push({
-          type: 'clientes_activos',
-          title: 'Clientes activos en el periodo',
-          reason: `Todos los clientes con compras recientes están “activos” bajo el umbral de ${dormidosDays} días. Mantén el ritmo con follow-up post-evento.`,
-          actionLink: './index.html?tab=clientes',
-          updatedAt
-        });
-      }
-    }
-
-    // Presentaciones
-    const presRows = presStats && Array.isArray(presStats.rows) ? presStats.rows : [];
-    if (presRows.length){
-      const topVentas = presRows.slice().sort((a,b)=> (b.ventas||0)-(a.ventas||0))[0];
-      const topMargen = presRows.slice().sort((a,b)=> (b.marginUnit||0)-(a.marginUnit||0))[0];
-
-      if (topVentas){
-        items.push({
-          type: 'top_presentacion',
-          title: `Tu motor del periodo: ${topVentas.label}`,
-          reason: `Es la #1 en ventas (${formatCurrency(topVentas.ventas)}). Mantén stock y dale visibilidad.`,
-          actionLink: './index.html?tab=presentaciones',
-          updatedAt
-        });
-      }
-      if (topMargen){
-        items.push({
-          type: 'mejor_margen',
-          title: `Mayor margen: ${topMargen.label}`,
-          reason: `Margen unitario prom.: ${Number(topMargen.marginUnit||0).toFixed(1)}%. Úsalo para empujar utilidad (bundles / upsell).`,
-          actionLink: './index.html?tab=presentaciones',
-          updatedAt
-        });
-      }
-    }
-
-    // Eventos
-    const evRows = eventStats && Array.isArray(eventStats.rows) ? eventStats.rows : [];
-    if (evRows.length){
-      const topEv = evRows.slice().sort((a,b)=> (b.ventas||0)-(a.ventas||0))[0];
-      if (topEv){
-        items.push({
-          type: 'evento_top',
-          title: `Evento más fuerte: ${topEv.name}`,
-          reason: `Ventas del evento: ${formatCurrency(topEv.ventas)}. Replicar ese formato/ubicación puede darte otro salto.`,
-          actionLink: './index.html?tab=eventos',
-          updatedAt
-        });
-      }
-    }
-
-    return items.slice(0,5);
+  function isEventName(name){
+    const s = String(name || '').trim();
+    if (!s) return false;
+    const low = s.toLowerCase();
+    if (low === 'general' || low === 'sin evento' || low === 'default') return false;
+    return true;
   }
 
-  function writeRecosCache(clientsIndex, presStats, eventStats, range, { force=false } = {}){
+  function formatRecoUpdated(ts){
+    if (!ts) return 'Actualizado: —';
+    const d = new Date(ts);
+    if (!isFinite(d.getTime())) return 'Actualizado: —';
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    return `Actualizado: ${hh}:${mm}`;
+  }
+
+  function buildClientRecos(clientsIndex, range){
+    const updatedAt = new Date().toISOString();
+    const now = new Date();
+
+    const rows = (clientsIndex && Array.isArray(clientsIndex.rows)) ? clientsIndex.rows : [];
+    const paidClients = rows.filter(c => (c && (c.paidCount || 0) > 0));
+    if (!paidClients.length) return [];
+
+    const dormThreshold = Math.max(1, Number(dormidosDays || 45) || 45);
+
+    // VIP: top % por gasto histórico, pero enfriándose
+    const vipPct = Math.min(0.90, Math.max(0.05, Number(RECO_CFG.vipTopPct || 0.20) || 0.20));
+    const vipNoBuyDays = Math.max(1, Number(RECO_CFG.vipNoBuyDays || 21) || 21);
+    const sortedBySpend = paidClients.slice().sort((a,b)=> (b.totalNet||0) - (a.totalNet||0));
+    const topCount = Math.max(1, Math.ceil(sortedBySpend.length * vipPct));
+    const vipSet = new Set(sortedBySpend.slice(0, topCount).map(c => c.key));
+
+    const postMinDays = Math.max(0, Number(RECO_CFG.postEventMinDays || 2) || 2);
+    const postMaxDays = Math.max(postMinDays, Number(RECO_CFG.postEventMaxDays || 5) || 5);
+
+    const upsellWindowDays = Math.max(1, Number(RECO_CFG.upsellWindowDays || 30) || 30);
+    const upsellMinSmallBuys = Math.max(1, Number(RECO_CFG.upsellMinSmallBuys || 2) || 2);
+    const lowTicketMinBuys = Math.max(1, Number(RECO_CFG.lowTicketMinBuys || 3) || 3);
+
+    const prioByType = { VIP:5, DORMIDOS:4, POST_EVENTO:3, RECOMPRA:2, UPSELL:1 };
+    const candidates = [];
+
+    for (const c of paidClients){
+      const total = Number(c.totalNet || 0) || 0;
+      const compras = Number(c.paidCount || 0) || 0;
+
+      // días desde última compra pagada
+      const last = c.lastPaidAt;
+      const daysSinceLast = last instanceof Date ? Math.max(0, daysBetween(last, now)) : 999999;
+
+      const actionLink = c.customerId
+        ? (`./index.html?tab=clientes&clientId=${encodeURIComponent(String(c.customerId))}`)
+        : (`./index.html?tab=clientes&client=${encodeURIComponent(String(c.key))}`);
+
+      // 2) VIP SIN COMPRA
+      if (vipSet.has(c.key) && daysSinceLast > vipNoBuyDays){
+        candidates.push({
+          type: 'VIP',
+          title: `VIP sin compra: ${c.name}`,
+          reason: `Top ${Math.round(vipPct*100)}% por gasto (${formatCurrency(total)}). No compra desde ${daysSinceLast} días. Histórico: ${compras} compras.`,
+          actionLink,
+          customerId: c.customerId || null,
+          customerName: c.name,
+          updatedAt,
+          _prio: prioByType.VIP,
+          _score: total,
+          _clientKey: c.key
+        });
+      }
+
+      // 1) DORMIDOS (reactivar)
+      if (daysSinceLast >= dormThreshold){
+        candidates.push({
+          type: 'DORMIDOS',
+          title: `Reactivar: ${c.name}`,
+          reason: `No compra desde ${daysSinceLast} días (umbral ${dormThreshold}). Histórico: ${compras} compras / ${formatCurrency(total)}.`,
+          actionLink,
+          customerId: c.customerId || null,
+          customerName: c.name,
+          updatedAt,
+          _prio: prioByType.DORMIDOS,
+          _score: total,
+          _clientKey: c.key
+        });
+      }
+
+      // 5) POST-EVENTO (2–5 días luego de evento)
+      if (c.lastPaidSale && isEventName(c.lastPaidSale.eventName)){
+        if (daysSinceLast >= postMinDays && daysSinceLast <= postMaxDays){
+          const evName = String(c.lastPaidSale.eventName || '').trim();
+          candidates.push({
+            type: 'POST_EVENTO',
+            title: `Post-evento: ${c.name}`,
+            reason: `Compró en “${evName}” hace ${daysSinceLast} días. Seguimiento con delivery puede volverlo recurrente.`,
+            actionLink,
+            customerId: c.customerId || null,
+            customerName: c.name,
+            updatedAt,
+            _prio: prioByType.POST_EVENTO,
+            _score: total,
+            _clientKey: c.key
+          });
+        }
+      }
+
+      // 4) RECOMPRA POR CICLO
+      const fav = c.favoriteFormatKey;
+      const cyc = (fav && RECO_CFG.cycles) ? RECO_CFG.cycles[fav] : null;
+      if (fav && cyc && c.lastByFormat && c.lastByFormat[fav] instanceof Date){
+        const lastFav = c.lastByFormat[fav];
+        const d = Math.max(0, daysBetween(lastFav, now));
+        if (d >= (cyc.max || 0)){
+          const cycLabel = (cyc.min && cyc.max) ? `${cyc.min}–${cyc.max}` : String(cyc.max || '');
+          candidates.push({
+            type: 'RECOMPRA',
+            title: `Recompra: ${c.name}`,
+            reason: `Su formato favorito es ${c.favoriteFormatLabel || fav}. Última compra hace ${d} días (ciclo sugerido ${cycLabel} días).`,
+            actionLink,
+            customerId: c.customerId || null,
+            customerName: c.name,
+            updatedAt,
+            _prio: prioByType.RECOMPRA,
+            _score: total,
+            _clientKey: c.key
+          });
+        }
+      }
+
+      // 3) ESCALERA DE TAMAÑO (UPSELL lógico)
+      const smallBuys = Number(c.smallBuysLast30 || 0) || 0;
+      const lowTicketBuys = Number(c.lowTicketBuysLast30 || 0) || 0;
+      const hitsSmall = smallBuys >= upsellMinSmallBuys;
+      const hitsLow = lowTicketBuys >= lowTicketMinBuys;
+      if (hitsSmall || hitsLow){
+        const avgTicket = compras ? (total / compras) : 0;
+        const suggestion = (avgTicket >= 250) ? 'Litro 1000 ml' : 'Djeba 750 ml';
+        const why = hitsSmall
+          ? `En los últimos ${upsellWindowDays} días compró ${smallBuys} veces formatos pequeños.`
+          : `En los últimos ${upsellWindowDays} días repitió ${lowTicketBuys} tickets bajos (≤ ${formatCurrency(RECO_CFG.lowTicketThreshold)}).`;
+        candidates.push({
+          type: 'UPSELL',
+          title: `Upsell: ${c.name}`,
+          reason: `${why} Sugerencia: subir a ${suggestion}.`,
+          actionLink,
+          customerId: c.customerId || null,
+          customerName: c.name,
+          updatedAt,
+          _prio: prioByType.UPSELL,
+          _score: total,
+          _clientKey: c.key
+        });
+      }
+    }
+
+    // Selección final 3–5: prioridad + sin duplicar cliente
+    candidates.sort((a,b)=> (b._prio - a._prio) || ((b._score||0) - (a._score||0)));
+
+    const used = new Set();
+    const final = [];
+    for (const cand of candidates){
+      if (used.has(cand._clientKey)) continue;
+      used.add(cand._clientKey);
+      const { _prio, _score, _clientKey, ...clean } = cand;
+      final.push(clean);
+      if (final.length >= 5) break;
+    }
+
+    return final.slice(0,5);
+  }
+
+  function isRangeLike(x){
+    return x && typeof x === 'object' && ('from' in x) && ('to' in x);
+  }
+
+  function pickRangeFromArgs(args){
+    for (const a of args){
+      if (isRangeLike(a)) return a;
+    }
+    return null;
+  }
+
+  function pickOptsFromArgs(args){
+    for (const a of args){
+      if (a && typeof a === 'object' && !isRangeLike(a) && ('force' in a)) return a;
+    }
+    return {};
+  }
+
+  function writeRecosCache(clientsIndex, a, b, c, d){
+    const range = pickRangeFromArgs([a, b, c, d]);
+    const opts = pickOptsFromArgs([a, b, c, d]);
+    const force = !!opts.force;
+
     // Evitar re-escrituras frenéticas: si ya se actualizó hace poco, no molestamos.
     const prev = safeStorageGetJSON(ANALYTICS_RECOS_KEY, null);
     const now = Date.now();
     const prevTs = prev && prev[0] && prev[0].updatedAt ? Date.parse(prev[0].updatedAt) : 0;
     if (!force && prevTs && (now - prevTs) < 60000) return;
 
-    const items = buildAnalyticsRecos(clientsIndex, presStats, eventStats, range);
-    safeStorageSetJSON(ANALYTICS_RECOS_KEY, items);
+    const items = buildClientRecos(clientsIndex, range) || [];
+    safeStorageSetJSON(ANALYTICS_RECOS_KEY_V2, items);
+    safeStorageSetJSON(ANALYTICS_RECOS_KEY_V1, items); // espejo legacy
   }
 
   function renderRecosPreview(){
@@ -2534,26 +2895,33 @@ function rebuildHorasEventOptions(filteredSales){
     const updated = document.getElementById('reco-updated');
     if (!list || !empty || !updated) return;
 
-    const items = safeStorageGetJSON(ANALYTICS_RECOS_KEY, []) || [];
+    let items = safeStorageGetJSON(ANALYTICS_RECOS_KEY_V2, []) || [];
+
+    if (!Array.isArray(items) || !items.length){
+      const legacy = safeStorageGetJSON(ANALYTICS_RECOS_KEY_V1, []) || [];
+      if (Array.isArray(legacy) && legacy.length) items = legacy;
+    }
 
     if (!Array.isArray(items) || !items.length){
       list.innerHTML = '';
       empty.style.display = 'block';
-      updated.textContent = '—';
+      updated.textContent = 'Actualizado: —';
       return;
     }
 
     empty.style.display = 'none';
 
     const ts = items[0] && items[0].updatedAt ? items[0].updatedAt : null;
-    updated.textContent = ts ? ('Actualizado: ' + ts.replace('T',' ').slice(0,16)) : '—';
+    updated.textContent = formatRecoUpdated(ts);
 
     list.innerHTML = items.map(it => {
+      const type = escapeHtml(String(it.type || '').toUpperCase());
       const title = escapeHtml(it.title || 'Recomendación');
       const reason = escapeHtml(it.reason || '');
       const link = String(it.actionLink || '').trim();
       const action = link ? `<a class="btn-secondary" style="padding:0.28rem 0.65rem; font-size:0.78rem;" href="${escapeHtml(link)}">Abrir</a>` : '';
-      return `<li class="recs-item"><div><strong>${title}</strong><div class="hint small" style="margin-top:0.25rem;">${reason}</div></div>${action}</li>`;
+      const chip = type ? `<span class="chip">${type}</span>` : '';
+      return `<li class="recs-item"><div><div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><strong>${title}</strong>${chip}</div><div class="hint small" style="margin-top:0.25rem;">${reason}</div></div>${action}</li>`;
     }).join('');
   }
   function escapeHtml(str){

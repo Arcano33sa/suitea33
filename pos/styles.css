@@ -366,6 +366,9 @@ small.muted{color:var(--muted)}
 	.customer-manage-item{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 10px;border:1px solid #2a2a2a;border-radius:12px;background:#111}
 .customer-manage-name{font-weight:800}
 .customer-manage-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+	.customer-manage-item-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+	.customer-manage-item-actions .btn-pill-mini{white-space:nowrap}
+	.customer-manage-item-actions .btn-disabled{opacity:.55;cursor:not-allowed;filter:grayscale(.15)}
 .badge-on{background:#0f1b0f;color:#b6f0b6;border:1px solid #214021}
 .badge-off{background:#2a1b0f;color:#ffd7a1;border:1px solid #5a3d12}
 
