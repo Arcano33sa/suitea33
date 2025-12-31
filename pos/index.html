@@ -278,7 +278,78 @@
           <h3 style="margin:0">Lotes cargados en este evento <span class="badge" id="lotes-count">0</span></h3>
           <small class="muted">Se registra cuando usas “Agregar desde lote”.</small>
         </div>
+        <div class="actions end">
+          <button id="btn-reverse-assign" class="btn-outline btn-pill btn-pill-mini" type="button">Reversar asignación</button>
+          <button id="btn-create-sobrante" class="btn-outline btn-pill btn-pill-mini" type="button">Crear lote sobrante</button>
+        </div>
       </div>
+
+      <div id="sobrante-panel" class="sobrante-panel" style="display:none">
+        <div class="sobrante-panel-head">
+          <div>
+            <div class="sobrante-title">Sobrantes → Lote hijo</div>
+            <small class="muted" id="sobrante-hint">Crea un lote DISPONIBLE y cierra el lote original (trazabilidad incluida).</small>
+          </div>
+          <div class="actions end">
+            <button id="btn-sobrante-cancel" class="btn-outline btn-pill btn-pill-mini" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div class="row" style="grid-template-columns:1fr">
+          <div>
+            <label>Lote original</label>
+            <select id="sobrante-lote-select"></select>
+            <small class="muted" id="sobrante-lote-meta"></small>
+          </div>
+        </div>
+
+        <div class="sobrante-grid" aria-label="Cantidades sobrantes por presentación">
+          <div class="sobrante-cell"><label>P</label><input id="sobrante-p" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+          <div class="sobrante-cell"><label>M</label><input id="sobrante-m" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+          <div class="sobrante-cell"><label>D</label><input id="sobrante-d" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+          <div class="sobrante-cell"><label>L</label><input id="sobrante-l" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+          <div class="sobrante-cell"><label>G</label><input id="sobrante-g" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+        </div>
+
+        <div class="actions end">
+          <button id="btn-sobrante-create" class="btn-ok btn-pill btn-pill-mini" type="button">Crear lote sobrante</button>
+        </div>
+      </div>
+
+      <div id="reverso-panel" class="reverso-panel" style="display:none">
+        <div class="reverso-panel-head">
+          <div>
+            <div class="reverso-title">Reverso de asignación</div>
+            <small class="muted">Devuelve el lote a DISPONIBLE sin borrar historia. Solo se permite si es seguro.</small>
+          </div>
+          <div class="actions end">
+            <button id="btn-reverso-cancel" class="btn-outline btn-pill btn-pill-mini" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div class="row" style="grid-template-columns:1fr">
+          <div>
+            <label>Lote asignado</label>
+            <select id="reverso-lote-select"></select>
+            <small class="muted" id="reverso-lote-meta"></small>
+          </div>
+        </div>
+
+        <div class="reverso-grid" aria-label="Resumen de unidades a reversar">
+          <div class="reverso-cell"><label>P</label><span id="reverso-p">0</span></div>
+          <div class="reverso-cell"><label>M</label><span id="reverso-m">0</span></div>
+          <div class="reverso-cell"><label>D</label><span id="reverso-d">0</span></div>
+          <div class="reverso-cell"><label>L</label><span id="reverso-l">0</span></div>
+          <div class="reverso-cell"><label>G</label><span id="reverso-g">0</span></div>
+        </div>
+
+        <div class="warn"><small><b>Regla:</b> si el evento ya tuvo consumo/ventas de esas presentaciones (o fraccionamiento de galones), el reverso se bloquea para evitar inconsistencias.</small></div>
+
+        <div class="actions end">
+          <button id="btn-reverso-do" class="btn-danger btn-pill btn-pill-mini" type="button">Reversar asignación</button>
+        </div>
+      </div>
+
       <div class="table-scroll">
         <table id="tbl-lotes-evento" class="compact">
           <thead>

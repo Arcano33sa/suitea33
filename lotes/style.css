@@ -270,6 +270,73 @@ tr:nth-child(even) td {
   color: var(--color-accent-soft);
 }
 
+/* Chips de estado (DISPONIBLE / EN EVENTO / CERRADO) */
+.lote-codecell{
+  white-space: normal;
+}
+.lote-code-text{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lote-status-line{
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.chip{
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(221, 191, 100, 0.55);
+  font-size: 0.66rem;
+  color: var(--color-accent-soft);
+  max-width: 100%;
+}
+.chip--available{
+  border-color: rgba(221, 191, 100, 0.75);
+  color: var(--color-accent-soft);
+}
+.chip--in-event{
+  border-color: rgba(123, 24, 24, 0.85);
+  color: rgba(255, 245, 245, 0.95);
+  background: rgba(123, 24, 24, 0.16);
+}
+.chip--closed{
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+.chip--event{
+  border-color: rgba(221, 191, 100, 0.45);
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip--child{
+  border-color: rgba(212,175,55,0.55);
+  background: rgba(212,175,55,0.08);
+  color: rgba(255,245,220,0.95);
+}
+
+.chip--parent{
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: rgba(240,240,240,0.95);
+
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .actions-cell{
   /* Mantener comportamiento de celda de tabla (evita romper anchos) */
   white-space: nowrap;
@@ -328,7 +395,9 @@ tr:nth-child(even) td {
 }
 .table-lotes td:nth-child(2){
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: unset;
+  white-space: normal;
+  line-height: 1.15;
 }
 
 /* Columna 3: VOL. ML */

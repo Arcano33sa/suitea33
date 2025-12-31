@@ -89,6 +89,87 @@ input[type="date"]{padding:10px}
 .btn-pill:disabled{opacity:.55; box-shadow:none}
 .btn-pill:not(:disabled):active{filter:brightness(.98)}
 
+/* Pastilla mini (para acciones compactas tipo Sincronizar / Sobrantes) */
+.btn-pill-mini{
+  padding:6px 10px;
+  font-size:12px;
+  line-height:1.05;
+}
+
+/* Sobrantes → Lote hijo (Inventario por evento) */
+.sobrante-panel{
+  margin-top:10px;
+  padding:10px;
+  border-radius:14px;
+  background:#101010;
+  border:1px solid rgba(212,175,55,0.22);
+  box-shadow:0 8px 22px rgba(0,0,0,0.22);
+}
+.sobrante-panel-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.sobrante-title{
+  font-weight:800;
+  letter-spacing:.2px;
+}
+.sobrante-grid{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(46px, 1fr));
+  gap:8px;
+  margin-top:10px;
+}
+.sobrante-cell{display:flex; flex-direction:column; gap:4px}
+.sobrante-cell label{font-size:12px; color:var(--muted); font-weight:800; letter-spacing:.3px}
+.sobrante-cell input{width:100%}
+@media (max-width: 520px){
+  .sobrante-grid{grid-template-columns:repeat(3, minmax(46px, 1fr))}
+}
+
+/* Reverso de asignación (Inventario por evento) */
+.reverso-panel{
+  margin-top:10px;
+  padding:10px;
+  border-radius:14px;
+  background:#101010;
+  border:1px solid rgba(212,175,55,0.22);
+  box-shadow:0 8px 22px rgba(0,0,0,0.22);
+}
+.reverso-panel-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.reverso-title{font-weight:800; letter-spacing:.2px}
+.reverso-grid{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(46px, 1fr));
+  gap:8px;
+  margin-top:10px;
+}
+.reverso-cell{display:flex; flex-direction:column; gap:4px}
+.reverso-cell label{font-size:12px; color:var(--muted); font-weight:800; letter-spacing:.3px}
+.reverso-cell span{
+  display:block;
+  width:100%;
+  padding:8px 10px;
+  border-radius:10px;
+  background:#141414;
+  border:1px solid rgba(212,175,55,0.22);
+  text-align:center;
+  font-weight:900;
+  color:var(--accent);
+}
+@media (max-width: 520px){
+  .reverso-grid{grid-template-columns:repeat(3, minmax(46px, 1fr))}
+}
+
+
 /* Vasos panel (colapsable persistente) */
 .is-collapsed{display:none !important}
 

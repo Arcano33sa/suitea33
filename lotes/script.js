@@ -89,9 +89,68 @@ function getCreatedTimestamp(lote) {
 }
 
 
+// --- Estado/asignaci�n de lotes (compat: lotes viejos = DISPONIBLE)
+function normLoteStatus(status){
+  const s = (status || "").toString().trim().toUpperCase();
+  if (!s) return "";
+  if (s === "EN EVENTO") return "EN_EVENTO";
+  if (s === "EN_EVENTO") return "EN_EVENTO";
+  if (s === "DISPONIBLE") return "DISPONIBLE";
+  if (s === "CERRADO") return "CERRADO";
+  return s;
+}
+
+function effectiveLoteStatus(lote){
+  const st = normLoteStatus(lote?.status);
+  const assigned = lote?.assignedEventId != null && String(lote.assignedEventId).trim() !== "";
+  if (st === "CERRADO") return "CERRADO";
+  if (assigned) return "EN_EVENTO";
+  if (st === "EN_EVENTO") return "EN_EVENTO";
+  return "DISPONIBLE";
+}
+
 function showLoteDetails(lote) {
   const lines = [];
+  const st = effectiveLoteStatus(lote);
   lines.push(`Lote: ${lote.codigo || ""}`);
+  lines.push(`Estado: ${st}`);
+
+  const evName = (lote.assignedEventName || "").toString().trim();
+  if (evName) lines.push(`Evento asignado: ${evName}`);
+
+  if (lote.closedAt) {
+    try {
+      const d = new Date(lote.closedAt);
+      lines.push(`Cerrado: ${Number.isNaN(d.getTime()) ? lote.closedAt : d.toLocaleString('es-NI')}`);
+    } catch {
+      lines.push(`Cerrado: ${lote.closedAt}`);
+    }
+  }
+
+  // Reverso de asignación (airbag anti-errores)
+  if (lote.reversedAt) {
+    try {
+      const d = new Date(lote.reversedAt);
+      lines.push(`Reversado: ${Number.isNaN(d.getTime()) ? lote.reversedAt : d.toLocaleString('es-NI')}`);
+    } catch {
+      lines.push(`Reversado: ${lote.reversedAt}`);
+    }
+    const rr = (lote.reversedReason || '').toString().trim();
+    if (rr) lines.push(`Motivo: ${rr}`);
+  }
+
+  // Trazabilidad (lote hijo / sobrante)
+  const parentId = (lote.parentLotId || "").toString().trim();
+  if (parentId) {
+    const all = loadLotes();
+    const parent = all.find(l => l && String(l.id) === parentId) || null;
+    const pcode = parent ? (parent.codigo || parent.name || parent.nombre || parentId) : parentId;
+    lines.push(`Sobrante de: ${pcode}`);
+  }
+  const srcEv = (lote.sourceEventName || lote.sourceEventId || "").toString().trim();
+  if (srcEv) lines.push(`Evento origen: ${srcEv}`);
+
+  lines.push("");
   lines.push(`Fecha de elaboración: ${formatDate(lote.fecha)}`);
   lines.push(`Fecha de caducidad: ${formatDate(lote.caducidad)}`);
   lines.push("");
@@ -164,6 +223,14 @@ function readFormData() {
     notas: $("notas").value.trim(),
   };
 
+  // Estado inicial (compatibilidad). Solo para lotes nuevos.
+  if (!editingId){
+    data.status = "DISPONIBLE";
+    data.assignedEventId = null;
+    data.assignedEventName = "";
+    data.assignedAt = null;
+  }
+
   // Mantener createdAt estable (no borrarlo al editar). Agregamos updatedAt opcional.
   if (!editingId) {
     data.createdAt = new Date().toISOString();
@@ -229,6 +296,8 @@ function renderTable() {
     return (a.codigo || "").localeCompare(b.codigo || "");
   });
 
+  const byId = new Map(sorted.map((l) => [String(l.id), l]));
+
   for (const lote of sorted) {
     const tr = document.createElement("tr");
 
@@ -246,10 +315,70 @@ function renderTable() {
 
     fields.forEach((value, idx) => {
       const td = document.createElement("td");
+
+      // idx: 0 Fecha, 1 Código, 2 VolTotal, 3 Pulso, 4 Media, 5 Djeba, 6 Litro, 7 Galón, 8 Caducidad
+      if (idx === 1) {
+        td.classList.add("lote-codecell");
+
+        const codeText = document.createElement("div");
+        codeText.className = "lote-code-text";
+        codeText.textContent = value;
+        td.appendChild(codeText);
+
+        const st = effectiveLoteStatus(lote);
+        const line = document.createElement("div");
+        line.className = "lote-status-line";
+
+        const stChip = document.createElement("span");
+        stChip.className =
+          "chip " +
+          (st === "DISPONIBLE"
+            ? "chip--available"
+            : st === "EN_EVENTO"
+            ? "chip--in-event"
+            : "chip--closed");
+        stChip.textContent = st === "EN_EVENTO" ? "EN EVENTO" : st;
+        line.appendChild(stChip);
+
+        // Lote hijo / SOBRANTE (trazabilidad)
+        const isChild = !!lote.parentLotId || String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE';
+        if (isChild){
+          const childChip = document.createElement('span');
+          childChip.className = 'chip chip--child';
+          childChip.textContent = String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE' ? 'SOBRANTE' : 'HIJO';
+          line.appendChild(childChip);
+
+          const pid = (lote.parentLotId || '').toString().trim();
+          if (pid){
+            const p = byId.get(pid) || null;
+            const pcode = p ? (p.codigo || p.name || p.nombre || pid).toString() : pid;
+            const parentChip = document.createElement('span');
+            parentChip.className = 'chip chip--parent';
+            parentChip.textContent = 'De: ' + pcode;
+            parentChip.title = 'De: ' + pcode;
+            line.appendChild(parentChip);
+          }
+        }
+
+        if (st === "EN_EVENTO" || st === "CERRADO") {
+          const evName = (lote.assignedEventName || "").toString().trim();
+          if (evName) {
+            const evChip = document.createElement("span");
+            evChip.className = "chip chip--event";
+            evChip.textContent = "Evento: " + evName;
+            evChip.title = evName;
+            line.appendChild(evChip);
+          }
+        }
+
+        td.appendChild(line);
+        tr.appendChild(td);
+        return;
+      }
+
       td.textContent = value;
 
       // Compactar visualmente las columnas de productos (Pulso/Media/Djeba/Litro/Galón)
-      // idx: 0 Fecha, 1 Código, 2 VolTotal, 3 Pulso, 4 Media, 5 Djeba, 6 Litro, 7 Galón, 8 Caducidad
       if (idx >= 3 && idx <= 7) {
         td.classList.add("col-producto-abbr");
       }
@@ -258,7 +387,7 @@ function renderTable() {
         // caducidad
         const today = new Date().toISOString().slice(0, 10);
         if (value < today) {
-          td.innerHTML = `<span class="badge">Vencido</span>`;
+          td.innerHTML = '<span class="badge">Vencido</span>';
         }
       }
       tr.appendChild(td);
