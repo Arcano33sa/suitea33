@@ -868,8 +868,9 @@ const HIDDEN_GROUPS_KEY = 'a33_pos_hiddenGroups';
 
 
 // --- Ventas: Cliente (Clientes v2: picker propio + pegajoso + gestión)
+// Etapa 2 (Datos): catálogo con customerId + migración suave. Analítica sigue usando customerName.
 const CUSTOMER_CATALOG_KEY = 'a33_pos_customersCatalog';
-const CUSTOMER_DISABLED_KEY = 'a33_pos_customersDisabled';
+const CUSTOMER_DISABLED_KEY = 'a33_pos_customersDisabled'; // legado (Etapa 1). En Etapa 2 se mantiene sincronizado.
 const CUSTOMER_STICKY_KEY  = 'a33_pos_customerSticky';
 const CUSTOMER_LAST_KEY    = 'a33_pos_customerLast';
 
@@ -887,31 +888,10 @@ function sanitizeCustomerDisplayPOS(name){
   return (name || '').toString().replace(/\s+/g,' ').trim();
 }
 
-function sortCustomersAZ_POS(list){
+function sortCustomerObjectsAZ_POS(list){
   return (Array.isArray(list) ? list : [])
     .slice()
-    .sort((a,b)=> normalizeCustomerKeyPOS(a).localeCompare(normalizeCustomerKeyPOS(b)));
-}
-
-function loadCustomerCatalogPOS(){
-  const list = A33Storage.getJSON(CUSTOMER_CATALOG_KEY, [], 'local');
-  if (!Array.isArray(list)) return [];
-  // limpiar: strings no vacíos y dedupe por key normalizada
-  const out = [];
-  const seen = new Set();
-  for (const it of list){
-    const raw = sanitizeCustomerDisplayPOS(it);
-    if (!raw) continue;
-    const key = normalizeCustomerKeyPOS(raw);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(raw);
-  }
-  return sortCustomersAZ_POS(out);
-}
-
-function saveCustomerCatalogPOS(list){
-  try{ A33Storage.setJSON(CUSTOMER_CATALOG_KEY, Array.isArray(list) ? list : [], 'local'); }catch(_){ }
+    .sort((a,b)=> normalizeCustomerKeyPOS(a && a.name).localeCompare(normalizeCustomerKeyPOS(b && b.name)));
 }
 
 function loadCustomerDisabledSetPOS(){
@@ -941,6 +921,138 @@ function saveCustomerDisabledSetPOS(set){
   }catch(_){ }
 }
 
+function generateCustomerIdPOS(existingIds){
+  const used = existingIds instanceof Set ? existingIds : new Set(existingIds || []);
+  let id = '';
+  for (let i=0;i<6;i++){
+    id = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,9);
+    if (!used.has(id)) break;
+  }
+  return id || ('c_' + Date.now().toString(36));
+}
+
+function coerceCustomerObjectPOS(raw, disabledSet, existingIds){
+  // Acepta string u objeto y devuelve objeto válido o null
+  if (typeof raw === 'string'){
+    const name = sanitizeCustomerDisplayPOS(raw);
+    if (!name) return null;
+    const normalizedName = normalizeCustomerKeyPOS(name);
+    if (!normalizedName) return null;
+    const id = generateCustomerIdPOS(existingIds);
+    existingIds.add(id);
+    return {
+      id,
+      name,
+      isActive: !disabledSet.has(normalizedName),
+      createdAt: Date.now(),
+      normalizedName
+    };
+  }
+
+  if (!raw || typeof raw !== 'object') return null;
+
+  const name = sanitizeCustomerDisplayPOS(raw.name || raw.customerName || raw.customer || '');
+  if (!name) return null;
+  const normalizedName = normalizeCustomerKeyPOS(name);
+  if (!normalizedName) return null;
+
+  let id = (raw.id != null) ? String(raw.id) : '';
+  if (!id || existingIds.has(id)){
+    id = generateCustomerIdPOS(existingIds);
+  }
+  existingIds.add(id);
+
+  let isActive;
+  if (typeof raw.isActive === 'boolean') isActive = raw.isActive;
+  else if (typeof raw.active === 'boolean') isActive = raw.active;
+  else isActive = !disabledSet.has(normalizedName);
+
+  const createdAtNum = Number(raw.createdAt);
+  const createdAt = (Number.isFinite(createdAtNum) && createdAtNum > 0) ? createdAtNum : Date.now();
+
+  return {
+    id,
+    name,
+    isActive: !!isActive,
+    createdAt,
+    normalizedName
+  };
+}
+
+function migrateCustomerCatalogToObjectsPOS(){
+  const raw = A33Storage.getJSON(CUSTOMER_CATALOG_KEY, [], 'local');
+  const disabled = loadCustomerDisabledSetPOS();
+
+  const existingIds = new Set();
+  const seenNorm = new Set();
+  const out = [];
+  let changed = false;
+
+  if (Array.isArray(raw)){
+    for (const item of raw){
+      const obj = coerceCustomerObjectPOS(item, disabled, existingIds);
+      if (!obj) { if (item) changed = true; continue; }
+
+      if (seenNorm.has(obj.normalizedName)){
+        // Merge: mantener el primero, pero si alguno está activo, se queda activo.
+        const prev = out.find(x => x.normalizedName === obj.normalizedName);
+        if (prev && prev.isActive === false && obj.isActive === true) prev.isActive = true;
+        changed = true;
+        continue;
+      }
+
+      seenNorm.add(obj.normalizedName);
+
+      // Si el raw ya era objeto pero faltaba normalizedName/isActive/id, marcamos changed
+      if (typeof item === 'string') changed = true;
+      else {
+        if (!item.id || item.normalizedName !== obj.normalizedName || typeof item.isActive !== 'boolean' || typeof item.createdAt !== 'number') changed = true;
+      }
+
+      out.push(obj);
+    }
+  } else {
+    // Algo raro guardado: lo normalizamos a vacío
+    if (raw) changed = true;
+  }
+
+  const sorted = sortCustomerObjectsAZ_POS(out);
+
+  // Sincronizar disabled legacy basado en isActive
+  const disabled2 = new Set();
+  for (const c of sorted){
+    if (c && c.isActive === false && c.normalizedName) disabled2.add(c.normalizedName);
+  }
+  try{
+    // Guardar siempre si hubo migración o si hay divergencia con disabled existente
+    const oldDisabledArr = Array.from(disabled).sort().join('|');
+    const newDisabledArr = Array.from(disabled2).sort().join('|');
+    if (changed || oldDisabledArr !== newDisabledArr){
+      A33Storage.setJSON(CUSTOMER_CATALOG_KEY, sorted, 'local');
+      saveCustomerDisabledSetPOS(disabled2);
+    }
+  }catch(_){ }
+
+  return sorted;
+}
+
+function loadCustomerCatalogPOS(){
+  // Siempre devolvemos objetos (id, name, isActive, createdAt, normalizedName)
+  return migrateCustomerCatalogToObjectsPOS();
+}
+
+function saveCustomerCatalogPOS(list){
+  try{ A33Storage.setJSON(CUSTOMER_CATALOG_KEY, Array.isArray(list) ? list : [], 'local'); }catch(_){ }
+}
+
+function syncDisabledLegacyFromCatalogPOS(list){
+  const set = new Set();
+  for (const c of (Array.isArray(list) ? list : [])){
+    if (c && c.isActive === false && c.normalizedName) set.add(c.normalizedName);
+  }
+  saveCustomerDisabledSetPOS(set);
+}
+
 function isCustomerStickyPOS(){
   const el = document.getElementById('sale-customer-sticky');
   return !!(el && el.checked);
@@ -951,10 +1063,28 @@ function getCustomerNameFromUI_POS(){
   return sanitizeCustomerDisplayPOS(inp ? inp.value : '');
 }
 
-function setCustomerNameUI_POS(val){
+function getCustomerIdHintFromUI_POS(){
+  const inp = document.getElementById('sale-customer');
+  const raw = (inp && inp.dataset) ? String(inp.dataset.customerId || '').trim() : '';
+  return raw || null;
+}
+
+function setCustomerSelectionUI_POS(customer){
   const inp = document.getElementById('sale-customer');
   if (!inp) return;
-  inp.value = sanitizeCustomerDisplayPOS(val);
+  const name = sanitizeCustomerDisplayPOS(customer && customer.name);
+  inp.value = name;
+  if (inp.dataset){
+    if (customer && customer.id) inp.dataset.customerId = String(customer.id);
+    else delete inp.dataset.customerId;
+  }
+}
+
+function clearCustomerSelectionUI_POS(){
+  const inp = document.getElementById('sale-customer');
+  if (!inp) return;
+  inp.value = '';
+  if (inp.dataset) delete inp.dataset.customerId;
 }
 
 function persistCustomerStickyStatePOS(){
@@ -967,43 +1097,132 @@ function persistCustomerLastPOS(val){
   try{ A33Storage.setItem(CUSTOMER_LAST_KEY, sanitizeCustomerDisplayPOS(val || '')); }catch(_){ }
 }
 
+function resolveCustomerIdForSalePOS(customerName, uiHintId){
+  const name = sanitizeCustomerDisplayPOS(customerName);
+  if (!name) return { id: null, isNew: false };
+
+  const norm = normalizeCustomerKeyPOS(name);
+  const catalog = loadCustomerCatalogPOS();
+
+  // 1) Si viene hint de UI, validarlo
+  if (uiHintId){
+    const byId = catalog.find(c => c && String(c.id) === String(uiHintId));
+    if (byId && byId.normalizedName === norm){
+      return { id: String(byId.id), isNew: false };
+    }
+  }
+
+  // 2) Buscar por nombre normalizado
+  const found = catalog.find(c => c && c.normalizedName === norm);
+  if (found){
+    return { id: String(found.id), isNew: false };
+  }
+
+  // 3) Nuevo (se agregará al catálogo al completar la venta)
+  const existingIds = new Set(catalog.map(c => c && c.id).filter(Boolean).map(String));
+  const newId = generateCustomerIdPOS(existingIds);
+  return { id: String(newId), isNew: true };
+}
+
+function ensureCustomerInCatalogPOS(name, preferredId){
+  const n = sanitizeCustomerDisplayPOS(name);
+  if (!n) return { ok:false, id:null };
+
+  const norm = normalizeCustomerKeyPOS(n);
+  if (!norm) return { ok:false, id:null };
+
+  const list = loadCustomerCatalogPOS();
+  const existing = list.find(c => c && c.normalizedName === norm);
+
+  if (existing){
+    // Reactivar si estaba desactivado
+    if (existing.isActive === false){
+      existing.isActive = true;
+      saveCustomerCatalogPOS(sortCustomerObjectsAZ_POS(list));
+      syncDisabledLegacyFromCatalogPOS(list);
+    }
+    return { ok:true, id: String(existing.id) };
+  }
+
+  const existingIds = new Set(list.map(c => c && c.id).filter(Boolean).map(String));
+  let id = preferredId ? String(preferredId) : '';
+  if (!id || existingIds.has(id)){
+    id = generateCustomerIdPOS(existingIds);
+  }
+  const obj = {
+    id,
+    name: n,
+    isActive: true,
+    createdAt: Date.now(),
+    normalizedName: norm
+  };
+
+  list.push(obj);
+  const sorted = sortCustomerObjectsAZ_POS(list);
+  saveCustomerCatalogPOS(sorted);
+  syncDisabledLegacyFromCatalogPOS(sorted);
+  refreshCustomerUI_POS();
+
+  return { ok:true, id };
+}
+
 function getActiveCustomersPOS(){
   const all = loadCustomerCatalogPOS();
-  const disabled = loadCustomerDisabledSetPOS();
-  return all.filter(n => !disabled.has(normalizeCustomerKeyPOS(n)));
+  return all.filter(c => c && c.isActive !== false);
 }
 
-function addCustomerToCatalogPOS(name){
+function addCustomerToCatalogPOS(name, preferredId){
   const n = sanitizeCustomerDisplayPOS(name);
-  if (!n) return { ok:false, reason:'empty' };
-  const key = normalizeCustomerKeyPOS(n);
-  if (!key) return { ok:false, reason:'empty' };
+  if (!n) return { ok:false, reason:'empty', id:null };
 
-  const cur = loadCustomerCatalogPOS();
-  const exists = cur.some(x => normalizeCustomerKeyPOS(x) === key);
-  if (exists) return { ok:false, reason:'exists' };
+  const norm = normalizeCustomerKeyPOS(n);
+  if (!norm) return { ok:false, reason:'empty', id:null };
 
-  cur.push(n);
-  const sorted = sortCustomersAZ_POS(cur);
+  const list = loadCustomerCatalogPOS();
+  const exists = list.some(c => c && c.normalizedName === norm);
+  if (exists) return { ok:false, reason:'exists', id: (list.find(c=>c && c.normalizedName===norm)?.id || null) };
+
+  const existingIds = new Set(list.map(c => c && c.id).filter(Boolean).map(String));
+  let id = preferredId ? String(preferredId) : '';
+  if (!id || existingIds.has(id)){
+    id = generateCustomerIdPOS(existingIds);
+  }
+
+  list.push({
+    id,
+    name: n,
+    isActive: true,
+    createdAt: Date.now(),
+    normalizedName: norm
+  });
+
+  const sorted = sortCustomerObjectsAZ_POS(list);
   saveCustomerCatalogPOS(sorted);
+  syncDisabledLegacyFromCatalogPOS(sorted);
   refreshCustomerUI_POS();
-  return { ok:true };
+
+  return { ok:true, id };
 }
 
-function setCustomerDisabledPOS(name, disabled){
-  const key = normalizeCustomerKeyPOS(name);
-  if (!key) return;
-  const set = loadCustomerDisabledSetPOS();
-  if (disabled) set.add(key);
-  else set.delete(key);
-  saveCustomerDisabledSetPOS(set);
+function setCustomerActiveByIdPOS(id, isActive){
+  const cid = (id != null) ? String(id) : '';
+  if (!cid) return;
+
+  const list = loadCustomerCatalogPOS();
+  const c = list.find(x => x && String(x.id) === cid);
+  if (!c) return;
+
+  c.isActive = !!isActive;
+  const sorted = sortCustomerObjectsAZ_POS(list);
+  saveCustomerCatalogPOS(sorted);
+  syncDisabledLegacyFromCatalogPOS(sorted);
   refreshCustomerUI_POS();
 }
 
-function isCustomerDisabledKeyPOS(key){
-  if (!key) return false;
+function isCustomerDisabledKeyPOS(normKey){
+  if (!normKey) return false;
   const set = loadCustomerDisabledSetPOS();
-  return set.has(key);
+  return set.has(normKey);
 }
 
 function isCustomerPickerOpenPOS(){
@@ -1024,7 +1243,7 @@ function renderCustomerPickerListPOS(){
 
   const q = normalizeCustomerKeyPOS(search ? search.value : '');
   const active = getActiveCustomersPOS();
-  const filtered = q ? active.filter(n => normalizeCustomerKeyPOS(n).includes(q)) : active;
+  const filtered = q ? active.filter(c => (c && c.normalizedName && c.normalizedName.includes(q)) || normalizeCustomerKeyPOS(c && c.name).includes(q)) : active;
 
   wrap.innerHTML = '';
   if (!filtered.length){
@@ -1033,15 +1252,15 @@ function renderCustomerPickerListPOS(){
     return;
   }
 
-  for (const name of filtered){
+  for (const c of filtered){
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'customer-picker-item';
-    btn.textContent = name;
+    btn.textContent = c.name;
     btn.addEventListener('click', ()=>{
-      setCustomerNameUI_POS(name);
+      setCustomerSelectionUI_POS(c);
       // El último cliente se guarda siempre; el modo pegajoso decide si se limpia tras la venta.
-      persistCustomerLastPOS(name);
+      persistCustomerLastPOS(c.name);
       closeCustomerPickerPOS();
     });
     wrap.appendChild(btn);
@@ -1071,12 +1290,9 @@ function renderCustomerManageListPOS(){
   const searchEl = document.getElementById('customer-manage-search');
   const q = normalizeCustomerKeyPOS(searchEl ? searchEl.value : '');
 
-  const all = loadCustomerCatalogPOS();
-  const disabled = loadCustomerDisabledSetPOS();
-
-  let items = all;
-  if (q) items = items.filter(n => normalizeCustomerKeyPOS(n).includes(q));
-  items = sortCustomersAZ_POS(items);
+  let items = loadCustomerCatalogPOS();
+  if (q) items = items.filter(c => c && c.normalizedName && c.normalizedName.includes(q));
+  items = sortCustomerObjectsAZ_POS(items);
 
   listEl.innerHTML = '';
 
@@ -1085,9 +1301,8 @@ function renderCustomerManageListPOS(){
     return;
   }
 
-  for (const name of items){
-    const key = normalizeCustomerKeyPOS(name);
-    const isOff = disabled.has(key);
+  for (const c of items){
+    const isOff = (c.isActive === false);
 
     const row = document.createElement('div');
     row.className = 'customer-manage-item';
@@ -1097,7 +1312,7 @@ function renderCustomerManageListPOS(){
 
     const nm = document.createElement('div');
     nm.className = 'customer-manage-name';
-    nm.textContent = name;
+    nm.textContent = c.name;
 
     const badge = document.createElement('span');
     badge.className = 'badge ' + (isOff ? 'badge-off' : 'badge-on');
@@ -1111,7 +1326,7 @@ function renderCustomerManageListPOS(){
     btn.className = (isOff ? 'btn-ok' : 'btn-warn') + ' btn-pill btn-pill-mini';
     btn.textContent = isOff ? 'Reactivar' : 'Desactivar';
     btn.addEventListener('click', ()=>{
-      setCustomerDisabledPOS(name, !isOff);
+      setCustomerActiveByIdPOS(c.id, isOff); // si estaba off, lo reactivamos
       // Mantener el foco / búsqueda
       renderCustomerManageListPOS();
       if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
@@ -1124,6 +1339,9 @@ function renderCustomerManageListPOS(){
 }
 
 function refreshCustomerUI_POS(){
+  // Migración suave: al refrescar UI aseguramos que el catálogo esté en formato objeto
+  loadCustomerCatalogPOS();
+
   // Si el picker está abierto, re-render para respetar desactivados/búsqueda
   if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
 
@@ -1190,7 +1408,12 @@ function initCustomerUXPOS(){
   sticky.checked = stickyOn;
   if (stickyOn){
     const last = A33Storage.getItem(CUSTOMER_LAST_KEY) || '';
-    if (last) inp.value = sanitizeCustomerDisplayPOS(last);
+    if (last){
+      inp.value = sanitizeCustomerDisplayPOS(last);
+      // restaurar customerId si existe por match normalizado
+      const r = resolveCustomerIdForSalePOS(inp.value, null);
+      if (r && r.id && inp.dataset) inp.dataset.customerId = String(r.id);
+    }
   }
 
   sticky.addEventListener('change', ()=>{
@@ -1200,14 +1423,15 @@ function initCustomerUXPOS(){
     }
   });
 
-  // Guardar último escrito (sirve cuando encienden "pegajoso" a mitad)
+  // Si el usuario teclea, invalidamos el hint de id (se re-resuelve al vender)
   inp.addEventListener('input', ()=>{
+    if (inp.dataset) delete inp.dataset.customerId;
     if (isCustomerStickyPOS()) persistCustomerLastPOS(inp.value || '');
   });
 
   if (clearBtn){
     clearBtn.addEventListener('click', ()=>{
-      inp.value = '';
+      clearCustomerSelectionUI_POS();
       persistCustomerLastPOS('');
       inp.focus();
     });
@@ -1235,7 +1459,7 @@ function initCustomerUXPOS(){
       }
       const key = normalizeCustomerKeyPOS(name);
       const all = loadCustomerCatalogPOS();
-      const exists = all.some(x => normalizeCustomerKeyPOS(x) === key);
+      const exists = all.some(c => c && c.normalizedName === key);
 
       if (exists){
         // Si existe pero está desactivado, ayuda visual
@@ -1245,8 +1469,10 @@ function initCustomerUXPOS(){
       }
 
       addCustomerToCatalogPOS(name);
-      // Si por alguna razón estaba en disabled, lo reactivamos
-      setCustomerDisabledPOS(name, false);
+      // Por si existiera en disabled legacy, lo dejamos consistente
+      const list2 = loadCustomerCatalogPOS();
+      const found2 = list2.find(c=>c && c.normalizedName===key);
+      if (found2) setCustomerActiveByIdPOS(found2.id, true);
 
       addInp.value = '';
       if (addMsg) addMsg.textContent = 'Guardado.';
@@ -1268,15 +1494,18 @@ function initCustomerUXPOS(){
   }
 }
 
-function afterSaleCustomerHousekeepingPOS(customerName){
+function afterSaleCustomerHousekeepingPOS(customerName, customerId){
   const n = sanitizeCustomerDisplayPOS(customerName);
-  if (n) addCustomerToCatalogPOS(n);
-
-  // Persistir "último" solo si es pegajoso; si no, igual lo guardamos para picker/rápido
-  persistCustomerLastPOS(n);
+  if (n){
+    // asegurar catálogo con ID (si es nuevo, se crea con el ID ya usado en la venta)
+    ensureCustomerInCatalogPOS(n, customerId || null);
+    persistCustomerLastPOS(n);
+  } else {
+    persistCustomerLastPOS('');
+  }
 
   if (!isCustomerStickyPOS()){
-    setCustomerNameUI_POS('');
+    clearCustomerSelectionUI_POS();
   }
 }
 
@@ -4254,6 +4483,7 @@ async function sellCupsPOS(isCourtesy){
 
   const payment = document.getElementById('sale-payment')?.value || 'efectivo';
   const customerName = getCustomerNameFromUI_POS();
+  const customerId = resolveCustomerIdForSalePOS(customerName, getCustomerIdHintFromUI_POS()).id;
 
   // Banco (obligatorio si es Transferencia)
   let bankId = null;
@@ -4339,6 +4569,7 @@ async function sellCupsPOS(isCourtesy){
     // Compat: mantenemos "customer" y añadimos "customerName" (nuevo)
     customer: customerName,
     customerName,
+    customerId,
     courtesyTo: isCourtesy ? ((document.getElementById('sale-courtesy-to')?.value || '').trim()) : '',
     total,
     notes: isCourtesy ? 'Cortesía por vaso' : 'Venta por vaso',
@@ -4361,7 +4592,7 @@ async function sellCupsPOS(isCourtesy){
   }
 
   // Cliente: catálogo + modo pegajoso
-  afterSaleCustomerHousekeepingPOS(customerName);
+  afterSaleCustomerHousekeepingPOS(customerName, customerId);
 
   const qtyInp = document.getElementById('cup-qty');
   if (qtyInp) qtyInp.value = 1;
@@ -7215,6 +7446,7 @@ async function addSale(){
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
   const customerName = getCustomerNameFromUI_POS();
+  const customerId = resolveCustomerIdForSalePOS(customerName, getCustomerIdHintFromUI_POS()).id;
   const courtesyTo = $('#sale-courtesy-to').value || '';
   const notes = $('#sale-notes').value || '';
   if (!date || !productId || !qty) { alert('Completa fecha, producto y cantidad'); return; }
@@ -7301,6 +7533,7 @@ async function addSale(){
     // Compat: mantenemos "customer" y añadimos "customerName" (nuevo)
     customer: customerName,
     customerName,
+    customerId,
     courtesyTo,
     total,
     notes,
@@ -7324,7 +7557,7 @@ async function addSale(){
   // limpiar campos para el siguiente registro (incluye NOTAS)
   $('#sale-qty').value=1; 
   $('#sale-discount').value=0; 
-  afterSaleCustomerHousekeepingPOS(customerName);
+  afterSaleCustomerHousekeepingPOS(customerName, customerId);
   $('#sale-courtesy-to').value='';
   $('#sale-notes').value=''; // limpiar notas
   const nextTotal = (courtesy?0:price).toFixed(2);
@@ -7357,6 +7590,7 @@ async function addExtraSale(extraId){
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
   const customerName = getCustomerNameFromUI_POS();
+  const customerId = resolveCustomerIdForSalePOS(customerName, getCustomerIdHintFromUI_POS()).id;
   const courtesyTo = $('#sale-courtesy-to').value || '';
   const notes = $('#sale-notes').value || '';
 
@@ -7468,6 +7702,7 @@ async function addExtraSale(extraId){
     // Compat: mantenemos "customer" y añadimos "customerName" (nuevo)
     customer: customerName,
     customerName,
+    customerId,
     courtesy,
     courtesyTo,
     notes,
@@ -7484,7 +7719,7 @@ async function addExtraSale(extraId){
   await createJournalEntryForSalePOS(saleRecord);
 
   // Cliente: catálogo + modo pegajoso
-  afterSaleCustomerHousekeepingPOS(customerName);
+  afterSaleCustomerHousekeepingPOS(customerName, customerId);
 
   // Reset mínimos
   $('#sale-qty').value = '1';
