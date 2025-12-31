@@ -866,8 +866,10 @@ async function getMeta(key){
 const LAST_GROUP_KEY = 'a33_pos_lastGroupName';
 const HIDDEN_GROUPS_KEY = 'a33_pos_hiddenGroups';
 
-// --- Ventas: Cliente (autocomplete + pegajoso)
+
+// --- Ventas: Cliente (Clientes v2: picker propio + pegajoso + gestión)
 const CUSTOMER_CATALOG_KEY = 'a33_pos_customersCatalog';
+const CUSTOMER_DISABLED_KEY = 'a33_pos_customersDisabled';
 const CUSTOMER_STICKY_KEY  = 'a33_pos_customerSticky';
 const CUSTOMER_LAST_KEY    = 'a33_pos_customerLast';
 
@@ -885,6 +887,12 @@ function sanitizeCustomerDisplayPOS(name){
   return (name || '').toString().replace(/\s+/g,' ').trim();
 }
 
+function sortCustomersAZ_POS(list){
+  return (Array.isArray(list) ? list : [])
+    .slice()
+    .sort((a,b)=> normalizeCustomerKeyPOS(a).localeCompare(normalizeCustomerKeyPOS(b)));
+}
+
 function loadCustomerCatalogPOS(){
   const list = A33Storage.getJSON(CUSTOMER_CATALOG_KEY, [], 'local');
   if (!Array.isArray(list)) return [];
@@ -899,39 +907,38 @@ function loadCustomerCatalogPOS(){
     seen.add(key);
     out.push(raw);
   }
-  return out;
+  return sortCustomersAZ_POS(out);
 }
 
 function saveCustomerCatalogPOS(list){
   try{ A33Storage.setJSON(CUSTOMER_CATALOG_KEY, Array.isArray(list) ? list : [], 'local'); }catch(_){ }
 }
 
-function updateCustomerDatalistPOS(list){
-  const dl = document.getElementById('customer-datalist');
-  if (!dl) return;
-  dl.innerHTML = '';
-  (list || []).slice(0, 250).forEach(name=>{
-    const opt = document.createElement('option');
-    opt.value = name;
-    dl.appendChild(opt);
-  });
+function loadCustomerDisabledSetPOS(){
+  const raw = A33Storage.getJSON(CUSTOMER_DISABLED_KEY, [], 'local');
+  const set = new Set();
+  if (Array.isArray(raw)){
+    for (const v of raw){
+      const k = (v || '').toString().trim();
+      if (k) set.add(k);
+    }
+  } else if (raw && typeof raw === 'object'){
+    // compat futuro: { key:true }
+    for (const k in raw){
+      if (raw[k]){
+        const kk = (k || '').toString().trim();
+        if (kk) set.add(kk);
+      }
+    }
+  }
+  return set;
 }
 
-function addCustomerToCatalogPOS(name){
-  const n = sanitizeCustomerDisplayPOS(name);
-  if (!n) return;
-  const key = normalizeCustomerKeyPOS(n);
-  if (!key) return;
-
-  const cur = loadCustomerCatalogPOS();
-  const exists = cur.some(x => normalizeCustomerKeyPOS(x) === key);
-  if (exists) return;
-
-  cur.push(n);
-  // Ordenar (A→Z) sin ser agresivos
-  cur.sort((a,b)=> normalizeCustomerKeyPOS(a).localeCompare(normalizeCustomerKeyPOS(b)));
-  saveCustomerCatalogPOS(cur);
-  updateCustomerDatalistPOS(cur);
+function saveCustomerDisabledSetPOS(set){
+  try{
+    const arr = Array.from(set || []).filter(Boolean);
+    A33Storage.setJSON(CUSTOMER_DISABLED_KEY, arr, 'local');
+  }catch(_){ }
 }
 
 function isCustomerStickyPOS(){
@@ -960,14 +967,223 @@ function persistCustomerLastPOS(val){
   try{ A33Storage.setItem(CUSTOMER_LAST_KEY, sanitizeCustomerDisplayPOS(val || '')); }catch(_){ }
 }
 
+function getActiveCustomersPOS(){
+  const all = loadCustomerCatalogPOS();
+  const disabled = loadCustomerDisabledSetPOS();
+  return all.filter(n => !disabled.has(normalizeCustomerKeyPOS(n)));
+}
+
+function addCustomerToCatalogPOS(name){
+  const n = sanitizeCustomerDisplayPOS(name);
+  if (!n) return { ok:false, reason:'empty' };
+  const key = normalizeCustomerKeyPOS(n);
+  if (!key) return { ok:false, reason:'empty' };
+
+  const cur = loadCustomerCatalogPOS();
+  const exists = cur.some(x => normalizeCustomerKeyPOS(x) === key);
+  if (exists) return { ok:false, reason:'exists' };
+
+  cur.push(n);
+  const sorted = sortCustomersAZ_POS(cur);
+  saveCustomerCatalogPOS(sorted);
+  refreshCustomerUI_POS();
+  return { ok:true };
+}
+
+function setCustomerDisabledPOS(name, disabled){
+  const key = normalizeCustomerKeyPOS(name);
+  if (!key) return;
+  const set = loadCustomerDisabledSetPOS();
+  if (disabled) set.add(key);
+  else set.delete(key);
+  saveCustomerDisabledSetPOS(set);
+  refreshCustomerUI_POS();
+}
+
+function isCustomerDisabledKeyPOS(key){
+  if (!key) return false;
+  const set = loadCustomerDisabledSetPOS();
+  return set.has(key);
+}
+
+function isCustomerPickerOpenPOS(){
+  const modal = document.getElementById('customer-picker-modal');
+  return !!(modal && modal.style.display === 'flex');
+}
+
+function closeCustomerPickerPOS(){
+  const modal = document.getElementById('customer-picker-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function renderCustomerPickerListPOS(){
+  const wrap = document.getElementById('customer-picker-list');
+  const search = document.getElementById('customer-picker-search');
+  const count = document.getElementById('customer-picker-count');
+  if (!wrap) return;
+
+  const q = normalizeCustomerKeyPOS(search ? search.value : '');
+  const active = getActiveCustomersPOS();
+  const filtered = q ? active.filter(n => normalizeCustomerKeyPOS(n).includes(q)) : active;
+
+  wrap.innerHTML = '';
+  if (!filtered.length){
+    wrap.innerHTML = '<div class="muted">Sin resultados</div>';
+    if (count) count.textContent = '0';
+    return;
+  }
+
+  for (const name of filtered){
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'customer-picker-item';
+    btn.textContent = name;
+    btn.addEventListener('click', ()=>{
+      setCustomerNameUI_POS(name);
+      // El último cliente se guarda siempre; el modo pegajoso decide si se limpia tras la venta.
+      persistCustomerLastPOS(name);
+      closeCustomerPickerPOS();
+    });
+    wrap.appendChild(btn);
+  }
+
+  if (count) count.textContent = filtered.length + ' cliente' + (filtered.length === 1 ? '' : 's');
+}
+
+function openCustomerPickerPOS(){
+  const modal = document.getElementById('customer-picker-modal');
+  if (!modal) return;
+
+  // reset búsqueda
+  const search = document.getElementById('customer-picker-search');
+  if (search) search.value = '';
+
+  renderCustomerPickerListPOS();
+  modal.style.display = 'flex';
+
+  setTimeout(()=>{ try{ document.getElementById('customer-picker-search')?.focus(); }catch(_){ } }, 40);
+}
+
+function renderCustomerManageListPOS(){
+  const listEl = document.getElementById('customer-manage-list');
+  if (!listEl) return;
+
+  const searchEl = document.getElementById('customer-manage-search');
+  const q = normalizeCustomerKeyPOS(searchEl ? searchEl.value : '');
+
+  const all = loadCustomerCatalogPOS();
+  const disabled = loadCustomerDisabledSetPOS();
+
+  let items = all;
+  if (q) items = items.filter(n => normalizeCustomerKeyPOS(n).includes(q));
+  items = sortCustomersAZ_POS(items);
+
+  listEl.innerHTML = '';
+
+  if (!items.length){
+    listEl.innerHTML = '<div class="muted">Sin clientes aún.</div>';
+    return;
+  }
+
+  for (const name of items){
+    const key = normalizeCustomerKeyPOS(name);
+    const isOff = disabled.has(key);
+
+    const row = document.createElement('div');
+    row.className = 'customer-manage-item';
+
+    const left = document.createElement('div');
+    left.className = 'customer-manage-meta';
+
+    const nm = document.createElement('div');
+    nm.className = 'customer-manage-name';
+    nm.textContent = name;
+
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + (isOff ? 'badge-off' : 'badge-on');
+    badge.textContent = isOff ? 'Desactivado' : 'Activo';
+
+    left.appendChild(nm);
+    left.appendChild(badge);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = (isOff ? 'btn-ok' : 'btn-warn') + ' btn-pill btn-pill-mini';
+    btn.textContent = isOff ? 'Reactivar' : 'Desactivar';
+    btn.addEventListener('click', ()=>{
+      setCustomerDisabledPOS(name, !isOff);
+      // Mantener el foco / búsqueda
+      renderCustomerManageListPOS();
+      if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
+    });
+
+    row.appendChild(left);
+    row.appendChild(btn);
+    listEl.appendChild(row);
+  }
+}
+
+function refreshCustomerUI_POS(){
+  // Si el picker está abierto, re-render para respetar desactivados/búsqueda
+  if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
+
+  // Si la gestión existe (y esté abierto o no), render listo para cuando se abra
+  renderCustomerManageListPOS();
+}
+
+function toggleCustomerManagePanelPOS(){
+  const panel = document.getElementById('customer-manage-panel');
+  const btn = document.getElementById('btn-toggle-customer-manage');
+  if (!panel || !btn) return;
+
+  const open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+
+  if (!open){
+    renderCustomerManageListPOS();
+    setTimeout(()=>{ try{ document.getElementById('customer-add-name')?.focus(); }catch(_){ } }, 40);
+  }
+}
+
+function setupCustomerPickerModalPOS(){
+  const modal = document.getElementById('customer-picker-modal');
+  if (!modal) return;
+
+  const closeBtn = document.getElementById('customer-picker-close');
+  if (closeBtn){
+    closeBtn.addEventListener('click', closeCustomerPickerPOS);
+  }
+
+  // click/tap fuera
+  modal.addEventListener('click', (e)=>{
+    if (e.target === modal) closeCustomerPickerPOS();
+  });
+
+  const search = document.getElementById('customer-picker-search');
+  if (search){
+    search.addEventListener('input', ()=> renderCustomerPickerListPOS());
+  }
+
+  // Escape
+  document.addEventListener('keydown', (e)=>{
+    if (e.key === 'Escape' && isCustomerPickerOpenPOS()){
+      closeCustomerPickerPOS();
+    }
+  });
+}
+
 function initCustomerUXPOS(){
   const inp = document.getElementById('sale-customer');
   const sticky = document.getElementById('sale-customer-sticky');
   const clearBtn = document.getElementById('btn-clear-customer');
+  const pickBtn = document.getElementById('btn-pick-customer');
+  const manageBtn = document.getElementById('btn-toggle-customer-manage');
+
   if (!inp || !sticky) return;
 
-  const list = loadCustomerCatalogPOS();
-  updateCustomerDatalistPOS(list);
+  setupCustomerPickerModalPOS();
+  refreshCustomerUI_POS();
 
   // Estado pegajoso + último cliente
   const stickyOn = (A33Storage.getItem(CUSTOMER_STICKY_KEY) === '1');
@@ -996,19 +1212,74 @@ function initCustomerUXPOS(){
       inp.focus();
     });
   }
+
+  if (pickBtn){
+    pickBtn.addEventListener('click', ()=> openCustomerPickerPOS());
+  }
+
+  if (manageBtn){
+    manageBtn.addEventListener('click', ()=> toggleCustomerManagePanelPOS());
+  }
+
+  // Gestión: agregar cliente sin venta
+  const addInp = document.getElementById('customer-add-name');
+  const addBtn = document.getElementById('customer-add-save');
+  const addMsg = document.getElementById('customer-add-msg');
+  if (addBtn && addInp){
+    const save = ()=>{
+      const name = sanitizeCustomerDisplayPOS(addInp.value || '');
+      if (!name){
+        if (addMsg) addMsg.textContent = 'Escribe un nombre.';
+        addInp.focus();
+        return;
+      }
+      const key = normalizeCustomerKeyPOS(name);
+      const all = loadCustomerCatalogPOS();
+      const exists = all.some(x => normalizeCustomerKeyPOS(x) === key);
+
+      if (exists){
+        // Si existe pero está desactivado, ayuda visual
+        const off = isCustomerDisabledKeyPOS(key);
+        if (addMsg) addMsg.textContent = off ? 'Ya existe (está desactivado).' : 'Ya existe.';
+        return;
+      }
+
+      addCustomerToCatalogPOS(name);
+      // Si por alguna razón estaba en disabled, lo reactivamos
+      setCustomerDisabledPOS(name, false);
+
+      addInp.value = '';
+      if (addMsg) addMsg.textContent = 'Guardado.';
+      renderCustomerManageListPOS();
+      if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
+      addInp.focus();
+    };
+
+    addBtn.addEventListener('click', save);
+    addInp.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter') save();
+    });
+  }
+
+  // Gestión: buscador
+  const manageSearch = document.getElementById('customer-manage-search');
+  if (manageSearch){
+    manageSearch.addEventListener('input', ()=> renderCustomerManageListPOS());
+  }
 }
 
 function afterSaleCustomerHousekeepingPOS(customerName){
   const n = sanitizeCustomerDisplayPOS(customerName);
   if (n) addCustomerToCatalogPOS(n);
 
-  // Persistir "último" solo si es pegajoso; si no, igual lo guardamos para autocompletar
+  // Persistir "último" solo si es pegajoso; si no, igual lo guardamos para picker/rápido
   persistCustomerLastPOS(n);
 
   if (!isCustomerStickyPOS()){
     setCustomerNameUI_POS('');
   }
 }
+
 
 function getLastGroupName() {
   try {

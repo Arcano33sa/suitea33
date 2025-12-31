@@ -352,6 +352,30 @@ small.muted{color:var(--muted)}
 .customer-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-start}
 .customer-controls .flag{margin:0}
 
+/* Cliente v2 (POS > Vender): picker propio + gestión colapsable */
+#sale-customer-row{grid-template-columns:1fr}
+.customer-v2{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.customer-v2-field{flex:1 1 260px;min-width:220px}
+.customer-v2-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.customer-v2-actions .flag{margin:0}
+.customer-v2-actions .btn-link{padding:6px 0}
+.customer-v2-sticky{font-size:13px}
+
+.customer-manage{margin-top:8px}
+.customer-manage-list{display:flex;flex-direction:column;gap:8px}
+.customer-manage-item{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 10px;border:1px solid #2a2a2a;border-radius:12px;background:#111}
+.customer-manage-name{font-weight:800}
+.customer-manage-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge-on{background:#0f1b0f;color:#b6f0b6;border:1px solid #214021}
+.badge-off{background:#2a1b0f;color:#ffd7a1;border:1px solid #5a3d12}
+
+.customer-picker-list{display:flex;flex-direction:column;gap:8px}
+.customer-picker-item{width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1px solid rgba(212,175,55,0.25);background:#111;color:#f5f5f5;font-weight:700;cursor:pointer}
+.customer-picker-item:active{filter:brightness(.98)}
+
+.modal .panel.panel-compact{max-width:560px}
+
+
 .btn-outline{
   width:auto;
   border-radius:999px;
