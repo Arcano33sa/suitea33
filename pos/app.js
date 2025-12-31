@@ -873,6 +873,10 @@ const CUSTOMER_CATALOG_KEY = 'a33_pos_customersCatalog';
 const CUSTOMER_DISABLED_KEY = 'a33_pos_customersDisabled'; // legado (Etapa 1). En Etapa 2 se mantiene sincronizado.
 const CUSTOMER_STICKY_KEY  = 'a33_pos_customerSticky';
 const CUSTOMER_LAST_KEY    = 'a33_pos_customerLast';
+	// Preferencias UI (Gestionar clientes)
+	const CUSTOMER_MANAGE_FILTER_KEY = 'a33_pos_customerManageFilter'; // 'active' | 'all'
+	const CUSTOMER_MANAGE_COMPACT_KEY = 'a33_pos_customerManageCompact'; // '1' | '0'
+	const CUSTOMER_MANAGE_OPEN_KEY = 'a33_pos_customerManageOpenGroups'; // JSON {A:true,...}
 
 function normalizeCustomerKeyPOS(name){
   let s = (name || '').toString();
@@ -1051,6 +1055,77 @@ function syncDisabledLegacyFromCatalogPOS(list){
     if (c && c.isActive === false && c.normalizedName) set.add(c.normalizedName);
   }
   saveCustomerDisabledSetPOS(set);
+}
+
+function getCustomerManageFilterPOS(){
+  const v = (A33Storage.getItem(CUSTOMER_MANAGE_FILTER_KEY) || '').toString().trim();
+  return (v === 'all') ? 'all' : 'active';
+}
+
+function setCustomerManageFilterPOS(mode){
+  const m = (mode === 'all') ? 'all' : 'active';
+  try{ A33Storage.setItem(CUSTOMER_MANAGE_FILTER_KEY, m); }catch(_){ }
+}
+
+function isCustomerManageCompactPOS(){
+  return (A33Storage.getItem(CUSTOMER_MANAGE_COMPACT_KEY) === '1');
+}
+
+function setCustomerManageCompactPOS(on){
+  try{ A33Storage.setItem(CUSTOMER_MANAGE_COMPACT_KEY, on ? '1' : '0'); }catch(_){ }
+}
+
+function loadCustomerManageOpenMapPOS(){
+  const raw = A33Storage.getJSON(CUSTOMER_MANAGE_OPEN_KEY, null, 'local');
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  return {};
+}
+
+function saveCustomerManageOpenMapPOS(map){
+  try{ A33Storage.setJSON(CUSTOMER_MANAGE_OPEN_KEY, (map && typeof map === 'object') ? map : {}, 'local'); }catch(_){ }
+}
+
+function getCustomerGroupLetterPOS(name){
+  const n = sanitizeCustomerDisplayPOS(name);
+  if (!n) return '#';
+  const norm = normalizeCustomerKeyPOS(n);
+  const ch = (norm || '').charAt(0).toUpperCase();
+  return (ch >= 'A' && ch <= 'Z') ? ch : '#';
+}
+
+function applyCustomerManageUIStatePOS(){
+  const panel = document.getElementById('customer-manage-panel');
+  if (panel){
+    if (isCustomerManageCompactPOS()) panel.classList.add('compact');
+    else panel.classList.remove('compact');
+  }
+
+  const filter = getCustomerManageFilterPOS();
+  const btnA = document.getElementById('customer-manage-filter-active');
+  const btnT = document.getElementById('customer-manage-filter-all');
+  if (btnA) btnA.classList.toggle('is-active', filter === 'active');
+  if (btnT) btnT.classList.toggle('is-active', filter === 'all');
+
+  const compact = document.getElementById('customer-manage-compact');
+  if (compact) compact.checked = isCustomerManageCompactPOS();
+}
+
+function setAllCustomerManageGroupsPOS(open){
+  // Aplica a la vista sin búsqueda (A→Z) según filtro actual
+  const filter = getCustomerManageFilterPOS();
+  let items = loadCustomerCatalogPOS();
+  if (filter === 'active') items = items.filter(c => c && c.isActive !== false);
+  items = sortCustomerObjectsAZ_POS(items);
+
+  const letters = new Set();
+  for (const c of items){
+    letters.add(getCustomerGroupLetterPOS(c && c.name));
+  }
+  const map = {};
+  for (const l of letters){
+    map[l] = !!open;
+  }
+  saveCustomerManageOpenMapPOS(map);
 }
 
 function isCustomerStickyPOS(){
@@ -1287,21 +1362,35 @@ function renderCustomerManageListPOS(){
   const listEl = document.getElementById('customer-manage-list');
   if (!listEl) return;
 
+  applyCustomerManageUIStatePOS();
+
   const searchEl = document.getElementById('customer-manage-search');
+  const countEl = document.getElementById('customer-manage-count');
   const q = normalizeCustomerKeyPOS(searchEl ? searchEl.value : '');
 
+  const filter = getCustomerManageFilterPOS();
   let items = loadCustomerCatalogPOS();
-  if (q) items = items.filter(c => c && c.normalizedName && c.normalizedName.includes(q));
+  if (filter === 'active') items = items.filter(c => c && c.isActive !== false);
   items = sortCustomerObjectsAZ_POS(items);
+
+  if (q) items = items.filter(c => c && c.normalizedName && c.normalizedName.includes(q));
+
+  // Conteo
+  try{
+    if (countEl){
+      const label = (filter === 'active') ? 'Activos' : 'Todos';
+      countEl.textContent = label + ': ' + items.length;
+    }
+  }catch(_){ }
 
   listEl.innerHTML = '';
 
   if (!items.length){
-    listEl.innerHTML = '<div class="muted">Sin clientes aún.</div>';
+    listEl.innerHTML = '<div class="muted">Sin resultados.</div>';
     return;
   }
 
-  for (const c of items){
+  const makeRow = (c)=>{
     const isOff = (c.isActive === false);
 
     const row = document.createElement('div');
@@ -1326,15 +1415,114 @@ function renderCustomerManageListPOS(){
     btn.className = (isOff ? 'btn-ok' : 'btn-warn') + ' btn-pill btn-pill-mini';
     btn.textContent = isOff ? 'Reactivar' : 'Desactivar';
     btn.addEventListener('click', ()=>{
-      setCustomerActiveByIdPOS(c.id, isOff); // si estaba off, lo reactivamos
-      // Mantener el foco / búsqueda
-      renderCustomerManageListPOS();
-      if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
+      setCustomerActiveByIdPOS(c.id, isOff);
     });
 
     row.appendChild(left);
     row.appendChild(btn);
-    listEl.appendChild(row);
+    return row;
+  };
+
+  // Si hay búsqueda activa, mostramos lista plana (Resultados)
+  if (q){
+    const head = document.createElement('div');
+    head.className = 'customer-manage-results-head';
+    const t = document.createElement('div');
+    t.className = 'customer-manage-results-title';
+    t.textContent = 'Resultados';
+    const t2 = document.createElement('div');
+    t2.className = 'muted';
+    t2.textContent = String(items.length);
+    head.appendChild(t);
+    head.appendChild(t2);
+    listEl.appendChild(head);
+
+    for (const c of items){
+      listEl.appendChild(makeRow(c));
+    }
+    return;
+  }
+
+  // Acordeón por letra
+  const groups = {};
+  for (const c of items){
+    const letter = getCustomerGroupLetterPOS(c && c.name);
+    if (!groups[letter]) groups[letter] = [];
+    groups[letter].push(c);
+  }
+
+  const letters = Object.keys(groups)
+    .sort((a,b)=>{
+      if (a === '#') return 1;
+      if (b === '#') return -1;
+      return a.localeCompare(b);
+    });
+
+  let openMap = loadCustomerManageOpenMapPOS();
+  const hasAny = openMap && typeof openMap === 'object' && Object.keys(openMap).length > 0;
+  if (!hasAny){
+    // Primer uso: abrir la primera letra para que no se vea “vacío”
+    if (letters.length){
+      openMap = {};
+      openMap[letters[0]] = true;
+      saveCustomerManageOpenMapPOS(openMap);
+    }
+  }
+
+  for (const letter of letters){
+    const arr = groups[letter] || [];
+    if (!arr.length) continue;
+
+    const isOpen = !!openMap[letter];
+
+    const g = document.createElement('div');
+    g.className = 'customer-manage-group';
+
+    const h = document.createElement('button');
+    h.type = 'button';
+    h.className = 'customer-manage-group-header';
+    h.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+
+    const left = document.createElement('div');
+    left.className = 'customer-manage-group-left';
+
+    const l = document.createElement('div');
+    l.className = 'customer-manage-group-letter';
+    l.textContent = letter;
+
+    const cnt = document.createElement('div');
+    cnt.className = 'customer-manage-group-count';
+    cnt.textContent = String(arr.length);
+
+    left.appendChild(l);
+    left.appendChild(cnt);
+
+    const ch = document.createElement('div');
+    ch.className = 'customer-manage-group-chevron';
+    ch.textContent = isOpen ? '▾' : '▸';
+
+    h.appendChild(left);
+    h.appendChild(ch);
+
+    h.addEventListener('click', ()=>{
+      const map = loadCustomerManageOpenMapPOS();
+      map[letter] = !map[letter];
+      saveCustomerManageOpenMapPOS(map);
+      renderCustomerManageListPOS();
+    });
+
+    g.appendChild(h);
+
+    if (isOpen){
+      const body = document.createElement('div');
+      body.className = 'customer-manage-group-body';
+      for (const c of arr){
+        body.appendChild(makeRow(c));
+      }
+      g.appendChild(body);
+    }
+
+    listEl.appendChild(g);
   }
 }
 
@@ -1492,6 +1680,52 @@ function initCustomerUXPOS(){
   if (manageSearch){
     manageSearch.addEventListener('input', ()=> renderCustomerManageListPOS());
   }
+
+  // Gestión: filtros + compacto + expandir/colapsar
+  const filterActiveBtn = document.getElementById('customer-manage-filter-active');
+  const filterAllBtn = document.getElementById('customer-manage-filter-all');
+  const compactChk = document.getElementById('customer-manage-compact');
+  const collapseAllBtn = document.getElementById('customer-manage-collapse-all');
+  const expandAllBtn = document.getElementById('customer-manage-expand-all');
+
+  if (filterActiveBtn){
+    filterActiveBtn.addEventListener('click', ()=>{
+      setCustomerManageFilterPOS('active');
+      // no forzamos colapsar/expandir; mantenemos preferencia actual
+      renderCustomerManageListPOS();
+      manageSearch?.focus();
+    });
+  }
+  if (filterAllBtn){
+    filterAllBtn.addEventListener('click', ()=>{
+      setCustomerManageFilterPOS('all');
+      renderCustomerManageListPOS();
+      manageSearch?.focus();
+    });
+  }
+  if (compactChk){
+    // estado inicial
+    compactChk.checked = isCustomerManageCompactPOS();
+    compactChk.addEventListener('change', ()=>{
+      setCustomerManageCompactPOS(!!compactChk.checked);
+      renderCustomerManageListPOS();
+    });
+  }
+  if (collapseAllBtn){
+    collapseAllBtn.addEventListener('click', ()=>{
+      setAllCustomerManageGroupsPOS(false);
+      renderCustomerManageListPOS();
+    });
+  }
+  if (expandAllBtn){
+    expandAllBtn.addEventListener('click', ()=>{
+      setAllCustomerManageGroupsPOS(true);
+      renderCustomerManageListPOS();
+    });
+  }
+
+  // Estado inicial visual (botones activos / clase compacto)
+  applyCustomerManageUIStatePOS();
 }
 
 function afterSaleCustomerHousekeepingPOS(customerName, customerId){

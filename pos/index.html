@@ -158,16 +158,29 @@
       </div>
     </div>
 
-    <div class="row" style="grid-template-columns:1fr;">
-      <div>
-        <label>Activar/Desactivar</label>
-        <input id="customer-manage-search" placeholder="Buscar cliente…">
-      </div>
-    </div>
 
-    <div class="scroll" style="max-height:38vh">
-      <div id="customer-manage-list" class="customer-manage-list"></div>
-    </div>
+	    <div class="customer-manage-toolbar">
+	      <div class="customer-manage-toolbar-top">
+	        <div class="customer-manage-search">
+	          <label>Buscar</label>
+	          <input id="customer-manage-search" placeholder="Buscar cliente…">
+	          <small id="customer-manage-count" class="muted"></small>
+	        </div>
+	        <div class="customer-manage-actions">
+	          <div class="customer-manage-filters" role="group" aria-label="Filtro clientes">
+	            <button id="customer-manage-filter-active" class="btn-outline btn-pill btn-pill-mini" type="button">Activos</button>
+	            <button id="customer-manage-filter-all" class="btn-outline btn-pill btn-pill-mini" type="button">Todos</button>
+	          </div>
+	          <label class="flag customer-manage-compact-toggle"><input id="customer-manage-compact" type="checkbox"> Compacto</label>
+	          <button id="customer-manage-collapse-all" class="btn-outline btn-pill btn-pill-mini" type="button" title="Colapsar letras">Colapsar</button>
+	          <button id="customer-manage-expand-all" class="btn-outline btn-pill btn-pill-mini" type="button" title="Expandir letras">Expandir</button>
+	        </div>
+	      </div>
+	    </div>
+
+	    <div class="customer-manage-scroll">
+	      <div id="customer-manage-list" class="customer-manage-list"></div>
+	    </div>
 
     <div class="info"><small>Desactivar solo oculta del selector. Ventas históricas no se tocan.</small></div>
   </div>
