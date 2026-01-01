@@ -589,6 +589,17 @@
             </table>
           </div>
         </div>
+
+        <div class="petty-sync-row">
+          <span class="muted" style="font-size:0.85rem">Usar saldo inicial desde Finanzas</span>
+          <label class="switch" title="Solo se aplica cuando tú lo activas y presionas Sincronizar">
+            <input type="checkbox" id="pc-init-from-fin-toggle">
+            <span class="slider"></span>
+          </label>
+          <button id="pc-init-from-fin-sync" class="btn-primary btn-pill btn-pill-mini" type="button" disabled>Sincronizar</button>
+          <span id="pc-init-from-fin-status" class="muted" style="font-size:0.85rem"></span>
+        </div>
+
         <div class="actions end">
   <button id="pc-btn-save-initial" class="btn-ok btn-pill" type="button">Guardar saldo inicial</button>
   <button id="pc-btn-clear-initial" class="btn-danger btn-pill" type="button">Limpiar</button>

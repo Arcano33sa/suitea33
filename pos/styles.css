@@ -505,6 +505,11 @@ small.muted{color:var(--muted)}
 /* Toggle (Caja Chica por evento) */
 .petty-toggle-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .petty-toggle-title{font-weight:700;color:var(--text)}
+
+/* Sincronizar saldo inicial desde Finanzas (manual) */
+.petty-sync-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 6px 0}
+.petty-sync-row .btn-pill{padding:8px 12px}
+.a33-link{color:var(--tab-gold);text-decoration:underline}
 .switch{position:relative;display:inline-block;width:52px;height:28px}
 .switch input{opacity:0;width:0;height:0}
 .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#d0d0d0;transition:.2s;border-radius:999px}

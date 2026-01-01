@@ -421,6 +421,92 @@ body.fin-body {
   overflow: hidden;
 }
 
+/* Caja Chica (física / informativa) */
+.cc-topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:10px;
+}
+
+.cc-tabs{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+
+.cc-tab{
+  border-radius:999px;
+  padding:6px 12px;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(8,10,18,0.75);
+  color: var(--fin-text);
+  font-size:0.8rem;
+  cursor:pointer;
+  transition: all 0.15s ease;
+}
+
+.cc-tab:hover{border-color: rgba(212,175,55,0.45); background: rgba(15,20,30,0.9);}
+.cc-tab.active{border-color: var(--fin-gold); background: radial-gradient(circle at 30% 0, rgba(212,175,55,0.25), rgba(193,152,31,0.12));}
+
+.cc-updated{
+  font-size:0.78rem;
+  color: var(--fin-muted);
+  white-space:nowrap;
+}
+
+.cc-table-wrap{overflow-x:hidden;}
+.cc-table{table-layout:fixed;}
+.cc-table th, .cc-table td{vertical-align:middle;}
+.cc-table input{
+  width:100%;
+  min-width:84px;
+  padding:6px 8px;
+  border-radius:10px;
+  border:1px solid var(--fin-border);
+  background: var(--fin-bg-alt);
+  color: var(--fin-text);
+  font-size:0.85rem;
+}
+
+.cc-denom{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.cc-chip{
+  font-size:0.72rem;
+  padding:2px 8px;
+  border-radius:999px;
+  border:1px solid rgba(212,175,55,0.30);
+  color: rgba(212,175,55,0.95);
+  background: rgba(212,175,55,0.08);
+  white-space:nowrap;
+}
+
+.cc-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  margin-top:12px;
+}
+
+.cc-btn{
+  padding:6px 12px;
+  font-size:0.8rem;
+  margin-left:0;
+}
+
+.cc-msg{
+  font-size:0.78rem;
+  color: var(--fin-muted);
+}
+
 .fin-table {
   width: 100%;
   border-collapse: collapse;

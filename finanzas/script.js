@@ -7,7 +7,7 @@
 const FIN_DB_NAME = 'finanzasDB';
 // IMPORTANTE: subir versión cuando se agregan stores/nuevas estructuras.
 // v3 agrega el store `suppliers` para Proveedores (sin romper data existente).
-const FIN_DB_VERSION = 3;
+const FIN_DB_VERSION = 4;
 const CENTRAL_EVENT = 'CENTRAL';
 
 let finDB = null;
@@ -52,6 +52,11 @@ function openFinDB() {
       if (!db.objectStoreNames.contains('suppliers')) {
         db.createObjectStore('suppliers', { keyPath: 'id', autoIncrement: true });
       }
+
+      // Settings / snapshots (no contable): por ejemplo Caja Chica física.
+      if (!db.objectStoreNames.contains('settings')) {
+        db.createObjectStore('settings', { keyPath: 'id' });
+      }
     };
 
     req.onsuccess = () => {
@@ -73,6 +78,15 @@ function openFinDB() {
 function finTx(storeName, mode = 'readonly') {
   const tx = finDB.transaction(storeName, mode);
   return tx.objectStore(storeName);
+}
+
+function finGet(storeName, key) {
+  return new Promise((resolve, reject) => {
+    const store = finTx(storeName, 'readonly');
+    const req = store.get(key);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => reject(req.error);
+  });
 }
 
 function finGetAll(storeName) {
@@ -368,6 +382,295 @@ function fmtCurrency(v) {
   return n.toLocaleString('es-NI', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
+  });
+}
+
+/* ---------- Caja Chica (física / informativa, NO contable) ---------- */
+
+const CC_STORAGE_KEY = 'a33_finanzas_caja_chica_v1';
+
+const CC_DENOMS = {
+  NIO: [
+    { id: '1_coin', value: 1, chip: 'moneda' },
+    { id: '5_coin', value: 5, chip: 'moneda' },
+    { id: '10_coin', value: 10, chip: 'moneda' },
+    { id: '10_bill', value: 10, chip: 'billete' },
+    { id: '20', value: 20, chip: 'billete' },
+    { id: '50', value: 50, chip: 'billete' },
+    { id: '100', value: 100, chip: 'billete' },
+    { id: '200', value: 200, chip: 'billete' },
+    { id: '500', value: 500, chip: 'billete' },
+    { id: '1000', value: 1000, chip: 'billete' }
+  ],
+  USD: [
+    { id: '1', value: 1 },
+    { id: '5', value: 5 },
+    { id: '10', value: 10 },
+    { id: '20', value: 20 },
+    { id: '50', value: 50 },
+    { id: '100', value: 100 }
+  ]
+};
+
+let ccCurrency = 'NIO';
+let ccSnapshot = null;
+
+function fmtDDMMYYYYHHMM(date) {
+  const d = (date instanceof Date) ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function ccSafeParseJSON(raw) {
+  try { return JSON.parse(raw); } catch (_) { return null; }
+}
+
+function ccBuildEmptySnapshot() {
+  return {
+    version: 1,
+    currencies: {
+      NIO: {
+        denoms: CC_DENOMS.NIO.map(d => ({ id: d.id, value: d.value, chip: d.chip || '', count: null })),
+        total: 0
+      },
+      USD: {
+        denoms: CC_DENOMS.USD.map(d => ({ id: d.id, value: d.value, chip: d.chip || '', count: null })),
+        total: 0
+      }
+    },
+    updatedAtISO: '',
+    updatedAtDisplay: ''
+  };
+}
+
+function ccComputeCurrencyTotal(currency, snap) {
+  const s = snap || ccSnapshot;
+  const cur = (s && s.currencies) ? (s.currencies[currency] || {}) : {};
+  const denoms = Array.isArray(cur.denoms) ? cur.denoms : [];
+  let total = 0;
+  for (const d of denoms) {
+    const val = Number(d.value || 0);
+    const cnt = (d.count == null) ? 0 : Number(d.count || 0);
+    if (Number.isFinite(val) && Number.isFinite(cnt)) total += val * cnt;
+  }
+  return Math.round(total * 100) / 100;
+}
+
+function ccNormalizeSnapshot(obj) {
+  if (!obj || typeof obj !== 'object') return ccBuildEmptySnapshot();
+
+  const out = ccBuildEmptySnapshot();
+  const cur = obj.currencies || {};
+
+  (['NIO', 'USD']).forEach(code => {
+    const src = cur[code] || {};
+    const srcDenoms = Array.isArray(src.denoms) ? src.denoms : [];
+    const byId = new Map(srcDenoms.map(d => [String(d && d.id ? d.id : ''), d]));
+
+    out.currencies[code].denoms = (CC_DENOMS[code] || []).map(base => {
+      const hit = byId.get(String(base.id));
+      const raw = hit ? hit.count : null;
+      const n = (raw === '' || raw == null) ? null : Number(raw);
+      const count = (Number.isFinite(n) && n >= 0) ? Math.trunc(n) : null;
+      return { id: base.id, value: base.value, chip: base.chip || '', count };
+    });
+    out.currencies[code].total = ccComputeCurrencyTotal(code, out);
+  });
+
+  out.updatedAtISO = typeof obj.updatedAtISO === 'string' ? obj.updatedAtISO : '';
+  out.updatedAtDisplay = typeof obj.updatedAtDisplay === 'string' ? obj.updatedAtDisplay : '';
+  return out;
+}
+
+function ccSetMsg(text) {
+  const el = document.getElementById('cc-msg');
+  if (el) el.textContent = text || '';
+}
+
+async function ccLoadSnapshot() {
+  const raw = localStorage.getItem(CC_STORAGE_KEY);
+  const fromLS = raw ? ccSafeParseJSON(raw) : null;
+  if (fromLS) {
+    ccSnapshot = ccNormalizeSnapshot(fromLS);
+    return ccSnapshot;
+  }
+
+  try {
+    const rec = await finGet('settings', CC_STORAGE_KEY);
+    const data = rec && rec.data ? rec.data : null;
+    ccSnapshot = ccNormalizeSnapshot(data);
+    try { localStorage.setItem(CC_STORAGE_KEY, JSON.stringify(ccSnapshot)); } catch (_) {}
+    return ccSnapshot;
+  } catch (err) {
+    console.warn('No se pudo leer Caja Chica desde settings', err);
+    ccSnapshot = ccBuildEmptySnapshot();
+    return ccSnapshot;
+  }
+}
+
+function ccUpdateTotal() {
+  if (!ccSnapshot) ccSnapshot = ccBuildEmptySnapshot();
+  const cur = ccSnapshot.currencies[ccCurrency];
+  cur.total = ccComputeCurrencyTotal(ccCurrency, ccSnapshot);
+
+  const tbody = document.getElementById('cc-tbody');
+  if (tbody) {
+    const rows = tbody.querySelectorAll('tr');
+    rows.forEach((tr, idx) => {
+      const denom = cur.denoms[idx];
+      const tdSub = tr.querySelector('td.num');
+      if (!denom || !tdSub) return;
+      const sub = ((denom.count == null) ? 0 : denom.count) * Number(denom.value || 0);
+      tdSub.textContent = fmtCurrency(sub);
+    });
+  }
+
+  const totalEl = document.getElementById('cc-total-value');
+  if (totalEl) totalEl.textContent = fmtCurrency(cur.total || 0);
+}
+
+function ccRenderCurrency() {
+  const tbody = document.getElementById('cc-tbody');
+  if (!tbody) return;
+
+  const snap = ccSnapshot || ccBuildEmptySnapshot();
+  const cur = snap.currencies[ccCurrency] || { denoms: [], total: 0 };
+  const prefix = ccCurrency === 'USD' ? 'US$' : 'C$';
+
+  document.querySelectorAll('.cc-tab').forEach(b => {
+    const isActive = b.dataset.currency === ccCurrency;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
+  const totalPrefix = document.getElementById('cc-total-prefix');
+  if (totalPrefix) totalPrefix.textContent = prefix;
+
+  const totalLabel = document.getElementById('cc-total-label');
+  if (totalLabel) totalLabel.textContent = (ccCurrency === 'USD') ? 'Total USD' : 'Total C$';
+
+  const upd = document.getElementById('cc-updated');
+  if (upd) upd.textContent = snap.updatedAtDisplay ? `Actualizado: ${snap.updatedAtDisplay}` : 'Actualizado: —';
+
+  tbody.innerHTML = '';
+
+  for (const d of cur.denoms) {
+    const tr = document.createElement('tr');
+
+    const tdDen = document.createElement('td');
+    tdDen.className = 'cc-denom';
+    const main = document.createElement('span');
+    main.textContent = `${prefix} ${d.value}`;
+    tdDen.appendChild(main);
+
+    if (d.chip) {
+      const chip = document.createElement('span');
+      chip.className = 'cc-chip';
+      chip.textContent = d.chip;
+      tdDen.appendChild(chip);
+    }
+
+    const tdQty = document.createElement('td');
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.inputMode = 'numeric';
+    inp.min = '0';
+    inp.step = '1';
+    inp.className = 'a33-num';
+    inp.dataset.a33Default = '';
+    inp.id = `cc-q-${ccCurrency}-${d.id}`;
+    inp.value = (d.count == null) ? '' : String(d.count);
+
+    // UX: vacío se mantiene vacío; si hay valor, seleccionar todo al click/focus.
+    inp.addEventListener('focus', ()=>{
+      if (String(inp.value ?? '') === '') return;
+      try{ setTimeout(()=>inp.select(), 0); }catch(e){}
+    });
+    inp.addEventListener('click', ()=>{
+      if (String(inp.value ?? '') === '') return;
+      try{ inp.select(); }catch(e){}
+    });
+
+    inp.addEventListener('input', () => {
+      const raw = String(inp.value ?? '').trim();
+      const n = raw === '' ? null : Number(raw);
+      d.count = (Number.isFinite(n) && n >= 0) ? Math.trunc(n) : null;
+      ccUpdateTotal();
+      ccSetMsg('');
+    });
+
+    tdQty.appendChild(inp);
+
+    const tdSub = document.createElement('td');
+    tdSub.className = 'num';
+    const sub = ((d.count == null) ? 0 : d.count) * Number(d.value || 0);
+    tdSub.textContent = fmtCurrency(sub);
+
+    tr.appendChild(tdDen);
+    tr.appendChild(tdQty);
+    tr.appendChild(tdSub);
+    tbody.appendChild(tr);
+  }
+
+  ccUpdateTotal();
+}
+
+async function ccSaveSnapshot() {
+  if (!ccSnapshot) ccSnapshot = ccBuildEmptySnapshot();
+  ccSnapshot.currencies.NIO.total = ccComputeCurrencyTotal('NIO', ccSnapshot);
+  ccSnapshot.currencies.USD.total = ccComputeCurrencyTotal('USD', ccSnapshot);
+
+  const now = new Date();
+  ccSnapshot.updatedAtISO = now.toISOString();
+  ccSnapshot.updatedAtDisplay = fmtDDMMYYYYHHMM(now);
+
+  try {
+    await finPut('settings', { id: CC_STORAGE_KEY, data: ccSnapshot });
+  } catch (err) {
+    console.warn('No se pudo guardar Caja Chica en settings', err);
+  }
+
+  try {
+    localStorage.setItem(CC_STORAGE_KEY, JSON.stringify(ccSnapshot));
+  } catch (_) {}
+
+  const upd = document.getElementById('cc-updated');
+  if (upd) upd.textContent = `Actualizado: ${ccSnapshot.updatedAtDisplay}`;
+
+  showToast('Caja Chica guardada');
+  ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay}`);
+}
+
+async function ccReset() {
+  const ok = confirm('Reset a cero: esto borrara los conteos actuales (solo informativo).');
+  if (!ok) return;
+  ccSnapshot = ccBuildEmptySnapshot();
+  ccRenderCurrency();
+  await ccSaveSnapshot();
+}
+
+function setupCajaChicaUI() {
+  document.querySelectorAll('.cc-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const c = btn.dataset.currency;
+      if (!c) return;
+      ccCurrency = c;
+      ccRenderCurrency();
+    });
+  });
+
+  const btnSave = document.getElementById('cc-save');
+  if (btnSave) btnSave.addEventListener('click', (e) => { e.preventDefault(); ccSaveSnapshot(); });
+
+  const btnReset = document.getElementById('cc-reset');
+  if (btnReset) btnReset.addEventListener('click', (e) => { e.preventDefault(); ccReset(); });
+
+  const btnRecalc = document.getElementById('cc-recalc');
+  if (btnRecalc) btnRecalc.addEventListener('click', async (e) => {
+    e.preventDefault();
+    await ccLoadSnapshot();
+    ccRenderCurrency();
+    ccSetMsg('Refrescado');
   });
 }
 
@@ -2716,12 +3019,15 @@ async function initFinanzas() {
     await ensureBaseAccounts();
     fillMonthYearSelects();
     setupTabs();
+    setupCajaChicaUI();
     setupEstadosSubtabs();
     setupModoERToggle();
     setupFilterListeners();
     setupProveedoresUI();
     setupComprasUI();
     setupExportButtons();
+    await ccLoadSnapshot();
+    ccRenderCurrency();
     await refreshAllFin();
   } catch (err) {
     console.error('Error inicializando Finanzas A33', err);

@@ -3178,6 +3178,16 @@ function toHHMMFromDatePOS(d){
   }
 }
 
+function fmtDDMMYYYYHHMM_POS(date){
+  try{
+    const d = (date instanceof Date) ? date : new Date(date);
+    if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+    return pad2POS(d.getDate()) + '/' + pad2POS(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + toHHMMFromDatePOS(d);
+  }catch(e){
+    return '';
+  }
+}
+
 function getSaleTimeTextPOS(s){
   if (!s) return '';
   // Campo clásico
@@ -9297,6 +9307,7 @@ function setPettyReadOnly(isReadOnly, allowReopen){
 
   [
     'pc-btn-save-initial','pc-btn-clear-initial',
+    'pc-init-from-fin-toggle','pc-init-from-fin-sync',
     'pc-btn-save-final','pc-btn-clear-final',
     'pc-mov-type','pc-mov-adjust-kind','pc-mov-transfer-kind','pc-mov-currency','pc-mov-amount','pc-mov-desc','pc-mov-add',
     'pc-btn-close-day','pc-btn-reopen-day'
@@ -9508,6 +9519,27 @@ function setPrevCierreUI(pc, dayKey){
   }
 }
 
+function updatePcFinSyncUI(ev, canInteract, readOnlyDay){
+  const t = document.getElementById('pc-init-from-fin-toggle');
+  const b = document.getElementById('pc-init-from-fin-sync');
+  const s = document.getElementById('pc-init-from-fin-status');
+
+  if (s) s.textContent = '';
+  if (!t || !b) return;
+
+  const checked = !!(ev && ev.pcInitFromFinanzasEnabled);
+  t.checked = checked;
+
+  const locked = (!canInteract) || !!readOnlyDay;
+  t.disabled = locked;
+  b.disabled = locked || !checked;
+
+  if (s && ev){
+    const last = ev.pcInitFromFinanzasLastSyncDisplay || (ev.pcInitFromFinanzasLastSync ? fmtDDMMYYYYHHMM_POS(ev.pcInitFromFinanzasLastSync) : '');
+    if (last) s.textContent = 'Sincronizado: ' + last;
+  }
+}
+
 async function renderCajaChica(){
   const main = document.getElementById('pc-main');
   const note = document.getElementById('pc-no-event-note');
@@ -9540,6 +9572,7 @@ async function renderCajaChica(){
     renderPettyHistoryControls(null);
     setPettyCloseUIEmpty();
     setPettyReadOnly(false, false);
+    updatePcFinSyncUI(null, false, false);
 
     const movDate = document.getElementById('pc-mov-date');
     if (movDate){
@@ -9564,6 +9597,7 @@ async function renderCajaChica(){
     renderPettyHistoryControls(null);
     setPettyCloseUIEmpty();
     setPettyReadOnly(false, false);
+    updatePcFinSyncUI(ev, false, false);
 
     const movDate = document.getElementById('pc-mov-date');
     if (movDate){
@@ -9635,6 +9669,7 @@ async function renderCajaChica(){
   renderPettyCloseUI(check, hist);
 
   setPettyReadOnly(readOnlyDay, (!hist && !!day.closedAt));
+  updatePcFinSyncUI(ev, true, readOnlyDay);
 }
 
 function updatePettySummaryUI(pc, dayKey, opts){
@@ -10479,6 +10514,84 @@ async function onUsePrevCierre(){
   toast('Saldo inicial precargado desde el cierre anterior');
 }
 
+function safeParseJsonPOS(raw){
+  try{ return JSON.parse(raw); }catch(e){ return null; }
+}
+
+function sumCountsByValue(denoms){
+  const m = new Map();
+  const arr = Array.isArray(denoms) ? denoms : [];
+  for (const d of arr){
+    const v = Number(d && d.value);
+    const c = (d && d.count == null) ? 0 : Number(d && d.count);
+    if (!Number.isFinite(v)) continue;
+    if (!Number.isFinite(c)) continue;
+    m.set(v, (m.get(v) || 0) + Math.trunc(c));
+  }
+  return m;
+}
+
+async function syncPettyInitialFromFinanzas(){
+  if (isPettyHistoryMode()){
+    alert('Estás en Vista histórica (solo lectura). Pulsa “Volver al día operativo” para sincronizar.');
+    return;
+  }
+
+  const evId = await getMeta('currentEventId');
+  const ev = evId ? await getEventByIdSafe(evId) : null;
+  if (!evId || !ev){
+    toast('No hay evento activo');
+    return;
+  }
+  if (!eventPettyEnabled(ev)){
+    toast('Activa Caja Chica para este evento primero');
+    return;
+  }
+
+  const statusEl = document.getElementById('pc-init-from-fin-status');
+  const raw = localStorage.getItem('a33_finanzas_caja_chica_v1');
+  const snap = raw ? safeParseJsonPOS(raw) : null;
+  if (!snap || !snap.currencies){
+    if (statusEl){
+      statusEl.innerHTML = 'Caja Chica (Finanzas) no configurada. <a class="a33-link" href="../finanzas/index.html#tab=cajachica">Ir a Finanzas</a>';
+    }
+    toast('Caja Chica (Finanzas) no configurada');
+    return;
+  }
+
+  const nio = snap.currencies.NIO || {};
+  const usd = snap.currencies.USD || {};
+  const nioMap = sumCountsByValue(nio.denoms);
+  const usdMap = sumCountsByValue(usd.denoms);
+
+  if (typeof NIO_DENOMS !== 'undefined'){
+    NIO_DENOMS.forEach(v=>{
+      const inp = document.getElementById('pc-nio-q-'+v);
+      if (inp) inp.value = String(nioMap.get(v) || 0);
+    });
+  }
+  if (typeof USD_DENOMS !== 'undefined'){
+    USD_DENOMS.forEach(v=>{
+      const inp = document.getElementById('pc-usd-q-'+v);
+      if (inp) inp.value = String(usdMap.get(v) || 0);
+    });
+  }
+
+  recalcPettyInitialTotalsFromInputs();
+  await onSavePettyInitial();
+
+  const now = new Date();
+  const stamp = fmtDDMMYYYYHHMM_POS(now);
+  ev.pcInitFromFinanzasLastSync = now.toISOString();
+  ev.pcInitFromFinanzasLastSyncDisplay = stamp;
+  await put('events', ev);
+
+  if (statusEl){
+    statusEl.textContent = 'Sincronizado: ' + stamp;
+  }
+  toast('Sincronizado desde Finanzas');
+}
+
 function bindCajaChicaEvents(){
   // Activar Caja Chica por evento (si está desactivada)
   const btnActivate = document.getElementById('pc-btn-activate');
@@ -10515,6 +10628,30 @@ function bindCajaChicaEvents(){
     btnClearInit.addEventListener('click', (e)=>{
       e.preventDefault();
       resetPettyInitialInputs();
+    });
+  }
+
+  // Manual: usar saldo inicial desde Finanzas (solo si el usuario lo habilita)
+  const finTog = document.getElementById('pc-init-from-fin-toggle');
+  const finBtn = document.getElementById('pc-init-from-fin-sync');
+  if (finTog){
+    finTog.addEventListener('change', async ()=>{
+      const evId = await getMeta('currentEventId');
+      const ev = evId ? await getEventByIdSafe(evId) : null;
+      if (!evId || !ev){
+        finTog.checked = false;
+        updatePcFinSyncUI(null, false, false);
+        return;
+      }
+      ev.pcInitFromFinanzasEnabled = !!finTog.checked;
+      await put('events', ev);
+      await renderCajaChica();
+    });
+  }
+  if (finBtn){
+    finBtn.addEventListener('click', (e)=>{
+      e.preventDefault();
+      syncPettyInitialFromFinanzas().catch(err=>console.error(err));
     });
   }
 

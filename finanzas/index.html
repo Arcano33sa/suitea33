@@ -38,6 +38,7 @@
       <span class="nav-group-label">Finanzas</span>
       <button type="button" class="fin-tab-btn active" data-view="tablero">Tablero Finanzas</button>
       <button type="button" class="fin-tab-btn" data-view="diario">Diario y Ajustes</button>
+      <button type="button" class="fin-tab-btn" data-view="cajachica">Caja Chica</button>
       <button type="button" class="fin-tab-btn" data-view="estados">Estados Financieros</button>
       <button type="button" class="fin-tab-btn" data-view="compras">Compras a Proveedor</button>
       <button type="button" class="fin-tab-btn" data-view="proveedores">Proveedores</button>
@@ -462,6 +463,52 @@
       <tbody id="proveedores-tbody"></tbody>
     </table>
   </div>
+</section>
+
+<!-- CAJA CHICA (FÍSICA / INFORMATIVA) -->
+<section id="view-cajachica" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Caja Chica</h2>
+    <p>Conteo físico de efectivo por denominaciones (solo informativo). No genera asientos, no afecta la cuenta contable “Caja”.</p>
+  </header>
+
+  <div class="cc-topbar">
+    <div class="cc-tabs" role="tablist" aria-label="Moneda">
+      <button type="button" class="cc-tab active" data-currency="NIO" aria-selected="true">C$</button>
+      <button type="button" class="cc-tab" data-currency="USD" aria-selected="false">USD</button>
+    </div>
+    <div class="cc-meta">
+      <span id="cc-updated" class="cc-updated">Actualizado: —</span>
+    </div>
+  </div>
+
+  <div class="fin-table-wrapper cc-table-wrap">
+    <table class="fin-table cc-table" aria-label="Conteo Caja Chica">
+      <thead>
+        <tr>
+          <th>Denominación</th>
+          <th style="width:130px">Cantidad</th>
+          <th>Subtotal</th>
+        </tr>
+      </thead>
+      <tbody id="cc-tbody"></tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2" id="cc-total-label">Total</td>
+          <td><span id="cc-total-prefix">C$</span> <span id="cc-total-value">0.00</span></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="cc-actions">
+    <button type="button" id="cc-save" class="btn-primary cc-btn">Guardar</button>
+    <button type="button" id="cc-reset" class="btn-danger">Reset a cero</button>
+    <button type="button" id="cc-recalc" class="btn-small">Recalcular</button>
+    <span id="cc-msg" class="cc-msg"></span>
+  </div>
+
+  <p class="fin-help">Tip: este snapshot lo puede leer POS manualmente como saldo inicial cuando lo habilitas con “Sincronizar”.</p>
 </section>
 
       <!-- ESTADOS FINANCIEROS -->
