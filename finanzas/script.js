@@ -13,6 +13,12 @@ const CENTRAL_EVENT = 'CENTRAL';
 let finDB = null;
 let finCachedData = null; // {accounts, accountsMap, entries, lines, linesByEntry}
 
+// Catálogo de cuentas (UI)
+let catQuery = '';
+let catUsageCache = null; // {rev, countsObj, updatedAt}
+const CAT_USAGE_CACHE_KEY = 'a33_fin_accounts_usage_cache_v1';
+let catAutoRootType = true;
+
 // POS: lectura de ventas (solo lectura, sin tocar nada del POS)
 const POS_DB_NAME = 'a33-pos';
 let posDB = null;
@@ -2614,6 +2620,419 @@ function setupProveedoresUI() {
   }
 }
 
+/* ---------- Catálogo de Cuentas (CRUD + protecciones) ---------- */
+
+function catComputeDiaryRevision(data) {
+  const entries = (data && Array.isArray(data.entries)) ? data.entries : [];
+  const lines = (data && Array.isArray(data.lines)) ? data.lines : [];
+  const lastEntryId = entries.length ? Number(entries[entries.length - 1].id || 0) : 0;
+  const lastLineId = lines.length ? Number(lines[lines.length - 1].id || 0) : 0;
+  return `e${entries.length}-le${lastEntryId}-l${lines.length}-ll${lastLineId}`;
+}
+
+function catReadUsageCache() {
+  try {
+    const raw = localStorage.getItem(CAT_USAGE_CACHE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object') return null;
+    if (typeof obj.rev !== 'string' || typeof obj.counts !== 'object') return null;
+    return obj;
+  } catch (e) {
+    return null;
+  }
+}
+
+function catWriteUsageCache(rev, countsObj) {
+  try {
+    localStorage.setItem(CAT_USAGE_CACHE_KEY, JSON.stringify({
+      rev,
+      counts: countsObj,
+      updatedAt: new Date().toISOString()
+    }));
+  } catch (e) {}
+}
+
+function catGetUsageCounts(data) {
+  const rev = catComputeDiaryRevision(data);
+
+  if (catUsageCache && catUsageCache.rev === rev && catUsageCache.countsObj) {
+    return { rev, countsObj: catUsageCache.countsObj };
+  }
+
+  const cached = catReadUsageCache();
+  if (cached && cached.rev === rev && cached.counts) {
+    catUsageCache = { rev, countsObj: cached.counts, updatedAt: cached.updatedAt || null };
+    return { rev, countsObj: cached.counts };
+  }
+
+  // Recalcular
+  const lines = (data && Array.isArray(data.lines)) ? data.lines : [];
+  const counts = {};
+  for (const ln of lines) {
+    const code = String(ln.accountCode || '').trim();
+    if (!code) continue;
+    counts[code] = (counts[code] || 0) + 1;
+  }
+
+  catUsageCache = { rev, countsObj: counts, updatedAt: new Date().toISOString() };
+  catWriteUsageCache(rev, counts);
+  return { rev, countsObj: counts };
+}
+
+function inferTipoForNewAccount(code) {
+  const s = String(code || '').trim();
+  if (s.startsWith('71')) return 'ingreso';
+  if (s.startsWith('72')) return 'gasto';
+  return inferTipoFromCode(s) || 'otro';
+}
+
+function catMakePill(text, variant) {
+  const v = variant ? ` fin-pill--${variant}` : '';
+  return `<span class="fin-pill${v}">${text}</span>`;
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function renderCatalogoCuentas(data) {
+  const tbody = document.getElementById('cat-tbody');
+  if (!tbody) return;
+
+  const accounts = (data && Array.isArray(data.accounts)) ? [...data.accounts] : [];
+  const q = normText(catQuery || '').trim();
+
+  const { countsObj } = catGetUsageCounts(data);
+
+  // Orden por código asc
+  accounts.sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+  const filtered = q
+    ? accounts.filter(a => {
+        const code = String(a.code || '');
+        const name = String(a.nombre || a.name || '');
+        return normText(code).includes(q) || normText(name).includes(q);
+      })
+    : accounts;
+
+  tbody.innerHTML = '';
+
+  if (!filtered.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="7">Sin resultados.</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  for (const acc of filtered) {
+    const code = String(acc.code);
+    const name = (acc.nombre || acc.name || '').toString();
+    const rootType = String(acc.rootType || inferRootTypeFromCode(code) || 'OTROS').toUpperCase();
+    const isHidden = !!acc.isHidden;
+    const isProtected = !!acc.systemProtected;
+    const usedCount = Number(countsObj?.[code] || 0);
+    const isUsed = usedCount > 0;
+
+    const estadoPill = isHidden ? catMakePill('Oculta', 'red') : catMakePill('Activa', 'green');
+    const protPill = isProtected ? catMakePill('Sí', 'gold') : catMakePill('No', 'muted');
+    const usedPill = isUsed ? catMakePill(`Sí (${usedCount})`, 'green') : catMakePill('No', 'muted');
+    const typePill = catMakePill(rootType, 'muted');
+
+    const tr = document.createElement('tr');
+
+    const editDisabled = isProtected;
+    const hideDisabled = isProtected;
+
+    const hideLabel = isHidden ? 'Mostrar' : 'Ocultar';
+    const hideClass = isHidden ? 'btn-small' : 'btn-danger';
+
+    tr.innerHTML = `
+      <td>${code}</td>
+      <td>${escapeHtml(name) || '—'}</td>
+      <td>${typePill}</td>
+      <td>${estadoPill}</td>
+      <td>${protPill}</td>
+      <td>${usedPill}</td>
+      <td class="fin-actions-cell">
+        <button type="button" class="btn-small cat-edit" data-code="${code}" ${editDisabled ? 'disabled title="Cuenta protegida por sistema"' : ''}>Editar</button>
+        <button type="button" class="${hideClass} cat-toggle" data-code="${code}" ${hideDisabled ? 'disabled title="Cuenta protegida por sistema"' : ''}>${hideLabel}</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function openCatModal() {
+  const modal = document.getElementById('cat-modal');
+  if (!modal) return;
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeCatModal() {
+  const modal = document.getElementById('cat-modal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function setCatFormMessage(msg, isError = false) {
+  const el = document.getElementById('cat-form-msg');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = isError ? '#ffd6d6' : '';
+}
+
+function populateCatRootSelect() {
+  const sel = document.getElementById('cat-root');
+  if (!sel) return;
+  sel.innerHTML = '';
+  for (const rt of ROOT_TYPES) {
+    const opt = document.createElement('option');
+    opt.value = rt;
+    opt.textContent = rt;
+    sel.appendChild(opt);
+  }
+}
+
+function setCatModalMode(mode, acc = null) {
+  const modeEl = document.getElementById('cat-mode');
+  const editCodeEl = document.getElementById('cat-edit-code');
+  const codeEl = document.getElementById('cat-code');
+  const nameEl = document.getElementById('cat-name');
+  const rootEl = document.getElementById('cat-root');
+  const titleEl = document.getElementById('cat-modal-title');
+  const subEl = document.getElementById('cat-modal-sub');
+
+  if (!modeEl || !editCodeEl || !codeEl || !nameEl || !rootEl) return;
+
+  setCatFormMessage('');
+  catAutoRootType = true;
+
+  if (mode === 'edit' && acc) {
+    const code = String(acc.code);
+    modeEl.value = 'edit';
+    editCodeEl.value = code;
+    codeEl.value = code;
+    codeEl.disabled = true;
+    nameEl.value = (acc.nombre || acc.name || '').toString();
+    const rt = String(acc.rootType || inferRootTypeFromCode(code) || 'OTROS').toUpperCase();
+    rootEl.value = ROOT_TYPES.includes(rt) ? rt : 'OTROS';
+    if (titleEl) titleEl.textContent = 'Editar cuenta';
+    if (subEl) subEl.textContent = `Código bloqueado: ${code}`;
+  } else {
+    modeEl.value = 'new';
+    editCodeEl.value = '';
+    codeEl.value = '';
+    codeEl.disabled = false;
+    nameEl.value = '';
+    rootEl.value = 'INGRESOS';
+    if (titleEl) titleEl.textContent = 'Nueva cuenta';
+    if (subEl) subEl.textContent = 'Tip: escribe el código y te sugerimos el rootType.';
+  }
+}
+
+async function saveCatAccount() {
+  if (!finCachedData) await refreshAllFin();
+
+  const mode = document.getElementById('cat-mode')?.value || 'new';
+  const editCode = document.getElementById('cat-edit-code')?.value || '';
+
+  const codeEl = document.getElementById('cat-code');
+  const nameEl = document.getElementById('cat-name');
+  const rootEl = document.getElementById('cat-root');
+
+  const codeRaw = String(codeEl?.value || '').trim();
+  const name = String(nameEl?.value || '').trim();
+  const rootType = String(rootEl?.value || '').toUpperCase();
+
+  if (!name) {
+    setCatFormMessage('El nombre es obligatorio.', true);
+    return;
+  }
+  if (!isValidRootType(rootType)) {
+    setCatFormMessage('Selecciona un rootType válido.', true);
+    return;
+  }
+
+  await openFinDB();
+
+  if (mode === 'edit') {
+    const code = String(editCode || codeRaw).trim();
+    const existing = finCachedData.accountsMap.get(code) || await finGet('accounts', code);
+    if (!existing) {
+      setCatFormMessage('No se encontró la cuenta a editar.', true);
+      return;
+    }
+    if (existing.systemProtected) {
+      setCatFormMessage('Cuenta protegida por sistema. No se puede editar.', true);
+      return;
+    }
+
+    existing.nombre = name;
+    existing.name = name;
+    existing.rootType = rootType;
+    existing.updatedAtISO = new Date().toISOString();
+    await finPut('accounts', existing);
+    showToast('Cuenta actualizada');
+    closeCatModal();
+    await refreshAllFin();
+    return;
+  }
+
+  // new
+  if (!/^\d{4}$/.test(codeRaw)) {
+    setCatFormMessage('El código debe tener 4 dígitos (ej: 4101).', true);
+    return;
+  }
+  if (finCachedData.accountsMap.has(codeRaw)) {
+    setCatFormMessage('Ese código ya existe. Usa otro.', true);
+    return;
+  }
+  const already = await finGet('accounts', codeRaw);
+  if (already) {
+    setCatFormMessage('Ese código ya existe. Usa otro.', true);
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const newAcc = {
+    code: codeRaw,
+    nombre: name,
+    name,
+    tipo: inferTipoForNewAccount(codeRaw),
+    rootType,
+    isHidden: false,
+    systemProtected: false,
+    createdAtISO: now,
+    updatedAtISO: now
+  };
+
+  await finAdd('accounts', newAcc);
+  showToast('Cuenta creada');
+  closeCatModal();
+  await refreshAllFin();
+}
+
+async function toggleCatAccount(code) {
+  if (!finCachedData) await refreshAllFin();
+  const acc = finCachedData.accountsMap.get(String(code));
+  if (!acc) return;
+  if (acc.systemProtected) {
+    showToast('Cuenta protegida: no se puede ocultar');
+    return;
+  }
+  acc.isHidden = !acc.isHidden;
+  acc.updatedAtISO = new Date().toISOString();
+  await openFinDB();
+  await finPut('accounts', acc);
+  showToast(acc.isHidden ? 'Cuenta oculta' : 'Cuenta visible');
+  await refreshAllFin();
+}
+
+function setupCatalogoUI() {
+  populateCatRootSelect();
+
+  const search = document.getElementById('cat-search');
+  const btnNew = document.getElementById('cat-new');
+  const btnRefresh = document.getElementById('cat-refresh');
+  const tbody = document.getElementById('cat-tbody');
+
+  const modal = document.getElementById('cat-modal');
+  const closeBtn = document.getElementById('cat-modal-close');
+  const cancelBtn = document.getElementById('cat-cancel');
+  const saveBtn = document.getElementById('cat-save');
+
+  const codeEl = document.getElementById('cat-code');
+  const rootEl = document.getElementById('cat-root');
+
+  if (search) {
+    search.addEventListener('input', (e) => {
+      catQuery = e.target.value || '';
+      renderCatalogoCuentas(finCachedData || { accounts: [] });
+    });
+  }
+
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', () => {
+      refreshAllFin().catch(err => {
+        console.error('Error refrescando Finanzas', err);
+        alert('No se pudo actualizar Finanzas.');
+      });
+    });
+  }
+
+  if (btnNew) {
+    btnNew.addEventListener('click', () => {
+      setCatModalMode('new');
+      openCatModal();
+      setTimeout(() => document.getElementById('cat-code')?.focus(), 0);
+    });
+  }
+
+  if (tbody) {
+    tbody.addEventListener('click', (e) => {
+      const edit = e.target.closest('.cat-edit');
+      const tog = e.target.closest('.cat-toggle');
+
+      if (edit && !edit.disabled) {
+        const code = String(edit.dataset.code || '');
+        const acc = finCachedData?.accountsMap.get(code);
+        if (!acc) return;
+        setCatModalMode('edit', acc);
+        openCatModal();
+        setTimeout(() => document.getElementById('cat-name')?.focus(), 0);
+        return;
+      }
+
+      if (tog && !tog.disabled) {
+        const code = String(tog.dataset.code || '');
+        toggleCatAccount(code).catch(err => {
+          console.error('Error ocultando/mostrando cuenta', err);
+          alert('No se pudo actualizar la cuenta.');
+        });
+      }
+    });
+  }
+
+  if (closeBtn) closeBtn.addEventListener('click', closeCatModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', () => { closeCatModal(); });
+  if (saveBtn) saveBtn.addEventListener('click', () => { saveCatAccount().catch(err => {
+    console.error('Error guardando cuenta', err);
+    setCatFormMessage('No se pudo guardar. Revisa los campos e intenta de nuevo.', true);
+  }); });
+
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeCatModal();
+    });
+  }
+
+  if (rootEl) {
+    rootEl.addEventListener('change', () => {
+      catAutoRootType = false;
+    });
+  }
+
+  if (codeEl) {
+    codeEl.addEventListener('input', () => {
+      // Solo dígitos, máximo 4
+      const cleaned = String(codeEl.value || '').replace(/\D+/g, '').slice(0, 4);
+      if (codeEl.value !== cleaned) codeEl.value = cleaned;
+      if (catAutoRootType && cleaned.length === 4 && rootEl) {
+        const inferred = inferRootTypeFromCode(cleaned) || 'OTROS';
+        if (ROOT_TYPES.includes(inferred)) rootEl.value = inferred;
+      }
+    });
+  }
+}
+
 /* ---------- Compras pagadas a proveedor (wizard) ---------- */
 
 function findAccountByCode(data, code) {
@@ -4038,6 +4457,7 @@ async function refreshAllFin() {
   renderDiario(data);
   renderComprasPorProveedor(data);
   renderProveedores(data);
+  renderCatalogoCuentas(data);
   renderEstadoResultados(data);
   renderBalanceGeneral(data);
   renderRentabilidadPresentacion(data);
@@ -4110,6 +4530,7 @@ async function initFinanzas() {
     setupModoERToggle();
     setupFilterListeners();
     setupProveedoresUI();
+    setupCatalogoUI();
     setupComprasUI();
     setupComprasPlanUI();
     setupExportButtons();

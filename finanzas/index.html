@@ -43,6 +43,7 @@
       <button type="button" class="fin-tab-btn" data-view="comprasplan">Compras</button>
       <button type="button" class="fin-tab-btn" data-view="compras">Compras a Proveedor</button>
       <button type="button" class="fin-tab-btn" data-view="proveedores">Proveedores</button>
+      <button type="button" class="fin-tab-btn" data-view="catalogo">Catálogo de Cuentas</button>
     </div>
   </nav>
 </header>
@@ -646,6 +647,92 @@
     </table>
   </div>
 </section>
+
+<!-- CATÁLOGO DE CUENTAS -->
+<section id="view-catalogo" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Catálogo de Cuentas</h2>
+    <p>Crea, edita y oculta cuentas sin afectar movimientos ya registrados.</p>
+  </header>
+
+  <div class="fin-filters-row fin-filters-row--compact fin-catalog-toolbar">
+    <label class="fin-grow">
+      Buscar (código o nombre)
+      <input type="text" id="cat-search" placeholder="Ej: 4100, caja, ventas…" autocomplete="off">
+    </label>
+
+    <div class="fin-inline-group fin-catalog-actions">
+      <button type="button" id="cat-new" class="btn-small">+ Nueva cuenta</button>
+      <button type="button" id="cat-refresh" class="btn-small">Actualizar</button>
+    </div>
+  </div>
+
+  <p id="cat-help" class="fin-help">
+    Tip: Las cuentas protegidas no se editan ni se ocultan. Las cuentas ocultas siguen visibles aquí y en históricos.
+  </p>
+
+  <div class="fin-table-wrapper">
+    <table class="fin-table fin-catalog-table" aria-label="Catálogo de cuentas">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Tipo</th>
+          <th>Estado</th>
+          <th>Protegida</th>
+          <th>Usada</th>
+          <th class="fin-actions-cell">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="cat-tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- MODAL: CREAR / EDITAR CUENTA -->
+<div id="cat-modal" class="fin-modal" aria-hidden="true">
+  <div class="fin-modal-content" role="dialog" aria-modal="true" aria-labelledby="cat-modal-title">
+    <div class="fin-modal-header">
+      <div>
+        <strong id="cat-modal-title">Cuenta</strong>
+        <div id="cat-modal-sub" class="fin-help" style="margin:2px 0 0"></div>
+      </div>
+      <button type="button" id="cat-modal-close" class="btn-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="fin-modal-body">
+      <form id="cat-form" class="fin-form fin-form--inmodal" autocomplete="off">
+        <input type="hidden" id="cat-mode" value="new">
+        <input type="hidden" id="cat-edit-code" value="">
+
+        <div class="fin-form-row">
+          <label>
+            Código (4 dígitos)
+            <input type="text" id="cat-code" inputmode="numeric" pattern="\d{4}" placeholder="Ej: 4101">
+          </label>
+
+          <label class="fin-form-grow">
+            Nombre
+            <input type="text" id="cat-name" placeholder="Ej: Ingresos por comida">
+          </label>
+        </div>
+
+        <div class="fin-form-row">
+          <label>
+            Tipo (rootType)
+            <select id="cat-root"></select>
+          </label>
+
+          <div class="fin-actions">
+            <button type="button" id="cat-save" class="btn-primary">Guardar</button>
+            <button type="button" id="cat-cancel" class="btn-ghost">Cancelar</button>
+          </div>
+        </div>
+
+        <p id="cat-form-msg" class="fin-help"></p>
+      </form>
+    </div>
+  </div>
+</div>
 
 <!-- CAJA CHICA (FÍSICA / INFORMATIVA) -->
 <section id="view-cajachica" class="fin-view">
