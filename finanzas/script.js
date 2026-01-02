@@ -23,6 +23,11 @@ let catAutoRootType = true;
 const POS_DB_NAME = 'a33-pos';
 let posDB = null;
 
+// POS: eventos (solo lectura). Se usa para dropdown Evento y para resolver nombres live por posEventId.
+let posEventsMap = new Map(); // id -> {id,name,closedAt,createdAt}
+let posActiveEvents = []; // [{id,name,createdAt}] (solo abiertos, sin General/Central)
+let posEventsLoadedAt = 0;
+
 const $ = (sel) => document.querySelector(sel);
 
 /* ---------- IndexedDB helpers: Finanzas ---------- */
@@ -185,6 +190,119 @@ function getAllPosSales() {
   });
 }
 
+
+function getAllPosEventsSafe() {
+  return new Promise(async (resolve) => {
+    const db = await openPosDB();
+    if (!db) {
+      resolve([]);
+      return;
+    }
+    let store;
+    try {
+      store = posTx('events', 'readonly');
+    } catch (err) {
+      console.warn('Store events no encontrada en a33-pos', err);
+      resolve([]);
+      return;
+    }
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => {
+      console.warn('No se pudieron leer los eventos del POS', req.error);
+      resolve([]);
+    };
+  });
+}
+
+async function refreshPosEventsCache() {
+  // Lee a33-pos (si existe) y construye mapa + lista de eventos abiertos para el dropdown.
+  try {
+    const events = await getAllPosEventsSafe();
+    const map = new Map();
+    for (const ev of (Array.isArray(events) ? events : [])) {
+      if (!ev) continue;
+      const idRaw = ev.id;
+      const id = (typeof idRaw === 'number') ? idRaw : parseInt(String(idRaw || '').trim(), 10);
+      if (!id) continue;
+      const name = String(ev.name || ev.nombre || '').trim();
+      map.set(id, { id, name, closedAt: ev.closedAt || null, createdAt: ev.createdAt || null });
+    }
+
+    posEventsMap = map;
+
+    const active = [];
+    for (const v of map.values()) {
+      const nm = String(v.name || '').trim();
+      if (!nm) continue;
+      if (v.closedAt) continue;
+      // Evitar duplicar el evento general del POS; en Finanzas se usa Central.
+      if (isCentralEventName(nm)) continue;
+      active.push({ id: v.id, name: nm, createdAt: v.createdAt || '' });
+    }
+
+    // Orden: más reciente primero (createdAt ISO). Fallback alfabético.
+    active.sort((a, b) => {
+      const ca = String(a.createdAt || '');
+      const cb = String(b.createdAt || '');
+      if (ca && cb && ca !== cb) return (ca < cb) ? 1 : -1;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'es');
+    });
+
+    posActiveEvents = active;
+    posEventsLoadedAt = Date.now();
+  } catch (err) {
+    console.warn('No se pudo refrescar cache de eventos POS', err);
+    posEventsMap = new Map();
+    posActiveEvents = [];
+    posEventsLoadedAt = Date.now();
+  }
+}
+
+function getPosEventNameLiveById(posEventId) {
+  const id = (typeof posEventId === 'number') ? posEventId : parseInt(String(posEventId || '').trim(), 10);
+  if (!id) return '';
+  const ev = posEventsMap.get(id);
+  const nm = ev ? String(ev.name || '').trim() : '';
+  return nm;
+}
+
+function getPosEventNameSnapshotById(posEventId, snapshot) {
+  const live = getPosEventNameLiveById(posEventId);
+  if (live) return live;
+  const snap = String(snapshot || '').trim();
+  if (snap) return snap;
+  const id = (typeof posEventId === 'number') ? posEventId : parseInt(String(posEventId || '').trim(), 10);
+  return id ? `Evento POS (${id})` : 'Evento POS';
+}
+
+function populateMovimientoEventoSelect() {
+  const sel = document.getElementById('mov-evento-sel');
+  if (!sel) return;
+
+  const prev = sel.value || 'CENTRAL';
+  sel.innerHTML = '';
+
+  const optCentral = document.createElement('option');
+  optCentral.value = 'CENTRAL';
+  optCentral.textContent = 'Central';
+  sel.appendChild(optCentral);
+
+  // Eventos activos del POS
+  for (const ev of (Array.isArray(posActiveEvents) ? posActiveEvents : [])) {
+    const opt = document.createElement('option');
+    opt.value = `POS:${ev.id}`;
+    opt.textContent = ev.name;
+    sel.appendChild(opt);
+  }
+
+  // Restaurar selección si todavía existe.
+  if (prev && Array.from(sel.options).some(o => o.value === prev)) {
+    sel.value = prev;
+  } else {
+    sel.value = 'CENTRAL';
+  }
+}
 /* ---------- Catálogo de cuentas base ---------- */
 
 const BASE_ACCOUNTS = [
@@ -884,16 +1002,25 @@ function getDisplayReference(mov) {
 }
 
 function getDisplayEventLabel(mov) {
-  // Por ahora: todo lo que NO sea POS cae en Central.
   if (!mov || typeof mov !== 'object') return 'Central';
 
   const scope = (mov.eventScope ?? mov.event_scope ?? '').toString().trim().toUpperCase();
   const origen = (mov.origen ?? mov.origin ?? '').toString().trim().toUpperCase();
 
+  // POS: intentar resolver el nombre live (lookup por posEventId). Fallback a snapshot.
   if (scope === 'POS' || (!scope && origen === 'POS')) {
+    const posId = mov.posEventId ?? mov.pos_event_id ?? mov.eventId ?? mov.posEventID ?? null;
+
     const snap = (mov.posEventNameSnapshot ?? mov.posEventName ?? mov.posEventSnapshot ?? mov.eventName ?? '').toString().trim();
     // Compatibilidad: POS antiguos pudieron guardar el nombre del evento en "evento".
     const legacyEv = (mov.posEventNameLegacy ?? mov.evento ?? mov.event ?? '').toString().trim();
+
+    // Si hay ID, usamos live->snapshot->legacy.
+    if (posId != null && String(posId).trim() !== '') {
+      return getPosEventNameSnapshotById(posId, snap || legacyEv);
+    }
+
+    // Si no hay ID, no hay lookup live: usa snapshot/legacy.
     return snap || legacyEv || 'Evento POS';
   }
 
@@ -2498,6 +2625,22 @@ async function guardarMovimientoManual() {
   const medio = $('#mov-medio')?.value || 'caja';
   const montoRaw = $('#mov-monto')?.value || '0';
   const cuentaCode = $('#mov-cuenta')?.value || '';
+
+  const eventoSel = ($('#mov-evento-sel')?.value || 'CENTRAL').toString();
+  let eventScope = 'CENTRAL';
+  let posEventId = null;
+  let posEventNameSnapshot = null;
+
+  if (eventoSel.startsWith('POS:')) {
+    const id = parseInt(eventoSel.slice(4), 10);
+    if (id) {
+      eventScope = 'POS';
+      posEventId = id;
+      // Snapshot: nombre actual (si existe). Sirve si luego renombraron o si POS no está accesible.
+      posEventNameSnapshot = getPosEventNameLiveById(id) || (Array.isArray(posActiveEvents) ? (posActiveEvents.find(e => e.id === id)?.name || null) : null);
+    }
+  }
+
   const reference = ($('#mov-evento')?.value || '').trim();
   const descripcion = ($('#mov-descripcion')?.value || '').trim();
 
@@ -2539,9 +2682,9 @@ async function guardarMovimientoManual() {
     descripcion: descripcion || `Movimiento ${tipo}`,
     tipoMovimiento: tipo,
     reference,
-    eventScope: 'CENTRAL',
-    posEventId: null,
-    posEventNameSnapshot: null,
+    eventScope,
+    posEventId,
+    posEventNameSnapshot,
     origen: 'Interno',
     origenId: null,
     totalDebe: monto,
@@ -4691,6 +4834,10 @@ function setupFilterListeners() {
 async function refreshAllFin() {
   finCachedData = await getAllFinData();
   const data = finCachedData;
+
+  // Evento (POS): refrescar lista de eventos activos para dropdown y resolución live por ID.
+  await refreshPosEventsCache();
+  populateMovimientoEventoSelect();
   updateEventFilters(data.entries);
   updateSupplierSelects(data);
   fillCuentaSelect(data);
