@@ -875,6 +875,53 @@ function getSupplierLabelFromEntry(entry, data) {
   return '—';
 }
 
+/* ---------- Cuentas: display name por lookup (compatibilidad con históricos) ---------- */
+
+function getLineAccountSnapshotName(line) {
+  if (!line || typeof line !== 'object') return '';
+
+  // Campos comunes en históricos / importaciones antiguas (si existieran)
+  const candidates = [
+    line.accountName,
+    line.accountNombre,
+    line.nombreCuenta,
+    line.cuentaNombre,
+    line.account_name,
+    line.account_nombre,
+    line.nombre,
+    line.name
+  ];
+
+  for (const c of candidates) {
+    const v = (c != null) ? String(c).trim() : '';
+    if (v) return v;
+  }
+
+  // Algunos formatos guardan un objeto cuenta embebido
+  const embedded = line.account || line.cuenta || null;
+  if (embedded && typeof embedded === 'object') {
+    const v = String(embedded.nombre || embedded.name || '').trim();
+    if (v) return v;
+  }
+
+  return '';
+}
+
+function getAccountDisplayNameByCode(code, accountsMap, lineForFallback) {
+  const c = String(code ?? '').trim();
+  const acc = (accountsMap && typeof accountsMap.get === 'function') ? accountsMap.get(c) : null;
+  if (acc) {
+    const nm = String(acc.nombre || acc.name || '').trim();
+    if (nm) return nm;
+    return `Cuenta ${String(acc.code ?? c)}`;
+  }
+
+  const snap = getLineAccountSnapshotName(lineForFallback);
+  if (snap) return snap;
+
+  return c ? `Cuenta desconocida (${c})` : 'Cuenta desconocida';
+}
+
 
 /* ---------- Carga y estructura de datos ---------- */
 
@@ -2109,6 +2156,9 @@ function fillCuentaSelect(data) {
   sel.innerHTML = '<option value="">Seleccione cuenta…</option>';
 
   for (const acc of cuentas) {
+    // Cuentas ocultas: no deben aparecer en selects para movimientos nuevos.
+    if (acc && acc.isHidden === true) continue;
+
     const tipo = getTipoCuenta(acc);
     let permitido = false;
 
@@ -2291,10 +2341,7 @@ meta.innerHTML = `
 tbody.innerHTML = '';
   const lines = linesByEntry.get(entry.id) || [];
   for (const ln of lines) {
-    const acc = accountsMap.get(String(ln.accountCode));
-    const nombre = acc
-      ? (acc.nombre || acc.name || `Cuenta ${acc.code}`)
-      : '';
+    const nombre = getAccountDisplayNameByCode(ln.accountCode, accountsMap, ln);
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${ln.accountCode}</td>
@@ -3183,6 +3230,9 @@ function fillCompraCuentaDebe(data) {
   sel.innerHTML = '<option value="">Seleccione cuenta…</option>';
 
   for (const acc of cuentas) {
+    // Cuentas ocultas: no deben aparecer en selects para movimientos nuevos.
+    if (acc && acc.isHidden === true) continue;
+
     const tipo = getTipoCuenta(acc);
     const code = String(acc.code);
     const nombre = acc.nombre || acc.name || `Cuenta ${acc.code}`;
@@ -3223,6 +3273,9 @@ function fillCompraCuentaHaber(data) {
   sel.innerHTML = '<option value="">Seleccione cuenta…</option>';
 
   for (const acc of cuentas) {
+    // Cuentas ocultas: no deben aparecer en selects para movimientos nuevos.
+    if (acc && acc.isHidden === true) continue;
+
     const tipo = getTipoCuenta(acc);
     const code = String(acc.code);
     const nombre = acc.nombre || acc.name || `Cuenta ${acc.code}`;
