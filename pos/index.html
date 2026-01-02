@@ -781,6 +781,32 @@
       </div>
     </div>
 
+    <!-- Cierre diario (snapshot oficial por evento + fecha) -->
+    <div class="card" id="summary-daily-close-card">
+      <div class="row" style="align-items:center; justify-content:space-between; gap:10px;">
+        <div>
+          <h3 style="margin:0;">Cierre diario</h3>
+          <small class="muted">Guarda un snapshot por <b>evento + día</b>. Si Caja Chica está activa, el cierre se hace desde Caja Chica.</small>
+        </div>
+        <span id="summary-close-status" class="pill">—</span>
+      </div>
+      <div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap; margin-top:10px;">
+        <div style="min-width:220px;">
+          <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;">Evento activo</label>
+          <div id="summary-close-event-name" style="font-weight:800;">—</div>
+        </div>
+        <div>
+          <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;" for="summary-close-date">Fecha</label>
+          <input id="summary-close-date" type="date">
+        </div>
+        <div class="actions" style="margin-left:auto; gap:8px; flex-wrap:wrap;">
+          <button id="btn-summary-close-day" class="btn-danger btn-pill" type="button">Cerrar día</button>
+          <button id="btn-summary-reopen-day" class="btn-pill" type="button">Reabrir día</button>
+        </div>
+      </div>
+      <div id="summary-close-note" class="muted" style="margin-top:8px; display:none;"></div>
+    </div>
+
     <!-- Resumen · Cliente (filtro) -->
     <div class="card summary-customer-card">
       <div class="customer-v2">

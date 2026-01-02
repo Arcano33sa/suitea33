@@ -1,6 +1,6 @@
 // --- IndexedDB helpers POS
 const DB_NAME = 'a33-pos';
-const DB_VER = 23; // schema estable (+ banks)
+const DB_VER = 24; // + cierres diarios (snapshot) + candado por día/evento
 let db;
 
 // --- Finanzas: conexión a finanzasDB para asientos automáticos
@@ -61,6 +61,24 @@ function openDB() {
       } else {
         try { e.target.transaction.objectStore('banks').createIndex('by_name', 'name'); } catch {}
         try { e.target.transaction.objectStore('banks').createIndex('by_active', 'isActive'); } catch {}
+      }
+
+      // --- POS: cierres diarios (snapshot) + candado por (evento,día)
+      // dayLocks: estado abierto/cerrado por día (para bloquear ventas/movimientos)
+      if (!d.objectStoreNames.contains('dayLocks')) {
+        const l = d.createObjectStore('dayLocks', { keyPath: 'key' });
+        try { l.createIndex('by_event', 'eventId', { unique: false }); } catch {}
+        try { l.createIndex('by_date', 'dateKey', { unique: false }); } catch {}
+        try { l.createIndex('by_event_date', ['eventId','dateKey'], { unique: true }); } catch {}
+      }
+
+      // dailyClosures: snapshots oficiales por (evento,día,versión)
+      if (!d.objectStoreNames.contains('dailyClosures')) {
+        const c = d.createObjectStore('dailyClosures', { keyPath: 'key' });
+        try { c.createIndex('by_event', 'eventId', { unique: false }); } catch {}
+        try { c.createIndex('by_event_date', ['eventId','dateKey'], { unique: false }); } catch {}
+        try { c.createIndex('by_event_date_version', ['eventId','dateKey','version'], { unique: true }); } catch {}
+        try { c.createIndex('by_createdAt', 'createdAt', { unique: false }); } catch {}
       }
     };
     req.onsuccess = () => { db = req.result; resolve(db); };
@@ -3371,8 +3389,8 @@ window.addEventListener('online', setOfflineBar);
 window.addEventListener('offline', setOfflineBar);
 
 // Enable/disable selling block depending on current event
-// + Candado por Caja Chica: si el día está cerrado, NO se puede vender (UI + guard en lógica)
-let __A33_SELL_STATE = { enabled:false, dayKey: todayYMD(), dayClosed:false, pettyEnabled:false, eventId:null };
+// + Candado por día/evento (Caja Chica o Resumen): si el día está cerrado, NO se puede vender (UI + guard en lógica)
+let __A33_SELL_STATE = { enabled:false, dayKey: todayYMD(), dayClosed:false, pettyEnabled:false, eventId:null, closeVersion:null, closeSource:null };
 
 function getSaleDayKeyPOS(){
   try{
@@ -3391,8 +3409,228 @@ function isSellEnabledNowPOS(){
   }catch(e){ return true; }
 }
 
-function showSellDayClosedToastPOS(){
-  showToast('Día cerrado. Reabrí el día en Caja Chica para vender.', 'error', 5000);
+function showSellDayClosedToastPOS(reopenHint){
+  const hint = (reopenHint || '').trim();
+  const msg = hint ? `Día cerrado. ${hint}` : 'Día cerrado. Reabrí el día para vender.';
+  showToast(msg, 'error', 5000);
+}
+
+function makeDayLockKeyPOS(eventId, dateKey){
+  return `${Number(eventId)}|${safeYMD(dateKey)}`;
+}
+
+function makeDailyClosureKeyPOS(eventId, dateKey, version){
+  return `${Number(eventId)}|${safeYMD(dateKey)}|v${Number(version)}`;
+}
+
+function genClosureIdPOS(){
+  return 'DC-' + Date.now() + '-' + Math.random().toString(16).slice(2,10);
+}
+
+async function getDayLockRecordPOS(eventId, dateKey){
+  try{
+    const key = makeDayLockKeyPOS(eventId, dateKey);
+    return await new Promise((res, rej)=>{
+      const r = tx('dayLocks').get(key);
+      r.onsuccess = ()=>res(r.result || null);
+      r.onerror = ()=>rej(r.error);
+    });
+  }catch(e){
+    return null;
+  }
+}
+
+async function upsertDayLockPOS(eventId, dateKey, patch){
+  const dk = safeYMD(dateKey);
+  const key = makeDayLockKeyPOS(eventId, dk);
+  const cur = await getDayLockRecordPOS(eventId, dk);
+  const base = (cur && typeof cur === 'object') ? cur : { key, eventId:Number(eventId), dateKey:dk };
+  const next = { ...base, ...patch, key, eventId:Number(eventId), dateKey:dk, updatedAt: Date.now() };
+  await put('dayLocks', next);
+  return next;
+}
+
+function isCourtesySalePOS(s){
+  return !!(s && (s.courtesy || s.isCourtesy));
+}
+
+function getSaleLineCostPOS(s){
+  const lc = Number(s && s.lineCost);
+  if (Number.isFinite(lc)) return lc;
+  const cpu = Number(s && s.costPerUnit);
+  const qty = Number(s && s.qty);
+  if (Number.isFinite(cpu) && Number.isFinite(qty)) return cpu * qty;
+  return 0;
+}
+
+async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
+  const dk = safeYMD(dateKey);
+  const sales = await getAll('sales');
+  const filtered = sales.filter(s => s && Number(s.eventId) === Number(eventId) && String(s.date || '') === dk);
+
+  const byPay = {};
+  let grand = 0;
+  let courtesyQty = 0;
+  let courtesyCost = 0;
+
+  for (const s of filtered){
+    const courtesy = isCourtesySalePOS(s);
+    const total = Number(s.total || 0);
+    const qty = Number(s.qty || 0);
+    if (courtesy){
+      courtesyQty += Math.abs(qty || 0);
+      courtesyCost += Number(getSaleLineCostPOS(s) || 0);
+      continue;
+    }
+    const pay = String(s.payment || 'otros');
+    byPay[pay] = (byPay[pay] || 0) + total;
+    grand += total;
+  }
+
+  return {
+    dayKey: dk,
+    ventasPorMetodo: byPay,
+    totalGeneral: grand,
+    cortesiaCantidad: courtesyQty,
+    cortesiaCostoTotal: courtesyCost,
+    counts: { totalSales: filtered.length }
+  };
+}
+
+async function listDailyClosuresForDayPOS(eventId, dateKey){
+  try{
+    const dk = safeYMD(dateKey);
+    const all = await getAll('dailyClosures');
+    return (all || []).filter(r => r && Number(r.eventId) === Number(eventId) && String(r.dateKey || '') === dk)
+      .sort((a,b)=> (Number(a.version||0) - Number(b.version||0)));
+  }catch(e){
+    return [];
+  }
+}
+
+async function getMaxDailyClosureVersionPOS(eventId, dateKey){
+  const list = await listDailyClosuresForDayPOS(eventId, dateKey);
+  let maxV = 0;
+  for (const r of list) maxV = Math.max(maxV, Number(r.version || 0));
+  return maxV;
+}
+
+async function getDailyClosureByKeyPOS(key){
+  try{
+    return await new Promise((res, rej)=>{
+      const r = tx('dailyClosures').get(key);
+      r.onsuccess = ()=>res(r.result || null);
+      r.onerror = ()=>rej(r.error);
+    });
+  }catch(e){
+    return null;
+  }
+}
+
+async function closeDailyPOS({ event, dateKey, source }){
+  if (!event || event.id == null) throw new Error('No hay evento válido para cerrar el día.');
+  const eventId = Number(event.id);
+  const dk = safeYMD(dateKey);
+  const petty = eventPettyEnabled(event);
+
+  // Regla: si hay Caja Chica, el cierre diario se hace desde Caja Chica.
+  if (petty && String(source || '').toUpperCase() !== 'CASHBOX'){
+    throw new Error('Este evento tiene Caja Chica activa. El cierre del día se realiza desde Caja Chica.');
+  }
+
+  // Idempotencia: si el día ya está marcado como cerrado, devolvemos el último estado.
+  const curLock = await getDayLockRecordPOS(eventId, dk);
+  if (curLock && curLock.isClosed){
+    const lastKey = (curLock.lastClosureKey || (curLock.lastClosureVersion ? makeDailyClosureKeyPOS(eventId, dk, curLock.lastClosureVersion) : null));
+    const last = lastKey ? await getDailyClosureByKeyPOS(lastKey) : null;
+    return { already:true, lock: curLock, closure: last };
+  }
+
+  const maxV = await getMaxDailyClosureVersionPOS(eventId, dk);
+  const version = maxV + 1;
+
+  const snapshot = await computeDailySnapshotFromSalesPOS(eventId, dk);
+  const closureId = genClosureIdPOS();
+  const key = makeDailyClosureKeyPOS(eventId, dk, version);
+  const createdAt = Date.now();
+
+  const record = {
+    key,
+    closureId,
+    eventId,
+    eventNameSnapshot: String(event.name || ''),
+    dateKey: dk,
+    version,
+    createdAt,
+    createdBy: null,
+    source: String(source || 'SUMMARY').toUpperCase(),
+    totals: {
+      ventasPorMetodo: snapshot.ventasPorMetodo,
+      totalGeneral: snapshot.totalGeneral,
+      cortesiaCantidad: snapshot.cortesiaCantidad,
+      cortesiaCostoTotal: snapshot.cortesiaCostoTotal
+    },
+    meta: {
+      counts: snapshot.counts
+    }
+  };
+
+  try{
+    await put('dailyClosures', record);
+  }catch(err){
+    // Si otro dispositivo lo creó al mismo tiempo, lo tratamos como idempotente.
+    if (err && (err.name === 'ConstraintError' || err.name === 'DataError')){
+      const existing = await getDailyClosureByKeyPOS(key);
+      const lock = await upsertDayLockPOS(eventId, dk, {
+        isClosed: true,
+        eventNameSnapshot: String(event.name || ''),
+        closedAt: createdAt,
+        closedSource: String(source || 'SUMMARY').toUpperCase(),
+        lastClosureVersion: existing ? Number(existing.version||version) : version,
+        lastClosureId: existing ? (existing.closureId || null) : closureId,
+        lastClosureKey: key
+      });
+      return { already:true, lock, closure: existing };
+    }
+    throw err;
+  }
+
+  const lock = await upsertDayLockPOS(eventId, dk, {
+    isClosed: true,
+    eventNameSnapshot: String(event.name || ''),
+    closedAt: createdAt,
+    closedSource: String(source || 'SUMMARY').toUpperCase(),
+    lastClosureVersion: version,
+    lastClosureId: closureId,
+    lastClosureKey: key
+  });
+
+  return { already:false, lock, closure: record };
+}
+
+async function reopenDailyPOS({ event, dateKey, source }){
+  if (!event || event.id == null) throw new Error('No hay evento válido para reabrir el día.');
+  const eventId = Number(event.id);
+  const dk = safeYMD(dateKey);
+  const petty = eventPettyEnabled(event);
+
+  // Regla: si hay Caja Chica, la reapertura se hace desde Caja Chica.
+  if (petty && String(source || '').toUpperCase() !== 'CASHBOX'){
+    throw new Error('Este evento tiene Caja Chica activa. Reabrí el día desde Caja Chica.');
+  }
+
+  const curLock = await getDayLockRecordPOS(eventId, dk);
+  if (curLock && !curLock.isClosed){
+    return { already:true, lock: curLock };
+  }
+
+  const lock = await upsertDayLockPOS(eventId, dk, {
+    isClosed: false,
+    reopenedAt: Date.now(),
+    reopenedSource: String(source || 'SUMMARY').toUpperCase()
+  });
+
+  return { already:false, lock };
 }
 
 function setSellControlsDisabledPOS(disabled){
@@ -3431,14 +3669,14 @@ function setSellControlsDisabledPOS(disabled){
   }
 }
 
-function setSellDayClosedBannerPOS(show, dayKey){
+function setSellDayClosedBannerPOS(show, dayKey, reopenHint){
   const banner = document.getElementById('sell-day-closed-banner');
   if (!banner) return;
   if (show){
     const t = document.getElementById('sell-day-closed-title');
     if (t) t.textContent = `Día cerrado (${dayKey})`;
     const s = document.getElementById('sell-day-closed-sub');
-    if (s) s.textContent = 'Para vender aquí, reabrí el día en Caja Chica.';
+    if (s) s.textContent = reopenHint || 'Para vender aquí, reabrí el día.';
     banner.style.display = 'flex';
   } else {
     banner.style.display = 'none';
@@ -3447,26 +3685,51 @@ function setSellDayClosedBannerPOS(show, dayKey){
 
 async function computeSellDayLockPOS(curEvent, dayKey){
   const dk = safeYMD(dayKey || getSaleDayKeyPOS());
-  if (!curEvent || !eventPettyEnabled(curEvent)) return { pettyEnabled:false, dayKey: dk, dayClosed:false, closedAt:null, created:false };
+  if (!curEvent) return { pettyEnabled:false, dayKey: dk, dayClosed:false, closedAt:null, created:false, closeVersion:null, closeSource:null };
 
-  const pc = await getPettyCash(curEvent.id);
-  const existed = !!(pc && pc.days && pc.days[dk]);
-  const day = ensurePcDay(pc, dk);
+  // 1) Si Caja Chica está activa, el candado principal es day.closedAt (compatibilidad)
+  if (eventPettyEnabled(curEvent)){
+    const pc = await getPettyCash(curEvent.id);
+    const existed = !!(pc && pc.days && pc.days[dk]);
+    const day = ensurePcDay(pc, dk);
+    if (!existed){
+      try{ await savePettyCash(pc); }catch(e){}
+    }
+    const closedAt = day ? day.closedAt : null;
 
-  // Día nuevo abierto: si no existía, lo persistimos como abierto
-  if (!existed){
-    try{ await savePettyCash(pc); }catch(e){}
+    // Si además existe lock (para version), lo leemos
+    const lock = await getDayLockRecordPOS(curEvent.id, dk);
+    return {
+      pettyEnabled:true,
+      dayKey: dk,
+      dayClosed: !!closedAt,
+      closedAt: closedAt || null,
+      created: !existed,
+      closeVersion: lock ? (lock.lastClosureVersion || null) : null,
+      closeSource: lock ? (lock.closedSource || null) : null
+    };
   }
 
-  const closedAt = day ? day.closedAt : null;
-  return { pettyEnabled:true, dayKey: dk, dayClosed: !!closedAt, closedAt: closedAt || null, created: !existed };
+  // 2) Sin Caja Chica: usar dayLocks (cierre desde Resumen)
+  const lock = await getDayLockRecordPOS(curEvent.id, dk);
+  const isClosed = !!(lock && lock.isClosed);
+  return {
+    pettyEnabled:false,
+    dayKey: dk,
+    dayClosed: isClosed,
+    closedAt: lock ? (lock.closedAt || null) : null,
+    created:false,
+    closeVersion: lock ? (lock.lastClosureVersion || null) : null,
+    closeSource: lock ? (lock.closedSource || null) : null
+  };
 }
 
 async function guardSellDayOpenOrToastPOS(curEvent, dayKey){
-  if (!curEvent || !eventPettyEnabled(curEvent)) return true;
+  if (!curEvent) return true;
   const info = await computeSellDayLockPOS(curEvent, dayKey);
   if (info.dayClosed){
-    showSellDayClosedToastPOS();
+    const hint = info.pettyEnabled ? 'Reabrí el día en Caja Chica para vender.' : 'Reabrí el día en Resumen para vender.';
+    showSellDayClosedToastPOS(hint);
     try{ await updateSellEnabled(); }catch(e){}
     return false;
   }
@@ -3482,22 +3745,23 @@ async function updateSellEnabled(){
   const eventOpen = !!(hasEvent && !cur.closedAt);
 
   const dayKey = getSaleDayKeyPOS();
-  let lockInfo = { pettyEnabled:false, dayKey, dayClosed:false, closedAt:null, created:false };
-  if (eventOpen && cur && eventPettyEnabled(cur)) {
+  let lockInfo = { pettyEnabled:false, dayKey, dayClosed:false, closedAt:null, created:false, closeVersion:null, closeSource:null };
+  if (eventOpen && cur) {
     lockInfo = await computeSellDayLockPOS(cur, dayKey);
   }
 
-  const sellEnabled = !!(eventOpen && !(lockInfo.pettyEnabled && lockInfo.dayClosed));
+  const sellEnabled = !!(eventOpen && !lockInfo.dayClosed);
 
-  __A33_SELL_STATE = { enabled: sellEnabled, dayKey: lockInfo.dayKey, dayClosed: lockInfo.dayClosed, pettyEnabled: lockInfo.pettyEnabled, eventId: (current || null) };
+  __A33_SELL_STATE = { enabled: sellEnabled, dayKey: lockInfo.dayKey, dayClosed: lockInfo.dayClosed, pettyEnabled: lockInfo.pettyEnabled, eventId: (current || null), closeVersion: lockInfo.closeVersion || null, closeSource: lockInfo.closeSource || null };
   window.__A33_SELL_ENABLED = sellEnabled;
 
   // Nota "sin evento activo": solo depende del evento (no del día)
   const noActive = document.getElementById('no-active-note');
   if (noActive) noActive.style.display = eventOpen ? 'none' : 'block';
 
-  // Banner: solo cuando el evento está abierto y Caja Chica está ON
-  setSellDayClosedBannerPOS(!!(eventOpen && lockInfo.pettyEnabled && lockInfo.dayClosed), lockInfo.dayKey);
+  // Banner: cuando el evento está abierto y el día está cerrado (con o sin Caja Chica)
+  const hint = lockInfo.pettyEnabled ? 'Para vender aquí, reabrí el día en Caja Chica.' : 'Para vender aquí, reabrí el día en Resumen.';
+  setSellDayClosedBannerPOS(!!(eventOpen && lockInfo.dayClosed), lockInfo.dayKey, hint);
 
   // Candado real de controles
   setSellControlsDisabledPOS(!sellEnabled);
@@ -7191,6 +7455,191 @@ async function renderSummary(){
       tbCour.appendChild(tr);
     }
   }
+
+  // Cierre diario (tarjeta Resumen)
+  try{ await renderSummaryDailyCloseCardPOS(); }catch(e){}
+}
+
+async function renderSummaryDailyCloseCardPOS(){
+  const card = document.getElementById('summary-daily-close-card');
+  if (!card) return;
+
+  const statusEl = document.getElementById('summary-close-status');
+  const nameEl = document.getElementById('summary-close-event-name');
+  const dateEl = document.getElementById('summary-close-date');
+  const btnClose = document.getElementById('btn-summary-close-day');
+  const btnReopen = document.getElementById('btn-summary-reopen-day');
+  const noteEl = document.getElementById('summary-close-note');
+
+  const currentEventId = await getMeta('currentEventId');
+  const ev = currentEventId ? await getEventByIdPOS(currentEventId) : null;
+
+  const saleDate = document.getElementById('sale-date')?.value || '';
+  if (dateEl && !dateEl.value){
+    dateEl.value = safeYMD(saleDate || todayYMD());
+  }
+  const dayKey = safeYMD(dateEl ? dateEl.value : (saleDate || todayYMD()));
+
+  if (nameEl) nameEl.textContent = ev ? String(ev.name || '—') : 'Sin evento activo';
+
+  // Defaults
+  if (btnClose){ btnClose.disabled = true; btnClose.style.display = ''; }
+  if (btnReopen){ btnReopen.disabled = true; btnReopen.style.display = ''; }
+  if (noteEl){ noteEl.style.display = 'none'; noteEl.textContent = ''; }
+
+  if (!ev){
+    if (statusEl){ statusEl.className = 'pill'; statusEl.textContent = '—'; }
+    if (btnClose) btnClose.disabled = true;
+    if (btnReopen) btnReopen.disabled = true;
+    if (noteEl){ noteEl.style.display = 'block'; noteEl.textContent = 'Activa un evento en “Vender” para poder cerrar o reabrir el día.'; }
+    return;
+  }
+
+  const petty = eventPettyEnabled(ev);
+  const lock = await getDayLockRecordPOS(ev.id, dayKey);
+
+  // Estado de cerrado
+  let isClosed = false;
+  let closedAt = null;
+  let version = lock ? (lock.lastClosureVersion || null) : null;
+
+  if (petty){
+    const pc = await getPettyCash(ev.id);
+    const day = pc && pc.days ? pc.days[dayKey] : null;
+    isClosed = !!(day && day.closedAt);
+    closedAt = day && day.closedAt ? day.closedAt : null;
+  } else {
+    isClosed = !!(lock && lock.isClosed);
+    closedAt = lock && lock.closedAt ? lock.closedAt : null;
+  }
+
+  // Si hay cierres históricos pero el lock no tiene version, intentar deducir max
+  if (!version){
+    const maxV = await getMaxDailyClosureVersionPOS(ev.id, dayKey);
+    version = maxV ? maxV : null;
+  }
+
+  // UI: status pill
+  if (statusEl){
+    if (isClosed){
+      statusEl.className = 'pill danger';
+      statusEl.textContent = version ? `Cerrado (v${version})` : 'Cerrado';
+    } else {
+      statusEl.className = 'pill';
+      statusEl.textContent = version ? `Abierto · último cierre v${version}` : 'Abierto';
+    }
+  }
+
+  // Regla de botones
+  if (petty){
+    if (btnClose) btnClose.style.display = 'none';
+    if (btnReopen) btnReopen.style.display = 'none';
+    if (noteEl){
+      noteEl.style.display = 'block';
+      noteEl.textContent = 'Este evento tiene Caja Chica activa. El cierre/reapertura del día se realiza desde Caja Chica.';
+    }
+    return;
+  }
+
+  // Sin Caja Chica: cerrar/reabrir aquí
+  if (btnClose){
+    btnClose.style.display = isClosed ? 'none' : '';
+    btnClose.disabled = !!isClosed;
+  }
+  if (btnReopen){
+    btnReopen.style.display = isClosed ? '' : 'none';
+    btnReopen.disabled = !isClosed;
+  }
+
+  if (noteEl && isClosed){
+    noteEl.style.display = 'block';
+    noteEl.textContent = closedAt ? `Día bloqueado para ventas/movimientos. Cerrado: ${formatDateTime(closedAt)}` : 'Día bloqueado para ventas/movimientos.';
+  }
+}
+
+function getSummaryCloseDayKeyPOS(){
+  const el = document.getElementById('summary-close-date');
+  const v = (el && el.value) ? el.value : '';
+  return safeYMD(v || getSaleDayKeyPOS());
+}
+
+async function onSummaryCloseDayPOS(){
+  const evId = await getMeta('currentEventId');
+  if (!evId){
+    showToast('Activa un evento para cerrar el día.', 'error', 4000);
+    return;
+  }
+  const ev = await getEventByIdPOS(evId);
+  if (!ev){
+    showToast('Evento no encontrado.', 'error', 4000);
+    return;
+  }
+  if (eventPettyEnabled(ev)){
+    showToast('Este evento tiene Caja Chica activa. El cierre del día se hace desde Caja Chica.', 'ok', 5000);
+    return;
+  }
+  const dayKey = getSummaryCloseDayKeyPOS();
+  try{
+    const r = await closeDailyPOS({ event: ev, dateKey: dayKey, source: 'SUMMARY' });
+    const v = (r && r.closure && r.closure.version) ? Number(r.closure.version) : (r && r.lock && r.lock.lastClosureVersion ? Number(r.lock.lastClosureVersion) : null);
+    if (r && r.already){
+      showToast(`Ya está cerrado${v ? ` (v${v})` : ''}.`, 'ok', 3500);
+    } else {
+      showToast(`Cierre guardado${v ? ` (v${v})` : ''}.`, 'ok', 4500);
+    }
+  }catch(err){
+    console.error('onSummaryCloseDayPOS', err);
+    showToast('No se pudo cerrar el día: ' + humanizeError(err), 'error', 5000);
+  }
+  try{ await updateSellEnabled(); }catch(e){}
+  try{ await renderSummaryDailyCloseCardPOS(); }catch(e){}
+}
+
+async function onSummaryReopenDayPOS(){
+  const evId = await getMeta('currentEventId');
+  if (!evId){
+    showToast('Activa un evento para reabrir el día.', 'error', 4000);
+    return;
+  }
+  const ev = await getEventByIdPOS(evId);
+  if (!ev){
+    showToast('Evento no encontrado.', 'error', 4000);
+    return;
+  }
+  if (eventPettyEnabled(ev)){
+    showToast('Este evento tiene Caja Chica activa. La reapertura del día se hace desde Caja Chica.', 'ok', 5000);
+    return;
+  }
+  const dayKey = getSummaryCloseDayKeyPOS();
+  try{
+    await reopenDailyPOS({ eventId: evId, dateKey: dayKey, source: 'SUMMARY' });
+    showToast('Día reabierto.', 'ok', 3500);
+  }catch(err){
+    console.error('onSummaryReopenDayPOS', err);
+    showToast('No se pudo reabrir el día: ' + humanizeError(err), 'error', 5000);
+  }
+  try{ await updateSellEnabled(); }catch(e){}
+  try{ await renderSummaryDailyCloseCardPOS(); }catch(e){}
+}
+
+function bindSummaryDailyClosePOS(){
+  const dateEl = document.getElementById('summary-close-date');
+  if (dateEl){
+    dateEl.addEventListener('change', ()=>{
+      try{ dateEl.dataset.userSet = '1'; }catch(_){ }
+      renderSummaryDailyCloseCardPOS();
+    });
+  }
+
+  const btnClose = document.getElementById('btn-summary-close-day');
+  if (btnClose){
+    btnClose.addEventListener('click', ()=>{ onSummaryCloseDayPOS(); });
+  }
+
+  const btnReopen = document.getElementById('btn-summary-reopen-day');
+  if (btnReopen){
+    btnReopen.addEventListener('click', ()=>{ onSummaryReopenDayPOS(); });
+  }
 }
 
 // CSV helpers
@@ -8080,6 +8529,7 @@ async function init(){
   await runStep('initVasosPanel', initVasosPanelPOS);
   await runStep('initCustomerUX', async()=>{ initCustomerUXPOS(); });
   await runStep('initSummaryCustomerFilter', async()=>{ initSummaryCustomerFilterPOS(); });
+  await runStep('bindSummaryDailyClose', async()=>{ bindSummaryDailyClosePOS(); });
 
   // Paso 5: barra offline y eventos de Caja Chica
   try{
@@ -8120,6 +8570,7 @@ async function init(){
     await refreshEventUI(); 
     await refreshSaleStockLabel(); 
     await renderDay();
+    try{ await renderSummaryDailyCloseCardPOS(); }catch(e){}
   });
 
   // Toggle Caja Chica por evento
@@ -8294,6 +8745,14 @@ async function init(){
   $('#sale-date').addEventListener('change', async()=>{
     await renderDay();
     await updateSellEnabled();
+    // Mantener fecha de Cierre Diario (Resumen) sincronizada con el día operativo, salvo que el usuario la cambie manualmente.
+    try{
+      const sd = document.getElementById('summary-close-date');
+      if (sd && !sd.dataset.userSet){
+        sd.value = $('#sale-date').value;
+      }
+    }catch(e){}
+    try{ await renderSummaryDailyCloseCardPOS(); }catch(e){}
     try{ await refreshSaleStockLabel(); }catch(e){}
     try{ if (window.__A33_ACTIVE_TAB === 'checklist') await renderChecklistTab(); }catch(e){}
   });
@@ -8785,6 +9244,9 @@ async function addExtraSale(extraId){
 
   if (!date || !qty) { alert('Completa fecha y cantidad'); return; }
 
+  // Candado: si el día está cerrado (Caja Chica o Resumen), NO permitir ventas
+  if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
+
   // Candado: si Caja Chica está activada y el día está cerrado, NO permitir ventas
   if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
 
@@ -9005,7 +9467,7 @@ async function getPettyCloseCheck(eventId, pc, dayKey, cashSalesNio, eventFxRate
 
   if (!eventId){
     errors.push('No hay evento activo.');
-    return { canClose:false, errors, warnings, day:null, sum:null, diffNio:null, diffUsd:null, fxRate:null };
+    return { canClose:false, errors, warnings, day:null, sum:null, diffNio:null, diffUsd:null, fxRate:null, closureVersion:null };
   }
 
   const pcSafe = pc || (await getPettyCash(eventId));
@@ -9042,7 +9504,19 @@ async function getPettyCloseCheck(eventId, pc, dayKey, cashSalesNio, eventFxRate
   }
 
   const canClose = errors.length === 0;
-  return { canClose, errors, warnings, day, sum, diffNio, diffUsd, fxRate };
+  let closureVersion = null;
+  try{
+    const lock = await getDayLockRecordPOS(eventId, dayKey);
+    closureVersion = lock && lock.lastClosureVersion ? Number(lock.lastClosureVersion) : null;
+  }catch(e){}
+  if (!closureVersion){
+    try{
+      const maxV = await getMaxDailyClosureVersionPOS(eventId, dayKey);
+      closureVersion = maxV ? Number(maxV) : null;
+    }catch(e){}
+  }
+
+  return { canClose, errors, warnings, day, sum, diffNio, diffUsd, fxRate, closureVersion };
 }
 
 function setPettyCloseUIEmpty(){
@@ -9090,7 +9564,8 @@ function renderPettyCloseUI(check, isHistory){
   const sum = check.sum;
 
   const fxLine = (check.fxRate && check.fxRate > 0) ? (` · T/C: C$ ${fmt(check.fxRate)} por US$ 1`) : '';
-  const closedLine = day.closedAt ? ('Día cerrado') : ('Día abierto');
+  const verTag = (check && check.closureVersion) ? (` (v${check.closureVersion})`) : '';
+  const closedLine = day.closedAt ? (`Día cerrado${verTag}`) : ('Día abierto');
 
   status.textContent = `${closedLine} · Teórico C$ ${fmt(sum.nio.teorico)} / Final C$ ${fmt(sum.nio.final ?? 0)}${fxLine}`;
 
@@ -9211,6 +9686,18 @@ Esto bloqueará edición de Caja Chica para este día.`);
     await renderCajaChica();
 
     try{ await updateSellEnabled(); }catch(e){}
+    // Snapshot de cierre diario (con costo de cortesías) + candado unificado
+    try{
+      const evObj = ev || (await getEventByIdPOS(evId));
+      if (evObj){
+        const r = await closeDailyPOS({ event: evObj, dateKey: dayKey, source: 'CASHBOX' });
+        if (r && r.closure && r.closure.version){
+          // No forzar toast extra; lo dejamos silencioso para no “dobletear”.
+        }
+      }
+    }catch(e){
+      console.warn('Cierre diario snapshot (Caja Chica) falló', e);
+    }
     showToast('Día cerrado', 'ok', 5000);
   }catch(err){
     console.error('onClosePettyDay save/confirm error', err);
@@ -9264,6 +9751,8 @@ Podrás editar Caja Chica y el cierre del día quedará removido.`);
   await renderCajaChica();
 
   try{ await updateSellEnabled(); }catch(e){}
+  // Quitar candado unificado (para permitir recierre v2)
+  try{ await reopenDailyPOS({ eventId: evId, dateKey: dayKey, source: 'CASHBOX' }); }catch(e){}
   showToast('Día reabierto', 'ok', 5000);
 }
 
