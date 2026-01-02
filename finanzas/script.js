@@ -2763,6 +2763,926 @@ function setupComprasUI() {
   });
 }
 
+
+
+/* ---------- Compras (planificación / histórico, NO contable) ---------- */
+
+const PC_CURRENT_KEY = 'a33_finanzas_compras_current_v1';
+const PC_HISTORY_KEY = 'a33_finanzas_compras_history_v1';
+
+let pcCurrent = null;
+let pcHistory = null; // {version, history: []}
+let pcHistoryQuery = '';
+let pcModalRecordId = null;
+
+function pcSafeParseJSON(raw) {
+  try { return JSON.parse(raw); } catch (_) { return null; }
+}
+
+function pcNewId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function pcDeepClone(obj) {
+  try { return JSON.parse(JSON.stringify(obj)); } catch (_) { return obj; }
+}
+
+function pcParseNum(v) {
+  if (v == null) return 0;
+  const s = String(v).trim().replace(',', '.');
+  if (s === '') return 0;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function pcFmtQty(n) {
+  const v = Number(n || 0);
+  if (!Number.isFinite(v)) return '0';
+  if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
+  return v.toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function pcBuildEmptyLine() {
+  return {
+    id: pcNewId('l'),
+    supplierId: '',
+    supplierName: '',
+    product: '',
+    type: 'UNIDADES',
+    quantity: '',
+    price: ''
+  };
+}
+
+function pcBuildEmptyCurrent() {
+  return {
+    version: 1,
+    notes: '',
+    sections: { proveedores: [], varias: [] },
+    updatedAtISO: '',
+    updatedAtDisplay: ''
+  };
+}
+
+function pcBuildEmptyHistory() {
+  return { version: 1, history: [] };
+}
+
+function pcNormalizeLine(src) {
+  const base = pcBuildEmptyLine();
+  if (!src || typeof src !== 'object') return base;
+  return {
+    id: src.id ? String(src.id) : base.id,
+    supplierId: src.supplierId == null ? '' : String(src.supplierId),
+    supplierName: src.supplierName ? String(src.supplierName) : '',
+    product: src.product ? String(src.product) : '',
+    type: (String(src.type || '').toUpperCase() === 'CAJAS') ? 'CAJAS' : 'UNIDADES',
+    quantity: (src.quantity == null) ? '' : String(src.quantity),
+    price: (src.price == null) ? '' : String(src.price)
+  };
+}
+
+function pcNormalizeCurrent(obj) {
+  const out = pcBuildEmptyCurrent();
+  if (!obj || typeof obj !== 'object') return out;
+
+  out.version = 1;
+  out.notes = obj.notes ? String(obj.notes) : '';
+  out.updatedAtISO = obj.updatedAtISO ? String(obj.updatedAtISO) : '';
+  out.updatedAtDisplay = obj.updatedAtDisplay ? String(obj.updatedAtDisplay) : '';
+
+  const sec = obj.sections || {};
+  const prov = Array.isArray(sec.proveedores) ? sec.proveedores : [];
+  const varr = Array.isArray(sec.varias) ? sec.varias : [];
+
+  out.sections.proveedores = prov.map(pcNormalizeLine);
+  out.sections.varias = varr.map(pcNormalizeLine);
+
+  return out;
+}
+
+function pcNormalizeHistory(obj) {
+  const out = pcBuildEmptyHistory();
+  if (!obj || typeof obj !== 'object') return out;
+  const arr = Array.isArray(obj.history) ? obj.history : (Array.isArray(obj) ? obj : []);
+  out.history = arr
+    .filter(x => x && typeof x === 'object')
+    .map(x => ({
+      id: x.id ? String(x.id) : pcNewId('p'),
+      notes: x.notes ? String(x.notes) : '',
+      sections: {
+        proveedores: (x.sections && Array.isArray(x.sections.proveedores)) ? x.sections.proveedores.map(pcNormalizeLine) : [],
+        varias: (x.sections && Array.isArray(x.sections.varias)) ? x.sections.varias.map(pcNormalizeLine) : []
+      },
+      totals: {
+        proveedores: pcParseNum(x.totals && x.totals.proveedores),
+        varias: pcParseNum(x.totals && x.totals.varias),
+        general: pcParseNum(x.totals && x.totals.general)
+      },
+      createdAtISO: x.createdAtISO ? String(x.createdAtISO) : '',
+      createdAtDisplay: x.createdAtDisplay ? String(x.createdAtDisplay) : ''
+    }));
+  return out;
+}
+
+async function pcLoadAll() {
+  // Current
+  let cur = null;
+  try {
+    const rec = await finGet('settings', PC_CURRENT_KEY);
+    if (rec && rec.data) cur = rec.data;
+  } catch (_) {}
+  if (!cur) {
+    try { cur = pcSafeParseJSON(localStorage.getItem(PC_CURRENT_KEY)); } catch (_) {}
+  }
+  pcCurrent = pcNormalizeCurrent(cur);
+
+  // History
+  let hist = null;
+  try {
+    const rec = await finGet('settings', PC_HISTORY_KEY);
+    if (rec && rec.data) hist = rec.data;
+  } catch (_) {}
+  if (!hist) {
+    try { hist = pcSafeParseJSON(localStorage.getItem(PC_HISTORY_KEY)); } catch (_) {}
+  }
+  pcHistory = pcNormalizeHistory(hist);
+
+  pcHistory.history.sort((a, b) => String(b.createdAtISO || '').localeCompare(String(a.createdAtISO || '')));
+}
+
+async function pcPersistSetting(id, data) {
+  try {
+    await finPut('settings', { id, data });
+  } catch (err) {
+    console.warn('No se pudo guardar en settings', id, err);
+  }
+  try {
+    localStorage.setItem(id, JSON.stringify(data));
+  } catch (_) {}
+}
+
+function pcSetUpdatedUI() {
+  const el = document.getElementById('pc-updated');
+  if (!el) return;
+  el.textContent = `Actualizado: ${pcCurrent && pcCurrent.updatedAtDisplay ? pcCurrent.updatedAtDisplay : '—'}`;
+}
+
+function pcSetMsg(msg) {
+  const el = document.getElementById('pc-msg');
+  if (!el) return;
+  el.textContent = msg || '';
+}
+
+function pcGetLineTotal(line) {
+  const q = pcParseNum(line && line.quantity);
+  const p = pcParseNum(line && line.price);
+  const t = q * p;
+  return Math.round(t * 100) / 100;
+}
+
+function pcComputeSectionTotal(lines) {
+  let sum = 0;
+  for (const l of (lines || [])) sum += pcGetLineTotal(l);
+  return Math.round(sum * 100) / 100;
+}
+
+function pcComputeTotalsFromSections(sections) {
+  const prov = pcComputeSectionTotal((sections && sections.proveedores) || []);
+  const varr = pcComputeSectionTotal((sections && sections.varias) || []);
+  return {
+    proveedores: prov,
+    varias: varr,
+    general: Math.round((prov + varr) * 100) / 100
+  };
+}
+
+function pcComputeProductSummary(sections) {
+  const map = new Map();
+  const pushLine = (l) => {
+    const prodRaw = (l && l.product != null) ? String(l.product) : '';
+    const prod = prodRaw.trim();
+    if (!prod) return;
+    const key = normStr(prod);
+    const q = pcParseNum(l.quantity);
+    const tot = pcGetLineTotal(l);
+    if (!map.has(key)) {
+      map.set(key, { product: prod, qty: 0, total: 0 });
+    }
+    const cur = map.get(key);
+    cur.qty += q;
+    cur.total += tot;
+  };
+
+  const prov = (sections && Array.isArray(sections.proveedores)) ? sections.proveedores : [];
+  const varr = (sections && Array.isArray(sections.varias)) ? sections.varias : [];
+  prov.forEach(pushLine);
+  varr.forEach(pushLine);
+
+  const out = Array.from(map.values());
+  out.sort((a, b) => a.product.localeCompare(b.product, 'es'));
+  return out.map(x => ({
+    product: x.product,
+    qty: Math.round(x.qty * 100) / 100,
+    total: Math.round(x.total * 100) / 100
+  }));
+}
+
+function pcUpdateComputedUI() {
+  if (!pcCurrent) return;
+
+  const totals = pcComputeTotalsFromSections(pcCurrent.sections);
+
+  const elProv = document.getElementById('pc-total-proveedores');
+  const elVar = document.getElementById('pc-total-varias');
+  const elGen = document.getElementById('pc-total-general');
+
+  if (elProv) elProv.textContent = `C$ ${fmtCurrency(totals.proveedores)}`;
+  if (elVar) elVar.textContent = `C$ ${fmtCurrency(totals.varias)}`;
+  if (elGen) elGen.textContent = `C$ ${fmtCurrency(totals.general)}`;
+
+  const tbody = document.getElementById('pc-product-tbody');
+  if (tbody) {
+    tbody.innerHTML = '';
+    const rows = pcComputeProductSummary(pcCurrent.sections);
+
+    if (!rows.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 3;
+      td.className = 'muted';
+      td.textContent = 'Sin productos aún';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        const tdP = document.createElement('td');
+        tdP.textContent = r.product;
+        const tdQ = document.createElement('td');
+        tdQ.className = 'num';
+        tdQ.textContent = pcFmtQty(r.qty);
+        const tdT = document.createElement('td');
+        tdT.className = 'num';
+        tdT.textContent = `C$ ${fmtCurrency(r.total)}`;
+        tr.appendChild(tdP);
+        tr.appendChild(tdQ);
+        tr.appendChild(tdT);
+        tbody.appendChild(tr);
+      }
+    }
+  }
+}
+
+function pcAttachSelectAllOnFocus(el) {
+  if (!el) return;
+  el.addEventListener('focus', () => {
+    const v = String(el.value ?? '').trim();
+    if (v !== '') {
+      try { el.select(); } catch (_) {}
+    }
+  });
+}
+
+function pcBuildSupplierSelect(currentId, currentName) {
+  const sel = document.createElement('select');
+
+  const optEmpty = document.createElement('option');
+  optEmpty.value = '';
+  optEmpty.textContent = '—';
+  sel.appendChild(optEmpty);
+
+  const suppliers = (finCachedData && Array.isArray(finCachedData.suppliers)) ? [...finCachedData.suppliers] : [];
+  suppliers.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+
+  const idStr = currentId ? String(currentId) : '';
+  let found = false;
+
+  for (const s of suppliers) {
+    const opt = document.createElement('option');
+    opt.value = String(s.id);
+    opt.textContent = s.nombre || `Proveedor ${s.id}`;
+    if (idStr && opt.value === idStr) found = true;
+    sel.appendChild(opt);
+  }
+
+  if (idStr && !found) {
+    const opt = document.createElement('option');
+    opt.value = idStr;
+    opt.textContent = `${currentName || ('Proveedor ' + idStr)} (no existe)`;
+    sel.insertBefore(opt, sel.children[1]);
+  }
+
+  sel.value = idStr;
+  return sel;
+}
+
+function pcRenderSection(sectionKey) {
+  if (!pcCurrent) return;
+
+  const host = document.getElementById(sectionKey === 'proveedores' ? 'pc-grid-proveedores' : 'pc-grid-varias');
+  if (!host) return;
+
+  const lines = (pcCurrent.sections && pcCurrent.sections[sectionKey]) ? pcCurrent.sections[sectionKey] : [];
+
+  host.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.className = 'purchase-grid-header';
+  header.innerHTML = `
+    <div>Proveedor</div>
+    <div>Producto</div>
+    <div>Tipo</div>
+    <div>Cantidad</div>
+    <div>Precio</div>
+    <div class="num">Total</div>
+    <div></div>
+  `;
+  host.appendChild(header);
+
+  if (!lines.length) {
+    const empty = document.createElement('div');
+    empty.className = 'fin-help';
+    empty.style.margin = '8px 0 2px';
+    empty.textContent = 'Sin líneas aún. Usa “+ Agregar línea”.';
+    host.appendChild(empty);
+    return;
+  }
+
+  for (const line of lines) {
+    const row = document.createElement('div');
+    row.className = 'purchase-grid-row';
+
+    // Proveedor
+    const cSupplier = document.createElement('div');
+    cSupplier.className = 'purchase-cell cell-supplier';
+    const selSupplier = pcBuildSupplierSelect(line.supplierId, line.supplierName);
+    selSupplier.addEventListener('change', () => {
+      line.supplierId = selSupplier.value || '';
+      if (!line.supplierId) {
+        line.supplierName = '';
+      } else {
+        const sid = Number(line.supplierId);
+        const obj = finCachedData && finCachedData.suppliersMap ? finCachedData.suppliersMap.get(sid) : null;
+        line.supplierName = obj ? (obj.nombre || '') : (line.supplierName || '');
+      }
+      pcUpdateComputedUI();
+    });
+    cSupplier.appendChild(selSupplier);
+
+    // Producto
+    const cProd = document.createElement('div');
+    cProd.className = 'purchase-cell cell-product';
+    const inpProd = document.createElement('input');
+    inpProd.type = 'text';
+    inpProd.placeholder = 'Producto';
+    inpProd.value = line.product || '';
+    inpProd.addEventListener('input', () => {
+      line.product = inpProd.value;
+      pcUpdateComputedUI();
+    });
+    pcAttachSelectAllOnFocus(inpProd);
+    cProd.appendChild(inpProd);
+
+    // Tipo
+    const cTipo = document.createElement('div');
+    cTipo.className = 'purchase-cell cell-type';
+    const selTipo = document.createElement('select');
+    ['CAJAS', 'UNIDADES'].forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      selTipo.appendChild(opt);
+    });
+    selTipo.value = (String(line.type || '').toUpperCase() === 'CAJAS') ? 'CAJAS' : 'UNIDADES';
+    selTipo.addEventListener('change', () => {
+      line.type = selTipo.value;
+      pcUpdateComputedUI();
+    });
+    cTipo.appendChild(selTipo);
+
+    // Total cell (needs to exist before input handlers)
+    const cTotal = document.createElement('div');
+    cTotal.className = 'purchase-cell cell-total';
+    const totalEl = document.createElement('div');
+    totalEl.className = 'purchase-total-cell';
+    totalEl.textContent = `C$ ${fmtCurrency(pcGetLineTotal(line))}`;
+    cTotal.appendChild(totalEl);
+
+    // Cantidad
+    const cQty = document.createElement('div');
+    cQty.className = 'purchase-cell cell-qty';
+    const inpQty = document.createElement('input');
+    inpQty.type = 'text';
+    inpQty.inputMode = 'decimal';
+    inpQty.placeholder = '—';
+    inpQty.value = (line.quantity == null) ? '' : String(line.quantity);
+    inpQty.addEventListener('input', () => {
+      line.quantity = inpQty.value;
+      totalEl.textContent = `C$ ${fmtCurrency(pcGetLineTotal(line))}`;
+      pcUpdateComputedUI();
+    });
+    pcAttachSelectAllOnFocus(inpQty);
+    cQty.appendChild(inpQty);
+
+    // Precio
+    const cPrice = document.createElement('div');
+    cPrice.className = 'purchase-cell cell-price';
+    const inpPrice = document.createElement('input');
+    inpPrice.type = 'text';
+    inpPrice.inputMode = 'decimal';
+    inpPrice.placeholder = '—';
+    inpPrice.value = (line.price == null) ? '' : String(line.price);
+    inpPrice.addEventListener('input', () => {
+      line.price = inpPrice.value;
+      totalEl.textContent = `C$ ${fmtCurrency(pcGetLineTotal(line))}`;
+      pcUpdateComputedUI();
+    });
+    pcAttachSelectAllOnFocus(inpPrice);
+    cPrice.appendChild(inpPrice);
+
+    // Delete
+    const cDel = document.createElement('div');
+    cDel.className = 'purchase-cell cell-del purchase-row-del';
+    const btnDel = document.createElement('button');
+    btnDel.type = 'button';
+    btnDel.className = 'btn-close';
+    btnDel.title = 'Eliminar fila';
+    btnDel.textContent = '×';
+    btnDel.addEventListener('click', () => {
+      const ok = confirm('Eliminar esta línea de compra?');
+      if (!ok) return;
+      const idx = lines.findIndex(x => x && x.id === line.id);
+      if (idx >= 0) lines.splice(idx, 1);
+      pcRenderSection(sectionKey);
+      pcUpdateComputedUI();
+    });
+    cDel.appendChild(btnDel);
+
+    row.appendChild(cSupplier);
+    row.appendChild(cProd);
+    row.appendChild(cTipo);
+    row.appendChild(cQty);
+    row.appendChild(cPrice);
+    row.appendChild(cTotal);
+    row.appendChild(cDel);
+
+    host.appendChild(row);
+  }
+}
+
+function pcRenderCurrent() {
+  if (!pcCurrent) return;
+
+  const notes = document.getElementById('pc-notes');
+  if (notes && notes.value !== pcCurrent.notes) notes.value = pcCurrent.notes || '';
+
+  pcRenderSection('proveedores');
+  pcRenderSection('varias');
+
+  pcSetUpdatedUI();
+  pcUpdateComputedUI();
+}
+
+function pcRenderHistoryList() {
+  const tbody = document.getElementById('ph-tbody');
+  const help = document.getElementById('ph-help');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+
+  const q = normStr(pcHistoryQuery || '');
+
+  const list = (pcHistory && Array.isArray(pcHistory.history)) ? pcHistory.history : [];
+
+  const filtered = !q ? list : list.filter(rec => {
+    const n = normStr(rec.notes || '');
+    if (n.includes(q)) return true;
+
+    const allLines = [];
+    const sp = (rec.sections && Array.isArray(rec.sections.proveedores)) ? rec.sections.proveedores : [];
+    const sv = (rec.sections && Array.isArray(rec.sections.varias)) ? rec.sections.varias : [];
+    allLines.push(...sp, ...sv);
+
+    for (const l of allLines) {
+      if (normStr(l.product || '').includes(q)) return true;
+      if (normStr(l.supplierName || '').includes(q)) return true;
+    }
+    return false;
+  });
+
+  if (!filtered.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.className = 'muted';
+    td.textContent = q ? 'Sin resultados.' : 'Aún no hay compras guardadas en el histórico.';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  } else {
+    for (const rec of filtered) {
+      const tr = document.createElement('tr');
+
+      const tdF = document.createElement('td');
+      tdF.textContent = rec.createdAtDisplay || '—';
+
+      const tdN = document.createElement('td');
+      const preview = (rec.notes || '').trim();
+      tdN.textContent = preview.length > 120 ? (preview.slice(0, 120) + '…') : (preview || '—');
+
+      const tdT = document.createElement('td');
+      tdT.className = 'num';
+      tdT.textContent = `C$ ${fmtCurrency(rec.totals && rec.totals.general)}`;
+
+      const tdC = document.createElement('td');
+      tdC.className = 'num';
+      const cnt = ((rec.sections && rec.sections.proveedores) ? rec.sections.proveedores.length : 0) + ((rec.sections && rec.sections.varias) ? rec.sections.varias.length : 0);
+      tdC.textContent = String(cnt);
+
+      const tdA = document.createElement('td');
+      tdA.style.whiteSpace = 'nowrap';
+
+      const btnVer = document.createElement('button');
+      btnVer.type = 'button';
+      btnVer.className = 'btn-small';
+      btnVer.textContent = 'Ver';
+      btnVer.addEventListener('click', () => pcOpenHistoryModal(rec.id));
+
+      const btnDup = document.createElement('button');
+      btnDup.type = 'button';
+      btnDup.className = 'btn-small';
+      btnDup.textContent = 'Duplicar';
+      btnDup.addEventListener('click', () => {
+        const ok = confirm('Copiar esta compra al editor (Compra Actual)?');
+        if (!ok) return;
+        pcCurrent.notes = rec.notes || '';
+        pcCurrent.sections = pcDeepClone(rec.sections || { proveedores: [], varias: [] });
+        pcCurrent.updatedAtISO = '';
+        pcCurrent.updatedAtDisplay = '';
+        pcRenderCurrent();
+        setActiveFinView('comprasplan');
+        window.location.hash = 'tab=comprasplan';
+        showToast('Compra copiada a Compra Actual');
+      });
+
+      const btnXls = document.createElement('button');
+      btnXls.type = 'button';
+      btnXls.className = 'btn-small';
+      btnXls.textContent = 'Excel';
+      btnXls.addEventListener('click', () => {
+        pcExportRecordExcel(rec);
+      });
+
+      const btnDel = document.createElement('button');
+      btnDel.type = 'button';
+      btnDel.className = 'btn-danger';
+      btnDel.textContent = 'Eliminar';
+      btnDel.addEventListener('click', async () => {
+        const ok = confirm('Eliminar este registro del histórico? Esta acción no se puede deshacer.');
+        if (!ok) return;
+        const idx = pcHistory.history.findIndex(x => x.id === rec.id);
+        if (idx >= 0) pcHistory.history.splice(idx, 1);
+        await pcPersistSetting(PC_HISTORY_KEY, pcHistory);
+        pcRenderHistoryList();
+        showToast('Registro eliminado');
+      });
+
+      tdA.appendChild(btnVer);
+      tdA.appendChild(btnDup);
+      tdA.appendChild(btnXls);
+      tdA.appendChild(btnDel);
+
+      tr.appendChild(tdF);
+      tr.appendChild(tdN);
+      tr.appendChild(tdT);
+      tr.appendChild(tdC);
+      tr.appendChild(tdA);
+
+      tbody.appendChild(tr);
+    }
+  }
+
+  if (help) {
+    const total = list.length;
+    const shown = filtered.length;
+    help.textContent = q ? `Mostrando ${shown} de ${total} registros.` : `${total} registros.`;
+  }
+}
+
+function pcOpenHistoryModal(recordId) {
+  const modal = document.getElementById('ph-modal');
+  if (!modal || !pcHistory) return;
+  const rec = pcHistory.history.find(x => x.id === recordId);
+  if (!rec) return;
+  pcModalRecordId = recordId;
+
+  const meta = document.getElementById('ph-modal-meta');
+  if (meta) {
+    meta.innerHTML = `
+      <div><strong>Fecha:</strong> ${rec.createdAtDisplay || '—'}</div>
+      <div><strong># Ítems:</strong> ${((rec.sections && rec.sections.proveedores) ? rec.sections.proveedores.length : 0) + ((rec.sections && rec.sections.varias) ? rec.sections.varias.length : 0)}</div>
+    `;
+  }
+
+  const notes = document.getElementById('ph-modal-notes');
+  if (notes) notes.textContent = (rec.notes || '').trim() || '—';
+
+  const tProv = document.getElementById('ph-modal-total-proveedores');
+  const tVar = document.getElementById('ph-modal-total-varias');
+  const tGen = document.getElementById('ph-modal-total-general');
+  if (tProv) tProv.textContent = `C$ ${fmtCurrency(rec.totals && rec.totals.proveedores)}`;
+  if (tVar) tVar.textContent = `C$ ${fmtCurrency(rec.totals && rec.totals.varias)}`;
+  if (tGen) tGen.textContent = `C$ ${fmtCurrency(rec.totals && rec.totals.general)}`;
+
+  const fillLines = (tbodyId, lines) => {
+    const tb = document.getElementById(tbodyId);
+    if (!tb) return;
+    tb.innerHTML = '';
+    const arr = Array.isArray(lines) ? lines : [];
+    if (!arr.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 6;
+      td.className = 'muted';
+      td.textContent = 'Sin líneas.';
+      tr.appendChild(td);
+      tb.appendChild(tr);
+      return;
+    }
+    for (const l of arr) {
+      const tr = document.createElement('tr');
+      const tdS = document.createElement('td');
+      tdS.textContent = l.supplierName || '—';
+      const tdP = document.createElement('td');
+      tdP.textContent = (l.product || '').trim() || '—';
+      const tdT = document.createElement('td');
+      tdT.textContent = l.type || 'UNIDADES';
+      const tdQ = document.createElement('td');
+      tdQ.className = 'num';
+      tdQ.textContent = pcFmtQty(pcParseNum(l.quantity));
+      const tdPr = document.createElement('td');
+      tdPr.className = 'num';
+      tdPr.textContent = fmtCurrency(pcParseNum(l.price));
+      const tdTot = document.createElement('td');
+      tdTot.className = 'num';
+      tdTot.textContent = fmtCurrency(pcGetLineTotal(l));
+      tr.appendChild(tdS);
+      tr.appendChild(tdP);
+      tr.appendChild(tdT);
+      tr.appendChild(tdQ);
+      tr.appendChild(tdPr);
+      tr.appendChild(tdTot);
+      tb.appendChild(tr);
+    }
+  };
+
+  fillLines('ph-modal-tbody-proveedores', rec.sections && rec.sections.proveedores);
+  fillLines('ph-modal-tbody-varias', rec.sections && rec.sections.varias);
+
+  modal.classList.add('show');
+}
+
+function pcCloseHistoryModal() {
+  const modal = document.getElementById('ph-modal');
+  if (!modal) return;
+  modal.classList.remove('show');
+  pcModalRecordId = null;
+}
+
+function pcMakeFileStamp(isoOrDate) {
+  const d = (isoOrDate instanceof Date) ? isoOrDate : new Date(isoOrDate || Date.now());
+  const yyyy = d.getFullYear();
+  const mm = pad2(d.getMonth() + 1);
+  const dd = pad2(d.getDate());
+  const hh = pad2(d.getHours());
+  const mi = pad2(d.getMinutes());
+  return `${yyyy}-${mm}-${dd}_${hh}${mi}`;
+}
+
+function pcBuildWorkbook(payload) {
+  if (typeof XLSX === 'undefined') {
+    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    return null;
+  }
+
+  const sections = payload.sections || { proveedores: [], varias: [] };
+  const totals = pcComputeTotalsFromSections(sections);
+  const productSummary = pcComputeProductSummary(sections);
+
+  const metaLabel = payload.metaLabel || 'Fecha/Hora';
+  const metaValue = payload.metaValue || '';
+  const notes = (payload.notes || '').toString();
+
+  const resumenRows = [
+    ['Suite A33', 'Finanzas · Compras'],
+    [metaLabel, metaValue],
+    ['Notas', notes],
+    [],
+    ['Total COMPRAS PROVEEDORES', totals.proveedores],
+    ['Total COMPRAS VARIAS', totals.varias],
+    ['Total General', totals.general]
+  ];
+
+  const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
+  wsResumen['!cols'] = [{ wch: 24 }, { wch: 72 }];
+
+  const buildDetailSheet = (lines) => {
+    const rows = [[
+      'PROVEEDOR', 'PRODUCTO', 'TIPO', 'CANTIDAD', 'PRECIO', 'TOTAL'
+    ]];
+    (Array.isArray(lines) ? lines : []).forEach(l => {
+      rows.push([
+        (l.supplierName || '').toString(),
+        (l.product || '').toString(),
+        (l.type || 'UNIDADES').toString(),
+        pcParseNum(l.quantity),
+        pcParseNum(l.price),
+        pcGetLineTotal(l)
+      ]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 22 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
+    return ws;
+  };
+
+  const wsProv = buildDetailSheet(sections.proveedores);
+  const wsVar = buildDetailSheet(sections.varias);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+  XLSX.utils.book_append_sheet(wb, wsProv, 'Compras Proveedores');
+  XLSX.utils.book_append_sheet(wb, wsVar, 'Compras Varias');
+
+  if (productSummary && productSummary.length) {
+    const rows = [['PRODUCTO', 'CANTIDAD TOTAL', 'TOTAL']];
+    productSummary.forEach(r => {
+      rows.push([r.product, r.qty, r.total]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 34 }, { wch: 16 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Totales por Producto');
+  }
+
+  return wb;
+}
+
+function pcExportCurrentExcel() {
+  if (!pcCurrent) return;
+  const now = new Date();
+  const stampISO = now.toISOString();
+  const metaValue = (pcCurrent.updatedAtDisplay && pcCurrent.updatedAtDisplay.trim())
+    ? pcCurrent.updatedAtDisplay
+    : fmtDDMMYYYYHHMM(now);
+
+  const wb = pcBuildWorkbook({
+    notes: pcCurrent.notes || '',
+    sections: pcCurrent.sections || { proveedores: [], varias: [] },
+    metaLabel: 'Actualizado',
+    metaValue
+  });
+  if (!wb) return;
+
+  const filename = `A33_Finanzas_Compras_${pcMakeFileStamp(stampISO)}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  showToast('Compras exportadas a Excel');
+}
+
+function pcExportRecordExcel(rec) {
+  if (!rec) return;
+  const stamp = rec.createdAtISO || new Date().toISOString();
+
+  const wb = pcBuildWorkbook({
+    notes: rec.notes || '',
+    sections: rec.sections || { proveedores: [], varias: [] },
+    metaLabel: 'Creado',
+    metaValue: rec.createdAtDisplay || ''
+  });
+  if (!wb) return;
+
+  const filename = `A33_Finanzas_Compras_HIST_${pcMakeFileStamp(stamp)}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  showToast('Histórico exportado a Excel');
+}
+
+async function pcSaveDraft() {
+  if (!pcCurrent) pcCurrent = pcBuildEmptyCurrent();
+
+  const notesEl = document.getElementById('pc-notes');
+  if (notesEl) pcCurrent.notes = String(notesEl.value || '');
+
+  const now = new Date();
+  pcCurrent.updatedAtISO = now.toISOString();
+  pcCurrent.updatedAtDisplay = fmtDDMMYYYYHHMM(now);
+
+  await pcPersistSetting(PC_CURRENT_KEY, pcCurrent);
+  pcSetUpdatedUI();
+  pcSetMsg(`Guardado: ${pcCurrent.updatedAtDisplay}`);
+  showToast('Compra actual guardada');
+}
+
+async function pcSaveToHistory() {
+  if (!pcCurrent || !pcHistory) return;
+
+  // snapshot del editor
+  const notesEl = document.getElementById('pc-notes');
+  const snapshotNotes = notesEl ? String(notesEl.value || '') : (pcCurrent.notes || '');
+
+  const now = new Date();
+  const rec = {
+    id: pcNewId('p'),
+    notes: snapshotNotes,
+    sections: pcDeepClone(pcCurrent.sections || { proveedores: [], varias: [] }),
+    totals: pcComputeTotalsFromSections(pcCurrent.sections || { proveedores: [], varias: [] }),
+    createdAtISO: now.toISOString(),
+    createdAtDisplay: fmtDDMMYYYYHHMM(now)
+  };
+
+  pcHistory.history.unshift(rec);
+  await pcPersistSetting(PC_HISTORY_KEY, pcHistory);
+
+  showToast('Guardado en histórico');
+  pcRenderHistoryList();
+}
+
+async function pcResetCurrent() {
+  const ok = confirm('Reset: esto limpia la Compra Actual (no afecta el histórico).');
+  if (!ok) return;
+  pcCurrent = pcBuildEmptyCurrent();
+  await pcPersistSetting(PC_CURRENT_KEY, pcCurrent);
+  pcRenderCurrent();
+  pcSetMsg('Compra actual reseteada');
+  showToast('Compra actual reseteada');
+}
+
+function pcAddLine(sectionKey) {
+  if (!pcCurrent) pcCurrent = pcBuildEmptyCurrent();
+  if (!pcCurrent.sections) pcCurrent.sections = { proveedores: [], varias: [] };
+  if (!Array.isArray(pcCurrent.sections[sectionKey])) pcCurrent.sections[sectionKey] = [];
+  pcCurrent.sections[sectionKey].push(pcBuildEmptyLine());
+  pcRenderSection(sectionKey);
+  pcUpdateComputedUI();
+}
+
+function setupComprasPlanUI() {
+  const btnAddProv = document.getElementById('pc-add-proveedores');
+  if (btnAddProv) btnAddProv.addEventListener('click', (e) => { e.preventDefault(); pcAddLine('proveedores'); });
+
+  const btnAddVar = document.getElementById('pc-add-varias');
+  if (btnAddVar) btnAddVar.addEventListener('click', (e) => { e.preventDefault(); pcAddLine('varias'); });
+
+  const btnSave = document.getElementById('pc-save');
+  if (btnSave) btnSave.addEventListener('click', (e) => { e.preventDefault(); pcSaveDraft(); });
+
+  const btnSaveHist = document.getElementById('pc-save-history');
+  if (btnSaveHist) btnSaveHist.addEventListener('click', (e) => { e.preventDefault(); pcSaveToHistory(); });
+
+  const btnReset = document.getElementById('pc-reset');
+  if (btnReset) btnReset.addEventListener('click', (e) => { e.preventDefault(); pcResetCurrent(); });
+
+  const btnExport = document.getElementById('pc-export');
+  if (btnExport) btnExport.addEventListener('click', (e) => { e.preventDefault(); pcExportCurrentExcel(); });
+
+  const notes = document.getElementById('pc-notes');
+  if (notes) {
+    notes.addEventListener('input', () => {
+      if (!pcCurrent) pcCurrent = pcBuildEmptyCurrent();
+      pcCurrent.notes = String(notes.value || '');
+    });
+  }
+
+  const search = document.getElementById('ph-search');
+  if (search) {
+    search.addEventListener('input', () => {
+      pcHistoryQuery = search.value || '';
+      pcRenderHistoryList();
+    });
+  }
+
+  const clear = document.getElementById('ph-clear');
+  if (clear) clear.addEventListener('click', () => {
+    pcHistoryQuery = '';
+    if (search) search.value = '';
+    pcRenderHistoryList();
+  });
+
+  const close = document.getElementById('ph-modal-close');
+  if (close) close.addEventListener('click', () => pcCloseHistoryModal());
+
+  const modal = document.getElementById('ph-modal');
+  if (modal) {
+    modal.addEventListener('click', (ev) => {
+      if (ev.target === modal) pcCloseHistoryModal();
+    });
+  }
+}
+
+function pcRenderAll() {
+  if (!pcCurrent || !pcHistory) return;
+  pcRenderCurrent();
+  pcRenderHistoryList();
+}
+
+
 /* ---------- Tabs y eventos UI ---------- */
 
 function setActiveFinView(view) {
@@ -2964,6 +3884,9 @@ async function refreshAllFin() {
   renderRentabilidadPresentacion(data);
   renderComparativoEventos(data);
   renderFlujoCaja(data);
+
+  // Compras (planificación)
+  if (typeof pcRenderAll === 'function') pcRenderAll();
 }
 
 
@@ -3017,6 +3940,9 @@ async function initFinanzas() {
   try {
     await openFinDB();
     await ensureBaseAccounts();
+
+    // Compras (planificación)
+    await pcLoadAll();
     fillMonthYearSelects();
     setupTabs();
     setupCajaChicaUI();
@@ -3025,6 +3951,7 @@ async function initFinanzas() {
     setupFilterListeners();
     setupProveedoresUI();
     setupComprasUI();
+    setupComprasPlanUI();
     setupExportButtons();
     await ccLoadSnapshot();
     ccRenderCurrency();

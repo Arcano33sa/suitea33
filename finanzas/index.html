@@ -40,6 +40,7 @@
       <button type="button" class="fin-tab-btn" data-view="diario">Diario y Ajustes</button>
       <button type="button" class="fin-tab-btn" data-view="cajachica">Caja Chica</button>
       <button type="button" class="fin-tab-btn" data-view="estados">Estados Financieros</button>
+      <button type="button" class="fin-tab-btn" data-view="comprasplan">Compras</button>
       <button type="button" class="fin-tab-btn" data-view="compras">Compras a Proveedor</button>
       <button type="button" class="fin-tab-btn" data-view="proveedores">Proveedores</button>
     </div>
@@ -274,6 +275,187 @@
       </section>
 
       
+
+
+<!-- COMPRAS (PLANIFICACIÓN / HISTÓRICO, NO CONTABLE) -->
+<section id="view-comprasplan" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Compras</h2>
+    <p>Planifica compras por hacer, guarda histórico y exporta a Excel. Esto es informativo: no genera asientos, no toca Diario.</p>
+  </header>
+
+  <section class="fin-subsection purchase-block">
+    <header class="fin-section-header fin-section-header--sub purchase-header">
+      <div>
+        <h3>Compra Actual</h3>
+        <p>Editor de compras por hacer. Guarda como borrador o envíalo al histórico.</p>
+      </div>
+      <div class="purchase-meta">
+        <span id="pc-updated" class="cc-updated">Actualizado: —</span>
+      </div>
+    </header>
+
+    <div class="purchase-actions">
+      <button type="button" id="pc-save" class="btn-primary">Guardar</button>
+      <button type="button" id="pc-save-history" class="btn-small">Guardar en Histórico</button>
+      <button type="button" id="pc-reset" class="btn-danger">Reset</button>
+      <button type="button" id="pc-export" class="fin-btn-export">Exportar Excel</button>
+      <span id="pc-msg" class="cc-msg"></span>
+    </div>
+
+    <div class="purchase-two">
+      <article class="fin-card purchase-card">
+        <div class="purchase-card-head">
+          <h4>COMPRAS PROVEEDORES</h4>
+          <button type="button" id="pc-add-proveedores" class="btn-small">+ Agregar línea</button>
+        </div>
+        <div id="pc-grid-proveedores" class="purchase-grid" aria-label="Compras Proveedores"></div>
+        <div class="purchase-totals">
+          <span>Total sección</span>
+          <strong id="pc-total-proveedores">C$ 0.00</strong>
+        </div>
+      </article>
+
+      <article class="fin-card purchase-card">
+        <div class="purchase-card-head">
+          <h4>COMPRAS VARIAS</h4>
+          <button type="button" id="pc-add-varias" class="btn-small">+ Agregar línea</button>
+        </div>
+        <div id="pc-grid-varias" class="purchase-grid" aria-label="Compras Varias"></div>
+        <div class="purchase-totals">
+          <span>Total sección</span>
+          <strong id="pc-total-varias">C$ 0.00</strong>
+        </div>
+      </article>
+    </div>
+
+    <div class="purchase-notes">
+      <label for="pc-notes">Notas</label>
+      <textarea id="pc-notes" rows="3" placeholder="Notas ligadas a la compra completa (opcional)"></textarea>
+    </div>
+
+    <div class="purchase-summary">
+      <div class="purchase-summary-top">
+        <div>
+          <h4>Total General</h4>
+          <p id="pc-total-general" class="fin-card-number">C$ 0.00</p>
+        </div>
+      </div>
+
+      <div class="purchase-product-summary">
+        <div class="purchase-card-head">
+          <h4>Resumen por Producto</h4>
+        </div>
+        <div class="fin-table-wrapper">
+          <table class="fin-table purchase-mini-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Cantidad total</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="pc-product-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="fin-subsection purchase-block">
+    <header class="fin-section-header fin-section-header--sub">
+      <h3>Histórico de Compras</h3>
+      <p>Snapshots de compras (informativo). Puedes ver, duplicar, exportar o eliminar.</p>
+    </header>
+
+    <div class="fin-filters-row fin-filters-row--compact">
+      <label class="fin-form-grow">
+        Buscar
+        <input type="text" id="ph-search" placeholder="Proveedor, producto o notas…">
+      </label>
+      <button type="button" id="ph-clear" class="btn-small">Limpiar</button>
+    </div>
+
+    <div class="fin-table-wrapper">
+      <table class="fin-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Notas</th>
+            <th>Total</th>
+            <th># Ítems</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="ph-tbody"></tbody>
+      </table>
+    </div>
+
+    <p id="ph-help" class="fin-help"></p>
+  </section>
+
+  <div id="ph-modal" class="fin-modal">
+    <div class="fin-modal-content">
+      <header class="fin-modal-header">
+        <h3>Detalle de compra</h3>
+        <button type="button" id="ph-modal-close" class="btn-close">×</button>
+      </header>
+      <div class="fin-modal-body">
+        <div id="ph-modal-meta" class="fin-detalle-meta"></div>
+
+        <div class="purchase-notes purchase-notes--read">
+          <label>Notas</label>
+          <div id="ph-modal-notes" class="purchase-notes-read"></div>
+        </div>
+
+        <div class="purchase-modal-totals">
+          <div><span>Proveedores</span> <strong id="ph-modal-total-proveedores">C$ 0.00</strong></div>
+          <div><span>Varias</span> <strong id="ph-modal-total-varias">C$ 0.00</strong></div>
+          <div class="strong"><span>Total</span> <strong id="ph-modal-total-general">C$ 0.00</strong></div>
+        </div>
+
+        <div class="purchase-modal-section">
+          <h4>COMPRAS PROVEEDORES</h4>
+          <div class="fin-table-wrapper">
+            <table class="fin-table purchase-mini-table">
+              <thead>
+                <tr>
+                  <th>Proveedor</th>
+                  <th>Producto</th>
+                  <th>Tipo</th>
+                  <th>Cant.</th>
+                  <th>Precio</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="ph-modal-tbody-proveedores"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="purchase-modal-section">
+          <h4>COMPRAS VARIAS</h4>
+          <div class="fin-table-wrapper">
+            <table class="fin-table purchase-mini-table">
+              <thead>
+                <tr>
+                  <th>Proveedor</th>
+                  <th>Producto</th>
+                  <th>Tipo</th>
+                  <th>Cant.</th>
+                  <th>Precio</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="ph-modal-tbody-varias"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- COMPRAS A PROVEEDOR -->
 <section id="view-compras" class="fin-view">
   <header class="fin-section-header">
