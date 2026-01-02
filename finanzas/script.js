@@ -856,7 +856,53 @@ function isCentralEventName(ev) {
 
 function displayEventLabel(ev) {
   if (!ev) return '';
-  return isCentralEventName(ev) ? 'General/Central' : ev;
+  return isCentralEventName(ev) ? 'Central' : ev;
+}
+
+// --- Compatibilidad: Evento vs Referencia (sin migración destructiva) ---
+// Históricos: el campo "evento" se usó como factura/referencia.
+// Nuevos: guardan reference + eventScope.
+
+function getDisplayReference(mov) {
+  if (!mov || typeof mov !== 'object') return '';
+
+  const ref = (mov.reference ?? mov.referencia ?? '').toString().trim();
+  if (ref) return ref;
+
+  // Fallback histórico: SOLO si no proviene del POS.
+  const origen = (mov.origen ?? mov.origin ?? '').toString().trim().toUpperCase();
+  if (origen === 'POS') return '';
+
+  // Entradas de compra usan "evento" para Central; no interpretarlo como referencia.
+  const entryType = (mov.entryType || '').toString().trim().toLowerCase();
+  if (entryType === 'purchase') return '';
+
+  const legacy = (mov.event ?? mov.evento ?? '').toString().trim();
+  if (!legacy) return '';
+  if (isCentralEventName(legacy)) return '';
+  return legacy;
+}
+
+function getDisplayEventLabel(mov) {
+  // Por ahora: todo lo que NO sea POS cae en Central.
+  if (!mov || typeof mov !== 'object') return 'Central';
+
+  const scope = (mov.eventScope ?? mov.event_scope ?? '').toString().trim().toUpperCase();
+  const origen = (mov.origen ?? mov.origin ?? '').toString().trim().toUpperCase();
+
+  if (scope === 'POS' || (!scope && origen === 'POS')) {
+    const snap = (mov.posEventNameSnapshot ?? mov.posEventName ?? mov.posEventSnapshot ?? mov.eventName ?? '').toString().trim();
+    // Compatibilidad: POS antiguos pudieron guardar el nombre del evento en "evento".
+    const legacyEv = (mov.posEventNameLegacy ?? mov.evento ?? mov.event ?? '').toString().trim();
+    return snap || legacyEv || 'Evento POS';
+  }
+
+  return 'Central';
+}
+
+function makePill(text, variant) {
+  const v = variant ? ` fin-pill--${variant}` : '';
+  return `<span class="fin-pill${v}">${escapeHtml(text)}</span>`;
 }
 
 function normalizeEventForPurchases() {
@@ -964,17 +1010,19 @@ const linesByEntry = new Map();
 function buildEventList(entries) {
   const set = new Set();
   for (const e of entries) {
-    const name = (e.evento || '').trim();
+    const name = getDisplayEventLabel(e);
     if (name) set.add(name);
   }
   return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
 }
 
 function matchEvent(entry, eventFilter) {
-  const ev = (entry.evento || '').trim();
+  const evLabel = getDisplayEventLabel(entry);
   if (!eventFilter || eventFilter === 'ALL') return true;
-  if (eventFilter === 'NONE') return !ev;
-  return ev === eventFilter;
+  if (eventFilter === 'NONE') return !evLabel;
+  // Soportar filtros antiguos: CENTRAL/GENERAL
+  const f = displayEventLabel(eventFilter);
+  return evLabel === f;
 }
 
 function filterEntriesByDateAndEvent(entries, { desde, hasta, evento }) {
@@ -1051,7 +1099,7 @@ function calcResultadosByEventInRange(data, desde, hasta) {
     if (desde && f < desde) continue;
     if (hasta && f > hasta) continue;
 
-    const eventName = (e.evento || '').trim() || 'Sin evento';
+    const eventName = getDisplayEventLabel(e) || 'Sin evento';
     if (!map.has(eventName)) {
       map.set(eventName, { ingresos: 0, costos: 0, gastos: 0 });
     }
@@ -1711,7 +1759,8 @@ async function exportDiarioExcel() {
     }
 
     const supplierLabel = getSupplierLabelFromEntry(e, data);
-    const ref = (e.reference || '').toString().trim();
+    const ref = getDisplayReference(e);
+    const evLabel = getDisplayEventLabel(e);
     const pm = (e.paymentMethod || '').toString().trim();
     const pmLabel = pm === 'bank' ? 'Banco' : (pm === 'cash' ? 'Caja' : (pm ? pm : '—'));
 
@@ -1719,7 +1768,7 @@ async function exportDiarioExcel() {
       e.fecha || e.date || '',
       e.descripcion || '',
       tipo,
-      displayEventLabel((e.evento || '').trim()) || '—',
+      evLabel || '—',
       supplierLabel,
       pmLabel,
       ref,
@@ -2057,7 +2106,7 @@ function updateEventFilters(entries) {
     eventos.forEach(ev => {
       const opt = document.createElement('option');
       opt.value = ev;
-      opt.textContent = displayEventLabel(ev) || ev;
+      opt.textContent = ev;
       sel.appendChild(opt);
     });
 
@@ -2293,12 +2342,16 @@ function renderDiario(data) {
       totalHaber += Number(ln.haber || 0);
     }
 
+    const evLabel = getDisplayEventLabel(e);
+    const refLabel = getDisplayReference(e);
+    const evCell = `${makePill(evLabel, 'gold')}${refLabel ? ' ' + makePill(`Ref: ${refLabel}`, 'muted') : ''}`;
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${e.fecha || e.date || ''}</td>
       <td>${e.descripcion || ''}</td>
       <td>${tipoMov}</td>
-      <td>${displayEventLabel((e.evento || '').trim()) || '—'}</td>
+      <td>${evCell || '—'}</td>
       <td>${getSupplierLabelFromEntry(e, data)}</td>
       <td>${origen}</td>
       <td class="num">C$ ${fmtCurrency(totalDebe)}</td>
@@ -2321,22 +2374,23 @@ function openDetalleModal(entryId) {
   if (!modal || !meta || !tbody) return;
 
   const supplierLabel = getSupplierLabelFromEntry(entry, finCachedData);
-const ref = (entry.reference || '').toString().trim();
-const pm = (entry.paymentMethod || '').toString().trim();
-const pmLabel = pm === 'bank' ? 'Banco' : (pm === 'cash' ? 'Caja' : (pm ? pm : '—'));
-	const origenRaw = entry.origen || 'Interno';
-	const origenLabel = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
+  const ref = getDisplayReference(entry);
+  const evLabel = getDisplayEventLabel(entry);
+  const pm = (entry.paymentMethod || '').toString().trim();
+  const pmLabel = pm === 'bank' ? 'Banco' : (pm === 'cash' ? 'Caja' : (pm ? pm : '—'));
+  const origenRaw = entry.origen || 'Interno';
+  const origenLabel = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
 
-meta.innerHTML = `
-  <p><strong>Fecha:</strong> ${entry.fecha || entry.date || ''}</p>
-  <p><strong>Descripción:</strong> ${entry.descripcion || ''}</p>
-  <p><strong>Tipo:</strong> ${entry.tipoMovimiento || ''}</p>
-  <p><strong>Evento:</strong> ${displayEventLabel((entry.evento || '').trim()) || '—'}</p>
-  <p><strong>Proveedor:</strong> ${supplierLabel}</p>
-  <p><strong>Pago:</strong> ${pmLabel}</p>
-  <p><strong>Referencia:</strong> ${ref || '—'}</p>
-	  <p><strong>Origen:</strong> ${origenLabel}</p>
-`;
+  meta.innerHTML = `
+    <p><strong>Fecha:</strong> ${escapeHtml(entry.fecha || entry.date || '')}</p>
+    <p><strong>Descripción:</strong> ${escapeHtml(entry.descripcion || '')}</p>
+    <p><strong>Tipo:</strong> ${escapeHtml(entry.tipoMovimiento || '')}</p>
+    <p><strong>Evento:</strong> ${escapeHtml(evLabel) || '—'}</p>
+    <p><strong>Proveedor:</strong> ${escapeHtml(supplierLabel)}</p>
+    <p><strong>Pago:</strong> ${escapeHtml(pmLabel)}</p>
+    <p><strong>Referencia:</strong> ${ref ? escapeHtml(ref) : '—'}</p>
+    <p><strong>Origen:</strong> ${escapeHtml(origenLabel)}</p>
+  `;
 
 tbody.innerHTML = '';
   const lines = linesByEntry.get(entry.id) || [];
@@ -2444,7 +2498,7 @@ async function guardarMovimientoManual() {
   const medio = $('#mov-medio')?.value || 'caja';
   const montoRaw = $('#mov-monto')?.value || '0';
   const cuentaCode = $('#mov-cuenta')?.value || '';
-  const evento = ($('#mov-evento')?.value || '').trim();
+  const reference = ($('#mov-evento')?.value || '').trim();
   const descripcion = ($('#mov-descripcion')?.value || '').trim();
 
   const monto = parseFloat(montoRaw.replace(',', '.'));
@@ -2484,7 +2538,10 @@ async function guardarMovimientoManual() {
     fecha,
     descripcion: descripcion || `Movimiento ${tipo}`,
     tipoMovimiento: tipo,
-    evento,
+    reference,
+    eventScope: 'CENTRAL',
+    posEventId: null,
+    posEventNameSnapshot: null,
     origen: 'Interno',
     origenId: null,
     totalDebe: monto,
@@ -2516,7 +2573,7 @@ async function guardarMovimientoManual() {
   const eventoInput = $('#mov-evento');
   if (montoInput) montoInput.value = '';
   if (descInput) descInput.value = '';
-  if (eventoInput) eventoInput.value = evento; // suele repetirse por evento
+  if (eventoInput) eventoInput.value = reference; // puede repetirse por factura / referencia
 
   showToast('Movimiento guardado en el Diario');
   await refreshAllFin();
