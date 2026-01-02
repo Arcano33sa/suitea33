@@ -2768,6 +2768,131 @@ function renderCatalogoCuentas(data) {
   }
 }
 
+function catMakeFileStamp(d) {
+  const dt = (d instanceof Date) ? d : new Date(d || Date.now());
+  const yyyy = dt.getFullYear();
+  const mm = pad2(dt.getMonth() + 1);
+  const dd = pad2(dt.getDate());
+  const hh = pad2(dt.getHours());
+  const mi = pad2(dt.getMinutes());
+  return `${yyyy}-${mm}-${dd}_${hh}${mi}`;
+}
+
+function catBuildCatalogWorkbook(data) {
+  if (typeof XLSX === 'undefined') {
+    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    return null;
+  }
+
+  const accounts = (data && Array.isArray(data.accounts)) ? [...data.accounts] : [];
+  const { countsObj } = catGetUsageCounts(data || { entries: [], lines: [] });
+
+  // Orden por código asc
+  accounts.sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+  // Hoja: Cuentas
+  const rows = [[
+    'Código',
+    'Nombre',
+    'Raíz/Tipo',
+    'Estado (Activa/Oculta)',
+    'Protegida (Sí/No)',
+    'Usada (Sí/No)',
+    '#Movimientos (count)'
+  ]];
+
+  let total = 0;
+  let activas = 0;
+  let ocultas = 0;
+  const byRoot = {};
+
+  for (const acc of accounts) {
+    const code = String(acc.code || '').trim();
+    if (!code) continue;
+    const name = (acc.nombre || acc.name || '').toString();
+    const rootType = String(acc.rootType || inferRootTypeFromCode(code) || 'OTROS').toUpperCase();
+    const isHidden = !!acc.isHidden;
+    const isProtected = !!acc.systemProtected;
+    const usedCount = Number(countsObj?.[code] || 0);
+    const isUsed = usedCount > 0;
+
+    total += 1;
+    if (isHidden) ocultas += 1; else activas += 1;
+    byRoot[rootType] = (byRoot[rootType] || 0) + 1;
+
+    rows.push([
+      code,
+      name,
+      rootType,
+      isHidden ? 'Oculta' : 'Activa',
+      isProtected ? 'Sí' : 'No',
+      isUsed ? 'Sí' : 'No',
+      usedCount
+    ]);
+  }
+
+  const wsCuentas = XLSX.utils.aoa_to_sheet(rows);
+  wsCuentas['!cols'] = [
+    { wch: 10 },
+    { wch: 44 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 18 }
+  ];
+
+  // Hoja: Resumen (opcional)
+  const now = new Date();
+  const resumenRows = [
+    ['Suite A33', 'Finanzas · Catálogo de Cuentas'],
+    ['Exportado', fmtDDMMYYYYHHMM(now)],
+    [],
+    ['Total de cuentas', total],
+    ['Activas', activas],
+    ['Ocultas', ocultas],
+    [],
+    ['Por rootType', 'Conteo']
+  ];
+
+  // Respetar el orden de ROOT_TYPES, pero incluir extras si existieran
+  const seen = new Set();
+  for (const rt of (Array.isArray(ROOT_TYPES) ? ROOT_TYPES : [])) {
+    const key = String(rt || '').toUpperCase();
+    if (!key) continue;
+    resumenRows.push([key, Number(byRoot[key] || 0)]);
+    seen.add(key);
+  }
+  Object.keys(byRoot)
+    .map(k => String(k).toUpperCase())
+    .filter(k => !seen.has(k))
+    .sort((a, b) => a.localeCompare(b))
+    .forEach(k => resumenRows.push([k, Number(byRoot[k] || 0)]));
+
+  const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
+  wsResumen['!cols'] = [{ wch: 20 }, { wch: 56 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsCuentas, 'Cuentas');
+  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+  return wb;
+}
+
+async function catExportCatalogExcel() {
+  try {
+    if (!finCachedData) await refreshAllFin();
+    const wb = catBuildCatalogWorkbook(finCachedData || { accounts: [], entries: [], lines: [] });
+    if (!wb) return;
+    const stamp = catMakeFileStamp(new Date());
+    const filename = `A33_Finanzas_CatalogoCuentas_${stamp}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    showToast('Catálogo exportado a Excel');
+  } catch (err) {
+    console.error('Error exportando Catálogo a Excel', err);
+    alert('Ocurrió un error exportando el Catálogo a Excel.');
+  }
+}
+
 function openCatModal() {
   const modal = document.getElementById('cat-modal');
   if (!modal) return;
@@ -2942,6 +3067,7 @@ function setupCatalogoUI() {
   const search = document.getElementById('cat-search');
   const btnNew = document.getElementById('cat-new');
   const btnRefresh = document.getElementById('cat-refresh');
+  const btnExport = document.getElementById('cat-export');
   const tbody = document.getElementById('cat-tbody');
 
   const modal = document.getElementById('cat-modal');
@@ -2973,6 +3099,13 @@ function setupCatalogoUI() {
       setCatModalMode('new');
       openCatModal();
       setTimeout(() => document.getElementById('cat-code')?.focus(), 0);
+    });
+  }
+
+  if (btnExport) {
+    btnExport.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      catExportCatalogExcel();
     });
   }
 
