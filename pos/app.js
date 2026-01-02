@@ -5,6 +5,24 @@ let db;
 
 // --- Finanzas: conexión a finanzasDB para asientos automáticos
 const FIN_DB_NAME = 'finanzasDB';
+// Etapa 3 (Corte final): se APAGA el envío de ventas individuales a Finanzas.
+// Finanzas se alimenta únicamente por cierres diarios consolidados (POS_DAILY_CLOSE).
+const A33_FINANZAS_PER_SALE_ENABLED_DEFAULT = false;
+let a33FinPerSaleWarned = false;
+function isFinanzasPerSaleEnabled() {
+  try {
+    const v = (localStorage.getItem('a33_finanzas_per_sale') || '').toString().trim().toLowerCase();
+    if (v === '1' || v === 'true' || v === 'on') return true;
+    if (v === '0' || v === 'false' || v === 'off') return false;
+  } catch (e) {}
+  return A33_FINANZAS_PER_SALE_ENABLED_DEFAULT;
+}
+function warnFinanzasPerSaleDisabledOnce() {
+  if (a33FinPerSaleWarned) return;
+  a33FinPerSaleWarned = true;
+  console.info('POS→Finanzas por venta individual está DESACTIVADO (Etapa 3). Usá cierres diarios.');
+}
+
 let finDb;
 let finanzasBridgeWarned = false;
 let finanzasBridgeBlockedWarned = false;
@@ -158,6 +176,8 @@ function mapSaleToCuentaCobro(sale) {
 
 // Crea/actualiza asiento automático en Finanzas por una venta / devolución del POS
 async function createJournalEntryForSalePOS(sale) {
+  if (!isFinanzasPerSaleEnabled()) { warnFinanzasPerSaleDisabledOnce(); return null; }
+
   // Crea/actualiza el asiento automático en Finanzas para una venta del POS.
   // Reglas:
   // - Venta normal: ingreso + COGS

@@ -2500,7 +2500,15 @@ function renderDiario(data) {
   for (const e of sorted) {
     const tipoMov = e.tipoMovimiento || '';
     const origenRaw = e.origen || 'Interno';
-    const origen = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
+    const origenBase = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
+
+    // POS: distinguir cierres diarios vs históricos legacy (ventas individuales)
+    const src = String(e.source || '').trim();
+    const isPos = (origenBase === 'POS');
+    const isPosClose = isPos && (src === POS_DAILY_CLOSE_SOURCE || src === POS_DAILY_CLOSE_REVERSAL_SOURCE);
+    const origenKey = isPos ? (isPosClose ? 'POS_CIERRES' : 'POS_LEGACY') : origenBase;
+    const origenLabel = isPos ? (isPosClose ? 'POS — Cierre diario' : 'LEGACY — ventas individuales') : origenBase;
+    const origenCell = isPos ? makePill(origenLabel, isPosClose ? 'gold' : 'muted') : escapeHtml(origenLabel);
 
     const fechaMov = String(e.fecha || e.date || '').slice(0, 10);
     if ((diarioDesde || diarioHasta) && !fechaMov) continue;
@@ -2509,7 +2517,18 @@ function renderDiario(data) {
 
     if (tipoFilter !== 'todos' && tipoMov !== tipoFilter) continue;
     if (!matchEvent(e, eventoFilter)) continue;
-    if (origenFilter !== 'todos' && origen !== origenFilter) continue;
+    if (origenFilter !== 'todos') {
+      if (origenFilter === 'POS') {
+        if (origenBase !== 'POS') continue;
+      } else if (origenFilter === 'POS_CIERRES') {
+        if (origenKey !== 'POS_CIERRES') continue;
+      } else if (origenFilter === 'POS_LEGACY') {
+        if (origenKey !== 'POS_LEGACY') continue;
+      } else {
+        if (origenBase !== origenFilter) continue;
+      }
+    }
+
 
     const sid = (e.supplierId != null) ? String(e.supplierId) : '';
     const hasSupplier = !!sid || !!(e.supplierName || '').toString().trim();
@@ -2540,7 +2559,7 @@ function renderDiario(data) {
       <td>${tipoMov}</td>
       <td>${evCell || '—'}</td>
       <td>${getSupplierLabelFromEntry(e, data)}</td>
-      <td>${origen}</td>
+      <td>${origenCell}</td>
       <td class="num">C$ ${fmtCurrency(totalDebe)}</td>
       <td class="num">C$ ${fmtCurrency(totalHaber)}</td>
       <td><button type="button" class="btn-link ver-detalle" data-id="${e.id}">Ver detalle</button></td>
@@ -2565,6 +2584,12 @@ function openDetalleModal(entryId) {
   const evLabel = getDisplayEventLabel(entry);
   const pm = (entry.paymentMethod || '').toString().trim();
   const pmLabel = pm === 'bank' ? 'Banco' : (pm === 'cash' ? 'Caja' : (pm ? pm : '—'));
+  const closureId = (entry.closureId || '').toString().trim();
+  const src = String(entry.source || '').trim();
+  const isPosClose = (src === POS_DAILY_CLOSE_SOURCE || src === POS_DAILY_CLOSE_REVERSAL_SOURCE);
+  const closureLine = (isPosClose && closureId)
+    ? `<p><strong>Cierre POS:</strong> <code>${escapeHtml(closureId)}</code> <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`
+    : '';
   const origenRaw = entry.origen || 'Interno';
   const origenLabel = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
 
@@ -2576,6 +2601,7 @@ function openDetalleModal(entryId) {
     <p><strong>Proveedor:</strong> ${escapeHtml(supplierLabel)}</p>
     <p><strong>Pago:</strong> ${escapeHtml(pmLabel)}</p>
     <p><strong>Referencia:</strong> ${ref ? escapeHtml(ref) : '—'}</p>
+    ${closureLine}
     <p><strong>Origen:</strong> ${escapeHtml(origenLabel)}</p>
   `;
 

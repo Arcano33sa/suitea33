@@ -1,4 +1,4 @@
-const CACHE = 'a33-pos-v4_20_4_fix1';
+const CACHE = 'a33-pos-v4_20_4_fix2';
 const ASSETS = [
   './',
   './index.html?v=4.20.4',
