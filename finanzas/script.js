@@ -293,6 +293,165 @@ async function ensureBaseAccounts() {
   }
 }
 
+/* ---------- Catálogo: normalización segura (Etapa 0) ---------- */
+
+const ROOT_TYPES = ['ACTIVO', 'PASIVO', 'PATRIMONIO', 'INGRESOS', 'COSTOS', 'GASTOS', 'OTROS'];
+
+function isValidRootType(v) {
+  return ROOT_TYPES.includes(String(v || '').toUpperCase());
+}
+
+function normText(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function safeParseCodeNum(code) {
+  const s = String(code ?? '').trim();
+  const digits = s.match(/\d+/g);
+  if (!digits) return NaN;
+  const n = parseInt(digits.join(''), 10);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function inferRootTypeFromCode(code) {
+  const n = safeParseCodeNum(code);
+  if (!Number.isFinite(n)) return null;
+
+  if (n >= 1000 && n <= 1999) return 'ACTIVO';
+  if (n >= 2000 && n <= 2999) return 'PASIVO';
+  if (n >= 3000 && n <= 3999) return 'PATRIMONIO';
+
+  if (n >= 4000 && n <= 4899) return 'INGRESOS';
+  if (n >= 4900 && n <= 4999) return 'OTROS';   // otros ingresos
+
+  if (n >= 5000 && n <= 5899) return 'COSTOS';
+  if (n >= 5900 && n <= 5999) return 'OTROS';   // otros costos (si aplica)
+
+  if (n >= 6000 && n <= 6899) return 'GASTOS';
+  if (n >= 6900 && n <= 6999) return 'OTROS';   // otros gastos (si aplica)
+
+  if (n >= 7000 && n <= 7999) return 'OTROS';   // 7xxx legacy: otros ingresos/gastos
+
+  return null;
+}
+
+function inferRootTypeFromTipo(tipo) {
+  const t = normText(tipo);
+  if (!t) return null;
+
+  if (t.includes('activo')) return 'ACTIVO';
+  if (t.includes('pasivo')) return 'PASIVO';
+  if (t.includes('patrimonio') || t.includes('capital')) return 'PATRIMONIO';
+  if (t.includes('ingreso')) return 'INGRESOS';
+  if (t.includes('costo')) return 'COSTOS';
+  if (t.includes('gasto')) return 'GASTOS';
+  if (t.includes('otro')) return 'OTROS';
+
+  return null;
+}
+
+function inferRootTypeFromName(nombre) {
+  const n = normText(nombre);
+  if (!n) return null;
+
+  // Regla crítica: "Retiros del dueño" debe quedar en PATRIMONIO.
+  if (n.includes('retiro') && (n.includes('duen') || n.includes('due') || n.includes('propiet'))) {
+    return 'PATRIMONIO';
+  }
+
+  return null;
+}
+
+function inferSystemProtectedIfMissing(acc) {
+  const codeStr = String(acc.code ?? '');
+  const codeNum = safeParseCodeNum(acc.code);
+  const nombre = acc.nombre || acc.name || '';
+  const nm = normText(nombre);
+
+  const criticalCodes = new Set(['1100', '1110', '1200', '4100', '5100', '3300']);
+  if (criticalCodes.has(codeStr)) return true;
+  if (Number.isFinite(codeNum)) {
+    const padded = String(codeNum).padStart(4, '0');
+    if (criticalCodes.has(padded)) return true;
+  }
+
+  const keywords = ['caja', 'banco', 'ventas', 'costo', 'inventario', 'retiro', 'capital'];
+  for (const k of keywords) {
+    if (nm.includes(k)) return true;
+  }
+
+  return false;
+}
+
+async function normalizeAccountsCatalog() {
+  await openFinDB();
+
+  const accounts = await finGetAll('accounts');
+  if (!accounts || !accounts.length) return;
+
+  const nowISO = new Date().toISOString();
+
+  for (const acc of accounts) {
+    if (!acc || acc.code === undefined || acc.code === null) continue;
+
+    let changed = false;
+
+    // Compatibilidad name/nombre (sin borrar ninguno)
+    const hasNombre = !!(acc.nombre && String(acc.nombre).trim());
+    const hasName = !!(acc.name && String(acc.name).trim());
+
+    if (!hasNombre && hasName) {
+      acc.nombre = acc.name;
+      changed = true;
+    }
+    if (!hasName && hasNombre) {
+      acc.name = acc.nombre;
+      changed = true;
+    }
+
+    // isHidden default false (solo si falta / inválido)
+    if (typeof acc.isHidden !== 'boolean') {
+      acc.isHidden = false;
+      changed = true;
+    }
+
+    // systemProtected (respetar si ya existe; inferir si falta)
+    if (typeof acc.systemProtected !== 'boolean') {
+      acc.systemProtected = inferSystemProtectedIfMissing(acc);
+      changed = true;
+    }
+
+    // rootType (si falta o inválido). Normalizamos a MAYÚSCULAS para consistencia futura.
+    const rtExisting = String(acc.rootType || '').toUpperCase();
+    if (rtExisting && ROOT_TYPES.includes(rtExisting) && acc.rootType !== rtExisting) {
+      acc.rootType = rtExisting;
+      changed = true;
+    } else if (!ROOT_TYPES.includes(rtExisting)) {
+      let rt = inferRootTypeFromName(acc.nombre || acc.name || '');
+      if (!rt) rt = inferRootTypeFromCode(acc.code);
+      if (!rt) rt = inferRootTypeFromTipo(acc.tipo);
+      if (!rt) rt = 'OTROS';
+
+      acc.rootType = rt;
+      changed = true;
+    }
+
+    // createdAtISO / updatedAtISO (opcionales pero consistentes)
+    if (!acc.createdAtISO) {
+      acc.createdAtISO = nowISO;
+      changed = true;
+    }
+
+    if (changed) {
+      acc.updatedAtISO = nowISO;
+      await finPut('accounts', acc);
+    }
+  }
+}
+
 /* ---------- Utilidades de fechas, texto y formato ---------- */
 
 function pad2(n) {
@@ -3940,6 +4099,7 @@ async function initFinanzas() {
   try {
     await openFinDB();
     await ensureBaseAccounts();
+    await normalizeAccountsCatalog();
 
     // Compras (planificación)
     await pcLoadAll();
