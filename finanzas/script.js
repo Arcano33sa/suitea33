@@ -1044,6 +1044,16 @@ function displayEventLabel(ev) {
 function getDisplayReference(mov) {
   if (!mov || typeof mov !== 'object') return '';
 
+  // POS cierres diarios: no mostrar closureId como referencia. Mostrar la fecha del cierre.
+  const src = (mov.source || '').toString().trim();
+  if (src === 'POS_DAILY_CLOSE' || src === 'POS_DAILY_CLOSE_REVERSAL') {
+    const dk = (mov.dateKey ?? mov.date_key ?? '').toString().trim();
+    if (dk) return dk.slice(0, 10);
+    const f = (mov.fecha || mov.date || '').toString().slice(0, 10);
+    if (f) return f;
+    return '';
+  }
+
   const ref = (mov.reference ?? mov.referencia ?? '').toString().trim();
   if (ref) return ref;
 
@@ -1060,6 +1070,7 @@ function getDisplayReference(mov) {
   if (isCentralEventName(legacy)) return '';
   return legacy;
 }
+
 
 function getDisplayEventLabel(mov) {
   if (!mov || typeof mov !== 'object') return 'Central';
@@ -2550,7 +2561,8 @@ function renderDiario(data) {
 
     const evLabel = getDisplayEventLabel(e);
     const refLabel = getDisplayReference(e);
-    const evCell = `${makePill(evLabel, 'gold')}${refLabel ? ' ' + makePill(`Ref: ${refLabel}`, 'muted') : ''}`;
+    const refText = refLabel ? (isPosClose ? refLabel : `Ref: ${refLabel}`) : '';
+    const evCell = `${makePill(evLabel, 'gold')}${refText ? ' ' + makePill(refText, 'muted') : ''}`;
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -2587,9 +2599,18 @@ function openDetalleModal(entryId) {
   const closureId = (entry.closureId || '').toString().trim();
   const src = String(entry.source || '').trim();
   const isPosClose = (src === POS_DAILY_CLOSE_SOURCE || src === POS_DAILY_CLOSE_REVERSAL_SOURCE);
-  const closureLine = (isPosClose && closureId)
-    ? `<p><strong>Cierre POS:</strong> <code>${escapeHtml(closureId)}</code> <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`
-    : '';
+  const revOf = (entry.reversalOfClosureId || '').toString().trim();
+  const revBy = (entry.reversingClosureId || '').toString().trim();
+
+  let closureLine = '';
+  if (isPosClose) {
+    if (closureId) {
+      closureLine = `<p><strong>Cierre POS:</strong> <code>${escapeHtml(closureId)}</code> <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`;
+    } else if (revOf) {
+      const extra = revBy ? ` (reversado por <code>${escapeHtml(revBy)}</code>)` : '';
+      closureLine = `<p><strong>Cierre POS:</strong> <code>${escapeHtml(revOf)}</code>${extra} <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`;
+    }
+  }
   const origenRaw = entry.origen || 'Interno';
   const origenLabel = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
 
@@ -5085,7 +5106,7 @@ async function createPosDailyCloseEntry(closure, data) {
     fecha: dateKey,
     descripcion: memoParts.join(' — '),
     tipoMovimiento: 'ingreso',
-    reference: closureId,
+    reference: dateKey,
     eventScope: 'POS',
     posEventId: eventId,
     posEventNameSnapshot: String(closure.eventNameSnapshot || eventName || '').trim() || null,
@@ -5141,7 +5162,7 @@ async function createPosDailyCloseReversal(prevImport, reversingClosure) {
     fecha: dateKey,
     descripcion: `Reverso cierre diario POS — ${eventName} — ${dateKey} — rev v${prevV} por v${newV} — cierre: ${prevClosureId}`,
     tipoMovimiento: 'ajuste',
-    reference: prevClosureId,
+    reference: dateKey,
     eventScope: 'POS',
     posEventId: eventId,
     posEventNameSnapshot: String(prevImport.eventNameSnapshot || original.posEventNameSnapshot || eventName || '').trim() || null,
