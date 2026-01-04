@@ -2528,6 +2528,36 @@ function renderTablero(data) {
 
 /* ---------- Render: Diario y Ajustes ---------- */
 
+function getDisplayDescription(entry) {
+  const raw = (entry && (entry.descripcion != null ? entry.descripcion : entry.description)) || '';
+  const desc = String(raw || '');
+
+  const src = String(entry?.source || '').trim();
+  const origen = String(entry?.origen || '').trim();
+  const looksLikePosClose = (
+    src === POS_DAILY_CLOSE_SOURCE ||
+    src === POS_DAILY_CLOSE_REVERSAL_SOURCE ||
+    src.includes(POS_DAILY_CLOSE_SOURCE) ||
+    (origen === 'POS' && desc.includes('Cierre diario POS'))
+  );
+
+  if (!looksLikePosClose) return desc;
+
+  const idx = desc.search(/(\s*[—-]\s*)?closureId\s*:/i);
+  if (idx >= 0) {
+    let out = desc.slice(0, idx).trim();
+    out = out.replace(/[\s—-]+$/g, '').trim();
+    return out;
+  }
+  const idx2 = desc.search(/(\s*[—-]\s*)cierre\s*:/i);
+  if (idx2 >= 0) {
+    let out = desc.slice(0, idx2).trim();
+    out = out.replace(/[\s—-]+$/g, '').trim();
+    return out;
+  }
+  return desc;
+}
+
 function renderDiario(data) {
   const tbody = $('#diario-tbody');
   if (!tbody) return;
@@ -2614,7 +2644,7 @@ function renderDiario(data) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${e.fecha || e.date || ''}</td>
-      <td>${e.descripcion || ''}</td>
+      <td>${getDisplayDescription(e)}</td>
       <td>${tipoMov}</td>
       <td>${evCell || '—'}</td>
       <td>${getSupplierLabelFromEntry(e, data)}</td>
@@ -2653,10 +2683,10 @@ function openDetalleModal(entryId) {
   let costsLine = '';
   if (isPosClose) {
     if (closureId) {
-      closureLine = `<p><strong>Cierre POS:</strong> <code>${escapeHtml(closureId)}</code> <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`;
+      closureLine = `<p><strong>ClosureId:</strong> <code>${escapeHtml(closureId)}</code> <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`;
     } else if (revOf) {
       const extra = revBy ? ` (reversado por <code>${escapeHtml(revBy)}</code>)` : '';
-      closureLine = `<p><strong>Cierre POS:</strong> <code>${escapeHtml(revOf)}</code>${extra} <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`;
+      closureLine = `<p><strong>ClosureId:</strong> <code>${escapeHtml(revOf)}</code>${extra} <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`;
     }
 
     const cv = n2(entry?.posCosts?.costoVentasTotal);
@@ -2675,7 +2705,7 @@ function openDetalleModal(entryId) {
 
   meta.innerHTML = `
     <p><strong>Fecha:</strong> ${escapeHtml(entry.fecha || entry.date || '')}</p>
-    <p><strong>Descripción:</strong> ${escapeHtml(entry.descripcion || '')}</p>
+    <p><strong>Descripción:</strong> ${escapeHtml(getDisplayDescription(entry) || '')}</p>
     <p><strong>Tipo:</strong> ${escapeHtml(entry.tipoMovimiento || '')}</p>
     <p><strong>Evento:</strong> ${escapeHtml(evLabel) || '—'}</p>
     <p><strong>Proveedor:</strong> ${escapeHtml(supplierLabel)}</p>
@@ -5048,6 +5078,31 @@ function buildEventDateKey(eventId, dateKey) {
   return `${id || 0}|${dk || ''}`;
 }
 
+
+function resolvePosCloseEventName(eventId, closure) {
+  const snap = String((closure && (closure.eventNameSnapshot || closure.posEventNameSnapshot || closure.eventName || closure.posEventName)) || '').trim();
+  if (snap) return snap;
+
+  const live = getPosEventNameLiveById(eventId);
+  if (live) return live;
+
+  // Fallback humano
+  return eventId ? 'Evento' : 'Central';
+}
+
+function resolvePosCloseClosedAtTs(closure) {
+  const raw = (closure && (closure.closedAt ?? closure.createdAt)) ?? null;
+  const d = new Date(raw);
+  if (raw != null && !Number.isNaN(d.getTime())) return d.getTime();
+  return Date.now(); // último recurso
+}
+
+function buildPosCloseHumanDescription(prefix, eventName, closedAtTs) {
+  const when = fmtDDMMYYYYHHMM(closedAtTs);
+  return `${prefix} — ${eventName} — ${when || fmtDDMMYYYYHHMM(Date.now())}`;
+}
+
+
 async function finGetLinesForEntryId(idEntry) {
   await openFinDB();
   return new Promise((resolve, reject) => {
@@ -5104,7 +5159,9 @@ async function createPosDailyCloseEntry(closure, data) {
   const dateKey = String(closure.dateKey || '').slice(0, 10) || todayStr();
   const version = Number(closure.version || 1) || 1;
 
-  const eventName = getPosEventNameSnapshotById(eventId, closure.eventNameSnapshot || closure.eventName || '');
+  const eventName = resolvePosCloseEventName(eventId, closure);
+  const closedAtTs = resolvePosCloseClosedAtTs(closure);
+  const humanDesc = buildPosCloseHumanDescription('Cierre diario POS', eventName, closedAtTs);
   const pm = (closure.totals && closure.totals.ventasPorMetodo) ? closure.totals.ventasPorMetodo : {};
 
   const efectivo = n2(pm.efectivo);
@@ -5164,25 +5221,16 @@ async function createPosDailyCloseEntry(closure, data) {
   const totalDebe = n2(lines.reduce((s, ln) => s + n0(ln.debe), 0));
   const totalHaber = n2(lines.reduce((s, ln) => s + n0(ln.haber), 0));
 
-  const memoParts = [
-    `Cierre diario POS — ${eventName} — ${dateKey} — v${version}`,
-    `closureId: ${closureId}`
-  ];
-  if (costoTotalSalidaInventario > 0) {
-    if (costoVentasTotal > 0) memoParts.push(`COGS: C$ ${fmtCurrency(costoVentasTotal)}`);
-    if (costoCortesiasTotal > 0) memoParts.push(`cortesías: ${cortesiaCantidad} | costo: C$ ${fmtCurrency(costoCortesiasTotal)}`);
-  }
-  if (totalMismatch) memoParts.push(`POS totalGeneral: C$ ${fmtCurrency(totalGeneral)} (dif ${totalMismatch > 0 ? '+' : ''}${fmtCurrency(totalMismatch)})`);
-  if (Object.keys(extras).length) memoParts.push(`otros métodos: ${Object.keys(extras).join(', ')}`);
+    // Nota: la descripción queda humana; closureId y datos técnicos se guardan en campos técnicos.
 
   const entry = {
     fecha: dateKey,
-    descripcion: memoParts.join(' — '),
+    descripcion: humanDesc,
     tipoMovimiento: 'ingreso',
     reference: dateKey,
     eventScope: 'POS',
     posEventId: eventId,
-    posEventNameSnapshot: String(closure.eventNameSnapshot || eventName || '').trim() || null,
+    posEventNameSnapshot: String(closure.eventNameSnapshot || closure.posEventNameSnapshot || closure.eventName || eventName || '').trim() || null,
     origen: 'POS',
     origenId: closureId,
     totalDebe,
@@ -5224,7 +5272,9 @@ async function createPosDailyCloseReversal(prevImport, reversingClosure) {
 
   const eventId = (typeof prevImport.eventId === 'number') ? prevImport.eventId : parseInt(String(prevImport.eventId || '').trim(), 10) || 0;
   const dateKey = String(prevImport.dateKey || original.fecha || '').slice(0, 10) || todayStr();
-  const eventName = getPosEventNameSnapshotById(eventId, prevImport.eventNameSnapshot || original.posEventNameSnapshot || '');
+  const eventName = resolvePosCloseEventName(eventId, { eventNameSnapshot: (prevImport.eventNameSnapshot || original.posEventNameSnapshot || '') });
+  const closedAtTs = resolvePosCloseClosedAtTs(reversingClosure || null);
+  const humanDesc = buildPosCloseHumanDescription('Reverso cierre diario POS', eventName, closedAtTs);
 
   const prevClosureId = String(prevImport.closureId || '').trim();
   const byClosureId = String(reversingClosure?.closureId || '').trim();
@@ -5244,7 +5294,7 @@ async function createPosDailyCloseReversal(prevImport, reversingClosure) {
 
   const entry = {
     fecha: dateKey,
-    descripcion: `Reverso cierre diario POS — ${eventName} — ${dateKey} — rev v${prevV} por v${newV} — cierre: ${prevClosureId}`,
+    descripcion: humanDesc,
     tipoMovimiento: 'ajuste',
     reference: dateKey,
     eventScope: 'POS',
