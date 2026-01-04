@@ -7729,7 +7729,7 @@ async function onSummaryReopenDayPOS(){
   }
   const dayKey = getSummaryCloseDayKeyPOS();
   try{
-    await reopenDailyPOS({ eventId: evId, dateKey: dayKey, source: 'SUMMARY' });
+    await reopenDailyPOS({ event: ev, dateKey: dayKey, source: 'SUMMARY' });
     showToast('Día reabierto.', 'ok', 3500);
   }catch(err){
     console.error('onSummaryReopenDayPOS', err);
@@ -9867,10 +9867,22 @@ Podrás editar Caja Chica y el cierre del día quedará removido.`);
   }
   await renderCajaChica();
 
-  try{ await updateSellEnabled(); }catch(e){}
   // Quitar candado unificado (para permitir recierre v2)
-  try{ await reopenDailyPOS({ eventId: evId, dateKey: dayKey, source: 'CASHBOX' }); }catch(e){}
-  showToast('Día reabierto', 'ok', 5000);
+  let lockCleared = false;
+  try{
+    const ev = await getEventByIdPOS(evId);
+    if (!ev) throw new Error('Evento no encontrado.');
+    await reopenDailyPOS({ event: ev, dateKey: dayKey, source: 'CASHBOX' });
+    lockCleared = true;
+  }catch(err){
+    console.error('onReopenPettyDay reopenDailyPOS', err);
+    showToast('Día reabierto en Caja Chica, pero no se pudo liberar el candado del POS: ' + humanizeError(err), 'error', 7000);
+  }
+
+  try{ await updateSellEnabled(); }catch(e){}
+  if (lockCleared){
+    showToast('Día reabierto', 'ok', 5000);
+  }
 }
 
 // --- Caja Chica: histórico (solo lectura)
