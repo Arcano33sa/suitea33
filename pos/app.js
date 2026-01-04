@@ -3491,28 +3491,118 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
   const byPay = {};
   let grand = 0;
   let courtesyQty = 0;
+
+  // Costos (COGS): solo para Arcano 33 (presentaciones) + Vaso (fraccionamiento).
+  let paidCost = 0;
   let courtesyCost = 0;
+
+  const breakdownMap = new Map();
+
+  const baseName = (name) => {
+    return String(name || '')
+      .replace(/\s*\(Cortes[ií]a\)\s*$/i, '')
+      .trim();
+  };
+
+  const isA33CostableSale = (s) => {
+    if (!s) return false;
+    if (s.vaso === true) return true;
+    const bn = baseName(s.productName || s.name || '');
+    return !!mapProductNameToPresId(bn);
+  };
+
+  const addBreakdown = (s, isCourtesy, lineCost) => {
+    const qty = Number(s.qty || 0);
+    const nm = baseName(s.productName || s.name || '');
+    const key = nm || String(s.productId || 'unknown');
+    if (!key) return;
+
+    if (!breakdownMap.has(key)) {
+      breakdownMap.set(key, {
+        productId: (s.productId != null) ? s.productId : null,
+        productName: nm || String(s.productName || ''),
+        qtyPaid: 0,
+        qtyCourtesy: 0,
+        totalCostPaid: 0,
+        totalCostCourtesy: 0,
+        _unitCostWeight: 0,
+        _unitCostQty: 0
+      });
+    }
+
+    const b = breakdownMap.get(key);
+    if (isCourtesy) {
+      b.qtyCourtesy += qty;
+      b.totalCostCourtesy += Number(lineCost || 0);
+    } else {
+      b.qtyPaid += qty;
+      b.totalCostPaid += Number(lineCost || 0);
+    }
+
+    // UnitCost (auditoría): preferimos costPerUnit guardado en la venta.
+    let unitCost = Number(s.costPerUnit || 0);
+    if (!(unitCost > 0) && qty) {
+      unitCost = Math.abs(Number(lineCost || 0) / Number(qty || 1));
+    }
+    const qAbs = Math.abs(qty || 0);
+    if (unitCost > 0 && qAbs > 0) {
+      b._unitCostWeight += (unitCost * qAbs);
+      b._unitCostQty += qAbs;
+    }
+  };
 
   for (const s of filtered){
     const courtesy = isCourtesySalePOS(s);
     const total = Number(s.total || 0);
     const qty = Number(s.qty || 0);
+
+    // Cortesías: no generan ingresos, pero sí consumen costo.
     if (courtesy){
       courtesyQty += Math.abs(qty || 0);
-      courtesyCost += Number(getSaleLineCostPOS(s) || 0);
-      continue;
+    } else {
+      const pay = String(s.payment || 'otros');
+      byPay[pay] = (byPay[pay] || 0) + total;
+      grand += total;
     }
-    const pay = String(s.payment || 'otros');
-    byPay[pay] = (byPay[pay] || 0) + total;
-    grand += total;
+
+    // Costos: solo si podemos calcularlos sin inventar.
+    if (isA33CostableSale(s)) {
+      const lineCost = Number(getSaleLineCostPOS(s) || 0);
+      if (courtesy) courtesyCost += lineCost;
+      else paidCost += lineCost;
+      addBreakdown(s, courtesy, lineCost);
+    }
   }
+
+  const costBreakdown = Array.from(breakdownMap.values()).map(b => {
+    const unitCost = (b._unitCostQty > 0) ? round2(b._unitCostWeight / b._unitCostQty) : 0;
+    return {
+      productId: b.productId,
+      productName: b.productName,
+      qtyPaid: b.qtyPaid,
+      qtyCourtesy: b.qtyCourtesy,
+      unitCost,
+      totalCostPaid: round2(b.totalCostPaid),
+      totalCostCourtesy: round2(b.totalCostCourtesy)
+    };
+  }).sort((a,b)=> String(a.productName||'').localeCompare(String(b.productName||'')));
+
+  const costoVentasTotal = round2(paidCost);
+  const costoCortesiasTotal = round2(courtesyCost);
+  const costoTotalSalidaInventario = round2(costoVentasTotal + costoCortesiasTotal);
 
   return {
     dayKey: dk,
     ventasPorMetodo: byPay,
     totalGeneral: grand,
     cortesiaCantidad: courtesyQty,
-    cortesiaCostoTotal: courtesyCost,
+    // Compat legacy
+    cortesiaCostoTotal: costoCortesiasTotal,
+    // Nuevo esquema de costos
+    costoVentasTotal,
+    costoCortesiasTotal,
+    costoTotalSalidaInventario,
+    costBreakdown,
     counts: { totalSales: filtered.length }
   };
 }
@@ -3588,7 +3678,14 @@ async function closeDailyPOS({ event, dateKey, source }){
       ventasPorMetodo: snapshot.ventasPorMetodo,
       totalGeneral: snapshot.totalGeneral,
       cortesiaCantidad: snapshot.cortesiaCantidad,
-      cortesiaCostoTotal: snapshot.cortesiaCostoTotal
+      // Compat legacy
+      cortesiaCostoTotal: snapshot.cortesiaCostoTotal,
+      // Nuevo esquema de costos
+      costoVentasTotal: snapshot.costoVentasTotal,
+      costoCortesiasTotal: snapshot.costoCortesiasTotal,
+      costoTotalSalidaInventario: snapshot.costoTotalSalidaInventario,
+      // (Opcional) auditoría: desglose por producto/presentación
+      costBreakdown: snapshot.costBreakdown
     },
     meta: {
       counts: snapshot.counts

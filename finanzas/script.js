@@ -399,7 +399,7 @@ const BASE_ACCOUNTS = [
 
   // 6xxx Gastos de operación
   { code: '6100', nombre: 'Gastos de eventos – generales', tipo: 'gasto', systemProtected: true },
-  { code: '6105', nombre: 'Gastos de publicidad y marketing', tipo: 'gasto', systemProtected: true },
+  { code: '6105', nombre: 'Cortesías (Promoción)', tipo: 'gasto', systemProtected: true },
   { code: '6106', nombre: 'Impuesto cuota fija', tipo: 'gasto', systemProtected: true },
   { code: '6110', nombre: 'Servicios (luz/agua/teléfono, etc.)', tipo: 'gasto', systemProtected: true },
   { code: '6120', nombre: 'Gastos de delivery / envíos', tipo: 'gasto', systemProtected: true },
@@ -425,6 +425,29 @@ function getTipoCuenta(acc) {
   return acc.tipo || inferTipoFromCode(acc.code);
 }
 
+
+
+// Revisa si una cuenta ya se ha usado en journalLines (para migraciones seguras)
+async function finAccountCodeHasLines(code) {
+  try {
+    await openFinDB();
+    return await new Promise((resolve) => {
+      const tx = db.transaction(['journalLines'], 'readonly');
+      const st = tx.objectStore('journalLines');
+      const req = st.openCursor();
+      req.onerror = () => resolve(false);
+      req.onsuccess = (ev) => {
+        const cursor = ev.target.result;
+        if (!cursor) return resolve(false);
+        const v = cursor.value;
+        if (String(v?.accountCode || '') === String(code)) return resolve(true);
+        cursor.continue();
+      };
+    });
+  } catch (err) {
+    return false;
+  }
+}
 async function ensureBaseAccounts() {
   await openFinDB();
   const existing = await finGetAll('accounts');
@@ -475,6 +498,19 @@ async function ensureBaseAccounts() {
       }
     }
   }
+
+  // A33 estándar: 6105 = Cortesías. Si existe con nombre antiguo y no se ha usado, lo renombramos.
+  try {
+    const acc6105 = await finGet('accounts', '6105');
+    if (acc6105 && acc6105.nombre && !/cortes/i.test(String(acc6105.nombre))) {
+      const used = await finAccountCodeHasLines('6105');
+      if (!used) {
+        acc6105.nombre = 'Cortesías (Promoción)';
+        await finPut('accounts', acc6105);
+      }
+    }
+  } catch (err) {}
+
 }
 
 /* ---------- Catálogo: normalización segura (Etapa 0) ---------- */
@@ -1269,21 +1305,28 @@ function calcResultadosForFilter(data, filtros) {
 // Total de cortesías provenientes del POS (cuenta 6105) en el rango/evento.
 // Nota: usamos origen='POS' y descripcion contiene 'Cortesía POS' para NO mezclar con otros gastos manuales en 6105.
 function calcCortesiasPos6105ForFilter(data, filtros) {
-  if (!data) return 0;
-  const { entries, linesByEntry } = data;
-  const subset = filterEntriesByDateAndEvent(entries || [], filtros)
-    .filter(e => String(e?.origen || '').toUpperCase() === 'POS'
-      && String(e?.descripcion || '').includes('Cortesía POS'));
+  // Cortesías deben detectarse por accountCode + source (NO por texto en descripción)
+  const entriesInRange = filterEntriesByDateAndEvent(data?.entries || [], filtros);
+  const allowedEntryIds = new Set();
 
-  let total = 0;
-  for (const e of subset) {
-    const lines = linesByEntry.get(e.id) || [];
-    for (const ln of lines) {
-      if (String(ln.accountCode) !== '6105') continue;
-      total += (Number(ln.debe || 0) - Number(ln.haber || 0));
+  for (const e of entriesInRange) {
+    const src = String(e?.source || '');
+    if (src === POS_DAILY_CLOSE_SOURCE || src === POS_DAILY_CLOSE_REVERSAL_SOURCE) {
+      const id = Number(e?.id || 0);
+      if (id) allowedEntryIds.add(id);
     }
   }
-  return total;
+
+  if (!allowedEntryIds.size) return 0;
+
+  let sum = 0;
+  for (const ln of (data?.lines || [])) {
+    if (!ln) continue;
+    if (!allowedEntryIds.has(Number(ln.idEntry || 0))) continue;
+    if (String(ln.accountCode) !== '6105') continue;
+    sum += (n0(ln.debe) - n0(ln.haber));
+  }
+  return n2(sum);
 }
 
 
@@ -2038,6 +2081,7 @@ async function exportEstadoResultadosExcel() {
   });
 
   const bruta = ingresos - costos;
+  const postCortesias = bruta - cortesias;
   const neta = bruta - gastos;
 
   let eventoLabel = 'Todos los eventos';
@@ -2455,6 +2499,7 @@ function renderTablero(data) {
   });
 
   const bruta = ingresos - costos;
+  const postCortesias = bruta - cortesias;
   const neta = bruta - gastos;
 
   const corte = end;
@@ -2464,6 +2509,7 @@ function renderTablero(data) {
   const tabCos = $('#tab-costos');
   const tabCort = $('#tab-cortesias');
   const tabBru = $('#tab-bruta');
+  const tabPost = $('#tab-post-cortesias');
   const tabGas = $('#tab-gastos');
   const tabRes = $('#tab-resultado');
   const tabCaja = $('#tab-caja');
@@ -2473,6 +2519,7 @@ function renderTablero(data) {
   if (tabCos) tabCos.textContent = `C$ ${fmtCurrency(costos)}`;
   if (tabCort) tabCort.textContent = `C$ ${fmtCurrency(cortesias)}`;
   if (tabBru) tabBru.textContent = `C$ ${fmtCurrency(bruta)}`;
+  if (tabPost) tabPost.textContent = `C$ ${fmtCurrency(postCortesias)}`;
   if (tabGas) tabGas.textContent = `C$ ${fmtCurrency(gastos)}`;
   if (tabRes) tabRes.textContent = `C$ ${fmtCurrency(neta)}`;
   if (tabCaja) tabCaja.textContent = `C$ ${fmtCurrency(caja)}`;
@@ -2603,12 +2650,24 @@ function openDetalleModal(entryId) {
   const revBy = (entry.reversingClosureId || '').toString().trim();
 
   let closureLine = '';
+  let costsLine = '';
   if (isPosClose) {
     if (closureId) {
       closureLine = `<p><strong>Cierre POS:</strong> <code>${escapeHtml(closureId)}</code> <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`;
     } else if (revOf) {
       const extra = revBy ? ` (reversado por <code>${escapeHtml(revBy)}</code>)` : '';
       closureLine = `<p><strong>Cierre POS:</strong> <code>${escapeHtml(revOf)}</code>${extra} <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`;
+    }
+
+    const cv = n2(entry?.posCosts?.costoVentasTotal);
+    const cc = n2(entry?.posCosts?.costoCortesiasTotal);
+    if (cv > 0 || cc > 0) {
+      const inv = n2(entry?.posCosts?.costoTotalSalidaInventario);
+      costsLine = `
+        <p><strong>COGS (5100):</strong> C$ ${fmtCurrency(cv)}</p>
+        <p><strong>Cortesías (6105):</strong> C$ ${fmtCurrency(cc)}</p>
+        <p><strong>Salida de inventario (1500):</strong> C$ ${fmtCurrency(inv || (cv + cc))}</p>
+      `;
     }
   }
   const origenRaw = entry.origen || 'Interno';
@@ -2623,6 +2682,7 @@ function openDetalleModal(entryId) {
     <p><strong>Pago:</strong> ${escapeHtml(pmLabel)}</p>
     <p><strong>Referencia:</strong> ${ref ? escapeHtml(ref) : '—'}</p>
     ${closureLine}
+    ${costsLine}
     <p><strong>Origen:</strong> ${escapeHtml(origenLabel)}</p>
   `;
 
@@ -5071,8 +5131,14 @@ async function createPosDailyCloseEntry(closure, data) {
     ? n2(totalGeneral - total)
     : 0;
 
-  const cortesiaCosto = n2(closure?.totals?.cortesiaCostoTotal);
+  // Costos (COGS + cortesías) vienen consolidados desde POS
+  const legacyCortesiaCosto = n2(closure?.totals?.cortesiaCostoTotal);
   const cortesiaCantidad = Number(closure?.totals?.cortesiaCantidad || 0) || 0;
+
+  const costoVentasTotal = n2(closure?.totals?.costoVentasTotal);
+  let costoCortesiasTotal = n2(closure?.totals?.costoCortesiasTotal);
+  if (!(costoCortesiasTotal > 0) && legacyCortesiaCosto > 0) costoCortesiasTotal = legacyCortesiaCosto;
+  const costoTotalSalidaInventario = n2(costoVentasTotal + costoCortesiasTotal);
 
   const lines = [];
   if (efectivo > 0) lines.push({ accountCode: '1110', debe: efectivo, haber: 0 });
@@ -5083,13 +5149,17 @@ async function createPosDailyCloseEntry(closure, data) {
   // Ventas pagadas
   lines.push({ accountCode: '4100', debe: 0, haber: total });
 
-  // Cortesías (costo): gasto vs inventario (balanceado)
-  let courtesyExpenseCode = '';
-  if (cortesiaCosto > 0) {
-    courtesyExpenseCode = findCourtesyExpenseAccountCode(data);
-    lines.push({ accountCode: courtesyExpenseCode, debe: cortesiaCosto, haber: 0 });
-    lines.push({ accountCode: '1500', debe: 0, haber: cortesiaCosto });
-  }
+  // Costos consolidados (balanceado)
+  // DEBE 5100 por costoVentasTotal
+  // DEBE 6105 por costoCortesiasTotal
+  // HABER 1500 por la suma
+  const cogsAccountCode = '5100';
+  const courtesyExpenseCode = '6105';
+  const inventoryAccountCode = '1500';
+
+  if (costoVentasTotal > 0) lines.push({ accountCode: cogsAccountCode, debe: costoVentasTotal, haber: 0 });
+  if (costoCortesiasTotal > 0) lines.push({ accountCode: courtesyExpenseCode, debe: costoCortesiasTotal, haber: 0 });
+  if (costoTotalSalidaInventario > 0) lines.push({ accountCode: inventoryAccountCode, debe: 0, haber: costoTotalSalidaInventario });
 
   const totalDebe = n2(lines.reduce((s, ln) => s + n0(ln.debe), 0));
   const totalHaber = n2(lines.reduce((s, ln) => s + n0(ln.haber), 0));
@@ -5098,7 +5168,10 @@ async function createPosDailyCloseEntry(closure, data) {
     `Cierre diario POS — ${eventName} — ${dateKey} — v${version}`,
     `closureId: ${closureId}`
   ];
-  if (cortesiaCosto > 0) memoParts.push(`cortesías: ${cortesiaCantidad} | costo: C$ ${fmtCurrency(cortesiaCosto)}`);
+  if (costoTotalSalidaInventario > 0) {
+    if (costoVentasTotal > 0) memoParts.push(`COGS: C$ ${fmtCurrency(costoVentasTotal)}`);
+    if (costoCortesiasTotal > 0) memoParts.push(`cortesías: ${cortesiaCantidad} | costo: C$ ${fmtCurrency(costoCortesiasTotal)}`);
+  }
   if (totalMismatch) memoParts.push(`POS totalGeneral: C$ ${fmtCurrency(totalGeneral)} (dif ${totalMismatch > 0 ? '+' : ''}${fmtCurrency(totalMismatch)})`);
   if (Object.keys(extras).length) memoParts.push(`otros métodos: ${Object.keys(extras).join(', ')}`);
 
@@ -5122,7 +5195,18 @@ async function createPosDailyCloseEntry(closure, data) {
     version,
     eventDateKey: buildEventDateKey(eventId, dateKey),
     paymentBreakdown: { efectivo, transferencia, credito, otros, extras },
-    cortesia: { cantidad: cortesiaCantidad, costoTotal: cortesiaCosto, expenseAccountCode: courtesyExpenseCode || null },
+
+    // Compat legacy: mantenemos bloque cortesia (ahora con costoCortesiasTotal)
+    cortesia: { cantidad: cortesiaCantidad, costoTotal: costoCortesiasTotal, expenseAccountCode: '6105' },
+    // Nuevo: costos POS consolidados
+    posCosts: {
+      costoVentasTotal,
+      costoCortesiasTotal,
+      costoTotalSalidaInventario,
+      cogsAccountCode: '5100',
+      courtesyAccountCode: '6105',
+      inventoryAccountCode: '1500'
+    },
     posSnapshot: { key: closure.key || null, createdAt: closure.createdAt || null, meta: closure.meta || null, totals: { totalGeneral, totalMismatch } },
     importedAt: Date.now()
   };
