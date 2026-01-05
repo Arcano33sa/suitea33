@@ -3996,7 +3996,8 @@ async function updateSellEnabled(){
   if (noActive) noActive.style.display = eventOpen ? 'none' : 'block';
 
   // Banner: cuando el evento está abierto y el día está cerrado (con o sin Caja Chica)
-  const hint = lockInfo.pettyEnabled ? 'Para vender aquí, reabrí el día en Caja Chica.' : 'Para vender aquí, reabrí el día en Resumen.';
+  // El cierre/reapertura oficial es SOLO desde Resumen (unificado). No mandar al usuario a Caja Chica.
+  const hint = 'Para vender aquí, reabrí el día en Resumen.';
   setSellDayClosedBannerPOS(!!(eventOpen && lockInfo.dayClosed), lockInfo.dayKey, hint);
 
   // Candado real de controles
@@ -9092,12 +9093,17 @@ async function init(){
   const btnGoCaja = document.getElementById('btn-go-caja');
   if (btnGoCaja){
     btnGoCaja.addEventListener('click', ()=>{
+      // Ir a Resumen y precargar el día, para reabrir/cerrar (v2) desde el flujo oficial.
       try{
         const dk = getSaleDayKeyPOS();
-        const pcDay = document.getElementById('pc-day');
-        if (pcDay) pcDay.value = dk;
+        const sd = document.getElementById('summary-close-date');
+        if (sd){
+          sd.value = dk;
+          // No marcar como userSet: esto es navegación guiada, no edición manual.
+          try{ delete sd.dataset.userSet; }catch(_){ }
+        }
       }catch(e){}
-      setTab('caja');
+      setTab('resumen');
     });
   }
 
