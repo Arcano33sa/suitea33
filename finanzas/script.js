@@ -1400,7 +1400,7 @@ function calcBalanceGroupsUntilDate(data, corte) {
 }
 
 function calcCajaBancoUntilDate(data, corte) {
-  const { entries, linesByEntry } = data;
+  const { entries, linesByEntry, accountsMap } = data;
   const cutoff = corte || todayStr();
   let caja = 0;
   let banco = 0;
@@ -1954,7 +1954,7 @@ async function exportDiarioExcel() {
 
   const { desde: diarioDesde, hasta: diarioHasta } = getDiaryRangeFromUI();
 
-  const { entries, linesByEntry } = data;
+  const { entries, linesByEntry, accountsMap } = data;
 
   const sorted = [...entries].sort((a, b) => {
     const fa = a.fecha || a.date || '';
@@ -1992,11 +1992,24 @@ async function exportDiarioExcel() {
     }
 
     const lines = linesByEntry.get(e.id) || [];
+    const normLines = normalizeEntryLines(e, lines);
+
     let totalDebe = 0;
     let totalHaber = 0;
-    for (const ln of lines) {
-      totalDebe += Number(ln.debe || 0);
-      totalHaber += Number(ln.haber || 0);
+    for (const ln of normLines) {
+      totalDebe += nSafeMoney(ln.debit);
+      totalHaber += nSafeMoney(ln.credit);
+    }
+
+    // Display-only: para cierres POS, en el listado mostramos el monto principal (Caja/Banco vs Ventas)
+    let displayDebe = totalDebe;
+    let displayHaber = totalHaber;
+    if (isPosDailyCloseEntry(e)) {
+      const p = getPosPrincipalAmounts(e, lines, accountsMap);
+      if (p && p.found) {
+        displayDebe = p.principalDebe;
+        displayHaber = p.principalHaber;
+      }
     }
 
     const supplierLabel = getSupplierLabelFromEntry(e, data);
@@ -2558,6 +2571,396 @@ function getDisplayDescription(entry) {
   return desc;
 }
 
+
+
+function isPosDailyCloseEntry(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+
+  const src = String(entry.source || '').trim();
+  if (src === POS_DAILY_CLOSE_SOURCE || src === POS_DAILY_CLOSE_REVERSAL_SOURCE) return true;
+  if (src && src.includes(POS_DAILY_CLOSE_SOURCE)) return true;
+  // Compatibilidad: posibles variantes de source en builds antiguos
+  if (src && src.includes('POS_DAILY_CLOSE')) return true;
+
+  // Campos técnicos del flujo POS (si existen)
+  if (entry.closureId || entry.reversalOfClosureId || entry.reversingClosureId) return true;
+
+  const origen = String(entry.origen || '').trim().toUpperCase();
+  const desc = String((entry.descripcion != null ? entry.descripcion : entry.description) || '');
+  if (origen === 'POS' && /cierre\s+diario\s+pos/i.test(desc)) return true;
+
+  return false;
+}
+
+function nSafeMoney(v) {
+  if (v == null) return 0;
+  const s = (typeof v === 'string') ? v.replace(',', '.').trim() : v;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeEntryLines(entry, linesFromStore) {
+  // Normaliza cualquier variante de estructura de líneas a un formato único.
+  // Display-only. NO toca data persistida.
+  let raw = Array.isArray(linesFromStore) ? linesFromStore : [];
+
+  if (!raw.length && entry && typeof entry === 'object') {
+    const embedded = entry.lines || entry.items || entry.movements || entry.detailLines || entry.journalLines || entry.lineas || null;
+    if (Array.isArray(embedded)) raw = embedded;
+
+    // Compatibilidad: algunas integraciones podrían guardar líneas dentro de meta
+    if (!raw.length && entry.meta && Array.isArray(entry.meta.lines)) raw = entry.meta.lines;
+    if (!raw.length && entry.meta && Array.isArray(entry.meta.items)) raw = entry.meta.items;
+  }
+
+  const out = [];
+  for (const ln of (raw || [])) {
+    if (!ln || typeof ln !== 'object') continue;
+
+    let code = String(
+      ln.accountCode ?? ln.account_code ?? ln.accountcode ??
+      ln.code ?? ln.codigo ?? ln.account ?? ln.cuenta ??
+      ln.accountId ?? ln.account_id ?? ln.cuentaCodigo ?? ln.codigoCuenta ?? ''
+    ).trim();
+
+    if (!code) {
+      const emb = ln.account || ln.cuenta || null;
+      if (emb && typeof emb === 'object') {
+        code = String(emb.code ?? emb.codigo ?? emb.accountCode ?? emb.account_code ?? emb.id ?? '').trim();
+      }
+    }
+
+    let debit = nSafeMoney(ln.debe ?? ln.debit ?? ln.DEBE ?? ln.DEBIT ?? ln.dr ?? ln.DR ?? 0);
+    let credit = nSafeMoney(ln.haber ?? ln.credit ?? ln.HABER ?? ln.CREDIT ?? ln.cr ?? ln.CR ?? 0);
+
+    // Si viene como {type:'DEBIT'|'CREDIT', amount}
+    if (!(debit || credit)) {
+      const amtRaw = (ln.amount ?? ln.monto ?? ln.valor ?? ln.value ?? ln.total ?? ln.importe ?? null);
+      const amtNum = (amtRaw == null) ? 0 : Number((typeof amtRaw === 'string') ? amtRaw.replace(',', '.').trim() : amtRaw);
+      const amt = Number.isFinite(amtNum) ? amtNum : 0;
+
+      const side = String(ln.type ?? ln.side ?? ln.nature ?? ln.tipo ?? '').trim().toUpperCase();
+      const isDebit = side.includes('DEBIT') || side.includes('DEBE') || side == 'D' || side == 'DR';
+      const isCredit = side.includes('CREDIT') || side.includes('HABER') || side == 'C' || side == 'CR';
+
+      if (amt) {
+        if (isDebit && !isCredit) debit = Math.abs(amt);
+        else if (isCredit && !isDebit) credit = Math.abs(amt);
+        else {
+          // Último recurso: signo
+          if (amt < 0) credit = Math.abs(amt);
+          else debit = Math.abs(amt);
+        }
+      }
+    }
+
+    debit = Math.abs(debit);
+    credit = Math.abs(credit);
+
+    const amount = Math.max(debit, credit);
+    out.push({ accountCode: code, debit, credit, amount, raw: ln });
+  }
+
+  return out;
+}
+
+function getAccountByCodeLoose(code, accountsMap) {
+  const c = String(code || '').trim();
+  if (!c || !accountsMap || typeof accountsMap.get !== 'function') return null;
+
+  // Exact match
+  let acc = accountsMap.get(c);
+  if (acc) return acc;
+
+  // Match por padding numérico
+  const n = safeParseCodeNum(c);
+  if (Number.isFinite(n)) {
+    const padded = String(n).padStart(4, '0');
+    acc = accountsMap.get(padded);
+    if (acc) return acc;
+  }
+
+  return null;
+}
+
+function getRootTypeLoose(code, acc, fallbackName) {
+  const rt = String(acc?.rootType || '').toUpperCase();
+  if (rt) return rt;
+
+  const byTipo = inferRootTypeFromTipo(acc?.tipo);
+  if (byTipo) return byTipo;
+
+  const byCode = inferRootTypeFromCode(code);
+  if (byCode) return byCode;
+
+  const byName = inferRootTypeFromName(fallbackName);
+  if (byName) return byName;
+
+  return null;
+}
+
+function accountHasCashBankFlag(acc) {
+  if (!acc || typeof acc !== 'object') return false;
+  // Soportar flags potenciales de catálogos custom.
+  if (acc.isCash === true || acc.isBank === true) return true;
+  if (acc.cash === true || acc.bank === true) return true;
+  const role = String(acc.role || acc.kind || acc.accountRole || '').toLowerCase();
+  if (role.includes('cash') || role.includes('bank') || role.includes('caja') || role.includes('banco')) return true;
+  const tags = acc.tags;
+  if (Array.isArray(tags)) {
+    const t = tags.map(x => String(x || '').toLowerCase());
+    if (t.includes('cash') || t.includes('bank') || t.includes('caja') || t.includes('banco')) return true;
+  }
+  return false;
+}
+
+function looksLikeCashOrBankByName(code, name) {
+  const n = normText(name);
+  if (!n) return false;
+  if (n.includes('caja') || n.includes('banco') || n.includes('efectivo')) return true;
+  if (n.includes('cash') || n.includes('bank')) return true;
+
+  // Posibles sinónimos (sin romper orden: esto solo es fallback por nombre)
+  if (n.includes('transfer') || n.includes('tarjeta') || n.includes('credito') || n.includes('crédito')) return true;
+  if (n.includes('cxc') || n.includes('cuentas por cobrar')) return true;
+
+  return false;
+}
+
+function getPosSalesTotalFromMeta(entry) {
+  const v =
+    entry?.meta?.salesTotal ??
+    entry?.salesTotal ??
+    entry?.totalSales ??
+    entry?.ventasTotal ??
+    entry?.meta?.ventasTotal ??
+    entry?.posTotals?.salesTotal ??
+    entry?.posTotals?.ventasTotal ??
+    entry?.posSnapshot?.totals?.salesTotal ??
+    entry?.posSnapshot?.totals?.totalGeneral ??
+    entry?.posSnapshot?.totals?.ventasTotal ??
+    entry?.posSnapshot?.totals?.total ??
+    entry?.posSnapshot?.totals?.totalVentas ??
+    null;
+
+  const n = Number((typeof v === 'string') ? v.replace(',', '.').trim() : v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isLikelyInventoryAccount(code, name, rootType) {
+  const c = String(code || '').trim();
+  const n = normText(name);
+  const rt = String(rootType || '').toUpperCase();
+
+  // Inventario típico A33
+  if (c === '1500') return true;
+
+  // Por nombre
+  if (n.includes('inventar') || n.includes('existenc') || n.includes('stock')) return true;
+
+  // Algunas cuentas activas pueden parecer inventario
+  if (rt === 'ACTIVO' && (n.includes('inventar') || n.includes('existenc') || n.includes('stock'))) return true;
+
+  return false;
+}
+
+function resolveCashBankNet(entry, normalizedLines, accountsMap) {
+  const stdCodes = new Set(['1100', '1110', '1200', '1300', '1900']);
+
+  // Step 1: flags en catálogo
+  const step1 = [];
+  for (const ln of normalizedLines) {
+    const code = String(ln.accountCode || '').trim();
+    const acc = getAccountByCodeLoose(code, accountsMap);
+    if (accountHasCashBankFlag(acc)) step1.push(ln);
+  }
+  if (step1.length) {
+    const v = step1.reduce((s, ln) => s + (nSafeMoney(ln.debit) - nSafeMoney(ln.credit)), 0);
+    return { value: v, by: 'flag', lines: step1.length };
+  }
+
+  // Step 2: nombre contiene Caja/Banco (y variantes razonables)
+  const step2 = [];
+  for (const ln of normalizedLines) {
+    const code = String(ln.accountCode || '').trim();
+    const acc = getAccountByCodeLoose(code, accountsMap);
+    const name = String(acc?.nombre || acc?.name || '').trim() || getLineAccountSnapshotName(ln.raw);
+    if (looksLikeCashOrBankByName(code, name)) step2.push(ln);
+  }
+  if (step2.length) {
+    const v = step2.reduce((s, ln) => s + (nSafeMoney(ln.debit) - nSafeMoney(ln.credit)), 0);
+    return { value: v, by: 'name', lines: step2.length };
+  }
+
+  // Step 3: códigos estándar Suite A33
+  const step3 = [];
+  for (const ln of normalizedLines) {
+    const code = String(ln.accountCode || '').trim();
+    if (!code) continue;
+
+    // Match exact o padding
+    if (stdCodes.has(code)) step3.push(ln);
+    else {
+      const n = safeParseCodeNum(code);
+      if (Number.isFinite(n) && stdCodes.has(String(n).padStart(4, '0'))) step3.push(ln);
+    }
+  }
+  if (step3.length) {
+    const v = step3.reduce((s, ln) => s + (nSafeMoney(ln.debit) - nSafeMoney(ln.credit)), 0);
+    return { value: v, by: 'stdCode', lines: step3.length };
+  }
+
+  // Step 4: proxy seguro (solo POS_DAILY_CLOSE): mayor movimiento ACTIVO
+  let best = null;
+  let bestAbs = 0;
+  for (const ln of normalizedLines) {
+    const code = String(ln.accountCode || '').trim();
+    const acc = getAccountByCodeLoose(code, accountsMap);
+    const name = String(acc?.nombre || acc?.name || '').trim() || getLineAccountSnapshotName(ln.raw);
+    const rt = getRootTypeLoose(code, acc, name);
+    if (rt !== 'ACTIVO') continue;
+
+    const net = (nSafeMoney(ln.debit) - nSafeMoney(ln.credit));
+    const absNet = Math.abs(net);
+    if (absNet > bestAbs) {
+      bestAbs = absNet;
+      best = net;
+    }
+  }
+
+  if (best != null && bestAbs > 0) return { value: best, by: 'proxyActivo', lines: 1 };
+
+  return { value: null, by: 'none', lines: 0 };
+}
+
+function resolveIncomeNet(entry, normalizedLines, accountsMap) {
+  // Step 1: RootType INGRESOS
+  const incomeLines = [];
+  for (const ln of normalizedLines) {
+    const code = String(ln.accountCode || '').trim();
+    const acc = getAccountByCodeLoose(code, accountsMap);
+    const name = String(acc?.nombre || acc?.name || '').trim() || getLineAccountSnapshotName(ln.raw);
+    const rt = getRootTypeLoose(code, acc, name);
+    if (rt === 'INGRESOS') incomeLines.push(ln);
+  }
+
+  if (incomeLines.length) {
+    const v = incomeLines.reduce((s, ln) => s + (nSafeMoney(ln.credit) - nSafeMoney(ln.debit)), 0);
+    return { value: v, by: 'rootTypeIngresos', lines: incomeLines.length };
+  }
+
+  // Step 2: mayor HABER que no sea Inventario/Pasivo (si se puede detectar)
+  let bestNet = null;
+  let bestHaber = 0;
+  let bestAmt = 0;
+
+  for (const ln of normalizedLines) {
+    const code = String(ln.accountCode || '').trim();
+    const acc = getAccountByCodeLoose(code, accountsMap);
+    const name = String(acc?.nombre || acc?.name || '').trim() || getLineAccountSnapshotName(ln.raw);
+    const rt = getRootTypeLoose(code, acc, name);
+
+    if (rt === 'PASIVO') continue;
+    if (isLikelyInventoryAccount(code, name, rt)) continue;
+
+    const haber = nSafeMoney(ln.credit);
+    const debe = nSafeMoney(ln.debit);
+    const net = haber - debe;
+
+    // Preferir por mayor HABER
+    if (haber > bestHaber) {
+      bestHaber = haber;
+      bestAmt = Math.max(haber, debe);
+      bestNet = net;
+    } else if (!bestHaber && Math.max(haber, debe) > bestAmt) {
+      // Si no hay HABER en ninguna línea, soportar reversos eligiendo mayor movimiento.
+      bestAmt = Math.max(haber, debe);
+      bestNet = net;
+    }
+  }
+
+  if (bestNet != null && bestAmt > 0) return { value: bestNet, by: 'maxHaberNonInvNonPasivo', lines: 1 };
+
+  // Step 3: Fallback a meta salesTotal
+  const s = getPosSalesTotalFromMeta(entry);
+  if (s != null) return { value: s, by: 'meta', lines: 0 };
+
+  return { value: null, by: 'none', lines: 0 };
+}
+
+function isLikelyReversalEntry(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  const src = String(entry.source || '').toUpperCase();
+  if (src.includes('REVERSAL') || src.includes('REVERSO')) return true;
+  if (entry.reversalOfClosureId || entry.reversingClosureId) return true;
+
+  const desc = String((entry.descripcion != null ? entry.descripcion : entry.description) || '').toLowerCase();
+  if (desc.includes('reverso') || desc.includes('reversal')) return true;
+
+  const oid = String(entry.origenId || '').toUpperCase();
+  if (oid.startsWith('REV:')) return true;
+
+  return false;
+}
+
+function getPosPrincipalAmounts(entry, lines, accountsMap) {
+  // Helper display-only. NO toca data persistida.
+  // Retorna el monto principal (positivo o negativo) para el listado: Debe/Haber principales.
+
+  const normalized = normalizeEntryLines(entry, lines);
+  const metaSales = getPosSalesTotalFromMeta(entry);
+
+  if (!normalized.length) {
+    if (metaSales != null) return { principalDebe: metaSales, principalHaber: metaSales, found: true, by: 'metaOnly' };
+    return { principalDebe: null, principalHaber: null, found: false, by: 'none' };
+  }
+
+  const cashRes = resolveCashBankNet(entry, normalized, accountsMap);
+  const incomeRes = resolveIncomeNet(entry, normalized, accountsMap);
+
+  const cashNet = (cashRes && cashRes.value != null) ? Number(cashRes.value) : null;
+  const incNet = (incomeRes && incomeRes.value != null) ? Number(incomeRes.value) : null;
+
+  // Signo: priorizar ACTIVO (cash/bank) porque refleja entrada/salida real.
+  let sign = null;
+  if (cashNet != null && Math.abs(cashNet) > 0.0001) sign = cashNet >= 0 ? 1 : -1;
+  else if (incNet != null && Math.abs(incNet) > 0.0001) sign = incNet >= 0 ? 1 : -1;
+
+  // Magnitud: priorizar ingresos si existe, luego cash/bank, luego meta.
+  let magnitude = null;
+  if (incNet != null && Math.abs(incNet) > 0.0001) magnitude = Math.abs(incNet);
+  else if (cashNet != null && Math.abs(cashNet) > 0.0001) magnitude = Math.abs(cashNet);
+  else if (metaSales != null && Math.abs(metaSales) > 0.0001) magnitude = Math.abs(metaSales);
+
+  // Si ambos existen pero difieren mucho, preferir meta si existe.
+  if (magnitude != null && metaSales != null) {
+    const a = (cashNet != null) ? Math.abs(cashNet) : null;
+    const b = (incNet != null) ? Math.abs(incNet) : null;
+    if (a != null && b != null && Math.abs(a - b) > 0.05) {
+      magnitude = Math.abs(metaSales);
+    }
+  }
+
+  if (sign == null) {
+    // Último recurso: si no se pudo inferir por líneas, usar marca textual.
+    sign = isLikelyReversalEntry(entry) ? -1 : 1;
+  }
+
+  if (magnitude == null || !(magnitude > 0)) {
+    return { principalDebe: null, principalHaber: null, found: false, by: 'fallbackTotals' };
+  }
+
+  const signed = sign * magnitude;
+
+  // UI decisión: se muestra el monto principal en ambas columnas (Debe/Haber) para cierres POS.
+  return {
+    principalDebe: signed,
+    principalHaber: signed,
+    found: true,
+    by: `cash:${cashRes.by}|income:${incomeRes.by}|meta:${metaSales != null ? 'y' : 'n'}`
+  };
+}
+
 function renderDiario(data) {
   const tbody = $('#diario-tbody');
   if (!tbody) return;
@@ -2570,7 +2973,7 @@ function renderDiario(data) {
 
   const { desde: diarioDesde, hasta: diarioHasta } = getDiaryRangeFromUI();
 
-  const { entries, linesByEntry } = data;
+  const { entries, linesByEntry, accountsMap } = data;
 
   // Mostrar lo más reciente arriba (fecha DESC, id DESC). Si falta fecha, va al final.
   const sorted = [...entries].sort((a, b) => {
@@ -2591,9 +2994,8 @@ function renderDiario(data) {
     const origenBase = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
 
     // POS: distinguir cierres diarios vs históricos legacy (ventas individuales)
-    const src = String(e.source || '').trim();
     const isPos = (origenBase === 'POS');
-    const isPosClose = isPos && (src === POS_DAILY_CLOSE_SOURCE || src === POS_DAILY_CLOSE_REVERSAL_SOURCE);
+    const isPosClose = isPos && isPosDailyCloseEntry(e);
     const origenKey = isPos ? (isPosClose ? 'POS_CIERRES' : 'POS_LEGACY') : origenBase;
     const origenLabel = isPos ? (isPosClose ? 'POS — Cierre diario' : 'LEGACY — ventas individuales') : origenBase;
     const origenCell = isPos ? makePill(origenLabel, isPosClose ? 'gold' : 'muted') : escapeHtml(origenLabel);
@@ -2627,13 +3029,24 @@ function renderDiario(data) {
         if (!sid || sid !== proveedorFilter) continue;
       }
     }
-
     const lines = linesByEntry.get(e.id) || [];
+    const normLines = normalizeEntryLines(e, lines);
     let totalDebe = 0;
     let totalHaber = 0;
-    for (const ln of lines) {
-      totalDebe += Number(ln.debe || 0);
-      totalHaber += Number(ln.haber || 0);
+    for (const ln of normLines) {
+      totalDebe += nSafeMoney(ln.debit);
+      totalHaber += nSafeMoney(ln.credit);
+    }
+
+    // Display-only: para cierres POS mostramos Caja/Banco vs Ventas, no el total contable del asiento
+    let displayDebe = totalDebe;
+    let displayHaber = totalHaber;
+    if (isPosDailyCloseEntry(e)) {
+      const p = getPosPrincipalAmounts(e, lines, accountsMap);
+      if (p && p.found) {
+        displayDebe = p.principalDebe;
+        displayHaber = p.principalHaber;
+      }
     }
 
     const evLabel = getDisplayEventLabel(e);
@@ -2649,8 +3062,8 @@ function renderDiario(data) {
       <td>${evCell || '—'}</td>
       <td>${getSupplierLabelFromEntry(e, data)}</td>
       <td>${origenCell}</td>
-      <td class="num">C$ ${fmtCurrency(totalDebe)}</td>
-      <td class="num">C$ ${fmtCurrency(totalHaber)}</td>
+      <td class="num">C$ ${fmtCurrency(displayDebe)}</td>
+      <td class="num">C$ ${fmtCurrency(displayHaber)}</td>
       <td><button type="button" class="btn-link ver-detalle" data-id="${e.id}">Ver detalle</button></td>
     `;
     tbody.appendChild(tr);
