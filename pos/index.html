@@ -749,14 +749,14 @@
 
       <div class="card petty-close">
         <h3>Cierre del día</h3>
+        <div class="warn" style="margin-top:8px">
+          El cierre del día se realiza desde <b>Resumen</b>.
+          <button id="pc-btn-go-resumen" class="btn-primary btn-inline btn-pill" type="button" style="margin-left:8px">Ir a Resumen</button>
+        </div>
+
         <div id="pc-close-status" class="info" style="margin-top:8px"></div>
         <div id="pc-close-blocker" class="warn" style="display:none; margin-top:8px"></div>
-
-        <div class="actions end">
-  <button id="pc-btn-close-day" class="btn-warn btn-pill" type="button">Cerrar día</button>
-  <button id="pc-btn-reopen-day" class="btn-ok btn-pill" type="button" style="display:none">Reabrir día</button>
-</div>
-        <small class="muted">Regla: si existe diferencia entre el efectivo contado y el esperado, registra movimientos faltantes o un <b>Ajuste</b> igual a la diferencia antes de poder cerrar.</small>
+        <small class="muted">Tip: guarda el arqueo final y dejá la diferencia en 0 para poder cerrar desde Resumen.</small>
       </div>
 </div>
   </section>
@@ -786,7 +786,7 @@
       <div class="row" style="align-items:center; justify-content:space-between; gap:10px;">
         <div>
           <h3 style="margin:0;">Cierre diario</h3>
-          <small class="muted">Guarda un snapshot por <b>evento + día</b>. Si Caja Chica está activa, el cierre se hace desde Caja Chica.</small>
+          <small class="muted">Guarda un snapshot por <b>evento + día</b>. Si Caja Chica está activa, el cierre exige arqueo final cuadrado.</small>
         </div>
         <span id="summary-close-status" class="pill">—</span>
       </div>
@@ -805,6 +805,7 @@
         </div>
       </div>
       <div id="summary-close-note" class="muted" style="margin-top:8px; display:none;"></div>
+      <div id="summary-close-blocker" class="warn" style="display:none; margin-top:10px"></div>
     </div>
 
     <!-- Resumen · Cliente (filtro) -->

@@ -3641,12 +3641,8 @@ async function closeDailyPOS({ event, dateKey, source }){
   if (!event || event.id == null) throw new Error('No hay evento válido para cerrar el día.');
   const eventId = Number(event.id);
   const dk = safeYMD(dateKey);
-  const petty = eventPettyEnabled(event);
-
-  // Regla: si hay Caja Chica, el cierre diario se hace desde Caja Chica.
-  if (petty && String(source || '').toUpperCase() !== 'CASHBOX'){
-    throw new Error('Este evento tiene Caja Chica activa. El cierre del día se realiza desde Caja Chica.');
-  }
+  // Nota: el cierre oficial se ejecuta desde Resumen.
+  // Si Caja Chica está activa, Resumen valida arqueo final + cuadratura antes de llamar a este método.
 
   // Idempotencia: si el día ya está marcado como cerrado, devolvemos el último estado.
   const curLock = await getDayLockRecordPOS(eventId, dk);
@@ -3729,12 +3725,7 @@ async function reopenDailyPOS({ event, dateKey, source }){
   if (!event || event.id == null) throw new Error('No hay evento válido para reabrir el día.');
   const eventId = Number(event.id);
   const dk = safeYMD(dateKey);
-  const petty = eventPettyEnabled(event);
-
-  // Regla: si hay Caja Chica, la reapertura se hace desde Caja Chica.
-  if (petty && String(source || '').toUpperCase() !== 'CASHBOX'){
-    throw new Error('Este evento tiene Caja Chica activa. Reabrí el día desde Caja Chica.');
-  }
+  // Nota: reapertura unificada desde Resumen (Caja Chica ya no es la puerta de cierre).
 
   const curLock = await getDayLockRecordPOS(eventId, dk);
   if (curLock && !curLock.isClosed){
@@ -3804,7 +3795,11 @@ async function computeSellDayLockPOS(curEvent, dayKey){
   const dk = safeYMD(dayKey || getSaleDayKeyPOS());
   if (!curEvent) return { pettyEnabled:false, dayKey: dk, dayClosed:false, closedAt:null, created:false, closeVersion:null, closeSource:null };
 
-  // 1) Si Caja Chica está activa, el candado principal es day.closedAt (compatibilidad)
+  const lock = await getDayLockRecordPOS(curEvent.id, dk);
+  const isClosedLock = !!(lock && lock.isClosed);
+
+  // Caja Chica activa: el cierre oficial se controla por dayLocks.
+  // Compatibilidad legacy: si existe day.closedAt (cierres viejos), también cuenta como cerrado.
   if (eventPettyEnabled(curEvent)){
     const pc = await getPettyCash(curEvent.id);
     const existed = !!(pc && pc.days && pc.days[dk]);
@@ -3812,28 +3807,25 @@ async function computeSellDayLockPOS(curEvent, dayKey){
     if (!existed){
       try{ await savePettyCash(pc); }catch(e){}
     }
-    const closedAt = day ? day.closedAt : null;
-
-    // Si además existe lock (para version), lo leemos
-    const lock = await getDayLockRecordPOS(curEvent.id, dk);
+    const legacyClosedAt = day ? day.closedAt : null;
+    const dayClosed = isClosedLock || !!legacyClosedAt;
+    const closedAt = (lock && lock.closedAt) ? lock.closedAt : (legacyClosedAt || null);
     return {
       pettyEnabled:true,
       dayKey: dk,
-      dayClosed: !!closedAt,
-      closedAt: closedAt || null,
+      dayClosed,
+      closedAt,
       created: !existed,
       closeVersion: lock ? (lock.lastClosureVersion || null) : null,
       closeSource: lock ? (lock.closedSource || null) : null
     };
   }
 
-  // 2) Sin Caja Chica: usar dayLocks (cierre desde Resumen)
-  const lock = await getDayLockRecordPOS(curEvent.id, dk);
-  const isClosed = !!(lock && lock.isClosed);
+  // Sin Caja Chica
   return {
     pettyEnabled:false,
     dayKey: dk,
-    dayClosed: isClosed,
+    dayClosed: isClosedLock,
     closedAt: lock ? (lock.closedAt || null) : null,
     created:false,
     closeVersion: lock ? (lock.lastClosureVersion || null) : null,
@@ -3845,8 +3837,7 @@ async function guardSellDayOpenOrToastPOS(curEvent, dayKey){
   if (!curEvent) return true;
   const info = await computeSellDayLockPOS(curEvent, dayKey);
   if (info.dayClosed){
-    const hint = info.pettyEnabled ? 'Reabrí el día en Caja Chica para vender.' : 'Reabrí el día en Resumen para vender.';
-    showSellDayClosedToastPOS(hint);
+    showSellDayClosedToastPOS('Reabrí el día en Resumen para vender.');
     try{ await updateSellEnabled(); }catch(e){}
     return false;
   }
@@ -7587,6 +7578,7 @@ async function renderSummaryDailyCloseCardPOS(){
   const btnClose = document.getElementById('btn-summary-close-day');
   const btnReopen = document.getElementById('btn-summary-reopen-day');
   const noteEl = document.getElementById('summary-close-note');
+  const blockerEl = document.getElementById('summary-close-blocker');
 
   const currentEventId = await getMeta('currentEventId');
   const ev = currentEventId ? await getEventByIdPOS(currentEventId) : null;
@@ -7603,6 +7595,7 @@ async function renderSummaryDailyCloseCardPOS(){
   if (btnClose){ btnClose.disabled = true; btnClose.style.display = ''; }
   if (btnReopen){ btnReopen.disabled = true; btnReopen.style.display = ''; }
   if (noteEl){ noteEl.style.display = 'none'; noteEl.textContent = ''; }
+  // No tocamos blockerEl aquí: se usa para mensajes de bloqueo al intentar cerrar.
 
   if (!ev){
     if (statusEl){ statusEl.className = 'pill'; statusEl.textContent = '—'; }
@@ -7615,20 +7608,21 @@ async function renderSummaryDailyCloseCardPOS(){
   const petty = eventPettyEnabled(ev);
   const lock = await getDayLockRecordPOS(ev.id, dayKey);
 
-  // Estado de cerrado
-  let isClosed = false;
-  let closedAt = null;
-  let version = lock ? (lock.lastClosureVersion || null) : null;
-
+  // Estado de cerrado (oficial: dayLocks). Compatibilidad legacy: day.closedAt (cierres viejos desde Caja Chica).
+  let legacyClosedAt = null;
   if (petty){
-    const pc = await getPettyCash(ev.id);
-    const day = pc && pc.days ? pc.days[dayKey] : null;
-    isClosed = !!(day && day.closedAt);
-    closedAt = day && day.closedAt ? day.closedAt : null;
-  } else {
-    isClosed = !!(lock && lock.isClosed);
-    closedAt = lock && lock.closedAt ? lock.closedAt : null;
+    try{
+      const pc = await getPettyCash(ev.id);
+      const day = pc && pc.days ? pc.days[dayKey] : null;
+      legacyClosedAt = (day && day.closedAt) ? day.closedAt : null;
+    }catch(e){ legacyClosedAt = null; }
   }
+
+  let isClosed = !!(lock && lock.isClosed);
+  if (!isClosed && legacyClosedAt) isClosed = true;
+  const closedAt = (lock && lock.closedAt) ? lock.closedAt : (legacyClosedAt || null);
+
+  let version = lock ? (lock.lastClosureVersion || null) : null;
 
   // Si hay cierres históricos pero el lock no tiene version, intentar deducir max
   if (!version){
@@ -7647,18 +7641,7 @@ async function renderSummaryDailyCloseCardPOS(){
     }
   }
 
-  // Regla de botones
-  if (petty){
-    if (btnClose) btnClose.style.display = 'none';
-    if (btnReopen) btnReopen.style.display = 'none';
-    if (noteEl){
-      noteEl.style.display = 'block';
-      noteEl.textContent = 'Este evento tiene Caja Chica activa. El cierre/reapertura del día se realiza desde Caja Chica.';
-    }
-    return;
-  }
-
-  // Sin Caja Chica: cerrar/reabrir aquí
+  // Cerrar/reabrir aquí (si Caja Chica está activa, se validará arqueo final antes de ejecutar el cierre).
   if (btnClose){
     btnClose.style.display = isClosed ? 'none' : '';
     btnClose.disabled = !!isClosed;
@@ -7668,9 +7651,16 @@ async function renderSummaryDailyCloseCardPOS(){
     btnReopen.disabled = !isClosed;
   }
 
-  if (noteEl && isClosed){
-    noteEl.style.display = 'block';
-    noteEl.textContent = closedAt ? `Día bloqueado para ventas/movimientos. Cerrado: ${formatDateTime(closedAt)}` : 'Día bloqueado para ventas/movimientos.';
+  if (noteEl){
+    if (isClosed){
+      noteEl.style.display = 'block';
+      noteEl.textContent = closedAt
+        ? `Día bloqueado para ventas/movimientos. Cerrado: ${formatDateTime(closedAt)}`
+        : 'Día bloqueado para ventas/movimientos.';
+    } else if (petty){
+      noteEl.style.display = 'block';
+      noteEl.textContent = 'Caja Chica activa: para cerrar, primero guarda el arqueo final y cuadra contra el saldo teórico.';
+    }
   }
 }
 
@@ -7678,6 +7668,58 @@ function getSummaryCloseDayKeyPOS(){
   const el = document.getElementById('summary-close-date');
   const v = (el && el.value) ? el.value : '';
   return safeYMD(v || getSaleDayKeyPOS());
+}
+
+function clearSummaryCloseBlockerPOS(){
+  const el = document.getElementById('summary-close-blocker');
+  if (!el) return;
+  el.style.display = 'none';
+  el.innerHTML = '';
+}
+
+function fmtSignedPlain(n){
+  const v = round2(Number(n || 0));
+  if (!Number.isFinite(v)) return '0.00';
+  return (v > 0 ? '+' : '') + fmt(v);
+}
+
+function showSummaryCloseBlockerPOS({ headline, diffNio, diffUsd, usdActive }){
+  const el = document.getElementById('summary-close-blocker');
+  if (!el) return;
+
+  const line1 = headline || 'No se puede cerrar: falta arqueo final o no cuadra.';
+  const line2 = usdActive
+    ? `Diferencia C$: ${fmtSignedPlain(diffNio)} | USD: ${fmtSignedPlain(diffUsd)}`
+    : `Diferencia C$: ${fmtSignedPlain(diffNio)}`;
+
+  el.style.display = 'block';
+  el.innerHTML = '';
+
+  const msg = document.createElement('div');
+  msg.style.whiteSpace = 'pre-line';
+  msg.textContent = line1;
+
+  const diff = document.createElement('div');
+  diff.style.marginTop = '6px';
+  diff.textContent = line2;
+
+  const actions = document.createElement('div');
+  actions.className = 'actions end';
+  actions.style.marginTop = '8px';
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-warn btn-pill';
+  btn.textContent = 'Ir a Caja Chica';
+  btn.addEventListener('click', (e)=>{
+    e.preventDefault();
+    setTab('caja');
+  });
+
+  actions.appendChild(btn);
+  el.appendChild(msg);
+  el.appendChild(diff);
+  el.appendChild(actions);
 }
 
 async function onSummaryCloseDayPOS(){
@@ -7691,11 +7733,45 @@ async function onSummaryCloseDayPOS(){
     showToast('Evento no encontrado.', 'error', 4000);
     return;
   }
-  if (eventPettyEnabled(ev)){
-    showToast('Este evento tiene Caja Chica activa. El cierre del día se hace desde Caja Chica.', 'ok', 5000);
-    return;
-  }
   const dayKey = getSummaryCloseDayKeyPOS();
+
+  clearSummaryCloseBlockerPOS();
+
+  // Si Caja Chica está activa: exigir arqueo final y que cuadre con saldo teórico (por moneda).
+  if (eventPettyEnabled(ev)){
+    try{
+      const pc = await getPettyCash(ev.id);
+      const day = ensurePcDay(pc, dayKey);
+      const cashSalesNio = await getCashSalesNioForDay(ev.id, dayKey);
+      const sum = computePettyCashSummary(pc, dayKey, { cashSalesNio });
+
+      const hasFinal = !!(day && day.finalCount && day.finalCount.savedAt);
+      const diffNio = (sum && sum.nio && sum.nio.diferencia != null) ? Number(sum.nio.diferencia) : 0;
+      const diffUsd = (sum && sum.usd && sum.usd.diferencia != null) ? Number(sum.usd.diferencia) : 0;
+      const usdActive = hasUsdActivity(day, sum);
+
+      const eps = 0.005;
+      const nioOk = Math.abs(diffNio) <= eps;
+      const usdOk = !usdActive || (Math.abs(diffUsd) <= eps);
+
+      if (!hasFinal || !nioOk || !usdOk){
+        showSummaryCloseBlockerPOS({
+          headline: 'No se puede cerrar: falta arqueo final o no cuadra.',
+          diffNio,
+          diffUsd,
+          usdActive
+        });
+        showToast('No se puede cerrar. Revisá Caja Chica (arqueo final / diferencias).', 'error', 5000);
+        return;
+      }
+    }catch(err){
+      console.error('summary close petty validation', err);
+      showSummaryCloseBlockerPOS({ headline: 'No se puede cerrar: no se pudo validar Caja Chica.', diffNio: 0, diffUsd: 0, usdActive: false });
+      showToast('No se pudo validar Caja Chica.', 'error', 5000);
+      return;
+    }
+  }
+
   try{
     const r = await closeDailyPOS({ event: ev, dateKey: dayKey, source: 'SUMMARY' });
     const v = (r && r.closure && r.closure.version) ? Number(r.closure.version) : (r && r.lock && r.lock.lastClosureVersion ? Number(r.lock.lastClosureVersion) : null);
@@ -7723,13 +7799,25 @@ async function onSummaryReopenDayPOS(){
     showToast('Evento no encontrado.', 'error', 4000);
     return;
   }
-  if (eventPettyEnabled(ev)){
-    showToast('Este evento tiene Caja Chica activa. La reapertura del día se hace desde Caja Chica.', 'ok', 5000);
-    return;
-  }
   const dayKey = getSummaryCloseDayKeyPOS();
+
+  clearSummaryCloseBlockerPOS();
+
   try{
     await reopenDailyPOS({ event: ev, dateKey: dayKey, source: 'SUMMARY' });
+
+    // Compatibilidad legacy: si el día fue cerrado antes desde Caja Chica, limpiar el flag local.
+    if (eventPettyEnabled(ev)){
+      try{
+        const pc = await getPettyCash(ev.id);
+        const day = ensurePcDay(pc, dayKey);
+        if (day && day.closedAt){
+          day.closedAt = null;
+          await savePettyCash(pc);
+        }
+      }catch(e){}
+    }
+
     showToast('Día reabierto.', 'ok', 3500);
   }catch(err){
     console.error('onSummaryReopenDayPOS', err);
@@ -8499,7 +8587,7 @@ async function closeEvent(eventId){
           const fx = ev ? Number(ev.fxRate || 0) : null;
           const check = await getPettyCloseCheck(eventId, pc, dayKey, cashSalesNio, fx);
 
-          if (!day.closedAt){
+          if (!check.isClosed){
             pending.push({ dayKey, reason: 'Falta cierre del día.' });
             continue;
           }
@@ -8513,9 +8601,9 @@ async function closeEvent(eventId){
           const lines = pending.slice(0, 25).map(p => `- ${p.dayKey}: ${p.reason}`).join('\n');
           const more = pending.length > 25 ? `\n... y ${pending.length - 25} más.` : '';
           alert(
-            'No se puede cerrar el evento porque faltan cierres del día de Caja Chica:\n\n' +
+            'No se puede cerrar el evento porque faltan cierres del día:\n\n' +
             lines + more +
-            '\n\nVe a Caja Chica y realiza “Cierre del día”.'
+            '\n\nVe a Resumen y realiza el cierre del día (si Caja Chica está activa, primero asegúrate de tener arqueo final cuadrado).'
           );
           return;
         }
@@ -9622,9 +9710,15 @@ async function getPettyCloseCheck(eventId, pc, dayKey, cashSalesNio, eventFxRate
 
   const canClose = errors.length === 0;
   let closureVersion = null;
+  let lockIsClosed = null;
+  let lockClosedAt = null;
+  let lockClosedSource = null;
   try{
     const lock = await getDayLockRecordPOS(eventId, dayKey);
     closureVersion = lock && lock.lastClosureVersion ? Number(lock.lastClosureVersion) : null;
+    lockIsClosed = lock ? !!lock.isClosed : null;
+    lockClosedAt = lock ? (lock.closedAt || null) : null;
+    lockClosedSource = lock ? (lock.closedSource || null) : null;
   }catch(e){}
   if (!closureVersion){
     try{
@@ -9633,7 +9727,11 @@ async function getPettyCloseCheck(eventId, pc, dayKey, cashSalesNio, eventFxRate
     }catch(e){}
   }
 
-  return { canClose, errors, warnings, day, sum, diffNio, diffUsd, fxRate, closureVersion };
+  const legacyClosedAt = day ? (day.closedAt || null) : null;
+  const isClosed = !!((lockIsClosed === true) || legacyClosedAt);
+  const closedAt = lockClosedAt || legacyClosedAt || null;
+
+  return { canClose, errors, warnings, day, sum, diffNio, diffUsd, fxRate, closureVersion, isClosed, closedAt, closedSource: lockClosedSource };
 }
 
 function setPettyCloseUIEmpty(){
@@ -9682,7 +9780,8 @@ function renderPettyCloseUI(check, isHistory){
 
   const fxLine = (check.fxRate && check.fxRate > 0) ? (` · T/C: C$ ${fmt(check.fxRate)} por US$ 1`) : '';
   const verTag = (check && check.closureVersion) ? (` (v${check.closureVersion})`) : '';
-  const closedLine = day.closedAt ? (`Día cerrado${verTag}`) : ('Día abierto');
+  const isClosed = !!(check && check.isClosed);
+  const closedLine = isClosed ? (`Día cerrado${verTag}`) : ('Día abierto');
 
   status.textContent = `${closedLine} · Teórico C$ ${fmt(sum.nio.teorico)} / Final C$ ${fmt(sum.nio.final ?? 0)}${fxLine}`;
 
@@ -9695,11 +9794,11 @@ function renderPettyCloseUI(check, isHistory){
   }
 
   if (btnClose){
-    btnClose.disabled = isHistory || !!day.closedAt || !check.canClose;
+    btnClose.disabled = isHistory || isClosed || !check.canClose;
   }
 
   if (btnReopen){
-    btnReopen.style.display = (!isHistory && !!day.closedAt) ? 'inline-block' : 'none';
+    btnReopen.style.display = (!isHistory && isClosed) ? 'inline-block' : 'none';
     btnReopen.disabled = isHistory ? true : false;
   }
 }
@@ -10249,10 +10348,15 @@ async function renderCajaChica(){
   fillPettyInitialFromPc(pc, dayKey);
   fillPettyFinalFromPc(pc, dayKey);
 
-  
-  updateCopyInitialButtonState(pc, dayKey, cashSalesNio);
+  // Candado del día: oficial por dayLocks. Compatibilidad legacy: day.closedAt (cierres viejos desde Caja Chica).
+  let lock = null;
+  try{ lock = await getDayLockRecordPOS(evId, dayKey); }catch(e){ lock = null; }
+  const isClosed = !!((lock && lock.isClosed) || (day && day.closedAt));
+  const readOnlyDay = hist || isClosed;
 
-  const readOnlyDay = hist || !!day.closedAt;
+  // Botón "Copiar Inicial → Arqueo final" también debe respetar el candado oficial.
+  await updateCopyInitialButtonState(pc, dayKey, cashSalesNio, { isClosed });
+
   renderPettyMovements(pc, dayKey, readOnlyDay);
 
   if (!hist){
@@ -10286,7 +10390,7 @@ async function renderCajaChica(){
   const check = await getPettyCloseCheck(evId, pc, dayKey, cashSalesNio, fx);
   renderPettyCloseUI(check, hist);
 
-  setPettyReadOnly(readOnlyDay, (!hist && !!day.closedAt));
+  setPettyReadOnly(readOnlyDay, false);
   updatePcFinSyncUI(ev, true, readOnlyDay);
 }
 
@@ -10449,14 +10553,25 @@ function getPettyMovementsNet(day){
   return { netNio: round2(netNio), netUsd: round2(netUsd), hasMov };
 }
 
-function updateCopyInitialButtonState(pc, dayKey, cashSalesNio){
+async function updateCopyInitialButtonState(pc, dayKey, cashSalesNio, opts){
   const btn = document.getElementById('pc-btn-copy-initial');
   if (!btn) return;
 
   const day = (pc && dayKey) ? ensurePcDay(pc, dayKey) : null;
 
   // Bloquear en histórico o cuando el día ya está cerrado.
-  const isRO = isPettyHistoryMode() || !!(day && day.closedAt);
+  const o = opts || {};
+  let isClosed = !!o.isClosed;
+  if (!isClosed && o.eventId != null){
+    try{
+      const lock = await getDayLockRecordPOS(o.eventId, dayKey);
+      isClosed = !!(lock && lock.isClosed);
+    }catch(e){ }
+  }
+  // Compat legacy: day.closedAt (cierres viejos desde Caja Chica)
+  if (!isClosed) isClosed = !!(day && day.closedAt);
+
+  const isRO = isPettyHistoryMode() || isClosed;
   if (isRO){
     btn.disabled = true;
     btn.title = isPettyHistoryMode()
@@ -10685,7 +10800,7 @@ async function onCopyPettyInitialToFinal(){
   const check = await getPettyCloseCheck(evId, pc, dayKey, cashSalesNio, fx);
   renderPettyCloseUI(check, false);
 
-  updateCopyInitialButtonState(pc, dayKey, cashSalesNio);
+  await updateCopyInitialButtonState(pc, dayKey, cashSalesNio, { eventId: evId });
   toast('Arqueo final copiado desde el saldo inicial');
 }
 
@@ -11367,19 +11482,11 @@ const btnAddMov = document.getElementById('pc-mov-add');
     });
   }
 
-  const btnCloseDay = document.getElementById('pc-btn-close-day');
-  if (btnCloseDay){
-    btnCloseDay.addEventListener('click', (e)=>{
+  const btnGoResumen = document.getElementById('pc-btn-go-resumen');
+  if (btnGoResumen){
+    btnGoResumen.addEventListener('click', (e)=>{
       e.preventDefault();
-      onClosePettyDay();
-    });
-  }
-
-  const btnReopenDay = document.getElementById('pc-btn-reopen-day');
-  if (btnReopenDay){
-    btnReopenDay.addEventListener('click', (e)=>{
-      e.preventDefault();
-      onReopenPettyDay();
+      setTab('resumen');
     });
   }
 
