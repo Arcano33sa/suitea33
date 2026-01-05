@@ -5631,6 +5631,21 @@ async function createPosDailyCloseEntry(closure, data) {
   if (costoCortesiasTotal > 0) lines.push({ accountCode: courtesyExpenseCode, debe: costoCortesiasTotal, haber: 0 });
   if (costoTotalSalidaInventario > 0) lines.push({ accountCode: inventoryAccountCode, debe: 0, haber: costoTotalSalidaInventario });
 
+  // Caja Chica consolidada (Etapa 2): se importa como parte del mismo POS_DAILY_CLOSE
+  // Egresos: Gastos (DEBE) vs Caja eventos (HABER)
+  // Ingresos: Caja eventos (DEBE) vs Otros ingresos (HABER)
+  const petty = closure?.totals?.pettyCash || null;
+  const pcEgresos = n2(petty?.egresosNio);
+  const pcIngresos = n2(petty?.ingresosNio);
+  if (pcEgresos > 0) {
+    lines.push({ accountCode: '6100', debe: pcEgresos, haber: 0 });
+    lines.push({ accountCode: '1110', debe: 0, haber: pcEgresos });
+  }
+  if (pcIngresos > 0) {
+    lines.push({ accountCode: '1110', debe: pcIngresos, haber: 0 });
+    lines.push({ accountCode: '7100', debe: 0, haber: pcIngresos });
+  }
+
   const totalDebe = n2(lines.reduce((s, ln) => s + n0(ln.debe), 0));
   const totalHaber = n2(lines.reduce((s, ln) => s + n0(ln.haber), 0));
 
@@ -5668,6 +5683,14 @@ async function createPosDailyCloseEntry(closure, data) {
       courtesyAccountCode: '6105',
       inventoryAccountCode: '1500'
     },
+    posPettyCash: petty ? {
+      ingresosNio: pcIngresos,
+      egresosNio: pcEgresos,
+      ingresosUsd: n2(petty.ingresosUsd),
+      egresosUsd: n2(petty.egresosUsd),
+      fxRateUsed: petty.fxRateUsed || null,
+      hasUsd: !!petty.hasUsd
+    } : null,
     posSnapshot: { key: closure.key || null, createdAt: closure.createdAt || null, meta: closure.meta || null, totals: { totalGeneral, totalMismatch } },
     importedAt: Date.now()
   };

@@ -568,6 +568,11 @@ async function resolvePettyCashIncomeAccountCode(){
 }
 
 async function postPettyCashMovementToFinanzas(eventId, dayKey, mov){
+  // Etapa 2 (POS→Finanzas): Caja Chica ya NO postea movimientos individuales.
+  // Se consolida dentro del cierre diario POS_DAILY_CLOSE (1 asiento por día/evento).
+  // Mantener esta función como NO-OP evita romper UX y conserva auditoría interna en POS.
+  return;
+
   if (!eventId || !mov) return;
 
   const mvDate = String(mov.date || dayKey || '').slice(0,10);
@@ -3637,6 +3642,122 @@ async function getDailyClosureByKeyPOS(key){
   }
 }
 
+// --- POS→Finanzas (Etapa 2): Caja Chica se consolida dentro del cierre diario (POS_DAILY_CLOSE)
+function pcIsRevertedOrHasReversalPOS(mov, allMovs){
+  if (!mov) return true;
+  if (mov.isReversal) return true;
+  if (mov.isAdjusted || mov.isReverted || mov.reversedBy != null) return true;
+  const oid = Number(mov.id);
+  if (!Number.isFinite(oid)) return false;
+  const arr = Array.isArray(allMovs) ? allMovs : [];
+  return arr.some(r => r && r.isReversal && Number(r.reversalOf) === oid);
+}
+
+function pcHasPendingTransfersPOS(day){
+  const movs = (day && Array.isArray(day.movements)) ? day.movements : [];
+  const eps = 0.005;
+  for (const m of movs){
+    if (!m || !m.isTransfer) continue;
+    const amt = Number(m.amount || 0);
+    if (!Number.isFinite(amt) || Math.abs(amt) <= eps) continue;
+    if (!pcIsRevertedOrHasReversalPOS(m, movs)) return true;
+  }
+  return false;
+}
+
+async function buildPettyCashAccountingBlockForClosePOS(event, eventId, dayKey){
+  if (!event || !eventPettyEnabled(event)) return { enabled:false, totals:null, breakdown:null };
+
+  const pc = await getPettyCash(eventId);
+  const day = ensurePcDay(pc, dayKey);
+  const movs = (day && Array.isArray(day.movements)) ? day.movements : [];
+
+  // Seguridad: transferencias requieren cuentas destino (Banco/Caja general). Si hay pendientes, bloqueamos.
+  if (pcHasPendingTransfersPOS(day)){
+    throw new Error('No se puede cerrar: Caja Chica tiene transferencias sin revertir. Esta etapa no define cuentas destino (Banco/Caja general) para importarlas en Finanzas. Revertí esas transferencias o esperá la siguiente etapa.');
+  }
+
+  const fxRaw = Number(event.fxRate || 0);
+  const fxRate = (Number.isFinite(fxRaw) && fxRaw > 0) ? fxRaw : null;
+
+  const eps = 0.005;
+  const hasUsd = movs.some(m => m && String(m.currency || '').toUpperCase() === 'USD' && Math.abs(Number(m.amount || 0)) > eps);
+  if (hasUsd && !(fxRate && fxRate > 0)){
+    throw new Error('No se puede cerrar: Caja Chica tiene movimientos en USD y falta definir el tipo de cambio (USD → C$) en el evento.');
+  }
+
+  let inNio = 0, outNio = 0, inUsd = 0, outUsd = 0;
+  let regInNio = 0, regOutNio = 0, regInUsd = 0, regOutUsd = 0, regCount = 0;
+  let adjInNio = 0, adjOutNio = 0, adjInUsd = 0, adjOutUsd = 0, adjCount = 0;
+  let included = 0;
+
+  for (const m of movs){
+    if (!m) continue;
+    const isRev = !!m.isReversal;
+    const ro = isRev ? (m.reversalOriginal || null) : null;
+    const isTransfer = !!(m.isTransfer || (ro && ro.isTransfer));
+    if (isTransfer) continue; // transferencias ya fueron validadas arriba
+
+    const amt = Number(m.amount || 0);
+    if (!Number.isFinite(amt) || Math.abs(amt) <= eps) continue;
+
+    const currency = (String(m.currency || 'NIO').toUpperCase() === 'USD') ? 'USD' : 'NIO';
+    const dir = (String(m.type || '').toLowerCase() === 'salida') ? 'out' : 'in';
+
+    const isAdjust = !!(m.isAdjust || (ro && ro.isAdjust) || (String(m.uiType || '').toLowerCase() === 'ajuste') || (ro && String(ro.uiType || '').toLowerCase() === 'ajuste'));
+    const isRegular = !isAdjust;
+
+    if (currency === 'USD'){
+      if (dir === 'in'){ inUsd += amt; if (isRegular){ regInUsd += amt; regCount++; } else { adjInUsd += amt; adjCount++; } }
+      else { outUsd += amt; if (isRegular){ regOutUsd += amt; regCount++; } else { adjOutUsd += amt; adjCount++; } }
+    } else {
+      if (dir === 'in'){ inNio += amt; if (isRegular){ regInNio += amt; regCount++; } else { adjInNio += amt; adjCount++; } }
+      else { outNio += amt; if (isRegular){ regOutNio += amt; regCount++; } else { adjOutNio += amt; adjCount++; } }
+    }
+    included++;
+  }
+
+  const ingresosNio = round2(inNio + (fxRate ? (inUsd * fxRate) : 0));
+  const egresosNio = round2(outNio + (fxRate ? (outUsd * fxRate) : 0));
+
+  const totals = {
+    enabled: true,
+    ingresosNio,
+    egresosNio,
+    ingresosNioOriginal: round2(inNio),
+    egresosNioOriginal: round2(outNio),
+    ingresosUsd: round2(inUsd),
+    egresosUsd: round2(outUsd),
+    fxRateUsed: fxRate || null,
+    hasUsd: !!hasUsd,
+    movementCountIncluded: included
+  };
+
+  const breakdown = {
+    dateKey: safeYMD(dayKey),
+    fxRateUsed: fxRate || null,
+    hasUsd: !!hasUsd,
+    movementCount: movs.length,
+    movementCountIncluded: included,
+    regular: {
+      count: regCount,
+      inNio: round2(regInNio),
+      outNio: round2(regOutNio),
+      inUsd: round2(regInUsd),
+      outUsd: round2(regOutUsd)
+    },
+    ajustes: {
+      count: adjCount,
+      inNio: round2(adjInNio),
+      outNio: round2(adjOutNio),
+      inUsd: round2(adjInUsd),
+      outUsd: round2(adjOutUsd)
+    }
+  };
+
+  return { enabled:true, totals, breakdown };
+}
+
 async function closeDailyPOS({ event, dateKey, source }){
   if (!event || event.id == null) throw new Error('No hay evento válido para cerrar el día.');
   const eventId = Number(event.id);
@@ -3656,6 +3777,10 @@ async function closeDailyPOS({ event, dateKey, source }){
   const version = maxV + 1;
 
   const snapshot = await computeDailySnapshotFromSalesPOS(eventId, dk);
+
+  // Caja Chica: consolidación contable dentro del cierre (si está activa)
+  const pcBlock = await buildPettyCashAccountingBlockForClosePOS(event, eventId, dk);
+
   const closureId = genClosureIdPOS();
   const key = makeDailyClosureKeyPOS(eventId, dk, version);
   const createdAt = Date.now();
@@ -3681,10 +3806,13 @@ async function closeDailyPOS({ event, dateKey, source }){
       costoCortesiasTotal: snapshot.costoCortesiasTotal,
       costoTotalSalidaInventario: snapshot.costoTotalSalidaInventario,
       // (Opcional) auditoría: desglose por producto/presentación
-      costBreakdown: snapshot.costBreakdown
+      costBreakdown: snapshot.costBreakdown,
+      // Caja Chica (Etapa 2): se consolida aquí para que Finanzas reciba 1 asiento por día/evento
+      pettyCash: (pcBlock && pcBlock.enabled) ? pcBlock.totals : null
     },
     meta: {
-      counts: snapshot.counts
+      counts: snapshot.counts,
+      pettyCashBreakdown: (pcBlock && pcBlock.enabled) ? pcBlock.breakdown : null
     }
   };
 
