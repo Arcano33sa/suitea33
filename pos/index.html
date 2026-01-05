@@ -852,7 +852,7 @@
 
     <!-- Resumen · Clientes (MVP) -->
     <div class="row">
-      <div class="card customers-card">
+      <div class="card customers-card full">
         <h3>Clientes</h3>
 
         <div class="customers-kpis">
@@ -861,7 +861,7 @@
         </div>
 
         <table id="tbl-top-clientes">
-          <thead><tr><th>Cliente</th><th>Total vendido</th><th>Compras</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Vendido</th><th>Compras</th></tr></thead>
           <tbody></tbody>
         </table>
 
@@ -904,27 +904,8 @@
 
 
 
-    <div class="card courtesy-card">
-      <h3>Cortesías</h3>
-
-      <div class="courtesy-kpis">
-        <div><b>Costo real total:</b> C$ <span id="courtesy-total-cost">0</span></div>
-        <div><b>Cantidad total:</b> <span id="courtesy-total-qty">0</span> <span class="muted">(unidades)</span></div>
-        <div><b>Movimientos:</b> <span id="courtesy-total-tx">0</span></div>
-        <div><b>Valor equivalente en ventas:</b> C$ <span id="courtesy-total-equiv">0</span></div>
-      </div>
-
-      <div class="table-scroll">
-        <table id="tbl-courtesy-byprod">
-          <thead><tr><th>Producto</th><th>Cant.</th><th>Costo total</th><th>Equivalente</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="info"><small>Nota: el “equivalente” es informativo (precio lista si existe). Arriba solo se refleja el impacto real en utilidad.</small></div>
-    </div>
     <div class="row">
-      <div class="card">
+      <div class="card full">
         <h3>Transferencias por banco</h3>
         <table id="tbl-transfer-bank">
           <thead><tr><th>Banco</th><th>Total</th><th>#</th></tr></thead>
@@ -932,7 +913,30 @@
         </table>
       </div>
     </div>
-  </section>
+  
+    <div class="row">
+      <div class="card courtesy-card full">
+            <h3>Cortesías</h3>
+
+            <div class="courtesy-kpis">
+              <div><b>Costo real total:</b> C$ <span id="courtesy-total-cost">0</span></div>
+              <div><b>Cantidad total:</b> <span id="courtesy-total-qty">0</span> <span class="muted">(unidades)</span></div>
+              <div><b>Movimientos:</b> <span id="courtesy-total-tx">0</span></div>
+              <div><b>Valor equivalente en ventas:</b> C$ <span id="courtesy-total-equiv">0</span></div>
+            </div>
+
+            <div class="table-scroll">
+              <table id="tbl-courtesy-byprod">
+                <thead><tr><th>Producto</th><th>Cant.</th><th>Costo total</th><th>Equivalente</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="info"><small>Nota: el “equivalente” es informativo (precio lista si existe). Arriba solo se refleja el impacto real en utilidad.</small></div>
+          </div>
+    
+    </div>
+</section>
 
   <section id="tab-productos" class="tab card" style="display:none">
     <h2>Productos</h2>

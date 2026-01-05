@@ -25,6 +25,7 @@ label{font-size:13px;color:var(--muted);display:block;margin:8px 0 6px}
 input,select,button,textarea{width:100%;padding:12px;border-radius:12px;border:1px solid #333;background:#141414;color:#f0f0f0;font-size:16px;line-height:1.2}
 input[type="date"]{padding:10px}
 .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:end}
+.row .card.full{grid-column:1 / -1}
 .row3{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:12px}
 .row4{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:12px}
 /* Permite que inputs/selects/botones dentro de grid/flex puedan encogerse sin desbordar */
@@ -908,6 +909,10 @@ small.muted{color:var(--muted)}
 #tbl-top-clientes th:nth-child(3), #tbl-top-clientes td:nth-child(3){width:20%;white-space:nowrap}
 #tbl-top-clientes tbody tr{cursor:pointer}
 #tbl-top-clientes tbody tr:active{filter:brightness(.98)}
+#tbl-top-clientes th:nth-child(2), #tbl-top-clientes th:nth-child(3){overflow:hidden;text-overflow:ellipsis}
+#tbl-top-clientes th:nth-child(2), #tbl-top-clientes td:nth-child(2),
+#tbl-top-clientes th:nth-child(3), #tbl-top-clientes td:nth-child(3){text-align:right}
+
 
 /* --- Resumen: controles de período y archivo --- */
 .summary-controls{
