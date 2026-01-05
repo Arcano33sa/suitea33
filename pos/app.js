@@ -5041,6 +5041,37 @@ async function refreshEventUI(){
     else chkSel.value = '';
   }
 
+  // Selector de evento en Resumen (Cierre diario): mostrar solo eventos activos
+  const sumSel = document.getElementById('summary-close-event');
+  if (sumSel){
+    const actives = evs.filter(e=>!e.closedAt);
+    const curEv = evs.find(e=> current && e.id == current) || null;
+
+    sumSel.innerHTML = '<option value="">— Selecciona evento —</option>';
+    for (const ev of actives){
+      const o = document.createElement('option');
+      o.value = ev.id;
+      o.textContent = ev.name;
+      sumSel.appendChild(o);
+    }
+
+    // Si el evento actual está cerrado, lo mostramos como opción (solo lectura) para que no desaparezca.
+    if (curEv && curEv.closedAt && !actives.some(e=>e.id===curEv.id)){
+      const o = document.createElement('option');
+      o.value = curEv.id;
+      o.textContent = (curEv.name || 'Evento') + ' (cerrado)';
+      o.disabled = true;
+      sumSel.appendChild(o);
+    }
+
+    if (current && Array.from(sumSel.options).some(o=> String(o.value) === String(current))){
+      sumSel.value = current;
+    } else {
+      sumSel.value = '';
+    }
+    sumSel.disabled = (actives.length === 0);
+  }
+
   await updateSellEnabled();
   try{ await refreshProductSelect({ keepSelection:true }); }catch(e){ try{ await renderProductChips(); }catch(_){ } }
   try{ await renderExtrasUI(); }catch(e){}
@@ -7702,7 +7733,7 @@ async function renderSummaryDailyCloseCardPOS(){
   if (!card) return;
 
   const statusEl = document.getElementById('summary-close-status');
-  const nameEl = document.getElementById('summary-close-event-name');
+  const eventSel = document.getElementById('summary-close-event');
   const dateEl = document.getElementById('summary-close-date');
   const btnClose = document.getElementById('btn-summary-close-day');
   const btnReopen = document.getElementById('btn-summary-reopen-day');
@@ -7718,7 +7749,13 @@ async function renderSummaryDailyCloseCardPOS(){
   }
   const dayKey = safeYMD(dateEl ? dateEl.value : (saleDate || todayYMD()));
 
-  if (nameEl) nameEl.textContent = ev ? String(ev.name || '—') : 'Sin evento activo';
+  // Mantener selector sincronizado con el evento activo global
+  if (eventSel){
+    const want = currentEventId ? String(currentEventId) : '';
+    const has = want && Array.from(eventSel.options).some(o=> String(o.value) === want);
+    if (has) eventSel.value = want;
+    else eventSel.value = '';
+  }
 
   // Defaults
   if (btnClose){ btnClose.disabled = true; btnClose.style.display = ''; }
@@ -7730,7 +7767,7 @@ async function renderSummaryDailyCloseCardPOS(){
     if (statusEl){ statusEl.className = 'pill'; statusEl.textContent = '—'; }
     if (btnClose) btnClose.disabled = true;
     if (btnReopen) btnReopen.disabled = true;
-    if (noteEl){ noteEl.style.display = 'block'; noteEl.textContent = 'Activa un evento en “Vender” para poder cerrar o reabrir el día.'; }
+    if (noteEl){ noteEl.style.display = 'block'; noteEl.textContent = 'Selecciona un evento aquí para poder cerrar o reabrir el día.'; }
     return;
   }
 
@@ -7854,7 +7891,7 @@ function showSummaryCloseBlockerPOS({ headline, diffNio, diffUsd, usdActive }){
 async function onSummaryCloseDayPOS(){
   const evId = await getMeta('currentEventId');
   if (!evId){
-    showToast('Activa un evento para cerrar el día.', 'error', 4000);
+    showToast('Selecciona un evento para cerrar el día.', 'error', 4000);
     return;
   }
   const ev = await getEventByIdPOS(evId);
@@ -7920,7 +7957,7 @@ async function onSummaryCloseDayPOS(){
 async function onSummaryReopenDayPOS(){
   const evId = await getMeta('currentEventId');
   if (!evId){
-    showToast('Activa un evento para reabrir el día.', 'error', 4000);
+    showToast('Selecciona un evento para reabrir el día.', 'error', 4000);
     return;
   }
   const ev = await getEventByIdPOS(evId);
@@ -7962,6 +7999,21 @@ function bindSummaryDailyClosePOS(){
     dateEl.addEventListener('change', ()=>{
       try{ dateEl.dataset.userSet = '1'; }catch(_){ }
       renderSummaryDailyCloseCardPOS();
+    });
+  }
+
+  // Selector de evento en Resumen (Cierre diario)
+  const sumEv = document.getElementById('summary-close-event');
+  if (sumEv){
+    sumEv.addEventListener('change', ()=>{
+      (async()=>{
+        const val = sumEv.value;
+        if (val === '') { await setMeta('currentEventId', null); }
+        else { await setMeta('currentEventId', parseInt(val,10)); }
+        await refreshEventUI();
+        try{ await renderDay(); }catch(e){}
+        try{ await renderSummaryDailyCloseCardPOS(); }catch(e){}
+      })();
     });
   }
 

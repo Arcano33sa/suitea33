@@ -792,8 +792,10 @@
       </div>
       <div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap; margin-top:10px;">
         <div style="min-width:220px;">
-          <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;">Evento activo</label>
-          <div id="summary-close-event-name" style="font-weight:800;">—</div>
+	          <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;" for="summary-close-event">Evento activo</label>
+	          <select id="summary-close-event" aria-label="Evento activo">
+	            <option value="">— Selecciona evento —</option>
+	          </select>
         </div>
         <div>
           <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;" for="summary-close-date">Fecha</label>
