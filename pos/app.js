@@ -1,7 +1,14 @@
 // --- IndexedDB helpers POS
 const DB_NAME = 'a33-pos';
-const DB_VER = 24; // + cierres diarios (snapshot) + candado por día/evento
+const DB_VER = 25; // + summaryArchives (archivo de períodos) + secuencia de export
 let db;
+
+// --- Resumen: modo de vista (por período vs todo)
+let __A33_SUMMARY_VIEW_MODE = 'period'; // 'period' | 'all'
+
+// --- Resumen: modo (en vivo vs archivo snapshot)
+let __A33_SUMMARY_MODE = 'live'; // 'live' | 'archive'
+let __A33_ACTIVE_ARCHIVE = null; // registro de summaryArchives activo
 
 // --- Finanzas: conexión a finanzasDB para asientos automáticos
 const FIN_DB_NAME = 'finanzasDB';
@@ -97,6 +104,14 @@ function openDB() {
         try { c.createIndex('by_event_date', ['eventId','dateKey'], { unique: false }); } catch {}
         try { c.createIndex('by_event_date_version', ['eventId','dateKey','version'], { unique: true }); } catch {}
         try { c.createIndex('by_createdAt', 'createdAt', { unique: false }); } catch {}
+      }
+
+      // summaryArchives: archivo de períodos (snapshot de Resumen + metadata)
+      if (!d.objectStoreNames.contains('summaryArchives')) {
+        const a = d.createObjectStore('summaryArchives', { keyPath: 'id' });
+        try { a.createIndex('by_periodKey', 'periodKey', { unique: false }); } catch {}
+        try { a.createIndex('by_createdAt', 'createdAt', { unique: false }); } catch {}
+        try { a.createIndex('by_seq', 'seq', { unique: false }); } catch {}
       }
     };
     req.onsuccess = () => { db = req.result; resolve(db); };
@@ -792,7 +807,20 @@ async function postPettyCashMovementToFinanzas(eventId, dayKey, mov){
 
 function tx(name, mode='readonly'){ return db.transaction(name, mode).objectStore(name); }
 function getAll(name){ return new Promise((res,rej)=>{ const r=tx(name).getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); }); }
+function getOne(name, key){ return new Promise((res,rej)=>{ try{ const r=tx(name).get(key); r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error); }catch(err){ rej(err); } }); }
 function put(name, val){ return new Promise((res,rej)=>{ const r=tx(name,'readwrite').put(val); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function clearStore(name){
+  return new Promise((res,rej)=>{
+    try{
+      const t = db.transaction([name], 'readwrite');
+      const st = t.objectStore(name);
+      try{ st.clear(); }catch(err){ rej(err); return; }
+      t.oncomplete = ()=>res(true);
+      t.onerror = ()=>rej(t.error);
+      t.onabort = ()=>rej(t.error || new Error('Transacción abortada limpiando ' + name));
+    }catch(err){ rej(err); }
+  });
+}
 function del(name, key){
   // Borrado robusto (especialmente para 'sales'):
   // - Evita TransactionInactiveError (no dejamos una tx abierta esperando promesas externas)
@@ -7293,10 +7321,250 @@ function initSummaryCustomerFilterPOS(){
   }
 }
 
+// -----------------------------
+// Resumen · Modo Archivo (snapshot)
+// -----------------------------
+
+function readSheetRowsPOS(sheets, sheetName){
+  const name = (sheetName || '').toString().trim().toLowerCase();
+  const sh = (sheets || []).find(s => s && (s.name || '').toString().trim().toLowerCase() === name);
+  return (sh && Array.isArray(sh.rows)) ? sh.rows : [];
+}
+
+function applySummaryArchiveGuardsPOS(){
+  const inArchive = (__A33_SUMMARY_MODE === 'archive');
+
+  // Período selector y botón "Todo" (no aplica en Archivo)
+  const periodEl = document.getElementById('summary-period');
+  const btnAll = document.getElementById('btn-summary-all');
+  if (periodEl) periodEl.disabled = inArchive;
+  if (btnAll) btnAll.disabled = inArchive;
+
+  if (inArchive && __A33_ACTIVE_ARCHIVE){
+    const pk = String(__A33_ACTIVE_ARCHIVE.periodKey || (__A33_ACTIVE_ARCHIVE.snapshot && __A33_ACTIVE_ARCHIVE.snapshot.periodKey) || '').trim();
+    if (periodEl && pk && /^\d{4}-\d{2}$/.test(pk)){
+      try{ periodEl.value = pk; }catch(_){ }
+    }
+    // Mantener estado coherente (Archivo no usa "Todo")
+    __A33_SUMMARY_VIEW_MODE = 'period';
+  }
+
+  // Bloquear/ocultar acciones que cambian data operativa
+  const hideIds = ['btn-summary-close-day','btn-summary-reopen-day','btn-summary-close-period'];
+  for (const id of hideIds){
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (el.dataset && el.dataset.prevDisplay == null) el.dataset.prevDisplay = el.style.display || '';
+    if (el.dataset && el.dataset.prevDisabled == null) el.dataset.prevDisabled = el.disabled ? '1' : '0';
+    if (inArchive){
+      try{ el.disabled = true; }catch(_){ }
+      el.style.display = 'none';
+    } else {
+      el.style.display = (el.dataset && el.dataset.prevDisplay != null) ? (el.dataset.prevDisplay || '') : '';
+      try{ el.disabled = (el.dataset && el.dataset.prevDisabled === '1'); }catch(_){ }
+    }
+  }
+
+  // Ocultar tarjeta de cierre diario en modo Archivo
+  const dailyCard = document.getElementById('summary-daily-close-card');
+  if (dailyCard){
+    if (dailyCard.dataset && dailyCard.dataset.prevDisplay == null) dailyCard.dataset.prevDisplay = dailyCard.style.display || '';
+    dailyCard.style.display = inArchive ? 'none' : ((dailyCard.dataset && dailyCard.dataset.prevDisplay != null) ? (dailyCard.dataset.prevDisplay || '') : '');
+  }
+
+  // Ocultar filtros de cliente en modo Archivo (no forman parte del snapshot)
+  const customerCard = document.querySelector('.summary-customer-card');
+  if (customerCard){
+    if (customerCard.dataset && customerCard.dataset.prevDisplay == null) customerCard.dataset.prevDisplay = customerCard.style.display || '';
+    customerCard.style.display = inArchive ? 'none' : ((customerCard.dataset && customerCard.dataset.prevDisplay != null) ? (customerCard.dataset.prevDisplay || '') : '');
+  }
+}
+
+function renderSummaryFromSnapshotPOS(archive){
+  const a = archive || {};
+  const snap = (a.snapshot && typeof a.snapshot === 'object') ? a.snapshot : {};
+  const sheets = Array.isArray(snap.sheets) ? snap.sheets : [];
+  const m = (snap.metrics && typeof snap.metrics === 'object') ? snap.metrics : {};
+
+  const grand = Number(m.grand || 0) || 0;
+  const grandCost = Number(m.grandCost || 0) || 0;
+  const grandProfit = Number(m.grandProfit || 0) || 0;
+  const courtesyCost = Number(m.courtesyCost || 0) || 0;
+  const courtesyQty = Number(m.courtesyQty || 0) || 0;
+  const courtesyTx = Number(m.courtesyTx || 0) || 0;
+  const courtesyEquiv = Number(m.courtesyEquiv || 0) || 0;
+  const profitAfterCourtesy = (m.profitAfterCourtesy != null) ? Number(m.profitAfterCourtesy || 0) : (grandProfit - courtesyCost);
+
+  // KPIs
+  const grandTotalEl = document.getElementById('grand-total');
+  if (grandTotalEl) grandTotalEl.textContent = fmt(grand);
+  const costEl = document.getElementById('grand-cost');
+  if (costEl) costEl.textContent = fmt(grandCost);
+  const profitEl = document.getElementById('grand-profit');
+  if (profitEl) profitEl.textContent = fmt(grandProfit);
+  const courCostEl = document.getElementById('grand-courtesy-cost');
+  if (courCostEl) courCostEl.textContent = fmt(courtesyCost);
+  const profitAfterEl = document.getElementById('grand-profit-after-courtesy');
+  if (profitAfterEl) profitAfterEl.textContent = fmt(profitAfterCourtesy);
+
+  // Cortesías
+  const courTotalCostEl = document.getElementById('courtesy-total-cost');
+  if (courTotalCostEl) courTotalCostEl.textContent = fmt(courtesyCost);
+  const courTotalQtyEl = document.getElementById('courtesy-total-qty');
+  if (courTotalQtyEl) courTotalQtyEl.textContent = String(Math.round(courtesyQty));
+  const courTotalEquivEl = document.getElementById('courtesy-total-equiv');
+  if (courTotalEquivEl) courTotalEquivEl.textContent = fmt(courtesyEquiv);
+  const courTxEl = document.getElementById('courtesy-total-tx');
+  if (courTxEl) courTxEl.textContent = String(courtesyTx);
+
+  // Clientes (no disponible en snapshot): placeholders
+  const uniqueCustomersEl = document.getElementById('summary-customers-unique');
+  if (uniqueCustomersEl) uniqueCustomersEl.textContent = '—';
+  const salesWithCustomerEl = document.getElementById('summary-sales-with-customer');
+  if (salesWithCustomerEl) salesWithCustomerEl.textContent = '—';
+  const salesWithCustomerPctEl = document.getElementById('summary-sales-with-customer-pct');
+  if (salesWithCustomerPctEl) salesWithCustomerPctEl.textContent = '—';
+
+  const topCustomersBody = document.querySelector('#tbl-top-clientes tbody');
+  if (topCustomersBody){
+    topCustomersBody.innerHTML = '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="3" class="muted">(no disponible en snapshot)</td>';
+    topCustomersBody.appendChild(tr);
+  }
+
+  // Tablas desde hojas
+  const byEventRows = readSheetRowsPOS(sheets, 'PorEvento').slice(1)
+    .map(r=>({ k: String((r&&r[0])||'').trim(), v: Number((r&&r[1])||0) || 0 }))
+    .filter(it=>it.k);
+  byEventRows.sort((a,b)=>a.k.localeCompare(b.k,'es-NI'));
+
+  const tbE = document.querySelector('#tbl-por-evento tbody');
+  if (tbE){
+    tbE.innerHTML = '';
+    for (const it of byEventRows){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(it.k)}</td><td>${fmt(it.v)}</td>`;
+      tbE.appendChild(tr);
+    }
+  }
+
+  const byDayRows = readSheetRowsPOS(sheets, 'PorDia').slice(1)
+    .map(r=>({ k: String((r&&r[0])||'').trim(), v: Number((r&&r[1])||0) || 0 }))
+    .filter(it=>it.k);
+  byDayRows.sort((a,b)=>String(b.k).localeCompare(String(a.k)));
+
+  const tbD = document.querySelector('#tbl-por-dia tbody');
+  if (tbD){
+    tbD.innerHTML = '';
+    for (const it of byDayRows){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(it.k)}</td><td>${fmt(it.v)}</td>`;
+      tbD.appendChild(tr);
+    }
+  }
+
+  const byProdRows = readSheetRowsPOS(sheets, 'PorProducto').slice(1)
+    .map(r=>({ k: String((r&&r[0])||'').trim(), v: Number((r&&r[1])||0) || 0 }))
+    .filter(it=>it.k);
+  byProdRows.sort((a,b)=>a.k.localeCompare(b.k,'es-NI'));
+
+  const tbP = document.querySelector('#tbl-por-prod tbody');
+  if (tbP){
+    tbP.innerHTML = '';
+    for (const it of byProdRows){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(it.k)}</td><td>${fmt(it.v)}</td>`;
+      tbP.appendChild(tr);
+    }
+  }
+
+  const byPayRows = readSheetRowsPOS(sheets, 'PorPago').slice(1)
+    .map(r=>({ k: String((r&&r[0])||'').trim(), v: Number((r&&r[1])||0) || 0 }))
+    .filter(it=>it.k);
+  byPayRows.sort((a,b)=>a.k.localeCompare(b.k,'es-NI'));
+
+  const tbPay = document.querySelector('#tbl-por-pago tbody');
+  if (tbPay){
+    tbPay.innerHTML = '';
+    for (const it of byPayRows){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(it.k)}</td><td>${fmt(it.v)}</td>`;
+      tbPay.appendChild(tr);
+    }
+  }
+
+  // Transferencias por banco
+  const tbBank = document.querySelector('#tbl-transfer-bank tbody');
+  if (tbBank){
+    tbBank.innerHTML = '';
+    const rows = readSheetRowsPOS(sheets, 'TransferenciasBanco').slice(1)
+      .map(r=>({ bank: String((r&&r[0])||'').trim(), total: Number((r&&r[1])||0)||0, count: Number((r&&r[2])||0)||0 }))
+      .filter(it=>it.bank);
+
+    if (rows.length){
+      rows.sort((a,b)=>String(a.bank).localeCompare(String(b.bank),'es-NI'));
+      for (const it of rows){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(it.bank)}</td><td>${fmt(it.total)}</td><td>${it.count||0}</td>`;
+        tbBank.appendChild(tr);
+      }
+    } else {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="3" class="muted">(sin transferencias)</td>';
+      tbBank.appendChild(tr);
+    }
+  }
+
+  // Cortesías por producto
+  const tbCour = document.querySelector('#tbl-courtesy-byprod tbody');
+  if (tbCour){
+    tbCour.innerHTML = '';
+    const rows = readSheetRowsPOS(sheets, 'Cortesias').slice(1)
+      .map(r=>({ name: String((r&&r[0])||'').trim(), qty: Number((r&&r[1])||0)||0, cost: Number((r&&r[2])||0)||0, equiv: Number((r&&r[3])||0)||0 }))
+      .filter(it=>it.name);
+
+    if (rows.length){
+      rows.sort((a,b)=>String(a.name).localeCompare(String(b.name),'es-NI'));
+      for (const it of rows){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(it.name)}</td>
+          <td>${Math.round(it.qty||0)}</td>
+          <td>${fmt(it.cost)}</td>
+          <td>${fmt(it.equiv)}</td>
+        `;
+        tbCour.appendChild(tr);
+      }
+    } else {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="4" class="muted">(sin cortesías)</td>';
+      tbCour.appendChild(tr);
+    }
+  }
+}
+
 async function renderSummary(){
-  const sales = await getAll('sales');
+  // Modo Archivo (snapshot): renderizar sin tocar stores operativos
+  if (__A33_SUMMARY_MODE === 'archive' && __A33_ACTIVE_ARCHIVE){
+    try{ renderSummaryFromSnapshotPOS(__A33_ACTIVE_ARCHIVE); }catch(err){ console.error('renderSummaryFromSnapshotPOS', err); }
+    try{ setSummaryModeBadgePOS(); }catch(_){ }
+    try{ syncSummaryPeriodLabelPOS(); }catch(_){ }
+    try{ applySummaryArchiveGuardsPOS(); }catch(_){ }
+    return;
+  }
+
+  let sales = await getAll('sales');
   const events = await getAll('events');
   const products = await getAll('products');
+
+  // Filtro por período (YYYY-MM) en Resumen
+  try{
+    const periodKey = getActiveSummaryPeriodFilterPOS();
+    if (periodKey){
+      sales = (sales || []).filter(s => isSaleInPeriodPOS(s, periodKey));
+    }
+  }catch(_){ }
 
   const productById = new Map();
   const productByName = new Map();
@@ -7726,11 +7994,19 @@ async function renderSummary(){
 
   // Cierre diario (tarjeta Resumen)
   try{ await renderSummaryDailyCloseCardPOS(); }catch(e){}
+  // Guardas por modo (restaura botones al salir de Archivo)
+  try{ applySummaryArchiveGuardsPOS(); }catch(_){ }
 }
 
 async function renderSummaryDailyCloseCardPOS(){
   const card = document.getElementById('summary-daily-close-card');
   if (!card) return;
+
+  // En modo Archivo no se muestran/validan cierres diarios
+  if (__A33_SUMMARY_MODE === 'archive'){
+    try{ card.style.display = 'none'; }catch(_){ }
+    return;
+  }
 
   const statusEl = document.getElementById('summary-close-status');
   const eventSel = document.getElementById('summary-close-event');
@@ -7889,6 +8165,10 @@ function showSummaryCloseBlockerPOS({ headline, diffNio, diffUsd, usdActive }){
 }
 
 async function onSummaryCloseDayPOS(){
+  if (__A33_SUMMARY_MODE === 'archive'){
+    showToast('Estás viendo un período archivado. Volvé a En vivo para cerrar el día.', 'error', 3500);
+    return;
+  }
   const evId = await getMeta('currentEventId');
   if (!evId){
     showToast('Selecciona un evento para cerrar el día.', 'error', 4000);
@@ -7955,6 +8235,10 @@ async function onSummaryCloseDayPOS(){
 }
 
 async function onSummaryReopenDayPOS(){
+  if (__A33_SUMMARY_MODE === 'archive'){
+    showToast('Estás viendo un período archivado. Volvé a En vivo para reabrir.', 'error', 3500);
+    return;
+  }
   const evId = await getMeta('currentEventId');
   if (!evId){
     showToast('Selecciona un evento para reabrir el día.', 'error', 4000);
@@ -8026,6 +8310,811 @@ function bindSummaryDailyClosePOS(){
   if (btnReopen){
     btnReopen.addEventListener('click', ()=>{ onSummaryReopenDayPOS(); });
   }
+}
+
+
+// -----------------------------
+// Resumen · Períodos: Cerrar Período + Archivo (snapshots)
+// -----------------------------
+
+const MONTHS_ES_POS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function pad3POS(n){
+  const x = Number(n || 0);
+  return String(Math.max(0, x)).padStart(3,'0');
+}
+
+function nowIsoPOS(){
+  try{ return new Date().toISOString(); }catch(_){ return '' + Date.now(); }
+}
+
+function periodKeyFromDatePOS(d){
+  try{
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2,'0');
+    return `${y}-${m}`;
+  }catch(_){
+    return '';
+  }
+}
+
+function getSummarySelectedPeriodKeyPOS(){
+  const el = document.getElementById('summary-period');
+  const v = (el && el.value) ? String(el.value).trim() : '';
+  if (v && /^\d{4}-\d{2}$/.test(v)) return v;
+  return periodKeyFromDatePOS(new Date());
+}
+
+function periodLabelPOS(periodKey){
+  const m = Number(String(periodKey || '').slice(5,7));
+  const y = String(periodKey || '').slice(0,4);
+  const month = (m >= 1 && m <= 12) ? MONTHS_ES_POS[m-1] : 'Mes';
+  return `${month} ${y}`.trim();
+}
+
+function periodFilePartPOS(periodKey){
+  const m = Number(String(periodKey || '').slice(5,7));
+  const y = String(periodKey || '').slice(0,4);
+  const month = (m >= 1 && m <= 12) ? MONTHS_ES_POS[m-1] : 'Mes';
+  return `${month}${y}`;
+}
+
+function setSummaryModeBadgePOS(){
+  const badge = document.getElementById('summary-mode-badge');
+  const btnBack = document.getElementById('btn-summary-back-live');
+  if (badge){
+    try{ badge.classList.remove('open','closed'); }catch(_){ }
+    if (__A33_SUMMARY_MODE === 'archive' && __A33_ACTIVE_ARCHIVE){
+      const a = __A33_ACTIVE_ARCHIVE || {};
+      const seq = a.seqStr || pad3POS(a.seq || 0);
+      const per = a.periodLabel || (a.snapshot && a.snapshot.periodLabel) || periodLabelPOS(a.periodKey || (a.snapshot && a.snapshot.periodKey) || '');
+      badge.textContent = `ARCHIVO: ${per} — ${seq}`;
+      try{ badge.classList.add('closed'); }catch(_){ }
+    } else {
+      if (__A33_SUMMARY_VIEW_MODE === 'all') badge.textContent = 'Todo';
+      else badge.textContent = 'En vivo';
+      try{ badge.classList.add('open'); }catch(_){ }
+    }
+  }
+  if (btnBack){
+    // Solo aparece cuando se está viendo un snapshot archivado
+    btnBack.style.display = (__A33_SUMMARY_MODE === 'archive') ? 'inline-flex' : 'none';
+  }
+}
+
+
+function syncSummaryPeriodLabelPOS(){
+  const lbl = document.getElementById('summary-period-label');
+  const hint = document.getElementById('summary-period-hint');
+  try{
+    if (__A33_SUMMARY_MODE === 'archive'){
+      if (lbl) lbl.textContent = '';
+      if (hint) hint.textContent = 'Viendo un período archivado (snapshot). Acciones de cierre bloqueadas.';
+      return;
+    }
+    if (__A33_SUMMARY_VIEW_MODE === 'all'){
+      if (lbl) lbl.textContent = 'Todo';
+      if (hint) hint.textContent = 'Mostrando todos los meses.';
+      return;
+    }
+    const pk = getSummarySelectedPeriodKeyPOS();
+    if (lbl) lbl.textContent = periodLabelPOS(pk);
+    if (hint) hint.textContent = 'Filtrando ventas por mes (YYYY-MM).';
+  }catch(_){ }
+}
+
+function openModalPOS(modalId){
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  modal.style.display = 'flex';
+}
+
+function closeModalPOS(modalId){
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  modal.style.display = 'none';
+}
+
+function setClosePeriodErrorPOS(msg){
+  const el = document.getElementById('summary-close-error');
+  if (!el) return;
+  el.style.whiteSpace = 'pre-wrap';
+  if (!msg){
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.style.display = 'block';
+  el.style.whiteSpace = 'pre-line';
+  el.textContent = msg;
+}
+
+async function listOpenEventsPOS(){
+  const events = await getAll('events');
+  return (events || []).filter(ev => ev && !ev.closedAt);
+}
+
+async function getArchiveByPeriodKeyPOS(periodKey){
+  const all = await getAll('summaryArchives');
+  const pk = String(periodKey || '').trim();
+  return (all || []).find(a => a && String(a.periodKey || '').trim() === pk) || null;
+}
+
+function isSaleInPeriodPOS(s, periodKey){
+  const d = String((s && s.date) || '');
+  return !!(periodKey && d.startsWith(periodKey + '-'));
+}
+
+async function computeSummaryDataForPeriodPOS(periodKey){
+  const salesAll = await getAll('sales');
+  const eventsAll = await getAll('events');
+  const products = await getAll('products');
+
+  const sales = (salesAll || []).filter(s => isSaleInPeriodPOS(s, periodKey));
+  const events = (eventsAll || []);
+
+  const productById = new Map();
+  const productByName = new Map();
+  for (const p of (products || [])){
+    if (!p) continue;
+    if (p.id != null) productById.set(Number(p.id), p);
+    if (p.name) productByName.set(String(p.name), p);
+  }
+
+  const isCourtesySale = (s) => !!(s && (s.courtesy || s.isCourtesy));
+  const normalizeCourtesyProductName = (name) => String(name || '—').replace(/\s*\(Cortesía\)\s*$/i, '').trim() || '—';
+
+  const getLineCost = (s) => {
+    if (!s) return 0;
+    if (typeof s.lineCost === 'number' && Number.isFinite(s.lineCost)) return Number(s.lineCost || 0);
+    if (typeof s.costPerUnit === 'number' && Number.isFinite(s.costPerUnit)){
+      const qty = Number(s.qty || 0);
+      return Number(s.costPerUnit || 0) * qty;
+    }
+    return 0;
+  };
+
+  const getListUnitPrice = (s) => {
+    if (!s) return 0;
+    const unit = Number(s.unitPrice || 0);
+    if (unit > 0) return unit;
+
+    const pid = (s.productId != null) ? Number(s.productId) : null;
+    if (pid != null && productById.has(pid)){
+      const p = productById.get(pid);
+      const pr = Number(p && p.price) || 0;
+      if (pr > 0) return pr;
+    }
+
+    const n = normalizeCourtesyProductName(s.productName || '');
+    if (n && productByName.has(n)){
+      const p = productByName.get(n);
+      const pr = Number(p && p.price) || 0;
+      if (pr > 0) return pr;
+    }
+
+    return 0;
+  };
+
+  const banks = await getAllBanksSafe();
+  const bankMap = new Map();
+  for (const b of banks){
+    if (b && b.id != null) bankMap.set(Number(b.id), b.name || '');
+  }
+
+  const transferByBank = new Map();
+
+  let grand = 0;
+  let grandCost = 0;
+  let grandProfit = 0;
+
+  let courtesyCost = 0;
+  let courtesyQty = 0;
+  let courtesyEquiv = 0;
+  let courtesyTx = 0;
+  const courtesyByProd = new Map();
+
+  const byDay = new Map();
+  const byProd = new Map();
+  const byPay = new Map();
+  const byEvent = new Map();
+
+  for (const s of (sales || [])){
+    if (!s) continue;
+    const total = Number(s.total || 0);
+    const courtesy = isCourtesySale(s);
+
+    if (!courtesy){
+      grand += total;
+      byDay.set(s.date, (byDay.get(s.date) || 0) + total);
+      byProd.set(s.productName, (byProd.get(s.productName) || 0) + total);
+      byPay.set(s.payment || 'efectivo', (byPay.get(s.payment || 'efectivo') || 0) + total);
+      byEvent.set(s.eventName || 'General', (byEvent.get(s.eventName || 'General') || 0) + total);
+
+      if ((s.payment || '') === 'transferencia'){
+        const label = getSaleBankLabel(s, bankMap);
+        const cur = transferByBank.get(label) || { total: 0, count: 0 };
+        cur.total += total;
+        cur.count += 1;
+        transferByBank.set(label, cur);
+      }
+
+      const lineCost = getLineCost(s);
+      let lineProfit = 0;
+      if (typeof s.lineProfit === 'number' && Number.isFinite(s.lineProfit)) {
+        lineProfit = Number(s.lineProfit || 0);
+      } else {
+        lineProfit = total - lineCost;
+      }
+      grandCost += lineCost;
+      grandProfit += lineProfit;
+    } else {
+      courtesyTx += 1;
+      const qRaw = Number(s.qty || 0);
+      const absQty = Math.abs(qRaw);
+      const sign = (s.isReturn || qRaw < 0) ? -1 : 1;
+
+      courtesyQty += absQty;
+
+      const lineCost = getLineCost(s);
+      courtesyCost += lineCost;
+
+      const listUnit = getListUnitPrice(s);
+      const eq = sign * absQty * listUnit;
+      courtesyEquiv += eq;
+
+      const pname = normalizeCourtesyProductName(s.productName);
+      const prev = courtesyByProd.get(pname) || { qty: 0, cost: 0, equiv: 0 };
+      prev.qty += absQty;
+      prev.cost += lineCost;
+      prev.equiv += eq;
+      courtesyByProd.set(pname, prev);
+    }
+  }
+
+  const profitAfterCourtesy = grandProfit - courtesyCost;
+
+  // Totales por evento (en el período) + status de evento
+  const eventTotals = new Map();
+  for (const [k, v] of byEvent.entries()) eventTotals.set(k, v);
+
+  // Transferencias por banco (ordenadas desc)
+  const transferList = Array.from(transferByBank.entries()).map(([bank, obj]) => ({ bank, total: obj.total || 0, count: obj.count || 0 }))
+    .sort((a,b)=> (Number(b.total||0) - Number(a.total||0)));
+
+  const courtesyList = Array.from(courtesyByProd.entries()).map(([name, o]) => ({ name, qty: o.qty || 0, cost: o.cost || 0, equiv: o.equiv || 0 }))
+    .sort((a,b)=> (Number(b.cost||0) - Number(a.cost||0)));
+
+  // Tablawt helper: para el Excel, listas ordenadas
+  const sortMapDesc = (m) => Array.from(m.entries()).map(([k,v])=>({ key:k, val:v }))
+    .sort((a,b)=> (Number(b.val||0) - Number(a.val||0)));
+  const sortMapDateAsc = (m) => Array.from(m.entries()).map(([k,v])=>({ key:k, val:v }))
+    .sort((a,b)=> String(a.key).localeCompare(String(b.key)));
+
+  return {
+    periodKey,
+    periodLabel: periodLabelPOS(periodKey),
+    metrics: {
+      grand,
+      grandCost,
+      grandProfit,
+      courtesyCost,
+      profitAfterCourtesy,
+      courtesyQty,
+      courtesyTx,
+      courtesyEquiv
+    },
+    byEvent: sortMapDesc(byEvent),
+    byDay: sortMapDateAsc(byDay),
+    byProd: sortMapDesc(byProd),
+    byPay: sortMapDesc(byPay),
+    transferByBank: transferList,
+    courtesyByProd: courtesyList,
+    events: events
+  };
+}
+
+function buildSummarySheetsFromDataPOS(data){
+  const sheets = [];
+  const m = data.metrics || {};
+
+  // Hoja Resumen
+  const r = [];
+  r.push(['Período', data.periodLabel || '']);
+  r.push(['PeriodKey', data.periodKey || '']);
+  r.push(['Exportado', nowIsoPOS()]);
+  r.push([]);
+  r.push(['Métrica', 'Monto C$']);
+  r.push(['Total general', m.grand || 0]);
+  r.push(['Costo estimado', m.grandCost || 0]);
+  r.push(['Utilidad bruta', m.grandProfit || 0]);
+  r.push(['Cortesías (Costo real)', m.courtesyCost || 0]);
+  r.push(['Utilidad después de cortesías', m.profitAfterCourtesy || 0]);
+  r.push([]);
+  r.push(['Cortesías (unidades)', m.courtesyQty || 0]);
+  r.push(['Cortesías (movimientos)', m.courtesyTx || 0]);
+  r.push(['Cortesías (equivalente ventas)', m.courtesyEquiv || 0]);
+  sheets.push({ name: 'Resumen', rows: r });
+
+  // Hoja PorEvento
+  const eRows = [['Evento','Total C$']];
+  for (const it of (data.byEvent || [])) eRows.push([it.key, it.val || 0]);
+  sheets.push({ name: 'PorEvento', rows: eRows });
+
+  // Hoja PorDia
+  const dRows = [['Fecha','Total C$']];
+  for (const it of (data.byDay || [])) dRows.push([it.key, it.val || 0]);
+  sheets.push({ name: 'PorDia', rows: dRows });
+
+  // Hoja PorProducto
+  const pRows = [['Producto','Total C$']];
+  for (const it of (data.byProd || [])) pRows.push([it.key, it.val || 0]);
+  sheets.push({ name: 'PorProducto', rows: pRows });
+
+  // Hoja PorPago
+  const payRows = [['Método','Total C$']];
+  for (const it of (data.byPay || [])) payRows.push([it.key, it.val || 0]);
+  sheets.push({ name: 'PorPago', rows: payRows });
+
+  // Hoja TransferenciasBanco
+  const tb = [['Banco','Total C$','Transacciones']];
+  for (const it of (data.transferByBank || [])) tb.push([it.bank, it.total || 0, it.count || 0]);
+  sheets.push({ name: 'TransferenciasBanco', rows: tb });
+
+  // Hoja Cortesias
+  const cRows = [['Producto','Cantidad','Costo total C$','Equivalente C$']];
+  for (const it of (data.courtesyByProd || [])) cRows.push([it.name, it.qty || 0, it.cost || 0, it.equiv || 0]);
+  sheets.push({ name: 'Cortesias', rows: cRows });
+
+  return sheets;
+}
+
+function writeWorkbookFromSheetsPOS(filename, sheets){
+  if (typeof XLSX === 'undefined'){
+    throw new Error('No se pudo generar el archivo de Excel (librería XLSX no cargada).');
+  }
+  const wb = XLSX.utils.book_new();
+  for (const sh of (sheets || [])){
+    const ws = XLSX.utils.aoa_to_sheet(sh.rows || []);
+    XLSX.utils.book_append_sheet(wb, ws, sh.name || 'Hoja');
+  }
+  XLSX.writeFile(wb, filename);
+}
+
+async function exportSummaryPeriodExcelPOS({ periodKey, filename }){
+  const data = await computeSummaryDataForPeriodPOS(periodKey);
+  const sheets = buildSummarySheetsFromDataPOS(data);
+  writeWorkbookFromSheetsPOS(filename, sheets);
+  return { sheets, data };
+}
+
+async function resetOperationalStoresAfterArchivePOS(){
+  // Solo stores operativos (no products, no banks, no meta)
+  const stores = ['sales','events','inventory','pettyCash','dayLocks','dailyClosures'];
+  for (const s of stores){
+    try{ await clearStore(s); }catch(e){ console.warn('No se pudo limpiar store', s, e); }
+  }
+  // Reset meta.currentEventId (sin tocar el consecutivo de períodos)
+  try{ await setMeta('currentEventId', null); }catch(e){}
+}
+
+async function openSummaryClosePeriodModalPOS(){
+  if (__A33_SUMMARY_MODE === 'archive'){
+    showToast('Estás viendo un período archivado. Volvé a En vivo para cerrar períodos.', 'error', 3500);
+    return;
+  }
+  setClosePeriodErrorPOS('');
+
+  // Autocompletar período actual si está vacío
+  const periodKey = getSummarySelectedPeriodKeyPOS();
+  const lbl = document.getElementById('summary-close-period-label');
+  if (lbl) lbl.textContent = periodLabelPOS(periodKey);
+  const inp = document.getElementById('summary-close-name');
+  if (inp && !String(inp.value||'').trim()){
+    inp.value = `Período ${periodLabelPOS(periodKey)}`;
+  }
+
+  // Prevalidar
+  const openEvents = await listOpenEventsPOS();
+  const btnConfirm = document.getElementById('summary-close-confirm');
+  const btnExport = document.getElementById('summary-close-export');
+
+  if (openEvents.length){
+    const lines = openEvents.map(ev => `- ${(ev.name || ('Evento #' + ev.id))}`).join('\n');
+    setClosePeriodErrorPOS(`No se puede cerrar el período. Eventos abiertos:\n${lines}\n\nRecuerda: Día cerrado no es evento cerrado.`);
+    if (btnConfirm) btnConfirm.disabled = true;
+    if (btnExport) btnExport.disabled = true;
+  } else {
+    // Bloquear si ya existe un archive para este periodKey
+    const existing = await getArchiveByPeriodKeyPOS(periodKey);
+    if (existing){
+      setClosePeriodErrorPOS(`Este período ya fue archivado (Seq ${existing.seqStr || existing.seq}).\nNo se reescribe el histórico.`);
+      if (btnConfirm) btnConfirm.disabled = true;
+      if (btnExport) btnExport.disabled = true;
+    } else {
+      if (btnConfirm) btnConfirm.disabled = false;
+      if (btnExport) btnExport.disabled = false;
+    }
+  }
+
+  openModalPOS('summary-close-modal');
+}
+
+function closeSummaryClosePeriodModalPOS(){
+  closeModalPOS('summary-close-modal');
+}
+
+async function confirmClosePeriodPOS(){
+  if (__A33_SUMMARY_MODE === 'archive'){
+    showToast('Estás viendo un período archivado. Volvé a En vivo para cerrar.', 'error', 3500);
+    return;
+  }
+  const periodKey = getSummarySelectedPeriodKeyPOS();
+  const openEvents = await listOpenEventsPOS();
+  if (openEvents.length){
+    const lines = openEvents.map(ev => `- ${(ev.name || ('Evento #' + ev.id))}`).join('\n');
+    setClosePeriodErrorPOS(`No se puede cerrar el período. Eventos abiertos:\n${lines}`);
+    return;
+  }
+
+  const existing = await getArchiveByPeriodKeyPOS(periodKey);
+  if (existing){
+    setClosePeriodErrorPOS(`Este período ya fue archivado (Seq ${existing.seqStr || existing.seq}).`);
+    return;
+  }
+
+  // Seq persistente
+  let lastSeq = 0;
+  try{ lastSeq = Number(await getMeta('periodArchiveSeq') || 0) || 0; }catch(e){ lastSeq = 0; }
+  const seq = lastSeq + 1;
+  const seqStr = pad3POS(seq);
+  const fileName = `${seqStr}-${periodFilePartPOS(periodKey)}.xlsx`;
+
+  // Export FORZADO (si falla, NO se archiva)
+  let sheets = null;
+  let exportData = null;
+  try{
+    const r = await exportSummaryPeriodExcelPOS({ periodKey, filename: fileName });
+    sheets = r.sheets;
+    exportData = r.data;
+  }catch(err){
+    console.error('Export Excel forzado falló', err);
+    setClosePeriodErrorPOS('No se pudo exportar el Excel. Sin Excel, no hay cierre de período.\n\nDetalle: ' + humanizeError(err));
+    return;
+  }
+
+  const createdAt = Date.now();
+  const archive = {
+    id: `PA-${Date.now()}-${Math.floor(Math.random()*1e6)}`,
+    seq,
+    seqStr,
+    periodKey,
+    periodLabel: periodLabelPOS(periodKey),
+    name: (document.getElementById('summary-close-name')?.value || '').toString().trim() || `Período ${periodLabelPOS(periodKey)}`,
+    fileName,
+    createdAt,
+    exportedAt: createdAt,
+    snapshot: {
+      periodKey,
+      periodLabel: periodLabelPOS(periodKey),
+      sheets,
+      metrics: (exportData && exportData.metrics) ? exportData.metrics : null
+    }
+  };
+
+  try{
+    await put('summaryArchives', archive);
+    await setMeta('periodArchiveSeq', seq);
+  }catch(err){
+    console.error('No se pudo guardar el archive', err);
+    setClosePeriodErrorPOS('Se exportó el Excel, pero NO se pudo guardar el snapshot del período.\nNo se hará el reset para evitar perder datos.\n\nDetalle: ' + humanizeError(err));
+    return;
+  }
+
+  // Reset a 0
+  try{
+    await resetOperationalStoresAfterArchivePOS();
+  }catch(err){
+    console.error('Reset falló', err);
+    setClosePeriodErrorPOS('Se archivó el período, pero falló el reset.\nRecomendación: recarga la app y revisa manualmente.\n\nDetalle: ' + humanizeError(err));
+    return;
+  }
+
+  closeSummaryClosePeriodModalPOS();
+  showToast('Período cerrado y archivado. Resumen quedó en 0.', 'ok', 4500);
+
+  try{ await refreshEventUI(); }catch(e){}
+  try{ await renderDay(); }catch(e){}
+  try{ await renderSummary(); }catch(e){}
+  try{ await renderEventos(); }catch(e){}
+  try{ await renderInventario(); }catch(e){}
+  try{ await renderCajaChica(); }catch(e){}
+}
+
+async function manualExportClosePeriodPOS(){
+  const periodKey = getSummarySelectedPeriodKeyPOS();
+  let lastSeq = 0;
+  try{ lastSeq = Number(await getMeta('periodArchiveSeq') || 0) || 0; }catch(e){ lastSeq = 0; }
+  const seq = lastSeq + 1;
+  const seqStr = pad3POS(seq);
+  const fileName = `${seqStr}-${periodFilePartPOS(periodKey)}.xlsx`;
+  try{
+    await exportSummaryPeriodExcelPOS({ periodKey, filename: fileName });
+    showToast('Excel exportado.', 'ok', 2500);
+  }catch(err){
+    console.error('manual export close period', err);
+    setClosePeriodErrorPOS('No se pudo exportar el Excel.\n\nDetalle: ' + humanizeError(err));
+  }
+}
+
+function fmtDateTimePOS(ts){
+  try{
+    const d = new Date(ts);
+    return d.toLocaleString('es-NI', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+  }catch(_){
+    return String(ts || '');
+  }
+}
+
+function renderSummaryArchivesTablePOS(list){
+  const tbody = document.querySelector('#tbl-summary-archives tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const rows = (list || []).slice();
+  if (!rows.length){
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="4" class="muted">No hay períodos archivados.</td>';
+    tbody.appendChild(tr);
+    return;
+  }
+
+  for (const a of rows){
+    const tr = document.createElement('tr');
+
+    const tdSeq = document.createElement('td');
+    tdSeq.textContent = a.seqStr || pad3POS(a.seq || 0);
+
+    const tdPer = document.createElement('td');
+    tdPer.textContent = a.periodLabel || periodLabelPOS(a.periodKey || '');
+
+    const tdWhen = document.createElement('td');
+    tdWhen.textContent = fmtDateTimePOS(a.createdAt || a.exportedAt || '');
+
+    const tdAct = document.createElement('td');
+    const actions = document.createElement('div');
+    actions.className = 'archive-actions';
+
+    const btnView = document.createElement('button');
+    btnView.type = 'button';
+    btnView.className = 'btn-pill btn-pill-mini btn-ok';
+    btnView.textContent = 'Ver';
+    btnView.addEventListener('click', async()=>{
+      try{
+        const rec = await getOne('summaryArchives', a.id);
+        if (!rec){
+          showToast('No se encontró el snapshot.', 'error', 3500);
+          return;
+        }
+        __A33_SUMMARY_MODE = 'archive';
+        __A33_ACTIVE_ARCHIVE = rec;
+        try{ __A33_SUMMARY_VIEW_MODE = 'period'; }catch(_){ }
+        closeSummaryArchiveModalPOS();
+        setSummaryModeBadgePOS();
+        syncSummaryPeriodLabelPOS();
+        applySummaryArchiveGuardsPOS();
+        await renderSummary();
+      }catch(err){
+        console.error('ver snapshot', err);
+        alert('No se pudo abrir el snapshot: ' + humanizeError(err));
+      }
+    });
+
+    const btnRe = document.createElement('button');
+    btnRe.type = 'button';
+    btnRe.className = 'btn-pill btn-pill-mini';
+    btnRe.textContent = 'Re-exportar Excel';
+    btnRe.addEventListener('click', async()=>{
+      try{
+        const rec = await getOne('summaryArchives', a.id);
+        const use = rec || a;
+        const snap = use.snapshot || {};
+        const sheets = snap.sheets || [];
+        const fname = use.fileName || (`${use.seqStr || pad3POS(use.seq || 0)}-${periodFilePartPOS(use.periodKey || '')}.xlsx`);
+        writeWorkbookFromSheetsPOS(fname, sheets);
+        showToast('Excel re-exportado.', 'ok', 2500);
+      }catch(err){
+        console.error('re-export', err);
+        alert('No se pudo re-exportar el Excel: ' + humanizeError(err));
+      }
+    });
+
+    actions.appendChild(btnView);
+    actions.appendChild(btnRe);
+    tdAct.appendChild(actions);
+
+    tr.appendChild(tdSeq);
+    tr.appendChild(tdPer);
+    tr.appendChild(tdWhen);
+    tr.appendChild(tdAct);
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadAndRenderArchivesPOS(){
+  const all = await getAll('summaryArchives');
+  const list = (all || []).slice().sort((a,b)=>{
+    const aa = Number(a && (a.createdAt || a.exportedAt) || 0);
+    const bb = Number(b && (b.createdAt || b.exportedAt) || 0);
+    return bb - aa;
+  });
+
+  const q = (document.getElementById('summary-archive-search')?.value || '').toString().trim().toLowerCase();
+  const filtered = q
+    ? list.filter(a => {
+        const s = `${a.seqStr||''} ${a.periodLabel||''} ${a.periodKey||''} ${a.name||''}`.toLowerCase();
+        return s.includes(q);
+      })
+    : list;
+
+  renderSummaryArchivesTablePOS(filtered);
+}
+
+async function openSummaryArchiveModalPOS(){
+  await loadAndRenderArchivesPOS();
+  openModalPOS('summary-archive-modal');
+}
+
+function closeSummaryArchiveModalPOS(){
+  closeModalPOS('summary-archive-modal');
+}
+
+// Entrar/salir del modo Archivo en Resumen (snapshot)
+async function enterSummaryArchiveModePOS(archiveId){
+  const rec = await getOne('summaryArchives', archiveId);
+  if (!rec){
+    showToast('No se encontró el snapshot.', 'error', 3500);
+    return;
+  }
+  __A33_SUMMARY_MODE = 'archive';
+  __A33_ACTIVE_ARCHIVE = rec;
+  try{ __A33_SUMMARY_VIEW_MODE = 'period'; }catch(_){ }
+  setSummaryModeBadgePOS();
+  syncSummaryPeriodLabelPOS();
+  applySummaryArchiveGuardsPOS();
+  await renderSummary();
+}
+
+function exitSummaryArchiveModePOS(){
+  __A33_SUMMARY_MODE = 'live';
+  __A33_ACTIVE_ARCHIVE = null;
+  setSummaryModeBadgePOS();
+  syncSummaryPeriodLabelPOS();
+  applySummaryArchiveGuardsPOS();
+  renderSummary();
+}
+
+async function onSummaryExportExcelPOS(){
+  // En Archivo: exportar exactamente lo archivado
+  if (__A33_SUMMARY_MODE === 'archive' && __A33_ACTIVE_ARCHIVE){
+    const a = __A33_ACTIVE_ARCHIVE;
+    const snap = a.snapshot || {};
+    const sheets = snap.sheets || [];
+    const pk = a.periodKey || snap.periodKey || '';
+    const fname = a.fileName || (`${a.seqStr || pad3POS(a.seq || 0)}-${periodFilePartPOS(pk)}.xlsx`);
+    writeWorkbookFromSheetsPOS(fname, sheets);
+    showToast('Excel exportado (archivo).', 'ok', 2500);
+    return;
+  }
+
+  // En vivo
+  if (__A33_SUMMARY_VIEW_MODE === 'all'){
+    showToast('Selecciona un período para exportar.', 'error', 3500);
+    return;
+  }
+  const periodKey = getSummarySelectedPeriodKeyPOS();
+  const data = await computeSummaryDataForPeriodPOS(periodKey);
+  const sheets = buildSummarySheetsFromDataPOS(data);
+  const fname = `Resumen-${periodFilePartPOS(periodKey)}.xlsx`;
+  writeWorkbookFromSheetsPOS(fname, sheets);
+  showToast('Excel exportado.', 'ok', 2500);
+}
+
+function bindSummaryPeriodCloseAndArchivePOS(){
+  // Período selector
+  const periodEl = document.getElementById('summary-period');
+  if (periodEl){
+    if (!String(periodEl.value||'').trim()){
+      try{ periodEl.value = getSummarySelectedPeriodKeyPOS(); }catch(_){ }
+    }
+    periodEl.addEventListener('change', ()=>{
+      if (__A33_SUMMARY_MODE === 'archive') return;
+      __A33_SUMMARY_VIEW_MODE = 'period';
+      setSummaryModeBadgePOS();
+      syncSummaryPeriodLabelPOS();
+      renderSummary();
+    });
+  }
+
+  // Todo / volver a vivo
+  const btnAll = document.getElementById('btn-summary-all');
+  if (btnAll){
+    btnAll.addEventListener('click', ()=>{
+      if (__A33_SUMMARY_MODE === 'archive') return;
+      __A33_SUMMARY_VIEW_MODE = 'all';
+      setSummaryModeBadgePOS();
+      syncSummaryPeriodLabelPOS();
+      renderSummary();
+    });
+  }
+
+  const btnBack = document.getElementById('btn-summary-back-live');
+  if (btnBack){
+    btnBack.addEventListener('click', ()=>{
+      exitSummaryArchiveModePOS();
+    });
+  }
+
+  setSummaryModeBadgePOS();
+  syncSummaryPeriodLabelPOS();
+  applySummaryArchiveGuardsPOS();
+
+  const btnMainExport = document.getElementById('btn-summary-export');
+  if (btnMainExport){
+    btnMainExport.addEventListener('click', ()=>{ onSummaryExportExcelPOS().catch(err=>{ console.error(err); alert('No se pudo exportar: ' + humanizeError(err)); }); });
+  }
+
+  const btnClosePeriod = document.getElementById('btn-summary-close-period');
+  if (btnClosePeriod){
+    btnClosePeriod.addEventListener('click', ()=>{ openSummaryClosePeriodModalPOS().catch(err=>console.error(err)); });
+  }
+
+  const btnArchive = document.getElementById('btn-summary-archive');
+  if (btnArchive){
+    btnArchive.addEventListener('click', ()=>{ openSummaryArchiveModalPOS().catch(err=>console.error(err)); });
+  }
+
+  // Modal close period: click outside
+  const mClose = document.getElementById('summary-close-modal');
+  if (mClose){
+    mClose.addEventListener('click', (e)=>{ if (e.target === mClose) closeSummaryClosePeriodModalPOS(); });
+  }
+  const btnCancel = document.getElementById('summary-close-cancel');
+  if (btnCancel){
+    btnCancel.addEventListener('click', ()=> closeSummaryClosePeriodModalPOS());
+  }
+  const btnExport = document.getElementById('summary-close-export');
+  if (btnExport){
+    btnExport.addEventListener('click', ()=>{ manualExportClosePeriodPOS().catch(err=>console.error(err)); });
+  }
+  const btnConfirm = document.getElementById('summary-close-confirm');
+  if (btnConfirm){
+    btnConfirm.addEventListener('click', ()=>{ confirmClosePeriodPOS().catch(err=>console.error(err)); });
+  }
+
+  // Modal archive
+  const mArch = document.getElementById('summary-archive-modal');
+  if (mArch){
+    mArch.addEventListener('click', (e)=>{ if (e.target === mArch) closeSummaryArchiveModalPOS(); });
+  }
+  const btnArchClose = document.getElementById('summary-archive-close');
+  if (btnArchClose){
+    btnArchClose.addEventListener('click', ()=> closeSummaryArchiveModalPOS());
+  }
+  const search = document.getElementById('summary-archive-search');
+  if (search){
+    search.addEventListener('input', ()=>{ loadAndRenderArchivesPOS().catch(err=>console.error(err)); });
+  }
+
+  const btnRefresh = document.getElementById('summary-archive-refresh');
+  if (btnRefresh){
+    btnRefresh.addEventListener('click', ()=>{ loadAndRenderArchivesPOS().catch(err=>console.error(err)); });
+  }
+}
+
+function getActiveSummaryPeriodFilterPOS(){
+  if (__A33_SUMMARY_VIEW_MODE === 'all') return null;
+  return getSummarySelectedPeriodKeyPOS();
 }
 
 // CSV helpers
@@ -8916,6 +10005,7 @@ async function init(){
   await runStep('initCustomerUX', async()=>{ initCustomerUXPOS(); });
   await runStep('initSummaryCustomerFilter', async()=>{ initSummaryCustomerFilterPOS(); });
   await runStep('bindSummaryDailyClose', async()=>{ bindSummaryDailyClosePOS(); });
+  await runStep('bindSummaryPeriodCloseArchive', async()=>{ bindSummaryPeriodCloseAndArchivePOS(); });
 
   // Paso 5: barra offline y eventos de Caja Chica
   try{

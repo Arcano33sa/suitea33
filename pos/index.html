@@ -773,12 +773,13 @@
         </div>
         <small id="summary-period-hint" class="muted">Filtra el Resumen por mes. Puedes ver “Todo” cuando lo necesites.</small>
       </div>
-      <div class="summary-controls-right actions end">
-        <button id="btn-summary-export" class="btn-ok btn-pill" type="button">Exportar Excel</button>
-        <button id="btn-summary-close-period" class="btn-warn btn-pill" type="button">Cerrar período</button>
-        <button id="btn-summary-archive" class="btn-link" type="button">Archivo</button>
-        <button id="btn-summary-back-live" class="btn-link" type="button" style="display:none">Volver a en vivo</button>
-      </div>
+	      <div class="summary-controls-right actions end">
+	        <button id="btn-summary-export" class="btn-ok btn-pill" type="button">Exportar Excel</button>
+	        <button id="btn-summary-close-period" class="btn-warn btn-pill" type="button">Cerrar período</button>
+	        <!-- Archivo debe verse como botón (no como link) -->
+	        <button id="btn-summary-archive" class="btn-outline" type="button" title="Ver períodos cerrados">Archivo</button>
+	        <button id="btn-summary-back-live" class="btn-link" type="button" style="display:none">Volver a en vivo</button>
+	      </div>
     </div>
 
     <!-- Cierre diario (snapshot oficial por evento + fecha) -->
@@ -1204,6 +1205,7 @@
   <button id="summary-close-confirm" class="btn-primary btn-pill" type="button" disabled>Cerrar y archivar</button>
 </div>
 
+    <div id="summary-close-error" class="warn" style="display:none; margin-top:10px"></div>
     <div id="summary-close-status" class="muted"></div>
     <div class="warn"><small>Regla: sin exportación no hay cierre. Así evitamos “ups… no hice backup”.</small></div>
   </div>
@@ -1222,7 +1224,7 @@
 
     <div class="scroll">
       <table id="tbl-summary-archives">
-        <thead><tr><th>Nombre</th><th>Período</th><th>Creado</th><th>Acciones</th></tr></thead>
+        <thead><tr><th style="width:70px">Seq</th><th>Período</th><th style="width:170px">Fecha cierre</th><th style="width:170px">Acciones</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
