@@ -3,6 +3,30 @@ const DB_NAME = 'a33-pos';
 const DB_VER = 26; // + posRemindersIndex (índice liviano de recordatorios)
 let db;
 
+// --- Caja Chica (Etapa 2): recordar evento previo cuando se cambia desde Caja Chica
+const A33_PC_PREV_EVENT_KEY = 'a33_pos_pc_prev_event_id';
+function getPcPrevEventId(){
+  try{
+    const v = (localStorage.getItem(A33_PC_PREV_EVENT_KEY) || '').toString().trim();
+    if (!v) return null;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? n : null;
+  }catch(_){
+    return null;
+  }
+}
+function setPcPrevEventId(id){
+  try{
+    if (id == null){ localStorage.removeItem(A33_PC_PREV_EVENT_KEY); return; }
+    const n = parseInt(String(id), 10);
+    if (!Number.isFinite(n)) { localStorage.removeItem(A33_PC_PREV_EVENT_KEY); return; }
+    localStorage.setItem(A33_PC_PREV_EVENT_KEY, String(n));
+  }catch(_){ }
+}
+function clearPcPrevEventId(){
+  try{ localStorage.removeItem(A33_PC_PREV_EVENT_KEY); }catch(_){ }
+}
+
 // --- Resumen: modo de vista (por período vs todo)
 let __A33_SUMMARY_VIEW_MODE = 'period'; // 'period' | 'all'
 
@@ -5902,6 +5926,114 @@ async function eventHasPettyActivity(eventId){
   return false;
 }
 
+// --- Caja Chica (Etapa 2): selector de evento + orden "más inteligente" (sin inventar)
+function pcToMs(v){
+  if (!v) return 0;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  // ISO string or numeric string
+  const n = Number(v);
+  if (Number.isFinite(n) && n > 0) return n;
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? t : 0;
+}
+
+function pcDayMetaForSort(day){
+  if (!day) return { urgent:false, lastTs:0 };
+  const urgent = !!(day.closedAt || hasPettyDayActivity(day));
+  let lastTs = 0;
+  lastTs = Math.max(lastTs, pcToMs(day.closedAt));
+  if (day.initial && day.initial.savedAt) lastTs = Math.max(lastTs, pcToMs(day.initial.savedAt));
+  if (day.finalCount && day.finalCount.savedAt) lastTs = Math.max(lastTs, pcToMs(day.finalCount.savedAt));
+  if (Array.isArray(day.movements)){
+    for (const m of day.movements){
+      if (!m) continue;
+      lastTs = Math.max(lastTs, pcToMs(m.createdAt || m.savedAt || m.at));
+    }
+  }
+  return { urgent, lastTs };
+}
+
+async function buildPcEligibleEventsList(dayKey){
+  const evs = await getAll('events');
+  const eligible = (evs || []).filter(e => e && !e.closedAt && eventPettyEnabled(e));
+  const items = [];
+
+  // Criterio confiable: actividad real en Caja Chica del día seleccionado (movs / inicial / final / closedAt)
+  for (const ev of eligible){
+    let urgent = false;
+    let lastTs = 0;
+    try{
+      const pc = await getPettyCash(ev.id);
+      const dk = dayKey || todayYMD();
+      const day = pc && pc.days ? pc.days[dk] : null;
+      const meta = pcDayMetaForSort(day);
+      urgent = meta.urgent;
+      lastTs = meta.lastTs;
+    }catch(_){ }
+
+    items.push({
+      id: ev.id,
+      name: (ev.name || '').toString(),
+      urgent,
+      lastTs
+    });
+  }
+
+  items.sort((a,b)=>{
+    if (a.urgent !== b.urgent) return a.urgent ? -1 : 1;
+    if (a.lastTs !== b.lastTs) return (b.lastTs - a.lastTs);
+    return a.name.localeCompare(b.name, 'es', { sensitivity:'base' });
+  });
+
+  return items;
+}
+
+async function renderPcEventSwitchUI(dayKey){
+  const sel = document.getElementById('pc-event-select');
+  if (!sel) return;
+
+  const currentId = await getMeta('currentEventId');
+  const items = await buildPcEligibleEventsList(dayKey);
+
+  // Rebuild options
+  const prev = String(sel.value || '').trim();
+  sel.innerHTML = '<option value="">— Selecciona evento con Caja Chica activa —</option>';
+  for (const it of items){
+    const o = document.createElement('option');
+    o.value = it.id;
+    o.textContent = it.name + (it.urgent ? ' · con actividad' : '');
+    sel.appendChild(o);
+  }
+
+  // Sync selection to evento activo global si aplica
+  if (currentId && items.some(i => String(i.id) === String(currentId))){
+    sel.value = currentId;
+  } else {
+    // Mantener lo que el usuario haya escogido si aún existe
+    if (prev && items.some(i => String(i.id) === prev)) sel.value = prev;
+    else sel.value = '';
+  }
+
+  sel.disabled = (items.length === 0);
+
+  // Botón Volver
+  const btn = document.getElementById('pc-btn-prev-event');
+  if (btn){
+    const prevId = getPcPrevEventId();
+    if (prevId && String(prevId) !== String(currentId)){
+      const prevEv = await getEventByIdSafe(prevId);
+      if (prevEv && !prevEv.closedAt){
+        btn.style.display = 'inline-flex';
+        btn.textContent = 'Volver' + (prevEv.name ? ` a ${prevEv.name}` : '');
+      } else {
+        btn.style.display = 'none';
+      }
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+}
+
 async function updatePettyToggleUI(curEvent){
   const t = document.getElementById('pc-event-toggle');
   const lbl = document.getElementById('pc-event-toggle-text');
@@ -8780,6 +8912,8 @@ async function renderSummaryDailyCloseCardPOS(){
   const btnReopen = document.getElementById('btn-summary-reopen-day');
   const noteEl = document.getElementById('summary-close-note');
   const blockerEl = document.getElementById('summary-close-blocker');
+  const targetEl = document.getElementById('summary-close-target');
+  const returnEl = document.getElementById('summary-close-return');
 
   const currentEventId = await getMeta('currentEventId');
   const ev = currentEventId ? await getEventByIdPOS(currentEventId) : null;
@@ -8809,11 +8943,29 @@ async function renderSummaryDailyCloseCardPOS(){
     if (btnClose) btnClose.disabled = true;
     if (btnReopen) btnReopen.disabled = true;
     if (noteEl){ noteEl.style.display = 'block'; noteEl.textContent = 'Selecciona un evento aquí para poder cerrar o reabrir el día.'; }
+    if (targetEl){ targetEl.style.display = 'none'; targetEl.textContent = ''; }
+    if (returnEl){ returnEl.style.display = 'none'; returnEl.innerHTML = ''; delete returnEl.dataset.forEventId; delete returnEl.dataset.prevEventId; }
     return;
   }
 
   const petty = eventPettyEnabled(ev);
   const lock = await getDayLockRecordPOS(ev.id, dayKey);
+
+  // Guardas anti-error: mostrar objetivo del cierre siempre visible
+  if (targetEl){
+    targetEl.style.display = 'block';
+    targetEl.textContent = petty
+      ? `Vas a cerrar Caja Chica de: ${ev.name} · Día: ${dayKey}`
+      : `Vas a cerrar el día de: ${ev.name} · Fecha: ${dayKey}`;
+  }
+
+  // Si existe un banner de "volver", ocultarlo cuando cambie el evento actual
+  if (returnEl && returnEl.dataset.forEventId && returnEl.dataset.forEventId !== String(ev.id)){
+    returnEl.style.display = 'none';
+    returnEl.innerHTML = '';
+    delete returnEl.dataset.forEventId;
+    delete returnEl.dataset.prevEventId;
+  }
 
   // Estado de cerrado (oficial: dayLocks). Compatibilidad legacy: day.closedAt (cierres viejos desde Caja Chica).
   let legacyClosedAt = null;
@@ -8929,6 +9081,57 @@ function showSummaryCloseBlockerPOS({ headline, diffNio, diffUsd, usdActive }){
   el.appendChild(actions);
 }
 
+function hideSummaryReturnBannerPOS(){
+  const el = document.getElementById('summary-close-return');
+  if (!el) return;
+  el.style.display = 'none';
+  el.innerHTML = '';
+  delete el.dataset.forEventId;
+  delete el.dataset.prevEventId;
+}
+
+async function showSummaryReturnBannerPOS({ currentEventId, prevEventId }){
+  const el = document.getElementById('summary-close-return');
+  if (!el) return;
+  const prevEv = await getEventByIdSafe(prevEventId);
+  if (!prevEv || prevEv.closedAt){
+    hideSummaryReturnBannerPOS();
+    return;
+  }
+
+  el.style.display = 'block';
+  el.innerHTML = '';
+  el.dataset.forEventId = String(currentEventId || '');
+  el.dataset.prevEventId = String(prevEventId || '');
+
+  const msg = document.createElement('div');
+  msg.textContent = `Caja cerrada. ¿Volver a ${prevEv.name || 'evento previo'}?`;
+
+  const actions = document.createElement('div');
+  actions.className = 'actions end';
+  actions.style.marginTop = '8px';
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-outline btn-pill';
+  btn.textContent = 'Volver';
+  btn.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    await setMeta('currentEventId', prevEventId);
+    clearPcPrevEventId();
+    hideSummaryReturnBannerPOS();
+    await refreshEventUI();
+    try{ await renderDay(); }catch(_){ }
+    try{ await renderSummaryDailyCloseCardPOS(); }catch(_){ }
+    try{ await renderPcEventSwitchUI(getSelectedPcDay()); }catch(_){ }
+    try{ setTab('caja'); }catch(_){ }
+  });
+
+  actions.appendChild(btn);
+  el.appendChild(msg);
+  el.appendChild(actions);
+}
+
 async function onSummaryCloseDayPOS(){
   if (__A33_SUMMARY_MODE === 'archive'){
     showToast('Estás viendo un período archivado. Volvé a En vivo para cerrar el día.', 'error', 3500);
@@ -8983,6 +9186,15 @@ async function onSummaryCloseDayPOS(){
     }
   }
 
+  // Guardas anti-error (Etapa 2): confirmación clara del evento antes de ejecutar el cierre
+  {
+    const isPc = eventPettyEnabled(ev);
+    const msg = isPc
+      ? ('Vas a cerrar Caja Chica de:\n\n' + (ev.name||'—') + '\n\nDía: ' + dayKey + '\n\nEsto bloqueará ventas y movimientos para este día.\n\n¿Confirmas?')
+      : ('Vas a cerrar el día de:\n\n' + (ev.name||'—') + '\n\nFecha: ' + dayKey + '\n\nEsto bloqueará ventas y movimientos para este día.\n\n¿Confirmas?');
+    if (!confirm(msg)) return;
+  }
+
   try{
     const r = await closeDailyPOS({ event: ev, dateKey: dayKey, source: 'SUMMARY' });
     const v = (r && r.closure && r.closure.version) ? Number(r.closure.version) : (r && r.lock && r.lock.lastClosureVersion ? Number(r.lock.lastClosureVersion) : null);
@@ -8990,6 +9202,16 @@ async function onSummaryCloseDayPOS(){
       showToast(`Ya está cerrado${v ? ` (v${v})` : ''}.`, 'ok', 3500);
     } else {
       showToast(`Cierre guardado${v ? ` (v${v})` : ''}.`, 'ok', 4500);
+    }
+
+    // Etapa 2: ofrecer volver al evento previo (si el cambio se hizo desde Caja Chica)
+    if (!(r && r.already)){
+      const prevId = getPcPrevEventId();
+      if (prevId && String(prevId) !== String(ev.id)){
+        await showSummaryReturnBannerPOS({ currentEventId: ev.id, prevEventId: prevId });
+      } else {
+        hideSummaryReturnBannerPOS();
+      }
     }
   }catch(err){
     console.error('onSummaryCloseDayPOS', err);
@@ -12321,6 +12543,9 @@ async function renderCajaChica(){
 
   if (!main || !note || !lbl) return;
 
+  // Etapa 2: mantener selector de evento y botón "Volver" sincronizados (orden según día seleccionado)
+  try{ await renderPcEventSwitchUI(getSelectedPcDay()); }catch(_){ }
+
   const evId = await getMeta('currentEventId');
   const evs = await getAll('events');
   const ev = evId ? evs.find(e => e.id === evId) : null;
@@ -13527,6 +13752,50 @@ const btnAddMov = document.getElementById('pc-mov-add');
     btnSaveFx.addEventListener('click', (e)=>{
       e.preventDefault();
       onSaveEventFxRate();
+    });
+  }
+
+  // Etapa 2: selector de evento desde Caja Chica (solo eventos abiertos con Caja Chica activa)
+  const pcSel = document.getElementById('pc-event-select');
+  if (pcSel){
+    pcSel.addEventListener('change', async ()=>{
+      const raw = String(pcSel.value || '').trim();
+      if (!raw) return;
+      const nextId = parseInt(raw, 10);
+      if (!Number.isFinite(nextId)) return;
+
+      const curId = await getMeta('currentEventId');
+      if (curId && String(curId) !== String(nextId)){
+        setPcPrevEventId(curId);
+      }
+
+      await setMeta('currentEventId', nextId);
+      await refreshEventUI();
+      try{ await renderDay(); }catch(_){ }
+      try{ await renderSummaryDailyCloseCardPOS(); }catch(_){ }
+      try{ await renderPcEventSwitchUI(getSelectedPcDay()); }catch(_){ }
+    });
+  }
+
+  const btnPrevEvent = document.getElementById('pc-btn-prev-event');
+  if (btnPrevEvent){
+    btnPrevEvent.addEventListener('click', async (e)=>{
+      e.preventDefault();
+      const prevId = getPcPrevEventId();
+      if (!prevId) return;
+      const curId = await getMeta('currentEventId');
+      if (curId && String(curId) === String(prevId)){
+        clearPcPrevEventId();
+        try{ await renderPcEventSwitchUI(getSelectedPcDay()); }catch(_){ }
+        return;
+      }
+
+      await setMeta('currentEventId', prevId);
+      clearPcPrevEventId();
+      await refreshEventUI();
+      try{ await renderDay(); }catch(_){ }
+      try{ await renderSummaryDailyCloseCardPOS(); }catch(_){ }
+      try{ await renderPcEventSwitchUI(getSelectedPcDay()); }catch(_){ }
     });
   }
 

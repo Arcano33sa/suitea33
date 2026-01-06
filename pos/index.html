@@ -471,6 +471,21 @@
   <section id="tab-caja" class="tab card" style="display:none">
     <h2>Caja Chica</h2>
 
+    <!-- Etapa 2: cambiar evento desde Caja Chica + volver al evento previo -->
+    <div class="row" id="pc-event-switch-row">
+      <div>
+        <label>Evento (Caja Chica)</label>
+        <select id="pc-event-select">
+          <option value="">— Selecciona evento con Caja Chica activa —</option>
+        </select>
+        <small class="muted">Solo muestra eventos abiertos con Caja Chica activa. Cambia el evento activo global del POS.</small>
+      </div>
+      <div style="text-align:right">
+        <label>&nbsp;</label>
+        <button id="pc-btn-prev-event" class="btn-outline" type="button" style="display:none">Volver</button>
+      </div>
+    </div>
+
     <p><span id="pc-event-info" class="info-strong">Evento activo: —</span></p>
     <p id="pc-no-event-note" class="disabled-note" style="display:none">Activa un evento en la pestaña Vender para usar Caja Chica.</p>
 
@@ -807,6 +822,8 @@
           <button id="btn-summary-reopen-day" class="btn-pill" type="button">Reabrir día</button>
         </div>
       </div>
+      <div id="summary-close-target" class="warn" style="display:none; margin-top:10px"></div>
+      <div id="summary-close-return" class="info" style="display:none; margin-top:10px"></div>
       <div id="summary-close-note" class="muted" style="margin-top:8px; display:none;"></div>
       <div id="summary-close-blocker" class="warn" style="display:none; margin-top:10px"></div>
     </div>
