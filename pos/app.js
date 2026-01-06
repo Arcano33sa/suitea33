@@ -1,6 +1,6 @@
 // --- IndexedDB helpers POS
 const DB_NAME = 'a33-pos';
-const DB_VER = 25; // + summaryArchives (archivo de períodos) + secuencia de export
+const DB_VER = 26; // + posRemindersIndex (índice liviano de recordatorios)
 let db;
 
 // --- Resumen: modo de vista (por período vs todo)
@@ -112,6 +112,21 @@ function openDB() {
         try { a.createIndex('by_periodKey', 'periodKey', { unique: false }); } catch {}
         try { a.createIndex('by_createdAt', 'createdAt', { unique: false }); } catch {}
         try { a.createIndex('by_seq', 'seq', { unique: false }); } catch {}
+      }
+
+      // posRemindersIndex: índice liviano de recordatorios (para lecturas rápidas sin escanear eventos completos)
+      // key: idxId = ${dayKey}|${eventId}|${reminderId}
+      if (!d.objectStoreNames.contains('posRemindersIndex')) {
+        const r = d.createObjectStore('posRemindersIndex', { keyPath: 'idxId' });
+        try { r.createIndex('by_event', 'eventId', { unique: false }); } catch {}
+        try { r.createIndex('by_day', 'dayKey', { unique: false }); } catch {}
+        try { r.createIndex('by_event_day', ['eventId','dayKey'], { unique: false }); } catch {}
+        try { r.createIndex('by_updatedAt', 'updatedAt', { unique: false }); } catch {}
+      } else {
+        try { e.target.transaction.objectStore('posRemindersIndex').createIndex('by_event','eventId'); } catch {}
+        try { e.target.transaction.objectStore('posRemindersIndex').createIndex('by_day','dayKey'); } catch {}
+        try { e.target.transaction.objectStore('posRemindersIndex').createIndex('by_event_day',['eventId','dayKey']); } catch {}
+        try { e.target.transaction.objectStore('posRemindersIndex').createIndex('by_updatedAt','updatedAt'); } catch {}
       }
     };
     req.onsuccess = () => { db = req.result; resolve(db); };
@@ -3004,6 +3019,34 @@ function ymdPrev(ymd){
   return ymdFromDate(dt);
 }
 
+function ymdAddDaysPOS(ymd, addDays){
+  const dt = dateFromYMD(ymd);
+  dt.setDate(dt.getDate() + (Number(addDays)||0));
+  return ymdFromDate(dt);
+}
+
+function rangeDayKeysPOS(baseDayKey, days){
+  const out = [];
+  const n = Math.max(1, Number(days||0) || 0);
+  for (let i=0;i<n;i++) out.push(ymdAddDaysPOS(baseDayKey, i));
+  return out;
+}
+
+const WEEKDAYS_ABBR_ES_POS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+const MONTHS_ABBR_ES_POS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+function formatDayKeyShortESPOS(ymd){
+  try{
+    const dt = dateFromYMD(ymd);
+    const wd = WEEKDAYS_ABBR_ES_POS[dt.getDay()] || '';
+    const dd = String(dt.getDate()).padStart(2,'0');
+    const mm = MONTHS_ABBR_ES_POS[dt.getMonth()] || '';
+    return `${wd} ${dd} ${mm}`.trim();
+  }catch(_){
+    return String(ymd||'');
+  }
+}
+
 
 // Normalizar nombres
 function normName(s){ return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
@@ -4558,6 +4601,9 @@ function getTabFromUrlPOS(){
     // Hash: #tab=vender o #vender
     const h = (window.location.hash || '').replace(/^#/, '').trim();
     if (!h) return null;
+    // Alias: CdM → Recordatorios (abre Checklist)
+    if (h === 'checklist-reminders' || h === 'checklist-reminders-card') return 'checklist';
+    if (h.startsWith('checklist-reminders')) return 'checklist';
     if (h.startsWith('tab=')){
       const ht = h.slice(4).trim();
       if (allowed.has(ht)) return ht;
@@ -4565,6 +4611,33 @@ function getTabFromUrlPOS(){
     if (allowed.has(h)) return h;
   }catch(_){ }
   return null;
+}
+
+function getDeepScrollTargetFromUrlPOS(){
+  try{
+    const h = (window.location.hash || '').replace(/^#/, '').trim();
+    if (!h) return null;
+    // CdM: #checklist-reminders -> scroll a la card real
+    if (h === 'checklist-reminders' || h === 'checklist-reminders-card' || h.startsWith('checklist-reminders')){
+      return 'checklist-reminders-card';
+    }
+  }catch(_){ }
+  return null;
+}
+
+function scheduleScrollToIdPOS(id){
+  const targetId = String(id || '').trim();
+  if (!targetId) return;
+  const tryScroll = (n)=>{
+    const el = document.getElementById(targetId);
+    if (el){
+      try{ el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ el.scrollIntoView(); }
+      return;
+    }
+    if (n >= 12) return;
+    setTimeout(()=> tryScroll(n+1), 120);
+  };
+  setTimeout(()=> tryScroll(0), 80);
 }
 
 // --- Checklist (POS)
@@ -4577,6 +4650,11 @@ const CHECKLIST_SECTIONS_POS = [
 function makeChecklistItemIdPOS(){
   try{ return (crypto && crypto.randomUUID) ? crypto.randomUUID() : null; }catch(e){}
   return 'chk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+}
+
+function makeReminderIdPOS(){
+  try{ return (crypto && crypto.randomUUID) ? crypto.randomUUID() : null; }catch(e){}
+  return 'rem_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
 }
 
 function normalizeChecklistTemplatePOS(t){
@@ -4619,12 +4697,52 @@ function ensureChecklistDataPOS(ev, dayKey){
     changed = true;
   }
   if (!ev.days[dayKey].checklistState || typeof ev.days[dayKey].checklistState !== 'object') {
-    ev.days[dayKey].checklistState = { checkedIds: [], notes: '' };
+    ev.days[dayKey].checklistState = { checkedIds: [], notes: '', reminders: [] };
     changed = true;
   }
   const st = ev.days[dayKey].checklistState;
   if (!Array.isArray(st.checkedIds)) { st.checkedIds = []; changed = true; }
   if (typeof st.notes !== 'string') { st.notes = String(st.notes || ''); changed = true; }
+
+  // Recordatorios (por día)
+  if (!Array.isArray(st.reminders)) { st.reminders = []; changed = true; }
+  const normReminders = (arr)=>{
+    if (!Array.isArray(arr)) return [];
+    const out = [];
+    for (const raw of arr){
+      if (!raw || typeof raw !== 'object') continue;
+      const id = String(raw.id || makeReminderIdPOS());
+      const text = String(raw.text || '').trim();
+      if (!text) continue;
+      const done = !!raw.done;
+      const createdAt = Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now();
+      let updatedAt = Number.isFinite(raw.updatedAt) ? raw.updatedAt : createdAt;
+      let doneAt = (raw.doneAt === null || raw.doneAt === undefined) ? null : Number(raw.doneAt);
+      if (!Number.isFinite(doneAt)) doneAt = null;
+
+      // Fecha (obligatoria) — compat: si venía sin dueDateKey, lo asumimos como el día contenedor.
+      // Regla: el día contenedor manda. Si el reminder vive en ev.days[dayKey], su dueDateKey debe ser dayKey.
+      let dueDateKey = (typeof raw.dueDateKey === 'string') ? raw.dueDateKey.trim() : '';
+      if (!dueDateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dueDateKey)) dueDateKey = String(dayKey);
+      if (String(dueDateKey) !== String(dayKey)) dueDateKey = String(dayKey);
+
+      let dueTime = (typeof raw.dueTime === 'string') ? raw.dueTime.trim() : null;
+      if (!dueTime || !/^\d{2}:\d{2}$/.test(dueTime)) dueTime = null;
+      let priority = (typeof raw.priority === 'string') ? raw.priority.trim() : null;
+      if (!priority || !['high','med','low'].includes(priority)) priority = null;
+      if (!done) {
+        doneAt = null;
+      } else if (done && doneAt === null) {
+        doneAt = Date.now();
+      }
+      // Si venía sin updatedAt pero sí con doneAt (históricos), respetamos doneAt como última modificación.
+      if (!Number.isFinite(raw.updatedAt) && Number.isFinite(doneAt) && doneAt > updatedAt) updatedAt = doneAt;
+      out.push({ id, text, done, createdAt, updatedAt, doneAt, dueDateKey, dueTime, priority });
+    }
+    return out;
+  };
+  const rem2 = normReminders(st.reminders);
+  if (JSON.stringify(rem2) !== JSON.stringify(st.reminders)) { st.reminders = rem2; changed = true; }
 
   // Limpieza: checkedIds solo válidos según template
   const allIds = new Set([
@@ -4639,6 +4757,243 @@ function ensureChecklistDataPOS(ev, dayKey){
   }
 
   return { changed, template: tpl, state: st };
+}
+
+// --- Recordatorios: índice liviano (posRemindersIndex)
+// Objetivo: permitir lectura rápida (p.ej. Centro de Mando) sin escanear eventos completos.
+function buildReminderIndexIdPOS(eventId, dayKey, reminderId){
+  return `${String(dayKey)}|${String(eventId)}|${String(reminderId)}`;
+}
+
+async function getRemindersIndexRowsForEventDayPOS(eventId, dayKey){
+  try{
+    if (!db) await openDB();
+    if (!db || !db.objectStoreNames.contains('posRemindersIndex')) return [];
+    const evId = Number(eventId);
+    const dk = String(dayKey);
+
+    return await new Promise((resolve)=>{
+      try{
+        const t = db.transaction(['posRemindersIndex'], 'readonly');
+        const st = t.objectStore('posRemindersIndex');
+
+        let idx = null;
+        try{ idx = st.index('by_event_day'); }catch(e){ idx = null; }
+
+        if (idx){
+          let range = null;
+          try{ range = IDBKeyRange.only([evId, dk]); }catch(e){ range = null; }
+          const r = range ? idx.getAll(range) : idx.getAll();
+          r.onsuccess = ()=>resolve(r.result || []);
+          r.onerror = ()=>resolve([]);
+          return;
+        }
+
+        const r = st.getAll();
+        r.onsuccess = ()=>{
+          const all = r.result || [];
+          resolve(all.filter(x=>String(x.eventId)===String(evId) && String(x.dayKey)===dk));
+        };
+        r.onerror = ()=>resolve([]);
+      }catch(e){
+        resolve([]);
+      }
+    });
+  }catch(e){
+    return [];
+  }
+}
+
+// FUNCIÓN CENTRAL (obligatoria)
+// syncRemindersIndexForDay(ev, dayKey)
+// - Upsert lo actual + delete lo que ya no existe (sin duplicados)
+async function syncRemindersIndexForDay(ev, dayKey){
+  try{
+    if (!ev || !dayKey) return;
+    if (!db) await openDB();
+    if (!db || !db.objectStoreNames.contains('posRemindersIndex')) return;
+
+    const eventId = Number(ev.id);
+    const eventName = String(ev.name || '').trim();
+    const dk = String(dayKey);
+
+    // Leer reminders del día actual
+    const { state } = ensureChecklistDataPOS(ev, dk);
+    const reminders = Array.isArray(state.reminders) ? state.reminders : [];
+
+    // Construir set de idxId esperado
+    const expected = new Set();
+    const rows = [];
+
+    for (const r of reminders){
+      if (!r || typeof r !== 'object') continue;
+      const reminderId = String(r.id || '').trim();
+      const text = String(r.text || '').trim();
+      if (!reminderId || !text) continue;
+
+      const idxId = buildReminderIndexIdPOS(eventId, dk, reminderId);
+      expected.add(idxId);
+
+      const createdAt = Number.isFinite(r.createdAt) ? r.createdAt : Date.now();
+      const updatedAt = Number.isFinite(r.updatedAt) ? r.updatedAt : createdAt;
+
+      rows.push({
+        idxId,
+        eventId,
+        eventName,
+        dayKey: dk,
+        reminderId,
+        text,
+        done: !!r.done,
+        dueTime: (typeof r.dueTime === 'string' && /^\d{2}:\d{2}$/.test(r.dueTime.trim())) ? r.dueTime.trim() : null,
+        priority: (typeof r.priority === 'string' && ['high','med','low'].includes(r.priority.trim())) ? r.priority.trim() : null,
+        createdAt,
+        updatedAt
+      });
+    }
+
+    // Leer del índice todas las filas de ese (eventId, dayKey)
+    const existing = await getRemindersIndexRowsForEventDayPOS(eventId, dk);
+
+    // Upsert + Delete (en una sola transacción)
+    await new Promise((resolve)=>{
+      try{
+        const t = db.transaction(['posRemindersIndex'], 'readwrite');
+        const st = t.objectStore('posRemindersIndex');
+
+        // Upsert: por cada reminder actual → put en índice
+        for (const row of rows){
+          try{ st.put(row); }catch(_e){}
+        }
+
+        // Delete: eliminar del índice todo registro que exista pero ya no esté en el set esperado
+        for (const old of (existing || [])){
+          const oldId = old && old.idxId ? String(old.idxId) : '';
+          if (!oldId) continue;
+          if (!expected.has(oldId)){
+            try{ st.delete(oldId); }catch(_e){}
+          }
+        }
+
+        t.oncomplete = ()=>resolve();
+        t.onerror = ()=>resolve();
+        t.onabort = ()=>resolve();
+      }catch(e){
+        resolve();
+      }
+    });
+  }catch(e){
+    console.warn('syncRemindersIndexForDay: fallo (se ignora para no romper POS)', e);
+  }
+}
+
+// Rebuild completo del índice (recomendado para consistencia)
+// - Vacía posRemindersIndex y lo reconstruye recorriendo todos los eventos y días
+// - Normaliza dueDateKey (compat) sin romper data vieja
+async function rebuildRemindersIndexPOS(){
+  try{
+    if (!db) await openDB();
+    if (!db || !db.objectStoreNames.contains('posRemindersIndex')) return false;
+
+    // 1) Vaciar índice
+    try{ await clearStore('posRemindersIndex'); }catch(_e){ /* no-op */ }
+
+    // 2) Recorrer eventos
+    let events = [];
+    try{ events = await getAll('events'); }catch(_e){ events = []; }
+    if (!Array.isArray(events) || !events.length) return true;
+
+    let batch = [];
+    const flush = async ()=>{
+      if (!batch.length) return;
+      await new Promise((resolve)=>{
+        try{
+          const t = db.transaction(['posRemindersIndex'], 'readwrite');
+          const st = t.objectStore('posRemindersIndex');
+          for (const row of batch){
+            try{ st.put(row); }catch(_e){}
+          }
+          t.oncomplete = ()=>resolve();
+          t.onerror = ()=>resolve();
+          t.onabort = ()=>resolve();
+        }catch(e){
+          resolve();
+        }
+      });
+      batch = [];
+    };
+
+    for (const ev of events){
+      if (!ev || typeof ev !== 'object') continue;
+      const eventId = Number(ev.id);
+      if (!eventId) continue;
+      const eventName = String(ev.name || '').trim();
+
+      const dayObj = (ev.days && typeof ev.days === 'object') ? ev.days : {};
+      const dayKeys = Object.keys(dayObj || {});
+      if (!dayKeys.length) continue;
+
+      let evTouched = false;
+      for (const dk of dayKeys){
+        if (typeof dk !== 'string' || !dk) continue;
+
+        const { changed, state } = ensureChecklistDataPOS(ev, dk);
+        if (changed) evTouched = true;
+
+        const reminders = Array.isArray(state && state.reminders) ? state.reminders : [];
+        for (const r of reminders){
+          if (!r || typeof r !== 'object') continue;
+          const reminderId = String(r.id || '').trim();
+          const text = String(r.text || '').trim();
+          if (!reminderId || !text) continue;
+
+          const idxId = buildReminderIndexIdPOS(eventId, dk, reminderId);
+          const createdAt = Number.isFinite(r.createdAt) ? r.createdAt : Date.now();
+          const updatedAt = Number.isFinite(r.updatedAt) ? r.updatedAt : createdAt;
+
+          batch.push({
+            idxId,
+            eventId,
+            eventName,
+            dayKey: String(dk),
+            reminderId,
+            text,
+            done: !!r.done,
+            dueTime: (typeof r.dueTime === 'string' && /^\d{2}:\d{2}$/.test(r.dueTime.trim())) ? r.dueTime.trim() : null,
+            priority: (typeof r.priority === 'string' && ['high','med','low'].includes(r.priority.trim())) ? r.priority.trim() : null,
+            createdAt,
+            updatedAt
+          });
+
+          if (batch.length >= 400) await flush();
+        }
+      }
+
+      // Persistir normalización de dueDateKey solo si tocamos algo.
+      if (evTouched){
+        try{ await put('events', ev); }catch(_e){}
+      }
+    }
+
+    await flush();
+    return true;
+  }catch(e){
+    console.warn('rebuildRemindersIndexPOS: fallo (se ignora para no romper POS)', e);
+    return false;
+  }
+}
+
+// Ejecutar rebuild una sola vez por instalación (y una sola vez por sesión)
+async function maybeRebuildRemindersIndexPOS(){
+  try{
+    if (window.__A33_REM_INDEX_REBUILT) return;
+    window.__A33_REM_INDEX_REBUILT = true;
+    const KEY = 'a33_pos_remindersIndex_rebuild_dueDate_v1';
+    const done = (localStorage.getItem(KEY) || '') === '1';
+    if (done) return;
+    const ok = await rebuildRemindersIndexPOS();
+    if (ok) localStorage.setItem(KEY, '1');
+  }catch(_e){ /* no-op */ }
 }
 
 function renderChecklistSectionPOS(sectionKey, listEl, items, checkedSet){
@@ -4714,8 +5069,233 @@ function renderChecklistSectionPOS(sectionKey, listEl, items, checkedSet){
   });
 }
 
+function labelReminderPriorityPOS(p){
+  if (p === 'high') return 'Alta';
+  if (p === 'med') return 'Media';
+  if (p === 'low') return 'Baja';
+  return '';
+}
+
+function classReminderPriorityPOS(p){
+  if (p === 'high') return 'rem-pri-high';
+  if (p === 'med') return 'rem-pri-med';
+  if (p === 'low') return 'rem-pri-low';
+  return '';
+}
+
+function buildReminderRowPOS(rem){
+  const row = document.createElement('div');
+  row.className = 'rem-item';
+  row.dataset.id = String(rem.id);
+
+  const dayKey = (rem && (rem.__dayKey || rem.dayKey || rem.dueDateKey)) ? String(rem.__dayKey || rem.dayKey || rem.dueDateKey) : '';
+  if (dayKey) row.dataset.dayKey = dayKey;
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'rem-toggle';
+  cb.checked = !!rem.done;
+  cb.dataset.id = String(rem.id);
+  if (dayKey) cb.dataset.dayKey = dayKey;
+
+  const main = document.createElement('div');
+  main.className = 'rem-main';
+
+  const text = document.createElement('div');
+  text.className = 'rem-textline';
+  text.textContent = String(rem.text || '');
+
+  const meta = document.createElement('div');
+  meta.className = 'rem-meta';
+
+  if (rem.dueTime){
+    const chip = document.createElement('span');
+    chip.className = 'rem-chip rem-chip-time';
+    chip.textContent = '⏰ ' + String(rem.dueTime);
+    meta.appendChild(chip);
+  }
+  if (rem.priority){
+    const chip = document.createElement('span');
+    chip.className = 'rem-chip ' + classReminderPriorityPOS(rem.priority);
+    chip.textContent = labelReminderPriorityPOS(rem.priority);
+    meta.appendChild(chip);
+  }
+
+  main.appendChild(text);
+  if (meta.childElementCount) main.appendChild(meta);
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'btn-mini btn-pill-mini rem-del';
+  del.textContent = '✕';
+  del.title = 'Eliminar';
+  del.dataset.id = String(rem.id);
+  if (dayKey) del.dataset.dayKey = dayKey;
+
+  row.appendChild(cb);
+  row.appendChild(main);
+  row.appendChild(del);
+  return row;
+}
+
+function renderChecklistRemindersPOS(ev, baseDayKey){
+  const countEl = document.getElementById('checklist-reminder-count');
+  const listEl = document.getElementById('checklist-reminder-list');
+  const doneToggle = document.getElementById('checklist-reminder-done-toggle');
+  const doneWrap = document.getElementById('checklist-reminder-done-wrap');
+  const doneList = document.getElementById('checklist-reminder-done-list');
+  const clearDoneBtn = document.getElementById('checklist-reminder-clear-done');
+
+  if (!listEl || !ev) return;
+
+  const dayKey = safeYMD(baseDayKey);
+  const dayKeys = rangeDayKeysPOS(dayKey, 7);
+
+  const priRank = (p)=> (p==='high'?0:(p==='med'?1:(p==='low'?2:3)));
+
+  // Recolectar por día
+  const byDay = {};
+  const doneByDay = {};
+  let totalPending = 0;
+  let totalDone = 0;
+
+  for (const dk of dayKeys){
+    const { state } = ensureChecklistDataPOS(ev, dk);
+    const arr = Array.isArray(state.reminders) ? state.reminders : [];
+
+    const pend = arr.filter(r=>!r.done).map(r=>({ ...r, __dayKey: dk }));
+    const done = arr.filter(r=>!!r.done).map(r=>({ ...r, __dayKey: dk }));
+
+    pend.sort((a,b)=>{
+      const ta = a.dueTime || '99:99';
+      const tb = b.dueTime || '99:99';
+      if (ta !== tb) return ta.localeCompare(tb);
+      const pa = priRank(a.priority), pb = priRank(b.priority);
+      if (pa !== pb) return pa - pb;
+      return (b.updatedAt||0) - (a.updatedAt||0);
+    });
+
+    done.sort((a,b)=>{
+      // completados: por doneAt desc (y fallback updatedAt)
+      const da = (a.doneAt||0) || (a.updatedAt||0);
+      const db = (b.doneAt||0) || (b.updatedAt||0);
+      return db - da;
+    });
+
+    byDay[dk] = pend;
+    doneByDay[dk] = done;
+    totalPending += pend.length;
+    totalDone += done.length;
+  }
+
+  if (countEl) countEl.textContent = String(totalPending);
+
+  // Helpers UI
+  const mkTitle = (txt)=>{
+    const el = document.createElement('div');
+    el.className = 'rem-section-title';
+    el.textContent = txt;
+    return el;
+  };
+  const mkSubDate = (ymd)=>{
+    const el = document.createElement('div');
+    el.className = 'rem-date-title';
+    el.textContent = formatDayKeyShortESPOS(ymd);
+    return el;
+  };
+  const mkGap = ()=>{
+    const el = document.createElement('div');
+    el.className = 'rem-gap';
+    return el;
+  };
+
+  // Pendientes (Hoy + Próximos)
+  listEl.innerHTML = '';
+
+  const todayPend = byDay[dayKey] || [];
+  const upcomingKeys = dayKeys.slice(1);
+  const hasUpcoming = upcomingKeys.some(k => (byDay[k]||[]).length);
+
+  if (!totalPending){
+    const empty = document.createElement('div');
+    empty.className = 'rem-empty';
+    empty.textContent = 'Sin recordatorios pendientes.';
+    listEl.appendChild(empty);
+  } else {
+    if (todayPend.length){
+      listEl.appendChild(mkTitle('Hoy'));
+      for (const r of todayPend) listEl.appendChild(buildReminderRowPOS(r));
+    }
+
+    if (todayPend.length && hasUpcoming){
+      listEl.appendChild(mkGap());
+    }
+
+    if (hasUpcoming){
+      listEl.appendChild(mkTitle('Próximos'));
+      for (const dk of upcomingKeys){
+        const arr = byDay[dk] || [];
+        if (!arr.length) continue;
+        listEl.appendChild(mkSubDate(dk));
+        for (const r of arr) listEl.appendChild(buildReminderRowPOS(r));
+      }
+    }
+
+    // Caso raro: hay pendientes solo hoy o solo próximos; ya renderizado.
+  }
+
+  // Completados (rango)
+  const open = !!window.__A33_REM_DONE_OPEN;
+  if (doneWrap) doneWrap.style.display = (open && totalDone) ? 'block' : 'none';
+  if (doneToggle){
+    doneToggle.disabled = (totalDone === 0);
+    doneToggle.setAttribute('aria-expanded', (open && totalDone) ? 'true' : 'false');
+    doneToggle.textContent = `Completados (${totalDone}) ${(open && totalDone) ? '▾' : '▸'}`;
+  }
+  if (clearDoneBtn) clearDoneBtn.disabled = (totalDone === 0);
+
+  if (doneList){
+    doneList.innerHTML = '';
+    if (!totalDone){
+      const empty = document.createElement('div');
+      empty.className = 'rem-empty';
+      empty.textContent = 'Aún no hay completados.';
+      doneList.appendChild(empty);
+    } else {
+      for (const dk of dayKeys){
+        const arr = doneByDay[dk] || [];
+        if (!arr.length) continue;
+        // Para completados, preferimos encabezado por fecha siempre (no Hoy/Próximos)
+        doneList.appendChild(mkSubDate(dk));
+        for (const r of arr) doneList.appendChild(buildReminderRowPOS(r));
+      }
+    }
+  }
+}
+
+async function getChecklistContextPOS(){
+  const cur = await getMeta('currentEventId');
+  const curId = (cur === null || cur === undefined || cur === '') ? null : parseInt(cur,10);
+  if (!curId) return null;
+  const dayKey = safeYMD(getSaleDayKeyPOS());
+  const ev = await getEventByIdPOS(curId);
+  if (!ev) return null;
+  const { state } = ensureChecklistDataPOS(ev, dayKey);
+  return { curId, dayKey, ev, state };
+}
+
+async function saveChecklistStatePOS(ctx){
+  if (!ctx || !ctx.ev || !ctx.ev.days || !ctx.dayKey) return;
+  if (!ctx.ev.days[ctx.dayKey] || typeof ctx.ev.days[ctx.dayKey] !== 'object') ctx.ev.days[ctx.dayKey] = {};
+  ctx.ev.days[ctx.dayKey].checklistState = ctx.state;
+  await put('events', ctx.ev);
+}
+
 async function renderChecklistTab(){
   bindChecklistEventsOncePOS();
+
+  // Hardening: asegurar índice posRemindersIndex coherente (se ejecuta 1 vez)
+  try{ await maybeRebuildRemindersIndexPOS(); }catch(_e){}
 
   const empty = document.getElementById('checklist-empty');
   const grid = document.getElementById('checklist-grid');
@@ -4740,9 +5320,22 @@ async function renderChecklistTab(){
   }
 
   const dayKey = safeYMD(getSaleDayKeyPOS());
+
+  // Default de fecha para nuevos recordatorios: sigue el día del Checklist (sin pisar si el usuario la cambió manualmente)
+  try{
+    const dateEl = document.getElementById('checklist-reminder-date');
+    if (dateEl){
+      const last = (dateEl.dataset.lastDayKey || '').toString();
+      const curVal = (dateEl.value || '').toString().trim();
+      if (!curVal || curVal === last) dateEl.value = dayKey;
+      dateEl.dataset.lastDayKey = dayKey;
+    }
+  }catch(_e){}
   const { changed, template, state } = ensureChecklistDataPOS(ev, dayKey);
   if (changed) {
     try{ await put('events', ev); }catch(e){ console.error('Checklist: no se pudo persistir inicialización', e); }
+    // Si acabamos de normalizar/crear recordatorios del día (datos antiguos), mantenemos el índice coherente.
+    try{ await syncRemindersIndexForDay(ev, dayKey); }catch(e){}
   }
 
   if (empty) empty.style.display = 'none';
@@ -4758,6 +5351,9 @@ async function renderChecklistTab(){
 
   const notes = document.getElementById('checklist-notes');
   if (notes) notes.value = state.notes || '';
+
+  // Recordatorios (por día)
+  try{ renderChecklistRemindersPOS(ev, dayKey); }catch(e){ console.warn('Checklist: recordatorios', e); }
 }
 
 function bindChecklistEventsOncePOS(){
@@ -4820,6 +5416,137 @@ function bindChecklistEventsOncePOS(){
   const tab = document.getElementById('tab-checklist');
   if (tab){
     tab.addEventListener('click', async (e)=>{
+      const remAdd = e.target.closest('#checklist-reminder-add');
+      const remDoneToggle = e.target.closest('#checklist-reminder-done-toggle');
+      const remClearDone = e.target.closest('#checklist-reminder-clear-done');
+      const remDel = e.target.closest('.rem-del');
+
+      if (remDoneToggle){
+        if (remDoneToggle.disabled) return;
+        window.__A33_REM_DONE_OPEN = !window.__A33_REM_DONE_OPEN;
+        await renderChecklistTab();
+        return;
+      }
+
+      if (remAdd){
+        const ctx = await getChecklistContextPOS();
+        if (!ctx){
+          try{ showToast('Selecciona un evento primero.'); }catch(_e){}
+          return;
+        }
+
+        const tEl = document.getElementById('checklist-reminder-text');
+        const dateEl = document.getElementById('checklist-reminder-date');
+        const dueEl = document.getElementById('checklist-reminder-due');
+        const priEl = document.getElementById('checklist-reminder-priority');
+
+        const text = (tEl ? (tEl.value || '') : '').trim();
+        if (!text){
+          try{ showToast('Escribe el recordatorio.'); }catch(_e){}
+          try{ tEl && tEl.focus(); }catch(_e){}
+          return;
+        }
+
+        // Fecha obligatoria (YYYY-MM-DD). Si el input no existe (edge), caemos al día actual.
+        const dueDateRaw = dateEl ? String(dateEl.value || '').trim() : '';
+        const dueDateKey = (dueDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw)) ? dueDateRaw : null;
+        if (!dueDateKey){
+          try{ showToast('Selecciona una fecha (obligatoria).'); }catch(_e){}
+          try{ dateEl && dateEl.focus(); }catch(_e){}
+          return;
+        }
+
+        const dueTimeRaw = dueEl ? (dueEl.value || '').trim() : '';
+        const dueTime = (dueTimeRaw && /^\d{2}:\d{2}$/.test(dueTimeRaw)) ? dueTimeRaw : null;
+        const priRaw = priEl ? (priEl.value || '').trim() : '';
+        const priority = (priRaw && ['high','med','low'].includes(priRaw)) ? priRaw : null;
+
+        // Guardar en el día destino (dueDateKey). No cambiamos sale-date automáticamente.
+        const { state: destState } = ensureChecklistDataPOS(ctx.ev, dueDateKey);
+        const ctxDest = { ...ctx, dayKey: dueDateKey, state: destState };
+
+        ctxDest.state.reminders = Array.isArray(ctxDest.state.reminders) ? ctxDest.state.reminders : [];
+        const now = Date.now();
+        ctxDest.state.reminders.unshift({
+          id: makeReminderIdPOS(),
+          text,
+          done: false,
+          createdAt: now,
+          updatedAt: now,
+          doneAt: null,
+          dueDateKey,
+          dueTime,
+          priority
+        });
+
+        await saveChecklistStatePOS(ctxDest);
+        try{ await syncRemindersIndexForDay(ctx.ev, dueDateKey); }catch(e){}
+        if (tEl) tEl.value = '';
+        if (dueEl) dueEl.value = '';
+        if (priEl) priEl.value = '';
+        await renderChecklistTab();
+        try{
+          if (String(dueDateKey) !== String(ctx.dayKey)) showToast(`Guardado para ${dueDateKey}`);
+          else showToast('Recordatorio agregado.');
+        }catch(_e){}
+        try{ tEl && tEl.focus(); }catch(_e){}
+        return;
+      }
+
+      if (remClearDone){
+        const ctx = await getChecklistContextPOS();
+        if (!ctx) return;
+        const ok = confirm('¿Limpiar todos los recordatorios completados de los próximos 7 días?');
+        if (!ok) return;
+
+        const base = safeYMD(ctx.dayKey);
+        const dayKeys = rangeDayKeysPOS(base, 7);
+        const changedDays = [];
+
+        for (const dk of dayKeys){
+          const { state } = ensureChecklistDataPOS(ctx.ev, dk);
+          const arr = Array.isArray(state.reminders) ? state.reminders : [];
+          const next = arr.filter(r=>!r.done);
+          if (next.length !== arr.length){
+            state.reminders = next;
+            ctx.ev.days[dk].checklistState = state;
+            changedDays.push(dk);
+          }
+        }
+
+        if (changedDays.length){
+          await put('events', ctx.ev);
+          for (const dk of changedDays){
+            try{ await syncRemindersIndexForDay(ctx.ev, dk); }catch(e){}
+          }
+        }
+
+        window.__A33_REM_DONE_OPEN = false;
+        await renderChecklistTab();
+        try{ showToast('Completados eliminados (próximos 7 días).'); }catch(_e){}
+        return;
+      }
+
+      if (remDel){
+        const id = remDel.dataset.id;
+        if (!id) return;
+        const ctx = await getChecklistContextPOS();
+        if (!ctx) return;
+
+        const dkRaw = (remDel.dataset.dayKey || remDel.dataset.daykey || '').toString().trim();
+        const dayKey = (dkRaw && /^\d{4}-\d{2}-\d{2}$/.test(dkRaw)) ? dkRaw : ctx.dayKey;
+
+        const { state } = ensureChecklistDataPOS(ctx.ev, dayKey);
+        state.reminders = (Array.isArray(state.reminders) ? state.reminders : []).filter(r=>String(r.id)!==String(id));
+        ctx.ev.days[dayKey].checklistState = state;
+
+        await put('events', ctx.ev);
+        try{ await syncRemindersIndexForDay(ctx.ev, dayKey); }catch(e){}
+        await renderChecklistTab();
+        try{ showToast('Recordatorio eliminado.'); }catch(_e){}
+        return;
+      }
+
       const up = e.target.closest('.chk-up');
       const down = e.target.closest('.chk-down');
       const del = e.target.closest('.chk-del');
@@ -4888,13 +5615,36 @@ function bindChecklistEventsOncePOS(){
     tab.addEventListener('change', async (e)=>{
       const cb = e.target.closest('.chk-box');
       const txt = e.target.closest('.chk-text');
-      if (!(cb || txt)) return;
+      const remCb = e.target.closest('.rem-toggle');
+      if (!(cb || txt || remCb)) return;
       const cur = await getMeta('currentEventId');
       const curId = cur ? parseInt(cur,10) : null;
       if (!curId) return;
-      const dayKey = safeYMD(getSaleDayKeyPOS());
+      const baseDayKey = safeYMD(getSaleDayKeyPOS());
       const ev = await getEventByIdPOS(curId);
       if (!ev) return;
+
+      if (remCb){
+        const id = remCb.dataset.id;
+        if (!id) return;
+        const dkRaw = (remCb.dataset.dayKey || remCb.dataset.daykey || '').toString().trim();
+        const dayKey = (dkRaw && /^\d{4}-\d{2}-\d{2}$/.test(dkRaw)) ? dkRaw : baseDayKey;
+        const { state } = ensureChecklistDataPOS(ev, dayKey);
+        const arr = Array.isArray(state.reminders) ? state.reminders : [];
+        const it = arr.find(r=>String(r.id)===String(id));
+        if (!it) return;
+        it.done = !!remCb.checked;
+        it.doneAt = it.done ? Date.now() : null;
+        it.updatedAt = Date.now();
+        state.reminders = arr;
+        ev.days[dayKey].checklistState = state;
+        await put('events', ev);
+        try{ await syncRemindersIndexForDay(ev, dayKey); }catch(e){}
+        await renderChecklistTab();
+        return;
+      }
+
+      const dayKey = baseDayKey;
       const { template, state } = ensureChecklistDataPOS(ev, dayKey);
 
       if (cb){
@@ -4925,6 +5675,21 @@ function bindChecklistEventsOncePOS(){
       }
     });
   }
+
+  // Recordatorios: Enter = Agregar
+  const hookEnter = (el)=>{
+    if (!el) return;
+    el.addEventListener('keydown', (e)=>{
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const btn = document.getElementById('checklist-reminder-add');
+      try{ btn && btn.click(); }catch(_e){}
+    });
+  };
+  hookEnter(document.getElementById('checklist-reminder-text'));
+  hookEnter(document.getElementById('checklist-reminder-date'));
+  hookEnter(document.getElementById('checklist-reminder-due'));
+  hookEnter(document.getElementById('checklist-reminder-priority'));
 
   // Notas (debounced)
   const notes = document.getElementById('checklist-notes');
@@ -10035,6 +10800,13 @@ async function init(){
   try{
     const deepTab = getTabFromUrlPOS();
     if (deepTab) setTab(deepTab);
+
+    // Deep-link extra: #checklist-reminders -> checklist + scroll a la card
+    const scrollTarget = getDeepScrollTargetFromUrlPOS();
+    if (scrollTarget){
+      setTab('checklist');
+      scheduleScrollToIdPOS(scrollTarget);
+    }
   }catch(_){ }
 
   // Vender tab

@@ -4,20 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.4">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.5">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=4.20.4">
+<link rel="stylesheet" href="styles.css?v=4.20.5">
   <link rel="stylesheet" href="/assets/css/a33-header.css" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">POS · Eventos</div>
-    <div class="a33-version">v4.20.4</div>
+    <div class="a33-version">v4.20.5</div>
   </header>
 <div id="offlineBar" class="offline">Trabajando sin conexión</div>
 <div class="container">
@@ -1153,6 +1153,41 @@
         </div>
       </div>
     </div>
+
+    <div class="card inner" id="checklist-reminders-card" style="margin-top:12px">
+      <div class="rem-head">
+        <div>
+          <h3 style="margin:0">RECORDATORIOS</h3>
+          <div class="muted" style="margin-top:6px">Pendientes: <b><span id="checklist-reminder-count">0</span></b></div>
+        </div>
+        <div class="rem-head-meta muted" style="margin-left:auto">Hoy + Próximos 6 días</div>
+      </div>
+
+      <div class="rem-add" role="group" aria-label="Agregar recordatorio">
+        <input id="checklist-reminder-text" class="rem-text" placeholder="Ej: llevar hielo, cables, cambio…">
+        <input id="checklist-reminder-date" class="rem-date" type="date" title="Fecha (obligatoria)">
+        <input id="checklist-reminder-due" class="rem-due" type="time" title="Hora (opcional)">
+        <select id="checklist-reminder-priority" class="rem-priority" title="Prioridad (opcional)">
+          <option value="">Prioridad</option>
+          <option value="high">Alta</option>
+          <option value="med">Media</option>
+          <option value="low">Baja</option>
+        </select>
+        <button id="checklist-reminder-add" class="btn-ok btn-pill btn-pill-mini" type="button">Agregar</button>
+      </div>
+
+      <div id="checklist-reminder-list" class="rem-list" aria-label="Pendientes"></div>
+
+      <div class="rem-done">
+        <button id="checklist-reminder-done-toggle" class="btn-mini btn-pill btn-pill-mini" type="button" aria-expanded="false">Completados (0) ▾</button>
+        <div id="checklist-reminder-done-wrap" class="rem-done-wrap" style="display:none">
+          <div id="checklist-reminder-done-list" class="rem-list rem-list-done" aria-label="Completados"></div>
+          <div class="actions end" style="margin-top:8px">
+            <button id="checklist-reminder-clear-done" class="btn-warn btn-pill btn-pill-mini" type="button">Limpiar completados</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
 </div>
@@ -1337,10 +1372,10 @@
     location.href = "../index.html";
   }
 </script>
-<script src="app.js?v=4.20.4"></script>
+<script src="app.js?v=4.20.5"></script>
 <script src="/assets/js/a33-input-ux.js"></script>
 <script>
-  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js?v=4.20.4'); }
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js?v=4.20.5'); }
 </script>
 </body>
 </html>

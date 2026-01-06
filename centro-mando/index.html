@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#7b1818" />
 
   <link rel="stylesheet" href="/assets/css/a33-header.css" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=4.20.5" />
 </head>
 <body>
   <!-- HEADER PREMIUM -->
@@ -17,7 +17,7 @@
     <div class="a33-title">Centro de Mando</div>
     <div class="a33-version">
       <span class="cmd-today-label">Hoy: <b id="cmdToday">—</b></span>
-      <span class="cmd-version">v4.20.4</span>
+      <span class="cmd-version">v4.20.5</span>
     </div>
   </header>
 
@@ -127,6 +127,27 @@
         </div>
         <div class="cmd-top3" id="topProducts">—</div>
         <div class="cmd-muted" id="topProductsHint">No disponible</div>
+      </article>
+    </section>
+
+
+    <!-- RECORDATORIOS (solo lectura desde posRemindersIndex) -->
+    <section class="cmd-reminders" id="remindersBlock" aria-label="Recordatorios">
+      <article class="cmd-card cmd-rem-card" aria-label="Recordatorios">
+        <div class="cmd-section-head cmd-rem-head">
+          <div class="cmd-section-title">Recordatorios <span class="cmd-muted">· Pendientes: <b id="remindersPending">—</b></span></div>
+          <div class="cmd-rem-tools">
+            <button class="cmd-pill cmd-pill-mini" id="remindersToggleDone" type="button" aria-pressed="false">Mostrar completados</button>
+            <button class="cmd-pill cmd-pill-mini" id="btnGoPosReminders" type="button">Ir a Recordatorios</button>
+          </div>
+        </div>
+
+        <div class="cmd-rem-empty" id="remindersEmpty" hidden>
+          <div class="cmd-rem-empty-title">Sin recordatorios</div>
+          <div class="cmd-muted" id="remindersEmptyHint">—</div>
+        </div>
+
+        <div class="cmd-rem-list" id="remindersList"></div>
       </article>
     </section>
 
@@ -247,7 +268,7 @@
       }
     }catch(_){ }
   </script>
-  <script src="app.js"></script>
+  <script src="app.js?v=4.20.5"></script>
   <!-- Sync report modal -->
   <div class="cmd-modal" id="syncReport" hidden>
     <div class="cmd-modal-overlay" data-close="1"></div>

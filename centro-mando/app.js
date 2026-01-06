@@ -1,5 +1,5 @@
 /*
-  Suite A33 v4.20.4 — Centro de Mando (OPERATIVO v1)
+  Suite A33 v4.20.5 — Centro de Mando (OPERATIVO v1)
 
   Fuentes reales (descubiertas en /pos/app.js dentro de esta ZIP):
   - DB_NAME: 'a33-pos'
@@ -16,6 +16,10 @@ const LS_FOCUS_KEY = 'a33_cmd_focusEventId';
 const ORDERS_LS_KEY = 'arcano33_pedidos';
 const ORDERS_ROUTE = '../pedidos/index.html';
 const SAFE_SCAN_LIMIT = 4000; // seguridad: evitar loops gigantes
+
+// --- Recordatorios (índice liviano desde POS)
+const REMINDERS_STORE = 'posRemindersIndex';
+const REMINDERS_SHOW_DONE_KEY = 'a33_cmd_reminders_showDone_v1';
 
 // --- Recomendaciones (desde Analítica: cache en localStorage)
 const ANALYTICS_RECOS_KEY = 'a33_analytics_recos_v1';
@@ -494,6 +498,21 @@ function ymdAddDays(ymd, delta){
   }
 }
 
+
+function fmtYMDShortES(ymd){
+  // Ej: 2026-01-05 -> "Lun 05 Ene"
+  try{
+    const [y,m,d] = String(ymd).split('-').map(n=>parseInt(n,10));
+    const dt = new Date(y, (m||1)-1, d||1);
+    const dow = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][dt.getDay()] || '—';
+    const mon = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][dt.getMonth()] || '—';
+    const dd = String(dt.getDate()).padStart(2,'0');
+    return `${dow} ${dd} ${mon}`;
+  }catch(_){
+    return String(ymd || '');
+  }
+}
+
 function fmtMoneyNIO(n){
   if (typeof n !== 'number' || !isFinite(n)) return '—';
   // 2 decimales, sin locales raros (consistencia iPad)
@@ -507,6 +526,20 @@ function fmtMoneyNIO(n){
 function safeStr(x){
   const s = (x == null) ? '' : String(x);
   return s.trim();
+}
+
+// --- Preferencias UI (Recordatorios)
+function getShowDoneRemindersPref(){
+  try{
+    const raw = localStorage.getItem(REMINDERS_SHOW_DONE_KEY);
+    return raw === '1' || raw === 'true';
+  }catch(_){
+    return false;
+  }
+}
+
+function setShowDoneRemindersPref(val){
+  try{ localStorage.setItem(REMINDERS_SHOW_DONE_KEY, val ? '1' : '0'); }catch(_){ }
 }
 
 
@@ -851,6 +884,270 @@ async function setMeta(db, key, value){
   return idbPut(db, 'meta', { id: key, value });
 }
 
+
+// --- Recordatorios (posRemindersIndex) — SOLO lectura
+function remindersGetShowDone(){
+  try{
+    const raw = localStorage.getItem(REMINDERS_SHOW_DONE_KEY);
+    return raw === '1' || raw === 'true';
+  }catch(_){
+    return false;
+  }
+}
+
+function remindersSetShowDone(v){
+  try{ localStorage.setItem(REMINDERS_SHOW_DONE_KEY, v ? '1' : '0'); }catch(_){ }
+}
+
+function remindersDueMinutes(row){
+  const t = safeStr(row && row.dueTime);
+  if (!/^[0-2]\d:[0-5]\d$/.test(t)) return 1e9;
+  const [hh, mm] = t.split(':').map(n=>parseInt(n,10));
+  if (!isFinite(hh) || !isFinite(mm)) return 1e9;
+  return (hh * 60) + mm;
+}
+
+function remindersPriorityRank(p){
+  const s = safeStr(p).toLowerCase();
+  if (s === 'high') return 0;
+  if (s === 'med') return 1;
+  if (s === 'low') return 2;
+  return 3;
+}
+
+async function idbScanRemindersByDayPrefix(db, dayKey){
+  if (!db || !hasStore(db, REMINDERS_STORE)) return [];
+  const prefix = `${String(dayKey)}|`;
+  return new Promise((resolve)=>{
+    try{
+      const store = tx(db, REMINDERS_STORE, 'readonly');
+      let range = null;
+      try{
+        range = IDBKeyRange.bound(prefix, prefix + '\uffff');
+      }catch(_){
+        range = null;
+      }
+
+      const out = [];
+      const req = store.openCursor(range);
+      req.onsuccess = (e)=>{
+        const cur = e.target.result;
+        if (!cur) return resolve(out);
+        if (out.length >= 1200) return resolve(out); // seguridad
+        out.push(cur.value);
+        try{ cur.continue(); }catch(_){ resolve(out); }
+      };
+      req.onerror = ()=> resolve([]);
+    }catch(err){
+      console.warn('idbScanRemindersByDayPrefix exception', err);
+      resolve([]);
+    }
+  });
+}
+
+async function readRemindersIndexForDay(db, dayKey){
+  if (!db) return { ok:false, rows:[], reason:'No disponible' };
+  if (!hasStore(db, REMINDERS_STORE)) {
+    return { ok:false, rows:[], reason:'Índice no disponible. Abre POS una vez.' };
+  }
+
+  let rows = null;
+  try{
+    rows = await idbGetAllByIndex(db, REMINDERS_STORE, 'by_day', IDBKeyRange.only(String(dayKey)));
+  }catch(_){
+    rows = null;
+  }
+  if (rows === null){
+    // Fallback eficiente por prefijo de clave (dayKey|...)
+    rows = await idbScanRemindersByDayPrefix(db, String(dayKey));
+  }
+  if (!Array.isArray(rows)) rows = [];
+  return { ok:true, rows, reason:'' };
+}
+
+
+async function readRemindersIndexForRange(db, dayKeys){
+  const keys = Array.isArray(dayKeys) ? dayKeys.map(k=>String(k)) : [];
+  if (!db) return { ok:false, rows:[], reason:'No disponible', dayKeys: keys };
+  if (!hasStore(db, REMINDERS_STORE)) {
+    return { ok:false, rows:[], reason:'Índice no disponible. Abre POS una vez.', dayKeys: keys };
+  }
+
+  const rowsAll = [];
+  let anyOk = false;
+  for (const dk of keys){
+    try{
+      const res = await readRemindersIndexForDay(db, dk);
+      if (res && res.ok){
+        anyOk = true;
+        if (Array.isArray(res.rows) && res.rows.length) rowsAll.push(...res.rows);
+      }
+    }catch(_){
+      // seguimos con el resto de días
+    }
+  }
+
+  return { ok:anyOk, rows: rowsAll, reason: anyOk ? '' : 'No disponible', dayKeys: keys };
+}
+
+function renderRemindersBlock(payload){
+  const pendingEl = $('remindersPending');
+  const listEl = $('remindersList');
+  const emptyEl = $('remindersEmpty');
+  const emptyHint = $('remindersEmptyHint');
+  const toggleEl = $('remindersToggleDone');
+
+  // Título: "Recordatorios · Próximos 7 días" (manteniendo el contador existente)
+  try{
+    const titleEl = document.querySelector('#remindersBlock .cmd-rem-card .cmd-section-title');
+    if (titleEl){
+      const span = titleEl.querySelector('span');
+      // reconstruimos el título sin tocar el span (contiene #remindersPending)
+      if (span){
+        titleEl.innerHTML = '';
+        titleEl.appendChild(document.createTextNode('Recordatorios · Próximos 7 días '));
+        titleEl.appendChild(span);
+      }
+    }
+  }catch(_){ }
+
+  const showDonePref = remindersGetShowDone();
+  if (toggleEl){
+    toggleEl.setAttribute('aria-pressed', showDonePref ? 'true' : 'false');
+    toggleEl.textContent = showDonePref ? 'Ocultar completados' : 'Mostrar completados';
+  }
+
+  if (listEl) listEl.innerHTML = '';
+  if (emptyEl) emptyEl.hidden = true;
+
+  const ok = payload && payload.ok;
+  const rows = ok && Array.isArray(payload.rows) ? payload.rows : [];
+  const reason = payload && payload.reason ? String(payload.reason) : '';
+  const dayKeys = (payload && Array.isArray(payload.dayKeys) && payload.dayKeys.length)
+    ? payload.dayKeys.map(k=>String(k))
+    : Array.from(new Set(rows.map(r=> safeStr(r && r.dayKey)).filter(Boolean))).sort();
+
+  // Pendientes: siempre basado en done=false (en TODO el rango)
+  const pendingCount = rows.filter(r => !(r && r.done)).length;
+  if (pendingEl) pendingEl.textContent = String(pendingCount);
+
+  if (!ok){
+    if (emptyEl) emptyEl.hidden = false;
+    if (emptyHint) emptyHint.textContent = reason || 'No disponible';
+    return;
+  }
+
+  // Agrupar por dayKey
+  const byDay = new Map();
+  for (const r of rows){
+    if (!r || typeof r !== 'object') continue;
+    const dk = safeStr(r.dayKey);
+    if (!dk) continue;
+    if (!byDay.has(dk)) byDay.set(dk, []);
+    byDay.get(dk).push(r);
+  }
+
+  // Orden: dueTime asc (sin hora al final), prioridad high>med>low, updatedAt desc
+  const sortRows = (arr)=>{
+    arr.sort((a,b)=>{
+      const ad = remindersDueMinutes(a);
+      const bd = remindersDueMinutes(b);
+      if (ad !== bd) return ad - bd;
+      const ap = remindersPriorityRank(a && a.priority);
+      const bp = remindersPriorityRank(b && b.priority);
+      if (ap !== bp) return ap - bp;
+      const au = Number((a && (a.updatedAt || a.createdAt)) || 0);
+      const bu = Number((b && (b.updatedAt || b.createdAt)) || 0);
+      if (au !== bu) return bu - au;
+      return safeStr(a && a.idxId).localeCompare(safeStr(b && b.idxId));
+    });
+  };
+
+  const renderRow = (r)=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'cmd-rem-item';
+
+    const top = document.createElement('div');
+    top.className = 'cmd-rem-top';
+
+    const evName = safeStr(r.eventName) || (r.eventId != null ? (`Evento #${r.eventId}`) : 'Evento —');
+    const ev = document.createElement('div');
+    ev.className = 'cmd-rem-event';
+    ev.textContent = evName;
+
+    const chips = document.createElement('div');
+    chips.className = 'cmd-rem-chips';
+
+    const addChip = (cls, text)=>{
+      const s = document.createElement('span');
+      s.className = 'cmd-chip ' + cls;
+      s.textContent = text;
+      chips.appendChild(s);
+    };
+
+    const due = safeStr(r.dueTime);
+    if (due) addChip('cmd-chip-neutral', due);
+
+    const pr = safeStr(r.priority).toLowerCase();
+    if (pr === 'high') addChip('cmd-chip-critical', 'Alta');
+    else if (pr === 'med') addChip('cmd-chip-yellow', 'Media');
+    else if (pr === 'low') addChip('cmd-chip-low', 'Baja');
+
+    const done = !!r.done;
+    addChip(done ? 'cmd-chip-green' : 'cmd-chip-neutral', done ? 'Hecho' : 'Pendiente');
+
+    top.appendChild(ev);
+    top.appendChild(chips);
+
+    const text = document.createElement('div');
+    text.className = 'cmd-rem-text';
+    text.textContent = safeStr(r.text) || '—';
+
+    wrap.appendChild(top);
+    wrap.appendChild(text);
+    if (listEl) listEl.appendChild(wrap);
+  };
+
+  let shownTotal = 0;
+  for (const dk of dayKeys){
+    const allDay = byDay.get(dk) || [];
+    const shownDay = showDonePref ? allDay.slice() : allDay.filter(r => !(r && r.done));
+    sortRows(shownDay);
+    if (!shownDay.length) continue;
+
+    shownTotal += shownDay.length;
+
+    // Header por fecha
+    const h = document.createElement('div');
+    h.className = 'cmd-rem-day-title';
+    h.textContent = `${fmtYMDShortES(dk)} · ${dk}`;
+    if (listEl) listEl.appendChild(h);
+
+    for (const r of shownDay) renderRow(r);
+  }
+
+  if (!shownTotal){
+    if (emptyEl) emptyEl.hidden = false;
+    if (emptyHint) emptyHint.textContent = showDonePref
+      ? 'No hay recordatorios para los próximos 7 días.'
+      : 'No hay pendientes para los próximos 7 días.';
+    return;
+  }
+}
+
+
+
+async function refreshRemindersNext7(){
+  try{
+    const start = state && state.today ? String(state.today) : todayYMD();
+    const dayKeys = [];
+    for (let i=0; i<7; i++) dayKeys.push(ymdAddDays(start, i));
+    const rem = await readRemindersIndexForRange(state.db, dayKeys);
+    renderRemindersBlock(rem);
+  }catch(_){
+    renderRemindersBlock({ ok:false, rows:[], reason:'No disponible', dayKeys:[] });
+  }
+}
 // --- Checklist helpers (estructura real en POS: ev.checklistTemplate + ev.days[YYYY-MM-DD].checklistState)
 function computeChecklistProgress(ev, dayKey){
   if (!ev || typeof ev !== 'object') return { ok:false, text:'—', checked:null, total:null, reason:'No disponible' };
@@ -1719,6 +2016,15 @@ async function navigateToPOS(tab){
   window.location.href = `../pos/index.html?tab=${encodeURIComponent(t)}`;
 }
 
+async function navigateToPOSReminders(){
+  const ev = state.focusEvent;
+  try{
+    if (ev && state.db) await setMeta(state.db, 'currentEventId', Number(ev.id));
+  }catch(_){ }
+  // Deep-link: POS abre Checklist y hace scroll a la card Recordatorios
+  window.location.href = `../pos/index.html#checklist-reminders`;
+}
+
 // --- Picker
 function eventSortKey(ev){
   // Preferir updatedAt, luego createdAt, luego id (todos reales del objeto)
@@ -1816,6 +2122,9 @@ async function refreshAll(){
   clearMetricsToDash();
   clearOrdersToDash();
 
+  // Recordatorios (solo lectura): próximos 7 días (hoy + 6) — NO escanear eventos
+  await refreshRemindersNext7();
+
   // Recomendaciones (cache Analítica)
   renderRecos();
 
@@ -1835,6 +2144,7 @@ async function refreshAll(){
     setDisabled('btnGoResumen', true);
     setDisabled('btnGoChecklist', true);
     setDisabled('btnOpenChecklist', true);
+    setDisabled('btnGoPosReminders', true);
 
     const onlyOrders = (ordersOut && Array.isArray(ordersOut.alerts)) ? ordersOut.alerts : [];
     renderAlerts(onlyOrders.length ? onlyOrders : null);
@@ -1845,6 +2155,7 @@ async function refreshAll(){
   setDisabled('btnGoResumen', false);
   setDisabled('btnGoChecklist', false);
   setDisabled('btnOpenChecklist', false);
+  setDisabled('btnGoPosReminders', false);
 
   const dk = state.today;
 
@@ -1974,6 +2285,20 @@ async function init(){
   bind('btnGoResumen', 'resumen');
   bind('btnGoChecklist', 'checklist');
   bind('btnOpenChecklist', 'checklist');
+
+  // Recordatorios: CTA + toggle (solo lectura)
+  const goRem = $('btnGoPosReminders');
+  if (goRem){
+    goRem.addEventListener('click', ()=>{ navigateToPOSReminders(); });
+  }
+  const tDone = $('remindersToggleDone');
+  if (tDone){
+    tDone.addEventListener('click', async ()=>{
+      remindersSetShowDone(!remindersGetShowDone());
+      // Solo re-render de la sección (usa índice liviano, rango 7 días)
+      await refreshRemindersNext7();
+    });
+  }
 
   // Pedidos: CTA
   const bindPedidos = (id)=>{
