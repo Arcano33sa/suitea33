@@ -687,3 +687,36 @@ tr:nth-child(even) td{
 .clientes-recos-card .recs-item{ display:flex; align-items:flex-start; justify-content:space-between; gap:0.75rem; padding:0.6rem 0.65rem; border-radius: 14px; border:1px solid rgba(255,255,255,0.10); background: rgba(0,0,0,0.30); }
 .clientes-recos-card .recs-item + .recs-item{ margin-top:0.5rem; }
 
+/* === Readability bump (+2px) en TODO Analítica (todas las tabs/secciones) === */
+.analytics-main table{
+  font-size: calc(0.82rem + 2px);
+}
+
+.analytics-main th{
+  font-size: calc(0.74rem + 2px);
+}
+
+/* textos pequeños */
+.analytics-main .hint.small{
+  font-size: calc(0.78rem + 2px);
+}
+
+.analytics-main label{
+  font-size: calc(0.76rem + 2px);
+}
+
+/* chips/pills/badges */
+.analytics-main .status-chip,
+.analytics-main .alert-pill{
+  font-size: calc(0.72rem + 2px);
+}
+
+/* KPI meta-labels */
+.analytics-main .kpi-label{
+  font-size: calc(0.70rem + 2px);
+}
+
+.analytics-main .kpi-sub{
+  font-size: calc(0.72rem + 2px);
+}
+

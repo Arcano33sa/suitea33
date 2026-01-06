@@ -1868,7 +1868,7 @@ function rebuildHorasEventOptions(filteredSales){
     if (!hasData){
       HOVER_CACHE.set(canvasId, []);
       ctx.fillStyle = 'rgba(254,254,254,0.72)';
-      ctx.font = '600 16px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+      ctx.font = '600 18px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Sin datos para graficar en este rango', width/2, height/2);
       return;
@@ -1904,7 +1904,7 @@ function rebuildHorasEventOptions(filteredSales){
     roundedRectPath(ctx, margin.left, margin.top, chartW, chartH, 14);
     ctx.fill();
 
-    ctx.font = '15px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+    ctx.font = '17px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
     ctx.fillStyle = muted;
     ctx.strokeStyle = grid;
     ctx.lineWidth = 1;
@@ -2047,7 +2047,7 @@ function rebuildHorasEventOptions(filteredSales){
     HOVER_CACHE.set(canvasId, bars);
 
     ctx.fillStyle = text;
-    ctx.font = '600 15px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+    ctx.font = '600 17px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
   }
