@@ -88,12 +88,10 @@
             <p id="tab-cortesias" class="fin-card-number">C$ 0.00</p>
           </article>
 
-
           <article class="fin-card">
             <h3>Margen bruto del periodo</h3>
             <p id="tab-bruta" class="fin-card-number">C$ 0.00</p>
           </article>
-
 
           <article class="fin-card">
             <h3>Utilidad después de cortesías</h3>
@@ -264,6 +262,12 @@
           </p>
         </form>
 
+        <div class="cc-actions" id="diario-actions-bar">
+          <button type="button" id="btn-export-diario" class="fin-btn-export">Exportar Diario a Excel</button>
+          <button type="button" id="btn-import-pos-closures" class="fin-btn-export">Importar cierres POS</button>
+          <span id="import-pos-closures-msg" class="cc-msg"></span>
+        </div>
+
         <div class="fin-table-wrapper">
           <table class="fin-table">
             <thead>
@@ -282,16 +286,9 @@
             <tbody id="diario-tbody"></tbody>
           </table>
         </div>
-
-        <div class="cc-actions" style="margin-top:14px">
-          <button type="button" id="btn-export-diario" class="fin-btn-export">Exportar Diario a Excel</button>
-          <button type="button" id="btn-import-pos-closures" class="fin-btn-export">Importar cierres POS</button>
-          <span id="import-pos-closures-msg" class="cc-msg"></span>
-        </div>
       </section>
 
       
-
 
 <!-- COMPRAS (PLANIFICACIÓN / HISTÓRICO, NO CONTABLE) -->
 <section id="view-comprasplan" class="fin-view">

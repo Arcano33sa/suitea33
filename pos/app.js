@@ -6525,6 +6525,463 @@ async function addRestock(eventId, productId, qty, extra){
 async function addAdjust(eventId, productId, qty, notes){ if (!qty) throw new Error('Ajuste no puede ser 0'); await put('inventory', {eventId, productId, type:'adjust', qty, notes: notes||'Ajuste', time:new Date().toISOString()}); }
 async function computeStock(eventId, productId){ const inv = await getInventoryEntries(eventId); const ledger = inv.filter(i=>i.productId===productId).reduce((a,b)=>a+(b.qty||0),0); const sales = (await getAll('sales')).filter(s=>s.eventId===eventId && s.productId===productId).reduce((a,b)=>a+(b.qty||0),0); return ledger - sales; }
 
+// =========================================================
+// Lotes FIFO (Etapa 1: solo cálculo, sin UI)
+// - Fuente de verdad: inventory (restock/adjust con loteCargaId/loteGroupKey)
+// - Orden FIFO: orden de entrada al evento (time de la carga)
+// - No asigna manualmente; solo calcula distribución y sobrantes "unassigned".
+// =========================================================
+
+function lotFifoKeyFromProductPOS(product, productId, fallbackName){
+  // Clave por presentación: preferimos P/M/D/L/G; fallback: PID:<id>
+  const name = (product && product.name) ? product.name : (fallbackName || '');
+  const k = presKeyFromProductNamePOS(name || '');
+  if (k) return k;
+  const pid = Number(productId);
+  if (Number.isFinite(pid) && pid > 0) return 'PID:' + pid;
+  return '';
+}
+
+function lotFifoGroupKeyFromInvEntryPOS(e){
+  if (!e) return '';
+  // Preferir groupKey explícito (reversos), luego loteCargaId, luego fallback legacy.
+  if (e.loteGroupKey != null && String(e.loteGroupKey).trim() !== '') return String(e.loteGroupKey);
+  if (e.loteCargaId != null && String(e.loteCargaId).trim() !== '') return String(e.loteCargaId);
+
+  const code = (e.loteCodigo || '').toString().trim();
+  const t = (e.time || '').toString();
+  const base = (code || '—') + '|' + (t || '');
+  return base;
+}
+
+function lotFifoTsPOS(v){
+  try{
+    const t = Date.parse(String(v || ''));
+    return Number.isFinite(t) ? t : NaN;
+  }catch(_){
+    return NaN;
+  }
+}
+
+async function computeLotFifoForEvent(eventId){
+  const evId = Number(eventId);
+  if (!Number.isFinite(evId) || evId <= 0) throw new Error('computeLotFifoForEvent: eventId inválido');
+
+  const updatedAt = Date.now();
+
+  const products = await getAll('products');
+  const pMap = new Map((products || []).map(p => [Number(p.id), p]));
+
+  const entries = await getInventoryEntries(evId);
+  const inv = Array.isArray(entries) ? entries : [];
+
+  const evidence = { lotIds: new Set(), lotCodes: new Set() };
+
+  const restocks = inv.filter(e => e && e.type === 'restock' && (e.loteCodigo || e.loteId || e.loteCargaId || e.source === 'lote'));
+  const hasLotEvidence = restocks.length > 0;
+
+  // Si no hay evidencia de entrada por lote, devolvemos solo el debug "unassigned" (sin asignar consumo a lotes).
+  const allSales = await getAll('sales');
+  const sales = (allSales || []).filter(s => s && Number(s.eventId) === evId && s.productId != null);
+
+  const soldNeedByKey = {};
+  for (const s of sales){
+    const pid = Number(s.productId);
+    if (!Number.isFinite(pid) || pid <= 0) continue;
+    const prod = pMap.get(pid) || null;
+    const key = lotFifoKeyFromProductPOS(prod, pid, s.productName);
+    if (!key) continue;
+    const q = Number(s.qty) || 0;
+    if (!q) continue;
+    soldNeedByKey[key] = (Number(soldNeedByKey[key]) || 0) + q;
+  }
+
+  // Normalizar: no asignamos consumo negativo (devoluciones) en esta etapa.
+  for (const k of Object.keys(soldNeedByKey)){
+    if (Number(soldNeedByKey[k]) < 0) soldNeedByKey[k] = 0;
+  }
+
+  if (!hasLotEvidence){
+    const unassignedByKey = {};
+    let unassignedTotal = 0;
+    for (const [k, v] of Object.entries(soldNeedByKey)){
+      const n = Math.max(0, Number(v) || 0);
+      if (!(n > 0)) continue;
+      unassignedByKey[k] = n;
+      unassignedTotal += n;
+    }
+    return {
+      eventId: evId,
+      updatedAt,
+      lots: {},
+      unassigned: { byKey: unassignedByKey, total: unassignedTotal },
+      keys: Object.keys(unassignedByKey),
+      evidenceLotIds: [],
+      evidenceLotCodes: []
+    };
+  }
+
+  // 1) Construir cargas de lotes por grupo (FIFO por time)
+  const groups = new Map();
+  const ensureGroup = (e) => {
+    const gKey = lotFifoGroupKeyFromInvEntryPOS(e);
+    if (!gKey) return null;
+    let g = groups.get(gKey);
+    if (!g){
+      g = {
+        groupKey: gKey,
+        loteCargaId: (e && e.loteCargaId != null) ? String(e.loteCargaId) : null,
+        loteId: (e && e.loteId != null) ? e.loteId : null,
+        loteCodigo: (e && e.loteCodigo != null) ? String(e.loteCodigo) : '',
+        time: (e && e.time) ? String(e.time) : '',
+        orderTs: NaN,
+        orderId: NaN,
+        byPid: new Map(),
+      };
+      groups.set(gKey, g);
+    }
+    // meta: preferimos valores no vacíos
+    if (!g.loteCargaId && e && e.loteCargaId != null && String(e.loteCargaId).trim() !== '') g.loteCargaId = String(e.loteCargaId);
+    if (g.loteId == null && e && e.loteId != null) g.loteId = e.loteId;
+    if ((!g.loteCodigo || g.loteCodigo === '—') && e && e.loteCodigo) g.loteCodigo = String(e.loteCodigo);
+    if ((!g.time || g.time === '') && e && e.time) g.time = String(e.time);
+
+    const ts = lotFifoTsPOS(e && e.time);
+    if (Number.isFinite(ts)){
+      if (!Number.isFinite(g.orderTs) || ts < g.orderTs) g.orderTs = ts;
+    }
+    const rid = (e && e.id != null) ? Number(e.id) : NaN;
+    if (Number.isFinite(rid)){
+      if (!Number.isFinite(g.orderId) || rid < g.orderId) g.orderId = rid;
+    }
+    return g;
+  };
+
+  // restocks (entrada)
+  for (const r of restocks){
+    try{
+      const lid = (r && r.loteId != null) ? String(r.loteId).trim() : '';
+      if (lid) evidence.lotIds.add(lid);
+      const cod = (r && r.loteCodigo != null) ? String(r.loteCodigo).trim() : '';
+      if (cod) evidence.lotCodes.add(cod);
+    }catch(_){ }
+    const g = ensureGroup(r);
+    if (!g) continue;
+    const pid = Number(r.productId);
+    const qty = Number(r.qty) || 0;
+    if (!Number.isFinite(pid) || pid <= 0) continue;
+    if (!qty) continue;
+    g.byPid.set(pid, (Number(g.byPid.get(pid)) || 0) + qty);
+  }
+
+  // ajustes vinculados a lote (reversos): afectan la disponibilidad neta por lote
+  const adj = inv.filter(e => e && e.type === 'adjust' && (e.source === 'lote_reverso' || e.loteCargaId != null || e.loteGroupKey != null));
+  for (const a of adj){
+    try{
+      const lid = (a && a.loteId != null) ? String(a.loteId).trim() : '';
+      if (lid) evidence.lotIds.add(lid);
+      const cod = (a && a.loteCodigo != null) ? String(a.loteCodigo).trim() : '';
+      if (cod) evidence.lotCodes.add(cod);
+    }catch(_){ }
+    const gKey = lotFifoGroupKeyFromInvEntryPOS(a);
+    if (!gKey || !groups.has(gKey)) continue;
+    const g = groups.get(gKey);
+    const pid = Number(a.productId);
+    const qty = Number(a.qty) || 0;
+    if (!Number.isFinite(pid) || pid <= 0) continue;
+    if (!qty) continue;
+    g.byPid.set(pid, (Number(g.byPid.get(pid)) || 0) + qty);
+  }
+
+  // 2) Normalizar cada grupo → loadedByKey (clamp >=0)
+  const loads = Array.from(groups.values()).map(g => {
+    const loadedByKey = {};
+    let loadedTotal = 0;
+    for (const [pid, rawQty] of g.byPid.entries()){
+      const qty = Number(rawQty) || 0;
+      if (!(qty > 0)) continue;
+      const prod = pMap.get(Number(pid)) || null;
+      const key = lotFifoKeyFromProductPOS(prod, pid, (prod && prod.name) ? prod.name : '');
+      if (!key) continue;
+      loadedByKey[key] = (Number(loadedByKey[key]) || 0) + qty;
+      loadedTotal += qty;
+    }
+    // Clamps por seguridad si hubo reversos mayores a la carga (no permitir negativo)
+    for (const k of Object.keys(loadedByKey)){
+      if (Number(loadedByKey[k]) < 0) loadedByKey[k] = 0;
+    }
+    return {
+      ...g,
+      loadedByKey,
+      loadedTotal,
+      // Fallbacks para ordenar si falta time
+      orderTs: Number.isFinite(g.orderTs) ? g.orderTs : (Number.isFinite(g.orderId) ? g.orderId : 0),
+      orderId: Number.isFinite(g.orderId) ? g.orderId : 0,
+    };
+  }).filter(g => g && g.loadedTotal > 0);
+
+  // Orden FIFO = más viejo primero
+  loads.sort((a,b)=> (a.orderTs - b.orderTs) || (a.orderId - b.orderId));
+
+  // 3) Preparar salida por lote
+  const outLots = {};
+  const usedKeys = new Set();
+
+  const lotKeyCounts = new Map();
+  const mkLotKey = (g) => {
+    const base = (g.loteId != null && String(g.loteId).trim() !== '')
+      ? String(g.loteId)
+      : ((g.loteCodigo || '').toString().trim() || String(g.groupKey));
+    const prev = Number(lotKeyCounts.get(base)) || 0;
+    lotKeyCounts.set(base, prev + 1);
+    // Si se repite el mismo "base" en data rara, desambiguamos con groupKey (sin romper el caso normal)
+    return (prev === 0) ? base : (base + '|' + String(g.groupKey));
+  };
+
+  const lotOrder = [];
+  for (const g of loads){
+    const lotKey = mkLotKey(g);
+    lotOrder.push(lotKey);
+    for (const k of Object.keys(g.loadedByKey || {})) usedKeys.add(k);
+    outLots[lotKey] = {
+      loteId: (g.loteId != null ? g.loteId : null),
+      loteCodigo: (g.loteCodigo || ''),
+      loteCargaId: (g.loteCargaId || null),
+      loadedAt: (g.time || ''),
+      soldByKey: {},
+      remainingByKey: {},
+      soldTotal: 0,
+      remainingTotal: 0,
+      // debug útil para etapas siguientes
+      loadedByKey: {...(g.loadedByKey || {})}
+    };
+  }
+
+  // Incluir también keys de ventas aunque no tengan lotes (quedan como unassigned)
+  for (const k of Object.keys(soldNeedByKey)) usedKeys.add(k);
+
+  const keys = Array.from(usedKeys);
+
+  // 4) FIFO por cada key
+  const unassignedByKey = {};
+  for (const k of keys){
+    let need = Math.max(0, Number(soldNeedByKey[k]) || 0);
+    if (!(need > 0)){
+      // llenar remaining sin tocar sold
+      for (const lotKey of lotOrder){
+        const lot = outLots[lotKey];
+        const loaded = Number(lot.loadedByKey && lot.loadedByKey[k]) || 0;
+        if (!Object.prototype.hasOwnProperty.call(lot.remainingByKey, k)){
+          lot.remainingByKey[k] = Math.max(0, loaded);
+        }
+      }
+      continue;
+    }
+
+    for (const lotKey of lotOrder){
+      if (!(need > 0)) break;
+      const lot = outLots[lotKey];
+      const loaded = Number(lot.loadedByKey && lot.loadedByKey[k]) || 0;
+      const alreadySold = Number(lot.soldByKey && lot.soldByKey[k]) || 0;
+      const remainingHere = Math.max(0, loaded - alreadySold);
+      if (!(remainingHere > 0)) continue;
+      const take = Math.min(remainingHere, need);
+      lot.soldByKey[k] = alreadySold + take;
+      need -= take;
+    }
+
+    if (need > 0){
+      unassignedByKey[k] = (Number(unassignedByKey[k]) || 0) + need;
+    }
+
+    // completar remainingByKey para este key
+    for (const lotKey of lotOrder){
+      const lot = outLots[lotKey];
+      const loaded = Number(lot.loadedByKey && lot.loadedByKey[k]) || 0;
+      const sold = Number(lot.soldByKey && lot.soldByKey[k]) || 0;
+      lot.remainingByKey[k] = Math.max(0, loaded - sold);
+    }
+  }
+
+  // 5) Totales por lote
+  for (const lotKey of lotOrder){
+    const lot = outLots[lotKey];
+    let sTot = 0;
+    let rTot = 0;
+    for (const k of keys){
+      sTot += Math.max(0, Number(lot.soldByKey && lot.soldByKey[k]) || 0);
+      rTot += Math.max(0, Number(lot.remainingByKey && lot.remainingByKey[k]) || 0);
+    }
+    lot.soldTotal = sTot;
+    lot.remainingTotal = rTot;
+  }
+
+  let unassignedTotal = 0;
+  for (const v of Object.values(unassignedByKey)) unassignedTotal += Math.max(0, Number(v) || 0);
+
+  return {
+    eventId: evId,
+    updatedAt,
+    lots: outLots,
+    lotOrder,
+    keys,
+    unassigned: { byKey: unassignedByKey, total: unassignedTotal },
+    evidenceLotIds: Array.from(evidence.lotIds),
+    evidenceLotCodes: Array.from(evidence.lotCodes)
+  };
+}
+
+// Exponer canónicamente (para etapas siguientes / debug)
+try{ window.computeLotFifoForEvent = computeLotFifoForEvent; }catch(_){ }
+
+// ==============================
+// Lotes FIFO (Etapa 2: persistencia de snapshot por evento)
+// ==============================
+const __A33_LOTS_USAGE_SYNC = { inFlight: new Map() };
+
+function isPlainObjPOS(o){ return !!o && typeof o === 'object' && !Array.isArray(o); }
+function safeNumPOS(v){ const n = Number(v); return Number.isFinite(n) ? n : 0; }
+function normLotCodePOS(v){ return String(v || '').trim().toLowerCase(); }
+
+function cloneNumMapPOS(obj){
+  const out = {};
+  if (!isPlainObjPOS(obj)) return out;
+  for (const k of Object.keys(obj)){
+    const n = safeNumPOS(obj[k]);
+    if (n < 0) continue;
+    out[k] = n;
+  }
+  return out;
+}
+
+function normalizeUsageSnapshotPOS(raw, stamp){
+  const soldByKey = cloneNumMapPOS(raw && raw.soldByKey);
+  const remainingByKey = cloneNumMapPOS(raw && raw.remainingByKey);
+  let soldTotal = safeNumPOS(raw && raw.soldTotal);
+  let remainingTotal = safeNumPOS(raw && raw.remainingTotal);
+  if (soldTotal < 0) soldTotal = 0;
+  if (remainingTotal < 0) remainingTotal = 0;
+  return {
+    updatedAt: (stamp != null ? stamp : Date.now()),
+    soldByKey,
+    remainingByKey,
+    soldTotal,
+    remainingTotal
+  };
+}
+
+function upsertLotEventUsagePOS(lote, eventId, snap){
+  if (!lote || eventId == null) return false;
+  const eid = String(eventId);
+  const eu = isPlainObjPOS(lote.eventUsage) ? lote.eventUsage : {};
+  eu[eid] = snap;
+  lote.eventUsage = eu;
+  return true;
+}
+
+async function syncLotsUsageForEvent(eventId){
+  const evId = Number(eventId);
+  if (!Number.isFinite(evId) || evId <= 0) return { ok:false, reason:'eventId inválido' };
+
+  const lotes = readLotesLS_POS();
+  if (!Array.isArray(lotes) || !lotes.length) return { ok:true, updated:0, eventId: evId };
+
+  const fifo = await computeLotFifoForEvent(evId);
+  const stamp = (fifo && fifo.updatedAt != null) ? fifo.updatedAt : Date.now();
+  const lotsMap = (fifo && fifo.lots && typeof fifo.lots === 'object') ? fifo.lots : {};
+  const evidenceIds = Array.isArray(fifo && fifo.evidenceLotIds) ? fifo.evidenceLotIds.map(x=>String(x)) : [];
+  const evidenceCodes = Array.isArray(fifo && fifo.evidenceLotCodes) ? fifo.evidenceLotCodes.map(x=>String(x)) : [];
+
+  const byId = new Map();
+  const byCode = new Map();
+  for (const l of lotes){
+    if (!l) continue;
+    const id = (l.id != null) ? String(l.id) : '';
+    if (id) byId.set(id, l);
+    const codeKey = normLotCodePOS(l.codigo || '');
+    if (codeKey){
+      const arr = byCode.get(codeKey) || [];
+      arr.push(l);
+      byCode.set(codeKey, arr);
+    }
+  }
+
+  let updated = 0;
+  const touched = new Set();
+
+  const applySnap = (lotObj, rawSnapOrNull) => {
+    if (!lotObj) return;
+    const snap = rawSnapOrNull
+      ? normalizeUsageSnapshotPOS(rawSnapOrNull, stamp)
+      : normalizeUsageSnapshotPOS({ soldByKey:{}, remainingByKey:{}, soldTotal:0, remainingTotal:0 }, stamp);
+    if (upsertLotEventUsagePOS(lotObj, evId, snap)){
+      updated += 1;
+      if (lotObj.id != null) touched.add(String(lotObj.id));
+    }
+  };
+
+  // 1) Aplicar resultados calculados
+  for (const k of Object.keys(lotsMap)){
+    const s = lotsMap[k];
+    if (!s) continue;
+    const lid = (s.loteId != null && String(s.loteId).trim() !== '') ? String(s.loteId) : '';
+    const codeKey = normLotCodePOS(s.loteCodigo || '');
+
+    let lotObj = lid ? byId.get(lid) : null;
+    if (!lotObj && codeKey){
+      const arr = byCode.get(codeKey) || [];
+      lotObj = arr.find(x => Number(x && x.assignedEventId) === evId) || arr[0] || null;
+    }
+    if (lotObj) applySnap(lotObj, s);
+  }
+
+  // 2) Canonizar a 0 lotes con evidencia pero sin grupo (ej. reverso completo)
+  for (const lid of evidenceIds){
+    if (!lid || touched.has(lid)) continue;
+    const lotObj = byId.get(lid);
+    if (lotObj) applySnap(lotObj, null);
+  }
+  for (const codeRaw of evidenceCodes){
+    const codeKey = normLotCodePOS(codeRaw);
+    if (!codeKey) continue;
+    const arr = byCode.get(codeKey) || [];
+    for (const lotObj of arr){
+      const lid = (lotObj && lotObj.id != null) ? String(lotObj.id) : '';
+      if (lid && touched.has(lid)) continue;
+      applySnap(lotObj, null);
+    }
+  }
+
+  const ok = writeLotesLS_POS(lotes);
+  return { ok, updated, eventId: evId };
+}
+
+function queueLotsUsageSyncPOS(eventId){
+  const evId = Number(eventId);
+  if (!Number.isFinite(evId) || evId <= 0) return Promise.resolve({ ok:false, reason:'eventId inválido' });
+  const key = String(evId);
+
+  if (__A33_LOTS_USAGE_SYNC.inFlight.has(key)) return __A33_LOTS_USAGE_SYNC.inFlight.get(key);
+
+  const p = (async()=>{
+    try{
+      return await syncLotsUsageForEvent(evId);
+    }catch(e){
+      console.warn('syncLotsUsageForEvent failed', e);
+      return { ok:false, reason:'error', eventId: evId, error: (e && e.message) ? e.message : String(e) };
+    }finally{
+      __A33_LOTS_USAGE_SYNC.inFlight.delete(key);
+    }
+  })();
+
+  __A33_LOTS_USAGE_SYNC.inFlight.set(key, p);
+  return p;
+}
+
+// Exponer canónicamente (para etapas siguientes / debug)
+try{ window.syncLotsUsageForEvent = syncLotsUsageForEvent; }catch(_){ }
+
+
 // --- Venta por vaso (fraccionamiento de galones) ---
 const ML_PER_GALON = 3800;
 
@@ -7119,6 +7576,10 @@ async function importFromLoteToInventory(){
   await renderInventario();
   await refreshSaleStockLabel();
   showToast('Lote "' + (loteAny.codigo || '') + '" asignado a ' + (evName || 'evento') + ' (' + total + ' u.)', 'ok', 2400);
+
+  // FIFO (Etapa 2): snapshot por evento/lote (entrada de lote al evento)
+  try{ queueLotsUsageSyncPOS(evId); }catch(_){ }
+
 }
 
 
@@ -7827,6 +8288,10 @@ async function reverseAssignSelectedLotePOS(){
   await renderInventario();
   await refreshReversoUIForEventPOS(evId);
   showToast('Asignación reversada. Lote disponible otra vez.', 'ok', 2800);
+
+  // FIFO (Etapa 2): snapshot por evento/lote (reverso de asignación)
+  try{ queueLotsUsageSyncPOS(evId); }catch(_){ }
+
 }
 
 
@@ -11293,6 +11758,11 @@ async function init(){
       alert('Venta eliminada, pero con avisos:\n\n- ' + delRes.warnings.join('\n- '));
     }
     toast('Venta eliminada');
+
+    // FIFO (Etapa 2): re-sincronizar snapshot por evento/lote
+    try{
+      if (last && presKeyFromProductNamePOS(last.productName)) queueLotsUsageSyncPOS(last.eventId);
+    }catch(_){ }
   });
 
   // Eliminar una venta específica desde la tabla
@@ -11346,6 +11816,12 @@ async function init(){
       }
 
       toast('Venta eliminada');
+
+      // FIFO (Etapa 2): re-sincronizar snapshot por evento/lote
+      try{
+        if (saleToDelete && presKeyFromProductNamePOS(saleToDelete.productName)) queueLotsUsageSyncPOS(saleToDelete.eventId);
+      }catch(_){ }
+
     }catch(err){
       console.error('Error eliminando la venta', err);
       alert('No se pudo eliminar la venta.\n\nDetalle: ' + humanizeError(err));
@@ -11693,6 +12169,12 @@ async function addSale(){
 
   await renderDay(); await renderSummary(); await refreshSaleStockLabel(); await renderInventario();
   toast('Venta agregada');
+
+  // FIFO (Etapa 2): persistir snapshot por evento/lote (solo si aplica a presentaciones)
+  try{
+    if (presKeyFromProductNamePOS(productName)) queueLotsUsageSyncPOS(curId);
+  }catch(_){ }
+
 }
 
 

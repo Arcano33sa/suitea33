@@ -498,6 +498,26 @@ function ymdAddDays(ymd, delta){
   }
 }
 
+function safeYMD(v){
+  // Normaliza YYYY-MM-DD para llaves de stores (robusto para iPad / inputs raros)
+  const s = String(v || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Si viene ISO completo, tomar los primeros 10 chars
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0,10);
+  // Intento final: parse de Date
+  try{
+    const d = new Date(s);
+    if (isFinite(d)){
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const day = String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${day}`;
+    }
+  }catch(_){ }
+  return todayYMD();
+}
+
+
 
 function fmtYMDShortES(ymd){
   // Ej: 2026-01-05 -> "Lun 05 Ene"
@@ -1677,53 +1697,80 @@ async function computeSalesToday(eventId, dayKey){
 async function computePettyStatus(ev, dayKey){
   const db = state.db;
   if (!db || !ev){
-    return { ok:false, enabled:null, dayState:null, fxMissing:null, fxKnown:false, closedAt:null, reason:'No disponible' };
+    return { ok:false, enabled:null, isOpen:null, dayState:null, fxMissing:null, fxKnown:false, closedAt:null, pcDay:null, fxSource:'unknown', reason:'No disponible' };
   }
 
   const enabled = !!ev.pettyEnabled;
   if (!enabled){
-    return { ok:true, enabled:false, dayState:'No aplica', fxMissing:false, fxKnown:false, closedAt:null, reason:'' };
+    return { ok:true, enabled:false, isOpen:false, dayState:'No aplica', fxMissing:false, fxKnown:false, closedAt:null, pcDay:null, fxSource:'unknown', reason:'' };
   }
 
-  // POS (esta ZIP): T/C persistente por evento (ev.fxRate). Fallback: legado en Caja Chica (day.fxRate).
+  // T/C por evento (preferido). Fallback: legado en Caja Chica (day.fxRate)
   const fxEventRaw = Number(ev.fxRate || 0);
   const fxEvent = (Number.isFinite(fxEventRaw) && fxEventRaw > 0) ? fxEventRaw : null;
 
-  // Si no hay store de Caja Chica, NO inventar el estado del día ni el T/C legado.
-  if (!hasStore(db, 'pettyCash')){
-    const fxKnown = (fxEvent != null);
-    // Si solo tenemos el valor por evento y existe, NO falta. Si no existe, es desconocido.
-    const fxMissing = fxKnown ? false : null;
-    return { ok:false, enabled:true, dayState:null, fxMissing, fxKnown, closedAt:null, pcDay:null, fxSource: fxKnown ? 'event' : 'unknown', reason:'No disponible' };
-  }
+  const hasPettyStore = hasStore(db, 'pettyCash');
+  const hasLocksStore = hasStore(db, 'dayLocks');
 
-  let pc = null;
-  try{ pc = await idbGet(db, 'pettyCash', Number(ev.id)); }catch(_){ pc = null; }
-  if (!pc || !pc.days || typeof pc.days !== 'object'){
+  // Si no hay ninguna fuente canónica, no inventar.
+  if (!hasPettyStore && !hasLocksStore){
     const fxKnown = (fxEvent != null);
     const fxMissing = fxKnown ? false : null;
-    return { ok:false, enabled:true, dayState:null, fxMissing, fxKnown, closedAt:null, pcDay:null, fxSource: fxKnown ? 'event' : 'unknown', reason:'No disponible' };
+    return { ok:false, enabled:true, isOpen:null, dayState:null, fxMissing, fxKnown, closedAt:null, pcDay:null, fxSource: fxKnown ? 'event' : 'unknown', reason:'No disponible' };
   }
 
-  const day = pc.days[dayKey];
-  if (!day || typeof day !== 'object'){
-    const fxKnown = (fxEvent != null);
-    const fxMissing = fxKnown ? false : null;
-    return { ok:false, enabled:true, dayState:null, fxMissing, fxKnown, closedAt:null, pcDay:null, fxSource: fxKnown ? 'event' : 'unknown', reason:'No disponible' };
+  // 1) Leer candado oficial del día (dayLocks) si existe.
+  let lock = null;
+  let lockIsClosed = false;
+  let lockClosedAt = null;
+  if (hasLocksStore){
+    const lockKey = `${Number(ev.id)}|${safeYMD(dayKey)}`;
+    try{ lock = await idbGet(db, 'dayLocks', lockKey); }catch(_){ lock = null; }
+    lockIsClosed = !!(lock && lock.isClosed === true);
+    lockClosedAt = (lock && lock.closedAt) ? lock.closedAt : null;
   }
 
-  const closedAt = day.closedAt || null;
-  const dayState = closedAt ? 'Cerrado' : 'Abierto';
+  // 2) Leer Caja Chica del día (pettyCash) si existe.
+  let day = null;
+  if (hasPettyStore){
+    let pc = null;
+    try{ pc = await idbGet(db, 'pettyCash', Number(ev.id)); }catch(_){ pc = null; }
+    if (pc && pc.days && typeof pc.days === 'object'){
+      const d = pc.days[safeYMD(dayKey)];
+      if (d && typeof d === 'object') day = d;
+    }
+  }
 
-  const fxDayRaw = (day.fxRate != null) ? Number(day.fxRate) : NaN;
+  // Cierre legacy (Caja Chica vieja): day.closedAt
+  const legacyClosedAt = (day && day.closedAt) ? day.closedAt : null;
+
+  // CIERRE REAL = dayLocks (oficial) OR legacy closedAt
+  const isClosed = (lockIsClosed === true) || !!lockClosedAt || !!legacyClosedAt;
+  const closedAt = lockClosedAt || legacyClosedAt || null;
+
+  // APERTURA REAL = evidencia de sesión (actividad) y NO cerrado
+  // Nota: POS no guarda openedAt. “Equivalente” = algo guardado (inicial/final/movs/fx/ajuste) para ese día.
+  const hasSession = !!(day && hasPettyDayActivity(day));
+  const isOpen = hasSession && !isClosed;
+
+  // Estado del día (para UI). Importante: NO confundir “Caja habilitada” con “Caja abierta”.
+  const dayState = isClosed ? 'Cerrado' : (isOpen ? 'Abierto' : 'Sin actividad');
+
+  // FX efectivo: preferir evento; si no, tomar day.fxRate
+  const fxDayRaw = (day && day.fxRate != null) ? Number(day.fxRate) : NaN;
   const fxDay = (Number.isFinite(fxDayRaw) && fxDayRaw > 0) ? fxDayRaw : null;
 
   const fxEffective = (fxEvent != null) ? fxEvent : fxDay;
-  const fxKnown = true; // tenemos day (y/o event), así que podemos determinar si falta.
-  const fxMissing = !(fxEffective && fxEffective > 0);
-  const fxSource = (fxEvent != null) ? 'event' : (fxDay != null ? 'pettyCash' : 'none');
 
-  return { ok:true, enabled:true, dayState, fxMissing, fxKnown, closedAt, pcDay: day, fxSource, reason:'' };
+  // Confiabilidad de FX:
+  // - Si hay fxEvent: conocido
+  // - Si hay day: conocido (aunque no tenga valor)
+  // - Si no hay day ni fxEvent: desconocido
+  const fxKnown = (fxEvent != null) || !!day;
+  const fxMissing = fxKnown ? !(fxEffective && fxEffective > 0) : null;
+  const fxSource = (fxEvent != null) ? 'event' : (fxDay != null ? 'pettyCash' : (fxKnown ? 'none' : 'unknown'));
+
+  return { ok:true, enabled:true, isOpen, dayState, fxMissing, fxKnown, closedAt, pcDay: day, fxSource, reason:'' };
 }
 
 async function computeUnclosed7d(ev, pcDayKey){
@@ -1734,15 +1781,28 @@ async function computeUnclosed7d(ev, pcDayKey){
   const pc = await idbGet(db, 'pettyCash', Number(ev.id));
   if (!pc || !pc.days || typeof pc.days !== 'object') return { ok:false, value:'—', reason:'No disponible' };
 
+  const hasLocks = hasStore(db, 'dayLocks');
+
   // últimos 7 días incluyendo hoy
   let cnt = 0;
   for (let i = 0; i < 7; i++){
     const d = ymdAddDays(pcDayKey, -i);
     const day = pc.days[d];
     if (!day || typeof day !== 'object') continue;
+
     // Contar solo si hay actividad (evitar “inventar”)
     if (!hasPettyDayActivity(day)) continue;
-    if (!day.closedAt) cnt += 1;
+
+    // Cerrado real: dayLocks (oficial) OR legacy day.closedAt
+    let isClosed = !!day.closedAt;
+    if (!isClosed && hasLocks){
+      const lockKey = `${Number(ev.id)}|${safeYMD(d)}`;
+      let lock = null;
+      try{ lock = await idbGet(db, 'dayLocks', lockKey); }catch(_){ lock = null; }
+      if (lock && (lock.isClosed === true || lock.closedAt)) isClosed = true;
+    }
+
+    if (!isClosed) cnt += 1;
   }
   return { ok:true, value: String(cnt), reason:'' };
 }
@@ -1776,7 +1836,7 @@ function buildActionableAlerts(ev, dayKey, pc){
   // 1) Caja Chica activa y hoy NO está cerrado (solo con señal real)
   if (pc && pc.enabled === true){
     if (pc.ok){
-      if (pc.dayState === 'Abierto'){
+      if (pc.isOpen === true){
         alerts.push({
           key: 'petty-open',
           icon: '🔓',

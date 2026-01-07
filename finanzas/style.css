@@ -506,6 +506,20 @@ body.fin-body {
   margin-top:12px;
 }
 
+/* Diario: barra de acciones fija arriba, compacta (iPad friendly) */
+#view-diario #diario-actions-bar{
+  margin-top:10px;
+}
+
+#view-diario #diario-actions-bar + .fin-table-wrapper{
+  margin-top:10px;
+}
+
+#view-diario{
+  padding-bottom:14px;
+}
+
+
 .cc-btn{
   padding:6px 12px;
   font-size:0.8rem;

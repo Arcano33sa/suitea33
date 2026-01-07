@@ -1,5 +1,6 @@
 // Simple storage using localStorage
 const STORAGE_KEY = "arcano33_lotes";
+const ARCHIVE_KEY = "arcano33_lotes_archived"; // Histórico (Etapa 5)
 
 let editingId = null;
 
@@ -33,6 +34,23 @@ function loadLotes() {
     console.error("Error leyendo localStorage", e);
     return [];
   }
+}
+
+function loadArchivedLotes(){
+  try {
+    const raw = A33Storage.getItem(ARCHIVE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch (e) {
+    console.error("Error leyendo histórico", e);
+    return [];
+  }
+}
+
+function saveArchivedLotes(data){
+  A33Storage.setItem(ARCHIVE_KEY, JSON.stringify(data));
 }
 
 function saveLotes(data) {
@@ -88,6 +106,67 @@ function getCreatedTimestamp(lote) {
   return 0;
 }
 
+function formatDateTime(value){
+  if (!value) return "";
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString('es-NI');
+  } catch {
+    return String(value);
+  }
+}
+
+function buildArchiveSnapshot(lote, deletedAtIso){
+  const deletedAt = deletedAtIso || new Date().toISOString();
+  const createdAt = lote?.createdAt || (() => {
+    const t = getCreatedTimestamp(lote);
+    try { return new Date(t || Date.now()).toISOString(); } catch { return ""; }
+  })();
+
+  const st = effectiveLoteStatus(lote);
+  const sem = st === "EN_EVENTO" ? getLoteSemaforoState(lote) : "";
+  const assignedEventId = lote?.assignedEventId != null ? String(lote.assignedEventId).trim() : "";
+  const assignedEventName = (lote?.assignedEventName || "").toString().trim();
+
+  // Guardar SOLO el snapshot del evento asignado si existe; si no, no inventar.
+  let eventUsageSnap = null;
+  if (assignedEventId && lote && typeof lote.eventUsage === 'object' && !Array.isArray(lote.eventUsage)){
+    const snap = lote.eventUsage[assignedEventId];
+    if (snap && typeof snap === 'object'){
+      eventUsageSnap = { [assignedEventId]: snap };
+    }
+  }
+
+  return {
+    archiveId: `arch_${Date.now()}_${String(lote?.id || '')}`,
+    originalId: lote?.id,
+    codigo: (lote?.codigo || "").toString(),
+    createdAt,
+    deletedAt,
+    statusAtDelete: st,
+    semaforoAtDelete: sem,
+    // "producto/presentación" => aquí guardamos presentaciones (unidades) + volTotal como resumen
+    volTotal: lote?.volTotal ?? "",
+    pulso: lote?.pulso ?? "0",
+    media: lote?.media ?? "0",
+    djeba: lote?.djeba ?? "0",
+    litro: lote?.litro ?? "0",
+    galon: lote?.galon ?? "0",
+    assignedEventId: assignedEventId || null,
+    assignedEventName: assignedEventName || "",
+    eventUsage: eventUsageSnap,
+  };
+}
+
+function archiveLote(lote, deletedAtIso){
+  const snapshot = buildArchiveSnapshot(lote, deletedAtIso);
+  const hist = loadArchivedLotes();
+  hist.unshift(snapshot);
+  saveArchivedLotes(hist);
+  return snapshot;
+}
+
 
 // --- Estado/asignaci�n de lotes (compat: lotes viejos = DISPONIBLE)
 function normLoteStatus(status){
@@ -107,6 +186,21 @@ function effectiveLoteStatus(lote){
   if (assigned) return "EN_EVENTO";
   if (st === "EN_EVENTO") return "EN_EVENTO";
   return "DISPONIBLE";
+}
+
+// Semáforo PARCIAL / VENDIDO (solo EN EVENTO)
+// Fuente canónica: lote.eventUsage[eventId].remainingTotal
+function getLoteSemaforoState(lote){
+  // Conservador: si falta data, PARCIAL.
+  const eid = (lote?.assignedEventId != null) ? String(lote.assignedEventId).trim() : "";
+  if (!eid) return "PARCIAL";
+  const eu = (lote && typeof lote.eventUsage === 'object' && !Array.isArray(lote.eventUsage)) ? lote.eventUsage : null;
+  if (!eu) return "PARCIAL";
+  const snap = eu[eid];
+  if (!snap || typeof snap !== 'object') return "PARCIAL";
+  const remainingTotal = Number(snap.remainingTotal);
+  if (Number.isFinite(remainingTotal) && remainingTotal === 0) return "VENDIDO";
+  return "PARCIAL";
 }
 
 function showLoteDetails(lote) {
@@ -340,6 +434,15 @@ function renderTable() {
         stChip.textContent = st === "EN_EVENTO" ? "EN EVENTO" : st;
         line.appendChild(stChip);
 
+        // Semáforo de consumo por evento (Etapa 3 UI): PARCIAL / VENDIDO
+        if (st === "EN_EVENTO") {
+          const sem = getLoteSemaforoState(lote);
+          const semChip = document.createElement("span");
+          semChip.className = "chip " + (sem === "VENDIDO" ? "chip--sold" : "chip--partial");
+          semChip.textContent = sem;
+          line.appendChild(semChip);
+        }
+
         // Lote hijo / SOBRANTE (trazabilidad)
         const isChild = !!lote.parentLotId || String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE';
         if (isChild){
@@ -420,17 +523,51 @@ function renderTable() {
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.textContent = "🗑";
-    deleteBtn.title = "Borrar";
+    // Guardas de borrado según semáforo (Etapa 4):
+    // - PARCIAL: confirmación fuerte (mensaje + validación por código)
+    // - VENDIDO: confirmación normal
+    const _stForDelete = effectiveLoteStatus(lote);
+    const _semForDelete = _stForDelete === "EN_EVENTO" ? getLoteSemaforoState(lote) : "";
+    deleteBtn.title = _semForDelete === "PARCIAL" ? "Borrar (confirmación fuerte)" : "Borrar";
     deleteBtn.setAttribute("aria-label", "Borrar");
     deleteBtn.className = "btn danger icon";
     deleteBtn.addEventListener("click", () => {
-      if (!confirm(`¿Borrar el lote ${lote.codigo}?`)) return;
+      const code = (lote.codigo || "").toString().trim();
+
+      // PARCIAL: lote con remanente (o sin evidencia de soldout). Riesgo alto.
+      if (_semForDelete === "PARCIAL") {
+        const ok = confirm(
+          `Este lote aún tiene remanente. No se recomienda borrar.\n\n` +
+          `Si estás seguro, toca Aceptar para continuar.`
+        );
+        if (!ok) return;
+
+        const typed = prompt(
+          `Confirmación fuerte: escribe el CÓDIGO del lote para borrar:\n\n${code}`
+        );
+        if ((typed || "").toString().trim() !== code) {
+          alert("Borrado cancelado: el código no coincide.");
+          return;
+        }
+      } else {
+        if (!confirm(`¿Borrar el lote ${code}?`)) return;
+      }
+
+      // Etapa 5: al borrar, archivar snapshot en Histórico antes de removerlo de activos
+      const deletedAtIso = new Date().toISOString();
+      try { archiveLote(lote, deletedAtIso); } catch (e){ console.warn('No se pudo archivar lote', e); }
+
       const current = loadLotes().filter((l) => l.id !== lote.id);
       saveLotes(current);
       if (editingId === lote.id) {
         clearForm();
       }
       renderTable();
+
+      // Si el modal de histórico está abierto, refrescarlo
+      if (isHistoryModalOpen()) {
+        renderHistoryModal();
+      }
     });
 
     // Wrapper para asegurar que las acciones no hagan overflow y queden en una sola línea
@@ -515,6 +652,196 @@ function exportToCSV() {
   XLSX.writeFile(wb, filename);
 }
 
+// ================================
+// Histórico (Etapa 5)
+// ================================
+
+function isHistoryModalOpen(){
+  const m = $("history-modal");
+  return !!(m && m.classList.contains('is-open'));
+}
+
+function openHistoryModal(){
+  const modal = $("history-modal");
+  if (!modal) return;
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+  renderHistoryModal();
+
+  const inp = $("history-search");
+  if (inp) {
+    setTimeout(() => inp.focus(), 0);
+  }
+}
+
+function closeHistoryModal(){
+  const modal = $("history-modal");
+  if (!modal) return;
+  modal.classList.remove('is-open');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function archiveSortTs(a){
+  const td = toTimestamp(a?.deletedAt);
+  if (Number.isFinite(td)) return td;
+  const tc = toTimestamp(a?.createdAt);
+  if (Number.isFinite(tc)) return tc;
+  // Fallback a ids/otros
+  const id = (a?.archiveId || a?.originalId || "").toString();
+  const m = id.match(/(\d{10,})/);
+  return m ? Number(m[1]) : 0;
+}
+
+function makeChip(text, cls){
+  const s = document.createElement('span');
+  s.className = 'chip ' + (cls || '');
+  s.textContent = text;
+  return s;
+}
+
+function showArchivedDetails(arch){
+  if (!arch) return;
+  const lines = [];
+  lines.push(`Código: ${(arch.codigo || '').toString()}`);
+  if (arch.originalId) lines.push(`Lote ID: ${arch.originalId}`);
+  if (arch.statusAtDelete) lines.push(`Estado al borrar: ${arch.statusAtDelete}${arch.semaforoAtDelete ? ' · ' + arch.semaforoAtDelete : ''}`);
+  if (arch.assignedEventName) lines.push(`Evento: ${arch.assignedEventName}`);
+  lines.push(`Creado: ${formatDate(arch.createdAt)}${arch.createdAt ? ' (' + formatDateTime(arch.createdAt) + ')' : ''}`);
+  lines.push(`Archivado: ${formatDate(arch.deletedAt)}${arch.deletedAt ? ' (' + formatDateTime(arch.deletedAt) + ')' : ''}`);
+  lines.push('');
+  lines.push('Presentaciones (unidades):');
+  lines.push(`  Pulso 250 ml: ${arch.pulso ?? '0'}`);
+  lines.push(`  Media 375 ml: ${arch.media ?? '0'}`);
+  lines.push(`  Djeba 750 ml: ${arch.djeba ?? '0'}`);
+  lines.push(`  Litro 1000 ml: ${arch.litro ?? '0'}`);
+  lines.push(`  Galón 3800 ml: ${arch.galon ?? '0'}`);
+  if (arch.volTotal != null && String(arch.volTotal).trim() !== '') {
+    lines.push(`\nVolumen total (ml): ${arch.volTotal}`);
+  }
+
+  // eventUsage (si existe)
+  const eu = arch.eventUsage && typeof arch.eventUsage === 'object' && !Array.isArray(arch.eventUsage) ? arch.eventUsage : null;
+  const keys = eu ? Object.keys(eu) : [];
+  if (keys.length){
+    const k = keys[0];
+    const snap = eu[k];
+    if (snap && typeof snap === 'object'){
+      lines.push('');
+      lines.push('Uso por evento (snapshot):');
+      if (snap.remainingTotal != null) lines.push(`  RemainingTotal: ${snap.remainingTotal}`);
+      if (snap.remainingByProduct) {
+        try {
+          lines.push(`  RemainingByProduct: ${JSON.stringify(snap.remainingByProduct)}`);
+        } catch {}
+      }
+    }
+  }
+
+  alert(lines.join('\n'));
+}
+
+function renderHistoryModal(){
+  const listEl = $("history-list");
+  const metaEl = $("history-meta");
+  const inp = $("history-search");
+  if (!listEl || !metaEl) return;
+
+  const all = loadArchivedLotes();
+  const q = (inp ? inp.value : '').toString().trim().toLowerCase();
+
+  const sorted = [...all].sort((a,b) => archiveSortTs(b) - archiveSortTs(a));
+  const filtered = q ? sorted.filter(r => (r.codigo || '').toString().toLowerCase().includes(q)) : sorted;
+
+  metaEl.textContent = q
+    ? `Mostrando ${filtered.length} de ${sorted.length} (filtro: "${(inp.value || '').toString().trim()}")`
+    : `Total archivados: ${sorted.length}`;
+
+  listEl.innerHTML = '';
+  if (!filtered.length){
+    const empty = document.createElement('div');
+    empty.style.padding = '0.6rem 0.2rem';
+    empty.style.color = 'var(--color-text-muted)';
+    empty.style.fontSize = '0.82rem';
+    empty.textContent = q ? 'Sin resultados.' : 'Aún no hay lotes archivados.';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  for (const arch of filtered){
+    const item = document.createElement('div');
+    item.className = 'history-item';
+
+    const main = document.createElement('div');
+    main.className = 'history-main';
+
+    const code = document.createElement('div');
+    code.className = 'history-code';
+    code.textContent = (arch.codigo || '').toString();
+
+    const meta = document.createElement('div');
+    meta.className = 'history-meta-line';
+
+    // Estado / semáforo
+    const st = (arch.statusAtDelete || '').toString().trim().toUpperCase();
+    if (st){
+      const cls = st === 'DISPONIBLE' ? 'chip--available' : st === 'EN_EVENTO' ? 'chip--in-event' : 'chip--closed';
+      meta.appendChild(makeChip(st === 'EN_EVENTO' ? 'EN EVENTO' : st, cls));
+    }
+    const sem = (arch.semaforoAtDelete || '').toString().trim().toUpperCase();
+    if (sem && st === 'EN_EVENTO'){
+      meta.appendChild(makeChip(sem, sem === 'VENDIDO' ? 'chip--sold' : 'chip--partial'));
+    }
+
+    // Presentaciones (compactas)
+    const p = Number(arch.pulso ?? 0);
+    const m = Number(arch.media ?? 0);
+    const d = Number(arch.djeba ?? 0);
+    const l = Number(arch.litro ?? 0);
+    const g = Number(arch.galon ?? 0);
+    if ([p,m,d,l,g].some(n => Number.isFinite(n) && n > 0)){
+      if (p > 0) meta.appendChild(makeChip(`P:${p}`, ''));
+      if (m > 0) meta.appendChild(makeChip(`M:${m}`, ''));
+      if (d > 0) meta.appendChild(makeChip(`D:${d}`, ''));
+      if (l > 0) meta.appendChild(makeChip(`L:${l}`, ''));
+      if (g > 0) meta.appendChild(makeChip(`G:${g}`, ''));
+    }
+
+    // Fechas
+    const dates = document.createElement('span');
+    dates.textContent = `Creado ${formatDate(arch.createdAt)} · Archivado ${formatDate(arch.deletedAt)}`;
+    meta.appendChild(dates);
+
+    // Evento (si existe)
+    const ev = (arch.assignedEventName || '').toString().trim();
+    if (ev){
+      const evSpan = document.createElement('span');
+      evSpan.textContent = `Evento: ${ev}`;
+      meta.appendChild(evSpan);
+    }
+
+    main.appendChild(code);
+    main.appendChild(meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'history-actions';
+
+    const viewBtn = document.createElement('button');
+    viewBtn.type = 'button';
+    viewBtn.className = 'btn secondary icon';
+    viewBtn.title = 'Ver';
+    viewBtn.setAttribute('aria-label', 'Ver');
+    viewBtn.textContent = '👁';
+    viewBtn.addEventListener('click', () => showArchivedDetails(arch));
+
+    actions.appendChild(viewBtn);
+
+    item.appendChild(main);
+    item.appendChild(actions);
+
+    listEl.appendChild(item);
+  }
+}
+
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
@@ -555,6 +882,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("reset-btn").addEventListener("click", () => clearForm());
   $("export-btn").addEventListener("click", () => exportToCSV());
+
+  // Histórico (Etapa 5)
+  const histBtn = $("history-btn");
+  if (histBtn) histBtn.addEventListener('click', () => openHistoryModal());
+
+  const histClose = $("history-close-btn");
+  if (histClose) histClose.addEventListener('click', () => closeHistoryModal());
+
+  const histModal = $("history-modal");
+  if (histModal) {
+    histModal.addEventListener('click', (e) => {
+      const t = e.target;
+      if (t && t.getAttribute && t.getAttribute('data-modal-close') === '1') {
+        closeHistoryModal();
+      }
+    });
+  }
+
+  const histSearch = $("history-search");
+  if (histSearch) {
+    histSearch.addEventListener('input', () => renderHistoryModal());
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isHistoryModalOpen()) {
+      closeHistoryModal();
+    }
+  });
 
   $("clear-all-btn").addEventListener("click", () => {
     if (!confirm("¿Borrar todos los lotes registrados?")) return;

@@ -5259,6 +5259,7 @@ function pcRenderAll() {
 
 /* ---------- Tabs y eventos UI ---------- */
 
+
 function setActiveFinView(view) {
   const buttons = document.querySelectorAll('.fin-tab-btn');
   let target = null;
