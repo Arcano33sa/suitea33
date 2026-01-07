@@ -1410,6 +1410,16 @@ function clearCustomerSelectionUI_POS(){
   if (inp.dataset) delete inp.dataset.customerId;
 }
 
+
+// Etapa 2 (POS): al cambiar de evento, limpiar cliente seleccionado (UI + persistencia)
+function clearCustomerSelectionOnEventSwitchPOS(){
+  try{ clearCustomerSelectionUI_POS(); }catch(_){ }
+  try{
+    if (window.A33Storage && typeof A33Storage.removeItem === 'function') A33Storage.removeItem(CUSTOMER_LAST_KEY, 'local');
+    else if (window.localStorage) window.localStorage.removeItem(CUSTOMER_LAST_KEY);
+  }catch(_){ }
+}
+
 function persistCustomerStickyStatePOS(){
   try{
     A33Storage.setItem(CUSTOMER_STICKY_KEY, isCustomerStickyPOS() ? '1' : '0');
@@ -1448,6 +1458,18 @@ function resolveCustomerIdForSalePOS(customerName, uiHintId){
   const existingIds = new Set(catalog.map(c => c && c.id).filter(Boolean).map(String));
   const newId = generateCustomerIdPOS(existingIds);
   return { id: String(newId), displayName: name, isNew: true };
+}
+
+// Venta sin cliente (Etapa 1): confirmación antes de registrar
+function isNoCustomerSelectedForSalePOS(){
+  const name = getCustomerNameFromUI_POS();
+  const hint = getCustomerIdHintFromUI_POS();
+  return !name && !hint;
+}
+
+function confirmProceedSaleWithoutCustomerPOS(){
+  if (!isNoCustomerSelectedForSalePOS()) return true;
+  return confirm('No hay cliente seleccionado. ¿Registrar esta venta sin cliente?');
 }
 
 function ensureCustomerInCatalogPOS(name, preferredId){
@@ -5387,6 +5409,8 @@ function bindChecklistEventsOncePOS(){
   const sel = document.getElementById('checklist-event');
   if (sel){
     sel.addEventListener('change', async ()=>{
+      // Etapa 2: limpiar cliente al cambiar evento
+      clearCustomerSelectionOnEventSwitchPOS();
       const val = (sel.value || '').trim();
       if (!val) {
         await setMeta('currentEventId', null);
@@ -7208,12 +7232,17 @@ async function sellCupsPOS(isCourtesy){
   if (!ev){ alert('Evento no encontrado'); return; }
   if (ev.closedAt){ alert('Este evento está cerrado. Reábrelo o activa otro.'); return; }
 
-  const saleDate = document.getElementById('sale-date')?.value || '';
+  const date = document.getElementById('sale-date')?.value || '';
+  if (!date){ alert('Selecciona una fecha'); return; }
+
   // Candado: no permitir fraccionamiento ni operaciones de venta si el día está cerrado
-  if (!(await guardSellDayOpenOrToastPOS(ev, saleDate))) return;
+  if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
 
   const qty = safeInt(document.getElementById('cup-qty')?.value, 0);
   if (!(qty >= 1)) { alert('Cantidad de vasos debe ser un entero >= 1'); return; }
+
+  // Etapa 1: confirmación si no hay cliente seleccionado
+  if (!confirmProceedSaleWithoutCustomerPOS()) return;
 
   const allSales = await getAll('sales');
   const stats = computeCupStatsFromEvent(ev, allSales);
@@ -7231,9 +7260,6 @@ async function sellCupsPOS(isCourtesy){
 
   ev.fractionBatches = batches;
   await put('events', ev);
-
-  const date = document.getElementById('sale-date')?.value || '';
-  if (!date){ alert('Selecciona una fecha'); return; }
 
   // Candado: si Caja Chica está activada y el día está cerrado, NO permitir ventas por vaso
   if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
@@ -9582,6 +9608,8 @@ async function showSummaryReturnBannerPOS({ currentEventId, prevEventId }){
   btn.textContent = 'Volver';
   btn.addEventListener('click', async (e)=>{
     e.preventDefault();
+    // Etapa 2: limpiar cliente al cambiar evento
+    clearCustomerSelectionOnEventSwitchPOS();
     await setMeta('currentEventId', prevEventId);
     clearPcPrevEventId();
     hideSummaryReturnBannerPOS();
@@ -9743,6 +9771,8 @@ function bindSummaryDailyClosePOS(){
   if (sumEv){
     sumEv.addEventListener('change', ()=>{
       (async()=>{
+        // Etapa 2: limpiar cliente al cambiar evento
+        clearCustomerSelectionOnEventSwitchPOS();
         const val = sumEv.value;
         if (val === '') { await setMeta('currentEventId', null); }
         else { await setMeta('currentEventId', parseInt(val,10)); }
@@ -11357,7 +11387,11 @@ async function closeEvent(eventId){
   ev.closedAt = new Date().toISOString();
   await put('events', ev);
   const curId = await getMeta('currentEventId');
-  if (curId === eventId) await setMeta('currentEventId', null);
+  if (curId === eventId){
+    // Etapa 2: al dejar evento activo, limpiar cliente
+    clearCustomerSelectionOnEventSwitchPOS();
+    await setMeta('currentEventId', null);
+  }
   await refreshEventUI(); await renderEventos(); await renderDay(); await renderSummary();
   toast('Evento cerrado (sin borrar ventas)');
 }
@@ -11368,12 +11402,16 @@ async function reopenEvent(eventId){
   if (!ev){ alert('Evento no encontrado'); return; }
   ev.closedAt = null;
   await put('events', ev);
+  // Etapa 2: limpiar cliente al cambiar evento
+  clearCustomerSelectionOnEventSwitchPOS();
   await setMeta('currentEventId', eventId);
   await refreshEventUI(); await renderEventos();
   toast('Evento reabierto');
 }
 
 async function activateEvent(eventId){
+  // Etapa 2: limpiar cliente al cambiar evento
+  clearCustomerSelectionOnEventSwitchPOS();
   await setMeta('currentEventId', eventId);
   await refreshEventUI();
   await renderDay();
@@ -11500,6 +11538,8 @@ async function init(){
 
   $('#sale-event').addEventListener('change', async()=>{ 
     const val = $('#sale-event').value;
+    // Etapa 2: limpiar cliente al cambiar evento
+    clearCustomerSelectionOnEventSwitchPOS();
     if (val === '') { await setMeta('currentEventId', null); }
     else { await setMeta('currentEventId', parseInt(val,10)); }
     await refreshEventUI(); 
@@ -11625,6 +11665,8 @@ async function init(){
   }
 
   const id = await put('events', {name, groupName, pettyEnabled:false, createdAt:new Date().toISOString()});
+  // Etapa 2: limpiar cliente al cambiar evento
+  clearCustomerSelectionOnEventSwitchPOS();
   await setMeta('currentEventId', id);
   $('#new-event').value = '';
 
@@ -12048,6 +12090,9 @@ async function addSale(){
   const notes = $('#sale-notes').value || '';
   if (!date || !productId || !qty) { alert('Completa fecha, producto y cantidad'); return; }
 
+  // Etapa 1: confirmación si no hay cliente seleccionado
+  if (!confirmProceedSaleWithoutCustomerPOS()) return;
+
   // Banco (obligatorio si es Transferencia)
   let bankId = null;
   let bankName = '';
@@ -12200,6 +12245,9 @@ async function addExtraSale(extraId){
   const notes = $('#sale-notes').value || '';
 
   if (!date || !qty) { alert('Completa fecha y cantidad'); return; }
+
+  // Etapa 1: confirmación si no hay cliente seleccionado
+  if (!confirmProceedSaleWithoutCustomerPOS()) return;
 
   // Candado: si el día está cerrado (Caja Chica o Resumen), NO permitir ventas
   if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
@@ -14241,6 +14289,8 @@ const btnAddMov = document.getElementById('pc-mov-add');
   const pcSel = document.getElementById('pc-event-select');
   if (pcSel){
     pcSel.addEventListener('change', async ()=>{
+      // Etapa 2: limpiar cliente al cambiar evento
+      clearCustomerSelectionOnEventSwitchPOS();
       const raw = String(pcSel.value || '').trim();
       if (!raw) return;
       const nextId = parseInt(raw, 10);
@@ -14263,6 +14313,8 @@ const btnAddMov = document.getElementById('pc-mov-add');
   if (btnPrevEvent){
     btnPrevEvent.addEventListener('click', async (e)=>{
       e.preventDefault();
+      // Etapa 2: limpiar cliente al cambiar evento
+      clearCustomerSelectionOnEventSwitchPOS();
       const prevId = getPcPrevEventId();
       if (!prevId) return;
       const curId = await getMeta('currentEventId');

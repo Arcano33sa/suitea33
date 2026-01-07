@@ -891,7 +891,7 @@ body.fin-body {
 .purchase-grid-header,
 .purchase-grid-row{
   display:grid;
-  grid-template-columns: minmax(110px, 1.2fr) minmax(140px, 1.4fr) minmax(90px, 0.9fr) minmax(80px, 0.8fr) minmax(90px, 0.9fr) minmax(90px, 0.9fr) 34px;
+  grid-template-columns: minmax(110px, 1.15fr) minmax(140px, 1.45fr) minmax(90px, 0.85fr) minmax(72px, 0.7fr) minmax(84px, 0.8fr) minmax(90px, 0.85fr) 34px 34px;
   gap:6px;
   align-items:center;
 }
@@ -909,7 +909,7 @@ body.fin-body {
   border-top: 1px solid rgba(255,255,255,0.05);
 }
 
-.purchase-grid input,
+.purchase-grid input:not([type="checkbox"]),
 .purchase-grid select{
   width: 100%;
   padding: 7px 8px;
@@ -921,10 +921,27 @@ body.fin-body {
   outline: none;
 }
 
-.purchase-grid input:focus,
+.purchase-grid input:not([type="checkbox"]):focus,
 .purchase-grid select:focus{
   border-color: rgba(212,175,55,0.55);
   box-shadow: 0 0 0 3px rgba(212,175,55,0.12);
+}
+
+.purchase-col-purchased{
+  text-align:center;
+}
+
+.purchase-cell.cell-purchased{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+.purchase-grid input[type="checkbox"]{
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: rgba(212,175,55,0.95);
 }
 
 .purchase-total-cell{

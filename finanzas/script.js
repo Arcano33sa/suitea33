@@ -4384,7 +4384,8 @@ function pcBuildEmptyLine() {
     product: '',
     type: 'UNIDADES',
     quantity: '',
-    price: ''
+    price: '',
+    purchased: false
   };
 }
 
@@ -4402,6 +4403,14 @@ function pcBuildEmptyHistory() {
   return { version: 1, history: [] };
 }
 
+function pcNormBool(v) {
+  if (v === true) return true;
+  if (v === false || v == null) return false;
+  // Evitar que strings tipo "false" se vuelvan truthy
+  const s = String(v).trim().toLowerCase();
+  return (s === 'true' || s === '1' || s === 'si' || s === 'sí' || s === 'yes');
+}
+
 function pcNormalizeLine(src) {
   const base = pcBuildEmptyLine();
   if (!src || typeof src !== 'object') return base;
@@ -4412,7 +4421,8 @@ function pcNormalizeLine(src) {
     product: src.product ? String(src.product) : '',
     type: (String(src.type || '').toUpperCase() === 'CAJAS') ? 'CAJAS' : 'UNIDADES',
     quantity: (src.quantity == null) ? '' : String(src.quantity),
-    price: (src.price == null) ? '' : String(src.price)
+    price: (src.price == null) ? '' : String(src.price),
+    purchased: pcNormBool(src.purchased)
   };
 }
 
@@ -4670,6 +4680,7 @@ function pcRenderSection(sectionKey) {
     <div>Cantidad</div>
     <div>Precio</div>
     <div class="num">Total</div>
+    <div class="purchase-col-purchased" title="Comprado" aria-label="Comprado">✓</div>
     <div></div>
   `;
   host.appendChild(header);
@@ -4793,12 +4804,26 @@ function pcRenderSection(sectionKey) {
     });
     cDel.appendChild(btnDel);
 
+    // Comprado
+    const cPurchased = document.createElement('div');
+    cPurchased.className = 'purchase-cell cell-purchased';
+    const chkPurchased = document.createElement('input');
+    chkPurchased.type = 'checkbox';
+    chkPurchased.checked = !!line.purchased;
+    chkPurchased.title = 'Comprado';
+    chkPurchased.addEventListener('change', () => {
+      line.purchased = !!chkPurchased.checked;
+      pcAutoSaveDraftSilent().catch(err => console.warn('Auto-guardado falló', err));
+    });
+    cPurchased.appendChild(chkPurchased);
+
     row.appendChild(cSupplier);
     row.appendChild(cProd);
     row.appendChild(cTipo);
     row.appendChild(cQty);
     row.appendChild(cPrice);
     row.appendChild(cTotal);
+    row.appendChild(cPurchased);
     row.appendChild(cDel);
 
     host.appendChild(row);
@@ -5013,13 +5038,13 @@ function pcOpenHistoryModal(recordId) {
   fillLines('ph-modal-tbody-proveedores', rec.sections && rec.sections.proveedores);
   fillLines('ph-modal-tbody-varias', rec.sections && rec.sections.varias);
 
-  modal.classList.add('show');
+  modal.classList.add('open');
 }
 
 function pcCloseHistoryModal() {
   const modal = document.getElementById('ph-modal');
   if (!modal) return;
-  modal.classList.remove('show');
+  modal.classList.remove('open');
   pcModalRecordId = null;
 }
 
@@ -5138,6 +5163,19 @@ function pcExportRecordExcel(rec) {
   showToast('Histórico exportado a Excel');
 }
 
+let pcAutoSaveChain = Promise.resolve();
+
+async function pcAutoSaveDraftSilent() {
+  if (!pcCurrent) return;
+  const now = new Date();
+  pcCurrent.updatedAtISO = now.toISOString();
+  pcCurrent.updatedAtDisplay = fmtDDMMYYYYHHMM(now);
+  pcSetUpdatedUI();
+  // Guardado silencioso: sin toast / alert por click
+  pcAutoSaveChain = pcAutoSaveChain.then(() => pcPersistSetting(PC_CURRENT_KEY, pcCurrent));
+  return pcAutoSaveChain;
+}
+
 async function pcSaveDraft() {
   if (!pcCurrent) pcCurrent = pcBuildEmptyCurrent();
 
@@ -5178,14 +5216,46 @@ async function pcSaveToHistory() {
   pcRenderHistoryList();
 }
 
-async function pcResetCurrent() {
-  const ok = confirm('Reset: esto limpia la Compra Actual (no afecta el histórico).');
+function pcLineHasContent(line) {
+  if (!line || typeof line !== 'object') return false;
+  const supplierId = (line.supplierId == null) ? '' : String(line.supplierId).trim();
+  const supplierName = (line.supplierName == null) ? '' : String(line.supplierName).trim();
+  const product = (line.product == null) ? '' : String(line.product).trim();
+  const quantity = (line.quantity == null) ? '' : String(line.quantity).trim();
+  const price = (line.price == null) ? '' : String(line.price).trim();
+  return !!(supplierId || supplierName || product || quantity || price);
+}
+
+function pcGetContentLinesFromCurrent() {
+  const sec = (pcCurrent && pcCurrent.sections) ? pcCurrent.sections : {};
+  const prov = Array.isArray(sec.proveedores) ? sec.proveedores : [];
+  const varr = Array.isArray(sec.varias) ? sec.varias : [];
+  const all = [];
+  all.push(...prov, ...varr);
+  return all.filter(pcLineHasContent);
+}
+
+async function pcDeleteAllCurrent() {
+  if (!pcCurrent) pcCurrent = pcBuildEmptyCurrent();
+
+  const contentLines = pcGetContentLinesFromCurrent();
+  const missing = contentLines.reduce((acc, l) => acc + (pcNormBool(l && l.purchased) ? 0 : 1), 0);
+
+  if (contentLines.length > 0 && missing > 0) {
+    const msg = `No puedo borrar: faltan ${missing} ítems por marcar como comprados.`;
+    pcSetMsg(msg);
+    showToast(msg);
+    return;
+  }
+
+  const ok = confirm('Borrar todo: esto limpiará la Compra Actual (no afecta el histórico).\n\n⚠️ Esta acción no se puede deshacer.');
   if (!ok) return;
+
   pcCurrent = pcBuildEmptyCurrent();
   await pcPersistSetting(PC_CURRENT_KEY, pcCurrent);
   pcRenderCurrent();
-  pcSetMsg('Compra actual reseteada');
-  showToast('Compra actual reseteada');
+  pcSetMsg('Compra actual borrada');
+  showToast('Compra actual borrada');
 }
 
 function pcAddLine(sectionKey) {
@@ -5210,8 +5280,8 @@ function setupComprasPlanUI() {
   const btnSaveHist = document.getElementById('pc-save-history');
   if (btnSaveHist) btnSaveHist.addEventListener('click', (e) => { e.preventDefault(); pcSaveToHistory(); });
 
-  const btnReset = document.getElementById('pc-reset');
-  if (btnReset) btnReset.addEventListener('click', (e) => { e.preventDefault(); pcResetCurrent(); });
+  const btnDeleteAll = document.getElementById('pc-delete-all');
+  if (btnDeleteAll) btnDeleteAll.addEventListener('click', (e) => { e.preventDefault(); pcDeleteAllCurrent(); });
 
   const btnExport = document.getElementById('pc-export');
   if (btnExport) btnExport.addEventListener('click', (e) => { e.preventDefault(); pcExportCurrentExcel(); });
