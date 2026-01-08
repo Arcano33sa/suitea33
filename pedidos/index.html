@@ -23,6 +23,7 @@
   <main class="app-main">
     <section class="card form-card">
       <h2>Nuevo pedido</h2>
+      <div class="inline-banner" id="archived-mode-banner" hidden></div>
       <form id="pedido-form">
         <div class="form-grid">
           <div class="field">
@@ -53,8 +54,28 @@
         <h3>Datos del cliente</h3>
         <div class="form-grid">
           <div class="field">
-            <label for="clienteNombre">Nombre del cliente / negocio</label>
-            <input type="text" id="clienteNombre" name="clienteNombre" placeholder="Ej: Bar El Eclipse" required />
+            <label for="clienteSelect">Cliente</label>
+
+            <div class="customer-picker" role="group" aria-label="Selector de cliente">
+              <input type="text" id="clienteBuscar" placeholder="Buscar cliente..." autocomplete="off" inputmode="search" />
+              <select id="clienteSelect" required></select>
+              <button type="button" class="btn-secondary a33-pill-btn" id="clienteNewToggle">+ Crear nuevo</button>
+            </div>
+
+            <div id="clienteNewBox" class="customer-new-box" hidden>
+              <input type="text" id="clienteNewName" placeholder="Nombre del nuevo cliente" autocomplete="off" />
+              <div class="customer-new-actions">
+                <button type="button" class="btn-primary a33-pill-btn" id="clienteNewSave">Guardar</button>
+                <button type="button" class="btn-secondary a33-pill-btn" id="clienteNewCancel">Cancelar</button>
+              </div>
+              <p class="hint hint-small">Se guarda también para POS (misma base de clientes).</p>
+            </div>
+
+            <div id="clienteSelectedStatus" class="hint hint-small" aria-live="polite"></div>
+
+            <!-- Compat: seguimos guardando clienteNombre, pero ahora viene del selector -->
+            <input type="hidden" id="clienteNombre" name="clienteNombre" />
+            <input type="hidden" id="clienteId" name="clienteId" />
           </div>
 
           <div class="field">
@@ -72,10 +93,8 @@
             <input type="tel" id="clienteTelefono" name="clienteTelefono" placeholder="Ej: 8888-0000" />
           </div>
 
-          <div class="field">
-            <label for="clienteDireccion">Dirección de entrega</label>
-            <input type="text" id="clienteDireccion" name="clienteDireccion" placeholder="Dirección principal de entrega" />
-          </div>
+          <!-- Dirección de entrega: removida de UI (se mantiene hidden para compatibilidad con pedidos viejos) -->
+          <input type="hidden" id="clienteDireccion" name="clienteDireccion" />
 
           <div class="field" style="grid-column:1/-1;">
             <label for="clienteReferencia">Referencia de ubicación</label>
@@ -84,76 +103,42 @@
         </div>
 
         <h3>Detalle del pedido · Presentaciones</h3>
-        <p class="hint">Registra cantidades, precios unitarios y descuentos por presentación. Los totales se calcularán automáticamente al guardar.</p>
+        <p class="hint">Solo presentación y cantidad. Los precios se toman automáticamente del POS.</p>
 
-        <div class="form-grid-compact">
-          <div class="field">
-            <label>Pulso 250 ml · Cantidad</label>
-            <input type="number" id="pulsoCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label>Pulso · Precio unitario (C$)</label>
-            <input type="number" id="pulsoPrecio" min="0" step="0.01" value="120" class="a33-num" data-a33-default="120" inputmode="decimal">
-          </div>
-          <div class="field">
-            <label>Pulso · Descuento (C$)</label>
-            <input type="number" id="pulsoDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
-          </div>
-
-          <div class="field">
-            <label>Media 375 ml · Cantidad</label>
-            <input type="number" id="mediaCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label>Media · Precio unitario (C$)</label>
-            <input type="number" id="mediaPrecio" min="0" step="0.01" value="150" class="a33-num" data-a33-default="150" inputmode="decimal">
-          </div>
-          <div class="field">
-            <label>Media · Descuento (C$)</label>
-            <input type="number" id="mediaDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
-          </div>
-
-          <div class="field">
-            <label>Djeba 750 ml · Cantidad</label>
-            <input type="number" id="djebaCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label>Djeba · Precio unitario (C$)</label>
-            <input type="number" id="djebaPrecio" min="0" step="0.01" value="300" class="a33-num" data-a33-default="300" inputmode="decimal">
-          </div>
-          <div class="field">
-            <label>Djeba · Descuento (C$)</label>
-            <input type="number" id="djebaDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
-          </div>
-
-          <div class="field">
-            <label>Litro 1000 ml · Cantidad</label>
-            <input type="number" id="litroCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label>Litro · Precio unitario (C$)</label>
-            <input type="number" id="litroPrecio" min="0" step="0.01" value="330" class="a33-num" data-a33-default="330" inputmode="decimal">
-          </div>
-          <div class="field">
-            <label>Litro · Descuento (C$)</label>
-            <input type="number" id="litroDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
-          </div>
-
-          <div class="field">
-            <label>Galón 3800 ml · Cantidad</label>
-            <input type="number" id="galonCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label>Galón · Precio unitario (C$)</label>
-            <input type="number" id="galonPrecio" min="0" step="0.01" value="800" class="a33-num" data-a33-default="800" inputmode="decimal">
-          </div>
-          <div class="field">
-            <label>Galón · Descuento (C$)</label>
-            <input type="number" id="galonDesc" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
-          </div>
+        <div class="presentaciones-wrapper">
+          <table class="mini-table" id="presentaciones-table">
+            <thead>
+              <tr>
+                <th>Presentación</th>
+                <th class="qty-col">Cantidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Pulso 250 ml</td>
+                <td><input type="number" id="pulsoCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
+              </tr>
+              <tr>
+                <td>Media 375 ml</td>
+                <td><input type="number" id="mediaCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
+              </tr>
+              <tr>
+                <td>Djeba 750 ml</td>
+                <td><input type="number" id="djebaCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
+              </tr>
+              <tr>
+                <td>Litro 1000 ml</td>
+                <td><input type="number" id="litroCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
+              </tr>
+              <tr>
+                <td>Galón 3800 ml</td>
+                <td><input type="number" id="galonCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <h3>Totales y pago</h3>
+        <h3>Totales y pagos</h3>
         <div class="form-grid">
           <div class="field">
             <label for="envio">Envío (C$)</label>
@@ -164,12 +149,20 @@
             <input type="number" id="subtotal" name="subtotal" readonly />
           </div>
           <div class="field">
-            <label for="descuentoTotal">Descuento total (C$)</label>
-            <input type="number" id="descuentoTotal" name="descuentoTotal" readonly />
+            <label for="descuento">Descuento (C$)</label>
+            <input type="number" id="descuento" name="descuento" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
           <div class="field">
             <label for="totalPagar">Total a pagar (C$)</label>
             <input type="number" id="totalPagar" name="totalPagar" readonly />
+          </div>
+          <div class="field">
+            <label for="pagoAnticipado">Pago anticipado (C$)</label>
+            <input type="number" id="pagoAnticipado" name="pagoAnticipado" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="saldoPendiente">Saldo pendiente (C$)</label>
+            <input type="number" id="saldoPendiente" name="saldoPendiente" readonly />
           </div>
         </div>
 
@@ -185,34 +178,19 @@
           </div>
 
           <div class="field">
-            <label for="estadoPago">Estado de pago</label>
-            <select id="estadoPago" name="estadoPago">
-              <option value="pagado">Pagado</option>
-              <option value="adelanto">Adelanto</option>
-              <option value="contraentrega">Contraentrega</option>
+            <label for="estado">Estado</label>
+            <select id="estado" name="estado">
+              <option value="pendiente">Pendiente</option>
+              <option value="entregado">Entregado</option>
             </select>
-          </div>
-
-          <div class="field">
-            <label for="montoPagado">Monto pagado (C$)</label>
-            <input type="number" id="montoPagado" name="montoPagado" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
-          </div>
-
-          <div class="field">
-            <label for="saldoPendiente">Saldo pendiente (C$)</label>
-            <input type="number" id="saldoPendiente" name="saldoPendiente" readonly />
           </div>
         </div>
 
-        <h3>Relación con lotes y entrega</h3>
+        <h3>Relación con lotes</h3>
         <div class="form-grid">
           <div class="field">
             <label for="lotesRelacionados">Códigos de lote relacionados</label>
             <input type="text" id="lotesRelacionados" name="lotesRelacionados" placeholder="Ej: A33-2025-12-01-01, A33-2025-12-02-02" />
-          </div>
-          <div class="field checkbox-row">
-            <input type="checkbox" id="entregado" name="entregado" />
-            <label for="entregado">Pedido entregado</label>
           </div>
         </div>
 
@@ -252,6 +230,34 @@
         </table>
       </div>
     </section>
+  
+    <section class="card table-card" id="archived-section">
+      <div class="table-header">
+        <h2>Histórico <span class="badge" id="archived-count">0</span></h2>
+        <div class="table-actions">
+          <input type="search" id="archived-search" class="search-input" placeholder="Buscar (cliente, código, fecha, estado)…" autocomplete="off" />
+          <span class="inline-notice" id="archived-notice" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="archived-table">
+          <thead>
+            <tr>
+              <th class="col-date">Archivado</th>
+              <th class="col-code">Código</th>
+              <th>Cliente</th>
+              <th class="col-date">Entrega</th>
+              <th class="col-status">Estado</th>
+              <th class="col-money">Total (C$)</th>
+              <th class="actions-col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
   </main>
 
   <footer class="app-footer">
