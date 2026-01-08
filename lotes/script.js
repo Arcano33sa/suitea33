@@ -14,6 +14,51 @@ const PROD_ABBR = {
   Galon: "G",
 };
 
+// Etapa 2: Totales (RESTANTE) por presentación
+const TOTAL_KEYS = ["P", "M", "D", "L", "G"];
+
+function getCanonicalRemainingByKey(lote){
+  // Fuente de verdad: lote.eventUsage[eventId].remainingByKey (o equivalente)
+  const eid = (lote?.assignedEventId != null) ? String(lote.assignedEventId).trim() : "";
+  if (!eid) return null;
+  const eu = (lote && typeof lote.eventUsage === 'object' && !Array.isArray(lote.eventUsage)) ? lote.eventUsage : null;
+  if (!eu) return null;
+  const snap = eu[eid];
+  if (!snap || typeof snap !== 'object') return null;
+  const rbk = snap.remainingByKey;
+  if (!rbk || typeof rbk !== 'object' || Array.isArray(rbk)) return null;
+  return rbk;
+}
+
+function computeRemainingTotals(visibleLotes){
+  const totals = { P: 0, M: 0, D: 0, L: 0, G: 0 };
+  if (!Array.isArray(visibleLotes) || !visibleLotes.length) return totals;
+
+  for (const lote of visibleLotes){
+    const rbk = getCanonicalRemainingByKey(lote);
+    if (!rbk) continue; // si no hay snapshot confiable, no aporta (no inventar)
+    for (const k of TOTAL_KEYS){
+      const v = Number(rbk[k]);
+      if (Number.isFinite(v) && v >= 0) totals[k] += v;
+    }
+  }
+  return totals;
+}
+
+function updateTotalsBarUI(totals){
+  const bar = $("totals-bar");
+  if (!bar) return;
+
+  for (const k of TOTAL_KEYS){
+    const el = bar.querySelector(`[data-total-key="${k}"]`);
+    if (!el) continue;
+    const n = Number(totals && totals[k]);
+    const v = Number.isFinite(n) ? n : 0;
+    el.textContent = String(v);
+    el.classList.toggle('is-zero', v === 0);
+  }
+}
+
 function abbrProducto(nombre) {
   if (!nombre) return "";
   return PROD_ABBR[nombre] || nombre.trim().charAt(0).toUpperCase();
@@ -365,6 +410,8 @@ function renderTable() {
   const lotes = loadLotes();
 
   if (!lotes.length) {
+    // Etapa 2: siempre mostrar P/M/D/L/G (ceros atenuados por CSS)
+    updateTotalsBarUI({ P: 0, M: 0, D: 0, L: 0, G: 0 });
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 10;
@@ -390,10 +437,23 @@ function renderTable() {
     return (a.codigo || "").localeCompare(b.codigo || "");
   });
 
+  // Etapa 2: Totales (RESTANTE) sobre el listado visible (respetando orden/futuros filtros)
+  // Fuente de verdad: lote.eventUsage[eventId].remainingByKey (si falta, ese lote no aporta)
+  updateTotalsBarUI(computeRemainingTotals(sorted));
+
   const byId = new Map(sorted.map((l) => [String(l.id), l]));
 
   for (const lote of sorted) {
     const tr = document.createElement("tr");
+
+    // Estado y snapshot canónico por evento (para doble línea: Creado + Parcial/restante)
+    const st = effectiveLoteStatus(lote);
+    const eid = (lote?.assignedEventId != null) ? String(lote.assignedEventId).trim() : "";
+    const sem = st === "EN_EVENTO" ? getLoteSemaforoState(lote) : "";
+    const eu = (lote && typeof lote.eventUsage === "object" && !Array.isArray(lote.eventUsage)) ? lote.eventUsage : null;
+    const snap = (eu && eid) ? eu[eid] : null;
+    const remainingByKey = (snap && typeof snap === "object" && snap.remainingByKey && typeof snap.remainingByKey === "object") ? snap.remainingByKey : null;
+    const showRemainingLine = (st === "EN_EVENTO" && sem === "PARCIAL" && !!remainingByKey);
 
     const fields = [
       formatDate(lote.fecha),
@@ -419,7 +479,6 @@ function renderTable() {
         codeText.textContent = value;
         td.appendChild(codeText);
 
-        const st = effectiveLoteStatus(lote);
         const line = document.createElement("div");
         line.className = "lote-status-line";
 
@@ -436,7 +495,14 @@ function renderTable() {
 
         // Semáforo de consumo por evento (Etapa 3 UI): PARCIAL / VENDIDO
         if (st === "EN_EVENTO") {
-          const sem = getLoteSemaforoState(lote);
+          // Cuando hay doble línea de cantidades, forzar que PARCIAL caiga en el renglón 2
+          if (showRemainingLine) {
+            const br = document.createElement("span");
+            br.className = "chip-break";
+            br.setAttribute("aria-hidden", "true");
+            line.appendChild(br);
+          }
+
           const semChip = document.createElement("span");
           semChip.className = "chip " + (sem === "VENDIDO" ? "chip--sold" : "chip--partial");
           semChip.textContent = sem;
@@ -479,7 +545,28 @@ function renderTable() {
         return;
       }
 
-      td.textContent = value;
+      // Columnas de presentaciones: doble línea cuando el lote está PARCIAL y existe snapshot
+      if (idx >= 3 && idx <= 7 && showRemainingLine) {
+        const k = ["P", "M", "D", "L", "G"][idx - 3];
+        const createdSpan = document.createElement("span");
+        createdSpan.textContent = String(value ?? "");
+
+        const remVal = (remainingByKey && Object.prototype.hasOwnProperty.call(remainingByKey, k))
+          ? remainingByKey[k]
+          : 0;
+        const remainingSpan = document.createElement("span");
+        remainingSpan.className = "qty-remaining";
+        remainingSpan.textContent = String(remVal ?? "0");
+
+        const stack = document.createElement("div");
+        stack.className = "qty-stack";
+        stack.appendChild(createdSpan);
+        stack.appendChild(remainingSpan);
+
+        td.appendChild(stack);
+      } else {
+        td.textContent = value;
+      }
 
       // Compactar visualmente las columnas de productos (Pulso/Media/Djeba/Litro/Galón)
       if (idx >= 3 && idx <= 7) {

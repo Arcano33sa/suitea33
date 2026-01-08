@@ -114,6 +114,34 @@
           <button type="button" class="btn danger" id="clear-all-btn">Borrar todo</button>
         </div>
       </div>
+
+      <!-- Etapa 2: Barra de Totales (RESTANTE) por presentación (P/M/D/L/G) -->
+      <div class="totals-bar" id="totals-bar" aria-label="Totales restantes (P/M/D/L/G)">
+        <div class="totals-label">Totales</div>
+        <div class="totals-chips" role="group" aria-label="Totales por presentación">
+          <div class="totals-chip" aria-label="Total Pulso">
+            <div class="totals-chip-key">P</div>
+            <div class="totals-chip-val" data-total-key="P">0</div>
+          </div>
+          <div class="totals-chip" aria-label="Total Media">
+            <div class="totals-chip-key">M</div>
+            <div class="totals-chip-val" data-total-key="M">0</div>
+          </div>
+          <div class="totals-chip" aria-label="Total Djeba">
+            <div class="totals-chip-key">D</div>
+            <div class="totals-chip-val" data-total-key="D">0</div>
+          </div>
+          <div class="totals-chip" aria-label="Total Litro">
+            <div class="totals-chip-key">L</div>
+            <div class="totals-chip-val" data-total-key="L">0</div>
+          </div>
+          <div class="totals-chip" aria-label="Total Galón">
+            <div class="totals-chip-key">G</div>
+            <div class="totals-chip-val" data-total-key="G">0</div>
+          </div>
+        </div>
+      </div>
+
       <div class="table-wrapper">
         <table id="lotes-table" class="table-lotes">
           <thead>
