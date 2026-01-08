@@ -312,6 +312,15 @@
     const STORAGE_NOTAS_KEY = "arcano33_notas_lote";
     const STORAGE_KEY_INVENTARIO = "arcano33_inventario";
 
+    function hoyLocalISO(){
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+
     function invParseNumber(value) {
       const n = parseFloat(String(value).replace(",", "."));
       return Number.isNaN(n) ? 0 : n;
@@ -690,7 +699,8 @@
         A33Storage.setItem(STORAGE_LOTE_KEY, loteInput.value || "");
       }
       if (fechaProdInput) {
-        A33Storage.setItem(STORAGE_FECHA_PROD_KEY, fechaProdInput.value || "");
+        // En Calculadora no se editan registros existentes: no persistimos la fecha entre sesiones.
+        A33Storage.removeItem(STORAGE_FECHA_PROD_KEY);
       }
       if (notasInput) {
         A33Storage.setItem(STORAGE_NOTAS_KEY, notasInput.value || "");
@@ -702,10 +712,13 @@
       const fechaProdInput = document.getElementById("fecha-produccion");
       const notasInput = document.getElementById("notas");
       const loteVal = A33Storage.getItem(STORAGE_LOTE_KEY);
-      const fechaVal = A33Storage.getItem(STORAGE_FECHA_PROD_KEY);
       const notasVal = A33Storage.getItem(STORAGE_NOTAS_KEY);
       if (loteInput && loteVal !== null) loteInput.value = loteVal;
-      if (fechaProdInput && fechaVal !== null) fechaProdInput.value = fechaVal;
+      if (fechaProdInput) {
+        // Compatibilidad: si quedó una fecha vieja guardada, la limpiamos.
+        A33Storage.removeItem(STORAGE_FECHA_PROD_KEY);
+        fechaProdInput.value = hoyLocalISO();
+      }
       if (notasInput && notasVal !== null) notasInput.value = notasVal;
       actualizarTextoCaducidad();
     }
@@ -928,7 +941,7 @@
         if (item.id === "litro") mapUnits.litro = item.unidades;
         if (item.id === "galon") mapUnits.galon = item.unidades;
       });
-      const fechaProdIso = datos.fechaProdStr || new Date().toISOString().slice(0, 10);
+      const fechaProdIso = datos.fechaProdStr || hoyLocalISO();
       let caducidadIso = "";
       try {
         const cad = calcularCaducidad(fechaProdIso);

@@ -306,6 +306,15 @@
     const STORAGE_FECHA_PROD_KEY = "arcano33_fecha_produccion";
     const STORAGE_NOTAS_KEY = "arcano33_notas_lote";
 
+    function hoyLocalISO(){
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+
     function getNumberValue(id) {
       const el = document.getElementById(id);
       if (!el) return 0;
@@ -456,7 +465,8 @@
         localStorage.setItem(STORAGE_LOTE_KEY, loteInput.value || "");
       }
       if (fechaProdInput) {
-        localStorage.setItem(STORAGE_FECHA_PROD_KEY, fechaProdInput.value || "");
+        // En Calculadora no se editan registros existentes: no persistimos la fecha entre sesiones.
+        localStorage.removeItem(STORAGE_FECHA_PROD_KEY);
       }
       if (notasInput) {
         localStorage.setItem(STORAGE_NOTAS_KEY, notasInput.value || "");
@@ -468,10 +478,13 @@
       const fechaProdInput = document.getElementById("fecha-produccion");
       const notasInput = document.getElementById("notas");
       const loteVal = localStorage.getItem(STORAGE_LOTE_KEY);
-      const fechaVal = localStorage.getItem(STORAGE_FECHA_PROD_KEY);
       const notasVal = localStorage.getItem(STORAGE_NOTAS_KEY);
       if (loteInput && loteVal !== null) loteInput.value = loteVal;
-      if (fechaProdInput && fechaVal !== null) fechaProdInput.value = fechaVal;
+      if (fechaProdInput) {
+        // Compatibilidad: si quedó una fecha vieja guardada, la limpiamos.
+        localStorage.removeItem(STORAGE_FECHA_PROD_KEY);
+        fechaProdInput.value = hoyLocalISO();
+      }
       if (notasInput && notasVal !== null) notasInput.value = notasVal;
       actualizarTextoCaducidad();
     }
