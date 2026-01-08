@@ -511,8 +511,35 @@ body.fin-body {
   margin-top:10px;
 }
 
+#view-diario #diario-actions-bar + #diario-integrity-banner{
+  margin-top:10px;
+}
+
+#view-diario #diario-integrity-banner + .fin-table-wrapper{
+  margin-top:10px;
+}
+
+/* fallback para layout viejo */
 #view-diario #diario-actions-bar + .fin-table-wrapper{
   margin-top:10px;
+}
+
+.fin-integrity-banner{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid rgba(212,175,55,0.28);
+  background: rgba(90,25,32,0.45);
+  font-size:0.8rem;
+  color: var(--fin-text);
+}
+
+.fin-integrity-banner strong{
+  color: var(--fin-gold);
+  font-weight:600;
 }
 
 #view-diario{
@@ -531,11 +558,16 @@ body.fin-body {
   color: var(--fin-muted);
 }
 
+.fin-muted{
+  color: var(--fin-muted);
+}
+
 .fin-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8rem;
   background: rgba(7,8,13,0.98);
+  table-layout: fixed; /* evita que strings largos estiren la tabla (iPad) */
 }
 
 .fin-table thead {
@@ -546,6 +578,50 @@ body.fin-body {
 .fin-table td {
   padding: 6px 8px;
   border-bottom: 1px solid rgba(255,255,255,0.03);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Diario: columnas con ancho fijo para evitar desbordes (sin scroll horizontal) */
+#view-diario .fin-table th:nth-child(1),
+#view-diario .fin-table td:nth-child(1) { width: 82px; }
+
+#view-diario .fin-table th:nth-child(3),
+#view-diario .fin-table td:nth-child(3) { width: 82px; }
+
+#view-diario .fin-table th:nth-child(6),
+#view-diario .fin-table td:nth-child(6) { width: 108px; }
+
+#view-diario .fin-table th:nth-child(7),
+#view-diario .fin-table td:nth-child(7) { width: 92px; }
+
+#view-diario .fin-table th:nth-child(8),
+#view-diario .fin-table td:nth-child(8) { width: 92px; }
+
+#view-diario .fin-table th:nth-child(9),
+#view-diario .fin-table td:nth-child(9) { width: 96px; }
+
+/* Columnas de texto largo: permitir wrap controlado */
+#view-diario .fin-table td:nth-child(2),
+#view-diario .fin-table td:nth-child(4) {
+  white-space: normal;
+  line-height: 1.15;
+}
+
+.fin-cell-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Clamp 2 líneas (Safari/iPad friendly) */
+.fin-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .fin-table th {
@@ -626,6 +702,11 @@ body.fin-body {
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(8,10,18,0.7);
   color: var(--fin-text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .fin-pill--gold {

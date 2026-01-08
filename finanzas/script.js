@@ -1139,6 +1139,33 @@ function makePill(text, variant) {
   return `<span class="fin-pill${v}">${escapeHtml(text)}</span>`;
 }
 
+function updateDiaryIntegrityBanner(data) {
+  const banner = document.getElementById('diario-integrity-banner');
+  if (!banner) return;
+
+  const integ = data && data.journalIntegrity ? data.journalIntegrity : null;
+  const missing = integ ? Number(integ.entriesWithoutLinesCount || 0) : 0;
+  const orphan = integ ? Number(integ.orphanLinesCount || 0) : 0;
+
+  if (!(missing > 0 || orphan > 0)) {
+    banner.classList.add('hidden');
+    banner.innerHTML = '';
+    return;
+  }
+
+  const parts = [];
+  if (missing > 0) parts.push(`Asientos sin líneas: ${missing}`);
+  if (orphan > 0) parts.push(`Líneas huérfanas: ${orphan}`);
+
+  const ids = (integ && Array.isArray(integ.entriesWithoutLinesIds)) ? integ.entriesWithoutLinesIds : [];
+  const idsSample = ids.slice(0, 6).join(', ');
+  const idsTail = ids.length > 6 ? '…' : '';
+  const idsText = idsSample ? ` · IDs: ${idsSample}${idsTail}` : '';
+
+  banner.classList.remove('hidden');
+  banner.innerHTML = `${makePill('Inconsistente', 'red')} <strong>Integridad del Diario:</strong> ${escapeHtml(parts.join(' · '))}${escapeHtml(idsText)}. <span class="fin-muted">No se borró nada.</span>`;
+}
+
 function normalizeEventForPurchases() {
   return CENTRAL_EVENT;
 }
@@ -1231,14 +1258,83 @@ const accountsMap = new Map();
   for (const s of suppliers) {
     suppliersMap.set(Number(s.id), s);
   }
-const linesByEntry = new Map();
-  for (const ln of lines) {
-    const idEntry = ln.idEntry;
+  const normalizeId = (v) => {
+    const n = Number(v);
+    return (Number.isFinite(n) && n > 0) ? n : null;
+  };
+
+  const entryIdSet = new Set();
+  for (const e of (Array.isArray(entries) ? entries : [])) {
+    const id = normalizeId(e && e.id);
+    if (id) entryIdSet.add(id);
+  }
+
+  const linesByEntry = new Map();
+  let orphanLinesCount = 0;
+  const orphanLinesSample = [];
+
+  for (const ln of (Array.isArray(lines) ? lines : [])) {
+    const idEntry = normalizeId(ln && ln.idEntry);
+    if (!idEntry || !entryIdSet.has(idEntry)) {
+      orphanLinesCount++;
+      if (orphanLinesSample.length < 5) {
+        orphanLinesSample.push({
+          id: (ln && ln.id) ?? null,
+          idEntry: (ln && ln.idEntry) ?? null,
+          accountCode: (ln && ln.accountCode) ?? '',
+          debe: (ln && ln.debe) ?? 0,
+          haber: (ln && ln.haber) ?? 0
+        });
+      }
+      continue;
+    }
+
     if (!linesByEntry.has(idEntry)) linesByEntry.set(idEntry, []);
     linesByEntry.get(idEntry).push(ln);
   }
 
-  return { accounts, accountsMap, entries, lines, linesByEntry, suppliers, suppliersMap };
+  const entriesWithoutLinesIds = [];
+  const entriesWithoutLinesSample = [];
+
+  for (const e of (Array.isArray(entries) ? entries : [])) {
+    const id = normalizeId(e && e.id);
+    if (!id) continue;
+    const arr = linesByEntry.get(id);
+    if (!arr || arr.length === 0) {
+      entriesWithoutLinesIds.push(id);
+      if (entriesWithoutLinesSample.length < 5) {
+        entriesWithoutLinesSample.push({
+          id,
+          fecha: (e && (e.fecha || e.date)) ? String(e.fecha || e.date) : '',
+          descripcion: (typeof getDisplayDescription === 'function') ? (getDisplayDescription(e) || '') : (String(e.descripcion || '')),
+          origen: String(e && (e.origen || e.source || ''))
+        });
+      }
+    }
+  }
+
+  const journalIntegrity = {
+    checkedAt: Date.now(),
+    entriesWithoutLinesCount: entriesWithoutLinesIds.length,
+    entriesWithoutLinesIds,
+    entriesWithoutLinesSample,
+    orphanLinesCount,
+    orphanLinesSample
+  };
+
+  const inconsistentEntryIds = new Set(entriesWithoutLinesIds);
+
+  return {
+    accounts,
+    accountsMap,
+    entries,
+    lines,
+    linesByEntry,
+    suppliers,
+    suppliersMap,
+    journalIntegrity,
+    inconsistentEntryIds
+  };
 }
 
 function buildEventList(entries) {
@@ -1956,6 +2052,65 @@ async function exportDiarioExcel() {
 
   const { entries, linesByEntry, accountsMap } = data;
 
+  // Performance guard (iPad/Safari): estimar volumen antes de construir el workbook.
+  const EXCEL_WARN_ROWS = 3000;
+  let approxCount = 0;
+  for (const e of entries) {
+    const tipo = e.tipoMovimiento || 'otro';
+    if (tipoFilter !== 'todos' && tipo !== tipoFilter) continue;
+
+    const fechaMov = String(e.fecha || e.date || '').slice(0, 10);
+    if ((diarioDesde || diarioHasta) && !fechaMov) continue;
+    if (diarioDesde && fechaMov < diarioDesde) continue;
+    if (diarioHasta && fechaMov > diarioHasta) continue;
+
+    // Origen (compat con filtros POS_CIERRES / POS_LEGACY)
+    const origenRaw0 = e.origen || 'Interno';
+    const origenBase0 = (origenRaw0 === 'Manual') ? 'Interno' : origenRaw0;
+    const isPos0 = (origenBase0 === 'POS');
+    const isPosClose0 = isPos0 && isPosDailyCloseEntry(e);
+    const origenKey0 = isPos0 ? (isPosClose0 ? 'POS_CIERRES' : 'POS_LEGACY') : origenBase0;
+
+    if (origenFilter !== 'todos') {
+      if (origenFilter === 'POS') {
+        if (origenBase0 !== 'POS') continue;
+      } else if (origenFilter === 'POS_CIERRES') {
+        if (origenKey0 !== 'POS_CIERRES') continue;
+      } else if (origenFilter === 'POS_LEGACY') {
+        if (origenKey0 !== 'POS_LEGACY') continue;
+      } else {
+        if (origenBase0 !== origenFilter) continue;
+      }
+    }
+
+    if (!matchEvent(e, eventoFilter)) continue;
+
+    const sid0 = (e.supplierId != null) ? String(e.supplierId) : '';
+    const hasSupplier0 = !!sid0 || !!(e.supplierName || '').toString().trim();
+    if (proveedorFilter !== 'todos') {
+      if (proveedorFilter === 'NONE') {
+        if (hasSupplier0) continue;
+      } else {
+        if (!sid0 || sid0 !== proveedorFilter) continue;
+      }
+    }
+
+    approxCount++;
+  }
+
+  if (approxCount > EXCEL_WARN_ROWS) {
+    const warn = `Exportación grande (~${approxCount} filas) puede tardar o colgar Safari en iPad.\n\n`;
+    if (!diarioDesde && !diarioHasta) {
+      alert(warn + 'Selecciona un rango de fechas (Desde/Hasta) antes de exportar.');
+      return;
+    }
+    const ok = confirm(warn + '¿Deseas continuar de todas formas?');
+    if (!ok) {
+      showToast('Exportación cancelada. Ajusta el rango de fechas y vuelve a intentar.');
+      return;
+    }
+  }
+
   const sorted = [...entries].sort((a, b) => {
     const fa = a.fecha || a.date || '';
     const fb = b.fecha || b.date || '';
@@ -1970,14 +2125,31 @@ async function exportDiarioExcel() {
     const tipo = e.tipoMovimiento || 'otro';
     if (tipoFilter !== 'todos' && tipo !== tipoFilter) continue;
 
+    // Origen (compat con filtros POS_CIERRES / POS_LEGACY)
     const origenRaw = e.origen || 'Interno';
-    const origen = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
+    const origenBase = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
+    const isPos = (origenBase === 'POS');
+    const isPosClose = isPos && isPosDailyCloseEntry(e);
+    const origenKey = isPos ? (isPosClose ? 'POS_CIERRES' : 'POS_LEGACY') : origenBase;
+    const origenOut = isPos
+      ? (isPosClose ? 'POS — Cierre diario' : 'LEGACY — ventas individuales')
+      : origenBase;
     const fechaMov = String(e.fecha || e.date || '').slice(0, 10);
     if ((diarioDesde || diarioHasta) && !fechaMov) continue;
     if (diarioDesde && fechaMov < diarioDesde) continue;
     if (diarioHasta && fechaMov > diarioHasta) continue;
 
-    if (origenFilter !== 'todos' && origen !== origenFilter) continue;
+    if (origenFilter !== 'todos') {
+      if (origenFilter === 'POS') {
+        if (origenBase !== 'POS') continue;
+      } else if (origenFilter === 'POS_CIERRES') {
+        if (origenKey !== 'POS_CIERRES') continue;
+      } else if (origenFilter === 'POS_LEGACY') {
+        if (origenKey !== 'POS_LEGACY') continue;
+      } else {
+        if (origenBase !== origenFilter) continue;
+      }
+    }
 
     if (!matchEvent(e, eventoFilter)) continue;
 
@@ -2026,7 +2198,7 @@ async function exportDiarioExcel() {
       supplierLabel,
       pmLabel,
       ref,
-      origen,
+      origenOut,
       Number(totalDebe.toFixed(2)),
       Number(totalHaber.toFixed(2))
     ]);
@@ -2592,6 +2764,20 @@ function isPosDailyCloseEntry(entry) {
   return false;
 }
 
+function getPosCloseMismatchAmount(entry) {
+  if (!entry || typeof entry !== 'object') return 0;
+  const src = String(entry.source || '').trim();
+  if (src === POS_DAILY_CLOSE_REVERSAL_SOURCE) return 0;
+
+  const raw = entry?.posSnapshot?.totals?.totalMismatch;
+  if (raw == null) return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  if (Math.abs(n) <= 0.01) return 0;
+  return n2(n);
+}
+
+
 function nSafeMoney(v) {
   if (v == null) return 0;
   const s = (typeof v === 'string') ? v.replace(',', '.').trim() : v;
@@ -2966,6 +3152,8 @@ function renderDiario(data) {
   if (!tbody) return;
   tbody.innerHTML = '';
 
+  updateDiaryIntegrityBanner(data);
+
   const tipoFilter = ($('#filtro-tipo')?.value) || 'todos';
   const eventoFilter = ($('#filtro-evento-diario')?.value) || 'ALL';
   const origenFilter = ($('#filtro-origen')?.value) || 'todos';
@@ -3056,11 +3244,19 @@ function renderDiario(data) {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${e.fecha || e.date || ''}</td>
-      <td>${getDisplayDescription(e)}</td>
-      <td>${tipoMov}</td>
+      <td>${escapeHtml(e.fecha || e.date || '')}</td>
+      <td>${(function(){
+        const baseText = escapeHtml(getDisplayDescription(e));
+        const base = `<span class="fin-cell-text fin-clamp-2">${baseText}</span>`;
+        const inc = !!(data && data.inconsistentEntryIds && data.inconsistentEntryIds.has(Number(e.id)));
+        const incPill = inc ? (' ' + makePill('Inconsistente', 'red')) : '';
+        const mm = getPosCloseMismatchAmount(e);
+        const pill = mm ? (' ' + makePill(`Cierre con diferencia: C$ ${fmtCurrency(mm)}`, 'red')) : '';
+        return base + incPill + pill;
+      })()}</td>
+      <td>${escapeHtml(tipoMov)}</td>
       <td>${evCell || '—'}</td>
-      <td>${getSupplierLabelFromEntry(e, data)}</td>
+      <td>${escapeHtml(getSupplierLabelFromEntry(e, data))}</td>
       <td>${origenCell}</td>
       <td class="num">C$ ${fmtCurrency(displayDebe)}</td>
       <td class="num">C$ ${fmtCurrency(displayHaber)}</td>
@@ -3094,6 +3290,7 @@ function openDetalleModal(entryId) {
 
   let closureLine = '';
   let costsLine = '';
+  let mismatchLine = '';
   if (isPosClose) {
     if (closureId) {
       closureLine = `<p><strong>ClosureId:</strong> <code>${escapeHtml(closureId)}</code> <a class="btn-link" href="../pos/index.html" target="_blank" rel="noopener">Abrir POS</a></p>`;
@@ -3113,8 +3310,15 @@ function openDetalleModal(entryId) {
       `;
     }
   }
+
+    const mm = getPosCloseMismatchAmount(entry);
+    if (mm) mismatchLine = `<p>${makePill(`Cierre con diferencia: C$ ${fmtCurrency(mm)}`, 'red')}</p>`;
   const origenRaw = entry.origen || 'Interno';
   const origenLabel = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
+
+  const lines = linesByEntry.get(entry.id) || [];
+  const isInconsistent = lines.length === 0;
+  const inconsLine = isInconsistent ? `<p>${makePill('Inconsistente: asiento sin líneas', 'red')} <span class="fin-muted">No se borró nada. Esto suele pasar por cortes/crash antiguos durante guardado.</span></p>` : '';
 
   meta.innerHTML = `
     <p><strong>Fecha:</strong> ${escapeHtml(entry.fecha || entry.date || '')}</p>
@@ -3126,11 +3330,12 @@ function openDetalleModal(entryId) {
     <p><strong>Referencia:</strong> ${ref ? escapeHtml(ref) : '—'}</p>
     ${closureLine}
     ${costsLine}
+    ${mismatchLine}
+    ${inconsLine}
     <p><strong>Origen:</strong> ${escapeHtml(origenLabel)}</p>
   `;
 
 tbody.innerHTML = '';
-  const lines = linesByEntry.get(entry.id) || [];
   for (const ln of lines) {
     const nombre = getAccountDisplayNameByCode(ln.accountCode, accountsMap, ln);
     const tr = document.createElement('tr');
@@ -3301,24 +3506,19 @@ async function guardarMovimientoManual() {
     totalHaber: monto
   };
 
-  await openFinDB();
-  const entryId = await finAdd('journalEntries', entry);
+  // Guardado atómico: o se guarda TODO (asiento + líneas) o no se guarda NADA.
+  let entryId;
+  try {
+    entryId = await createJournalEntryWithLinesAtomic(entry, [
+      { accountCode: String(debeCode), debe: monto, haber: 0 },
+      { accountCode: String(haberCode), debe: 0, haber: monto }
+    ]);
+  } catch (err) {
+    console.error('Error en guardado atómico del movimiento', err);
+    alert('No se pudo guardar el movimiento (guardado atómico falló).');
+    return;
+  }
 
-  const lineDebe = {
-    idEntry: entryId,
-    accountCode: debeCode,
-    debe: monto,
-    haber: 0
-  };
-  const lineHaber = {
-    idEntry: entryId,
-    accountCode: haberCode,
-    debe: 0,
-    haber: monto
-  };
-
-  await finAdd('journalLines', lineDebe);
-  await finAdd('journalLines', lineHaber);
 
   // Limpia campos clave
   const montoInput = $('#mov-monto');
@@ -4165,22 +4365,17 @@ async function guardarCompraProveedor() {
     paymentMethod: pm,
     reference: ref
   };
-
-  await openFinDB();
-  const entryId = await finAdd('journalEntries', entry);
-
-  await finAdd('journalLines', {
-    idEntry: entryId,
-    accountCode: String(debeCode),
-    debe: monto,
-    haber: 0
-  });
-  await finAdd('journalLines', {
-    idEntry: entryId,
-    accountCode: String(haberCode),
-    debe: 0,
-    haber: monto
-  });
+  // Guardado atómico: o se guarda TODO (asiento + líneas) o no se guarda NADA.
+  try {
+    await createJournalEntryWithLinesAtomic(entry, [
+      { accountCode: String(debeCode), debe: monto, haber: 0 },
+      { accountCode: String(haberCode), debe: 0, haber: monto }
+    ]);
+  } catch (err) {
+    console.error('Error en guardado atómico de compra', err);
+    alert('No se pudo guardar la compra (guardado atómico falló).');
+    return;
+  }
 
   // Limpieza parcial
   const montoEl = document.getElementById('compra-monto');
@@ -5562,6 +5757,91 @@ function buildEventDateKey(eventId, dateKey) {
   return `${id || 0}|${dk || ''}`;
 }
 
+function isValidISODateKey(dk) {
+  const s = String(dk || '').trim();
+  const mm = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!mm) return false;
+  const y = Number(mm[1]);
+  const mo = Number(mm[2]);
+  const d = Number(mm[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return false;
+  // Guardas razonables para evitar basura
+  if (y < 2000 || y > 2100) return false;
+  if (mo < 1 || mo > 12) return false;
+  if (d < 1 || d > 31) return false;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && (dt.getUTCMonth() + 1) === mo && dt.getUTCDate() === d;
+}
+
+function toNumberMaybe(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') {
+    const s = v.replace(',', '.').trim();
+    if (!s) return null;
+    return Number(s);
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : n;
+}
+
+function isBadAmount(v) {
+  if (v == null) return false;
+  const n = toNumberMaybe(v);
+  if (n == null) return false;
+  if (!Number.isFinite(n)) return true;
+  if (n < 0) return true;
+  return false;
+}
+
+function validatePosClosureForImport(closure) {
+  const closureId = String(closure?.closureId || '').trim() || '(sin closureId)';
+
+  const eventId = (typeof closure?.eventId === 'number') ? closure.eventId : parseInt(String(closure?.eventId || '').trim(), 10);
+  if (!eventId || eventId <= 0) {
+    return { ok: false, msg: `${closureId}: falta eventId` };
+  }
+
+  const dateKey = String(closure?.dateKey || '').slice(0, 10).trim();
+  if (!isValidISODateKey(dateKey)) {
+    return { ok: false, msg: `${closureId}: fecha inválida` };
+  }
+
+  const totals = (closure && closure.totals && typeof closure.totals === 'object') ? closure.totals : {};
+
+  // Totales (si vienen)
+  if (isBadAmount(totals.totalGeneral)) return { ok: false, msg: `${closureId}: totalGeneral inválido` };
+
+  // Métodos de pago
+  const pm = (totals && totals.ventasPorMetodo && typeof totals.ventasPorMetodo === 'object') ? totals.ventasPorMetodo : null;
+  if (pm) {
+    for (const k of Object.keys(pm)) {
+      if (isBadAmount(pm[k])) return { ok: false, msg: `${closureId}: método ${k} inválido` };
+    }
+  }
+
+  // Costos
+  const costKeys = ['costoVentasTotal', 'costoCortesiasTotal', 'cortesiaCostoTotal'];
+  for (const ck of costKeys) {
+    if (isBadAmount(totals[ck])) return { ok: false, msg: `${closureId}: ${ck} inválido` };
+  }
+  if (isBadAmount(totals.cortesiaCantidad)) return { ok: false, msg: `${closureId}: cortesiaCantidad inválida` };
+
+  // Caja Chica (si viene)
+  const petty = (totals && totals.pettyCash && typeof totals.pettyCash === 'object') ? totals.pettyCash : null;
+  if (petty) {
+    const pcKeys = ['ingresosNio', 'egresosNio', 'ingresosUsd', 'egresosUsd'];
+    for (const pk of pcKeys) {
+      if (isBadAmount(petty[pk])) return { ok: false, msg: `${closureId}: caja chica ${pk} inválido` };
+    }
+    // fxRateUsed puede existir; si viene, que no sea negativo/NaN
+    if (isBadAmount(petty.fxRateUsed)) return { ok: false, msg: `${closureId}: caja chica fxRate inválido` };
+  }
+
+  return { ok: true, eventId, dateKey };
+}
+
+
 
 function resolvePosCloseEventName(eventId, closure) {
   const snap = String((closure && (closure.eventNameSnapshot || closure.posEventNameSnapshot || closure.eventName || closure.posEventName)) || '').trim();
@@ -5627,20 +5907,117 @@ function findCourtesyExpenseAccountCode(data) {
 }
 
 async function createJournalEntryWithLines(entry, lines) {
-  await openFinDB();
-  const entryId = await finAdd('journalEntries', entry);
-  for (const ln of (Array.isArray(lines) ? lines : [])) {
-    await finAdd('journalLines', { ...ln, idEntry: entryId });
-  }
-  return entryId;
+  // Compatibilidad: ahora es atómico.
+  return createJournalEntryWithLinesAtomic(entry, lines);
 }
 
+function getMissingAccountCodes(codes, accountsMap) {
+  const out = [];
+  const set = new Set();
+  for (const c of (Array.isArray(codes) ? codes : [])) {
+    const s = String(c || '').trim();
+    if (!s || set.has(s)) continue;
+    set.add(s);
+    if (!accountsMap || typeof accountsMap.get !== 'function' || !accountsMap.get(s)) out.push(s);
+  }
+  return out;
+}
+// Útil para importaciones críticas (POS→Finanzas).
+async function createJournalEntryWithLinesAtomic(entry, lines) {
+  await openFinDB();
+  return new Promise((resolve, reject) => {
+    let entryId = null;
+    let tx;
+    try {
+      tx = finDB.transaction(['journalEntries', 'journalLines'], 'readwrite');
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    const stE = tx.objectStore('journalEntries');
+    const stL = tx.objectStore('journalLines');
+
+    const req = stE.add(entry);
+    req.onsuccess = (e) => {
+      entryId = e.target.result;
+      for (const ln of (Array.isArray(lines) ? lines : [])) {
+        stL.add({ ...ln, idEntry: entryId });
+      }
+    };
+
+    tx.oncomplete = () => resolve(entryId);
+    tx.onabort = () => reject(tx.error || new Error('Transacción abortada'));
+    tx.onerror = () => { /* onabort maneja */ };
+  });
+}
+
+// Importación atómica (journalEntries + journalLines + posDailyCloseImports).
+// Si falla cualquier parte (incl. reverso), NO queda nada a medias.
+async function importPosCloseAtomic({ newEntry, newLines, newImportRec, prevImportUpdate, revEntry, revLines }) {
+  await openFinDB();
+  return new Promise((resolve, reject) => {
+    let tx;
+    try {
+      tx = finDB.transaction(['journalEntries', 'journalLines', 'posDailyCloseImports'], 'readwrite');
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    const stE = tx.objectStore('journalEntries');
+    const stL = tx.objectStore('journalLines');
+    const stI = tx.objectStore('posDailyCloseImports');
+
+    let newEntryId = null;
+    let revEntryId = null;
+
+    const addNewReq = stE.add(newEntry);
+    addNewReq.onsuccess = (e) => {
+      newEntryId = e.target.result;
+      for (const ln of (Array.isArray(newLines) ? newLines : [])) {
+        if (!ln) continue;
+        stL.add({ ...ln, idEntry: newEntryId });
+      }
+
+      // Con reverso: solo después de crear el asiento nuevo, intentamos el reverso.
+      if (revEntry) {
+        const addRevReq = stE.add(revEntry);
+        addRevReq.onsuccess = (ev) => {
+          revEntryId = ev.target.result;
+          for (const ln of (Array.isArray(revLines) ? revLines : [])) {
+            if (!ln) continue;
+            stL.add({ ...ln, idEntry: revEntryId });
+          }
+
+          if (prevImportUpdate) {
+            prevImportUpdate.reversalJournalEntryId = revEntryId;
+            stI.put(prevImportUpdate);
+          }
+
+          stI.put({ ...newImportRec, journalEntryId: newEntryId });
+        };
+      } else {
+        if (prevImportUpdate) stI.put(prevImportUpdate);
+        stI.put({ ...newImportRec, journalEntryId: newEntryId });
+      }
+    };
+
+    tx.oncomplete = () => resolve({ newEntryId, revEntryId });
+    tx.onabort = () => reject(tx.error || new Error('Transacción abortada'));
+    tx.onerror = () => { /* onabort maneja */ };
+  });
+}
+
+// Construye el asiento del cierre POS (sin escribirlo aún). Se escribe de forma atómica desde importPosCloseAtomic().
 async function createPosDailyCloseEntry(closure, data) {
   const closureId = String(closure?.closureId || '').trim();
   if (!closureId) throw new Error('Cierre sin closureId');
 
-  const eventId = (typeof closure.eventId === 'number') ? closure.eventId : parseInt(String(closure.eventId || '').trim(), 10) || 0;
-  const dateKey = String(closure.dateKey || '').slice(0, 10) || todayStr();
+  const v = validatePosClosureForImport(closure);
+  if (!v.ok) throw new Error('Cierre inválido: ' + v.msg);
+
+  const eventId = v.eventId;
+  const dateKey = v.dateKey;
   const version = Number(closure.version || 1) || 1;
 
   const eventName = resolvePosCloseEventName(eventId, closure);
@@ -5667,8 +6044,10 @@ async function createPosDailyCloseEntry(closure, data) {
   }
 
   let total = n2(efectivo + transferencia + credito + otros);
-  const totalGeneral = n2(closure?.totals?.totalGeneral);
-  const totalMismatch = (totalGeneral > 0 && Math.abs(totalGeneral - total) > 0.01)
+  const totalGeneralRaw = closure?.totals?.totalGeneral;
+  const totalGeneral = n2(totalGeneralRaw);
+  const hasTotalGeneral = (totalGeneralRaw != null) && !Number.isNaN(toNumberMaybe(totalGeneralRaw));
+  const totalMismatch = (hasTotalGeneral && Math.abs(totalGeneral - total) > 0.01)
     ? n2(totalGeneral - total)
     : 0;
 
@@ -5766,16 +6145,28 @@ async function createPosDailyCloseEntry(closure, data) {
     importedAt: Date.now()
   };
 
-  return createJournalEntryWithLines(entry, lines);
+  // Guardas básicas
+  if (Math.abs(n2(totalDebe - totalHaber)) > 0.01) {
+    throw new Error('Asiento POS desbalanceado (DEBE/HABER).');
+  }
+
+  const accountsMap = data?.accountsMap || null;
+  const missing = getMissingAccountCodes(lines.map(l => l && l.accountCode), accountsMap);
+  if (missing.length) {
+    throw new Error(`Falta ${missing.length === 1 ? `la cuenta ${missing[0]}` : `las cuentas ${missing.join(', ')}`} para importar el cierre.`);
+  }
+
+  return { entry, lines };
 }
 
-async function createPosDailyCloseReversal(prevImport, reversingClosure) {
+// Construye el reverso del cierre POS previo (sin escribirlo aún). Se escribe de forma atómica desde importPosCloseAtomic().
+async function createPosDailyCloseReversal(prevImport, reversingClosure, data) {
   const prevEntryId = Number(prevImport?.journalEntryId || 0);
-  if (!prevEntryId) return null;
+  if (!prevEntryId) throw new Error('Falta el asiento previo para reversar.');
 
   const original = await finGet('journalEntries', prevEntryId);
   const originalLines = await finGetLinesForEntryId(prevEntryId);
-  if (!original || !originalLines.length) return null;
+  if (!original || !originalLines.length) throw new Error('Falta el detalle del asiento previo para reversar.');
 
   const eventId = (typeof prevImport.eventId === 'number') ? prevImport.eventId : parseInt(String(prevImport.eventId || '').trim(), 10) || 0;
   const dateKey = String(prevImport.dateKey || original.fecha || '').slice(0, 10) || todayStr();
@@ -5821,7 +6212,18 @@ async function createPosDailyCloseReversal(prevImport, reversingClosure) {
     importedAt: Date.now()
   };
 
-  return createJournalEntryWithLines(entry, revLines);
+  // Guardas: cuentas deben existir (si alguien borró cuentas luego de importar)
+  const accountsMap = data?.accountsMap || null;
+  const missing = getMissingAccountCodes(revLines.map(l => l && l.accountCode), accountsMap);
+  if (missing.length) {
+    throw new Error(`Falta ${missing.length === 1 ? `la cuenta ${missing[0]}` : `las cuentas ${missing.join(', ')}`} para reversar.`);
+  }
+
+  if (Math.abs(n2(totalDebe - totalHaber)) > 0.01) {
+    throw new Error('Reverso POS desbalanceado (DEBE/HABER).');
+  }
+
+  return { entry, lines: revLines };
 }
 
 async function importPosDailyClosuresToFinanzas() {
@@ -5889,16 +6291,27 @@ async function importPosDailyClosuresToFinanzas() {
       } catch (err) {}
     }
 
-    // Mapa latest por evento/día
-    const latestByEventDate = new Map();
-    for (const r of importMap.values()) {
-      const k = String(r.eventDateKey || buildEventDateKey(r.eventId, r.dateKey));
-      if (!k) continue;
-      const v = Number(r.version || 0) || 0;
-      const cur = latestByEventDate.get(k);
-      const cv = Number(cur?.version || 0) || 0;
-      if (!cur || v > cv) latestByEventDate.set(k, r);
+    // Reversos ya existentes en el Diario: protección anti-duplicado incluso si el registro previo no quedó actualizado.
+    const reversalByOriginalClosureId = new Map();
+    for (const e of (Array.isArray(entriesArr) ? entriesArr : [])) {
+      if (!e || String(e.source || '') !== POS_DAILY_CLOSE_REVERSAL_SOURCE) continue;
+      const ocid = String(e.reversalOfClosureId || '').trim();
+      if (ocid) reversalByOriginalClosureId.set(ocid, e);
     }
+
+
+	    // Mapa latest por evento/día + guardas por evento/día/versión (idempotencia)
+	    const importedByEventDateVersion = new Map(); // `${eventDateKey}|${version}` -> rec
+	    const latestByEventDate = new Map();
+	    for (const r of importMap.values()) {
+	      const k = String(r.eventDateKey || buildEventDateKey(r.eventId, r.dateKey));
+	      if (!k) continue;
+	      const ver = Number(r.version || 1) || 1;
+	      importedByEventDateVersion.set(`${k}|${ver}`, r);
+	      const cur = latestByEventDate.get(k);
+	      const cv = Number(cur?.version || 0) || 0;
+	      if (!cur || ver > cv) latestByEventDate.set(k, r);
+	    }
 
     // Orden estable: evento/día luego versión ascendente
     closures.sort((a, b) => {
@@ -5911,26 +6324,54 @@ async function importPosDailyClosuresToFinanzas() {
       return String(a.closureId || '').localeCompare(String(b.closureId || ''));
     });
 
-    let imported = 0;
-    let existing = 0;
-    let skippedOld = 0;
+	    let imported = 0;
+	    let alreadySameVersion = 0; // mismo eventDateKey + misma versión (aunque closureId sea distinto)
+	    let existingClosureId = 0;  // mismo closureId
+	    let skippedOld = 0;         // existe versión mayor ya importada
 
-    for (const c of closures) {
-      const closureId = String(c.closureId || '').trim();
-      if (!closureId) continue;
+    let invalid = 0;
+    let failed = 0;
+    const invalidDetails = [];
+    const failDetails = [];
 
-      if (importMap.has(closureId)) {
-        existing++;
-        continue;
-      }
+	    for (const c of closures) {
+	      const closureId = String(c.closureId || '').trim();
+	      if (!closureId) {
+	        invalid++;
+	        invalidDetails.push('(sin closureId): cierre inválido');
+	        continue;
+	      }
 
-      const eventId = (typeof c.eventId === 'number') ? c.eventId : parseInt(String(c.eventId || '').trim(), 10) || 0;
-      const dateKey = String(c.dateKey || '').slice(0, 10);
-      const version = Number(c.version || 1) || 1;
-      const k = buildEventDateKey(eventId, dateKey);
+	      const chk = validatePosClosureForImport(c);
+	      if (!chk.ok) {
+	        invalid++;
+	        invalidDetails.push(chk.msg);
+	        continue;
+	      }
 
-      const prev = latestByEventDate.get(k) || null;
-      const prevV = Number(prev?.version || 0) || 0;
+	      const eventId = chk.eventId;
+	      const dateKey = chk.dateKey;
+	      const version = Number(c.version || 1) || 1;
+	      const k = buildEventDateKey(eventId, dateKey);
+	      const kver = `${k}|${version}`;
+
+	      // Idempotencia fuerte: mismo evento+día+versión NO se importa 2 veces aunque cambie closureId.
+	      if (importedByEventDateVersion.has(kver)) {
+	        alreadySameVersion++;
+	        continue;
+	      }
+
+	      if (importMap.has(closureId)) {
+	        existingClosureId++;
+	        // Asegurar que también quede cubierto por (k|v) para futuros runs.
+	        if (!importedByEventDateVersion.has(kver)) {
+	          importedByEventDateVersion.set(kver, importMap.get(closureId));
+	        }
+	        continue;
+	      }
+
+	      const prev = latestByEventDate.get(k) || null;
+	      const prevV = Number(prev?.version || 0) || 0;
 
       // Si ya hay una versión mayor importada, este cierre es viejo → no lo metemos.
       if (prev && prevV > version) {
@@ -5938,26 +6379,41 @@ async function importPosDailyClosuresToFinanzas() {
         continue;
       }
 
-      // Si entra v2+ y ya había v1 importado → reversar anterior (una sola vez)
+      // Etapa 3: orden seguro (atómico)
+      // 1) Crear asiento NUEVO (confirmado dentro de la transacción)
+      // 2) Solo entonces reversar el anterior (si aplica)
+      // 3) Finalmente registrar/import-mark del nuevo
+
+      let revPayload = null;
+      let prevUpdate = null;
+
       if (prev && prevV < version) {
-        const alreadyReversed = !!(prev.reversalJournalEntryId || prev.reversedByClosureId);
-        if (!alreadyReversed && prev.journalEntryId) {
+        // Evitar duplicados: si ya existe reverso en el rec o en el Diario, no lo recreamos.
+        const prevCid = String(prev.closureId || '').trim();
+        const alreadyReversed = !!(prev.reversalJournalEntryId || prev.reversedByClosureId || (reversalByOriginalClosureId && reversalByOriginalClosureId.has(prevCid)));
+
+        if (!alreadyReversed) {
           try {
-            const revEntryId = await createPosDailyCloseReversal(prev, c);
-            if (revEntryId) {
-              prev.reversalJournalEntryId = revEntryId;
-              prev.reversedAt = Date.now();
-              prev.reversedByClosureId = closureId;
-              await finPut('posDailyCloseImports', prev);
-            }
+            revPayload = await createPosDailyCloseReversal(prev, c, data);
+            prevUpdate = { ...prev, reversedAt: Date.now(), reversedByClosureId: closureId };
           } catch (err) {
-            console.warn('No se pudo crear reverso del cierre anterior', err);
+            failed++;
+            const msg = (err && err.message) ? String(err.message) : 'No se pudo reversar el cierre anterior';
+            failDetails.push(`${closureId}: ${msg}`);
+            continue;
           }
         }
       }
 
-      // Crear asiento vN
-      const entryId = await createPosDailyCloseEntry(c, data);
+      let newPayload = null;
+      try {
+        newPayload = await createPosDailyCloseEntry(c, data);
+      } catch (err) {
+        failed++;
+        const msg = (err && err.message) ? String(err.message) : 'Error creando asiento';
+        failDetails.push(`${closureId}: ${msg}`);
+        continue;
+      }
 
       const rec = {
         closureId,
@@ -5965,7 +6421,7 @@ async function importPosDailyClosuresToFinanzas() {
         dateKey,
         version,
         eventDateKey: k,
-        journalEntryId: entryId,
+        journalEntryId: 0,
         importedAt: Date.now(),
         eventNameSnapshot: String(c.eventNameSnapshot || c.eventName || getPosEventNameSnapshotById(eventId, '')) || null,
         reversedAt: null,
@@ -5973,21 +6429,56 @@ async function importPosDailyClosuresToFinanzas() {
         reversalJournalEntryId: null
       };
 
-      await finPut('posDailyCloseImports', rec);
-      importMap.set(closureId, rec);
-      latestByEventDate.set(k, rec);
-      imported++;
+      try {
+        const res = await importPosCloseAtomic({
+          newEntry: newPayload.entry,
+          newLines: newPayload.lines,
+          newImportRec: rec,
+          prevImportUpdate: prevUpdate,
+          revEntry: revPayload ? revPayload.entry : null,
+          revLines: revPayload ? revPayload.lines : null
+        });
+
+        rec.journalEntryId = Number(res?.newEntryId || 0) || 0;
+
+        // Reflejar el update del prev en memoria para evitar reversos duplicados en el mismo run.
+        if (prevUpdate && res?.revEntryId) {
+          prevUpdate.reversalJournalEntryId = res.revEntryId;
+          importMap.set(String(prevUpdate.closureId || ''), prevUpdate);
+        }
+
+        importMap.set(closureId, rec);
+        latestByEventDate.set(k, rec);
+        importedByEventDateVersion.set(kver, rec);
+        imported++;
+      } catch (err) {
+        failed++;
+        const raw = (err && err.message) ? String(err.message) : '';
+        const prefix = revPayload ? 'Importación abortada (rollback): reverso no completado' : 'Importación abortada (rollback)';
+        const msg = raw ? `${prefix} — ${raw}` : prefix;
+        failDetails.push(`${closureId}: ${msg}`);
+        continue;
+      }
     }
 
     await refreshAllFin();
 
-    const parts = [`${imported} importados`, `${existing} ya existentes`];
+	    const parts = [`${imported} importados`];
+	    if (alreadySameVersion) parts.push(`${alreadySameVersion} ya importado (misma versión)`);
+	    if (existingClosureId) parts.push(`${existingClosureId} ya existentes`);
     if (skippedOld) parts.push(`${skippedOld} omitidos (versión vieja)`);
-    setMsg(parts.join(' · '));
+    if (invalid) parts.push(`${invalid} inválidos`);
+    if (failed) parts.push(`${failed} fallidos`);
+    // Preview compacto de errores (sin inundar la UI)
+    const detail = (invalidDetails.length ? invalidDetails : failDetails).slice(0, 2).join(' · ');
+    setMsg(parts.join(' · ') + (detail ? ` · ${detail}` : ''));
+    if (invalidDetails.length) showToast('Cierre inválido: ' + invalidDetails[0]);
+    else if (failDetails.length) showToast('Cierre fallido: ' + failDetails[0]);
     if (imported) showToast(`Cierres POS importados: ${imported}`);
   } catch (err) {
     console.error('Error importando cierres POS', err);
-    alert('Ocurrió un error importando cierres del POS a Finanzas.\n\nRevisa la consola para más detalle.');
+    setMsg('Error importando cierres POS.');
+    showToast('Error importando cierres POS');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -6000,7 +6491,7 @@ function setupExportButtons() {
       ev.preventDefault();
       exportDiarioExcel().catch(err => {
         console.error('Error exportando Diario a Excel', err);
-        alert('Ocurrió un error exportando el Diario a Excel.');
+        showToast('Error exportando Diario');
       });
     });
   }
@@ -6011,7 +6502,7 @@ function setupExportButtons() {
       ev.preventDefault();
       importPosDailyClosuresToFinanzas().catch(err => {
         console.error('Error importando cierres POS', err);
-        alert('Ocurrió un error importando cierres POS.');
+        showToast('Error importando cierres POS');
       });
     });
   }
