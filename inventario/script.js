@@ -13,7 +13,7 @@ const BOTTLES = [
   { id: "media", nombre: "Media 375 ml" },
   { id: "djeba", nombre: "Djeba 750 ml" },
   { id: "litro", nombre: "Litro 1000 ml" },
-  { id: "galon", nombre: "Galón 3800 ml" },
+  { id: "galon", nombre: "Galón 3750 ml" },
 ];
 
 const FINISHED = [
@@ -21,7 +21,7 @@ const FINISHED = [
   { id: "media", nombre: "Media 375 ml (lista)" },
   { id: "djeba", nombre: "Djeba 750 ml (lista)" },
   { id: "litro", nombre: "Litro 1000 ml (lista)" },
-  { id: "galon", nombre: "Galón 3800 ml (lista)" },
+  { id: "galon", nombre: "Galón 3750 ml (lista)" },
 ];
 
 

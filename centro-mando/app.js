@@ -51,7 +51,7 @@ const INV_BOTTLES_META = [
   { id:'media', name:'Media 375 ml' },
   { id:'djeba', name:'Djeba 750 ml' },
   { id:'litro', name:'Litro 1000 ml' },
-  { id:'galon', name:'Galón 3800 ml' },
+  { id:'galon', name:'Galón 3750 ml' },
 ];
 
 function invNum(x){
@@ -547,6 +547,16 @@ function safeStr(x){
   const s = (x == null) ? '' : String(x);
   return s.trim();
 }
+
+function uiProdNameCMD(name){
+  try{
+    if (window.A33Presentations && typeof A33Presentations.canonicalizeProductName === 'function'){
+      return A33Presentations.canonicalizeProductName(name);
+    }
+  }catch(_){ }
+  return safeStr(name);
+}
+
 
 // --- Preferencias UI (Recordatorios)
 function getShowDoneRemindersPref(){
@@ -1679,7 +1689,7 @@ async function computeSalesToday(eventId, dayKey){
   const topMap = new Map();
   for (const s of filtered){
     total += Number(s.total || 0);
-    const name = safeStr(s.productName) || 'N/D';
+    const name = uiProdNameCMD(s.productName) || 'N/D';
     const q = Number(s.qty || 0);
     // para Top: contar solo ventas (qty > 0)
     if (q > 0){

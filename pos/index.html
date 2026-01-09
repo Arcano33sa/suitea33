@@ -4,20 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.5">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.7">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=4.20.5">
+<link rel="stylesheet" href="styles.css?v=4.20.7">
   <link rel="stylesheet" href="/assets/css/a33-header.css" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">POS · Eventos</div>
-    <div class="a33-version">v4.20.5</div>
+    <div class="a33-version">v4.20.7</div>
   </header>
 <div id="offlineBar" class="offline">Trabajando sin conexión</div>
 <div class="container">
@@ -1383,16 +1383,17 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="/assets/js/a33-storage.js"></script>
+  <script src="/assets/js/a33-presentations.js"></script>
 <script src="/assets/js/a33-auth.js"></script>
 <script>
   if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
     location.href = "../index.html";
   }
 </script>
-<script src="app.js?v=4.20.5"></script>
+<script src="app.js?v=4.20.7"></script>
 <script src="/assets/js/a33-input-ux.js"></script>
 <script>
-  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js?v=4.20.5'); }
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js?v=4.20.7'); }
 </script>
 </body>
 </html>

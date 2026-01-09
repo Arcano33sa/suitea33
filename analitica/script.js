@@ -21,6 +21,24 @@
   const ANALYTICS_RECOS_KEY_V1 = 'a33_analytics_recos_v1'; // legacy: Centro de Mando u otros lectores
   const ANALYTICS_RECOS_KEY = ANALYTICS_RECOS_KEY_V2;
 
+  function uiProdName(name){
+    try{
+      if (window.A33Presentations && typeof A33Presentations.canonicalizeProductName === 'function'){
+        return A33Presentations.canonicalizeProductName(name);
+      }
+    }catch(_){ }
+    return String(name || '');
+  }
+
+  function uiText(t){
+    try{
+      if (window.A33Presentations && typeof A33Presentations.canonicalizeText === 'function'){
+        return A33Presentations.canonicalizeText(t);
+      }
+    }catch(_){ }
+    return String(t || '');
+  }
+
   const RECO_CFG = {
     vipTopPct: 0.20,
     vipNoBuyDays: 21,
@@ -1240,7 +1258,7 @@ function rebuildHorasEventOptions(filteredSales){
       const fecha = s.date || '';
       const hora = s.time || '';
       const nombre = s.eventName || 'General';
-      const prod = s.productName || '';
+      const prod = uiProdName(s.productName || '');
       const dest = s.courtesyTo || '';
       const notas = s.notes || '';
 
@@ -1294,7 +1312,7 @@ function rebuildHorasEventOptions(filteredSales){
       { id: 'media', label: 'Media 375 ml' },
       { id: 'djeba', label: 'Djeba 750 ml' },
       { id: 'litro', label: 'Litro 1000 ml' },
-      { id: 'galon', label: 'Galón 3800 ml' }
+      { id: 'galon', label: 'Galón 3750 ml' }
     ];
 
     const today = new Date();
@@ -2385,7 +2403,7 @@ function rebuildHorasEventOptions(filteredSales){
           c.lastPaidSale = {
             dt,
             eventName: s.eventName || 'General',
-            productName: s.productName || '—',
+            productName: uiProdName(s.productName || '—'),
             total
           };
         }
@@ -2409,7 +2427,7 @@ function rebuildHorasEventOptions(filteredSales){
       }
 
       // favoritos: neto por presentación/producto
-      const presLabel = String(s.productName || '—');
+      const presLabel = uiProdName(s.productName || '—');
       const qtyRaw = Number(s.qty || 0) || 0;
       const qtyAbs = Math.abs(qtyRaw);
       const sign = isReturn ? -1 : 1;
@@ -2423,7 +2441,7 @@ function rebuildHorasEventOptions(filteredSales){
         time: s.time || '',
         dt,
         eventName: s.eventName || 'General',
-        productName: s.productName || '—',
+        productName: uiProdName(s.productName || '—'),
         total,
         isReturn,
         isCourtesy
@@ -2642,7 +2660,7 @@ function rebuildHorasEventOptions(filteredSales){
           return `<tr>
             <td>${escapeHtml(dt)}</td>
             <td>${escapeHtml(l.eventName || 'General')}</td>
-            <td>${escapeHtml(l.productName || '—')}</td>
+            <td>${escapeHtml(uiProdName(l.productName || '—'))}</td>
             <td>${escapeHtml(totalText)}</td>
           </tr>`;
         }).join('');

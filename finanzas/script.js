@@ -1529,7 +1529,7 @@ const RENTAB_PRESENTACIONES = [
   { id: 'media', label: 'Media 375 ml' },
   { id: 'djeba', label: 'Djeba 750 ml' },
   { id: 'litro', label: 'Litro 1000 ml' },
-  { id: 'galon', label: 'Galón 3800 ml' }
+  { id: 'galon', label: 'Galón 3750 ml' }
 ];
 
 function mapProductNameToPresIdFromPOS(name) {
@@ -3246,7 +3246,7 @@ function renderDiario(data) {
     tr.innerHTML = `
       <td>${escapeHtml(e.fecha || e.date || '')}</td>
       <td>${(function(){
-        const baseText = escapeHtml(getDisplayDescription(e));
+        const baseText = escapeHtml(uiTextFIN(getDisplayDescription(e)));
         const base = `<span class="fin-cell-text fin-clamp-2">${baseText}</span>`;
         const inc = !!(data && data.inconsistentEntryIds && data.inconsistentEntryIds.has(Number(e.id)));
         const incPill = inc ? (' ' + makePill('Inconsistente', 'red')) : '';
@@ -3322,7 +3322,7 @@ function openDetalleModal(entryId) {
 
   meta.innerHTML = `
     <p><strong>Fecha:</strong> ${escapeHtml(entry.fecha || entry.date || '')}</p>
-    <p><strong>Descripción:</strong> ${escapeHtml(getDisplayDescription(entry) || '')}</p>
+    <p><strong>Descripción:</strong> ${escapeHtml(uiTextFIN(getDisplayDescription(entry) || ''))}</p>
     <p><strong>Tipo:</strong> ${escapeHtml(entry.tipoMovimiento || '')}</p>
     <p><strong>Evento:</strong> ${escapeHtml(evLabel) || '—'}</p>
     <p><strong>Proveedor:</strong> ${escapeHtml(supplierLabel)}</p>
@@ -3757,6 +3757,16 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+function uiTextFIN(text){
+  try{
+    if (window.A33Presentations && typeof A33Presentations.canonicalizeText === 'function'){
+      return A33Presentations.canonicalizeText(text);
+    }
+  }catch(_){ }
+  return String(text || '');
+}
+
 
 function renderCatalogoCuentas(data) {
   const tbody = document.getElementById('cat-tbody');

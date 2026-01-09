@@ -291,6 +291,7 @@
   </div>
 
   <script src="/assets/js/a33-storage.js"></script>
+  <script src="/assets/js/a33-presentations.js"></script>
   <script src="/assets/js/a33-auth.js"></script>
   <script>
     if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
@@ -304,7 +305,7 @@
       { id: "media",  nombre: "Media 375 ml",  volumenMl: 375 },
       { id: "djeba",  nombre: "Djeba 750 ml",  volumenMl: 750 },
       { id: "litro",  nombre: "Litro 1000 ml", volumenMl: 1000 },
-      { id: "galon",  nombre: "Galón 3800 ml", volumenMl: 3800 }
+      { id: "galon",  nombre: "Galón 3750 ml", volumenMl: 3750 }
     ];
     const STORAGE_RECETAS_KEY = "arcano33_recetas_v1";
     const STORAGE_LOTE_KEY = "arcano33_lote_actual";
@@ -417,7 +418,7 @@
           if (id === "media") nombre = "Media 375 ml";
           if (id === "djeba") nombre = "Djeba 750 ml";
           if (id === "litro") nombre = "Litro 1000 ml";
-          if (id === "galon") nombre = "Galón 3800 ml";
+          if (id === "galon") nombre = "Galón 3750 ml";
           lines.push("• " + nombre + ": " + stock.toFixed(0) + " botellas");
         }
       });
@@ -430,7 +431,7 @@
           if (id === "media") nombre = "Media 375 ml lista";
           if (id === "djeba") nombre = "Djeba 750 ml lista";
           if (id === "litro") nombre = "Litro 1000 ml listo";
-          if (id === "galon") nombre = "Galón 3800 ml listo";
+          if (id === "galon") nombre = "Galón 3750 ml listo";
           lines.push("• " + nombre + ": " + stock.toFixed(0) + " botellas listas");
         }
       });

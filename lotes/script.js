@@ -306,7 +306,7 @@ function showLoteDetails(lote) {
   lines.push(`  Media 375 ml: ${lote.media ?? "0"}`);
   lines.push(`  Djeba 750 ml: ${lote.djeba ?? "0"}`);
   lines.push(`  Litro 1000 ml: ${lote.litro ?? "0"}`);
-  lines.push(`  Galón 3800 ml: ${lote.galon ?? "0"}`);
+  lines.push(`  Galón 3750 ml: ${lote.galon ?? "0"}`);
   if (lote.notas) {
     lines.push("");
     lines.push("Notas:");
@@ -695,7 +695,7 @@ function exportToCSV() {
     "Media 375 ml",
     "Djeba 750 ml",
     "Litro 1000 ml",
-    "Galón 3800 ml",
+    "Galón 3750 ml",
     "Fecha caducidad",
     "Notas",
   ];
@@ -801,7 +801,7 @@ function showArchivedDetails(arch){
   lines.push(`  Media 375 ml: ${arch.media ?? '0'}`);
   lines.push(`  Djeba 750 ml: ${arch.djeba ?? '0'}`);
   lines.push(`  Litro 1000 ml: ${arch.litro ?? '0'}`);
-  lines.push(`  Galón 3800 ml: ${arch.galon ?? '0'}`);
+  lines.push(`  Galón 3750 ml: ${arch.galon ?? '0'}`);
   if (arch.volTotal != null && String(arch.volTotal).trim() !== '') {
     lines.push(`\nVolumen total (ml): ${arch.volTotal}`);
   }
