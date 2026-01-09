@@ -111,6 +111,13 @@ body.fin-body {
   font-size: 0.9rem;
 }
 
+.fin-version{
+  margin: 6px 0 0;
+  color: rgba(254,254,254,0.72);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+}
+
 /* Navegación */
 
 .fin-main-nav {

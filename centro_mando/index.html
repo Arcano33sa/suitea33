@@ -1,148 +1,78 @@
-<!DOCTYPE html>
+<!doctype html>
+<!-- Legacy redirect — no usar para desarrollo -->
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Arcano 33 · Centro de Mando</title>
-  <meta name="description" content="Centro de mando operativo para eventos: estado del día, caja chica, checklist y radar rápido." />
-  <meta name="theme-color" content="#0f0f0f" />
-
-  <link rel="icon" type="image/png" sizes="192x192" href="../inventario/images/logo.png" />
-  <link rel="apple-touch-icon" href="../inventario/images/logo.png" />
-
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet" />
-
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.3" />
-  <link rel="stylesheet" href="style.css?v=4.20.3" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0b0b" />
+  <meta http-equiv="refresh" content="4;url=../centro-mando/index.html" />
+  <title>Centro de Mando — Actualizando…</title>
+  <style>
+    :root{color-scheme:dark}
+    body{margin:0;background:#0b0b0b;color:#f2f2f2;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+    .card{width:min(560px,100%);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    h1{font-size:18px;margin:0 0 8px}
+    p{margin:0 0 10px;line-height:1.35;color:#cfcfcf;font-size:14px}
+    .status{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#caa85c;font-size:12px;white-space:pre-wrap}
+    .hint{opacity:.85;margin-top:10px;font-size:12px}
+    a{color:#caa85c}
+  </style>
 </head>
-<body class="a33-cm-page">
-  <header class="a33-header" role="banner">
-    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
-    <div class="a33-title">Centro de Mando</div>
-    <div class="a33-version">v4.20.3</div>
-  </header>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Actualizando Centro de Mando…</h1>
+      <p>Estamos moviendo el módulo a su ruta canónica para evitar versiones “zombie” por caché.</p>
+      <div id="status" class="status">Iniciando…</div>
+      <p class="hint">Si no te redirige, abrí <a href="../centro-mando/index.html">Centro de Mando</a>.</p>
+    </div>
+  </div>
 
-  <main class="cm-main">
-    <section class="card cm-hero">
-      <div class="cm-hero-top">
-        <div>
-          <h2>Evento Enfocado</h2>
-          <p class="hint">Selecciona el evento que quieres “tener en la mira”. Lo demás se ajusta solo.</p>
-        </div>
-        <div class="cm-focus">
-          <label for="cm-event">Enfocado</label>
-          <select id="cm-event"></select>
-        </div>
-      </div>
-
-      <div id="cm-empty" class="empty" style="display:none;">
-        <h3>Aún no hay eventos</h3>
-        <p>Crea tu primer evento desde POS para que el Centro de Mando tenga combustible.</p>
-        <a class="btn btn-primary" href="../pos/index.html#eventos">Ir a POS → Eventos</a>
-      </div>
-
-      <div id="cm-focus-block" style="display:none;">
-        <div class="cm-kpis">
-          <article class="kpi">
-            <div class="kpi-label">Estado del día</div>
-            <div class="kpi-value" id="cm-day-status">—</div>
-            <div class="kpi-sub" id="cm-day-sub">—</div>
-          </article>
-          <article class="kpi">
-            <div class="kpi-label">Ventas hoy (evento)</div>
-            <div class="kpi-value" id="cm-sales-today">—</div>
-            <div class="kpi-sub" id="cm-sales-today-sub">—</div>
-          </article>
-          <article class="kpi">
-            <div class="kpi-label">Checklist hoy</div>
-            <div class="kpi-value" id="cm-check-progress">—</div>
-            <div class="kpi-sub" id="cm-check-sub">—</div>
-          </article>
-        </div>
-
-        <div class="cm-actions">
-          <a class="btn btn-primary" id="cm-go-pos" href="../pos/index.html#venta">Ir a POS (Vender)</a>
-          <a class="btn btn-ghost" id="cm-go-caja" href="../pos/index.html#caja">Ir a Caja Chica</a>
-          <a class="btn btn-ghost" id="cm-go-check" href="../pos/index.html#checklist">Ir a Checklist</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="card cm-radar">
-      <div class="panel-head">
-        <h2>Radar global</h2>
-        <p class="hint">Resumen ligero. Si algo no es trivial de calcular, aquí verás “—” en lugar de bugs.</p>
-      </div>
-
-      <div class="cm-radar-grid">
-        <article class="kpi">
-          <div class="kpi-label">Eventos con día abierto</div>
-          <div class="kpi-value" id="cm-open-days">—</div>
-          <div class="kpi-sub" id="cm-open-days-sub">Hoy</div>
-        </article>
-        <article class="kpi">
-          <div class="kpi-label">Alertas de inventario</div>
-          <div class="kpi-value" id="cm-inv-alerts">—</div>
-          <div class="kpi-sub" id="cm-inv-alerts-sub">Líquidos (Inventario general)</div>
-        </article>
-        <article class="kpi">
-          <div class="kpi-label">Ventas hoy (global)</div>
-          <div class="kpi-value" id="cm-sales-global">—</div>
-          <div class="kpi-sub" id="cm-sales-global-sub">Todo POS</div>
-        </article>
-      </div>
-    </section>
-
-    <section class="card cm-detail" id="cm-detail" style="display:none;">
-      <div class="panel-head">
-        <h2>Detalle del evento enfocado</h2>
-        <p class="hint" id="cm-detail-title">—</p>
-      </div>
-
-      <div class="cm-detail-grid">
-        <article class="card inner">
-          <h3>Caja Chica (hoy)</h3>
-          <div class="rows" id="cm-pc"></div>
-        </article>
-
-        <article class="card inner">
-          <h3>Ventas (evento)</h3>
-          <div class="rows" id="cm-sales"></div>
-        </article>
-
-        <article class="card inner">
-          <h3>Top productos</h3>
-          <ol class="top" id="cm-top"></ol>
-          <div class="hint">Top por total vendido. Si no hay ventas, se queda vacío (sin drama).</div>
-        </article>
-
-        <article class="card inner">
-          <h3>Inventario crítico</h3>
-          <div class="rows" id="cm-inv"></div>
-          <div class="hint">Por ahora se muestra inventario general (líquidos). Inventario por evento se puede conectar luego.</div>
-        </article>
-      </div>
-    </section>
-
-    <p id="cm-error" class="hint error" style="display:none;"></p>
-  </main>
-
-  <script src="/assets/js/a33-storage.js"></script>
-  <script src="/assets/js/a33-presentations.js"></script>
-  <script src="/assets/js/a33-auth.js"></script>
   <script>
-    if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
-      location.href = "../index.html";
-    }
-  </script>
-  <script src="script.js?v=4.20.3"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=4.20.3');
-    }
+    (async () => {
+      const statusEl = document.getElementById('status');
+      const set = (m) => { try { statusEl.textContent = m; } catch(e) {} };
+
+      const target = "../centro-mando/index.html";
+
+      // 1) Intentar desregistrar SW bajo este scope (centro_mando)
+      try {
+        if ('serviceWorker' in navigator) {
+          set("Desregistrando Service Workers…");
+          const regs = await navigator.serviceWorker.getRegistrations();
+          const scopeNeedle = "centro_mando";
+          await Promise.all(regs
+            .filter(r => (r && r.scope && String(r.scope).toLowerCase().includes(scopeNeedle)))
+            .map(r => r.unregister().catch(() => false))
+          );
+        }
+      } catch (e) {}
+
+      // 2) Intentar limpiar caches relacionadas (sin asumir nombres exactos)
+      try {
+        if (window.caches && caches.keys) {
+          set("Limpiando cachés relacionadas…");
+          const keys = await caches.keys();
+          const kill = keys.filter(k => {
+            const s = String(k).toLowerCase();
+            return s.includes("a33-centro") || s.includes("centro");
+          });
+          await Promise.all(kill.map(k => caches.delete(k).catch(() => false)));
+        }
+      } catch (e) {}
+
+      // 3) Redirigir al canónico
+      set("Redirigiendo…");
+      try { location.replace(target); } catch (e) { location.href = target; }
+
+      // Fallback por si algo raro ocurre
+      setTimeout(() => {
+        try {
+          if (String(location.pathname).toLowerCase().includes("centro_mando")) location.href = target;
+        } catch (e) {}
+      }, 900);
+    })();
   </script>
 </body>
 </html>

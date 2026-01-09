@@ -1363,7 +1363,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.7').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

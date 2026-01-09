@@ -1,5 +1,5 @@
 /*
-  Suite A33 v4.20.5 — Centro de Mando (OPERATIVO v1)
+  Suite A33 v4.20.7 — Centro de Mando (OPERATIVO v1)
 
   Fuentes reales (descubiertas en /pos/app.js dentro de esta ZIP):
   - DB_NAME: 'a33-pos'

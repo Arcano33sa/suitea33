@@ -1,15 +1,15 @@
-const CACHE_NAME = "arcano33-lotes-v4_20_2_fix1";
+const CACHE_NAME = "arcano33-lotes-v4_20_7";
 const ASSETS = [
   "./",
-  "./index.html",
-  "./style.css",
-  "./script.js",
-  "./manifest.webmanifest",
+  "./index.html?v=4.20.7",
+  "./style.css?v=4.20.7",
+  "./script.js?v=4.20.7",
+  "./manifest.webmanifest?v=4.20.7",
   "./images/logo.png",
-  "/assets/js/a33-input-ux.js",
-  "/assets/js/a33-storage.js",
-  "/assets/js/a33-auth.js",
-  "/assets/css/a33-header.css"
+  "/assets/js/a33-input-ux.js?v=4.20.7",
+  "/assets/js/a33-storage.js?v=4.20.7",
+  "/assets/js/a33-auth.js?v=4.20.7",
+  "/assets/css/a33-header.css?v=4.20.7"
 ];
 
 self.addEventListener("install", (event) => {
@@ -36,7 +36,7 @@ self.addEventListener("fetch", (event) => {
       return (
         cached ||
         fetch(event.request).catch(() =>
-          caches.match("./index.html")
+          caches.match("./index.html?v=4.20.7")
         )
       );
     })

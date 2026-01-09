@@ -8,10 +8,10 @@ const ASSETS = [
   './logo.png',
   './brand_symbol.jpg',
   './brand_wordmark.jpg',
-  '/assets/js/a33-input-ux.js',
-  '/assets/js/a33-storage.js',
-  '/assets/js/a33-auth.js',
-  '/assets/css/a33-header.css'
+  '/assets/js/a33-input-ux.js?v=4.20.7',
+  '/assets/js/a33-storage.js?v=4.20.7',
+  '/assets/js/a33-auth.js?v=4.20.7',
+  '/assets/css/a33-header.css?v=4.20.7'
 ];
 
 self.addEventListener('install', (e)=>{

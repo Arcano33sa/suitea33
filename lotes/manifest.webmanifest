@@ -1,7 +1,7 @@
 {
   "name": "Arcano 33 · Control de Lotes",
   "short_name": "A33 Lotes",
-  "start_url": ".",
+  "start_url": "./index.html?v=4.20.7",
   "display": "standalone",
   "background_color": "#0d0d0d",
   "theme_color": "#7b1818",

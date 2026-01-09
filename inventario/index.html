@@ -9,16 +9,16 @@
 
   <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.7" />
 
-  <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css" />
+  <link rel="stylesheet" href="style.css?v=4.20.7" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.7" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Inventario</div>
-    <div class="a33-version">v4.20.4</div>
+    <div class="a33-version">v4.20.7</div>
   </header>
   <main class="app-main">
     <section class="card form-card">
@@ -96,15 +96,15 @@
     <p>Arcano 33 · Inventario interno de insumos, botellas y producto terminado</p>
   </footer>
 
-  <script src="/assets/js/a33-storage.js"></script>
-  <script src="/assets/js/a33-presentations.js"></script>
-  <script src="/assets/js/a33-auth.js"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.7"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.7"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.7"></script>
   <script>
     if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
       location.href = "../index.html";
     }
   </script>
-  <script src="script.js"></script>
-  <script src="/assets/js/a33-input-ux.js"></script>
+  <script src="script.js?v=4.20.7"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.7"></script>
 </body>
 </html>

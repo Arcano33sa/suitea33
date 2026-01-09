@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
 <link rel="stylesheet" href="styles.css?v=4.20.7">
-  <link rel="stylesheet" href="/assets/css/a33-header.css" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.7" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -1381,17 +1381,17 @@
   <button data-tab="checklist">Checklist</button>
 </nav>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="/assets/js/a33-storage.js"></script>
-  <script src="/assets/js/a33-presentations.js"></script>
-<script src="/assets/js/a33-auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.7"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.7"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.7"></script>
+<script src="/assets/js/a33-auth.js?v=4.20.7"></script>
 <script>
   if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
     location.href = "../index.html";
   }
 </script>
 <script src="app.js?v=4.20.7"></script>
-<script src="/assets/js/a33-input-ux.js"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.7"></script>
 <script>
   if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js?v=4.20.7'); }
 </script>

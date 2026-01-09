@@ -1,35 +1,46 @@
-const CACHE = 'a33-centro-mando-v4_20_3_fix1';
-const ASSETS = [
-  './',
-  './index.html?v=4.20.3',
-  './style.css?v=4.20.3',
-  './script.js?v=4.20.3',
-  './manifest.webmanifest?v=4.20.3',
-  '../inventario/images/logo.png',
-  '/assets/js/a33-storage.js',
-  '/assets/js/a33-auth.js',
-  '/assets/css/a33-header.css'
+// Legacy cleanup SW — no usar para desarrollo
+// A33 Centro de Mando (compat) — Bridge SW
+// Objetivo: eliminar caché zombie de centro_mando/ y retirarse.
+const BRIDGE_VERSION = '4.20.7';
+const KILL_MATCH = [
+  'a33-centro-mando',
+  'a33-centro_mando',
+  'centro-mando',
+  'centro_mando'
 ];
 
-self.addEventListener('install', (e)=>{
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
+self.addEventListener('install', (e) => {
+  // No cacheamos nada aquí: solo queremos tomar control rápido y limpiar.
+  self.skipWaiting();
 });
 
-self.addEventListener('activate', (e)=>{
-  e.waitUntil(
-    caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-  );
-  self.clients.claim();
-});
+self.addEventListener('activate', (e) => {
+  e.waitUntil((async () => {
+    // 1) Borrar caches relacionadas
+    try {
+      const keys = await caches.keys();
+      const toDelete = keys.filter(k => {
+        const s = String(k || '').toLowerCase();
+        return KILL_MATCH.some(m => s.includes(m));
+      });
+      await Promise.all(toDelete.map(k => caches.delete(k).catch(() => false)));
+    } catch (_) {}
 
-self.addEventListener('fetch', (e)=>{
-  e.respondWith(
-    caches.match(e.request).then(res => res || fetch(e.request).then(resp=>{
-      if (e.request.method === 'GET' && resp && resp.status === 200){
-        const copy = resp.clone();
-        caches.open(CACHE).then(c=>c.put(e.request, copy));
+    // 2) Avisar a clientes para redirigir (si siguen abiertos)
+    try {
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const c of clients) {
+        c.postMessage({ type: 'A33_CDM_MOVED', to: '../centro-mando/index.html', v: BRIDGE_VERSION });
       }
-      return resp;
-    }).catch(()=>caches.match('./index.html?v=4.20.3')))
-  );
+    } catch (_) {}
+
+    // 3) Retirarse
+    try { await self.clients.claim(); } catch (_) {}
+    try { await self.registration.unregister(); } catch (_) {}
+  })());
+});
+
+// Network-only (por si queda vivo un instante)
+self.addEventListener('fetch', (e) => {
+  e.respondWith(fetch(e.request));
 });
