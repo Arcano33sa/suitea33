@@ -131,6 +131,34 @@
     .btn-secondary:hover {
       background: #2c2c2c;
     }
+    .inline-input-btn {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+    .inline-input-btn input {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .btn-pill {
+      padding: 0.28rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid #444;
+      background: #222;
+      color: #eee;
+      font-weight: 600;
+      font-size: 0.78rem;
+      cursor: pointer;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+    .btn-pill:hover {
+      background: #2c2c2c;
+    }
+    .btn-pill:active {
+      transform: translateY(1px);
+    }
+
     .results {
       margin-top: 1rem;
       padding: 0.7rem;
@@ -209,8 +237,11 @@
       </p>
       <div class="fechas-row">
         <div>
-          <label for="lote">Nombre o código del lote</label>
-          <input type="text" id="lote" placeholder="Ej: Lote 2025-12-01 - Pedido Karen" />
+          <label for="lote">Código de lote</label>
+          <div class="inline-input-btn">
+            <input type="text" id="lote" placeholder="Ej: A330XX119TEV5786" autocomplete="off" />
+            <button type="button" id="btn-regenerar-codigo" class="btn-pill">Regenerar</button>
+          </div>
         </div>
         <div>
           <label for="fecha-produccion">Fecha de producción</label>
@@ -218,7 +249,7 @@
         </div>
       </div>
       <p class="hint" id="texto-caducidad">Fecha de caducidad: —</p>
-      <p class="hint" id="texto-fecha-hebreo">Fecha hebrea de hoy: —</p>
+      <p class="hint" id="texto-fecha-hebreo">Fecha hebrea (producción): —</p>
 
       <h3>Notas del lote</h3>
       <textarea id="notas" placeholder="Ej: Pedido para evento, sabor clásico, entrega sábado por la tarde..."></textarea>
@@ -312,6 +343,16 @@
     const STORAGE_FECHA_PROD_KEY = "arcano33_fecha_produccion";
     const STORAGE_NOTAS_KEY = "arcano33_notas_lote";
     const STORAGE_KEY_INVENTARIO = "arcano33_inventario";
+
+    // Etapa 2: Código de lote AUTO (editable) con X=eco + fecha hebrea
+    const STORAGE_LOTE_CODE_MODE_KEY = "arcano33_calc_codigo_mode"; // AUTO | MANUAL
+    const STORAGE_LOTE_SEQ_LAST_KEY = "arcano33_calc_ultimo_consecutivo"; // 4 dígitos (último usado)
+    const STORAGE_LOTE_SEQ_CURRENT_KEY = "arcano33_calc_consecutivo_actual"; // 4 dígitos (auto en curso)
+    let A33CodigoLoteMode = "AUTO";
+    let A33AutoSeq = "";
+    let A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+    let A33SuppressCodigoInput = false;
+
 
     function hoyLocalISO(){
       const d = new Date();
@@ -543,35 +584,173 @@
       }
     }
     function actualizarFechaHebrea() {
+      // Ahora deriva SIEMPRE de la fecha de producción (no de "hoy").
       const span = document.getElementById("texto-fecha-hebreo");
-      if (!span) return;
+      if (!span) return Promise.resolve(null);
+      const iso = (document.getElementById("fecha-produccion")?.value || hoyLocalISO()).trim();
+      return obtenerHebreaDesdeFechaISO(iso)
+        .then(h => {
+          if (h && h.hd && h.hm && h.hy) {
+            A33Hebreo = h;
+            span.textContent = "Fecha hebrea (producción): " + h.hd + " " + h.hm + " " + h.hy;
+            return h;
+          } else {
+            A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+            span.textContent = "Fecha hebrea (producción): —";
+            return null;
+          }
+        })
+        .catch(() => {
+          A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+          span.textContent = "Fecha hebrea (producción): —";
+          return null;
+        });
+    }
+
+    function parseISODateLocal(iso) {
+      // Evitar que new Date('YYYY-MM-DD') se interprete como UTC.
       try {
-        const hoy = new Date();
-        const y = hoy.getFullYear();
-        const m = hoy.getMonth() + 1;
-        const d = hoy.getDate();
-        const url = "https://www.hebcal.com/converter?cfg=json&g2h=1&gy=" + y + "&gm=" + m + "&gd=" + d + "&lang=es";
-        fetch(url)
-          .then(res => {
-            if (!res.ok) throw new Error("Respuesta no válida");
-            return res.json();
-          })
-          .then(data => {
-            if (data && typeof data.hd !== "undefined" && data.hm && data.hy) {
-              span.textContent = "Fecha hebrea de hoy: " + data.hd + " " + data.hm + " " + data.hy;
-            } else {
-              span.textContent = "Fecha hebrea de hoy: —";
-            }
-          })
-          .catch(err => {
-            console.warn("No se pudo obtener la fecha hebrea:", err);
-            span.textContent = "Fecha hebrea de hoy: —";
-          });
+        const parts = String(iso || "").split("-");
+        if (parts.length !== 3) return null;
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const d = parseInt(parts[2], 10);
+        if (!y || !m || !d) return null;
+        return new Date(y, m - 1, d);
       } catch (e) {
-        console.warn("No se pudo obtener la fecha hebrea:", e);
-        span.textContent = "Fecha hebrea de hoy: —";
+        return null;
       }
     }
+
+    function pad2(n) {
+      return String(n).padStart(2, "0");
+    }
+    function pad4(n) {
+      return String(n).padStart(4, "0");
+    }
+
+    function ecoMaskX(seq4) {
+      const s = String(seq4 || "");
+      if (!/^\d{4}$/.test(s)) return s;
+      let out = s[0];
+      for (let i = 1; i < s.length; i++) {
+        // comparar contra el dígito REAL anterior (eco)
+        out += (s[i] === s[i - 1]) ? "X" : s[i];
+      }
+      return out;
+    }
+
+    function sanitizeMonth3(name) {
+      const letters = String(name || "").toUpperCase().replace(/[^A-Z]/g, "");
+      return letters.slice(0, 3);
+    }
+
+    async function obtenerHebreaDesdeFechaISO(iso) {
+      const dt = parseISODateLocal(iso);
+      if (!dt) return null;
+
+      // 1) Intento offline (Intl con calendario hebreo)
+      try {
+        const fmt = new Intl.DateTimeFormat("en-u-ca-hebrew-nu-latn", { day: "numeric", month: "long", year: "numeric" });
+        const parts = fmt.formatToParts(dt);
+        const hd = (parts.find(p => p.type === "day")?.value || "").match(/\d+/)?.[0] || "";
+        const hm = (parts.find(p => p.type === "month")?.value || "").trim();
+        const hy = (parts.find(p => p.type === "year")?.value || "").match(/\d+/)?.[0] || "";
+        const hm3 = sanitizeMonth3(hm);
+        const hy4 = hy ? hy.slice(-4) : "";
+        if (hd && hm && hm3.length === 3 && hy4.length === 4) {
+          return { hd, hm, hy: hy4, hm3, hy4 };
+        }
+      } catch (e) {
+        // sigue a fallback
+      }
+
+      // 2) Fallback online (Hebcal)
+      try {
+        const y = dt.getFullYear();
+        const m = dt.getMonth() + 1;
+        const d = dt.getDate();
+        const url = "https://www.hebcal.com/converter?cfg=json&g2h=1&gy=" + y + "&gm=" + m + "&gd=" + d + "&lang=en";
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data && typeof data.hd !== "undefined" && data.hm && data.hy) {
+          const hd = String(data.hd).match(/\d+/)?.[0] || "";
+          const hm = String(data.hm || "").trim();
+          const hy = String(data.hy).match(/\d+/)?.[0] || "";
+          const hm3 = sanitizeMonth3(hm);
+          const hy4 = hy ? hy.slice(-4) : "";
+          if (hd && hm && hm3.length === 3 && hy4.length === 4) {
+            return { hd, hm, hy: hy4, hm3, hy4 };
+          }
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    }
+
+    function consumirSiguienteConsecutivo() {
+      let last = 0;
+      try {
+        const raw = A33Storage.getItem(STORAGE_LOTE_SEQ_LAST_KEY);
+        last = parseInt(String(raw || "0"), 10) || 0;
+      } catch (e) {
+        last = 0;
+      }
+      const next = last + 1;
+      const seq4 = pad4(next).slice(-4);
+      try { A33Storage.setItem(STORAGE_LOTE_SEQ_LAST_KEY, seq4); } catch (e) {}
+      try { A33Storage.setItem(STORAGE_LOTE_SEQ_CURRENT_KEY, seq4); } catch (e) {}
+      return seq4;
+    }
+
+    function setCodigoLoteValue(v) {
+      const loteInput = document.getElementById("lote");
+      if (!loteInput) return;
+      A33SuppressCodigoInput = true;
+      loteInput.value = v || "";
+      // liberar en el siguiente tick para evitar marcar MANUAL por set programático
+      setTimeout(() => { A33SuppressCodigoInput = false; }, 0);
+    }
+
+    function marcarCodigoComoManual() {
+      A33CodigoLoteMode = "MANUAL";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "MANUAL"); } catch (e) {}
+    }
+
+    async function recalcularCodigoLoteAuto(opts) {
+      const consumeNewSeq = !!(opts && opts.consumeNewSeq);
+      if (consumeNewSeq || !/^\d{4}$/.test(String(A33AutoSeq || ""))) {
+        A33AutoSeq = consumirSiguienteConsecutivo();
+      }
+      A33CodigoLoteMode = "AUTO";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
+
+      const fechaProdIso = (document.getElementById("fecha-produccion")?.value || hoyLocalISO()).trim();
+      const dt = parseISODateLocal(fechaProdIso) || new Date();
+      const dia2 = pad2(dt.getDate());
+
+      const heb = await actualizarFechaHebrea();
+      if (!heb || !heb.hm3 || !heb.hy4) {
+        // Si no hay hebrea, no inventamos: dejamos el código como está y avisamos en consola.
+        console.warn("No se pudo calcular fecha hebrea para el código de lote.");
+        return;
+      }
+
+      const consecMask = ecoMaskX(A33AutoSeq);
+      const code = "A33" + consecMask + dia2 + heb.hm3 + heb.hy4;
+
+      // Validación mínima del formato: A33 + 4 + 2 + 3 + 4 = 16
+      if (!/^A33[A-Z0-9X]{4}\d{2}[A-Z]{3}\d{4}$/.test(code)) {
+        console.warn("Código de lote generado inválido:", code);
+        return;
+      }
+      setCodigoLoteValue(code);
+      // Persistimos el valor actual (compatibilidad con flujo existente)
+      try { A33Storage.setItem(STORAGE_LOTE_KEY, code); } catch (e) {}
+    }
+
 
     function construirTablaRecetas() {
       const tbody = document.querySelector("#recetas-table tbody");
@@ -692,36 +871,50 @@
       }
     }
 
+    function resetNotasAlEntrar() {
+      const notasInput = document.getElementById("notas");
+      if (!notasInput) return;
+      // UI + estado interno: siempre vacío al entrar (incluye BFCache/pageshow).
+      notasInput.value = "";
+      try { A33Storage.removeItem(STORAGE_NOTAS_KEY); } catch (e) {}
+    }
+
     function guardarMetaLote() {
       const loteInput = document.getElementById("lote");
       const fechaProdInput = document.getElementById("fecha-produccion");
-      const notasInput = document.getElementById("notas");
       if (loteInput) {
         A33Storage.setItem(STORAGE_LOTE_KEY, loteInput.value || "");
+      }
+      // Persistimos el modo (AUTO/MANUAL) y el consecutivo actual (auto en curso)
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, A33CodigoLoteMode); } catch (e) {}
+      if (A33CodigoLoteMode === "AUTO" && /^\d{4}$/.test(String(A33AutoSeq || ""))) {
+        try { A33Storage.setItem(STORAGE_LOTE_SEQ_CURRENT_KEY, A33AutoSeq); } catch (e) {}
       }
       if (fechaProdInput) {
         // En Calculadora no se editan registros existentes: no persistimos la fecha entre sesiones.
         A33Storage.removeItem(STORAGE_FECHA_PROD_KEY);
       }
-      if (notasInput) {
-        A33Storage.setItem(STORAGE_NOTAS_KEY, notasInput.value || "");
-      }
+      // Notas NO se persisten entre sesiones.
+      try { A33Storage.removeItem(STORAGE_NOTAS_KEY); } catch (e) {}
       actualizarTextoCaducidad();
     }
     function cargarMetaLote() {
-      const loteInput = document.getElementById("lote");
       const fechaProdInput = document.getElementById("fecha-produccion");
-      const notasInput = document.getElementById("notas");
-      const loteVal = A33Storage.getItem(STORAGE_LOTE_KEY);
-      const notasVal = A33Storage.getItem(STORAGE_NOTAS_KEY);
-      if (loteInput && loteVal !== null) loteInput.value = loteVal;
       if (fechaProdInput) {
         // Compatibilidad: si quedó una fecha vieja guardada, la limpiamos.
         A33Storage.removeItem(STORAGE_FECHA_PROD_KEY);
         fechaProdInput.value = hoyLocalISO();
       }
-      if (notasInput && notasVal !== null) notasInput.value = notasVal;
+      // Al entrar a Calculadora, Notas siempre empieza vacía (sin tocar otros campos).
+      resetNotasAlEntrar();
       actualizarTextoCaducidad();
+
+      // Nuevo lote / nueva corrida: AUTO genera código y consume consecutivo.
+      A33CodigoLoteMode = "AUTO";
+      A33AutoSeq = "";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
+      setCodigoLoteValue("");
+      recalcularCodigoLoteAuto({ consumeNewSeq: true });
     }
     function calcularDatosLote() {
       const totalesIngredientes = { vino: 0, vodka: 0, jugo: 0, sirope: 0, agua: 0 };
@@ -984,6 +1177,7 @@ function init() {
       construirTablaPlan();
       cargarRecetas();
       cargarMetaLote();
+      resetNotasAlEntrar();
       document.getElementById("btn-guardar-receta").addEventListener("click", guardarRecetas);
       document.getElementById("btn-calcular").addEventListener("click", calcularTotales);
       document.getElementById("btn-limpiar").addEventListener("click", limpiarCantidades);
@@ -993,18 +1187,60 @@ function init() {
       const loteInput = document.getElementById("lote");
       const fechaProdInput = document.getElementById("fecha-produccion");
       const notasInput = document.getElementById("notas");
-      loteInput.addEventListener("change", guardarMetaLote);
-      loteInput.addEventListener("keyup", guardarMetaLote);
-      fechaProdInput.addEventListener("change", guardarMetaLote);
-      fechaProdInput.addEventListener("keyup", guardarMetaLote);
-      notasInput.addEventListener("change", guardarMetaLote);
-      notasInput.addEventListener("keyup", guardarMetaLote);
-      fechaProdInput.addEventListener("change", actualizarTextoCaducidad);
+      const btnRegenerar = document.getElementById("btn-regenerar-codigo");
+
+      if (btnRegenerar) {
+        btnRegenerar.addEventListener("click", () => {
+          // Regenerar: vuelve a AUTO, consume nuevo consecutivo y recalcula con la fecha actual
+          recalcularCodigoLoteAuto({ consumeNewSeq: true });
+          guardarMetaLote();
+        });
+      }
+
+      if (loteInput) {
+        const onManual = () => {
+          if (A33SuppressCodigoInput) return;
+          marcarCodigoComoManual();
+          guardarMetaLote();
+        };
+        loteInput.addEventListener("input", onManual);
+        loteInput.addEventListener("change", onManual);
+        loteInput.addEventListener("keyup", onManual);
+      }
+
+      if (fechaProdInput) {
+        const onFecha = () => {
+          guardarMetaLote();
+          actualizarTextoCaducidad();
+          // Si está en AUTO, recalcula con el MISMO consecutivo (sin consumir otro)
+          if (A33CodigoLoteMode === "AUTO") {
+            recalcularCodigoLoteAuto({ consumeNewSeq: false });
+          } else {
+            // MANUAL: solo actualizamos el hint de fecha hebrea
+            actualizarFechaHebrea();
+          }
+        };
+        fechaProdInput.addEventListener("change", onFecha);
+        fechaProdInput.addEventListener("keyup", onFecha);
+      }
+
+      if (notasInput) {
+        // Notas no se persisten; pero seguimos limpiando key por compatibilidad del flujo
+        notasInput.addEventListener("change", guardarMetaLote);
+        notasInput.addEventListener("keyup", guardarMetaLote);
+      }
+
       actualizarTextoCaducidad();
       actualizarFechaHebrea();
-    }
+}
 
     document.addEventListener("DOMContentLoaded", init);
+
+    // iOS/Safari puede restaurar el formulario desde BFCache al volver al módulo.
+    // Esto garantiza que Notas se limpie cada vez que 're-entras' a Calculadora.
+    window.addEventListener("pageshow", () => {
+      try { resetNotasAlEntrar(); } catch (e) {}
+    });
   </script>
   <script src="/assets/js/a33-input-ux.js"></script>
 </body>
