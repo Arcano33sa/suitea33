@@ -135,6 +135,7 @@
       display: flex;
       gap: 0.4rem;
       align-items: center;
+      flex-wrap: wrap;
     }
     .inline-input-btn input {
       flex: 1 1 auto;
@@ -211,6 +212,85 @@
         padding: 0.25rem;
       }
     }
+  
+    /* Etapa 2: pill de estado de código (compacto, sin scroll horizontal) */
+    .a33-pill-code {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.18rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      white-space: nowrap;
+      border: 1px solid #444;
+      user-select: none;
+    }
+    .a33-pill-sugerido {
+      background: rgba(221, 191, 100, 0.12);
+      color: #ddbf64;
+      border-color: rgba(221, 191, 100, 0.35);
+    }
+    .a33-pill-editado {
+      background: rgba(123, 24, 24, 0.18);
+      color: #f5f5f5;
+      border-color: rgba(221, 191, 100, 0.25);
+    }
+    .a33-pill-ok {
+      background: rgba(221, 191, 100, 0.22);
+      color: #111;
+      border-color: rgba(221, 191, 100, 0.6);
+    }
+
+    /* A33 — Modal compacto (iPad-friendly) */
+    .a33-modal[hidden] { display: none !important; }
+    .a33-modal {
+      position: fixed;
+      inset: 0;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.66);
+      z-index: 9999;
+    }
+    .a33-modal-card {
+      width: 100%;
+      max-width: 520px;
+      background: #1b1b1b;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 0.9rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .a33-modal-text {
+      font-size: 0.92rem;
+      line-height: 1.35;
+      color: #eee;
+      word-break: break-word;
+    }
+    .a33-mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9em;
+      padding: 0 0.15rem;
+    }
+    .a33-modal-actions {
+      margin-top: 0.85rem;
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .a33-btn-primary-pill {
+      border: none;
+      background: linear-gradient(135deg, #7b1818, #ddbf64);
+      color: #111;
+    }
+    .a33-btn-primary-pill:hover { filter: brightness(1.05); }
+
   </style>
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.7" />
 </head>
@@ -240,6 +320,7 @@
           <label for="lote">Código de lote</label>
           <div class="inline-input-btn">
             <input type="text" id="lote" placeholder="Ej: A330XX119TEV5786" autocomplete="off" />
+            <span id="pill-codigo-estado" class="a33-pill-code a33-pill-sugerido">SUGERIDO</span>
             <button type="button" id="btn-regenerar-codigo" class="btn-pill">Regenerar</button>
           </div>
         </div>
@@ -321,6 +402,18 @@
     <button id="btn-limpiar" class="btn-secondary">Limpiar cantidades (no borra recetas)</button>
   </div>
 
+  <!-- Modal: código duplicado (Etapa 3) -->
+  <div id="a33-modal-dup-codigo" class="a33-modal" hidden aria-hidden="true">
+    <div class="a33-modal-card" role="dialog" aria-modal="true" aria-labelledby="a33-modal-dup-text">
+      <div id="a33-modal-dup-text" class="a33-modal-text"></div>
+      <div class="a33-modal-actions">
+        <button id="a33-modal-dup-aplicar" class="btn-pill a33-btn-primary-pill" type="button">Aplicar</button>
+        <button id="a33-modal-dup-cancelar" class="btn-pill" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+
   <script src="/assets/js/a33-storage.js?v=4.20.7"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.7"></script>
   <script src="/assets/js/a33-auth.js?v=4.20.7"></script>
@@ -352,6 +445,128 @@
     let A33AutoSeq = "";
     let A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
     let A33SuppressCodigoInput = false;
+    let A33HasCalculoPrevio = false;
+    let A33SuggestedCode = "";
+
+
+
+
+    function setPillEstadoCodigo(state) {
+      const el = document.getElementById("pill-codigo-estado");
+      if (!el) return;
+      const s = String(state || "").toUpperCase();
+      el.classList.remove("a33-pill-sugerido", "a33-pill-editado", "a33-pill-ok");
+      if (s === "OK") {
+        el.textContent = "OK";
+        el.classList.add("a33-pill-ok");
+      } else if (s === "EDITADO") {
+        el.textContent = "EDITADO";
+        el.classList.add("a33-pill-editado");
+      } else {
+        el.textContent = "SUGERIDO";
+        el.classList.add("a33-pill-sugerido");
+      }
+    }
+
+    function normalizarCodigoLote(raw) {
+      return String(raw || "").trim().toUpperCase();
+    }
+
+    function validarCodigoLoteFuerte(raw) {
+      const code = normalizarCodigoLote(raw);
+      // A33 + 4 (0-9/X) + DD + MMM + YYYY
+      if (!/^A33[0-9X]{4}\d{2}[A-Z]{3}\d{4}$/.test(code)) {
+        return {
+          ok: false,
+          code,
+          seq: null,
+          msg: "Código inválido. Formato: A33 + 4 (0-9/X) + DD + MES(3 letras) + AAAA(4). Ej: A330XX119TEV5786. Ojo: día siempre 2 dígitos (03, 09)."
+        };
+      }
+      const dd = parseInt(code.slice(7, 9), 10);
+      if (!(dd >= 1 && dd <= 31)) {
+        return { ok: false, code, seq: null, msg: "Código inválido: el día debe ser 01–31 (2 dígitos)." };
+      }
+      const seq = extraerSeqDeCodigo(code);
+      if (!(typeof seq === "number" && seq > 0)) {
+        return { ok: false, code, seq: null, msg: "Código inválido: el consecutivo (los 4 después de A33) debe iniciar con número y usar X solo como eco." };
+      }
+      return { ok: true, code, seq, msg: "" };
+    }
+
+    function existeCodigoEnLotes(lotes, codeUpper) {
+      const c = normalizarCodigoLote(codeUpper);
+      return (Array.isArray(lotes) ? lotes : []).some(l => normalizarCodigoLote(l && (l.codigo || l.code || l.lote || "")) === c);
+    }
+
+    function proponerSiguienteCodigoDisponible(baseCode, lotes) {
+      const v = validarCodigoLoteFuerte(baseCode);
+      const used = new Set();
+      (Array.isArray(lotes) ? lotes : []).forEach(l => {
+        const c = normalizarCodigoLote(l && (l.codigo || l.code || l.lote || ""));
+        const n = extraerSeqDeCodigo(c);
+        if (typeof n === "number" && n > 0) used.add(n);
+      });
+      const last = obtenerUltimoConsecutivoNumerico();
+      let start = last + 1;
+      if (v.ok && typeof v.seq === "number") start = Math.max(last + 1, v.seq + 1);
+      const next = buscarSiguienteDisponible(start, used);
+      const seq4 = pad4(next).slice(-4);
+      const mask = ecoMaskX(seq4);
+      const dd2 = v.ok ? v.code.slice(7, 9) : pad2(new Date().getDate());
+      const hm3 = v.ok ? v.code.slice(9, 12) : (A33Hebreo.hm3 || "TEV");
+      const hy4 = v.ok ? v.code.slice(12, 16) : (A33Hebreo.hy4 || String(new Date().getFullYear()).slice(-4));
+      return "A33" + mask + dd2 + hm3 + hy4;
+    }
+
+    function A33ModalDuplicadoCodigo(nextCode) {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById("a33-modal-dup-codigo");
+        const textEl = document.getElementById("a33-modal-dup-text");
+        const btnApply = document.getElementById("a33-modal-dup-aplicar");
+        const btnCancel = document.getElementById("a33-modal-dup-cancelar");
+        const code = normalizarCodigoLote(nextCode);
+
+        // Fallback ultra-simple
+        if (!overlay || !textEl || !btnApply || !btnCancel) {
+          resolve(confirm("Este código ya fue usado. Siguiente disponible: " + code + ". ¿Aplicar?"));
+          return;
+        }
+
+        textEl.innerHTML = "Este código ya fue usado. Siguiente disponible: <span class='a33-mono'>" +
+          escapeHtml(code) + "</span>. ¿Aplicar?";
+
+        const prevOverflow = document.body.style.overflow;
+        overlay.hidden = false;
+        overlay.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+
+        const cleanup = (val) => {
+          overlay.hidden = true;
+          overlay.setAttribute("aria-hidden", "true");
+          document.body.style.overflow = prevOverflow;
+          btnApply.removeEventListener("click", onApply);
+          btnCancel.removeEventListener("click", onCancel);
+          overlay.removeEventListener("click", onOutside);
+          document.removeEventListener("keydown", onKey);
+          resolve(val);
+        };
+
+        const onApply = (e) => { e.preventDefault(); cleanup(true); };
+        const onCancel = (e) => { e.preventDefault(); cleanup(false); };
+        const onOutside = (e) => { if (e.target === overlay) cleanup(false); };
+        const onKey = (e) => { if (e.key === "Escape") cleanup(false); };
+
+        btnApply.addEventListener("click", onApply);
+        btnCancel.addEventListener("click", onCancel);
+        overlay.addEventListener("click", onOutside);
+        document.addEventListener("keydown", onKey);
+
+        setTimeout(() => { try { btnApply.focus(); } catch (e) {} }, 0);
+      });
+    }
+
+
 
 
     function hoyLocalISO(){
@@ -587,7 +802,7 @@
       // Ahora deriva SIEMPRE de la fecha de producción (no de "hoy").
       const span = document.getElementById("texto-fecha-hebreo");
       if (!span) return Promise.resolve(null);
-      const iso = (document.getElementById("fecha-produccion")?.value || hoyLocalISO()).trim();
+      const iso = ((document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || hoyLocalISO()).trim();
       return obtenerHebreaDesdeFechaISO(iso)
         .then(h => {
           if (h && h.hd && h.hm && h.hy) {
@@ -653,9 +868,9 @@
       try {
         const fmt = new Intl.DateTimeFormat("en-u-ca-hebrew-nu-latn", { day: "numeric", month: "long", year: "numeric" });
         const parts = fmt.formatToParts(dt);
-        const hd = (parts.find(p => p.type === "day")?.value || "").match(/\d+/)?.[0] || "";
-        const hm = (parts.find(p => p.type === "month")?.value || "").trim();
-        const hy = (parts.find(p => p.type === "year")?.value || "").match(/\d+/)?.[0] || "";
+        const hd = (((parts.find(p => p.type === "day") || {}).value || "").match(/\d+/) || [""])[0] || "";
+        const hm = ((parts.find(p => p.type === "month") || {}).value || "").trim();
+        const hy = (((parts.find(p => p.type === "year") || {}).value || "").match(/\d+/) || [""])[0] || "";
         const hm3 = sanitizeMonth3(hm);
         const hy4 = hy ? hy.slice(-4) : "";
         if (hd && hm && hm3.length === 3 && hy4.length === 4) {
@@ -675,9 +890,9 @@
         if (!res.ok) return null;
         const data = await res.json();
         if (data && typeof data.hd !== "undefined" && data.hm && data.hy) {
-          const hd = String(data.hd).match(/\d+/)?.[0] || "";
+          const hd = (String(data.hd).match(/\d+/) || [""])[0] || "";
           const hm = String(data.hm || "").trim();
-          const hy = String(data.hy).match(/\d+/)?.[0] || "";
+          const hy = (String(data.hy).match(/\d+/) || [""])[0] || "";
           const hm3 = sanitizeMonth3(hm);
           const hy4 = hy ? hy.slice(-4) : "";
           if (hd && hm && hm3.length === 3 && hy4.length === 4) {
@@ -690,20 +905,125 @@
       return null;
     }
 
-    function consumirSiguienteConsecutivo() {
-      let last = 0;
+    function ecoUnmaskX(mask4) {
+      const s = String(mask4 || "");
+      if (!/^[0-9X]{4}$/.test(s)) return null;
+      if (!/^\d/.test(s)) return null;
+      let out = s[0];
+      for (let i = 1; i < 4; i++) {
+        const ch = s[i];
+        out += (ch === "X") ? out[i - 1] : ch;
+      }
+      if (!/^\d{4}$/.test(out)) return null;
+      return out;
+    }
+
+    function extraerSeqDeCodigo(code) {
+      const s = String(code || "").trim();
+      if (!s.startsWith("A33") || s.length < 7) return null;
+      const mask = s.slice(3, 7);
+      const un = ecoUnmaskX(mask);
+      if (!un) return null;
+      const n = parseInt(un, 10);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function leerUltimoConsecutivoKey() {
       try {
         const raw = A33Storage.getItem(STORAGE_LOTE_SEQ_LAST_KEY);
-        last = parseInt(String(raw || "0"), 10) || 0;
+        const n = parseInt(String(raw || "0"), 10) || 0;
+        return Number.isFinite(n) ? n : 0;
       } catch (e) {
-        last = 0;
+        return 0;
       }
-      const next = last + 1;
-      const seq4 = pad4(next).slice(-4);
+    }
+
+    function obtenerMaxSeqDesdeLotes() {
+      let max = 0;
+      try {
+        const raw = A33Storage.getItem("arcano33_lotes");
+        if (!raw) return 0;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return 0;
+        arr.forEach(l => {
+          const c = l && (l.codigo || l.code || l.lote || "");
+          const n = extraerSeqDeCodigo(c);
+          if (typeof n === "number" && n > max) max = n;
+        });
+      } catch (e) {}
+      return max;
+    }
+
+    function obtenerUsedSeqSetDesdeLotes() {
+      const set = new Set();
+      try {
+        const raw = A33Storage.getItem("arcano33_lotes");
+        if (!raw) return set;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return set;
+        arr.forEach(l => {
+          const c = l && (l.codigo || l.code || l.lote || "");
+          const n = extraerSeqDeCodigo(c);
+          if (typeof n === "number" && n > 0) set.add(n);
+        });
+      } catch (e) {}
+      return set;
+    }
+
+    function obtenerUltimoConsecutivoNumerico() {
+      return Math.max(leerUltimoConsecutivoKey(), obtenerMaxSeqDesdeLotes());
+    }
+
+    function buscarSiguienteDisponible(desde, usedSet) {
+      let n = desde;
+      const safeMax = 9999;
+      let loops = 0;
+      while (usedSet && usedSet.has(n) && loops < 11000 && n <= safeMax) {
+        n++;
+        loops++;
+      }
+      if (n > safeMax) {
+        console.warn("Consecutivo excedió 9999; revisa tus lotes.");
+        n = safeMax;
+      }
+      return n;
+    }
+
+    function sugerirSeq4(opts) {
+      const advance = !!(opts && opts.advance);
+      const used = obtenerUsedSeqSetDesdeLotes();
+      const last = obtenerUltimoConsecutivoNumerico();
+      let n = 0;
+      if (/^\d{4}$/.test(String(A33AutoSeq || ""))) {
+        n = parseInt(A33AutoSeq, 10) || 0;
+        if (advance) n++;
+      } else {
+        n = last + 1;
+      }
+      // Nunca quedarnos atrás
+      if (n <= last) n = last + 1;
+      n = buscarSiguienteDisponible(n, used);
+      return pad4(n).slice(-4);
+    }
+
+    function commitConsecutivoDespuesDeGuardar(code) {
+      const last = obtenerUltimoConsecutivoNumerico();
+      const usedSeq = extraerSeqDeCodigo(code);
+      let newLast = last;
+      if (typeof usedSeq === "number" && usedSeq > 0) {
+        newLast = Math.max(last, usedSeq);
+      } else if (/^\d{4}$/.test(String(A33AutoSeq || ""))) {
+        const auto = parseInt(A33AutoSeq, 10) || 0;
+        newLast = auto > 0 ? Math.max(last, auto) : (last + 1);
+      } else {
+        newLast = last + 1;
+      }
+      const seq4 = pad4(newLast).slice(-4);
       try { A33Storage.setItem(STORAGE_LOTE_SEQ_LAST_KEY, seq4); } catch (e) {}
       try { A33Storage.setItem(STORAGE_LOTE_SEQ_CURRENT_KEY, seq4); } catch (e) {}
       return seq4;
     }
+
 
     function setCodigoLoteValue(v) {
       const loteInput = document.getElementById("lote");
@@ -717,17 +1037,17 @@
     function marcarCodigoComoManual() {
       A33CodigoLoteMode = "MANUAL";
       try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "MANUAL"); } catch (e) {}
+      setPillEstadoCodigo("EDITADO");
     }
-
-    async function recalcularCodigoLoteAuto(opts) {
+async function recalcularCodigoLoteAuto(opts) {
       const consumeNewSeq = !!(opts && opts.consumeNewSeq);
       if (consumeNewSeq || !/^\d{4}$/.test(String(A33AutoSeq || ""))) {
-        A33AutoSeq = consumirSiguienteConsecutivo();
+        A33AutoSeq = sugerirSeq4({ advance: consumeNewSeq });
       }
       A33CodigoLoteMode = "AUTO";
       try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
 
-      const fechaProdIso = (document.getElementById("fecha-produccion")?.value || hoyLocalISO()).trim();
+      const fechaProdIso = ((document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || hoyLocalISO()).trim();
       const dt = parseISODateLocal(fechaProdIso) || new Date();
       const dia2 = pad2(dt.getDate());
 
@@ -747,6 +1067,8 @@
         return;
       }
       setCodigoLoteValue(code);
+      setPillEstadoCodigo("SUGERIDO");
+      A33SuggestedCode = code;
       // Persistimos el valor actual (compatibilidad con flujo existente)
       try { A33Storage.setItem(STORAGE_LOTE_KEY, code); } catch (e) {}
     }
@@ -885,11 +1207,8 @@
       if (loteInput) {
         A33Storage.setItem(STORAGE_LOTE_KEY, loteInput.value || "");
       }
-      // Persistimos el modo (AUTO/MANUAL) y el consecutivo actual (auto en curso)
+      // Persistimos solo el modo (AUTO/MANUAL). El consecutivo se compromete únicamente al guardar lote.
       try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, A33CodigoLoteMode); } catch (e) {}
-      if (A33CodigoLoteMode === "AUTO" && /^\d{4}$/.test(String(A33AutoSeq || ""))) {
-        try { A33Storage.setItem(STORAGE_LOTE_SEQ_CURRENT_KEY, A33AutoSeq); } catch (e) {}
-      }
       if (fechaProdInput) {
         // En Calculadora no se editan registros existentes: no persistimos la fecha entre sesiones.
         A33Storage.removeItem(STORAGE_FECHA_PROD_KEY);
@@ -907,14 +1226,16 @@
       }
       // Al entrar a Calculadora, Notas siempre empieza vacía (sin tocar otros campos).
       resetNotasAlEntrar();
+      A33HasCalculoPrevio = false;
       actualizarTextoCaducidad();
 
-      // Nuevo lote / nueva corrida: AUTO genera código y consume consecutivo.
+      // Nuevo lote / nueva corrida: AUTO genera código sugerido (preview), sin quemar consecutivo.
       A33CodigoLoteMode = "AUTO";
       A33AutoSeq = "";
       try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
       setCodigoLoteValue("");
-      recalcularCodigoLoteAuto({ consumeNewSeq: true });
+      setPillEstadoCodigo("SUGERIDO");
+      recalcularCodigoLoteAuto({ consumeNewSeq: false });
     }
     function calcularDatosLote() {
       const totalesIngredientes = { vino: 0, vodka: 0, jugo: 0, sirope: 0, agua: 0 };
@@ -1044,6 +1365,7 @@
         "</strong></div></div>";
       resumenVolumenDiv.innerHTML = htmlResumen;
 
+      A33HasCalculoPrevio = true;
       resultadosDiv.style.display = "block";
       guardarMetaLote();
     }
@@ -1105,20 +1427,25 @@
         if (el) el.value = "";
       });
       document.getElementById("resultados").style.display = "none";
+      A33HasCalculoPrevio = false;
     }
-    
-    function guardarCalculoComoLote() {
+
+    async function guardarCalculoComoLote() {
       const datos = calcularDatosLote();
-      const loteNombre = datos.loteNombre || "";
-      if (!loteNombre) {
-        alert("Primero escribe un nombre o código para el lote.");
+
+      // Bloqueante: solo se permite guardar si hubo cálculo previo
+      if (!A33HasCalculoPrevio) {
+        alert("Primero calcula totales de materia prima antes de guardar el lote.");
         return;
       }
+
+      // Plan vacío: confirmación (comportamiento existente)
       if (!datos.unidadesPorPresentacion.length) {
         if (!confirm("No hay unidades indicadas en el plan de producción. ¿Guardar de todas formas?")) {
           return;
         }
       }
+
       let lotes = [];
       try {
         const raw = A33Storage.getItem("arcano33_lotes");
@@ -1127,14 +1454,95 @@
       } catch (e) {
         lotes = [];
       }
+
+      const loteInput = document.getElementById("lote");
+      const rawCodigo = loteInput ? loteInput.value : "";
+      let v = validarCodigoLoteFuerte(rawCodigo);
+      if (!v.ok) {
+        alert(v.msg || "Código inválido.");
+        return;
+      }
+
+      // Normalizamos a MAYÚSCULAS (evita "duplicados" por casing)
+      if (loteInput) {
+        A33SuppressCodigoInput = true;
+        loteInput.value = v.code;
+        setTimeout(() => { A33SuppressCodigoInput = false; }, 0);
+      }
+
+      let codigoFinal = v.code;
+      let seqFinal = v.seq;
+
+      // Duplicado/colisión: si ya se usó entre preview y guardar, ofrecer aplicar el siguiente disponible (1 toque)
+      const checkDuplicado = () => {
+        const last = obtenerUltimoConsecutivoNumerico();
+        const suggestedUpper = normalizarCodigoLote(A33SuggestedCode || "");
+        const isSuggested = (normalizarCodigoLote(codigoFinal) === suggestedUpper);
+
+        const yaExiste = existeCodigoEnLotes(lotes, codigoFinal);
+        const quedoAtras = (typeof seqFinal === "number" && seqFinal <= last && isSuggested);
+        return { yaExiste, quedoAtras };
+      };
+
+      let dup = checkDuplicado();
+      if (dup.yaExiste || dup.quedoAtras) {
+        const nextCode = proponerSiguienteCodigoDisponible(codigoFinal, lotes);
+        const aplicar = await A33ModalDuplicadoCodigo(nextCode);
+        if (!aplicar) return;
+
+        // Aplicar
+        codigoFinal = nextCode;
+        v = validarCodigoLoteFuerte(codigoFinal);
+        if (!v.ok) {
+          alert("No se pudo asignar un código libre. Reintentá.");
+          return;
+        }
+        seqFinal = v.seq;
+
+        if (loteInput) setCodigoLoteValue(codigoFinal);
+        A33CodigoLoteMode = "AUTO";
+        A33AutoSeq = pad4(extraerSeqDeCodigo(codigoFinal) || 0).slice(-4);
+        A33SuggestedCode = codigoFinal;
+        setPillEstadoCodigo("SUGERIDO");
+        try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
+
+        // Reintentar una sola vez (sin otro modal) con datos frescos
+        try {
+          const raw2 = A33Storage.getItem("arcano33_lotes");
+          lotes = raw2 ? (JSON.parse(raw2) || []) : [];
+          if (!Array.isArray(lotes)) lotes = [];
+        } catch (e) {
+          lotes = [];
+        }
+
+        dup = checkDuplicado();
+        if (dup.yaExiste || dup.quedoAtras) {
+          alert("No se pudo asignar un código libre. Reintentá.");
+          return;
+        }
+      }
+
+      // Regla del consecutivo si el usuario editó el código:
+      // - hacia atrás / reutilización => bloquear
+      const lastNow = obtenerUltimoConsecutivoNumerico();
+      const suggestedNow = normalizarCodigoLote(A33SuggestedCode || "");
+      const isSuggestedNow = (normalizarCodigoLote(codigoFinal) === suggestedNow);
+
+      if (A33CodigoLoteMode === "MANUAL" && !isSuggestedNow && typeof seqFinal === "number" && seqFinal <= lastNow) {
+        alert("Código no permitido: va hacia atrás o implica reutilización del consecutivo. Usa el sugerido o uno más adelante.");
+        return;
+      }
+
       const mapUnits = { pulso: 0, media: 0, djeba: 0, litro: 0, galon: 0 };
       datos.unidadesPorPresentacion.forEach((item) => {
+        if (!item || !item.id) return;
         if (item.id === "pulso") mapUnits.pulso = item.unidades;
         if (item.id === "media") mapUnits.media = item.unidades;
         if (item.id === "djeba") mapUnits.djeba = item.unidades;
         if (item.id === "litro") mapUnits.litro = item.unidades;
         if (item.id === "galon") mapUnits.galon = item.unidades;
       });
+
       const fechaProdIso = datos.fechaProdStr || hoyLocalISO();
       let caducidadIso = "";
       try {
@@ -1143,10 +1551,14 @@
       } catch (e) {
         caducidadIso = "";
       }
+
+      // Señal UI: OK cuando ya pasó TODO y justo antes de persistir
+      setPillEstadoCodigo("OK");
+
       const nuevoLote = {
         id: "lote_" + Date.now(),
         fecha: fechaProdIso,
-        codigo: loteNombre,
+        codigo: codigoFinal,
         caducidad: caducidadIso || fechaProdIso,
         volTotal: Math.round(datos.totalVolumenFinalMl || 0).toString(),
         volVino: Math.round(datos.totalesIngredientes.vino || 0).toString(),
@@ -1162,15 +1574,36 @@
         notas: datos.notas || "",
         createdAt: new Date().toISOString()
       };
+
       lotes.push(nuevoLote);
-      // Ajustar inventario global según este lote
-      aplicarConsumoInventarioDesdeLote(datos, mapUnits);
+
+      // Persistencia: solo si esto fue exitoso hacemos side-effects (inventario + consecutivo)
       try {
         A33Storage.setItem("arcano33_lotes", JSON.stringify(lotes));
-        alert("Lote guardado en el Control de Lotes interno.");
       } catch (e) {
         alert("No se pudo guardar el lote en el navegador.");
+        setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
+        return;
       }
+
+      // Side-effects SOLO después de guardar OK
+      aplicarConsumoInventarioDesdeLote(datos, mapUnits);
+      try {
+        const seq4 = commitConsecutivoDespuesDeGuardar(codigoFinal);
+        if (/^\d{4}$/.test(String(seq4 || ""))) A33AutoSeq = seq4;
+      } catch (e) {}
+
+      alert("Lote guardado en el Control de Lotes interno.");
+
+      // Evitar doble-guardado accidental del mismo cálculo
+      A33HasCalculoPrevio = false;
+
+      // Preparar siguiente sugerido (preview) sin colisiones
+      A33CodigoLoteMode = "AUTO";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
+      setPillEstadoCodigo("SUGERIDO");
+      recalcularCodigoLoteAuto({ consumeNewSeq: true });
+      guardarMetaLote();
     }
 function init() {
       construirTablaRecetas();
@@ -1191,8 +1624,8 @@ function init() {
 
       if (btnRegenerar) {
         btnRegenerar.addEventListener("click", () => {
-          // Regenerar: vuelve a AUTO, consume nuevo consecutivo y recalcula con la fecha actual
-          recalcularCodigoLoteAuto({ consumeNewSeq: true });
+          // Regenerar: vuelve a AUTO y propone el siguiente consecutivo (preview), sin quemarlo hasta guardar lote
+          recalcularCodigoLoteAuto({ consumeNewSeq: false });
           guardarMetaLote();
         });
       }
@@ -1206,6 +1639,7 @@ function init() {
         loteInput.addEventListener("input", onManual);
         loteInput.addEventListener("change", onManual);
         loteInput.addEventListener("keyup", onManual);
+        loteInput.addEventListener("focus", () => { if (!A33SuppressCodigoInput) setPillEstadoCodigo("EDITADO"); });
       }
 
       if (fechaProdInput) {
