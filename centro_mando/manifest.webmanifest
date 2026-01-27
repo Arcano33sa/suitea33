@@ -2,7 +2,7 @@
   "name": "Arcano 33 · Centro de Mando",
   "short_name": "Centro",
   "description": "Centro de mando operativo: evento enfocado + radar global.",
-  "start_url": "./index.html?v=4.20.7",
+  "start_url": "./index.html?v=4.20.13",
   "display": "standalone",
   "background_color": "#0f0f0f",
   "theme_color": "#0f0f0f",

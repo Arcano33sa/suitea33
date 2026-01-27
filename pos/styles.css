@@ -20,9 +20,24 @@ header.brandbar{position:sticky;top:0;background:#121212;border-bottom:1px solid
   .app-title{order:3;width:100%;margin-top:6px}
 }
 .container{padding:12px 12px 80px;width:100%;max-width:100%}
+
+/* Encabezado premium: acciones derecha (PWA update) */
+.a33-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.a33-btn-update{appearance:none;display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 12px;border-radius:999px;border:1px solid rgba(221,191,100,0.75);background:rgba(221,191,100,0.14);color:#fefefe;font-weight:800;font-size:12px;line-height:1;letter-spacing:.02em;box-shadow:0 10px 20px rgba(0,0,0,0.55);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.a33-btn-update:hover{filter:brightness(1.05);border-color:rgba(221,191,100,0.95)}
+.a33-btn-update:active{transform:scale(0.98);box-shadow:0 6px 14px rgba(0,0,0,0.45);filter:brightness(0.98)}
+.a33-btn-update:focus-visible{outline:2px solid rgba(221,191,100,0.95);outline-offset:3px}
+
+/* Sección — meta derecha (Build + timestamp) */
+
+
 .card{background:var(--panel);border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin:12px 0}
 label{font-size:13px;color:var(--muted);display:block;margin:8px 0 6px}
 input,select,button,textarea{width:100%;padding:12px;border-radius:12px;border:1px solid #333;background:#141414;color:#f0f0f0;font-size:16px;line-height:1.2}
+
+/* Validación visual (bordes) */
+.a33-invalid{border-color:#7b1818 !important;box-shadow:0 0 0 2px rgba(123,24,24,.18)}
+
 input[type="date"]{padding:10px}
 .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:end}
 .row .card.full{grid-column:1 / -1}
@@ -426,12 +441,20 @@ small.muted{color:var(--muted)}
 .info{padding:9px;border-radius:10px;background:#0f1b0f;border:1px solid #214021;color:#b6f0b6;margin-top:8px}
 .warn{padding:9px;border-radius:10px;background:#2a1b0f;border:1px solid #5a3d12;color:#ffd7a1;margin-top:8px}
 
-/* Banner premium: Día cerrado (Caja Chica) */
+/* Banner premium: Día cerrado (Sección) */
 .a33-guard-banner{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .a33-guard-text{min-width:220px}
 .a33-guard-title{font-weight:800;letter-spacing:.2px}
 .a33-guard-sub{font-size:13px;opacity:.92;margin-top:2px}
-.a33-guard-actions{flex:0 0 auto}
+.a33-guard-actions{
+  flex:0 0 auto;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:flex-end;
+  max-width:100%;
+}
 
 /* Vender bloqueado por día cerrado: atenuar controles sin romper layout */
 .sell-locked #sell-block,
@@ -439,6 +462,12 @@ small.muted{color:var(--muted)}
 .sell-locked #sale-bank-row,
 .sell-locked details.card,
 .sell-locked #cup-block{opacity:.55;filter:saturate(.88)}
+
+/* Efectivo v2: modo solo lectura (candado base) */
+.cashv2-readonly #cashv2-fx-card,
+.cashv2-readonly #cashv2-initial-card,
+.cashv2-readonly #cashv2-movements-card,
+.cashv2-readonly #cashv2-final-card
 
 .tag{display:inline-block;padding:3px 8px;border-radius:999px;background:#2a2a2a;color:#ddd;font-size:12px;margin-left:6px}
 .tag.closed{background:#3a2222;color:#ffb3b3}
@@ -503,13 +532,9 @@ small.muted{color:var(--muted)}
 .dim input,.dim select,.dim textarea,.dim button{opacity:.7}
 .disabled-note{margin-top:8px;font-size:13px;color:#ffd7a1}
 
-/* Toggle (Caja Chica por evento) */
-.petty-toggle-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.petty-toggle-title{font-weight:700;color:var(--text)}
+/* Toggle (Sección por evento) */
 
-/* Sincronizar saldo inicial desde Finanzas (manual) */
-.petty-sync-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 6px 0}
-.petty-sync-row .btn-pill{padding:8px 12px}
+
 .a33-link{color:var(--tab-gold);text-decoration:underline}
 .switch{position:relative;display:inline-block;width:52px;height:28px}
 .switch input{opacity:0;width:0;height:0}
@@ -518,6 +543,29 @@ small.muted{color:var(--muted)}
 .switch input:checked + .slider{background:var(--ok)}
 .switch input:checked + .slider:before{transform:translateX(24px)}
 .btn-inline{width:auto;display:inline-block;padding:8px 12px;border-radius:12px;margin-left:10px}
+
+
+/* Sección — Estado (diagnóstico visible) */
+
+
+/* Etapa 2: flags compactas (chips) en diagnóstico de Sección */
+
+
+/* Etapa 6: Snapshot Finanzas -> POS (solo diagnóstico) */
+
+
+/* Etapa 3: Historial de Estado (Sección) */
+
+
+/* Etapa 10A: Fuentes por Día (Forense) */
+
+
+/* Sección: Consolidation Plan (READ-ONLY) */
+
+
+/* Badges reutilizables fuera del panel Estado (Etapa 8C) */
+
+
 /* Modal */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
 .modal .panel{background:#151515;border:1px solid #2a2a2a;border-radius:14px;max-width:1000px;width:100%;max-height:85vh;overflow:auto;padding:16px}
@@ -526,132 +574,26 @@ small.muted{color:var(--muted)}
 .modal .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .modal table{max-width:100%}
 .modal .scroll{max-height:40vh;overflow:auto;border:1px solid #2a2a2a;border-radius:10px;padding:6px}
-/* Caja Chica POS */
+/* Sección POS */
 .info-strong{
   font-size:14px;
   font-weight:600;
   color:var(--text);
 }
 
-.pc-main.disabled{
-  opacity:.5;
-  pointer-events:none;
-}
 
 /* Fieldsets de bloqueo (día cerrado / histórico) */
-.pc-lock-fieldset{
-  border:0;
-  padding:0;
-  margin:0;
-  min-inline-size:0;
-}
+
 
 /* Indicador visual suave cuando el día está bloqueado */
-#pc-count-fieldset[disabled]{
-  position:relative;
-  opacity:.92;
-}
 
-#pc-count-fieldset[disabled]::after{
-  content:'CERRADO';
-  position:absolute;
-  top:10px;
-  right:10px;
-  font-size:10px;
-  letter-spacing:.14em;
-  text-transform:uppercase;
-  color:#cfcfcf;
-  background:rgba(0,0,0,.35);
-  border:1px solid #2a2a2a;
-  padding:4px 10px;
-  border-radius:999px;
-  pointer-events:none;
-}
 
-.petty-summary h3,
-.petty-inicial h3{
-  margin-top:0;
-}
+/* Sección — Tabla de movimientos (evitar overflow horizontal en iPad) */
 
-.petty-summary .card{
-  margin:8px 0;
-}
-
-.petty-block h4{
-  margin:0 0 6px 0;
-}
-
-.pc-table{
-  width:100%;
-  border-collapse:collapse;
-  font-size:13px;
-}
-
-.pc-table th,
-.pc-table td{
-  padding:4px 6px;
-  border-bottom:1px solid #2a2a2a;
-}
-
-.pc-table tfoot td{
-  font-weight:700;
-}
-
-.pc-table input[type="number"]{
-  width:80px;
-}
-
-/* Caja Chica — Tabla de movimientos (evitar overflow horizontal en iPad) */
-#pc-mov-table{ table-layout:fixed; }
-#pc-mov-table th,
-#pc-mov-table td{ white-space:normal; }
-#pc-mov-table th:nth-child(1), #pc-mov-table td:nth-child(1){ width:110px; white-space:nowrap; }
-#pc-mov-table th:nth-child(2), #pc-mov-table td:nth-child(2){ width:140px; white-space:nowrap; }
-#pc-mov-table th:nth-child(3), #pc-mov-table td:nth-child(3){ width:70px; white-space:nowrap; }
-#pc-mov-table th:nth-child(4), #pc-mov-table td:nth-child(4){ width:110px; white-space:nowrap; }
-#pc-mov-table th:nth-child(6), #pc-mov-table td:nth-child(6){ width:120px; white-space:nowrap; text-align:right; }
-#pc-mov-table td:nth-child(5){ word-break:break-word; }
-
-.petty-mov h3{
-  margin-top:0;
-}
-
-.petty-mov .row{
-  margin-top:8px;
-  gap:8px;
-  align-items:flex-end;
-}
-
-.petty-mov .row label{
-  display:block;
-  font-size:12px;
-  margin-bottom:2px;
-}
-
-.petty-mov .row input[type="number"],
-.petty-mov .row input[type="date"],
-.petty-mov .row input[type="text"],
-.petty-mov .row select{
-  width:100%;
-}
 
 .btn-small{
   font-size:10px;
   padding:2px 6px;
-}
-.petty-final h3{
-  margin-top:0;
-}
-
-.pc-history-actions{
-  display:flex;
-  gap:8px;
-  justify-content:flex-end;
-  flex-wrap:wrap;
-}
-
-.pc-history-actions button{
-  width:auto;
 }
 
 
@@ -691,37 +633,10 @@ small.muted{color:var(--muted)}
 }
 
 
-/* Caja Chica - resaltar movimiento */
-.pc-row-highlight{
-  outline:2px solid rgba(255,215,0,.85);
-  background: rgba(255,215,0,.08);
-}
+/* Sección - resaltar movimiento */
 
-/* Caja Chica - Ajuste registrado */
-.pc-adj-records{
-  margin-top:10px;
-  border:1px solid #2a2a2a;
-  border-radius:14px;
-  padding:10px 12px;
-  background: rgba(255,255,255,0.02);
-}
-.pc-adj-records .title{
-  font-weight:800;
-  margin-bottom:6px;
-}
-.pc-adj-record{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:12px;
-  padding:6px 0;
-  border-top:1px dashed #2a2a2a;
-}
-.pc-adj-record:first-of-type{border-top:none;}
-.pc-adj-record .amt{
-  font-weight:800;
-  white-space:nowrap;
-}
+
+/* Sección - Ajuste registrado */
 
 
 /* =========================
@@ -1249,3 +1164,119 @@ small.muted{color:var(--muted)}
   #checklist-reminder-due,
   #checklist-reminder-priority{flex:1 1 140px}
 }
+
+
+/* -----------------------------
+   Archivo · CONSOLIDADO (POS > Resumen)
+   Etapa 1: solo UI + candados
+----------------------------- */
+/* Mantener pastilla outline compacta cuando se combine con btn-pill-mini */
+.btn-outline.btn-pill-mini{padding:6px 10px;font-size:12px;line-height:1.05}
+
+.consolidated-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+  gap:12px;
+  margin-top:12px;
+}
+.consolidated-card{margin:0}
+.consolidated-title{font-weight:900;letter-spacing:.35px}
+
+.consolidated-kpi{margin-top:8px; display:flex; flex-direction:column; gap:6px}
+.consolidated-row{display:flex; justify-content:space-between; gap:10px; font-size:13px}
+.consolidated-row b{font-weight:850; white-space:nowrap}
+.consolidated-row-mini{font-size:12px; opacity:.95}
+
+/* -----------------------------
+   Sección · Guard Decision (Etapa 4)
+   Tabla interna (Manual vs Sync)
+----------------------------- */
+
+
+/* --- Sección: Self-check (Etapa 9E) --- */
+
+
+/* Estado técnico (cierre diario) */
+.tech-details summary{ display:flex; align-items:center; gap:8px; cursor:pointer; }
+.tech-title{ font-weight:700; }
+.tech-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:6px 10px; margin-top:8px; }
+.tech-mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:11px; }
+@media (max-width: 640px){
+  .tech-grid{ grid-template-columns: 1fr; }
+}
+
+
+/* --- Efectivo v2 · Inicio por denominaciones (Etapa 3) --- */
+.cashv2-initial table{margin-top:6px}
+.cashv2-initial th, .cashv2-initial td{padding:7px 8px;font-size:13px}
+.cashv2-initial th.sub, .cashv2-initial td.sub{text-align:right}
+.cashv2-initial th.denom, .cashv2-initial td.denom{width:90px}
+.cashv2-initial .cashv2-denom-input{width:92px;max-width:100%;padding:7px 8px;font-size:14px}
+@media (max-width:420px){
+  .cashv2-initial .cashv2-denom-input{width:78px}
+}
+
+
+/* --- Efectivo v2 · Movimientos (Etapa 4) --- */
+.cashv2-move-list{display:flex;flex-direction:column;gap:8px}
+.cashv2-move-row{display:flex;gap:10px;align-items:center;justify-content:space-between;background:#121212;border:1px solid #2a2a2a;border-radius:12px;padding:8px 10px}
+.cashv2-move-left{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.cashv2-move-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.cashv2-move-note{font-size:12px;color:#cfcfcf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.cashv2-move-amt{font-weight:850;white-space:nowrap}
+.cashv2-mtag{display:inline-flex;align-items:center;gap:6px;border:1px solid #2a2a2a;background:#151515;border-radius:999px;padding:2px 8px;font-size:11px;line-height:1}
+.cashv2-mtag b{font-weight:850}
+
+
+/* --- Efectivo v2 · Cierre (Etapa 5) --- */
+.cashv2-final table{margin-top:6px}
+.cashv2-final th, .cashv2-final td{padding:7px 8px;font-size:13px}
+.cashv2-final th.sub, .cashv2-final td.sub{text-align:right}
+.cashv2-final th.denom, .cashv2-final td.denom{width:90px}
+.cashv2-final .cashv2-denom-input{width:92px;max-width:100%;padding:7px 8px;font-size:14px}
+@media (max-width:420px){
+  .cashv2-final .cashv2-denom-input{width:78px}
+}
+
+.cashv2-summary-table{width:100%;border-collapse:collapse;background:#121212;border:1px solid #2a2a2a;border-radius:12px;overflow:hidden}
+.cashv2-summary-table td{padding:7px 10px;font-size:13px;border-top:1px solid #242424}
+.cashv2-summary-table tr:first-child td{border-top:none}
+.cashv2-summary-table td.sub{text-align:right;font-weight:850}
+.cashv2-summary-table .pill{margin-left:0}
+
+/* Efectivo v2 — Histórico (Etapa 3/5) */
+.cashv2-hist-list{display:flex;flex-direction:column;gap:10px}
+.cashv2-hist-event{background:#121212;border:1px solid #2a2a2a;border-radius:14px;padding:10px}
+.cashv2-hist-event-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.cashv2-hist-event-head h4{margin:0;font-size:15px}
+.cashv2-hist-event-head .muted{font-size:12px}
+.cashv2-hist-days{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.cashv2-hist-day{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px dashed #2a2a2a;padding-top:8px}
+.cashv2-hist-days .cashv2-hist-day:first-child{border-top:none;padding-top:0}
+.cashv2-hist-day-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;flex:1}
+.cashv2-hist-daykey{font-weight:850;white-space:nowrap}
+.cashv2-hist-versions{font-size:12px;color:#cfcfcf;white-space:nowrap}
+
+/* Efectivo v2 — Histórico: Detalle por día (Etapa 4/5) */
+.cashv2-hist-version-buttons{display:flex;flex-wrap:wrap;gap:6px}
+.cashv2-hist-version-buttons button{padding:6px 10px;font-size:12px}
+.cashv2-hist-version-buttons button.active{border-color:#555;background:#1b1b1b}
+
+.cashv2-hist-detail-body{display:flex;flex-direction:column;gap:12px}
+.cashv2-hist-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (max-width:640px){
+  .cashv2-hist-grid2{grid-template-columns:1fr}
+}
+
+.cashv2-hist-section h4{margin:0 0 6px 0;font-size:14px}
+.cashv2-hist-section h5{margin:0 0 6px 0;font-size:13px}
+
+.cashv2-hist-audit-list{display:flex;flex-direction:column;gap:6px}
+.cashv2-hist-audit-row{display:flex;gap:10px;align-items:center;justify-content:space-between;background:#121212;border:1px solid #2a2a2a;border-radius:12px;padding:8px 10px}
+.cashv2-hist-audit-left{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.cashv2-hist-audit-action{font-weight:850;white-space:nowrap}
+.cashv2-hist-audit-reason{font-size:12px;color:#cfcfcf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.cashv2-hist-audit-ts{font-size:12px;color:#cfcfcf;white-space:nowrap}
+
+
+

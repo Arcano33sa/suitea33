@@ -646,8 +646,8 @@
   <div id="a33-toast" class="a33-toast" aria-live="polite"></div>
 
 
-  <script src="assets/js/a33-storage.js?v=4.20.7"></script>
-  <script src="assets/js/a33-auth.js?v=4.20.7"></script>
+  <script src="assets/js/a33-storage.js?v=4.20.13"></script>
+  <script src="assets/js/a33-auth.js?v=4.20.13"></script>
   <script>
     // --- Auth (usuario + contraseña, 1 usuario) ---
     const AUTH_DEFAULT_NAME = 'Usuario';
@@ -1111,7 +1111,8 @@
       if (!('caches' in window)) return;
       try{
         const names = await caches.keys();
-        await Promise.all(names.map(n => caches.delete(n)));
+        const victims = names.filter(n => { const s = String(n||"" ).toLowerCase(); return s.startsWith("a33-") || s.startsWith("arcano33-"); });
+        await Promise.all(victims.map(n => caches.delete(n)));
       }catch(_){ }
     }
 
@@ -2287,6 +2288,6 @@
 
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.7"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.13"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 {
   "name": "Arcano 33 · Calculadora de Producción (A33)",
   "short_name": "A33 Calc",
-  "start_url": "./index.html?v=4.20.7",
+  "start_url": "./index.html?v=4.20.13",
   "display": "standalone",
   "background_color": "#111111",
   "theme_color": "#111111",

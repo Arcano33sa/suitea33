@@ -102,9 +102,15 @@
 
   function readInventarioAlerts(){
     try{
-      const raw = A33Storage.getItem('arcano33_inventario');
-      if (!raw) return null;
-      const inv = JSON.parse(raw);
+      let inv = null;
+      if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+        inv = A33Storage.sharedGet('arcano33_inventario', null, 'local');
+      } else {
+        const raw = A33Storage.getItem('arcano33_inventario');
+        if (!raw) return null;
+        inv = JSON.parse(raw);
+      }
+      if (!inv) return null;
       const liquids = inv?.liquids || {};
       let alerts = 0;
       for (const k of Object.keys(liquids)){
@@ -433,12 +439,11 @@
     if (btnPos){
       btnPos.onclick = ()=>{ window.location.href = `../pos/index.html#venta`; };
     }
-
     if (btnCaja){
-      const enabled = !!ev?.pettyEnabled;
-      btnCaja.disabled = !enabled;
-      btnCaja.title = enabled ? '' : 'Caja Chica está desactivada en este evento';
-      btnCaja.onclick = ()=>{ if (enabled) window.location.href = `../pos/index.html#caja`; };
+      // Etapa 11B: ruta legacy hacia Caja Chica deshabilitada. Caer a POS (venta).
+      btnCaja.disabled = true;
+      btnCaja.title = 'Sección no disponible';
+      btnCaja.onclick = ()=>{ window.location.href = `../pos/index.html#venta`; };
     }
 
     // Detalle

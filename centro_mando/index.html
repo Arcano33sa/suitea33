@@ -56,7 +56,7 @@
           const keys = await caches.keys();
           const kill = keys.filter(k => {
             const s = String(k).toLowerCase();
-            return s.includes("a33-centro") || s.includes("centro");
+            return s.startsWith("a33-") && (s.includes("centro-mando") || s.includes("centro_mando"));
           });
           await Promise.all(kill.map(k => caches.delete(k).catch(() => false)));
         }

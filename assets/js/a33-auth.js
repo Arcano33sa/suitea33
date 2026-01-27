@@ -238,6 +238,46 @@
     async requireAuth({ redirectTo='../index.html' } = {}){
       await migrateLegacyPinIfNeeded();
       if (this.isConfigured() && this.isAuthenticated()) return true;
+
+      // Offline + sin sesión: evitar bucles de redirección.
+      try{
+        if (typeof navigator !== 'undefined' && navigator.onLine === false){
+          if (!window.__A33_OFFLINE_AUTH_SHOWN){
+            window.__A33_OFFLINE_AUTH_SHOWN = true;
+
+            const mk = (tag, attrs) => {
+              const el = document.createElement(tag);
+              if (attrs) for (const k in attrs) el.setAttribute(k, attrs[k]);
+              return el;
+            };
+
+            const wrap = mk('div', { 'data-a33-offline-auth': '1', 'role': 'alert' });
+            wrap.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.65)';
+
+            const card = mk('div');
+            card.style.cssText = 'width:min(640px,100%);background:#0b0b0b;color:#f2f2f2;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif';
+            card.innerHTML =
+              '<div style="font-size:18px;margin:0 0 8px;font-weight:700">Sin conexión</div>' +
+              '<div style="font-size:14px;line-height:1.4;color:#cfcfcf;margin:0 0 12px">No hay sesión activa y estás offline. Conectate y volvé a intentar para iniciar sesión.</div>' +
+              '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+                '<button id="a33OfflineRetry" style="appearance:none;border:1px solid rgba(202,168,92,.55);background:rgba(202,168,92,.14);color:#f2f2f2;padding:10px 12px;border-radius:999px;font-size:14px;cursor:pointer">Reintentar</button>' +
+                '<button id="a33OfflineClose" style="appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#f2f2f2;padding:10px 12px;border-radius:999px;font-size:14px;cursor:pointer">Cerrar</button>' +
+              '</div>';
+
+            wrap.appendChild(card);
+            const mount = document.body || document.documentElement;
+            mount.appendChild(wrap);
+
+            try{
+              const btnR = wrap.querySelector('#a33OfflineRetry');
+              const btnC = wrap.querySelector('#a33OfflineClose');
+              if (btnR) btnR.addEventListener('click', () => { try{ location.reload(); }catch(_){ } });
+              if (btnC) btnC.addEventListener('click', () => { try{ wrap.remove(); }catch(_){ } });
+            }catch(_){ }
+          }
+          return false;
+        }
+      }catch(_){ }
       // Si no está configurado, lo llevamos al Home para setup.
       try{
         const target = redirectTo || '../index.html';

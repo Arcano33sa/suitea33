@@ -312,6 +312,19 @@ textarea {
   flex-wrap: wrap;
 }
 
+.table-pager{
+  display:flex;
+  justify-content: space-between;
+  align-items:center;
+  gap:0.6rem;
+  margin-top: 0.55rem;
+}
+
+.table-pager .btn-secondary{
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+}
+
 .table-wrapper {
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -448,8 +461,9 @@ td.actions-cell {
 .col-status{ width: 98px; }
 .col-money{ width: 98px; }
 
-@media (max-width: 900px){
-  #archived-table .col-date{ display:none; }
+/* Columnas opcionales (iPad): se muestran al activar “Detalles” */
+@media (max-width: 1024px){
+  body:not(.a33-show-details) .col-hide-ipad{ display:none; }
 }
 
 
@@ -471,9 +485,8 @@ td.actions-cell {
 
   #pedidos-table th,
   #pedidos-table td {
-    white-space: nowrap;
+    white-space: normal;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   /* Anchos compactos por columna (deja “Cliente” como la columna flexible) */
@@ -513,6 +526,18 @@ td.actions-cell {
   #pedidos-table td.actions-cell {
     overflow: visible;
     text-overflow: clip;
+  }
+
+  .table-actions .search-input{
+    min-width: 160px;
+    flex: 1 1 160px;
+  }
+
+  .cell-clamp{
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
   }
 
   .table-wrapper {

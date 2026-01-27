@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Finanzas – Suite A33</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="style.css?v=4.20.7">
+  <link rel="stylesheet" href="style.css?v=4.20.13">
 </head>
 <body class="fin-body">
   <div class="fin-app">
@@ -19,7 +19,7 @@
     <div class="fin-title-block">
       <h1>Suite A33</h1>
       <p>Finanzas · Contabilidad básica de Arcano 33</p>
-      <p class="fin-version">v4.20.7</p>
+      <p class="fin-version">v4.20.13</p>
     </div>
   </div>
 
@@ -44,6 +44,7 @@
       <button type="button" class="fin-tab-btn" data-view="comprasplan">Compras</button>
       <button type="button" class="fin-tab-btn" data-view="compras">Compras a Proveedor</button>
       <button type="button" class="fin-tab-btn" data-view="proveedores">Proveedores</button>
+      <button type="button" class="fin-tab-btn" data-view="recibos">Recibos</button>
       <button type="button" class="fin-tab-btn" data-view="catalogo">Catálogo de Cuentas</button>
     </div>
   </nav>
@@ -663,6 +664,181 @@
   </div>
 </section>
 
+<!-- RECIBOS -->
+<section id="view-recibos" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Recibos</h2>
+    <p>Flujo oficial: BORRADOR → EMITIDO (bloqueo) · EMITIDO → ANULADO (motivo) · REEMITIR (nuevo borrador). (Etapa 3)</p>
+  </header>
+
+  <!-- LISTA / HISTÓRICO -->
+  <div id="recibos-list">
+    <div class="fin-filters-row fin-filters-row--compact fin-receipts-toolbar">
+      <div class="fin-inline-group">
+        <button type="button" id="rec-new" class="btn-small">+ Nuevo recibo</button>
+        <button type="button" id="rec-refresh" class="btn-small">Actualizar</button>
+      </div>
+
+      <label class="fin-grow">
+        Buscar (N° o Cliente)
+        <input type="text" id="rec-search" placeholder="Ej: 0001 o Juan" autocomplete="off">
+      </label>
+
+      <div class="fin-inline-group">
+        <button type="button" id="rec-filter-toggle" class="btn-small">Filtro</button>
+        <button type="button" id="rec-filter-clear" class="btn-small">Limpiar</button>
+      </div>
+
+      <div id="rec-count" class="fin-muted"></div>
+    </div>
+
+    <div id="rec-filters-panel" class="fin-filters-row fin-filters-row--compact fin-receipts-filters hidden">
+      <label>
+        Estado
+        <select id="rec-filter-status">
+          <option value="all">Todos</option>
+          <option value="DRAFT">BORRADOR</option>
+          <option value="ISSUED">EMITIDO</option>
+          <option value="VOID">ANULADO</option>
+        </select>
+      </label>
+
+      <label>
+        Desde
+        <input type="date" id="rec-filter-from">
+      </label>
+
+      <label>
+        Hasta
+        <input type="date" id="rec-filter-to">
+      </label>
+
+      <label>
+        Pago
+        <select id="rec-filter-pay">
+          <option value="all">Todos</option>
+          <option value="CASH">Efectivo</option>
+          <option value="TRANSFER">Transferencia</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="fin-table-wrapper">
+      <table class="fin-table fin-receipts-table" aria-label="Histórico de recibos">
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Pago</th>
+            <th class="num">Total</th>
+            <th>Estado</th>
+            <th class="fin-actions-cell">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="rec-tbody"></tbody>
+      </table>
+    </div>
+
+    <p class="fin-help">Tip: <strong>Ver</strong> siempre. <strong>Editar</strong> solo en <strong>BORRADOR</strong>. <strong>Anular</strong> solo en <strong>EMITIDO</strong>. <strong>Reemitir</strong> en <strong>EMITIDO</strong> o <strong>ANULADO</strong>.</p>
+  </div>
+
+  <!-- DETALLE / EDITOR -->
+  <div id="recibos-editor" class="hidden">
+    <div class="fin-inline-group fin-receipt-editor-head" style="justify-content:space-between; flex-wrap:wrap; gap:10px;">
+      <div>
+        <strong id="rec-editor-title">Editar borrador</strong>
+        <div id="rec-editor-meta" class="fin-help" style="margin:2px 0 0"></div>
+      </div>
+    </div>
+
+    <div id="rec-alert" class="fin-integrity-banner hidden"></div>
+    <p id="rec-mode-hint" class="fin-help" style="margin-top:6px;"></p>
+
+    <form id="rec-form" class="fin-form" autocomplete="off">
+      <input type="hidden" id="rec-id" value="">
+
+      <div class="fin-form-row">
+        <label class="fin-form-grow">
+          Cliente (nombre)
+          <input type="text" id="rec-client" placeholder="Ej: Juan Guadamuz">
+        </label>
+
+        <label>
+          Fecha
+          <input type="date" id="rec-date">
+        </label>
+      </div>
+
+      <div class="fin-form-row">
+        <div class="fin-form-grow">
+          <div class="fin-label">Tipo de pago</div>
+          <div class="fin-seg" role="group" aria-label="Tipo de pago">
+            <button type="button" id="rec-pay-cash" class="fin-seg-btn active" data-pay="CASH">Efectivo</button>
+            <button type="button" id="rec-pay-transfer" class="fin-seg-btn" data-pay="TRANSFER">Transferencia</button>
+          </div>
+        </div>
+
+
+        <label id="rec-bank-wrap" class="fin-form-grow hidden">
+          Banco (solo transferencia)
+          <input type="text" id="rec-bank" placeholder="Ej: BAC, Lafise, Banpro">
+        </label>
+
+
+        <label id="rec-ref-wrap" class="fin-form-grow hidden">
+          Referencia (solo transferencia, opcional)
+          <input type="text" id="rec-ref" placeholder="Ej: #TRX-1234">
+        </label>
+      </div>
+
+      <section class="fin-subsection">
+        <header class="fin-section-header fin-section-header--sub">
+          <h3>Líneas</h3>
+          <p>Agrega o quita líneas. Totales se calculan automáticamente.</p>
+        </header>
+
+        <div class="fin-table-wrapper">
+          <table class="fin-table rec-lines-table" aria-label="Líneas del recibo">
+            <thead>
+              <tr>
+                <th>Ítem</th>
+                <th class="num">Qty</th>
+                <th class="num">Precio</th>
+                <th class="num">Desc/U</th>
+                <th class="num">Total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rec-lines-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="fin-inline-group" style="margin-top:10px; justify-content:space-between; flex-wrap:wrap;">
+          <button type="button" id="rec-add-line" class="btn-small">+ Agregar línea</button>
+
+          <div class="rec-totals">
+            <div><span class="fin-muted">Subtotal</span> <strong id="rec-subtotal">C$ 0.00</strong></div>
+            <div><span class="fin-muted">Descuento</span> <strong id="rec-discount">C$ 0.00</strong></div>
+            <div><span class="fin-muted">Total</span> <strong id="rec-total">C$ 0.00</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="fin-form-row" style="justify-content:flex-end;">
+        <div class="fin-actions">
+          <button type="button" id="rec-save" class="btn-ghost">Guardar borrador</button>
+          <button type="button" id="rec-issue" class="btn-primary">Emitir</button>
+          <button type="button" id="rec-print" class="btn-primary hidden">Imprimir/PDF</button>
+          <button type="button" id="rec-cancel" class="btn-ghost">Cancelar</button>
+        </div>
+      </div>
+
+      <p class="fin-help">Regla: si el pago es <strong>Transferencia</strong>, el <strong>Banco</strong> es obligatorio. La referencia es opcional.</p>
+    </form>
+  </div>
+</section>
+
 <!-- CATÁLOGO DE CUENTAS -->
 <section id="view-catalogo" class="fin-view">
   <header class="fin-section-header">
@@ -1006,16 +1182,19 @@
 
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-storage.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-auth.js?v=4.20.7"></script>
+  <!-- Print root (Recibos) -->
+  <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.13"></script>
   <script>
     if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
       location.href = "../index.html";
     }
   </script>
-  <script src="script.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.7"></script>
+  <script src="script.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.13"></script>
 </body>
 </html>

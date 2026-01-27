@@ -2,6 +2,276 @@ const STORAGE_KEY_PEDIDOS = "arcano33_pedidos";
 const STORAGE_KEY_PEDIDOS_ARCHIVED = "arcano33_pedidos_archived";
 let viewingArchivedId = null;
 let editingId = null;
+let editingBaseUpdatedAt = null;
+
+// --- Identidad estable del pedido (anti-duplicados por reintentos) ---
+const PEDIDOS_DRAFT_KEY = 'a33_pedidos_draft_v1';
+let draftPedidoId = null;
+
+function _nowMs(){ return Date.now(); }
+
+function _readDraftPedido(){
+  try{
+    const raw = (window.sessionStorage) ? window.sessionStorage.getItem(PEDIDOS_DRAFT_KEY) : null;
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object') return null;
+    const id = String(obj.id || '').trim();
+    const createdAt = Number(obj.createdAt || 0);
+    if (!id || !createdAt || !isFinite(createdAt)) return null;
+    // Expira para evitar estados pegajosos si la pestaña queda abierta días
+    const age = _nowMs() - createdAt;
+    if (age > 1000*60*60*6) return null; // 6 horas
+    return { id, createdAt };
+  }catch(_){
+    return null;
+  }
+}
+
+function _writeDraftPedido(d){
+  try{
+    if (!window.sessionStorage) return;
+    window.sessionStorage.setItem(PEDIDOS_DRAFT_KEY, JSON.stringify(d || {}));
+  }catch(_){ }
+}
+
+function clearDraftPedido(){
+  draftPedidoId = null;
+  try{ if (window.sessionStorage) window.sessionStorage.removeItem(PEDIDOS_DRAFT_KEY); }catch(_){ }
+}
+
+function ensureDraftPedidoId(forceNew){
+  if (!forceNew && draftPedidoId) return draftPedidoId;
+  if (!forceNew){
+    const d = _readDraftPedido();
+    if (d && d.id){
+      draftPedidoId = d.id;
+      return draftPedidoId;
+    }
+  }
+  const id = 'p_' + _nowMs().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
+  draftPedidoId = id;
+  _writeDraftPedido({ id, createdAt: _nowMs() });
+  return id;
+}
+
+function normalizeCodigoKey(code){
+  return String(code || '').trim().toLowerCase().replace(/\s+/g,'');
+}
+
+
+// --- Guardado robusto (UI lock + confirmación) ---
+let A33Saving = {
+  active: false,
+  btnStates: new Map(),
+  saveBtnText: '',
+};
+
+function _setAllButtonsDisabled(disabled){
+  const btns = document.querySelectorAll('button');
+  btns.forEach((b) => {
+    if (!b) return;
+    if (disabled) {
+      A33Saving.btnStates.set(b, !!b.disabled);
+      b.disabled = true;
+    } else {
+      const was = A33Saving.btnStates.get(b);
+      b.disabled = (typeof was === 'boolean') ? was : false;
+    }
+  });
+  if (!disabled) A33Saving.btnStates.clear();
+}
+
+function setSavingState(on, label){
+  const sb = $('save-btn');
+  if (on) {
+    if (A33Saving.active) return;
+    A33Saving.active = true;
+    A33Saving.saveBtnText = sb ? (sb.textContent || '') : '';
+    _setAllButtonsDisabled(true);
+    if (sb) sb.textContent = label || 'Guardando…';
+    showArchivedNotice(label || 'Guardando…');
+  } else {
+    if (!A33Saving.active) return;
+    if (sb && A33Saving.saveBtnText) sb.textContent = A33Saving.saveBtnText;
+    _setAllButtonsDisabled(false);
+    A33Saving.active = false;
+  }
+}
+
+async function withSavingLock(label, fn){
+  if (A33Saving.active) {
+    return { ok:false, message:'Hay un guardado en curso. Esperá un momento e intentá de nuevo.' };
+  }
+  setSavingState(true, label);
+  try{
+    const r = await fn();
+    return r || { ok:true };
+  }catch(e){
+    console.error('Error en operación de guardado', e);
+    return { ok:false, message:'Ocurrió un error al guardar. No se hicieron cambios.' };
+  }finally{
+    setSavingState(false);
+  }
+}
+
+// --- Validaciones mínimas ---
+function isValidDateKey(s){
+  if (!s) return false;
+  const str = String(s).slice(0,10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  const d = new Date(str + 'T00:00:00');
+  return !Number.isNaN(d.getTime());
+}
+
+function readFiniteNumber(id, label, opts){
+  const el = $(id);
+  const raw = el ? String(el.value ?? '').trim() : '';
+  const n = Number(String(raw).replace(',', '.'));
+  if (!isFinite(n)) return { ok:false, message: `${label}: número inválido.` };
+  if (opts && typeof opts.min === 'number' && n < opts.min) return { ok:false, message: `${label}: no puede ser menor que ${opts.min}.` };
+  if (opts && opts.integer && Math.floor(n) !== n) return { ok:false, message: `${label}: debe ser entero.` };
+  return { ok:true, value: n };
+}
+
+function validatePedidoBeforeSave(payload){
+  const errors = [];
+  if (!payload) return { ok:false, message:'Datos inválidos.' };
+
+  if (!payload.customer || !payload.customer.name) errors.push('Cliente obligatorio.');
+  if (!isValidDateKey(payload.fechaCreacion)) errors.push('Fecha de fabricación inválida (YYYY-MM-DD).');
+  if (!isValidDateKey(payload.fechaEntrega)) errors.push('Fecha de entrega inválida (YYYY-MM-DD).');
+  if (!payload.codigo) errors.push('Código de pedido obligatorio.');
+
+  // Cantidades (no negativas, al menos una > 0)
+  const qty = payload.qty || {};
+  const keys = ['pulso','media','djeba','litro','galon'];
+  let sumQty = 0;
+  keys.forEach((k) => {
+    const v = qty[k];
+    if (!isFinite(v)) errors.push(`Cantidad ${k}: inválida.`);
+    else if (v < 0) errors.push(`Cantidad ${k}: no puede ser negativa.`);
+    else sumQty += v;
+  });
+  if (sumQty <= 0) errors.push('Agregá al menos una presentación (cantidad > 0).');
+
+  // Totales
+  const t = payload.totales || {};
+  ['subtotal','envio','descuento','totalPagar','pagoAnticipado','saldoPendiente'].forEach((k) => {
+    const v = t[k];
+    if (!isFinite(v)) errors.push(`Total ${k}: inválido.`);
+  });
+  if (isFinite(t.totalPagar) && t.totalPagar < 0) errors.push('Total a pagar no puede ser negativo.');
+  if (isFinite(t.descuento) && isFinite(t.subtotal) && isFinite(t.envio) && (t.subtotal - t.descuento + t.envio) < -0.001) {
+    errors.push('Descuento demasiado alto: el total queda negativo.');
+  }
+  if (isFinite(t.pagoAnticipado) && t.pagoAnticipado < 0) errors.push('Pago anticipado no puede ser negativo.');
+  if (isFinite(t.pagoAnticipado) && isFinite(t.totalPagar) && (t.pagoAnticipado - t.totalPagar) > 0.001) {
+    // Permitimos adelanto por error? mejor bloquear para evitar saldos negativos raros.
+    errors.push('Pago anticipado no puede ser mayor que el total a pagar.');
+  }
+
+  if (errors.length) {
+    return { ok:false, message: 'No se puede guardar:\n- ' + errors.join('\n- ') };
+  }
+  return { ok:true };
+}
+
+// --- Compatibilidad data vieja (defaults sin romper + tolerar extras) ---
+function djb2Hash(str){
+  let h = 5381;
+  const s = String(str || '');
+  for (let i=0;i<s.length;i++){
+    h = ((h << 5) + h) + s.charCodeAt(i);
+    h = h >>> 0;
+  }
+  return h.toString(16).padStart(8,'0');
+}
+
+function getFallbackPedidoId(p){
+  const code = (p && p.codigo) ? String(p.codigo) : '';
+  const fc = (p && (p.fechaCreacion || p.fecha || p.createdAt)) ? String(p.fechaCreacion || p.fecha || p.createdAt).slice(0,10) : '';
+  const fe = (p && p.fechaEntrega) ? String(p.fechaEntrega).slice(0,10) : '';
+  const cn = (p && (p.customerName || p.clienteNombre)) ? normalizeCustomerKey(p.customerName || p.clienteNombre) : '';
+  const base = ['legacy', code, fc, fe, cn].join('|');
+  return 'legacy-' + djb2Hash(base);
+}
+
+function coercePedidoForRead(p){
+  if (!p || typeof p !== 'object') return null;
+  const out = { ...p };
+
+  // Fechas
+  out.fechaCreacion = out.fechaCreacion || out.fecha || out.createdAt || out.fechaFabricacion || '';
+  out.fechaEntrega = out.fechaEntrega || out.fechaEntregaPedido || out.deliveryDate || out.fechaEnt || '';
+
+  // Cliente compat
+  out.customerId = out.customerId || out.clienteId || '';
+  out.customerName = out.customerName || out.clienteNombre || out.cliente || '';
+
+  // Prioridad / estado
+  out.prioridad = out.prioridad || 'normal';
+  const estado = out.estado || (out.entregado ? 'entregado' : 'pendiente');
+  out.estado = (String(estado).toLowerCase() === 'entregado') ? 'entregado' : 'pendiente';
+
+  // ID estable para legacy
+  if (out.id == null || out.id === '') out.id = getFallbackPedidoId(out);
+
+  // Numéricos (tolerar strings/NaN)
+  const numFields = [
+    'pulsoCant','mediaCant','djebaCant','litroCant','galonCant',
+    'envio','subtotal','descuento','descuentoFijo','descuentoTotal',
+    'totalPagar','pagoAnticipado','montoPagado','saldoPendiente',
+    'pulsoPrecio','mediaPrecio','djebaPrecio','litroPrecio','galonPrecio',,
+    'createdAt', 'updatedAt'];
+  numFields.forEach((k) => {
+    if (out[k] == null || out[k] === '') return;
+    const n = Number(String(out[k]).replace(',', '.'));
+    if (!isFinite(n)) out[k] = 0;
+    else out[k] = n;
+  });
+
+  return out;
+}
+
+function normalizePedidosList(list){
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  list.forEach((p) => {
+    const coerced = coercePedidoForRead(p);
+    if (coerced) out.push(coerced);
+  });
+  return out;
+}
+
+function saveArchivedPedidosSafe(list){
+  try{
+    A33Storage.setItem(STORAGE_KEY_PEDIDOS_ARCHIVED, JSON.stringify(Array.isArray(list) ? list : []));
+    return true;
+  }catch(e){
+    console.error('Error guardando pedidos archivados', e);
+    showArchivedNotice('No se pudo archivar (error de almacenamiento).');
+    return false;
+  }
+}
+
+function confirmPedidosPersisted(expectId){
+  try{
+    const after = loadPedidos();
+    return Array.isArray(after) && after.some((p) => String(p.id) === String(expectId));
+  }catch(_){
+    return false;
+  }
+}
+
+function confirmArchivedPersisted(expectId){
+  try{
+    const after = loadArchivedPedidos();
+    return Array.isArray(after) && after.some((p) => String(p.id) === String(expectId));
+  }catch(_){
+    return false;
+  }
+}
 
 // --- POS: clientes (catálogo compartido con POS) ---
 const POS_CUSTOMERS_KEY = 'a33_pos_customersCatalog';
@@ -35,20 +305,80 @@ function $(id) {
   return document.getElementById(id);
 }
 
+// --- Tabla (UX iPad + rendimiento) ---
+const A33_TABLE_PAGE_SIZE = 60;
+let activeLimit = A33_TABLE_PAGE_SIZE;
+let archivedLimit = A33_TABLE_PAGE_SIZE;
+
+function debounce(fn, wait){
+  let t = null;
+  return function(...args){
+    try{ if (t) clearTimeout(t); }catch(_){ }
+    t = setTimeout(() => {
+      try{ fn.apply(this, args); }catch(_){ }
+    }, Math.max(0, Number(wait || 0)));
+  };
+}
+
+function buildPedidoSearchHaystack(p){
+  try{
+    const estado = getPedidoEstado(p);
+    const cliente = (p && (p.customerName || p.clienteNombre)) ? (p.customerName || p.clienteNombre) : '';
+    const codigo = (p && p.codigo) ? p.codigo : '';
+    const fechas = [p && p.fechaEntrega, p && p.fechaCreacion, p && p.archivedAt].map(formatDate).join(' ');
+    const extra = [p && p.clienteTelefono, p && p.clienteTipo].filter(Boolean).join(' ');
+    return normalizeCustomerKey([cliente, codigo, estado, fechas, extra].join(' '));
+  }catch(_){
+    return '';
+  }
+}
+
 function loadPedidos() {
+  try {
+    if (window.A33Storage && typeof A33Storage.sharedGet === 'function') {
+      const list = A33Storage.sharedGet(STORAGE_KEY_PEDIDOS, [], 'local');
+      return normalizePedidosList(list);
+    }
+  } catch (e) {
+    console.warn('Error leyendo pedidos (sharedGet)', e);
+  }
+
   try {
     const raw = A33Storage.getItem(STORAGE_KEY_PEDIDOS);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return normalizePedidosList(parsed);
   } catch (e) {
-    console.error("Error leyendo pedidos", e);
+    console.error('Error leyendo pedidos', e);
     return [];
   }
 }
 
 function savePedidos(list) {
-  A33Storage.setItem(STORAGE_KEY_PEDIDOS, JSON.stringify(list));
+  const arr = Array.isArray(list) ? list : [];
+
+  try {
+    if (window.A33Storage && typeof A33Storage.sharedSet === 'function') {
+      const r = A33Storage.sharedSet(STORAGE_KEY_PEDIDOS, arr, { source: 'pedidos' });
+      if (!r || !r.ok) {
+        console.warn('No se pudo guardar pedidos', r);
+        showArchivedNotice((r && r.message) ? r.message : 'No se pudo guardar (conflicto). Recarga e intenta de nuevo.');
+        return false;
+      }
+      return true;
+    }
+  } catch (e) {
+    console.warn('Error guardando pedidos (sharedSet)', e);
+  }
+
+  try {
+    A33Storage.setItem(STORAGE_KEY_PEDIDOS, JSON.stringify(arr));
+    return true;
+  } catch (e) {
+    console.error('Error guardando pedidos', e);
+    showArchivedNotice('No se pudo guardar pedidos en este navegador.');
+    return false;
+  }
 }
 
 function loadArchivedPedidos() {
@@ -56,7 +386,7 @@ function loadArchivedPedidos() {
     const raw = A33Storage.getItem(STORAGE_KEY_PEDIDOS_ARCHIVED);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return normalizePedidosList(parsed);
   } catch (e) {
     console.error("Error leyendo pedidos archivados", e);
     return [];
@@ -64,7 +394,7 @@ function loadArchivedPedidos() {
 }
 
 function saveArchivedPedidos(list) {
-  A33Storage.setItem(STORAGE_KEY_PEDIDOS_ARCHIVED, JSON.stringify(list));
+  return saveArchivedPedidosSafe(list);
 }
 
 function showArchivedNotice(msg) {
@@ -151,6 +481,13 @@ function normalizeCustomerKey(name){
 
 function readPosCustomersRaw(){
   try{
+    if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+      const raw = A33Storage.sharedGet(POS_CUSTOMERS_KEY, [], 'local');
+      return Array.isArray(raw) ? raw : [];
+    }
+  }catch(_){ }
+
+  try{
     if (window.A33Storage && typeof A33Storage.getJSON === 'function'){
       const raw = A33Storage.getJSON(POS_CUSTOMERS_KEY, [], 'local');
       return Array.isArray(raw) ? raw : [];
@@ -167,13 +504,27 @@ function readPosCustomersRaw(){
 
 function writePosCustomersRaw(arr){
   const safe = Array.isArray(arr) ? arr : [];
+
+  try{
+    if (window.A33Storage && typeof A33Storage.sharedSet === 'function'){
+      const r = A33Storage.sharedSet(POS_CUSTOMERS_KEY, safe, { source: 'pedidos' });
+      if (!r || !r.ok){
+        console.warn('No se pudo guardar clientes (sharedSet)', r);
+        try { showArchivedNotice((r && r.message) ? r.message : 'Conflicto al guardar clientes. Recarga la pagina e intenta de nuevo.'); } catch(_){}
+        return false;
+      }
+      return true;
+    }
+  }catch(_){ }
+
   try{
     if (window.A33Storage && typeof A33Storage.setJSON === 'function'){
       A33Storage.setJSON(POS_CUSTOMERS_KEY, safe, 'local');
-      return;
+      return true;
     }
   }catch(_){ }
-  try{ localStorage.setItem(POS_CUSTOMERS_KEY, JSON.stringify(safe)); }catch(_){ }
+
+  try{ localStorage.setItem(POS_CUSTOMERS_KEY, JSON.stringify(safe)); return true; }catch(_){ return false; }
 }
 
 function detectCustomerCatalogType(arr){
@@ -568,6 +919,8 @@ function clearForm() {
   $("totalPagar").value = "";
   $("saldoPendiente").value = "";
   editingId = null;
+  editingBaseUpdatedAt = null;
+  try{ ensureDraftPedidoId(true); }catch(_){ }
   currentPriceSnapshot = {};
 
   // fecha de fabricación por defecto hoy
@@ -638,21 +991,49 @@ function populateForm(pedido) {
 
   editingId = pedido.id;
   $("save-btn").textContent = "Actualizar pedido";
+  editingBaseUpdatedAt = (pedido && typeof pedido.updatedAt === 'number') ? pedido.updatedAt : null;
+  try{ clearDraftPedido(); }catch(_){ }
 }
 
 function renderTable() {
-  const tbody = $("pedidos-table").querySelector("tbody");
+  const table = $("pedidos-table");
+  if (!table) return;
+  const tbody = table.querySelector("tbody");
   tbody.innerHTML = "";
-  const pedidos = loadPedidos().sort((a, b) => {
+
+  const qEl = $("active-search");
+  const q = qEl ? qEl.value.trim() : "";
+  const qNorm = q ? normalizeCustomerKey(q) : "";
+
+  let pedidos = loadPedidos();
+  pedidos.sort((a, b) => {
     if (!a.fechaCreacion || !b.fechaCreacion) return 0;
     return a.fechaCreacion.localeCompare(b.fechaCreacion);
   });
 
-  if (pedidos.length === 0) {
+  if (qNorm) {
+    pedidos = pedidos.filter((p) => buildPedidoSearchHaystack(p).includes(qNorm));
+  }
+
+  const total = pedidos.length;
+  const shown = pedidos.slice(0, Math.max(0, Number(activeLimit || A33_TABLE_PAGE_SIZE)));
+
+  const pager = $("active-pager");
+  const countEl = $("active-count");
+  const moreBtn = $("active-load-more");
+  if (countEl) countEl.textContent = total ? `Mostrando ${shown.length} de ${total}` : "";
+  if (pager) pager.hidden = !(total > A33_TABLE_PAGE_SIZE || qNorm);
+  if (moreBtn) {
+    const needsMore = total > shown.length;
+    moreBtn.hidden = !needsMore;
+    moreBtn.disabled = !needsMore;
+  }
+
+  if (total === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
     td.colSpan = 7;
-    td.textContent = "No hay pedidos registrados.";
+    td.textContent = qNorm ? "Sin resultados en pedidos registrados." : "No hay pedidos registrados.";
     td.style.textAlign = "center";
     td.style.color = "#c0c0c0";
     tr.appendChild(td);
@@ -660,10 +1041,11 @@ function renderTable() {
     return;
   }
 
-  pedidos.forEach((p) => {
+  shown.forEach((p) => {
     const tr = document.createElement("tr");
 
     const fechaTd = document.createElement("td");
+    fechaTd.className = "col-date col-hide-ipad";
     fechaTd.textContent = formatDate(p.fechaCreacion);
     tr.appendChild(fechaTd);
 
@@ -673,7 +1055,10 @@ function renderTable() {
     tr.appendChild(codigoTd);
 
     const clienteTd = document.createElement("td");
-    clienteTd.textContent = (p.customerName || p.clienteNombre || "");
+    const cSpan = document.createElement('span');
+    cSpan.className = 'cell-clamp';
+    cSpan.textContent = (p.customerName || p.clienteNombre || "");
+    clienteTd.appendChild(cSpan);
     tr.appendChild(clienteTd);
 
     const entregaTd = document.createElement("td");
@@ -682,11 +1067,13 @@ function renderTable() {
     tr.appendChild(entregaTd);
 
     const totalTd = document.createElement("td");
+    totalTd.className = "col-money";
     const total = typeof p.totalPagar === "number" ? p.totalPagar : 0;
     totalTd.textContent = total.toFixed(2);
     tr.appendChild(totalTd);
 
     const entregadoTd = document.createElement("td");
+    entregadoTd.className = "col-status";
     const delivered = (p && (p.estado === 'entregado')) || !!p.entregado;
     entregadoTd.textContent = delivered ? "Sí" : "No";
     tr.appendChild(entregadoTd);
@@ -759,20 +1146,27 @@ function renderArchivedTable() {
   });
 
   if (qNorm) {
-    archived = archived.filter((p) => {
-      const estado = getPedidoEstado(p);
-      const cliente = (p && (p.customerName || p.clienteNombre)) ? (p.customerName || p.clienteNombre) : "";
-      const codigo = (p && p.codigo) ? p.codigo : "";
-      const fechas = [p && p.fechaEntrega, p && p.fechaCreacion, p && p.archivedAt].map(formatDate).join(" ");
-      const hay = normalizeCustomerKey([cliente, codigo, estado, fechas].join(" "));
-      return hay.includes(qNorm);
-    });
+    archived = archived.filter((p) => buildPedidoSearchHaystack(p).includes(qNorm));
   }
 
-  const countEl = $("archived-count");
-  if (countEl) countEl.textContent = String(archived.length);
+  const total = archived.length;
+  const shown = archived.slice(0, Math.max(0, Number(archivedLimit || A33_TABLE_PAGE_SIZE)));
 
-  if (archived.length === 0) {
+  const countEl = $("archived-count");
+  if (countEl) countEl.textContent = String(total);
+
+  const pager = $("archived-pager");
+  const shownEl = $("archived-shown");
+  const moreBtn = $("archived-load-more");
+  if (shownEl) shownEl.textContent = total ? `Mostrando ${shown.length} de ${total}` : "";
+  if (pager) pager.hidden = !(total > A33_TABLE_PAGE_SIZE || qNorm);
+  if (moreBtn) {
+    const needsMore = total > shown.length;
+    moreBtn.hidden = !needsMore;
+    moreBtn.disabled = !needsMore;
+  }
+
+  if (total === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
     td.colSpan = 7;
@@ -784,11 +1178,11 @@ function renderArchivedTable() {
     return;
   }
 
-  archived.forEach((p) => {
+  shown.forEach((p) => {
     const tr = document.createElement("tr");
 
     const archTd = document.createElement("td");
-    archTd.className = "col-date";
+    archTd.className = "col-date col-hide-ipad";
     archTd.textContent = formatDate(p.archivedAt || "");
     tr.appendChild(archTd);
 
@@ -798,7 +1192,10 @@ function renderArchivedTable() {
     tr.appendChild(codigoTd);
 
     const clienteTd = document.createElement("td");
-    clienteTd.textContent = (p.customerName || p.clienteNombre || "");
+    const cSpan = document.createElement('span');
+    cSpan.className = 'cell-clamp';
+    cSpan.textContent = (p.customerName || p.clienteNombre || "");
+    clienteTd.appendChild(cSpan);
     tr.appendChild(clienteTd);
 
     const entregaTd = document.createElement("td");
@@ -817,9 +1214,9 @@ function renderArchivedTable() {
 
     const totalTd = document.createElement("td");
     totalTd.className = "col-money";
-    const total = (typeof p.totalPagar === "number") ? p.totalPagar
+    const tot = (typeof p.totalPagar === "number") ? p.totalPagar
       : ((typeof p.total === "number") ? p.total : 0);
-    totalTd.textContent = Number(total || 0).toFixed(2);
+    totalTd.textContent = Number(tot || 0).toFixed(2);
     tr.appendChild(totalTd);
 
     const accionesTd = document.createElement("td");
@@ -837,6 +1234,8 @@ function renderArchivedTable() {
         populateForm(p);
         // Guardar desde un archivado debe crear uno nuevo (no editar)
         editingId = null;
+        editingBaseUpdatedAt = null;
+        try{ ensureDraftPedidoId(true); }catch(_){ }
         const sb = $("save-btn");
         if (sb) sb.textContent = "Guardar como nuevo";
         showArchivedModeBanner("Viendo pedido archivado (Histórico). Guardar creará un pedido activo nuevo.");
@@ -845,7 +1244,16 @@ function renderArchivedTable() {
       }catch(_){}
     });
 
+    const borrarBtn = document.createElement("button");
+    borrarBtn.textContent = "🗑";
+    borrarBtn.className = "btn-danger a33-icon-btn";
+    borrarBtn.type = "button";
+    borrarBtn.title = "Borrar (definitivo)";
+    borrarBtn.setAttribute("aria-label", "Borrar (definitivo)");
+    borrarBtn.addEventListener("click", () => deleteArchivedPedido(p.id));
+
     accionesTd.appendChild(verBtn);
+    accionesTd.appendChild(borrarBtn);
     tr.appendChild(accionesTd);
 
     tbody.appendChild(tr);
@@ -917,33 +1325,119 @@ function editPedido(id) {
 populateForm(p);
 }
 
-function deletePedido(id) {
+async function deletePedido(id) {
   const pedidos = loadPedidos();
-  const idx = pedidos.findIndex((p) => p.id === id);
+  const idx = pedidos.findIndex((p) => String(p.id) === String(id));
   if (idx < 0) return;
 
   if (!confirm("¿Archivar este pedido? Se moverá al Histórico.")) return;
 
-  const snap = { ...(pedidos[idx] || {}) };
-  snap.archivedAt = new Date().toISOString();
+  const res = await withSavingLock('Archivando…', async () => {
+    const snap = { ...(pedidos[idx] || {}) };
+    snap.archivedAt = new Date().toISOString();
 
-  const archived = loadArchivedPedidos();
-  const aIdx = archived.findIndex((p) => p.id === snap.id);
-  if (aIdx >= 0) archived[aIdx] = snap;
-  else archived.push(snap);
+    const archived = loadArchivedPedidos();
+    const aIdx = archived.findIndex((p) => String(p.id) === String(snap.id));
+    const newArchived = Array.isArray(archived) ? [...archived] : [];
+    if (aIdx >= 0) newArchived[aIdx] = snap;
+    else newArchived.push(snap);
 
-  pedidos.splice(idx, 1);
+    // Guardar en histórico primero; luego remover de activos (con rollback básico si falla)
+    const okArch = saveArchivedPedidos(newArchived);
+    if (!okArch) {
+      return { ok:false, message:'No se pudo archivar (falló el guardado del Histórico). No se hicieron cambios.' };
+    }
+    if (!confirmArchivedPersisted(snap.id)) {
+      return { ok:false, message:'Archivado no confirmado. No se hicieron cambios.' };
+    }
 
-  savePedidos(pedidos);
-  saveArchivedPedidos(archived);
+    const newPedidos = Array.isArray(pedidos) ? [...pedidos] : [];
+    newPedidos.splice(idx, 1);
+
+    const okAct = savePedidos(newPedidos);
+    if (!okAct) {
+      // intentar rollback del histórico
+      try { saveArchivedPedidos(archived); } catch(_){ }
+      return { ok:false, message:'No se pudo completar el archivado (falló el guardado de pedidos activos). No se hicieron cambios.' };
+    }
+
+    // confirmar remoción (si queda duplicado, avisamos)
+    const stillThere = confirmPedidosPersisted(id);
+    if (stillThere) {
+      return { ok:false, message:'Archivado parcial: quedó también en la lista activa. Recargá y revisá.' };
+    }
+
+    return { ok:true };
+  });
+
+  if (!res || !res.ok){
+    const msg = (res && res.message) ? res.message : 'No se pudo archivar el pedido.';
+    showArchivedNotice(msg);
+    alert(msg);
+    return;
+  }
 
   renderTable();
   renderArchivedTable();
-  if (editingId === id) clearForm();
-
+  if (String(editingId) === String(id)) clearForm();
   showArchivedNotice("Archivado ✓");
 }
 
+async function deleteArchivedPedido(id){
+  const archived = loadArchivedPedidos();
+  const idx = archived.findIndex((p) => String(p && p.id) === String(id));
+  if (idx < 0) return;
+
+  const p = archived[idx] || {};
+  const codigo = String(p.codigo || '').trim();
+  const cliente = String(p.customerName || p.clienteNombre || '').trim();
+  const entrega = formatDate(p.fechaEntrega);
+
+  const msgLines = [
+    '¿Borrar definitivamente este pedido del Histórico?',
+    '',
+    (codigo ? `Código: ${codigo}` : null),
+    (cliente ? `Cliente: ${cliente}` : null),
+    (entrega ? `Entrega: ${entrega}` : null),
+    '',
+    'Esto no se puede deshacer.'
+  ].filter(Boolean);
+
+  if (!confirm(msgLines.join('\n'))) return;
+
+  const res = await withSavingLock('Borrando…', async () => {
+    // Releer antes de guardar (multi-tab / reintentos)
+    const latest = loadArchivedPedidos();
+    const i2 = latest.findIndex((x) => String(x && x.id) === String(id));
+    if (i2 < 0) return { ok:false, message:'Ya no existe en Histórico.' };
+
+    const next = latest.filter((_, i) => i !== i2);
+    const ok = saveArchivedPedidos(next);
+    if (!ok) return { ok:false, message:'No se pudo borrar (error de almacenamiento).' };
+
+    // Si estábamos “viendo” este archivado, limpiar modo
+    if (viewingArchivedId != null && String(viewingArchivedId) === String(id)){
+      viewingArchivedId = null;
+      try{ showArchivedModeBanner(''); }catch(_){ }
+      try{
+        const sb = $('save-btn');
+        if (sb) sb.textContent = 'Guardar pedido';
+      }catch(_){ }
+    }
+
+    return { ok:true, message:'Borrado ✓' };
+  });
+
+  if (!res || !res.ok){
+    const msg = (res && res.message) ? res.message : 'No se pudo borrar del Histórico.';
+    showArchivedNotice(msg);
+    alert(msg);
+    return;
+  }
+
+  renderArchivedTable();
+  showArchivedNotice('Borrado ✓');
+}
 
 function createICSEventFromPedido(p) {
   const fechaEntrega = p.fechaEntrega || p.fechaCreacion;
@@ -1046,18 +1540,40 @@ function exportPedidoToCalendar(id) {
   }, 0);
 }
 
-function exportToCSV() {
+async function exportToCSV() {
+  const btn = $("export-btn");
+  const statusEl = $("export-status");
+  const setStatus = (t) => { if (statusEl) statusEl.textContent = String(t || ""); };
+
+  try{
+    if (btn && btn.dataset && btn.dataset.busy === '1') return;
+    if (btn && btn.dataset) btn.dataset.busy = '1';
+  }catch(_){ }
+
   const pedidos = loadPedidos();
   if (pedidos.length === 0) {
+    setStatus('');
     alert("No hay pedidos para exportar.");
+    try{ if (btn && btn.dataset) btn.dataset.busy = '0'; }catch(_){ }
     return;
   }
 
   if (typeof XLSX === "undefined") {
-    alert("No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.");
+    setStatus('Falló');
+    alert("No se pudo generar el archivo de Excel (librería XLSX no cargada).");
+    try{ if (btn && btn.dataset) btn.dataset.busy = '0'; }catch(_){ }
     return;
   }
 
+  const prevText = btn ? (btn.textContent || 'Exportar a Excel') : '';
+  if (btn){
+    btn.disabled = true;
+    btn.textContent = 'Exportando…';
+  }
+  setStatus('Exportando…');
+  await new Promise((r) => setTimeout(r, 0));
+
+  try{
   const headers = [
     "Fecha fabricación",
     "Fecha entrega",
@@ -1144,7 +1660,20 @@ function exportToCSV() {
 
   const timestamp = new Date().toISOString().slice(0, 10);
   const filename = `arcano33_pedidos_${timestamp}.xlsx`;
+
   XLSX.writeFile(wb, filename);
+  setStatus('Listo ✓');
+  }catch(e){
+    console.error('Export falló', e);
+    setStatus('Falló');
+    alert('No se pudo exportar. Probá de nuevo o recargá la página.');
+  }finally{
+    if (btn){
+      btn.disabled = false;
+      btn.textContent = prevText;
+    }
+    try{ if (btn && btn.dataset) btn.dataset.busy = '0'; }catch(_){ }
+  }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -1220,116 +1749,244 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  $("pedido-form").addEventListener("submit", async (e) => {
+    $("pedido-form").addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    // Cliente seleccionado/creado (viene del catálogo POS)
-    const customer = getCustomerFromUI();
-    if (!customer || !customer.name){
-      alert('Seleccioná un cliente del POS o creá uno nuevo.');
+    const res = await withSavingLock('Guardando…', async () => {
+      // Cliente seleccionado/creado (viene del catálogo POS)
+      const customer = getCustomerFromUI();
+      if (!customer || !customer.name){
+        return { ok:false, message:'Seleccioná un cliente del POS o creá uno nuevo.' };
+      }
+
+      // Validar números crudos (evitar NaN/valores raros)
+      const qPulso = readFiniteNumber('pulsoCant', 'Pulso 250 ml', { min: 0, integer: true });
+      if (!qPulso.ok) return qPulso;
+      const qMedia = readFiniteNumber('mediaCant', 'Media 375 ml', { min: 0, integer: true });
+      if (!qMedia.ok) return qMedia;
+      const qDjeba = readFiniteNumber('djebaCant', 'Djeba 750 ml', { min: 0, integer: true });
+      if (!qDjeba.ok) return qDjeba;
+      const qLitro = readFiniteNumber('litroCant', 'Litro 1000 ml', { min: 0, integer: true });
+      if (!qLitro.ok) return qLitro;
+      const qGalon = readFiniteNumber('galonCant', 'Galón 3750 ml', { min: 0, integer: true });
+      if (!qGalon.ok) return qGalon;
+
+      const nEnvio = readFiniteNumber('envio', 'Envío (C$)', { min: 0 });
+      if (!nEnvio.ok) return nEnvio;
+      const nDescuento = readFiniteNumber('descuento', 'Descuento (C$)', { min: 0 });
+      if (!nDescuento.ok) return nDescuento;
+      const nPagoAnt = readFiniteNumber('pagoAnticipado', 'Pago anticipado (C$)', { min: 0 });
+      if (!nPagoAnt.ok) return nPagoAnt;
+
+      const fechaCreacion = $("fechaCreacion").value || new Date().toISOString().slice(0, 10);
+      const fechaEntrega = $("fechaEntrega").value || fechaCreacion;
+      const codigo = $("codigoPedido").value || generateCodigo(fechaCreacion);
+
+      // calcular totales antes de guardar (usa precios del POS + fallback snapshot)
+      const totales = await calcularTotalesDesdeFormulario();
+
+      // Normalizar/recalcular con inputs validados (evita saldos negativos raros)
+      totales.envio = nEnvio.value;
+      totales.descuento = nDescuento.value;
+      totales.pagoAnticipado = nPagoAnt.value;
+      totales.totalPagar = (totales.subtotal || 0) - (totales.descuento || 0) + (totales.envio || 0);
+      totales.saldoPendiente = (totales.totalPagar || 0) - (totales.pagoAnticipado || 0);
+      try{
+        $("totalPagar").value = Number(totales.totalPagar || 0).toFixed(2);
+        $("saldoPendiente").value = Number(totales.saldoPendiente || 0).toFixed(2);
+      }catch(_){}
+
+      const payload = {
+        customer,
+        fechaCreacion,
+        fechaEntrega,
+        codigo,
+        qty: {
+          pulso: qPulso.value,
+          media: qMedia.value,
+          djeba: qDjeba.value,
+          litro: qLitro.value,
+          galon: qGalon.value,
+        },
+        totales,
+      };
+
+      const v = validatePedidoBeforeSave(payload);
+      if (!v.ok) return v;
+
+      // ID estable: para pedidos nuevos usamos un draftId (idempotente en reintentos/recargas)
+      let id = (editingId != null && editingId !== '') ? editingId : ensureDraftPedidoId(false);
+
+      // Dedupe por código (reintentos): si ya existe un pedido con este código, no crear duplicado
+      const pedidosNow = loadPedidos();
+      const codigoKey = normalizeCodigoKey(codigo);
+      const existingByCodigo = (codigoKey ? pedidosNow.find(p => normalizeCodigoKey(p && p.codigo) === codigoKey) : null);
+
+      if ((editingId == null || editingId === '') && existingByCodigo){
+        const exName = (existingByCodigo.customerName || existingByCodigo.clienteNombre || '');
+        const sameCustomer = normalizeCustomerKey(exName) === normalizeCustomerKey(customer.name);
+        const sameCre = formatDate(existingByCodigo.fechaCreacion) === formatDate(fechaCreacion);
+        const sameEnt = formatDate(existingByCodigo.fechaEntrega) === formatDate(fechaEntrega);
+        if (sameCustomer && sameCre && sameEnt){
+          // reintento “sano”: actualizar el existente
+          id = existingByCodigo.id;
+          editingId = id;
+        } else {
+          return { ok:false, message:('El código ' + codigo + ' ya existe en otro pedido. Abrí ese pedido para editar o cambia el código.') };
+        }
+      }
+
+      // Conflicto conservador: si se está editando y el pedido cambió en otra pestaña, bloquear
+      if ((editingId != null && editingId !== '') && editingBaseUpdatedAt != null){
+        const cur = pedidosNow.find(p => String(p && p.id) === String(editingId));
+        const curUp = (cur && typeof cur.updatedAt === 'number') ? cur.updatedAt : null;
+        if (curUp != null && curUp !== editingBaseUpdatedAt){
+          return { ok:false, message:'Este pedido fue modificado en otra pestaña/dispositivo. Recargá y volvé a intentar.' };
+        }
+      }
+
+      const estado = $("estado") ? $("estado").value : 'pendiente';
+      const entregado = (estado === 'entregado');
+
+      // Legacy: aproximar estado de pago a partir del anticipo
+      const pagoAnt = Number(totales.pagoAnticipado || 0);
+      let estadoPago = 'contraentrega';
+      if (pagoAnt >= (totales.totalPagar - 0.001)) estadoPago = 'pagado';
+      else if (pagoAnt > 0) estadoPago = 'adelanto';
+
+      const nowMs = _nowMs();
+      let createdAt = nowMs;
+      try{
+        const existingById = (Array.isArray(pedidosNow) ? pedidosNow : []).find(p => String(p && p.id) === String(id));
+        const exCreated = existingById ? Number(existingById.createdAt || 0) : 0;
+        if (exCreated && isFinite(exCreated)) createdAt = exCreated;
+      }catch(_){ }
+
+      const pedido = {
+        id,
+        createdAt,
+        updatedAt: nowMs,
+        fechaCreacion,
+        fechaEntrega,
+        codigo,
+        prioridad: $("prioridad").value,
+
+        // Nuevos campos (Pedidos v2)
+        customerId: customer.id || '',
+        customerName: customer.name,
+
+        // Compat (UI existente / tabla / export): seguimos guardando clienteNombre
+        clienteId: customer.id || '',
+        clienteNombre: customer.name,
+        clienteTipo: $("clienteTipo").value,
+        clienteTelefono: $("clienteTelefono").value.trim(),
+        // Dirección removida de UI: se mantiene hidden para compatibilidad
+        clienteDireccion: $("clienteDireccion") ? $("clienteDireccion").value.trim() : '',
+        clienteReferencia: $("clienteReferencia").value.trim(),
+
+        // Cantidades
+        pulsoCant: qPulso.value,
+        mediaCant: qMedia.value,
+        djebaCant: qDjeba.value,
+        litroCant: qLitro.value,
+        galonCant: qGalon.value,
+
+        // Snapshot de precios unitarios (aunque no se muestre en UI)
+        priceSnapshot: totales.unitPricesUsed,
+
+        // Legacy: mantener campos de precio/desc por línea para no romper pedidos viejos/export
+        pulsoPrecio: totales.unitPricesUsed.pulso,
+        pulsoDesc: 0,
+        mediaPrecio: totales.unitPricesUsed.media,
+        mediaDesc: 0,
+        djebaPrecio: totales.unitPricesUsed.djeba,
+        djebaDesc: 0,
+        litroPrecio: totales.unitPricesUsed.litro,
+        litroDesc: 0,
+        galonPrecio: totales.unitPricesUsed.galon,
+        galonDesc: 0,
+
+        // Totales/Pagos (nuevo esquema)
+        envio: totales.envio,
+        subtotal: totales.subtotal,
+        subtotalPresentaciones: totales.subtotal,
+        descuento: totales.descuento,
+        descuentoFijo: totales.descuento,
+        descuentoTotal: totales.descuento,
+        totalPagar: totales.totalPagar,
+        pagoAnticipado: totales.pagoAnticipado,
+        montoPagado: totales.pagoAnticipado,
+        saldoPendiente: totales.saldoPendiente,
+        metodoPago: $("metodoPago").value,
+        estado,
+        estadoPago,
+        entregado,
+
+        lotesRelacionados: $("lotesRelacionados").value.trim(),
+      };
+
+      // Mantener snapshot actual en memoria (fallback si POS no está disponible)
+      currentPriceSnapshot = { ...(totales.unitPricesUsed || {}) };
+
+      const pedidos = loadPedidos();
+      const idx = pedidos.findIndex((p) => String(p.id) === String(pedido.id));
+      const updated = Array.isArray(pedidos) ? [...pedidos] : [];
+      if (idx >= 0) updated[idx] = pedido;
+      else updated.push(pedido);
+
+      const ok = savePedidos(updated);
+      if (!ok) {
+        return { ok:false, message:'No se pudo guardar. No se limpió el formulario.' };
+      }
+      if (!confirmPedidosPersisted(pedido.id)) {
+        return { ok:false, message:'Guardado no confirmado. No se limpió el formulario. Recargá e intentá de nuevo.' };
+      }
+
+      return { ok:true };
+    });
+
+    if (!res || !res.ok){
+      const msg = (res && res.message) ? res.message : 'No se pudo guardar el pedido.';
+      showArchivedNotice(msg);
+      alert(msg);
       return;
     }
 
-    // calcular totales antes de guardar (usa precios del POS + fallback snapshot)
-    const totales = await calcularTotalesDesdeFormulario();
-
-    const id = editingId || Date.now();
-    const fechaCreacion = $("fechaCreacion").value || new Date().toISOString().slice(0, 10);
-    const fechaEntrega = $("fechaEntrega").value || fechaCreacion;
-    const codigo = $("codigoPedido").value || generateCodigo(fechaCreacion);
-    const estado = $("estado") ? $("estado").value : 'pendiente';
-    const entregado = (estado === 'entregado');
-
-    // Legacy: aproximar estado de pago a partir del anticipo
-    const pagoAnt = parseNumber($("pagoAnticipado").value);
-    let estadoPago = 'contraentrega';
-    if (pagoAnt >= (totales.totalPagar - 0.001)) estadoPago = 'pagado';
-    else if (pagoAnt > 0) estadoPago = 'adelanto';
-
-    const pedido = {
-      id,
-      fechaCreacion,
-      fechaEntrega,
-      codigo,
-      prioridad: $("prioridad").value,
-
-      // Nuevos campos (Pedidos v2)
-      customerId: customer.id || '',
-      customerName: customer.name,
-
-      // Compat (UI existente / tabla / export): seguimos guardando clienteNombre
-      clienteId: customer.id || '',
-      clienteNombre: customer.name,
-      clienteTipo: $("clienteTipo").value,
-      clienteTelefono: $("clienteTelefono").value.trim(),
-      // Dirección removida de UI: se mantiene hidden para compatibilidad
-      clienteDireccion: $("clienteDireccion") ? $("clienteDireccion").value.trim() : '',
-      clienteReferencia: $("clienteReferencia").value.trim(),
-
-      // Cantidades
-      pulsoCant: parseNumber($("pulsoCant").value),
-      mediaCant: parseNumber($("mediaCant").value),
-      djebaCant: parseNumber($("djebaCant").value),
-      litroCant: parseNumber($("litroCant").value),
-      galonCant: parseNumber($("galonCant").value),
-
-      // Snapshot de precios unitarios (aunque no se muestre en UI)
-      priceSnapshot: totales.unitPricesUsed,
-
-      // Legacy: mantener campos de precio/desc por línea para no romper pedidos viejos/export
-      pulsoPrecio: totales.unitPricesUsed.pulso,
-      pulsoDesc: 0,
-      mediaPrecio: totales.unitPricesUsed.media,
-      mediaDesc: 0,
-      djebaPrecio: totales.unitPricesUsed.djeba,
-      djebaDesc: 0,
-      litroPrecio: totales.unitPricesUsed.litro,
-      litroDesc: 0,
-      galonPrecio: totales.unitPricesUsed.galon,
-      galonDesc: 0,
-
-      // Totales/Pagos (nuevo esquema)
-      envio: totales.envio,
-      subtotal: totales.subtotal,
-      subtotalPresentaciones: totales.subtotal,
-      descuento: totales.descuento,
-      descuentoFijo: totales.descuento,
-      descuentoTotal: totales.descuento,
-      totalPagar: totales.totalPagar,
-      pagoAnticipado: totales.pagoAnticipado,
-      montoPagado: totales.pagoAnticipado,
-      saldoPendiente: totales.saldoPendiente,
-      metodoPago: $("metodoPago").value,
-      estado,
-      estadoPago,
-      entregado,
-
-      lotesRelacionados: $("lotesRelacionados").value.trim(),
-    };
-
-    // Mantener snapshot actual en memoria (fallback si POS no está disponible)
-    currentPriceSnapshot = { ...(totales.unitPricesUsed || {}) };
-
-    const pedidos = loadPedidos();
-    const idx = pedidos.findIndex((p) => p.id === pedido.id);
-    if (idx >= 0) {
-      pedidos[idx] = pedido;
-    } else {
-      pedidos.push(pedido);
-    }
-    savePedidos(pedidos);
     renderTable();
     clearForm();
     alert("Pedido guardado correctamente.");
   });
 
   $("reset-btn").addEventListener("click", () => clearForm());
-  $("export-btn").addEventListener("click", () => exportToCSV());
-  $("clear-all-btn").addEventListener("click", () => {
+  $("export-btn").addEventListener("click", () => { try{ exportToCSV(); }catch(_){ } });
+    $("clear-all-btn").addEventListener("click", async () => {
     if (!confirm("¿Borrar todos los pedidos registrados?")) return;
-    A33Storage.removeItem(STORAGE_KEY_PEDIDOS);
+
+    const res = await withSavingLock('Borrando…', async () => {
+      try{
+        A33Storage.removeItem(STORAGE_KEY_PEDIDOS);
+      }catch(e){
+        console.error('Error borrando pedidos', e);
+        return { ok:false, message:'No se pudo borrar (error de almacenamiento).' };
+      }
+
+      const after = loadPedidos();
+      if (Array.isArray(after) && after.length === 0) {
+        return { ok:true };
+      }
+      return { ok:false, message:'Borrado no confirmado. Recargá e intentá de nuevo.' };
+    });
+
+    if (!res || !res.ok){
+      const msg = (res && res.message) ? res.message : 'No se pudo borrar.';
+      showArchivedNotice(msg);
+      alert(msg);
+      return;
+    }
+
     renderTable();
     clearForm();
+    showArchivedNotice("Borrado ✓");
   });
   $("calc-totals-btn").addEventListener("click", async () => {
     try { await calcularTotalesDesdeFormulario(); } catch {}
@@ -1349,12 +2006,61 @@ document.addEventListener("DOMContentLoaded", () => {
   renderTable();
   renderArchivedTable();
 
+  // --- Búsqueda (debounced) + paginación ---
+  const activeSearch = $("active-search");
+  if (activeSearch){
+    const onActiveSearch = debounce(() => {
+      activeLimit = A33_TABLE_PAGE_SIZE;
+      try{ renderTable(); }catch(_){ }
+    }, 140);
+    activeSearch.addEventListener("input", onActiveSearch);
+  }
+
   const archSearch = $("archived-search");
   if (archSearch){
-    archSearch.addEventListener("input", () => {
+    const onArchSearch = debounce(() => {
+      archivedLimit = A33_TABLE_PAGE_SIZE;
+      try{ renderArchivedTable(); }catch(_){ }
+    }, 140);
+    archSearch.addEventListener("input", onArchSearch);
+  }
+
+  const moreActive = $("active-load-more");
+  if (moreActive){
+    moreActive.addEventListener('click', () => {
+      activeLimit = Math.max(A33_TABLE_PAGE_SIZE, Number(activeLimit || 0)) + A33_TABLE_PAGE_SIZE;
+      try{ renderTable(); }catch(_){ }
+    });
+  }
+
+  const moreArch = $("archived-load-more");
+  if (moreArch){
+    moreArch.addEventListener('click', () => {
+      archivedLimit = Math.max(A33_TABLE_PAGE_SIZE, Number(archivedLimit || 0)) + A33_TABLE_PAGE_SIZE;
       try{ renderArchivedTable(); }catch(_){ }
     });
   }
+
+  // --- Detalles (toggle de columnas opcionales en iPad) ---
+  function setDetailsMode(on){
+    try{ document.body.classList.toggle('a33-show-details', !!on); }catch(_){ }
+    const b1 = $("details-toggle");
+    const b2 = $("archived-details-toggle");
+    [b1,b2].forEach((b) => {
+      if (!b) return;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.textContent = on ? 'Detalles ✓' : 'Detalles';
+    });
+  }
+  function toggleDetails(){
+    const on = document.body && document.body.classList ? document.body.classList.contains('a33-show-details') : false;
+    setDetailsMode(!on);
+  }
+  const detBtn = $("details-toggle");
+  if (detBtn) detBtn.addEventListener('click', toggleDetails);
+  const detBtn2 = $("archived-details-toggle");
+  if (detBtn2) detBtn2.addEventListener('click', toggleDetails);
+  setDetailsMode(false);
 
   registerServiceWorker();
 });
@@ -1363,7 +2069,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js?v=4.20.7').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.13').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

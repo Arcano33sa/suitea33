@@ -3,6 +3,8 @@ const STORAGE_KEY = "arcano33_lotes";
 const ARCHIVE_KEY = "arcano33_lotes_archived"; // Histórico (Etapa 5)
 
 let editingId = null;
+let isSavingLote = false;
+let editingCtx = null; // { id, metaRev, metaUpdatedAt, fingerprint }
 
 // Abreviaturas para compactar columnas (UI) sin tocar datos
 const PROD_ABBR = {
@@ -16,6 +18,74 @@ const PROD_ABBR = {
 
 // Etapa 2: Totales (RESTANTE) por presentación
 const TOTAL_KEYS = ["P", "M", "D", "L", "G"];
+
+// --- Identidad estable + anti-duplicados (Etapa 1)
+function canonicalBatchCode(code){
+  // Canónico: trim + upper + sin espacios (conservador: NO tocar otros caracteres)
+  return (code ?? '').toString().trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function stableHash32(str){
+  // djb2 (simple, determinístico) -> hex
+  let h = 5381;
+  const s = String(str ?? '');
+  for (let i = 0; i < s.length; i++){
+    h = ((h << 5) + h) + s.charCodeAt(i);
+    h >>>= 0;
+  }
+  return h.toString(16);
+}
+
+function deriveStableLoteId(lote){
+  const bc = canonicalBatchCode(lote?.codigo || lote?.batchCode || lote?.code);
+  if (bc) return `batch_${bc}`;
+
+  // Fallback determinístico si no hay código
+  const base = JSON.stringify({
+    codigo: (lote?.codigo || ''),
+    fecha: (lote?.fecha || ''),
+    createdAt: (lote?.createdAt || ''),
+    volTotal: (lote?.volTotal || ''),
+    pulso: (lote?.pulso ?? ''),
+    media: (lote?.media ?? ''),
+    djeba: (lote?.djeba ?? ''),
+    litro: (lote?.litro ?? ''),
+    galon: (lote?.galon ?? ''),
+  });
+  return `lote_${stableHash32(base)}`;
+}
+
+function backfillLoteIdentityInPlace(lote){
+  if (!lote || typeof lote !== 'object') return false;
+  let changed = false;
+
+  if (!lote.loteId){
+    lote.loteId = lote.id || deriveStableLoteId(lote);
+    changed = true;
+  }
+  if (!lote.id){
+    // Compat: el resto del módulo edita por lote.id
+    lote.id = lote.loteId;
+    changed = true;
+  }
+
+  const bc = canonicalBatchCode(lote.codigo);
+  if (bc && lote.batchCode !== bc){
+    lote.batchCode = bc;
+    changed = true;
+  }
+
+  return changed;
+}
+
+function backfillLotesIdentityIfNeeded(lotes){
+  if (!Array.isArray(lotes) || !lotes.length) return { lotes, changed: false };
+  let changed = false;
+  for (const l of lotes){
+    if (backfillLoteIdentityInPlace(l)) changed = true;
+  }
+  return { lotes, changed };
+}
 
 function getCanonicalRemainingByKey(lote){
   // Fuente de verdad: lote.eventUsage[eventId].remainingByKey (o equivalente)
@@ -68,13 +138,206 @@ function $(id) {
   return document.getElementById(id);
 }
 
+// ================================
+// Etapa 3: iPad-first + rendimiento
+// - búsqueda con debounce
+// - paginación simple (cargar más)
+// - menos listeners (delegación)
+// ================================
+
+const LIST_PAGE_SIZE = 60;
+
+let listView = {
+  query: '',
+  pageSize: LIST_PAGE_SIZE,
+  wanted: LIST_PAGE_SIZE,
+  rendered: 0,
+  metaRev: null,
+  allSorted: [],
+  filtered: [],
+  byId: new Map(),
+  searchIndex: new Map(),
+  totals: { P: 0, M: 0, D: 0, L: 0, G: 0 },
+};
+
+let isExporting = false;
+
+function debounce(fn, delayMs){
+  let t = null;
+  return (...args) => {
+    if (t) clearTimeout(t);
+    t = setTimeout(() => fn(...args), delayMs);
+  };
+}
+
+function setExportHint(msg, isError){
+  const el = $("export-hint");
+  if (!el) return;
+  el.textContent = msg ? String(msg) : "";
+  el.classList.toggle('is-error', !!isError);
+}
+
+
+function isCardMode(){
+  try{
+    return window.matchMedia && window.matchMedia('(max-width: 1024px)').matches;
+  }catch(_){
+    return false;
+  }
+}
+
+// ================================
+// Etapa 2: Compatibilidad total + lectura robusta
+// - tolera data vieja / variantes de otros módulos
+// - normaliza fechas (YYYY-MM-DD) y números
+// ================================
+
+function normStr(v){
+  if (v == null) return '';
+  return String(v);
+}
+
+function isBlank(v){
+  return v == null || (typeof v === 'string' && v.trim() === '');
+}
+
+function normalizeDateYMD(value){
+  if (!value) return '';
+  // Si ya es YYYY-MM-DD, respetar
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  try{
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0,10);
+  }catch(_){
+    return '';
+  }
+}
+
+function coerceNonNegIntString(value, fallback='0'){
+  if (value == null) return fallback;
+  const n = parseInt(String(value).replace(/[^0-9-]/g,''), 10);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return String(n);
+}
+
+function coerceFiniteNumberString(value, fallback=''){
+  if (value == null) return fallback;
+  const s = String(value).trim();
+  if (!s) return fallback;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return fallback;
+  // Mantener entero sin .0, pero no forzar decimales.
+  return String(n % 1 === 0 ? Math.trunc(n) : n);
+}
+
+function normalizeLoteRecord(lote){
+  if (!lote || typeof lote !== 'object') return null;
+  const out = { ...lote };
+
+  // Variantes comunes de otros módulos
+  if (isBlank(out.codigo) && !isBlank(out.batchCode)) out.codigo = normStr(out.batchCode).trim();
+  if (isBlank(out.codigo) && !isBlank(out.code)) out.codigo = normStr(out.code).trim();
+
+  // Identidad estable (Etapa 1)
+  try{ backfillLoteIdentityInPlace(out); }catch(_){ }
+
+  // Fechas
+  const fecha = normalizeDateYMD(out.fecha || out.fechaProd || out.fechaProduccion || out.createdAt);
+  if (fecha) out.fecha = fecha;
+  const cad = normalizeDateYMD(out.caducidad || out.exp || out.expiryDate);
+  if (cad) out.caducidad = cad;
+  if (!out.caducidad && out.fecha){
+    out.caducidad = calculateCaducidad(out.fecha) || '';
+  }
+
+  // Números (conservador: no inventar, solo sanear)
+  out.pulso = coerceNonNegIntString(out.pulso, '0');
+  out.media = coerceNonNegIntString(out.media, '0');
+  out.djeba = coerceNonNegIntString(out.djeba, '0');
+  out.litro = coerceNonNegIntString(out.litro, '0');
+  // tolerar 'galón' legacy
+  if (out.galon == null && out['galón'] != null) out.galon = out['galón'];
+  out.galon = coerceNonNegIntString(out.galon, '0');
+
+  out.volTotal = coerceFiniteNumberString(out.volTotal, out.volTotal == null ? '' : '');
+  out.volVino = coerceFiniteNumberString(out.volVino, out.volVino == null ? '' : '');
+  out.volVodka = coerceFiniteNumberString(out.volVodka, out.volVodka == null ? '' : '');
+  out.volJugo = coerceFiniteNumberString(out.volJugo, out.volJugo == null ? '' : '');
+  out.volSirope = coerceFiniteNumberString(out.volSirope, out.volSirope == null ? '' : '');
+  out.volAgua = coerceFiniteNumberString(out.volAgua, out.volAgua == null ? '' : '');
+
+  // Aceptar totalVolumenFinalMl (Calculadora/inventario) como volTotal si faltaba
+  if (isBlank(out.volTotal) && out.totalVolumenFinalMl != null){
+    const n = Number(out.totalVolumenFinalMl);
+    if (Number.isFinite(n) && n >= 0) out.volTotal = String(Math.round(n));
+  }
+
+  // Notas
+  if (out.notas != null) out.notas = String(out.notas);
+
+  return out;
+}
+
+function normalizeLotesArray(arr){
+  const safe = Array.isArray(arr) ? arr : [];
+  const out = [];
+  for (const it of safe){
+    const n = normalizeLoteRecord(it);
+    if (n) out.push(n);
+  }
+  return out;
+}
+
+function readLotesAndMetaFresh(){
+  try{
+    if (window.A33Storage && typeof A33Storage.sharedRead === 'function'){
+      const r = A33Storage.sharedRead(STORAGE_KEY, [], 'local');
+      const data = normalizeLotesArray(r && r.data);
+      return { lotes: data, meta: r && r.meta ? r.meta : A33Storage.sharedGetMeta(STORAGE_KEY, 'local') };
+    }
+  }catch(_){ }
+  // Fallback
+  let lotes = [];
+  try{
+    const raw = A33Storage.getItem(STORAGE_KEY);
+    if (raw) lotes = JSON.parse(raw) || [];
+  }catch(_){ lotes = []; }
+  return { lotes: normalizeLotesArray(lotes), meta: { rev: 0, updatedAt: null, writer: '' } };
+}
+
+function nonEditableFingerprint(lote){
+  if (!lote || typeof lote !== 'object') return '';
+  // Solo campos que NO vienen del formulario (para detectar pisadas reales)
+  const pick = {
+    loteId: lote.loteId || null,
+    status: lote.status || null,
+    assignedEventId: lote.assignedEventId ?? null,
+    assignedEventName: lote.assignedEventName || null,
+    assignedAt: lote.assignedAt || null,
+    assignedCargaId: lote.assignedCargaId || null,
+    assignmentHistory: lote.assignmentHistory || null,
+    eventUsage: lote.eventUsage || null,
+    closedAt: lote.closedAt || null,
+    reversedAt: lote.reversedAt || null,
+    reversedReason: lote.reversedReason || null,
+    parentLotId: lote.parentLotId || null,
+    loteType: lote.loteType || null,
+    sourceEventId: lote.sourceEventId || null,
+    sourceEventName: lote.sourceEventName || null,
+    recetaId: lote.recetaId || lote.recipeId || null,
+    recetaNombre: lote.recetaNombre || lote.recipeName || null,
+    inventarioRef: lote.inventarioRef || null,
+    extraRefs: lote.refs || null,
+  };
+  try{ return stableHash32(JSON.stringify(pick)); }catch(_){ return ''; }
+}
+
 function loadLotes() {
   try {
-    const raw = A33Storage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
+    // Lectura robusta (Etapa 2): normaliza sin romper data vieja.
+    return readLotesAndMetaFresh().lotes;
   } catch (e) {
     console.error("Error leyendo localStorage", e);
     return [];
@@ -99,7 +362,30 @@ function saveArchivedLotes(data){
 }
 
 function saveLotes(data) {
-  A33Storage.setItem(STORAGE_KEY, JSON.stringify(data));
+  try {
+    if (window.A33Storage && typeof A33Storage.sharedSet === 'function') {
+      const r = A33Storage.sharedSet(STORAGE_KEY, data, { source: 'lotes' });
+      if (r && r.ok === false) {
+        if (r.message) alert(r.message);
+        return false;
+      }
+      return true;
+    }
+  } catch (e) {
+    console.warn('saveLotes (shared) falló, usando fallback:', e);
+  }
+  try {
+    const ok = A33Storage.setItem(STORAGE_KEY, JSON.stringify(data));
+    if (!ok) {
+      alert('No se pudo guardar el lote. Revisa espacio disponible o permisos del navegador.');
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('Error guardando lotes (fallback)', e);
+    alert('No se pudo guardar el lote.');
+    return false;
+  }
 }
 
 function formatDate(value) {
@@ -328,12 +614,14 @@ function clearForm() {
   $("fecha").value = today;
   $("caducidad").value = calculateCaducidad(today);
   editingId = null;
+  editingCtx = null;
   $("save-btn").textContent = "Guardar lote";
 }
 
 function readFormData() {
   const fecha = $("fecha").value;
   const codigo = $("codigo").value.trim();
+  const batchCode = canonicalBatchCode(codigo);
 
   if (!fecha || !codigo) {
     alert("Fecha y código de lote son obligatorios.");
@@ -342,6 +630,9 @@ function readFormData() {
 
   const data = {
     id: editingId || `lote_${Date.now()}`,
+    // Identidad estable (nuevo) + canónico para dedupe
+    loteId: editingId ? undefined : (batchCode ? `batch_${batchCode}` : undefined),
+    batchCode: batchCode || undefined,
     fecha: formatDate(fecha),
     codigo,
     caducidad: $("caducidad").value || calculateCaducidad(fecha),
@@ -401,342 +692,685 @@ function populateForm(lote) {
   $("notas").value = lote.notas || "";
 
   editingId = lote.id;
+  // Contexto de edición (Etapa 2): detectar cambios externos del MISMO lote
+  try {
+    const { meta } = readLotesAndMetaFresh();
+    editingCtx = {
+      id: String(lote.id),
+      metaRev: meta && typeof meta.rev === 'number' ? meta.rev : 0,
+      metaUpdatedAt: meta && meta.updatedAt ? String(meta.updatedAt) : null,
+      fingerprint: nonEditableFingerprint(lote)
+    };
+  } catch (_){
+    editingCtx = { id: String(lote.id), metaRev: 0, metaUpdatedAt: null, fingerprint: nonEditableFingerprint(lote) };
+  }
   $("save-btn").textContent = "Actualizar lote";
 }
 
-function renderTable() {
-  const tbody = $("lotes-table").querySelector("tbody");
-  tbody.innerHTML = "";
-  const lotes = loadLotes();
+function buildLoteRow(lote){
+  const tr = document.createElement("tr");
 
-  if (!lotes.length) {
-    // Etapa 2: siempre mostrar P/M/D/L/G (ceros atenuados por CSS)
-    updateTotalsBarUI({ P: 0, M: 0, D: 0, L: 0, G: 0 });
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = 10;
-    cell.textContent = "No hay lotes registrados todavía.";
-    cell.style.textAlign = "center";
-    cell.style.padding = "0.8rem";
-    row.appendChild(cell);
-    tbody.appendChild(row);
+  // Estado y snapshot canónico por evento (para doble línea: Creado + Parcial/restante)
+  const st = effectiveLoteStatus(lote);
+  const eid = (lote?.assignedEventId != null) ? String(lote.assignedEventId).trim() : "";
+  const sem = st === "EN_EVENTO" ? getLoteSemaforoState(lote) : "";
+  const eu = (lote && typeof lote.eventUsage === "object" && !Array.isArray(lote.eventUsage)) ? lote.eventUsage : null;
+  const snap = (eu && eid) ? eu[eid] : null;
+  const remainingByKey = (snap && typeof snap === "object" && snap.remainingByKey && typeof snap.remainingByKey === "object") ? snap.remainingByKey : null;
+  const showRemainingLine = (st === "EN_EVENTO" && sem === "PARCIAL" && !!remainingByKey);
+
+  const labels = ["Fecha","Código","Vol. ML","P","M","D","L","G","Caducidad"];
+
+  const fields = [
+    formatDate(lote.fecha),
+    lote.codigo || "",
+    lote.volTotal || "",
+    lote.pulso ?? "",
+    lote.media ?? "",
+    lote.djeba ?? "",
+    lote.litro ?? "",
+    lote.galon ?? "",
+    formatDate(lote.caducidad),
+  ];
+
+  fields.forEach((value, idx) => {
+    const td = document.createElement("td");
+    td.setAttribute('data-label', labels[idx] || '');
+
+    // idx: 0 Fecha, 1 Código, 2 VolTotal, 3 Pulso, 4 Media, 5 Djeba, 6 Litro, 7 Galón, 8 Caducidad
+    if (idx === 1) {
+      td.classList.add("lote-codecell");
+
+      const codeText = document.createElement("div");
+      codeText.className = "lote-code-text";
+      codeText.textContent = value;
+      td.appendChild(codeText);
+
+      const line = document.createElement("div");
+      line.className = "lote-status-line";
+
+      const stChip = document.createElement("span");
+      stChip.className =
+        "chip " +
+        (st === "DISPONIBLE"
+          ? "chip--available"
+          : st === "EN_EVENTO"
+          ? "chip--in-event"
+          : "chip--closed");
+      stChip.textContent = st === "EN_EVENTO" ? "EN EVENTO" : st;
+      line.appendChild(stChip);
+
+      // Semáforo de consumo por evento: PARCIAL / VENDIDO
+      if (st === "EN_EVENTO") {
+        if (showRemainingLine) {
+          const br = document.createElement("span");
+          br.className = "chip-break";
+          br.setAttribute("aria-hidden", "true");
+          line.appendChild(br);
+        }
+
+        const semChip = document.createElement("span");
+        semChip.className = "chip " + (sem === "VENDIDO" ? "chip--sold" : "chip--partial");
+        semChip.textContent = sem;
+        line.appendChild(semChip);
+      }
+
+      // Lote hijo / SOBRANTE (trazabilidad)
+      const isChild = !!lote.parentLotId || String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE';
+      if (isChild){
+        const childChip = document.createElement('span');
+        childChip.className = 'chip chip--child';
+        childChip.textContent = String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE' ? 'SOBRANTE' : 'HIJO';
+        line.appendChild(childChip);
+
+        const pid = (lote.parentLotId || '').toString().trim();
+        if (pid){
+          const p = listView.byId.get(pid) || null;
+          const pcode = p ? (p.codigo || p.name || p.nombre || pid).toString() : pid;
+          const parentChip = document.createElement('span');
+          parentChip.className = 'chip chip--parent';
+          parentChip.textContent = 'De: ' + pcode;
+          parentChip.title = 'De: ' + pcode;
+          line.appendChild(parentChip);
+        }
+      }
+
+      if (st === "EN_EVENTO" || st === "CERRADO") {
+        const evName = (lote.assignedEventName || "").toString().trim();
+        if (evName) {
+          const evChip = document.createElement("span");
+          evChip.className = "chip chip--event";
+          evChip.textContent = "Evento: " + evName;
+          evChip.title = evName;
+          line.appendChild(evChip);
+        }
+      }
+
+      td.appendChild(line);
+      tr.appendChild(td);
+      return;
+    }
+
+    // Columnas de presentaciones: doble línea cuando el lote está PARCIAL y existe snapshot
+    if (idx >= 3 && idx <= 7 && showRemainingLine) {
+      const k = ["P", "M", "D", "L", "G"][idx - 3];
+      const createdSpan = document.createElement("span");
+      createdSpan.textContent = String(value ?? "");
+
+      const remVal = (remainingByKey && Object.prototype.hasOwnProperty.call(remainingByKey, k))
+        ? remainingByKey[k]
+        : 0;
+      const remainingSpan = document.createElement("span");
+      remainingSpan.className = "qty-remaining";
+      remainingSpan.textContent = String(remVal ?? "0");
+
+      const stack = document.createElement("div");
+      stack.className = "qty-stack";
+      stack.appendChild(createdSpan);
+      stack.appendChild(remainingSpan);
+
+      td.appendChild(stack);
+    } else if (idx === 8) {
+      // caducidad: mostrar fecha + badge si vencido
+      const dateStr = String(value ?? '');
+      const dateSpan = document.createElement('span');
+      dateSpan.textContent = dateStr;
+      td.appendChild(dateSpan);
+
+      if (dateStr) {
+        const today = new Date().toISOString().slice(0, 10);
+        if (dateStr < today) {
+          const b = document.createElement('span');
+          b.className = 'badge';
+          b.style.marginLeft = '6px';
+          b.textContent = 'Vencido';
+          td.appendChild(b);
+        }
+      }
+    } else {
+      td.textContent = value;
+    }
+
+    if (idx >= 3 && idx <= 7) td.classList.add("col-producto-abbr");
+
+    tr.appendChild(td);
+  });
+
+  const actionsTd = document.createElement("td");
+  actionsTd.className = "actions-cell";
+  actionsTd.setAttribute('data-label', 'Acciones');
+
+  const actionsWrap = document.createElement("div");
+  actionsWrap.className = "acciones";
+
+  const viewBtn = document.createElement("button");
+  viewBtn.type = "button";
+  viewBtn.textContent = "👁";
+  viewBtn.title = "Ver";
+  viewBtn.setAttribute("aria-label", "Ver");
+  viewBtn.className = "btn icon";
+  viewBtn.dataset.action = 'view';
+  viewBtn.dataset.id = String(lote.id);
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.textContent = "✎";
+  editBtn.title = "Editar";
+  editBtn.setAttribute("aria-label", "Editar");
+  editBtn.className = "btn secondary icon";
+  editBtn.dataset.action = 'edit';
+  editBtn.dataset.id = String(lote.id);
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.textContent = "🗑";
+  deleteBtn.title = "Borrar";
+  deleteBtn.setAttribute("aria-label", "Borrar");
+  deleteBtn.className = "btn danger icon";
+  deleteBtn.dataset.action = 'delete';
+  deleteBtn.dataset.id = String(lote.id);
+
+  actionsWrap.appendChild(viewBtn);
+  actionsWrap.appendChild(editBtn);
+  actionsWrap.appendChild(deleteBtn);
+
+  actionsTd.appendChild(actionsWrap);
+  tr.appendChild(actionsTd);
+
+  return tr;
+}
+
+function buildLoteCard(lote){
+  const card = document.createElement('div');
+  card.className = 'lote-card';
+  card.setAttribute('role','listitem');
+
+  const st = effectiveLoteStatus(lote);
+  const eid = (lote?.assignedEventId != null) ? String(lote.assignedEventId).trim() : '';
+  const sem = st === 'EN_EVENTO' ? getLoteSemaforoState(lote) : '';
+  const eu = (lote && typeof lote.eventUsage === 'object' && !Array.isArray(lote.eventUsage)) ? lote.eventUsage : null;
+  const snap = (eu && eid) ? eu[eid] : null;
+  const remainingByKey = (snap && typeof snap === 'object' && snap.remainingByKey && typeof snap.remainingByKey === 'object') ? snap.remainingByKey : null;
+  const showRemainingLine = (st === 'EN_EVENTO' && sem === 'PARCIAL' && !!remainingByKey);
+
+  const head = document.createElement('div');
+  head.className = 'lote-card-head';
+
+  const dateEl = document.createElement('div');
+  dateEl.className = 'lote-card-date';
+  dateEl.textContent = formatDate(lote.fecha);
+
+  const codeEl = document.createElement('div');
+  codeEl.className = 'lote-card-code';
+  codeEl.textContent = (lote.codigo || '').toString();
+  codeEl.title = codeEl.textContent;
+
+  head.appendChild(dateEl);
+  head.appendChild(codeEl);
+  card.appendChild(head);
+
+  // Chips de estado/evento
+  const line = document.createElement('div');
+  line.className = 'lote-status-line';
+
+  const stChip = document.createElement('span');
+  stChip.className = 'chip ' + (st === 'DISPONIBLE' ? 'chip--available' : st === 'EN_EVENTO' ? 'chip--in-event' : 'chip--closed');
+  stChip.textContent = st === 'EN_EVENTO' ? 'EN EVENTO' : st;
+  line.appendChild(stChip);
+
+  if (st === 'EN_EVENTO'){
+    if (showRemainingLine){
+      const br = document.createElement('span');
+      br.className = 'chip-break';
+      br.setAttribute('aria-hidden','true');
+      line.appendChild(br);
+    }
+    const semChip = document.createElement('span');
+    semChip.className = 'chip ' + (sem === 'VENDIDO' ? 'chip--sold' : 'chip--partial');
+    semChip.textContent = sem;
+    line.appendChild(semChip);
+  }
+
+  // Lote hijo / SOBRANTE
+  const isChild = !!lote.parentLotId || String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE';
+  if (isChild){
+    const childChip = document.createElement('span');
+    childChip.className = 'chip chip--child';
+    childChip.textContent = String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE' ? 'SOBRANTE' : 'HIJO';
+    line.appendChild(childChip);
+
+    const pid = (lote.parentLotId || '').toString().trim();
+    if (pid){
+      const p = listView.byId.get(pid) || null;
+      const pcode = p ? (p.codigo || p.name || p.nombre || pid).toString() : pid;
+      const parentChip = document.createElement('span');
+      parentChip.className = 'chip chip--parent';
+      parentChip.textContent = 'De: ' + pcode;
+      parentChip.title = 'De: ' + pcode;
+      line.appendChild(parentChip);
+    }
+  }
+
+  if (st === 'EN_EVENTO' || st === 'CERRADO'){
+    const evName = (lote.assignedEventName || '').toString().trim();
+    if (evName){
+      const evChip = document.createElement('span');
+      evChip.className = 'chip chip--event';
+      evChip.textContent = 'Evento: ' + evName;
+      evChip.title = evName;
+      line.appendChild(evChip);
+    }
+  }
+
+  card.appendChild(line);
+
+  // Mini grid
+  const grid = document.createElement('div');
+  grid.className = 'lote-card-grid';
+
+  const mk = (key, valNodeOrText) => {
+    const box = document.createElement('div');
+    box.className = 'mini-kpi';
+    const k = document.createElement('div');
+    k.className = 'mini-kpi-key';
+    k.textContent = String(key);
+    const v = document.createElement('div');
+    v.className = 'mini-kpi-val';
+    if (valNodeOrText && typeof valNodeOrText === 'object' && valNodeOrText.nodeType){
+      v.appendChild(valNodeOrText);
+    } else {
+      v.textContent = String(valNodeOrText ?? '');
+    }
+    box.appendChild(k);
+    box.appendChild(v);
+    return box;
+  };
+
+  const qtyStack = (created, remaining) => {
+    const stack = document.createElement('div');
+    stack.className = 'qty-stack';
+    const a = document.createElement('span');
+    a.textContent = String(created ?? '');
+    stack.appendChild(a);
+    if (remaining != null){
+      const b = document.createElement('span');
+      b.className = 'qty-remaining';
+      b.textContent = String(remaining ?? '0');
+      stack.appendChild(b);
+    }
+    return stack;
+  };
+
+  grid.appendChild(mk('Vol', String(lote.volTotal || '')));
+
+  const keys = ['P','M','D','L','G'];
+  const vals = [lote.pulso, lote.media, lote.djeba, lote.litro, lote.galon];
+  for (let i=0;i<keys.length;i++){
+    if (showRemainingLine){
+      const rem = (remainingByKey && Object.prototype.hasOwnProperty.call(remainingByKey, keys[i])) ? remainingByKey[keys[i]] : 0;
+      grid.appendChild(mk(keys[i], qtyStack(vals[i] ?? '', rem)));
+    } else {
+      grid.appendChild(mk(keys[i], String(vals[i] ?? '')));
+    }
+  }
+
+  const cadStr = formatDate(lote.caducidad);
+  const cadWrap = document.createElement('div');
+  cadWrap.style.display = 'inline-flex';
+  cadWrap.style.alignItems = 'center';
+  cadWrap.style.gap = '6px';
+  const cadTxt = document.createElement('span');
+  cadTxt.textContent = cadStr;
+  cadWrap.appendChild(cadTxt);
+  if (cadStr){
+    const today = new Date().toISOString().slice(0,10);
+    if (cadStr < today){
+      const b = document.createElement('span');
+      b.className = 'badge';
+      b.textContent = 'Vencido';
+      cadWrap.appendChild(b);
+    }
+  }
+  grid.appendChild(mk('Cad', cadWrap));
+
+  card.appendChild(grid);
+
+  // Acciones
+  const actions = document.createElement('div');
+  actions.className = 'lote-card-actions';
+
+  const mkBtn = (txt, title, cls, action) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = txt;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.className = cls;
+    b.dataset.action = action;
+    b.dataset.id = String(lote.id);
+    return b;
+  };
+
+  actions.appendChild(mkBtn('👁','Ver','btn icon','view'));
+  actions.appendChild(mkBtn('✎','Editar','btn secondary icon','edit'));
+  actions.appendChild(mkBtn('🗑','Borrar','btn danger icon','delete'));
+
+  card.appendChild(actions);
+
+  return card;
+}
+
+function refreshListCacheIfNeeded(force){
+  let fresh;
+  try{
+    fresh = readLotesAndMetaFresh();
+  }catch(_){
+    fresh = { lotes: [], meta: { rev: 0 } };
+  }
+  const meta = fresh && fresh.meta ? fresh.meta : {};
+  const rev = (meta && typeof meta.rev === 'number') ? meta.rev : 0;
+
+  if (!force && listView.metaRev === rev && Array.isArray(listView.allSorted) && listView.allSorted.length){
     return;
   }
 
-  // Ordenar por el registro más reciente arriba.
-  // Preferimos createdAt (o el timestamp incrustado en id) y caemos a fecha.
+  const lotes = Array.isArray(fresh.lotes) ? fresh.lotes : [];
+
   const sorted = [...lotes].sort((a, b) => {
     const ta = getCreatedTimestamp(a);
     const tb = getCreatedTimestamp(b);
     if (ta !== tb) return tb - ta;
 
-    // Tie-breakers: fecha desc, luego código asc
     const fa = toTimestamp(a?.fecha);
     const fb = toTimestamp(b?.fecha);
     if (Number.isFinite(fa) && Number.isFinite(fb) && fa !== fb) return fb - fa;
     return (a.codigo || "").localeCompare(b.codigo || "");
   });
 
-  // Etapa 2: Totales (RESTANTE) sobre el listado visible (respetando orden/futuros filtros)
-  // Fuente de verdad: lote.eventUsage[eventId].remainingByKey (si falta, ese lote no aporta)
-  updateTotalsBarUI(computeRemainingTotals(sorted));
+  listView.metaRev = rev;
+  listView.allSorted = sorted;
+  listView.byId = new Map(sorted.map((l) => [String(l?.id), l]));
 
-  const byId = new Map(sorted.map((l) => [String(l.id), l]));
+  // Índice de búsqueda simple (lowercase) para filtrar rápido
+  const idx = new Map();
+  for (const l of sorted){
+    const id = String(l?.id ?? '');
+    const s = [
+      l?.codigo, l?.batchCode, l?.fecha, l?.caducidad,
+      l?.assignedEventName, l?.status, l?.loteType, l?.parentLotId
+    ].filter(Boolean).join(' ').toLowerCase();
+    idx.set(id, s);
+  }
+  listView.searchIndex = idx;
+}
 
-  for (const lote of sorted) {
-    const tr = document.createElement("tr");
+function applyListFilter(){
+  const q = (listView.query || '').toString().trim().toLowerCase();
+  if (!q){
+    listView.filtered = listView.allSorted;
+  } else {
+    const out = [];
+    for (const l of listView.allSorted){
+      const id = String(l?.id ?? '');
+      const s = listView.searchIndex.get(id) || '';
+      if (s.includes(q)) out.push(l);
+    }
+    listView.filtered = out;
+  }
 
-    // Estado y snapshot canónico por evento (para doble línea: Creado + Parcial/restante)
-    const st = effectiveLoteStatus(lote);
-    const eid = (lote?.assignedEventId != null) ? String(lote.assignedEventId).trim() : "";
-    const sem = st === "EN_EVENTO" ? getLoteSemaforoState(lote) : "";
-    const eu = (lote && typeof lote.eventUsage === "object" && !Array.isArray(lote.eventUsage)) ? lote.eventUsage : null;
-    const snap = (eu && eid) ? eu[eid] : null;
-    const remainingByKey = (snap && typeof snap === "object" && snap.remainingByKey && typeof snap.remainingByKey === "object") ? snap.remainingByKey : null;
-    const showRemainingLine = (st === "EN_EVENTO" && sem === "PARCIAL" && !!remainingByKey);
+  // Totales sobre el conjunto filtrado (no solo la página)
+  listView.totals = computeRemainingTotals(listView.filtered);
+  updateTotalsBarUI(listView.totals);
+}
 
-    const fields = [
-      formatDate(lote.fecha),
-      lote.codigo || "",
-      lote.volTotal || "",
-      lote.pulso ?? "",
-      lote.media ?? "",
-      lote.djeba ?? "",
-      lote.litro ?? "",
-      lote.galon ?? "",
-      formatDate(lote.caducidad),
-    ];
+function setListMetaUI(){
+  const metaEl = $("list-meta");
+  if (!metaEl) return;
+  const total = Array.isArray(listView.filtered) ? listView.filtered.length : 0;
+  const shown = Math.min(listView.rendered, total);
+  const q = (listView.query || '').toString().trim();
+  metaEl.textContent = q ? `Mostrando ${shown} de ${total} · filtro: \"${q}\"` : `Mostrando ${shown} de ${total}`;
+}
 
-    fields.forEach((value, idx) => {
-      const td = document.createElement("td");
+function updateLoadMoreUI(){
+  const btn = $("load-more-btn");
+  if (!btn) return;
+  const total = Array.isArray(listView.filtered) ? listView.filtered.length : 0;
+  const remaining = Math.max(0, total - listView.rendered);
+  const canMore = remaining > 0;
 
-      // idx: 0 Fecha, 1 Código, 2 VolTotal, 3 Pulso, 4 Media, 5 Djeba, 6 Litro, 7 Galón, 8 Caducidad
-      if (idx === 1) {
-        td.classList.add("lote-codecell");
-
-        const codeText = document.createElement("div");
-        codeText.className = "lote-code-text";
-        codeText.textContent = value;
-        td.appendChild(codeText);
-
-        const line = document.createElement("div");
-        line.className = "lote-status-line";
-
-        const stChip = document.createElement("span");
-        stChip.className =
-          "chip " +
-          (st === "DISPONIBLE"
-            ? "chip--available"
-            : st === "EN_EVENTO"
-            ? "chip--in-event"
-            : "chip--closed");
-        stChip.textContent = st === "EN_EVENTO" ? "EN EVENTO" : st;
-        line.appendChild(stChip);
-
-        // Semáforo de consumo por evento (Etapa 3 UI): PARCIAL / VENDIDO
-        if (st === "EN_EVENTO") {
-          // Cuando hay doble línea de cantidades, forzar que PARCIAL caiga en el renglón 2
-          if (showRemainingLine) {
-            const br = document.createElement("span");
-            br.className = "chip-break";
-            br.setAttribute("aria-hidden", "true");
-            line.appendChild(br);
-          }
-
-          const semChip = document.createElement("span");
-          semChip.className = "chip " + (sem === "VENDIDO" ? "chip--sold" : "chip--partial");
-          semChip.textContent = sem;
-          line.appendChild(semChip);
-        }
-
-        // Lote hijo / SOBRANTE (trazabilidad)
-        const isChild = !!lote.parentLotId || String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE';
-        if (isChild){
-          const childChip = document.createElement('span');
-          childChip.className = 'chip chip--child';
-          childChip.textContent = String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE' ? 'SOBRANTE' : 'HIJO';
-          line.appendChild(childChip);
-
-          const pid = (lote.parentLotId || '').toString().trim();
-          if (pid){
-            const p = byId.get(pid) || null;
-            const pcode = p ? (p.codigo || p.name || p.nombre || pid).toString() : pid;
-            const parentChip = document.createElement('span');
-            parentChip.className = 'chip chip--parent';
-            parentChip.textContent = 'De: ' + pcode;
-            parentChip.title = 'De: ' + pcode;
-            line.appendChild(parentChip);
-          }
-        }
-
-        if (st === "EN_EVENTO" || st === "CERRADO") {
-          const evName = (lote.assignedEventName || "").toString().trim();
-          if (evName) {
-            const evChip = document.createElement("span");
-            evChip.className = "chip chip--event";
-            evChip.textContent = "Evento: " + evName;
-            evChip.title = evName;
-            line.appendChild(evChip);
-          }
-        }
-
-        td.appendChild(line);
-        tr.appendChild(td);
-        return;
-      }
-
-      // Columnas de presentaciones: doble línea cuando el lote está PARCIAL y existe snapshot
-      if (idx >= 3 && idx <= 7 && showRemainingLine) {
-        const k = ["P", "M", "D", "L", "G"][idx - 3];
-        const createdSpan = document.createElement("span");
-        createdSpan.textContent = String(value ?? "");
-
-        const remVal = (remainingByKey && Object.prototype.hasOwnProperty.call(remainingByKey, k))
-          ? remainingByKey[k]
-          : 0;
-        const remainingSpan = document.createElement("span");
-        remainingSpan.className = "qty-remaining";
-        remainingSpan.textContent = String(remVal ?? "0");
-
-        const stack = document.createElement("div");
-        stack.className = "qty-stack";
-        stack.appendChild(createdSpan);
-        stack.appendChild(remainingSpan);
-
-        td.appendChild(stack);
-      } else {
-        td.textContent = value;
-      }
-
-      // Compactar visualmente las columnas de productos (Pulso/Media/Djeba/Litro/Galón)
-      if (idx >= 3 && idx <= 7) {
-        td.classList.add("col-producto-abbr");
-      }
-
-      if (idx === 8 && value) {
-        // caducidad
-        const today = new Date().toISOString().slice(0, 10);
-        if (value < today) {
-          td.innerHTML = '<span class="badge">Vencido</span>';
-        }
-      }
-      tr.appendChild(td);
-    });
-
-    const actionsTd = document.createElement("td");
-    actionsTd.className = "actions-cell";
-
-    const viewBtn = document.createElement("button");
-    viewBtn.type = "button";
-    viewBtn.textContent = "👁";
-    viewBtn.title = "Ver";
-    viewBtn.setAttribute("aria-label", "Ver");
-    viewBtn.className = "btn icon";
-    viewBtn.addEventListener("click", () => {
-      showLoteDetails(lote);
-    });
-
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.textContent = "✎";
-    editBtn.title = "Editar";
-    editBtn.setAttribute("aria-label", "Editar");
-    editBtn.className = "btn secondary icon";
-    editBtn.addEventListener("click", () => {
-      populateForm(lote);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
-
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.textContent = "🗑";
-    // Guardas de borrado según semáforo (Etapa 4):
-    // - PARCIAL: confirmación fuerte (mensaje + validación por código)
-    // - VENDIDO: confirmación normal
-    const _stForDelete = effectiveLoteStatus(lote);
-    const _semForDelete = _stForDelete === "EN_EVENTO" ? getLoteSemaforoState(lote) : "";
-    deleteBtn.title = _semForDelete === "PARCIAL" ? "Borrar (confirmación fuerte)" : "Borrar";
-    deleteBtn.setAttribute("aria-label", "Borrar");
-    deleteBtn.className = "btn danger icon";
-    deleteBtn.addEventListener("click", () => {
-      const code = (lote.codigo || "").toString().trim();
-
-      // PARCIAL: lote con remanente (o sin evidencia de soldout). Riesgo alto.
-      if (_semForDelete === "PARCIAL") {
-        const ok = confirm(
-          `Este lote aún tiene remanente. No se recomienda borrar.\n\n` +
-          `Si estás seguro, toca Aceptar para continuar.`
-        );
-        if (!ok) return;
-
-        const typed = prompt(
-          `Confirmación fuerte: escribe el CÓDIGO del lote para borrar:\n\n${code}`
-        );
-        if ((typed || "").toString().trim() !== code) {
-          alert("Borrado cancelado: el código no coincide.");
-          return;
-        }
-      } else {
-        if (!confirm(`¿Borrar el lote ${code}?`)) return;
-      }
-
-      // Etapa 5: al borrar, archivar snapshot en Histórico antes de removerlo de activos
-      const deletedAtIso = new Date().toISOString();
-      try { archiveLote(lote, deletedAtIso); } catch (e){ console.warn('No se pudo archivar lote', e); }
-
-      const current = loadLotes().filter((l) => l.id !== lote.id);
-      saveLotes(current);
-      if (editingId === lote.id) {
-        clearForm();
-      }
-      renderTable();
-
-      // Si el modal de histórico está abierto, refrescarlo
-      if (isHistoryModalOpen()) {
-        renderHistoryModal();
-      }
-    });
-
-    // Wrapper para asegurar que las acciones no hagan overflow y queden en una sola línea
-    const actionsWrap = document.createElement("div");
-    actionsWrap.className = "acciones";
-    actionsWrap.appendChild(viewBtn);
-    actionsWrap.appendChild(editBtn);
-    actionsWrap.appendChild(deleteBtn);
-    actionsTd.appendChild(actionsWrap);
-    tr.appendChild(actionsTd);
-
-    tbody.appendChild(tr);
+  btn.style.display = canMore ? 'inline-flex' : 'none';
+  btn.disabled = !canMore;
+  if (canMore){
+    const step = Math.min(listView.pageSize, remaining);
+    btn.textContent = `Cargar ${step} más`;
   }
 }
 
+function renderTable(opts){
+  const options = opts && typeof opts === 'object' ? opts : {};
+  const reset = options.reset !== false && !options.append;
+  const append = !!options.append;
+  const forceRefresh = !!options.forceRefresh;
+
+  const table = $("lotes-table");
+  const cards = $("lotes-cards");
+  const useCards = !!(cards && isCardMode());
+
+  const tbody = table ? table.querySelector('tbody') : null;
+
+  refreshListCacheIfNeeded(forceRefresh);
+
+  const clearContainers = () => {
+    if (tbody) tbody.innerHTML = '';
+    if (cards) cards.innerHTML = '';
+  };
+
+  const renderMessage = (msg) => {
+    if (useCards && cards){
+      cards.innerHTML = '';
+      const div = document.createElement('div');
+      div.textContent = msg;
+      div.style.textAlign = 'center';
+      div.style.padding = '0.8rem';
+      div.style.color = 'var(--color-text-muted)';
+      cards.appendChild(div);
+      return;
+    }
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 10;
+    cell.textContent = msg;
+    cell.style.textAlign = 'center';
+    cell.style.padding = '0.8rem';
+    row.appendChild(cell);
+    tbody.appendChild(row);
+  };
+
+  // No hay data
+  if (!listView.allSorted.length){
+    listView.filtered = [];
+    listView.wanted = listView.pageSize;
+    listView.rendered = 0;
+    updateTotalsBarUI({ P: 0, M: 0, D: 0, L: 0, G: 0 });
+    clearContainers();
+    renderMessage('No hay lotes registrados todavía.');
+    setListMetaUI();
+    updateLoadMoreUI();
+    return;
+  }
+
+  if (reset){
+    listView.wanted = listView.pageSize;
+    listView.rendered = 0;
+    applyListFilter();
+    clearContainers();
+  }
+
+  if (append){
+    listView.wanted = Math.min(listView.filtered.length, listView.wanted + listView.pageSize);
+  }
+
+  // Filtrado vacío
+  if (!listView.filtered.length){
+    updateTotalsBarUI({ P: 0, M: 0, D: 0, L: 0, G: 0 });
+    clearContainers();
+    renderMessage('No hay lotes que coincidan con la búsqueda.');
+    listView.rendered = 0;
+    setListMetaUI();
+    updateLoadMoreUI();
+    return;
+  }
+
+  const target = Math.min(listView.filtered.length, listView.wanted);
+
+  const frag = document.createDocumentFragment();
+  for (let i = listView.rendered; i < target; i++){
+    const item = listView.filtered[i];
+    frag.appendChild(useCards ? buildLoteCard(item) : buildLoteRow(item));
+  }
+
+  if (useCards && cards){
+    cards.appendChild(frag);
+  } else if (tbody){
+    tbody.appendChild(frag);
+  }
+
+  listView.rendered = target;
+  setListMetaUI();
+  updateLoadMoreUI();
+}
+
 function exportToCSV() {
+  if (isExporting) return;
+
   const lotes = loadLotes();
   if (!lotes.length) {
     alert("No hay lotes para exportar.");
     return;
   }
 
-  if (typeof XLSX === "undefined") {
-    alert("No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.");
-    return;
+  const btn = $("export-btn");
+  const prevLabel = btn ? btn.textContent : "";
+
+  isExporting = true;
+  setExportHint("Exportando…", false);
+  if (btn){
+    btn.disabled = true;
+    btn.textContent = "Exportando…";
+    btn.setAttribute('aria-busy','true');
   }
 
-  const headers = [
-    "Fecha",
-    "Código",
-    "Volumen total",
-    "Volumen vino",
-    "Volumen vodka",
-    "Volumen jugo",
-    "Volumen sirope",
-    "Volumen agua",
-    "Pulso 250 ml",
-    "Media 375 ml",
-    "Djeba 750 ml",
-    "Litro 1000 ml",
-    "Galón 3750 ml",
-    "Fecha caducidad",
-    "Notas",
-  ];
+  try {
+    if (typeof XLSX === "undefined") {
+      alert("No se pudo exportar: la librería XLSX no está disponible en esta instalación.");
+      setExportHint("Error al exportar (XLSX no disponible).", true);
+      return;
+    }
 
-  const sorted = [...lotes].sort((a, b) => {
-    const ta = getCreatedTimestamp(a);
-    const tb = getCreatedTimestamp(b);
-    if (ta !== tb) return tb - ta;
+    const headers = [
+      "Fecha",
+      "Código",
+      "Volumen total",
+      "Volumen vino",
+      "Volumen vodka",
+      "Volumen jugo",
+      "Volumen sirope",
+      "Volumen agua",
+      "Pulso 250 ml",
+      "Media 375 ml",
+      "Djeba 750 ml",
+      "Litro 1000 ml",
+      "Galón 3750 ml",
+      "Fecha caducidad",
+      "Notas",
+      "Estado",
+      "Evento",
+    ];
 
-    const fa = toTimestamp(a?.fecha);
-    const fb = toTimestamp(b?.fecha);
-    if (Number.isFinite(fa) && Number.isFinite(fb) && fa !== fb) return fb - fa;
-    return (a.codigo || "").localeCompare(b.codigo || "");
-  });
+    const sorted = [...lotes].sort((a, b) => {
+      const ta = getCreatedTimestamp(a);
+      const tb = getCreatedTimestamp(b);
+      if (ta !== tb) return tb - ta;
 
-  const rows = sorted.map((l) => [
-    formatDate(l.fecha),
-    l.codigo || "",
-    l.volTotal || "",
-    l.volVino || "",
-    l.volVodka || "",
-    l.volJugo || "",
-    l.volSirope || "",
-    l.volAgua || "",
-    l.pulso ?? "",
-    l.media ?? "",
-    l.djeba ?? "",
-    l.litro ?? "",
-    l.galon ?? "",
-    formatDate(l.caducidad),
-    (l.notas || "").replace(/\r?\n/g, " "),
-  ]);
+      const fa = toTimestamp(a?.fecha);
+      const fb = toTimestamp(b?.fecha);
+      if (Number.isFinite(fa) && Number.isFinite(fb) && fa !== fb) return fb - fa;
+      return (a.codigo || "").localeCompare(b.codigo || "");
+    });
 
-  const aoa = [headers, ...rows];
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Lotes");
+    const rows = sorted.map((l) => [
+      formatDate(l.fecha),
+      l.codigo || "",
+      l.volTotal || "",
+      l.volVino || "",
+      l.volVodka || "",
+      l.volJugo || "",
+      l.volSirope || "",
+      l.volAgua || "",
+      l.pulso ?? "",
+      l.media ?? "",
+      l.djeba ?? "",
+      l.litro ?? "",
+      l.galon ?? "",
+      formatDate(l.caducidad),
+      (l.notas || "").replace(/\r?\n/g, " "),
+      effectiveLoteStatus(l),
+      (l.assignedEventName || "").toString().trim(),
+    ]);
 
-  const timestamp = new Date().toISOString().slice(0, 10);
-  const filename = `arcano33_lotes_${timestamp}.xlsx`;
-  XLSX.writeFile(wb, filename);
+    const aoa = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Lotes");
+
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `arcano33_lotes_${timestamp}.xlsx`;
+
+    XLSX.writeFile(wb, filename);
+
+    setExportHint("Export listo ✅", false);
+    if (btn) btn.textContent = "Export listo ✅";
+    setTimeout(() => {
+      if (btn && !isExporting){
+        btn.textContent = prevLabel || "Exportar a Excel";
+      }
+      setExportHint("", false);
+    }, 1200);
+  } catch (err) {
+    console.error('Export error', err);
+    alert("Error al exportar. Intenta de nuevo.");
+    setExportHint("Error al exportar.", true);
+  } finally {
+    isExporting = false;
+    if (btn){
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      if (btn.textContent === "Exportando…") btn.textContent = prevLabel || "Exportar a Excel";
+    }
+  }
 }
 
 // ================================
@@ -932,7 +1566,7 @@ function renderHistoryModal(){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.7")
+      .register("./sw.js?v=4.20.13")
       .catch((err) => console.error("SW error", err));
   }
 }
@@ -952,22 +1586,254 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("lote-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const data = readFormData();
-    if (!data) return;
+    if (isSavingLote) return; // anti doble-acción
 
-    const lotes = loadLotes();
-    const index = lotes.findIndex((l) => l.id === data.id);
-    if (index >= 0) {
-      lotes[index] = { ...lotes[index], ...data };
-    } else {
-      lotes.push(data);
+    const saveBtn = $("save-btn");
+    const prevLabel = saveBtn ? saveBtn.textContent : "";
+    isSavingLote = true;
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Guardando...";
     }
-    saveLotes(lotes);
-    renderTable();
-    clearForm();
+
+    let savedOk = false;
+    try {
+      const formData = readFormData();
+      if (!formData) return;
+
+      // Etapa 2: siempre re-leer la data antes de guardar (evita pisadas Calculadora/POS)
+      const fresh = readLotesAndMetaFresh();
+      const lotes = Array.isArray(fresh.lotes) ? fresh.lotes : [];
+
+      // Normalizar el patch (tolerar números raros/fechas)
+      const data = normalizeLoteRecord(formData) || formData;
+
+      const index = lotes.findIndex((l) => String(l?.id) === String(data.id));
+      const cur = index >= 0 ? lotes[index] : null;
+
+      // Resolver identidad estable (sin cambiar id del lote existente)
+      const resolvedLoteId = (cur?.loteId || cur?.id)
+        ? String(cur.loteId || cur.id)
+        : String(data.loteId || data.id || deriveStableLoteId(data));
+      data.loteId = resolvedLoteId;
+      data.batchCode = canonicalBatchCode(data.codigo) || data.batchCode || undefined;
+
+      // Conflicto obvio: el mismo lote fue modificado en otro módulo/pestaña
+      if (index >= 0 && editingCtx && String(editingCtx.id) === String(data.id)) {
+        const nowFp = nonEditableFingerprint(cur);
+        if (editingCtx.fingerprint && nowFp && editingCtx.fingerprint !== nowFp) {
+          alert('Conflicto: este lote cambió desde otro módulo/pestaña. Recarga la página y vuelve a intentar (para evitar pisar cambios).');
+          return;
+        }
+      }
+
+      // Dedupe conservador (NO sobreescribir silenciosamente)
+      const newId = String(data.loteId || data.id || "");
+      const newBC = String(data.batchCode || "");
+      const dup = lotes.find((l, i) => {
+        if (index >= 0 && i === index) return false;
+        const lid = String(l?.loteId || l?.id || "");
+        const bc = String(l?.batchCode || canonicalBatchCode(l?.codigo) || "");
+        return (newId && lid && lid === newId) || (newBC && bc && bc === newBC);
+      });
+      if (dup) {
+        const shown = (dup?.codigo || dup?.batchCode || '').toString();
+        alert(`Duplicado bloqueado: ya existe un lote con el mismo código/identidad (${shown}).`);
+        return;
+      }
+
+      if (index >= 0) {
+        // Merge conservador: solo campos editables; preservar refs/eventUsage/status/etc.
+        const merged = { ...(cur || {}) };
+        const editableKeys = [
+          'fecha','codigo','caducidad',
+          'volTotal','volVino','volVodka','volJugo','volSirope','volAgua',
+          'pulso','media','djeba','litro','galon',
+          'notas','batchCode','loteId'
+        ];
+        for (const k of editableKeys) {
+          if (data[k] !== undefined) merged[k] = data[k];
+        }
+        // Nunca cambiar el id visible (compat con POS)
+        merged.id = cur.id;
+        if (!merged.createdAt && data.createdAt) merged.createdAt = data.createdAt;
+        merged.updatedAt = new Date().toISOString();
+        lotes[index] = normalizeLoteRecord(merged) || merged;
+      } else {
+        const createdAt = data.createdAt || new Date().toISOString();
+        const nuevo = normalizeLoteRecord({ ...data, createdAt }) || { ...data, createdAt };
+        lotes.push(nuevo);
+      }
+
+      const ok = saveLotes(lotes);
+      if (!ok) return;
+
+      renderTable({ reset: true, forceRefresh: true });
+      clearForm();
+      savedOk = true;
+    } finally {
+      isSavingLote = false;
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = savedOk ? "Guardar lote" : (prevLabel || (editingId ? "Actualizar lote" : "Guardar lote"));
+      }
+    }
   });
 
   $("reset-btn").addEventListener("click", () => clearForm());
+
+  // Etapa 3: búsqueda (debounce) + paginación
+  const listSearch = $("list-search");
+  const clearSearch = $("clear-search-btn");
+  const loadMore = $("load-more-btn");
+
+  const applySearch = debounce(() => {
+    listView.query = (listSearch ? listSearch.value : '').toString();
+    renderTable({ reset: true });
+  }, 160);
+
+  if (listSearch) listSearch.addEventListener('input', applySearch);
+  if (clearSearch) clearSearch.addEventListener('click', () => {
+    if (listSearch) listSearch.value = '';
+    listView.query = '';
+    renderTable({ reset: true });
+    if (listSearch) listSearch.focus();
+  });
+  if (loadMore) loadMore.addEventListener('click', () => renderTable({ append: true, reset: false }));
+
+  // Etapa 3: delegación de eventos para acciones (menos listeners con data grande)
+  const lotesTable = $("lotes-table");
+  if (lotesTable) {
+    lotesTable.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('button[data-action]') : null;
+      if (!btn) return;
+
+      const action = (btn.dataset.action || '').toString();
+      const id = (btn.dataset.id || '').toString();
+      if (!action || !id) return;
+
+      const lote = listView.byId.get(id) || null;
+      if (!lote) return;
+
+      if (action === 'view') {
+        showLoteDetails(lote);
+        return;
+      }
+
+      if (action === 'edit') {
+        populateForm(lote);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      if (action === 'delete') {
+        const code = (lote.codigo || '').toString().trim();
+        const _stForDelete = effectiveLoteStatus(lote);
+        const _semForDelete = _stForDelete === 'EN_EVENTO' ? getLoteSemaforoState(lote) : '';
+
+        if (_semForDelete === 'PARCIAL') {
+          const ok = confirm(
+            `Este lote aún tiene remanente. No se recomienda borrar.\n\n` +
+            `Si estás seguro, toca Aceptar para continuar.`
+          );
+          if (!ok) return;
+
+          const typed = prompt(
+            `Confirmación fuerte: escribe el CÓDIGO del lote para borrar:\n\n${code}`
+          );
+          if ((typed || '').toString().trim() !== code) {
+            alert('Borrado cancelado: el código no coincide.');
+            return;
+          }
+        } else {
+          if (!confirm(`¿Borrar el lote ${code}?`)) return;
+        }
+
+        // Etapa 5: archivar snapshot antes de removerlo de activos
+        const deletedAtIso = new Date().toISOString();
+        try { archiveLote(lote, deletedAtIso); } catch (e){ console.warn('No se pudo archivar lote', e); }
+
+        const current = loadLotes().filter((l) => String(l.id) !== String(lote.id));
+        saveLotes(current);
+        if (editingId === lote.id) clearForm();
+        renderTable({ reset: true, forceRefresh: true });
+
+        if (isHistoryModalOpen()) renderHistoryModal();
+      }
+    });
+  }
+
+  // Etapa 3: acciones también en vista tipo tarjeta (iPad-first)
+  const lotesCards = $("lotes-cards");
+  if (lotesCards) {
+    lotesCards.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('button[data-action]') : null;
+      if (!btn) return;
+
+      const action = (btn.dataset.action || '').toString();
+      const id = (btn.dataset.id || '').toString();
+      if (!action || !id) return;
+
+      const lote = listView.byId.get(id) || null;
+      if (!lote) return;
+
+      if (action === 'view') {
+        showLoteDetails(lote);
+        return;
+      }
+
+      if (action === 'edit') {
+        populateForm(lote);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      if (action === 'delete') {
+        const code = (lote.codigo || '').toString().trim();
+        const _stForDelete = effectiveLoteStatus(lote);
+        const _semForDelete = _stForDelete === 'EN_EVENTO' ? getLoteSemaforoState(lote) : '';
+
+        if (_semForDelete === 'PARCIAL') {
+          const ok = confirm(
+            `Este lote aún tiene remanente. No se recomienda borrar.
+
+` +
+            `Si estás seguro, toca Aceptar para continuar.`
+          );
+          if (!ok) return;
+
+          const typed = prompt(
+            `Confirmación fuerte: escribe el CÓDIGO del lote para borrar:
+
+${code}`
+          );
+          if ((typed || '').toString().trim() !== code) {
+            alert('Borrado cancelado: el código no coincide.');
+            return;
+          }
+        } else {
+          if (!confirm(`¿Borrar el lote ${code}?`)) return;
+        }
+
+        const deletedAtIso = new Date().toISOString();
+        try { archiveLote(lote, deletedAtIso); } catch (e){ console.warn('No se pudo archivar lote', e); }
+
+        const current = loadLotes().filter((l) => String(l.id) !== String(lote.id));
+        saveLotes(current);
+        if (editingId === lote.id) clearForm();
+        renderTable({ reset: true, forceRefresh: true });
+
+        if (isHistoryModalOpen()) renderHistoryModal();
+      }
+    });
+  }
+
+  // Si cambia el layout (rotación / resize), re-render sin perder filtros.
+  try{
+    const mq = window.matchMedia('(max-width: 1024px)');
+    mq.addEventListener('change', () => renderTable({ reset: true }));
+  }catch(_){ }
+
   $("export-btn").addEventListener("click", () => exportToCSV());
 
   // Histórico (Etapa 5)
@@ -1002,9 +1868,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!confirm("¿Borrar todos los lotes registrados?")) return;
     A33Storage.removeItem(STORAGE_KEY);
     clearForm();
-    renderTable();
+    renderTable({ reset: true, forceRefresh: true });
   });
 
-  renderTable();
+  renderTable({ reset: true, forceRefresh: true });
   registerServiceWorker();
 });

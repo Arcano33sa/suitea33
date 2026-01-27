@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.7" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.42" />
   <style>
     * {
       box-sizing: border-box;
@@ -19,6 +19,61 @@
       background: #111;
       color: #f5f5f5;
     }
+    html, body { overflow-x: hidden; }
+
+    /* iPad-first: mantener caducidad/hebreo/receta visibles y SIN scroll horizontal */
+    .a33-ipad-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    .a33-ipad-grid > .section { min-width: 0; margin-top: 0; }
+
+    @media (min-width: 880px) {
+      .a33-ipad-grid {
+        grid-template-columns: 0.95fr 1.05fr;
+      }
+    }
+
+    .a33-fechas-badges {
+      margin-top: 0.4rem;
+      margin-bottom: 0.25rem;
+      gap: 0.45rem;
+    }
+    .a33-fechas-badges .badge {
+      font-size: 0.76rem;
+      border-color: rgba(221,191,100,0.32);
+      background: rgba(0,0,0,0.22);
+      white-space: normal;
+    }
+
+    .a33-fechas-legacy { display: block; }
+    @media (min-width: 880px) {
+      .a33-fechas-legacy { display: none; }
+    }
+
+    .a33-table-wrap {
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      border-radius: 10px;
+    }
+    .a33-table-wrap--recetas { max-height: min(460px, 62vh); }
+
+    /* Tablas sin overflow-x: compactas y wrap en iPad */
+    @media (max-width: 1024px) {
+      table { table-layout: fixed; }
+      th, td { padding: 0.22rem; }
+      th { white-space: normal; }
+      td, th { min-width: 0; }
+      input[type="number"], input[type="text"], input[type="date"] { min-width: 0; }
+    }
+
+    /* Botón principal en formato pastilla (sin tapar contenido) */
+    .btn-main { border-radius: 999px; padding: 0.6rem 1rem; }
+    .btn-secondary { border-radius: 999px; }
+
     h1, h2, h3 {
       margin-top: 0.5rem;
       margin-bottom: 0.5rem;
@@ -292,13 +347,13 @@
     .a33-btn-primary-pill:hover { filter: brightness(1.05); }
 
   </style>
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.7" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.42" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Calculadora</div>
-    <div class="a33-version">v4.20.7</div>
+    <div class="a33-version">v4.20.42</div>
   </header>
 
   <div class="app-container">
@@ -310,6 +365,7 @@
       Define la receta por presentación y luego indica cuántas vas a producir. La app te suma la materia prima 🔮
     </p>
 
+    <div class="a33-ipad-grid">
     <div class="section">
       <h2>0. Datos del lote</h2>
       <p class="hint">
@@ -329,8 +385,12 @@
           <input type="date" id="fecha-produccion" />
         </div>
       </div>
-      <p class="hint" id="texto-caducidad">Fecha de caducidad: —</p>
-      <p class="hint" id="texto-fecha-hebreo">Fecha hebrea (producción): —</p>
+      <div class="a33-fechas-badges flex-row" aria-label="Fechas del lote">
+        <div class="badge" id="badge-caducidad">Caducidad: Calcula para ver…</div>
+        <div class="badge" id="badge-hebreo">Hebreo: Calcula para ver…</div>
+      </div>
+      <p class="hint a33-fechas-legacy" id="texto-caducidad">Fecha de caducidad: —</p>
+      <p class="hint a33-fechas-legacy" id="texto-fecha-hebreo">Fecha hebrea (producción): —</p>
 
       <h3>Notas del lote</h3>
       <textarea id="notas" placeholder="Ej: Pedido para evento, sabor clásico, entrega sábado por la tarde..."></textarea>
@@ -341,7 +401,7 @@
       <p class="hint">
         Aquí pones cuántos ml de <strong>vino, vodka, jugo, sirope y agua pura</strong> lleva 1 unidad de cada presentación.
       </p>
-      <div style="overflow-x:auto; max-height: 260px;">
+      <div class="a33-table-wrap a33-table-wrap--recetas">
         <table id="recetas-table">
           <thead>
             <tr>
@@ -361,13 +421,14 @@
       <button id="btn-guardar-receta" class="btn-secondary">Guardar receta en este navegador</button>
       <p class="hint">Se guarda en el navegador (localStorage). No necesitas cuenta ni internet.</p>
     </div>
+    </div>
 
     <div class="section">
       <h2>2. Plan de producción (unidades a preparar)</h2>
       <p class="hint">
         Escribe cuántas unidades harás de cada presentación. Deja en blanco lo que no vayas a hacer.
       </p>
-      <div style="overflow-x:auto;">
+      <div class="a33-table-wrap a33-table-wrap--plan">
         <table id="plan-table">
           <thead>
             <tr>
@@ -382,6 +443,7 @@
     </div>
 
     <button id="btn-calcular" class="btn-main">Calcular totales de materia prima</button>
+    <p id="hint-resultados" class="hint">Resultados: calcula para ver el resumen (materia prima, caducidad y costos).</p>
 
     <div id="resultados" class="results" style="display:none;">
       <div class="results-title">3. Totales de materia prima necesaria</div>
@@ -414,9 +476,9 @@
   </div>
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-auth.js?v=4.20.7"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.42"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.42"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.42"></script>
   <script>
     if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
       location.href = "../index.html";
@@ -469,7 +531,8 @@
     }
 
     function normalizarCodigoLote(raw) {
-      return String(raw || "").trim().toUpperCase();
+      // Canónico para identidad estable (compat Lotes): trim + upper + sin espacios
+      return String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
     }
 
     function validarCodigoLoteFuerte(raw) {
@@ -605,18 +668,33 @@
           djeba: { stock: 0 },
           litro: { stock: 0 },
           galon: { stock: 0 }
+        },
+        // Tapas (Auto) — Etapa 2/3
+        caps: {
+          gallon: { stock: 0, min: 0 },
+          pulsoLitro: { stock: 0, min: 0 },
+          djebaMedia: { stock: 0, min: 0 }
         }
       };
     }
 
     function invLoad() {
       try {
+        // Contrato compartido (anti-pisadas + data vieja segura)
+        if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+          const data = A33Storage.sharedGet(STORAGE_KEY_INVENTARIO, invDefault());
+          if (data && typeof data === 'object') return data;
+          return invDefault();
+        }
+
+        // Fallback legacy
         const raw = A33Storage.getItem(STORAGE_KEY_INVENTARIO);
         let data = raw ? JSON.parse(raw) : null;
         if (!data || typeof data !== "object") data = invDefault();
         if (!data.liquids) data.liquids = {};
         if (!data.bottles) data.bottles = {};
         if (!data.finished) data.finished = {};
+        if (!data.caps || typeof data.caps !== 'object') data.caps = {};
         const d = invDefault();
         Object.keys(d.liquids).forEach((k) => {
           if (!data.liquids[k]) data.liquids[k] = { stock: 0, max: 0 };
@@ -631,6 +709,13 @@
           if (!data.finished[k]) data.finished[k] = { stock: 0 };
           data.finished[k].stock = invParseNumber(data.finished[k].stock || 0);
         });
+
+        // Tapas (Auto): compatibilidad y números seguros
+        Object.keys(d.caps || {}).forEach((k) => {
+          if (!data.caps[k] || typeof data.caps[k] !== 'object') data.caps[k] = { stock: 0, min: 0 };
+          data.caps[k].stock = Math.trunc(invParseNumber(data.caps[k].stock || 0));
+          data.caps[k].min = Math.max(0, Math.trunc(invParseNumber(data.caps[k].min || 0)));
+        });
         return data;
       } catch (e) {
         console.warn("No se pudo leer inventario, usando valores por defecto.", e);
@@ -640,6 +725,13 @@
 
     function invSave(inv) {
       try {
+        if (window.A33Storage && typeof A33Storage.sharedSet === 'function'){
+          const r = A33Storage.sharedSet(STORAGE_KEY_INVENTARIO, inv, { source: 'calculadora' });
+          if (r && r.ok === false && r.message){
+            try{ alert(r.message); }catch(_){ }
+          }
+          return;
+        }
         A33Storage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(inv));
       } catch (e) {
         console.warn("No se pudo guardar el inventario.", e);
@@ -695,8 +787,21 @@
     }
 
     function aplicarConsumoInventarioDesdeLote(datos, mapUnits) {
-      if (!datos || !datos.totalesIngredientes) return;
-      let inv = invLoad();
+      if (!datos || !datos.totalesIngredientes) return true;
+
+      // Leer con meta (anti-pisadas)
+      let invInfo = null;
+      let inv = null;
+      try {
+        if (window.A33Storage && typeof A33Storage.sharedRead === 'function') {
+          invInfo = A33Storage.sharedRead(STORAGE_KEY_INVENTARIO, invDefault());
+          inv = (invInfo && invInfo.data && typeof invInfo.data === "object") ? invInfo.data : invDefault();
+        } else {
+          inv = invLoad();
+        }
+      } catch (e) {
+        inv = invDefault();
+      }
 
       // Restar líquidos
       ["vino","vodka","jugo","sirope","agua"].forEach((ing) => {
@@ -708,28 +813,71 @@
       });
 
       // Restar botellas por presentación
-      const map = mapUnits || {};
-      ["pulso","media","djeba","litro","galon"].forEach((id) => {
-        const uso = typeof map[id] === "number" ? map[id] : 0;
-        if (!inv.bottles[id]) {
-          inv.bottles[id] = { stock: 0 };
-        }
-        inv.bottles[id].stock = invParseNumber(inv.bottles[id].stock) - uso;
-        // Sumar producto terminado (botellas listas)
-        if (!inv.finished) inv.finished = {};
-        if (!inv.finished[id]) {
-          inv.finished[id] = { stock: 0 };
-        }
-        inv.finished[id].stock = invParseNumber(inv.finished[id].stock) + uso;
+      // Tapas (Auto) — Etapa 3/3 (descuento automático al producir)
+      if (!inv.caps || typeof inv.caps !== 'object') {
+        inv.caps = {
+          gallon: { stock: 0, min: 0 },
+          pulsoLitro: { stock: 0, min: 0 },
+          djebaMedia: { stock: 0, min: 0 }
+        };
+      }
+      ["gallon", "pulsoLitro", "djebaMedia"].forEach((k) => {
+        if (!inv.caps[k] || typeof inv.caps[k] !== 'object') inv.caps[k] = { stock: 0, min: 0 };
+        // stock: entero (permitir negativo)
+        inv.caps[k].stock = Math.trunc(invParseNumber(inv.caps[k].stock));
+        // min: entero >= 0 (por compat UI)
+        inv.caps[k].min = Math.max(0, Math.trunc(invParseNumber(inv.caps[k].min)));
       });
 
-      invSave(inv);
+      const map = mapUnits || {};
+      PRESENTACIONES.forEach((p) => {
+        const qty = normQtyInt(map[p.id]);
+        if (qty <= 0) return;
+        if (!inv.bottles[p.id]) {
+          inv.bottles[p.id] = { stock: 0 };
+        }
+        inv.bottles[p.id].stock = invParseNumber(inv.bottles[p.id].stock) - qty;
+
+        // Sumar producto terminado (botellas listas)
+        if (!inv.finished) inv.finished = {};
+        if (!inv.finished[p.id]) {
+          inv.finished[p.id] = { stock: 0 };
+        }
+        inv.finished[p.id].stock = invParseNumber(inv.finished[p.id].stock) + qty;
+
+        // Descontar tapa por unidad producida según mapping fijo
+        if (qty > 0) {
+          let capId = null;
+          if (p.id === 'galon') capId = 'gallon';
+          else if (p.id === 'pulso' || p.id === 'litro') capId = 'pulsoLitro';
+          else if (p.id === 'djeba' || p.id === 'media') capId = 'djebaMedia';
+
+          if (capId) {
+            const before = Math.trunc(invParseNumber(inv.caps[capId] && inv.caps[capId].stock));
+            const after = before - qty;
+            inv.caps[capId].stock = after;
+            // Log mínimo (no spam): una línea por presentación producida
+            console.info('[A33][CAPS] producir', p.id, p.nombre, 'qty', qty, '=>', capId, before, '→', after);
+          }
+        }
+      });
+
+      // Guardado conservador: bloquear si cambió entre lectura y escritura
+      if (window.A33Storage && typeof A33Storage.sharedSet === 'function' && invInfo && invInfo.meta && typeof invInfo.meta.rev === "number") {
+        const r = A33Storage.sharedSet(STORAGE_KEY_INVENTARIO, inv, { source: 'calculadora', baseRev: invInfo.meta.rev, conflictPolicy: 'block' });
+        if (r && r.ok === false) throw new Error(r.message || "Conflicto detectado: Inventario cambió en otro módulo/pestaña.");
+      } else {
+        invSave(inv);
+      }
 
       const lines = invBuildAlertLines(inv);
       if (lines.length > 0) {
-        alert("Alerta de inventario (después de registrar el lote):\n\n" + lines.join("\\n"));
+        alert("Alerta de inventario (después de registrar el lote):\n\n" + lines.join("\n"));
       }
+
+      return true;
     }
+
 
 
     function getNumberValue(id) {
@@ -738,6 +886,14 @@
       const raw = (el.value || "").toString().replace(",", ".");
       const v = parseFloat(raw);
       return isNaN(v) ? 0 : v;
+    }
+
+    // qty: entero > 0 (normalizar).
+    function normQtyInt(value) {
+      const n = (typeof value === 'number') ? value : parseFloat(String(value ?? '').replace(',', '.'));
+      if (!Number.isFinite(n)) return 0;
+      const q = Math.trunc(n);
+      return q > 0 ? q : 0;
     }
     function formatMl(value) {
       return value.toFixed(0) + " ml";
@@ -788,38 +944,219 @@
     function actualizarTextoCaducidad() {
       const fechaProdInput = document.getElementById("fecha-produccion");
       const textoCad = document.getElementById("texto-caducidad");
-      const valor = fechaProdInput.value;
+      const badgeCad = document.getElementById("badge-caducidad");
+      const valor = (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : "";
       const cad = calcularCaducidad(valor);
+
       if (!valor) {
-        textoCad.textContent = "Fecha de caducidad: —";
+        if (textoCad) textoCad.textContent = "Fecha de caducidad: —";
+        if (badgeCad) badgeCad.textContent = "Caducidad: Calcula para ver…";
       } else if (!cad) {
-        textoCad.textContent = "Fecha de caducidad: (fecha de producción no válida)";
+        if (textoCad) textoCad.textContent = "Fecha de caducidad: (fecha de producción no válida)";
+        if (badgeCad) badgeCad.textContent = "Caducidad: (fecha no válida)";
       } else {
-        textoCad.textContent = "Fecha de caducidad: " + formatearFechaBonita(cad);
+        const pretty = formatearFechaBonita(cad);
+        if (textoCad) textoCad.textContent = "Fecha de caducidad: " + pretty;
+        if (badgeCad) badgeCad.textContent = "Caducidad: " + pretty;
       }
     }
-    function actualizarFechaHebrea() {
-      // Ahora deriva SIEMPRE de la fecha de producción (no de "hoy").
-      const span = document.getElementById("texto-fecha-hebreo");
-      if (!span) return Promise.resolve(null);
-      const iso = ((document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || hoyLocalISO()).trim();
-      return obtenerHebreaDesdeFechaISO(iso)
-        .then(h => {
-          if (h && h.hd && h.hm && h.hy) {
-            A33Hebreo = h;
-            span.textContent = "Fecha hebrea (producción): " + h.hd + " " + h.hm + " " + h.hy;
-            return h;
-          } else {
-            A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
-            span.textContent = "Fecha hebrea (producción): —";
-            return null;
+    // Etapa 3: Hebreo offline-first (Intl -> cache local -> degradación controlada + fetch opcional no bloqueante)
+    const STORAGE_HEB_CACHE_KEY = "a33_calc_hebrew_cache_v1";
+    const HEB_FETCH_TIMEOUT_MS = 2500;
+    let A33HebreoFetch = { inFlight: false, iso: "", abort: null };
+
+    function leerHebreoCacheObj() {
+      try {
+        const raw = A33Storage.getItem(STORAGE_HEB_CACHE_KEY);
+        const obj = raw ? JSON.parse(raw) : null;
+        if (!obj || typeof obj !== "object") return { v: 1, order: [], items: {} };
+        if (obj.v !== 1 || !obj.items || typeof obj.items !== "object" || !Array.isArray(obj.order)) {
+          return { v: 1, order: [], items: {} };
+        }
+        return obj;
+      } catch (e) {
+        return { v: 1, order: [], items: {} };
+      }
+    }
+
+    function leerHebreoCache(iso) {
+      const key = String(iso || "").trim();
+      if (!key) return null;
+      const cache = leerHebreoCacheObj();
+      const h = cache.items[key];
+      if (h && h.hd && h.hm && h.hy && h.hm3 && h.hy4) return h;
+      return null;
+    }
+
+    function guardarHebreoCache(iso, h) {
+      const key = String(iso || "").trim();
+      if (!key || !h || !h.hd || !h.hm || !h.hy || !h.hm3 || !h.hy4) return;
+      try {
+        const cache = leerHebreoCacheObj();
+        cache.items[key] = h;
+        cache.order = cache.order.filter(x => x !== key);
+        cache.order.push(key);
+        // límite simple para no inflar storage
+        const MAX = 120;
+        while (cache.order.length > MAX) {
+          const old = cache.order.shift();
+          if (old) delete cache.items[old];
+        }
+        A33Storage.setItem(STORAGE_HEB_CACHE_KEY, JSON.stringify(cache));
+      } catch (e) {
+        // silencioso
+      }
+    }
+
+    function obtenerHebreaLocalDesdeFechaISO(iso) {
+      const dt = parseISODateLocal(iso);
+      if (!dt) return null;
+      try {
+        // Safari/iOS suele soportarlo; si no, lanzará RangeError.
+        const fmt = new Intl.DateTimeFormat("en-u-ca-hebrew-nu-latn", { day: "numeric", month: "long", year: "numeric" });
+        const parts = fmt.formatToParts(dt);
+        const hd = (((parts.find(p => p.type === "day") || {}).value || "").match(/\d+/) || [""])[0] || "";
+        const hm = ((parts.find(p => p.type === "month") || {}).value || "").trim();
+        const hy = (((parts.find(p => p.type === "year") || {}).value || "").match(/\d+/) || [""])[0] || "";
+        const hm3 = sanitizeMonth3(hm);
+        const hy4 = hy ? hy.slice(-4) : "";
+        if (hd && hm && hm3.length === 3 && hy4.length === 4) {
+          return { hd, hm, hy: hy4, hm3, hy4 };
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    }
+
+    async function obtenerHebreaOnlineHebcal(iso, signal) {
+      const dt = parseISODateLocal(iso);
+      if (!dt) return null;
+      try {
+        const y = dt.getFullYear();
+        const m = dt.getMonth() + 1;
+        const d = dt.getDate();
+        const url = "https://www.hebcal.com/converter?cfg=json&g2h=1&gy=" + y + "&gm=" + m + "&gd=" + d + "&lang=en";
+        const res = await fetch(url, { signal });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data && typeof data.hd !== "undefined" && data.hm && data.hy) {
+          const hd = (String(data.hd).match(/\d+/) || [""])[0] || "";
+          const hm = String(data.hm || "").trim();
+          const hy = (String(data.hy).match(/\d+/) || [""])[0] || "";
+          const hm3 = sanitizeMonth3(hm);
+          const hy4 = hy ? hy.slice(-4) : "";
+          if (hd && hm && hm3.length === 3 && hy4.length === 4) {
+            return { hd, hm, hy: hy4, hm3, hy4 };
           }
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    }
+
+    function intentarHebcalBackground(iso) {
+      // NO bloqueante: si llega, actualiza UI + cache. Si no, no pasa nada.
+      const key = String(iso || "").trim();
+      if (!key) return;
+      if (A33HebreoFetch.inFlight && A33HebreoFetch.iso === key) return;
+
+      // cancelar anterior si existe
+      try { if (A33HebreoFetch.abort) A33HebreoFetch.abort.abort(); } catch (e) {}
+
+      const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      A33HebreoFetch = { inFlight: true, iso: key, abort: controller };
+
+      const done = (h) => {
+        A33HebreoFetch.inFlight = false;
+        const prodNow = (document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || "";
+        if (String(prodNow).trim() !== key) return; // el usuario cambió la fecha
+        if (h && h.hd && h.hm && h.hy) {
+          guardarHebreoCache(key, h);
+          A33Hebreo = h;
+          const pretty = h.hd + " " + h.hm + " " + h.hy;
+          const span = document.getElementById("texto-fecha-hebreo");
+          const badgeHeb = document.getElementById("badge-hebreo");
+          if (span) span.textContent = "Fecha hebrea (producción): " + pretty;
+          if (badgeHeb) badgeHeb.textContent = "Hebreo: " + pretty;
+          // si estamos en AUTO, recalculamos el código sugerido sin tocar consecutivo
+          if (A33CodigoLoteMode === "AUTO") {
+            recalcularCodigoLoteAuto({ force: false });
+          }
+        }
+      };
+
+      // timeout duro
+      let t = null;
+      if (controller) {
+        t = setTimeout(() => {
+          try { controller.abort(); } catch (e) {}
+        }, HEB_FETCH_TIMEOUT_MS);
+      }
+
+      obtenerHebreaOnlineHebcal(key, controller ? controller.signal : undefined)
+        .then(h => {
+          if (t) clearTimeout(t);
+          done(h);
         })
         .catch(() => {
-          A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
-          span.textContent = "Fecha hebrea (producción): —";
-          return null;
+          if (t) clearTimeout(t);
+          A33HebreoFetch.inFlight = false;
         });
+    }
+
+    function actualizarFechaHebrea() {
+      // Deriva SIEMPRE de la fecha de producción.
+      const span = document.getElementById("texto-fecha-hebreo");
+      const badgeHeb = document.getElementById("badge-hebreo");
+      if (!span) return Promise.resolve(null);
+
+      const prod = (document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || "";
+      const iso = String(prod || "").trim();
+
+      // Sin fecha de producción: placeholder claro (no usar "hoy" para no confundir).
+      if (!iso) {
+        A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+        span.textContent = "Fecha hebrea (producción): —";
+        if (badgeHeb) badgeHeb.textContent = "Hebreo: Calcula para ver…";
+        return Promise.resolve(null);
+      }
+
+      // 1) Local (offline-first)
+      const local = obtenerHebreaLocalDesdeFechaISO(iso);
+      if (local && local.hd && local.hm && local.hy) {
+        A33Hebreo = local;
+        guardarHebreoCache(iso, local);
+        const pretty = local.hd + " " + local.hm + " " + local.hy;
+        span.textContent = "Fecha hebrea (producción): " + pretty;
+        if (badgeHeb) badgeHeb.textContent = "Hebreo: " + pretty;
+        return Promise.resolve(local);
+      }
+
+      // 2) Cache local (si ya lo vimos alguna vez)
+      const cached = leerHebreoCache(iso);
+      if (cached && cached.hd && cached.hm && cached.hy) {
+        A33Hebreo = cached;
+        const pretty = cached.hd + " " + cached.hm + " " + cached.hy;
+        span.textContent = "Fecha hebrea (producción): " + pretty;
+        if (badgeHeb) badgeHeb.textContent = "Hebreo: " + pretty;
+        return Promise.resolve(cached);
+      }
+
+      // 3) Degradación controlada: NO romper flujo
+      A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+      span.textContent = "Fecha hebrea (producción): Fecha hebrea no disponible offline";
+      if (badgeHeb) badgeHeb.textContent = "Hebreo: Fecha hebrea no disponible offline";
+
+      // 4) Fetch opcional (no bloqueante) solo si hay red
+      try {
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          intentarHebcalBackground(iso);
+        }
+      } catch (e) {}
+
+      return Promise.resolve(null);
     }
 
     function parseISODateLocal(iso) {
@@ -860,50 +1197,7 @@
       return letters.slice(0, 3);
     }
 
-    async function obtenerHebreaDesdeFechaISO(iso) {
-      const dt = parseISODateLocal(iso);
-      if (!dt) return null;
-
-      // 1) Intento offline (Intl con calendario hebreo)
-      try {
-        const fmt = new Intl.DateTimeFormat("en-u-ca-hebrew-nu-latn", { day: "numeric", month: "long", year: "numeric" });
-        const parts = fmt.formatToParts(dt);
-        const hd = (((parts.find(p => p.type === "day") || {}).value || "").match(/\d+/) || [""])[0] || "";
-        const hm = ((parts.find(p => p.type === "month") || {}).value || "").trim();
-        const hy = (((parts.find(p => p.type === "year") || {}).value || "").match(/\d+/) || [""])[0] || "";
-        const hm3 = sanitizeMonth3(hm);
-        const hy4 = hy ? hy.slice(-4) : "";
-        if (hd && hm && hm3.length === 3 && hy4.length === 4) {
-          return { hd, hm, hy: hy4, hm3, hy4 };
-        }
-      } catch (e) {
-        // sigue a fallback
-      }
-
-      // 2) Fallback online (Hebcal)
-      try {
-        const y = dt.getFullYear();
-        const m = dt.getMonth() + 1;
-        const d = dt.getDate();
-        const url = "https://www.hebcal.com/converter?cfg=json&g2h=1&gy=" + y + "&gm=" + m + "&gd=" + d + "&lang=en";
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        const data = await res.json();
-        if (data && typeof data.hd !== "undefined" && data.hm && data.hy) {
-          const hd = (String(data.hd).match(/\d+/) || [""])[0] || "";
-          const hm = String(data.hm || "").trim();
-          const hy = (String(data.hy).match(/\d+/) || [""])[0] || "";
-          const hm3 = sanitizeMonth3(hm);
-          const hy4 = hy ? hy.slice(-4) : "";
-          if (hd && hm && hm3.length === 3 && hy4.length === 4) {
-            return { hd, hm, hy: hy4, hm3, hy4 };
-          }
-        }
-      } catch (e) {
-        return null;
-      }
-      return null;
-    }
+    // Nota: obtenerHebreaDesdeFechaISO se reemplazó por la estrategia Etapa 3 (local + cache + degradación + fetch no bloqueante).
 
     function ecoUnmaskX(mask4) {
       const s = String(mask4 || "");
@@ -941,9 +1235,9 @@
     function obtenerMaxSeqDesdeLotes() {
       let max = 0;
       try {
-        const raw = A33Storage.getItem("arcano33_lotes");
-        if (!raw) return 0;
-        const arr = JSON.parse(raw);
+        const arr = (window.A33Storage && typeof A33Storage.sharedGet === 'function')
+          ? A33Storage.sharedGet("arcano33_lotes", [])
+          : (() => { const raw = A33Storage.getItem("arcano33_lotes"); return raw ? JSON.parse(raw) : []; })();
         if (!Array.isArray(arr)) return 0;
         arr.forEach(l => {
           const c = l && (l.codigo || l.code || l.lote || "");
@@ -957,9 +1251,9 @@
     function obtenerUsedSeqSetDesdeLotes() {
       const set = new Set();
       try {
-        const raw = A33Storage.getItem("arcano33_lotes");
-        if (!raw) return set;
-        const arr = JSON.parse(raw);
+        const arr = (window.A33Storage && typeof A33Storage.sharedGet === 'function')
+          ? A33Storage.sharedGet("arcano33_lotes", [])
+          : (() => { const raw = A33Storage.getItem("arcano33_lotes"); return raw ? JSON.parse(raw) : []; })();
         if (!Array.isArray(arr)) return set;
         arr.forEach(l => {
           const c = l && (l.codigo || l.code || l.lote || "");
@@ -1006,20 +1300,19 @@
       return pad4(n).slice(-4);
     }
 
-    function commitConsecutivoDespuesDeGuardar(code) {
+    function commitConsecutivoDespuesDeGuardar(code, seqHint) {
       const last = obtenerUltimoConsecutivoNumerico();
-      const usedSeq = extraerSeqDeCodigo(code);
-      let newLast = last;
-      if (typeof usedSeq === "number" && usedSeq > 0) {
-        newLast = Math.max(last, usedSeq);
-      } else if (/^\d{4}$/.test(String(A33AutoSeq || ""))) {
-        const auto = parseInt(A33AutoSeq, 10) || 0;
-        newLast = auto > 0 ? Math.max(last, auto) : (last + 1);
-      } else {
-        newLast = last + 1;
+      let usedSeq = (typeof seqHint === "number" && seqHint > 0) ? seqHint : extraerSeqDeCodigo(code);
+
+      // Si por alguna razón no podemos extraer el consecutivo, NO avanzamos el contador.
+      if (!(typeof usedSeq === "number" && usedSeq > 0)) {
+        usedSeq = last;
       }
+
+      const newLast = Math.max(last, usedSeq);
       const seq4 = pad4(newLast).slice(-4);
       try { A33Storage.setItem(STORAGE_LOTE_SEQ_LAST_KEY, seq4); } catch (e) {}
+      // Compatibilidad: se conserva la key anterior, pero solo se actualiza al guardar exitosamente.
       try { A33Storage.setItem(STORAGE_LOTE_SEQ_CURRENT_KEY, seq4); } catch (e) {}
       return seq4;
     }
@@ -1040,36 +1333,42 @@
       setPillEstadoCodigo("EDITADO");
     }
 async function recalcularCodigoLoteAuto(opts) {
-      const consumeNewSeq = !!(opts && opts.consumeNewSeq);
-      if (consumeNewSeq || !/^\d{4}$/.test(String(A33AutoSeq || ""))) {
-        A33AutoSeq = sugerirSeq4({ advance: consumeNewSeq });
+      // PREVIEW: generar/actualizar el código sin comprometer consecutivo.
+      // Nota: por compatibilidad puede venir opts.consumeNewSeq, pero se ignora (NO se avanza por recalcular).
+      const force = !!(opts && (opts.force || opts.forceNewPreview));
+
+      if (force || !/^\d{4}$/.test(String(A33AutoSeq || ""))) {
+        // El preview siempre parte del último comprometido + 1 (o el siguiente libre), pero NO lo guarda como consecutivo.
+        A33AutoSeq = sugerirSeq4({ advance: false });
       }
+
       A33CodigoLoteMode = "AUTO";
       try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
 
       const fechaProdIso = ((document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || hoyLocalISO()).trim();
       const dt = parseISODateLocal(fechaProdIso) || new Date();
-      const dia2 = pad2(dt.getDate());
 
-      const heb = await actualizarFechaHebrea();
-      if (!heb || !heb.hm3 || !heb.hy4) {
-        // Si no hay hebrea, no inventamos: dejamos el código como está y avisamos en consola.
-        console.warn("No se pudo calcular fecha hebrea para el código de lote.");
-        return;
-      }
+      const heb = await actualizarFechaHebrea(); // Etapa 3: resuelve rápido (sin bloquear por red)
+      const heb2 = (heb && heb.hd && heb.hm3 && heb.hy4) ? heb : (leerHebreoCache(fechaProdIso) || null);
+
+      // Día SIEMPRE desde la misma fuente hebrea (si existe). Fallback controlado: gregoriano.
+      const dia2 = pad2((heb2 && heb2.hd) ? heb2.hd : dt.getDate());
+      const hm3 = (heb2 && heb2.hm3) ? heb2.hm3 : "OFF";
+      const hy4 = (heb2 && heb2.hy4) ? heb2.hy4 : String(dt.getFullYear()).slice(-4);
 
       const consecMask = ecoMaskX(A33AutoSeq);
-      const code = "A33" + consecMask + dia2 + heb.hm3 + heb.hy4;
+      const code = "A33" + consecMask + dia2 + hm3 + hy4;
 
-      // Validación mínima del formato: A33 + 4 + 2 + 3 + 4 = 16
       if (!/^A33[A-Z0-9X]{4}\d{2}[A-Z]{3}\d{4}$/.test(code)) {
         console.warn("Código de lote generado inválido:", code);
         return;
       }
+
       setCodigoLoteValue(code);
       setPillEstadoCodigo("SUGERIDO");
       A33SuggestedCode = code;
-      // Persistimos el valor actual (compatibilidad con flujo existente)
+
+      // Persistimos el valor actual del input (compatibilidad), pero NO el consecutivo.
       try { A33Storage.setItem(STORAGE_LOTE_KEY, code); } catch (e) {}
     }
 
@@ -1151,15 +1450,33 @@ async function recalcularCodigoLoteAuto(opts) {
         recetas,
         costosPresentacion
       };
-      A33Storage.setItem(STORAGE_RECETAS_KEY, JSON.stringify(payload));
+      try{
+        if (window.A33Storage && typeof A33Storage.sharedSet === 'function'){
+          const r = A33Storage.sharedSet(STORAGE_RECETAS_KEY, payload, { source: 'calculadora' });
+          if (r && r.ok === false && r.message){
+            alert(r.message);
+            return;
+          }
+        } else {
+          A33Storage.setItem(STORAGE_RECETAS_KEY, JSON.stringify(payload));
+        }
+      }catch(e){
+        console.warn('No se pudo guardar recetas:', e);
+      }
       alert("Recetas y costos guardados en este navegador ✅");
     }
 
     function cargarRecetas() {
-      const raw = A33Storage.getItem(STORAGE_RECETAS_KEY);
-      if (!raw) return;
+      // Contrato compartido (anti-pisadas + data vieja segura)
       try {
-        const data = JSON.parse(raw);
+        let data = null;
+        if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+          data = A33Storage.sharedGet(STORAGE_RECETAS_KEY, null);
+        } else {
+          const raw = A33Storage.getItem(STORAGE_RECETAS_KEY);
+          data = raw ? JSON.parse(raw) : null;
+        }
+        if (!data) return;
         const recetas = data && data.recetas ? data.recetas : data;
         const costosPresentacion = data && data.costosPresentacion ? data.costosPresentacion : null;
 
@@ -1227,6 +1544,8 @@ async function recalcularCodigoLoteAuto(opts) {
       // Al entrar a Calculadora, Notas siempre empieza vacía (sin tocar otros campos).
       resetNotasAlEntrar();
       A33HasCalculoPrevio = false;
+      const hintRes = document.getElementById("hint-resultados");
+      if (hintRes) hintRes.style.display = "block";
       actualizarTextoCaducidad();
 
       // Nuevo lote / nueva corrida: AUTO genera código sugerido (preview), sin quemar consecutivo.
@@ -1242,7 +1561,7 @@ async function recalcularCodigoLoteAuto(opts) {
       let totalVolumenFinalMl = 0;
       const unidadesPorPresentacion = [];
       PRESENTACIONES.forEach(p => {
-        const unidades = getNumberValue("plan-" + p.id);
+        const unidades = normQtyInt(getNumberValue("plan-" + p.id));
         if (unidades > 0) {
           unidadesPorPresentacion.push({ id: p.id, nombre: p.nombre, unidades });
         }
@@ -1367,6 +1686,8 @@ async function recalcularCodigoLoteAuto(opts) {
 
       A33HasCalculoPrevio = true;
       resultadosDiv.style.display = "block";
+      const hintRes = document.getElementById("hint-resultados");
+      if (hintRes) hintRes.style.display = "none";
       guardarMetaLote();
     }
     function exportarLote() {
@@ -1427,6 +1748,8 @@ async function recalcularCodigoLoteAuto(opts) {
         if (el) el.value = "";
       });
       document.getElementById("resultados").style.display = "none";
+      const hintRes = document.getElementById("hint-resultados");
+      if (hintRes) hintRes.style.display = "block";
       A33HasCalculoPrevio = false;
     }
 
@@ -1448,14 +1771,19 @@ async function recalcularCodigoLoteAuto(opts) {
 
       let lotes = [];
       try {
-        const raw = A33Storage.getItem("arcano33_lotes");
-        if (raw) lotes = JSON.parse(raw) || [];
-        if (!Array.isArray(lotes)) lotes = [];
+        if (window.A33Storage && typeof A33Storage.sharedRead === 'function'){
+          const rr = A33Storage.sharedRead("arcano33_lotes", []);
+          lotes = Array.isArray(rr && rr.data) ? rr.data : [];
+        } else {
+          const raw = A33Storage.getItem("arcano33_lotes");
+          if (raw) lotes = JSON.parse(raw) || [];
+          if (!Array.isArray(lotes)) lotes = [];
+        }
       } catch (e) {
         lotes = [];
       }
 
-      const loteInput = document.getElementById("lote");
+const loteInput = document.getElementById("lote");
       const rawCodigo = loteInput ? loteInput.value : "";
       let v = validarCodigoLoteFuerte(rawCodigo);
       if (!v.ok) {
@@ -1552,13 +1880,34 @@ async function recalcularCodigoLoteAuto(opts) {
         caducidadIso = "";
       }
 
-      // Señal UI: OK cuando ya pasó TODO y justo antes de persistir
-      setPillEstadoCodigo("OK");
+      // Releer lotes justo antes de persistir (anti-pisadas)
+      let lotesInfo = { data: lotes, meta: { rev: null } };
+      try {
+        if (window.A33Storage && typeof A33Storage.sharedRead === 'function'){
+          lotesInfo = A33Storage.sharedRead("arcano33_lotes", []);
+        } else {
+          const raw = A33Storage.getItem("arcano33_lotes");
+          lotesInfo = { data: raw ? (JSON.parse(raw) || []) : [], meta: { rev: null } };
+        }
+      } catch (e) {
+        lotesInfo = { data: [], meta: { rev: null } };
+      }
+
+      let lotesActual = Array.isArray(lotesInfo.data) ? lotesInfo.data : [];
+      const baseRevLotes = (lotesInfo.meta && typeof lotesInfo.meta.rev === "number") ? lotesInfo.meta.rev : null;
+
+      const batchCode = normalizarCodigoLote(codigoFinal);
+      const stableId = "batch_" + batchCode;
+      const notasTrim = String(datos.notas || "").trim();
 
       const nuevoLote = {
-        id: "lote_" + Date.now(),
+        // Identidad estable (compat Lotes): batch_{BATCHCODE}
+        loteId: stableId,
+        batchCode: batchCode,
+        id: stableId,
+
         fecha: fechaProdIso,
-        codigo: codigoFinal,
+        codigo: batchCode,
         caducidad: caducidadIso || fechaProdIso,
         volTotal: Math.round(datos.totalVolumenFinalMl || 0).toString(),
         volVino: Math.round(datos.totalesIngredientes.vino || 0).toString(),
@@ -1571,29 +1920,113 @@ async function recalcularCodigoLoteAuto(opts) {
         djeba: (mapUnits.djeba || 0).toString(),
         litro: (mapUnits.litro || 0).toString(),
         galon: (mapUnits.galon || 0).toString(),
-        notas: datos.notas || "",
+        // Notas: no pisar notas existentes si aquí vienen vacías
+        ...(notasTrim ? { notas: notasTrim } : {}),
         createdAt: new Date().toISOString()
       };
 
-      lotes.push(nuevoLote);
+      const isBlank = (v) => v == null || String(v).trim() === "";
+      const codeCanon = (l) => normalizarCodigoLote(l && (l.codigo || l.batchCode || l.code || l.lote || ""));
+      const loteSig = (l) => {
+        const x = l || {};
+        const pick = (k) => (x[k] == null ? "" : String(x[k]).trim());
+        return [
+          codeCanon(x),
+          pick("fecha"),
+          pick("caducidad"),
+          pick("volTotal"),
+          pick("volVino"),
+          pick("volVodka"),
+          pick("volJugo"),
+          pick("volSirope"),
+          pick("volAgua"),
+          pick("pulso"),
+          pick("media"),
+          pick("djeba"),
+          pick("litro"),
+          pick("galon"),
+        ].join("|");
+      };
 
-      // Persistencia: solo si esto fue exitoso hacemos side-effects (inventario + consecutivo)
+      // Insert/update por identidad (batchCode) con dedupe conservador
+      const matchIdx = [];
+      for (let i = 0; i < lotesActual.length; i++) {
+        if (codeCanon(lotesActual[i]) === batchCode) matchIdx.push(i);
+      }
+
+      if (matchIdx.length > 0) {
+        // Idempotencia: solo "update" si es el mismo lote (misma firma). Si difiere, bloquear.
+        const sig0 = loteSig(lotesActual[matchIdx[0]]);
+        const sigN = loteSig(nuevoLote);
+        const allSame = matchIdx.every((i) => loteSig(lotesActual[i]) === sig0);
+
+        if (!allSame) {
+          alert("Conflicto detectado: hay múltiples registros con el mismo código de lote. No se guardó para evitar corromper data. Revisá Control de Lotes.");
+          setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
+          return;
+        }
+        if (sig0 !== sigN) {
+          alert("Conflicto detectado: ya existe un lote con ese código y datos distintos. No se sobrescribió.");
+          setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
+          return;
+        }
+
+        // Merge conservador: preservar campos extra (eventUsage/status/etc.) y notas/createdAt previos
+        const existing = lotesActual[matchIdx[0]] || {};
+        const merged = { ...existing, ...nuevoLote };
+
+        if (!isBlank(existing.id)) merged.id = existing.id;
+        if (!isBlank(existing.loteId)) merged.loteId = existing.loteId;
+        if (!isBlank(existing.batchCode)) merged.batchCode = existing.batchCode;
+
+        if (!isBlank(existing.createdAt)) merged.createdAt = existing.createdAt;
+        if (!isBlank(existing.notas) && isBlank(notasTrim)) merged.notas = existing.notas;
+
+        lotesActual[matchIdx[0]] = merged;
+
+        // Remover duplicados idénticos extra (si existían)
+        for (let j = matchIdx.length - 1; j >= 1; j--) {
+          lotesActual.splice(matchIdx[j], 1);
+        }
+      } else {
+        lotesActual.push(nuevoLote);
+      }
+
+      // Persistencia segura: bloquear si la data cambió entre lectura y escritura
       try {
-        A33Storage.setItem("arcano33_lotes", JSON.stringify(lotes));
+        if (window.A33Storage && typeof A33Storage.sharedSet === 'function' && typeof A33Storage.sharedRead === 'function') {
+          const r = A33Storage.sharedSet("arcano33_lotes", lotesActual, { source: 'calculadora', baseRev: baseRevLotes, conflictPolicy: 'block' });
+          if (r && r.ok === false) throw new Error(r.message || "No se pudo guardar el lote.");
+        } else {
+          A33Storage.setItem("arcano33_lotes", JSON.stringify(lotesActual));
+        }
       } catch (e) {
-        alert("No se pudo guardar el lote en el navegador.");
+        alert((e && e.message) ? e.message : "No se pudo guardar el lote en el navegador.");
         setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
         return;
       }
 
+      // Señal UI: OK (guardado confirmado)
+      setPillEstadoCodigo("OK");
+
       // Side-effects SOLO después de guardar OK
-      aplicarConsumoInventarioDesdeLote(datos, mapUnits);
+      let seq4 = "";
       try {
-        const seq4 = commitConsecutivoDespuesDeGuardar(codigoFinal);
+        seq4 = commitConsecutivoDespuesDeGuardar(codigoFinal, seqFinal);
         if (/^\d{4}$/.test(String(seq4 || ""))) A33AutoSeq = seq4;
       } catch (e) {}
 
-      alert("Lote guardado en el Control de Lotes interno.");
+      let invOk = true;
+      try {
+        aplicarConsumoInventarioDesdeLote(datos, mapUnits);
+      } catch (e) {
+        invOk = false;
+        console.warn('No se pudo aplicar consumo a Inventario desde Calculadora:', e);
+      }
+
+      alert(invOk
+        ? "Lote guardado en el Control de Lotes interno."
+        : "Lote guardado, pero no se pudo aplicar consumo a Inventario. Revisá Inventario.");
 
       // Evitar doble-guardado accidental del mismo cálculo
       A33HasCalculoPrevio = false;
@@ -1602,7 +2035,8 @@ async function recalcularCodigoLoteAuto(opts) {
       A33CodigoLoteMode = "AUTO";
       try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
       setPillEstadoCodigo("SUGERIDO");
-      recalcularCodigoLoteAuto({ consumeNewSeq: true });
+      A33AutoSeq = "";
+      recalcularCodigoLoteAuto({ consumeNewSeq: false });
       guardarMetaLote();
     }
 function init() {
@@ -1624,7 +2058,7 @@ function init() {
 
       if (btnRegenerar) {
         btnRegenerar.addEventListener("click", () => {
-          // Regenerar: vuelve a AUTO y propone el siguiente consecutivo (preview), sin quemarlo hasta guardar lote
+          // Regenerar: vuelve a AUTO y recalcula el código sugerido (preview) SIN comprometer consecutivo
           recalcularCodigoLoteAuto({ consumeNewSeq: false });
           guardarMetaLote();
         });
@@ -1676,6 +2110,6 @@ function init() {
       try { resetNotasAlEntrar(); } catch (e) {}
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.7"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.42"></script>
 </body>
 </html>

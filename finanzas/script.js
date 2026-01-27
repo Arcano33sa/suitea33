@@ -7,7 +7,7 @@
 const FIN_DB_NAME = 'finanzasDB';
 // IMPORTANTE: subir versión cuando se agregan stores/nuevas estructuras.
 // v3 agrega el store `suppliers` para Proveedores (sin romper data existente).
-const FIN_DB_VERSION = 5; // + Importación cierres diarios POS (índice/idempotencia)
+const FIN_DB_VERSION = 6; // + Recibos (store `receipts`) + Importación cierres diarios POS
 const CENTRAL_EVENT = 'CENTRAL';
 
 let finDB = null;
@@ -64,6 +64,23 @@ function openFinDB() {
         db.createObjectStore('suppliers', { keyPath: 'id', autoIncrement: true });
       }
 
+
+
+      // Recibos (mínimo): borradores/emitidos/anulados (Etapa 1 crea BORRADOR)
+      if (!db.objectStoreNames.contains('receipts')) {
+        const st = db.createObjectStore('receipts', { keyPath: 'receiptId' });
+        try { st.createIndex('dateISO', 'dateISO', { unique: false }); } catch (e) {}
+        try { st.createIndex('status', 'status', { unique: false }); } catch (e) {}
+        try { st.createIndex('updatedAt', 'updatedAt', { unique: false }); } catch (e) {}
+      } else {
+        // Asegurar índices si la store ya existe (idempotente)
+        try {
+          const st = e.target.transaction.objectStore('receipts');
+          if (st && !st.indexNames.contains('dateISO')) st.createIndex('dateISO', 'dateISO', { unique: false });
+          if (st && !st.indexNames.contains('status')) st.createIndex('status', 'status', { unique: false });
+          if (st && !st.indexNames.contains('updatedAt')) st.createIndex('updatedAt', 'updatedAt', { unique: false });
+        } catch (err) {}
+      }
       // Settings / snapshots (no contable): por ejemplo Caja Chica física.
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'id' });
@@ -96,7 +113,64 @@ function openFinDB() {
 
       resolve(finDB);
     };
-    req.onerror = () => reject(req.error);
+    req.onerror = () => {
+      const err = req.error;
+      if (err && err.name === 'VersionError') {
+        console.warn('Finanzas: la base finanzasDB está en una versión más reciente que este código. Se abrirá la versión existente.');
+        const req2 = indexedDB.open(FIN_DB_NAME);
+        req2.onsuccess = () => {
+          finDB = req2.result;
+
+          finDB.onversionchange = () => {
+            try { finDB.close(); } catch (e) {}
+            finDB = null;
+            alert('Se detectó una actualización de Finanzas en otra pestaña.\nCierra esta pestaña y vuelve a abrir Finanzas.');
+          };
+
+          // Si por alguna razón falta la store de recibos, hacer un upgrade mínimo (version + 1).
+          try {
+            if (!finDB.objectStoreNames.contains('receipts')) {
+              const currentVersion = finDB.version || 1;
+              try { finDB.close(); } catch (e) {}
+              finDB = null;
+
+              const req3 = indexedDB.open(FIN_DB_NAME, currentVersion + 1);
+              req3.onblocked = () => {
+                console.warn('Upgrade (receipts) bloqueado por otra pestaña.');
+                alert('Finanzas necesita actualizar su base de datos (Recibos), pero está bloqueado por otra pestaña.\n\nCierra otras pestañas/ventanas de la Suite A33 y recarga.');
+              };
+              req3.onupgradeneeded = (ev) => {
+                const db2 = ev.target.result;
+                if (!db2.objectStoreNames.contains('receipts')) {
+                  const st = db2.createObjectStore('receipts', { keyPath: 'receiptId' });
+                  try { st.createIndex('dateISO', 'dateISO', { unique: false }); } catch (e) {}
+                  try { st.createIndex('status', 'status', { unique: false }); } catch (e) {}
+                  try { st.createIndex('updatedAt', 'updatedAt', { unique: false }); } catch (e) {}
+                }
+              };
+              req3.onsuccess = () => {
+                finDB = req3.result;
+
+                finDB.onversionchange = () => {
+                  try { finDB.close(); } catch (e) {}
+                  finDB = null;
+                  alert('Se detectó una actualización de Finanzas en otra pestaña.\nCierra esta pestaña y vuelve a abrir Finanzas.');
+                };
+
+                resolve(finDB);
+              };
+              req3.onerror = () => reject(req3.error);
+              return;
+            }
+          } catch (_) {}
+
+          resolve(finDB);
+        };
+        req2.onerror = () => reject(req2.error);
+        return;
+      }
+      reject(err);
+    };
   });
 }
 
@@ -5532,7 +5606,1272 @@ function pcRenderAll() {
 }
 
 
+
+
+/* ---------- Recibos (Etapa 2) ---------- */
+
+let rcList = [];            // histórico completo
+let rcCurrent = null;       // recibo activo (view/edit)
+let rcPaymentType = 'CASH'; // estado UI
+let rcEditorMode = 'edit';  // 'edit' | 'view'
+let rcSaving = false;
+
+// Histórico: buscar / filtros
+let rcQuery = '';
+let rcFilterStatus = 'all'; // all | DRAFT | ISSUED | VOID
+let rcFilterFrom = '';      // YYYY-MM-DD
+let rcFilterTo = '';        // YYYY-MM-DD
+let rcFilterPay = 'all';    // all | CASH | TRANSFER
+let rcFilterPanelOpen = false;
+
+function rcPad2(n){ return String(n).padStart(2,'0'); }
+function rcTodayISO(){
+  const d = new Date();
+  return `${d.getFullYear()}-${rcPad2(d.getMonth()+1)}-${rcPad2(d.getDate())}`;
+}
+function rcLongDateDisplay(d){
+  const dt = (d instanceof Date) ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return '';
+  const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const dayName = days[dt.getDay()] || '';
+  const dd = dt.getDate();
+  const mm = months[dt.getMonth()] || '';
+  const yyyy = dt.getFullYear();
+  // Formato EXACTO requerido: “Martes, 13 de enero del 2026”
+  return `${dayName}, ${dd} de ${mm} del ${yyyy}`;
+}
+function rcDateDisplayFromISO(iso){
+  if (!iso || typeof iso !== 'string') return '';
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+function rcMakeId(){
+  try {
+    if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch(_) {}
+  return `rc_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+function rcRound2(x){
+  const n = Number(x);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+function rcSafeNum(v){
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function rcParseNumberOrZero(v){
+  if (v === '' || v === null || v === undefined) return 0;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return NaN;
+  return n;
+}
+
+// Para inputs numéricos editables: mostrar vacío cuando el valor lógico es 0.
+// (El placeholder "0" guía visual; el parsing vacío→0 se mantiene en rcParseNumberOrZero).
+function rcNumInputValueOrBlank(v){
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  if (n === 0) return '';
+  return String(n);
+}
+function rcPayLabel(pt){
+  return (pt === 'TRANSFER') ? 'TRANSFERENCIA' : 'EFECTIVO';
+}
+function rcPayPill(pt){
+  if (pt === 'TRANSFER') return '<span class="fin-pill fin-pill--transfer">TRANSFERENCIA</span>';
+  return '<span class="fin-pill fin-pill--cash">EFECTIVO</span>';
+}
+
+function rcSanitizeFilePart(s){
+  // Reglas: sin caracteres inválidos / \ : * ? " < > |
+  let out = String(s || '').trim();
+  out = out.replace(/[\u0000-\u001F\u007F]/g, '');
+  out = out.replace(/[\\/:*?"<>|]/g, '');
+  out = out.replace(/\s+/g, ' ').trim();
+  // Evitar nombres vacíos
+  return out || 'Cliente';
+}
+
+function rcDDMMYYYYFromISO(iso){
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  return `${m[3]}${m[2]}${m[1]}`;
+}
+
+function rcNumber4(n){
+  if (n == null || n === '') return '';
+  const raw = String(n).trim();
+  const asInt = parseInt(raw, 10);
+  if (Number.isFinite(asInt)) return String(asInt).padStart(4,'0');
+  return raw;
+}
+
+function rcSuggestedPdfName(receipt){
+  const num = rcNumber4(receipt?.number);
+  const cli = rcSanitizeFilePart(receipt?.clientName);
+  const ddmmyyyy = rcDDMMYYYYFromISO(receipt?.dateISO);
+  const parts = [];
+  if (num) parts.push(`${num}-`);
+  parts.push(cli);
+  if (ddmmyyyy) parts.push(ddmmyyyy);
+  return parts.join(' ').replace(/\s+/g,' ').trim();
+}
+
+function rcNextConsecutive4(){
+  let max = 0;
+  for (const r of (rcList || [])) {
+    const raw = (r && r.number != null) ? String(r.number).trim() : '';
+    if (!raw) continue;
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  const next = max + 1;
+  if (next <= 9999) return String(next).padStart(4, '0');
+  return String(next);
+}
+
+function rcNormalizeReceipt(r){
+  const nowISO = new Date().toISOString();
+  // Compatibilidad: si un recibo viejo no trae fecha, NO inventar una.
+  const dateISO = (r && typeof r.dateISO === 'string' && r.dateISO.trim()) ? String(r.dateISO).trim() : '';
+  const out = {
+    receiptId: r && r.receiptId ? String(r.receiptId) : rcMakeId(),
+    number: (r && (r.number !== undefined)) ? r.number : null,
+    status: r && r.status ? String(r.status) : 'DRAFT',
+    issuedAt: r && r.issuedAt ? String(r.issuedAt) : null,
+    voidedAt: r && r.voidedAt ? String(r.voidedAt) : null,
+    voidReason: r && r.voidReason ? String(r.voidReason) : '',
+    reissuedFrom: r && r.reissuedFrom ? String(r.reissuedFrom) : null,
+    createdAt: r && r.createdAt ? String(r.createdAt) : nowISO,
+    updatedAt: r && r.updatedAt ? String(r.updatedAt) : nowISO,
+    dateISO,
+    dateDisplay: (r && r.dateDisplay) ? String(r.dateDisplay) : (dateISO ? rcDateDisplayFromISO(dateISO) : ''),
+    clientName: r && r.clientName ? String(r.clientName) : '',
+    clientPhone: r && r.clientPhone ? String(r.clientPhone) : '',
+    paymentType: r && r.paymentType ? String(r.paymentType) : 'CASH',
+    paymentBank: (r && (r.paymentBank !== undefined && r.paymentBank !== null)) ? String(r.paymentBank) : '',
+    paymentRef: (r && (r.paymentRef !== undefined && r.paymentRef !== null)) ? String(r.paymentRef) : '',
+    lines: Array.isArray(r && r.lines) ? r.lines.map(l => ({
+      itemName: l && l.itemName ? String(l.itemName) : '',
+      qty: rcSafeNum(l && l.qty),
+      unitPrice: rcSafeNum(l && l.unitPrice),
+      discountPerUnit: rcSafeNum(l && l.discountPerUnit),
+      lineTotal: rcSafeNum(l && l.lineTotal)
+    })) : [],
+    totals: (r && r.totals && typeof r.totals === 'object') ? {
+      subtotal: rcSafeNum(r.totals.subtotal),
+      discountTotal: rcSafeNum(r.totals.discountTotal),
+      total: rcSafeNum(r.totals.total)
+    } : { subtotal: 0, discountTotal: 0, total: 0 }
+  };
+
+  if (!out.lines.length) {
+    out.lines = [{ itemName: '', qty: 1, unitPrice: 0, discountPerUnit: 0, lineTotal: 0 }];
+  }
+
+  if (out.paymentType !== 'CASH' && out.paymentType !== 'TRANSFER') out.paymentType = 'CASH';
+  if (out.paymentType === 'CASH') { out.paymentBank = ''; out.paymentRef = ''; }
+
+  rcRecalc(out);
+  return out;
+}
+
+async function rcLoadAll(){
+  try {
+    const arr = await finGetAll('receipts');
+    rcList = (arr || []).map(rcNormalizeReceipt);
+    rcList.sort((a,b) => {
+      const da = a.dateISO || '';
+      const db = b.dateISO || '';
+      if (da !== db) return db.localeCompare(da);
+      const ua = a.updatedAt || '';
+      const ub = b.updatedAt || '';
+      return ub.localeCompare(ua);
+    });
+  } catch (e) {
+    rcList = [];
+  }
+}
+
+function rcStatusPill(status){
+  const s = String(status || 'DRAFT');
+  if (s === 'ISSUED') return '<span class="fin-pill fin-pill--green">EMITIDO</span>';
+  if (s === 'VOID') return '<span class="fin-pill fin-pill--red">ANULADO</span>';
+  return '<span class="fin-pill fin-pill--muted">BORRADOR</span>';
+}
+
+function rcFmtMoney(v){ return `C$ ${fmtCurrency(v)}`; }
+
+function rcHasActiveFilters(){
+  return Boolean(String(rcQuery||'').trim())
+    || (rcFilterStatus && rcFilterStatus !== 'all')
+    || (rcFilterPay && rcFilterPay !== 'all')
+    || Boolean(rcFilterFrom)
+    || Boolean(rcFilterTo);
+}
+
+function rcMatchesQuery(r, q){
+  const qq = String(q || '').trim().toLowerCase();
+  if (!qq) return true;
+
+  const client = String(r.clientName || '').toLowerCase();
+
+  // N°: aceptar búsqueda por "1" y también por "0001" (si el número existe)
+  let num = '';
+  let numPad = '';
+  if (!(r.number === null || r.number === undefined || r.number === '')) {
+    num = String(r.number).toLowerCase();
+    const n = Number(r.number);
+    if (Number.isFinite(n)) numPad = String(Math.trunc(n)).padStart(4,'0').toLowerCase();
+  }
+
+  return client.includes(qq) || (num && num.includes(qq)) || (numPad && numPad.includes(qq));
+}
+
+function rcInDateRange(r){
+  const d = String(r.dateISO || '');
+  if (rcFilterFrom && d && d < rcFilterFrom) return false;
+  if (rcFilterTo && d && d > rcFilterTo) return false;
+  return true;
+}
+
+function rcFilteredList(){
+  const q = String(rcQuery || '').trim();
+  return (rcList || []).filter(r => {
+    if (!rcMatchesQuery(r, q)) return false;
+    if (rcFilterStatus && rcFilterStatus !== 'all' && String(r.status||'') !== rcFilterStatus) return false;
+    if (rcFilterPay && rcFilterPay !== 'all' && String(r.paymentType||'') !== rcFilterPay) return false;
+    if (!rcInDateRange(r)) return false;
+    return true;
+  });
+}
+
+function rcRenderList(){
+  const tbody = document.getElementById('rec-tbody');
+  const cnt = document.getElementById('rec-count');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const filtered = rcFilteredList();
+  if (cnt) {
+    if (!rcList.length) cnt.textContent = 'Sin recibos aún';
+    else if (rcHasActiveFilters()) cnt.textContent = `${filtered.length}/${rcList.length} recibo(s)`;
+    else cnt.textContent = `${rcList.length} recibo(s)`;
+  }
+
+  if (!filtered.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="7" class="fin-muted" style="padding:12px;">No hay resultados con esos filtros.</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  for (const r of filtered) {
+    const tr = document.createElement('tr');
+    tr.dataset.rcid = r.receiptId;
+
+    const num = (r.number === null || r.number === undefined || r.number === '') ? '—' : String(r.number);
+    // En histórico, mostrar fecha compacta para no romper layout.
+    const fecha = (r.dateISO ? rcDateDisplayFromISO(r.dateISO) : (r.dateDisplay || '')) || '—';
+    const cli = r.clientName || '—';
+    const total = (r.totals && Number.isFinite(Number(r.totals.total))) ? Number(r.totals.total) : 0;
+
+    const st = String(r.status || 'DRAFT');
+    const canEdit = st === 'DRAFT';
+    const canVoid = st === 'ISSUED';
+    const canReemit = (st === 'ISSUED' || st === 'VOID');
+    const canPrint = (st === 'ISSUED' || st === 'VOID');
+
+    tr.innerHTML = `
+      <td>${escapeHTML(num)}</td>
+      <td>${escapeHTML(fecha)}</td>
+      <td><span class="fin-cell-text fin-clamp-2">${escapeHTML(cli)}</span></td>
+      <td>${rcPayPill(r.paymentType)}</td>
+      <td class="num">${rcFmtMoney(total)}</td>
+      <td>${rcStatusPill(r.status)}</td>
+      <td class="fin-actions-cell">
+        <div class="fin-actions-inline">
+          <button type="button" class="btn-small" data-act="view">Ver</button>
+          ${canPrint ? `<button type="button" class="btn-small" data-act="print">Imprimir/PDF</button>` : ``}
+          ${canEdit ? `<button type="button" class="btn-small" data-act="edit">Editar</button>` : ``}
+          ${canVoid ? `<button type="button" class="btn-small" data-act="void">Anular</button>` : ``}
+          ${canReemit ? `<button type="button" class="btn-small" data-act="reemit">Reemitir</button>` : ``}
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function rcShowAlert(msg, kind='info'){
+  const el = document.getElementById('rec-alert');
+  if (!el) return;
+  if (!msg) {
+    el.classList.add('hidden');
+    el.textContent = '';
+    return;
+  }
+  el.classList.remove('hidden');
+  el.innerHTML = `<strong>${kind === 'error' ? 'Error' : 'Aviso'}:</strong> ${escapeHTML(String(msg))}`;
+}
+
+function rcToggleEditor(show){
+  const list = document.getElementById('recibos-list');
+  const editor = document.getElementById('recibos-editor');
+  if (!list || !editor) return;
+  if (show) {
+    list.classList.add('hidden');
+    editor.classList.remove('hidden');
+  } else {
+    editor.classList.add('hidden');
+    list.classList.remove('hidden');
+  }
+}
+
+function rcUpdateEditorMeta(){
+  const meta = document.getElementById('rec-editor-meta');
+  if (!meta || !rcCurrent) return;
+
+  const num = (rcCurrent.number === null || rcCurrent.number === undefined || rcCurrent.number === '') ? '—' : String(rcCurrent.number);
+  const st = String(rcCurrent.status || 'DRAFT');
+  const stLabel = (st === 'ISSUED') ? 'EMITIDO' : (st === 'VOID') ? 'ANULADO' : 'BORRADOR';
+  const pay = rcPayLabel(rcCurrent.paymentType);
+  const bank = String(rcCurrent.paymentBank || '').trim();
+  const ref = String(rcCurrent.paymentRef || '').trim();
+
+  const fecha = String(rcCurrent.dateDisplay || rcDateDisplayFromISO(rcCurrent.dateISO) || '').trim();
+  const parts = [
+    `N°: ${escapeHTML(num)}`,
+    `Fecha: ${escapeHTML(fecha || '—')}`,
+    `Estado: ${escapeHTML(stLabel)}`,
+    `Pago: ${escapeHTML(pay)}`
+  ];
+  if (rcCurrent.paymentType === 'TRANSFER' && bank) parts.push(`Banco: ${escapeHTML(bank)}`);
+  if (rcCurrent.paymentType === 'TRANSFER' && ref) parts.push(`Ref: ${escapeHTML(ref)}`);
+
+  if (st === 'VOID') {
+    const vr = String(rcCurrent.voidReason || '').trim();
+    if (vr) parts.push(`Motivo: ${escapeHTML(vr)}`);
+  }
+
+  if (rcCurrent.reissuedFrom) {
+    let fromLabel = String(rcCurrent.reissuedFrom);
+    const hit = (rcList || []).find(x => x && x.receiptId === rcCurrent.reissuedFrom);
+    if (hit && hit.number != null && hit.number !== '') fromLabel = `N° ${String(hit.number)}`;
+    else if (fromLabel.length > 12) fromLabel = fromLabel.slice(0, 12) + '…';
+    parts.push(`Reemitido de: ${escapeHTML(fromLabel)}`);
+  }
+
+  meta.textContent = parts.join(' · ');
+}
+
+function rcSetEditorMode(mode){
+  rcEditorMode = (mode === 'view') ? 'view' : 'edit';
+
+  const editor = document.getElementById('recibos-editor');
+  if (editor) editor.classList.toggle('rec-readonly', rcEditorMode === 'view');
+
+  const title = document.getElementById('rec-editor-title');
+  const hint = document.getElementById('rec-mode-hint');
+  if (title) title.textContent = (rcEditorMode === 'view') ? 'Detalle de recibo' : 'Editar borrador';
+  if (hint) hint.textContent = (rcEditorMode === 'view')
+    ? 'Modo lectura.'
+    : 'Modo edición (solo BORRADOR).';
+
+  const isView = (rcEditorMode === 'view');
+
+  const idsDisable = ['rec-client','rec-date','rec-bank','rec-ref'];
+  idsDisable.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = isView;
+  });
+
+  const bCash = document.getElementById('rec-pay-cash');
+  const bTr = document.getElementById('rec-pay-transfer');
+  if (bCash) bCash.disabled = isView;
+  if (bTr) bTr.disabled = isView;
+
+  const btnSave = document.getElementById('rec-save');
+  const btnIssue = document.getElementById('rec-issue');
+  const btnAdd = document.getElementById('rec-add-line');
+  const btnPrint = document.getElementById('rec-print');
+  if (btnSave) btnSave.classList.toggle('hidden', isView);
+  if (btnIssue) btnIssue.classList.toggle('hidden', isView);
+  if (btnAdd) btnAdd.classList.toggle('hidden', isView);
+
+  // Imprimir solo en lectura y solo para EMITIDO/ANULADO (no aplica a borrador)
+  const st = rcCurrent ? String(rcCurrent.status || 'DRAFT') : 'DRAFT';
+  const canPrint = (st === 'ISSUED' || st === 'VOID');
+  if (btnPrint) btnPrint.classList.toggle('hidden', !(isView && canPrint));
+  if (btnPrint) btnPrint.disabled = rcSaving;
+
+  // Etiqueta del botón cancelar/volver
+  const btnCancel = document.getElementById('rec-cancel');
+  if (btnCancel) btnCancel.textContent = isView ? 'Volver' : 'Cancelar';
+
+  // Aplicar disabled a inputs de líneas, por si ya están renderizadas
+  const linesTbody = document.getElementById('rec-lines-tbody');
+  if (linesTbody) {
+    linesTbody.querySelectorAll('input').forEach(inp => inp.disabled = isView);
+    linesTbody.querySelectorAll('button[data-act="del"]').forEach(btn => btn.disabled = isView);
+  }
+}
+
+function rcSetPaymentType(pt){
+  rcPaymentType = (pt === 'TRANSFER') ? 'TRANSFER' : 'CASH';
+  const bCash = document.getElementById('rec-pay-cash');
+  const bTr = document.getElementById('rec-pay-transfer');
+
+  const bankWrap = document.getElementById('rec-bank-wrap');
+  const bankInput = document.getElementById('rec-bank');
+  const refWrap = document.getElementById('rec-ref-wrap');
+  const refInput = document.getElementById('rec-ref');
+
+  if (bCash) bCash.classList.toggle('active', rcPaymentType === 'CASH');
+  if (bTr) bTr.classList.toggle('active', rcPaymentType === 'TRANSFER');
+
+  const isTransfer = (rcPaymentType === 'TRANSFER');
+  if (bankWrap) bankWrap.classList.toggle('hidden', !isTransfer);
+  if (refWrap) refWrap.classList.toggle('hidden', !isTransfer);
+
+  if (rcCurrent) {
+    rcCurrent.paymentType = rcPaymentType;
+    if (rcPaymentType === 'CASH') {
+      rcCurrent.paymentBank = '';
+      rcCurrent.paymentRef = '';
+      if (bankInput) bankInput.value = '';
+      if (refInput) refInput.value = '';
+    }
+  }
+
+  rcUpdateEditorMeta();
+}
+
+function rcRecalc(r){
+  const receipt = r || rcCurrent;
+  if (!receipt) return;
+  let subtotal = 0;
+  let discountTotal = 0;
+
+  for (const line of (receipt.lines || [])) {
+    const q = rcSafeNum(line.qty);
+    const u = rcSafeNum(line.unitPrice);
+    const d = rcSafeNum(line.discountPerUnit);
+
+    const ls = q * u;
+    const ld = q * d;
+    const lt = ls - ld;
+
+    line.qty = q;
+    line.unitPrice = u;
+    line.discountPerUnit = d;
+    line.lineTotal = rcRound2(lt);
+
+    subtotal += ls;
+    discountTotal += ld;
+  }
+
+  const total = subtotal - discountTotal;
+  receipt.totals = {
+    subtotal: rcRound2(subtotal),
+    discountTotal: rcRound2(discountTotal),
+    total: rcRound2(total)
+  };
+
+  const elSub = document.getElementById('rec-subtotal');
+  const elDisc = document.getElementById('rec-discount');
+  const elTot = document.getElementById('rec-total');
+  if (elSub) elSub.textContent = rcFmtMoney(receipt.totals.subtotal);
+  if (elDisc) elDisc.textContent = rcFmtMoney(receipt.totals.discountTotal);
+  if (elTot) elTot.textContent = rcFmtMoney(receipt.totals.total);
+}
+
+function rcRenderLines(){
+  const tbody = document.getElementById('rec-lines-tbody');
+  if (!tbody || !rcCurrent) return;
+  tbody.innerHTML = '';
+
+  const isView = (rcEditorMode === 'view');
+
+  rcCurrent.lines = Array.isArray(rcCurrent.lines) ? rcCurrent.lines : [];
+  if (!rcCurrent.lines.length) rcCurrent.lines.push({ itemName: '', qty: 1, unitPrice: 0, discountPerUnit: 0, lineTotal: 0 });
+
+  rcCurrent.lines.forEach((ln, idx) => {
+    const tr = document.createElement('tr');
+    tr.dataset.idx = String(idx);
+
+    const dis = isView ? 'disabled' : '';
+    const delBtn = isView ? '' : `<button type="button" class="btn-danger" data-act="del" title="Eliminar">×</button>`;
+
+    tr.innerHTML = `
+      <td><input type="text" ${dis} data-f="itemName" value="${escapeAttr(ln.itemName || '')}" placeholder="Ej: Djeba 750 ml"></td>
+      <td class="num"><input type="number" ${dis} inputmode="decimal" step="1" min="0" data-f="qty" value="${escapeAttr(rcNumInputValueOrBlank(ln.qty))}" placeholder="0"></td>
+      <td class="num"><input type="number" ${dis} inputmode="decimal" step="0.01" min="0" data-f="unitPrice" value="${escapeAttr(rcNumInputValueOrBlank(ln.unitPrice))}" placeholder="0"></td>
+      <td class="num"><input type="number" ${dis} inputmode="decimal" step="0.01" min="0" data-f="discountPerUnit" value="${escapeAttr(rcNumInputValueOrBlank(ln.discountPerUnit))}" placeholder="0"></td>
+      <td class="num"><span class="rec-line-total">${rcFmtMoney(ln.lineTotal || 0)}</span></td>
+      <td class="num">${delBtn}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  rcRecalc(rcCurrent);
+}
+
+function rcFillEditor(){
+  if (!rcCurrent) return;
+  const id = document.getElementById('rec-id');
+  const cli = document.getElementById('rec-client');
+  const date = document.getElementById('rec-date');
+  const bank = document.getElementById('rec-bank');
+  const ref = document.getElementById('rec-ref');
+
+  if (id) id.value = rcCurrent.receiptId;
+  if (cli) cli.value = rcCurrent.clientName || '';
+  // No fabricar fecha para recibos viejos sin dateISO.
+  if (date) date.value = rcCurrent.dateISO || '';
+  if (bank) bank.value = rcCurrent.paymentBank || '';
+  if (ref) ref.value = rcCurrent.paymentRef || '';
+
+  rcSetPaymentType(rcCurrent.paymentType || 'CASH');
+  rcRenderLines();
+  rcShowAlert('');
+  rcUpdateEditorMeta();
+  rcSetEditorMode(rcEditorMode); // reaplica disabled/hides
+}
+
+function rcNewDraft(){
+  const now = new Date();
+  const dateISO = rcTodayISO();
+  rcCurrent = rcNormalizeReceipt({
+    receiptId: rcMakeId(),
+    number: null,
+    status: 'DRAFT',
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    dateISO,
+    dateDisplay: rcDateDisplayFromISO(dateISO),
+    clientName: '',
+    paymentType: 'CASH',
+    paymentBank: '',
+    paymentRef: '',
+    lines: [{ itemName: '', qty: 1, unitPrice: 0, discountPerUnit: 0, lineTotal: 0 }],
+    totals: { subtotal: 0, discountTotal: 0, total: 0 }
+  });
+  rcEditorMode = 'edit';
+  rcToggleEditor(true);
+  rcFillEditor();
+}
+
+function rcOpenReceiptById(id, mode){
+  const found = rcList.find(r => r.receiptId === id);
+  if (!found) return;
+
+  const st = String(found.status || 'DRAFT');
+  const want = (mode === 'edit') ? 'edit' : 'view';
+  rcEditorMode = (want === 'edit' && st === 'DRAFT') ? 'edit' : 'view';
+
+  rcCurrent = rcNormalizeReceipt(found);
+  rcToggleEditor(true);
+  rcFillEditor();
+}
+
+function rcValidateCurrent(opts={}){
+  if (!rcCurrent) return { ok:false, msg:'No hay recibo en edición.' };
+
+  const forIssue = !!(opts && opts.forIssue);
+
+  const clientName = String(rcCurrent.clientName || '').trim();
+  if (!clientName) return { ok:false, msg:'Cliente es obligatorio.' };
+
+  const pt = rcCurrent.paymentType;
+  if (pt !== 'CASH' && pt !== 'TRANSFER') return { ok:false, msg:'Tipo de pago inválido.' };
+
+  const bank = String(rcCurrent.paymentBank || '').trim();
+  const ref = String(rcCurrent.paymentRef || '').trim();
+
+  if (pt === 'TRANSFER') {
+    if (forIssue && !bank) return { ok:false, msg:'Banco requerido para Transferencia.' };
+    // Referencia opcional
+    rcCurrent.paymentBank = bank;
+    rcCurrent.paymentRef = ref; // puede ser ''
+  } else {
+    // EFECTIVO: no se usan campos de transferencia
+    rcCurrent.paymentBank = '';
+    rcCurrent.paymentRef = '';
+  }
+
+
+  const lines = Array.isArray(rcCurrent.lines) ? rcCurrent.lines : [];
+  if (!lines.length) return { ok:false, msg:'Debe existir al menos 1 línea.' };
+
+  for (let i=0;i<lines.length;i++){
+    const ln = lines[i] || {};
+    const item = String(ln.itemName || '').trim();
+    if (!item) return { ok:false, msg:`Línea ${i+1}: ítem es obligatorio.` };
+
+    const qty = rcParseNumberOrZero(ln.qty);
+    const unit = rcParseNumberOrZero(ln.unitPrice);
+    const disc = rcParseNumberOrZero(ln.discountPerUnit);
+
+    // No NaN / Infinity
+    if (!Number.isFinite(qty) || !Number.isFinite(unit) || !Number.isFinite(disc)) {
+      return { ok:false, msg:`Línea ${i+1}: qty/precio/descuento deben ser numéricos válidos.` };
+    }
+
+    // Validaciones solicitadas
+    if (qty <= 0) return { ok:false, msg:`Línea ${i+1}: qty debe ser > 0.` };
+    if (unit < 0) return { ok:false, msg:`Línea ${i+1}: precio no puede ser negativo.` };
+    if (disc < 0) return { ok:false, msg:`Línea ${i+1}: descuento por unidad no puede ser negativo.` };
+
+    // Normalizar valores ya validados
+    ln.qty = qty;
+    ln.unitPrice = unit;
+    ln.discountPerUnit = disc;
+  }
+
+  rcRecalc(rcCurrent);
+
+  const t = rcCurrent.totals || {};
+  if (![t.subtotal, t.discountTotal, t.total].every(x => Number.isFinite(Number(x)))) {
+    return { ok:false, msg:'Totales inválidos.' };
+  }
+
+  rcCurrent.clientName = clientName;
+
+  return { ok:true, msg:'' };
+}
+
+function rcSetSaving(on){
+  rcSaving = Boolean(on);
+  const btnSave = document.getElementById('rec-save');
+  const btnIssue = document.getElementById('rec-issue');
+  const btnPrint = document.getElementById('rec-print');
+  const btnCancel = document.getElementById('rec-cancel');
+  const btnAdd = document.getElementById('rec-add-line');
+  const btnNew = document.getElementById('rec-new');
+  const btnRef = document.getElementById('rec-refresh');
+
+  if (btnSave) {
+    btnSave.disabled = rcSaving;
+    btnSave.textContent = rcSaving ? 'Guardando…' : 'Guardar borrador';
+  }
+  if (btnIssue) btnIssue.disabled = rcSaving;
+  if (btnPrint) btnPrint.disabled = rcSaving;
+  if (btnCancel) btnCancel.disabled = rcSaving;
+  if (btnAdd) btnAdd.disabled = rcSaving;
+  if (btnNew) btnNew.disabled = rcSaving;
+  if (btnRef) btnRef.disabled = rcSaving;
+
+  // Inputs principales
+  const ids = ['rec-client','rec-date','rec-bank','rec-ref'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && rcEditorMode === 'edit') el.disabled = rcSaving;
+  });
+
+  // Botones de pago
+  const bCash = document.getElementById('rec-pay-cash');
+  const bTr = document.getElementById('rec-pay-transfer');
+  if (bCash && rcEditorMode === 'edit') bCash.disabled = rcSaving;
+  if (bTr && rcEditorMode === 'edit') bTr.disabled = rcSaving;
+
+  // Líneas
+  const linesTbody = document.getElementById('rec-lines-tbody');
+  if (linesTbody) {
+    linesTbody.querySelectorAll('input').forEach(inp => {
+      if (rcEditorMode === 'edit') inp.disabled = rcSaving;
+    });
+    linesTbody.querySelectorAll('button[data-act="del"]').forEach(btn => {
+      if (rcEditorMode === 'edit') btn.disabled = rcSaving;
+    });
+  }
+}
+
+async function rcIssueCurrent(){
+  if (rcSaving) return false;
+  if (!rcCurrent) return false;
+  if (rcEditorMode !== 'edit') return false;
+  if (String(rcCurrent.status || 'DRAFT') !== 'DRAFT') return false;
+
+  const v = rcValidateCurrent({ forIssue:true });
+  if (!v.ok) {
+    rcShowAlert(v.msg, 'error');
+    return false;
+  }
+
+  if (!confirm('¿Emitir este recibo?\n\nAl emitir: se asigna N° automático, se sella la fecha y se bloquea la edición.')) {
+    return false;
+  }
+
+  rcSetSaving(true);
+  try {
+    // Asegurar histórico cargado para consecutivo correcto
+    await rcLoadAll();
+
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const todayISO = rcTodayISO();
+
+    rcCurrent.number = rcNextConsecutive4();
+    rcCurrent.status = 'ISSUED';
+    rcCurrent.issuedAt = nowISO;
+    rcCurrent.updatedAt = nowISO;
+
+    // Fecha automática (sellada)
+    rcCurrent.dateISO = todayISO;
+    rcCurrent.dateDisplay = rcLongDateDisplay(now);
+
+    // Pago/referencia/banco sellados (normalizar)
+    if (rcCurrent.paymentType === 'CASH') { rcCurrent.paymentBank = ''; rcCurrent.paymentRef = ''; }
+    if (rcCurrent.paymentType === 'TRANSFER') {
+      rcCurrent.paymentBank = String(rcCurrent.paymentBank || '').trim();
+      rcCurrent.paymentRef = String(rcCurrent.paymentRef || '').trim();
+    }
+
+    rcRecalc(rcCurrent);
+
+    await finPut('receipts', rcCurrent);
+
+    const saved = await finGet('receipts', rcCurrent.receiptId);
+    if (!saved) throw new Error('No se confirmó el emitido en IndexedDB.');
+
+    await rcLoadAll();
+    rcRenderList();
+
+    rcEditorMode = 'view';
+    rcFillEditor();
+    rcShowAlert(`Recibo emitido. N° ${rcCurrent.number}.`, 'info');
+    return true;
+  } catch (err) {
+    console.error('Error emitiendo recibo', err);
+    rcShowAlert('No se pudo emitir el recibo.', 'error');
+    return false;
+  } finally {
+    rcSetSaving(false);
+  }
+}
+
+async function rcVoidReceiptById(id){
+  const found = rcList.find(r => r.receiptId === id);
+  if (!found) return;
+  const st = String(found.status || 'DRAFT');
+  if (st !== 'ISSUED') {
+    alert('Solo se puede anular un recibo EMITIDO.');
+    return;
+  }
+
+  const num = (found.number == null || found.number === '') ? '—' : String(found.number);
+  if (!confirm(`¿Anular el recibo N° ${num}?\n\nEsto NO borra el recibo: queda en histórico como ANULADO.`)) return;
+
+  const motivo = String(prompt('Motivo de anulación (obligatorio):') || '').trim();
+  if (!motivo) {
+    alert('Motivo obligatorio.');
+    return;
+  }
+
+  try {
+    const r = rcNormalizeReceipt(found);
+    const nowISO = new Date().toISOString();
+    r.status = 'VOID';
+    r.voidReason = motivo;
+    r.voidedAt = nowISO;
+    r.updatedAt = nowISO;
+    await finPut('receipts', r);
+
+    // refrescar lista
+    await rcLoadAll();
+    rcRenderList();
+
+    // si está abierto en editor, refrescar
+    if (rcCurrent && rcCurrent.receiptId === id) {
+      rcCurrent = rcNormalizeReceipt(r);
+      rcEditorMode = 'view';
+      rcFillEditor();
+      rcShowAlert('Recibo anulado.', 'info');
+    }
+  } catch (err) {
+    console.error('Error anulando recibo', err);
+    alert('No se pudo anular el recibo.');
+  }
+}
+
+function rcReemitReceiptById(id){
+  const found = rcList.find(r => r.receiptId === id);
+  if (!found) return;
+  const st = String(found.status || 'DRAFT');
+  if (!(st === 'ISSUED' || st === 'VOID')) {
+    alert('Reemitir solo aplica a recibos EMITIDOS o ANULADOS.');
+    return;
+  }
+
+  const num = (found.number == null || found.number === '') ? '—' : String(found.number);
+  if (!confirm(`¿Reemitir el recibo N° ${num}?\n\nSe creará un NUEVO BORRADOR copiado. El original se conserva en histórico.`)) return;
+
+  const base = rcNormalizeReceipt(found);
+  const now = new Date();
+  const nowISO = now.toISOString();
+  const dateISO = rcTodayISO();
+
+  const draft = {
+    receiptId: rcMakeId(),
+    number: null,
+    status: 'DRAFT',
+    reissuedFrom: base.receiptId,
+    createdAt: nowISO,
+    updatedAt: nowISO,
+    dateISO,
+    dateDisplay: rcDateDisplayFromISO(dateISO),
+    clientName: base.clientName || '',
+    clientPhone: base.clientPhone || '',
+    paymentType: (base.paymentType === 'TRANSFER') ? 'TRANSFER' : 'CASH',
+    paymentBank: (base.paymentType === 'TRANSFER') ? String(base.paymentBank || '') : '',
+    paymentRef: (base.paymentType === 'TRANSFER') ? String(base.paymentRef || '') : '',
+    lines: (base.lines || []).map(l => ({
+      itemName: String(l.itemName || ''),
+      qty: rcSafeNum(l.qty),
+      unitPrice: rcSafeNum(l.unitPrice),
+      discountPerUnit: rcSafeNum(l.discountPerUnit),
+      lineTotal: rcSafeNum(l.lineTotal)
+    })),
+    totals: { subtotal: 0, discountTotal: 0, total: 0 }
+  };
+
+  rcCurrent = rcNormalizeReceipt(draft);
+  rcEditorMode = 'edit';
+  rcToggleEditor(true);
+  rcFillEditor();
+}
+
+function rcFmtMoneyPrint(v){
+  // En impresión preferimos números compactos sin prefijo.
+  return fmtCurrency(v);
+}
+
+function rcBuildPrintReceiptInnerHTML(r){
+  const receipt = rcNormalizeReceipt(r);
+  const num4 = rcNumber4(receipt.number);
+  const fecha = String(receipt.dateDisplay || rcDateDisplayFromISO(receipt.dateISO) || '').trim() || '—';
+  const payLbl = rcPayLabel(receipt.paymentType);
+  const bank = String(receipt.paymentBank || '').trim();
+  const ref = String(receipt.paymentRef || '').trim();
+  const showTransfer = (receipt.paymentType === 'TRANSFER');
+  const showRef = showTransfer && (ref.trim() !== '');
+  const bankDisp = bank || '—';
+
+  const cli = String(receipt.clientName || '').trim() || '—';
+
+  const rows = (receipt.lines || []).map((ln, idx) => {
+    const q = rcSafeNum(ln.qty);
+    const nameBase = String(ln.itemName || '').trim() || '—';
+    const name = nameBase;
+    const qDisp = (Number.isFinite(q) && q > 0) ? pcFmtQty(q) : '';
+    const discCell = (rcSafeNum(ln.discountPerUnit) === 0) ? '' : rcFmtMoneyPrint(ln.discountPerUnit || 0);
+    return `
+      <tr>
+        <td class="ncol">${idx + 1}</td>
+        <td>${escapeHTML(name)}</td>
+        <td class="num qcol">${escapeHTML(qDisp)}</td>
+        <td class="num pcol">${rcFmtMoneyPrint(ln.unitPrice || 0)}</td>
+        <td class="num dcol">${discCell}</td>
+        <td class="num tcol">${rcFmtMoneyPrint(ln.lineTotal || 0)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const sub = receipt.totals?.subtotal ?? 0;
+  const disc = receipt.totals?.discountTotal ?? 0;
+  const tot = receipt.totals?.total ?? 0;
+
+  const discTotalDisp = (rcSafeNum(disc) === 0) ? '' : rcFmtMoneyPrint(disc);
+
+  return `
+    <div class="rc-print-header">
+      <div class="rc-print-title">RECIBO DE CAJA</div>
+      <img class="rc-print-logo" src="images/logo.png" alt="Arcano 33">
+    </div>
+
+    <div class="rc-print-meta">
+      <div><span class="lbl">FECHA:</span> ${escapeHTML(fecha)}</div>
+      <div><span class="lbl">N°:</span> <span class="rc-num-red">${escapeHTML(num4 || '—')}</span></div>
+      <div><span class="lbl">PAGO:</span> ${escapeHTML(payLbl)}</div>
+      <div><span class="lbl">CLIENTE:</span> ${escapeHTML(cli)}</div>
+      ${showTransfer ? `<div><span class="lbl">BANCO:</span> ${escapeHTML(bankDisp)}</div><div></div>` : ``}
+      ${showRef ? `<div><span class="lbl">REF:</span> ${escapeHTML(ref)}</div><div></div>` : ``}
+    </div>
+
+    <table class="rc-print-table">
+      <thead>
+        <tr>
+          <th class="ncol">N°</th>
+          <th>PRODUCTO</th>
+          <th class="num qcol">CANTIDAD</th>
+          <th class="num pcol">P/UNITARIO</th>
+          <th class="num dcol">DESC. UNIT</th>
+          <th class="num tcol">TOTAL</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+
+    <div class="rc-print-totals">
+      <div class="row"><div><strong>SUBTOTAL</strong></div><div>${rcFmtMoneyPrint(sub)}</div></div>
+      <div class="row"><div><strong>DESCUENTO</strong></div><div>${discTotalDisp}</div></div>
+      <div class="row"><div><strong>TOTAL</strong></div><div><strong>${rcFmtMoneyPrint(tot)}</strong></div></div>
+    </div>
+
+    <div class="rc-print-sign">
+      <div class="rc-sign-box">RECIBÍ CONFORME</div>
+      <div class="rc-sign-box">ENTREGUÉ CONFORME</div>
+    </div>
+  `;
+}
+
+function rcEnsurePrintRoot(){
+  let root = document.getElementById('rc-print-root');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'rc-print-root';
+    root.className = 'rc-print-root';
+    document.body.appendChild(root);
+  }
+  return root;
+}
+
+function rcPrintReceipt(receipt){
+  if (!receipt) return;
+  const st = String(receipt.status || 'DRAFT');
+  if (!(st === 'ISSUED' || st === 'VOID')) {
+    alert('Solo se puede imprimir un recibo EMITIDO o ANULADO.');
+    return;
+  }
+
+  const num4 = rcNumber4(receipt.number);
+  if (!num4) {
+    alert('Este recibo no tiene número.');
+    return;
+  }
+
+  const suggestedName = rcSuggestedPdfName(receipt);
+  const oldTitle = document.title;
+  const root = rcEnsurePrintRoot();
+
+  root.innerHTML = `
+    <div class="rc-print-page">
+      <div class="rc-receipt-copy rc-receipt-copy--top">${rcBuildPrintReceiptInnerHTML(receipt)}</div>
+      <div class="rc-cut-line"><span>cortar aquí</span></div>
+      <div class="rc-receipt-copy rc-receipt-copy--bottom">${rcBuildPrintReceiptInnerHTML(receipt)}</div>
+    </div>
+  `;
+
+  // Sugerir nombre de archivo vía title (la mayoría de navegadores lo usan para print-to-PDF).
+  if (suggestedName) document.title = suggestedName;
+
+  document.body.classList.add('rc-printing');
+
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.title = oldTitle;
+    document.body.classList.remove('rc-printing');
+    root.innerHTML = '';
+  };
+
+  const onAfter = () => {
+    window.removeEventListener('afterprint', onAfter);
+    cleanup();
+  };
+  window.addEventListener('afterprint', onAfter);
+
+  // Disparar impresión
+  try { window.print(); } catch (_) {}
+
+  // Fallback: algunos navegadores no disparan afterprint.
+  // Largo para no limpiar mientras el usuario está en el diálogo de impresión.
+  setTimeout(cleanup, 60000);
+}
+
+async function rcPrintReceiptById(id){
+  try {
+    const raw = await finGet('receipts', id);
+    if (!raw) {
+      alert('No se encontró el recibo en la base local.');
+      return;
+    }
+    const r = rcNormalizeReceipt(raw);
+    rcPrintReceipt(r);
+  } catch (e) {
+    console.error('Error imprimiendo recibo', e);
+    alert('No se pudo preparar la impresión.');
+  }
+}
+
+async function rcSaveCurrent(){
+  if (rcSaving) return false;
+  if (rcEditorMode !== 'edit') return false;
+
+  const v = rcValidateCurrent();
+  if (!v.ok) {
+    rcShowAlert(v.msg, 'error');
+    return false;
+  }
+
+  rcSetSaving(true);
+
+  try {
+    const nowISO = new Date().toISOString();
+    rcCurrent.updatedAt = nowISO;
+    rcCurrent.dateDisplay = rcDateDisplayFromISO(rcCurrent.dateISO);
+
+    await finPut('receipts', rcCurrent);
+
+    // Confirmar persistencia antes de cerrar
+    const saved = await finGet('receipts', rcCurrent.receiptId);
+    if (!saved) throw new Error('No se confirmó el guardado en IndexedDB.');
+
+    await rcLoadAll();
+    rcRenderList();
+    rcToggleEditor(false);
+    rcCurrent = null;
+    rcShowAlert('');
+    return true;
+  } catch (err) {
+    console.error('Error guardando recibo', err);
+    rcShowAlert('No se pudo guardar el borrador.', 'error');
+    return false;
+  } finally {
+    rcSetSaving(false);
+  }
+}
+
+async function rcEnterView(force=false){
+  // Solo refrescar cuando estamos en lista o forzado.
+  const list = document.getElementById('recibos-list');
+  if (!list) return;
+  if (force || !list.classList.contains('hidden')) {
+    await rcLoadAll();
+    rcRenderList();
+  }
+}
+
+function rcResetFilters(){
+  rcQuery = '';
+  rcFilterStatus = 'all';
+  rcFilterFrom = '';
+  rcFilterTo = '';
+  rcFilterPay = 'all';
+
+  const q = document.getElementById('rec-search'); if (q) q.value = '';
+  const st = document.getElementById('rec-filter-status'); if (st) st.value = 'all';
+  const df = document.getElementById('rec-filter-from'); if (df) df.value = '';
+  const dt = document.getElementById('rec-filter-to'); if (dt) dt.value = '';
+  const pay = document.getElementById('rec-filter-pay'); if (pay) pay.value = 'all';
+}
+
+function setupRecibosUI(){
+  const btnNew = document.getElementById('rec-new');
+  const btnRef = document.getElementById('rec-refresh');
+  const tbody = document.getElementById('rec-tbody');
+  const btnAdd = document.getElementById('rec-add-line');
+  const btnSave = document.getElementById('rec-save');
+  const btnIssue = document.getElementById('rec-issue');
+  const btnPrint = document.getElementById('rec-print');
+  const btnCancel = document.getElementById('rec-cancel');
+
+  const cli = document.getElementById('rec-client');
+  const date = document.getElementById('rec-date');
+  const bank = document.getElementById('rec-bank');
+  const ref = document.getElementById('rec-ref');
+  const payCash = document.getElementById('rec-pay-cash');
+  const payTr = document.getElementById('rec-pay-transfer');
+
+  const search = document.getElementById('rec-search');
+  const btnFilter = document.getElementById('rec-filter-toggle');
+  const btnClear = document.getElementById('rec-filter-clear');
+  const panel = document.getElementById('rec-filters-panel');
+  const fStatus = document.getElementById('rec-filter-status');
+  const fFrom = document.getElementById('rec-filter-from');
+  const fTo = document.getElementById('rec-filter-to');
+  const fPay = document.getElementById('rec-filter-pay');
+
+  if (btnNew) btnNew.addEventListener('click', () => rcNewDraft());
+  if (btnRef) btnRef.addEventListener('click', () => rcEnterView(true).catch(() => {}));
+
+  if (search) {
+    search.addEventListener('input', () => {
+      rcQuery = search.value || '';
+      rcRenderList();
+    });
+  }
+
+  if (btnFilter && panel) {
+    btnFilter.addEventListener('click', () => {
+      rcFilterPanelOpen = !rcFilterPanelOpen;
+      panel.classList.toggle('hidden', !rcFilterPanelOpen);
+    });
+  }
+
+  if (btnClear) {
+    btnClear.addEventListener('click', () => {
+      rcResetFilters();
+      rcRenderList();
+    });
+  }
+
+  const onFilterChange = () => {
+    if (fStatus) rcFilterStatus = fStatus.value || 'all';
+    if (fFrom) rcFilterFrom = fFrom.value || '';
+    if (fTo) rcFilterTo = fTo.value || '';
+    if (fPay) rcFilterPay = fPay.value || 'all';
+    rcRenderList();
+  };
+
+  if (fStatus) fStatus.addEventListener('change', onFilterChange);
+  if (fFrom) fFrom.addEventListener('change', onFilterChange);
+  if (fTo) fTo.addEventListener('change', onFilterChange);
+  if (fPay) fPay.addEventListener('change', onFilterChange);
+
+  if (tbody) {
+    tbody.addEventListener('click', (ev) => {
+      const btn = ev.target.closest && ev.target.closest('button[data-act]');
+      if (!btn) return;
+      const tr = btn.closest('tr');
+      if (!tr) return;
+      const id = tr.dataset.rcid;
+      if (!id) return;
+
+      const act = btn.dataset.act;
+      if (act === 'view') rcOpenReceiptById(id, 'view');
+      if (act === 'print') rcPrintReceiptById(id).catch(() => {});
+      if (act === 'edit') rcOpenReceiptById(id, 'edit');
+      if (act === 'void') rcVoidReceiptById(id).catch(() => {});
+      if (act === 'reemit') rcReemitReceiptById(id);
+    });
+  }
+
+  if (payCash) payCash.addEventListener('click', () => { if (rcEditorMode === 'edit') rcSetPaymentType('CASH'); });
+  if (payTr) payTr.addEventListener('click', () => { if (rcEditorMode === 'edit') rcSetPaymentType('TRANSFER'); });
+
+  if (cli) cli.addEventListener('input', () => { if (rcCurrent && rcEditorMode === 'edit') rcCurrent.clientName = cli.value; });
+  if (date) date.addEventListener('change', () => {
+    if (rcCurrent && rcEditorMode === 'edit') {
+      rcCurrent.dateISO = date.value;
+      rcCurrent.dateDisplay = rcDateDisplayFromISO(date.value);
+      rcUpdateEditorMeta();
+    }
+  });
+  if (bank) bank.addEventListener('input', () => { if (rcCurrent && rcEditorMode === 'edit') { rcCurrent.paymentBank = bank.value; rcUpdateEditorMeta(); } });
+  if (ref) ref.addEventListener('input', () => { if (rcCurrent && rcEditorMode === 'edit') { rcCurrent.paymentRef = ref.value; rcUpdateEditorMeta(); } });
+
+  if (btnAdd) btnAdd.addEventListener('click', () => {
+    if (!rcCurrent || rcEditorMode !== 'edit' || rcSaving) return;
+    rcCurrent.lines.push({ itemName:'', qty:1, unitPrice:0, discountPerUnit:0, lineTotal:0 });
+    rcRenderLines();
+  });
+
+  const linesTbody = document.getElementById('rec-lines-tbody');
+  if (linesTbody) {
+    // UX: al tocar un input numérico, seleccionar todo para evitar append accidental ("0"+"30" => "030").
+    linesTbody.addEventListener('focusin', (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLInputElement)) return;
+      if (t.type !== 'number') return;
+      if (t.disabled) return;
+      // iOS/Safari a veces requiere defer.
+      setTimeout(() => { try { t.select(); } catch(_) {} }, 0);
+    });
+
+    linesTbody.addEventListener('input', (ev) => {
+      if (rcEditorMode !== 'edit' || rcSaving) return;
+      const t = ev.target;
+      if (!(t instanceof HTMLInputElement)) return;
+      const tr = t.closest('tr');
+      if (!tr || !rcCurrent) return;
+      const idx = Number(tr.dataset.idx);
+      const f = t.dataset.f;
+      const ln = rcCurrent.lines[idx];
+      if (!ln) return;
+
+      if (f === 'itemName') ln.itemName = t.value;
+
+      if (f === 'qty') ln.qty = rcParseNumberOrZero(t.value);
+      if (f === 'unitPrice') ln.unitPrice = rcParseNumberOrZero(t.value);
+      if (f === 'discountPerUnit') ln.discountPerUnit = rcParseNumberOrZero(t.value);
+
+      // vacío o "0" => 0 (no rompe). Si NaN por algo raro, forzar a 0 para recálculo.
+      if (!Number.isFinite(ln.qty)) ln.qty = 0;
+      if (!Number.isFinite(ln.unitPrice)) ln.unitPrice = 0;
+      if (!Number.isFinite(ln.discountPerUnit)) ln.discountPerUnit = 0;
+
+      rcRecalc(rcCurrent);
+
+      const totalCell = tr.querySelector('.rec-line-total');
+      if (totalCell) totalCell.textContent = rcFmtMoney(ln.lineTotal || 0);
+    });
+
+    linesTbody.addEventListener('click', (ev) => {
+      if (rcEditorMode !== 'edit' || rcSaving) return;
+      const btn = ev.target;
+      if (!(btn instanceof HTMLElement)) return;
+      if (btn.dataset.act !== 'del') return;
+      const tr = btn.closest('tr');
+      if (!tr || !rcCurrent) return;
+      const idx = Number(tr.dataset.idx);
+      if (!Number.isFinite(idx)) return;
+      rcCurrent.lines.splice(idx, 1);
+      if (!rcCurrent.lines.length) rcCurrent.lines.push({ itemName:'', qty:1, unitPrice:0, discountPerUnit:0, lineTotal:0 });
+      rcRenderLines();
+    });
+  }
+
+  if (btnSave) btnSave.addEventListener('click', () => {
+    rcSaveCurrent().catch(err => {
+      console.error('Error guardando recibo', err);
+      rcShowAlert('No se pudo guardar el borrador.', 'error');
+      rcSetSaving(false);
+    });
+  });
+
+  if (btnIssue) btnIssue.addEventListener('click', () => {
+    rcIssueCurrent().catch(err => {
+      console.error('Error emitiendo recibo', err);
+      rcShowAlert('No se pudo emitir el recibo.', 'error');
+      rcSetSaving(false);
+    });
+  });
+
+  if (btnPrint) btnPrint.addEventListener('click', () => {
+    if (!rcCurrent) return;
+    rcPrintReceipt(rcCurrent);
+  });
+
+  if (btnCancel) btnCancel.addEventListener('click', () => {
+    if (rcSaving) return;
+    rcCurrent = null;
+    rcShowAlert('');
+    rcToggleEditor(false);
+  });
+}
+
+// Helpers de escape básicos para evitar inyección en tablas
+function escapeHTML(s){
+  return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s){
+  return escapeHTML(s)
+    .replace(/[\r\n\t]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+
 /* ---------- Tabs y eventos UI ---------- */
+
 
 
 function setActiveFinView(view) {
@@ -5567,6 +6906,7 @@ function setupTabs() {
     btn.addEventListener('click', () => {
       const view = btn.dataset.view;
       setActiveFinView(view);
+      if (view === 'recibos') { rcEnterView(true).catch(() => {}); }
       // Actualizar hash para que si el usuario regresa, mantenga la pestaña
       if (view) {
         window.location.hash = `tab=${view}`;
@@ -5584,6 +6924,8 @@ function setupTabs() {
   }
 
   setActiveFinView(initialView);
+
+  if (initialView === 'recibos') { rcEnterView(true).catch(() => {}); }
 }function setupEstadosSubtabs() {
   const btns = document.querySelectorAll('.fin-subtab-btn');
   btns.forEach(btn => {
@@ -6564,8 +7906,9 @@ async function initFinanzas() {
     setupCajaChicaUI();
     setupEstadosSubtabs();
     setupModoERToggle();
-    setupFilterListeners();
-    setupProveedoresUI();
+    setupFilterListeners();    setupProveedoresUI();
+    setupRecibosUI();
+    await rcEnterView(true);
     setupCatalogoUI();
     setupComprasUI();
     setupComprasPlanUI();

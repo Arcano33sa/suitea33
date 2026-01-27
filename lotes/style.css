@@ -223,6 +223,133 @@ textarea {
 }
 
 /* ================================
+   Etapa 3: Controles de lista (búsqueda + paginación)
+   ================================ */
+
+.list-controls{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.2rem 0 0.55rem;
+}
+
+#list-search{
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.list-meta{
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.list-footer{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.export-hint{
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.export-hint.is-error{
+  color: #ff6b6b;
+}
+
+/* ================================
+   Etapa 3: Vista tipo tarjeta (iPad-first, sin scroll horizontal)
+   ================================ */
+
+.lotes-cards{
+  display: none;
+}
+
+.lote-card{
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  background: rgba(0,0,0,0.22);
+  padding: 0.75rem 0.8rem;
+  display: grid;
+  gap: 0.55rem;
+  box-shadow: 0 10px 22px rgba(0,0,0,0.45);
+}
+
+.lote-card-head{
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.lote-card-date{
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.lote-card-code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 800;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.lote-card-grid{
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mini-kpi{
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  padding: 0.35rem 0.25rem;
+  text-align: center;
+}
+
+.mini-kpi-key{
+  font-size: 0.62rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mini-kpi-val{
+  margin-top: 0.15rem;
+  font-size: 0.86rem;
+  font-weight: 900;
+  display: flex;
+  justify-content: center;
+}
+
+.mini-kpi-val .qty-stack{
+  line-height: 1.05;
+}
+
+.lote-card-actions{
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 420px){
+  .lote-card-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ================================
    Etapa 2: Barra de Totales (RESTANTE)
    ================================ */
 
@@ -722,6 +849,9 @@ tr:nth-child(even) td {
 /* Responsive */
 
 @media (max-width: 1024px) {
+  .table-wrapper{ display: none; }
+  .lotes-cards{ display: grid; gap: 0.55rem; }
+
   .app-main {
     grid-template-columns: minmax(0, 1fr);
   }

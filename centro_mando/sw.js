@@ -1,46 +1,97 @@
-// Legacy cleanup SW — no usar para desarrollo
-// A33 Centro de Mando (compat) — Bridge SW
-// Objetivo: eliminar caché zombie de centro_mando/ y retirarse.
-const BRIDGE_VERSION = '4.20.7';
-const KILL_MATCH = [
-  'a33-centro-mando',
-  'a33-centro_mando',
-  'centro-mando',
-  'centro_mando'
+/* Legacy cleanup SW — A33 Centro de Mando (compat) — Bridge SW
+   Objetivo: limpiar solo caches a33-* del Centro de Mando (sin tocar otros módulos)
+   y retirarse.
+*/
+
+const SW_VERSION = '4.20.13';
+const SW_REV = '1';
+const MODULE = 'centro_mando';
+const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;
+
+const PRECACHE_URLS = [
+  './',
+  './index.html',
+  './style.css',
+  './script.js',
+  './manifest.webmanifest',
+  './offline.html'
 ];
 
-self.addEventListener('install', (e) => {
-  // No cacheamos nada aquí: solo queremos tomar control rápido y limpiar.
-  self.skipWaiting();
-});
+function sameOrigin(url){
+  try{ return url.origin === self.location.origin; }catch(_){ return false; }
+}
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil((async () => {
-    // 1) Borrar caches relacionadas
-    try {
-      const keys = await caches.keys();
-      const toDelete = keys.filter(k => {
-        const s = String(k || '').toLowerCase();
-        return KILL_MATCH.some(m => s.includes(m));
-      });
-      await Promise.all(toDelete.map(k => caches.delete(k).catch(() => false)));
-    } catch (_) {}
-
-    // 2) Avisar a clientes para redirigir (si siguen abiertos)
-    try {
-      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      for (const c of clients) {
-        c.postMessage({ type: 'A33_CDM_MOVED', to: '../centro-mando/index.html', v: BRIDGE_VERSION });
-      }
-    } catch (_) {}
-
-    // 3) Retirarse
-    try { await self.clients.claim(); } catch (_) {}
-    try { await self.registration.unregister(); } catch (_) {}
+self.addEventListener('install', (event) => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(PRECACHE_URLS.filter(Boolean));
+    try{ self.skipWaiting(); }catch(_){ }
   })());
 });
 
-// Network-only (por si queda vivo un instante)
-self.addEventListener('fetch', (e) => {
-  e.respondWith(fetch(e.request));
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    // 1) Borrar SOLO caches a33-* del Centro de Mando (no del resto del origen).
+    try{
+      const keys = await caches.keys();
+      const victims = keys.filter(k => {
+        const s = String(k || '');
+        const low = s.toLowerCase();
+        const isA33 = low.startsWith('a33-');
+        const isCdm = low.includes('centro-mando') || low.includes('centro_mando');
+        return isA33 && isCdm && s !== CACHE_NAME;
+      });
+      await Promise.all(victims.map(k => caches.delete(k).catch(() => false)));
+    }catch(_){ }
+
+    // 2) Avisar a clientes para redirigir (si siguen abiertos)
+    try{
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const c of clients) {
+        c.postMessage({ type: 'A33_CDM_MOVED', to: '../centro-mando/index.html', v: SW_VERSION });
+      }
+    }catch(_){ }
+
+    // 3) Tomar control un momento y retirarse
+    try{ await self.clients.claim(); }catch(_){ }
+    try{ await self.registration.unregister(); }catch(_){ }
+  })());
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (!sameOrigin(url)) return;
+
+  const isNav = event.request.mode === 'navigate' || event.request.destination === 'document';
+  if (!isNav){
+    // Assets: cache-first durante la ventana corta antes de desregistrarse
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      try{
+        const resp = await fetch(event.request);
+        if (resp && resp.status === 200) cache.put(event.request, resp.clone()).catch(() => {});
+        return resp;
+      }catch(_){
+        return cached || new Response('', { status: 504 });
+      }
+    })());
+    return;
+  }
+
+  // Navegación: network-first con fallback sin loops
+  event.respondWith((async () => {
+    try{
+      return await fetch(event.request);
+    }catch(_){
+      const cache = await caches.open(CACHE_NAME);
+      return (
+        (await cache.match('./index.html')) ||
+        (await cache.match('./offline.html')) ||
+        new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+      );
+    }
+  })());
 });

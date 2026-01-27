@@ -1,5 +1,5 @@
 /*
-  Suite A33 v4.20.7 — Centro de Mando (OPERATIVO v1)
+  Suite A33 v4.20.13 — Centro de Mando (OPERATIVO v1)
 
   Fuentes reales (descubiertas en /pos/app.js dentro de esta ZIP):
   - DB_NAME: 'a33-pos'
@@ -72,15 +72,20 @@ function invPct(ratio){
 }
 
 function readInventorySafe(){
+  try{
+    if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+      const data = A33Storage.sharedGet(INV_LS_KEY, null, 'local');
+      if (data && typeof data === 'object') return data;
+      return null;
+    }
+  }catch(_){ }
+
   let raw = null;
   try{
     if (window.A33Storage && typeof A33Storage.getItem === 'function') raw = A33Storage.getItem(INV_LS_KEY);
     else raw = localStorage.getItem(INV_LS_KEY);
-  }catch(_){
-    raw = null;
-  }
+  }catch(_){ raw = null; }
   if (!raw) return null;
-
   try{
     const data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return null;
@@ -1377,6 +1382,17 @@ function normalizeYMD(s){
 
 function loadPedidosSafe(){
   try{
+    if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+      const parsed = A33Storage.sharedGet(ORDERS_LS_KEY, [], 'local');
+      if (!parsed) return { ok:true, items:[], reason:'' };
+      if (!Array.isArray(parsed)) return { ok:false, items:[], reason:'No disponible' };
+      return { ok:true, items: parsed, reason:'' };
+    }
+  }catch(err){
+    console.warn('Centro de Mando: error leyendo pedidos (sharedGet)', err);
+  }
+
+  try{
     const storage = (typeof A33Storage !== 'undefined' && A33Storage && typeof A33Storage.getItem === 'function')
       ? A33Storage
       : null;
@@ -1850,10 +1866,10 @@ function buildActionableAlerts(ev, dayKey, pc){
         alerts.push({
           key: 'petty-open',
           icon: '🔓',
-          title: 'Caja Chica activa y hoy NO está cerrado',
-          sub: `Hoy (${dayKey}): día abierto en Caja Chica`,
-          cta: 'Ir a Caja Chica',
-          tab: 'caja'
+          title: 'Registro del día abierto',
+          sub: `Hoy (${dayKey}): hay un día abierto`,
+          cta: 'Abrir Resumen',
+          tab: 'resumen'
         });
       }
     } else {
@@ -1869,8 +1885,8 @@ function buildActionableAlerts(ev, dayKey, pc){
           icon: '💱',
           title: 'Tipo de cambio vacío hoy',
           sub: `Hoy (${dayKey}): falta tipo de cambio`,
-          cta: 'Ir a Caja Chica',
-          tab: 'caja'
+          cta: 'Abrir Resumen',
+          tab: 'resumen'
         });
       }
     } else {
@@ -2082,7 +2098,9 @@ async function navigateToPOS(tab){
   try{
     await setMeta(state.db, 'currentEventId', Number(ev.id));
   }catch(_){ }
-  const t = safeStr(tab) || 'vender';
+  // Etapa 11B: bloquear deep-link/ruta legacy hacia Caja Chica (no existe como ruta en POS).
+  const t0 = safeStr(tab) || 'vender';
+  const t = (t0 === 'caja' || t0 === 'caja-chica' || t0 === 'cajachica' || t0 === 'petty' || t0 === 'pettycash') ? 'vender' : t0;
   window.location.href = `../pos/index.html?tab=${encodeURIComponent(t)}`;
 }
 
@@ -2351,8 +2369,8 @@ async function init(){
     el.addEventListener('click', ()=> navigateToPOS(tab));
   };
   bind('btnGoSell', 'vender');
-  bind('btnGoCaja', 'caja');
-  bind('btnGoResumen', 'resumen');
+  // Etapa 11B: btnGoCaja ya no navega a Caja Chica (ruta removida).
+bind('btnGoResumen', 'resumen');
   bind('btnGoChecklist', 'checklist');
   bind('btnOpenChecklist', 'checklist');
 

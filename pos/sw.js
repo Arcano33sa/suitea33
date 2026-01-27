@@ -1,34 +1,143 @@
-const CACHE = 'a33-pos-v4_20_7_galon3750';
-const ASSETS = [
+/* Suite A33 — Service Worker (POS)
+   Objetivo: cachés acotadas por módulo (sin “guerra” entre SW).
+*/
+
+const SW_VERSION = '4.20.70';
+const SW_REV = '36';
+const MODULE = 'pos';
+const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;
+
+const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.7',
-  './styles.css?v=4.20.7',
-  './app.js?v=4.20.7',
-  './manifest.webmanifest?v=4.20.7',
+  './index.html?v=4.20.70',
+  './index.html?v=4.20.70&r=36',
+  './styles.css?v=4.20.70&r=36',
+  './app.js?v=4.20.70&r=36',
+  './manifest.webmanifest?v=4.20.70&r=36',
+  './offline.html',
   './logo.png',
-  './brand_symbol.jpg',
-  './brand_wordmark.jpg',
-  '/assets/js/a33-input-ux.js?v=4.20.7',
-  '/assets/js/a33-storage.js?v=4.20.7',
-  '/assets/js/a33-auth.js?v=4.20.7',
-  '/assets/css/a33-header.css?v=4.20.7'
+  './vendor/xlsx.full.min.js?v=0.18.5',
+  '/assets/js/a33-input-ux.js?v=4.20.70',
+  '/assets/js/a33-storage.js?v=4.20.70',
+  '/assets/js/a33-presentations.js?v=4.20.70',
+  '/assets/js/a33-auth.js?v=4.20.70',
+  '/assets/css/a33-header.css?v=4.20.70'
 ];
 
-self.addEventListener('install', (e)=>{
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS.filter(Boolean))));
+function sameOrigin(url){
+  try{ return url.origin === self.location.origin; }catch(_){ return false; }
+}
+
+function isCriticalAsset(url){
+  try{
+    const p = String(url.pathname || '');
+    return p.endsWith('/app.js') || p.endsWith('/styles.css') || p.endsWith('/manifest.webmanifest');
+  }catch(_){ return false; }
+}
+
+function shouldCache(url){
+  // Acotado: scope del módulo + /assets/ compartido
+  try{
+    const scopePath = new URL(self.registration.scope).pathname;
+    return url.pathname.startsWith(scopePath) || url.pathname.startsWith('/assets/');
+  }catch(_){ return false; }
+}
+
+self.addEventListener('message', (event) => {
+  try{
+    if (event && event.data && event.data.type === 'SKIP_WAITING'){
+      self.skipWaiting();
+    }
+  }catch(_){}
 });
-self.addEventListener('activate', (e)=>{
-  e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
-  self.clients.claim();
+
+self.addEventListener('install', (event) => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(PRECACHE_URLS.filter(Boolean));
+    try{ self.skipWaiting(); }catch(_){ }
+
+  })());
 });
-self.addEventListener('fetch', (e)=>{
-  e.respondWith(
-    caches.match(e.request).then(res=> res || fetch(e.request).then(resp=>{
-      if (e.request.method === 'GET' && (resp.status === 200)) {
-        const copy = resp.clone();
-        caches.open(CACHE).then(c=>c.put(e.request, copy));
-      }
-      return resp;
-    }).catch(()=>caches.match('./index.html?v=4.20.7')))
-  );
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    // Borrar SOLO caches a33- del MISMO módulo (evita “guerra de caches”).
+    const keys = await caches.keys();
+    const victims = keys.filter(k =>
+      String(k || '').startsWith('a33-') &&
+      String(k || '').includes(`-${MODULE}`) &&
+      k !== CACHE_NAME
+    );
+    await Promise.all(victims.map(k => caches.delete(k).catch(() => false)));
+    try{ await self.clients.claim(); }catch(_){ }
+  })());
+});
+
+async function handleNavigate(request){
+  try{
+    const resp = await fetch(request);
+    if (resp && resp.status === 200){
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, resp.clone()).catch(() => {});
+    }
+    return resp;
+  }catch(_){
+    const cache = await caches.open(CACHE_NAME);
+    return (
+      (await cache.match(request)) ||
+      (await cache.match('./index.html?v=4.20.70')) ||
+      (await cache.match('./index.html?v=4.20.69')) ||
+      (await cache.match('./index.html?v=4.20.67')) ||
+      (await cache.match('./index.html?v=4.20.66')) ||
+      (await cache.match('./index.html?v=4.20.42')) ||
+      (await cache.match('./index.html?v=4.20.36')) ||
+      (await cache.match('./index.html?v=4.20.34')) ||
+      (await cache.match('./index.html?v=4.20.31')) ||
+      (await cache.match('./index.html?v=4.20.29')) ||
+      (await cache.match('./index.html?v=4.20.25')) ||
+      (await cache.match('./index.html?v=4.20.20')) ||
+      (await cache.match('./index.html')) ||
+      (await cache.match('./offline.html')) ||
+      (await cache.match('./')) ||
+      new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+    );
+  }
+}
+
+async function handleAsset(request){
+  const url = new URL(request.url);
+  const cache = await caches.open(CACHE_NAME);
+
+  // Para assets criticos, preferimos red para evitar 'fantasmas' (fallback a cache si offline).
+  const critical = isCriticalAsset(url);
+  if (!critical){
+    const cached = await cache.match(request);
+    if (cached) return cached;
+  }
+
+  try{
+    const resp = await fetch(request);
+    if (resp && resp.status === 200 && shouldCache(url)){
+      cache.put(request, resp.clone()).catch(() => {});
+    }
+    return resp;
+  }catch(_){
+    const cached = await cache.match(request);
+    return cached || new Response('', { status: 504 });
+  }
+}
+
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (!sameOrigin(url)) return;
+
+  const isNav = event.request.mode === 'navigate' || event.request.destination === 'document';
+  if (isNav){
+    event.respondWith(handleNavigate(event.request));
+    return;
+  }
+  event.respondWith(handleAsset(event.request));
 });

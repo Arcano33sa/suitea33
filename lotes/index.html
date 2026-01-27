@@ -9,16 +9,16 @@
 
   <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.7" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.13" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.7" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.7" />
+  <link rel="stylesheet" href="style.css?v=4.20.13" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.13" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Control de Lotes</div>
-    <div class="a33-version">v4.20.7</div>
+    <div class="a33-version">v4.20.13</div>
   </header>
   <main class="app-main">
     <section class="card form-card">
@@ -115,6 +115,12 @@
         </div>
       </div>
 
+      <div class="list-controls" aria-label="Controles de búsqueda y paginación">
+        <input type="text" id="list-search" placeholder="Buscar por código, fecha o evento…" autocomplete="off" inputmode="search" />
+        <button type="button" class="btn secondary" id="clear-search-btn">Limpiar</button>
+        <div class="list-meta" id="list-meta" aria-live="polite"></div>
+      </div>
+
       <!-- Etapa 2: Barra de Totales (RESTANTE) por presentación (P/M/D/L/G) -->
       <div class="totals-bar" id="totals-bar" aria-label="Totales restantes (P/M/D/L/G)">
         <div class="totals-label">Totales</div>
@@ -163,6 +169,13 @@
           </tbody>
         </table>
       </div>
+
+      <div id="lotes-cards" class="lotes-cards" aria-label="Lista de lotes" role="list"></div>
+
+      <div class="list-footer">
+        <button type="button" class="btn secondary" id="load-more-btn">Cargar más</button>
+        <div class="export-hint" id="export-hint" aria-live="polite"></div>
+      </div>
     </section>
   </main>
 
@@ -186,16 +199,16 @@
     <p>Arcano 33 · Control interno de producción</p>
   </footer>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-storage.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-auth.js?v=4.20.7"></script>
+  <script src="./vendor/xlsx.full.min.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.13"></script>
   <script>
     if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
       location.href = "../index.html";
     }
   </script>
-  <script src="script.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.7"></script>
+  <script src="script.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.13"></script>
 </body>
 </html>

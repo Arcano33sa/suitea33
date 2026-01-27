@@ -9,19 +9,19 @@
 
   <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.7" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.42" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.7" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.7" />
+  <link rel="stylesheet" href="style.css?v=4.20.42" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.42" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Inventario</div>
-    <div class="a33-version">v4.20.7</div>
+    <div class="a33-version">v4.20.42</div>
   </header>
   <main class="app-main">
-    <section class="card form-card">
+    <section class="card form-card inv-span-2">
       <h2>Inventario de materia prima líquida</h2>
       <p class="hint">Control en mililitros de los líquidos base que se utilizan en las recetas y producción.</p>
       <div class="table-wrapper">
@@ -40,6 +40,11 @@
             <!-- Filas dinámicas -->
           </tbody>
         </table>
+      </div>
+
+      <div class="table-footer">
+        <div id="inv-liquidos-empty" class="empty-state" hidden>Sin resultados.</div>
+        <button id="inv-liquidos-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
       </div>
       <p class="legend">
         Alerta cuando un ingrediente esté por debajo del <strong>20&nbsp;%</strong> de su stock máximo configurado.
@@ -64,11 +69,79 @@
           </tbody>
         </table>
       </div>
+
+      <div class="table-footer">
+        <div id="inv-botellas-empty" class="empty-state" hidden>Sin resultados.</div>
+        <button id="inv-botellas-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
+      </div>
       <p class="legend">
         Alerta cuando una presentación tenga <strong>10 botellas o menos</strong> en inventario.
       </p>
     </section>
+
+    <section class="card table-card">
+      <h2>Tapas (Auto)</h2>
+      <p class="hint">Control de tapas por grupo de presentaciones. Ajusta stock y mínimo; el estado se actualiza en tiempo real.</p>
+      <div class="table-wrapper">
+        <table class="inv-table has-actions">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Stock (unid.)</th>
+              <th>Mínimo</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inv-caps-body">
+            <!-- Filas fijas (Tapas Auto) -->
+          </tbody>
+        </table>
+      </div>
+
+      <p class="legend">
+        Semáforo: <strong>Sin stock</strong> (stock &le; 0), <strong>Bajo</strong> (stock &le; mínimo), <strong>OK</strong>.
+      </p>
+    </section>
   
+    <section class="card table-card">
+      <div class="table-header">
+        <div>
+          <h2>Inventario Varios</h2>
+          <p class="hint">Consumibles y otros insumos manuales (vasos, guantes, tapas extra, etc.).</p>
+        </div>
+        <div class="table-actions">
+          <input id="inv-varios-search" class="varios-search" type="text" inputmode="search" autocomplete="off" placeholder="Buscar…" aria-label="Buscar en inventario varios" />
+          <button id="inv-varios-add" class="btn secondary" type="button">Agregar línea</button>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="inv-table inv-varios-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Stock</th>
+              <th>Mínimo</th>
+              <th>Estado</th>
+              <th>Eliminar</th>
+            </tr>
+          </thead>
+          <tbody id="inv-varios-body">
+            <!-- Filas dinámicas (Varios) -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <div id="inv-varios-empty" class="empty-state" hidden>Sin líneas. Agrega una para comenzar.</div>
+      </div>
+
+      <p class="legend">
+        Semáforo: <strong>Sin stock</strong> (stock &le; 0), <strong>Bajo</strong> (stock &le; mínimo), <strong>OK</strong>. Stock negativo permitido.
+      </p>
+    </section>
+
     <section class="card table-card">
       <h2>Inventario de producto terminado</h2>
       <p class="hint">Botellas listas de Sangría Artesanal Premium por presentación. Este inventario se actualiza automáticamente desde la Calculadora de Producción y el POS.</p>
@@ -86,6 +159,11 @@
           </tbody>
         </table>
       </div>
+
+      <div class="table-footer">
+        <div id="inv-productos-empty" class="empty-state" hidden>Sin resultados.</div>
+        <button id="inv-productos-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
+      </div>
       <p class="legend">
         Este bloque es solo de consulta. Se alimenta de la producción registrada y de las ventas / devoluciones del POS.
       </p>
@@ -96,15 +174,15 @@
     <p>Arcano 33 · Inventario interno de insumos, botellas y producto terminado</p>
   </footer>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-auth.js?v=4.20.7"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.42"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.42"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.42"></script>
   <script>
     if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
       location.href = "../index.html";
     }
   </script>
-  <script src="script.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.7"></script>
+  <script src="script.js?v=4.20.42"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.42"></script>
 </body>
 </html>

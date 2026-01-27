@@ -9,16 +9,16 @@
 
   <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.7" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.13" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.7" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.7" />
+  <link rel="stylesheet" href="style.css?v=4.20.13" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.13" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Planificación de Pedidos</div>
-    <div class="a33-version">v4.20.7</div>
+    <div class="a33-version">v4.20.13</div>
   </header>
   <main class="app-main">
     <section class="card form-card">
@@ -207,7 +207,10 @@
       <div class="table-header">
         <h2>Pedidos registrados</h2>
         <div class="table-actions">
+          <input type="search" id="active-search" class="search-input" placeholder="Buscar (cliente, código, fecha, estado)…" autocomplete="off" />
+          <button type="button" class="btn-secondary" id="details-toggle" aria-pressed="false">Detalles</button>
           <button type="button" class="btn-secondary" id="export-btn">Exportar a Excel</button>
+          <span class="inline-notice" id="export-status" aria-live="polite"></span>
         </div>
       </div>
 
@@ -215,7 +218,7 @@
         <table id="pedidos-table">
           <thead>
             <tr>
-              <th>Fecha</th>
+              <th class="col-date col-hide-ipad">Fecha</th>
               <th>Código</th>
               <th>Cliente</th>
               <th>Entrega</th>
@@ -229,6 +232,11 @@
           </tbody>
         </table>
       </div>
+
+      <div class="table-pager" id="active-pager" hidden>
+        <span class="inline-notice" id="active-count" aria-live="polite"></span>
+        <button type="button" class="btn-secondary" id="active-load-more">Cargar más</button>
+      </div>
     </section>
   
     <section class="card table-card" id="archived-section">
@@ -236,6 +244,7 @@
         <h2>Histórico <span class="badge" id="archived-count">0</span></h2>
         <div class="table-actions">
           <input type="search" id="archived-search" class="search-input" placeholder="Buscar (cliente, código, fecha, estado)…" autocomplete="off" />
+          <button type="button" class="btn-secondary" id="archived-details-toggle" aria-pressed="false">Detalles</button>
           <span class="inline-notice" id="archived-notice" aria-live="polite"></span>
         </div>
       </div>
@@ -244,7 +253,7 @@
         <table id="archived-table">
           <thead>
             <tr>
-              <th class="col-date">Archivado</th>
+              <th class="col-date col-hide-ipad">Archivado</th>
               <th class="col-code">Código</th>
               <th>Cliente</th>
               <th class="col-date">Entrega</th>
@@ -256,6 +265,11 @@
           <tbody></tbody>
         </table>
       </div>
+
+      <div class="table-pager" id="archived-pager" hidden>
+        <span class="inline-notice" id="archived-shown" aria-live="polite"></span>
+        <button type="button" class="btn-secondary" id="archived-load-more">Cargar más</button>
+      </div>
     </section>
 
   </main>
@@ -264,17 +278,64 @@
     <p>Arcano 33 · Planificación interna de pedidos y entregas</p>
   </footer>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-storage.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-auth.js?v=4.20.7"></script>
-  <script>
-    // Guard (sin async): si no hay sesión, volver al Home.
-    if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
-      location.href = "../index.html";
-    }
+  <script src="./vendor/xlsx.full.min.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.13"></script>
+    <script>
+    (async () => {
+      // Guard robusto (mala señal / offline): evita loops por login.
+      try{
+        if (!window.A33Auth) return;
+
+        // Migraciones suaves de auth (si aplica)
+        if (typeof A33Auth.ensureMigrated === 'function'){
+          try{ await A33Auth.ensureMigrated(); }catch(_){ }
+        }
+
+        const authed = (typeof A33Auth.isConfigured === 'function' && typeof A33Auth.isAuthenticated === 'function')
+          ? (A33Auth.isConfigured() && A33Auth.isAuthenticated())
+          : false;
+
+        if (authed) return;
+
+        const looksOffline = async () => {
+          try{
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+
+            // En “mala señal”, navigator.onLine puede mentir. Probamos un HEAD con timeout.
+            const ctrl = ('AbortController' in window) ? new AbortController() : null;
+            const t = ctrl ? setTimeout(() => { try{ ctrl.abort(); }catch(_){ } }, 2500) : null;
+
+            await fetch('../index.html', {
+              method: 'HEAD',
+              cache: 'no-store',
+              signal: ctrl ? ctrl.signal : undefined
+            });
+
+            if (t) clearTimeout(t);
+            return false;
+          }catch(_){
+            return true;
+          }
+        };
+
+        if (await looksOffline()){
+          // Pantalla offline dentro del módulo (no redirección al menú).
+          try{ location.replace('./offline.html'); }catch(_){ }
+          return;
+        }
+
+        // Online: exigir auth (redirige al Home si no hay sesión)
+        if (typeof A33Auth.requireAuth === 'function'){
+          await A33Auth.requireAuth({ redirectTo: '../index.html' });
+        }else{
+          location.href = '../index.html';
+        }
+      }catch(_){ }
+    })();
   </script>
-  <script src="script.js?v=4.20.7"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.7"></script>
+  <script src="script.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.13"></script>
 </body>
 </html>

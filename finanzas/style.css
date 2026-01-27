@@ -1154,3 +1154,305 @@ body.fin-body {
     justify-content:flex-end;
   }
 }
+
+
+/* --- Recibos --- */
+
+#view-recibos .fin-receipts-table{
+  table-layout: fixed;
+}
+
+#view-recibos .fin-receipts-table th:nth-child(1),
+#view-recibos .fin-receipts-table td:nth-child(1){ width: 72px; } /* N° */
+
+#view-recibos .fin-receipts-table th:nth-child(2),
+#view-recibos .fin-receipts-table td:nth-child(2){ width: 96px; } /* Fecha */
+
+#view-recibos .fin-receipts-table th:nth-child(4),
+#view-recibos .fin-receipts-table td:nth-child(4){ width: 118px; } /* Pago */
+
+#view-recibos .fin-receipts-table th:nth-child(5),
+#view-recibos .fin-receipts-table td:nth-child(5){ width: 118px; } /* Total */
+
+#view-recibos .fin-receipts-table th:nth-child(6),
+#view-recibos .fin-receipts-table td:nth-child(6){ width: 98px; } /* Estado */
+
+#view-recibos .fin-receipts-table th:nth-child(7),
+#view-recibos .fin-receipts-table td:nth-child(7){ width: 160px; } /* Acciones */
+
+#view-recibos .fin-receipts-table td:nth-child(3){
+  white-space: normal;
+  line-height: 1.15;
+}
+
+.fin-actions-inline{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.fin-receipts-filters{
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.fin-pill--cash{
+  border-color: rgba(168,172,185,0.25);
+  background: rgba(168,172,185,0.07);
+  color: rgba(168,172,185,0.95);
+}
+
+.fin-pill--transfer{
+  border-color: rgba(212,175,55,0.35);
+  background: rgba(212,175,55,0.10);
+  color: rgba(212,175,55,0.95);
+}
+
+.fin-seg-btn:disabled{
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rec-lines-table input:disabled{
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+#recibos-editor.rec-readonly .btn-danger{
+  display:none;
+}
+
+#recibos-editor.rec-readonly #rec-add-line,
+#recibos-editor.rec-readonly #rec-save{
+  display:none;
+}
+
+#recibos-editor.rec-readonly #rec-issue{
+  display:none;
+}
+
+#view-recibos #rec-alert{
+  margin: 10px 0;
+}
+
+
+/* --- Recibos: impresión / PDF (Etapa 4) --- */
+
+.rc-print-root{
+  display:none;
+}
+
+/* Vista previa (antes de imprimir): ocupa pantalla completa y deja un fondo claro */
+body.rc-printing .rc-print-root{
+  display:block;
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:#fff;
+  overflow:auto;
+}
+
+.rc-print-page{
+  position:relative;
+  width:8.5in;
+  height:11in;
+  margin:0 auto;
+  background:#fff;
+  color:#000;
+  font-family: var(--fin-font);
+}
+
+.rc-receipt-copy{
+  position:absolute;
+  left:0;
+  width:100%;
+  height:5.5in;
+  padding:0.35in 0.45in;
+  box-sizing:border-box;
+}
+
+.rc-receipt-copy--top{ top:0; }
+.rc-receipt-copy--bottom{ bottom:0; }
+
+.rc-cut-line{
+  position:absolute;
+  left:0;
+  right:0;
+  top:5.5in;
+  transform: translateY(-0.5px);
+  border-top: 1px dashed rgba(0,0,0,0.55);
+}
+
+.rc-cut-line span{
+  position:absolute;
+  left:50%;
+  top:-10px;
+  transform:translateX(-50%);
+  font-size:10px;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  padding:0 8px;
+  background:#fff;
+  color:rgba(0,0,0,0.55);
+}
+
+.rc-print-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding-bottom:10px;
+  border-bottom:1px solid rgba(0,0,0,0.18);
+}
+
+.rc-print-title{
+  font-size:16px;
+  font-weight:800;
+  letter-spacing:0.08em;
+}
+
+.rc-print-logo{
+  width:54px;
+  height:54px;
+  object-fit:contain;
+}
+
+.rc-print-meta{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:8px 14px;
+  margin:10px 0 12px;
+  font-size:12px;
+}
+
+.rc-print-meta .lbl{
+  font-weight:700;
+  margin-right:6px;
+}
+
+.rc-num-red{
+  color:#b00000;
+  font-weight:900;
+}
+
+.rc-print-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:11px;
+}
+
+.rc-print-table th,
+.rc-print-table td{
+  border-bottom:1px solid rgba(0,0,0,0.16);
+  padding:6px 6px;
+  vertical-align:top;
+}
+
+.rc-print-table th{
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+  font-size:10px;
+  border-top:1px solid rgba(0,0,0,0.18);
+}
+
+.rc-print-table .num{ text-align:right; white-space:nowrap; }
+.rc-print-table .ncol{ width:34px; text-align:center; }
+.rc-print-table .qcol{ width:60px; text-align:center; white-space:nowrap; }
+.rc-print-table .pcol{ width:100px; }
+.rc-print-table .dcol{ width:90px; }
+.rc-print-table .tcol{ width:100px; }
+
+.rc-print-totals{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  align-items:flex-end;
+  margin-top:10px;
+  font-size:12px;
+}
+
+.rc-print-totals .row{
+  display:flex;
+  gap:16px;
+  min-width:220px;
+  justify-content:space-between;
+}
+
+.rc-print-sign{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:28px;
+  /* Dejar un área limpia para firmar (arriba de la línea) */
+  margin-top:46px;
+}
+
+.rc-sign-box{
+  /* La línea debe quedar casi pegada al texto */
+  padding-top:2px;
+  border-top:1px solid rgba(0,0,0,0.25);
+  font-size:11px;
+  letter-spacing:0.04em;
+  text-transform:uppercase;
+  text-align:center;
+}
+
+
+@media print{
+  @page{ size: Letter; margin: 0; }
+
+  html, body{
+    margin:0 !important;
+    padding:0 !important;
+  }
+
+  body.fin-body{
+    background:#fff !important;
+    color:#000 !important;
+  }
+
+  /* Print aislado (sin “fantasmas”):
+     - NO usar visibility:hidden como método principal (deja el layout vivo y puede crear páginas en blanco).
+     - Solo participa #rc-print-root.
+  */
+  body.fin-body > *{ display:none !important; }
+  #rc-print-root{ display:block !important; }
+
+  /* Asegurar que el root imprimible no herede comportamiento de overlay (screen preview) */
+  #rc-print-root{
+    position:relative !important;
+    left:auto !important;
+    top:auto !important;
+    width:8.5in !important;
+    height:auto !important;
+    overflow:visible !important;
+    background:#fff !important;
+  }
+
+  #rc-print-root, #rc-print-root *{
+    visibility:visible !important;
+  }
+
+  .rc-print-page{ margin:0; }
+
+  /* Firmas:
+     - Bajar el bloque para dar más área real de firma (arriba de la línea)
+     - Línea casi pegada al texto “Recibí/Entregué”
+  */
+  .rc-print-sign{ margin-top:66px !important; }
+  .rc-sign-box{ padding-top:2px !important; }
+
+  /* Evitar cortes extra */
+  .rc-print-page{ break-inside: avoid; page-break-inside: avoid; }
+
+  /* Cerrar cualquier salto accidental que genere hoja extra */
+  .rc-print-page{
+    width:8.5in !important;
+    height:11in !important;
+    max-height:11in !important;
+    overflow:hidden !important;
+    page-break-after: avoid;
+    break-after: avoid-page;
+  }
+}

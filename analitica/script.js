@@ -331,6 +331,20 @@
 
   function loadCostosPresentacion(){
     try {
+      if (window.A33Storage && typeof A33Storage.sharedGet === 'function') {
+        const data = A33Storage.sharedGet(RECETAS_KEY, null, 'local');
+        if (data && data.costosPresentacion && typeof data.costosPresentacion === 'object') {
+          costosPresentacion = data.costosPresentacion;
+        } else {
+          costosPresentacion = null;
+        }
+        return;
+      }
+    } catch (err) {
+      console.warn('No se pudieron leer costos de presentaciones (sharedGet)', err);
+    }
+
+    try {
       const raw = A33Storage.getItem(RECETAS_KEY);
       if (!raw) {
         costosPresentacion = null;
@@ -1053,6 +1067,18 @@
 
   function loadInventarioFinished(){
     try {
+      if (window.A33Storage && typeof A33Storage.sharedGet === 'function') {
+        const data = A33Storage.sharedGet(INVENTARIO_KEY, null, 'local');
+        if (data && data.finished && typeof data.finished === 'object') {
+          return data.finished;
+        }
+        return null;
+      }
+    } catch (err) {
+      console.warn('Analitica: no se pudo leer inventario terminado (sharedGet)', err);
+    }
+
+    try {
       const raw = A33Storage.getItem(INVENTARIO_KEY);
       if (!raw) return null;
       const data = JSON.parse(raw);
@@ -1060,7 +1086,7 @@
         return data.finished;
       }
     } catch (err) {
-      console.warn('Analítica: no se pudo leer inventario terminado desde localStorage', err);
+      console.warn('Analitica: no se pudo leer inventario terminado desde localStorage', err);
     }
     return null;
   }
@@ -2224,6 +2250,13 @@ function rebuildHorasEventOptions(filteredSales){
   }
 
   function loadPosCustomerCatalog(){
+    try{
+      if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+        const list = A33Storage.sharedGet(POS_CUSTOMERS_KEY, [], 'local');
+        return Array.isArray(list) ? list : [];
+      }
+    }catch(_){ }
+
     const list = safeStorageGetJSON(POS_CUSTOMERS_KEY, []);
     return Array.isArray(list) ? list : [];
   }
