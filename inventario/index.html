@@ -9,16 +9,16 @@
 
   <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.42" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=1" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.42" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.42" />
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=1" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=1" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Inventario</div>
-    <div class="a33-version">v4.20.42</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.77">v...</div>
   </header>
   <main class="app-main">
     <section class="card form-card inv-span-2">
@@ -174,15 +174,80 @@
     <p>Arcano 33 · Inventario interno de insumos, botellas y producto terminado</p>
   </footer>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.42"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.42"></script>
-  <script src="/assets/js/a33-auth.js?v=4.20.42"></script>
+  <!-- A33 — Modal numérico (Líquidos) -->
+  <div id="a33-modal-cantidad" class="a33-modal" hidden aria-hidden="true">
+    <div class="a33-modal-card" role="dialog" aria-modal="true" aria-labelledby="a33-modal-cantidad-title">
+      <div id="a33-modal-cantidad-title" class="a33-modal-title">Cantidad</div>
+      <div id="a33-modal-cantidad-text" class="a33-modal-text"></div>
+
+      <label class="a33-modal-field" for="a33-modal-cantidad-input">
+        <span class="a33-modal-label">Cantidad</span>
+        <input
+          id="a33-modal-cantidad-input"
+          class="a33-modal-input"
+          type="number"
+          inputmode="decimal"
+          step="0.01"
+          min="0"
+          autocomplete="off"
+          placeholder=""
+        />
+      </label>
+
+      <div class="a33-modal-actions">
+        <button id="a33-modal-cantidad-cancel" class="btn secondary btn-pill" type="button">Cancelar</button>
+        <button id="a33-modal-cantidad-ok" class="btn primary btn-pill" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
+
+
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.77&r=1"></script>
   <script>
-    if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
-      location.href = "../index.html";
-    }
+    (async () => {
+      // Guard robusto (mala señal / offline): evita loops y fallbacks raros.
+      try{
+        if (!window.A33Auth) return;
+
+        if (typeof A33Auth.ensureMigrated === 'function'){
+          try{ await A33Auth.ensureMigrated(); }catch(_){ }
+        }
+
+        const authed = (typeof A33Auth.isConfigured === 'function' && typeof A33Auth.isAuthenticated === 'function')
+          ? (A33Auth.isConfigured() && A33Auth.isAuthenticated())
+          : false;
+        if (authed) return;
+
+        const looksOffline = async () => {
+          try{
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+            const ctrl = ('AbortController' in window) ? new AbortController() : null;
+            const t = ctrl ? setTimeout(() => { try{ ctrl.abort(); }catch(_){ } }, 2500) : null;
+            await fetch('../index.html', { method: 'HEAD', cache: 'no-store', signal: ctrl ? ctrl.signal : undefined });
+            if (t) clearTimeout(t);
+            return false;
+          }catch(_){ return true; }
+        };
+
+        if (await looksOffline()){
+          try{ location.replace('./offline.html?reason=auth'); }catch(_){ }
+          return;
+        }
+
+        if (typeof A33Auth.requireAuth === 'function'){
+          await A33Auth.requireAuth({ redirectTo: '../index.html' });
+        }else{
+          location.href = '../index.html';
+        }
+      }catch(_){
+        try{ location.replace('../index.html'); }catch(__){ }
+      }
+    })();
   </script>
-  <script src="script.js?v=4.20.42"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.42"></script>
+  <script src="script.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=1"></script>
 </body>
 </html>

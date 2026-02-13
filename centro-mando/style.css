@@ -47,7 +47,7 @@ html, body{
 .cmd-main{
   max-width: 1100px;
   margin: 0 auto;
-  padding: 14px 14px 28px;
+  padding: 14px 14px calc(28px + var(--cmdDockH, 0px));
 }
 
 .cmd-card{
@@ -68,6 +68,9 @@ html, body{
   font-size: 12.5px;
   line-height: 1.35;
 }
+
+/* Efectivo Pro: segunda línea (T/C) */
+#pettyFx{ margin-top: 2px; }
 
 .cmd-label{
   display:block;
@@ -167,7 +170,8 @@ html, body{
   border: 1px solid rgba(221,191,100,0.18);
   background: rgba(0,0,0,0.26);
 }
-.cmd-alert-icon{
+.cmd-alert-icon,
+.cmd-alert-ic{
   flex: 0 0 auto;
   width: 34px;
   height: 34px;
@@ -178,9 +182,85 @@ html, body{
   background: rgba(123,24,24,0.28);
   border: 1px solid rgba(221,191,100,0.18);
 }
-.cmd-alert-text{ flex: 1 1 auto; min-width: 0; }
+.cmd-alert-text,
+.cmd-alert-main{ flex: 1 1 auto; min-width: 0; }
 .cmd-alert-title{ font-weight: 800; font-size: 13.5px; }
-.cmd-alert-sub{ color: var(--muted); font-size: 12px; margin-top: 2px; }
+.cmd-alert-sub{ color: var(--muted); font-size: 12px; margin-top: 2px; white-space: pre-line; }
+
+/* Checklist (alertas): líneas con truncado elegante (sin alturas locas) */
+.cmd-alert-sub.cmd-alert-sub-lines{ white-space: normal; }
+.cmd-alert-subline{
+  display:block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+.cmd-alert-subline + .cmd-alert-subline{ margin-top: 2px; }
+
+/* Checklist por fases (Alertas Accionables): 3 columnas responsive (sin scroll horizontal) */
+.cmd-alert-sub.cmd-alert-sub-grid{ white-space: normal; }
+.cmd-chk-grid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+.cmd-chk-col{
+  min-width: 0;
+  border-radius: 12px;
+  padding: 8px 9px;
+  border: 1px solid rgba(221,191,100,0.12);
+  background: rgba(0,0,0,0.18);
+}
+.cmd-chk-hdr{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 850;
+  font-size: 11.5px;
+  letter-spacing: 0.35px;
+}
+.cmd-chk-name{
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmd-chk-prog{
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.cmd-chk-body{
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.cmd-chk-item{
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmd-chk-more{
+  opacity: 0.85;
+  font-style: italic;
+}
+
+@media (max-width: 900px){
+  .cmd-chk-grid{ grid-template-columns: 1fr; }
+}
+
+/* GLOBAL (Activos): mantener 3 columnas en iPad; colapsar solo en pantallas muy angostas */
+.cmd-chk-grid.cmd-chk-grid-global{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 540px){
+  .cmd-chk-grid.cmd-chk-grid-global{ grid-template-columns: 1fr; }
+}
 
 .cmd-btn{
   border: 1px solid rgba(221,191,100,0.22);
@@ -522,6 +602,10 @@ html, body{
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+
+/* --- Panel Hoy: Pedidos compacto (evita alturas gigantes) --- */
+#todayPanel #ordersTopToday .cmd-order-item:nth-child(n+3){ display:none; }
 
 
 /* --- Recordatorios (solo lectura) --- */
@@ -943,3 +1027,533 @@ button.cmd-pill{ cursor: pointer; }
 
 /* Afinar mini botones para anchors/botones sin subrayado */
 .cmd-mini-btn{ text-decoration: none; display:inline-flex; align-items:center; justify-content:center; }
+
+
+/* ---------------------------
+   GLOBAL (Activos) — CdM
+----------------------------*/
+.cmd-item-global .cmd-item-title{
+  color: var(--gold);
+}
+.cmd-item-global:hover{
+  background: rgba(221,191,100,0.14);
+}
+
+.cmd-global{ margin-top: 12px; padding: 14px; }
+.cmd-global-list{
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.cmd-global-card{
+  border: 1px solid rgba(221,191,100,0.18);
+  border-radius: 16px;
+  background: rgba(0,0,0,0.26);
+  overflow: hidden;
+}
+.cmd-global-head{
+  width:100%;
+  text-align:left;
+  background: transparent;
+  border: none;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto auto;
+  gap: 2px 10px;
+  color: inherit;
+  cursor: pointer;
+}
+.cmd-global-title{
+  grid-column: 1 / 2;
+  grid-row: 1 / 2;
+  font-weight: 800;
+  font-size: 13.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmd-global-sub{
+  grid-column: 1 / 2;
+  grid-row: 2 / 3;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmd-global-chev{
+  grid-column: 2 / 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  /* Más visible + dedo-friendly (hit-area ~40px) sin empujar layout */
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  opacity: 0.92;
+  user-select: none;
+  -webkit-user-select: none;
+  border: 1px solid rgba(221,191,100,0.22);
+  background: rgba(0,0,0,0.22);
+  border-radius: 12px;
+  transform: rotate(0deg);
+  transform-origin: center;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+/* Estado expand/collapse claro sin mover texto: rotamos el chevron */
+.cmd-global-head[aria-expanded="true"] .cmd-global-chev{
+  transform: rotate(180deg);
+  opacity: 1;
+  background: rgba(221,191,100,0.10);
+  border-color: rgba(221,191,100,0.38);
+}
+.cmd-global-head:active .cmd-global-chev{ transform: scale(0.97) rotate(var(--_cmdChevRot, 0deg)); }
+.cmd-global-head[aria-expanded="true"]{ --_cmdChevRot: 180deg; }
+.cmd-global-head{ touch-action: manipulation; }
+
+.cmd-global-kpis{
+  grid-column: 1 / -1;
+  grid-row: 3 / 4;
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cmd-gkpi{
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.18);
+}
+.cmd-gkpi-main{
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cmd-gkpi-efc-h{
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--gold);
+  margin-bottom: 3px;
+}
+.cmd-gkpi-efc-lines{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cmd-gkpi-efc-line{
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.86);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.cmd-global-body{
+  padding: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Secciones compactas (GLOBAL cards expandido) — Etapa 2/5 */
+.cmd-global-sections{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+@media (max-width: 700px){
+  .cmd-global-sections{
+    grid-template-columns: 1fr;
+  }
+}
+
+.cmd-gsec{
+  min-width: 0;
+  padding: 10px 10px 9px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+.cmd-gsec-h{
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.cmd-gsec-v{
+  margin-top: 6px;
+  font-weight: 900;
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmd-gsec-hint{
+  margin-top: 2px;
+  font-size: 11.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmd-gsec-body{
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.2;
+  color: rgba(255,255,255,0.86);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+
+/* GLOBAL: listas compactas dentro de secciones (Alertas/Recomendaciones) */
+.cmd-gsec-body.is-list{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  min-width: 0;
+}
+.cmd-gsec-item{
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.cmd-gsec-item-ic{
+  flex: 0 0 auto;
+  width: 16px;
+  text-align: center;
+  opacity: 0.95;
+  margin-top: 1px;
+}
+.cmd-gsec-item-main{
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cmd-gsec-item-title{
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.cmd-gsec-item-sub{
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.72);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.cmd-global-checklist{
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  min-width: 0;
+}
+
+/* Checklist detallado (GLOBAL cards) */
+.cmd-chk-grid-detailed .cmd-chk-body{
+  margin-top: 6px;
+}
+.cmd-chk-body-detailed{
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cmd-chk-row{
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.cmd-chk-mark{
+  flex: 0 0 auto;
+  opacity: 0.85;
+  margin-top: 1px;
+}
+.cmd-chk-text{
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.cmd-chk-row.is-done{
+  opacity: 0.65;
+}
+.cmd-global-empty{
+  color: var(--muted);
+  padding: 10px 2px;
+}
+
+
+
+/* ---------------------------
+   PANEL GLOBAL INFERIOR — fijo (Pedidos/Recordatorios/Inventario)
+----------------------------*/
+.cmd-global-dock{
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 25;
+  border-top: 1px solid rgba(221,191,100,0.16);
+  background: rgba(10,10,11,0.86);
+  box-shadow: 0 -18px 40px rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display:flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: none; /* collapsed default */
+}
+
+/* Expandido: limitar altura total para no tapar todo el tablero */
+.cmd-global-dock.cmd-dock-expanded{
+  max-height: min(60vh, 660px);
+}
+
+.cmd-global-dock-compact{
+  flex: 0 0 auto;
+}
+
+.cmd-global-dock-compact-inner{
+  max-width: 1100px;
+  margin: 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px 10px 14px;
+}
+
+/* En compacto, respetar safe-area inferior */
+.cmd-global-dock.cmd-dock-collapsed .cmd-global-dock-compact-inner{
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+
+.cmd-dock-mini{
+  display:flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items:center;
+  min-width: 0;
+}
+
+/* Hardening: evitar desbordes por textos largos dentro del dock compacto */
+.cmd-dock-mini .cmd-chip{
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmd-dock-inv-split{
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.cmd-dock-chevron{
+  border: 1px solid rgba(221,191,100,0.22);
+  background: rgba(0,0,0,0.20);
+  color: var(--text);
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 18px;
+  line-height: 1;
+}
+.cmd-dock-chevron:active{ transform: scale(0.98); }
+
+.cmd-global-dock-full{
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  border-top: 1px solid rgba(221,191,100,0.10);
+}
+
+.cmd-global-dock-inner{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+
+.cmd-global-dock-grid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.cmd-global-dock-col{
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Compras (dock expandido) */
+.cmd-purchases{ margin-top: 12px; }
+.cmd-purchases .cmd-section-head{
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.cmd-purchases-total{
+  min-width: 0;
+  text-align: center;
+  font-weight: 820;
+  font-size: 13.5px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.92;
+  font-variant-numeric: tabular-nums;
+}
+.cmd-purchases-total b{ font-weight: 860; }
+.cmd-purchases-label{ margin-top: 10px; margin-bottom: 6px; }
+.cmd-purchases-sections{ display: block; }
+
+@media (max-width: 420px){
+  .cmd-purchases-total{ font-size: 12.5px; }
+}
+
+.cmd-purchases-table{
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(0,0,0,0.18);
+}
+
+.cmd-purchases-row{
+  display: grid;
+  grid-template-columns: minmax(110px, 1.15fr) minmax(160px, 1.85fr) minmax(70px, 0.55fr) minmax(90px, 0.75fr);
+  gap: 10px;
+  padding: 10px 10px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  align-items: start;
+}
+
+.cmd-purchases-row:first-child{ border-top: 0; }
+
+.cmd-purchases-row.is-head{
+  background: rgba(255,255,255,0.04);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cmd-purchases-cell{
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.cmd-purchases-cell.num{
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cmd-purchases-more{ margin-top: 8px; }
+
+@media (max-width: 720px){
+  .cmd-purchases-row{
+    grid-template-columns: 1fr 1fr;
+    row-gap: 8px;
+  }
+  .cmd-purchases-row.is-head{ display: none; }
+
+  .cmd-purchases-cell{
+    position: relative;
+    padding-top: 14px;
+  }
+  .cmd-purchases-cell::before{
+    content: attr(data-label);
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 11px;
+    opacity: 0.74;
+    letter-spacing: 0.03em;
+  }
+  .cmd-purchases-cell.num::before{
+    left: auto;
+    right: 0;
+  }
+}
+
+
+
+/* Quitar márgenes de secciones dentro del dock */
+.cmd-global-dock .cmd-reminders,
+.cmd-global-dock .cmd-ops,
+.cmd-global-dock .cmd-inv-risk{
+  margin-top: 0;
+}
+
+/* Dentro del dock, evitar grids apretados que puedan forzar overflow */
+.cmd-global-dock .cmd-ops-grid{
+  grid-template-columns: 1fr;
+}
+
+.cmd-global-dock .cmd-inv-risk-grid{
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 980px){
+  .cmd-global-dock-grid{
+    grid-template-columns: 1fr;
+  }
+  .cmd-global-dock.cmd-dock-expanded{
+    max-height: min(60vh, 660px);
+  }
+}
+
+
+/* En modo GLOBAL, ocultar el tablero por-evento para evitar confusión */
+.cmd-mode-global #recosBlock,
+.cmd-mode-global #alerts,
+.cmd-mode-global #emptyState,
+.cmd-mode-global #todayPanel,
+.cmd-mode-global .cmd-quick,
+.cmd-mode-global .cmd-radar{
+  display: none !important;
+}
+.cmd-mode-global #globalActivesBlock{
+  display: block !important;
+}

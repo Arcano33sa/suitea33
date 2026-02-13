@@ -1,7 +1,7 @@
 # NOTAS_PRUEBAS_ETAPA4_SYNC_FINANZAS_POS
 
 Fecha: 2026-01-17
-Build objetivo: POS 4.20.13 (POS SW rev r2)
+Build objetivo: Suite A33 4.20.77 r1 (POS SW r1)
 
 ## Caso A — Snapshot no existe
 1) En el navegador, abrir DevTools → Application → Local Storage.

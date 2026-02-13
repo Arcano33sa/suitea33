@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Finanzas – Suite A33</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="style.css?v=4.20.13">
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=1">
 </head>
 <body class="fin-body">
   <div class="fin-app">
@@ -19,7 +19,7 @@
     <div class="fin-title-block">
       <h1>Suite A33</h1>
       <p>Finanzas · Contabilidad básica de Arcano 33</p>
-      <p class="fin-version">v4.20.13</p>
+      <p class="fin-version" data-a33-version="1" data-a33-fallback="v4.20.77">v...</p>
     </div>
   </div>
 
@@ -510,7 +510,36 @@
 
       <label>
         Monto
-        <input type="number" id="compra-monto" step="0.01" min="0">
+        <input type="number" id="compra-monto" step="0.01" min="0" inputmode="decimal">
+      </label>
+    </div>
+
+    <!-- Producto asistido (opcional) por proveedor -->
+    <div id="compra-producto-row" class="fin-form-row hidden">
+      <label class="fin-form-grow">
+        Producto (opcional)
+        <select id="compra-producto" disabled></select>
+        <div id="compra-producto-hint" class="fin-hint"></div>
+      </label>
+
+      <label class="fin-form-mini">
+        Tipo
+        <input type="text" id="compra-prod-tipo" placeholder="—" readonly>
+      </label>
+
+      <label class="fin-form-mini">
+        Precio unitario
+        <input type="number" id="compra-precio-unit" step="0.01" min="0" inputmode="decimal">
+      </label>
+
+      <label class="fin-form-mini">
+        Cantidad
+        <input type="number" id="compra-cantidad" step="0.01" min="0" inputmode="decimal">
+      </label>
+
+      <label class="fin-form-mini">
+        Total
+        <input type="text" id="compra-total" placeholder="" readonly>
       </label>
     </div>
 
@@ -640,6 +669,7 @@
 
       <div class="fin-actions">
         <button type="button" id="prov-guardar" class="btn-primary">Guardar proveedor</button>
+        <button type="button" id="prov-guardar-addprod" class="btn-primary btn-primary--gold">Guardar y agregar productos</button>
         <button type="button" id="prov-cancelar" class="btn-ghost hidden">Cancelar</button>
       </div>
     </div>
@@ -649,12 +679,65 @@
     </p>
   </form>
 
+  <!-- Productos del proveedor (solo en modo editar) -->
+  <section id="prov-products-section" class="fin-cardbox hidden" aria-label="Productos del proveedor">
+    <header class="fin-section-header fin-section-header--sub">
+      <h3>Productos del proveedor</h3>
+      <p>Catálogo rápido para registrar qué te vende este proveedor (referencias y unidades por caja).</p>
+    </header>
+
+    <div class="fin-inline-group" style="justify-content:space-between; flex-wrap:wrap;">
+      <div id="prov-products-hint" class="fin-muted">Selecciona un proveedor para ver/editar sus productos.</div>
+      <button type="button" id="prov-prod-add" class="btn-small">+ Agregar producto</button>
+    </div>
+
+    <div id="prov-products-empty" class="fin-empty hidden">Sin productos.</div>
+    <div id="prov-products-list" class="prov-prod-list"></div>
+
+    <div id="prov-prod-editor" class="prov-prod-editor hidden">
+      <input type="hidden" id="prov-prod-editid" value="">
+
+      <div class="fin-form-row">
+        <label class="fin-form-grow">
+          Nombre (obligatorio)
+          <input type="text" id="prov-prod-nombre" placeholder="Ej: Botella 750 ml" autocomplete="off">
+        </label>
+
+        <label>
+          Tipo
+          <select id="prov-prod-tipo">
+            <option value="">Seleccionar…</option>
+            <option value="CAJAS">CAJAS</option>
+            <option value="UNIDADES">UNIDADES</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="fin-form-row">
+        <label>
+          Precio ref (C$)
+          <!-- Input tipo text + inputmode para permitir select-all fiable en iPad/Safari (sin mostrar 0 por defecto) -->
+          <input type="text" id="prov-prod-precio" inputmode="decimal" autocomplete="off">
+        </label>
+
+        <label>
+          Unidades por caja
+          <input type="text" id="prov-prod-unidades" inputmode="numeric" autocomplete="off">
+        </label>
+
+        <div class="fin-actions">
+          <button type="button" id="prov-prod-guardar" class="btn-primary">Guardar producto</button>
+          <button type="button" id="prov-prod-cancelar" class="btn-ghost">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <div class="fin-table-wrapper">
     <table class="fin-table">
       <thead>
         <tr>
           <th>Nombre</th>
-          <th>Teléfono</th>
           <th>Nota</th>
           <th>Acciones</th>
         </tr>
@@ -1154,6 +1237,23 @@
     <!-- Toast -->
     <div id="toast" class="fin-toast"></div>
 
+
+    <!-- Modal: Productos por proveedor (base) -->
+    <div id="prov-prod-modal" class="fin-modal" aria-hidden="true">
+      <div class="fin-modal-content" role="dialog" aria-modal="true" aria-labelledby="prov-prod-modal-title">
+        <div class="fin-modal-header">
+          <div>
+            <strong id="prov-prod-modal-title">Productos</strong>
+            <div id="prov-prod-modal-sub" class="fin-help" style="margin:2px 0 0"></div>
+          </div>
+          <button type="button" id="prov-prod-modal-close" class="btn-close" aria-label="Cerrar">×</button>
+        </div>
+        <div class="fin-modal-body">
+          <div id="prov-prod-modal-body" class="fin-empty">Aquí se mostrará el listado de productos del proveedor.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal detalle de asiento -->
     <div id="detalle-modal" class="fin-modal">
       <div class="fin-modal-content">
@@ -1185,16 +1285,18 @@
   <!-- Print root (Recibos) -->
   <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.13"></script>
-  <script src="/assets/js/a33-storage.js?v=4.20.13"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.13"></script>
-  <script src="/assets/js/a33-auth.js?v=4.20.13"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
+
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.77&r=1"></script>
   <script>
     if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
       location.href = "../index.html";
     }
   </script>
-  <script src="script.js?v=4.20.13"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.13"></script>
+  <script src="script.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=1"></script>
 </body>
 </html>

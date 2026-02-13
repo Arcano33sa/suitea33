@@ -1,9 +1,9 @@
 /*
-  Suite A33 v4.20.13 — Centro de Mando (OPERATIVO v1)
+  Suite A33 v4.20.77 — Centro de Mando (OPERATIVO v1)
 
   Fuentes reales (descubiertas en /pos/app.js dentro de esta ZIP):
   - DB_NAME: 'a33-pos'
-  - Stores: meta, events, sales, pettyCash, products, inventory, banks
+  - Stores: meta, events, sales, cashV2, products, inventory, banks
   - Meta key del evento actual: id='currentEventId' (value = number|null)
 
   Regla clave: NO inventar números.
@@ -13,9 +13,23 @@
 // --- Constantes (descubiertas, no adivinadas)
 const POS_DB_NAME = 'a33-pos';
 const LS_FOCUS_KEY = 'a33_cmd_focusEventId';
+const LS_FOCUS_MODE_KEY = 'a33_cmd_focusMode';
+const CMD_MODE_EVENT = 'EVENTO';
+const CMD_MODE_GLOBAL = 'GLOBAL';
+const CMD_GLOBAL_LABEL = 'GLOBAL (Activos)';
+const CMD_GLOBAL_VALUE = '__GLOBAL_ACTIVOS__';
 const ORDERS_LS_KEY = 'arcano33_pedidos';
 const ORDERS_ROUTE = '../pedidos/index.html';
+const COMPRAS_PLAN_ROUTE = '../finanzas/index.html#tab=comprasplan';
+
+// Compras (Finanzas → Compras planificación): solo lectura (dock CdM)
+const FIN_COMPRAS_CURRENT_KEY = 'a33_finanzas_compras_current_v1';
 const SAFE_SCAN_LIMIT = 4000; // seguridad: evitar loops gigantes
+
+// Efectivo v2: cache FX por evento (misma llave que POS)
+const CASHV2_FX_LS_KEY = 'A33.EF2.fxByEvent';
+// Efectivo v2: bandera ON/OFF por evento (fallback), misma llave que POS
+const CASHV2_FLAGS_LS_KEY = 'A33.EF2.eventFlags';
 
 // --- Recordatorios (índice liviano desde POS)
 const REMINDERS_STORE = 'posRemindersIndex';
@@ -98,6 +112,47 @@ function readInventorySafe(){
 // --- Semáforo (acordado)
 // LÍQUIDOS: rojo <=20% (o stock<=0), amarillo 20–35%, verde >35%
 // BOTELLAS: rojo <=10, amarillo 11–20, verde >20
+function computeInvRiskCountsLight(inv){
+  try{
+    const out = { ok:true, invTotal:0, invRed:0, invYellow:0 };
+
+    // Líquidos
+    const srcL = (inv && inv.liquids && typeof inv.liquids === 'object') ? inv.liquids : {};
+    const keysL = new Set([...(INV_LIQUIDS_META.map(x=> x.id)), ...Object.keys(srcL || {})]);
+    for (const id of keysL){
+      const row = (srcL && srcL[id]) ? srcL[id] : {};
+      const stock = invNum(row.stock);
+      const max = invNum(row.max);
+
+      if (stock <= 0){
+        out.invRed++; out.invTotal++;
+        continue;
+      }
+      if (max > 0){
+        const ratio = stock / max;
+        if (ratio <= 0.20){ out.invRed++; out.invTotal++; }
+        else if (ratio <= 0.35){ out.invYellow++; out.invTotal++; }
+      }
+      // max=0 => unknown: no inventar
+    }
+
+    // Botellas
+    const srcB = (inv && inv.bottles && typeof inv.bottles === 'object') ? inv.bottles : {};
+    const keysB = new Set([...(INV_BOTTLES_META.map(x=> x.id)), ...Object.keys(srcB || {})]);
+    for (const id of keysB){
+      const row = (srcB && srcB[id]) ? srcB[id] : {};
+      const stock = invNum(row.stock);
+
+      if (stock <= 10){ out.invRed++; out.invTotal++; }
+      else if (stock <= 20){ out.invYellow++; out.invTotal++; }
+    }
+
+    return out;
+  }catch(_){
+    return { ok:false, invTotal:null, invRed:0, invYellow:0 };
+  }
+}
+
 function computeLiquidsTraffic(inv){
   const src = (inv && inv.liquids && typeof inv.liquids === 'object') ? inv.liquids : {};
   const keys = new Set([...(INV_LIQUIDS_META.map(x=> x.id)), ...Object.keys(src || {})]);
@@ -426,24 +481,217 @@ function renderInvRiskBlock(liquidsRes, bottlesRes){
 function refreshInvRiskBlock(){
   if (!$('invRiskBlock')) return;
 
-  const inv = readInventorySafe();
-  if (!inv){
-    renderInvRiskBlock(null, null);
+  // FAIL-SAFE: si inventario está incompleto/corrupto, NO romper el dock ni el CdM.
+  try{
+    const inv = readInventorySafe();
+    if (!inv){
+      renderInvRiskBlock(null, null);
+      setInvRiskUpdatedAt(new Date());
+      return;
+    }
+
+    const liq = computeLiquidsTraffic(inv);
+    const bot = computeBottlesTraffic(inv);
+
+    renderInvRiskBlock(liq, bot);
     setInvRiskUpdatedAt(new Date());
-    return;
+
+    // Mantener el dock compacto coherente (solo conteos)
+    try{
+      const invRed = ((liq && liq.red) ? liq.red.length : 0) + ((bot && bot.red) ? bot.red.length : 0);
+      const invYellow = ((liq && liq.yellow) ? liq.yellow.length : 0) + ((bot && bot.yellow) ? bot.yellow.length : 0);
+      const invTotal = invRed + invYellow;
+      const prev = (dockUI && dockUI.lastCounts) ? dockUI.lastCounts : {};
+      renderDockCompactCounts({
+        orders: (typeof prev.orders === 'number') ? prev.orders : null,
+        reminders: (typeof prev.reminders === 'number') ? prev.reminders : null,
+        purchases: (typeof prev.purchases === 'number') ? prev.purchases : null,
+        invTotal,
+        invRed,
+        invYellow,
+      });
+    }catch(_){ }
+  }catch(_){
+    try{ renderInvRiskBlock(null, null); }catch(__){ }
+    try{ setInvRiskUpdatedAt(new Date()); }catch(__){ }
   }
-
-  const liq = computeLiquidsTraffic(inv);
-  const bot = computeBottlesTraffic(inv);
-
-  renderInvRiskBlock(liq, bot);
-  setInvRiskUpdatedAt(new Date());
 }
 
 
 // --- DOM helpers
 
 const $ = (id)=> document.getElementById(id);
+
+// --- Panel global inferior: reservar espacio (iPad/PWA safe)
+function bindGlobalDockSpace(){
+  try{
+    if (bindGlobalDockSpace.__bound) return;
+    bindGlobalDockSpace.__bound = true;
+    const dock = $('globalDock');
+    if (!dock) return;
+
+    const root = document.documentElement;
+    const update = ()=>{
+      try{
+        const r = dock.getBoundingClientRect();
+        const h = Math.max(0, Math.round(r.height || 0));
+        root.style.setProperty('--cmdDockH', h ? `${h}px` : '0px');
+      }catch(_){ }
+    };
+
+    const rafUpdate = ()=>{
+      try{ window.requestAnimationFrame(update); }catch(_){ update(); }
+    };
+
+    // Exponer para toggles (sin depender de ResizeObserver)
+    bindGlobalDockSpace.__update = update;
+    bindGlobalDockSpace.__rafUpdate = rafUpdate;
+
+    update();
+    window.addEventListener('resize', rafUpdate, { passive:true });
+    window.addEventListener('orientationchange', rafUpdate, { passive:true });
+
+    try{
+      if (window.ResizeObserver){
+        const ro = new ResizeObserver(()=>{ update(); });
+        ro.observe(dock);
+        bindGlobalDockSpace.__ro = ro;
+      }
+    }catch(_){ }
+  }catch(_){ }
+}
+
+// --- Dock compacto / expandido (panel inferior)
+const dockUI = {
+  expanded: false,
+  __bound: false,
+  lastCounts: { orders:null, reminders:null, purchases:null, invTotal:null, invRed:0, invYellow:0 },
+  // Hardening/Perf: evitar renders repetidos y reentrancias en iPad/PWA
+  __refreshToken: 0,
+  __inflight: false,
+  __lastFullAt: 0,
+  __lastFullCounts: { orders:null, reminders:null, purchases:null, invTotal:null, invRed:0, invYellow:0 },
+  __lastFullFlags: '',
+};
+
+function dockCountsEq(a, b){
+  // Comparación mínima para gating de render (iPad/PWA). Null/undefined tratados como iguales.
+  try{
+    const aa = a || {};
+    const bb = b || {};
+    const norm = (v)=> (v == null ? null : Number(v));
+    return (
+      norm(aa.orders) === norm(bb.orders) &&
+      norm(aa.reminders) === norm(bb.reminders) &&
+      norm(aa.purchases) === norm(bb.purchases) &&
+      norm(aa.invTotal) === norm(bb.invTotal) &&
+      norm(aa.invRed) === norm(bb.invRed) &&
+      norm(aa.invYellow) === norm(bb.invYellow)
+    );
+  }catch(_){
+    return false;
+  }
+}
+
+function isDockExpanded(){
+  return !!(dockUI && dockUI.expanded);
+}
+
+function applyDockState(){
+  const dock = $('globalDock');
+  if (!dock) return;
+  const expanded = isDockExpanded();
+
+  dock.classList.toggle('cmd-dock-expanded', expanded);
+  dock.classList.toggle('cmd-dock-collapsed', !expanded);
+
+  const full = $('globalDockFull');
+  if (full) full.hidden = !expanded;
+
+  const chev = $('globalDockChevron');
+  if (chev){
+    chev.textContent = expanded ? '▲' : '▼';
+    chev.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    chev.setAttribute('aria-label', expanded ? 'Colapsar panel inferior' : 'Expandir panel inferior');
+  }
+
+  try{
+    if (bindGlobalDockSpace.__rafUpdate) bindGlobalDockSpace.__rafUpdate();
+  }catch(_){ }
+}
+
+function setDockExpanded(v){
+  dockUI.expanded = !!v;
+  applyDockState();
+}
+
+function bindDockChevron(){
+  if (dockUI.__bound) return;
+  dockUI.__bound = true;
+  const btn = $('globalDockChevron');
+  if (!btn) return;
+
+  const onToggle = async ()=>{
+    try{
+      const next = !isDockExpanded();
+      setDockExpanded(next);
+      if (next){
+        // Al expandir: render completo (sin esperar un refresh global)
+        try{ await refreshDockOnly(); }catch(_){ }
+      }
+    }catch(_){ }
+  };
+
+  btn.addEventListener('click', onToggle);
+}
+
+function setDockChipHidden(id, hidden){
+  const el = $(id);
+  if (!el) return;
+  el.hidden = !!hidden;
+}
+
+function setDockText(id, text){
+  const el = $(id);
+  if (!el) return;
+  el.textContent = (text == null || text === '') ? '—' : String(text);
+}
+
+function renderDockCompactCounts(counts){
+  counts = counts || {};
+  const ordersN = (typeof counts.orders === 'number') ? counts.orders : null;
+  const remN = (typeof counts.reminders === 'number') ? counts.reminders : null;
+  const purchasesN = (typeof counts.purchases === 'number') ? counts.purchases : null;
+  const invTotal = (typeof counts.invTotal === 'number') ? counts.invTotal : null;
+  const invRed = (typeof counts.invRed === 'number') ? counts.invRed : 0;
+  const invYellow = (typeof counts.invYellow === 'number') ? counts.invYellow : 0;
+
+  try{
+    dockUI.lastCounts = { orders: ordersN, reminders: remN, purchases: purchasesN, invTotal, invRed, invYellow };
+  }catch(_){ }
+
+  setDockText('dockOrdersN', (ordersN == null) ? '—' : String(ordersN));
+  setDockText('dockPurchasesN', (purchasesN == null) ? '—' : String(purchasesN));
+  setDockText('dockRemindersN', (remN == null) ? '—' : String(remN));
+  setDockText('dockInvN', (invTotal == null) ? '—' : String(invTotal));
+
+  const splitEl = $('dockInvSplit');
+  if (splitEl){
+    const showSplit = (invTotal != null) && (invTotal > 0) && ((invRed > 0) || (invYellow > 0));
+    splitEl.hidden = !showSplit;
+    if (showSplit) splitEl.textContent = ` (R${invRed}/A${invYellow})`;
+    else splitEl.textContent = '';
+  }
+
+  const allNumbers = (ordersN != null) && (remN != null) && (purchasesN != null) && (invTotal != null);
+  const allZero = allNumbers && (ordersN === 0) && (remN === 0) && (purchasesN === 0) && (invTotal === 0);
+
+  setDockChipHidden('dockAllGood', !allZero);
+  setDockChipHidden('dockOrdersChip', allZero);
+  setDockChipHidden('dockPurchasesChip', allZero);
+  setDockChipHidden('dockRemindersChip', allZero);
+  setDockChipHidden('dockInvChip', allZero);
+}
 
 function fmtHHMM(dt){
   try{
@@ -476,8 +724,8 @@ async function probeCalcRoute(){
   try{
     const ok = await checkRouteExists(CALC_ROUTE);
     calcRouteAvailable = !!ok;
-    // Rerender para mostrar/ocultar acción "Fabricar"
-    refreshInvRiskBlock();
+    // Rerender para mostrar/ocultar acción "Fabricar" (solo si el panel está expandido)
+    if (isDockExpanded()) refreshInvRiskBlock();
   }catch(_){ }
 }
 
@@ -548,9 +796,212 @@ function fmtMoneyNIO(n){
   return `C$ ${parts.join('.')}`;
 }
 
+function fxNorm(v){
+  const n = Number(v);
+  const r = Math.round(n * 100) / 100;
+  if (!Number.isFinite(r) || r <= 0) return null;
+  return r;
+}
+
+function fmtFX2(v){
+  const n = fxNorm(v);
+  return (n == null) ? '' : n.toFixed(2);
+}
+
+// FX (T/C) — canon por evento (alineado a POS: events.fx)
+const FX_EVENT_CANON_PROP = 'fx';
+const FX_EVENT_FALLBACK_PROPS = ['exchangeRate','exchange_rate','fxRate','tc','tipoCambio','tipo_cambio'];
+
+function resolveEventFxInfo(ev){
+  try{
+    if (!ev || typeof ev !== 'object') return { fx:null, source:'none' };
+    const eid = Number(ev.id || 0);
+
+    // a) Canon: events.fx
+    let fx = fxNorm(ev[FX_EVENT_CANON_PROP]);
+    if (fx != null) return { fx, source:'event.fx' };
+
+    // b) Fallback legacy/meta (solo lectura)
+    for (const prop of FX_EVENT_FALLBACK_PROPS){
+      fx = fxNorm(ev[prop]);
+      if (fx != null) return { fx, source: 'event.' + prop };
+    }
+
+    // c) Cache por evento (misma llave que POS)
+    fx = readCashV2FxCached(eid);
+    if (fx != null) return { fx, source:'cache' };
+
+    return { fx:null, source:'none' };
+  }catch(_){
+    return { fx:null, source:'none' };
+  }
+}
+
+function readCashV2FxCached(eventId){
+  const eid = Number(eventId || 0);
+  if (!eid) return null;
+  try{
+    const raw = localStorage.getItem(CASHV2_FX_LS_KEY);
+    if (!raw) return null;
+    const m = JSON.parse(raw);
+    if (!m || typeof m !== 'object') return null;
+    // Guardado como string "36.50" por evento
+    return fxNorm(m[eid] != null ? m[eid] : m[String(eid)]);
+  }catch(_){
+    return null;
+  }
+}
+
+function readCashV2FlagsCached(){
+  try{
+    const raw = localStorage.getItem(CASHV2_FLAGS_LS_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === 'object') return obj;
+  }catch(_){ }
+  return null;
+}
+
+async function resolveCashV2EnabledForEvent(ev){
+  // CANON POS (pos/app.js :: cashV2GetFlagForEventObj):
+  // 1) ev.cashV2Active (boolean, persistido en store 'events')
+  // 2) localStorage A33.EF2.eventFlags[eid]
+  // 3) default TRUE (retro-compat): si NO hay evidencia explícita de OFF, NO asumir OFF.
+  try{
+    if (ev && typeof ev.cashV2Active === 'boolean'){
+      return { enabled: !!ev.cashV2Active, source: 'event' };
+    }
+  }catch(_){ }
+
+  const eid = Number(ev && ev.id);
+  if (eid){
+    try{
+      const m = readCashV2FlagsCached();
+      const k = String(eid);
+      if (m && Object.prototype.hasOwnProperty.call(m, k)){
+        return { enabled: !!m[k], source: 'cache' };
+      }
+      // Por si guardaron numérico
+      if (m && Object.prototype.hasOwnProperty.call(m, eid)){
+        return { enabled: !!m[eid], source: 'cache' };
+      }
+    }catch(_){ }
+  }
+
+  return { enabled: true, source: 'default_on' };
+}
+
+
 function safeStr(x){
   const s = (x == null) ? '' : String(x);
   return s.trim();
+}
+
+
+// --- Compras pendientes (Finanzas → Compras planificación) — solo lectura (DATA, sin UI)
+function finComprasNormalizePurchased(val){
+  // true: true, "true", "1", "si", "sí", "yes" (case-insensitive). Todo lo demás => false.
+  if (val === true) return true;
+  if (val === 1) return true;
+  const s = safeStr(val).toLowerCase();
+  if (!s) return false;
+  return (s === 'true' || s === '1' || s === 'si' || s === 'sí' || s === 'yes');
+}
+
+function finComprasLineHasContent(line){
+  if (!line || typeof line !== 'object') return false;
+  // Dinámica de Finanzas: cuenta como “con contenido” si tiene cualquiera de estos campos.
+  const fields = ['supplierId','supplierName','product','quantity','price'];
+  for (const k of fields){
+    try{
+      const v = line[k];
+      if (safeStr(v)) return true;
+    }catch(_){ }
+  }
+  return false;
+}
+
+function readFinComprasCurrentSafe(){
+  // Lectura robusta: si no existe/corrupto => null (sin lanzar)
+  const raw = safeLSGetJSON(FIN_COMPRAS_CURRENT_KEY, null);
+  if (!raw || typeof raw !== 'object') return null;
+
+  const sections = (raw.sections && typeof raw.sections === 'object') ? raw.sections : {};
+  const proveedores = Array.isArray(sections.proveedores) ? sections.proveedores : [];
+  const varias = Array.isArray(sections.varias) ? sections.varias : [];
+
+  // Normalizar sólo lo que necesitamos, sin forzar el resto
+  return {
+    ...raw,
+    sections: { proveedores, varias },
+  };
+}
+
+function computeFinComprasPending(){
+  // Nunca lanzar excepción. Si falla algo => ok:false, pendingCountTotal:null
+  try{
+    const pcCurrent = readFinComprasCurrentSafe();
+    if (!pcCurrent){
+      return {
+        ok:false,
+        pendingCountTotal:null,
+        pendingProveedores:[],
+        pendingVarias:[],
+        updatedAtISO:'',
+        updatedAtDisplay:'',
+        sourceKey: FIN_COMPRAS_CURRENT_KEY,
+      };
+    }
+
+    const sec = (pcCurrent.sections && typeof pcCurrent.sections === 'object') ? pcCurrent.sections : {};
+    const proveedores = Array.isArray(sec.proveedores) ? sec.proveedores : [];
+    const varias = Array.isArray(sec.varias) ? sec.varias : [];
+
+    const pendingProveedores = [];
+    const pendingVarias = [];
+
+    const addPending = (srcArr, outArr)=>{
+      for (const line of (Array.isArray(srcArr) ? srcArr : [])){
+        if (!line || typeof line !== 'object') continue;
+        if (!finComprasLineHasContent(line)) continue;
+        if (finComprasNormalizePurchased(line.purchased)) continue;
+
+        outArr.push({
+          supplierId: line.supplierId ?? '',
+          supplierName: safeStr(line.supplierName),
+          product: safeStr(line.product),
+          quantity: safeStr(line.quantity),
+          price: safeStr(line.price),
+          total: safeStr(line.total),
+        });
+
+        if (outArr.length >= SAFE_SCAN_LIMIT) break; // hard stop
+      }
+    };
+
+    addPending(proveedores, pendingProveedores);
+    addPending(varias, pendingVarias);
+
+    return {
+      ok:true,
+      pendingCountTotal: pendingProveedores.length + pendingVarias.length,
+      pendingProveedores,
+      pendingVarias,
+      updatedAtISO: safeStr(pcCurrent.updatedAtISO),
+      updatedAtDisplay: safeStr(pcCurrent.updatedAtDisplay),
+      sourceKey: FIN_COMPRAS_CURRENT_KEY,
+    };
+  }catch(_){
+    return {
+      ok:false,
+      pendingCountTotal:null,
+      pendingProveedores:[],
+      pendingVarias:[],
+      updatedAtISO:'',
+      updatedAtDisplay:'',
+      sourceKey: FIN_COMPRAS_CURRENT_KEY,
+    };
+  }
 }
 
 function uiProdNameCMD(name){
@@ -587,6 +1038,82 @@ function safeLSGetJSON(key, fallback=null){
     return JSON.parse(raw);
   }catch(_){
     return fallback;
+  }
+}
+
+function safeLSGetString(key){
+  try{
+    if (window.A33Storage && typeof A33Storage.getItem === 'function') return A33Storage.getItem(key);
+    return localStorage.getItem(key);
+  }catch(_){
+    return null;
+  }
+}
+
+function hash32FNV1a(str){
+  try{
+    const s = (str == null) ? '' : String(str);
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++){
+      h ^= s.charCodeAt(i);
+      // h *= 16777619 (con overflow 32-bit)
+      h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
+    }
+    return (h >>> 0);
+  }catch(_){
+    return 0;
+  }
+}
+
+function computeFinComprasPendingCountAndStamp(){
+  // Lite: conteo + sello de cambios (para gating del dock). Nunca lanza.
+  try{
+    const pcCurrent = readFinComprasCurrentSafe();
+    if (!pcCurrent){
+      return { ok:false, pendingCountTotal:null, stamp:'x', updatedAtISO:'', updatedAtDisplay:'', sourceKey: FIN_COMPRAS_CURRENT_KEY };
+    }
+
+    const sec = (pcCurrent.sections && typeof pcCurrent.sections === 'object') ? pcCurrent.sections : {};
+    const proveedores = Array.isArray(sec.proveedores) ? sec.proveedores : [];
+    const varias = Array.isArray(sec.varias) ? sec.varias : [];
+
+    let count = 0;
+    const bump = (srcArr)=>{
+      for (const line of (Array.isArray(srcArr) ? srcArr : [])){
+        if (!line || typeof line !== 'object') continue;
+        if (!finComprasLineHasContent(line)) continue;
+        if (finComprasNormalizePurchased(line.purchased)) continue;
+        count++;
+        if (count >= SAFE_SCAN_LIMIT) break;
+      }
+    };
+    bump(proveedores);
+    if (count < SAFE_SCAN_LIMIT) bump(varias);
+
+    const uISO = safeStr(pcCurrent.updatedAtISO);
+    const uDisp = safeStr(pcCurrent.updatedAtDisplay);
+
+    // Sello de cambios robusto:
+    // - Preferir updatedAt* si existe, PERO siempre adjuntar hash del raw cuando esté disponible
+    //   para cubrir casos donde updatedAt no se refresca aunque el usuario edite montos.
+    const raw = safeLSGetString(FIN_COMPRAS_CURRENT_KEY);
+    const h = raw ? ('h' + hash32FNV1a(raw).toString(36)) : '';
+
+    let stamp = '';
+    if (uISO || uDisp) stamp = 'u' + (uISO || uDisp);
+    if (h) stamp = stamp ? (stamp + '|' + h) : h;
+    if (!stamp) stamp = 'c' + String(count);
+
+    return {
+      ok:true,
+      pendingCountTotal: count,
+      stamp,
+      updatedAtISO: uISO,
+      updatedAtDisplay: uDisp,
+      sourceKey: FIN_COMPRAS_CURRENT_KEY,
+    };
+  }catch(_){
+    return { ok:false, pendingCountTotal:null, stamp:'x', updatedAtISO:'', updatedAtDisplay:'', sourceKey: FIN_COMPRAS_CURRENT_KEY };
   }
 }
 
@@ -1066,6 +1593,19 @@ function renderRemindersBlock(payload){
   const pendingCount = rows.filter(r => !(r && r.done)).length;
   if (pendingEl) pendingEl.textContent = String(pendingCount);
 
+  // Reflejar el conteo también en el dock compacto (siempre visible)
+  try{
+    const prev = (dockUI && dockUI.lastCounts) ? dockUI.lastCounts : {};
+    renderDockCompactCounts({
+      orders: (typeof prev.orders === 'number') ? prev.orders : null,
+      reminders: pendingCount,
+      purchases: (typeof prev.purchases === 'number') ? prev.purchases : null,
+      invTotal: (typeof prev.invTotal === 'number') ? prev.invTotal : null,
+      invRed: (typeof prev.invRed === 'number') ? prev.invRed : 0,
+      invYellow: (typeof prev.invYellow === 'number') ? prev.invYellow : 0,
+    });
+  }catch(_){ }
+
   if (!ok){
     if (emptyEl) emptyEl.hidden = false;
     if (emptyHint) emptyHint.textContent = reason || 'No disponible';
@@ -1190,15 +1730,803 @@ function computeChecklistProgress(ev, dayKey){
   const tpl = (ev.checklistTemplate && typeof ev.checklistTemplate === 'object') ? ev.checklistTemplate : null;
   if (!tpl) return { ok:false, text:'—', checked:null, total:null, reason:'No disponible' };
 
+  const sections = getChecklistTemplateSectionsA33(tpl);
   const arr = (x)=> Array.isArray(x) ? x : [];
-  const total = arr(tpl.pre).length + arr(tpl.evento).length + arr(tpl.cierre).length;
+
+  // Total desde plantilla por secciones (preferido)
+  let total = 0;
+  if (sections && sections.hasSections){
+    total = arr(sections.pre).length + arr(sections.event).length + arr(sections.close).length;
+  } else {
+    // Back-compat: plantillas viejas con lista plana
+    total = arr(getChecklistTemplateFlatItemsA33(tpl)).length;
+  }
+
   if (!(total > 0)) return { ok:false, text:'—', checked:0, total:0, reason:'Sin plantilla' };
 
-  const day = (ev.days && typeof ev.days === 'object') ? ev.days[dayKey] : null;
+  const dk = String(dayKey || '').trim();
+  const day = (dk && ev.days && typeof ev.days === 'object') ? ev.days[dk] : null;
   const st = (day && day.checklistState && typeof day.checklistState === 'object') ? day.checklistState : null;
   const checkedIds = st ? uniq(st.checkedIds) : [];
-  const checked = checkedIds.length;
+  const checked = Array.isArray(checkedIds) ? checkedIds.length : 0;
+
   return { ok:true, text:`${checked}/${total}`, checked, total, reason:'' };
+}
+
+function truncateChecklistLine(s, maxLen){
+  const v = (s == null) ? '' : String(s);
+  // Aplanar whitespace (incluye saltos de línea) para que el truncado/ellipsis sea predecible.
+  const t = v.replace(/\s+/g, ' ').trim();
+  const m = (typeof maxLen === 'number' && isFinite(maxLen) && maxLen > 10) ? Math.floor(maxLen) : 180;
+  if (t.length <= m) return t;
+  return (t.slice(0, Math.max(1, m-1)).trimEnd() + '…');
+}
+
+function _normStrNoAccentsA33(s){
+  try{
+    return String((s==null)?'':s).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }catch(_){
+    return String((s==null)?'':s);
+  }
+}
+
+function isClearlyPlaceholderChecklistText(s){
+  try{
+    const t = String((s==null)?'':s).trim();
+    if (!t) return true;
+
+    // Normalizar: sin acentos + lower + colapsar whitespace
+    let n = _normStrNoAccentsA33(t).toLowerCase().replace(/\s+/g,' ').trim();
+
+    // Micro-robustez: si viene con viñetas/guiones al inicio, los quitamos
+    // (p.ej. "• Nuevo ítem" / "- Nuevo item")
+    n = n.replace(/^[\u2022\u00B7\*\-\u2013\u2014]+\s*/,'').trim();
+
+    if (n === 'nuevo item' || n.startsWith('nuevo item')) return true;
+    if (n === 'item' || n.startsWith('item ')) return true;
+  }catch(_){ }
+  return false;
+}
+
+function _extractTextLikeA33(o){
+  if (o == null) return '';
+  if (typeof o === 'string') return o;
+  if (typeof o !== 'object') return '';
+  const keys = ['text','title','name','label','desc','description','value','task','todo'];
+  for (const k of keys){
+    const v = o[k];
+    if (typeof v === 'string' && v.trim()) return v;
+  }
+  return '';
+}
+
+function buildDayChecklistTextMap(ev, dayKey){
+  const map = new Map();
+  try{
+    if (!ev || typeof ev !== 'object') return map;
+    const dk = String(dayKey || '').trim();
+    const day = (ev.days && typeof ev.days === 'object') ? ev.days[dk] : null;
+    if (!day || typeof day !== 'object') return map;
+
+    const consider = (id, text)=>{
+      const iid = String(id || '').trim();
+      const t = String(text || '').trim();
+      if (!iid || !t) return;
+      if (!map.has(iid)){
+        map.set(iid, t);
+        return;
+      }
+      const prev = String(map.get(iid) || '').trim();
+      if (isClearlyPlaceholderChecklistText(prev) && !isClearlyPlaceholderChecklistText(t)) map.set(iid, t);
+    };
+
+    const scanArray = (arr)=>{
+      if (!Array.isArray(arr)) return;
+      for (const raw of arr){
+        if (!raw) continue;
+        if (typeof raw === 'string') continue; // sin id fiable
+        if (typeof raw !== 'object') continue;
+        const id = raw.id || raw.itemId || raw.key || raw.uid;
+        const txt = _extractTextLikeA33(raw);
+        consider(id, txt);
+      }
+    };
+
+    const scanObjMap = (obj)=>{
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
+      for (const k in obj){
+        if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+        const v = obj[k];
+        if (typeof v === 'string') consider(k, v);
+        else if (v && typeof v === 'object') consider(k, _extractTextLikeA33(v));
+      }
+    };
+
+    // Scan profundo (compat): algunos builds guardaron textos por-id en mapas anidados.
+    // LIMITES: para evitar escanear ventas/movimientos enormes, solo se usa en sub-objetos de checklist.
+    const scanDeep = (root, maxDepth)=>{
+      const md = (typeof maxDepth === 'number' && isFinite(maxDepth)) ? Math.max(1, Math.floor(maxDepth)) : 4;
+      const seen = new Set();
+      const stack = [{ v: root, d: 0 }];
+      let steps = 0;
+      while (stack.length){
+        const cur = stack.pop();
+        const v = cur.v;
+        const d = cur.d;
+        if (v == null) continue;
+        if (typeof v !== 'object') continue;
+        if (seen.has(v)) continue;
+        seen.add(v);
+        steps++;
+        if (steps > 900) break;
+
+        if (Array.isArray(v)){
+          if (d >= md) continue;
+          for (let i=v.length-1; i>=0; i--) stack.push({ v: v[i], d: d+1 });
+          continue;
+        }
+
+        // Objeto con forma de item
+        try{
+          const id = v.id || v.itemId || v.key || v.uid;
+          const txt = _extractTextLikeA33(v);
+          if (id && txt) consider(id, txt);
+        }catch(_e){}
+
+        // Mapa: { <id>: <string|obj> }
+        if (d >= md) continue;
+        for (const k in v){
+          if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
+          const child = v[k];
+          if (typeof child === 'string'){
+            // Si la key se parece a un id de checklist, úsala.
+            if (/^(chk_|rem_|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.test(String(k))) consider(k, child);
+          }
+          stack.push({ v: child, d: d+1 });
+        }
+      }
+    };
+
+    const st = (day.checklistState && typeof day.checklistState === 'object') ? day.checklistState : null;
+    if (st){
+      scanArray(st.items); scanObjMap(st.items);
+      scanArray(st.list); scanObjMap(st.list);
+      scanArray(st.todos); scanObjMap(st.todos);
+      scanArray(st.pending); scanObjMap(st.pending);
+
+      // Compat: mapas típicos (textById, texts, overrides)
+      scanObjMap(st.textById); scanObjMap(st.texts);
+      scanObjMap(st.overrides); scanObjMap(st.draft);
+
+      scanDeep(st, 4);
+    }
+
+    const ch = (day.checklist && typeof day.checklist === 'object') ? day.checklist : null;
+    if (ch){
+      scanArray(ch.items); scanObjMap(ch.items);
+      scanArray(ch.list); scanObjMap(ch.list);
+      scanObjMap(ch.textById); scanObjMap(ch.texts);
+      scanDeep(ch, 4);
+    }
+
+    // Compat: estructuras alternativas
+    try{ scanObjMap(day.checklistTextById); scanObjMap(day.checklistTexts); scanObjMap(day.checklistTextMap); }catch(_e){}
+    try{ scanDeep(day.checklistTextById, 3); scanDeep(day.checklistTexts, 3); scanDeep(day.checklistTextMap, 3); }catch(_e){}
+
+    scanArray(day.checklist);
+    try{ scanDeep(day.checklist, 4); }catch(_e){}
+  }catch(_){ }
+  return map;
+}
+
+function resolveTextoPendiente(item, dayTextMap){
+  try{
+    const it = (item && typeof item === 'object') ? item : {};
+    const id = String(it.id || '').trim();
+    const cand = [];
+
+    // prioridad: texto del día (si existe)
+    try{
+      if (dayTextMap && id && typeof dayTextMap.get === 'function'){
+        const v = dayTextMap.get(id);
+        if (v) cand.push(v);
+      }
+    }catch(_e){ }
+
+    // luego: campos típicos del template/legacy
+    const keys = ['text','title','name','label','desc','description','value'];
+    for (const k of keys){
+      const v = it[k];
+      if (typeof v === 'string' && v.trim()) cand.push(v);
+    }
+
+    let fallback = '';
+    for (const v of cand){
+      const t = String(v || '').trim();
+      if (!t) continue;
+      if (!isClearlyPlaceholderChecklistText(t)) return t;
+      if (!fallback) fallback = t;
+    }
+    return fallback || '';
+  }catch(_){ }
+  return '';
+}
+
+
+function getPendingChecklistTexts(ev, dayKey){
+  try{
+    if (!ev || typeof ev !== 'object') return [];
+    const tpl = (ev.checklistTemplate && typeof ev.checklistTemplate === 'object') ? ev.checklistTemplate : null;
+    if (!tpl) return [];
+
+    const arr = (x)=> Array.isArray(x) ? x : [];
+    const flat = ([]
+      .concat(arr(tpl.pre))
+      .concat(arr(tpl.evento))
+      .concat(arr(tpl.cierre)))
+      .filter(x=> x && typeof x === 'object');
+    if (!flat.length) return [];
+
+    const dk = String(dayKey || '');
+    const day = (ev.days && typeof ev.days === 'object') ? ev.days[dk] : null;
+    const st = (day && day.checklistState && typeof day.checklistState === 'object') ? day.checklistState : null;
+    const checkedIds = st ? uniq(st.checkedIds) : [];
+    const checkedSet = new Set(checkedIds.map(String));
+
+    // Si existe data del día con textos reales, la priorizamos sobre el template (sin reordenar)
+    const dayTextMap = buildDayChecklistTextMap(ev, dk);
+
+    const out = [];
+    const seen = new Set();
+    for (const it of flat){
+      const id = String(it.id || '');
+      if (!id) continue;
+      if (checkedSet.has(id)) continue;
+
+      const raw = resolveTextoPendiente(it, dayTextMap);
+      if (!raw) continue;
+
+      // Requisito CdM: nunca mostrar placeholders (“Nuevo ítem”, etc.) en alertas.
+      if (isClearlyPlaceholderChecklistText(raw)) continue;
+
+      const t = truncateChecklistLine(raw, 180);
+      if (!t) continue;
+      if (isClearlyPlaceholderChecklistText(t)) continue;
+
+      const k = _normStrNoAccentsA33(t).toLowerCase().replace(/\s+/g,' ').trim();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(t);
+    }
+    return out;
+  }catch(_){ }
+  return [];
+}
+
+function getFirstPendingChecklistText(ev, dayKey){
+  try{
+    const pending = getPendingChecklistTexts(ev, dayKey);
+    return (Array.isArray(pending) && pending.length) ? pending[0] : null;
+  }catch(_){ }
+  return null;
+}
+
+
+
+// --- Checklist por FASE (CdM, solo lectura)
+// Objetivo: preparar data agrupada en PRE / EVENTO / CIERRE para UI de alertas.
+function inferChecklistPhaseKeyA33(item){
+  try{
+    const it = (item && typeof item === 'object') ? item : {};
+    const raw = (it.fase || it.phase || it.section || it.sectionKey || it.stage || it.bucket);
+    const s = String(raw || '').trim();
+    if (!s) return 'event';
+    const n = _normStrNoAccentsA33(s).toLowerCase().replace(/\s+/g,' ').trim();
+    if (!n) return 'event';
+    if (n === 'pre' || n === 'pre-evento' || n === 'preevento' || n === 'pre evento' || n === 'pre_evento') return 'pre';
+    if (n === 'evento' || n === 'event' || n === 'eventos') return 'event';
+    if (n === 'cierre' || n === 'close' || n === 'closing') return 'close';
+  }catch(_){ }
+  return 'event';
+}
+
+function getChecklistTemplateSectionsA33(tpl){
+  const arr = (x)=> Array.isArray(x) ? x : [];
+  if (!tpl || typeof tpl !== 'object') return { pre:[], event:[], close:[], hasSections:false };
+
+  const pre = ([]
+    .concat(arr(tpl.pre))
+    .concat(arr(tpl.preEvento))
+    .concat(arr(tpl.pre_evento))
+    .concat(arr(tpl.preEventoItems))
+    .concat(arr(tpl.preItems))
+    .concat(arr(tpl.preList))
+    .concat(arr(tpl.prelist)))
+    .filter(x=> x && typeof x === 'object');
+
+  const event = ([]
+    .concat(arr(tpl.evento))
+    .concat(arr(tpl.event))
+    .concat(arr(tpl.eventoItems))
+    .concat(arr(tpl.eventItems))
+    .concat(arr(tpl.eventList)))
+    .filter(x=> x && typeof x === 'object');
+
+  const close = ([]
+    .concat(arr(tpl.cierre))
+    .concat(arr(tpl.close))
+    .concat(arr(tpl.cierreItems))
+    .concat(arr(tpl.closeItems))
+    .concat(arr(tpl.post))
+    .concat(arr(tpl.postEvento))
+    .concat(arr(tpl.post_evento)))
+    .filter(x=> x && typeof x === 'object');
+
+  const hasSections = (pre.length + event.length + close.length) > 0;
+  return { pre, event, close, hasSections };
+}
+
+function getChecklistTemplateFlatItemsA33(tpl){
+  const arr = (x)=> Array.isArray(x) ? x : [];
+  if (!tpl || typeof tpl !== 'object') return [];
+  return ([]
+    .concat(arr(tpl.items))
+    .concat(arr(tpl.list))
+    .concat(arr(tpl.todos))
+    .concat(arr(tpl.tasks))
+    .concat(arr(tpl.checklist)))
+    .filter(x=> x && typeof x === 'object');
+}
+
+function hasChecklistEvidenceA33(ev, dayKey){
+  try{
+    if (!ev || typeof ev !== 'object') return false;
+    if (ev.checklistTemplate && typeof ev.checklistTemplate === 'object') return true;
+    const dk = String(dayKey || '').trim();
+    if (!dk) return false;
+    const day = (ev.days && typeof ev.days === 'object') ? ev.days[dk] : null;
+    if (!day || typeof day !== 'object') return false;
+    if (day.checklistState && typeof day.checklistState === 'object') return true;
+    if (Array.isArray(day.checklistItems) && day.checklistItems.length) return true;
+    if (Array.isArray(day.items) && day.items.length) return true;
+    if (Array.isArray(day.checklist) && day.checklist.length) return true;
+    if (day.checklist && typeof day.checklist === 'object') return true;
+  }catch(_){ }
+  return false;
+}
+
+
+
+
+function __a33TsAny(v){
+  try{
+    if (v == null) return 0;
+    if (typeof v === 'number' && isFinite(v)) return v > 0 ? v : 0;
+    if (typeof v === 'string'){
+      const s = v.trim();
+      if (!s) return 0;
+      const n = Number(s);
+      if (isFinite(n) && n > 0) return n;
+      const t = Date.parse(s);
+      if (isFinite(t)) return t;
+    }
+  }catch(_){ }
+  return 0;
+}
+
+function getChecklistStampA33(ev, dayKey){
+  const out = { ts: 0, sig: '' };
+  try{
+    const dk = String(dayKey || '').trim();
+    if (!dk || !ev || typeof ev !== 'object') return out;
+
+    let ts = 0;
+    ts = Math.max(ts, __a33TsAny(ev.updatedAt ?? ev.lastUpdatedAt ?? ev.lastModifiedAt ?? ev.modifiedAt));
+
+    const tpl = (ev.checklistTemplate && typeof ev.checklistTemplate === 'object') ? ev.checklistTemplate : null;
+    if (tpl){
+      ts = Math.max(ts, __a33TsAny(tpl.updatedAt ?? tpl.lastUpdatedAt ?? tpl.lastModifiedAt ?? tpl.modifiedAt));
+    }
+
+    const daysObj = (ev.days && typeof ev.days === 'object' && !Array.isArray(ev.days)) ? ev.days : null;
+    const day = (daysObj && dk) ? daysObj[dk] : null;
+    if (day && typeof day === 'object'){
+      ts = Math.max(ts, __a33TsAny(day.updatedAt ?? day.lastUpdatedAt ?? day.lastModifiedAt ?? day.modifiedAt));
+      ts = Math.max(ts, __a33TsAny(day.checklistUpdatedAt ?? day.checklistSavedAt ?? day.savedAt));
+
+      const st = (day.checklistState && typeof day.checklistState === 'object') ? day.checklistState : null;
+      if (st){
+        ts = Math.max(ts, __a33TsAny(st.updatedAt ?? st.lastUpdatedAt ?? st.lastModifiedAt ?? st.modifiedAt ?? st.savedAt));
+      }
+    }
+
+    const len = (x)=> Array.isArray(x) ? x.length : 0;
+    const keysLen = (o)=> (o && typeof o === 'object' && !Array.isArray(o)) ? Object.keys(o).length : 0;
+
+    const parts = [];
+    if (tpl){
+      const tplN = (
+        len(tpl.pre) + len(tpl.preEvento) + len(tpl.pre_evento) + len(tpl.preEventoItems) + len(tpl.preItems) + len(tpl.preList) + len(tpl.prelist) +
+        len(tpl.evento) + len(tpl.event) + len(tpl.eventoItems) + len(tpl.eventItems) + len(tpl.eventList) +
+        len(tpl.cierre) + len(tpl.close) + len(tpl.cierreItems) + len(tpl.closeItems) + len(tpl.post) + len(tpl.postEvento) + len(tpl.post_evento) +
+        len(tpl.items) + len(tpl.list) + len(tpl.todos) + len(tpl.tasks) + len(tpl.checklist)
+      );
+      parts.push(String(tplN));
+    } else {
+      parts.push('0');
+    }
+
+    if (day && typeof day === 'object'){
+      const st = (day.checklistState && typeof day.checklistState === 'object') ? day.checklistState : null;
+      const checkedN = (st && Array.isArray(st.checkedIds)) ? st.checkedIds.length : 0;
+
+      const legacyN = len(day.checklistItems) + len(day.items) + len(day.checklist) + (st ? (len(st.items) + len(st.list) + len(st.todos) + len(st.pending)) : 0);
+
+      const txtN = Math.max(
+        keysLen(day.checklistTextById), keysLen(day.checklistTexts), keysLen(day.checklistTextMap),
+        (st ? Math.max(keysLen(st.textById), keysLen(st.texts), keysLen(st.overrides), keysLen(st.draft)) : 0)
+      );
+
+      parts.push(String(checkedN));
+      parts.push(String(legacyN));
+      parts.push(String(txtN));
+    } else {
+      parts.push('0'); parts.push('0'); parts.push('0');
+    }
+
+    out.ts = ts || 0;
+    out.sig = parts.join('.');
+  }catch(_){ }
+  return out;
+}
+
+function buildChecklistPhasesData(ev, dayKey, opts){
+  const limit = (opts && typeof opts.limit === 'number' && isFinite(opts.limit)) ? Math.max(1, Math.floor(opts.limit)) : 3;
+  const mk = ()=>({ done:0, total:0, pendingTexts:[], pendingCount:0, moreCount:0 });
+  const phases = { pre: mk(), event: mk(), close: mk() };
+
+  // Micro-cache (iPad/PWA): clave por (eventId, dayKey, updatedAt si existe).
+  let __cacheKey = '';
+  try{
+    if (typeof state === 'object' && state){
+      if (!state.__chkPhaseCache || typeof state.__chkPhaseCache.get !== 'function') state.__chkPhaseCache = new Map();
+      const dk0 = String(dayKey || '').trim();
+      const id0 = (ev && ev.id != null) ? String(ev.id) : '0';
+      const stp = getChecklistStampA33(ev, dk0);
+      const ts = Number((stp && stp.ts) || 0) || 0;
+      const sig = String((stp && stp.sig) || '');
+      __cacheKey = `ph|${id0}|${dk0}|${limit}|${ts}|${sig}`;
+      const hit = state.__chkPhaseCache.get(__cacheKey);
+      const now = Date.now();
+      const ttl = ts ? (10 * 60 * 1000) : 3500; // 10 min si hay updatedAt, si no: corto
+      if (hit && hit.v && (now - (hit.t||0)) < ttl){
+        return hit.v;
+      }
+    }
+  }catch(_){ __cacheKey = ''; }
+
+  const res = { ok:true, phases, reason:'', limit };
+
+  try{
+    if (!ev || typeof ev !== 'object') return { ok:false, phases, reason:'No disponible', limit };
+    const dk = String(dayKey || '').trim();
+    if (!dk) return { ok:false, phases, reason:'No disponible', limit };
+
+    const day = (ev.days && typeof ev.days === 'object') ? ev.days[dk] : null;
+    const st = (day && day.checklistState && typeof day.checklistState === 'object') ? day.checklistState : null;
+    const checkedIds = st ? uniq(st.checkedIds) : [];
+    const checkedSet = new Set((Array.isArray(checkedIds) ? checkedIds : []).map(String));
+
+    const tpl = (ev.checklistTemplate && typeof ev.checklistTemplate === 'object') ? ev.checklistTemplate : null;
+
+    // Textos reales del día (si existen) tienen prioridad.
+    const dayTextMap = buildDayChecklistTextMap(ev, dk);
+
+    const pushPending = (bucket, it, seenSet)=>{
+      try{
+        const raw = resolveTextoPendiente(it, dayTextMap);
+        if (!raw) return;
+        if (isClearlyPlaceholderChecklistText(raw)) return;
+        const t = truncateChecklistLine(raw, 180);
+        if (!t) return;
+        if (isClearlyPlaceholderChecklistText(t)) return;
+        const k = _normStrNoAccentsA33(t).toLowerCase().replace(/\s+/g,' ').trim();
+        if (!k) return;
+        if (seenSet && seenSet.has(k)) return;
+        if (seenSet) seenSet.add(k);
+        bucket.pendingCount += 1;
+        if (bucket.pendingTexts.length < limit) bucket.pendingTexts.push(t);
+      }catch(_){ }
+    };
+
+    const fillFromSection = (sectionArr, bucket)=>{
+      const list = (Array.isArray(sectionArr) ? sectionArr : []).filter(x=>x && typeof x === 'object');
+      if (list.length > SAFE_SCAN_LIMIT) throw new Error('scan_limit');
+      bucket.total = list.length;
+      let done = 0;
+      const seen = new Set();
+      for (const it of list){
+        const id = String((it && it.id) || '').trim();
+        if (id && checkedSet.has(id)) { done += 1; continue; }
+        pushPending(bucket, it, seen);
+      }
+      bucket.done = done;
+      bucket.moreCount = Math.max(0, bucket.pendingCount - limit);
+    };
+
+    // 1) Plantilla por secciones (preferido)
+    if (tpl){
+      const sections = getChecklistTemplateSectionsA33(tpl);
+      if (sections && sections.hasSections){
+        fillFromSection(sections.pre, phases.pre);
+        fillFromSection(sections.event, phases.event);
+        fillFromSection(sections.close, phases.close);
+        res.ok = true;
+      } else {
+        // 2) Plantilla vieja: lista plana + fase inferida (fase missing => EVENTO)
+        const flat = getChecklistTemplateFlatItemsA33(tpl);
+        if (flat && flat.length){
+          if (flat.length > SAFE_SCAN_LIMIT) throw new Error('scan_limit');
+          const byKey = { pre: phases.pre, event: phases.event, close: phases.close };
+          const seenBy = { pre: new Set(), event: new Set(), close: new Set() };
+          for (const it of flat){
+            const key = inferChecklistPhaseKeyA33(it);
+            const b = byKey[key] || phases.event;
+            b.total += 1;
+            const id = String((it && it.id) || (it && it.itemId) || (it && it.key) || '').trim();
+            if (id && checkedSet.has(id)) { b.done += 1; continue; }
+            pushPending(b, it, seenBy[key] || seenBy.event);
+          }
+          phases.pre.moreCount = Math.max(0, phases.pre.pendingCount - limit);
+          phases.event.moreCount = Math.max(0, phases.event.pendingCount - limit);
+          phases.close.moreCount = Math.max(0, phases.close.pendingCount - limit);
+          res.ok = true;
+        } else {
+          // Sin data clara: neutro (sin crash)
+          res.ok = true;
+        }
+      }
+    }
+
+    // 3) Legacy: sin plantilla, intentar leer items del día/estado (fail-safe EVENTO)
+    if (!tpl){
+      const legacyItems = [];
+      const addMany = (x)=>{
+        if (!Array.isArray(x)) return;
+        const cut = x.length > SAFE_SCAN_LIMIT ? SAFE_SCAN_LIMIT : x.length;
+        for (let i=0; i<cut; i++){
+          const it = x[i];
+          if (it && typeof it === 'object') legacyItems.push(it);
+        }
+      };
+
+      try{
+        if (day && typeof day === 'object'){
+          addMany(day.checklistItems);
+          addMany(day.items);
+          addMany(day.checklist);
+        }
+      }catch(_){ }
+
+      try{
+        if (st && typeof st === 'object'){
+          addMany(st.items);
+          addMany(st.list);
+          addMany(st.todos);
+          addMany(st.pending);
+        }
+      }catch(_){ }
+
+      if (legacyItems.length){
+        const byKey = { pre: phases.pre, event: phases.event, close: phases.close };
+        const seenBy = { pre: new Set(), event: new Set(), close: new Set() };
+
+        for (const it of legacyItems){
+          const key = inferChecklistPhaseKeyA33(it);
+          const b = byKey[key] || phases.event;
+          b.total += 1;
+          const id = String((it && it.id) || (it && it.itemId) || (it && it.key) || '').trim();
+          if (id && checkedSet.has(id)) { b.done += 1; continue; }
+          pushPending(b, it, seenBy[key] || seenBy.event);
+        }
+
+        phases.pre.moreCount = Math.max(0, phases.pre.pendingCount - limit);
+        phases.event.moreCount = Math.max(0, phases.event.pendingCount - limit);
+        phases.close.moreCount = Math.max(0, phases.close.pendingCount - limit);
+      }
+    }
+
+  }catch(err){
+    res.ok = false;
+    res.reason = 'No disponible';
+  }
+
+  // Guardar cache (best-effort)
+  try{
+    if (typeof state === 'object' && state && state.__chkPhaseCache && typeof state.__chkPhaseCache.set === 'function'){
+      const dk0 = String(dayKey || '').trim();
+      const id0 = (ev && ev.id != null) ? String(ev.id) : '0';
+      const stp0 = getChecklistStampA33(ev, dk0);
+      const ts0 = Number((stp0 && stp0.ts) || 0) || 0;
+      const sig0 = String((stp0 && stp0.sig) || '');
+      const ck = __cacheKey || `ph|${id0}|${dk0}|${limit}|${ts0}|${sig0}`;
+      state.__chkPhaseCache.set(ck, { t: Date.now(), v: res });
+      // podar
+      while (state.__chkPhaseCache.size > 90){
+        try{ state.__chkPhaseCache.delete(state.__chkPhaseCache.keys().next().value); }catch(_){ break; }
+      }
+    }
+  }catch(_){ }
+
+  return res;
+}
+
+// Checklist DETALLADO por fase (GLOBAL cards) — solo lectura
+// Devuelve: { ok, phases: { pre:{items:[]}, event:{items:[]}, close:{items:[]} }, reason }
+function buildChecklistPhasesDetailedA33(ev, dayKey){
+  const mk = ()=>({ items:[] });
+  const phases = { pre: mk(), event: mk(), close: mk() };
+  const res = { ok:true, phases, reason:'' };
+
+  try{
+    if (!ev || typeof ev !== 'object') return { ok:false, phases, reason:'No disponible' };
+    const dk = String(dayKey || '').trim();
+    if (!dk) return { ok:false, phases, reason:'No disponible' };
+
+    const day = (ev.days && typeof ev.days === 'object') ? ev.days[dk] : null;
+    const st = (day && day.checklistState && typeof day.checklistState === 'object') ? day.checklistState : null;
+    const checkedIds = st ? uniq(st.checkedIds) : [];
+    const checkedSet = new Set((Array.isArray(checkedIds) ? checkedIds : []).map(String));
+
+    const dayTextMap = buildDayChecklistTextMap(ev, dk);
+
+    const seenBy = { pre: new Set(), event: new Set(), close: new Set() };
+    const seenIds = new Set();
+
+    const normKey = (s)=>{
+      try{ return _normStrNoAccentsA33(String(s||'')).toLowerCase().replace(/\s+/g,' ').trim(); }catch(_){ return ''; }
+    };
+
+    const pushItem = (phaseKey, it0)=>{
+      try{
+        const key = (phaseKey === 'pre' || phaseKey === 'close') ? phaseKey : 'event';
+        const bucket = phases[key] || phases.event;
+        const it = (it0 && typeof it0 === 'object') ? it0 : {};
+        const id = String((it.id != null ? it.id : (it.itemId != null ? it.itemId : (it.key != null ? it.key : (it.idxId != null ? it.idxId : '')))) || '').trim();
+        const it2 = (id && !String(it.id || '').trim()) ? ({...it, id}) : it;
+
+        let raw = resolveTextoPendiente(it2, dayTextMap);
+        raw = String(raw || '').trim();
+        if (!raw) return;
+        if (isClearlyPlaceholderChecklistText(raw)) return;
+
+        const text = truncateChecklistLine(raw, 240);
+        if (!text) return;
+        if (isClearlyPlaceholderChecklistText(text)) return;
+
+        const nk = normKey(text);
+        if (!nk) return;
+        const seen = seenBy[key] || seenBy.event;
+        if (seen.has(nk)) return;
+        seen.add(nk);
+
+        const done = (id && checkedSet.has(id)) ? true : !!(it2.done || it2.checked || it2.isDone);
+
+        if (id) seenIds.add(id);
+        bucket.items.push({ id: id || '', text, done });
+      }catch(_){ }
+    };
+
+    const tpl = (ev.checklistTemplate && typeof ev.checklistTemplate === 'object') ? ev.checklistTemplate : null;
+    if (tpl){
+      const sec = getChecklistTemplateSectionsA33(tpl);
+      if (sec && sec.hasSections){
+        for (const it of (Array.isArray(sec.pre) ? sec.pre : [])) pushItem('pre', it);
+        for (const it of (Array.isArray(sec.event) ? sec.event : [])) pushItem('event', it);
+        for (const it of (Array.isArray(sec.close) ? sec.close : [])) pushItem('close', it);
+      } else {
+        const flat = getChecklistTemplateFlatItemsA33(tpl);
+        for (const it of (Array.isArray(flat) ? flat : [])){
+          const k = inferChecklistPhaseKeyA33(it);
+          pushItem(k, it);
+        }
+      }
+    }
+
+    // Legacy / por día (si no hay plantilla o si hay textos huérfanos)
+    if (!tpl){
+      const legacyItems = [];
+      const addMany = (x)=>{
+        if (!Array.isArray(x)) return;
+        const cut = x.length > SAFE_SCAN_LIMIT ? SAFE_SCAN_LIMIT : x.length;
+        for (let i=0; i<cut; i++){
+          const it = x[i];
+          if (it && typeof it === 'object') legacyItems.push(it);
+        }
+      };
+      try{ if (day && typeof day === 'object'){ addMany(day.checklistItems); addMany(day.items); addMany(day.checklist); } }catch(_){ }
+      try{ if (st && typeof st === 'object'){ addMany(st.items); addMany(st.list); addMany(st.todos); addMany(st.pending); } }catch(_){ }
+
+      for (const it of legacyItems){
+        const k = inferChecklistPhaseKeyA33(it);
+        pushItem(k, it);
+      }
+    }
+
+    // Extras: entradas del mapa de textos que no estén representadas por items
+    try{
+      if (dayTextMap && typeof dayTextMap.entries === 'function'){
+        for (const [id0, txt0] of dayTextMap.entries()){
+          const id = String(id0 || '').trim();
+          if (!id) continue;
+          if (seenIds.has(id)) continue;
+          const raw = String(txt0 || '').trim();
+          if (!raw || isClearlyPlaceholderChecklistText(raw)) continue;
+          pushItem('event', { id, text: raw });
+        }
+      }
+    }catch(_){ }
+
+  }catch(_err){
+    res.ok = false;
+    res.reason = 'No disponible';
+  }
+
+  return res;
+}
+
+function getFocusedPendingReminderTextsForDay(remRows, ev, dayKey){
+  try{
+    const rows = Array.isArray(remRows) ? remRows : [];
+    const evId = (ev && ev.id != null) ? String(ev.id) : '';
+    const dk = String(dayKey || '').trim();
+    if (!evId || !dk || !rows.length) return { top:[], pendingCount:0 };
+
+    const filtered = [];
+    for (const r of rows){
+      if (!r || typeof r !== 'object') continue;
+      if (r.done) continue;
+      const rdk = safeStr(r.dayKey);
+      if (rdk && rdk !== dk) continue;
+      const rid = (r.eventId != null) ? String(r.eventId) : '';
+      if (!rid || rid !== evId) continue;
+      const txt = safeStr(r.text).trim();
+      if (!txt) continue;
+      if (isClearlyPlaceholderChecklistText(txt)) continue;
+      filtered.push(r);
+    }
+
+    // Orden consistente con “Recordatorios · Próximos 7 días”
+    filtered.sort((a,b)=>{
+      const ad = remindersDueMinutes(a);
+      const bd = remindersDueMinutes(b);
+      if (ad !== bd) return ad - bd;
+      const ap = remindersPriorityRank(a && a.priority);
+      const bp = remindersPriorityRank(b && b.priority);
+      if (ap !== bp) return ap - bp;
+      const au = Number((a && (a.updatedAt || a.createdAt)) || 0);
+      const bu = Number((b && (b.updatedAt || b.createdAt)) || 0);
+      if (au !== bu) return bu - au;
+      return safeStr(a && a.idxId).localeCompare(safeStr(b && b.idxId));
+    });
+
+    const top = [];
+    const seen = new Set();
+    for (const r of filtered){
+      const raw = safeStr(r.text);
+      const t = truncateChecklistLine(raw, 180);
+      if (!t) continue;
+      const k = _normStrNoAccentsA33(t).toLowerCase().replace(/\s+/g,' ').trim();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      top.push(t);
+      if (top.length >= 3) break;
+    }
+
+    return { top, pendingCount: filtered.length };
+  }catch(_){
+    return { top:[], pendingCount:0 };
+  }
 }
 
 function hasPettyDayActivity(day){
@@ -1217,8 +2545,14 @@ const state = {
   eventsById: new Map(),
   focusId: null,
   focusEvent: null,
+  focusMode: CMD_MODE_EVENT,
+  globalExpanded: new Set(),
+  __globalAutoOpened: false,
   today: todayYMD(),
   currentAlerts: [],
+
+  // Compras pendientes (Finanzas → Compras planificación) — data lista (sin UI en Etapa 1)
+  comprasPending: null,
 };
 
 // --- UI render
@@ -1248,6 +2582,11 @@ function renderRadarBasics(){
 }
 
 function renderFocusHint(){
+  if (state.focusMode === CMD_MODE_GLOBAL){
+    setText('focusHint', 'GLOBAL · Activos');
+    setText('navNote', 'Modo GLOBAL: vista multi-evento (solo eventos activos).');
+    return;
+  }
   const ev = state.focusEvent;
   if (!ev){
     setText('focusHint', '—');
@@ -1270,6 +2609,2162 @@ function renderEmpty(){
   setHidden('alerts', true);
 }
 
+// --- Focus Mode (EVENTO vs GLOBAL)
+function loadFocusMode(){
+  try{
+    const raw = localStorage.getItem(LS_FOCUS_MODE_KEY);
+    const v = (raw == null) ? '' : String(raw).trim().toUpperCase();
+    return (v === CMD_MODE_GLOBAL) ? CMD_MODE_GLOBAL : CMD_MODE_EVENT;
+  }catch(_){ return CMD_MODE_EVENT; }
+}
+
+function persistFocusMode(mode){
+  try{
+    const v = (mode === CMD_MODE_GLOBAL) ? CMD_MODE_GLOBAL : CMD_MODE_EVENT;
+    localStorage.setItem(LS_FOCUS_MODE_KEY, v);
+  }catch(_){ }
+}
+
+function applyFocusModeToDOM(){
+  try{
+    if (!document || !document.body) return;
+    if (state.focusMode === CMD_MODE_GLOBAL) document.body.classList.add('cmd-mode-global');
+    else document.body.classList.remove('cmd-mode-global');
+  }catch(_){ }
+  try{ setHidden('globalActivesBlock', state.focusMode !== CMD_MODE_GLOBAL); }catch(_){ }
+  try{ renderFocusHint(); }catch(_){ }
+  try{ if (state.focusMode === CMD_MODE_GLOBAL) renderGlobalActivesView(); }catch(_){ }
+}
+
+// --- Eventos activos (fail-safe)
+function normLower(v){
+  return safeStr(v).trim().toLowerCase();
+}
+
+function eventActiveFlag(ev){
+  // 1) flags/booleans
+  try{
+    const b = (ev && (ev.isActive ?? ev.active ?? ev.enCurso ?? ev.inProgress ?? ev.isOpen ?? ev.open));
+    if (b === true) return true;
+    const c = (ev && (ev.isClosed ?? ev.closed ?? ev.isArchived ?? ev.archived));
+    if (c === true) return false;
+  }catch(_){ }
+
+  // 2) status strings (si existen)
+  try{
+    const s = normLower(ev && (ev.status ?? ev.state ?? ev.phase ?? ev.etapa));
+    if (!s) return null;
+    if (s === 'open' || s === 'abierto' || s === 'activo' || s === 'active' || s === 'en curso' || s === 'encurso' || s === 'running') return true;
+    if (s === 'closed' || s === 'cerrado' || s === 'archived' || s === 'archivo' || s === 'finalizado' || s === 'inactivo' || s === 'inactive') return false;
+  }catch(_){ }
+  return null;
+}
+
+function eventActivityTs(ev){
+  const u = Number(ev && (ev.updatedAt ?? ev.lastUpdatedAt ?? ev.lastModifiedAt ?? ev.modifiedAt) || 0);
+  if (u) return u;
+  const c = safeStr(ev && (ev.createdAt ?? ev.created));
+  if (c){
+    const ts = Date.parse(c);
+    if (isFinite(ts)) return ts;
+  }
+  return 0;
+}
+
+function resolveActiveEvents(){
+  const all = Array.isArray(state.events) ? state.events : [];
+  const now = Date.now();
+  const cutoff = now - (14 * 24 * 60 * 60 * 1000);
+
+  const scored = [];
+  for (const ev of all){
+    if (!ev || ev.id == null) continue;
+
+    const idNum = Number(ev.id);
+    if (!isFinite(idNum) || !idNum) continue;
+
+    const flag = eventActiveFlag(ev);
+    const ts = eventActivityTs(ev) || eventSortKey(ev) || 0;
+
+    let ok = false;
+    if (flag === true) ok = true;
+    else if (flag === false) ok = false;
+    else ok = !!(ts && ts >= cutoff);
+
+    if (!ok) continue;
+    scored.push({ ev, score: ts || 0 });
+  }
+
+  scored.sort((a,b)=> Number(b.score||0) - Number(a.score||0));
+  const cap = 12; // seguridad iPad (10–15)
+  return scored.slice(0, cap).map(x=> x.ev);
+}
+
+// --- Vista GLOBAL (activos)
+function setFocusGlobal(opts){
+  opts = opts || {};
+  state.focusMode = CMD_MODE_GLOBAL;
+  if (!opts.skipPersist) persistFocusMode(CMD_MODE_GLOBAL);
+
+  // reset estado de colapsables al entrar a GLOBAL
+  state.globalExpanded = new Set();
+  state.__globalAutoOpened = false;
+
+  // UI: input
+  const input = $('eventSearch');
+  if (input) input.value = CMD_GLOBAL_LABEL;
+
+  // UI: selector
+  try{ renderEventList(''); }catch(_){ }
+  try{ hideEventList(); }catch(_){ }
+
+  applyFocusModeToDOM();
+}
+
+function toggleGlobalCard(evId){
+  const id = Number(evId || 0);
+  if (!id) return;
+  if (!(state.globalExpanded instanceof Set)) state.globalExpanded = new Set();
+  if (state.globalExpanded.has(id)) state.globalExpanded.delete(id);
+  else state.globalExpanded.add(id);
+
+  // Performance iPad/PWA: NO rerender completo. Actualizar solo la card.
+  try{
+    __cmdApplyGlobalCardExpandedState(id);
+  }catch(_){
+    // fallback ultra-seguro
+    try{ renderGlobalActivesView(); }catch(__){ }
+  }
+}
+
+async function __cmdRefreshGlobalVentasTodayForCard(eventId){
+  // Al expandir: refrescar Ventas hoy inmediato (sin depender del intervalo dynT).
+  try{
+    if (state.focusMode !== CMD_MODE_GLOBAL) return;
+    const id = Number(eventId || 0);
+    if (!id || !Number.isFinite(id)) return;
+
+    const infl = __cmdEnsureMap('__globalVentasTodayInflight');
+    if (infl.get(id)) return;
+    infl.set(id, 1);
+
+    const dk = __cmdSafeYMD(state.today) || todayYMD();
+
+    // Forzar revalidación del sello del día cuando el usuario EXPANDE (refresco explícito).
+    try{ await __cmdEnsureSalesTodayAgg(dk, { force:true }); }catch(_){ }
+
+    // Resolver evento por id (solo lectura)
+    let ev = null;
+    try{
+      const arr = Array.isArray(state.events) ? state.events : [];
+      for (const e of arr){
+        if (e && Number(e.id) === id){ ev = e; break; }
+      }
+    }catch(_){ ev = null; }
+    if (!ev) return;
+
+    const v = await __cmdVentasHoyMetric(ev, dk);
+
+    const snaps = __cmdEnsureMap('__globalSnapshots');
+    const cur = (snaps && typeof snaps.get === 'function') ? (snaps.get(id) || null) : null;
+    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, hasChecklistItems:false };
+    next.dayKey = dk;
+    next.ventasHoy = (typeof v === 'number' && isFinite(v)) ? v : null;
+    try{ snaps.set(id, next); }catch(_){ }
+
+    try{ __cmdUpdateGlobalCardUI(id, next, ev); }catch(_){ }
+  }catch(_){
+  }finally{
+    try{
+      const infl = state.__globalVentasTodayInflight;
+      const id = Number(eventId || 0);
+      if (infl && typeof infl.delete === 'function') infl.delete(id);
+    }catch(__){ }
+  }
+}
+
+async function __cmdRefreshGlobalTopProductsForCard(eventId){
+  // Al expandir (o con tarjeta ya expandida): refrescar Top productos (cache por sello).
+  try{
+    if (state.focusMode !== CMD_MODE_GLOBAL) return;
+    const id = Number(eventId || 0);
+    if (!id || !Number.isFinite(id)) return;
+
+    const infl = __cmdEnsureMap('__globalTopProductsInflight');
+    if (infl.get(id)) return;
+    infl.set(id, 1);
+
+    const dk = __cmdSafeYMD(state.today) || todayYMD();
+
+    // Revalidación del agregador al expandir (refresco explícito).
+    try{ await __cmdEnsureSalesTodayAgg(dk, { force:true }); }catch(_){ }
+
+    // Resolver evento por id (solo lectura)
+    let ev = null;
+    try{
+      const arr = Array.isArray(state.events) ? state.events : [];
+      for (const e of arr){
+        if (e && Number(e.id) === id){ ev = e; break; }
+      }
+    }catch(_){ ev = null; }
+    if (!ev) return;
+
+    const top = await __cmdTopProductsMetric(ev, dk);
+
+    const snaps = __cmdEnsureMap('__globalSnapshots');
+    const cur = (snaps && typeof snaps.get === 'function') ? (snaps.get(id) || null) : null;
+    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, checklistDayKeySource:'', alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, topProducts:null, hasChecklistItems:false };
+    next.dayKey = dk;
+    if (top === null){
+      next.topProducts = null;
+    } else {
+      next.topProducts = Array.isArray(top) ? top.slice(0, 3) : [];
+    }
+    try{ snaps.set(id, next); }catch(_){ }
+
+    try{ __cmdUpdateGlobalCardUI(id, next, ev); }catch(_){ }
+  }catch(_){
+  }finally{
+    try{
+      const infl = state.__globalTopProductsInflight;
+      const id = Number(eventId || 0);
+      if (infl && typeof infl.delete === 'function') infl.delete(id);
+    }catch(__){ }
+  }
+}
+
+
+async function __cmdRefreshGlobalAlertasRecosForCard(eventId){
+  // Al expandir: calcular Alertas accionables + Recomendaciones (listas útiles) — fail-safe.
+  try{
+    if (state.focusMode !== CMD_MODE_GLOBAL) return;
+    const id = Number(eventId || 0);
+    if (!id || !Number.isFinite(id)) return;
+
+    const infl = __cmdEnsureMap('__globalAlertasRecosInflight');
+    if (infl.get(id)) return;
+    infl.set(id, 1);
+
+    const dk = __cmdSafeYMD(state.today) || todayYMD();
+
+    // Resolver evento por id (solo lectura)
+    let ev = null;
+    try{
+      const arr = Array.isArray(state.events) ? state.events : [];
+      for (const e of arr){
+        if (e && Number(e.id) === id){ ev = e; break; }
+      }
+    }catch(_){ ev = null; }
+    if (!ev) return;
+
+    const snaps = __cmdEnsureMap('__globalSnapshots');
+    const cur = (snaps && typeof snaps.get === 'function') ? (snaps.get(id) || null) : null;
+    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, checklistDayKeySource:'', alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, topProducts:null, hasChecklistItems:false };
+    next.dayKey = dk;
+
+    // Estado cashV2 + FX (evento) — con cache interno
+    let cv2 = null;
+    try{ cv2 = await computeCashV2Status(ev, dk); }catch(_){ cv2 = { ok:false, enabled:null, isOpen:null, dayState:null, opDayKey:null, fx:null, fxMissing:null, fxKnown:false, reason:'No disponible' }; }
+
+    // Alertas accionables (motor existente)
+    let al = null;
+    try{ al = buildActionableAlerts(ev, dk, cv2, null); }catch(_){ al = { alerts:[], unavailable:[] }; }
+    const raw = (al && Array.isArray(al.alerts)) ? al.alerts : [];
+
+    const prio = (k)=>{
+      const key = String(k || '');
+      if (key === 'fx-missing') return 100;
+      if (key === 'orders-overdue') return 95;
+      if (key === 'petty-open') return 80;
+      if (key === 'checklist-incomplete') return 60;
+      if (key === 'orders-deliver-today') return 55;
+      if (key === 'inventory-critical') return 40;
+      return 10;
+    };
+
+    const pendingChk = (next && next.alertas && typeof next.alertas.pendingCount === 'number' && isFinite(next.alertas.pendingCount))
+      ? Number(next.alertas.pendingCount)
+      : null;
+
+    const list = [];
+    for (const a of raw){
+      if (!a || typeof a !== 'object') continue;
+      const k = (a.key != null) ? String(a.key) : '';
+      let title = safeStr(a.title) || labelForAlertKey(k) || '—';
+      if (k === 'checklist-incomplete'){
+        // Si está al día, NO es alerta.
+        if (/al\s*d[ií]a/i.test(title)) continue;
+      }
+      let sub = safeStr(a.sub) || '';
+      if (k === 'checklist-incomplete' && pendingChk != null && pendingChk > 0){
+        const extra = `Pendientes: ${pendingChk}`;
+        sub = sub ? (sub + ' · ' + extra) : extra;
+      }
+      list.push({
+        key: k,
+        icon: (a.icon != null) ? String(a.icon) : '',
+        title,
+        sub,
+        p: prio(k)
+      });
+    }
+
+    list.sort((x,y)=> (Number(y.p||0) - Number(x.p||0)));
+    const top = list.slice(0, 5);
+
+    // Guardar en snapshot (sin afectar KPIs existentes)
+    next.__a33AlertasList = top;
+    next.__a33AlertasAt = Date.now();
+
+    // Recomendaciones: derivadas + (1) desde Analítica si existe
+    const recos = [];
+    try{
+      if (cv2 && cv2.fxKnown === true && cv2.fxMissing === true){
+        recos.push('Definir tipo de cambio (T/C) del evento.');
+      }
+    }catch(_){ }
+    try{
+      if (cv2 && cv2.enabled === true && cv2.isOpen === true){
+        recos.push('Cerrar efectivo del día operativo para evitar descuadre.');
+      }
+    }catch(_){ }
+    try{
+      if (pendingChk != null && pendingChk > 0){
+        recos.push(`Completar checklist: ${pendingChk} pendiente${pendingChk === 1 ? '' : 's'}.`);
+      }
+    }catch(_){ }
+
+    // Recorte + truncado leve (sin periódico)
+    const addFromAnalytics = ()=>{
+      try{
+        const rawR = safeLSGetJSON(ANALYTICS_RECOS_KEY, null);
+        const items = (rawR && rawR.ok && Array.isArray(rawR.items)) ? rawR.items : [];
+        if (!items.length) return;
+        const it = items[0] || null;
+        if (!it || typeof it !== 'object') return;
+        const t = safeStr(it.title);
+        const r = safeStr(it.reason);
+        let line = t || '';
+        if (r) line = line ? (line + ' — ' + r) : r;
+        line = (line && line.length > 160) ? (line.slice(0, 157) + '…') : line;
+        if (line) recos.push(line);
+      }catch(_){ }
+    };
+
+    if (recos.length < 3) addFromAnalytics();
+
+    // Dedup simple
+    const seen = new Set();
+    const out = [];
+    for (const r of recos){
+      const t = safeStr(r);
+      if (!t) continue;
+      const k = _normStrNoAccentsA33(t).toLowerCase().replace(/\s+/g,' ').trim();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      out.push(t);
+      if (out.length >= 3) break;
+    }
+
+    next.__a33RecosList = out;
+    next.__a33RecosAt = Date.now();
+
+    try{ snaps.set(id, next); }catch(_){ }
+    try{ __cmdUpdateGlobalCardUI(id, next, ev); }catch(_){ }
+  }catch(_){
+  }finally{
+    try{
+      const infl = state.__globalAlertasRecosInflight;
+      const id = Number(eventId || 0);
+      if (infl && typeof infl.delete === 'function') infl.delete(id);
+    }catch(__){ }
+  }
+}
+
+
+function __cmdApplyGlobalCardExpandedState(eventId){
+  try{
+    if (state.focusMode !== CMD_MODE_GLOBAL) return;
+    const id = Number(eventId || 0);
+    if (!id) return;
+
+    const card = document.querySelector(`.cmd-global-card[data-eid="${id}"]`);
+    if (!card) return;
+
+    const expanded = !!(state.globalExpanded instanceof Set && state.globalExpanded.has(id));
+
+    const head = card.querySelector('.cmd-global-head');
+    if (head) head.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+
+    // Chevron: se mantiene el mismo glifo; la rotación/estado lo maneja CSS vía aria-expanded.
+    const chev = card.querySelector('.cmd-global-chev');
+    if (chev) chev.textContent = '▾';
+
+    const body = card.querySelector('.cmd-global-body');
+    if (!body) return;
+
+    // Expand/collapse: NO recalcular universo, solo toggle visual.
+    if (!expanded){
+      try{ body.hidden = true; }catch(_){ }
+      return;
+    }
+
+    try{ body.hidden = false; }catch(_){ }
+
+    // Refresco inmediato de Ventas hoy (robusto): evita mostrar valor stale si cambió monto sin variar conteo.
+    try{ __cmdRefreshGlobalVentasTodayForCard(id); }catch(_){ }
+
+    // Top productos (Etapa 4): solo cuando se expande (cache por sello).
+    try{ __cmdRefreshGlobalTopProductsForCard(id); }catch(_){ }
+
+    // Alertas + Recomendaciones (Etapa 5): solo cuando se expande (fail-safe)
+    try{ __cmdRefreshGlobalAlertasRecosForCard(id); }catch(_){ }
+
+    // Snapshot actual (fail-safe)
+    const snap = (state.__globalSnapshots && typeof state.__globalSnapshots.get === 'function')
+      ? (state.__globalSnapshots.get(id) || null)
+      : null;
+
+    // Checklist vive dentro del body, separado de las otras secciones (para no borrar UI base).
+    const chk = card.querySelector('.cmd-global-checklist');
+    if (!chk) return;
+
+    const hasChecklist = !!(snap && snap.hasChecklistItems === true);
+    if (!hasChecklist){
+      try{ chk.hidden = true; }catch(_){ }
+      return;
+    }
+
+    try{ chk.hidden = false; }catch(_){ }
+
+    const dk = __cmdSafeYMD(snap && snap.checklistDayKey) || '';
+    const cur = (chk.dataset && chk.dataset.dk != null) ? String(chk.dataset.dk || '') : '';
+
+    // Si ya está renderizado con el mismo dayKey, no tocar (sin stutter)
+    if (cur == dk && chk.childNodes && chk.childNodes.length) return;
+
+    try{ if (chk.dataset) chk.dataset.dk = dk || ''; }catch(_){ }
+
+    // Resolver evento por id (solo lectura)
+    let ev = null;
+    try{
+      const arr = Array.isArray(state.events) ? state.events : [];
+      for (const e of arr){
+        if (e && Number(e.id) === id){ ev = e; break; }
+      }
+    }catch(_){ ev = null; }
+
+    if (!ev){
+      chk.innerHTML = '<div class="cmd-muted">No disponible</div>';
+      return;
+    }
+
+    renderGlobalChecklistForEvent(chk, ev, snap);
+  }catch(_){ }
+}
+
+
+// --- GLOBAL (Activos): Checklist por fases (POR EVENTO) — solo lectura
+function __cmdTryDayKeyFromEvent(ev){
+  try{
+    if (!ev || typeof ev !== 'object') return '';
+    // 1) Si existe un “día enfocado” en el objeto del evento, úsalo (fail-safe)
+    const keys = [
+      'focusDayKey','focusedDayKey','currentDayKey','selectedDayKey',
+      'dayKey','day','currentDay','focusDay',
+      'opDayKey','operativeDayKey','lastDayKey','lastDay'
+    ];
+    for (const k of keys){
+      const v = ev[k];
+      const dk = safeYMD(v || '');
+      if (dk) return dk;
+    }
+  }catch(_){ }
+  return '';
+}
+
+function __cmdHasAnyDayEvidence(ev){
+  try{
+    const days = (ev && ev.days && typeof ev.days === 'object' && !Array.isArray(ev.days)) ? ev.days : null;
+    if (!days) return false;
+    // any key that looks like YYYY-MM-DD
+    for (const k in days){
+      if (!Object.prototype.hasOwnProperty.call(days, k)) continue;
+      if (safeYMD(k)) return true;
+    }
+  }catch(_){ }
+  return false;
+}
+function __cmdMostRecentDayKeyWithData(ev){
+  try{
+    if (!ev || typeof ev !== 'object') return '';
+    const days = (ev.days && typeof ev.days === 'object' && !Array.isArray(ev.days)) ? ev.days : null;
+    if (!days) return '';
+
+    const keys = [];
+    for (const k in days){
+      if (!Object.prototype.hasOwnProperty.call(days, k)) continue;
+      const dk = safeYMD(k);
+      if (dk) keys.push(dk);
+    }
+    if (!keys.length) return '';
+    keys.sort((a,b)=> b.localeCompare(a));
+
+    // Preferir el día más reciente con evidencia de checklist; si no, el más reciente con cualquier día.
+    const hasChkInDay = (day)=>{
+      try{
+        if (!day || typeof day !== 'object') return false;
+        if (day.checklistState && typeof day.checklistState === 'object') return true;
+        if (day.checklist && (typeof day.checklist === 'object' || Array.isArray(day.checklist))) return true;
+        if (Array.isArray(day.checklistItems) && day.checklistItems.length) return true;
+        if (Array.isArray(day.items) && day.items.length) return true;
+        if (Array.isArray(day.checklist) && day.checklist.length) return true;
+        if (day.checklistTextById && typeof day.checklistTextById === 'object' && Object.keys(day.checklistTextById).length) return true;
+        if (day.checklistTexts && typeof day.checklistTexts === 'object' && Object.keys(day.checklistTexts).length) return true;
+        if (day.checklistTextMap && typeof day.checklistTextMap === 'object' && Object.keys(day.checklistTextMap).length) return true;
+      }catch(_){ }
+      return false;
+    };
+
+    for (const dk of keys){
+      const day = days[dk];
+      if (hasChkInDay(day)) return dk;
+    }
+    return keys[0];
+  }catch(_){ }
+  return '';
+}
+
+function resolveChecklistDayKeyForEventA33(ev){
+  // Cache liviano por evento (evita recomputar en cada toggle).
+  try{
+    if (!state.__globalDayKeyCache || typeof state.__globalDayKeyCache.get !== 'function') state.__globalDayKeyCache = new Map();
+    const id = (ev && ev.id != null) ? String(ev.id) : '';
+    const hit = id ? state.__globalDayKeyCache.get(id) : null;
+    const now = Date.now();
+    if (hit && hit.dk && (now - (hit.t||0)) < 6000){
+      return { dayKey: String(hit.dk), source: String(hit.source||'cache') };
+    }
+  }catch(_){ }
+
+  let dk = '';
+  let source = '';
+
+  // 1) “día enfocado” si existe
+  dk = __cmdTryDayKeyFromEvent(ev);
+  if (dk){ source = 'focused'; }
+
+  // 2) día más reciente con data
+  if (!dk){
+    dk = __cmdMostRecentDayKeyWithData(ev);
+    if (dk) source = 'recent';
+  }
+
+  // 3) hoy
+  if (!dk){
+    dk = safeYMD((state && state.today) ? state.today : todayYMD());
+    if (dk) source = 'today';
+  }
+
+  // 4) neutro
+  if (!dk){
+    source = 'none';
+  }
+
+  // guardar cache (best-effort)
+  try{
+    if (state.__globalDayKeyCache && typeof state.__globalDayKeyCache.set === 'function'){
+      const id = (ev && ev.id != null) ? String(ev.id) : '';
+      if (id) state.__globalDayKeyCache.set(id, { t: Date.now(), dk: dk || '', source: source || '' });
+      while (state.__globalDayKeyCache.size > 40){
+        try{ state.__globalDayKeyCache.delete(state.__globalDayKeyCache.keys().next().value); }catch(_){ break; }
+      }
+    }
+  }catch(_){ }
+
+  return { dayKey: dk || '', source: source || '' };
+}
+
+// --- GLOBAL (Activos): Snapshot/KPIs por evento (solo lectura + fail-safe) — Etapa 1/4
+function __cmdIsObj(x){ return !!(x && typeof x === 'object' && !Array.isArray(x)); }
+function __cmdNum(v){
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function __cmdRound2(v){
+  const n = __cmdNum(v);
+  if (n == null) return null;
+  const r = Math.round(n * 100) / 100;
+  return Number.isFinite(r) ? r : null;
+}
+function __cmdSafeYMD(v){ return safeYMD(v || ''); }
+
+function __cmdEnsureMap(key){
+  try{ if (!state[key] || typeof state[key].get !== 'function') state[key] = new Map(); }catch(_){ state[key] = new Map(); }
+  return state[key];
+}
+
+// CashV2: helpers (read-only)
+const __CASHV2_DENOMS_CMD = {
+  NIO: [1000,500,200,100,50,20,10,5,1],
+  USD: [100,50,20,10,5,1]
+};
+
+function __cmdCashV2Key(eid, dk){
+  const id = Number(eid || 0);
+  const day = __cmdSafeYMD(dk);
+  if (!id || !day) return '';
+  return `cash:v2:${id}:${day}`;
+}
+
+function __cmdCashV2NormStatus(v){
+  const s = String(v || '').trim().toUpperCase();
+  if (s === 'OPEN' || s === 'ABIERTO') return 'OPEN';
+  if (s === 'CLOSED' || s === 'CERRADO') return 'CLOSED';
+  return s || '';
+}
+
+function __cmdCashV2SumDenoms(denoms, counts){
+  const c = __cmdIsObj(counts) ? counts : {};
+  let total = 0;
+  for (const d of (Array.isArray(denoms) ? denoms : [])){
+    const k1 = String(d);
+    let raw = (c[k1] != null) ? c[k1] : c[d];
+    if (raw == null || raw === '') raw = 0;
+    let n = Number(raw);
+    if (!Number.isFinite(n)) n = 0;
+    n = Math.trunc(n);
+    if (n < 0) n = 0;
+    total += Number(d) * n;
+  }
+  const r = __cmdRound2(total);
+  return (r == null) ? 0 : r;
+}
+
+function __cmdCashV2ExtractCurrencyTotal(block, ccy){
+  try{
+    const b = __cmdIsObj(block) ? block : null;
+    if (!b) return 0;
+    const t = __cmdRound2(b.total);
+    if (t != null && t >= 0) return t;
+    const den = __cmdIsObj(b.denomCounts) ? b.denomCounts : (__cmdIsObj(b.counts) ? b.counts : null);
+    const ds = __CASHV2_DENOMS_CMD[String(ccy||'').trim().toUpperCase()] || [];
+    return __cmdCashV2SumDenoms(ds, den);
+  }catch(_){
+    return 0;
+  }
+}
+
+function __cmdCashV2SumMovementsByCurrency(movements, currency){
+  const ccy = String(currency || '').trim().toUpperCase();
+  const arr = Array.isArray(movements) ? movements : [];
+  let inc = 0;
+  let out = 0;
+  let adj = 0;
+
+  for (const m of arr){
+    if (!__cmdIsObj(m)) continue;
+    if (String(m.currency || '').trim().toUpperCase() !== ccy) continue;
+    const k = String(m.kind || '').trim().toUpperCase();
+    const allowNeg = (k === 'ADJUST');
+    let amt = Number(m.amount);
+    if (!Number.isFinite(amt)) amt = 0;
+    amt = Math.trunc(amt);
+    if (!allowNeg) amt = Math.abs(amt);
+
+    if (k === 'IN' || k === 'ADJUST_IN') inc += Math.abs(amt);
+    else if (k === 'OUT' || k === 'ADJUST_OUT') out += Math.abs(amt);
+    else if (k === 'ADJUST') adj += amt;
+  }
+
+  return { in: __cmdRound2(inc) || 0, out: __cmdRound2(out) || 0, adjust: __cmdRound2(adj) || 0 };
+}
+
+function __cmdIsCourtesySale(s){
+  try{ return !!(s && (s.courtesy || s.isCourtesy)); }catch(_){ return false; }
+}
+
+async function __cmdComputeCashSalesC(eventId, dayKey){
+  const db = state.db;
+  const eid = Number(eventId || 0);
+  const dk = __cmdSafeYMD(dayKey);
+  if (!db || !eid || !dk || !hasStore(db,'sales')) return null;
+
+  // Cache micro (si el conteo del día no cambió, reutilizar)
+  const cache = __cmdEnsureMap('__globalSalesCashCache');
+  const cnt = await idbCountByIndex(db,'sales','by_date', IDBKeyRange.only(dk));
+  const cntKey = (cnt == null) ? 'na' : String(cnt);
+  const k = `cashSales|${eid}|${dk}|${cntKey}`;
+  const hit = cache.get(k);
+  if (hit && (Date.now() - (hit.t||0)) < 8000) return hit.v;
+
+  let rows = await idbGetAllByIndex(db,'sales','by_date', IDBKeyRange.only(dk));
+  if (rows === null){
+    // fallback: por evento (índice) o scan controlado
+    rows = await idbGetAllByIndex(db,'sales','by_event', IDBKeyRange.only(eid));
+    if (rows === null) rows = await idbGetAll(db,'sales');
+  }
+  if (!Array.isArray(rows)) rows = [];
+  if (rows.length > SAFE_SCAN_LIMIT) return null;
+
+  let sum = 0;
+  for (const s of rows){
+    if (!__cmdIsObj(s)) continue;
+    if (Number(s.eventId) !== eid) continue;
+    if (__cmdSafeYMD(s.date || '') !== dk) continue;
+    const pay = String(s.payment || '').toLowerCase();
+    if (pay !== 'efectivo' && pay !== 'cash') continue;
+    if (__cmdIsCourtesySale(s)) continue;
+    let t = Number(s.total != null ? s.total : 0);
+    if (!Number.isFinite(t)) t = 0;
+    sum += t;
+  }
+
+  sum = Math.round(sum * 100) / 100;
+  if (!Number.isFinite(sum)) return null;
+
+  try{ cache.set(k, { t: Date.now(), v: sum }); while (cache.size > 80) cache.delete(cache.keys().next().value); }catch(_){ }
+  return sum;
+}
+
+function __cmdCashSigFromRec(rec){
+  try{
+    if (!__cmdIsObj(rec)) return '';
+    const a = Number(rec.updatedAt || 0);
+    const b = Number(rec.openTs || 0);
+    const c = Number(rec.closeTs || 0);
+    const d = Number(rec.ts || 0);
+    const st = __cmdCashV2NormStatus(rec.status || '');
+    const mv = Array.isArray(rec.movements) ? rec.movements.length : 0;
+    const iN = __cmdCashV2ExtractCurrencyTotal(rec.initial && rec.initial.NIO, 'NIO');
+    const iU = __cmdCashV2ExtractCurrencyTotal(rec.initial && rec.initial.USD, 'USD');
+    return [a,b,c,d,st,mv,iN,iU].join('|');
+  }catch(_){
+    return '';
+  }
+}
+
+async function __cmdComputeCashKpisForEvent(ev, dayKey, prevCashMeta){
+  // Devuelve objeto { enabled, tc, saldoInicial, ventasEfectivo, totalIngresos, totalEgresos, totalAjustes, saldoFinal, opDayKey }
+  // Fail-safe duro: si algo crítico no existe/tipos raros => enabled:true con valores null.
+  try{
+    const en = await resolveCashV2EnabledForEvent(ev);
+    const enabled = !!(en && en.enabled === true);
+    if (!enabled) return { enabled:false };
+
+    const eid = Number(ev && ev.id);
+    const dkToday = __cmdSafeYMD(dayKey) || __cmdSafeYMD(state.today) || todayYMD();
+
+    const db = state.db;
+    if (!db || !hasStore(db,'cashV2')){
+      const fxInfo0 = resolveEventFxInfo(ev);
+      const tc0 = (fxInfo0 && fxInfo0.fx != null) ? fxInfo0.fx : null;
+      return { enabled:true, tc: tc0 || null, saldoInicial:null, ventasEfectivo:null, totalIngresos:null, totalEgresos:null, totalAjustes:null, saldoFinal:null, opDayKey:null };
+    }
+
+    // Reusar opDayKey si ya existe y el registro no cambió (micro-cache real por updatedAt/sig).
+    if (prevCashMeta && prevCashMeta.opDayKey && prevCashMeta.sig){
+      const key = __cmdCashV2Key(eid, prevCashMeta.opDayKey);
+      if (key){
+        const rec = await idbGet(db,'cashV2', key);
+        const sigNow = __cmdCashSigFromRec(rec);
+        if (rec && sigNow && sigNow === String(prevCashMeta.sig)){
+          return prevCashMeta.kpis;
+        }
+      }
+    }
+
+    // Full resolve (canon existente)
+    const st = await computeCashV2Status(ev, dkToday);
+    const tc = (st && st.fx != null) ? fxNorm(st.fx) : null;
+    const opDayKey = __cmdSafeYMD(st && st.opDayKey) || dkToday;
+
+    // Si no hay día operativo aún
+    if (!st || st.ok !== true || !opDayKey){
+      return { enabled:true, tc: tc || null, saldoInicial:null, ventasEfectivo:null, totalIngresos:null, totalEgresos:null, totalAjustes:null, saldoFinal:null, opDayKey: opDayKey || null };
+    }
+
+    const key = __cmdCashV2Key(eid, opDayKey);
+    let rec = key ? await idbGet(db,'cashV2', key) : null;
+    if (!rec){
+      const byEvDay = await idbGetAllByIndex(db,'cashV2','by_event_day', IDBKeyRange.only([eid, opDayKey]));
+      if (Array.isArray(byEvDay) && byEvDay.length) rec = byEvDay[0];
+    }
+
+    if (!rec || !__cmdIsObj(rec)){
+      return { enabled:true, tc: tc || null, saldoInicial:null, ventasEfectivo:null, totalIngresos:null, totalEgresos:null, totalAjustes:null, saldoFinal:null, opDayKey };
+    }
+
+    // Totales iniciales
+    const init = __cmdIsObj(rec.initial) ? rec.initial : null;
+    const iN = __cmdCashV2ExtractCurrencyTotal(init && init.NIO, 'NIO');
+    const iU = __cmdCashV2ExtractCurrencyTotal(init && init.USD, 'USD');
+
+    // Movimientos
+    const movs = Array.isArray(rec.movements) ? rec.movements : [];
+    const sN = __cmdCashV2SumMovementsByCurrency(movs,'NIO');
+    const sU = __cmdCashV2SumMovementsByCurrency(movs,'USD');
+
+    // Ventas en efectivo (C$) — preferir snapshot guardado, fallback a cómputo por ventas
+    let cashSalesC = __cmdRound2(rec.cashSalesC);
+    if (cashSalesC == null) cashSalesC = await __cmdComputeCashSalesC(eid, opDayKey);
+    if (cashSalesC == null) cashSalesC = null;
+
+    // Conversión a NIO (si hay USD involucrado, tc debe existir)
+    const usdInPlay = (iU !== 0) || (sU.in !== 0) || (sU.out !== 0) || (sU.adjust !== 0);
+    if (usdInPlay && !(tc && tc > 0)){
+      return { enabled:true, tc: tc || null, saldoInicial:null, ventasEfectivo: cashSalesC, totalIngresos:null, totalEgresos:null, totalAjustes:null, saldoFinal:null, opDayKey };
+    }
+
+    const toC = (nio, usd)=>{
+      const a = __cmdRound2(nio) || 0;
+      const b = __cmdRound2(usd) || 0;
+      if (!usdInPlay) return __cmdRound2(a) || 0;
+      return __cmdRound2(a + (b * tc)) || 0;
+    };
+
+    const saldoInicial = toC(iN, iU);
+    const totalIngresos = toC(sN.in, sU.in);
+    const totalEgresos = toC(sN.out, sU.out);
+    const totalAjustes = toC(sN.adjust, sU.adjust);
+
+    let saldoFinal = null;
+    if (cashSalesC != null){
+      saldoFinal = __cmdRound2(saldoInicial + cashSalesC + totalIngresos - totalEgresos + totalAjustes);
+    }
+
+    return {
+      enabled:true,
+      tc: (tc != null) ? __cmdRound2(tc) : null,
+      saldoInicial: __cmdRound2(saldoInicial),
+      ventasEfectivo: (cashSalesC != null) ? __cmdRound2(cashSalesC) : null,
+      totalIngresos: __cmdRound2(totalIngresos),
+      totalEgresos: __cmdRound2(totalEgresos),
+      totalAjustes: __cmdRound2(totalAjustes),
+      saldoFinal: (saldoFinal != null) ? __cmdRound2(saldoFinal) : null,
+      opDayKey
+    };
+  }catch(_){
+    const fxInfo = resolveEventFxInfo(ev);
+    const tc = (fxInfo && fxInfo.fx != null) ? fxInfo.fx : null;
+    return { enabled:true, tc: tc || null, saldoInicial:null, ventasEfectivo:null, totalIngresos:null, totalEgresos:null, totalAjustes:null, saldoFinal:null, opDayKey:null };
+  }
+}
+
+function __cmdHasChecklistItemsForDay(ev, dayKey){
+  // Ítem real = texto no vacío y no placeholder.
+  try{
+    if (!__cmdIsObj(ev)) return false;
+    const dk = __cmdSafeYMD(dayKey);
+    if (!dk) return false;
+
+    const dayTextMap = buildDayChecklistTextMap(ev, dk);
+
+    const scanItems = (items)=>{
+      const arr = Array.isArray(items) ? items : [];
+      for (const it of arr){
+        if (!__cmdIsObj(it)) continue;
+        const txt = resolveTextoPendiente(it, dayTextMap);
+        if (txt && !isClearlyPlaceholderChecklistText(txt)) return true;
+      }
+      return false;
+    };
+
+    // Preferir plantilla por fases
+    const tpl = __cmdIsObj(ev.checklistTemplate) ? ev.checklistTemplate : null;
+    if (tpl){
+      const sec = getChecklistTemplateSectionsA33(ev);
+      if (sec && __cmdIsObj(sec)){
+        if (scanItems(sec.pre)) return true;
+        if (scanItems(sec.event)) return true;
+        if (scanItems(sec.close)) return true;
+      } else {
+        const flat = getChecklistTemplateFlatItemsA33(ev);
+        if (scanItems(flat)) return true;
+      }
+    }
+
+    // Fallback: evidencia por día (legacy)
+    const days = (__cmdIsObj(ev.days) ? ev.days : null);
+    const day = (days && __cmdIsObj(days[dk])) ? days[dk] : null;
+    const st = (day && __cmdIsObj(day.checklistState)) ? day.checklistState : null;
+
+    if (st && __cmdIsObj(st.textById)){
+      for (const k in st.textById){
+        if (!Object.prototype.hasOwnProperty.call(st.textById,k)) continue;
+        const txt = String(st.textById[k] || '').trim();
+        if (txt && !isClearlyPlaceholderChecklistText(txt)) return true;
+      }
+    }
+
+    if (day && Array.isArray(day.checklistItems) && scanItems(day.checklistItems)) return true;
+    if (day && Array.isArray(day.items) && scanItems(day.items)) return true;
+    if (day && Array.isArray(day.checklist) && scanItems(day.checklist)) return true;
+
+    return false;
+  }catch(_){
+    return false;
+  }
+}
+
+function __cmdAlertasPendingCount(ev, dayKey){
+  try{
+    const dk = __cmdSafeYMD(dayKey);
+    if (!dk) return { pendingCount: null };
+    const ph = buildChecklistPhasesData(ev, dk, { limit: 1 });
+    if (!ph || ph.ok === false) return { pendingCount: null };
+    const phases = (ph.phases && __cmdIsObj(ph.phases)) ? ph.phases : {};
+    const sum = (b)=>{
+      const n = Number(b && b.pendingCount);
+      return Number.isFinite(n) ? n : 0;
+    };
+    return { pendingCount: sum(phases.pre) + sum(phases.event) + sum(phases.close) };
+  }catch(_){
+    return { pendingCount: null };
+  }
+}
+
+// --- GLOBAL: Ventas hoy por evento (robusto + refresco coherente) — Etapa 3/5
+function __cmdSaleRowHashLite(row){
+  // Hash ligero y estable para detectar cambios de monto aunque el conteo no cambie.
+  try{
+    const id = Number(row && row.id) || 0;
+    const total = __cmdRound2(Number(row && row.total) || 0) || 0;
+    const qty = Number(row && row.qty) || 0;
+    const disc = __cmdRound2(Number(row && row.discount) || 0) || 0;
+    return hash32FNV1a(`${id}|${total}|${qty}|${disc}`) >>> 0;
+  }catch(_){
+    try{ return hash32FNV1a('0|0|0|0') >>> 0; }catch(__){ return 0; }
+  }
+}
+
+async function __cmdEnsureSalesTodayAgg(dayKey, opts){
+  // Agrupa TODAS las ventas del día por evento en una sola pasada (perf GLOBAL).
+  try{
+    const dk = __cmdSafeYMD(dayKey);
+    if (!dk) return { ok:false, dayKey:'', reason:'No disponible' };
+
+    const now = Date.now();
+    const force = !!(opts && opts.force === true);
+    const hit = (state.__salesTodayAgg && state.__salesTodayAgg.ok && state.__salesTodayAgg.dayKey === dk) ? state.__salesTodayAgg : null;
+    // TTL ultra-corto: evita recalcular en cada render pero permite refresco rápido.
+    if (!force && hit && (now - Number(hit.t||0)) < 600) return hit;
+
+    const infl = state.__salesTodayAggInflight;
+    if (infl && infl.dayKey === dk && infl.p) return infl.p;
+
+    const p = (async()=>{
+      const db = state.db;
+      if (!db || !hasStore(db,'sales')) return { ok:false, dayKey: dk, reason:'No disponible' };
+
+      let rows = await idbGetAllByIndex(db, 'sales', 'by_date', IDBKeyRange.only(dk));
+      if (rows === null){
+        // Sin índice: fallback controlado.
+        rows = await idbGetAll(db, 'sales');
+        if (Array.isArray(rows)) rows = rows.filter(r => r && String(r.date||'') === dk);
+      }
+      if (!Array.isArray(rows)) rows = [];
+      if (rows.length > SAFE_SCAN_LIMIT){
+        return { ok:false, dayKey: dk, reason:'No disponible' };
+      }
+
+      const totals = new Map();
+      const counts = new Map();
+      const sumHash = new Map();
+
+      // Lite rows (solo lo necesario) para Top productos (se calcula bajo demanda al expandir).
+      const rowsLite = [];
+
+      let dayCount = 0;
+      let dayHash = 0;
+
+      for (const r of rows){
+        if (!r) continue;
+        const eid = Number(r.eventId);
+        if (!eid || !Number.isFinite(eid)) continue;
+
+        // Guardar mínimo para Top (sin tocar performance si no se usa).
+        try{ rowsLite.push({ eventId: eid, productName: (r && r.productName != null) ? r.productName : (r && r.product != null ? r.product : ''), qty: (r && r.qty != null) ? r.qty : 0 }); }catch(_){ }
+
+        const t = __cmdRound2(Number(r.total) || 0) || 0;
+        const prevT = totals.get(eid) || 0;
+        totals.set(eid, __cmdRound2(prevT + t) || 0);
+
+        counts.set(eid, (counts.get(eid) || 0) + 1);
+
+        const h = __cmdSaleRowHashLite(r);
+        sumHash.set(eid, ((sumHash.get(eid) || 0) + (h >>> 0)) >>> 0);
+
+        dayCount += 1;
+        dayHash = (dayHash + (h >>> 0)) >>> 0;
+      }
+
+      const stamps = new Map();
+      for (const [eid, c] of counts.entries()){
+        const h = (sumHash.get(eid) || 0) >>> 0;
+        stamps.set(eid, `c${c}|h${h.toString(36)}`);
+      }
+
+      const out = {
+        ok:true,
+        dayKey: dk,
+        t: Date.now(),
+        dayStamp: `c${dayCount}|h${(dayHash>>>0).toString(36)}`,
+        totals,
+        stamps,
+        rowsLite,
+        // Top productos se construye LAZY bajo demanda (al expandir).
+        topStamp: '',
+        topByEvent: null
+      };
+
+      state.__salesTodayAgg = out;
+      return out;
+    })().finally(()=>{
+      try{ if (state.__salesTodayAggInflight && state.__salesTodayAggInflight.dayKey === dk) state.__salesTodayAggInflight = null; }catch(_){ }
+    });
+
+    try{ state.__salesTodayAggInflight = { dayKey: dk, p }; }catch(_){ }
+    return p;
+  }catch(_){
+    return { ok:false, dayKey: __cmdSafeYMD(dayKey) || '', reason:'No disponible' };
+  }
+}
+
+async function __cmdSalesSealForEventDay(eid, dayKey){
+  try{
+    const dk = __cmdSafeYMD(dayKey);
+    const id = Number(eid || 0);
+    if (!dk || !id) return '';
+    const agg = await __cmdEnsureSalesTodayAgg(dk);
+    if (agg && agg.ok){
+      return (agg.stamps && typeof agg.stamps.get === 'function') ? (agg.stamps.get(id) || 'c0|h0') : 'c0|h0';
+    }
+    return '';
+  }catch(_){
+    return '';
+  }
+}
+
+async function __cmdVentasHoyMetric(ev, dayKey){
+  try{
+    const dk = __cmdSafeYMD(dayKey);
+    if (!dk) return null;
+
+    const eid = Number(ev && ev.id);
+    if (!eid || !Number.isFinite(eid)) return null;
+
+    // Cache por evento+dayKey, invalidación por sello (c/h) para detectar cambios sin variar conteo.
+    const cache = __cmdEnsureMap('__globalSalesTodayCache2');
+    const ck = `sToday|${eid}|${dk}`;
+
+    // 1) Ruta rápida (GLOBAL): agrupar ventas de HOY 1 vez y leer por evento.
+    try{
+      const agg = await __cmdEnsureSalesTodayAgg(dk);
+      if (agg && agg.ok){
+        const stamp = (agg.stamps && typeof agg.stamps.get === 'function') ? (agg.stamps.get(eid) || 'c0|h0') : 'c0|h0';
+        const hit = cache.get(ck);
+        if (hit && hit.stamp === stamp) return hit.v;
+
+        const v = (agg.totals && typeof agg.totals.get === 'function') ? (agg.totals.get(eid) || 0) : 0;
+        const vv = (__cmdRound2(v) == null) ? 0 : (__cmdRound2(v) || 0);
+        cache.set(ck, { t: Date.now(), stamp, v: vv });
+        while (cache.size > 160){
+          try{ cache.delete(cache.keys().next().value); }catch(_){ break; }
+        }
+        return vv;
+      }
+    }catch(_){ }
+
+    // 2) Fallback: lógica existente (por evento) — robusto.
+    const r = await computeSalesToday(eid, dk);
+    if (r && r.ok === true){
+      const t = __cmdRound2(r.total);
+      const v = (t == null) ? 0 : t;
+      // sello fallback: incluye total para detectar cambios aunque no cambie conteo.
+      const stamp = `c${Number(r.count||0)||0}|t${Math.round((Number(v)||0)*100)}`;
+      cache.set(ck, { t: Date.now(), stamp, v });
+      while (cache.size > 160){
+        try{ cache.delete(cache.keys().next().value); }catch(_){ break; }
+      }
+      return v;
+    }
+    return null;
+  }catch(_){
+    return null;
+  }
+}
+
+// --- GLOBAL: Top productos por evento (LAZY + cache por sello) — Etapa 4/5
+function __cmdEnsureTopByEventFromAgg(agg){
+  try{
+    if (!agg || agg.ok !== true) return null;
+    const stamp = String(agg.dayStamp || '');
+    if (agg.topByEvent && agg.topStamp === stamp) return agg.topByEvent;
+
+    const rows = Array.isArray(agg.rowsLite) ? agg.rowsLite : [];
+    const byEv = new Map();
+
+    for (const r of rows){
+      if (!r) continue;
+      const eid = Number(r.eventId);
+      if (!eid || !isFinite(eid)) continue;
+
+      const q0 = Number(r.qty || 0);
+      if (!isFinite(q0) || q0 <= 0) continue;
+
+      const name = uiProdNameCMD(r.productName) || 'N/D';
+      if (!name) continue;
+
+      let m = byEv.get(eid);
+      if (!m){ m = new Map(); byEv.set(eid, m); }
+      m.set(name, (m.get(name) || 0) + q0);
+    }
+
+    const topByEvent = new Map();
+    for (const [eid, m] of byEv.entries()){
+      const arr = [];
+      for (const [name, qty] of m.entries()){
+        const q = Number(qty);
+        if (!isFinite(q) || q <= 0) continue;
+        arr.push({ name: String(name || 'N/D'), qty: q });
+      }
+      arr.sort((a,b)=>{
+        const dq = (Number(b.qty||0) - Number(a.qty||0));
+        if (dq) return dq;
+        return String(a.name||'').localeCompare(String(b.name||''));
+      });
+      topByEvent.set(eid, arr.slice(0, 3));
+    }
+
+    try{ agg.topByEvent = topByEvent; }catch(_){ }
+    try{ agg.topStamp = stamp; }catch(_){ }
+    return topByEvent;
+  }catch(_){
+    return null;
+  }
+}
+
+async function __cmdTopProductsMetric(ev, dayKey){
+  try{
+    const dk = __cmdSafeYMD(dayKey);
+    if (!dk) return null;
+
+    const eid = Number(ev && ev.id);
+    if (!eid || !Number.isFinite(eid)) return null;
+
+    const cache = __cmdEnsureMap('__globalTopProductsCache2');
+    const ck = `top|${eid}|${dk}`;
+
+    // 1) Ruta rápida: usar el agregador del día (mismo patrón que Ventas hoy).
+    try{
+      const agg = await __cmdEnsureSalesTodayAgg(dk);
+      if (agg && agg.ok){
+        const stamp = (agg.stamps && typeof agg.stamps.get === 'function') ? (agg.stamps.get(eid) || 'c0|h0') : 'c0|h0';
+        const hit = cache.get(ck);
+        if (hit && hit.stamp === stamp) return Array.isArray(hit.list) ? hit.list : [];
+
+        const topByEvent = __cmdEnsureTopByEventFromAgg(agg);
+        const raw = (topByEvent && typeof topByEvent.get === 'function') ? (topByEvent.get(eid) || []) : [];
+        const out = (Array.isArray(raw) ? raw : []).slice(0, 3).map(it=>{
+          const name = safeStr(it && it.name) || 'N/D';
+          const q0 = Number(it && it.qty);
+          const qty = (isFinite(q0) ? q0 : 0);
+          return { name, qty };
+        });
+
+        cache.set(ck, { t: Date.now(), stamp, list: out });
+        while (cache.size > 180){
+          try{ cache.delete(cache.keys().next().value); }catch(_){ break; }
+        }
+        return out;
+      }
+    }catch(_){ }
+
+    // 2) Fallback: lógica existente (por evento) — robusto.
+    const r = await computeSalesToday(eid, dk);
+    if (r && r.ok === true){
+      const raw = Array.isArray(r.top) ? r.top : [];
+      const out = raw.slice(0, 3).map(it=>{
+        const name = safeStr(it && it.name) || 'N/D';
+        const q0 = Number(it && it.qty);
+        const qty = (isFinite(q0) ? q0 : 0);
+        return { name, qty };
+      });
+      const stamp = `c${Number(r.count||0)||0}|t${Math.round((Number(r.total||0)||0)*100)}`;
+      cache.set(ck, { t: Date.now(), stamp, list: out });
+      while (cache.size > 180){
+        try{ cache.delete(cache.keys().next().value); }catch(_){ break; }
+      }
+      return out;
+    }
+
+    return null;
+  }catch(_){
+    return null;
+  }
+}
+
+async function __cmdBuildGlobalSnapshot(ev, todayDayKey){
+  const eid = Number(ev && ev.id);
+  const dkToday = __cmdSafeYMD(todayDayKey) || __cmdSafeYMD(state.today) || todayYMD();
+
+  const chkRes = resolveChecklistDayKeyForEventA33(ev);
+  const chkDayKey = __cmdSafeYMD(chkRes && chkRes.dayKey) || dkToday;
+
+  const stamp = getChecklistStampA33(ev, chkDayKey);
+  const chkTs = (stamp && stamp.ts != null) ? String(stamp.ts) : '0';
+  const chkSig = (stamp && stamp.sig != null) ? String(stamp.sig) : '';
+
+  const cache = __cmdEnsureMap('__globalSnapshotsCache');
+  const inflight = __cmdEnsureMap('__globalSnapshotsInflight');
+  const cashMetaByEvent = __cmdEnsureMap('__globalCashMetaByEvent');
+
+  // Fail-safe: evitar colisión de cache si el id viene raro
+  if (!eid || !isFinite(eid)){
+    return {
+      eventId: null,
+      dayKey: dkToday,
+      checklistDayKey: chkDayKey,
+      checklistDayKeySource: (chkRes && chkRes.source) ? String(chkRes.source) : '',
+      alertas: { pendingCount: null },
+      efectivo: { enabled: null },
+      ventasHoy: null,
+      topProducts: null,
+      hasChecklistItems: false
+    };
+  }
+
+  // Sello de ventas HOY (por evento) para invalidar cache aunque el conteo no cambie.
+  let salesSeal = '';
+  try{ salesSeal = await __cmdSalesSealForEventDay(eid, dkToday); }catch(_){ salesSeal = ''; }
+  const key = `snap|${eid||0}|${dkToday}|${chkDayKey}|${chkTs}|${chkSig}|s${salesSeal||''}`;
+
+  const hit = cache.get(key);
+  if (hit && hit.snap){
+    // Respetar micro-cache: NO recalcular si no cambió firma/updatedAt.
+    // Solo refrescar métricas dinámicas cada pocos segundos (ventas/efectivo) sin tocar checklist/alertas.
+    const now = Date.now();
+    const lastDyn = Number(hit.dynT || 0) || 0;
+    if (!lastDyn || (now - lastDyn) > 5500){
+      try{ hit.snap.ventasHoy = await __cmdVentasHoyMetric(ev, dkToday); }catch(_){ }
+      // Top productos: SOLO si la tarjeta está expandida (perf + regla del prompt).
+      try{
+        const ex = !!(state.globalExpanded instanceof Set && state.globalExpanded.has(Number(eid)));
+        if (ex){
+          hit.snap.topProducts = await __cmdTopProductsMetric(ev, dkToday);
+        }
+      }catch(_){ }
+      try{
+        let prevCashMeta = null;
+        try{ prevCashMeta = cashMetaByEvent.get(eid) || hit.cashMeta || null; }catch(_){ prevCashMeta = hit.cashMeta || null; }
+        hit.snap.efectivo = await __cmdComputeCashKpisForEvent(ev, dkToday, prevCashMeta);
+
+        // actualizar meta cash (firma)
+        try{
+          const db = state.db;
+          const op = hit.snap.efectivo && hit.snap.efectivo.opDayKey ? String(hit.snap.efectivo.opDayKey) : '';
+          let sig = '';
+          if (db && hasStore(db,'cashV2') && op && eid){
+            const rec = await idbGet(db,'cashV2', __cmdCashV2Key(eid, op));
+            sig = __cmdCashSigFromRec(rec);
+          }
+          const meta = { opDayKey: op || null, sig: sig || '', kpis: hit.snap.efectivo };
+          try{ cashMetaByEvent.set(eid, meta); }catch(_){ }
+          hit.cashMeta = meta;
+        }catch(_){ }
+      }catch(_){ }
+      hit.dynT = now;
+    }
+
+    hit.t = now;
+    try{ cache.set(key, hit); }catch(_){ }
+    return hit.snap;
+  }
+
+  const inF = inflight.get(key);
+  if (inF) return inF;
+
+  const p = (async()=>{
+    // Base neutra
+    const snap = {
+      eventId: eid || null,
+      dayKey: dkToday,
+      checklistDayKey: chkDayKey,
+      checklistDayKeySource: (chkRes && chkRes.source) ? String(chkRes.source) : '',
+      alertas: { pendingCount: null },
+      efectivo: { enabled: null },
+      ventasHoy: null,
+      topProducts: null,
+      hasChecklistItems: false
+    };
+
+    // Checklist: hasItems + pendingCount (fail-safe)
+    try{ snap.hasChecklistItems = __cmdHasChecklistItemsForDay(ev, chkDayKey); }catch(_){ snap.hasChecklistItems = false; }
+    try{ snap.alertas = __cmdAlertasPendingCount(ev, chkDayKey); }catch(_){ snap.alertas = { pendingCount: null }; }
+
+    // Ventas hoy (C$) — por día actual (no por chkDayKey)
+    try{ snap.ventasHoy = await __cmdVentasHoyMetric(ev, dkToday); }catch(_){ snap.ventasHoy = null; }
+
+    // Efectivo (ON/OFF + métricas si ON)
+    let prevCashMeta = null;
+    try{ prevCashMeta = cashMetaByEvent.get(eid) || ((hit && hit.cashMeta) ? hit.cashMeta : null); }catch(_){ prevCashMeta = null; }
+    const kpis = await __cmdComputeCashKpisForEvent(ev, dkToday, prevCashMeta);
+    snap.efectivo = kpis;
+
+    // Guardar meta de cash para micro-cache por firma/updatedAt
+    try{
+      const db = state.db;
+      const op = kpis && kpis.opDayKey ? String(kpis.opDayKey) : '';
+      let sig = '';
+      if (db && hasStore(db,'cashV2') && op && eid){
+        const rec = await idbGet(db,'cashV2', __cmdCashV2Key(eid, op));
+        sig = __cmdCashSigFromRec(rec);
+      }
+      const meta = { opDayKey: op || null, sig: sig || '', kpis };
+      try{ cashMetaByEvent.set(eid, meta); }catch(_){ }
+      try{
+        cache.set(key, { t: Date.now(), dynT: Date.now(), snap, cashMeta: meta });
+        while (cache.size > 120){
+          try{ cache.delete(cache.keys().next().value); }catch(_){ break; }
+        }
+      }catch(_){ }
+    }catch(_){
+      try{
+        cache.set(key, { t: Date.now(), dynT: Date.now(), snap, cashMeta: null });
+        while (cache.size > 120){
+          try{ cache.delete(cache.keys().next().value); }catch(_){ break; }
+        }
+      }catch(_){ }
+    }
+
+    return snap;
+  })().finally(()=>{ try{ inflight.delete(key); }catch(_){ } });
+
+  inflight.set(key, p);
+  return p;
+}
+
+function __cmdPrimeGlobalSnapshots(items){
+  // No bloquear render. Dedup por firma (micro-cache) y fail-safe duro.
+  try{
+    if (!Array.isArray(items) || !items.length) return;
+    const dk = __cmdSafeYMD(state.today) || todayYMD();
+
+    // Prefetch: agrupar ventas de hoy 1 vez (mejora perf con 10+ eventos).
+    try{ __cmdEnsureSalesTodayAgg(dk); }catch(_){ }
+
+    const out = __cmdEnsureMap('__globalSnapshots');
+
+    // Concurrencia baja para iPad.
+    const queue = items.slice(0, 15);
+    const limit = 3;
+    let idx = 0;
+
+    const worker = async()=>{
+      while (idx < queue.length){
+        const cur = queue[idx++];
+        try{
+          if (!cur || cur.id == null) continue;
+          const snap = await __cmdBuildGlobalSnapshot(cur, dk);
+          try{ out.set(Number(cur.id), snap); }catch(_){ }
+          try{ __cmdUpdateGlobalCardUI(Number(cur.id), snap, cur); }catch(_){ }
+        }catch(_){
+          const fallback = { eventId: Number(cur && cur.id) || null, dayKey: dk, checklistDayKey: dk, alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, hasChecklistItems:false };
+          try{ out.set(Number(cur && cur.id), fallback); }catch(_){ }
+          try{ __cmdUpdateGlobalCardUI(Number(cur && cur.id), fallback, cur); }catch(_){ }
+        }
+      }
+    };
+
+    // Disparar en microtask (no depender del orden de carga)
+    Promise.resolve().then(()=>{
+      for (let i=0; i<limit; i++) worker();
+    });
+  }catch(_){ }
+}
+
+function renderChecklistPhasesGridInto(containerEl, ph){
+  if (!containerEl) return;
+
+  const phases = (ph && ph.phases && typeof ph.phases === 'object') ? ph.phases : {};
+  const ok = (ph && ph.ok === false) ? false : true;
+  const lim = (ph && typeof ph.limit === 'number' && isFinite(ph.limit) && ph.limit > 0) ? Math.floor(ph.limit) : 3;
+
+  const makeCol = (label, bucket)=>{
+    const col = document.createElement('div');
+    col.className = 'cmd-chk-col';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'cmd-chk-hdr';
+
+    const name = document.createElement('span');
+    name.className = 'cmd-chk-name';
+    name.textContent = label;
+
+    const prog = document.createElement('span');
+    prog.className = 'cmd-chk-prog';
+    if (ok === false){
+      prog.textContent = '—';
+    } else {
+      const done = (bucket && typeof bucket.done === 'number') ? bucket.done : Number(bucket && bucket.done) || 0;
+      const total = (bucket && typeof bucket.total === 'number') ? bucket.total : Number(bucket && bucket.total) || 0;
+      prog.textContent = `${done}/${total}`;
+    }
+
+    hdr.appendChild(name);
+    hdr.appendChild(prog);
+
+    const body = document.createElement('div');
+    body.className = 'cmd-chk-body';
+
+    if (ok === false){
+      body.textContent = (ph && ph.reason) ? String(ph.reason) : 'No disponible';
+    } else {
+      const texts = (bucket && Array.isArray(bucket.pendingTexts)) ? bucket.pendingTexts : [];
+      const pendingCount = (bucket && typeof bucket.pendingCount === 'number' && isFinite(bucket.pendingCount))
+        ? bucket.pendingCount
+        : (Array.isArray(texts) ? texts.length : 0);
+
+      if (texts && texts.length){
+        const top = texts.slice(0, lim);
+        for (const t of top){
+          const line = document.createElement('span');
+          line.className = 'cmd-chk-item';
+          line.textContent = `• ${String(t || '')}`;
+          body.appendChild(line);
+        }
+
+        const more = (bucket && typeof bucket.moreCount === 'number' && isFinite(bucket.moreCount))
+          ? bucket.moreCount
+          : Math.max(0, pendingCount - lim);
+
+        if (more > 0){
+          const moreLine = document.createElement('span');
+          moreLine.className = 'cmd-chk-item cmd-chk-more';
+          moreLine.textContent = `+${more} más`;
+          body.appendChild(moreLine);
+        }
+      } else {
+        const okLine = document.createElement('span');
+        okLine.className = 'cmd-chk-item cmd-chk-ok';
+        okLine.textContent = 'Al día ✅';
+        body.appendChild(okLine);
+      }
+    }
+
+    col.appendChild(hdr);
+    col.appendChild(body);
+    return col;
+  };
+
+  const grid = document.createElement('div');
+  grid.className = 'cmd-chk-grid cmd-chk-grid-global';
+  grid.appendChild(makeCol('PRE-EVENTO', phases.pre || null));
+  grid.appendChild(makeCol('EVENTO', phases.event || null));
+  grid.appendChild(makeCol('CIERRE', phases.close || null));
+
+  containerEl.appendChild(grid);
+}
+
+function renderChecklistPhasesDetailedInto(containerEl, ph){
+  if (!containerEl) return;
+
+  const phases = (ph && ph.phases && typeof ph.phases === 'object') ? ph.phases : {};
+  const ok = (ph && ph.ok === false) ? false : true;
+
+  const makeCol = (label, bucket)=>{
+    const col = document.createElement('div');
+    col.className = 'cmd-chk-col';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'cmd-chk-hdr';
+
+    const name = document.createElement('span');
+    name.className = 'cmd-chk-name';
+    name.textContent = label;
+
+    const prog = document.createElement('span');
+    prog.className = 'cmd-chk-prog';
+    // Detallado: sin contadores ruidosos. Mantener el layout estable.
+    prog.textContent = '';
+
+    hdr.appendChild(name);
+    hdr.appendChild(prog);
+
+    const body = document.createElement('div');
+    body.className = 'cmd-chk-body cmd-chk-body-detailed';
+
+    if (ok === false){
+      body.textContent = (ph && ph.reason) ? String(ph.reason) : 'No disponible';
+    } else {
+      const items = (bucket && Array.isArray(bucket.items)) ? bucket.items : [];
+      if (!items.length){
+        const em = document.createElement('div');
+        em.className = 'cmd-muted';
+        em.textContent = '—';
+        body.appendChild(em);
+      } else {
+        const frag = document.createDocumentFragment();
+        for (const it of items){
+          const row = document.createElement('div');
+          row.className = 'cmd-chk-row' + ((it && it.done) ? ' is-done' : '');
+
+          const mark = document.createElement('span');
+          mark.className = 'cmd-chk-mark';
+          mark.textContent = (it && it.done) ? '✓' : '•';
+
+          const tx = document.createElement('span');
+          tx.className = 'cmd-chk-text';
+          tx.textContent = (it && it.text != null) ? String(it.text) : '';
+
+          row.appendChild(mark);
+          row.appendChild(tx);
+          frag.appendChild(row);
+        }
+        body.appendChild(frag);
+      }
+    }
+
+    col.appendChild(hdr);
+    col.appendChild(body);
+    return col;
+  };
+
+  const grid = document.createElement('div');
+  grid.className = 'cmd-chk-grid cmd-chk-grid-global cmd-chk-grid-detailed';
+  grid.appendChild(makeCol('PRE-EVENTO', phases.pre || null));
+  grid.appendChild(makeCol('EVENTO', phases.event || null));
+  grid.appendChild(makeCol('CIERRE', phases.close || null));
+
+  containerEl.appendChild(grid);
+}
+
+function renderGlobalChecklistForEvent(bodyEl, ev, snap){
+  if (!bodyEl) return;
+  bodyEl.innerHTML = '';
+
+  // Condición CRÍTICA: si hasChecklistItems=false => NO mostrar NADA del checklist.
+  const has = !!(snap && snap.hasChecklistItems === true);
+  if (!has) return;
+
+  const dk = __cmdSafeYMD(snap && snap.checklistDayKey)
+    || __cmdSafeYMD((resolveChecklistDayKeyForEventA33(ev) || {}).dayKey)
+    || __cmdSafeYMD(state.today)
+    || todayYMD();
+
+  let ph = null;
+  try{
+    ph = buildChecklistPhasesDetailedA33(ev, dk);
+  }catch(_){
+    ph = null;
+  }
+
+  if (!ph || ph.ok === false){
+    const n = document.createElement('div');
+    n.className = 'cmd-muted';
+    n.textContent = (ph && ph.reason) ? String(ph.reason) : 'No disponible';
+    bodyEl.appendChild(n);
+    return;
+  }
+
+  renderChecklistPhasesDetailedInto(bodyEl, ph);
+}
+
+function __cmdGlobalFmtDash(v){
+  return (v == null) ? '—' : String(v);
+}
+
+function __cmdGlobalFmtMaybeFx(v){
+  try{
+    if (typeof v === 'number' && isFinite(v)){
+      const s = String(fmtFX2(v) || '').trim();
+      return s || '—';
+    }
+  }catch(_){ }
+  return '—';
+}
+
+function __cmdGlobalFmtMaybeMoney(v){
+  try{
+    if (typeof v === 'number' && isFinite(v)) return fmtMoneyNIO(v);
+  }catch(_){ }
+  return '—';
+}
+
+function __cmdGlobalFmtSignedMoney(v, mode){
+  if (!(typeof v === 'number' && isFinite(v))) return '—';
+  const abs = Math.abs(v);
+  const m = __cmdGlobalFmtMaybeMoney(abs);
+  if (m === '—') return '—';
+  if (mode === 'out') return `-${m}`;
+  if (mode === 'in') return `+${m}`;
+  // adj
+  return (v < 0) ? `-${m}` : `+${m}`;
+}
+
+function __cmdGlobalRenderEfectivoInto(hostEl, kpis){
+  if (!hostEl) return;
+  hostEl.innerHTML = '';
+
+  const k = (kpis && typeof kpis === 'object') ? kpis : null;
+  if (!k || k.enabled == null){
+    hostEl.textContent = 'Efectivo: —';
+    return;
+  }
+  if (k.enabled === false){
+    hostEl.textContent = 'Efectivo: OFF';
+    return;
+  }
+
+  // ON: bloque compacto
+  const wrap = document.createElement('div');
+  wrap.className = 'cmd-gkpi-efc';
+
+  const h = document.createElement('div');
+  h.className = 'cmd-gkpi-efc-h';
+  h.textContent = 'Efectivo';
+
+  const lines = document.createElement('div');
+  lines.className = 'cmd-gkpi-efc-lines';
+
+  const line = (label, val)=>{
+    const d = document.createElement('div');
+    d.className = 'cmd-gkpi-efc-line';
+    d.textContent = `${label}: ${val}`;
+    return d;
+  };
+
+  const tc = __cmdGlobalFmtMaybeFx(k.tc);
+  const si = __cmdGlobalFmtMaybeMoney(k.saldoInicial);
+  const ve = __cmdGlobalFmtMaybeMoney(k.ventasEfectivo);
+  const inc = __cmdGlobalFmtSignedMoney(k.totalIngresos, 'in');
+  const eg = __cmdGlobalFmtSignedMoney(k.totalEgresos, 'out');
+  const adj = __cmdGlobalFmtSignedMoney(k.totalAjustes, 'adj');
+  const sf = __cmdGlobalFmtMaybeMoney(k.saldoFinal);
+
+  lines.appendChild(line('T/C', tc));
+  lines.appendChild(line('Saldo inicial', si));
+  lines.appendChild(line('Ventas efectivo', ve));
+
+  const mov = document.createElement('div');
+  mov.className = 'cmd-gkpi-efc-line';
+  mov.textContent = `Movimientos: ${inc} / ${eg} / ${adj}`;
+  lines.appendChild(mov);
+
+  lines.appendChild(line('Saldo final', sf));
+
+  wrap.appendChild(h);
+  wrap.appendChild(lines);
+  hostEl.appendChild(wrap);
+}
+
+function __cmdUpdateGlobalCardUI(eventId, snap, ev){
+  try{
+    if (!eventId) return;
+    if (state.focusMode !== CMD_MODE_GLOBAL) return;
+
+    const card = document.querySelector(`.cmd-global-card[data-eid="${eventId}"]`);
+    if (!card) return;
+
+    const a = card.querySelector('.cmd-gkpi[data-kpi="alertas"] .cmd-gkpi-main');
+    if (a){
+      const n = (snap && snap.alertas && typeof snap.alertas.pendingCount === 'number' && isFinite(snap.alertas.pendingCount))
+        ? String(snap.alertas.pendingCount)
+        : '—';
+      a.textContent = `Alertas: ${n}`;
+    }
+
+    const v = card.querySelector('.cmd-gkpi[data-kpi="ventas"] .cmd-gkpi-main');
+    if (v){
+      const vv = (snap && typeof snap.ventasHoy === 'number' && isFinite(snap.ventasHoy)) ? fmtMoneyNIO(snap.ventasHoy) : '—';
+      v.textContent = `Ventas hoy: ${vv}`;
+    }
+
+    const efHost = card.querySelector('.cmd-gkpi[data-kpi="efectivo"] .cmd-gkpi-main');
+    if (efHost){
+      __cmdGlobalRenderEfectivoInto(efHost, snap && snap.efectivo);
+    }
+
+    // Expand/collapse: el body se muestra si está expandido (sin depender del checklist).
+    const expanded = !!(state.globalExpanded instanceof Set && state.globalExpanded.has(Number(eventId)));
+    const body = card.querySelector('.cmd-global-body');
+    if (body){
+      try{ body.hidden = !expanded; }catch(_){ }
+    }
+
+    // Secciones nuevas (UI base): Ventas / Top / Alertas / Recos
+    const setSec = (key, valueText, hintText, bodyText)=>{
+      const sec = card.querySelector(`.cmd-gsec[data-sec="${key}"]`);
+      if (!sec) return;
+      const vEl = sec.querySelector('.cmd-gsec-v');
+      const hEl = sec.querySelector('.cmd-gsec-hint');
+      const bEl = sec.querySelector('.cmd-gsec-body');
+      try{ if (bEl) bEl.classList.remove('is-list'); }catch(_){}
+      if (vEl) vEl.textContent = (valueText != null && String(valueText).trim()) ? String(valueText) : '—';
+      if (hEl) hEl.textContent = (hintText != null && String(hintText).trim()) ? String(hintText) : 'No disponible';
+      if (bEl){
+        const bt = (bodyText != null) ? String(bodyText) : '';
+        if (bt && bt.trim()){
+          bEl.textContent = bt;
+          bEl.hidden = false;
+        } else {
+          bEl.textContent = '—';
+          bEl.hidden = true;
+        }
+      }
+    };
+
+    // Ventas hoy: si existe, mostrar; si no, placeholder
+    const ventasTxt = (snap && typeof snap.ventasHoy === 'number' && isFinite(snap.ventasHoy)) ? fmtMoneyNIO(snap.ventasHoy) : '—';
+    const dkHint = __cmdSafeYMD(snap && snap.dayKey) || '';
+    setSec('ventas', ventasTxt, (ventasTxt === '—') ? 'No disponible' : (dkHint ? `Hoy: ${dkHint}` : 'Hoy'), null);
+
+    // Top productos (Etapa 4): mostrar SOLO si hay dato (se calcula al expandir; cache por sello).
+    {
+      let topV = '—';
+      let topH = 'Sin datos';
+      const dk = dkHint ? String(dkHint) : '';
+      if (expanded){
+        const list = (snap && Array.isArray(snap.topProducts)) ? snap.topProducts : (snap && snap.topProducts === null ? null : undefined);
+        if (Array.isArray(list) && list.length){
+          const parts = [];
+          const lim = Math.min(3, list.length);
+          for (let i=0; i<lim; i++){
+            const it = list[i] || {};
+            const nm = safeStr(it.name) || 'N/D';
+            const q0 = Number(it.qty);
+            const q = (isFinite(q0) ? (Number.isInteger(q0) ? q0 : (__cmdRound2(q0) || q0)) : 0);
+            parts.push(`${i+1}. ${nm}·${q}`);
+          }
+          topV = parts.join(' | ');
+          topH = dk ? (`Top 3 · ${dk}`) : 'Top 3';
+        } else if (Array.isArray(list) && list.length === 0){
+          topV = '—';
+          topH = dk ? (`Sin ventas hoy · ${dk}`) : 'Sin ventas hoy';
+        } else if (list === null){
+          topV = '—';
+          topH = 'No disponible';
+        } else {
+          topV = '—';
+          topH = 'Sin datos';
+        }
+      }
+      setSec('top', topV, topH, null);
+    }
+
+// Alertas accionables (Etapa 5): lista compacta top 3–5 (urgente primero)
+{
+  const sec = card.querySelector(`.cmd-gsec[data-sec="alertas"]`);
+  const vEl = sec ? sec.querySelector('.cmd-gsec-v') : null;
+  const hEl = sec ? sec.querySelector('.cmd-gsec-hint') : null;
+  const bEl = sec ? sec.querySelector('.cmd-gsec-body') : null;
+
+  const pending = (snap && snap.alertas && typeof snap.alertas.pendingCount === 'number' && isFinite(snap.alertas.pendingCount))
+    ? Number(snap.alertas.pendingCount)
+    : null;
+
+  if (!expanded){
+    const aN = (pending != null) ? String(pending) : '—';
+    setSec('alertas', (aN === '—') ? '—' : (`Pendientes: ${aN}`), (aN === '—') ? 'No disponible' : '—', null);
+  } else {
+    const list = (snap && (snap.__a33AlertasList != null)) ? (Array.isArray(snap.__a33AlertasList) ? snap.__a33AlertasList : []) : null;
+    const n = (list && list.length) ? list.length : 0;
+    if (vEl) vEl.textContent = (list === null) ? '—' : String(n);
+    if (hEl) hEl.textContent = (list === null) ? 'Cargando…' : (n ? `Top ${n} · urgente primero` : 'Sin alertas');
+    if (bEl){
+      bEl.innerHTML = '';
+      bEl.hidden = false;
+      bEl.classList.add('is-list');
+      if (list === null){
+        const em = document.createElement('div');
+        em.className = 'cmd-muted';
+        em.textContent = '—';
+        bEl.appendChild(em);
+      } else if (!n){
+        const em = document.createElement('div');
+        em.className = 'cmd-muted';
+        em.textContent = 'Sin alertas';
+        bEl.appendChild(em);
+      } else {
+        for (const it of list){
+          const row = document.createElement('div');
+          row.className = 'cmd-gsec-item';
+
+          const ic = document.createElement('div');
+          ic.className = 'cmd-gsec-item-ic';
+          ic.textContent = (it && it.icon != null) ? String(it.icon) : '•';
+
+          const main = document.createElement('div');
+          main.className = 'cmd-gsec-item-main';
+
+          const t = document.createElement('div');
+          t.className = 'cmd-gsec-item-title';
+          t.textContent = (it && it.title != null) ? String(it.title) : '—';
+
+          main.appendChild(t);
+
+          const sub = (it && it.sub != null) ? String(it.sub) : '';
+          if (sub && sub.trim()){
+            const s2 = document.createElement('div');
+            s2.className = 'cmd-gsec-item-sub';
+            s2.textContent = sub;
+            main.appendChild(s2);
+          }
+
+          row.appendChild(ic);
+          row.appendChild(main);
+          bEl.appendChild(row);
+        }
+      }
+    }
+  }
+}
+
+// Recomendaciones (Etapa 5): lista corta (1–3)
+{
+  const sec = card.querySelector(`.cmd-gsec[data-sec="recos"]`);
+  const vEl = sec ? sec.querySelector('.cmd-gsec-v') : null;
+  const hEl = sec ? sec.querySelector('.cmd-gsec-hint') : null;
+  const bEl = sec ? sec.querySelector('.cmd-gsec-body') : null;
+
+  if (!expanded){
+    setSec('recos', '—', 'Sin datos', null);
+  } else {
+    const list = (snap && (snap.__a33RecosList != null)) ? (Array.isArray(snap.__a33RecosList) ? snap.__a33RecosList : []) : null;
+    const n = (list && list.length) ? list.length : 0;
+    if (vEl) vEl.textContent = (list === null) ? '—' : (n ? String(n) : '—');
+    if (hEl) hEl.textContent = (list === null) ? 'Cargando…' : (n ? 'Sugerencias' : 'Sin recomendaciones');
+    if (bEl){
+      bEl.innerHTML = '';
+      bEl.hidden = false;
+      bEl.classList.add('is-list');
+      if (list === null){
+        const em = document.createElement('div');
+        em.className = 'cmd-muted';
+        em.textContent = '—';
+        bEl.appendChild(em);
+      } else if (!n){
+        const em = document.createElement('div');
+        em.className = 'cmd-muted';
+        em.textContent = 'Sin recomendaciones';
+        bEl.appendChild(em);
+      } else {
+        for (const r of list){
+          const row = document.createElement('div');
+          row.className = 'cmd-gsec-item';
+
+          const ic = document.createElement('div');
+          ic.className = 'cmd-gsec-item-ic';
+          ic.textContent = '💡';
+
+          const main = document.createElement('div');
+          main.className = 'cmd-gsec-item-main';
+
+          const t = document.createElement('div');
+          t.className = 'cmd-gsec-item-title';
+          t.textContent = String(r || '');
+
+          main.appendChild(t);
+          row.appendChild(ic);
+          row.appendChild(main);
+          bEl.appendChild(row);
+        }
+      }
+    }
+  }
+}
+
+    // Checklist: solo si expandido + hasChecklistItems=true
+    const chk = card.querySelector('.cmd-global-checklist');
+    if (chk){
+      const has = !!(snap && snap.hasChecklistItems === true);
+      if (!expanded || !has){
+        try{ chk.hidden = true; }catch(_){ }
+      } else {
+        try{ chk.hidden = false; }catch(_){ }
+        const dk = __cmdSafeYMD(snap && snap.checklistDayKey) || '';
+        const cur = (chk.dataset && chk.dataset.dk != null) ? String(chk.dataset.dk || '') : '';
+        if (cur !== dk){
+          try{ if (chk.dataset) chk.dataset.dk = dk || ''; }catch(_){ }
+          if (ev){
+            try{ renderGlobalChecklistForEvent(chk, ev, snap); }catch(_){ chk.innerHTML = `<div class="cmd-muted">No disponible</div>`; }
+          }
+        }
+      }
+    }
+  }catch(_){ }
+}
+
+
+function renderGlobalActivesView(){
+  const block = $('globalActivesBlock');
+  const list = $('globalActivesList');
+  if (!block || !list) return;
+
+  if (state.focusMode !== CMD_MODE_GLOBAL){
+    try{ block.hidden = true; }catch(_){ }
+    return;
+  }
+
+  block.hidden = false;
+
+  const items = resolveActiveEvents();
+
+  // Etapa 1: preparar snapshots (solo data). Asíncrono y fail-safe.
+  try{ __cmdPrimeGlobalSnapshots(items); }catch(_){ }
+
+  // Performance iPad/PWA: si el set/orden de eventos activos no cambió, NO reconstruir DOM.
+  const ids = [];
+  try{
+    for (const ev of (Array.isArray(items) ? items : [])){
+      const id = Number(ev && ev.id);
+      if (id && isFinite(id)) ids.push(id);
+    }
+  }catch(_){ }
+  const sig = ids.join(',');
+
+  if (sig && state.__globalListSig === sig && list.children && list.children.length){
+    let ok = true;
+    try{
+      for (const id of ids){
+        if (!list.querySelector(`.cmd-global-card[data-eid="${id}"]`)){ ok = false; break; }
+      }
+    }catch(_){ ok = false; }
+
+    if (ok){
+      if (!(state.globalExpanded instanceof Set)) state.globalExpanded = new Set();
+
+      // abrir automáticamente el 1ro (más reciente) solo una vez
+      if (!state.__globalAutoOpened && ids.length){
+        try{ state.globalExpanded.clear(); state.globalExpanded.add(Number(ids[0])); }catch(_){ }
+        state.__globalAutoOpened = true;
+      }
+
+      // eliminar cards que ya no existen (fail-safe)
+      try{
+        const keep = new Set(ids.map(String));
+        const cards = list.querySelectorAll('.cmd-global-card');
+        for (const c of cards){
+          const ce = (c && c.dataset && c.dataset.eid != null) ? String(c.dataset.eid) : '';
+          if (ce && !keep.has(ce)){
+            try{ c.remove(); }catch(_){ }
+          }
+        }
+      }catch(_){ }
+
+      // actualizar textos/KPIs sin rerender global
+      for (const ev of items){
+        try{
+          if (!ev || ev.id == null) continue;
+          const id = Number(ev.id);
+          if (!isFinite(id) || !id) continue;
+          const card = list.querySelector(`.cmd-global-card[data-eid="${id}"]`);
+          if (!card) continue;
+
+          const title = card.querySelector('.cmd-global-title');
+          if (title) title.textContent = safeStr(ev.name) || '—';
+
+          const sub = card.querySelector('.cmd-global-sub');
+          if (sub){
+            const g = safeStr(ev.groupName);
+            sub.textContent = g ? ('Grupo: ' + g) : 'Sin grupo';
+          }
+
+          // aplicar estado expand/collapse + render checklist si aplica (sin stutter)
+          try{ __cmdApplyGlobalCardExpandedState(id); }catch(_){ }
+
+          const snap = (state.__globalSnapshots && typeof state.__globalSnapshots.get === 'function')
+            ? (state.__globalSnapshots.get(id) || null)
+            : null;
+          if (snap){
+            try{ __cmdUpdateGlobalCardUI(id, snap, ev); }catch(_){ }
+          }
+        }catch(_){ }
+      }
+
+      return;
+    }
+  }
+
+  state.__globalListSig = sig || '';
+
+  list.innerHTML = '';
+  if (!items.length){
+    const empty = document.createElement('div');
+    empty.className = 'cmd-global-empty';
+    empty.textContent = 'No se detectaron eventos activos (según actividad reciente).';
+    list.appendChild(empty);
+    return;
+  }
+
+  if (!(state.globalExpanded instanceof Set)) state.globalExpanded = new Set();
+
+  // abrir automáticamente el 1ro (más reciente) para que se sienta vivo
+  if (!state.__globalAutoOpened){
+    try{
+      state.globalExpanded.clear();
+      state.globalExpanded.add(Number(items[0].id));
+    }catch(_){ }
+    state.__globalAutoOpened = true;
+  }
+
+  for (const ev of items){
+    try{
+      if (!ev || ev.id == null) continue;
+      const id = Number(ev.id);
+      if (!isFinite(id) || !id) continue;
+      const expanded = state.globalExpanded.has(id);
+
+      const snap = (state.__globalSnapshots && typeof state.__globalSnapshots.get === 'function')
+        ? (state.__globalSnapshots.get(id) || null)
+        : null;
+
+      const card = document.createElement('div');
+      card.className = 'cmd-global-card';
+      try{ card.dataset.eid = String(id); }catch(_){ }
+
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'cmd-global-head';
+      head.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      head.addEventListener('click', ()=> toggleGlobalCard(id));
+
+      const title = document.createElement('div');
+      title.className = 'cmd-global-title';
+      title.textContent = safeStr(ev.name) || '—';
+
+      const sub = document.createElement('div');
+      sub.className = 'cmd-global-sub';
+      const g = safeStr(ev.groupName);
+      sub.textContent = g ? ('Grupo: ' + g) : 'Sin grupo';
+
+      const che = document.createElement('div');
+      che.className = 'cmd-global-chev';
+      // Chevron: glifo fijo; la rotación/estado lo maneja CSS vía aria-expanded.
+      che.textContent = '▾';
+
+      // KPI blocks (SIEMPRE visibles): Alertas / Efectivo / Ventas hoy
+      const kpis = document.createElement('div');
+      kpis.className = 'cmd-global-kpis';
+
+      const mkKpi = (key)=>{
+        const box = document.createElement('div');
+        box.className = 'cmd-gkpi';
+        try{ box.dataset.kpi = String(key); }catch(_){ }
+        const main = document.createElement('div');
+        main.className = 'cmd-gkpi-main';
+        box.appendChild(main);
+        kpis.appendChild(box);
+        return main;
+      };
+
+      const aMain = mkKpi('alertas');
+      const aN = (snap && snap.alertas && typeof snap.alertas.pendingCount === 'number' && isFinite(snap.alertas.pendingCount))
+        ? String(snap.alertas.pendingCount)
+        : '—';
+      aMain.textContent = `Alertas: ${aN}`;
+
+      const efMain = mkKpi('efectivo');
+      __cmdGlobalRenderEfectivoInto(efMain, snap && snap.efectivo);
+
+      const vMain = mkKpi('ventas');
+      const vV = (snap && typeof snap.ventasHoy === 'number' && isFinite(snap.ventasHoy)) ? fmtMoneyNIO(snap.ventasHoy) : '—';
+      vMain.textContent = `Ventas hoy: ${vV}`;
+
+      head.appendChild(title);
+      head.appendChild(sub);
+      head.appendChild(che);
+      head.appendChild(kpis);
+
+      const body = document.createElement('div');
+      body.className = 'cmd-global-body';
+
+      // UI base (Etapa 2/5): secciones compactas dentro del expandido.
+      const sections = document.createElement('div');
+      sections.className = 'cmd-global-sections';
+
+      const mkSec = (key, title, vText, hintText, bodyText)=>{
+        const s = document.createElement('div');
+        s.className = 'cmd-gsec';
+        try{ s.dataset.sec = String(key); }catch(_){ }
+
+        const h = document.createElement('div');
+        h.className = 'cmd-gsec-h';
+        h.textContent = String(title || '');
+
+        const v = document.createElement('div');
+        v.className = 'cmd-gsec-v';
+        v.textContent = (vText != null) ? String(vText) : '—';
+
+        const hint = document.createElement('div');
+        hint.className = 'cmd-muted cmd-gsec-hint';
+        hint.textContent = (hintText != null) ? String(hintText) : 'No disponible';
+
+        const b = document.createElement('div');
+        b.className = 'cmd-gsec-body';
+        if (bodyText != null && String(bodyText).trim()){
+          b.textContent = String(bodyText);
+          b.hidden = false;
+        } else {
+          b.textContent = '—';
+          b.hidden = true;
+        }
+
+        s.appendChild(h);
+        s.appendChild(v);
+        s.appendChild(hint);
+        s.appendChild(b);
+        return s;
+      };
+
+      // Orden acordado (debajo del bloque existente de Efectivo): Ventas / Top / Alertas / Recos
+      sections.appendChild(mkSec('ventas', 'Ventas hoy', '—', 'No disponible', null));
+      sections.appendChild(mkSec('top', 'Top productos', '—', 'Sin datos', null));
+      sections.appendChild(mkSec('alertas', 'Alertas accionables', '—', 'No disponible', null));
+      sections.appendChild(mkSec('recos', 'Recomendaciones', '—', 'Sin datos', null));
+
+      // Checklist (si existe) se renderiza aquí sin borrar las secciones.
+      const chk = document.createElement('div');
+      chk.className = 'cmd-global-checklist';
+      try{ if (chk.dataset) chk.dataset.dk = ''; }catch(_){ }
+      chk.hidden = true;
+
+      body.appendChild(sections);
+      body.appendChild(chk);
+
+      // Expandido: se muestra SIEMPRE (aunque no exista checklist); checklist se muestra solo si hay items.
+      body.hidden = !expanded;
+
+      // Checklist: render solo si expandido + hasChecklistItems=true
+      const hasChecklist = !!(snap && snap.hasChecklistItems === true);
+      if (expanded && hasChecklist){
+        chk.hidden = false;
+        try{ if (chk.dataset) chk.dataset.dk = __cmdSafeYMD(snap && snap.checklistDayKey) || ''; }catch(_){ }
+        // Importante: NO calcular nada cuando está colapsado.
+        try{ renderGlobalChecklistForEvent(chk, ev, snap); }catch(_){ chk.innerHTML = `<div class="cmd-muted">No disponible</div>`; }
+      }
+
+      card.appendChild(head);
+      card.appendChild(body);
+      list.appendChild(card);
+
+      // Si el snapshot llega después, el worker lo actualizará; si ya existe, asegurarlo aquí.
+      if (snap){
+        try{ __cmdUpdateGlobalCardUI(id, snap, ev); }catch(_){ }
+      }
+    }catch(_e){
+      // Un evento corrupto NO debe tumbar la vista GLOBAL.
+      try{
+        const card = document.createElement('div');
+        card.className = 'cmd-global-card';
+        card.innerHTML = `<div class="cmd-global-head" aria-expanded="false"><div class="cmd-global-title">Evento (datos inválidos)</div><div class="cmd-global-sub">No disponible</div><div class="cmd-global-chev">▾</div></div>`;
+        list.appendChild(card);
+      }catch(_){ }
+    }
+  }
+}
+
 function clearMetricsToDash(){
   setText('salesToday', '—');
   setText('salesTodaySub', '—');
@@ -1277,6 +4772,7 @@ function clearMetricsToDash(){
   setText('pettyState', '—');
   setText('pettyDayState', '—');
   setText('pettyHint', 'No disponible');
+  setText('pettyFx', '—');
   setText('checklistProgress', '—');
   setText('checklistHint', 'No disponible');
   setText('topProducts', '—');
@@ -1330,7 +4826,110 @@ function renderAlerts(alerts){
 
     const sub = document.createElement('div');
     sub.className = 'cmd-alert-sub';
-    sub.textContent = (a && a.sub != null) ? String(a.sub) : '';
+
+    const isChecklist = (a && String(a.key || '') === 'checklist-incomplete');
+
+    // Checklist por fases (3 columnas, mínimo): PRE-EVENTO | EVENTO | CIERRE
+    if (isChecklist && a && a.checklistPhases && typeof a.checklistPhases === 'object'){
+      sub.classList.add('cmd-alert-sub-grid');
+      sub.innerHTML = '';
+
+      const ph = a.checklistPhases;
+      const phases = (ph && ph.phases && typeof ph.phases === 'object') ? ph.phases : {};
+      const ok = (ph && ph.ok === false) ? false : true;
+
+      const lim = (ph && typeof ph.limit === 'number' && isFinite(ph.limit) && ph.limit > 0) ? Math.floor(ph.limit) : 3;
+
+      const makeCol = (label, bucket)=>{
+        const col = document.createElement('div');
+        col.className = 'cmd-chk-col';
+
+        const hdr = document.createElement('div');
+        hdr.className = 'cmd-chk-hdr';
+
+        const name = document.createElement('span');
+        name.className = 'cmd-chk-name';
+        name.textContent = label;
+
+        const prog = document.createElement('span');
+        prog.className = 'cmd-chk-prog';
+
+        if (ok === false){
+          prog.textContent = '—';
+        } else {
+          const done = (bucket && typeof bucket.done === 'number') ? bucket.done : Number(bucket && bucket.done) || 0;
+          const total = (bucket && typeof bucket.total === 'number') ? bucket.total : Number(bucket && bucket.total) || 0;
+          prog.textContent = `${done}/${total}`;
+        }
+
+        hdr.appendChild(name);
+        hdr.appendChild(prog);
+
+        const body = document.createElement('div');
+        body.className = 'cmd-chk-body';
+
+        if (ok === false){
+          body.textContent = (ph && ph.reason) ? String(ph.reason) : 'No disponible';
+        } else { 
+          const texts = (bucket && Array.isArray(bucket.pendingTexts)) ? bucket.pendingTexts : [];
+          const pendingCount = (bucket && typeof bucket.pendingCount === 'number' && isFinite(bucket.pendingCount))
+            ? bucket.pendingCount
+            : (Array.isArray(texts) ? texts.length : 0);
+
+          if (texts && texts.length){
+            const top = texts.slice(0, lim);
+            for (const t of top){
+              const line = document.createElement('span');
+              line.className = 'cmd-chk-item';
+              line.textContent = `• ${String(t || '')}`;
+              body.appendChild(line);
+            }
+
+            const more = (bucket && typeof bucket.moreCount === 'number' && isFinite(bucket.moreCount))
+              ? bucket.moreCount
+              : Math.max(0, pendingCount - lim);
+
+            if (more > 0){
+              const moreLine = document.createElement('span');
+              moreLine.className = 'cmd-chk-item cmd-chk-more';
+              moreLine.textContent = `+${more} más`;
+              body.appendChild(moreLine);
+            }
+          } else {
+            const okLine = document.createElement('span');
+            okLine.className = 'cmd-chk-item cmd-chk-ok';
+            okLine.textContent = 'Al día ✅';
+            body.appendChild(okLine);
+          }
+        }
+
+        col.appendChild(hdr);
+        col.appendChild(body);
+        return col;
+      };
+
+      const grid = document.createElement('div');
+      grid.className = 'cmd-chk-grid';
+      grid.appendChild(makeCol('PRE-EVENTO', phases.pre || null));
+      grid.appendChild(makeCol('EVENTO', phases.event || null));
+      grid.appendChild(makeCol('CIERRE', phases.close || null));
+
+      sub.appendChild(grid);
+
+    } else if (isChecklist && a.sub != null){
+      // Checklist (legacy): render por líneas para truncado elegante
+      sub.classList.add('cmd-alert-sub-lines');
+      const raw = String(a.sub);
+      const parts = raw.split('\n').map(x=> String(x ?? '').trim()).filter(Boolean);
+      for (const line of (parts.length ? parts : ['—'])){
+        const ln = document.createElement('div');
+        ln.className = 'cmd-alert-subline';
+        ln.textContent = line;
+        sub.appendChild(ln);
+      }
+    } else {
+      sub.textContent = (a && a.sub != null) ? String(a.sub) : '';
+    }
 
     main.appendChild(title);
     main.appendChild(sub);
@@ -1720,123 +5319,270 @@ async function computeSalesToday(eventId, dayKey){
   return { ok:true, total, count: filtered.length, top, reason:'' };
 }
 
-async function computePettyStatus(ev, dayKey){
-  const db = state.db;
-  if (!db || !ev){
-    return { ok:false, enabled:null, isOpen:null, dayState:null, fxMissing:null, fxKnown:false, closedAt:null, pcDay:null, fxSource:'unknown', reason:'No disponible' };
+
+async function computeCashV2Status(ev, dayKey){
+  // Nota: FX (T/C) se resuelve SIEMPRE desde el EVENTO ACTIVO (Evento GLOBAL),
+  // independientemente de cashV2 ON/OFF. cashV2 sigue siendo la fuente de verdad
+  // SOLO para el estado operativo (ABIERTO/CERRADO/SIN ACTIVIDAD).
+
+  if (!ev){
+    return { ok:false, enabled:null, isOpen:null, dayState:null, opDayKey:null, fx:null, fxMissing:null, fxKnown:false, status:null, fxSource:'unknown', reason:'No disponible' };
   }
 
-  const enabled = !!ev.pettyEnabled;
+  // 0) FX por evento (canon) — siempre
+  const fxInfo = resolveEventFxInfo(ev);
+  let fxEvent = (fxInfo && fxInfo.fx != null) ? fxInfo.fx : null;
+  let fxSourceEvent = (fxInfo && fxInfo.source) ? String(fxInfo.source) : 'none';
+
+  // 1) Detección (CANON POS): evento.flag -> cache -> default ON
+  let en = null;
+  try{ en = await resolveCashV2EnabledForEvent(ev); }catch(_){ en = null; }
+  const enabled = !!(en && en.enabled === true);
+
+  // Si cashV2 está OFF, igual devolvemos FX (evento) para que CdM lo muestre siempre.
   if (!enabled){
-    return { ok:true, enabled:false, isOpen:false, dayState:'No aplica', fxMissing:false, fxKnown:false, closedAt:null, pcDay:null, fxSource:'unknown', reason:'' };
+    const fxMissing = !(fxEvent && fxEvent > 0);
+    return { ok:true, enabled:false, isOpen:false, dayState:'No aplica', opDayKey:null, fx: fxEvent || null, fxMissing, fxKnown:true, status:null, fxSource: fxSourceEvent, reason:'' };
   }
 
-  // T/C por evento (preferido). Fallback: legado en Caja Chica (day.fxRate)
-  const fxEventRaw = Number(ev.fxRate || 0);
-  const fxEvent = (Number.isFinite(fxEventRaw) && fxEventRaw > 0) ? fxEventRaw : null;
-
-  const hasPettyStore = hasStore(db, 'pettyCash');
-  const hasLocksStore = hasStore(db, 'dayLocks');
-
-  // Si no hay ninguna fuente canónica, no inventar.
-  if (!hasPettyStore && !hasLocksStore){
-    const fxKnown = (fxEvent != null);
-    const fxMissing = fxKnown ? false : null;
-    return { ok:false, enabled:true, isOpen:null, dayState:null, fxMissing, fxKnown, closedAt:null, pcDay:null, fxSource: fxKnown ? 'event' : 'unknown', reason:'No disponible' };
+  const db = state.db;
+  if (!db){
+    const fxMissing = !(fxEvent && fxEvent > 0);
+    return { ok:false, enabled:true, isOpen:null, dayState:null, opDayKey:null, fx: fxEvent || null, fxMissing, fxKnown:true, status:null, fxSource: fxSourceEvent, reason:'No disponible' };
   }
 
-  // 1) Leer candado oficial del día (dayLocks) si existe.
-  let lock = null;
-  let lockIsClosed = false;
-  let lockClosedAt = null;
-  if (hasLocksStore){
-    const lockKey = `${Number(ev.id)}|${safeYMD(dayKey)}`;
-    try{ lock = await idbGet(db, 'dayLocks', lockKey); }catch(_){ lock = null; }
-    lockIsClosed = !!(lock && lock.isClosed === true);
-    lockClosedAt = (lock && lock.closedAt) ? lock.closedAt : null;
+  if (!hasStore(db, 'cashV2')){
+    const fxMissing = !(fxEvent && fxEvent > 0);
+    return { ok:false, enabled:true, isOpen:null, dayState:null, opDayKey:null, fx: fxEvent || null, fxMissing, fxKnown:true, status:null, fxSource: fxSourceEvent, reason:'No disponible' };
   }
 
-  // 2) Leer Caja Chica del día (pettyCash) si existe.
-  let day = null;
-  if (hasPettyStore){
-    let pc = null;
-    try{ pc = await idbGet(db, 'pettyCash', Number(ev.id)); }catch(_){ pc = null; }
-    if (pc && pc.days && typeof pc.days === 'object'){
-      const d = pc.days[safeYMD(dayKey)];
-      if (d && typeof d === 'object') day = d;
+  const eid = Number(ev.id);
+  const dk = safeYMD(dayKey);
+
+  // Micro-cache (iPad/PWA): evitar scan repetido por evento.
+  // Validación rápida: 1 lectura por key (si tenemos opDayKey+sig), sin recorrer todo el store.
+  try{
+    const cacheSt = __cmdEnsureMap('__cashV2StatusCache');
+    const kSt = `cs|${eid}|${dk}`;
+    const hitSt = cacheSt.get(kSt);
+    const nowSt = Date.now();
+    if (hitSt && hitSt.v){
+      // Muy reciente => devolver sin tocar DB
+      if ((nowSt - Number(hitSt.t||0)) < 2500){
+        return hitSt.v;
+      }
+      // Validar contra el mismo opDayKey (si existe)
+      if (hitSt.opDayKey && hitSt.sig && db && hasStore(db,'cashV2')){
+        const key0 = __cmdCashV2Key(eid, String(hitSt.opDayKey||''));
+        if (key0){
+          const rec0 = await idbGet(db,'cashV2', key0);
+          const sigNow = __cmdCashSigFromRec(rec0);
+          if (sigNow && sigNow === String(hitSt.sig)){
+            try{ hitSt.t = nowSt; cacheSt.set(kSt, hitSt); }catch(_){ }
+            return hitSt.v;
+          }
+        }
+      }
+    }
+  }catch(_){ }
+
+  // Cache por evento (POS): si existe
+  const fxCached = readCashV2FxCached(eid);
+
+  // 2) Buscar si existe un día OPEN real (operativo) para este evento.
+  let rows = await idbGetAllByIndex(db, 'cashV2', 'by_event', IDBKeyRange.only(eid));
+  if (rows === null){
+    // Sin índice, fallback controlado
+    rows = await idbGetAll(db, 'cashV2');
+  }
+  if (!Array.isArray(rows)) rows = [];
+  if (rows.length > SAFE_SCAN_LIMIT){
+    const fxMissing = !(fxEvent && fxEvent > 0);
+    return { ok:false, enabled:true, isOpen:null, dayState:null, opDayKey:null, fx: fxEvent || null, fxMissing, fxKnown:true, status:null, fxSource: fxSourceEvent, reason:'No disponible' };
+  }
+
+  const filtered = rows.filter(r => r && Number(r.eventId) === eid);
+
+  const normStatus = (v)=>{
+    const s = String(v || '').trim().toUpperCase();
+    if (s === 'OPEN' || s === 'ABIERTO') return 'OPEN';
+    if (s === 'CLOSED' || s === 'CERRADO') return 'CLOSED';
+    return '';
+  };
+
+  const open = filtered
+    .filter(r => normStatus(r.status) === 'OPEN')
+    .sort((a,b)=> (Number(b.openTs||0) - Number(a.openTs||0)))[0] || null;
+
+  let rec = null;
+  if (open){
+    rec = open;
+  } else {
+    // 3) Si no hay OPEN, mirar el día de HOY (si existe)
+    const key = `cash:v2:${eid}:${dk}`;
+    rec = await idbGet(db, 'cashV2', key);
+    if (!rec){
+      const byEvDay = await idbGetAllByIndex(db, 'cashV2', 'by_event_day', IDBKeyRange.only([eid, dk]));
+      if (Array.isArray(byEvDay) && byEvDay.length) rec = byEvDay[0];
     }
   }
 
-  // Cierre legacy (Caja Chica vieja): day.closedAt
-  const legacyClosedAt = (day && day.closedAt) ? day.closedAt : null;
+  // 4) FX efectivo (canon del evento -> cache -> último recurso: fx del día)
+  let fxRec = null;
+  if (rec){
+    fxRec = fxNorm(rec.fx);
+  }
 
-  // CIERRE REAL = dayLocks (oficial) OR legacy closedAt
-  const isClosed = (lockIsClosed === true) || !!lockClosedAt || !!legacyClosedAt;
-  const closedAt = lockClosedAt || legacyClosedAt || null;
+  let fxEffective = null;
+  let fxSource = 'none';
 
-  // APERTURA REAL = evidencia de sesión (actividad) y NO cerrado
-  // Nota: POS no guarda openedAt. “Equivalente” = algo guardado (inicial/final/movs/fx/ajuste) para ese día.
-  const hasSession = !!(day && hasPettyDayActivity(day));
-  const isOpen = hasSession && !isClosed;
+  if (fxEvent != null){
+    fxEffective = fxEvent;
+    fxSource = fxSourceEvent || 'event.fx';
+  } else if (fxCached != null){
+    fxEffective = fxCached;
+    fxSource = 'cache';
+  } else if (fxRec != null){
+    fxEffective = fxRec;
+    fxSource = 'cashV2';
+  }
 
-  // Estado del día (para UI). Importante: NO confundir “Caja habilitada” con “Caja abierta”.
-  const dayState = isClosed ? 'Cerrado' : (isOpen ? 'Abierto' : 'Sin actividad');
+  const fxMissing = !(fxEffective && fxEffective > 0);
 
-  // FX efectivo: preferir evento; si no, tomar day.fxRate
-  const fxDayRaw = (day && day.fxRate != null) ? Number(day.fxRate) : NaN;
-  const fxDay = (Number.isFinite(fxDayRaw) && fxDayRaw > 0) ? fxDayRaw : null;
+  if (!rec){
+    // Activo, pero aún no hay día operativo en cashV2
+    const out = { ok:true, enabled:true, isOpen:false, dayState:'SIN ACTIVIDAD', opDayKey:null, fx: fxEffective || null, fxMissing, fxKnown:true, status:null, fxSource, reason:'' };
+    try{
+      const cacheSt = __cmdEnsureMap('__cashV2StatusCache');
+      const kSt = `cs|${eid}|${dk}`;
+      cacheSt.set(kSt, { t: Date.now(), v: out, opDayKey: null, sig: '' });
+      while (cacheSt.size > 140){
+        try{ cacheSt.delete(cacheSt.keys().next().value); }catch(_){ break; }
+      }
+    }catch(_){ }
+    return out;
+  }
 
-  const fxEffective = (fxEvent != null) ? fxEvent : fxDay;
+  const st = normStatus(rec.status);
+  const isOpen = (st === 'OPEN');
+  const dayState = isOpen ? 'ABIERTO' : (st === 'CLOSED' ? 'CERRADO' : 'SIN ACTIVIDAD');
 
-  // Confiabilidad de FX:
-  // - Si hay fxEvent: conocido
-  // - Si hay day: conocido (aunque no tenga valor)
-  // - Si no hay day ni fxEvent: desconocido
-  const fxKnown = (fxEvent != null) || !!day;
-  const fxMissing = fxKnown ? !(fxEffective && fxEffective > 0) : null;
-  const fxSource = (fxEvent != null) ? 'event' : (fxDay != null ? 'pettyCash' : (fxKnown ? 'none' : 'unknown'));
+  // Día operativo: preferir rec.dayKey; fallback: dk
+  let opDayKey = safeYMD(rec.dayKey || '');
+  if (!opDayKey){ opDayKey = safeYMD(dk); }
 
-  return { ok:true, enabled:true, isOpen, dayState, fxMissing, fxKnown, closedAt, pcDay: day, fxSource, reason:'' };
+  const out = { ok:true, enabled:true, isOpen, dayState, opDayKey, fx: fxEffective || null, fxMissing, fxKnown:true, status: st || null, fxSource, reason:'' };
+  try{
+    const cacheSt = __cmdEnsureMap('__cashV2StatusCache');
+    const kSt = `cs|${eid}|${dk}`;
+    const sig = __cmdCashSigFromRec(rec);
+    cacheSt.set(kSt, { t: Date.now(), v: out, opDayKey: opDayKey || null, sig: sig || '' });
+    while (cacheSt.size > 140){
+      try{ cacheSt.delete(cacheSt.keys().next().value); }catch(_){ break; }
+    }
+  }catch(_){ }
+  return out;
 }
 
-async function computeUnclosed7d(ev, pcDayKey){
-  if (!ev || !ev.pettyEnabled) return { ok:true, value:'—', reason:'' };
+
+async function computeUnclosed7d(ev, todayDayKey){
+  // Radar 7d: conteo de días con Efectivo ABIERTO / sin cierre (cashV2).
+  // Regla: NO inventar. Si no hay data, decirlo.
+  if (!ev) return { ok:true, value:'—', reason:'' };
   const db = state.db;
-  if (!db || !hasStore(db, 'pettyCash')) return { ok:false, value:'—', reason:'No disponible' };
+  if (!db) return { ok:false, value:'—', reason:'No disponible' };
 
-  const pc = await idbGet(db, 'pettyCash', Number(ev.id));
-  if (!pc || !pc.days || typeof pc.days !== 'object') return { ok:false, value:'—', reason:'No disponible' };
+  const en = await resolveCashV2EnabledForEvent(ev);
+  if (!en || en.enabled !== true) return { ok:true, value:'—', reason:'' };
 
-  const hasLocks = hasStore(db, 'dayLocks');
+  // cashV2 es la fuente de verdad del estado OPEN/CLOSED
+  if (!hasStore(db, 'cashV2')) return { ok:false, value:'—', reason:'No disponible' };
 
-  // últimos 7 días incluyendo hoy
-  let cnt = 0;
-  for (let i = 0; i < 7; i++){
-    const d = ymdAddDays(pcDayKey, -i);
-    const day = pc.days[d];
-    if (!day || typeof day !== 'object') continue;
+  const eid = Number(ev.id);
 
-    // Contar solo si hay actividad (evitar “inventar”)
-    if (!hasPettyDayActivity(day)) continue;
+  let rows = await idbGetAllByIndex(db, 'cashV2', 'by_event', IDBKeyRange.only(eid));
+  if (rows === null) rows = await idbGetAll(db, 'cashV2');
+  if (!Array.isArray(rows)) rows = [];
+  if (rows.length > SAFE_SCAN_LIMIT) return { ok:false, value:'—', reason:'No disponible' };
 
-    // Cerrado real: dayLocks (oficial) OR legacy day.closedAt
-    let isClosed = !!day.closedAt;
-    if (!isClosed && hasLocks){
-      const lockKey = `${Number(ev.id)}|${safeYMD(d)}`;
-      let lock = null;
-      try{ lock = await idbGet(db, 'dayLocks', lockKey); }catch(_){ lock = null; }
-      if (lock && (lock.isClosed === true || lock.closedAt)) isClosed = true;
-    }
+  const normStatus = (v)=>{
+    const s = String(v || '').trim().toUpperCase();
+    if (s === 'OPEN' || s === 'ABIERTO') return 'OPEN';
+    if (s === 'CLOSED' || s === 'CERRADO') return 'CLOSED';
+    return '';
+  };
 
-    if (!isClosed) cnt += 1;
+  // Si hay duplicados por día, quedarnos con el más reciente por timestamp.
+  const byDay = new Map();
+  for (const r of rows){
+    if (!r || Number(r.eventId) !== eid) continue;
+    const dk = safeYMD(r.dayKey || '');
+    if (!dk) continue;
+    const ts = Math.max(Number(r.openTs || 0), Number(r.closeTs || 0), Number(r.ts || 0), 0);
+    const cur = byDay.get(dk);
+    if (!cur || ts >= Number(cur.ts || 0)) byDay.set(dk, { rec: r, ts });
   }
-  return { ok:true, value: String(cnt), reason:'' };
+
+  // Tomar últimos 7 dayKeys disponibles (dayLocks y/o histórico) + cashV2
+  const keySet = new Set(Array.from(byDay.keys()));
+  const addKey = (k)=>{ const dk = safeYMD(k || ''); if (dk) keySet.add(dk); };
+
+  // dayLocks (cierres) — si existe
+  if (hasStore(db, 'dayLocks')){
+    try{
+      let locks = await idbGetAllByIndex(db, 'dayLocks', 'by_event', IDBKeyRange.only(eid));
+      if (locks === null) locks = await idbGetAll(db, 'dayLocks');
+      if (Array.isArray(locks)){
+        if (locks.length <= SAFE_SCAN_LIMIT){
+          for (const r of locks){
+            if (!r || Number(r.eventId) !== eid) continue;
+            addKey(r.dateKey || r.dayKey);
+          }
+        }
+      }
+    }catch(_){ }
+  }
+
+  // cashV2 histórico (headers) — si existe
+  if (hasStore(db, 'cashv2hist')){
+    try{
+      let hist = await idbGetAllByIndex(db, 'cashv2hist', 'by_event', IDBKeyRange.only(eid));
+      if (hist === null) hist = await idbGetAll(db, 'cashv2hist');
+      if (Array.isArray(hist)){
+        if (hist.length <= SAFE_SCAN_LIMIT){
+          for (const r of hist){
+            if (!r || Number(r.eventId) !== eid) continue;
+            addKey(r.dayKey);
+          }
+        }
+      }
+    }catch(_){ }
+  }
+
+  const keys = Array.from(keySet).sort((a,b)=> b.localeCompare(a));
+  if (!keys.length) return { ok:true, value:'Sin datos', reason:'' };
+
+  const top7 = keys.slice(0, 7);
+  let cntOpen = 0;
+  let known = 0;
+  for (const dk of top7){
+    const wrap = byDay.get(dk);
+    if (!wrap || !wrap.rec){
+      continue; // no dato real de cashV2 para ese día
+    }
+    known += 1;
+    const st = normStatus(wrap.rec.status);
+    if (st === 'OPEN') cntOpen += 1;
+  }
+
+  if (known === 0) return { ok:true, value:'Sin datos', reason:'' };
+  return { ok:true, value: String(cntOpen), reason:'' };
 }
 
 // --- Alertas (motor + Sincronizar)
 const ALERT_LABELS = {
-  'petty-open': 'Caja Chica: día abierto',
-  'fx-missing': 'Tipo de cambio vacío hoy',
+  'petty-open': 'Efectivo abierto hoy',
+  'fx-missing': 'Falta T/C',
   'checklist-incomplete': 'Checklist hoy incompleto',
   'inventory-critical': 'Inventario crítico',
   'orders-deliver-today': 'Entregas hoy',
@@ -1855,63 +5601,99 @@ function labelForAlertKey(k){
 }
 
 
-function buildActionableAlerts(ev, dayKey, pc){
+function buildActionableAlerts(ev, dayKey, cv2, remindersToday){
   const alerts = [];
   const unavailable = [];
 
-  // 1) Caja Chica activa y hoy NO está cerrado (solo con señal real)
-  if (pc && pc.enabled === true){
-    if (pc.ok){
-      if (pc.isOpen === true){
+  // 1) Efectivo v2 activo: día ABIERTO (solo con señal real)
+  if (cv2 && cv2.enabled === true){
+    if (cv2.ok){
+      if (cv2.isOpen === true){
+        const op = cv2.opDayKey ? String(cv2.opDayKey) : String(dayKey);
         alerts.push({
           key: 'petty-open',
           icon: '🔓',
-          title: 'Registro del día abierto',
-          sub: `Hoy (${dayKey}): hay un día abierto`,
+          title: 'Efectivo abierto hoy',
+          sub: `Día operativo: ${op} (ABIERTO)`,
           cta: 'Abrir Resumen',
           tab: 'resumen'
         });
       }
     } else {
       // No se pudo leer el día (no inventar)
-      unavailable.push({ key: 'petty-open', label: labelForAlertKey('petty-open'), reason: pc.reason || 'No disponible' });
-    }
-
-    // 2) Tipo de cambio vacío hoy (POS actual: ev.fxRate; fallback legado: day.fxRate)
-    if (pc.fxKnown === true){
-      if (pc.fxMissing === true){
-        alerts.push({
-          key: 'fx-missing',
-          icon: '💱',
-          title: 'Tipo de cambio vacío hoy',
-          sub: `Hoy (${dayKey}): falta tipo de cambio`,
-          cta: 'Abrir Resumen',
-          tab: 'resumen'
-        });
-      }
-    } else {
-      // No se puede evaluar con seguridad (store/campo faltante)
-      unavailable.push({ key: 'fx-missing', label: labelForAlertKey('fx-missing'), reason: pc.reason || 'No disponible' });
+      unavailable.push({ key: 'petty-open', label: labelForAlertKey('petty-open'), reason: cv2.reason || 'No disponible' });
     }
   }
 
-  // 3) Checklist hoy incompleto (solo si existe plantilla)
-  if (ev && ev.checklistTemplate && typeof ev.checklistTemplate === 'object'){
-    const chk = computeChecklistProgress(ev, dayKey);
-    if (chk && chk.ok && typeof chk.checked === 'number' && typeof chk.total === 'number' && chk.total > 0){
-      if (chk.checked < chk.total){
-        alerts.push({
-          key: 'checklist-incomplete',
-          icon: '✅',
-          title: 'Checklist hoy incompleto',
-          sub: `Hoy (${dayKey}): ${chk.checked}/${chk.total}`,
-          cta: 'Abrir Checklist',
-          tab: 'checklist'
-        });
-      }
-    } else if (chk && !chk.ok){
-      unavailable.push({ key: 'checklist-incomplete', label: labelForAlertKey('checklist-incomplete'), reason: chk.reason || 'No disponible' });
+  // 2) Falta T/C (evento) — SIEMPRE (independiente de cashV2 ON/OFF)
+  if (cv2 && cv2.fxKnown === true){
+    if (cv2.fxMissing === true){
+      const evName = safeStr(ev && ev.name) || '—';
+      const sub = (cv2 && cv2.enabled === true)
+        ? (`Día operativo: ${(cv2.opDayKey ? String(cv2.opDayKey) : String(dayKey))} (sin tipo de cambio)`)
+        : (`Evento: ${evName} (sin tipo de cambio)`);
+      alerts.push({
+        key: 'fx-missing',
+        icon: '💱',
+        title: 'Falta T/C',
+        sub,
+        cta: 'Abrir Resumen',
+        tab: 'resumen'
+      });
     }
+  } else {
+    // No se puede evaluar con seguridad (sin evento / sin datos)
+    unavailable.push({ key: 'fx-missing', label: labelForAlertKey('fx-missing'), reason: (cv2 && cv2.reason) ? cv2.reason : 'No disponible' });
+  }
+
+  // 3) Checklist hoy por FASE (mínimo, 3 columnas) — fail-safe
+  if (hasChecklistEvidenceA33(ev, dayKey)){
+    let ph = null;
+    try{
+      ph = buildChecklistPhasesData(ev, dayKey, { limit: 3 });
+    }catch(_){
+      ph = { ok:false, phases:{ pre:{done:0,total:0,pendingTexts:[],pendingCount:0,moreCount:0}, event:{done:0,total:0,pendingTexts:[],pendingCount:0,moreCount:0}, close:{done:0,total:0,pendingTexts:[],pendingCount:0,moreCount:0} }, reason:'No disponible', limit:3 };
+    }
+
+    const phases = (ph && ph.phases && typeof ph.phases === 'object') ? ph.phases : null;
+
+    // Resumen total (para título): suma de fases
+    let totalAll = 0;
+    let doneAll = 0;
+    let hasPending = false;
+
+    if (ph && ph.ok === false){
+      totalAll = 0;
+      doneAll = 0;
+      hasPending = false;
+    } else if (phases){
+      const keys = ['pre','event','close'];
+      for (const k of keys){
+        const b = phases[k];
+        if (!b || typeof b !== 'object') continue;
+        const t = Number(b.total || 0);
+        const d = Number(b.done || 0);
+        if (isFinite(t) && t > 0) totalAll += t;
+        if (isFinite(d) && d > 0) doneAll += d;
+        const pc = Number(b.pendingCount || 0);
+        if (pc > 0) hasPending = true;
+      }
+    }
+
+    const isComplete = (!hasPending) && (totalAll <= 0 || doneAll >= totalAll);
+    const title = (ph && ph.ok === false)
+      ? 'Checklist'
+      : (isComplete ? 'Checklist al día' : 'Checklist hoy incompleto');
+
+    alerts.push({
+      key: 'checklist-incomplete',
+      icon: '✅',
+      title,
+      sub: '',
+      checklistPhases: (ph && typeof ph === 'object') ? ph : { ok:false, phases:null, reason:'No disponible', limit:3 },
+      cta: 'Abrir Checklist',
+      tab: 'checklist'
+    });
   }
 
   // 4) Inventario crítico — v1: no hay cálculo “fácil/seguro” en esta ZIP
@@ -2046,13 +5828,17 @@ async function syncAlerts(){
     }
 
     if (ev && state.db){
-      let pc;
+      let cv2;
       try{
-        pc = await computePettyStatus(ev, dayKey);
+        cv2 = await computeCashV2Status(ev, dayKey);
       }catch(err){
-        pc = { ok:false, enabled: (ev && ev.pettyEnabled) ? true : null, reason:'No disponible' };
+        let en = null;
+        try{ en = await resolveCashV2EnabledForEvent(ev); }catch(_){ en = null; }
+        cv2 = { ok:false, enabled: en ? (en.enabled === true) : null, reason:'No disponible' };
       }
-      const al = buildActionableAlerts(ev, dayKey, pc);
+      let remToday = null;
+      try{ remToday = await readRemindersIndexForDay(state.db, dayKey); }catch(_){ remToday = null; }
+      const al = buildActionableAlerts(ev, dayKey, cv2, remToday);
       if (al && Array.isArray(al.unavailable) && al.unavailable.length){
         unavailable.push(...al.unavailable);
       }
@@ -2092,6 +5878,107 @@ function navigateToPedidos(){
   }catch(_){ }
 }
 
+
+function navigateToComprasPlan(){
+  try{
+    window.location.href = COMPRAS_PLAN_ROUTE;
+  }catch(_){ }
+}
+
+
+
+
+// POS route resolver (robusto: /pruebas/pos vs /pos, según dónde viva el Centro de Mando)
+let __A33_POS_INDEX_HREF = null;
+const LS_POS_ROUTE_KEY = 'a33_cmd_pos_index_href_v1';
+
+function a33SuiteBasePathFromHere(){
+  const p = String(window.location.pathname || '/');
+  // Caso típico: /<root>/pruebas/centro-mando/index.html  -> /<root>/pruebas/
+  const i = p.indexOf('/pruebas/');
+  if (i >= 0) return p.slice(0, i) + '/pruebas/';
+
+  // Caso típico: /<root>/centro-mando/index.html -> /<root>/
+  const j1 = p.indexOf('/centro-mando/');
+  const j2 = p.indexOf('/centro_mando/');
+  const j = (j1 >= 0 || j2 >= 0) ? Math.max(j1, j2) : -1;
+  if (j >= 0) return p.slice(0, j) + '/';
+
+  // Fallback: quitar filename
+  return p.replace(/[^/]*$/, '');
+}
+
+function a33ProbeUrlOk(url, ms){
+  const timeoutMs = (typeof ms === 'number' && isFinite(ms) && ms > 0) ? ms : 650;
+  return new Promise((resolve)=>{
+    let done = false;
+    const t = setTimeout(()=>{ if (!done){ done = true; resolve(null); } }, timeoutMs);
+    try{
+      fetch(url, { method:'GET', cache:'no-store' })
+        .then(r=>{
+          if (done) return;
+          clearTimeout(t);
+          done = true;
+          resolve(!!(r && r.ok));
+        })
+        .catch(()=>{
+          if (done) return;
+          clearTimeout(t);
+          done = true;
+          resolve(null);
+        });
+    }catch(_){
+      if (done) return;
+      clearTimeout(t);
+      done = true;
+      resolve(null);
+    }
+  });
+}
+
+async function resolvePosIndexHref(){
+  if (__A33_POS_INDEX_HREF) return __A33_POS_INDEX_HREF;
+
+  const base = a33SuiteBasePathFromHere();
+  const p = String(window.location.pathname || '/');
+  const hasPruebas = (p.indexOf('/pruebas/') >= 0);
+
+  const baseNoPruebas = base.replace(/\/pruebas\/$/, '/');
+
+  // Candidatos (orden por probabilidad, sin inventar rutas raras)
+  const candidates = [];
+  const push = (u)=>{ if (u && !candidates.includes(u)) candidates.push(u); };
+
+  if (hasPruebas){
+    push(base + 'pos/index.html');
+    push(baseNoPruebas + 'pos/index.html');
+  } else {
+    push(base + 'pos/index.html');
+    push(base + 'pruebas/pos/index.html');
+  }
+
+  // Cache: si ya resolvimos una vez en este mismo entorno, reutilizar (ayuda offline).
+  try{
+    const cached = localStorage.getItem(LS_POS_ROUTE_KEY);
+    if (cached && candidates.includes(cached)){
+      __A33_POS_INDEX_HREF = cached;
+      return cached;
+    }
+  }catch(_){ }
+
+  // Si no podemos probar (offline / fetch bloqueado), usamos el primero.
+  let chosen = candidates[0] || '../pos/index.html';
+
+  // Probe rápido: si uno responde 200, lo usamos.
+  for (const u of candidates){
+    const ok = await a33ProbeUrlOk(u, 700);
+    if (ok === true){ chosen = u; break; }
+  }
+
+  __A33_POS_INDEX_HREF = chosen;
+  try{ localStorage.setItem(LS_POS_ROUTE_KEY, chosen); }catch(_){ }
+  return chosen;
+}
 async function navigateToPOS(tab){
   const ev = state.focusEvent;
   if (!ev || !state.db) return;
@@ -2101,7 +5988,8 @@ async function navigateToPOS(tab){
   // Etapa 11B: bloquear deep-link/ruta legacy hacia Caja Chica (no existe como ruta en POS).
   const t0 = safeStr(tab) || 'vender';
   const t = (t0 === 'caja' || t0 === 'caja-chica' || t0 === 'cajachica' || t0 === 'petty' || t0 === 'pettycash') ? 'vender' : t0;
-  window.location.href = `../pos/index.html?tab=${encodeURIComponent(t)}`;
+    const posHref = await resolvePosIndexHref();
+  window.location.href = `${posHref}?tab=${encodeURIComponent(t)}`;
 }
 
 async function navigateToPOSReminders(){
@@ -2110,7 +5998,8 @@ async function navigateToPOSReminders(){
     if (ev && state.db) await setMeta(state.db, 'currentEventId', Number(ev.id));
   }catch(_){ }
   // Deep-link: POS abre Checklist y hace scroll a la card Recordatorios
-  window.location.href = `../pos/index.html#checklist-reminders`;
+    const posHref = await resolvePosIndexHref();
+  window.location.href = `${posHref}#checklist-reminders`;
 }
 
 // --- Picker
@@ -2124,6 +6013,147 @@ function eventSortKey(ev){
     if (isFinite(ts)) return ts;
   }
   return Number(ev.id || 0);
+}
+
+async function reloadEventsFromDB(){
+  const db = state.db;
+  if (!db || !hasStore(db, 'events')){
+    state.events = [];
+    state.eventsById = new Map();
+    return;
+  }
+
+  let events = await idbGetAll(db, 'events');
+  if (!Array.isArray(events)) events = [];
+
+  const cleaned = events.filter(e=> e && e.id != null);
+  cleaned.sort((a,b)=> eventSortKey(b) - eventSortKey(a));
+
+  state.events = cleaned;
+  const map = new Map();
+  for (const ev of cleaned){
+    map.set(Number(ev.id), ev);
+  }
+  state.eventsById = map;
+}
+
+// --- Evento GLOBAL: refresh sin recarga (focus/visibility)
+let __CMD_GLOBAL_EVT_TIMER = null;
+let __CMD_GLOBAL_EVT_BUSY = false;
+let __CMD_GLOBAL_EVT_LASTRUN = 0;
+let __CMD_GLOBAL_EVT_LASTFULL = 0;
+let __CMD_GLOBAL_EVT_LASTID = null;
+
+function scheduleGlobalEventRefresh(reason){
+  try{
+    const now = Date.now();
+    const elapsed = now - (__CMD_GLOBAL_EVT_LASTRUN || 0);
+    const delay = (elapsed < 600) ? 650 : 140;
+    if (__CMD_GLOBAL_EVT_TIMER) clearTimeout(__CMD_GLOBAL_EVT_TIMER);
+    __CMD_GLOBAL_EVT_TIMER = setTimeout(()=>{
+      __CMD_GLOBAL_EVT_TIMER = null;
+      void doGlobalEventRefresh(reason);
+    }, delay);
+  }catch(_){ }
+}
+
+async function refreshFocusEventFromDB(){
+  try{
+    const id = Number(state && state.focusId || 0);
+    if (!id) return false;
+    if (!state.db || !hasStore(state.db, 'events')) return false;
+
+    const fresh = await idbGet(state.db, 'events', id);
+    if (fresh && fresh.id != null){
+      if (state.eventsById && typeof state.eventsById.set === 'function') state.eventsById.set(id, fresh);
+      state.focusEvent = fresh;
+      if (Array.isArray(state.events) && state.events.length){
+        const ix = state.events.findIndex(e=> e && Number(e.id) === id);
+        if (ix >= 0) state.events[ix] = fresh;
+      }
+      // Best-effort: si el usuario NO está editando el buscador, mantener nombre actualizado
+      try{
+        const input = $('eventSearch');
+        if (input && document && document.activeElement !== input){
+          input.value = safeStr(fresh.name) || '';
+        }
+      }catch(_){ }
+      try{ renderFocusHint(); }catch(_){ }
+      try{ renderRadarBasics(); }catch(_){ }
+      return true;
+    }
+  }catch(_){ }
+  return false;
+}
+
+async function doGlobalEventRefresh(reason){
+  if (__CMD_GLOBAL_EVT_BUSY) return;
+  __CMD_GLOBAL_EVT_BUSY = true;
+  try{
+    // Solo actuar cuando la pestaña está visible
+    try{
+      if (document && document.visibilityState && document.visibilityState !== 'visible') return;
+    }catch(_){ }
+
+    // Día actual (por si el usuario regresa después de medianoche)
+    const t = todayYMD();
+    const dayChanged = !!(t && String(t) !== String(state.today));
+    if (dayChanged) state.today = t;
+
+    const db = state.db;
+    if (!db || !hasStore(db, 'meta')){
+      if (dayChanged && state.focusEvent) await refreshAll();
+      __CMD_GLOBAL_EVT_LASTFULL = Date.now();
+      return;
+    }
+
+    let globalId = null;
+    try{ globalId = await getMeta(db, 'currentEventId'); }catch(_){ globalId = null; }
+    const gid = Number(globalId || 0) || null;
+    if (!gid){
+      if (dayChanged && state.focusEvent) await refreshAll();
+      __CMD_GLOBAL_EVT_LASTFULL = Date.now();
+      return;
+    }
+
+    const changed = (Number(state.focusId || 0) !== Number(gid));
+
+    // Si el evento global cambió y no está en el índice local, recargar lista (sin inventar)
+    if (changed && (!state.eventsById || !state.eventsById.has(gid))){
+      await reloadEventsFromDB();
+      try{
+        const se = $('eventSearch');
+        const q = se ? safeStr(se.value) : '';
+        renderEventList(q);
+      }catch(_){ }
+    }
+
+    if (changed && state.eventsById && state.eventsById.has(gid)){
+      await setFocusEvent(gid);
+      __CMD_GLOBAL_EVT_LASTID = gid;
+      __CMD_GLOBAL_EVT_LASTFULL = Date.now();
+      return;
+    }
+    // Evento igual: al volver desde POS, refrescar (sin recargar) progreso/lista de Checklist y demás
+    if (!changed && state.focusEvent){
+      const now = Date.now();
+      const elapsedFull = now - (__CMD_GLOBAL_EVT_LASTFULL || 0);
+      if (elapsedFull > 900){
+        // No escribir: solo re-leer el evento del store y re-render
+        await refreshFocusEventFromDB();
+        await refreshAll();
+        __CMD_GLOBAL_EVT_LASTFULL = now;
+      }
+    }
+
+    __CMD_GLOBAL_EVT_LASTID = gid;
+  }catch(e){
+  }finally{
+    __CMD_GLOBAL_EVT_LASTRUN = Date.now();
+    __CMD_GLOBAL_EVT_BUSY = false;
+  }
+  // Si estamos en modo GLOBAL, refrescar la lista (best-effort)
+  try{ if (state.focusMode === CMD_MODE_GLOBAL) renderGlobalActivesView(); }catch(_){ }
 }
 
 function filterEvents(query){
@@ -2144,6 +6174,19 @@ function renderEventList(query){
   const items = filterEvents(query);
   list.innerHTML = '';
 
+  // GLOBAL (Activos) — siempre arriba
+  try{
+    const rowG = document.createElement('div');
+    const selectedG = (state.focusMode === CMD_MODE_GLOBAL);
+    rowG.className = 'cmd-item cmd-item-global' + (selectedG ? ' cmd-item-selected' : '');
+    rowG.innerHTML = `
+      <div class="cmd-item-title">${CMD_GLOBAL_LABEL}</div>
+      <div class="cmd-item-sub">Vista multi-evento · solo activos</div>
+    `;
+    rowG.addEventListener('click', ()=> setFocusGlobal());
+    list.appendChild(rowG);
+  }catch(_){ }
+
   if (!items.length){
     const empty = document.createElement('div');
     empty.className = 'cmd-item';
@@ -2154,7 +6197,7 @@ function renderEventList(query){
 
   for (const ev of items){
     const row = document.createElement('div');
-    const selected = state.focusId != null && Number(state.focusId) === Number(ev.id);
+    const selected = (state.focusMode !== CMD_MODE_GLOBAL) && state.focusId != null && Number(state.focusId) === Number(ev.id);
     row.className = 'cmd-item' + (selected ? ' cmd-item-selected' : '');
     const g = safeStr(ev.groupName);
     row.innerHTML = `
@@ -2178,11 +6221,40 @@ function hideEventList(){
   list.hidden = true;
 }
 
-async function setFocusEvent(eventId){
+async function setFocusEvent(eventId, opts){
+  opts = opts || {};
   const id = Number(eventId);
-  if (!id || !state.eventsById.has(id)) return;
+  if (!id) return;
+
+  // Modo: al elegir un evento normal, volver a modo EVENTO
+  if (!opts.skipMode){
+    state.focusMode = CMD_MODE_EVENT;
+    persistFocusMode(CMD_MODE_EVENT);
+    applyFocusModeToDOM();
+  }
+  // Si el índice local no tiene el evento (p. ej., creado/cambiado en Resumen), recargar sin inventar
+  if (!state.eventsById || !state.eventsById.has(id)){
+    try{ await reloadEventsFromDB(); }catch(_){ }
+  }
+  if (!state.eventsById || !state.eventsById.has(id)) return;
   state.focusId = id;
   state.focusEvent = state.eventsById.get(id) || null;
+
+  // Refrescar el evento desde DB (por si cashV2Active / fx / nombre cambió)
+  try{
+    if (state.db && hasStore(state.db, 'events')){
+      const fresh = await idbGet(state.db, 'events', id);
+      if (fresh && fresh.id != null){
+        state.eventsById.set(id, fresh);
+        state.focusEvent = fresh;
+        // Mantener state.events consistente (best-effort, sin reordenar)
+        if (Array.isArray(state.events) && state.events.length){
+          const ix = state.events.findIndex(e=> e && Number(e.id) === id);
+          if (ix >= 0) state.events[ix] = fresh;
+        }
+      }
+    }
+  }catch(_){ }
 
   // Persistencia: meta + localStorage (robusto)
   try{ localStorage.setItem(LS_FOCUS_KEY, String(id)); }catch(_){ }
@@ -2207,21 +6279,105 @@ async function setFocusEvent(eventId){
 
 // --- Main refresh
 async function refreshAll(){
+  // FAIL-SAFE: un evento/data corrupta NO debe romper GLOBAL ni el dock.
+  try{
   clearMetricsToDash();
   clearOrdersToDash();
-
-  // Recordatorios (solo lectura): próximos 7 días (hoy + 6) — NO escanear eventos
-  await refreshRemindersNext7();
 
   // Recomendaciones (cache Analítica)
   renderRecos();
 
-  // Inventario en riesgo (localStorage, solo lectura)
-  refreshInvRiskBlock();
+  const dockExpanded = isDockExpanded();
 
-  // Pedidos (operativo: hoy + mañana)
+  // Pedidos (operativo: hoy + mañana) — siempre computar (alertas arriba)
   const ordersCtx = computeOrdersOperative();
-  const ordersOut = renderOrdersOperative(ordersCtx);
+
+  // Recordatorios (solo lectura): próximos 7 días (hoy + 6)
+  let remNext7 = null;
+  try{
+    const start = state && state.today ? String(state.today) : todayYMD();
+    const dayKeys = [];
+    for (let i=0; i<7; i++) dayKeys.push(ymdAddDays(start, i));
+    remNext7 = await readRemindersIndexForRange(state.db, dayKeys);
+  }catch(_){
+    remNext7 = { ok:false, rows:[], reason:'No disponible', dayKeys:[] };
+  }
+
+  // Inventario en riesgo (compacto: solo conteos)
+  let invCounts = null;
+  try{
+    const inv = readInventorySafe();
+    invCounts = inv ? computeInvRiskCountsLight(inv) : { ok:false, invTotal:null, invRed:0, invYellow:0 };
+  }catch(_){
+    invCounts = { ok:false, invTotal:null, invRed:0, invYellow:0 };
+  }
+
+  // Compras pendientes (Finanzas → Compras planificación): conteo liviano + sello (para gating)
+  let purchasesPending = null;
+  let purchasesStamp = 'x';
+  try{
+    const pcLite = computeFinComprasPendingCountAndStamp();
+    purchasesPending = (pcLite && pcLite.ok && typeof pcLite.pendingCountTotal === 'number') ? pcLite.pendingCountTotal : null;
+    purchasesStamp = (pcLite && typeof pcLite.stamp === 'string' && pcLite.stamp) ? pcLite.stamp : (purchasesPending == null ? 'x' : ('c' + String(purchasesPending)));
+  }catch(_){
+    purchasesPending = null;
+    purchasesStamp = 'x';
+  }
+
+  const remPending = (remNext7 && remNext7.ok && Array.isArray(remNext7.rows)) ? remNext7.rows.filter(x=> !(x && x.done)).length : null;
+  const ordersPending = (ordersCtx && typeof ordersCtx.pendingCount === 'number') ? ordersCtx.pendingCount : null;
+  const invTotal = (invCounts && invCounts.ok && typeof invCounts.invTotal === 'number') ? invCounts.invTotal : null;
+  renderDockCompactCounts({
+    orders: ordersPending,
+    reminders: remPending,
+    purchases: purchasesPending,
+    invTotal,
+    invRed: invCounts ? invCounts.invRed : 0,
+    invYellow: invCounts ? invCounts.invYellow : 0,
+  });
+
+  // Render completo SOLO en modo expandido (performance iPad/PWA)
+  let ordersOut = { alerts:[], unavailable:[] };
+  if (dockExpanded){
+    const purchasesSig = (purchasesStamp && typeof purchasesStamp === 'string') ? purchasesStamp : (purchasesPending == null ? 'x' : ('c' + String(purchasesPending)));
+
+    const flagsNow = `d${remindersGetShowDone() ? 1 : 0}|l${invViewState && invViewState.liquidsExpanded ? 1 : 0}|b${invViewState && invViewState.bottlesExpanded ? 1 : 0}|p${purchasesSig}`;
+    const countsNow = { orders: ordersPending, reminders: remPending, purchases: purchasesPending, invTotal, invRed: invCounts ? invCounts.invRed : 0, invYellow: invCounts ? invCounts.invYellow : 0 };
+    const canSkipFull = !!(dockUI && dockUI.__lastFullAt && ((Date.now() - Number(dockUI.__lastFullAt||0)) < 6000)
+      && dockCountsEq(dockUI.__lastFullCounts, countsNow)
+      && (dockUI.__lastFullFlags === flagsNow));
+
+    if (!canSkipFull){
+      try{ renderRemindersBlock(remNext7); }catch(_){ try{ renderRemindersBlock({ ok:false, rows:[], reason:'No disponible', dayKeys:[] }); }catch(__){ } }
+      try{ refreshInvRiskBlock(); }catch(_){ try{ renderInvRiskBlock(null, null); }catch(__){ } }
+      try{ ordersOut = renderOrdersOperative(ordersCtx); }catch(_){ ordersOut = { alerts: (ordersCtx && Array.isArray(ordersCtx.alerts)) ? ordersCtx.alerts : [], unavailable: (ordersCtx && Array.isArray(ordersCtx.unavailable)) ? ordersCtx.unavailable : [] }; }
+      // Compras: solo cuando está expandido y NO se puede saltar el render (fail-safe)
+      try{
+        const comprasCtxFull = computeFinComprasPending();
+        try{ state.comprasPending = comprasCtxFull; }catch(__){ }
+        renderPurchasesBlock(comprasCtxFull);
+      }catch(_){
+        try{ renderPurchasesBlock({ ok:false, pendingCountTotal:null, pendingProveedores:[], pendingVarias:[], updatedAtISO:'', updatedAtDisplay:'', sourceKey: FIN_COMPRAS_CURRENT_KEY }); }catch(__){ }
+      }
+
+      try{
+        dockUI.__lastFullAt = Date.now();
+        dockUI.__lastFullCounts = { orders: ordersPending, reminders: remPending, purchases: purchasesPending, invTotal, invRed: invCounts ? invCounts.invRed : 0, invYellow: invCounts ? invCounts.invYellow : 0 };
+        dockUI.__lastFullFlags = flagsNow;
+      }catch(_){ }
+    } else {
+      // Para alertas: no depende del DOM del dock
+      ordersOut = {
+        alerts: (ordersCtx && Array.isArray(ordersCtx.alerts)) ? ordersCtx.alerts : [],
+        unavailable: (ordersCtx && Array.isArray(ordersCtx.unavailable)) ? ordersCtx.unavailable : [],
+      };
+    }
+  } else {
+    ordersOut = {
+      alerts: (ordersCtx && Array.isArray(ordersCtx.alerts)) ? ordersCtx.alerts : [],
+      unavailable: (ordersCtx && Array.isArray(ordersCtx.unavailable)) ? ordersCtx.unavailable : [],
+    };
+  }
 
   const ev = state.focusEvent;
 
@@ -2247,37 +6403,58 @@ async function refreshAll(){
 
   const dk = state.today;
 
+  // Recordatorios de HOY (para alertas accionables: evento enfocado)
+  let remToday = null;
+  try{
+    remToday = await readRemindersIndexForDay(state.db, dk);
+  }catch(_){
+    remToday = { ok:false, rows:[], reason:'No disponible' };
+  }
+
   // Checklist
   const chk = computeChecklistProgress(ev, dk);
   setText('checklistProgress', chk.text);
   setText('checklistHint', chk.ok ? 'Hoy' : chk.reason);
 
-  // Caja chica
-  const pc = await computePettyStatus(ev, dk);
-  if (pc.ok && pc.enabled === false){
-    setText('pettyState', 'No aplica');
-    setText('pettyDayState', '—');
-    setText('pettyHint', 'Caja Chica desactivada en este evento.');
-    setDisabled('btnGoCaja', true);
-  } else if (pc.ok && pc.enabled === true){
-    setText('pettyState', 'Activa');
-    setText('pettyDayState', pc.dayState || '—');
-    setText('pettyHint', pc.dayState ? `Día ${dk}: ${pc.dayState}` : 'No disponible');
-    setDisabled('btnGoCaja', false);
-  } else if (pc.enabled === true){
-    // enabled pero no se pudo leer
-    setText('pettyState', 'Activa');
-    setText('pettyDayState', '—');
-    setText('pettyHint', pc.reason || 'No disponible');
-    setDisabled('btnGoCaja', false);
-  } else {
-    setText('pettyState', '—');
-    setText('pettyDayState', '—');
-    setText('pettyHint', pc.reason || 'No disponible');
-    setDisabled('btnGoCaja', true);
-  }
 
-  // Ventas hoy + Top productos
+// Efectivo (estado real desde cashV2)
+const cv2 = await computeCashV2Status(ev, dk);
+if (cv2.ok && cv2.enabled === false){
+  setText('pettyState', 'No aplica');
+  setText('pettyDayState', '—');
+  setText('pettyHint', 'Efectivo desactivado en este evento.');
+  setDisabled('btnGoCaja', true);
+} else if (cv2.ok && cv2.enabled === true){
+  setText('pettyState', 'Activo');
+  setText('pettyDayState', cv2.dayState || '—');
+  if (cv2.opDayKey){
+    setText('pettyHint', `Día operativo: ${cv2.opDayKey}`);
+  } else {
+    setText('pettyHint', 'Hoy: sin actividad.');
+  }
+  setDisabled('btnGoCaja', false);
+} else if (cv2.enabled === true){
+  // Activo pero no se pudo leer
+  setText('pettyState', 'Activo');
+  setText('pettyDayState', '—');
+  setText('pettyHint', cv2.reason || 'No disponible');
+  setDisabled('btnGoCaja', false);
+} else {
+  setText('pettyState', '—');
+  setText('pettyDayState', '—');
+  setText('pettyHint', cv2.reason || 'No disponible');
+  setDisabled('btnGoCaja', true);
+}
+
+// T/C visible (2 dec) — siempre
+{
+  const fxLine = (cv2 && typeof cv2.fx === 'number' && isFinite(cv2.fx) && cv2.fx > 0)
+    ? `T/C: ${fmtFX2(cv2.fx)}`
+    : 'T/C: —';
+  setText('pettyFx', fxLine);
+}
+
+// Ventas hoy + Top productos
   const sales = await computeSalesToday(Number(ev.id), dk);
   if (sales.ok){
     setText('salesToday', fmtMoneyNIO(sales.total));
@@ -2307,15 +6484,351 @@ async function refreshAll(){
   setText('radarUnclosed', (unc && unc.ok) ? unc.value : '—');
 
   // Alertas accionables (solo con señal real)
-  const al = buildActionableAlerts(ev, dk, pc);
+  const al = buildActionableAlerts(ev, dk, cv2, remToday);
   const mergedAlerts = ([]
     .concat((ordersOut && Array.isArray(ordersOut.alerts)) ? ordersOut.alerts : [])
     .concat(Array.isArray(al.alerts) ? al.alerts : []));
   renderAlerts(mergedAlerts.length ? mergedAlerts : null);
+  }catch(_){
+  }finally{
+    // Si estamos en modo GLOBAL, nunca dejar la vista vacía por una excepción.
+    try{ if (state && state.focusMode === CMD_MODE_GLOBAL) renderGlobalActivesView(); }catch(__){ }
+  }
+}
+
+
+
+// --- Compras (dock expandido): render tabla (Por proveedor + Compras varias)
+function parseNumberLoose(val){
+  const raw = safeStr(val);
+  if (!raw) return NaN;
+  let t = raw.replace(/[^0-9,.\-]/g, '');
+  if (!t) return NaN;
+
+  // Soportar coma como decimal (y miles en cualquiera de los dos estilos)
+  // Regla: si vienen ambos separadores, el ÚLTIMO define el decimal.
+  if (t.includes(',') && t.includes('.')){
+    const lastComma = t.lastIndexOf(',');
+    const lastDot = t.lastIndexOf('.');
+    if (lastComma > lastDot){
+      // 1.234,56  => 1234.56
+      t = t.replace(/\./g, '').replace(/,/g, '.');
+    } else {
+      // 1,234.56  => 1234.56
+      t = t.replace(/,/g, '');
+    }
+  }
+  // Si sólo viene "," => decimal
+  else if (t.includes(',') && !t.includes('.')){
+    t = t.replace(/,/g, '.');
+  }
+
+  const n = parseFloat(t);
+  return (isFinite(n) ? n : NaN);
+}
+
+function detectCurrencySymbol(priceStr){
+  const s = safeStr(priceStr);
+  if (!s) return '';
+  const low = s.toLowerCase();
+  if (low.includes('c$')) return 'C$';
+  if (low.includes('usd')) return 'USD';
+  if (s.includes('$')) return '$';
+  return '';
+}
+
+function fmtMoney2(n){
+  try{
+    if (!isFinite(n)) return '—';
+    return n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }catch(_){
+    try{ return String(Math.round(Number(n) * 100) / 100); }catch(__){ return '—'; }
+  }
+}
+
+function renderPurchasesBlock(pc){
+  const msgEl = $('purchasesMsg');
+  const sectionsEl = $('purchasesSections');
+  const byEl = $('purchasesBySupplier');
+  const vaEl = $('purchasesVarias');
+  const moreEl = $('purchasesMore');
+  const totalEl = $('purchasesTotalLabel');
+  if (!msgEl || !sectionsEl || !byEl || !vaEl) return;
+
+  const setHeaderTotal = (txt)=>{
+    if (!totalEl) return;
+    try{ totalEl.textContent = String(txt || 'Total: C$ —'); }catch(_){ }
+  };
+
+  const clear = (el)=>{
+    try{
+      while (el.firstChild) el.removeChild(el.firstChild);
+    }catch(_){
+      try{ el.textContent = ''; }catch(__){ }
+    }
+  };
+
+  clear(byEl);
+  clear(vaEl);
+  if (moreEl){
+    moreEl.hidden = true;
+    moreEl.textContent = '';
+  }
+
+  const showMsg = (t)=>{
+    try{
+      msgEl.hidden = false;
+      msgEl.textContent = t;
+      sectionsEl.hidden = true;
+    }catch(_){ }
+  };
+
+  const showSections = ()=>{
+    try{
+      msgEl.hidden = true;
+      msgEl.textContent = '';
+      sectionsEl.hidden = false;
+    }catch(_){ }
+  };
+
+  if (!pc || pc.ok !== true || typeof pc.pendingCountTotal !== 'number'){
+    setHeaderTotal('Total: C$ —');
+    showMsg('No disponible');
+    return;
+  }
+
+  if (pc.pendingCountTotal === 0){
+    setHeaderTotal(`Total: C$${fmtMoney2(0)}`);
+    showMsg('Sin compras pendientes');
+    return;
+  }
+
+  const proveedoresAll = Array.isArray(pc.pendingProveedores) ? pc.pendingProveedores : [];
+  const variasAll = Array.isArray(pc.pendingVarias) ? pc.pendingVarias : [];
+
+  // Normalizar "Varios"
+  const variasNorm = variasAll.map((line)=>{
+    const o = (line && typeof line === 'object') ? line : {};
+    const sn = safeStr(o.supplierName);
+    return { ...o, supplierName: sn || 'Varios' };
+  });
+
+  // Total general (C$) — suma robusta (usa line.total si existe; si no, qty*price)
+  try{
+    let sum = 0;
+    let parsedAny = false;
+    const all = proveedoresAll.concat(variasNorm);
+    for (const line of all){
+      if (!line || typeof line !== 'object') continue;
+      let t = parseNumberLoose(line.total);
+      if (!isFinite(t)){
+        const qn = parseNumberLoose(line.quantity);
+        const pn = parseNumberLoose(line.price);
+        if (isFinite(qn) && isFinite(pn)) t = qn * pn;
+      }
+      if (isFinite(t)){
+        sum += t;
+        parsedAny = true;
+      }
+    }
+    setHeaderTotal(parsedAny ? (`Total: C$${fmtMoney2(sum)}`) : 'Total: C$ —');
+  }catch(_){
+    setHeaderTotal('Total: C$ —');
+  }
+
+  // Límite global
+  const MAX_ROWS = 20;
+
+  // Distribución: priorizar proveedores, pero si hay "varias" y proveedores llenan 20,
+  // reservar 1 fila para "varias" para que la sección no quede vacía.
+  let takeProv = Math.min(proveedoresAll.length, MAX_ROWS);
+  let takeVar = Math.min(variasNorm.length, Math.max(0, MAX_ROWS - takeProv));
+  if (takeVar === 0 && variasNorm.length > 0 && takeProv > 0){
+    takeProv = Math.max(0, MAX_ROWS - 1);
+    takeVar = 1;
+  }
+
+  const proveedoresShow = proveedoresAll.slice(0, takeProv);
+  const variasShow = variasNorm.slice(0, takeVar);
+  const shownTotal = proveedoresShow.length + variasShow.length;
+  const more = Math.max(0, pc.pendingCountTotal - shownTotal);
+
+  const labels = ['Proveedor', 'Producto', 'Cantidad', 'Total'];
+
+  const mkRow = (cells, isHead=false)=>{
+    const row = document.createElement('div');
+    row.className = 'cmd-purchases-row' + (isHead ? ' is-head' : '');
+    for (let i=0; i<4; i++){
+      const cell = document.createElement('div');
+      cell.className = 'cmd-purchases-cell' + ((i >= 2) ? ' num' : '');
+      cell.setAttribute('data-label', labels[i]);
+      cell.textContent = (cells[i] == null || cells[i] === '') ? '—' : String(cells[i]);
+      row.appendChild(cell);
+    }
+    return row;
+  };
+
+  const renderTable = (rowsToShow, el, hasAny, defaults={})=>{
+    clear(el);
+    el.appendChild(mkRow(labels, true));
+
+    if (!hasAny){
+      el.appendChild(mkRow(['—', 'Sin pendientes', '—', '—']));
+      return;
+    }
+
+    if (!Array.isArray(rowsToShow) || rowsToShow.length === 0){
+      // Hay pendientes, pero no caben por límite (extremo). Mantener UI clara.
+      el.appendChild(mkRow(['—', 'Ver Compras', '—', '—']));
+      return;
+    }
+
+    for (const line of rowsToShow){
+      const supplier = safeStr(line && line.supplierName) || safeStr(defaults.supplier) || '—';
+      const product = uiProdNameCMD(line && line.product) || '—';
+      const qty = safeStr(line && line.quantity) || '—';
+
+      const cur = detectCurrencySymbol(line && line.total) || detectCurrencySymbol(line && line.price);
+      const tn = parseNumberLoose(line && line.total);
+      const qn = parseNumberLoose(line && line.quantity);
+      const pn = parseNumberLoose(line && line.price);
+
+      let totalStr = '—';
+      let tot = NaN;
+      if (isFinite(tn)) tot = tn;
+      else if (isFinite(qn) && isFinite(pn)) tot = qn * pn;
+      if (isFinite(tot)){
+        const f = fmtMoney2(tot);
+        if (cur === 'C$') totalStr = `C$${f}`;
+        else if (cur === '$') totalStr = `$${f}`;
+        else if (cur === 'USD') totalStr = `USD ${f}`;
+        else totalStr = f;
+      }
+
+      el.appendChild(mkRow([supplier, product, qty, totalStr]));
+    }
+  };
+
+  showSections();
+  renderTable(proveedoresShow, byEl, proveedoresAll.length > 0, { supplier: '—' });
+  renderTable(variasShow, vaEl, variasNorm.length > 0, { supplier: 'Varios' });
+
+  if (moreEl){
+    moreEl.hidden = !(more > 0);
+    if (more > 0) moreEl.textContent = `y ${more} más…`;
+  }
+}
+
+
+// Refresh SOLO del panel inferior (compacto +, si aplica, panel expandido)
+async function refreshDockOnly(){
+  // Hardening/Perf: token para cancelar renders si el usuario colapsa/expande rápido.
+  const myToken = (dockUI ? (++dockUI.__refreshToken) : Date.now());
+  try{ if (dockUI) dockUI.__inflight = true; }catch(_){ }
+  try{
+    const ordersCtx = computeOrdersOperative();
+
+    // Recordatorios próximos 7 días: conteo (y render si expandido)
+    let remNext7 = null;
+    try{
+      const start = state && state.today ? String(state.today) : todayYMD();
+      const dayKeys = [];
+      for (let i=0; i<7; i++) dayKeys.push(ymdAddDays(start, i));
+      remNext7 = await readRemindersIndexForRange(state.db, dayKeys);
+      if (remNext7 && remNext7.ok && Array.isArray(remNext7.rows) && remNext7.rows.length > SAFE_SCAN_LIMIT){
+        remNext7 = { ok:false, rows:[], reason:'No disponible', dayKeys: Array.isArray(remNext7.dayKeys) ? remNext7.dayKeys : [] };
+      }
+    }catch(_){
+      remNext7 = { ok:false, rows:[], reason:'No disponible', dayKeys:[] };
+    }
+
+    // Inventario en riesgo: conteo liviano
+    let invCounts = null;
+    try{
+      const inv = readInventorySafe();
+      invCounts = inv ? computeInvRiskCountsLight(inv) : { ok:false, invTotal:null, invRed:0, invYellow:0 };
+    }catch(_){
+      invCounts = { ok:false, invTotal:null, invRed:0, invYellow:0 };
+    }
+    // Compras pendientes (Finanzas → Compras planificación): conteo liviano + sello (para gating)
+    // Nota: data completa para tabla SOLO si se requiere render del expandido.
+    let purchasesPending = null;
+    let purchasesStamp = 'x';
+    try{
+      const pcLite = computeFinComprasPendingCountAndStamp();
+      purchasesPending = (pcLite && pcLite.ok && typeof pcLite.pendingCountTotal === 'number') ? pcLite.pendingCountTotal : null;
+      purchasesStamp = (pcLite && typeof pcLite.stamp === 'string' && pcLite.stamp) ? pcLite.stamp : (purchasesPending == null ? 'x' : ('c' + String(purchasesPending)));
+    }catch(_){
+      purchasesPending = null;
+      purchasesStamp = 'x';
+    }
+
+    const remPending = (remNext7 && remNext7.ok && Array.isArray(remNext7.rows)) ? remNext7.rows.filter(x=> !(x && x.done)).length : null;
+    const ordersPending = (ordersCtx && typeof ordersCtx.pendingCount === 'number') ? ordersCtx.pendingCount : null;
+    const invTotal = (invCounts && invCounts.ok && typeof invCounts.invTotal === 'number') ? invCounts.invTotal : null;
+
+    const countsNow = { orders: ordersPending, reminders: remPending, purchases: purchasesPending, invTotal, invRed: invCounts ? invCounts.invRed : 0, invYellow: invCounts ? invCounts.invYellow : 0 };
+    renderDockCompactCounts(countsNow);
+
+    // Colapsado: SOLO conteos (sin render pesado)
+    if (!isDockExpanded()) return;
+
+    // Si el usuario cambió el estado mientras cargábamos, cancelar
+    try{ if (dockUI && dockUI.__refreshToken !== myToken) return; }catch(_){ }
+    if (!isDockExpanded()) return;
+
+    const purchasesSig = (purchasesStamp && typeof purchasesStamp === 'string') ? purchasesStamp : (purchasesPending == null ? 'x' : ('c' + String(purchasesPending)));
+    const flagsNow = `d${remindersGetShowDone() ? 1 : 0}|l${invViewState && invViewState.liquidsExpanded ? 1 : 0}|b${invViewState && invViewState.bottlesExpanded ? 1 : 0}|p${purchasesSig}`;
+    const canSkipFull = !!(dockUI && dockUI.__lastFullAt && ((Date.now() - Number(dockUI.__lastFullAt||0)) < 6000)
+      && dockCountsEq(dockUI.__lastFullCounts, countsNow)
+      && (dockUI.__lastFullFlags === flagsNow));
+
+    if (canSkipFull) return;
+
+    // Render por sección (fail-safe): un fallo NO rompe el resto.
+    try{ renderRemindersBlock(remNext7); }catch(_){ try{ renderRemindersBlock({ ok:false, rows:[], reason:'No disponible', dayKeys:[] }); }catch(__){ } }
+    try{ if (dockUI && dockUI.__refreshToken !== myToken) return; }catch(_){ }
+    if (!isDockExpanded()) return;
+
+    try{ refreshInvRiskBlock(); }catch(_){ try{ renderInvRiskBlock(null, null); }catch(__){ } }
+    try{ if (dockUI && dockUI.__refreshToken !== myToken) return; }catch(_){ }
+    if (!isDockExpanded()) return;
+
+    try{ renderOrdersOperative(ordersCtx); }catch(_){ try{ renderOrdersOperative({ ok:false, reason:'No disponible', unavailable: [{ key:'orders', label:'Pedidos', reason:'No disponible' }], alerts:[] }); }catch(__){ } }
+
+    // Compras: data completa solo aquí (cuando NO se puede saltar el render)
+    let comprasCtx = null;
+    try{
+      comprasCtx = computeFinComprasPending();
+      try{ state.comprasPending = comprasCtx; }catch(__){ }
+    }catch(_){
+      comprasCtx = { ok:false, pendingCountTotal:null, pendingProveedores:[], pendingVarias:[], updatedAtISO:'', updatedAtDisplay:'', sourceKey: FIN_COMPRAS_CURRENT_KEY };
+      try{ state.comprasPending = comprasCtx; }catch(__){ }
+    }
+    try{ renderPurchasesBlock(comprasCtx); }catch(_){ try{ renderPurchasesBlock({ ok:false, pendingCountTotal:null, pendingProveedores:[], pendingVarias:[], updatedAtISO:'', updatedAtDisplay:'', sourceKey: FIN_COMPRAS_CURRENT_KEY }); }catch(__){ } }
+
+    try{
+      if (dockUI){
+        dockUI.__lastFullAt = Date.now();
+        dockUI.__lastFullCounts = countsNow;
+        dockUI.__lastFullFlags = flagsNow;
+      }
+    }catch(_){ }
+  }catch(_){
+  }finally{
+    try{ if (dockUI && dockUI.__refreshToken === myToken) dockUI.__inflight = false; }catch(_){ }
+  }
 }
 
 // --- Init
 async function init(){
+  // Layout: panel global inferior (no tapar contenido)
+  bindGlobalDockSpace();
+
+  // Panel inferior: dock compacto por defecto + toggle chevron
+  bindDockChevron();
+  setDockExpanded(false);
+
   // Header: hoy
   setText('cmdToday', state.today);
 
@@ -2333,29 +6846,29 @@ async function init(){
     });
   }
 
-  // Inventario en riesgo (no depende de POS/IndexedDB)
-  refreshInvRiskBlock();
+  // Dock compacto: pintar conteos lo antes posible (sin render pesado)
+  try{ refreshDockOnly(); }catch(_){ }
 
   // Inventario: toggles (se mantienen abiertos hasta que el usuario los cierre)
   const tL = $('invLiquidsToggle');
   if (tL){
     tL.addEventListener('click', ()=>{
       invViewState.liquidsExpanded = !invViewState.liquidsExpanded;
-      refreshInvRiskBlock();
+      if (isDockExpanded()) refreshInvRiskBlock();
     });
   }
   const tB = $('invBottlesToggle');
   if (tB){
     tB.addEventListener('click', ()=>{
       invViewState.bottlesExpanded = !invViewState.bottlesExpanded;
-      refreshInvRiskBlock();
+      if (isDockExpanded()) refreshInvRiskBlock();
     });
   }
 
   // Inventario: recalcular (sin recargar página)
   const recalcBtn = $('invRiskRecalcBtn');
   if (recalcBtn){
-    recalcBtn.addEventListener('click', ()=>{ refreshInvRiskBlock(); });
+    recalcBtn.addEventListener('click', ()=>{ if (isDockExpanded()) refreshInvRiskBlock(); });
   }
 
   // Detectar si existe Calculadora (si no existe, ocultar "Fabricar")
@@ -2369,8 +6882,8 @@ async function init(){
     el.addEventListener('click', ()=> navigateToPOS(tab));
   };
   bind('btnGoSell', 'vender');
-  // Etapa 11B: btnGoCaja ya no navega a Caja Chica (ruta removida).
-bind('btnGoResumen', 'resumen');
+  bind('btnGoCaja', 'efectivo');
+  bind('btnGoResumen', 'resumen');
   bind('btnGoChecklist', 'checklist');
   bind('btnOpenChecklist', 'checklist');
 
@@ -2396,6 +6909,12 @@ bind('btnGoResumen', 'resumen');
   };
   bindPedidos('btnGoPedidosToday');
   bindPedidos('btnGoPedidosTomorrow');
+
+  // Compras: CTA
+  const comprasBtn = $('btnGoComprasPlan');
+  if (comprasBtn){
+    comprasBtn.addEventListener('click', navigateToComprasPlan);
+  }
 
   // Alertas accionables: Sincronizar (pastilla)
   const syncBtn = $('btnSyncAlerts');
@@ -2459,6 +6978,17 @@ bind('btnGoResumen', 'resumen');
   clearMetricsToDash();
   renderAlerts(null);
 
+
+// Compras pendientes (Finanzas → Compras planificación): preparar data (sin render en esta etapa)
+try{
+  state.comprasPending = computeFinComprasPending();
+  // Debug suave (opcional): útil para smoke sin UI
+  window.__A33_CMD_COMPRAS_PENDING = state.comprasPending;
+}catch(_){
+  state.comprasPending = { ok:false, pendingCountTotal:null, pendingProveedores:[], pendingVarias:[], updatedAtISO:'', updatedAtDisplay:'', sourceKey: FIN_COMPRAS_CURRENT_KEY };
+  try{ window.__A33_CMD_COMPRAS_PENDING = state.comprasPending; }catch(__){ }
+}
+
   // Open DB
   let db;
   try{
@@ -2477,10 +7007,7 @@ bind('btnGoResumen', 'resumen');
 
   // Load events
   try{
-    const evs = await idbGetAll(db, 'events');
-    state.events = Array.isArray(evs) ? evs.slice() : [];
-    state.events.sort((a,b)=> eventSortKey(b) - eventSortKey(a));
-    state.eventsById = new Map(state.events.map(e=> [Number(e.id), e]));
+    await reloadEventsFromDB();
   }catch(err){
     console.warn('Centro de Mando: error cargando eventos', err);
     state.events = [];
@@ -2492,6 +7019,10 @@ bind('btnGoResumen', 'resumen');
   if (!state.events.length){
     return;
   }
+
+  // Modo guardado: EVENTO vs GLOBAL
+  state.focusMode = loadFocusMode();
+  applyFocusModeToDOM();
 
   // Default focus: POS currentEventId → localStorage → más reciente
   let focusId = null;
@@ -2510,11 +7041,42 @@ bind('btnGoResumen', 'resumen');
   }
 
   // Pre-render list
-  if (input) input.value = safeStr(state.eventsById.get(Number(focusId))?.name || '');
+  try{
+    if (input){
+      if (state.focusMode === CMD_MODE_GLOBAL){
+        input.value = CMD_GLOBAL_LABEL;
+      } else {
+        const fev = state.eventsById && state.eventsById.get ? state.eventsById.get(Number(focusId)) : null;
+        input.value = safeStr(fev && fev.name ? fev.name : '');
+      }
+    }
+  }catch(_){ }
   renderEventList('');
   hideEventList();
 
-  await setFocusEvent(Number(focusId));
+  // REFRESH SIN RECARGA: si el Evento GLOBAL cambia (en Resumen), CdM se actualiza al volver (focus/visible)
+  try{
+    if (!state.__globalWatchAttached){
+      state.__globalWatchAttached = true;
+      window.addEventListener('focus', ()=> scheduleGlobalEventRefresh('focus'));
+      window.addEventListener('pageshow', ()=> scheduleGlobalEventRefresh('pageshow'));
+      document.addEventListener('visibilitychange', ()=>{
+        try{
+          if (document.visibilityState === 'visible') scheduleGlobalEventRefresh('visibilitychange');
+        }catch(_){ }
+      });
+    }
+  }catch(_){ }
+
+  await setFocusEvent(Number(focusId), { skipMode: true });
+
+  if (state.focusMode === CMD_MODE_GLOBAL){
+    setFocusGlobal({ skipPersist: true });
+  } else {
+    state.focusMode = CMD_MODE_EVENT;
+    persistFocusMode(CMD_MODE_EVENT);
+    applyFocusModeToDOM();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

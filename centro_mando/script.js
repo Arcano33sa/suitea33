@@ -262,7 +262,7 @@
     target.innerHTML = '';
 
     if (!ev?.pettyEnabled){
-      target.appendChild(rowLine('Estado', 'No aplica (Caja Chica desactivada)', { muted:true }));
+      target.appendChild(rowLine('Estado', 'No aplica (Efectivo desactivado)', { muted:true }));
       return;
     }
 
@@ -381,7 +381,7 @@
 
     const k1 = document.createElement('article');
     k1.className = 'card kpi';
-    k1.innerHTML = `<p class="kpi-label">Eventos con día abierto</p><p class="kpi-value">${openCount==null ? '—' : String(openCount)}</p><p class="kpi-sub">(Caja Chica · ${todayKey})</p>`;
+    k1.innerHTML = `<p class="kpi-label">Eventos con día abierto</p><p class="kpi-value">${openCount==null ? '—' : String(openCount)}</p><p class="kpi-sub">(Efectivo · ${todayKey})</p>`;
 
     const k2 = document.createElement('article');
     k2.className = 'card kpi';

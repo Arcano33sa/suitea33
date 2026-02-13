@@ -28,12 +28,14 @@ const CAPS_KEYS = [
   'gallon',
   'pulsoLitro',
   'djebaMedia',
+  'vasos12oz',
 ];
 
 const CAPS = [
   { id: 'gallon', nombre: 'Tapa Galón' },
   { id: 'pulsoLitro', nombre: 'Tapa Pulso/Litro' },
   { id: 'djebaMedia', nombre: 'Tapa Djeba/Media' },
+  { id: 'vasos12oz', nombre: 'Vasos 12oz' },
 ];
 
 function defaultCapsSection(){
@@ -560,6 +562,166 @@ function markA33Num(input, { defaultValue = '0', mode = 'decimal' } = {}) {
     input.dataset.a33Default = String(defaultValue);
     input.inputMode = mode;
   } catch (e) {}
+}
+
+// ------------------------------
+// A33 — Modal numérico (Líquidos)
+// Reemplaza window.prompt() para iPad (inputmode decimal real)
+// ------------------------------
+
+let __A33_CANT_MODAL = null;
+let __A33_CANT_MODAL_OPEN = false;
+let __A33_CANT_MODAL_PROMISE = null;
+
+function ensureCantidadModal() {
+  if (__A33_CANT_MODAL) return __A33_CANT_MODAL;
+  const overlay = $("a33-modal-cantidad");
+  if (!overlay) return null;
+
+  const card = overlay.querySelector(".a33-modal-card");
+  const titleEl = overlay.querySelector("#a33-modal-cantidad-title");
+  const textEl = overlay.querySelector("#a33-modal-cantidad-text");
+  const labelEl = overlay.querySelector(".a33-modal-label");
+  const inputEl = overlay.querySelector("#a33-modal-cantidad-input");
+  const btnOk = overlay.querySelector("#a33-modal-cantidad-ok");
+  const btnCancel = overlay.querySelector("#a33-modal-cantidad-cancel");
+
+  __A33_CANT_MODAL = { overlay, card, titleEl, textEl, labelEl, inputEl, btnOk, btnCancel };
+  return __A33_CANT_MODAL;
+}
+
+function openCantidadModal({
+  title = 'Cantidad',
+  message = '',
+  label = 'Cantidad',
+  value = '',
+  step = '0.01',
+  min = '0',
+  mode = 'decimal',
+} = {}) {
+  const m = ensureCantidadModal();
+  if (!m) {
+    // Fallback defensivo (no debería pasar si el HTML está presente)
+    try { return Promise.resolve(window.prompt(String(message || ''))); } catch (_) { return Promise.resolve(null); }
+  }
+
+  // Anti-reentrada: si por algún motivo se intenta abrir el modal mientras ya está abierto,
+  // devuelve la promesa vigente (evita listeners duplicados y dobles aplicaciones).
+  if (__A33_CANT_MODAL_OPEN && __A33_CANT_MODAL_PROMISE) return __A33_CANT_MODAL_PROMISE;
+
+  const { overlay, card, titleEl, textEl, labelEl, inputEl, btnOk, btnCancel } = m;
+  const prevFocus = document.activeElement;
+
+  // Configurar contenido
+  try { if (titleEl) titleEl.textContent = String(title || 'Cantidad'); } catch (_) {}
+  try { if (textEl) textEl.textContent = String(message || ''); } catch (_) {}
+  try { if (labelEl) labelEl.textContent = String(label || 'Cantidad'); } catch (_) {}
+
+  // Configurar input (decimal/numeric)
+  try {
+    inputEl.step = String(step || '0.01');
+    inputEl.min = String((min == null) ? '0' : min);
+    inputEl.value = (value == null) ? '' : String(value);
+    try { inputEl.inputMode = String(mode || 'decimal'); } catch (_) {}
+    try { inputEl.setAttribute('inputmode', String(mode || 'decimal')); } catch (_) {}
+    // UX A33 numérica: select-all si hay valor; si vacío, no inyectar "0"
+    const fn = (typeof window !== 'undefined' && typeof window.markA33Num === 'function') ? window.markA33Num : markA33Num;
+    try { fn(inputEl, { defaultValue: '', mode: String(mode || 'decimal') }); } catch (_) {}
+  } catch (_) {}
+
+  // Mostrar
+  overlay.hidden = false;
+  overlay.setAttribute('aria-hidden', 'false');
+
+  // Rehabilitar botones por si quedaron deshabilitados por un cierre previo
+  try { if (btnOk) btnOk.disabled = false; } catch (_) {}
+  try { if (btnCancel) btnCancel.disabled = false; } catch (_) {}
+
+  // Evitar click-through
+  try { overlay.scrollTop = 0; } catch (_) {}
+
+  // Focus al input
+  try {
+    requestAnimationFrame(() => {
+      try { inputEl.focus({ preventScroll: true }); } catch (_) { try { inputEl.focus(); } catch (__){ } }
+      // Si en el futuro se usa value prellenado, seleccionar todo para edición rápida.
+      try {
+        const v = String(inputEl.value ?? '');
+        if (v) { try { inputEl.select(); } catch (_) { try { inputEl.setSelectionRange(0, v.length); } catch(__){} } }
+      } catch (_) {}
+    });
+  } catch (_) {
+    try { setTimeout(() => { try { inputEl.focus(); } catch(__){} }, 0); } catch(__){}
+  }
+
+  __A33_CANT_MODAL_OPEN = true;
+  __A33_CANT_MODAL_PROMISE = new Promise((resolve) => {
+    let done = false;
+    const cleanup = () => {
+      try { btnOk && btnOk.removeEventListener('click', onOk); } catch (_) {}
+      try { btnCancel && btnCancel.removeEventListener('click', onCancel); } catch (_) {}
+      try { overlay.removeEventListener('click', onOverlayClick); } catch (_) {}
+      try { card && card.removeEventListener('click', onCardClick); } catch (_) {}
+      try { document.removeEventListener('keydown', onKeyDown); } catch (_) {}
+      try { inputEl && inputEl.removeEventListener('keydown', onInputKeyDown); } catch (_) {}
+    };
+    const close = (result) => {
+      if (done) return;
+      done = true;
+      cleanup();
+      try { overlay.hidden = true; overlay.setAttribute('aria-hidden', 'true'); } catch (_) {}
+      __A33_CANT_MODAL_OPEN = false;
+      __A33_CANT_MODAL_PROMISE = null;
+      // Restaurar foco
+      try {
+        if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus({ preventScroll: true });
+      } catch (_) { try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch(__){} }
+      resolve(result);
+    };
+
+    const onOk = () => {
+      // Anti doble tap
+      try { if (btnOk) btnOk.disabled = true; } catch (_) {}
+      try { if (btnCancel) btnCancel.disabled = true; } catch (_) {}
+      try { close(String(inputEl.value ?? '').trim()); } catch (_) { close(''); }
+    };
+    const onCancel = () => {
+      // Anti doble tap
+      try { if (btnOk) btnOk.disabled = true; } catch (_) {}
+      try { if (btnCancel) btnCancel.disabled = true; } catch (_) {}
+      close(null);
+    };
+    const onOverlayClick = (ev) => {
+      // Tap fuera del card
+      if (ev && ev.target === overlay) close(null);
+    };
+    const onCardClick = (ev) => {
+      try { ev && ev.stopPropagation(); } catch (_) {}
+    };
+    const onKeyDown = (ev) => {
+      if (!ev) return;
+      if (ev.key === 'Escape') {
+        try { ev.preventDefault(); } catch (_) {}
+        close(null);
+      }
+    };
+    const onInputKeyDown = (ev) => {
+      if (!ev) return;
+      if (ev.key === 'Enter') {
+        try { ev.preventDefault(); } catch (_) {}
+        onOk();
+      }
+    };
+
+    try { btnOk && btnOk.addEventListener('click', onOk); } catch (_) {}
+    try { btnCancel && btnCancel.addEventListener('click', onCancel); } catch (_) {}
+    try { overlay.addEventListener('click', onOverlayClick); } catch (_) {}
+    try { card && card.addEventListener('click', onCardClick); } catch (_) {}
+    try { document.addEventListener('keydown', onKeyDown); } catch (_) {}
+    try { inputEl && inputEl.addEventListener('keydown', onInputKeyDown); } catch (_) {}
+  });
+
+  return __A33_CANT_MODAL_PROMISE;
 }
 
 // ------------------------------
@@ -1749,7 +1911,7 @@ function attachListeners(inv) {
     });
   }
 
-  function handleAccion(e) {
+  async function handleAccion(e) {
     const target = e.target;
     if (!target.dataset || !target.dataset.action) return;
     const action = target.dataset.action;
@@ -1762,11 +1924,38 @@ function attachListeners(inv) {
         ? `Cantidad de ${etiqueta} para ENTRADA en ${id}:`
         : `Cantidad de ${etiqueta} para SALIDA en ${id}:`;
 
-    const valStr = window.prompt(msg);
-    if (valStr == null) return;
+    let valStr = null;
+    if (kind === "liquid") {
+      valStr = await openCantidadModal({
+        title: "Cantidad (ml)",
+        message: msg,
+        label: "Cantidad (ml)",
+        value: "",
+        step: "0.01",
+        min: "0",
+        mode: "decimal",
+      });
+      if (valStr == null) return;
+    } else if (kind === "bottle" || kind === "cap") {
+      valStr = await openCantidadModal({
+        title: "Cantidad (unidades)",
+        message: msg,
+        label: "Cantidad (unidades)",
+        value: "",
+        step: "1",
+        min: "0",
+        mode: "numeric",
+      });
+      if (valStr == null) return;
+    } else {
+      valStr = window.prompt(msg);
+      if (valStr == null) return;
+    }
 
     const cantidad = (kind === "liquid") ? toNonNegativeNumber(valStr) : toNonNegativeInt(valStr);
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      // Líquidos: cancelar sin crash.
+      if (kind === "liquid") return;
       safeAlert("Cantidad inválida: debe ser > 0 (y entero para botellas/tapas).");
       return;
     }
@@ -1988,7 +2177,7 @@ function installSmokeHooks(inv){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.42")
+      .register("./sw.js?v=4.20.77&r=1")
       .catch((err) => console.error("SW error", err));
   }
 }

@@ -18,18 +18,36 @@
     .small{font-size:12px;opacity:.82}
     code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#caa85c}
   </style>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
       <h1>Estás sin conexión</h1>
-      <p><strong>Pedidos</strong> no pudo cargar desde la red. Si ya usaste este módulo antes, podés reintentar y debería abrir con el “shell” cacheado.</p>
+      <p id="offline-msg"><strong>Pedidos</strong> no pudo cargar desde la red. Si ya usaste este módulo antes, podés reintentar y debería abrir con el “shell” cacheado.</p>
       <div class="btns">
         <button class="primary" onclick="location.href='./index.html'">Reintentar</button>
         <a class="btn" href="../index.html">Ir al menú</a>
       </div>
-      <p class="small">Tip: cuando vuelvas a tener internet, abrí de nuevo el módulo para que se actualice el caché <code>a33-v4.20.13-pedidos-r1</code>.</p>
+      <p class="small">Tip: cuando vuelvas a tener internet, abrí de nuevo el módulo para que se actualice el caché <code>a33-v4.20.77-pedidos-r1</code>.</p>
     </div>
   </div>
+
+
+  <script>
+    (function(){
+      try{
+        var p = new URLSearchParams(location.search || '');
+        var reason = (p.get('reason') || '').toLowerCase();
+        if (reason === 'auth'){
+          var msg = document.getElementById('offline-msg');
+          if (msg){
+            msg.textContent = 'Necesitás iniciar sesión para entrar. Si ya tenés credenciales guardadas, volvé al Menú principal e iniciá sesión; luego podrás usar este módulo offline (hasta 72h sin uso real). Si nunca configuraste credenciales en este dispositivo, conectate y configurá una vez.';
+          }
+        }
+      }catch(_){ }
+    })();
+  </script>
+
 </body>
 </html>

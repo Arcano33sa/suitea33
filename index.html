@@ -448,19 +448,21 @@
       <div id="lock-unlock" style="display:none;">
         <h2 class="lock-title">Iniciar sesión</h2>
         <p class="lock-sub">Ingresa tus credenciales para acceder a los módulos.</p>
+        <form id="unlock-form" autocomplete="on">
         <div class="field">
           <label for="login-user">Usuario</label>
-          <input id="login-user" type="text" autocomplete="username" placeholder="Tu usuario" />
+          <input id="login-user" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Tu usuario" />
         </div>
         <div class="field">
           <label for="login-pass">Contraseña</label>
-          <input id="login-pass" type="password" autocomplete="current-password" placeholder="Tu contraseña" />
+          <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" />
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="btn-login">Entrar</button>
-          <button class="btn btn-danger" id="btn-reset-credentials">Resetear acceso</button>
+          <button class="btn btn-primary" id="btn-login" type="submit">Entrar</button>
+          <button class="btn btn-danger" id="btn-reset-credentials" type="button">Resetear acceso</button>
         </div>
-        <p class="hint">La sesión vive en este navegador y expira (por defecto) en 12 horas.</p>
+                </form>
+        <p class="hint">Las credenciales recordadas expiran tras 72 horas sin uso.</p>
       </div>
 
       <div class="pin-mode-switch" id="pin-mode-switch" style="display:none;"></div>
@@ -608,7 +610,7 @@
           <article class="card" id="card-centro-mando" data-link="centro-mando/index.html">
             <div class="pill"><span>🧭</span><span>Centro</span></div>
             <h2>Centro de Mando</h2>
-            <p>Radar ligero por evento: Caja Chica, ventas, top productos e inventario crítico.</p>
+            <p>Radar ligero por evento: Efectivo, ventas, top productos e inventario crítico.</p>
             <div class="footer-row">
               <span>Evento enfocado + accesos rápidos.</span>
               <button class="link-btn secondary"><span>Abrir</span> →</button>
@@ -646,8 +648,10 @@
   <div id="a33-toast" class="a33-toast" aria-live="polite"></div>
 
 
-  <script src="assets/js/a33-storage.js?v=4.20.13"></script>
-  <script src="assets/js/a33-auth.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
+  <script src="assets/js/a33-storage.js?v=4.20.77&r=1"></script>
+
+  <script src="/assets/js/a33-auth.js?v=4.20.77&r=1"></script>
   <script>
     // --- Auth (usuario + contraseña, 1 usuario) ---
     const AUTH_DEFAULT_NAME = 'Usuario';
@@ -1460,6 +1464,14 @@
       const btnLogin = document.getElementById('btn-login');
       const btnResetCred = document.getElementById('btn-reset-credentials');
 
+      const unlockForm = document.getElementById('unlock-form');
+      if (unlockForm && btnLogin){
+        unlockForm.addEventListener('submit', (e) => {
+          try{ e.preventDefault(); }catch(_){ }
+          try{ btnLogin.click(); }catch(_){ }
+        });
+      }
+
       async function safeRun(btn, fn){
         if (btn){ btn.disabled = true; btn.classList.add('is-loading'); }
         try{ await fn(); }
@@ -1537,96 +1549,6 @@
         });
       }
 
-      // iPad PWA (Keychain/huella): auto-ingresar cuando iOS autocompleta usuario+contraseña.
-      // Nota: iOS a veces NO dispara input/change al autocompletar; usamos triggers + polling corto.
-      (function setupAutoLoginWithAutofill(){
-        const unlockEl = document.getElementById('lock-unlock');
-        const userEl = document.getElementById('login-user');
-        const passEl = document.getElementById('login-pass');
-        if (!unlockEl || !userEl || !passEl || !btnLogin) return;
-
-        let lastAttemptSig = null; // firma en memoria (no persistente); evita reintentos infinitos.
-        let pollId = null;
-        let pollTimeoutId = null;
-
-        function isUnlockVisible(){
-          // unlockEl vive dentro de lock-overlay; initAuthUi lo alterna con style.display.
-          return unlockEl.style.display !== 'none' && unlockEl.offsetParent !== null;
-        }
-
-        function getSig(){
-          const u = (userEl.value || '').trim();
-          const p = String(passEl.value || '');
-          if (!u || !p) return null;
-          // Evitamos guardar contraseña: solo longitud (suficiente para evitar loops).
-          return `${u}::${p.length}`;
-        }
-
-        function stopPoll(){
-          if (pollId){ clearInterval(pollId); pollId = null; }
-          if (pollTimeoutId){ clearTimeout(pollTimeoutId); pollTimeoutId = null; }
-        }
-
-        function startPoll(){
-          if (pollId) return;
-          const startedAt = Date.now();
-          pollId = setInterval(() => {
-            // Máx 3s para evitar loops/consumo.
-            if (Date.now() - startedAt > 3000){ stopPoll(); return; }
-            maybeAutoLogin('poll');
-          }, 200);
-          pollTimeoutId = setTimeout(stopPoll, 3200);
-        }
-
-        function maybeAutoLogin(source){
-          try{
-            if (!isUnlockVisible()) return;
-            if (btnLogin.disabled) return;
-            const sig = getSig();
-            if (!sig) return;
-            if (sig === lastAttemptSig) return;
-            lastAttemptSig = sig;
-
-            // iOS puede tardar un instante en “asentar” el autocompletado.
-            setTimeout(() => {
-              if (!isUnlockVisible()) return;
-              if (btnLogin.disabled) return;
-              const sig2 = getSig();
-              if (!sig2 || sig2 !== sig) return;
-              btnLogin.click(); // reutiliza el mismo flujo (safeRun + doLogin)
-            }, 350);
-          }catch(_){
-            // silencio: esto nunca debe romper el login.
-          }
-        }
-
-        function onFieldActivity(){
-          // Si el usuario borra/cambia, permitir un nuevo intento cuando vuelva a estar completo.
-          if (!getSig()) lastAttemptSig = null;
-          maybeAutoLogin('field');
-        }
-
-        // Triggers: focus (cuando el usuario toca y aparece Keychain), y eventos estándar.
-        userEl.addEventListener('focus', () => { startPoll(); setTimeout(() => maybeAutoLogin('focus-u'), 0); });
-        passEl.addEventListener('focus', () => { startPoll(); setTimeout(() => maybeAutoLogin('focus-p'), 0); });
-        userEl.addEventListener('input', onFieldActivity);
-        passEl.addEventListener('input', onFieldActivity);
-        userEl.addEventListener('change', onFieldActivity);
-        passEl.addEventListener('change', onFieldActivity);
-        userEl.addEventListener('blur', () => setTimeout(() => maybeAutoLogin('blur-u'), 0));
-        passEl.addEventListener('blur', () => setTimeout(() => maybeAutoLogin('blur-p'), 0));
-
-        // Al volver desde background o al mostrar la página, iOS a veces rellena tarde.
-        window.addEventListener('pageshow', () => {
-          setTimeout(() => { if (isUnlockVisible()) startPoll(); maybeAutoLogin('pageshow'); }, 250);
-        });
-
-        // Arranque suave: si ya hay credenciales (por username prefill + Keychain rápido).
-        setTimeout(() => { if (isUnlockVisible()) startPoll(); maybeAutoLogin('boot'); }, 600);
-
-      })();
-
-
 
       // --- Respaldo: Exportar / Importar ---
       const exportCard = document.getElementById('card-export-backup');
@@ -1671,7 +1593,7 @@
         if (userCardNameEl) userCardNameEl.textContent = name;
         if (userCardSubEl){
           if (!a.configured) userCardSubEl.textContent = 'Sin acceso';
-          else userCardSubEl.textContent = a.authenticated ? 'Sesión activa' : 'Sesión expirada';
+          else userCardSubEl.textContent = a.authenticated ? 'Desbloqueado' : 'Bloqueado';
         }
       }
 
@@ -2288,6 +2210,6 @@
 
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=1"></script>
 </body>
 </html>

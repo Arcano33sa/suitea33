@@ -2,24 +2,34 @@
    Objetivo: cachés acotadas por módulo (sin “guerra” entre SW).
 */
 
-const SW_VERSION = '4.20.13';
-const SW_REV = '1';
+// A33_RELEASE (fuente única)
+try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=1'); } catch (e) {}
+
+const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
+  ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
+  : '4.20.77';
+const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null))
+  ? String(self.A33_RELEASE.rev)
+  : '1';
+
 const MODULE = 'lotes';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.13',
-  './style.css?v=4.20.13',
-  './script.js?v=4.20.13',
-  './manifest.webmanifest?v=4.20.13',
+  './index.html?v=4.20.77&r=1',
+  './style.css?v=4.20.77&r=1',
+  './script.js?v=4.20.77&r=1',
+  './manifest.webmanifest?v=4.20.77&r=1',
   './offline.html',
   './images/logo.png',
-  '/assets/js/a33-input-ux.js?v=4.20.13',
-  '/assets/js/a33-storage.js?v=4.20.13',
-  '/assets/js/a33-auth.js?v=4.20.13',
-  '/assets/css/a33-header.css?v=4.20.13',
-  './vendor/xlsx.full.min.js?v=4.20.13'
+  '/assets/js/a33-release.js?v=4.20.77&r=1',
+
+  '/assets/js/a33-input-ux.js?v=4.20.77&r=1',
+  '/assets/js/a33-storage.js?v=4.20.77&r=1',
+  '/assets/js/a33-auth.js?v=4.20.77&r=1',
+  '/assets/css/a33-header.css?v=4.20.77&r=1',
+  './vendor/xlsx.full.min.js?v=4.20.77&r=1'
 ];
 
 function sameOrigin(url){
@@ -83,7 +93,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.13')) ||
+      (await cache.match('./index.html?v=4.20.77&r=1')) ||
       (await cache.match('./index.html')) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||

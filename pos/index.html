@@ -4,22 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.70&r=36">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=1">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=4.20.70&r=36">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.70" />
+<link rel="stylesheet" href="styles.css?v=4.20.77&r=1">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=1" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">POS · Eventos</div>
     <div class="a33-right">
-      <button id="btn-update" class="a33-btn-update" type="button" style="display:none" aria-label="Actualizar a la nueva versión">Actualizar</button>
-      <div class="a33-version" id="a33-version-text">v...</div>
+      <button id="a33-update-indicator" class="a33-update-indicator is-idle" type="button" aria-label="Sin update disponible" title="Sin update disponible">↻<span class="a33-update-badge" aria-hidden="true"></span></button>
+      <div class="a33-version" id="a33-version-text" data-a33-version="1" data-a33-fallback="v4.20.77">v...</div>
+      <div id="a33-update-tip" class="a33-update-tip" role="status" aria-live="polite" aria-atomic="true" style="display:none"></div>
     </div>
   </header>
 <div id="offlineBar" class="offline">Trabajando sin conexión</div>
@@ -59,13 +60,13 @@
   <input id="event-group-new" placeholder="Nombre de nuevo grupo" style="display:none">
 </div>
 <div class="actions">
-  <button type="button" id="btn-manage-groups" class="btn-link">Gestionar grupos</button>
+  <button type="button" id="btn-manage-groups" class="btn-primary btn-pill">Gestionar grupos</button>
 </div>
 <small class="muted">Usa el mismo nombre de grupo para todos los días del mismo evento maestro. Puedes ocultar grupos antiguos desde “Gestionar grupos”.</small>
 
         <div class="actions">
-  <button id="btn-add-event" class="btn-primary btn-pill">+ Crear y activar evento</button>
-  <button id="btn-close-event" class="btn-warn btn-pill">Cerrar evento (Corte)</button>
+  <button id="btn-add-event" class="btn-ok btn-pill">+ Crear y activar evento</button>
+  <button id="btn-close-event" class="btn-danger btn-pill">Cerrar evento (Corte)</button>
   <button id="btn-reopen-event" class="btn-ok btn-pill">Reabrir evento</button>
 </div>
         <div id="event-status" class="info" style="display:none"></div>
@@ -701,14 +702,14 @@
         <label>Período activo</label>
         <div class="row" style="gap:8px; align-items:center">
           <input id="summary-period" type="month">
-          <button id="btn-summary-all" class="btn-link" type="button" title="Ver todo el historial">Todo</button>
           <span id="summary-mode-badge" class="tag small open">En vivo</span>
         </div>
-        <small id="summary-period-hint" class="muted">Filtra el Resumen por mes. Puedes ver “Todo” cuando lo necesites.</small>
+        <small id="summary-period-hint" class="muted">Filtra el Resumen por mes. Para ver el historial completo, usa el botón “Todo”.</small>
       </div>
 	      <div class="summary-controls-right actions end">
 	        <button id="btn-summary-export" class="btn-ok btn-pill" type="button">Exportar Excel</button>
 	        <button id="btn-summary-close-period" class="btn-warn btn-pill" type="button">Cerrar período</button>
+	        <button id="btn-summary-all" class="btn-outline btn-pill btn-pill-mini" type="button" title="Ver todo el historial">Todo</button>
 	        <!-- Archivo debe verse como botón (no como link) -->
 	        <button id="btn-summary-archive" class="btn-outline" type="button" title="Ver períodos cerrados">Archivo</button>
 	        <button id="btn-summary-back-live" class="btn-link" type="button" style="display:none">Volver a en vivo</button>
@@ -1541,6 +1542,54 @@
   </div>
 </div>
 
+	<!-- Modal Inventario: Seleccionar lote (solo lectura) -->
+	<div id="inv-lote-selector-modal" class="modal" aria-hidden="true">
+	  <div class="panel" style="max-width:1100px">
+	    <div class="row" style="grid-template-columns:1fr auto auto; align-items:center; gap:10px">
+	      <h3 style="margin:0">Seleccionar lote</h3>
+	      <button id="inv-lote-selector-refresh" class="btn-outline btn-pill btn-pill-mini" type="button" title="Actualizar">Actualizar</button>
+	      <button id="inv-lote-selector-close" class="btn-secondary btn-pill btn-pill-mini" type="button">Cerrar</button>
+	    </div>
+	
+	    
+		<div class="row inv-lote-toolbar" style="grid-template-columns:1fr auto; gap:10px; margin-top:10px; align-items:center">
+		  <input id="inv-lote-selector-search" placeholder="Buscar por código o notas…" autocomplete="off" inputmode="search">
+		  <button id="inv-lote-selector-clear" class="btn-outline btn-pill btn-pill-mini" type="button">Limpiar</button>
+		</div>
+		<div id="inv-lote-selector-msg" class="muted" style="margin-top:6px"></div>
+
+<div class="scroll" style="max-height:65vh; margin-top:10px">
+	      <table id="inv-lote-selector-table" class="compact">
+	        <thead>
+	          <tr>
+	            <th>Lote</th>
+	            <th>Fecha</th>
+	            <th>Nota</th>
+	            <th>Estado</th>
+	            <th>Acción</th>
+	          </tr>
+	        </thead>
+	        <tbody></tbody>
+	      </table>
+	    </div>
+	
+	    <small class="muted" style="display:block; margin-top:10px">Selecciona un evento y luego toca “Usar” para aplicar un lote DISPONIBLE a ese evento.</small>
+	  </div>
+	</div>
+
+<!-- Modal Confirmación (reutilizable) — Cierres POS -->
+<div id="pos-confirm-modal" class="modal" aria-hidden="true">
+  <div class="panel panel-compact">
+    <h3 id="pos-confirm-title" style="margin-top:0">Confirmación</h3>
+    <div id="pos-confirm-message" class="pos-confirm-message"></div>
+
+    <div class="row" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:14px">
+      <button id="pos-confirm-cancel" class="btn-outline btn-pill" type="button">Cancelar</button>
+      <button id="pos-confirm-confirm" class="btn-danger btn-pill" type="button">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
 <footer></footer>
 <nav class="tabbar">
@@ -1555,25 +1604,31 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=0.18.5"></script>
-<script src="/assets/js/a33-storage.js?v=4.20.70"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.70"></script>
-<script src="/assets/js/a33-auth.js?v=4.20.70"></script>
-<script src="/assets/js/a33-build.js?v=4.20.70"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
+
+<script src="/assets/js/a33-storage.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=1"></script>
+<script src="/assets/js/a33-auth.js?v=4.20.77&r=1"></script>
+<script src="/assets/js/a33-build.js?v=4.20.77&r=1"></script>
 <script>
   (function(){
-    try{      const v = '4.20.70';
+    try{
+      const relObj = (window.A33_RELEASE || {});
+      const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.77';
+      const rev = (relObj && relObj.rev != null) ? String(relObj.rev) : '1';
       try{ window.A33_VERSION = v; }catch(_){ }
-      // POS: bump revision local (solo este modulo) para forzar limpieza de caches
-      try{ window.A33_ASSET_REV = '36'; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r36').toString(); }catch(_){ }
-      try{ window.A33_BUILD_TAG = (v + '-r36').toString(); }catch(_){ }
+      try{ window.A33_ASSET_REV = rev; }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }
+      try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
-      if (verEl) verEl.textContent = 'v' + v;
+      const rel = (window.A33_RELEASE && window.A33_RELEASE.label) ? String(window.A33_RELEASE.label) : '';
+      const shown = rel ? ('v' + rel) : ('v' + v);
+      if (verEl) verEl.textContent = shown;
       const bEl = document.getElementById('pos-build-id');
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r36')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev)).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1583,46 +1638,188 @@
 
 <script>
   (function(){
-    try{
-      const ok = (window.A33Auth && typeof A33Auth.isConfigured === 'function' && typeof A33Auth.isAuthenticated === 'function')
-        ? (A33Auth.isConfigured() && A33Auth.isAuthenticated())
-        : false;
-      if (!ok){
-        const offline = (typeof navigator !== 'undefined' && navigator.onLine === false);
-        if (offline){
-          location.replace('./offline.html?reason=auth');
-        }else{
-          location.replace('../index.html');
+    (async () => {
+      // Guard robusto (mala señal / offline): evita loops y fallbacks raros.
+      try{
+        if (!window.A33Auth) return;
+
+        // Migraciones suaves de auth (si aplica)
+        if (typeof A33Auth.ensureMigrated === 'function'){
+          try{ await A33Auth.ensureMigrated(); }catch(_){ }
         }
+
+        const authed = (typeof A33Auth.isConfigured === 'function' && typeof A33Auth.isAuthenticated === 'function')
+          ? (A33Auth.isConfigured() && A33Auth.isAuthenticated())
+          : false;
+
+        if (authed) return;
+
+        const looksOffline = async () => {
+          try{
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+            const ctrl = ('AbortController' in window) ? new AbortController() : null;
+            const t = ctrl ? setTimeout(() => { try{ ctrl.abort(); }catch(_){ } }, 2500) : null;
+            await fetch('../index.html', {
+              method: 'HEAD',
+              cache: 'no-store',
+              signal: ctrl ? ctrl.signal : undefined
+            });
+            if (t) clearTimeout(t);
+            return false;
+          }catch(_){
+            return true;
+          }
+        };
+
+        if (await looksOffline()){
+          // Pantalla offline dentro del módulo (no redirección al menú).
+          try{ location.replace('./offline.html?reason=auth'); }catch(_){ }
+          return;
+        }
+
+        // Online: exigir auth (redirige al Home si no hay sesión)
+        if (typeof A33Auth.requireAuth === 'function'){
+          await A33Auth.requireAuth({ redirectTo: '../index.html' });
+        }else{
+          location.href = '../index.html';
+        }
+      }catch(_){
+        try{ location.replace('../index.html'); }catch(__){ }
       }
-    }catch(_){
-      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false);
-      if (offline){
-        location.replace('./offline.html?reason=auth');
-      }else{
-        location.replace('../index.html');
-      }
-    }
+    })();
   })();
 </script>
-<script src="app.js?v=4.20.70&r=36"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.70"></script>
+<script src="app.js?v=4.20.77&r=1"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=1"></script>
 <script>
   (function(){
-    const BUILD = (window.A33_VERSION || '4.20.70').toString();
-    const REV = (window.A33_ASSET_REV || '10').toString();
+    const BUILD = (window.A33_VERSION || '4.20.77').toString();
+    const REV = (window.A33_ASSET_REV || '1').toString();
     const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV);
-    const btn = document.getElementById('btn-update');
-    let refreshing = false;
 
-    function showUpdate(){ try{ if(btn) btn.style.display = 'inline-flex'; }catch(_){} }
+    const btn = document.getElementById('a33-update-indicator');
+    const badge = btn ? btn.querySelector('.a33-update-badge') : null;
+    const tip = document.getElementById('a33-update-tip');
+
+    const LS_KEY = 'a33_pos_update_detected_ts';
+    let regRef = null;
+    let updateAvailable = false;
+    let detectedTs = null;
+    let userRequestedReload = false;
+    let tick = null;
+
+    function lsGet(){
+      try{
+        const v = localStorage.getItem(LS_KEY);
+        if(!v) return null;
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      }catch(_){ return null; }
+    }
+    function lsSet(ts){ try{ localStorage.setItem(LS_KEY, String(ts)); }catch(_){ } }
+    function lsClear(){ try{ localStorage.removeItem(LS_KEY); }catch(_){ } }
+
+    function fmtAge(ms){
+      try{
+        if (!Number.isFinite(ms) || ms < 0) ms = 0;
+        const totalM = Math.floor(ms / 60000);
+        const h = Math.floor(totalM / 60);
+        const m = totalM % 60;
+        if (h <= 0) return 'hace ' + m + 'm';
+        if (m <= 0) return 'hace ' + h + 'h';
+        return 'hace ' + h + 'h ' + m + 'm';
+      }catch(_){ return 'hace 0m'; }
+    }
+
+    function badgeState(ageMs){
+      const H = 3600000;
+      if (ageMs < 2*H) return 'green';
+      if (ageMs < 24*H) return 'yellow';
+      return 'red';
+    }
+
+    function showTip(msg){
+      try{
+        if(!tip) return;
+        tip.textContent = msg;
+        tip.style.display = 'block';
+        clearTimeout(tip.__t);
+        tip.__t = setTimeout(()=>{ try{ tip.style.display='none'; }catch(_){} }, 1600);
+      }catch(_){}
+    }
+
+    function render(){
+      try{
+        if(!btn) return;
+
+        if (updateAvailable){
+          const now = Date.now();
+          if (!detectedTs) detectedTs = lsGet();
+          if (!detectedTs){
+            detectedTs = now;
+            lsSet(detectedTs);
+          }
+          const ageMs = Math.max(0, now - detectedTs);
+          const state = badgeState(ageMs);
+          const msg = 'Update disponible — ' + fmtAge(ageMs);
+
+          btn.classList.remove('is-idle');
+          btn.classList.add('is-available');
+
+          btn.setAttribute('aria-label', msg);
+          btn.title = msg;
+
+          if (badge){
+            badge.style.display = 'block';
+            badge.classList.remove('green','yellow','red');
+            badge.classList.add(state);
+          }
+        }else{
+          btn.classList.remove('is-available');
+          btn.classList.add('is-idle');
+
+          btn.setAttribute('aria-label','Sin update disponible');
+          btn.title = 'Sin update disponible';
+
+          if (badge){
+            badge.style.display = 'none';
+            badge.classList.remove('green','yellow','red');
+          }
+
+          detectedTs = null;
+          lsClear();
+        }
+      }catch(_){}
+    }
+
+    function setUpdateAvailable(flag){
+      updateAvailable = !!flag;
+      if (tick){ clearInterval(tick); tick = null; }
+      render();
+      if (updateAvailable){
+        tick = setInterval(render, 60000);
+      }
+    }
+
+    function detectWaiting(reg){
+      try{
+        if (reg && reg.waiting && navigator.serviceWorker.controller){
+          setUpdateAvailable(true);
+          return true;
+        }
+      }catch(_){}
+      setUpdateAvailable(false);
+      return false;
+    }
+
+    render(); // icono visible desde el arranque
 
     if(!('serviceWorker' in navigator)) return;
 
     navigator.serviceWorker.register(SW_URL).then((reg)=>{
-      try{
-        if (reg.waiting && navigator.serviceWorker.controller){ showUpdate(); }
-      }catch(_){}
+      regRef = reg;
+
+      detectWaiting(reg);
 
       try{
         reg.addEventListener('updatefound', ()=>{
@@ -1631,7 +1828,8 @@
           nw.addEventListener('statechange', ()=>{
             try{
               if (nw.state === 'installed' && navigator.serviceWorker.controller){
-                showUpdate();
+                // Esperado: reg.waiting. Si un SW anterior hace skipWaiting, igual marcamos update.
+                setUpdateAvailable(true);
               }
             }catch(_){}
           });
@@ -1641,22 +1839,32 @@
       if (btn){
         btn.addEventListener('click', ()=>{
           try{
-            if (reg.waiting){
-              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            if (updateAvailable && detectedTs){
+              showTip('Update disponible — ' + fmtAge(Date.now() - detectedTs));
+            }
+            if (!regRef) return;
+            if (regRef.waiting){
+              userRequestedReload = true;
+              try{ regRef.waiting.postMessage({ type: 'SKIP_WAITING' }); }catch(_){}
               return;
             }
-            reg.update().catch(()=>{});
+            // Sin waiting: solo check suave, sin recargar.
+            try{ regRef.update(); }catch(_){}
           }catch(_){}
         });
       }
     }).catch(()=>{});
 
     navigator.serviceWorker.addEventListener('controllerchange', ()=>{
-      if (refreshing) return;
-      refreshing = true;
-      try{ location.reload(); }catch(_){}
+      // PROHIBIDO auto-reload: solo recarga si fue acción del usuario.
+      try{ setUpdateAvailable(false); }catch(_){}
+      if (userRequestedReload){
+        userRequestedReload = false;
+        try{ location.reload(); }catch(_){}
+      }
     });
   })();
 </script>
+
 </body>
 </html>

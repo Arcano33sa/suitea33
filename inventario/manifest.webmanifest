@@ -1,7 +1,7 @@
 {
   "name": "Arcano 33 · Inventario",
   "short_name": "A33 Inventario",
-  "start_url": "./index.html?v=4.20.42",
+  "start_url": "./index.html?v=4.20.77&r=1",
   "display": "standalone",
   "background_color": "#0d0d0d",
   "theme_color": "#7b1818",

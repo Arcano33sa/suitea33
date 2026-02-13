@@ -7,6 +7,10 @@
   <meta name="theme-color" content="#0b0b0b" />
   <meta http-equiv="refresh" content="4;url=../centro-mando/index.html" />
   <title>Centro de Mando — Actualizando…</title>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
+
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.77&r=1"></script>
   <style>
     :root{color-scheme:dark}
     body{margin:0;background:#0b0b0b;color:#f2f2f2;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
@@ -35,6 +39,25 @@
       const set = (m) => { try { statusEl.textContent = m; } catch(e) {} };
 
       const target = "../centro-mando/index.html";
+
+      // Auth gate (evita rutas legacy como bypass)
+      try{
+        if (!window.A33Auth || !A33Auth.isConfigured || !A33Auth.isAuthenticated){
+          try{ location.replace('../index.html'); }catch(_){ }
+          return;
+        }
+        if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
+          if (typeof navigator !== 'undefined' && navigator.onLine === false){
+            try{ location.replace('./offline.html?reason=auth'); }catch(_){ }
+          }else{
+            try{ location.replace('../index.html'); }catch(_){ }
+          }
+          return;
+        }
+      }catch(_){
+        try{ location.replace('../index.html'); }catch(__){ }
+        return;
+      }
 
       // 1) Intentar desregistrar SW bajo este scope (centro_mando)
       try {

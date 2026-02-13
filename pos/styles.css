@@ -22,11 +22,74 @@ header.brandbar{position:sticky;top:0;background:#121212;border-bottom:1px solid
 .container{padding:12px 12px 80px;width:100%;max-width:100%}
 
 /* Encabezado premium: acciones derecha (PWA update) */
-.a33-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.a33-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;position:relative}
 .a33-btn-update{appearance:none;display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 12px;border-radius:999px;border:1px solid rgba(221,191,100,0.75);background:rgba(221,191,100,0.14);color:#fefefe;font-weight:800;font-size:12px;line-height:1;letter-spacing:.02em;box-shadow:0 10px 20px rgba(0,0,0,0.55);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
 .a33-btn-update:hover{filter:brightness(1.05);border-color:rgba(221,191,100,0.95)}
 .a33-btn-update:active{transform:scale(0.98);box-shadow:0 6px 14px rgba(0,0,0,0.45);filter:brightness(0.98)}
 .a33-btn-update:focus-visible{outline:2px solid rgba(221,191,100,0.95);outline-offset:3px}
+/* Update disponible (manual): icono ↻ + badge semáforo */
+.a33-update-indicator{
+  appearance:none;
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:30px;
+  height:30px;
+  padding:0;
+  border-radius:12px;
+  border:1px solid rgba(254,254,254,0.16);
+  background:rgba(0,0,0,0.25);
+  color:rgba(254,254,254,0.55);
+  font-weight:900;
+  font-size:16px;
+  line-height:1;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.a33-update-indicator.is-idle{opacity:0.6}
+.a33-update-indicator.is-available{
+  opacity:1;
+  border-color:rgba(221,191,100,0.85);
+  background:rgba(221,191,100,0.10);
+  color:#ddbf64;
+  box-shadow:0 10px 20px rgba(0,0,0,0.55);
+}
+.a33-update-indicator:active{transform:scale(0.98)}
+.a33-update-indicator:focus-visible{outline:2px solid rgba(221,191,100,0.95);outline-offset:3px}
+
+.a33-update-badge{
+  position:absolute;
+  top:5px;
+  right:5px;
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  box-shadow:0 0 0 2px rgba(0,0,0,0.85);
+  display:none;
+}
+.a33-update-badge.green{background:#1db954}
+.a33-update-badge.yellow{background:#f0a31a}
+.a33-update-badge.red{background:#e74c3c}
+
+.a33-update-tip{
+  position:absolute;
+  right:0;
+  top:100%;
+  margin-top:6px;
+  max-width:240px;
+  padding:8px 10px;
+  border-radius:12px;
+  border:1px solid rgba(221,191,100,0.35);
+  background:rgba(0,0,0,0.92);
+  color:rgba(254,254,254,0.92);
+  font-size:12px;
+  box-shadow:0 12px 28px rgba(0,0,0,0.55);
+  z-index:1000;
+  pointer-events:none;
+}
 
 /* Sección — meta derecha (Build + timestamp) */
 
@@ -299,6 +362,7 @@ tfoot td{font-weight:700}
   grid-template-columns:repeat(8, minmax(0,1fr));
   gap:6px;
   padding:9px;
+  touch-action: manipulation;
 }
 
 .tabbar button{
@@ -313,6 +377,7 @@ tfoot td{font-weight:700}
   letter-spacing:.2px;
   font-weight:600;
   position:relative;
+  touch-action: manipulation;
 }
 
 .tabbar button:hover{background:rgba(221,191,100,.10)}
@@ -435,6 +500,10 @@ small.muted{color:var(--muted)}
   color:var(--accent);
   font-weight:800;
   box-shadow:0 6px 16px rgba(0,0,0,0.18);
+}
+.btn-outline.is-active{
+  border-color: rgba(212,175,55,0.85);
+  background: rgba(212,175,55,0.08);
 }
 .btn-outline:active{filter:brightness(.98)}
 .compact th, .compact td{font-size:13px}
@@ -574,6 +643,119 @@ small.muted{color:var(--muted)}
 .modal .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .modal table{max-width:100%}
 .modal .scroll{max-height:40vh;overflow:auto;border:1px solid #2a2a2a;border-radius:10px;padding:6px}
+
+	/* Modal Inventario: Selector de lotes — layout estable (Lote 17 chars completo + Fecha fija) */
+	#inv-lote-selector-modal .scroll{overflow-x:hidden}
+	#inv-lote-selector-table{width:100%;table-layout:fixed}
+	#inv-lote-selector-table th,
+	#inv-lote-selector-table td{
+	  vertical-align:middle;
+	  white-space:normal;
+	  padding:7px 8px;
+	  line-height:1.15;
+	}
+
+	/* Columnas fijas: Lote (17 chars), Fecha (YYYY-MM-DD), Acción */
+	#inv-lote-selector-table th:nth-child(1),
+	#inv-lote-selector-table td:nth-child(1){
+	  width:calc(17ch + 24px);
+	  white-space:nowrap;
+	  overflow:hidden;
+	  text-overflow:clip;
+	  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+	}
+	#inv-lote-selector-table th:nth-child(2),
+	#inv-lote-selector-table td:nth-child(2){
+	  width:calc(10ch + 18px);
+	  white-space:nowrap;
+	  overflow:hidden;
+	  text-overflow:clip;
+	}
+	#inv-lote-selector-table th:nth-child(5),
+	#inv-lote-selector-table td:nth-child(5){
+	  width:calc(7ch + 18px);
+	  white-space:nowrap;
+	  text-align:right;
+	}
+
+	/* Columnas flexibles */
+	#inv-lote-selector-table th:nth-child(3),
+	#inv-lote-selector-table td:nth-child(3){white-space:normal;word-break:break-word}
+	#inv-lote-selector-table th:nth-child(4),
+	#inv-lote-selector-table td:nth-child(4){white-space:normal;word-break:break-word}
+
+	/* Ajuste fino: liberar espacio */
+	#inv-lote-selector-table th:nth-child(2),
+	#inv-lote-selector-table td:nth-child(2),
+	#inv-lote-selector-table th:nth-child(4),
+	#inv-lote-selector-table td:nth-child(4),
+	#inv-lote-selector-table th:nth-child(5),
+	#inv-lote-selector-table td:nth-child(5){padding-left:6px;padding-right:6px}
+
+	/* Evitar overflow por palabras largas en Estado/Notas (sin truncar Estado) */
+	#inv-lote-selector-table th:nth-child(3),
+	#inv-lote-selector-table td:nth-child(3),
+	#inv-lote-selector-table th:nth-child(4),
+	#inv-lote-selector-table td:nth-child(4){overflow-wrap:anywhere}
+
+	/* Acción: tap target cómodo sin empujar columnas */
+	#inv-lote-selector-table td:nth-child(5) button{min-height:36px;padding-top:8px;padding-bottom:8px;touch-action:manipulation}
+
+	/* Inventario: Selector de lotes — Notas máx 2 líneas (ellipsis solo aquí) */
+	#inv-lote-selector-modal .inv-lote-toolbar input{width:100%;min-width:0}
+	#inv-lote-selector-modal .note-wrap{display:block}
+	#inv-lote-selector-modal .note-clamp{
+	  display:-webkit-box;
+	  -webkit-box-orient:vertical;
+	  -webkit-line-clamp:2;
+	  overflow:hidden;
+	  text-overflow:ellipsis;
+	}
+
+	/* Responsive: evitar scroll horizontal en pantallas angostas */
+	@media (max-width:560px){
+	  #inv-lote-selector-table thead{display:none}
+	  #inv-lote-selector-table,
+	  #inv-lote-selector-table tbody,
+	  #inv-lote-selector-table tr,
+	  #inv-lote-selector-table td{display:block;width:100%}
+	  #inv-lote-selector-table tr{
+	    margin:8px 0;
+	    padding:10px 12px;
+	    border:1px solid #2a2a2a;
+	    border-radius:12px;
+	    background:#121212;
+	  }
+	  #inv-lote-selector-table td{border:0;padding:4px 0}
+	  #inv-lote-selector-table td:nth-child(1){
+	    font-weight:900;
+	    padding-top:0;
+	  }
+	  #inv-lote-selector-table td:nth-child(2)::before{
+	    content:"Fecha: ";
+	    opacity:.75;
+	    font-weight:800;
+	  }
+	  #inv-lote-selector-table td:nth-child(4)::before{
+	    content:"Estado: ";
+	    opacity:.75;
+	    font-weight:800;
+	  }
+	  #inv-lote-selector-table td:nth-child(3)::before{
+	    content:"Notas: ";
+	    opacity:.75;
+	    font-weight:800;
+	  }
+	  #inv-lote-selector-table td:nth-child(5){padding-top:8px;text-align:left}
+	}
+
+/* Modal confirmación reutilizable (cierres) */
+.pos-confirm-message{
+  margin-top:8px;
+  white-space:pre-wrap;
+  font-size:16px;
+  line-height:1.35;
+}
 /* Sección POS */
 .info-strong{
   font-size:14px;
@@ -994,7 +1176,7 @@ small.muted{color:var(--muted)}
 
 .chk-row{
   display:grid;
-  grid-template-columns: 22px 1fr auto auto auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto auto;
   gap: 8px;
   align-items:center;
   padding: 8px;
@@ -1011,6 +1193,7 @@ small.muted{color:var(--muted)}
 
 .chk-text{
   width: 100%;
+  min-width: 0;
   padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.10);

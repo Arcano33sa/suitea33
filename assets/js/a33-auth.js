@@ -1,10 +1,17 @@
 /*
   Suite A33 — A33Auth (core)
-  Autenticación simple (1 usuario) con sesión (token) en sessionStorage.
+  Autenticación simple (1 usuario) — Auth local.
 
-  - 1 usuario (registro único): username + password hash (PBKDF2-SHA256)
-  - Sesión: token + expiración
-  - Compat: migra PIN legacy (suite_a33_pin) a credenciales iniciales
+  NUEVO MODELO (Etapa 1: Login por ARRANQUE)
+  - Credenciales recordadas (persistentes): username + password hash/config
+    - Expiran a las 72h SIN USO REAL (lastUseAt)
+  - Estado desbloqueado en esta ejecución (NO persistente entre arranques reales)
+    - Se guarda en sessionStorage y se limpia en recarga (reload)
+    - Permite navegar entre módulos sin re-login dentro de la misma ejecución
+
+  Nota iOS/PWA:
+  - sessionStorage suele sobrevivir a navegación interna, pero NO debe sobrevivir a "arranque real".
+  - Por eso: limpiamos el flag de ejecución cuando detectamos recarga (reload).
 */
 
 (function(){
@@ -19,11 +26,18 @@
 
   const AUTH_KEY = 'suite_a33_auth_v1';
   const PROFILE_KEY = 'suite_a33_profile_v1';
-  const SESSION_KEY = 'suite_a33_session_v1';
+  const SESSION_KEY = 'suite_a33_session_v1'; // legacy (ya no se usa para auth)
 
   const LEGACY_PIN_KEY = 'suite_a33_pin';
 
-  const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+  // Flag de "desbloqueo en esta ejecución" (solo sessionStorage)
+  const EXEC_UNLOCK_KEY = 'suite_a33_exec_unlock_v1';
+  const LAST_URL_KEY = 'suite_a33_last_url_v1';
+
+  // TTL de credenciales recordadas (sin uso real)
+  const TTL_CRED_IDLE_MS = 72 * 60 * 60 * 1000; // 72h
+  const USE_MIN_INTERVAL_MS = 45 * 1000; // rate-limit escrituras (lastUseAt)
+
   const PBKDF2_ITERS = 150000;
   const SALT_BYTES = 16;
 
@@ -86,6 +100,170 @@
     return LS.setJSON(PROFILE_KEY, p || { displayName: '' }, 'local');
   }
 
+  function clearCredentialsOnly(){
+    try{ LS.removeItem(AUTH_KEY, 'local'); }catch(_){ }
+    try{ LS.removeItem(PROFILE_KEY, 'local'); }catch(_){ }
+  }
+
+  function clearLegacySessionKeys(){
+    try{ LS.removeItem(SESSION_KEY, 'local'); }catch(_){ }
+    try{ LS.removeItem(SESSION_KEY, 'session'); }catch(_){ }
+  }
+
+  function getNavType(){
+    // 'navigate' | 'reload' | 'back_forward' | 'prerender'
+    try{
+      const nav = performance && performance.getEntriesByType ? performance.getEntriesByType('navigation') : null;
+      if (nav && nav[0] && nav[0].type) return String(nav[0].type);
+    }catch(_){ }
+    try{
+      // Deprecated, pero aún útil en Safari viejo
+      const t = performance && performance.navigation ? performance.navigation.type : null;
+      if (t === 1) return 'reload';
+      if (t === 2) return 'back_forward';
+    }catch(_){ }
+    return 'navigate';
+  }
+
+  function clearExecUnlock(){
+    try{ LS.removeItem(EXEC_UNLOCK_KEY, 'session'); }catch(_){ }
+  }
+
+  function setExecUnlock(){
+    const n = now();
+    const payload = { v: 1, token: randomB64(16), unlockedAt: n };
+    LS.setJSON(EXEC_UNLOCK_KEY, payload, 'session');
+    return payload;
+  }
+
+  function isExecUnlocked(){
+    const v = LS.getJSON(EXEC_UNLOCK_KEY, null, 'session');
+    if (!v) return false;
+    if (v === true || v === 1 || v === '1') return true;
+    if (typeof v === 'object'){
+      return !!(v.token && Number(v.unlockedAt) > 0);
+    }
+    return false;
+  }
+
+  function isConfiguredInternal(){
+    const rec = readAuthRecord();
+    return !!(rec && rec.username && rec.saltB64 && rec.hashB64);
+  }
+
+  function parseIsoToMs(iso){
+    try{
+      const t = Date.parse(String(iso || ''));
+      return Number.isFinite(t) ? t : 0;
+    }catch(_){ return 0; }
+  }
+
+  function getLastUseAtMs(rec){
+    if (!rec || typeof rec !== 'object') return 0;
+    const lu = Number(rec.lastUseAt);
+    if (Number.isFinite(lu) && lu > 0) return lu;
+    const iso = rec.lastUseIso || rec.updatedAt || rec.createdAt;
+    const t = parseIsoToMs(iso);
+    return (Number.isFinite(t) && t > 0) ? t : 0;
+  }
+
+  function setLastUseAt(rec, ms){
+    const t = Number(ms || 0);
+    if (!Number.isFinite(t) || t <= 0) return rec;
+    rec.lastUseAt = t;
+    try{ rec.lastUseIso = new Date(t).toISOString(); }catch(_){ rec.lastUseIso = ''; }
+    return rec;
+  }
+
+  function migrateLastUseFromLegacySessionIfNeeded(rec){
+    // Si venimos del modelo anterior (sesión persistente), usamos su lastActivityAt como lastUseAt.
+    if (!rec || typeof rec !== 'object') return rec;
+    if (Number.isFinite(Number(rec.lastUseAt)) && Number(rec.lastUseAt) > 0) return rec;
+
+    let legacy = null;
+    try{ legacy = LS.getJSON(SESSION_KEY, null, 'local'); }catch(_){ }
+    if (!legacy){
+      try{ legacy = LS.getJSON(SESSION_KEY, null, 'session'); }catch(_){ }
+    }
+
+    let t = 0;
+    if (legacy && typeof legacy === 'object'){
+      t = Number(legacy.lastActivityAt) || Number(legacy.issuedAt) || 0;
+      if ((!Number.isFinite(t) || t <= 0) && legacy.expiresAt){
+        const exp = Number(legacy.expiresAt);
+        if (Number.isFinite(exp) && exp > 0) t = exp - TTL_CRED_IDLE_MS;
+      }
+    }
+
+    if (Number.isFinite(t) && t > 0){
+      setLastUseAt(rec, t);
+      writeAuthRecord(rec);
+    }
+
+    // Limpieza: ya no usamos SESSION_KEY.
+    clearLegacySessionKeys();
+    return rec;
+  }
+
+  function expireCredentialsIfNeeded(){
+    const rec0 = readAuthRecord();
+    if (!rec0) return false;
+
+    const rec = migrateLastUseFromLegacySessionIfNeeded({ ...rec0 });
+    const last = getLastUseAtMs(rec);
+    if (!last) return false;
+
+    const idle = now() - last;
+    if (idle > TTL_CRED_IDLE_MS){
+      clearCredentialsOnly();
+      clearExecUnlock();
+      clearLegacySessionKeys();
+      return true;
+    }
+    return false;
+  }
+
+  // Estado interno (por pestaña)
+  let _lastUseWriteAt = 0;
+
+  function bumpLastUseRateLimited(){
+    // Solo cuenta si el usuario ya está desbloqueado en esta ejecución.
+    if (!isConfiguredInternal()) return false;
+    if (!isExecUnlocked()) return false;
+
+    // Si las credenciales ya expiraron, cortar.
+    if (expireCredentialsIfNeeded()) return false;
+
+    const n = now();
+    const rec0 = readAuthRecord();
+    if (!rec0) return false;
+
+    const prev = getLastUseAtMs(rec0);
+    if (Number.isFinite(prev) && prev > 0 && (n - prev) < USE_MIN_INTERVAL_MS) return true;
+    if ((n - _lastUseWriteAt) < USE_MIN_INTERVAL_MS) return true;
+
+    const rec = { ...rec0 };
+    setLastUseAt(rec, n);
+    writeAuthRecord(rec);
+    _lastUseWriteAt = n;
+    return true;
+  }
+
+  function bindUseListenersOnce(){
+    if (typeof document === 'undefined') return;
+    if (window.__A33_AUTH_USE_BOUND) return;
+    window.__A33_AUTH_USE_BOUND = true;
+
+    const handler = () => {
+      try{ bumpLastUseRateLimited(); }catch(_){ }
+    };
+
+    // Solo interacción real. Nada de focus/pageshow/visibility.
+    try{ document.addEventListener('pointerdown', handler, { passive:true, capture:true }); }catch(_){ }
+    try{ document.addEventListener('click', handler, { passive:true, capture:true }); }catch(_){ }
+    try{ document.addEventListener('keydown', handler, { passive:true, capture:true }); }catch(_){ }
+  }
+
   // Migra PIN legacy (si existe) → username/password inicial.
   // - Si PIN estaba en JSON legacy {pin,name}, tomamos ambos.
   async function migrateLegacyPinIfNeeded(){
@@ -119,13 +297,32 @@
     try{ LS.removeItem(LEGACY_PIN_KEY, 'local'); }catch(_){ }
   }
 
+  function clearExecUnlockIfReload(){
+    const navType = getNavType();
+    let cur = '';
+    let prev = '';
+    try{ cur = (typeof location !== 'undefined' && location && location.href) ? String(location.href) : ''; }catch(_){ cur = ''; }
+    try{ prev = LS.getItem(LAST_URL_KEY, 'session') || ''; }catch(_){ prev = ''; }
+
+    const isReload = (navType === 'reload') || (!!cur && !!prev && cur === prev);
+    if (isReload){
+      clearExecUnlock();
+    }
+
+    // Guardamos URL actual para detectar reload en el próximo arranque de esta misma pestaña.
+    try{ if (cur) LS.setItem(LAST_URL_KEY, cur, 'session'); }catch(_){ }
+  }
+
   const A33Auth = {
     AUTH_KEY,
+    PROFILE_KEY,
     SESSION_KEY,
+    EXEC_UNLOCK_KEY,
 
     isConfigured(){
-      const rec = readAuthRecord();
-      return !!(rec && rec.username && rec.saltB64 && rec.hashB64);
+      // Expirar antes de responder.
+      try{ expireCredentialsIfNeeded(); }catch(_){ }
+      return isConfiguredInternal();
     },
 
     getUsername(){
@@ -155,21 +352,27 @@
       crypto.getRandomValues(salt);
       const hash = await pbkdf2Hash(p, salt, PBKDF2_ITERS);
 
+      const n = now();
       const rec = {
-        v: 1,
+        v: 2,
         username: u,
         algo: 'PBKDF2-SHA256',
         iterations: PBKDF2_ITERS,
         saltB64: b64FromBytes(salt),
         hashB64: b64FromBytes(hash),
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        lastUseAt: n,
+        lastUseIso: new Date(n).toISOString()
       };
       writeAuthRecord(rec);
       if (displayName != null) this.setDisplayName(displayName);
+      // Ya no usamos sesión persistente legacy
+      clearLegacySessionKeys();
       return true;
     },
 
     async verify({ username, password } = {}){
+      try{ expireCredentialsIfNeeded(); }catch(_){ }
       const rec = readAuthRecord();
       if (!rec) return { ok:false, reason:'No configurado' };
       const u = normalizeUser(username);
@@ -180,33 +383,48 @@
       return { ok: hashB64 === String(rec.hashB64 || '') };
     },
 
-    async login({ username, password, ttlMs } = {}){
+    async login({ username, password } = {}){
       const res = await this.verify({ username, password });
       if (!res.ok) throw new Error('Credenciales incorrectas.');
-      const ttl = Number(ttlMs || DEFAULT_TTL_MS);
-      const sess = {
-        token: randomB64(24),
-        issuedAt: now(),
-        expiresAt: now() + ttl
-      };
-      LS.setJSON(SESSION_KEY, sess, 'session');
-      return sess;
+
+      // Desbloqueo SOLO en esta ejecución
+      setExecUnlock();
+
+      // lastUseAt SIEMPRE en login exitoso
+      const rec0 = readAuthRecord();
+      if (rec0){
+        const n = now();
+        const rec = { ...rec0 };
+        setLastUseAt(rec, n);
+        writeAuthRecord(rec);
+        _lastUseWriteAt = n;
+      }
+
+      clearLegacySessionKeys();
+      return true;
     },
 
     logout(){
-      LS.removeItem(SESSION_KEY, 'session');
+      // No borra credenciales recordadas: solo cierra el desbloqueo de ejecución.
+      clearExecUnlock();
     },
 
     isAuthenticated(){
-      const s = LS.getJSON(SESSION_KEY, null, 'session');
-      if (!s || !s.token || !s.expiresAt) return false;
-      return now() < Number(s.expiresAt);
+      // Expirar antes de responder.
+      try{ expireCredentialsIfNeeded(); }catch(_){ }
+      return isConfiguredInternal() && isExecUnlocked();
+    },
+
+    // Compat: renovar "uso" por actividad real (rate-limited)
+    touchActivityIfAuthenticated(){
+      return bumpLastUseRateLimited();
     },
 
     async changePassword({ username, currentPassword, newPassword } = {}){
       const check = await this.verify({ username, password: currentPassword });
       if (!check.ok) throw new Error('Contraseña actual incorrecta.');
       const rec = readAuthRecord();
+      if (!rec) throw new Error('No configurado.');
       const salt = new Uint8Array(SALT_BYTES);
       crypto.getRandomValues(salt);
       const hash = await pbkdf2Hash(String(newPassword || ''), salt, PBKDF2_ITERS);
@@ -214,6 +432,7 @@
       rec.saltB64 = b64FromBytes(salt);
       rec.hashB64 = b64FromBytes(hash);
       rec.updatedAt = new Date().toISOString();
+      setLastUseAt(rec, now());
       writeAuthRecord(rec);
       // Forzar re-login
       this.logout();
@@ -229,6 +448,7 @@
       if (!nu) throw new Error('Nuevo usuario inválido.');
       rec.username = nu;
       rec.updatedAt = new Date().toISOString();
+      setLastUseAt(rec, now());
       writeAuthRecord(rec);
       this.logout();
       return true;
@@ -237,51 +457,13 @@
     // Guard para páginas de módulos
     async requireAuth({ redirectTo='../index.html' } = {}){
       await migrateLegacyPinIfNeeded();
+      try{ expireCredentialsIfNeeded(); }catch(_){ }
+
       if (this.isConfigured() && this.isAuthenticated()) return true;
 
-      // Offline + sin sesión: evitar bucles de redirección.
-      try{
-        if (typeof navigator !== 'undefined' && navigator.onLine === false){
-          if (!window.__A33_OFFLINE_AUTH_SHOWN){
-            window.__A33_OFFLINE_AUTH_SHOWN = true;
-
-            const mk = (tag, attrs) => {
-              const el = document.createElement(tag);
-              if (attrs) for (const k in attrs) el.setAttribute(k, attrs[k]);
-              return el;
-            };
-
-            const wrap = mk('div', { 'data-a33-offline-auth': '1', 'role': 'alert' });
-            wrap.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.65)';
-
-            const card = mk('div');
-            card.style.cssText = 'width:min(640px,100%);background:#0b0b0b;color:#f2f2f2;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif';
-            card.innerHTML =
-              '<div style="font-size:18px;margin:0 0 8px;font-weight:700">Sin conexión</div>' +
-              '<div style="font-size:14px;line-height:1.4;color:#cfcfcf;margin:0 0 12px">No hay sesión activa y estás offline. Conectate y volvé a intentar para iniciar sesión.</div>' +
-              '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-                '<button id="a33OfflineRetry" style="appearance:none;border:1px solid rgba(202,168,92,.55);background:rgba(202,168,92,.14);color:#f2f2f2;padding:10px 12px;border-radius:999px;font-size:14px;cursor:pointer">Reintentar</button>' +
-                '<button id="a33OfflineClose" style="appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#f2f2f2;padding:10px 12px;border-radius:999px;font-size:14px;cursor:pointer">Cerrar</button>' +
-              '</div>';
-
-            wrap.appendChild(card);
-            const mount = document.body || document.documentElement;
-            mount.appendChild(wrap);
-
-            try{
-              const btnR = wrap.querySelector('#a33OfflineRetry');
-              const btnC = wrap.querySelector('#a33OfflineClose');
-              if (btnR) btnR.addEventListener('click', () => { try{ location.reload(); }catch(_){ } });
-              if (btnC) btnC.addEventListener('click', () => { try{ wrap.remove(); }catch(_){ } });
-            }catch(_){ }
-          }
-          return false;
-        }
-      }catch(_){ }
-      // Si no está configurado, lo llevamos al Home para setup.
       try{
         const target = redirectTo || '../index.html';
-        if (location.pathname.endsWith('/index.html') && location.pathname.split('/').length <= 2){
+        if (location && location.pathname && location.pathname.endsWith('/index.html') && location.pathname.split('/').length <= 2){
           // Home: no redirigir
           return false;
         }
@@ -290,18 +472,29 @@
       return false;
     },
 
-    // Expuesto para index.html: corre migración si aplica.
+    // Expuesto para index.html: migración + bind
     async ensureMigrated(){
       await migrateLegacyPinIfNeeded();
+      try{ expireCredentialsIfNeeded(); }catch(_){ }
+      try{ bindUseListenersOnce(); }catch(_){ }
+      clearLegacySessionKeys();
+      return true;
     },
 
     // Hard reset solo de credenciales (no toca datos de módulos)
     resetCredentials(){
-      LS.removeItem(AUTH_KEY, 'local');
-      LS.removeItem(PROFILE_KEY, 'local');
-      this.logout();
+      try{ LS.removeItem(LEGACY_PIN_KEY, 'local'); }catch(_){ }
+      clearCredentialsOnly();
+      clearExecUnlock();
+      clearLegacySessionKeys();
     }
   };
+
+  // --- Boot ---
+  try{ clearExecUnlockIfReload(); }catch(_){ }
+  try{ expireCredentialsIfNeeded(); }catch(_){ }
+  try{ clearLegacySessionKeys(); }catch(_){ }
+  try{ bindUseListenersOnce(); }catch(_){ }
 
   window.A33Auth = A33Auth;
 })();

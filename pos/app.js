@@ -4,10 +4,30 @@ const DB_VER = 31; // Etapa 1/5 (Efectivo v2 Histórico): nuevos stores aislados
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.70';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.77';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r36');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1');
+
+// --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
+// Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
+function round2(n){
+  let x = Number(n);
+  if (!Number.isFinite(x)) x = 0;
+  return Math.round((x + Number.EPSILON) * 100) / 100;
+}
+
+
+// --- Util: moneyEquals (comparación monetaria robusta) — Hotfix Ventas Etapa 1/2
+// Compara montos a nivel de centavos (evita falsos negativos por flotantes).
+function moneyEquals(a, b, epsilonCents){
+  const eps = (epsilonCents == null || epsilonCents === '') ? 0 : Math.max(0, Math.round(Number(epsilonCents)));
+  const ca = Math.round((round2(a) + Number.EPSILON) * 100);
+  const cb = Math.round((round2(b) + Number.EPSILON) * 100);
+  return Math.abs(ca - cb) <= eps;
+}
+try{ window.moneyEquals = moneyEquals; }catch(_){ }
+
 
 // --- Date helpers (POS)
 // Normaliza YYYY-MM-DD y da fallback robusto (consistente con Centro de Mando)
@@ -188,6 +208,11 @@ async function cashV2OpenTodayFromPrevClosed(eventId, todayDayKey){
     }
   }catch(_){ }
 
+  let inheritedFx = null;
+  try{ inheritedFx = await cashV2ReadEventFxCanon(eid); }catch(_){ inheritedFx = null; }
+  // Fallback: si el día anterior tenía FX válido y aún no hay canon/cache, heredar ese.
+  try{ if (inheritedFx == null){ inheritedFx = cashV2FxNorm(prev && prev.fx); } }catch(_){ }
+
   const rec = {
     version: 2,
     key: cashV2Key(eid, todayKey),
@@ -196,7 +221,7 @@ async function cashV2OpenTodayFromPrevClosed(eventId, todayDayKey){
     openTs,
     status: 'OPEN',
     closeTs: null,
-    fx: null,
+    fx: (inheritedFx != null ? cashV2CoerceFx(inheritedFx) : null),
     initial,
     movements: [],
     final: null,
@@ -276,6 +301,17 @@ async function cashV2Ensure(eventId, dayKey){
       }
     }catch(_){ }
 
+    // Etapa 2/3: Herencia automática de FX al abrir día (sin reingresar) — ensure (existing)
+    try{
+      if (cashV2FxNorm(existing.fx) == null){
+        const canon = await cashV2ReadEventFxCanon(eid);
+        if (canon != null){
+          existing.fx = cashV2CoerceFx(canon);
+          changed = true;
+        }
+      }
+    }catch(_){ }
+
     if (changed){
       try{ existing = await cashV2Save(existing); }catch(_){ }
     }
@@ -295,6 +331,9 @@ async function cashV2Ensure(eventId, dayKey){
     }
   }catch(_){ }
 
+  let inheritedFx = null;
+  try{ inheritedFx = await cashV2ReadEventFxCanon(eid); }catch(_){ inheritedFx = null; }
+
   const cashDay = {
     version: 2,
     key,
@@ -303,7 +342,7 @@ async function cashV2Ensure(eventId, dayKey){
     openTs,
     status: 'OPEN',
     closeTs: null,
-    fx: null,
+    fx: (inheritedFx != null ? cashV2CoerceFx(inheritedFx) : null),
     initial: null,
     movements: [],
     final: null,
@@ -794,7 +833,8 @@ function cashV2SetLastRec(rec){
 function cashV2GetLastRec(){ return CASHV2_LAST_REC; }
 
 function cashV2DefaultInitial(){
-  const mk = (arr)=>{ const o = {}; (arr||[]).forEach(d=>{ o[String(d)] = 0; }); return o; };
+  // UX Etapa 2/3: counts VACÍOS por defecto; los cálculos interpretan vacío como 0.
+  const mk = (arr)=>{ const o = {}; (arr||[]).forEach(d=>{ o[String(d)] = ''; }); return o; };
   return {
     NIO: { denomCounts: mk(CASHV2_DENOMS.NIO), total: 0 },
     USD: { denomCounts: mk(CASHV2_DENOMS.USD), total: 0 }
@@ -809,6 +849,78 @@ function cashV2NormCount(v){
   return n;
 }
 
+// UX Etapa 2/3: helpers para inputs vacíos (mantener vacío en UI, tratarlo como 0 en cálculos).
+function cashV2IsBlankInput(v){
+  if (v == null) return true;
+  if (typeof v === 'string') return v.trim() === '';
+  return false;
+}
+
+function cashV2CountToStore(raw){
+  if (raw == null) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  return cashV2NormCount(s);
+}
+
+function cashV2CountDomValue(raw){
+  if (raw == null) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  return String(cashV2NormCount(raw));
+}
+
+function cashV2InitUXInputsOnce(){
+  const tab = document.getElementById('tab-efectivo');
+  if (!tab) return;
+  if (tab.dataset.uxInputs === '1') return;
+
+  const root = document;
+
+  const isEditable = (t)=>{
+    if (!t || t.tagName !== 'INPUT') return false;
+    if (t.disabled || t.readOnly) return false;
+    const type = String(t.getAttribute('type') || '').trim().toLowerCase();
+    if (type !== 'number') return false;
+    // Solo inputs del módulo Efectivo v2
+    const id = String(t.id || '');
+    if (!id.startsWith('cashv2-')) return false;
+    return true;
+  };
+
+  const queueSelectAll = (t)=>{
+    try{ if (t == null) return; }catch(_){ return; }
+    // UX: si el input arranca con "0" (por default/placeholder viejo), lo tratamos como vacío en el primer foco.
+    // Para cálculos, vacío = 0 (ver cashV2NormCount + cashV2CountFromDom).
+    try{
+      const v = String(t.value == null ? '' : t.value);
+      if (v === '0'){
+        t.value = '';
+        return;
+      }
+      if (v === '') return;
+    }catch(_){ return; }
+    setTimeout(()=>{
+      try{ t.focus(); }catch(_){ }
+      try{ t.select(); }catch(_){ }
+      try{ if (t.setSelectionRange) t.setSelectionRange(0, String(t.value||'').length); }catch(_){ }
+    }, 0);
+  };
+
+  root.addEventListener('focusin', (e)=>{
+    const t = e && e.target;
+    if (!isEditable(t)) return;
+    queueSelectAll(t);
+  });
+  root.addEventListener('click', (e)=>{
+    const t = e && e.target;
+    if (!isEditable(t)) return;
+    queueSelectAll(t);
+  });
+
+  tab.dataset.uxInputs = '1';
+}
+
 // Helper pedido (Etapa 4/5): normaliza denomCounts, garantiza claves y sanea valores.
 function normalizeDenomCounts(currency, counts){
   const ccy = String(currency || '').trim().toUpperCase();
@@ -817,8 +929,10 @@ function normalizeDenomCounts(currency, counts){
   const out = {};
   for (const d of denoms){
     const k = String(d);
-    const raw = (src[k] != null) ? src[k] : ((src[d] != null) ? src[d] : 0);
-    out[k] = cashV2NormCount(raw);
+    let raw = (src[k] != null) ? src[k] : ((src[d] != null) ? src[d] : '');
+    // Si nunca se ingresó, mantener vacío (UI). Cálculos: vacío => 0.
+    const rs = (raw == null) ? '' : String(raw);
+    out[k] = (rs.trim() === '') ? '' : cashV2NormCount(raw);
   }
   return out;
 }
@@ -926,6 +1040,83 @@ function cashV2FxSetCached(eventId, rate){
   }catch(_){ return false; }
 }
 
+// Canon: FX por EVENTO (IndexedDB store 'events')
+// - Se guarda en events.fx como string con 2 decimales (ej: "36.50").
+// - Lectura única: evento(canon) -> cache por evento -> fx del día.
+const CASHV2_EVENT_FX_PROP = 'fx';
+const CASHV2_EVENT_FX_FALLBACK_PROPS = ['fx','exchangeRate','exchange_rate','fxRate','tc','tipoCambio','tipo_cambio'];
+
+function cashV2GetFxFromEventObj(ev){
+  if (!ev || typeof ev !== 'object') return null;
+  for (const p of CASHV2_EVENT_FX_FALLBACK_PROPS){
+    try{
+      if (ev[p] == null) continue;
+      const n = cashV2FxNorm(ev[p]);
+      if (n != null) return n;
+    }catch(_){ }
+  }
+  return null;
+}
+
+async function cashV2PersistEventFx(eventId, rate){
+  const eidNum = Number(eventId);
+  const n = cashV2FxNorm(rate);
+  if (!Number.isFinite(eidNum) || n == null) return false;
+
+  try{
+    if (!db) await openDB();
+    const ev = await getOne('events', eidNum);
+    if (ev && typeof ev === 'object'){
+      ev[CASHV2_EVENT_FX_PROP] = cashV2FxFmt2(n);
+      await put('events', ev);
+      return true;
+    }
+  }catch(_){ }
+
+  return false;
+}
+
+
+// Etapa 2/3: Herencia automática de FX al abrir día (sin reingresar)
+// Lee el FX CANON del evento (events.fx) y, si no existe, usa fallback del cache por evento.
+async function cashV2ReadEventFxCanon(eventId){
+  const eid = cashV2AssertEventId(eventId);
+
+  // 1) Canon en IndexedDB (store 'events')
+  try{
+    const eidNum = Number(eid);
+    if (Number.isFinite(eidNum)){
+      if (!db) await openDB();
+      const ev = await getOne('events', eidNum);
+      const r = cashV2GetFxFromEventObj(ev);
+      if (r != null) return r;
+    }
+  }catch(_){ }
+
+  // 2) Fallback: cache por evento (compatibilidad / precarga)
+  try{
+    const r2 = cashV2FxGetCached(eid);
+    if (r2 != null) return r2;
+  }catch(_){ }
+
+  return null;
+}
+
+function cashV2GetFxEffective(rec, eventId, evObj){
+  // a) canon en evento
+  let rate = cashV2GetFxFromEventObj(evObj);
+  // b) cache por evento
+  if (rate == null && eventId){
+    try{ rate = cashV2FxGetCached(eventId); }catch(_){ rate = null; }
+  }
+  // c) último recurso: fx del día
+  if (rate == null){
+    rate = cashV2FxNorm(rec && rec.fx);
+  }
+  return rate;
+}
+
+
 // Normaliza lo que entra al record v2 (persistencia)
 function cashV2CoerceFx(v){
   const n = cashV2FxNorm(v);
@@ -940,7 +1131,7 @@ function cashV2SetFxEnabled(en){
   try{ const btn = document.getElementById('cashv2-btn-save-fx'); if (btn) btn.disabled = !ok; }catch(_){ }
 }
 
-function cashV2ApplyFxToDom(rec, eventId){
+function cashV2ApplyFxToDom(rec, eventId, evObj){
   const inp = document.getElementById('cashv2-fx-input');
   const st = document.getElementById('cashv2-fx-save-status');
   const err = document.getElementById('cashv2-fx-error');
@@ -951,12 +1142,7 @@ function cashV2ApplyFxToDom(rec, eventId){
 
   if (!inp) return;
 
-  let rate = cashV2FxNorm(rec && rec.fx);
-
-  // fallback: cache por evento (nuevo, no legacy)
-  if (rate == null && eventId){
-    try{ rate = cashV2FxGetCached(eventId); }catch(_){ rate = null; }
-  }
+  let rate = cashV2GetFxEffective(rec, eventId, evObj);
 
   const fixed = (rate != null) ? cashV2FxFmt2(rate) : '';
   try{ inp.value = fixed; }catch(_){ }
@@ -1020,6 +1206,7 @@ function cashV2InitFxUIOnce(){
 
       try{ cashV2SetLastRec(saved); }catch(_){ }
       cashV2FxSetCached(eid, n);
+      try{ await cashV2PersistEventFx(eid, n); }catch(_){ }
 
       // write-through: also save FX where Calculadora reads its rate (single source of truth)
       try{
@@ -1052,7 +1239,7 @@ function cashV2InitInitialUIOnce(){
     tbody.innerHTML = denoms.map(d=>{
       const k = String(d);
       const sym = (ccy === 'NIO') ? 'C$' : '$';
-      return `\n<tr>\n  <td class=\"denom\"><b>${sym} ${k}</b></td>\n  <td>\n    <input type=\"number\" min=\"0\" step=\"1\" inputmode=\"numeric\" pattern=\"[0-9]*\"\n      class=\"cashv2-denom-input\"\n      data-cashv2-initial=\"1\" data-ccy=\"${ccy}\" data-denom=\"${k}\"\n      id=\"cashv2-initial-${ccy}-${k}\" value=\"0\"\n    >\n  </td>\n  <td class=\"sub\"><span id=\"cashv2-sub-${ccy}-${k}\">0</span></td>\n</tr>`;
+      return `\n<tr>\n  <td class=\"denom\"><b>${sym} ${k}</b></td>\n  <td>\n    <input type=\"number\" min=\"0\" step=\"1\" inputmode=\"numeric\" pattern=\"[0-9]*\"\n      class=\"cashv2-denom-input\"\n      data-cashv2-initial=\"1\" data-ccy=\"${ccy}\" data-denom=\"${k}\"\n      id=\"cashv2-initial-${ccy}-${k}\" placeholder=\"\" value=\"\"\n    >\n  </td>\n  <td class=\"sub\"><span id=\"cashv2-sub-${ccy}-${k}\">0</span></td>\n</tr>`;
     }).join('');
   }
 
@@ -1071,7 +1258,14 @@ function cashV2InitInitialUIOnce(){
   card.addEventListener('focusout', (e)=>{
     const t = e && e.target;
     if (!t || t.getAttribute('data-cashv2-initial') !== '1') return;
-    const n = cashV2NormCount(t.value);
+    const raw = (t.value != null) ? String(t.value) : '';
+    if (raw.trim() === ''){
+      try{ t.value = ''; }catch(_){ }
+      cashV2UpdateInitialTotals();
+      try{ cashV2UpdateCloseSummary(); }catch(_){ }
+      return;
+    }
+    const n = cashV2NormCount(raw);
     t.value = String(n);
     cashV2UpdateInitialTotals();
     try{ cashV2UpdateCloseSummary(); }catch(_){ }
@@ -1126,7 +1320,7 @@ function cashV2ReadInitialFromDom(updateUi){
     const ccy = String(inp.dataset.ccy || '').trim();
     const denom = String(inp.dataset.denom || '').trim();
     if (!ccy || !denom || !initial[ccy]) return;
-    initial[ccy].denomCounts[denom] = cashV2NormCount(inp.value);
+    initial[ccy].denomCounts[denom] = cashV2CountToStore(inp.value);
   });
 
   // Calcular subtotales + totales
@@ -1164,7 +1358,7 @@ function cashV2ApplyInitialToDom(initial){
     for (const d of (CASHV2_DENOMS[ccy] || [])){
       const k = String(d);
       const inp = document.getElementById(`cashv2-initial-${ccy}-${k}`);
-      if (inp) inp.value = String(cashV2NormCount(v[ccy].denomCounts[k]));
+      if (inp) inp.value = cashV2CountDomValue(v[ccy].denomCounts[k]);
     }
   }
   cashV2UpdateInitialTotals();
@@ -1589,7 +1783,7 @@ function cashV2InitFinalUIOnce(){
     tbody.innerHTML = denoms.map(d=>{
       const k = String(d);
       const sym = (ccy === 'NIO') ? 'C$' : '$';
-      return `\n<tr>\n  <td class=\"denom\"><b>${sym} ${k}</b></td>\n  <td>\n    <input type=\"number\" min=\"0\" step=\"1\" inputmode=\"numeric\" pattern=\"[0-9]*\"\n      class=\"cashv2-denom-input\"\n      data-cashv2-final=\"1\" data-ccy=\"${ccy}\" data-denom=\"${k}\"\n      id=\"cashv2-final-${ccy}-${k}\" value=\"0\"\n    >\n  </td>\n  <td class=\"sub\"><span id=\"cashv2-final-sub-${ccy}-${k}\">0</span></td>\n</tr>`;
+      return `\n<tr>\n  <td class=\"denom\"><b>${sym} ${k}</b></td>\n  <td>\n    <input type=\"number\" min=\"0\" step=\"1\" inputmode=\"numeric\" pattern=\"[0-9]*\"\n      class=\"cashv2-denom-input\"\n      data-cashv2-final=\"1\" data-ccy=\"${ccy}\" data-denom=\"${k}\"\n      id=\"cashv2-final-${ccy}-${k}\" placeholder=\"\" value=\"\"\n    >\n  </td>\n  <td class=\"sub\"><span id=\"cashv2-final-sub-${ccy}-${k}\">0</span></td>\n</tr>`;
     }).join('');
   }
 
@@ -1607,7 +1801,13 @@ function cashV2InitFinalUIOnce(){
   card.addEventListener('focusout', (e)=>{
     const t = e && e.target;
     if (!t || t.getAttribute('data-cashv2-final') !== '1') return;
-    const n = cashV2NormCount(t.value);
+    const raw = (t.value != null) ? String(t.value) : '';
+    if (raw.trim() === ''){
+      try{ t.value = ''; }catch(_){ }
+      cashV2UpdateFinalTotals();
+      return;
+    }
+    const n = cashV2NormCount(raw);
     t.value = String(n);
     cashV2UpdateFinalTotals();
   });
@@ -1661,7 +1861,7 @@ function cashV2ReadFinalFromDom(updateUi){
     const ccy = String(inp.dataset.ccy || '').trim();
     const denom = String(inp.dataset.denom || '').trim();
     if (!ccy || !denom || !final[ccy]) return;
-    final[ccy].denomCounts[denom] = cashV2NormCount(inp.value);
+    final[ccy].denomCounts[denom] = cashV2CountToStore(inp.value);
   });
 
   for (const ccy of ['NIO','USD']){
@@ -1699,7 +1899,7 @@ function cashV2ApplyFinalToDom(final){
     for (const d of (CASHV2_DENOMS[ccy] || [])){
       const k = String(d);
       const inp = document.getElementById(`cashv2-final-${ccy}-${k}`);
-      if (inp) inp.value = String(cashV2NormCount(v[ccy].denomCounts[k]));
+      if (inp) inp.value = cashV2CountDomValue(v[ccy].denomCounts[k]);
     }
   }
   cashV2UpdateFinalTotals();
@@ -2339,7 +2539,7 @@ async function cashV2PersistEventFlag(eventId, enabled){
     }
   }catch(_){ saved = false; }
 
-  // Fallback mínimo canónico (sin legacy)
+  // Fallback mínimo canónico (sin compatibilidad anterior)
   if (!saved){
     try{
       const m = cashV2LoadFlagsLS();
@@ -3253,6 +3453,9 @@ async function renderEfectivoTab(){
   // Etapa 3/7: Tipo de cambio
   cashV2InitFxUIOnce();
 
+  // Etapa 2/3: UX inputs (vacío primero + select-all reingreso)
+  cashV2InitUXInputsOnce();
+
   // Reset UI
   try{ if (tab){ tab.classList.remove('cashv2-readonly'); tab.classList.remove('cashv2-closed'); } }catch(_){ }
   try{ if (elErr){ elErr.style.display = 'none'; elErr.textContent = ''; } }catch(_){ }
@@ -3333,7 +3536,7 @@ async function renderEfectivoTab(){
       if (fx){ fx.style.display = 'none'; fx.dataset.eventId=''; fx.dataset.dayKey=dayKey; fx.dataset.readonly='1'; }
     }catch(_){ }
     try{ cashV2SetFxEnabled(false); }catch(_){ }
-    try{ cashV2ApplyFxToDom(null, ''); }catch(_){ }
+    try{ cashV2ApplyFxToDom(null, '', null); }catch(_){ }
 // Etapa 3: sin evento => oculta Inicio y bloquea controles
     try{
       const fx = document.getElementById('cashv2-fx-card');
@@ -3523,7 +3726,7 @@ async function renderEfectivoTab(){
         const fx = document.getElementById('cashv2-fx-card');
         if (fx){ fx.style.display = 'block'; fx.dataset.eventId = String(eventId); fx.dataset.dayKey = dayKey; fx.dataset.readonly = '1'; }
       }catch(_){ }
-      try{ cashV2ApplyFxToDom(null, eventId); }catch(_){ }
+      try{ cashV2ApplyFxToDom(null, eventId, evObj); }catch(_){ }
       try{ cashV2SetFxEnabled(false); }catch(_){ }
 
       // Ocultar/inhabilitar el resto hasta abrir el día
@@ -3571,7 +3774,7 @@ async function renderEfectivoTab(){
       const fx = document.getElementById('cashv2-fx-card');
       if (fx){ fx.style.display = 'block'; fx.dataset.eventId = String(eventId); fx.dataset.dayKey = dayKey; }
     }catch(_){ }
-    try{ cashV2ApplyFxToDom(rec, eventId); }catch(_){ }
+    try{ cashV2ApplyFxToDom(rec, eventId, evObj); }catch(_){ }
     try{
       const card = document.getElementById('cashv2-initial-card');
       if (card){ card.style.display = 'block'; card.dataset.eventId = String(eventId); card.dataset.dayKey = dayKey; }
@@ -4572,6 +4775,28 @@ function del(name, key){
         }catch(e){
           console.error('Error revertiendo vasos al eliminar venta', e);
           warnings.push('No se pudieron revertir vasos de sangría (la venta sí se eliminó).');
+        }
+
+
+        // VASOS (Etapa 3/3): Revertir consumible Vasos 12oz (Tapas Auto) por operación (idempotente)
+        try{
+          if (sale && isCupSaleRecord(sale)){
+            const vSrc = (sale.invEffects && sale.invEffects.vasos12oz && sale.invEffects.vasos12oz.sourceId)
+              ? String(sale.invEffects.vasos12oz.sourceId)
+              : getVasos12ozSourceIdFromSalePOS(sale);
+            const qRaw = (sale.invEffects && sale.invEffects.vasos12oz && (sale.invEffects.vasos12oz.qtyApplied ?? sale.invEffects.vasos12oz.qty))
+              ?? sale.qty;
+            const q = toIntSafePOS(qRaw, 0);
+            const rCap = adjustVasos12ozStockFromPOS(q, { sourceId: vSrc, mode:'revert' });
+            if (rCap && rCap.ok){
+              // ok (o skipped por idempotencia)
+            } else {
+              warnings.push('No se pudieron revertir Vasos 12oz (la venta sí se eliminó).');
+            }
+          }
+        }catch(e){
+          console.error('Error revertiendo Vasos 12oz al eliminar venta', e);
+          warnings.push('No se pudieron revertir Vasos 12oz (la venta sí se eliminó).');
         }
 
         try{
@@ -6685,6 +6910,148 @@ function applyFinishedFromSalePOS(sale, direction){
     console.error('Error ajustando inventario central desde venta', e);
   }
 }
+
+
+// ------------------------------------------------------------
+// VASOS (Etapa 2/3): Auto-descuento de consumible "Vasos 12oz"
+// - Fuente: panel VASOS del POS (venta/cortesía por vaso)
+// - Destino: Inventario central (Tapas Auto) -> caps.vasos12oz.stock
+// - Nota: SIN reversión todavía (Etapa 3)
+// ------------------------------------------------------------
+const CAP_ITEM_VASOS12OZ_ID = 'vasos12oz';
+
+function toIntSafePOS(v, fallback=0){
+  const n = parseInt(String(v ?? ''), 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+
+
+function getVasos12ozSourceIdFromSalePOS(sale){
+  try{
+    if (!sale || typeof sale !== 'object') return 'vasos12oz|sale:unknown';
+    const uid = (sale.uid != null && String(sale.uid).trim() !== '') ? String(sale.uid).trim() : '';
+    const id = (sale.id != null && String(sale.id).trim() !== '') ? String(sale.id).trim() : '';
+    const createdAt = (sale.createdAt != null && String(sale.createdAt).trim() !== '') ? String(sale.createdAt).trim() : '';
+    const base = uid || (id ? ('id:' + id) : (createdAt ? ('ts:' + createdAt) : 'unknown'));
+    return 'vasos12oz|' + base;
+  }catch(_){
+    return 'vasos12oz|sale:unknown';
+  }
+}
+function ensureCapsShapePOS(inv){
+  if (!inv || typeof inv !== 'object') inv = {};
+  if (!inv.caps || typeof inv.caps !== 'object') inv.caps = {};
+  if (!inv.caps[CAP_ITEM_VASOS12OZ_ID] || typeof inv.caps[CAP_ITEM_VASOS12OZ_ID] !== 'object'){
+    inv.caps[CAP_ITEM_VASOS12OZ_ID] = { stock: 0, min: 0 };
+  }
+  const it = inv.caps[CAP_ITEM_VASOS12OZ_ID];
+  // Stock puede ser negativo (entero). Min siempre >= 0.
+  it.stock = toIntSafePOS(it.stock, 0);
+  it.min = Math.max(0, toIntSafePOS(it.min, 0));
+  return inv;
+}
+
+
+function adjustVasos12ozStockFromPOS(qtyUsed, opts){
+  const raw = toIntSafePOS(qtyUsed, 0);
+  const qty = Math.abs(raw);
+  const mode = (opts && opts.mode === 'revert') ? 'revert' : 'apply';
+  const sourceId = (opts && opts.sourceId != null && String(opts.sourceId).trim() !== '') ? String(opts.sourceId).trim() : '';
+
+  if (!(qty > 0)) return { ok:true, skipped:true, before:null, after:null, mode, sourceId, reason:'qty_zero' };
+
+  const nowTs = ()=>{
+    try{ return Date.now(); }catch(_){ return (new Date()).getTime(); }
+  };
+
+  function applyEffectToInv(invObj){
+    const inv = ensureCapsShapePOS(invObj || {});
+    const it = inv.caps[CAP_ITEM_VASOS12OZ_ID];
+    const before = toIntSafePOS(it.stock, 0);
+
+    // Sin sourceId: comportamiento legacy (solo ajustar stock)
+    if (!sourceId){
+      const delta = (mode === 'revert') ? qty : (-qty);
+      it.stock = before + delta;
+      return { inv, before, after: it.stock, skipped:false, reason:'' };
+    }
+
+    if (!it.effects || typeof it.effects !== 'object') it.effects = {};
+    const eff = it.effects[sourceId];
+
+    if (mode === 'apply'){
+      if (eff && eff.state === 'APPLIED'){
+        return { inv, before, after: before, skipped:true, reason:'already_applied' };
+      }
+      const after = before - qty;
+      it.stock = after;
+      it.effects[sourceId] = {
+        qty,
+        state: 'APPLIED',
+        appliedAt: nowTs(),
+        revertedAt: (eff && eff.revertedAt != null) ? eff.revertedAt : null
+      };
+      return { inv, before, after, skipped:false, reason:'' };
+    }
+
+    // mode === 'revert'
+    if (eff && eff.state === 'REVERTED'){
+      return { inv, before, after: before, skipped:true, reason:'already_reverted' };
+    }
+
+    // Si hay evidencia previa, revertimos exactamente lo aplicado. Si no, hacemos reversión best-effort (una sola vez).
+    const qtyEff = (eff && eff.qty != null) ? Math.abs(toIntSafePOS(eff.qty, qty)) : qty;
+    const after = before + qtyEff;
+    it.stock = after;
+    it.effects[sourceId] = {
+      qty: qtyEff,
+      state: 'REVERTED',
+      appliedAt: (eff && eff.appliedAt != null) ? eff.appliedAt : null,
+      revertedAt: nowTs(),
+      legacy: !(eff && eff.state)
+    };
+    return { inv, before, after, skipped:false, reason:'' };
+  }
+
+  // Mejor opción: sharedRead + sharedSet con bloqueo por conflicto y reintento.
+  try{
+    if (window.A33Storage && typeof A33Storage.sharedRead === 'function' && typeof A33Storage.sharedSet === 'function'){
+      for (let attempt=0; attempt<2; attempt++){
+        const r0 = A33Storage.sharedRead(STORAGE_KEY_INVENTARIO, {}, 'local');
+        const baseRev = (r0 && r0.meta && typeof r0.meta.rev === 'number') ? r0.meta.rev : null;
+
+        const applied = applyEffectToInv((r0 && r0.data) ? r0.data : {});
+        if (applied && applied.skipped){
+          return { ok:true, skipped:true, before:applied.before, after:applied.after, mode, sourceId, reason:applied.reason };
+        }
+
+        const r = A33Storage.sharedSet(STORAGE_KEY_INVENTARIO, applied.inv, { source:'pos', baseRev, conflictPolicy:'block' });
+        if (r && r.ok) return { ok:true, skipped:false, before:applied.before, after:applied.after, mode, sourceId };
+        if (r && r.conflict) continue; // reintentar con data fresca
+        return { ok:false, skipped:false, mode, sourceId, message: (r && r.message) ? r.message : 'No se pudo actualizar Vasos 12oz.' };
+      }
+      return { ok:false, skipped:false, mode, sourceId, message:'Conflicto al actualizar Vasos 12oz. Recargá e intentá de nuevo.' };
+    }
+  }catch(e){
+    console.warn('Error actualizando Vasos 12oz (shared)', e);
+  }
+
+  // Fallback (si no está el contrato shared)
+  try{
+    const applied = applyEffectToInv(invCentralLoadPOS());
+    if (applied && applied.skipped){
+      return { ok:true, skipped:true, before:applied.before, after:applied.after, mode, sourceId, reason:applied.reason, fallback:true };
+    }
+    invCentralSavePOS(applied.inv);
+    return { ok:true, skipped:false, before:applied.before, after:applied.after, mode, sourceId, fallback:true };
+  }catch(e){
+    console.warn('Error actualizando Vasos 12oz (fallback)', e);
+    return { ok:false, skipped:false, mode, sourceId, message:'No se pudo actualizar Vasos 12oz (fallback).' };
+  }
+}
+
+
 async function renderCentralFinishedPOS(){
   const tbody = document.querySelector('#tbl-inv-central tbody');
   if (!tbody) return;
@@ -8463,10 +8830,58 @@ function bindTabbarOncePOS(){
   if (bar.dataset.bound === '1') return;
   bar.dataset.bound = '1';
 
-  // Evitar doble-disparo touch -> click (iOS Safari/PWA)
-  let lastTouchTs = 0;
+  // Evitar doble-disparo (pointerup/touchend -> click) y doble setTab por mismo destino.
+  // iPad moderno reporta PointerEvent, pero a veces el primer toque no llega como pointerup;
+  // por eso siempre dejamos click como fallback y deduplicamos.
+  let lastRealTapTs = 0;  // actualizado por pointerup/touchend
+  let lastRealTapDest = '';
+  const CLICK_DEDUPE_MS = 700;
+  const NAV_DEDUPE_MS   = 650;
+  const navLockUntil = Object.create(null); // dest -> ts límite
+  let navSeq = 0; // monotónico: último request aceptado
 
-  const onTap = (e)=>{
+  // iPad: durante scroll/inercia o con teclado abierto, el primer toque puede
+  // solo frenar scroll o cerrar teclado y NO disparar click/pointerup.
+  let lastScrollTs = 0;
+  const SCROLL_RECENT_MS = 260;
+  const microtask = (fn)=>{
+    try{ if (typeof queueMicrotask === 'function') return queueMicrotask(fn); }catch(_){ }
+    Promise.resolve().then(fn);
+  };
+  const isEditable = (el)=>{
+    try{
+      if (!el) return false;
+      if (el.isContentEditable) return true;
+      const t = String(el.tagName||'').toUpperCase();
+      return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT';
+    }catch(_){ return false; }
+  };
+  // Scroll listener global (evita múltiples binds si tabbar se re-renderiza)
+  try{
+    const root = document && document.documentElement;
+    if (root && root.dataset && root.dataset.a33TabbarScrollBound !== '1'){
+      root.dataset.a33TabbarScrollBound = '1';
+      try{ document.addEventListener('scroll', ()=>{ lastScrollTs = Date.now(); }, { capture:true, passive:true }); }
+      catch(_){ try{ document.addEventListener('scroll', ()=>{ lastScrollTs = Date.now(); }, true); }catch(__){} }
+    }
+  }catch(_){ }
+
+  const acceptNav = (dest, nowTs)=>{
+    try{
+      const until = navLockUntil[dest] || 0;
+      if (until && nowTs < until) return 0;
+      navLockUntil[dest] = nowTs + NAV_DEDUPE_MS;
+      navSeq = (navSeq + 1);
+      if (navSeq > 2147483647) navSeq = 1; // evita wrap raro
+      return navSeq;
+    }catch(_){
+      navSeq = (navSeq + 1);
+      if (navSeq > 2147483647) navSeq = 1;
+      return navSeq;
+    }
+  };
+
+  const onTap = async (e)=>{
     // Solo botones con data-tab dentro de la barra
     const btn = e && e.target ? e.target.closest('button[data-tab]') : null;
     if (!btn || !bar.contains(btn)) return;
@@ -8474,30 +8889,95 @@ function bindTabbarOncePOS(){
     // Ignorar clicks no primarios
     if (e && e.type === 'click' && typeof e.button === 'number' && e.button !== 0) return;
 
+    // Pointer: ignorar no-primario / botones no principales (mouse)
+    if (e && e.type === 'pointerup'){
+      try{ if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return; }catch(_){ }
+      try{
+        if (e.pointerType === 'mouse' && typeof e.button === 'number' && e.button !== 0) return;
+      }catch(_){ }
+    }
+
     const dest = String(btn.dataset.tab || '').trim();
     if (!dest) return;
 
-    // Dedup: si viene de touchend, el click siguiente se ignora
-    if (e && e.type === 'touchend') lastTouchTs = Date.now();
-    if (e && e.type === 'click' && lastTouchTs && (Date.now() - lastTouchTs) < 650) return;
+    const nowTs = Date.now();
+
+    // Dedup: ignorar click inmediato después de pointerup/touchend *del mismo destino*.
+    // (Si el pointerup se perdió en un tap distinto, el click debe poder entrar.)
+    if (e && (e.type === 'pointerup' || e.type === 'touchend')){ lastRealTapTs = nowTs; lastRealTapDest = dest; }
+    if (e && e.type === 'click' && lastRealTapTs && (nowTs - lastRealTapTs) < CLICK_DEDUPE_MS && lastRealTapDest === dest) return;
 
     // Fallback seguro: si no existe el tab destino, no-op limpio
     const target = document.getElementById('tab-' + dest);
     if (!target) return;
 
+    // Guardia anti duplicación por (destino + ventana de tiempo) + evita carreras async:
+    // sellamos el request ANTES de awaits, y descartamos requests viejos si llega uno nuevo.
+    const mySeq = acceptNav(dest, nowTs);
+    if (!mySeq) return;
+
     try{ if (e && e.preventDefault) e.preventDefault(); }catch(_){ }
-    try{ setTab(dest); }catch(err){ console.error('TABNAV error', err); }
+    try{
+      try{ await flushChecklistTextQueuePOS({ reason:'tabnav' }); }catch(_e){}
+      if (mySeq !== navSeq) return; // request viejo: ya hubo otro tap
+      setTab(dest);
+    }catch(err){ console.error('TABNAV error', err); }
+  };
+
+  const onDown = (e)=>{
+    // Solo botones con data-tab dentro de la barra
+    const btn = e && e.target ? e.target.closest('button[data-tab]') : null;
+    if (!btn || !bar.contains(btn)) return;
+
+    // Pointer: solo touch/pen (evita efectos raros en desktop)
+    try{
+      if (e && e.type === 'pointerdown' && e.pointerType && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    }catch(_){ }
+
+    const dest = String(btn.dataset.tab || '').trim();
+    if (!dest) return;
+
+    const nowTs = Date.now();
+    const ae = document.activeElement;
+    const hadFocus = isEditable(ae);
+    const scrolledRecently = lastScrollTs && (nowTs - lastScrollTs) < SCROLL_RECENT_MS;
+    if (!hadFocus && !scrolledRecently) return;
+
+    // Blur best-effort (cierra teclado)
+    if (hadFocus){
+      try{ ae && ae.blur && ae.blur(); }catch(_){ }
+      try{ if (document.activeElement && isEditable(document.activeElement)) document.activeElement.blur(); }catch(_){ }
+    }
+
+    // Navegar en el mismo gesto (o microtask) usando el MISMO dedupe global
+    microtask(()=>{
+      try{
+        onTap({
+          target: btn,
+          type: 'pointerdown',
+          preventDefault: ()=>{ try{ e && e.preventDefault && e.preventDefault(); }catch(_){ } }
+        });
+      }catch(_){ }
+    });
   };
 
   // Pointer Events cuando existan; fallback a touch/click
   const hasPointer = (typeof window !== 'undefined' && 'PointerEvent' in window);
   if (hasPointer) {
+    bar.addEventListener('pointerdown', onDown, { passive:false });
+    // Fallback extra: touchstart también (dedupe evita doble)
+    bar.addEventListener('touchstart', onDown, { passive:false });
+
     bar.addEventListener('pointerup', onTap);
+    // Fallback click incluso con PointerEvent (iPad/Safari/PWA)
+    bar.addEventListener('click', onTap);
   } else {
+    bar.addEventListener('touchstart', onDown, { passive:false });
     bar.addEventListener('touchend', onTap, { passive:false });
     bar.addEventListener('click', onTap);
   }
 }
+
 
 function setTab(name){
   // Canonical tab names (Etapa 12B): "venta" es la única verdad.
@@ -8505,6 +8985,13 @@ function setTab(name){
   try{
     if (name === 'vender') name = 'venta';
   }catch(_){ }
+
+  // Checklist: antes de salir, intentar persistir texto pendiente (best-effort)
+  try{
+    if (window.__A33_ACTIVE_TAB === 'checklist' && name !== 'checklist'){
+      flushChecklistTextQueuePOS({ reason:'setTab' }).catch(()=>{});
+    }
+  }catch(_e){}
 
 const tabs = $$('.tab');
   const target = document.getElementById('tab-'+name);
@@ -8713,6 +9200,149 @@ function makeChecklistItemIdPOS(){
   try{ return (crypto && crypto.randomUUID) ? crypto.randomUUID() : null; }catch(e){}
   return 'chk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
 }
+
+// --- Checklist: persistencia robusta del texto (Etapa 1 iPad-safe)
+function _getChecklistDraftStorePOS(){
+  if (!window.__A33_CHECKLIST_DRAFT){
+    window.__A33_CHECKLIST_DRAFT = {
+      eventId: null,
+      q: Object.create(null),          // key: section::id -> rawText
+      lastQueued: Object.create(null), // evitar re-encolar el mismo valor
+      lastSaved: Object.create(null),  // last persisted (para evitar writes)
+      t: null,
+      flushing: false,
+    };
+  }
+  return window.__A33_CHECKLIST_DRAFT;
+}
+
+function _normalizeChecklistTextPOS(raw, prev){
+  const v = (raw == null ? '' : String(raw)).trim();
+  // Comportamiento elegido: si queda vacío, se restaura placeholder coherente con el modelo actual.
+  if (!v) return (prev && String(prev).trim()) ? String(prev).trim() : 'Nuevo ítem';
+  return v;
+}
+
+function queueChecklistTextSavePOS(sectionKey, id, rawText, opts){
+  const o = (opts || {});
+  if (!sectionKey || !id) return;
+  const d = _getChecklistDraftStorePOS();
+  const key = String(sectionKey) + '::' + String(id);
+  const raw = (rawText == null ? '' : String(rawText));
+
+  // Evitar escrituras excesivas: solo encolar si cambió vs último encolado
+  if (d.lastQueued[key] === raw && !o.force) return;
+  d.lastQueued[key] = raw;
+  d.q[key] = raw;
+
+  // Debounce razonable (iPad): guarda mientras escribe, y además se fuerza en blur/navegación
+  if (d.t) clearTimeout(d.t);
+  const wait = (typeof o.wait === 'number') ? o.wait : 280;
+  d.t = setTimeout(()=>{ flushChecklistTextQueuePOS({ reason: 'debounce' }).catch(()=>{}); }, Math.max(120, wait));
+}
+
+async function flushChecklistTextQueuePOS(opts){
+  const o = (opts || {});
+  const d = _getChecklistDraftStorePOS();
+
+  // Nada que hacer
+  const keys = Object.keys(d.q);
+  if (!keys.length) return;
+
+  // Evitar flush concurrente
+  if (d.flushing) return;
+  d.flushing = true;
+
+  try{
+    if (d.t){ clearTimeout(d.t); d.t = null; }
+
+    const evId = (d.eventId != null) ? parseInt(d.eventId, 10) : null;
+    let eventId = (evId && Number.isFinite(evId)) ? evId : null;
+
+    if (!eventId){
+      try{
+        const cur = await getMeta('currentEventId');
+        const curId = (cur === null || cur === undefined || cur === '') ? null : parseInt(cur, 10);
+        if (curId && Number.isFinite(curId)) eventId = curId;
+      }catch(_e){}
+    }
+
+    if (!eventId){
+      // Sin evento: limpiar cola para no envenenar futuras sesiones
+      d.q = Object.create(null);
+      return;
+    }
+
+    const ev = await getEventByIdPOS(eventId);
+    if (!ev){
+      d.q = Object.create(null);
+      return;
+    }
+
+    // ensureChecklistDataPOS garantiza la plantilla base
+    const dayKey = safeYMD(getSaleDayKeyPOS());
+    const { template } = ensureChecklistDataPOS(ev, dayKey);
+
+    let changed = false;
+
+    for (const k of keys){
+      const raw = d.q[k];
+      const parts = String(k).split('::');
+      const sectionKey = parts[0] || '';
+      const id = parts.slice(1).join('::'); // por si acaso
+      if (!sectionKey || !id) continue;
+
+      const arr = Array.isArray(template[sectionKey]) ? template[sectionKey] : [];
+      const it = arr.find(x=>String(x.id)===String(id));
+      if (!it) continue;
+
+      const next = _normalizeChecklistTextPOS(raw, it.text);
+      const lastSavedKey = String(eventId) + '|' + k;
+
+      // Evitar write si no cambió
+      if (String(it.text || '') !== String(next)){
+        it.text = next;
+        template[sectionKey] = arr;
+        changed = true;
+      }
+
+      d.lastSaved[lastSavedKey] = next;
+    }
+
+    // Limpiar cola antes del put para no repetir si ocurre render rápido
+    d.q = Object.create(null);
+
+    if (changed){
+      ev.checklistTemplate = template;
+      await put('events', ev);
+    }
+  }catch(err){
+    console.error('Checklist flush error', err);
+  }finally{
+    d.flushing = false;
+  }
+}
+
+function bindChecklistLifecycleFlushPOS(){
+  if (window.__A33_CHECKLIST_LIFECYCLE_BOUND) return;
+  window.__A33_CHECKLIST_LIFECYCLE_BOUND = true;
+
+  // Si se oculta la app (iPad/PWA), intentar flush best-effort
+  try{
+    document.addEventListener('visibilitychange', ()=>{
+      if (document.visibilityState === 'hidden'){
+        flushChecklistTextQueuePOS({ reason:'visibility' }).catch(()=>{});
+      }
+    });
+  }catch(_e){}
+
+  try{
+    window.addEventListener('pagehide', ()=>{
+      flushChecklistTextQueuePOS({ reason:'pagehide' }).catch(()=>{});
+    });
+  }catch(_e){}
+}
+
 
 function makeReminderIdPOS(){
   try{ return (crypto && crypto.randomUUID) ? crypto.randomUUID() : null; }catch(e){}
@@ -9354,7 +9984,8 @@ async function saveChecklistStatePOS(ctx){
 }
 
 async function renderChecklistTab(){
-  bindChecklistEventsOncePOS();
+  // Bind listeners (idempotente)
+  try{ bindChecklistEventsOncePOS(); }catch(_e){}
 
   // Hardening: asegurar índice posRemindersIndex coherente (se ejecuta 1 vez)
   try{ await maybeRebuildRemindersIndexPOS(); }catch(_e){}
@@ -9363,418 +9994,506 @@ async function renderChecklistTab(){
   const grid = document.getElementById('checklist-grid');
   const sel = document.getElementById('checklist-event');
 
-  const current = await getMeta('currentEventId');
-  const currentId = (current === null || current === undefined || current === '') ? null : parseInt(current, 10);
+  const fail = (msg)=>{
+    try{
+      if (grid) grid.style.display = 'none';
+      if (empty){
+        empty.style.display = 'block';
+        empty.textContent = msg || 'Checklist no disponible.';
+      }
+    }catch(_e){}
+  };
 
-  if (sel) sel.value = currentId ? String(currentId) : '';
-
-  if (!currentId) {
-    if (empty) empty.style.display = 'block';
-    if (grid) grid.style.display = 'none';
-    return;
-  }
-
-  const ev = await getEventByIdPOS(currentId);
-  if (!ev) {
-    if (empty) empty.style.display = 'block';
-    if (grid) grid.style.display = 'none';
-    return;
-  }
-
-  const dayKey = safeYMD(getSaleDayKeyPOS());
-
-  // Default de fecha para nuevos recordatorios: sigue el día del Checklist (sin pisar si el usuario la cambió manualmente)
   try{
-    const dateEl = document.getElementById('checklist-reminder-date');
-    if (dateEl){
-      const last = (dateEl.dataset.lastDayKey || '').toString();
-      const curVal = (dateEl.value || '').toString().trim();
-      if (!curVal || curVal === last) dateEl.value = dayKey;
-      dateEl.dataset.lastDayKey = dayKey;
+    // Hardening: si el selector quedó vacío por orden de carga, repoblar localmente (sin tocar refreshEventUI global)
+    try{
+      if (sel && sel.options && sel.options.length <= 1){
+        const evs = await getAll('events');
+        sel.innerHTML = '<option value="">— Selecciona evento —</option>';
+        for (const evx of (evs || [])){
+          const o = document.createElement('option');
+          o.value = evx.id;
+          o.textContent = (evx.name || 'Evento') + (evx.closedAt ? ' (cerrado)' : '');
+          sel.appendChild(o);
+        }
+      }
+    }catch(_e){}
+
+    const current = await getMeta('currentEventId');
+    const currentId = (current === null || current === undefined || current === '') ? null : parseInt(current, 10);
+
+    try{
+      window.__A33_CHECKLIST_EVENT_ID = currentId;
+      const d = _getChecklistDraftStorePOS();
+      d.eventId = currentId;
+    }catch(_e){}
+
+    if (sel) sel.value = currentId ? String(currentId) : '';
+
+    if (!currentId) {
+      fail('Selecciona un evento para ver el Checklist.');
+      return;
     }
-  }catch(_e){}
-  const { changed, template, state } = ensureChecklistDataPOS(ev, dayKey);
-  if (changed) {
-    try{ await put('events', ev); }catch(e){ console.error('Checklist: no se pudo persistir inicialización', e); }
-    // Si acabamos de normalizar/crear recordatorios del día (datos antiguos), mantenemos el índice coherente.
-    try{ await syncRemindersIndexForDay(ev, dayKey); }catch(e){}
+
+    const ev = await getEventByIdPOS(currentId);
+    if (!ev) {
+      fail('Evento no encontrado. Revisa la pestaña Eventos.');
+      return;
+    }
+
+    const dayKey = safeYMD(getSaleDayKeyPOS());
+
+    // Default de fecha para nuevos recordatorios: sigue el día del Checklist (sin pisar si el usuario la cambió manualmente)
+    try{
+      const dateEl = document.getElementById('checklist-reminder-date');
+      if (dateEl){
+        const last = (dateEl.dataset.lastDayKey || '').toString();
+        const curVal = (dateEl.value || '').toString().trim();
+        if (!curVal || curVal === last) dateEl.value = dayKey;
+        dateEl.dataset.lastDayKey = dayKey;
+      }
+    }catch(_e){}
+
+    const { changed, template, state } = ensureChecklistDataPOS(ev, dayKey);
+    if (changed) {
+      try{ await put('events', ev); }catch(e){ console.error('Checklist: no se pudo persistir inicialización', e); }
+      // Si acabamos de normalizar/crear recordatorios del día (datos antiguos), mantenemos el índice coherente.
+      try{ await syncRemindersIndexForDay(ev, dayKey); }catch(e){}
+    }
+
+    if (empty) empty.style.display = 'none';
+    if (grid) grid.style.display = 'grid';
+
+    const checkedSet = new Set((state.checkedIds || []).map(String));
+
+    // Render columnas
+    for (const sec of CHECKLIST_SECTIONS_POS){
+      const listEl = document.getElementById(sec.listId);
+      renderChecklistSectionPOS(sec.key, listEl, template[sec.key] || [], checkedSet);
+    }
+
+    const notes = document.getElementById('checklist-notes');
+    if (notes) notes.value = state.notes || '';
+
+    // Recordatorios (por día)
+    try{ renderChecklistRemindersPOS(ev, dayKey); }catch(e){ console.warn('Checklist: recordatorios', e); }
+  }catch(err){
+    console.error('Checklist render error', err);
+    fail('Checklist: no se pudo cargar. Recarga el POS o vuelve a intentar.');
+    try{ showToast('Checklist: error al cargar (ver consola).'); }catch(_e){}
   }
+}
 
-  if (empty) empty.style.display = 'none';
-  if (grid) grid.style.display = 'grid';
-
-  const checkedSet = new Set((state.checkedIds || []).map(String));
-
-  // Render columnas
-  for (const sec of CHECKLIST_SECTIONS_POS){
-    const listEl = document.getElementById(sec.listId);
-    renderChecklistSectionPOS(sec.key, listEl, template[sec.key] || [], checkedSet);
+function _getChecklistBindStorePOS(){
+  if (!window.__A33_CHECKLIST_BIND_STORE_POS){
+    window.__A33_CHECKLIST_BIND_STORE_POS = { h: Object.create(null), notesTimer: null };
   }
-
-  const notes = document.getElementById('checklist-notes');
-  if (notes) notes.value = state.notes || '';
-
-  // Recordatorios (por día)
-  try{ renderChecklistRemindersPOS(ev, dayKey); }catch(e){ console.warn('Checklist: recordatorios', e); }
+  return window.__A33_CHECKLIST_BIND_STORE_POS;
 }
 
 function bindChecklistEventsOncePOS(){
-  if (window.__A33_CHECKLIST_BOUND) return;
-  window.__A33_CHECKLIST_BOUND = true;
-
-  const sel = document.getElementById('checklist-event');
-  if (sel){
-    sel.addEventListener('change', async ()=>{
-      // Etapa 2: limpiar cliente al cambiar evento
-      await resetOperationalStateOnEventSwitchPOS();
-      const val = (sel.value || '').trim();
-      if (!val) {
-        await setMeta('currentEventId', null);
-      } else {
-        await setMeta('currentEventId', parseInt(val,10));
-      }
-      await refreshEventUI();
-      try{ await refreshSaleStockLabel(); }catch(e){}
-      try{ await renderDay(); }catch(e){}
-      try{ await renderChecklistTab(); }catch(e){}
-      try{ showToast('Evento actualizado en todo el POS.'); }catch(e){}
-    });
-  }
-
-  const go = document.getElementById('checklist-go-events');
-  if (go){
-    go.addEventListener('click', ()=> setTab('eventos'));
-  }
-
-  // + Agregar ítem (por sección)
-  for (const sec of CHECKLIST_SECTIONS_POS){
-    // Soporta tanto IDs fijos (recomendado) como botones por clase/data-section (fallback)
-    const btn = document.getElementById(sec.addId) || document.querySelector(`#tab-checklist .chk-add[data-section="${sec.key}"]`);
-    if (!btn) continue;
-    btn.addEventListener('click', async ()=>{
-      const current = await getMeta('currentEventId');
-      const currentId = current ? parseInt(current,10) : null;
-      if (!currentId){
-        try{ showToast('Selecciona un evento primero.'); }catch(e){}
-        return;
-      }
-      const dayKey = safeYMD(getSaleDayKeyPOS());
-      const ev = await getEventByIdPOS(currentId);
-      if (!ev) return;
-      const { template } = ensureChecklistDataPOS(ev, dayKey);
-      const id = makeChecklistItemIdPOS();
-      template[sec.key] = Array.isArray(template[sec.key]) ? template[sec.key] : [];
-      template[sec.key].push({ id, text: 'Nuevo ítem' });
-      ev.checklistTemplate = template;
-      await put('events', ev);
-      await renderChecklistTab();
-      const input = document.querySelector(`#${sec.listId} .chk-text[data-id="${CSS.escape(id)}"]`);
-      if (input){
-        input.focus();
-        try{ input.select(); }catch(e){}
-      }
-    });
-  }
-
-  // Delegación de acciones dentro del tab
   const tab = document.getElementById('tab-checklist');
-  if (tab){
-    tab.addEventListener('click', async (e)=>{
-      const remAdd = e.target.closest('#checklist-reminder-add');
-      const remDoneToggle = e.target.closest('#checklist-reminder-done-toggle');
-      const remClearDone = e.target.closest('#checklist-reminder-clear-done');
-      const remDel = e.target.closest('.rem-del');
+  if (!tab) return;
 
-      if (remDoneToggle){
-        if (remDoneToggle.disabled) return;
-        window.__A33_REM_DONE_OPEN = !window.__A33_REM_DONE_OPEN;
-        await renderChecklistTab();
-        return;
-      }
+  // Lifecycle flush (idempotente)
+  try{ bindChecklistLifecycleFlushPOS(); }catch(_e){}
 
-      if (remAdd){
-        const ctx = await getChecklistContextPOS();
-        if (!ctx){
-          try{ showToast('Selecciona un evento primero.'); }catch(_e){}
+  const s = _getChecklistBindStorePOS();
+
+  if (!s.h.onInput){
+    s.h.onInput = (e)=>{
+      try{
+        const t = e && e.target;
+        const txt = t && t.closest ? t.closest('.chk-text') : null;
+        if (txt && tab.contains(txt)){
+          const id = txt.dataset.id;
+          const sectionKey = txt.dataset.section;
+          if (id && sectionKey) queueChecklistTextSavePOS(sectionKey, id, txt.value, { wait: 260 });
           return;
         }
 
-        const tEl = document.getElementById('checklist-reminder-text');
-        const dateEl = document.getElementById('checklist-reminder-date');
-        const dueEl = document.getElementById('checklist-reminder-due');
-        const priEl = document.getElementById('checklist-reminder-priority');
+        // Notas del día (debounced) — dentro del tab para evitar bind extra
+        if (t && t.id === 'checklist-notes'){
+          try{ clearTimeout(s.notesTimer); }catch(_e){}
+          s.notesTimer = setTimeout(async ()=>{
+            try{
+              const cur = await getMeta('currentEventId');
+              const curId = cur ? parseInt(cur,10) : null;
+              if (!curId) return;
+              const dayKey = safeYMD(getSaleDayKeyPOS());
+              const ev = await getEventByIdPOS(curId);
+              if (!ev) return;
+              const { state } = ensureChecklistDataPOS(ev, dayKey);
+              state.notes = t.value || '';
+              ev.days[dayKey].checklistState = state;
+              await put('events', ev);
+            }catch(err){ console.error('Checklist notes save error', err); }
+          }, 350);
+        }
+      }catch(err){ console.error('Checklist input handler error', err); }
+    };
 
-        const text = (tEl ? (tEl.value || '') : '').trim();
-        if (!text){
-          try{ showToast('Escribe el recordatorio.'); }catch(_e){}
+    s.h.onBlur = (e)=>{
+      try{
+        const t = e && e.target;
+        const txt = t && t.closest ? t.closest('.chk-text') : null;
+        if (!txt || !tab.contains(txt)) return;
+        const id = txt.dataset.id;
+        const sectionKey = txt.dataset.section;
+        if (!id || !sectionKey) return;
+        // Normaliza vacío -> placeholder coherente
+        if (!String(txt.value || '').trim()) txt.value = 'Nuevo ítem';
+        queueChecklistTextSavePOS(sectionKey, id, txt.value, { force:true, wait: 0 });
+        flushChecklistTextQueuePOS({ reason:'blur', force:true }).catch(()=>{});
+      }catch(err){ console.error('Checklist blur handler error', err); }
+    };
+
+    s.h.onKeydown = (e)=>{
+      try{
+        if (!e || e.key !== 'Enter') return;
+        const t = e.target;
+        if (!t || !t.id) return;
+        if (t.id === 'checklist-reminder-text' || t.id === 'checklist-reminder-date' || t.id === 'checklist-reminder-due' || t.id === 'checklist-reminder-priority'){
+          e.preventDefault();
+          const btn = document.getElementById('checklist-reminder-add');
+          try{ btn && btn.click(); }catch(_e){}
+        }
+      }catch(err){ console.error('Checklist keydown handler error', err); }
+    };
+
+    s.h.onClick = (e)=>{
+      (async ()=>{
+        const t = e && e.target;
+        if (!t || !t.closest) return;
+
+        const go = t.closest('#checklist-go-events');
+        if (go){
+          setTab('eventos');
+          return;
+        }
+
+        // + Agregar ítem (delegado)
+        const addBtn = t.closest('.chk-add');
+        if (addBtn){
+          const sectionKey = String(addBtn.dataset.section || '').trim();
+          if (!sectionKey) return;
+          const current = await getMeta('currentEventId');
+          const currentId = current ? parseInt(current,10) : null;
+          if (!currentId){
+            try{ showToast('Selecciona un evento primero.'); }catch(_e){}
+            return;
+          }
+          const dayKey = safeYMD(getSaleDayKeyPOS());
+          const ev = await getEventByIdPOS(currentId);
+          if (!ev) return;
+          const { template } = ensureChecklistDataPOS(ev, dayKey);
+          const id = makeChecklistItemIdPOS();
+          template[sectionKey] = Array.isArray(template[sectionKey]) ? template[sectionKey] : [];
+          template[sectionKey].push({ id, text: 'Nuevo ítem' });
+          ev.checklistTemplate = template;
+          await put('events', ev);
+          await renderChecklistTab();
+          const qid = String(id).replace(/"/g, '\"');
+          const input = document.querySelector(`#tab-checklist .chk-text[data-id="${qid}"]`);
+          if (input){
+            input.focus();
+            try{ input.select(); }catch(_e){}
+          }
+          return;
+        }
+
+        const remAdd = t.closest('#checklist-reminder-add');
+        const remDoneToggle = t.closest('#checklist-reminder-done-toggle');
+        const remClearDone = t.closest('#checklist-reminder-clear-done');
+        const remDel = t.closest('.rem-del');
+
+        if (remDoneToggle){
+          if (remDoneToggle.disabled) return;
+          window.__A33_REM_DONE_OPEN = !window.__A33_REM_DONE_OPEN;
+          await renderChecklistTab();
+          return;
+        }
+
+        if (remAdd){
+          const ctx = await getChecklistContextPOS();
+          if (!ctx){
+            try{ showToast('Selecciona un evento primero.'); }catch(_e){}
+            return;
+          }
+
+          const tEl = document.getElementById('checklist-reminder-text');
+          const dateEl = document.getElementById('checklist-reminder-date');
+          const dueEl = document.getElementById('checklist-reminder-due');
+          const priEl = document.getElementById('checklist-reminder-priority');
+
+          const text = (tEl ? (tEl.value || '') : '').trim();
+          if (!text){
+            try{ showToast('Escribe el recordatorio.'); }catch(_e){}
+            try{ tEl && tEl.focus(); }catch(_e){}
+            return;
+          }
+
+          // Fecha obligatoria (YYYY-MM-DD). Si el input no existe (edge), caemos al día actual.
+          const dueDateRaw = dateEl ? String(dateEl.value || '').trim() : '';
+          const dueDateKey = (dueDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw)) ? dueDateRaw : null;
+          if (!dueDateKey){
+            try{ showToast('Selecciona una fecha (obligatoria).'); }catch(_e){}
+            try{ dateEl && dateEl.focus(); }catch(_e){}
+            return;
+          }
+
+          const dueTimeRaw = dueEl ? (dueEl.value || '').trim() : '';
+          const dueTime = (dueTimeRaw && /^\d{2}:\d{2}$/.test(dueTimeRaw)) ? dueTimeRaw : null;
+          const priRaw = priEl ? (priEl.value || '').trim() : '';
+          const priority = (priRaw && ['high','med','low'].includes(priRaw)) ? priRaw : null;
+
+          // Guardar en el día destino (dueDateKey). No cambiamos sale-date automáticamente.
+          const { state: destState } = ensureChecklistDataPOS(ctx.ev, dueDateKey);
+          const ctxDest = { ...ctx, dayKey: dueDateKey, state: destState };
+
+          ctxDest.state.reminders = Array.isArray(ctxDest.state.reminders) ? ctxDest.state.reminders : [];
+          const now = Date.now();
+          ctxDest.state.reminders.unshift({
+            id: makeReminderIdPOS(),
+            text,
+            done: false,
+            createdAt: now,
+            updatedAt: now,
+            doneAt: null,
+            dueDateKey,
+            dueTime,
+            priority
+          });
+
+          await saveChecklistStatePOS(ctxDest);
+          try{ await syncRemindersIndexForDay(ctx.ev, dueDateKey); }catch(e){}
+          if (tEl) tEl.value = '';
+          if (dueEl) dueEl.value = '';
+          if (priEl) priEl.value = '';
+          await renderChecklistTab();
+          try{
+            if (String(dueDateKey) !== String(ctx.dayKey)) showToast(`Guardado para ${dueDateKey}`);
+            else showToast('Recordatorio agregado.');
+          }catch(_e){}
           try{ tEl && tEl.focus(); }catch(_e){}
           return;
         }
 
-        // Fecha obligatoria (YYYY-MM-DD). Si el input no existe (edge), caemos al día actual.
-        const dueDateRaw = dateEl ? String(dateEl.value || '').trim() : '';
-        const dueDateKey = (dueDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw)) ? dueDateRaw : null;
-        if (!dueDateKey){
-          try{ showToast('Selecciona una fecha (obligatoria).'); }catch(_e){}
-          try{ dateEl && dateEl.focus(); }catch(_e){}
+        if (remClearDone){
+          const ctx = await getChecklistContextPOS();
+          if (!ctx) return;
+          const ok = confirm('¿Limpiar todos los recordatorios completados de los próximos 7 días?');
+          if (!ok) return;
+
+          const base = safeYMD(ctx.dayKey);
+          const dayKeys = rangeDayKeysPOS(base, 7);
+          const changedDays = [];
+
+          for (const dk of dayKeys){
+            const { state } = ensureChecklistDataPOS(ctx.ev, dk);
+            const arr = Array.isArray(state.reminders) ? state.reminders : [];
+            const next = arr.filter(r=>!r.done);
+            if (next.length !== arr.length){
+              state.reminders = next;
+              ctx.ev.days[dk].checklistState = state;
+              changedDays.push(dk);
+            }
+          }
+
+          if (changedDays.length){
+            await put('events', ctx.ev);
+            for (const dk of changedDays){
+              try{ await syncRemindersIndexForDay(ctx.ev, dk); }catch(e){}
+            }
+          }
+
+          window.__A33_REM_DONE_OPEN = false;
+          await renderChecklistTab();
+          try{ showToast('Completados eliminados (próximos 7 días).'); }catch(_e){}
           return;
         }
 
-        const dueTimeRaw = dueEl ? (dueEl.value || '').trim() : '';
-        const dueTime = (dueTimeRaw && /^\d{2}:\d{2}$/.test(dueTimeRaw)) ? dueTimeRaw : null;
-        const priRaw = priEl ? (priEl.value || '').trim() : '';
-        const priority = (priRaw && ['high','med','low'].includes(priRaw)) ? priRaw : null;
+        if (remDel){
+          const id = remDel.dataset.id;
+          if (!id) return;
+          const ctx = await getChecklistContextPOS();
+          if (!ctx) return;
 
-        // Guardar en el día destino (dueDateKey). No cambiamos sale-date automáticamente.
-        const { state: destState } = ensureChecklistDataPOS(ctx.ev, dueDateKey);
-        const ctxDest = { ...ctx, dayKey: dueDateKey, state: destState };
+          const dkRaw = (remDel.dataset.dayKey || remDel.dataset.daykey || '').toString().trim();
+          const dayKey = (dkRaw && /^\d{4}-\d{2}-\d{2}$/.test(dkRaw)) ? dkRaw : ctx.dayKey;
 
-        ctxDest.state.reminders = Array.isArray(ctxDest.state.reminders) ? ctxDest.state.reminders : [];
-        const now = Date.now();
-        ctxDest.state.reminders.unshift({
-          id: makeReminderIdPOS(),
-          text,
-          done: false,
-          createdAt: now,
-          updatedAt: now,
-          doneAt: null,
-          dueDateKey,
-          dueTime,
-          priority
-        });
+          const { state } = ensureChecklistDataPOS(ctx.ev, dayKey);
+          state.reminders = (Array.isArray(state.reminders) ? state.reminders : []).filter(r=>String(r.id)!==String(id));
+          ctx.ev.days[dayKey].checklistState = state;
 
-        await saveChecklistStatePOS(ctxDest);
-        try{ await syncRemindersIndexForDay(ctx.ev, dueDateKey); }catch(e){}
-        if (tEl) tEl.value = '';
-        if (dueEl) dueEl.value = '';
-        if (priEl) priEl.value = '';
-        await renderChecklistTab();
-        try{
-          if (String(dueDateKey) !== String(ctx.dayKey)) showToast(`Guardado para ${dueDateKey}`);
-          else showToast('Recordatorio agregado.');
-        }catch(_e){}
-        try{ tEl && tEl.focus(); }catch(_e){}
-        return;
-      }
-
-      if (remClearDone){
-        const ctx = await getChecklistContextPOS();
-        if (!ctx) return;
-        const ok = confirm('¿Limpiar todos los recordatorios completados de los próximos 7 días?');
-        if (!ok) return;
-
-        const base = safeYMD(ctx.dayKey);
-        const dayKeys = rangeDayKeysPOS(base, 7);
-        const changedDays = [];
-
-        for (const dk of dayKeys){
-          const { state } = ensureChecklistDataPOS(ctx.ev, dk);
-          const arr = Array.isArray(state.reminders) ? state.reminders : [];
-          const next = arr.filter(r=>!r.done);
-          if (next.length !== arr.length){
-            state.reminders = next;
-            ctx.ev.days[dk].checklistState = state;
-            changedDays.push(dk);
-          }
-        }
-
-        if (changedDays.length){
           await put('events', ctx.ev);
-          for (const dk of changedDays){
-            try{ await syncRemindersIndexForDay(ctx.ev, dk); }catch(e){}
-          }
+          try{ await syncRemindersIndexForDay(ctx.ev, dayKey); }catch(e){}
+          await renderChecklistTab();
+          try{ showToast('Recordatorio eliminado.'); }catch(_e){}
+          return;
         }
 
-        window.__A33_REM_DONE_OPEN = false;
-        await renderChecklistTab();
-        try{ showToast('Completados eliminados (próximos 7 días).'); }catch(_e){}
-        return;
-      }
+        const up = t.closest('.chk-up');
+        const down = t.closest('.chk-down');
+        const delBtn = t.closest('.chk-del');
+        const reset = t.closest('#checklist-reset-day');
 
-      if (remDel){
-        const id = remDel.dataset.id;
-        if (!id) return;
-        const ctx = await getChecklistContextPOS();
-        if (!ctx) return;
+        if (reset){
+          const cur = await getMeta('currentEventId');
+          const curId = cur ? parseInt(cur,10) : null;
+          if (!curId) return;
+          const ok = confirm('¿Reiniciar checks del día? (solo desmarca)');
+          if (!ok) return;
+          const dayKey = safeYMD(getSaleDayKeyPOS());
+          const ev = await getEventByIdPOS(curId);
+          if (!ev) return;
+          const { state } = ensureChecklistDataPOS(ev, dayKey);
+          state.checkedIds = [];
+          ev.days[dayKey].checklistState = state;
+          await put('events', ev);
+          await renderChecklistTab();
+          try{ showToast('Checks reiniciados.'); }catch(e){}
+          return;
+        }
 
-        const dkRaw = (remDel.dataset.dayKey || remDel.dataset.daykey || '').toString().trim();
-        const dayKey = (dkRaw && /^\d{4}-\d{2}-\d{2}$/.test(dkRaw)) ? dkRaw : ctx.dayKey;
-
-        const { state } = ensureChecklistDataPOS(ctx.ev, dayKey);
-        state.reminders = (Array.isArray(state.reminders) ? state.reminders : []).filter(r=>String(r.id)!==String(id));
-        ctx.ev.days[dayKey].checklistState = state;
-
-        await put('events', ctx.ev);
-        try{ await syncRemindersIndexForDay(ctx.ev, dayKey); }catch(e){}
-        await renderChecklistTab();
-        try{ showToast('Recordatorio eliminado.'); }catch(_e){}
-        return;
-      }
-
-      const up = e.target.closest('.chk-up');
-      const down = e.target.closest('.chk-down');
-      const del = e.target.closest('.chk-del');
-      const reset = e.target.closest('#checklist-reset-day');
-
-      if (reset){
+        if (!(up || down || delBtn)) return;
+        const btn = up || down || delBtn;
+        const sectionKey = btn.dataset.section;
+        const id = btn.dataset.id;
         const cur = await getMeta('currentEventId');
         const curId = cur ? parseInt(cur,10) : null;
-        if (!curId) return;
-        const ok = confirm('¿Reiniciar checks del día? (solo desmarca)');
-        if (!ok) return;
+        if (!curId || !sectionKey || !id) return;
+
         const dayKey = safeYMD(getSaleDayKeyPOS());
         const ev = await getEventByIdPOS(curId);
         if (!ev) return;
-        const { state } = ensureChecklistDataPOS(ev, dayKey);
-        state.checkedIds = [];
-        ev.days[dayKey].checklistState = state;
-        await put('events', ev);
-        await renderChecklistTab();
-        try{ showToast('Checks reiniciados.'); }catch(e){}
-        return;
-      }
+        const { template, state } = ensureChecklistDataPOS(ev, dayKey);
 
-      if (!(up || down || del)) return;
-      const btn = up || down || del;
-      const sectionKey = btn.dataset.section;
-      const id = btn.dataset.id;
-      const cur = await getMeta('currentEventId');
-      const curId = cur ? parseInt(cur,10) : null;
-      if (!curId || !sectionKey || !id) return;
-
-      const dayKey = safeYMD(getSaleDayKeyPOS());
-      const ev = await getEventByIdPOS(curId);
-      if (!ev) return;
-      const { template, state } = ensureChecklistDataPOS(ev, dayKey);
-
-      const arr = Array.isArray(template[sectionKey]) ? template[sectionKey] : [];
-      const idx = arr.findIndex(x=>String(x.id)===String(id));
-      if (idx < 0) return;
-
-      if (del){
-        const ok = confirm('¿Eliminar este ítem?');
-        if (!ok) return;
-        arr.splice(idx,1);
-        template[sectionKey] = arr;
-        // limpiar del estado del día
-        state.checkedIds = (state.checkedIds||[]).map(String).filter(cid=>cid!==String(id));
-        ev.checklistTemplate = template;
-        ev.days[dayKey].checklistState = state;
-        await put('events', ev);
-        await renderChecklistTab();
-        try{ showToast('Ítem eliminado.'); }catch(e){}
-        return;
-      }
-
-      const dir = up ? -1 : 1;
-      const j = idx + dir;
-      if (j < 0 || j >= arr.length) return;
-      [arr[idx], arr[j]] = [arr[j], arr[idx]];
-      template[sectionKey] = arr;
-      ev.checklistTemplate = template;
-      await put('events', ev);
-      await renderChecklistTab();
-    });
-
-    tab.addEventListener('change', async (e)=>{
-      const cb = e.target.closest('.chk-box');
-      const txt = e.target.closest('.chk-text');
-      const remCb = e.target.closest('.rem-toggle');
-      if (!(cb || txt || remCb)) return;
-      const cur = await getMeta('currentEventId');
-      const curId = cur ? parseInt(cur,10) : null;
-      if (!curId) return;
-      const baseDayKey = safeYMD(getSaleDayKeyPOS());
-      const ev = await getEventByIdPOS(curId);
-      if (!ev) return;
-
-      if (remCb){
-        const id = remCb.dataset.id;
-        if (!id) return;
-        const dkRaw = (remCb.dataset.dayKey || remCb.dataset.daykey || '').toString().trim();
-        const dayKey = (dkRaw && /^\d{4}-\d{2}-\d{2}$/.test(dkRaw)) ? dkRaw : baseDayKey;
-        const { state } = ensureChecklistDataPOS(ev, dayKey);
-        const arr = Array.isArray(state.reminders) ? state.reminders : [];
-        const it = arr.find(r=>String(r.id)===String(id));
-        if (!it) return;
-        it.done = !!remCb.checked;
-        it.doneAt = it.done ? Date.now() : null;
-        it.updatedAt = Date.now();
-        state.reminders = arr;
-        ev.days[dayKey].checklistState = state;
-        await put('events', ev);
-        try{ await syncRemindersIndexForDay(ev, dayKey); }catch(e){}
-        await renderChecklistTab();
-        return;
-      }
-
-      const dayKey = baseDayKey;
-      const { template, state } = ensureChecklistDataPOS(ev, dayKey);
-
-      if (cb){
-        const id = cb.dataset.id;
-        if (!id) return;
-        const set = new Set((state.checkedIds||[]).map(String));
-        if (cb.checked) set.add(String(id));
-        else set.delete(String(id));
-        state.checkedIds = Array.from(set);
-        ev.days[dayKey].checklistState = state;
-        await put('events', ev);
-        return;
-      }
-
-      if (txt){
-        const id = txt.dataset.id;
-        const sectionKey = txt.dataset.section;
-        const val = (txt.value || '').trim();
-        if (!id || !sectionKey) return;
         const arr = Array.isArray(template[sectionKey]) ? template[sectionKey] : [];
-        const it = arr.find(x=>String(x.id)===String(id));
-        if (!it) return;
-        it.text = val || it.text || 'Ítem';
+        const idx = arr.findIndex(x=>String(x.id)===String(id));
+        if (idx < 0) return;
+
+        if (delBtn){
+          const ok = confirm('¿Eliminar este ítem?');
+          if (!ok) return;
+          arr.splice(idx,1);
+          template[sectionKey] = arr;
+          // limpiar del estado del día
+          state.checkedIds = (state.checkedIds||[]).map(String).filter(cid=>cid!==String(id));
+          ev.checklistTemplate = template;
+          ev.days[dayKey].checklistState = state;
+          await put('events', ev);
+          await renderChecklistTab();
+          try{ showToast('Ítem eliminado.'); }catch(e){}
+          return;
+        }
+
+        const dir = up ? -1 : 1;
+        const j = idx + dir;
+        if (j < 0 || j >= arr.length) return;
+        [arr[idx], arr[j]] = [arr[j], arr[idx]];
         template[sectionKey] = arr;
         ev.checklistTemplate = template;
         await put('events', ev);
-        return;
-      }
-    });
-  }
+        await renderChecklistTab();
+      })().catch((err)=> console.error('Checklist click handler error', err));
+    };
 
-  // Recordatorios: Enter = Agregar
-  const hookEnter = (el)=>{
-    if (!el) return;
-    el.addEventListener('keydown', (e)=>{
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const btn = document.getElementById('checklist-reminder-add');
-      try{ btn && btn.click(); }catch(_e){}
-    });
-  };
-  hookEnter(document.getElementById('checklist-reminder-text'));
-  hookEnter(document.getElementById('checklist-reminder-date'));
-  hookEnter(document.getElementById('checklist-reminder-due'));
-  hookEnter(document.getElementById('checklist-reminder-priority'));
+    s.h.onChange = (e)=>{
+      (async ()=>{
+        const t = e && e.target;
+        if (!t || !t.closest) return;
 
-  // Notas (debounced)
-  const notes = document.getElementById('checklist-notes');
-  if (notes){
-    let t = null;
-    notes.addEventListener('input', ()=>{
-      clearTimeout(t);
-      t = setTimeout(async ()=>{
+        // Selector de evento del Checklist
+        if (t.id === 'checklist-event'){
+          try{ await flushChecklistTextQueuePOS({ reason:'event-switch', force:true }); }catch(_e){}
+          await resetOperationalStateOnEventSwitchPOS();
+          const val = (t.value || '').trim();
+          if (!val) {
+            await setMeta('currentEventId', null);
+          } else {
+            await setMeta('currentEventId', parseInt(val,10));
+          }
+          await refreshEventUI();
+          try{ await refreshSaleStockLabel(); }catch(e){}
+          try{ await renderDay(); }catch(e){}
+          try{ await renderChecklistTab(); }catch(e){}
+          try{ showToast('Evento actualizado en todo el POS.'); }catch(e){}
+          return;
+        }
+
+        const cb = t.closest('.chk-box');
+        const txt = t.closest('.chk-text');
+        const remCb = t.closest('.rem-toggle');
+        if (!(cb || txt || remCb)) return;
+
         const cur = await getMeta('currentEventId');
         const curId = cur ? parseInt(cur,10) : null;
         if (!curId) return;
-        const dayKey = safeYMD(getSaleDayKeyPOS());
+        const baseDayKey = safeYMD(getSaleDayKeyPOS());
         const ev = await getEventByIdPOS(curId);
         if (!ev) return;
+
+        if (remCb){
+          const id = remCb.dataset.id;
+          if (!id) return;
+          const dkRaw = (remCb.dataset.dayKey || remCb.dataset.daykey || '').toString().trim();
+          const dayKey = (dkRaw && /^\d{4}-\d{2}-\d{2}$/.test(dkRaw)) ? dkRaw : baseDayKey;
+          const { state } = ensureChecklistDataPOS(ev, dayKey);
+          const arr = Array.isArray(state.reminders) ? state.reminders : [];
+          const it = arr.find(r=>String(r.id)===String(id));
+          if (!it) return;
+          it.done = !!remCb.checked;
+          it.doneAt = it.done ? Date.now() : null;
+          it.updatedAt = Date.now();
+          state.reminders = arr;
+          ev.days[dayKey].checklistState = state;
+          await put('events', ev);
+          try{ await syncRemindersIndexForDay(ev, dayKey); }catch(e){}
+          await renderChecklistTab();
+          return;
+        }
+
+        const dayKey = baseDayKey;
         const { state } = ensureChecklistDataPOS(ev, dayKey);
-        state.notes = notes.value || '';
-        ev.days[dayKey].checklistState = state;
-        await put('events', ev);
-      }, 350);
-    });
+
+        if (cb){
+          const id = cb.dataset.id;
+          if (!id) return;
+          const set = new Set((state.checkedIds||[]).map(String));
+          if (cb.checked) set.add(String(id));
+          else set.delete(String(id));
+          state.checkedIds = Array.from(set);
+          ev.days[dayKey].checklistState = state;
+          await put('events', ev);
+          return;
+        }
+
+        if (txt){
+          const id = txt.dataset.id;
+          const sectionKey = txt.dataset.section;
+          if (!id || !sectionKey) return;
+
+          // Normaliza vacío -> placeholder coherente
+          if (!String(txt.value || '').trim()) txt.value = 'Nuevo ítem';
+
+          // Encolar + flush inmediato como respaldo del input/debounce (iPad-safe)
+          queueChecklistTextSavePOS(sectionKey, id, txt.value, { force:true, wait: 0 });
+          await flushChecklistTextQueuePOS({ reason:'change', force:true });
+          return;
+        }
+      })().catch((err)=> console.error('Checklist change handler error', err));
+    };
   }
+
+  // Bind idempotente (misma referencia => no duplica)
+  tab.addEventListener('input', s.h.onInput);
+  tab.addEventListener('blur', s.h.onBlur, true);
+  tab.addEventListener('click', s.h.onClick);
+  tab.addEventListener('change', s.h.onChange);
+  tab.addEventListener('keydown', s.h.onKeydown);
+
+  window.__A33_CHECKLIST_BOUND = true;
 }
 
 // Event UI
@@ -11307,6 +12026,40 @@ async function sellCupsPOS(isCourtesy){
     return;
   }
 
+  // VASOS (Etapa 3/3): Auto-descuento Vasos 12oz (Tapas Auto) con idempotencia por operación
+  try{
+    const vSrc = getVasos12ozSourceIdFromSalePOS(saleRecord);
+    const rCap = adjustVasos12ozStockFromPOS(qty, { sourceId: vSrc, mode:'apply' });
+
+    // Registrar marca en la operación (auditoría + idempotencia simple)
+    try{
+      const sFresh = await getOne('sales', saleRecord.id);
+      if (sFresh){
+        if (!sFresh.invEffects || typeof sFresh.invEffects !== 'object') sFresh.invEffects = {};
+        sFresh.invEffects.vasos12oz = {
+          sourceId: vSrc,
+          qtyApplied: toIntSafePOS(qty, qty),
+          state: (rCap && rCap.ok) ? 'APPLIED' : 'FAILED',
+          skipped: !!(rCap && rCap.skipped),
+          reason: (rCap && rCap.reason) ? String(rCap.reason) : '',
+          at: Date.now()
+        };
+        await put('sales', sFresh);
+      }
+    }catch(_e){ }
+
+    if (rCap && rCap.ok && !rCap.skipped){
+      try{ if (typeof showToast === 'function') showToast(`Vasos 12oz: -${qty}`, 'ok', 1600); }catch(_){ }
+    } else if (rCap && rCap.ok && rCap.skipped){
+      // Ya aplicado (idempotente) → no volver a descontar
+      try{ if (typeof showToast === 'function') showToast('Vasos 12oz: ya aplicado (idempotente).', 'ok', 1800); }catch(_){ }
+    } else if (rCap && !rCap.ok){
+      try{ if (typeof showToast === 'function') showToast('No se pudo descontar Vasos 12oz.', 'error', 4200); }catch(_){ }
+    }
+  }catch(e){
+    console.warn('Auto-descuento Vasos 12oz falló', e);
+  }
+
   // Invalida cache liviano de Consolidado (ventas del período actual)
   try{
     const pk = periodKeyFromDatePOS(saleRecord.date);
@@ -11405,12 +12158,389 @@ async function revertCupConsumptionFromSalePOS(sale){
 
 
 // Importar inventario desde Control de Lotes
-async function importFromLoteToInventory(){
+	// Inventario (POS): Modal "Seleccionar lote" — Etapa 1 (solo lectura)
+	function normalizeLoteNotesPOS(notas){
+	  if (notas == null) return '';
+	  if (Array.isArray(notas)){
+	    return notas.map(x=>String(x ?? '').trim()).filter(Boolean).join(' | ');
+	  }
+	  return String(notas);
+	}
+	function formatLoteDatePOS(createdAt){
+	  const s = (createdAt != null) ? String(createdAt) : '';
+	  if (!s) return '';
+	  // ISO común: YYYY-MM-DDTHH:mm:ssZ
+	  if (s.length >= 10) return s.slice(0,10);
+	  return s;
+	}
+	function loteCreatedTsPOS(l){
+	  try{
+	    if (!l) return 0;
+	    const v = (l.createdAt != null) ? l.createdAt : (l.created_at != null ? l.created_at : (l.created || null));
+	    if (v == null) return 0;
+	    if (typeof v === 'number' && isFinite(v)) return intSafePOS(v);
+	    const s = String(v).trim();
+	    if (!s) return 0;
+	    // epoch como string
+	    if (/^\d{10,13}$/.test(s)) return intSafePOS(s);
+	    const t = Date.parse(s);
+	    return isFinite(t) ? t : 0;
+	  }catch(_){ return 0; }
+	}
+	function intSafePOS(x){
+	  try{ const n = parseInt(String(x),10); return isFinite(n) ? n : 0; }catch(_){ return 0; }
+	}
+
+	// Etapa 3: Estado EXACTO (compacto) — sin textos extra
+	function loteIsClosedPOS_UI(l){
+	  if (!l) return false;
+	  const st = String(l?.status ?? '').trim().toUpperCase();
+	  if (st && (st.includes('CERR') || st === 'CERRADO' || st === 'CLOSED')) return true;
+	  if (l && (l.closedAt || l.closed_at || l.closed)) return true;
+	  return false;
+	}
+	function computeLoteEstadoPOS_UI(l){
+	  if (!l) return 'Disponible';
+	  // D) Cerrado
+	  if (loteIsClosedPOS_UI(l)) return 'Cerrado';
+	  // A) Asignado a evento
+	  const assignedId = (l && l.assignedEventId != null) ? String(l.assignedEventId).trim() : '';
+	  const assignedNm = String(l?.assignedEventName ?? '').trim();
+	  if (assignedId || assignedNm){
+	    return assignedNm || (assignedId ? ('#' + assignedId) : '');
+	  }
+	  // B) Lote hijo / sobrante (NO asignado)
+	  const lt = String(l?.loteType ?? '').trim().toUpperCase();
+	  const parentId = (l && l.parentLotId != null) ? String(l.parentLotId).trim() : '';
+	  const isChild = (lt === 'SOBRANTE') || !!parentId;
+	  if (isChild){
+	    const src = String(l?.sourceEventName ?? '').trim();
+	    return src || 'Desconocido';
+	  }
+	  // C) Disponible
+	  return 'Disponible';
+	}
+
+	function loteHasAssignedPOS(l){
+	  const id = (l && l.assignedEventId != null) ? String(l.assignedEventId).trim() : '';
+	  const nm = (l && l.assignedEventName != null) ? String(l.assignedEventName).trim() : '';
+	  return !!id || !!nm;
+	}
+	function loteIsUsablePOS(l){
+	  if (!l) return false;
+	  if (loteHasAssignedPOS(l)) return false;
+	  const raw = String(l.status || '').trim();
+	  if (!raw) return true; // lote viejo equivalente
+	  const st = normLoteStatusPOS(l.status);
+	  if (!st) return false; // status desconocido explícito
+	  return st === 'DISPONIBLE';
+	}
+
+	// Lectura FRESCA de arcano33_lotes (sin cachear en memoria)
+	function readAllLotesFromSharedPOS(){
+	  try{
+	    // 1) Directo a localStorage (más fresco posible)
+	    try{
+	      if (typeof localStorage !== 'undefined' && localStorage && typeof localStorage.getItem === 'function'){
+	        const rawLS = localStorage.getItem('arcano33_lotes');
+	        if (rawLS != null){
+	          const parsedLS = JSON.parse(rawLS);
+	          return Array.isArray(parsedLS) ? parsedLS : [];
+	        }
+	      }
+	    }catch(_){ /* fallback */ }
+
+	    // 2) Wrapper A33Storage (multi-tab)
+	    if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+	      const arr = A33Storage.sharedGet('arcano33_lotes', [], 'local');
+	      return Array.isArray(arr) ? arr : [];
+	    }
+	    if (window.A33Storage && typeof A33Storage.getJSON === 'function'){
+	      const arr = A33Storage.getJSON('arcano33_lotes', []);
+	      return Array.isArray(arr) ? arr : [];
+	    }
+	    if (window.A33Storage && typeof A33Storage.getItem === 'function'){
+	      const raw = A33Storage.getItem('arcano33_lotes');
+	      if (!raw) return [];
+	      const parsed = JSON.parse(raw);
+	      return Array.isArray(parsed) ? parsed : [];
+	    }
+	    return [];
+	  }catch(_){
+	    return null;
+	  }
+	}
+
+	async function renderInvLoteSelectorTablePOS(evId, opts){
+	  const options = opts || {};
+	  const tbody = document.querySelector('#inv-lote-selector-table tbody');
+	  const msgEl = document.getElementById('inv-lote-selector-msg');
+	  if (!tbody) return;
+	  tbody.innerHTML = '';
+
+	  const query = (options.query != null) ? String(options.query) : '';
+	  const q = query.toLowerCase().trim();
+	  const fresh = !!options.fresh;
+	  const useCache = !!options.useCache;
+
+	  // Cache liviano para que el filtro sea instantáneo (se invalida con refresh/fresh)
+	  if (!window.__INV_LOTE_SELECTOR_CACHE) window.__INV_LOTE_SELECTOR_CACHE = null;
+	  let lotes = null;
+	  if (!fresh && useCache && Array.isArray(window.__INV_LOTE_SELECTOR_CACHE))
+	    lotes = window.__INV_LOTE_SELECTOR_CACHE;
+	  else
+	    lotes = readAllLotesFromSharedPOS();
+
+	  if (lotes === null){
+	    if (msgEl) msgEl.textContent = '';
+	    const tr = document.createElement('tr');
+	    tr.innerHTML = '<td colspan="5" class="muted">No se pudo leer arcano33_lotes.</td>';
+	    tbody.appendChild(tr);
+	    return;
+	  }
+	  window.__INV_LOTE_SELECTOR_CACHE = Array.isArray(lotes) ? lotes : [];
+	  const base = Array.isArray(lotes) ? lotes.slice() : [];
+	  if (!base.length){
+	    if (msgEl) msgEl.textContent = '';
+	    const tr = document.createElement('tr');
+	    tr.innerHTML = '<td colspan="5" class="muted">No hay lotes.</td>';
+	    tbody.appendChild(tr);
+	    return;
+	  }
+
+	  // Orden: más recientes primero (createdAt desc), con fallback seguro
+	  base.sort((a,b)=>{
+	    const ta = loteCreatedTsPOS(a);
+	    const tb = loteCreatedTsPOS(b);
+	    if (tb !== ta) return tb - ta;
+	    const ca = String(a?.codigo ?? '');
+	    const cb = String(b?.codigo ?? '');
+	    if (cb !== ca) return cb.localeCompare(ca);
+	    const ia = String(a?.id ?? '');
+	    const ib = String(b?.id ?? '');
+	    return ib.localeCompare(ia);
+	  });
+
+	  // Filtro rápido: código / notas (case-insensitive)
+	  let view = base;
+	  if (q){
+	    view = base.filter(l=>{
+	      const code = String(l?.codigo ?? '').toLowerCase();
+	      const notes = normalizeLoteNotesPOS(l?.notas).toLowerCase();
+	      return code.includes(q) || notes.includes(q);
+	    });
+	  }
+
+	  const usableView = view.reduce((acc,l)=> acc + (loteIsUsablePOS(l) ? 1 : 0), 0);
+
+	  // Mensajería clara
+	  if (msgEl){
+	    let msg = '';
+	    if (!evId) msg = 'Selecciona un evento para poder usar un lote.';
+	    // "No hay lotes disponibles" solo aplica como estado vacío.
+	    // Si hay filas, NO se muestra este mensaje (aunque estén deshabilitadas).
+	    else if (!view.length) msg = 'No hay lotes disponibles.';
+	    if (q){
+	      msg = (msg ? (msg + ' ') : '') + ('Mostrando ' + view.length + ' de ' + base.length + '.');
+	    }
+	    msgEl.textContent = msg;
+	  }
+
+	  if (!view.length){
+	    const tr = document.createElement('tr');
+	    tr.innerHTML = '<td colspan="5" class="muted">No hay lotes.</td>';
+	    tbody.appendChild(tr);
+	    return;
+	  }
+
+	  for (const l of view){
+	    const codigo = String(l?.codigo ?? '').trim();
+	    const fecha = formatLoteDatePOS(l?.createdAt);
+	    const nota = normalizeLoteNotesPOS(l?.notas);
+	    const estado = computeLoteEstadoPOS_UI(l);
+
+	    const tr = document.createElement('tr');
+	    const td1 = document.createElement('td'); td1.textContent = codigo;
+	    const td2 = document.createElement('td'); td2.textContent = fecha;
+	    const td3 = document.createElement('td');
+	    // Notas: wrap + altura controlada + ver más
+	    const wrap = document.createElement('div');
+	    wrap.className = 'note-wrap';
+	    const clamp = document.createElement('div');
+	    clamp.className = 'note-clamp';
+	    clamp.textContent = String(nota ?? '');
+	    wrap.appendChild(clamp);
+	    td3.appendChild(wrap);
+
+	    const td4 = document.createElement('td'); td4.textContent = estado;
+	    const td5 = document.createElement('td');
+	    const btn = document.createElement('button');
+	    btn.className = 'btn-outline btn-pill btn-pill-mini';
+	    btn.type = 'button';
+	    btn.textContent = 'Usar';
+	    const canUse = !!evId && loteIsUsablePOS(l);
+	    btn.disabled = !canUse;
+	    if (!evId) btn.title = 'Selecciona un evento para poder usar un lote.';
+	    else if (!canUse) btn.title = 'Este lote no está disponible.';
+	    if (canUse){
+	      btn.addEventListener('click', ()=>{ handleUseLoteFromSelectorPOS(btn, l); });
+	    }
+	    td5.appendChild(btn);
+
+	    tr.appendChild(td1);
+	    tr.appendChild(td2);
+	    tr.appendChild(td3);
+	    tr.appendChild(td4);
+	    tr.appendChild(td5);
+	    tbody.appendChild(tr);
+	  }
+	}
+	function setupInvLoteSelectorModalPOS(){
+	  const modalId = 'inv-lote-selector-modal';
+	  const modal = document.getElementById(modalId);
+	  const btnClose = document.getElementById('inv-lote-selector-close');
+	  const btnRefresh = document.getElementById('inv-lote-selector-refresh');
+	  if (btnClose){
+	    btnClose.onclick = ()=>{ try{ closeModalPOS(modalId); }catch(_){ } };
+	  }
+	  if (btnRefresh){
+	    btnRefresh.onclick = async ()=>{
+	      try{
+	        const evSel = document.getElementById('inv-event');
+	        const evId = (evSel && evSel.value) ? parseInt(evSel.value,10) : null;
+	        const qEl = document.getElementById('inv-lote-selector-search');
+	        const q = qEl ? qEl.value : '';
+	        await renderInvLoteSelectorTablePOS(evId, { query: q, fresh: true });
+	      }catch(_){ }
+	    };
+	  }
+	  // Filtro rápido (Etapa 4)
+	  const inpSearch = document.getElementById('inv-lote-selector-search');
+	  const btnClear = document.getElementById('inv-lote-selector-clear');
+	  let tSearch = null;
+	  const runSearch = async (fresh=false)=>{
+	    try{
+	      const evSel = document.getElementById('inv-event');
+	      const evId = (evSel && evSel.value) ? parseInt(evSel.value,10) : null;
+	      const q = inpSearch ? inpSearch.value : '';
+	      await renderInvLoteSelectorTablePOS(evId, { query: q, fresh: !!fresh, useCache: !fresh });
+	    }catch(_){ }
+	  };
+	  if (inpSearch){
+	    inpSearch.addEventListener('input', ()=>{
+	      try{ if (tSearch) clearTimeout(tSearch); }catch(_){ }
+	      tSearch = setTimeout(()=>{ runSearch(false); }, 80);
+	    });
+	  }
+	  if (btnClear){
+	    btnClear.onclick = ()=>{
+	      try{ if (inpSearch) inpSearch.value = ''; }catch(_){ }
+	      runSearch(false);
+	      try{ if (inpSearch) inpSearch.focus(); }catch(_){ }
+	    };
+	  }
+
+	  if (modal){
+	    modal.addEventListener('click', (e)=>{
+	      try{ if (e && e.target === modal) closeModalPOS(modalId); }catch(_){ }
+	    });
+	  }
+	  // Escape cierra solo si está abierto
+	  try{
+	    document.addEventListener('keydown', (e)=>{
+	      if (!e || e.key !== 'Escape') return;
+	      const m = document.getElementById(modalId);
+	      if (m && m.style && m.style.display === 'flex'){
+	        try{ e.preventDefault(); }catch(_){ }
+	        try{ closeModalPOS(modalId); }catch(_){ }
+	      }
+	    }, true);
+	  }catch(_){ }
+	}
+	let __INV_LOTE_USE_BUSY = false;
+	async function openInvLoteSelectorModalPOS(){
+	  const modalId = 'inv-lote-selector-modal';
+	  const modal = document.getElementById(modalId);
+	  const tbody = document.querySelector('#inv-lote-selector-table tbody');
+	  if (!modal || !tbody){
+	    alert('No se pudo abrir el selector de lotes (UI incompleta).');
+	    return;
+	  }
+	  const evSel = document.getElementById('inv-event');
+	  const evId = (evSel && evSel.value) ? parseInt(evSel.value,10) : null;
+	  const qEl = document.getElementById('inv-lote-selector-search');
+	  const q = qEl ? qEl.value : '';
+
+	  // Lectura fresca + render inicial
+	  await renderInvLoteSelectorTablePOS(evId, { query: q, fresh: true });
+	  openModalPOS(modalId);
+	  if (!evId){
+	    try{ showToast('Selecciona un evento para poder usar un lote.', 'info', 2200); }catch(_){ }
+	  }
+	  try{ if (qEl) qEl.focus(); }catch(_){ }
+	}
+
+	async function handleUseLoteFromSelectorPOS(btn, lote){
+	  if (__INV_LOTE_USE_BUSY){
+	    try{ showToast('Carga en curso…', 'info', 1500); }catch(_){ }
+	    return;
+	  }
+	  const evSel = document.getElementById('inv-event');
+	  const evId = (evSel && evSel.value) ? parseInt(evSel.value,10) : null;
+	  if (!evId){
+	    try{ showToast('Primero selecciona un evento.', 'error', 2600); }catch(_){ }
+	    try{ if (btn) btn.disabled = true; }catch(_){ }
+	    return;
+	  }
+	  // Revalidar disponibilidad (por si cambió mientras el modal está abierto)
+	  if (!loteIsUsablePOS(lote)){
+	    try{ showToast('Este lote ya no está disponible.', 'error', 2800); }catch(_){ }
+	    try{ if (btn) btn.disabled = true; }catch(_){ }
+	    return;
+	  }
+	  __INV_LOTE_USE_BUSY = true;
+	  let ok = false;
+	  try{
+	    try{ setBtnSavingStatePOS(btn, true, 'Aplicando…'); }catch(_){ }
+	    const res = await importFromLoteToInventory({
+	      evId,
+	      loteId: (lote && lote.id != null) ? lote.id : null,
+	      loteCodigo: (lote && lote.codigo != null) ? lote.codigo : ''
+	    });
+	    ok = !!(res && res.ok);
+	    if (ok){
+	      // limpiar estado busy del botón
+	      try{ setBtnSavingStatePOS(btn, false); }catch(_){ }
+	      try{ if (btn) btn.disabled = true; }catch(_){ }
+	      // Etapa 3: refrescar tabla (estado + botones) sin cache
+	      try{ await renderInvLoteSelectorTablePOS(evId); }catch(_){ }
+	    }
+	  }catch(err){
+	    try{ showPersistFailPOS('aplicar lote', err); }catch(_){ }
+	  }finally{
+	    __INV_LOTE_USE_BUSY = false;
+	    if (!ok){
+	      try{ setBtnSavingStatePOS(btn, false); }catch(_){ }
+	      try{ if (btn) btn.disabled = false; }catch(_){ }
+	    }
+	  }
+	}
+
+async function importFromLoteToInventory(opts){
+  const o = opts || {};
   const evSel = $('#inv-event');
-  let evId = evSel && evSel.value ? parseInt(evSel.value,10) : null;
+  let evId = (o.evId != null && String(o.evId).trim() !== '') ? parseInt(o.evId,10) : (evSel && evSel.value ? parseInt(evSel.value,10) : null);
   if (!evId){
-    alert('Primero selecciona un evento.');
-    return;
+    try{ showToast('Primero selecciona un evento.', 'error', 2600); }catch(_){ }
+    return { ok:false, reason:'NO_EVENT' };
+  }
+
+  // Lote objetivo
+  const targetId = (o.loteId != null && String(o.loteId).trim() !== '') ? String(o.loteId) : '';
+  const codigoNorm = (o.loteCodigo != null) ? String(o.loteCodigo).toLowerCase().trim() : '';
+  if (!targetId && !codigoNorm){
+    try{ openInvLoteSelectorModalPOS(); }catch(_){ }
+    return { ok:false, reason:'NO_LOTE' };
   }
 
   // Evento real (para nombre)
@@ -11428,60 +12558,33 @@ async function importFromLoteToInventory(){
       if (!Array.isArray(lotes)) lotes = [];
     }
   } catch (e) {
-    alert('No se pudo leer la informacion de lotes guardada en el navegador.');
-    return;
+    try{ showToast('No se pudo leer la información de lotes.', 'error', 4200); }catch(_){ }
+    return { ok:false, reason:'READ_FAIL' };
   }
   if (!lotes.length){
-    alert('No hay lotes registrados en el Control de Lotes.');
-    return;
+    try{ showToast('No hay lotes registrados en el Control de Lotes.', 'error', 3600); }catch(_){ }
+    return { ok:false, reason:'NO_LOTES' };
   }
 
-  // Helpers de estado (compat: lotes viejos sin campos = DISPONIBLE)
-  const normStatus = (status) => {
-    const st = (status || '').toString().trim().toUpperCase();
-    if (!st) return '';
-    if (st === 'EN EVENTO') return 'EN_EVENTO';
-    if (st === 'EN_EVENTO') return 'EN_EVENTO';
-    if (st === 'DISPONIBLE') return 'DISPONIBLE';
-    if (st === 'CERRADO') return 'CERRADO';
-    return st;
+  const matchFn = (l) => {
+    if (!l) return false;
+    if (targetId && l.id != null && String(l.id) === targetId) return true;
+    if (codigoNorm) return ((l.codigo || '').toString().toLowerCase().trim() === codigoNorm);
+    return false;
   };
-  const hasAssigned = (l) => (l && l.assignedEventId != null && String(l.assignedEventId).trim() !== '');
-  const isAvailable = (l) => {
-    const st = normStatus(l?.status);
-    if (hasAssigned(l)) return false;
-    if (!st) return true; // lotes viejos
-    return st === 'DISPONIBLE';
-  };
-
-  const available = lotes.filter(isAvailable);
-  if (!available.length){
-    showToast('No hay lotes disponibles. Los lotes asignados no se pueden cargar de nuevo. Crea otro lote.', 'error', 4200);
-    return;
-  }
-
-  const listaCodigos = available
-    .map(l => (l.codigo || '').trim())
-    .filter(c => c)
-    .join(', ');
-
-  const codigo = prompt('Escribe el CÓDIGO del lote que quieres asignar a este evento (disponibles: ' + (listaCodigos || 'ninguno') + '):');
-  if (!codigo) return;
-
-  const codigoNorm = (codigo || '').toString().toLowerCase().trim();
-  const matchFn = (l) => ((l.codigo || '').toString().toLowerCase().trim() === codigoNorm);
 
   const loteAny = lotes.find(matchFn);
   if (!loteAny){
-    alert('No se encontró un lote con ese código.');
-    return;
+    try{ showToast('No se encontró el lote seleccionado.', 'error', 3200); }catch(_){ }
+    return { ok:false, reason:'NOT_FOUND' };
   }
 
-  if (!isAvailable(loteAny)){
+  // Disponibilidad
+  if (!loteIsUsablePOS(loteAny)){
     const prevEvName = (loteAny.assignedEventName || '').toString().trim();
-    const msg = 'Ese lote ya fue asignado' + (prevEvName ? (' al evento "' + prevEvName + '"') : '') + '. No se puede cargar dos veces.';
-    showToast(msg, 'error', 4300);
-    return;
+    const msg = 'Ese lote no está disponible' + (prevEvName ? (' (ya fue asignado a "' + prevEvName + '")') : '') + '.';
+    try{ showToast(msg, 'error', 4300); }catch(_){ }
+    return { ok:false, reason:'NOT_AVAILABLE' };
   }
 
   const stamp = new Date().toISOString();
@@ -11514,8 +12617,8 @@ async function importFromLoteToInventory(){
   }
 
   if (!items.length){
-    showToast('Ese lote no trae unidades para cargar (todo está en 0).', 'error', 3800);
-    return;
+    try{ showToast('Ese lote no trae unidades para cargar (todo está en 0).', 'error', 3800); }catch(_){ }
+    return { ok:false, reason:'EMPTY' };
   }
 
   // Asignación única: marcamos el lote como EN_EVENTO y lo vinculamos al evento (anti stock fantasma)
@@ -11548,8 +12651,8 @@ async function importFromLoteToInventory(){
       }
     }
   } catch (e){
-    showToast('No se pudo marcar el lote como asignado. No se aplicó la carga.', 'error', 4200);
-    return;
+    try{ showToast('No se pudo marcar el lote como asignado. No se aplicó la carga.', 'error', 4200); }catch(_){ }
+    return { ok:false, reason:'SAVE_FAIL' };
   }
 
   for (const it of items){
@@ -11565,11 +12668,12 @@ async function importFromLoteToInventory(){
 
   await renderInventario();
   await refreshSaleStockLabel();
-  showToast('Lote "' + (loteAny.codigo || '') + '" asignado a ' + (evName || 'evento') + ' (' + total + ' u.)', 'ok', 2400);
+  try{ showToast('Lote aplicado: "' + (loteAny.codigo || '') + '" (' + total + ' u.)', 'ok', 2200); }catch(_){ }
 
   // FIFO (Etapa 2): snapshot por evento/lote (entrada de lote al evento)
   try{ queueLotsUsageSyncPOS(evId); }catch(_){ }
 
+  return { ok:true, evId, loteCodigo: (loteAny.codigo || ''), total };
 }
 
 
@@ -11665,18 +12769,24 @@ async function renderLotesCargadosEvento(eventId){
 const LOTES_LS_KEY = 'arcano33_lotes';
 
 function normLoteStatusPOS(status){
-  const s = String(status || '').trim().toUpperCase();
+  const sRaw = String(status || '').trim().toUpperCase();
+  if (!sRaw) return '';
+  const s = (sRaw === 'EN EVENTO') ? 'EN_EVENTO' : sRaw;
   if (s === 'DISPONIBLE' || s === 'EN_EVENTO' || s === 'CERRADO') return s;
   return '';
 }
 
+
 function effectiveLoteStatusPOS(lote){
   const st = normLoteStatusPOS(lote && lote.status);
   if (st === 'CERRADO') return 'CERRADO';
-  const hasAssigned = (lote && (lote.assignedEventId != null || lote.assignedEventName));
+  const assignedId = (lote && lote.assignedEventId != null) ? String(lote.assignedEventId).trim() : '';
+  const assignedName = (lote && lote.assignedEventName != null) ? String(lote.assignedEventName).trim() : '';
+  const hasAssigned = !!assignedId || !!assignedName;
   if (st) return st;
   return hasAssigned ? 'EN_EVENTO' : 'DISPONIBLE';
 }
+
 
 function readLotesLS_POS(){
   try{
@@ -12704,7 +13814,18 @@ function applySummaryArchiveGuardsPOS(){
   const periodEl = document.getElementById('summary-period');
   const btnAll = document.getElementById('btn-summary-all');
   if (periodEl) periodEl.disabled = inArchive;
-  if (btnAll) btnAll.disabled = inArchive;
+  if (btnAll){
+    // En Archivo: NO debe verse (no solo deshabilitado). Al salir: restaurar.
+    if (btnAll.dataset && btnAll.dataset.prevDisplay == null) btnAll.dataset.prevDisplay = btnAll.style.display || '';
+    if (inArchive){
+      try{ btnAll.disabled = true; }catch(_){ }
+      btnAll.style.display = 'none';
+      try{ btnAll.classList.remove('is-active'); btnAll.setAttribute('aria-pressed','false'); }catch(_){ }
+    } else {
+      btnAll.style.display = (btnAll.dataset && btnAll.dataset.prevDisplay != null) ? (btnAll.dataset.prevDisplay || '') : '';
+      try{ btnAll.disabled = false; }catch(_){ }
+    }
+  }
 
   if (inArchive && __A33_ACTIVE_ARCHIVE){
     const pk = String(__A33_ACTIVE_ARCHIVE.periodKey || (__A33_ACTIVE_ARCHIVE.snapshot && __A33_ACTIVE_ARCHIVE.snapshot.periodKey) || '').trim();
@@ -12744,6 +13865,14 @@ function applySummaryArchiveGuardsPOS(){
     if (customerCard.dataset && customerCard.dataset.prevDisplay == null) customerCard.dataset.prevDisplay = customerCard.style.display || '';
     customerCard.style.display = inArchive ? 'none' : ((customerCard.dataset && customerCard.dataset.prevDisplay != null) ? (customerCard.dataset.prevDisplay || '') : '');
   }
+}
+
+function syncSummaryAllButtonStatePOS(){
+  const btnAll = document.getElementById('btn-summary-all');
+  if (!btnAll) return;
+  const active = (__A33_SUMMARY_MODE !== 'archive' && __A33_SUMMARY_VIEW_MODE === 'all');
+  try{ btnAll.classList.toggle('is-active', !!active); }catch(_){ }
+  try{ btnAll.setAttribute('aria-pressed', active ? 'true' : 'false'); }catch(_){ }
 }
 
 function renderSummaryFromSnapshotPOS(archive){
@@ -13421,7 +14550,7 @@ async function renderSummaryDailyCloseCardPOS(){
   if (noteEl){ noteEl.style.display = 'none'; noteEl.textContent = ''; }
 
   if (!ev){
-    const isGlobal = isSummaryEventGlobalPOS(selectedSummaryEventId);
+    const isGlobal = isSummaryGlobalPOS(selectedSummaryEventId);
 
     if (statusEl){
       statusEl.className = 'pill';
@@ -13832,10 +14961,11 @@ async function onSummaryCloseDayPOS(){
 
   clearSummaryCloseBlockerPOS();
 
-  // Confirmación clara del evento antes de ejecutar el cierre
+  // Confirmación obligatoria antes de cerrar (anti-error humano)
   {
-    const msg = 'Vas a cerrar el día de:\n\n' + (ev.name||'—') + '\n\nFecha: ' + dayKey + '\n\nEsto bloqueará ventas y operaciones para este día.\n\n¿Confirmas?';
-    if (!confirm(msg)) return;
+    const msg = `¿Estás seguro que vas a cerrar el día “${dayKey}” del evento “${(ev.name||'Evento')}”?`;
+    const ok = await showConfirmClosePOS({ title: 'Cerrar día', message: msg });
+    if (!ok) return;
   }
 
   try{
@@ -14002,6 +15132,9 @@ function setSummaryModeBadgePOS(){
     // Solo aparece cuando se está viendo un snapshot archivado
     btnBack.style.display = (__A33_SUMMARY_MODE === 'archive') ? 'inline-flex' : 'none';
   }
+
+  // Estado visual del botón "Todo" (solo en vivo)
+  syncSummaryAllButtonStatePOS();
 }
 
 
@@ -14035,6 +15168,65 @@ function closeModalPOS(modalId){
   const modal = document.getElementById(modalId);
   if (!modal) return;
   modal.style.display = 'none';
+}
+
+// Confirm modal reutilizable (iPad-friendly) para acciones destructivas en POS
+function showConfirmClosePOS({ title, message } = {}){
+  return new Promise((resolve)=>{
+    const modalId = 'pos-confirm-modal';
+    const modal = document.getElementById(modalId);
+    const elTitle = document.getElementById('pos-confirm-title');
+    const elMsg = document.getElementById('pos-confirm-message');
+    const btnCancel = document.getElementById('pos-confirm-cancel');
+    const btnConfirm = document.getElementById('pos-confirm-confirm');
+    if (!modal || !btnCancel || !btnConfirm || !elMsg){
+      console.warn('showConfirmClosePOS: modal incompleto');
+      resolve(false);
+      return;
+    }
+
+    const safeTitle = (title != null) ? String(title) : '';
+    const safeMsg = (message != null) ? String(message) : '';
+
+    if (elTitle){
+      elTitle.textContent = safeTitle || 'Confirmación';
+    }
+    elMsg.textContent = safeMsg;
+
+    let done = false;
+    const cleanup = ()=>{
+      try{ modal.onclick = null; }catch(_){ }
+      try{ btnCancel.onclick = null; }catch(_){ }
+      try{ btnConfirm.onclick = null; }catch(_){ }
+      try{ document.removeEventListener('keydown', onKey, true); }catch(_){ }
+    };
+    const finish = (v)=>{
+      if (done) return;
+      done = true;
+      cleanup();
+      try{ closeModalPOS(modalId); }catch(_){ }
+      resolve(!!v);
+    };
+    const onKey = (e)=>{
+      if (e && e.key === 'Escape'){
+        try{ e.preventDefault(); }catch(_){ }
+        finish(false);
+      }
+    };
+
+    btnCancel.onclick = ()=>finish(false);
+    btnConfirm.onclick = ()=>finish(true);
+
+    // Tap fuera cancela (patrón móvil)
+    modal.onclick = (e)=>{
+      if (e && e.target === modal) finish(false);
+    };
+
+    try{ document.addEventListener('keydown', onKey, true); }catch(_){ }
+    openModalPOS(modalId);
+    // Importante: NO auto-focus en Confirmar
+    try{ btnCancel.focus({ preventScroll: true }); }catch(_){ }
+  });
 }
 
 function setClosePeriodErrorPOS(msg){
@@ -14207,6 +15399,41 @@ async function applyClosePeriodGatekeeperUI_POS(opts){
 
   const hintEl = document.getElementById('summary-period-hint');
 
+  // Guardar hint default para poder restaurarlo al quedar OK
+  try{
+    if (hintEl && !hintEl.dataset.defaultText){
+      hintEl.dataset.defaultText = String(hintEl.textContent || '');
+    }
+  }catch(_){ }
+
+  // Modo CONSOLIDADO (solo lectura): no permitir acciones de cierre
+  try{
+    if (typeof isSummaryConsolidatedViewActivePOS === 'function' && isSummaryConsolidatedViewActivePOS()){
+      try{ btn.disabled = true; }catch(_){ }
+      if (hintEl){
+        hintEl.textContent = 'CONSOLIDADO es solo lectura. Volvé a Archivo normal para cerrar períodos.';
+      }
+      return;
+    }
+  }catch(_){ }
+
+  // Guard obligatorio: Cerrar período SOLO desde GLOBAL (cierre consolidado)
+  let selectedSummaryEventId = null;
+  try{
+    selectedSummaryEventId = (opts && opts.selectedSummaryEventId) ? String(opts.selectedSummaryEventId) : await getSelectedSummaryEventIdPOS();
+  }catch(err){
+    selectedSummaryEventId = null;
+  }
+  if (!isSummaryGlobalPOS(selectedSummaryEventId)){
+    try{ btn.disabled = true; }catch(_){ }
+    if (hintEl){
+      hintEl.textContent = selectedSummaryEventId
+        ? 'Para cerrar período, pon Resumen en GLOBAL (consolida TODOS los eventos del mes).'
+        : 'No se pudo leer el selector de evento. Recarga y pon Resumen en GLOBAL para cerrar período.';
+    }
+    return;
+  }
+
   const pk = (opts && opts.periodKey) ? String(opts.periodKey) : getSummarySelectedPeriodKeyPOS();
   const gate = await computeClosePeriodGatekeeperPOS(pk, opts || {});
 
@@ -14221,6 +15448,13 @@ async function applyClosePeriodGatekeeperUI_POS(opts){
 
   // OK
   try{ btn.disabled = false; }catch(_){ }
+
+  // Restaurar hint por defecto (si existe)
+  try{
+    if (hintEl && hintEl.dataset && hintEl.dataset.defaultText != null){
+      hintEl.textContent = String(hintEl.dataset.defaultText || '');
+    }
+  }catch(_){ }
 }
 
 async function getArchiveByPeriodKeyPOS(periodKey){
@@ -14546,6 +15780,20 @@ async function openSummaryClosePeriodModalPOS(){
     showToast('Estás viendo un período archivado. Volvé a En vivo para cerrar períodos.', 'error', 3500);
     return;
   }
+
+  // Guard obligatorio: Cerrar período SOLO desde GLOBAL (cierre consolidado)
+  let selectedSummaryEventId = null;
+  try{
+    selectedSummaryEventId = await getSelectedSummaryEventIdPOS();
+  }catch(err){
+    showToast('No se pudo leer el selector de evento. Volvé a Resumen y elegí GLOBAL.', 'error', 4500);
+    return;
+  }
+  if (!isSummaryGlobalPOS(selectedSummaryEventId)){
+    showToast('Cierre de período solo desde GLOBAL (consolida TODOS los eventos del mes).', 'error', 4000);
+    return;
+  }
+
   if (__A33_SUMMARY_VIEW_MODE === 'all'){
     showToast('Selecciona un período para cerrar.', 'error', 3500);
     return;
@@ -14591,6 +15839,35 @@ async function confirmClosePeriodPOS(){
   if (__A33_SUMMARY_MODE === 'archive'){
     showToast('Estás viendo un período archivado. Volvé a En vivo para cerrar.', 'error', 3500);
     return;
+  }
+
+  if (__A33_SUMMARY_VIEW_MODE === 'all'){
+    setClosePeriodErrorPOS('Selecciona un período para cerrar.');
+    showToast('Selecciona un período para cerrar.', 'error', 3500);
+    return;
+  }
+
+  // Guard obligatorio: Cerrar período SOLO desde GLOBAL (cierre consolidado)
+  let selectedSummaryEventId = null;
+  try{
+    selectedSummaryEventId = await getSelectedSummaryEventIdPOS();
+  }catch(err){
+    setClosePeriodErrorPOS('No se pudo leer el selector de evento. Volvé a Resumen y elegí GLOBAL.');
+    showToast('No se pudo leer el selector de evento. Volvé a Resumen y elegí GLOBAL.', 'error', 4500);
+    return;
+  }
+  if (!isSummaryGlobalPOS(selectedSummaryEventId)){
+    setClosePeriodErrorPOS('Cierre de período solo desde GLOBAL (consolida TODOS los eventos del mes).');
+    showToast('Cierre de período solo desde GLOBAL (consolida TODOS los eventos del mes).', 'error', 4000);
+    return;
+  }
+
+  // Confirmación obligatoria antes de cerrar/archivar el período (anti-error humano)
+  {
+    const periodKey = getSummarySelectedPeriodKeyPOS();
+    const msg = `¿Estás seguro que vas a cerrar el período “${periodLabelPOS(periodKey)}”?`;
+    const ok = await showConfirmClosePOS({ title: 'Cerrar período', message: msg });
+    if (!ok) return;
   }
 
   await runWithSavingLockPOS({
@@ -14699,6 +15976,33 @@ async function manualExportClosePeriodPOS(){
     showToast('CONSOLIDADO es solo lectura. No se puede exportar desde esa vista.', 'error', 4000);
     return;
   }
+
+  if (__A33_SUMMARY_MODE === 'archive'){
+    showToast('Estás viendo un período archivado. Volvé a En vivo para exportar.', 'error', 3500);
+    return;
+  }
+  if (__A33_SUMMARY_VIEW_MODE === 'all'){
+    setClosePeriodErrorPOS('Selecciona un período para exportar.');
+    showToast('Selecciona un período para exportar.', 'error', 3500);
+    return;
+  }
+
+
+  // Guard obligatorio: export de cierre SOLO desde GLOBAL (mismo criterio que Cerrar período)
+  let selectedSummaryEventId = null;
+  try{
+    selectedSummaryEventId = await getSelectedSummaryEventIdPOS();
+  }catch(err){
+    setClosePeriodErrorPOS('No se pudo leer el selector de evento. Volvé a Resumen y elegí GLOBAL.');
+    showToast('No se pudo leer el selector de evento. Volvé a Resumen y elegí GLOBAL.', 'error', 4500);
+    return;
+  }
+  if (!isSummaryGlobalPOS(selectedSummaryEventId)){
+    setClosePeriodErrorPOS('Export de cierre solo desde GLOBAL (consolida TODOS los eventos del mes).');
+    showToast('Export de cierre solo desde GLOBAL (consolida TODOS los eventos del mes).', 'error', 4000);
+    return;
+  }
+
   const periodKey = getSummarySelectedPeriodKeyPOS();
   let lastSeq = 0;
   try{ lastSeq = Number(await getMeta('periodArchiveSeq') || 0) || 0; }catch(e){ lastSeq = 0; }
@@ -16361,15 +17665,23 @@ async function closeEvent(eventId){
   if (!ev){ alert('Evento no encontrado'); return; }
   if (ev.closedAt){ alert('Este evento ya está cerrado.'); return; }
 
+  // Confirmación obligatoria antes de cerrar (anti-error humano)
+  {
+    const msg = `¿Estás seguro que vas a cerrar el evento “${(ev.name||'Evento')}”?`;
+    const ok = await showConfirmClosePOS({ title: 'Cerrar evento', message: msg });
+    if (!ok) return;
+  }
+
 
   // Corte (Excel). Si falla, permitir cerrar de todas formas.
   try{
     await generateCorteCSV(eventId);
   } catch(err){
     console.error('generateCorteCSV error', err);
-    const ok = confirm(
-      'No se pudo generar el Corte (Excel) por un error.\n\n¿Cerrar el evento de todas formas?\n(Podrás exportar después desde Eventos: “Exportar (Excel)” o “CSV Corte”.)'
-    );
+    const ok = await showConfirmClosePOS({
+      title: 'Corte falló',
+      message: 'No se pudo generar el Corte (Excel) por un error.\n\n¿Cerrar el evento de todas formas?\n(Podrás exportar después desde Eventos: “Exportar (Excel)” o “CSV Corte”.)'
+    });
     if (!ok) return;
   }
 
@@ -17041,7 +18353,8 @@ async function exportEventosExcel(){
   $('#btn-inv-ref').addEventListener('click', renderInventario);
   $('#btn-inv-csv').addEventListener('click', async()=>{ const id = parseInt($('#inv-event').value||'0',10); if (!id) return alert('Selecciona un evento'); await generateInventoryCSV(id); });
   const btnFromLote = document.getElementById('btn-inv-from-lote');
-  if (btnFromLote) btnFromLote.addEventListener('click', importFromLoteToInventory);
+	  try{ setupInvLoteSelectorModalPOS(); }catch(_){ }
+	  if (btnFromLote) btnFromLote.addEventListener('click', openInvLoteSelectorModalPOS);
 
   // Sobrantes → Lote hijo (Control de Lotes)
   const btnSobrante = document.getElementById('btn-create-sobrante');

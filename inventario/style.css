@@ -628,6 +628,94 @@ tr:nth-child(even) td {
 }
 
 /* ==============================
+   A33 — Modal numérico (Líquidos)
+   ============================== */
+
+.a33-modal[hidden] { display: none !important; }
+.a33-modal {
+  position: fixed;
+  inset: 0;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.66);
+  z-index: 9999;
+}
+
+.a33-modal-card {
+  width: 100%;
+  max-width: 520px;
+  background: #1b1b1b;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 0.95rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+
+.a33-modal-title {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #f5f5f5;
+  margin-bottom: 0.35rem;
+}
+
+.a33-modal-text {
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--color-text-muted);
+  word-break: break-word;
+}
+
+.a33-modal-field {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.a33-modal-label {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.a33-modal-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(4,4,4,0.9);
+  color: var(--color-text);
+  padding: 0.65rem 0.75rem;
+  font-size: 1rem;
+  outline: none;
+}
+
+.a33-modal-input:focus {
+  border-color: var(--color-accent-soft);
+  box-shadow: 0 0 0 1px rgba(221, 191, 100, 0.7);
+  background: rgba(18, 10, 10, 0.95);
+}
+
+.a33-modal-input::-webkit-outer-spin-button,
+.a33-modal-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.a33-modal-input[type=number] {
+  -moz-appearance: textfield;
+}
+
+.a33-modal-actions {
+  margin-top: 0.9rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+
+/* ==============================
    Inventario Varios (manual) — Etapa VARIOS2
    ============================== */
 

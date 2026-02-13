@@ -7,7 +7,29 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.13" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=1" />
+  <!-- Alias legacy: exigir Auth y redirigir a ruta canónica -->
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
+
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-auth.js?v=4.20.77&r=1"></script>
+  <script>
+    (function(){
+      try{
+        if (window.A33Auth && typeof A33Auth.isConfigured === 'function' && typeof A33Auth.isAuthenticated === 'function'){
+          if (A33Auth.isConfigured() && A33Auth.isAuthenticated()){
+            location.replace('../calculadora/index.html');
+          }else{
+            location.replace('../index.html');
+          }
+        }else{
+          location.replace('../index.html');
+        }
+      }catch(_){
+        try{ location.replace('../index.html'); }catch(__){ }
+      }
+    })();
+  </script>
   <style>
     * {
       box-sizing: border-box;
@@ -292,7 +314,7 @@
     <button id="btn-limpiar" class="btn-secondary">Limpiar cantidades (no borra recetas)</button>
   </div>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=1"></script>
 
   <script>
     const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
@@ -671,6 +693,6 @@
     }
     document.addEventListener("DOMContentLoaded", init);
   </script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.13"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=1"></script>
 </body>
 </html>
