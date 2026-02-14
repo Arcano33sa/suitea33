@@ -882,12 +882,17 @@
 
 
 
-    function getNumberValue(id) {
+    function getNumberValue(id, opts) {
+      const options = opts || {};
       const el = document.getElementById(id);
-      if (!el) return 0;
-      const raw = (el.value || "").toString().replace(",", ".");
-      const v = parseFloat(raw);
-      return isNaN(v) ? 0 : v;
+      if (!el) return options.emptyAsNull ? null : 0;
+      const raw0 = (el.value ?? "").toString();
+      const raw = raw0.trim();
+      if (options.emptyAsNull && raw === "") return null;
+      const normalized = raw.replace(",", ".");
+      const v = parseFloat(normalized);
+      if (!Number.isFinite(v)) return options.emptyAsNull ? null : 0;
+      return v;
     }
 
     // qty: entero > 0 (normalizar).
@@ -1375,6 +1380,65 @@ async function recalcularCodigoLoteAuto(opts) {
     }
 
 
+
+
+// A33 UX: inputs numéricos sin “0” anticipado + auto-select + teclado numérico (iPad/iOS)
+function a33WireNumericInput(el, mode) {
+  if (!el) return;
+  const m = (mode === "numeric") ? "numeric" : "decimal";
+  try {
+    // visualmente vacío si venía con “0”
+    if (String(el.value || "").trim() === "0") el.value = "";
+
+    // teclado numérico (sin romper select-all en iPad/Safari)
+    el.setAttribute("inputmode", m);
+    if (m === "numeric") {
+      el.setAttribute("pattern", "[0-9]*");
+    } else {
+      el.setAttribute("pattern", "[0-9]*[\\.,]?[0-9]*");
+    }
+    el.autocomplete = "off";
+    el.autocapitalize = "off";
+    el.spellcheck = false;
+
+    // sin placeholder “0”
+    el.removeAttribute("placeholder");
+
+    // auto “select all” al corregir (hardening iPad/iOS)
+    const trySelect = () => {
+      const v = (el.value || "").toString().trim();
+      if (v === "") return;
+      try {
+        const len = (el.value || "").length;
+        if (typeof el.setSelectionRange === "function") {
+          el.setSelectionRange(0, len);
+        } else {
+          el.select();
+        }
+      } catch (e) {
+        try { el.select(); } catch (e2) {}
+      }
+    };
+
+    const scheduleSelect = () => {
+      // multi-tick: iOS a veces pisa la selección después del focus/click
+      trySelect();
+      try { requestAnimationFrame(trySelect); } catch (e) {}
+      setTimeout(trySelect, 0);
+      setTimeout(trySelect, 40);
+    };
+
+    el.addEventListener("focus", () => { scheduleSelect(); });
+
+    // Tap dentro del input con valor ⇒ selecciona todo.
+    const onDown = () => { setTimeout(scheduleSelect, 0); };
+    try { el.addEventListener("pointerdown", onDown, { passive: true }); } catch (e) { el.addEventListener("pointerdown", onDown); }
+    try { el.addEventListener("touchstart", onDown, { passive: true }); } catch (e) { el.addEventListener("touchstart", onDown); }
+    try { el.addEventListener("mousedown", onDown, { passive: true }); } catch (e) { el.addEventListener("mousedown", onDown); }
+    el.addEventListener("click", () => { setTimeout(scheduleSelect, 0); });
+  } catch (e) {}
+}
+
     function construirTablaRecetas() {
       const tbody = document.querySelector("#recetas-table tbody");
       tbody.innerHTML = "";
@@ -1387,22 +1451,22 @@ async function recalcularCodigoLoteAuto(opts) {
         INGREDIENTES.forEach(ing => {
           const td = document.createElement("td");
           const input = document.createElement("input");
-          input.type = "number";
+          input.type = "text";
           input.min = "0";
           input.step = "0.01";
           input.id = "receta-" + p.id + "-" + ing;
-          input.placeholder = "0";
+          a33WireNumericInput(input, "decimal");
           td.appendChild(input);
           tr.appendChild(td);
         });
         // columna de costo unitario por presentación
         const tdCosto = document.createElement("td");
         const inputCosto = document.createElement("input");
-        inputCosto.type = "number";
+        inputCosto.type = "text";
         inputCosto.min = "0";
         inputCosto.step = "0.01";
         inputCosto.id = "costo-unit-" + p.id;
-        inputCosto.placeholder = "0";
+        a33WireNumericInput(inputCosto, "decimal");
         tdCosto.appendChild(inputCosto);
         tr.appendChild(tdCosto);
 
@@ -1421,11 +1485,11 @@ async function recalcularCodigoLoteAuto(opts) {
         tr.appendChild(tdNombre);
         const tdCantidad = document.createElement("td");
         const input = document.createElement("input");
-        input.type = "number";
+        input.type = "text";
         input.min = "0";
         input.step = "1";
         input.id = "plan-" + p.id;
-        input.placeholder = "0";
+        a33WireNumericInput(input, "numeric");
         tdCantidad.appendChild(input);
         tr.appendChild(tdCantidad);
         tbody.appendChild(tr);
@@ -1437,15 +1501,20 @@ async function recalcularCodigoLoteAuto(opts) {
       PRESENTACIONES.forEach(p => {
         recetas[p.id] = {};
         INGREDIENTES.forEach(ing => {
-          const val = getNumberValue("receta-" + p.id + "-" + ing);
-          recetas[p.id][ing] = val;
+          const val = getNumberValue("receta-" + p.id + "-" + ing, { emptyAsNull: true });
+          if (typeof val === "number") {
+            recetas[p.id][ing] = val;
+          } else {
+            // vacío se queda vacío (no persistir 0)
+            delete recetas[p.id][ing];
+          }
         });
-        const costoUnit = getNumberValue("costo-unit-" + p.id);
-        costosPresentacion[p.id] = {
-          id: p.id,
-          nombre: p.nombre,
-          costoUnidad: costoUnit
-        };
+        const costoUnit = getNumberValue("costo-unit-" + p.id, { emptyAsNull: true });
+        const info = { id: p.id, nombre: p.nombre };
+        if (typeof costoUnit === "number") {
+          info.costoUnidad = costoUnit;
+        }
+        costosPresentacion[p.id] = info;
       });
       const payload = {
         version: 2,
@@ -1484,14 +1553,20 @@ async function recalcularCodigoLoteAuto(opts) {
 
         // cargar recetas (ml)
         PRESENTACIONES.forEach(p => {
-          const rec = recetas[p.id];
-          if (!rec) return;
+          const rec = (recetas && recetas[p.id]) ? recetas[p.id] : null;
           INGREDIENTES.forEach(ing => {
             const input = document.getElementById("receta-" + p.id + "-" + ing);
             if (!input) return;
-            const val = rec[ing];
-            if (typeof val === "number") {
-              input.value = val;
+            const val = rec ? rec[ing] : undefined;
+            if (val === null || val === undefined || val === "") {
+              input.value = "";
+            } else if (typeof val === "number") {
+              input.value = String(val);
+            } else if (typeof val === "string") {
+              const t = val.trim();
+              input.value = t === "" ? "" : t;
+            } else {
+              input.value = "";
             }
           });
         });
@@ -1502,8 +1577,18 @@ async function recalcularCodigoLoteAuto(opts) {
             const info = costosPresentacion[p.id];
             if (!info) return;
             const inputCosto = document.getElementById("costo-unit-" + p.id);
-            if (inputCosto && typeof info.costoUnidad === "number") {
-              inputCosto.value = info.costoUnidad;
+            if (inputCosto) {
+              const v = info ? info.costoUnidad : undefined;
+              if (v === null || v === undefined || v === "") {
+                inputCosto.value = "";
+              } else if (typeof v === "number") {
+                inputCosto.value = String(v);
+              } else if (typeof v === "string") {
+                const t = v.trim();
+                inputCosto.value = t === "" ? "" : t;
+              } else {
+                inputCosto.value = "";
+              }
             }
           });
         }
