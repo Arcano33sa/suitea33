@@ -848,7 +848,6 @@ const CC_DENOMS = {
     { id: '1_coin', value: 1, chip: 'moneda' },
     { id: '5_coin', value: 5, chip: 'moneda' },
     { id: '10_coin', value: 10, chip: 'moneda' },
-    { id: '10_bill', value: 10, chip: 'billete' },
     { id: '20', value: 20, chip: 'billete' },
     { id: '50', value: 50, chip: 'billete' },
     { id: '100', value: 100, chip: 'billete' },
@@ -922,8 +921,54 @@ function ccNormalizeSnapshot(obj) {
     const byId = new Map(srcDenoms.map(d => [String(d && d.id ? d.id : ''), d]));
 
     out.currencies[code].denoms = (CC_DENOMS[code] || []).map(base => {
+      let raw = null;
+
+      // 1) Formato actual: array `denoms` con {id,count}
       const hit = byId.get(String(base.id));
-      const raw = hit ? hit.count : null;
+      if (hit) raw = hit.count;
+      // 2) Compat: C$10 histórico (moneda/billete). Se consolida en el denom '10_coin'.
+      if (code === 'NIO' && String(base.id) === '10_coin') {
+        const aliases = [
+          'moneda10', 'coin10', 'c10', 'm10', '10moneda', '10_coin',
+          // Históricos que guardaron billete 10 como ID separado
+          '10_bill', 'billete10', 'bill10', 'b10', '10billete'
+        ];
+
+        let sum = 0;
+        let hasAny = false;
+
+        // Desde denoms[] por ID
+        for (const a of ['10_coin', '10_bill']) {
+          const h = byId.get(a);
+          if (!h) continue;
+          const v = h.count;
+          if (v === '' || v == null) continue;
+          const n = Number(v);
+          if (Number.isFinite(n) && n > 0) { sum += n; hasAny = true; }
+        }
+
+        // Desde campos legacy (nivel raíz o src.denoms como objeto)
+        for (const f of aliases) {
+          if (!Object.prototype.hasOwnProperty.call(src, f)) continue;
+          const v = src[f];
+          if (v === '' || v == null) continue;
+          const n = Number(v);
+          if (Number.isFinite(n) && n > 0) { sum += n; hasAny = true; }
+        }
+        if (src.denoms && typeof src.denoms === 'object' && !Array.isArray(src.denoms)) {
+          for (const f of aliases) {
+            if (!Object.prototype.hasOwnProperty.call(src.denoms, f)) continue;
+            const v = src.denoms[f];
+            if (v === '' || v == null) continue;
+            const n = Number(v);
+            if (Number.isFinite(n) && n > 0) { sum += n; hasAny = true; }
+          }
+        }
+
+        // Si viene en formato actual y además hay legacy, sumamos sin perder nada.
+        if (hasAny) raw = sum;
+      }
+
       const n = (raw === '' || raw == null) ? null : Number(raw);
       const count = (Number.isFinite(n) && n >= 0) ? Math.trunc(n) : null;
       return { id: base.id, value: base.value, chip: base.chip || '', count };
@@ -956,7 +1001,6 @@ async function ccLoadSnapshot() {
     try { localStorage.setItem(CC_STORAGE_KEY, JSON.stringify(ccSnapshot)); } catch (_) {}
     return ccSnapshot;
   } catch (err) {
-    console.warn('No se pudo leer Caja Chica desde settings', err);
     ccSnapshot = ccBuildEmptySnapshot();
     return ccSnapshot;
   }
@@ -969,9 +1013,11 @@ function ccUpdateTotal() {
 
   const tbody = document.getElementById('cc-tbody');
   if (tbody) {
+    const byId = new Map((cur.denoms || []).map(d => [String(d.id), d]));
     const rows = tbody.querySelectorAll('tr');
-    rows.forEach((tr, idx) => {
-      const denom = cur.denoms[idx];
+    rows.forEach((tr) => {
+      const denomId = String(tr.dataset.denomId || '');
+      const denom = byId.get(denomId);
       const tdSub = tr.querySelector('td.num');
       if (!denom || !tdSub) return;
       const sub = ((denom.count == null) ? 0 : denom.count) * Number(denom.value || 0);
@@ -1009,15 +1055,23 @@ function ccRenderCurrency() {
   tbody.innerHTML = '';
 
   for (const d of cur.denoms) {
+    const isLegacy10Coin = (ccCurrency === 'NIO' && String(d.id) === '10_coin');
+    const legacyCount = (d.count == null) ? 0 : Number(d.count || 0);
+    const showLegacy = isLegacy10Coin && legacyCount > 0;
+
+    // UI: eliminar captura de Moneda C$10. Solo mostrar si existe histórico > 0 (read-only).
+    if (isLegacy10Coin && !showLegacy) continue;
+
     const tr = document.createElement('tr');
+    tr.dataset.denomId = String(d.id || '');
 
     const tdDen = document.createElement('td');
     tdDen.className = 'cc-denom';
     const main = document.createElement('span');
-    main.textContent = `${prefix} ${d.value}`;
+    main.textContent = isLegacy10Coin ? `${prefix} ${d.value} (Histórico)` : `${prefix} ${d.value}`;
     tdDen.appendChild(main);
 
-    if (d.chip) {
+    if (!isLegacy10Coin && d.chip) {
       const chip = document.createElement('span');
       chip.className = 'cc-chip';
       chip.textContent = d.chip;
@@ -1025,35 +1079,49 @@ function ccRenderCurrency() {
     }
 
     const tdQty = document.createElement('td');
-    const inp = document.createElement('input');
-    inp.type = 'number';
-    inp.inputMode = 'numeric';
-    inp.min = '0';
-    inp.step = '1';
-    inp.className = 'a33-num';
-    inp.dataset.a33Default = '';
-    inp.id = `cc-q-${ccCurrency}-${d.id}`;
-    inp.value = (d.count == null) ? '' : String(d.count);
 
-    // UX: vacío se mantiene vacío; si hay valor, seleccionar todo al click/focus.
-    inp.addEventListener('focus', ()=>{
-      if (String(inp.value ?? '') === '') return;
-      try{ setTimeout(()=>inp.select(), 0); }catch(e){}
-    });
-    inp.addEventListener('click', ()=>{
-      if (String(inp.value ?? '') === '') return;
-      try{ inp.select(); }catch(e){}
-    });
+    if (isLegacy10Coin) {
+      const ro = document.createElement('input');
+      ro.type = 'number';
+      ro.inputMode = 'numeric';
+      ro.min = '0';
+      ro.step = '1';
+      ro.disabled = true;
+      ro.className = 'a33-num cc-ro';
+      ro.value = String(Math.trunc(legacyCount));
+      ro.setAttribute('aria-label', 'Cantidad (Histórico)');
+      tdQty.appendChild(ro);
+    } else {
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.inputMode = 'numeric';
+      inp.min = '0';
+      inp.step = '1';
+      inp.className = 'a33-num';
+      inp.dataset.a33Default = '';
+      inp.id = `cc-q-${ccCurrency}-${d.id}`;
+      inp.value = (d.count == null) ? '' : String(d.count);
 
-    inp.addEventListener('input', () => {
-      const raw = String(inp.value ?? '').trim();
-      const n = raw === '' ? null : Number(raw);
-      d.count = (Number.isFinite(n) && n >= 0) ? Math.trunc(n) : null;
-      ccUpdateTotal();
-      ccSetMsg('');
-    });
+      // UX: vacío se mantiene vacío; si hay valor, seleccionar todo al click/focus.
+      inp.addEventListener('focus', ()=>{
+        if (String(inp.value ?? '') === '') return;
+        try{ setTimeout(()=>inp.select(), 0); }catch(e){}
+      });
+      inp.addEventListener('click', ()=>{
+        if (String(inp.value ?? '') === '') return;
+        try{ inp.select(); }catch(e){}
+      });
 
-    tdQty.appendChild(inp);
+      inp.addEventListener('input', () => {
+        const raw = String(inp.value ?? '').trim();
+        const n = raw === '' ? null : Number(raw);
+        d.count = (Number.isFinite(n) && n >= 0) ? Math.trunc(n) : null;
+        ccUpdateTotal();
+        ccSetMsg('');
+      });
+
+      tdQty.appendChild(inp);
+    }
 
     const tdSub = document.createElement('td');
     tdSub.className = 'num';
@@ -1081,7 +1149,6 @@ async function ccSaveSnapshot() {
   try {
     await finPut('settings', { id: CC_STORAGE_KEY, data: ccSnapshot });
   } catch (err) {
-    console.warn('No se pudo guardar Caja Chica en settings', err);
   }
 
   try {
@@ -1128,13 +1195,16 @@ function setupCajaChicaUI() {
   });
 }
 
-function normStr(s) {
-  return (s || '')
+function normStr(s, maxLen = 200) {
+  const out = (s || '')
     .toString()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .trim();
+  const ml = Number(maxLen);
+  if (Number.isFinite(ml) && ml > 0 && out.length > ml) return out.slice(0, ml);
+  return out;
 }
 
 
@@ -1252,10 +1322,12 @@ function normNumNonNeg(v) {
   return (Number.isFinite(n) && n >= 0) ? n : 0;
 }
 
-function normStr(v, maxLen = 120) {
+function normStrKeep(v, maxLen = 120) {
   const s = (v == null) ? '' : String(v);
   const out = s.trim();
-  return out.length > maxLen ? out.slice(0, maxLen) : out;
+  const ml = Number(maxLen);
+  if (Number.isFinite(ml) && ml > 0 && out.length > ml) return out.slice(0, ml);
+  return out;
 }
 
 function normBool01(v) {
@@ -1266,7 +1338,7 @@ function normBool01(v) {
 }
 
 function normalizeProductType(v) {
-  const t = normStr(v, 24).toUpperCase();
+  const t = normStrKeep(v, 24).toUpperCase();
   if (!t) return '—';
   return (t === 'CAJAS' || t === 'UNIDADES') ? t : '—';
 }
@@ -1283,8 +1355,8 @@ function normalizeSupplierProduct(raw) {
   const precioSet = hasFlag ? normBool01(obj.precioSet) : ((precioStr !== '') && (normNumNonNeg(precioRaw) !== 0));
 
   return {
-    id: normStr(obj.id, 80),
-    nombre: normStr(obj.nombre, 120),
+    id: normStrKeep(obj.id, 80),
+    nombre: normStrKeep(obj.nombre, 120),
     tipo: normalizeProductType(obj.tipo),
     precio: normNumNonNeg(obj.precio),
     precioSet,
@@ -1299,9 +1371,9 @@ function normalizeSupplier(raw) {
   return {
     ...obj,
     id: obj.id,
-    nombre: normStr(obj.nombre, 120),
-    telefono: normStr(obj.telefono, 80),
-    nota: normStr(obj.nota, 220),
+    nombre: normStrKeep(obj.nombre, 120),
+    telefono: normStrKeep(obj.telefono, 80),
+    nota: normStrKeep(obj.nota, 220),
     productos
   };
 }

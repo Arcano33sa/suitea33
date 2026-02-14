@@ -632,6 +632,16 @@ body.fin-body {
   font-size:0.85rem;
 }
 
+.cc-table input:disabled{
+  opacity: 0.70;
+  cursor: not-allowed;
+}
+
+.cc-table input.cc-ro{
+  letter-spacing: 0.5px;
+}
+
+
 .cc-denom{
   display:flex;
   align-items:center;
