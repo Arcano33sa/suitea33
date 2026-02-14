@@ -848,6 +848,7 @@ const CC_DENOMS = {
     { id: '1_coin', value: 1, chip: 'moneda' },
     { id: '5_coin', value: 5, chip: 'moneda' },
     { id: '10_coin', value: 10, chip: 'moneda' },
+    { id: '10_bill', value: 10, chip: 'billete' },
     { id: '20', value: 20, chip: 'billete' },
     { id: '50', value: 50, chip: 'billete' },
     { id: '100', value: 100, chip: 'billete' },
@@ -926,25 +927,26 @@ function ccNormalizeSnapshot(obj) {
       // 1) Formato actual: array `denoms` con {id,count}
       const hit = byId.get(String(base.id));
       if (hit) raw = hit.count;
-      // 2) Compat: C$10 histórico (moneda/billete). Se consolida en el denom '10_coin'.
+
+      // 2) Compat: C$10 MONEDA histórico. Se consolida en el denom '10_coin' (solo histórico, read-only).
       if (code === 'NIO' && String(base.id) === '10_coin') {
         const aliases = [
-          'moneda10', 'coin10', 'c10', 'm10', '10moneda', '10_coin',
-          // Históricos que guardaron billete 10 como ID separado
-          '10_bill', 'billete10', 'bill10', 'b10', '10billete'
+          'moneda10', 'coin10', 'c10', 'm10', '10moneda', '10_coin'
         ];
 
         let sum = 0;
         let hasAny = false;
 
-        // Desde denoms[] por ID
-        for (const a of ['10_coin', '10_bill']) {
-          const h = byId.get(a);
-          if (!h) continue;
-          const v = h.count;
-          if (v === '' || v == null) continue;
-          const n = Number(v);
-          if (Number.isFinite(n) && n > 0) { sum += n; hasAny = true; }
+        // Desde denoms[] por ID (formato actual)
+        {
+          const h = byId.get('10_coin');
+          if (h) {
+            const v = h.count;
+            if (!(v === '' || v == null)) {
+              const n = Number(v);
+              if (Number.isFinite(n) && n > 0) { sum += n; hasAny = true; }
+            }
+          }
         }
 
         // Desde campos legacy (nivel raíz o src.denoms como objeto)
@@ -965,7 +967,48 @@ function ccNormalizeSnapshot(obj) {
           }
         }
 
-        // Si viene en formato actual y además hay legacy, sumamos sin perder nada.
+        if (hasAny) raw = sum;
+      }
+
+      // 3) Compat: C$10 BILLETE histórico. Se consolida en el denom '10_bill' (capturable).
+      if (code === 'NIO' && String(base.id) === '10_bill') {
+        const aliases = [
+          '10_bill', 'billete10', 'bill10', 'b10', '10billete'
+        ];
+
+        let sum = 0;
+        let hasAny = false;
+
+        // Desde denoms[] por ID (formato actual)
+        {
+          const h = byId.get('10_bill');
+          if (h) {
+            const v = h.count;
+            if (!(v === '' || v == null)) {
+              const n = Number(v);
+              if (Number.isFinite(n) && n > 0) { sum += n; hasAny = true; }
+            }
+          }
+        }
+
+        // Desde campos legacy (nivel raíz o src.denoms como objeto)
+        for (const f of aliases) {
+          if (!Object.prototype.hasOwnProperty.call(src, f)) continue;
+          const v = src[f];
+          if (v === '' || v == null) continue;
+          const n = Number(v);
+          if (Number.isFinite(n) && n > 0) { sum += n; hasAny = true; }
+        }
+        if (src.denoms && typeof src.denoms === 'object' && !Array.isArray(src.denoms)) {
+          for (const f of aliases) {
+            if (!Object.prototype.hasOwnProperty.call(src.denoms, f)) continue;
+            const v = src.denoms[f];
+            if (v === '' || v == null) continue;
+            const n = Number(v);
+            if (Number.isFinite(n) && n > 0) { sum += n; hasAny = true; }
+          }
+        }
+
         if (hasAny) raw = sum;
       }
 
