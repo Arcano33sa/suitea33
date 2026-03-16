@@ -1566,7 +1566,7 @@ function renderHistoryModal(){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.77&r=1")
+      .register("./sw.js?v=4.20.77&r=2")
       .catch((err) => console.error("SW error", err));
   }
 }

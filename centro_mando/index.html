@@ -7,10 +7,9 @@
   <meta name="theme-color" content="#0b0b0b" />
   <meta http-equiv="refresh" content="4;url=../centro-mando/index.html" />
   <title>Centro de Mando — Actualizando…</title>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=2"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.77&r=1"></script>
-  <script src="/assets/js/a33-auth.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=2"></script>
   <style>
     :root{color-scheme:dark}
     body{margin:0;background:#0b0b0b;color:#f2f2f2;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
@@ -29,7 +28,7 @@
       <h1>Actualizando Centro de Mando…</h1>
       <p>Estamos moviendo el módulo a su ruta canónica para evitar versiones “zombie” por caché.</p>
       <div id="status" class="status">Iniciando…</div>
-      <p class="hint">Si no te redirige, abrí <a href="../centro-mando/index.html">Centro de Mando</a>.</p>
+      <p class="hint">Si no te redirige, abrí <a id="cm-canonical-link" href="../centro-mando/index.html">Centro de Mando</a>.</p>
     </div>
   </div>
 
@@ -38,26 +37,10 @@
       const statusEl = document.getElementById('status');
       const set = (m) => { try { statusEl.textContent = m; } catch(e) {} };
 
-      const target = "../centro-mando/index.html";
-
-      // Auth gate (evita rutas legacy como bypass)
-      try{
-        if (!window.A33Auth || !A33Auth.isConfigured || !A33Auth.isAuthenticated){
-          try{ location.replace('../index.html'); }catch(_){ }
-          return;
-        }
-        if (!(A33Auth.isConfigured() && A33Auth.isAuthenticated())){
-          if (typeof navigator !== 'undefined' && navigator.onLine === false){
-            try{ location.replace('./offline.html?reason=auth'); }catch(_){ }
-          }else{
-            try{ location.replace('../index.html'); }catch(_){ }
-          }
-          return;
-        }
-      }catch(_){
-        try{ location.replace('../index.html'); }catch(__){ }
-        return;
-      }
+      const suffix = `${location.search || ""}${location.hash || ""}`;
+      const target = `../centro-mando/index.html${suffix}`;
+      const canonicalLink = document.getElementById("cm-canonical-link");
+      if (canonicalLink) canonicalLink.setAttribute("href", target);
 
       // 1) Intentar desregistrar SW bajo este scope (centro_mando)
       try {

@@ -12,7 +12,9 @@ function _nowMs(){ return Date.now(); }
 
 function _readDraftPedido(){
   try{
-    const raw = (window.sessionStorage) ? window.sessionStorage.getItem(PEDIDOS_DRAFT_KEY) : null;
+    const raw = (window.A33Storage && typeof A33Storage.getItem === 'function')
+      ? A33Storage.getItem(PEDIDOS_DRAFT_KEY, 'local')
+      : (window.localStorage ? window.localStorage.getItem(PEDIDOS_DRAFT_KEY) : null);
     if (!raw) return null;
     const obj = JSON.parse(raw);
     if (!obj || typeof obj !== 'object') return null;
@@ -21,7 +23,10 @@ function _readDraftPedido(){
     if (!id || !createdAt || !isFinite(createdAt)) return null;
     // Expira para evitar estados pegajosos si la pestaña queda abierta días
     const age = _nowMs() - createdAt;
-    if (age > 1000*60*60*6) return null; // 6 horas
+    if (age > 1000*60*60*6) {
+      clearDraftPedido();
+      return null;
+    }
     return { id, createdAt };
   }catch(_){
     return null;
@@ -30,14 +35,25 @@ function _readDraftPedido(){
 
 function _writeDraftPedido(d){
   try{
-    if (!window.sessionStorage) return;
-    window.sessionStorage.setItem(PEDIDOS_DRAFT_KEY, JSON.stringify(d || {}));
+    const payload = JSON.stringify(d || {});
+    if (window.A33Storage && typeof A33Storage.setItem === 'function') {
+      A33Storage.setItem(PEDIDOS_DRAFT_KEY, payload, 'local');
+      return;
+    }
+    if (!window.localStorage) return;
+    window.localStorage.setItem(PEDIDOS_DRAFT_KEY, payload);
   }catch(_){ }
 }
 
 function clearDraftPedido(){
   draftPedidoId = null;
-  try{ if (window.sessionStorage) window.sessionStorage.removeItem(PEDIDOS_DRAFT_KEY); }catch(_){ }
+  try{
+    if (window.A33Storage && typeof A33Storage.removeItem === 'function') {
+      A33Storage.removeItem(PEDIDOS_DRAFT_KEY, 'local');
+      return;
+    }
+    if (window.localStorage) window.localStorage.removeItem(PEDIDOS_DRAFT_KEY);
+  }catch(_){ }
 }
 
 function ensureDraftPedidoId(forceNew){
@@ -2069,7 +2085,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js?v=4.20.77&r=1').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.77&r=2').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

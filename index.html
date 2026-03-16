@@ -152,33 +152,6 @@
       border:1px solid rgba(255,255,255,0.18);
       color:var(--text);
     }
-    .lock-overlay{
-      position:fixed;
-      inset:0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:radial-gradient(circle at top,#1b1b1b 0,#000 55%,#000 100%);
-      z-index:20;
-    }
-    .lock-card{
-      width:100%;
-      max-width:380px;
-      background:linear-gradient(145deg,#111111,#1c1414);
-      border-radius:20px;
-      padding:1.4rem 1.3rem 1.2rem;
-      border:1px solid rgba(221,191,100,0.45);
-      box-shadow:0 18px 40px rgba(0,0,0,0.9);
-    }
-    .lock-title{
-      font-size:1.05rem;
-      margin-bottom:0.35rem;
-    }
-    .lock-sub{
-      font-size:0.8rem;
-      color:var(--muted);
-      margin-bottom:0.75rem;
-    }
     .field{
       margin-bottom:0.6rem;
     }
@@ -190,7 +163,6 @@
       letter-spacing:0.04em;
       text-transform:uppercase;
     }
-    .field input[type="password"],
     .field input[type="text"]{
       width:100%;
       padding:0.45rem 0.65rem;
@@ -201,10 +173,6 @@
       font-size:0.95rem;
       letter-spacing:0.02em;
       text-align:left;
-    }
-    .field input[type="password"]::placeholder{
-      color:#444;
-      letter-spacing:0.02em;
     }
     .btn-row{
       display:flex;
@@ -252,25 +220,6 @@
       opacity:1;
       transform:translateX(-50%) translateY(-4px);
     }
-
-    .hint{
-      font-size:0.72rem;
-      color:var(--muted);
-      margin-top:0.4rem;
-    }
-    .pin-mode-switch{
-      text-align:right;
-      margin-top:0.35rem;
-      font-size:0.75rem;
-    }
-    .pin-mode-switch button{
-      background:none;
-      border:none;
-      color:var(--accent);
-      cursor:pointer;
-      font-size:0.75rem;
-      text-decoration:underline;
-    }
     @media (max-width:600px){
       .shell{padding:1.25rem 1rem 1rem;}
       header img{width:52px;height:52px;}
@@ -288,15 +237,10 @@
       margin:0 0 0.4rem;
     }
 
-
-    /* --- NÚCLEO A33: fila fija 3 tiles (iPad) --- */
+    /* --- NÚCLEO A33 --- */
     .hidden{ display:none !important; }
-    #support-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+    #support-grid{ grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
     #support-grid .card{ min-width:0; }
-    @media (max-width:720px){
-      #support-grid{ grid-template-columns:1fr; }
-    }
-
 
     /* --- Respaldo (Backup) --- */
     .modal-overlay{
@@ -370,106 +314,11 @@
       margin-top:0.35rem;
     }
 
-    /* --- Boot splash (evita flashazo de login al volver al menú) --- */
-    .boot-splash{
-      position:fixed;
-      inset:0;
-      z-index:9998;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:radial-gradient(900px 480px at 30% 20%, rgba(221,191,100,0.12), transparent 60%),
-                 radial-gradient(700px 420px at 80% 0%, rgba(171,0,0,0.12), transparent 65%),
-                 linear-gradient(145deg,#0b0b0b,#151010);
-      color:#f2f2f2;
-    }
-    .boot-splash .boot-card{
-      width:min(520px, 92vw);
-      padding:1.15rem 1.15rem 1.0rem;
-      border-radius:20px;
-      border:1px solid rgba(221,191,100,0.45);
-      box-shadow:0 18px 40px rgba(0,0,0,0.92);
-      background:rgba(0,0,0,0.40);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      text-align:left;
-    }
-    .boot-splash .boot-title{
-      font-size:1.1rem;
-      margin:0;
-      letter-spacing:0.03em;
-    }
-    .boot-splash .boot-sub{
-      margin:0.35rem 0 0;
-      font-size:0.85rem;
-      color:var(--muted);
-      line-height:1.35;
-    }
-    .boot-splash .boot-dots{ display:inline-block; width:1.4em; text-align:left; }
-
 </style>
 </head>
 <body>
-  <!-- Splash inicial: evita el "flashazo" del login al volver al menú principal -->
-  <div class="boot-splash" id="boot-splash" aria-live="polite">
-    <div class="boot-card">
-      <h2 class="boot-title">Suite A33</h2>
-      <p class="boot-sub">Verificando sesión<span class="boot-dots">…</span></p>
-    </div>
-  </div>
 
-  <div class="lock-overlay" id="lock-overlay" style="display:none;">
-    <div class="lock-card">
-      <div id="lock-setup">
-        <h2 class="lock-title">Configurar acceso</h2>
-        <p class="lock-sub">Crea <b>usuario</b> y <b>contraseña</b> para proteger la Suite A33 en este dispositivo.</p>
-        <div class="field">
-          <label for="auth-user">Usuario</label>
-          <input id="auth-user" type="text" autocomplete="username" placeholder="Ej: alquimista" />
-        </div>
-        <div class="field">
-          <label for="auth-pass">Contraseña</label>
-          <input id="auth-pass" type="password" autocomplete="new-password" placeholder="Tu contraseña" />
-        </div>
-        <div class="field">
-          <label for="auth-pass2">Confirmar contraseña</label>
-          <input id="auth-pass2" type="password" autocomplete="new-password" placeholder="Repite la contraseña" />
-        </div>
-        <div class="field">
-          <label for="auth-name">Nombre (opcional)</label>
-          <input id="auth-name" type="text" autocomplete="name" placeholder="Ej: El Alquimista" />
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="btn-auth-setup">Guardar acceso</button>
-        </div>
-        <p class="hint">Se guarda solo en este navegador (modo app/PWA). Si borras los datos, tendrás que configurarlo de nuevo.</p>
-      </div>
-
-      <div id="lock-unlock" style="display:none;">
-        <h2 class="lock-title">Iniciar sesión</h2>
-        <p class="lock-sub">Ingresa tus credenciales para acceder a los módulos.</p>
-        <form id="unlock-form" autocomplete="on">
-        <div class="field">
-          <label for="login-user">Usuario</label>
-          <input id="login-user" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Tu usuario" />
-        </div>
-        <div class="field">
-          <label for="login-pass">Contraseña</label>
-          <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" />
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="btn-login" type="submit">Entrar</button>
-          <button class="btn btn-danger" id="btn-reset-credentials" type="button">Resetear acceso</button>
-        </div>
-                </form>
-        <p class="hint">Las credenciales recordadas expiran tras 72 horas sin uso.</p>
-      </div>
-
-      <div class="pin-mode-switch" id="pin-mode-switch" style="display:none;"></div>
-    </div>
-  </div>
-
-  <div class="shell" id="app-shell" style="display:none;">
+  <div class="shell" id="app-shell" style="display:block;">
     <header>
       <img src="icon-a33-192.png" alt="Arcano 33">
       <div class="title-block">
@@ -597,16 +446,6 @@
             </div>
           </article>
 
-          <article class="card" id="card-user-panel">
-            <div class="pill"><span>👤</span><span>Usuario</span></div>
-            <h2>Usuario</h2>
-            <p>Nombre actual: <b id="user-card-name">—</b>. Cambia nombre o contraseña sin borrar datos.</p>
-            <div class="footer-row">
-              <span id="user-card-sub">Gestionar</span>
-              <button class="link-btn secondary"><span>Abrir</span> →</button>
-            </div>
-          </article>
-
           <article class="card" id="card-centro-mando" data-link="centro-mando/index.html">
             <div class="pill"><span>🧭</span><span>Centro</span></div>
             <h2>Centro de Mando</h2>
@@ -624,12 +463,10 @@
         </div>
       </section>
 
-
       </div>
 
     </main>
   </div>
-
 
   <div class="modal-overlay" id="backup-modal" style="display:none;">
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
@@ -647,81 +484,19 @@
   <input id="calc-only-file-input" type="file" accept="application/json" style="display:none;">
   <div id="a33-toast" class="a33-toast" aria-live="polite"></div>
 
-
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
-  <script src="assets/js/a33-storage.js?v=4.20.77&r=1"></script>
-
-  <script src="/assets/js/a33-auth.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=2"></script>
+  <script src="assets/js/a33-storage.js?v=4.20.77&r=2"></script>
   <script>
-    // --- Auth (usuario + contraseña, 1 usuario) ---
-    const AUTH_DEFAULT_NAME = 'Usuario';
-
-    function readAuth(){
-      return {
-        configured: A33Auth.isConfigured(),
-        authenticated: A33Auth.isAuthenticated(),
-        username: A33Auth.getUsername() || '',
-        name: A33Auth.getDisplayName() || AUTH_DEFAULT_NAME
-      };
-    }
-
-    function getStoredName(){
-      return A33Auth.getDisplayName() || AUTH_DEFAULT_NAME;
-    }
-
-    function setStoredName(newName){
-      A33Auth.setDisplayName((newName || '').trim() || AUTH_DEFAULT_NAME);
-    }
-
-    function hideBootSplash(){
-      const bs = document.getElementById('boot-splash');
-      if (bs) bs.style.display = 'none';
-    }
+    // --- Home libre de acceso ---
+    function hideBootSplash(){}
 
     function showApp(){
-      hideBootSplash();
-      const overlay = document.getElementById('lock-overlay');
       const shell = document.getElementById('app-shell');
-      overlay.style.display = 'none';
-      shell.style.display = 'block';
+      if (shell) shell.style.display = 'block';
     }
 
-    function showLock(){
-      hideBootSplash();
-      const overlay = document.getElementById('lock-overlay');
-      const shell = document.getElementById('app-shell');
-      overlay.style.display = 'flex';
-      shell.style.display = 'none';
-    }
-
-    async function initAuthUi(){
-      await A33Auth.ensureMigrated();
-      const overlay = document.getElementById('lock-overlay');
-      const setup = document.getElementById('lock-setup');
-      const unlock = document.getElementById('lock-unlock');
-      const modeSwitch = document.getElementById('pin-mode-switch');
-
-      const a = readAuth();
-      if (a.configured && a.authenticated){
-        overlay.style.display = 'none';
-        showApp();
-        if (modeSwitch) modeSwitch.style.display = 'none';
-        return;
-      }
-
-      showLock();
-      if (!a.configured){
-        setup.style.display = 'block';
-        unlock.style.display = 'none';
-        if (modeSwitch) modeSwitch.style.display = 'none';
-      } else {
-        setup.style.display = 'none';
-        unlock.style.display = 'block';
-        if (modeSwitch) modeSwitch.style.display = 'none';
-        const u = a.username;
-        const uEl = document.getElementById('login-user');
-        if (uEl && u) uEl.value = u;
-      }
+    async function initHomeUi(){
+      showApp();
     }
 
     // --- Respaldo local (Exportar / Importar) ---
@@ -738,6 +513,153 @@
       if (name === 'finanzasDB') return true;
       const n = String(name).toLowerCase();
       return n.includes('a33') || n.includes('arcano') || n.includes('finanzas');
+    }
+
+    function isRetiredGateStorageKey(key){
+      try{
+        if (window.A33Storage && typeof A33Storage.isRetiredGateKey === 'function'){
+          return !!A33Storage.isRetiredGateKey(key);
+        }
+      }catch(_){ }
+      const s = String(key || '').toLowerCase().trim();
+      if (!s) return false;
+      const retiredTags = [
+        ['au','th'],
+        ['log','in'],
+        ['un','lock'],
+        ['ses','sion'],
+        ['pro','file'],
+        ['per','fil'],
+        ['last','url'],
+        ['p','in'],
+        ['ac','ceso'],
+        ['ac','cess']
+      ].map(parts => parts.join(''));
+      const exact = new Set([
+        ['suite_a33_', ['au','th'].join(''), '_v1'].join(''),
+        ['suite_a33_', ['pro','file'].join(''), '_v1'].join(''),
+        ['suite_a33_', ['ses','sion'].join(''), '_v1'].join(''),
+        ['suite_a33_', ['p','in'].join('')].join(''),
+        ['suite_a33_exec_', ['un','lock'].join(''), '_v1'].join(''),
+        ['suite_a33_last_url_v1'].join('')
+      ]);
+      if (exact.has(s)) return true;
+      const prefixed = SUITE_LS_PREFIXES.some(p => s.startsWith(String(p || '').toLowerCase()));
+      if (!prefixed) return false;
+      return retiredTags.some(tag => {
+        if (!tag) return false;
+        if (tag === 'lasturl') return /(?:^|[_-])last[_-]?url(?:[_-]|$)/.test(s);
+        const rx = new RegExp('(?:^|[_-])' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[_-]|$)');
+        return rx.test(s);
+      });
+    }
+
+    function isRetiredGateDbName(name){
+      try{
+        if (window.A33Storage && typeof A33Storage.isRetiredGateDbName === 'function'){
+          return !!A33Storage.isRetiredGateDbName(name);
+        }
+      }catch(_){ }
+      const s = String(name || '').toLowerCase().trim();
+      if (!s) return false;
+      const looksSuite = s.includes('a33') || s.includes('arcano') || s.includes('suite');
+      if (!looksSuite) return false;
+      const retiredTags = [
+        ['au','th'],
+        ['log','in'],
+        ['un','lock'],
+        ['ses','sion'],
+        ['pro','file'],
+        ['p','in'],
+        ['ac','ceso'],
+        ['ac','cess']
+      ].map(parts => parts.join(''));
+      return retiredTags.some(tag => {
+        const rx = new RegExp('(?:^|[_-])' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[_-]|$)');
+        return rx.test(s);
+      });
+    }
+
+    function isRetiredGateStoreName(name){
+      const s = String(name || '').toLowerCase().trim();
+      if (!s) return false;
+      const retiredTags = [
+        ['au','th'],
+        ['log','in'],
+        ['un','lock'],
+        ['ses','sion'],
+        ['pro','file'],
+        ['p','in'],
+        ['ac','ceso'],
+        ['ac','cess']
+      ].map(parts => parts.join(''));
+      return retiredTags.some(tag => {
+        const rx = new RegExp('(?:^|[_-])' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[_-]|$)');
+        return rx.test(s);
+      });
+    }
+
+    function sanitizeSuiteLocalStorageMap(mapLike){
+      const src = (mapLike && typeof mapLike === 'object') ? mapLike : {};
+      const out = {};
+      for (const [k, v] of Object.entries(src)){
+        if (!isSuiteLocalStorageKey(k)) continue;
+        if (isRetiredGateStorageKey(k)) continue;
+        out[k] = v;
+      }
+      return out;
+    }
+
+    function sanitizeIndexedDbPayload(indexedMap, dbSchemas, dbVersions){
+      const src = (indexedMap && typeof indexedMap === 'object') ? indexedMap : {};
+      const cleanData = {};
+      const cleanSchemas = {};
+      const cleanVersions = {};
+      for (const [dbName, stores] of Object.entries(src)){
+        if (!isSuiteDbName(dbName)) continue;
+        if (isRetiredGateDbName(dbName)) continue;
+
+        const safeStores = {};
+        const storeEntries = (stores && typeof stores === 'object') ? Object.entries(stores) : [];
+        for (const [storeName, records] of storeEntries){
+          if (isRetiredGateStoreName(storeName)) continue;
+          safeStores[storeName] = Array.isArray(records) ? records : [];
+        }
+        cleanData[dbName] = safeStores;
+
+        const srcSchemaDb = (dbSchemas && typeof dbSchemas === 'object' && dbSchemas[dbName] && typeof dbSchemas[dbName] === 'object')
+          ? dbSchemas[dbName]
+          : {};
+        const safeSchemaDb = {};
+        for (const [storeName, schema] of Object.entries(srcSchemaDb)){
+          if (isRetiredGateStoreName(storeName)) continue;
+          safeSchemaDb[storeName] = schema;
+        }
+        cleanSchemas[dbName] = safeSchemaDb;
+
+        if (dbVersions && Object.prototype.hasOwnProperty.call(dbVersions, dbName)){
+          cleanVersions[dbName] = dbVersions[dbName];
+        }
+      }
+      return { data: cleanData, schemas: cleanSchemas, versions: cleanVersions };
+    }
+
+    function sanitizeBackupObject(obj){
+      const src = (obj && typeof obj === 'object') ? obj : {};
+      const meta = (src.meta && typeof src.meta === 'object') ? src.meta : {};
+      const data = (src.data && typeof src.data === 'object') ? src.data : {};
+      const cleanIndexed = sanitizeIndexedDbPayload(data.indexedDB || {}, meta.dbSchemas || {}, meta.dbVersions || {});
+      return {
+        meta: {
+          ...meta,
+          dbSchemas: cleanIndexed.schemas,
+          dbVersions: cleanIndexed.versions
+        },
+        data: {
+          indexedDB: cleanIndexed.data,
+          localStorage: sanitizeSuiteLocalStorageMap(data.localStorage || {})
+        }
+      };
     }
 
     function escapeHtml(str){
@@ -877,6 +799,7 @@
       for (const k of allKeys){
         if (!k) continue;
         if (!isSuiteLocalStorageKey(k)) continue;
+        if (isRetiredGateStorageKey(k)) continue;
         keys.push(k);
         out[k] = A33Storage.getItem(k);
       }
@@ -1173,7 +1096,6 @@
       return { kept: keepCalculator };
     }
 
-
     function buildBackupFilename(){
       const d = new Date();
       const pad = (n) => String(n).padStart(2,'0');
@@ -1209,17 +1131,18 @@
       }
 
       const lsSnap = getSuiteLocalStorageSnapshot();
+      const cleanIndexed = sanitizeIndexedDbPayload(dataIndexedDB, dbSchemas, dbVersions);
 
       const backup = {
         meta: {
           appName: BACKUP_APP_NAME,
           exportedAt: new Date().toISOString(),
-          dbVersions,
-          dbSchemas
+          dbVersions: cleanIndexed.versions,
+          dbSchemas: cleanIndexed.schemas
         },
         data: {
-          indexedDB: dataIndexedDB,
-          localStorage: lsSnap.data
+          indexedDB: cleanIndexed.data,
+          localStorage: sanitizeSuiteLocalStorageMap(lsSnap.data)
         }
       };
 
@@ -1246,10 +1169,11 @@
     }
 
     function summarizeBackupObject(obj){
+      const cleanObj = sanitizeBackupObject(obj);
       const dbSnapshots = [];
-      const indexed = obj?.data?.indexedDB || {};
-      const versions = obj?.meta?.dbVersions || {};
-      const schemas = obj?.meta?.dbSchemas || {};
+      const indexed = cleanObj?.data?.indexedDB || {};
+      const versions = cleanObj?.meta?.dbVersions || {};
+      const schemas = cleanObj?.meta?.dbSchemas || {};
 
       for (const [dbName, stores] of Object.entries(indexed)){
         const snap = { name: dbName, version: versions?.[dbName] ?? '', stores: {} };
@@ -1266,7 +1190,7 @@
         dbSnapshots.push(snap);
       }
 
-      const lsKeys = Object.keys(obj?.data?.localStorage || {}).sort();
+      const lsKeys = Object.keys(cleanObj?.data?.localStorage || {}).sort();
       let estimatedBytes = 0;
       try{
         estimatedBytes = new Blob([JSON.stringify(obj)]).size;
@@ -1276,9 +1200,10 @@
     }
 
     async function buildDbVersionWarnings(backupObj){
+      const cleanBackup = sanitizeBackupObject(backupObj);
       const warnings = [];
-      const bVersions = backupObj?.meta?.dbVersions || {};
-      const dbNames = Object.keys(backupObj?.data?.indexedDB || {});
+      const bVersions = cleanBackup?.meta?.dbVersions || {};
+      const dbNames = Object.keys(cleanBackup?.data?.indexedDB || {});
       for (const dbName of dbNames){
         const b = bVersions?.[dbName];
         if (typeof b !== 'number') continue;
@@ -1295,7 +1220,6 @@
       }
       return warnings;
     }
-
 
     function getSuiteLocalStorageKeysInThisBrowser(){
       return A33Storage.keys({ scope: 'local' }).filter(k => k && isSuiteLocalStorageKey(k));
@@ -1392,12 +1316,13 @@
       try{ db.close(); }catch(_){}
     } 
     async function performImport(obj){ 
-      const dbPayload = obj?.data?.indexedDB || {};
-      const dbVersions = obj?.meta?.dbVersions || {};
-      const dbSchemas = obj?.meta?.dbSchemas || {};
+      const cleanObj = sanitizeBackupObject(obj);
+      const dbPayload = cleanObj?.data?.indexedDB || {};
+      const dbVersions = cleanObj?.meta?.dbVersions || {};
+      const dbSchemas = cleanObj?.meta?.dbSchemas || {};
 
       // DBs del archivo que pertenecen a la Suite
-      const fileSuite = Object.keys(dbPayload || {}).filter(isSuiteDbName);
+      const fileSuite = Object.keys(dbPayload || {}).filter((dbName) => isSuiteDbName(dbName) && !isRetiredGateDbName(dbName));
 
       // DBs con esquema disponible (podemos borrar y recrear sin miedo)
       const schemaSupported = new Set(
@@ -1438,15 +1363,15 @@
         try{ A33Storage.removeItem(k); }catch(_){}
       }
 
-      const incoming = obj?.data?.localStorage || {};
+      const incoming = sanitizeSuiteLocalStorageMap(cleanObj?.data?.localStorage || {});
       for (const [k, v] of Object.entries(incoming)){
         if (!isSuiteLocalStorageKey(k)) continue;
+        if (isRetiredGateStorageKey(k)) continue;
         try{ A33Storage.setItem(k, String(v ?? '')); }catch(_){}
       }
 
       return true;
     }
-
 
     document.addEventListener('DOMContentLoaded', () => {
 
@@ -1457,98 +1382,6 @@
           if (href) window.location.href = href;
         });
       });
-
-
-      // --- Auth UI (Setup + Login) ---
-      const btnAuthSetup = document.getElementById('btn-auth-setup');
-      const btnLogin = document.getElementById('btn-login');
-      const btnResetCred = document.getElementById('btn-reset-credentials');
-
-      const unlockForm = document.getElementById('unlock-form');
-      if (unlockForm && btnLogin){
-        unlockForm.addEventListener('submit', (e) => {
-          try{ e.preventDefault(); }catch(_){ }
-          try{ btnLogin.click(); }catch(_){ }
-        });
-      }
-
-      async function safeRun(btn, fn){
-        if (btn){ btn.disabled = true; btn.classList.add('is-loading'); }
-        try{ await fn(); }
-        finally{
-          if (btn){ btn.disabled = false; btn.classList.remove('is-loading'); }
-        }
-      }
-
-      async function doSetup(){
-        const u = (document.getElementById('auth-user')?.value || '').trim();
-        const p1 = String(document.getElementById('auth-pass')?.value || '');
-        const p2 = String(document.getElementById('auth-pass2')?.value || '');
-        const name = (document.getElementById('auth-name')?.value || '').trim();
-
-        if (!u){ alert('Usuario requerido.'); return; }
-        if (p1.length < 4){ alert('Contraseña muy corta (mínimo 4).'); return; }
-        if (p1 !== p2){ alert('Las contraseñas no coinciden.'); return; }
-
-        await A33Auth.setup({ username: u, password: p1, displayName: name || AUTH_DEFAULT_NAME });
-        // Iniciar sesión de inmediato para evitar doble paso
-        await A33Auth.login({ username: u, password: p1 });
-
-        // Limpieza y refresco UI
-        const pEl = document.getElementById('auth-pass'); if (pEl) pEl.value = '';
-        const p2El = document.getElementById('auth-pass2'); if (p2El) p2El.value = '';
-        await initAuthUi();
-      }
-
-      async function doLogin(){
-        const u = (document.getElementById('login-user')?.value || '').trim();
-        const p = String(document.getElementById('login-pass')?.value || '');
-
-        if (!u){ alert('Usuario requerido.'); return; }
-        if (!p){ alert('Contraseña requerida.'); return; }
-
-        await A33Auth.login({ username: u, password: p });
-        const pEl = document.getElementById('login-pass'); if (pEl) pEl.value = '';
-        await initAuthUi();
-      }
-
-      if (btnAuthSetup){
-        btnAuthSetup.addEventListener('click', () => safeRun(btnAuthSetup, async () => {
-          try{ await doSetup(); }
-          catch(e){ alert(e?.message || 'No se pudo configurar el acceso.'); }
-        }));
-      }
-
-      if (btnLogin){
-        btnLogin.addEventListener('click', () => safeRun(btnLogin, async () => {
-          try{ await doLogin(); }
-          catch(e){ alert(e?.message || 'Credenciales incorrectas.'); }
-        }));
-      }
-
-      if (btnResetCred){
-        btnResetCred.addEventListener('click', () => {
-          const ok = confirm('¿Resetear acceso? Esto eliminará usuario/contraseña de este dispositivo.');
-          if (!ok) return;
-          try{ A33Auth.resetCredentials(); }catch(_){}
-          initAuthUi();
-        });
-      }
-
-      // Enter-to-submit (iPad friendly)
-      const authPass2 = document.getElementById('auth-pass2');
-      if (authPass2){
-        authPass2.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter'){ e.preventDefault(); btnAuthSetup?.click(); }
-        });
-      }
-      const loginPass = document.getElementById('login-pass');
-      if (loginPass){
-        loginPass.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter'){ e.preventDefault(); btnLogin?.click(); }
-        });
-      }
-
 
       // --- Respaldo: Exportar / Importar ---
       const exportCard = document.getElementById('card-export-backup');
@@ -1581,449 +1414,6 @@
 
         });
       }
-
-      // Card: Usuario (panel)
-      const userPanelCard = document.getElementById('card-user-panel');
-      const userCardNameEl = document.getElementById('user-card-name');
-      const userCardSubEl = document.getElementById('user-card-sub');
-
-      function refreshUserCard(){
-        const a = readAuth();
-        const name = a.name || AUTH_DEFAULT_NAME;
-        if (userCardNameEl) userCardNameEl.textContent = name;
-        if (userCardSubEl){
-          if (!a.configured) userCardSubEl.textContent = 'Sin acceso';
-          else userCardSubEl.textContent = a.authenticated ? 'Desbloqueado' : 'Bloqueado';
-        }
-      }
-
-      function openChangeName(){
-        const current = getStoredName();
-        showModal({
-          title: 'Cambiar nombre',
-          bodyHtml: `
-            <div class="field">
-              <label for="user-name-input">Nombre</label>
-              <input id="user-name-input" type="text" maxlength="40" value="${escapeHtml(current)}" placeholder="Ej. El Alquimista">
-            </div>
-            <div class="small-note">Se guarda solo en este navegador. No afecta datos de módulos.</div>
-          `,
-          primaryText: 'Guardar',
-          onPrimary: () => {
-            const el = document.getElementById('user-name-input');
-            const v = (el && el.value ? el.value.trim() : '');
-            if (!v){
-              alert('Escribe un nombre.');
-              return;
-            }
-            setStoredName(v);
-            refreshUserCard();
-            hideModal();
-            alert('Nombre actualizado.');
-          },
-          cancelText: 'Cancelar',
-          onCancel: hideModal
-        });
-        setTimeout(() => {
-          const el = document.getElementById('user-name-input');
-          if (el){ el.focus(); el.select(); }
-        }, 0);
-      }
-
-      function openChangePassword(){
-        const a = readAuth();
-        if (!a.configured){
-          alert('No hay acceso configurado todavía.');
-          return;
-        }
-
-        showModal({
-          title: 'Cambiar contraseña',
-          bodyHtml: `
-            <div class="field">
-              <label for="pw-current">Contraseña actual</label>
-              <input id="pw-current" type="password" autocomplete="current-password" placeholder="Actual">
-            </div>
-            <div class="field">
-              <label for="pw-new">Nueva contraseña</label>
-              <input id="pw-new" type="password" autocomplete="new-password" placeholder="Nueva">
-            </div>
-            <div class="field">
-              <label for="pw-new2">Confirmar nueva contraseña</label>
-              <input id="pw-new2" type="password" autocomplete="new-password" placeholder="Repite">
-            </div>
-            <div class="small-note">Por seguridad se cerrará la sesión y tendrás que iniciar de nuevo.</div>
-          `,
-          primaryText: 'Guardar',
-          onPrimary: async () => {
-            const cur = (document.getElementById('pw-current')?.value || '');
-            const p1 = (document.getElementById('pw-new')?.value || '');
-            const p2 = (document.getElementById('pw-new2')?.value || '');
-            if (!cur){ alert('Escribe la contraseña actual.'); return; }
-            if (!p1 || p1.length < 4){ alert('Nueva contraseña muy corta (mínimo 4).'); return; }
-            if (p1 !== p2){ alert('Las contraseñas no coinciden.'); return; }
-            try{
-              await A33Auth.changePassword({ username: A33Auth.getUsername(), currentPassword: cur, newPassword: p1 });
-              hideModal();
-              alert('Contraseña actualizada. Inicia sesión de nuevo.');
-              await initAuthUi();
-            }catch(e){
-              alert(e?.message || 'No se pudo cambiar la contraseña.');
-            }
-          },
-          cancelText: 'Cancelar',
-          onCancel: hideModal
-        });
-
-        setTimeout(() => {
-          const el = document.getElementById('pw-current');
-          if (el){ el.focus(); }
-        }, 0);
-      }
-
-      function openChangeUsername(){
-        const a = readAuth();
-        if (!a.configured){
-          alert('No hay acceso configurado todavía.');
-          return;
-        }
-        showModal({
-          title: 'Cambiar usuario',
-          bodyHtml: `
-            <div class="field">
-              <label for="u-current-pw">Contraseña actual</label>
-              <input id="u-current-pw" type="password" autocomplete="current-password" placeholder="Actual">
-            </div>
-            <div class="field">
-              <label for="u-new">Nuevo usuario</label>
-              <input id="u-new" type="text" autocomplete="username" maxlength="40" placeholder="Nuevo usuario">
-            </div>
-            <div class="small-note">Es 1 solo usuario: al cambiarlo, el login pedirá el nuevo nombre.</div>
-          `,
-          primaryText: 'Guardar',
-          onPrimary: async () => {
-            const curPw = (document.getElementById('u-current-pw')?.value || '');
-            const newU = (document.getElementById('u-new')?.value || '').trim();
-            if (!curPw){ alert('Escribe la contraseña actual.'); return; }
-            if (!newU){ alert('Escribe un usuario.'); return; }
-            try{
-              await A33Auth.changeUsername({ currentUsername: A33Auth.getUsername(), password: curPw, newUsername: newU });
-              hideModal();
-              alert('Usuario actualizado. Inicia sesión de nuevo.');
-              await initAuthUi();
-            }catch(e){
-              alert(e?.message || 'No se pudo cambiar el usuario.');
-            }
-          },
-          cancelText: 'Cancelar',
-          onCancel: hideModal
-        });
-        setTimeout(() => {
-          const el = document.getElementById('u-current-pw');
-          if (el){ el.focus(); }
-        }, 0);
-      }
-
-      // --- Usuario (panel) + Calculadora ONLY (export/reset) ---
-      const calcOnlyFileInput = document.getElementById('calc-only-file-input');
-      let calcOnlySelected = { fileName: '', valid: null, payload: null };
-
-      async function pickCalcOnlyFile(){
-        return new Promise((resolve) => {
-          if (!calcOnlyFileInput){
-            resolve(null);
-            return;
-          }
-          calcOnlyFileInput.value = '';
-          const onChange = async () => {
-            calcOnlyFileInput.removeEventListener('change', onChange);
-            const f = calcOnlyFileInput.files && calcOnlyFileInput.files[0];
-            resolve(f || null);
-          };
-          calcOnlyFileInput.addEventListener('change', onChange, { once:false });
-          calcOnlyFileInput.click();
-        });
-      }
-
-      async function readTextFile(file){
-        return new Promise((resolve, reject) => {
-          try{
-            const r = new FileReader();
-            r.onload = () => resolve(String(r.result || ''));
-            r.onerror = () => reject(r.error || new Error('No se pudo leer el archivo.'));
-            r.readAsText(file);
-          }catch(e){ reject(e); }
-        });
-      }
-
-      function renderCalcOnlyState(){
-        const status = document.getElementById('calc-only-status');
-        const resetBtn = document.getElementById('btn-reset-suite-keep-calc');
-        if (status){
-          if (calcOnlySelected && calcOnlySelected.valid && calcOnlySelected.valid.ok){
-            status.innerHTML = `✅ <b>${escapeHtml(calcOnlySelected.fileName || 'respaldo')}</b> (válido)`;
-          } else if (calcOnlySelected && calcOnlySelected.fileName){
-            status.innerHTML = `⚠️ <b>${escapeHtml(calcOnlySelected.fileName)}</b> — <span class="muted">${escapeHtml(calcOnlySelected.valid?.reason || 'inválido')}</span>`;
-          } else {
-            status.textContent = 'Sin archivo seleccionado.';
-          }
-        }
-        if (resetBtn){
-          resetBtn.disabled = !(calcOnlySelected && calcOnlySelected.valid && calcOnlySelected.valid.ok);
-        }
-      }
-
-      function openUserPanel(){
-        const a = readAuth();
-        const name = a.name || AUTH_DEFAULT_NAME;
-        const accessStatus = a.configured ? 'Configurado' : 'No configurado';
-        const sessionStatus = a.configured ? (a.authenticated ? 'Activa' : 'Expirada') : 'N/A';
-        const username = a.username || '—';
-
-        showModal({
-          title: 'Usuario',
-          bodyHtml: `
-            <div class="kv">
-              <div class="k">Nombre</div><div class="v">${escapeHtml(name)}</div>
-              <div class="k">Usuario</div><div class="v">${escapeHtml(username)}</div>
-              <div class="k">Acceso</div><div class="v">${escapeHtml(accessStatus)}</div>
-              <div class="k">Sesión</div><div class="v">${escapeHtml(sessionStatus)}</div>
-              <div class="k">Dominio</div><div class="v"><span class="muted">${escapeHtml(location.origin)}</span></div>
-            </div>
-
-            <hr>
-
-            <div><b>Calculadora</b></div>
-            <div class="small-note">Exporta SOLO la Calculadora para guardarla aparte o para restablecer la Suite.</div>
-
-            <div class="btn-row" style="margin-top:0.55rem;">
-              <button class="btn btn-ghost" id="btn-export-calc-only">Exportar Calculadora (JSON)</button>
-            </div>
-
-            <div style="height:0.35rem;"></div>
-
-            <div><b>Restablecer Suite (conservar Calculadora)</b></div>
-            <div class="small-note">Blindado: primero seleccioná un respaldo válido. Luego confirmación doble.</div>
-
-            <div class="btn-row" style="margin-top:0.55rem;">
-              <button class="btn btn-ghost" id="btn-pick-calc-only">Seleccionar respaldo Calculadora (JSON)</button>
-              <button class="btn btn-danger" id="btn-reset-suite-keep-calc" disabled>Restablecer…</button>
-            </div>
-
-            <div class="small-note" id="calc-only-status" style="margin-top:0.45rem;">Sin archivo seleccionado.</div>
-
-            <hr>
-
-            <div><b>Seguridad</b></div>
-            <div class="small-note">Acceso local (PWA). Si querés, podés cambiar el usuario/contraseña o cerrar la sesión.</div>
-
-            <div class="btn-row" style="margin-top:0.55rem;">
-              <button class="btn btn-ghost" id="btn-change-username">Cambiar usuario</button>
-              <button class="btn btn-ghost" id="btn-logout">Cerrar sesión</button>
-            </div>
-
-            <hr>
-
-            <div><b>Autocompletado del navegador</b></div>
-            <div class="small-note">Si al escribir la contraseña te aparece <b>“Contraseña de este sitio — Chrome”</b> con un usuario viejo (ej. <b>a1</b>), eso está guardado en el navegador, no en la Suite.</div>
-
-            <div class="btn-row" style="margin-top:0.55rem;">
-              <button class="btn btn-ghost" id="btn-open-pw-manager">Abrir gestor</button>
-              <button class="btn btn-ghost" id="btn-copy-domain">Copiar dominio</button>
-            </div>
-
-            <details style="margin-top:0.55rem;">
-              <summary>Ver pasos (iPad)</summary>
-              <div class="small-note" style="margin-top:0.35rem;">
-                1) Abrí <b>Chrome</b> → Configuración → <b>Administrador de contraseñas</b>.<br>
-                2) Buscá <b>${escapeHtml(location.host)}</b> y eliminá/editar la entrada guardada.<br>
-                3) Si aún aparece, revisá <b>Ajustes del iPad</b> → <b>Contraseñas</b>.
-              </div>
-            </details>
-
-            <div class="small-note">Todo se guarda localmente en este navegador (modo app / PWA).</div>
-          `,
-          primaryText: 'Cambiar nombre',
-          onPrimary: () => openChangeName(),
-          secondaryText: 'Cambiar contraseña',
-          onSecondary: () => openChangePassword(),
-          cancelText: 'Cerrar',
-          onCancel: hideModal
-        });
-
-        setTimeout(() => {
-          // botones existentes
-          const btnOpen = document.getElementById('btn-open-pw-manager');
-          if (btnOpen){
-            btnOpen.onclick = () => {
-              try{ window.open('https://passwords.google.com', '_blank', 'noopener'); }
-              catch(e){ window.location.href = 'https://passwords.google.com'; }
-            };
-          }
-
-          const btnCopy = document.getElementById('btn-copy-domain');
-          if (btnCopy){
-            btnCopy.onclick = async () => {
-              const dom = location.origin;
-              try{
-                if (navigator.clipboard && navigator.clipboard.writeText){
-                  await navigator.clipboard.writeText(dom);
-                  showToast('Dominio copiado.', 3000);
-                } else {
-                  prompt('Copiá el dominio:', dom);
-                }
-              }catch(e){
-                prompt('Copiá el dominio:', dom);
-              }
-            };
-          }
-
-          const btnChangeU = document.getElementById('btn-change-username');
-          if (btnChangeU){
-            btnChangeU.onclick = () => openChangeUsername();
-          }
-
-          const btnLogout = document.getElementById('btn-logout');
-          if (btnLogout){
-            btnLogout.onclick = () => {
-              A33Auth.logout();
-              location.reload();
-            };
-          }
-
-          // Calculadora: export
-          const btnExportCalc = document.getElementById('btn-export-calc-only');
-          if (btnExportCalc){
-            btnExportCalc.onclick = () => {
-              try{
-                const payload = buildCalculatorOnlyExport();
-                const json = JSON.stringify(payload, null, 2);
-                downloadTextFile(buildCalcOnlyFilename(), json);
-                showToast('✅ Calculadora exportada (JSON).', 4500);
-              }catch(e){
-                showToast(`⚠️ No se pudo exportar: ${e?.message || e}`, 5500);
-              }
-            };
-          }
-
-          // Calculadora: seleccionar archivo
-          const btnPick = document.getElementById('btn-pick-calc-only');
-          if (btnPick){
-            btnPick.onclick = async () => {
-              const f = await pickCalcOnlyFile();
-              if (!f) return;
-
-              calcOnlySelected = { fileName: f.name, valid: null, payload: null };
-              renderCalcOnlyState();
-
-              try{
-                const text = await readTextFile(f);
-                const parsed = safeJsonParse(text);
-                if (!parsed.ok){
-                  calcOnlySelected.valid = { ok:false, reason:'JSON inválido.' };
-                  renderCalcOnlyState();
-                  showToast('⚠️ JSON inválido.', 4500);
-                  return;
-                }
-
-                const v = validateCalculatorOnlyBackup(parsed.obj);
-                calcOnlySelected.valid = v;
-                calcOnlySelected.payload = v.ok ? v.payload : null;
-
-                renderCalcOnlyState();
-                if (v.ok) showToast('✅ Respaldo de Calculadora validado.', 3500);
-                else showToast(`⚠️ Respaldo inválido: ${v.reason}`, 6500);
-              }catch(e){
-                calcOnlySelected.valid = { ok:false, reason: e?.message || String(e) };
-                renderCalcOnlyState();
-                showToast(`⚠️ No se pudo leer/validar: ${e?.message || e}`, 6500);
-              }
-            };
-          }
-
-          // Restablecer Suite (blindado)
-          const btnReset = document.getElementById('btn-reset-suite-keep-calc');
-          if (btnReset){
-            btnReset.onclick = async () => {
-              if (!(calcOnlySelected && calcOnlySelected.valid && calcOnlySelected.valid.ok && calcOnlySelected.payload)){
-                showToast('Seleccioná un JSON válido de Calculadora primero.', 4500);
-                return;
-              }
-
-              const goBack = () => openUserPanel();
-
-              showModal({
-                title: 'Restablecer Suite',
-                bodyHtml: `
-                  <div class="badge-warn">⚠️ Esto borrará <b>TODO</b> en este navegador (POS, Finanzas, Pedidos, etc.).</div>
-                  <div class="small-note" style="margin-top:0.4rem;">Se conservará la Calculadora usando el JSON validado.</div>
-                  <div class="small-note">Tip: cerrá otras pestañas de la Suite para evitar bloqueo.</div>
-                `,
-                primaryText: 'Continuar',
-                onPrimary: () => {
-                  showModal({
-                    title: 'Confirmación final',
-                    bodyHtml: `
-                      <div class="small-note">Escribí exactamente <b>BORRAR</b> para confirmar.</div>
-                      <div class="field" style="margin-top:0.55rem;">
-                        <label for="confirm-borrar">Confirmación</label>
-                        <input id="confirm-borrar" type="text" placeholder="BORRAR" maxlength="12" style="letter-spacing:0.08em;text-align:center;">
-                      </div>
-                      <div class="small-note">Si te equivocas, no pasa nada: la Suite se queda intacta.</div>
-                    `,
-                    primaryText: 'Borrar todo y reiniciar',
-                    onPrimary: async () => {
-                      const v = (document.getElementById('confirm-borrar')?.value || '').trim();
-                      if (v !== 'BORRAR'){
-                        showToast('Confirmación incorrecta. Escribí BORRAR (tal cual).', 4500);
-                        return;
-                      }
-
-                      showModal({
-                        title: 'Restableciendo...',
-                        bodyHtml: '<div class="muted">Borrando datos y restaurando Calculadora. No cierres esta pestaña.</div>',
-                        disableCancel: true,
-                        disablePrimary: true
-                      });
-
-                      try{
-                        await resetSuitePreservingCalculator(calcOnlySelected.payload);
-                        location.reload();
-                      }catch(err){
-                        showModal({
-                          title: 'No se pudo restablecer',
-                          bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(err?.message || err)}</div><div class="small-note">Cierra otras pestañas de la Suite y reintenta.</div>`,
-                          primaryText: 'Volver',
-                          onPrimary: () => goBack(),
-                          cancelText: 'Cerrar',
-                          onCancel: hideModal
-                        });
-                      }
-                    },
-                    cancelText: 'Cancelar',
-                    onCancel: () => goBack()
-                  });
-
-                  setTimeout(() => {
-                    const el = document.getElementById('confirm-borrar');
-                    if (el) el.focus();
-                  }, 0);
-                },
-                cancelText: 'Cancelar',
-                onCancel: () => goBack()
-              });
-            };
-          }
-
-          renderCalcOnlyState();
-        }, 0);
-      }
-
-      if (userPanelCard){
-        userPanelCard.addEventListener('click', openUserPanel);
-      }
-// Inicializar UI de Usuario
-      refreshUserCard();
 
       if (exportCard){
         exportCard.addEventListener('click', async () => {
@@ -2186,30 +1576,10 @@
           }
         });
       }
-
-      // --- Boot: verificar sesión y decidir si mostrar la app o el lock ---
-      // Nota: si esto no corre, el splash de "Verificando sesión..." queda pegado.
-      (async () => {
-        try{
-          await initAuthUi();
-        }catch(e){
-          console.error('Error al verificar sesión:', e);
-          // Fail-safe: no dejar el splash colgado.
-          try{ showLock(); }catch(_){ hideBootSplash(); }
-        }
-      })();
-
-      // Fail-safe extra: por si algún await se cuelga (ej. storage/crypto), nunca bloquear el acceso.
-      setTimeout(() => {
-        const bs = document.getElementById('boot-splash');
-        if (bs && bs.style.display !== 'none'){
-          console.warn('Fail-safe: ocultando splash de arranque.');
-          try{ showLock(); }catch(_){ hideBootSplash(); }
-        }
-      }, 2500);
+      initHomeUi();
 
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=2"></script>
 </body>
 </html>

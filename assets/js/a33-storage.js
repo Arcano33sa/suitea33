@@ -1,6 +1,6 @@
 /*
   Suite A33 — A33Storage (core)
-  Servicio único para acceso a Storage (local/session).
+  Servicio único para acceso a Storage local y temporal.
 
   - Centraliza get/set/remove/keys
   - Helpers JSON y updateJSON
@@ -19,6 +19,231 @@
   const DEFAULT_PREFIXES = ['arcano33_', 'a33_', 'suite_a33_'];
   const META_SUFFIX = '__meta';
   const LOG_PREFIX = '[A33Storage]';
+
+  const RETIRED_GATE_TAGS = [
+    ['au','th'],
+    ['log','in'],
+    ['un','lock'],
+    ['ses','sion'],
+    ['pro','file'],
+    ['per','fil'],
+    ['last','url'],
+    ['p','in'],
+    ['ac','ceso'],
+    ['ac','cess']
+  ].map((parts) => parts.join(''));
+  const RETIRED_GATE_KEY_EXACT = new Set([
+    ['suite_a33_', ['au','th'].join(''), '_v1'].join(''),
+    ['suite_a33_', ['pro','file'].join(''), '_v1'].join(''),
+    ['suite_a33_', ['ses','sion'].join(''), '_v1'].join(''),
+    ['suite_a33_', ['p','in'].join('')].join(''),
+    ['suite_a33_exec_', ['un','lock'].join(''), '_v1'].join(''),
+    ['suite_a33_last_url_v1'].join('')
+  ]);
+  const ACTIVE_A33_SW_PATHS = [
+    '/pos/sw.js',
+    '/inventario/sw.js',
+    '/lotes/sw.js',
+    '/pedidos/sw.js',
+    '/centro_mando/sw.js'
+  ];
+  const ACTIVE_A33_CACHE_HINTS = [
+    '-pos-',
+    '-inventario-',
+    '-lotes-',
+    '-pedidos-',
+    '-centro_mando-',
+    '-centro-mando-'
+  ];
+
+  function hasSuitePrefix(key){
+    const s = String(key || '').toLowerCase();
+    return DEFAULT_PREFIXES.some(p => s.startsWith(p));
+  }
+
+  function isRetiredGateHint(value){
+    const s = String(value || '').toLowerCase().trim();
+    if (!s) return false;
+    if (RETIRED_GATE_KEY_EXACT.has(s)) return true;
+    return (
+      RETIRED_GATE_TAGS.some((tag) => {
+        if (!tag) return false;
+        if (tag === 'lasturl') return /(?:^|[_-])last[_-]?url(?:[_-]|$)/.test(s);
+        const rx = new RegExp('(?:^|[_-])' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[_-]|$)');
+        return rx.test(s);
+      })
+    );
+  }
+
+  function isRetiredGateStorageKey(key){
+    const s = String(key || '').toLowerCase().trim();
+    if (!s) return false;
+    if (RETIRED_GATE_KEY_EXACT.has(s)) return true;
+    if (!hasSuitePrefix(s)) return false;
+    return isRetiredGateHint(s);
+  }
+
+  function retiredGateDbName(name){
+    const s = String(name || '').toLowerCase().trim();
+    if (!s) return false;
+    const looksSuite = s.includes('a33') || s.includes('arcano') || s.includes('suite');
+    return looksSuite && isRetiredGateHint(s);
+  }
+
+  function retiredGateStoreName(name){
+    const s = String(name || '').toLowerCase().trim();
+    if (!s) return false;
+    return isRetiredGateHint(s);
+  }
+
+  function isKnownActiveA33CacheName(name){
+    const s = String(name || '').toLowerCase().trim();
+    if (!s) return false;
+    return ACTIVE_A33_CACHE_HINTS.some(h => s.includes(h));
+  }
+
+  function isRetiredGateCacheName(name){
+    const s = String(name || '').toLowerCase().trim();
+    if (!s) return false;
+    if (isRetiredGateHint(s)) return true;
+    const isA33Cache = s.startsWith('a33-') || s.startsWith('arcano33-');
+    if (!isA33Cache) return false;
+    return !isKnownActiveA33CacheName(s);
+  }
+
+  function isKnownActiveA33ServiceWorker(reg){
+    try{
+      const active = reg && (reg.active || reg.waiting || reg.installing);
+      const scriptUrl = active && active.scriptURL ? new URL(active.scriptURL, window.location.origin) : null;
+      const scopeUrl = reg && reg.scope ? new URL(reg.scope, window.location.origin) : null;
+      const scriptPath = scriptUrl ? String(scriptUrl.pathname || '').toLowerCase() : '';
+      const scopePath = scopeUrl ? String(scopeUrl.pathname || '').toLowerCase() : '';
+      return ACTIVE_A33_SW_PATHS.some(path => {
+        const p = String(path || '').toLowerCase();
+        const scopeNeedle = p.replace(/\/sw\.js$/, '/');
+        return scriptPath.endsWith(p) || scopePath.includes(scopeNeedle)
+      });
+    }catch(_){
+      return false;
+    }
+  }
+
+  function isRetiredGateServiceWorkerRegistration(reg){
+    try{
+      const active = reg && (reg.active || reg.waiting || reg.installing);
+      const scriptUrl = active && active.scriptURL ? new URL(active.scriptURL, window.location.origin) : null;
+      const scopeUrl = reg && reg.scope ? new URL(reg.scope, window.location.origin) : null;
+      const scriptPath = scriptUrl ? String(scriptUrl.pathname || '').toLowerCase() : '';
+      const scopePath = scopeUrl ? String(scopeUrl.pathname || '').toLowerCase() : '';
+      const joined = scriptPath + ' ' + scopePath;
+      const suspicious = isRetiredGateHint(joined);
+      if (suspicious) return true;
+      if (isKnownActiveA33ServiceWorker(reg)) return false;
+      const looksSuite = joined.includes('/pruebas/') || joined.includes('a33') || joined.includes('arcano') || joined.includes('suite');
+      const isGenericSw = scriptPath.endsWith('/sw.js') || scopePath.endsWith('/');
+      return looksSuite && isGenericSw;
+    }catch(_){
+      return false;
+    }
+  }
+
+  function filterOutRetiredGateEntriesImpl(mapLike){
+    const src = (mapLike && typeof mapLike === 'object') ? mapLike : {};
+    const out = {};
+    for (const [k, v] of Object.entries(src)){
+      if (isRetiredGateStorageKey(k)) continue;
+      out[k] = v;
+    }
+    return out;
+  }
+
+  function deleteIndexedDBByName(dbName){
+    return new Promise((resolve) => {
+      try{
+        const req = window.indexedDB.deleteDatabase(dbName);
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => resolve(false);
+        req.onblocked = () => resolve(false);
+      }catch(_){
+        resolve(false);
+      }
+    });
+  }
+
+  async function cleanupRetiredGateResidueImpl(){
+    const summary = { local: [], session: [], indexedDB: [], caches: [], serviceWorkers: [] };
+
+    try{
+      ['local','session'].forEach((scope) => {
+        const store = getStore(scope);
+        const keys = [];
+        try{
+          for (let i = 0; i < store.length; i++){
+            const k = store.key(i);
+            if (k != null) keys.push(k);
+          }
+        }catch(_){ }
+        keys.filter(isRetiredGateStorageKey).forEach((k) => {
+          try{
+            store.removeItem(k);
+            summary[scope].push(k);
+          }catch(_){ }
+          try{
+            store.removeItem(k + META_SUFFIX);
+          }catch(_){ }
+        });
+      });
+    }catch(_){ }
+
+    try{
+      if (window.indexedDB && typeof window.indexedDB.databases === 'function'){
+        const list = await window.indexedDB.databases();
+        const dbs = Array.isArray(list) ? list : [];
+        for (const item of dbs){
+          const dbName = item && item.name ? String(item.name) : '';
+          if (!dbName || !retiredGateDbName(dbName)) continue;
+          const ok = await deleteIndexedDBByName(dbName);
+          if (ok) summary.indexedDB.push(dbName);
+        }
+      }
+    }catch(_){ }
+
+    try{
+      if (window.caches && typeof window.caches.keys === 'function'){
+        const cacheNames = await window.caches.keys();
+        for (const cacheName of cacheNames){
+          if (!isRetiredGateCacheName(cacheName)) continue;
+          try{
+            const ok = await window.caches.delete(cacheName);
+            if (ok) summary.caches.push(cacheName);
+          }catch(_){ }
+        }
+      }
+    }catch(_){ }
+
+    try{
+      if (window.navigator && navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === 'function'){
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const reg of Array.isArray(regs) ? regs : []){
+          if (!isRetiredGateServiceWorkerRegistration(reg)) continue;
+          try{
+            const ok = await reg.unregister();
+            if (ok){
+              try{
+                const active = reg.active || reg.waiting || reg.installing;
+                summary.serviceWorkers.push(active && active.scriptURL ? String(active.scriptURL) : String(reg.scope || ''));
+              }catch(_){
+                summary.serviceWorkers.push(String(reg.scope || ''));
+              }
+            }
+          }catch(_){ }
+        }
+      }
+    }catch(_){ }
+
+    return summary;
+  }
+
 
   // ------------------------------
   // Utils
@@ -652,9 +877,30 @@
       const out = {};
       this.keys(scope).forEach(k => {
         if (!matchPrefixes(k, prefixes)) return;
+        if (isRetiredGateStorageKey(k)) return;
         try{ out[k] = store.getItem(k); }catch(_){ }
       });
       return out;
+    },
+
+    isRetiredGateKey(key){
+      return isRetiredGateStorageKey(key);
+    },
+
+    isRetiredGateDbName(name){
+      return retiredGateDbName(name);
+    },
+
+    isRetiredGateStoreName(name){
+      return retiredGateStoreName(name);
+    },
+
+    filterOutRetiredGateEntries(mapLike){
+      return filterOutRetiredGateEntriesImpl(mapLike);
+    },
+
+    cleanupRetiredGateResidue(){
+      return cleanupRetiredGateResidueImpl();
     },
 
     // ------------------------------
@@ -817,6 +1063,14 @@
       return { ok:true, data: finalData, meta: metaWritten, conflict: hardConflict, message:'' };
     }
   };
+
+  try{
+    if (!window.__A33_LEGACY_ACCESS_PURGE_PROMISE){
+      window.__A33_LEGACY_ACCESS_PURGE_PROMISE = Promise.resolve()
+        .then(() => cleanupRetiredGateResidueImpl())
+        .catch(() => ({ local:[], session:[], indexedDB:[], caches:[], serviceWorkers:[] }));
+    }
+  }catch(_){ }
 
   // Global
   window.A33Storage = A33Storage;

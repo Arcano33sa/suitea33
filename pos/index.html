@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=1">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=2">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=4.20.77&r=1">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=1" />
+<link rel="stylesheet" href="styles.css?v=4.20.77&r=2">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=2" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -1604,18 +1604,17 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=0.18.5"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=1"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=2"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.77&r=1"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=1"></script>
-<script src="/assets/js/a33-auth.js?v=4.20.77&r=1"></script>
-<script src="/assets/js/a33-build.js?v=4.20.77&r=1"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=2"></script>
+<script src="/assets/js/a33-build.js?v=4.20.77&r=2"></script>
 <script>
   (function(){
     try{
       const relObj = (window.A33_RELEASE || {});
       const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.77';
-      const rev = (relObj && relObj.rev != null) ? String(relObj.rev) : '1';
+      const rev = (relObj && relObj.rev != null) ? String(relObj.rev) : '2';
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
       try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }
@@ -1636,65 +1635,12 @@
   })();
 </script>
 
-<script>
-  (function(){
-    (async () => {
-      // Guard robusto (mala señal / offline): evita loops y fallbacks raros.
-      try{
-        if (!window.A33Auth) return;
-
-        // Migraciones suaves de auth (si aplica)
-        if (typeof A33Auth.ensureMigrated === 'function'){
-          try{ await A33Auth.ensureMigrated(); }catch(_){ }
-        }
-
-        const authed = (typeof A33Auth.isConfigured === 'function' && typeof A33Auth.isAuthenticated === 'function')
-          ? (A33Auth.isConfigured() && A33Auth.isAuthenticated())
-          : false;
-
-        if (authed) return;
-
-        const looksOffline = async () => {
-          try{
-            if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-            const ctrl = ('AbortController' in window) ? new AbortController() : null;
-            const t = ctrl ? setTimeout(() => { try{ ctrl.abort(); }catch(_){ } }, 2500) : null;
-            await fetch('../index.html', {
-              method: 'HEAD',
-              cache: 'no-store',
-              signal: ctrl ? ctrl.signal : undefined
-            });
-            if (t) clearTimeout(t);
-            return false;
-          }catch(_){
-            return true;
-          }
-        };
-
-        if (await looksOffline()){
-          // Pantalla offline dentro del módulo (no redirección al menú).
-          try{ location.replace('./offline.html?reason=auth'); }catch(_){ }
-          return;
-        }
-
-        // Online: exigir auth (redirige al Home si no hay sesión)
-        if (typeof A33Auth.requireAuth === 'function'){
-          await A33Auth.requireAuth({ redirectTo: '../index.html' });
-        }else{
-          location.href = '../index.html';
-        }
-      }catch(_){
-        try{ location.replace('../index.html'); }catch(__){ }
-      }
-    })();
-  })();
-</script>
-<script src="app.js?v=4.20.77&r=1"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=1"></script>
+<script src="app.js?v=4.20.77&r=2"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=2"></script>
 <script>
   (function(){
     const BUILD = (window.A33_VERSION || '4.20.77').toString();
-    const REV = (window.A33_ASSET_REV || '1').toString();
+    const REV = (window.A33_ASSET_REV || '2').toString();
     const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV);
 
     const btn = document.getElementById('a33-update-indicator');

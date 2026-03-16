@@ -17,7 +17,7 @@ Objetivo: confirmar que **POS Build** y **SW Cache** ya no se desalinean y que n
 
 ## Caso C — Refrescar con internet
 1) Con internet, refrescar (reload) estando en POS.
-2) Verificar que **no** aparece ninguna versión distinta a **4.20.77 r1**.
+2) Verificar que **no** aparece ninguna versión distinta a **4.20.77 r2**.
 
 ## Caso D — Offline
 1) Abrir POS (PWA o web) y luego poner el dispositivo **offline**.
