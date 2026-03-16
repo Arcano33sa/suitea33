@@ -239,8 +239,14 @@
 
     /* --- NÚCLEO A33 --- */
     .hidden{ display:none !important; }
-    #support-grid{ grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+    #support-grid{ grid-template-columns:1fr; }
     #support-grid .card{ min-width:0; }
+    @media (min-width: 720px){
+      #support-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+      #card-backup-hub{ grid-column:1; grid-row:1; }
+      #card-centro-mando{ grid-column:2; grid-row:1; }
+      #card-calculadora-temporal-home{ grid-column:2; grid-row:2; }
+    }
 
     /* --- Respaldo (Backup) --- */
     .modal-overlay{
@@ -452,6 +458,16 @@
             <p>Radar ligero por evento: Efectivo, ventas, top productos e inventario crítico.</p>
             <div class="footer-row">
               <span>Evento enfocado + accesos rápidos.</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
+            </div>
+          </article>
+
+          <article class="card" id="card-calculadora-temporal-home" data-link="calculadora_temporal/index.html">
+            <div class="pill"><span>⏳</span><span>Temporal</span></div>
+            <h2>Calculadora Temporal</h2>
+            <p>Espacio aislado para pruebas, corridas temporales y cálculos propios sin tocar Producción, Lotes ni datos operativos reales.</p>
+            <div class="footer-row">
+              <span>Persistencia separada del mundo real.</span>
               <button class="link-btn secondary"><span>Abrir</span> →</button>
             </div>
           </article>

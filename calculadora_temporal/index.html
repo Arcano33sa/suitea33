@@ -1,0 +1,2147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Calculadora Temporal - Arcano 33</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=2" />
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 1rem;
+      background: #111;
+      color: #f5f5f5;
+    }
+    html, body { overflow-x: hidden; }
+
+    /* iPad-first: mantener caducidad/hebreo/receta visibles y SIN scroll horizontal */
+    .a33-ipad-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    .a33-ipad-grid > .section { min-width: 0; margin-top: 0; }
+
+    @media (min-width: 880px) {
+      .a33-ipad-grid {
+        grid-template-columns: 0.95fr 1.05fr;
+      }
+    }
+
+    .a33-fechas-badges {
+      margin-top: 0.4rem;
+      margin-bottom: 0.25rem;
+      gap: 0.45rem;
+    }
+    .a33-fechas-badges .badge {
+      font-size: 0.76rem;
+      border-color: rgba(221,191,100,0.32);
+      background: rgba(0,0,0,0.22);
+      white-space: normal;
+    }
+
+    .a33-fechas-legacy { display: block; }
+    @media (min-width: 880px) {
+      .a33-fechas-legacy { display: none; }
+    }
+
+    .a33-table-wrap {
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      border-radius: 10px;
+    }
+    .a33-table-wrap--recetas { max-height: min(460px, 62vh); }
+
+    /* Tablas sin overflow-x: compactas y wrap en iPad */
+    @media (max-width: 1024px) {
+      table { table-layout: fixed; }
+      th, td { padding: 0.22rem; }
+      th { white-space: normal; }
+      td, th { min-width: 0; }
+      input[type="number"], input[type="text"], input[type="date"] { min-width: 0; }
+    }
+
+    /* Botón principal en formato pastilla (sin tapar contenido) */
+    .btn-main { border-radius: 999px; padding: 0.6rem 1rem; }
+    .btn-secondary { border-radius: 999px; }
+
+    h1, h2, h3 {
+      margin-top: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-size: 1.5rem;
+      text-align: center;
+    }
+    h2 {
+      font-size: 1.1rem;
+      margin-top: 1.5rem;
+    }
+    h3 {
+      font-size: 0.95rem;
+      margin-top: 0.75rem;
+    }
+    .app-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: #1b1b1b;
+      border-radius: 10px;
+      padding: 1rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      border: 1px solid #333;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 0.85rem;
+      color: #bbb;
+      margin-bottom: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+    }
+    th, td {
+      border: 1px solid #333;
+      padding: 0.35rem;
+      text-align: center;
+    }
+    th {
+      background: #272727;
+      /* Nota:
+         Estas tablas viven dentro de contenedores con max-height + overflow.
+         En iPad/iOS, un `top` grande en headers sticky puede tapar filas (ej. Pulso/Media).
+         Aquí el sticky es relativo al scroll del contenedor, así que `top: 0` es lo correcto. */
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    input[type="number"],
+    input[type="text"],
+    input[type="date"],
+    textarea {
+      width: 100%;
+      padding: 0.2rem;
+      background: #111;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #f5f5f5;
+      font-size: 0.8rem;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    input[type="number"]:focus,
+    input[type="text"]:focus,
+    input[type="date"]:focus,
+    textarea:focus {
+      outline: none;
+      border-color: #ddbf64;
+      box-shadow: 0 0 0 1px #ddbf64;
+    }
+    .section {
+      margin-top: 1rem;
+    }
+    .hint {
+      font-size: 0.8rem;
+      color: #aaa;
+      margin-top: 0.25rem;
+    }
+    .btn-main {
+      margin-top: 1rem;
+      width: 100%;
+      padding: 0.7rem;
+      border: none;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #7b1818, #ddbf64);
+      color: #111;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .btn-main:hover {
+      filter: brightness(1.05);
+    }
+    .btn-secondary {
+      margin-top: 0.5rem;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #222;
+      color: #eee;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .btn-secondary:hover {
+      background: #2c2c2c;
+    }
+    .a33-main-actions {
+      margin-top: 1rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .a33-main-actions .a33-main-action {
+      min-width: 150px;
+      margin-top: 0;
+      width: auto;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .a33-main-actions .btn-main,
+    .a33-main-actions .btn-secondary {
+      padding: 0.7rem 1.1rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+    .a33-main-actions .btn-secondary {
+      border-color: rgba(221,191,100,0.42);
+      background: #1e1e1e;
+    }
+    .a33-main-actions .a33-main-action:disabled,
+    .btn-secondary:disabled,
+    .btn-main:disabled,
+    .btn-pill:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+      filter: grayscale(0.15);
+      box-shadow: none;
+    }
+    .inline-input-btn {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .inline-input-btn input {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .btn-pill {
+      padding: 0.28rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid #444;
+      background: #222;
+      color: #eee;
+      font-weight: 600;
+      font-size: 0.78rem;
+      cursor: pointer;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+    .btn-pill:hover {
+      background: #2c2c2c;
+    }
+    .btn-pill:active {
+      transform: translateY(1px);
+    }
+
+    .results {
+      margin-top: 1rem;
+      padding: 0.7rem;
+      border-radius: 8px;
+      background: #161616;
+      border: 1px solid #333;
+    }
+    .results-title {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .flex-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .badge {
+      padding: 0.3rem 0.6rem;
+      border-radius: 999px;
+      background: #222;
+      border: 1px solid #444;
+      font-size: 0.75rem;
+      color: #eee;
+    }
+    .logo-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .logo-container img {
+      width: 96px;
+      height: auto;
+      border-radius: 16px;
+    }
+    .fechas-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .fechas-row > div {
+      flex: 1 1 140px;
+    }
+    @media (max-width: 768px) {
+      table {
+        font-size: 0.78rem;
+      }
+      th, td {
+        padding: 0.25rem;
+      }
+    }
+  
+    /* Etapa 2: pill de estado de código (compacto, sin scroll horizontal) */
+    .a33-pill-code {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.18rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      white-space: nowrap;
+      border: 1px solid #444;
+      user-select: none;
+    }
+    .a33-pill-sugerido {
+      background: rgba(221, 191, 100, 0.12);
+      color: #ddbf64;
+      border-color: rgba(221, 191, 100, 0.35);
+    }
+    .a33-pill-editado {
+      background: rgba(123, 24, 24, 0.18);
+      color: #f5f5f5;
+      border-color: rgba(221, 191, 100, 0.25);
+    }
+    .a33-pill-ok {
+      background: rgba(221, 191, 100, 0.22);
+      color: #111;
+      border-color: rgba(221, 191, 100, 0.6);
+    }
+
+    /* A33 — Modal compacto (iPad-friendly) */
+    .a33-modal[hidden] { display: none !important; }
+    .a33-modal {
+      position: fixed;
+      inset: 0;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.66);
+      z-index: 9999;
+    }
+    .a33-modal-card {
+      width: 100%;
+      max-width: 520px;
+      background: #1b1b1b;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 0.9rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .a33-modal-text {
+      font-size: 0.92rem;
+      line-height: 1.35;
+      color: #eee;
+      word-break: break-word;
+    }
+    .a33-mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9em;
+      padding: 0 0.15rem;
+    }
+    .a33-modal-actions {
+      margin-top: 0.85rem;
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .a33-btn-primary-pill {
+      border: none;
+      background: linear-gradient(135deg, #7b1818, #ddbf64);
+      color: #111;
+    }
+    .a33-btn-primary-pill:hover { filter: brightness(1.05); }
+
+    .a33-history-list {
+      display: grid;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .a33-history-card {
+      border: 1px solid #383838;
+      border-radius: 12px;
+      background: #171717;
+      padding: 0.85rem;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+    .a33-history-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .a33-history-title {
+      font-weight: 700;
+      color: #f5f5f5;
+      word-break: break-word;
+    }
+    .a33-history-meta, .a33-history-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-top: 0.55rem;
+    }
+    .a33-history-body {
+      margin-top: 0.6rem;
+      font-size: 0.83rem;
+      color: #d4d4d4;
+      line-height: 1.45;
+    }
+    .a33-history-empty {
+      margin-top: 0.4rem;
+    }
+
+  </style>
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=2" />
+</head>
+<body>
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Calculadora Temporal</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.77">v...</div>
+  </header>
+
+  <div class="app-container">
+    <div class="logo-container">
+      <img src="logo-icon-192.png" alt="Arcano 33" />
+    </div>
+    <h1>Calculadora Temporal – Arcano 33</h1>
+    <p class="subtitle">
+      Clon aislado para pruebas y corridas temporales. Calcula materia prima sin tocar Producción, Lotes, Inventario, POS ni Finanzas reales.
+    </p>
+    <p class="hint" style="text-align:center;color:#ddbf64;margin-top:-0.25rem;margin-bottom:1rem;">Módulo aislado: esta copia vive en su propio espacio temporal y no escribe en datos operativos reales.</p>
+
+    <div class="a33-ipad-grid">
+    <div class="section">
+      <h2>0. Datos temporales del cálculo</h2>
+      <p class="hint">
+        Escribe una referencia temporal interna y la fecha base del cálculo. La fecha de caducidad se calcula 2 meses después solo como apoyo visual.
+      </p>
+      <div class="fechas-row">
+        <div>
+          <label for="lote">Código temporal interno</label>
+          <div class="inline-input-btn">
+            <input type="text" id="lote" placeholder="Ej: A330XX119TEV5786" autocomplete="off" aria-describedby="hint-codigo-temporal" />
+            <span id="pill-codigo-estado" class="a33-pill-code a33-pill-sugerido">SUGERIDO</span>
+            <button type="button" id="btn-regenerar-codigo" class="btn-pill">Regenerar</button>
+          </div>
+        </div>
+        <div>
+          <label for="fecha-produccion">Fecha de producción</label>
+          <input type="date" id="fecha-produccion" />
+        </div>
+      </div>
+      <p class="hint" id="hint-codigo-temporal" style="margin-top:0.35rem;">Referencia interna temporal. Sirve para organizar este módulo y no crea lotes oficiales.</p>
+      <div class="a33-fechas-badges flex-row" aria-label="Fechas del cálculo temporal">
+        <div class="badge" id="badge-caducidad">Caducidad: Calcula para ver…</div>
+        <div class="badge" id="badge-hebreo">Hebreo: Calcula para ver…</div>
+      </div>
+      <p class="hint a33-fechas-legacy" id="texto-caducidad">Fecha de caducidad: —</p>
+      <p class="hint a33-fechas-legacy" id="texto-fecha-hebreo">Fecha hebrea (producción): —</p>
+
+      <h3>Notas del cálculo temporal</h3>
+      <textarea id="notas" placeholder="Ej: Pedido para evento, sabor clásico, entrega sábado por la tarde..."></textarea>
+    </div>
+
+    <div class="section">
+      <h2>1. Receta base (ml por unidad de cada presentación)</h2>
+      <p class="hint">
+        Aquí pones cuántos ml de <strong>vino, vodka, jugo, sirope y agua pura</strong> lleva 1 unidad de cada presentación.
+      </p>
+      <div class="a33-table-wrap a33-table-wrap--recetas">
+        <table id="recetas-table">
+          <thead>
+            <tr>
+              <th>Presentación</th>
+              <th>Vino (ml)</th>
+              <th>Vodka (ml)</th>
+              <th>Jugo (ml)</th>
+              <th>Sirope (ml)</th>
+              <th>Agua pura (ml)</th>
+              <th>Costo unitario (C$)</th>
+            </tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+      </div>
+      <button id="btn-guardar-receta" class="btn-secondary">Guardar receta temporal en este navegador</button>
+      <p class="hint">Se guarda solo dentro de la Calculadora Temporal en este navegador. No comparte recetas con la Calculadora oficial.</p>
+    </div>
+    </div>
+
+    <div class="section">
+      <h2>2. Plan temporal (unidades a preparar)</h2>
+      <p class="hint">
+        Escribe cuántas unidades quieres simular o preparar de cada presentación. Deja en blanco lo que no vayas a usar en este cálculo temporal.
+      </p>
+      <div class="a33-table-wrap a33-table-wrap--plan">
+        <table id="plan-table">
+          <thead>
+            <tr>
+              <th>Presentación</th>
+              <th>Unidades a producir</th>
+            </tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="a33-main-actions" role="group" aria-label="Acciones principales de la Calculadora Temporal">
+      <button id="btn-calcular" class="btn-main a33-main-action">CALCULAR</button>
+      <button id="btn-guardar-lote" class="btn-secondary a33-main-action" disabled aria-disabled="true">GUARDAR</button>
+    </div>
+    <p id="hint-resultados" class="hint" style="text-align:center;">Calcula para revisar el resumen y luego guarda el cálculo confirmado dentro de la Temporal.</p>
+
+    <div id="resultados" class="results" style="display:none;">
+      <div class="results-title">3. Totales de materia prima necesaria (temporal)</div>
+      <div id="resumen-lote"></div>
+      <div id="resumen-fechas"></div>
+      <div id="totales-ingredientes"></div>
+      <div id="resumen-costos"></div>
+
+      <div class="results-title" style="margin-top:0.8rem;">Resumen temporal de volumen final</div>
+      <div id="resumen-volumen"></div>
+
+      <p class="hint">Este resumen pertenece solo a la Calculadora Temporal. GUARDAR confirma el cálculo dentro de este módulo y no crea un lote oficial.</p>
+    </div>
+
+    <button id="btn-limpiar" class="btn-secondary">Limpiar cantidades (no borra recetas)</button>
+
+    <div class="section">
+      <h2>4. Historial temporal guardado</h2>
+      <p class="hint">Los cálculos guardados aquí viven solo dentro de esta Calculadora Temporal. No crean registros oficiales ni aparecen en Producción.</p>
+      <div id="temporal-history-empty" class="hint a33-history-empty">Todavía no hay cálculos guardados en este navegador.</div>
+      <div id="temporal-history-list" class="a33-history-list" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- Modal: código duplicado (Etapa 3) -->
+  <div id="a33-modal-dup-codigo" class="a33-modal" hidden aria-hidden="true">
+    <div class="a33-modal-card" role="dialog" aria-modal="true" aria-labelledby="a33-modal-dup-text">
+      <div id="a33-modal-dup-text" class="a33-modal-text"></div>
+      <div class="a33-modal-actions">
+        <button id="a33-modal-dup-aplicar" class="btn-pill a33-btn-primary-pill" type="button">Aplicar</button>
+        <button id="a33-modal-dup-cancelar" class="btn-pill" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=2"></script>
+
+
+
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=2"></script>
+
+  <script>
+    const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
+    const PRESENTACIONES = [
+      { id: "pulso",  nombre: "Pulso 250 ml",  volumenMl: 250 },
+      { id: "media",  nombre: "Media 375 ml",  volumenMl: 375 },
+      { id: "djeba",  nombre: "Djeba 750 ml",  volumenMl: 750 },
+      { id: "litro",  nombre: "Litro 1000 ml", volumenMl: 1000 },
+      { id: "galon",  nombre: "Galón 3750 ml", volumenMl: 3750 }
+    ];
+    const STORAGE_RECETAS_KEY = "arcano33_temporal_recetas_v1";
+    const STORAGE_REGISTROS_KEY = "arcano33_temporal_registros_v2";
+    const STORAGE_WORKSPACE_KEY = "arcano33_temporal_workspace_v2";
+    const STORAGE_LOTE_KEY = "arcano33_temporal_codigo_sugerido";
+    const STORAGE_FECHA_PROD_KEY = "arcano33_temporal_fecha_produccion";
+    const STORAGE_NOTAS_KEY = "arcano33_temporal_notas";
+    const LEGACY_STORAGE_REGISTROS_KEY = "arcano33_temporal_lotes_v1";
+
+    // Etapa 2: Código de lote AUTO (editable) con X=eco + fecha hebrea
+    const STORAGE_LOTE_CODE_MODE_KEY = "arcano33_temporal_codigo_mode"; // AUTO | MANUAL
+    const STORAGE_LOTE_SEQ_LAST_KEY = "arcano33_temporal_ultimo_consecutivo"; // 4 dígitos (último usado)
+    const STORAGE_LOTE_SEQ_CURRENT_KEY = "arcano33_temporal_consecutivo_actual"; // 4 dígitos (auto en curso)
+    let A33CodigoLoteMode = "AUTO";
+    let A33AutoSeq = "";
+    let A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+    let A33SuppressCodigoInput = false;
+    let A33HasCalculoPrevio = false;
+    let A33SuggestedCode = "";
+
+
+
+
+    function setPillEstadoCodigo(state) {
+      const el = document.getElementById("pill-codigo-estado");
+      if (!el) return;
+      const s = String(state || "").toUpperCase();
+      el.classList.remove("a33-pill-sugerido", "a33-pill-editado", "a33-pill-ok");
+      if (s === "OK") {
+        el.textContent = "OK";
+        el.classList.add("a33-pill-ok");
+      } else if (s === "EDITADO") {
+        el.textContent = "EDITADO";
+        el.classList.add("a33-pill-editado");
+      } else {
+        el.textContent = "SUGERIDO";
+        el.classList.add("a33-pill-sugerido");
+      }
+    }
+
+    function normalizarCodigoLote(raw) {
+      // Canónico para identidad estable (compat Lotes): trim + upper + sin espacios
+      return String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
+    }
+
+    function validarCodigoLoteFuerte(raw) {
+      const code = normalizarCodigoLote(raw);
+      // A33 + 4 (0-9/X) + DD + MMM + YYYY
+      if (!/^A33[0-9X]{4}\d{2}[A-Z]{3}\d{4}$/.test(code)) {
+        return {
+          ok: false,
+          code,
+          seq: null,
+          msg: "Código inválido. Formato: A33 + 4 (0-9/X) + DD + MES(3 letras) + AAAA(4). Ej: A330XX119TEV5786. Ojo: día siempre 2 dígitos (03, 09)."
+        };
+      }
+      const dd = parseInt(code.slice(7, 9), 10);
+      if (!(dd >= 1 && dd <= 31)) {
+        return { ok: false, code, seq: null, msg: "Código inválido: el día debe ser 01–31 (2 dígitos)." };
+      }
+      const seq = extraerSeqDeCodigo(code);
+      if (!(typeof seq === "number" && seq > 0)) {
+        return { ok: false, code, seq: null, msg: "Código inválido: el consecutivo (los 4 después de A33) debe iniciar con número y usar X solo como eco." };
+      }
+      return { ok: true, code, seq, msg: "" };
+    }
+
+    function existeCodigoEnLotes(lotes, codeUpper) {
+      const c = normalizarCodigoLote(codeUpper);
+      return (Array.isArray(lotes) ? lotes : []).some(l => normalizarCodigoLote(l && (l.codigo || l.code || l.lote || "")) === c);
+    }
+
+    function proponerSiguienteCodigoDisponible(baseCode, lotes) {
+      const v = validarCodigoLoteFuerte(baseCode);
+      const used = new Set();
+      (Array.isArray(lotes) ? lotes : []).forEach(l => {
+        const c = normalizarCodigoLote(l && (l.codigo || l.code || l.lote || ""));
+        const n = extraerSeqDeCodigo(c);
+        if (typeof n === "number" && n > 0) used.add(n);
+      });
+      const last = obtenerUltimoConsecutivoNumerico();
+      let start = last + 1;
+      if (v.ok && typeof v.seq === "number") start = Math.max(last + 1, v.seq + 1);
+      const next = buscarSiguienteDisponible(start, used);
+      const seq4 = pad4(next).slice(-4);
+      const mask = ecoMaskX(seq4);
+      const dd2 = v.ok ? v.code.slice(7, 9) : pad2(new Date().getDate());
+      const hm3 = v.ok ? v.code.slice(9, 12) : (A33Hebreo.hm3 || "TEV");
+      const hy4 = v.ok ? v.code.slice(12, 16) : (A33Hebreo.hy4 || String(new Date().getFullYear()).slice(-4));
+      return "A33" + mask + dd2 + hm3 + hy4;
+    }
+
+    function A33ModalDuplicadoCodigo(nextCode) {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById("a33-modal-dup-codigo");
+        const textEl = document.getElementById("a33-modal-dup-text");
+        const btnApply = document.getElementById("a33-modal-dup-aplicar");
+        const btnCancel = document.getElementById("a33-modal-dup-cancelar");
+        const code = normalizarCodigoLote(nextCode);
+
+        // Fallback ultra-simple
+        if (!overlay || !textEl || !btnApply || !btnCancel) {
+          resolve(confirm("Este código ya fue usado. Siguiente disponible: " + code + ". ¿Aplicar?"));
+          return;
+        }
+
+        textEl.innerHTML = "Este código ya fue usado. Siguiente disponible: <span class='a33-mono'>" +
+          escapeHtml(code) + "</span>. ¿Aplicar?";
+
+        const prevOverflow = document.body.style.overflow;
+        overlay.hidden = false;
+        overlay.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+
+        const cleanup = (val) => {
+          overlay.hidden = true;
+          overlay.setAttribute("aria-hidden", "true");
+          document.body.style.overflow = prevOverflow;
+          btnApply.removeEventListener("click", onApply);
+          btnCancel.removeEventListener("click", onCancel);
+          overlay.removeEventListener("click", onOutside);
+          document.removeEventListener("keydown", onKey);
+          resolve(val);
+        };
+
+        const onApply = (e) => { e.preventDefault(); cleanup(true); };
+        const onCancel = (e) => { e.preventDefault(); cleanup(false); };
+        const onOutside = (e) => { if (e.target === overlay) cleanup(false); };
+        const onKey = (e) => { if (e.key === "Escape") cleanup(false); };
+
+        btnApply.addEventListener("click", onApply);
+        btnCancel.addEventListener("click", onCancel);
+        overlay.addEventListener("click", onOutside);
+        document.addEventListener("keydown", onKey);
+
+        setTimeout(() => { try { btnApply.focus(); } catch (e) {} }, 0);
+      });
+    }
+
+
+
+
+    function hoyLocalISO(){
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    function safeNumber(value) {
+      const n = parseFloat(String(value ?? "").replace(",", "."));
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function readTemporalData(key, fallback) {
+      try {
+        if (window.A33Storage && typeof A33Storage.sharedRead === 'function') {
+          const rr = A33Storage.sharedRead(key, fallback);
+          const data = rr && Object.prototype.hasOwnProperty.call(rr, 'data') ? rr.data : rr;
+          return data == null ? fallback : data;
+        }
+        const raw = A33Storage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    function readTemporalDataWithMeta(key, fallback) {
+      try {
+        if (window.A33Storage && typeof A33Storage.sharedRead === 'function') {
+          const rr = A33Storage.sharedRead(key, fallback);
+          return {
+            data: rr && Object.prototype.hasOwnProperty.call(rr, 'data') ? rr.data : fallback,
+            meta: (rr && rr.meta) ? rr.meta : { rev: null }
+          };
+        }
+        const raw = A33Storage.getItem(key);
+        return { data: raw ? JSON.parse(raw) : fallback, meta: { rev: null } };
+      } catch (e) {
+        return { data: fallback, meta: { rev: null } };
+      }
+    }
+
+    function writeTemporalData(key, value, extraOpts) {
+      if (window.A33Storage && typeof A33Storage.sharedSet === 'function') {
+        const opts = Object.assign({ source: 'calculadora_temporal' }, extraOpts || {});
+        const r = A33Storage.sharedSet(key, value, opts);
+        if (r && r.ok === false) throw new Error(r.message || 'No se pudo guardar.');
+        return r;
+      }
+      A33Storage.setItem(key, JSON.stringify(value));
+      return { ok: true };
+    }
+
+    function capturarPlanTemporal() {
+      const plan = {};
+      PRESENTACIONES.forEach(p => {
+        plan[p.id] = normQtyInt(getNumberValue('plan-' + p.id));
+      });
+      return plan;
+    }
+
+    function capturarPayloadRecetasDesdeUI() {
+      const recetas = {};
+      const costosPresentacion = {};
+      PRESENTACIONES.forEach(p => {
+        recetas[p.id] = {};
+        INGREDIENTES.forEach(ing => {
+          const val = getNumberValue('receta-' + p.id + '-' + ing, { emptyAsNull: true });
+          if (typeof val === 'number') recetas[p.id][ing] = val;
+        });
+        const costoUnit = getNumberValue('costo-unit-' + p.id, { emptyAsNull: true });
+        const info = { id: p.id, nombre: p.nombre };
+        if (typeof costoUnit === 'number') info.costoUnidad = costoUnit;
+        costosPresentacion[p.id] = info;
+      });
+      return { version: 2, recetas, costosPresentacion };
+    }
+
+    function aplicarPayloadRecetasEnUI(payload) {
+      const data = payload && payload.recetas ? payload.recetas : payload;
+      const costosPresentacion = payload && payload.costosPresentacion ? payload.costosPresentacion : null;
+      PRESENTACIONES.forEach(p => {
+        const rec = (data && data[p.id]) ? data[p.id] : null;
+        INGREDIENTES.forEach(ing => {
+          const input = document.getElementById('receta-' + p.id + '-' + ing);
+          if (!input) return;
+          const val = rec ? rec[ing] : undefined;
+          input.value = (val === null || val === undefined || val === '') ? '' : String(val);
+        });
+        const costoInput = document.getElementById('costo-unit-' + p.id);
+        if (costoInput) {
+          const costo = costosPresentacion && costosPresentacion[p.id] ? costosPresentacion[p.id].costoUnidad : undefined;
+          costoInput.value = (costo === null || costo === undefined || costo === '') ? '' : String(costo);
+        }
+      });
+    }
+
+    function aplicarPlanTemporal(plan) {
+      PRESENTACIONES.forEach(p => {
+        const input = document.getElementById('plan-' + p.id);
+        if (!input) return;
+        const val = plan && Object.prototype.hasOwnProperty.call(plan, p.id) ? normQtyInt(plan[p.id]) : 0;
+        input.value = val > 0 ? String(val) : '';
+      });
+    }
+
+    function serializarDatosCalculo(datos) {
+      const fechaProdStr = String((datos && datos.fechaProdStr) || '').trim();
+      let fechaCadStr = '';
+      if (datos && datos.fechaCad instanceof Date && !Number.isNaN(datos.fechaCad.getTime())) {
+        fechaCadStr = datos.fechaCad.toISOString().slice(0, 10);
+      } else if (datos && typeof datos.fechaCadStr === 'string') {
+        fechaCadStr = datos.fechaCadStr.trim();
+      } else {
+        const cad = calcularCaducidad(fechaProdStr);
+        fechaCadStr = cad ? cad.toISOString().slice(0, 10) : '';
+      }
+      return {
+        totalesIngredientes: Object.assign({ vino: 0, vodka: 0, jugo: 0, sirope: 0, agua: 0 }, (datos && datos.totalesIngredientes) || {}),
+        totalVolumenFinalMl: safeNumber(datos && datos.totalVolumenFinalMl),
+        unidadesPorPresentacion: Array.isArray(datos && datos.unidadesPorPresentacion)
+          ? datos.unidadesPorPresentacion.map(item => ({ id: item.id, nombre: item.nombre, unidades: normQtyInt(item.unidades) })).filter(item => item.unidades > 0)
+          : [],
+        loteNombre: String((datos && datos.loteNombre) || '').trim(),
+        fechaProdStr,
+        fechaCadStr,
+        notas: String((datos && datos.notas) || '')
+      };
+    }
+
+    function tieneCalculoTemporalValido(datosLike) {
+      const datos = serializarDatosCalculo(datosLike || calcularDatosLote());
+      if (!datos.unidadesPorPresentacion.length) return false;
+      if (!String(datos.fechaProdStr || '').trim()) return false;
+      const loteInput = document.getElementById('lote');
+      const codigo = (loteInput && loteInput.value) ? loteInput.value : datos.loteNombre;
+      const v = validarCodigoLoteFuerte(codigo || '');
+      return !!(v && v.ok);
+    }
+
+    function actualizarEstadoBotonGuardar(datosLike) {
+      const btn = document.getElementById('btn-guardar-lote');
+      if (!btn) return false;
+      const canSave = !!A33HasCalculoPrevio && tieneCalculoTemporalValido(datosLike);
+      btn.disabled = !canSave;
+      btn.setAttribute('aria-disabled', canSave ? 'false' : 'true');
+      return canSave;
+    }
+
+    function construirResumenCostos(datos) {
+      let costoTotal = 0;
+      const filas = [];
+      (datos.unidadesPorPresentacion || []).forEach(item => {
+        const costoUnit = getNumberValue('costo-unit-' + item.id);
+        if (costoUnit > 0 && item.unidades > 0) {
+          const subtotal = costoUnit * item.unidades;
+          costoTotal += subtotal;
+          filas.push({ nombre: item.nombre, unidades: item.unidades, costoUnidad: costoUnit, subtotal });
+        }
+      });
+      let costoPorLitro = 0;
+      if (costoTotal > 0 && datos.totalVolumenFinalMl > 0) {
+        costoPorLitro = costoTotal / (datos.totalVolumenFinalMl / 1000);
+      }
+      return { filas, costoTotal, costoPorLitro };
+    }
+
+    function resumenPlanTexto(plan) {
+      return PRESENTACIONES.map(p => {
+        const val = plan && plan[p.id] ? normQtyInt(plan[p.id]) : 0;
+        return val > 0 ? (p.nombre + ': ' + val) : '';
+      }).filter(Boolean).join(' · ');
+    }
+
+    function normalizarRegistroLegacy(item) {
+      if (!item || typeof item !== 'object') return null;
+      const codigo = normalizarCodigoLote(item.codigo || item.batchCode || item.code || item.lote || '');
+      if (!codigo) return null;
+      const fechaProduccion = String(item.fecha || item.fechaProdStr || '').trim();
+      const fechaCaducidad = String(item.caducidad || '').trim() || (() => {
+        const cad = calcularCaducidad(fechaProduccion);
+        return cad ? cad.toISOString().slice(0, 10) : '';
+      })();
+      const plan = {
+        pulso: normQtyInt(item.pulso),
+        media: normQtyInt(item.media),
+        djeba: normQtyInt(item.djeba),
+        litro: normQtyInt(item.litro),
+        galon: normQtyInt(item.galon)
+      };
+      const unidadesPorPresentacion = PRESENTACIONES.map(p => ({ id: p.id, nombre: p.nombre, unidades: plan[p.id] || 0 })).filter(x => x.unidades > 0);
+      return {
+        id: String(item.id || item.loteId || ('temporal_' + codigo)).trim(),
+        codigo,
+        fechaProduccion,
+        fechaCaducidad,
+        notas: String(item.notas || ''),
+        plan,
+        resultados: {
+          totalesIngredientes: {
+            vino: safeNumber(item.volVino),
+            vodka: safeNumber(item.volVodka),
+            jugo: safeNumber(item.volJugo),
+            sirope: safeNumber(item.volSirope),
+            agua: safeNumber(item.volAgua)
+          },
+          totalVolumenFinalMl: safeNumber(item.volTotal),
+          unidadesPorPresentacion,
+          loteNombre: codigo,
+          fechaProdStr: fechaProduccion,
+          fechaCadStr: fechaCaducidad,
+          notas: String(item.notas || '')
+        },
+        recipeSnapshot: null,
+        createdAt: String(item.createdAt || new Date().toISOString()),
+        updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString())
+      };
+    }
+
+    function normalizarRegistroTemporal(item) {
+      if (!item || typeof item !== 'object') return null;
+      if (!item.resultados && (item.volTotal != null || item.batchCode || item.loteId)) {
+        return normalizarRegistroLegacy(item);
+      }
+      const codigo = normalizarCodigoLote(item.codigo || (item.resultados && item.resultados.loteNombre) || '');
+      if (!codigo) return null;
+      const plan = {};
+      PRESENTACIONES.forEach(p => { plan[p.id] = normQtyInt(item.plan && item.plan[p.id]); });
+      const resultados = serializarDatosCalculo(Object.assign({}, item.resultados || {}, {
+        loteNombre: codigo,
+        fechaProdStr: item.fechaProduccion || (item.resultados && item.resultados.fechaProdStr) || '',
+        fechaCadStr: item.fechaCaducidad || (item.resultados && item.resultados.fechaCadStr) || '',
+        notas: item.notas || (item.resultados && item.resultados.notas) || ''
+      }));
+      return {
+        id: String(item.id || ('temporal_' + codigo)).trim(),
+        codigo,
+        fechaProduccion: String(item.fechaProduccion || resultados.fechaProdStr || ''),
+        fechaCaducidad: String(item.fechaCaducidad || resultados.fechaCadStr || ''),
+        notas: String(item.notas || resultados.notas || ''),
+        plan,
+        resultados,
+        recipeSnapshot: item.recipeSnapshot || null,
+        createdAt: String(item.createdAt || new Date().toISOString()),
+        updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString())
+      };
+    }
+
+    function dedupeRegistrosTemporales(registros) {
+      const map = new Map();
+      (Array.isArray(registros) ? registros : []).forEach(item => {
+        const reg = normalizarRegistroTemporal(item);
+        if (!reg) return;
+        const key = reg.id || reg.codigo;
+        const prev = map.get(key);
+        if (!prev) {
+          map.set(key, reg);
+          return;
+        }
+        const prevTime = Date.parse(prev.updatedAt || prev.createdAt || 0) || 0;
+        const curTime = Date.parse(reg.updatedAt || reg.createdAt || 0) || 0;
+        map.set(key, curTime >= prevTime ? reg : prev);
+      });
+      return Array.from(map.values()).sort((a, b) => (Date.parse(b.updatedAt || b.createdAt || 0) || 0) - (Date.parse(a.updatedAt || a.createdAt || 0) || 0));
+    }
+
+    function readTemporalRecordsWithMeta() {
+      const current = readTemporalDataWithMeta(STORAGE_REGISTROS_KEY, []);
+      let registros = Array.isArray(current.data) ? current.data : [];
+      if (!registros.length) {
+        const legacy = readTemporalData(LEGACY_STORAGE_REGISTROS_KEY, []);
+        if (Array.isArray(legacy) && legacy.length) {
+          registros = dedupeRegistrosTemporales(legacy);
+          try { writeTemporalData(STORAGE_REGISTROS_KEY, registros); } catch (e) {}
+        }
+      }
+      registros = dedupeRegistrosTemporales(registros);
+      return { data: registros, meta: current.meta || { rev: null } };
+    }
+
+    function persistTemporalWorkspace(resultData) {
+      const prev = readTemporalData(STORAGE_WORKSPACE_KEY, null) || {};
+      const payload = {
+        version: 2,
+        codigo: ((document.getElementById('lote') && document.getElementById('lote').value) || '').trim(),
+        codigoMode: A33CodigoLoteMode,
+        autoSeq: A33AutoSeq || '',
+        suggestedCode: A33SuggestedCode || '',
+        fechaProduccion: ((document.getElementById('fecha-produccion') && document.getElementById('fecha-produccion').value) || '').trim(),
+        notas: ((document.getElementById('notas') && document.getElementById('notas').value) || ''),
+        plan: capturarPlanTemporal(),
+        result: resultData === undefined ? (prev.result || null) : resultData,
+        updatedAt: new Date().toISOString()
+      };
+      try { writeTemporalData(STORAGE_WORKSPACE_KEY, payload); } catch (e) { console.warn('No se pudo guardar el borrador temporal.', e); }
+      try { A33Storage.setItem(STORAGE_LOTE_KEY, payload.codigo || ''); } catch (e) {}
+      try { A33Storage.setItem(STORAGE_FECHA_PROD_KEY, payload.fechaProduccion || ''); } catch (e) {}
+      try { A33Storage.setItem(STORAGE_NOTAS_KEY, payload.notas || ''); } catch (e) {}
+    }
+
+    function limpiarResultadosVisuales() {
+      const resultadosDiv = document.getElementById('resultados');
+      if (resultadosDiv) resultadosDiv.style.display = 'none';
+      const hintRes = document.getElementById('hint-resultados');
+      if (hintRes) hintRes.style.display = 'block';
+      A33HasCalculoPrevio = false;
+      actualizarEstadoBotonGuardar(null);
+    }
+
+    function renderResultadosDesdeDatos(datosSerializados) {
+      const datos = serializarDatosCalculo(datosSerializados || {});
+      const resultadosDiv = document.getElementById('resultados');
+      const totalesDiv = document.getElementById('totales-ingredientes');
+      const resumenVolumenDiv = document.getElementById('resumen-volumen');
+      const resumenLoteDiv = document.getElementById('resumen-lote');
+      const resumenFechasDiv = document.getElementById('resumen-fechas');
+      const resumenCostosDiv = document.getElementById('resumen-costos');
+      let htmlLote = '';
+      if (datos.loteNombre) {
+        htmlLote = "<div class='flex-row'><div class='badge'>Lote: <strong>" + escapeHtml(datos.loteNombre) + "</strong></div></div>";
+      } else {
+        htmlLote = "<div class='flex-row'><div class='badge'>Lote sin nombre</div></div>";
+      }
+      resumenLoteDiv.innerHTML = htmlLote;
+      const fechaProd = datos.fechaProdStr ? parseISODateLocal(datos.fechaProdStr) : null;
+      const fechaCad = datos.fechaCadStr ? parseISODateLocal(datos.fechaCadStr) : null;
+      let htmlFechas = "<div class='flex-row'>";
+      htmlFechas += fechaProd ? "<div class='badge'>Producción: <strong>" + formatearFechaBonita(fechaProd) + "</strong></div>" : "<div class='badge'>Producción: —</div>";
+      htmlFechas += fechaCad ? "<div class='badge'>Caducidad: <strong>" + formatearFechaBonita(fechaCad) + "</strong></div>" : "<div class='badge'>Caducidad: —</div>";
+      if (datos.notas) htmlFechas += "<div class='badge'>Notas: " + escapeHtml(datos.notas.substring(0, 60)) + (datos.notas.length > 60 ? '...' : '') + "</div>";
+      htmlFechas += '</div>';
+      resumenFechasDiv.innerHTML = htmlFechas;
+      let htmlTotales = "<table><thead><tr><th>Ingrediente</th><th>Total (ml)</th><th>Equivalente (L)</th></tr></thead><tbody>";
+      htmlTotales += "<tr><td style='text-align:left;'>Vino</td><td>" + formatMl(datos.totalesIngredientes.vino) + "</td><td>" + formatLitros(datos.totalesIngredientes.vino) + "</td></tr>";
+      htmlTotales += "<tr><td style='text-align:left;'>Vodka</td><td>" + formatMl(datos.totalesIngredientes.vodka) + "</td><td>" + formatLitros(datos.totalesIngredientes.vodka) + "</td></tr>";
+      htmlTotales += "<tr><td style='text-align:left;'>Jugo</td><td>" + formatMl(datos.totalesIngredientes.jugo) + "</td><td>" + formatLitros(datos.totalesIngredientes.jugo) + "</td></tr>";
+      htmlTotales += "<tr><td style='text-align:left;'>Sirope</td><td>" + formatMl(datos.totalesIngredientes.sirope) + "</td><td>" + formatLitros(datos.totalesIngredientes.sirope) + "</td></tr>";
+      htmlTotales += "<tr><td style='text-align:left;'>Agua pura</td><td>" + formatMl(datos.totalesIngredientes.agua) + "</td><td>" + formatLitros(datos.totalesIngredientes.agua) + "</td></tr>";
+      htmlTotales += '</tbody></table>';
+      totalesDiv.innerHTML = htmlTotales;
+      const costos = construirResumenCostos(datos);
+      if (costos.filas.length) {
+        let htmlCostos = "<div class='flex-row'>";
+        htmlCostos += "<div class='badge'>Costo total estimado del lote: <strong>C$ " + costos.costoTotal.toFixed(2) + "</strong></div>";
+        if (costos.costoPorLitro > 0) htmlCostos += "<div class='badge'>Costo aprox. por litro: <strong>C$ " + costos.costoPorLitro.toFixed(2) + "</strong></div>";
+        htmlCostos += '</div>';
+        htmlCostos += "<table><thead><tr><th>Presentación</th><th>Unidades</th><th>Costo unitario (C$)</th><th>Subtotal (C$)</th></tr></thead><tbody>";
+        costos.filas.forEach(f => {
+          htmlCostos += '<tr>';
+          htmlCostos += "<td style='text-align:left;'>" + escapeHtml(f.nombre) + '</td>';
+          htmlCostos += '<td>' + f.unidades + '</td>';
+          htmlCostos += '<td>' + f.costoUnidad.toFixed(2) + '</td>';
+          htmlCostos += '<td>' + f.subtotal.toFixed(2) + '</td>';
+          htmlCostos += '</tr>';
+        });
+        htmlCostos += '</tbody></table>';
+        resumenCostosDiv.innerHTML = htmlCostos;
+      } else {
+        resumenCostosDiv.innerHTML = "<p class='hint'>Para ver costos, llena la columna de costo unitario y el plan de producción.</p>";
+      }
+      resumenVolumenDiv.innerHTML = "<div class='flex-row'><div class='badge'>Volumen final teórico: <strong>" + formatLitros(datos.totalVolumenFinalMl) + "</strong></div></div>";
+      resultadosDiv.style.display = 'block';
+      const hintRes = document.getElementById('hint-resultados');
+      if (hintRes) hintRes.style.display = 'none';
+      A33HasCalculoPrevio = true;
+      actualizarEstadoBotonGuardar(datos);
+      persistTemporalWorkspace(datos);
+    }
+
+    function restoreTemporalWorkspace() {
+      const workspace = readTemporalData(STORAGE_WORKSPACE_KEY, null);
+      if (!workspace || typeof workspace !== 'object') {
+        const fechaProdInput = document.getElementById('fecha-produccion');
+        if (fechaProdInput && !fechaProdInput.value) fechaProdInput.value = hoyLocalISO();
+        actualizarTextoCaducidad();
+        return;
+      }
+      const loteInput = document.getElementById('lote');
+      const fechaProdInput = document.getElementById('fecha-produccion');
+      const notasInput = document.getElementById('notas');
+      if (loteInput) setCodigoLoteValue(workspace.codigo || '');
+      if (fechaProdInput) fechaProdInput.value = workspace.fechaProduccion || hoyLocalISO();
+      if (notasInput) notasInput.value = workspace.notas || '';
+      aplicarPlanTemporal(workspace.plan || {});
+      A33CodigoLoteMode = workspace.codigoMode === 'MANUAL' ? 'MANUAL' : 'AUTO';
+      A33AutoSeq = /^\d{4}$/.test(String(workspace.autoSeq || '')) ? String(workspace.autoSeq) : '';
+      A33SuggestedCode = String(workspace.suggestedCode || workspace.codigo || '');
+      setPillEstadoCodigo(A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO');
+      actualizarTextoCaducidad();
+      actualizarFechaHebrea();
+      if (workspace.result) {
+        renderResultadosDesdeDatos(workspace.result);
+      } else {
+        limpiarResultadosVisuales();
+      }
+    }
+
+    function formatDateTimeShort(value) {
+      if (!value) return '—';
+      const dt = new Date(value);
+      if (Number.isNaN(dt.getTime())) return '—';
+      return dt.toLocaleString('es-NI', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderTemporalHistory() {
+      const wrap = document.getElementById('temporal-history-list');
+      const empty = document.getElementById('temporal-history-empty');
+      if (!wrap || !empty) return;
+      const registros = readTemporalRecordsWithMeta().data || [];
+      wrap.innerHTML = '';
+      if (!registros.length) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      registros.forEach(reg => {
+        const card = document.createElement('div');
+        card.className = 'a33-history-card';
+        const planText = resumenPlanTexto(reg.plan);
+        const fechaProd = reg.fechaProduccion ? parseISODateLocal(reg.fechaProduccion) : null;
+        const fechaCad = reg.fechaCaducidad ? parseISODateLocal(reg.fechaCaducidad) : null;
+        const notas = String(reg.notas || '');
+        card.innerHTML = '' +
+          "<div class='a33-history-head'>" +
+            "<div>" +
+              "<div class='a33-history-title'>" + escapeHtml(reg.codigo) + "</div>" +
+              "<div class='hint'>Guardado: " + escapeHtml(formatDateTimeShort(reg.updatedAt || reg.createdAt)) + "</div>" +
+            "</div>" +
+            "<div class='a33-history-meta'>" +
+              "<div class='badge'>Producción: <strong>" + escapeHtml(fechaProd ? formatearFechaBonita(fechaProd) : '—') + "</strong></div>" +
+              "<div class='badge'>Caducidad: <strong>" + escapeHtml(fechaCad ? formatearFechaBonita(fechaCad) : '—') + "</strong></div>" +
+              "<div class='badge'>Volumen: <strong>" + escapeHtml(formatLitros(safeNumber(reg.resultados && reg.resultados.totalVolumenFinalMl))) + "</strong></div>" +
+            "</div>" +
+          "</div>" +
+          "<div class='a33-history-body'>" +
+            (planText ? ("<div><strong>Plan:</strong> " + escapeHtml(planText) + "</div>") : "<div><strong>Plan:</strong> Sin unidades guardadas</div>") +
+            (notas ? ("<div style='margin-top:0.35rem;'><strong>Notas:</strong> " + escapeHtml(notas.length > 160 ? (notas.slice(0, 160) + '...') : notas) + "</div>") : '') +
+          "</div>" +
+          "<div class='a33-history-actions'>" +
+            "<button type='button' class='btn-pill a33-btn-primary-pill' data-a33-load='" + escapeHtml(reg.id) + "'>Cargar</button>" +
+            "<button type='button' class='btn-pill' data-a33-delete='" + escapeHtml(reg.id) + "'>Eliminar</button>" +
+          "</div>";
+        wrap.appendChild(card);
+      });
+      wrap.querySelectorAll('[data-a33-load]').forEach(btn => {
+        btn.addEventListener('click', () => cargarRegistroTemporal(btn.getAttribute('data-a33-load')));
+      });
+      wrap.querySelectorAll('[data-a33-delete]').forEach(btn => {
+        btn.addEventListener('click', () => eliminarRegistroTemporal(btn.getAttribute('data-a33-delete')));
+      });
+    }
+
+    function cargarRegistroTemporal(id) {
+      const registros = readTemporalRecordsWithMeta().data || [];
+      const reg = registros.find(item => item.id === id);
+      if (!reg) {
+        alert('No se encontró ese cálculo temporal.');
+        return;
+      }
+      if (reg.recipeSnapshot) aplicarPayloadRecetasEnUI(reg.recipeSnapshot);
+      aplicarPlanTemporal(reg.plan || {});
+      setCodigoLoteValue(reg.codigo || '');
+      const fechaProdInput = document.getElementById('fecha-produccion');
+      const notasInput = document.getElementById('notas');
+      if (fechaProdInput) fechaProdInput.value = reg.fechaProduccion || hoyLocalISO();
+      if (notasInput) notasInput.value = reg.notas || '';
+      A33CodigoLoteMode = 'MANUAL';
+      A33AutoSeq = /^\d{4}$/.test(String(extraerSeqDeCodigo(reg.codigo) || '')) ? pad4(extraerSeqDeCodigo(reg.codigo)).slice(-4) : '';
+      A33SuggestedCode = reg.codigo || '';
+      setPillEstadoCodigo('EDITADO');
+      actualizarTextoCaducidad();
+      actualizarFechaHebrea();
+      renderResultadosDesdeDatos(reg.resultados || {});
+    }
+
+    function eliminarRegistroTemporal(id) {
+      if (!confirm('¿Eliminar este cálculo del historial temporal? Esta acción solo afecta este módulo.')) return;
+      const info = readTemporalRecordsWithMeta();
+      const next = (info.data || []).filter(item => item.id !== id);
+      try {
+        writeTemporalData(STORAGE_REGISTROS_KEY, next, { baseRev: info.meta && typeof info.meta.rev === 'number' ? info.meta.rev : null, conflictPolicy: 'block' });
+      } catch (e) {
+        alert((e && e.message) ? e.message : 'No se pudo eliminar el cálculo temporal.');
+        return;
+      }
+      renderTemporalHistory();
+    }
+
+    function getNumberValue(id, opts) {
+      const options = opts || {};
+      const el = document.getElementById(id);
+      if (!el) return options.emptyAsNull ? null : 0;
+      const raw0 = (el.value ?? "").toString();
+      const raw = raw0.trim();
+      if (options.emptyAsNull && raw === "") return null;
+      const normalized = raw.replace(",", ".");
+      const v = parseFloat(normalized);
+      if (!Number.isFinite(v)) return options.emptyAsNull ? null : 0;
+      return v;
+    }
+
+    // qty: entero > 0 (normalizar).
+    function normQtyInt(value) {
+      const n = (typeof value === 'number') ? value : parseFloat(String(value ?? '').replace(',', '.'));
+      if (!Number.isFinite(n)) return 0;
+      const q = Math.trunc(n);
+      return q > 0 ? q : 0;
+    }
+    function formatMl(value) {
+      return value.toFixed(0) + " ml";
+    }
+    function formatLitros(valueMl) {
+      const litros = valueMl / 1000;
+      return litros.toFixed(2) + " L";
+    }
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+    function slugify(text) {
+      return text
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .substring(0, 40) || "arcano33";
+    }
+    function formatearFechaBonita(date) {
+      if (!date) return "";
+      const d = date.getDate().toString().padStart(2, "0");
+      const m = (date.getMonth() + 1).toString().padStart(2, "0");
+      const y = date.getFullYear();
+      return d + "/" + m + "/" + y;
+    }
+    function calcularCaducidad(fechaProdStr) {
+      if (!fechaProdStr) return null;
+      const partes = fechaProdStr.split("-");
+      if (partes.length !== 3) return null;
+      const year = parseInt(partes[0], 10);
+      const month = parseInt(partes[1], 10) - 1;
+      const day = parseInt(partes[2], 10);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+      const fecha = new Date(year, month, day);
+      if (isNaN(fecha.getTime())) return null;
+      const cad = new Date(fecha);
+      cad.setMonth(cad.getMonth() + 2);
+      return cad;
+    }
+    function actualizarTextoCaducidad() {
+      const fechaProdInput = document.getElementById("fecha-produccion");
+      const textoCad = document.getElementById("texto-caducidad");
+      const badgeCad = document.getElementById("badge-caducidad");
+      const valor = (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : "";
+      const cad = calcularCaducidad(valor);
+
+      if (!valor) {
+        if (textoCad) textoCad.textContent = "Fecha de caducidad: —";
+        if (badgeCad) badgeCad.textContent = "Caducidad: Calcula para ver…";
+      } else if (!cad) {
+        if (textoCad) textoCad.textContent = "Fecha de caducidad: (fecha de producción no válida)";
+        if (badgeCad) badgeCad.textContent = "Caducidad: (fecha no válida)";
+      } else {
+        const pretty = formatearFechaBonita(cad);
+        if (textoCad) textoCad.textContent = "Fecha de caducidad: " + pretty;
+        if (badgeCad) badgeCad.textContent = "Caducidad: " + pretty;
+      }
+    }
+    // Etapa 3: Hebreo offline-first (Intl -> cache local -> degradación controlada + fetch opcional no bloqueante)
+    const STORAGE_HEB_CACHE_KEY = "a33_calc_hebrew_cache_v1";
+    const HEB_FETCH_TIMEOUT_MS = 2500;
+    let A33HebreoFetch = { inFlight: false, iso: "", abort: null };
+
+    function leerHebreoCacheObj() {
+      try {
+        const raw = A33Storage.getItem(STORAGE_HEB_CACHE_KEY);
+        const obj = raw ? JSON.parse(raw) : null;
+        if (!obj || typeof obj !== "object") return { v: 1, order: [], items: {} };
+        if (obj.v !== 1 || !obj.items || typeof obj.items !== "object" || !Array.isArray(obj.order)) {
+          return { v: 1, order: [], items: {} };
+        }
+        return obj;
+      } catch (e) {
+        return { v: 1, order: [], items: {} };
+      }
+    }
+
+    function leerHebreoCache(iso) {
+      const key = String(iso || "").trim();
+      if (!key) return null;
+      const cache = leerHebreoCacheObj();
+      const h = cache.items[key];
+      if (h && h.hd && h.hm && h.hy && h.hm3 && h.hy4) return h;
+      return null;
+    }
+
+    function guardarHebreoCache(iso, h) {
+      const key = String(iso || "").trim();
+      if (!key || !h || !h.hd || !h.hm || !h.hy || !h.hm3 || !h.hy4) return;
+      try {
+        const cache = leerHebreoCacheObj();
+        cache.items[key] = h;
+        cache.order = cache.order.filter(x => x !== key);
+        cache.order.push(key);
+        // límite simple para no inflar storage
+        const MAX = 120;
+        while (cache.order.length > MAX) {
+          const old = cache.order.shift();
+          if (old) delete cache.items[old];
+        }
+        A33Storage.setItem(STORAGE_HEB_CACHE_KEY, JSON.stringify(cache));
+      } catch (e) {
+        // silencioso
+      }
+    }
+
+    function obtenerHebreaLocalDesdeFechaISO(iso) {
+      const dt = parseISODateLocal(iso);
+      if (!dt) return null;
+      try {
+        // Safari/iOS suele soportarlo; si no, lanzará RangeError.
+        const fmt = new Intl.DateTimeFormat("en-u-ca-hebrew-nu-latn", { day: "numeric", month: "long", year: "numeric" });
+        const parts = fmt.formatToParts(dt);
+        const hd = (((parts.find(p => p.type === "day") || {}).value || "").match(/\d+/) || [""])[0] || "";
+        const hm = ((parts.find(p => p.type === "month") || {}).value || "").trim();
+        const hy = (((parts.find(p => p.type === "year") || {}).value || "").match(/\d+/) || [""])[0] || "";
+        const hm3 = sanitizeMonth3(hm);
+        const hy4 = hy ? hy.slice(-4) : "";
+        if (hd && hm && hm3.length === 3 && hy4.length === 4) {
+          return { hd, hm, hy: hy4, hm3, hy4 };
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    }
+
+    async function obtenerHebreaOnlineHebcal(iso, signal) {
+      const dt = parseISODateLocal(iso);
+      if (!dt) return null;
+      try {
+        const y = dt.getFullYear();
+        const m = dt.getMonth() + 1;
+        const d = dt.getDate();
+        const url = "https://www.hebcal.com/converter?cfg=json&g2h=1&gy=" + y + "&gm=" + m + "&gd=" + d + "&lang=en";
+        const res = await fetch(url, { signal });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data && typeof data.hd !== "undefined" && data.hm && data.hy) {
+          const hd = (String(data.hd).match(/\d+/) || [""])[0] || "";
+          const hm = String(data.hm || "").trim();
+          const hy = (String(data.hy).match(/\d+/) || [""])[0] || "";
+          const hm3 = sanitizeMonth3(hm);
+          const hy4 = hy ? hy.slice(-4) : "";
+          if (hd && hm && hm3.length === 3 && hy4.length === 4) {
+            return { hd, hm, hy: hy4, hm3, hy4 };
+          }
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    }
+
+    function intentarHebcalBackground(iso) {
+      // NO bloqueante: si llega, actualiza UI + cache. Si no, no pasa nada.
+      const key = String(iso || "").trim();
+      if (!key) return;
+      if (A33HebreoFetch.inFlight && A33HebreoFetch.iso === key) return;
+
+      // cancelar anterior si existe
+      try { if (A33HebreoFetch.abort) A33HebreoFetch.abort.abort(); } catch (e) {}
+
+      const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      A33HebreoFetch = { inFlight: true, iso: key, abort: controller };
+
+      const done = (h) => {
+        A33HebreoFetch.inFlight = false;
+        const prodNow = (document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || "";
+        if (String(prodNow).trim() !== key) return; // el usuario cambió la fecha
+        if (h && h.hd && h.hm && h.hy) {
+          guardarHebreoCache(key, h);
+          A33Hebreo = h;
+          const pretty = h.hd + " " + h.hm + " " + h.hy;
+          const span = document.getElementById("texto-fecha-hebreo");
+          const badgeHeb = document.getElementById("badge-hebreo");
+          if (span) span.textContent = "Fecha hebrea (producción): " + pretty;
+          if (badgeHeb) badgeHeb.textContent = "Hebreo: " + pretty;
+          // si estamos en AUTO, recalculamos el código sugerido sin tocar consecutivo
+          if (A33CodigoLoteMode === "AUTO") {
+            recalcularCodigoLoteAuto({ force: false });
+          }
+        }
+      };
+
+      // timeout duro
+      let t = null;
+      if (controller) {
+        t = setTimeout(() => {
+          try { controller.abort(); } catch (e) {}
+        }, HEB_FETCH_TIMEOUT_MS);
+      }
+
+      obtenerHebreaOnlineHebcal(key, controller ? controller.signal : undefined)
+        .then(h => {
+          if (t) clearTimeout(t);
+          done(h);
+        })
+        .catch(() => {
+          if (t) clearTimeout(t);
+          A33HebreoFetch.inFlight = false;
+        });
+    }
+
+    function actualizarFechaHebrea() {
+      // Deriva SIEMPRE de la fecha de producción.
+      const span = document.getElementById("texto-fecha-hebreo");
+      const badgeHeb = document.getElementById("badge-hebreo");
+      if (!span) return Promise.resolve(null);
+
+      const prod = (document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || "";
+      const iso = String(prod || "").trim();
+
+      // Sin fecha de producción: placeholder claro (no usar "hoy" para no confundir).
+      if (!iso) {
+        A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+        span.textContent = "Fecha hebrea (producción): —";
+        if (badgeHeb) badgeHeb.textContent = "Hebreo: Calcula para ver…";
+        return Promise.resolve(null);
+      }
+
+      // 1) Local (offline-first)
+      const local = obtenerHebreaLocalDesdeFechaISO(iso);
+      if (local && local.hd && local.hm && local.hy) {
+        A33Hebreo = local;
+        guardarHebreoCache(iso, local);
+        const pretty = local.hd + " " + local.hm + " " + local.hy;
+        span.textContent = "Fecha hebrea (producción): " + pretty;
+        if (badgeHeb) badgeHeb.textContent = "Hebreo: " + pretty;
+        return Promise.resolve(local);
+      }
+
+      // 2) Cache local (si ya lo vimos alguna vez)
+      const cached = leerHebreoCache(iso);
+      if (cached && cached.hd && cached.hm && cached.hy) {
+        A33Hebreo = cached;
+        const pretty = cached.hd + " " + cached.hm + " " + cached.hy;
+        span.textContent = "Fecha hebrea (producción): " + pretty;
+        if (badgeHeb) badgeHeb.textContent = "Hebreo: " + pretty;
+        return Promise.resolve(cached);
+      }
+
+      // 3) Degradación controlada: NO romper flujo
+      A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+      span.textContent = "Fecha hebrea (producción): Fecha hebrea no disponible offline";
+      if (badgeHeb) badgeHeb.textContent = "Hebreo: Fecha hebrea no disponible offline";
+
+      // 4) Fetch opcional (no bloqueante) solo si hay red
+      try {
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          intentarHebcalBackground(iso);
+        }
+      } catch (e) {}
+
+      return Promise.resolve(null);
+    }
+
+    function parseISODateLocal(iso) {
+      // Evitar que new Date('YYYY-MM-DD') se interprete como UTC.
+      try {
+        const parts = String(iso || "").split("-");
+        if (parts.length !== 3) return null;
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const d = parseInt(parts[2], 10);
+        if (!y || !m || !d) return null;
+        return new Date(y, m - 1, d);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function pad2(n) {
+      return String(n).padStart(2, "0");
+    }
+    function pad4(n) {
+      return String(n).padStart(4, "0");
+    }
+
+    function ecoMaskX(seq4) {
+      const s = String(seq4 || "");
+      if (!/^\d{4}$/.test(s)) return s;
+      let out = s[0];
+      for (let i = 1; i < s.length; i++) {
+        // comparar contra el dígito REAL anterior (eco)
+        out += (s[i] === s[i - 1]) ? "X" : s[i];
+      }
+      return out;
+    }
+
+    function sanitizeMonth3(name) {
+      const letters = String(name || "").toUpperCase().replace(/[^A-Z]/g, "");
+      return letters.slice(0, 3);
+    }
+
+    // Nota: obtenerHebreaDesdeFechaISO se reemplazó por la estrategia Etapa 3 (local + cache + degradación + fetch no bloqueante).
+
+    function ecoUnmaskX(mask4) {
+      const s = String(mask4 || "");
+      if (!/^[0-9X]{4}$/.test(s)) return null;
+      if (!/^\d/.test(s)) return null;
+      let out = s[0];
+      for (let i = 1; i < 4; i++) {
+        const ch = s[i];
+        out += (ch === "X") ? out[i - 1] : ch;
+      }
+      if (!/^\d{4}$/.test(out)) return null;
+      return out;
+    }
+
+    function extraerSeqDeCodigo(code) {
+      const s = String(code || "").trim();
+      if (!s.startsWith("A33") || s.length < 7) return null;
+      const mask = s.slice(3, 7);
+      const un = ecoUnmaskX(mask);
+      if (!un) return null;
+      const n = parseInt(un, 10);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function leerUltimoConsecutivoKey() {
+      try {
+        const raw = A33Storage.getItem(STORAGE_LOTE_SEQ_LAST_KEY);
+        const n = parseInt(String(raw || "0"), 10) || 0;
+        return Number.isFinite(n) ? n : 0;
+      } catch (e) {
+        return 0;
+      }
+    }
+
+    function obtenerMaxSeqDesdeLotes() {
+      let max = 0;
+      try {
+        const arr = readTemporalRecordsWithMeta().data || [];
+        if (!Array.isArray(arr)) return 0;
+        arr.forEach(l => {
+          const c = l && (l.codigo || l.code || l.lote || "");
+          const n = extraerSeqDeCodigo(c);
+          if (typeof n === "number" && n > max) max = n;
+        });
+      } catch (e) {}
+      return max;
+    }
+
+    function obtenerUsedSeqSetDesdeLotes() {
+      const set = new Set();
+      try {
+        const arr = readTemporalRecordsWithMeta().data || [];
+        if (!Array.isArray(arr)) return set;
+        arr.forEach(l => {
+          const c = l && (l.codigo || l.code || l.lote || "");
+          const n = extraerSeqDeCodigo(c);
+          if (typeof n === "number" && n > 0) set.add(n);
+        });
+      } catch (e) {}
+      return set;
+    }
+
+    function obtenerUltimoConsecutivoNumerico() {
+      return Math.max(leerUltimoConsecutivoKey(), obtenerMaxSeqDesdeLotes());
+    }
+
+    function buscarSiguienteDisponible(desde, usedSet) {
+      let n = desde;
+      const safeMax = 9999;
+      let loops = 0;
+      while (usedSet && usedSet.has(n) && loops < 11000 && n <= safeMax) {
+        n++;
+        loops++;
+      }
+      if (n > safeMax) {
+        console.warn("Consecutivo excedió 9999; revisa tus lotes.");
+        n = safeMax;
+      }
+      return n;
+    }
+
+    function sugerirSeq4(opts) {
+      const advance = !!(opts && opts.advance);
+      const used = obtenerUsedSeqSetDesdeLotes();
+      const last = obtenerUltimoConsecutivoNumerico();
+      let n = 0;
+      if (/^\d{4}$/.test(String(A33AutoSeq || ""))) {
+        n = parseInt(A33AutoSeq, 10) || 0;
+        if (advance) n++;
+      } else {
+        n = last + 1;
+      }
+      // Nunca quedarnos atrás
+      if (n <= last) n = last + 1;
+      n = buscarSiguienteDisponible(n, used);
+      return pad4(n).slice(-4);
+    }
+
+    function commitConsecutivoDespuesDeGuardar(code, seqHint) {
+      const last = obtenerUltimoConsecutivoNumerico();
+      let usedSeq = (typeof seqHint === "number" && seqHint > 0) ? seqHint : extraerSeqDeCodigo(code);
+
+      // Si por alguna razón no podemos extraer el consecutivo, NO avanzamos el contador.
+      if (!(typeof usedSeq === "number" && usedSeq > 0)) {
+        usedSeq = last;
+      }
+
+      const newLast = Math.max(last, usedSeq);
+      const seq4 = pad4(newLast).slice(-4);
+      try { A33Storage.setItem(STORAGE_LOTE_SEQ_LAST_KEY, seq4); } catch (e) {}
+      // Compatibilidad: se conserva la key anterior, pero solo se actualiza al guardar exitosamente.
+      try { A33Storage.setItem(STORAGE_LOTE_SEQ_CURRENT_KEY, seq4); } catch (e) {}
+      return seq4;
+    }
+
+
+    function setCodigoLoteValue(v) {
+      const loteInput = document.getElementById("lote");
+      if (!loteInput) return;
+      A33SuppressCodigoInput = true;
+      loteInput.value = v || "";
+      // liberar en el siguiente tick para evitar marcar MANUAL por set programático
+      setTimeout(() => { A33SuppressCodigoInput = false; }, 0);
+    }
+
+    function marcarCodigoComoManual() {
+      A33CodigoLoteMode = "MANUAL";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "MANUAL"); } catch (e) {}
+      setPillEstadoCodigo("EDITADO");
+    }
+async function recalcularCodigoLoteAuto(opts) {
+      // PREVIEW: generar/actualizar el código sin comprometer consecutivo.
+      // Nota: por compatibilidad puede venir opts.consumeNewSeq, pero se ignora (NO se avanza por recalcular).
+      const force = !!(opts && (opts.force || opts.forceNewPreview));
+
+      if (force || !/^\d{4}$/.test(String(A33AutoSeq || ""))) {
+        // El preview siempre parte del último comprometido + 1 (o el siguiente libre), pero NO lo guarda como consecutivo.
+        A33AutoSeq = sugerirSeq4({ advance: false });
+      }
+
+      A33CodigoLoteMode = "AUTO";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
+
+      const fechaProdIso = ((document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || hoyLocalISO()).trim();
+      const dt = parseISODateLocal(fechaProdIso) || new Date();
+
+      const heb = await actualizarFechaHebrea(); // Etapa 3: resuelve rápido (sin bloquear por red)
+      const heb2 = (heb && heb.hd && heb.hm3 && heb.hy4) ? heb : (leerHebreoCache(fechaProdIso) || null);
+
+      // Día SIEMPRE desde la misma fuente hebrea (si existe). Fallback controlado: gregoriano.
+      const dia2 = pad2((heb2 && heb2.hd) ? heb2.hd : dt.getDate());
+      const hm3 = (heb2 && heb2.hm3) ? heb2.hm3 : "OFF";
+      const hy4 = (heb2 && heb2.hy4) ? heb2.hy4 : String(dt.getFullYear()).slice(-4);
+
+      const consecMask = ecoMaskX(A33AutoSeq);
+      const code = "A33" + consecMask + dia2 + hm3 + hy4;
+
+      if (!/^A33[A-Z0-9X]{4}\d{2}[A-Z]{3}\d{4}$/.test(code)) {
+        console.warn("Código de lote generado inválido:", code);
+        return;
+      }
+
+      setCodigoLoteValue(code);
+      setPillEstadoCodigo("SUGERIDO");
+      A33SuggestedCode = code;
+
+      // Persistimos el valor actual del input (compatibilidad), pero NO el consecutivo.
+      try { A33Storage.setItem(STORAGE_LOTE_KEY, code); } catch (e) {}
+      try { persistTemporalWorkspace(readTemporalData(STORAGE_WORKSPACE_KEY, null)?.result || null); } catch (e) {}
+    }
+
+
+
+
+// A33 UX: inputs numéricos sin “0” anticipado + auto-select + teclado numérico (iPad/iOS)
+function a33WireNumericInput(el, mode) {
+  if (!el) return;
+  const m = (mode === "numeric") ? "numeric" : "decimal";
+  try {
+    // visualmente vacío si venía con “0”
+    if (String(el.value || "").trim() === "0") el.value = "";
+
+    // teclado numérico (sin romper select-all en iPad/Safari)
+    el.setAttribute("inputmode", m);
+    if (m === "numeric") {
+      el.setAttribute("pattern", "[0-9]*");
+    } else {
+      el.setAttribute("pattern", "[0-9]*[\\.,]?[0-9]*");
+    }
+    el.autocomplete = "off";
+    el.autocapitalize = "off";
+    el.spellcheck = false;
+
+    // sin placeholder “0”
+    el.removeAttribute("placeholder");
+
+    // auto “select all” al corregir (hardening iPad/iOS)
+    const trySelect = () => {
+      const v = (el.value || "").toString().trim();
+      if (v === "") return;
+      try {
+        const len = (el.value || "").length;
+        if (typeof el.setSelectionRange === "function") {
+          el.setSelectionRange(0, len);
+        } else {
+          el.select();
+        }
+      } catch (e) {
+        try { el.select(); } catch (e2) {}
+      }
+    };
+
+    const scheduleSelect = () => {
+      // multi-tick: iOS a veces pisa la selección después del focus/click
+      trySelect();
+      try { requestAnimationFrame(trySelect); } catch (e) {}
+      setTimeout(trySelect, 0);
+      setTimeout(trySelect, 40);
+    };
+
+    el.addEventListener("focus", () => { scheduleSelect(); });
+
+    // Tap dentro del input con valor ⇒ selecciona todo.
+    const onDown = () => { setTimeout(scheduleSelect, 0); };
+    try { el.addEventListener("pointerdown", onDown, { passive: true }); } catch (e) { el.addEventListener("pointerdown", onDown); }
+    try { el.addEventListener("touchstart", onDown, { passive: true }); } catch (e) { el.addEventListener("touchstart", onDown); }
+    try { el.addEventListener("mousedown", onDown, { passive: true }); } catch (e) { el.addEventListener("mousedown", onDown); }
+    el.addEventListener("click", () => { setTimeout(scheduleSelect, 0); });
+  } catch (e) {}
+}
+
+    function construirTablaRecetas() {
+      const tbody = document.querySelector("#recetas-table tbody");
+      tbody.innerHTML = "";
+      PRESENTACIONES.forEach(p => {
+        const tr = document.createElement("tr");
+        const tdNombre = document.createElement("td");
+        tdNombre.textContent = p.nombre;
+        tdNombre.style.textAlign = "left";
+        tr.appendChild(tdNombre);
+        INGREDIENTES.forEach(ing => {
+          const td = document.createElement("td");
+          const input = document.createElement("input");
+          input.type = "text";
+          input.min = "0";
+          input.step = "0.01";
+          input.id = "receta-" + p.id + "-" + ing;
+          a33WireNumericInput(input, "decimal");
+          td.appendChild(input);
+          tr.appendChild(td);
+        });
+        // columna de costo unitario por presentación
+        const tdCosto = document.createElement("td");
+        const inputCosto = document.createElement("input");
+        inputCosto.type = "text";
+        inputCosto.min = "0";
+        inputCosto.step = "0.01";
+        inputCosto.id = "costo-unit-" + p.id;
+        a33WireNumericInput(inputCosto, "decimal");
+        tdCosto.appendChild(inputCosto);
+        tr.appendChild(tdCosto);
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function construirTablaPlan() {
+      const tbody = document.querySelector("#plan-table tbody");
+      tbody.innerHTML = "";
+      PRESENTACIONES.forEach(p => {
+        const tr = document.createElement("tr");
+        const tdNombre = document.createElement("td");
+        tdNombre.textContent = p.nombre;
+        tdNombre.style.textAlign = "left";
+        tr.appendChild(tdNombre);
+        const tdCantidad = document.createElement("td");
+        const input = document.createElement("input");
+        input.type = "text";
+        input.min = "0";
+        input.step = "1";
+        input.id = "plan-" + p.id;
+        a33WireNumericInput(input, "numeric");
+        tdCantidad.appendChild(input);
+        tr.appendChild(tdCantidad);
+        tbody.appendChild(tr);
+      });
+    }
+    function guardarRecetas() {
+      const payload = capturarPayloadRecetasDesdeUI();
+      try {
+        writeTemporalData(STORAGE_RECETAS_KEY, payload);
+      } catch (e) {
+        console.warn('No se pudo guardar recetas:', e);
+      }
+      alert("Recetas y costos guardados en este navegador ✅");
+    }
+
+    function cargarRecetas() {
+      try {
+        const data = readTemporalData(STORAGE_RECETAS_KEY, null);
+        if (!data) return;
+        aplicarPayloadRecetasEnUI(data);
+      } catch (e) {
+        console.warn("Error cargando recetas:", e);
+      }
+    }
+
+    function resetNotasAlEntrar() {
+      const notasInput = document.getElementById("notas");
+      if (!notasInput) return;
+      notasInput.value = notasInput.value || "";
+    }
+
+    function guardarMetaLote(resultData) {
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, A33CodigoLoteMode); } catch (e) {}
+      actualizarTextoCaducidad();
+      persistTemporalWorkspace(resultData);
+    }
+    function cargarMetaLote() {
+      A33HasCalculoPrevio = false;
+      const hintRes = document.getElementById("hint-resultados");
+      if (hintRes) hintRes.style.display = "block";
+      actualizarEstadoBotonGuardar(null);
+      A33CodigoLoteMode = "AUTO";
+      A33AutoSeq = "";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
+      setCodigoLoteValue("");
+      setPillEstadoCodigo("SUGERIDO");
+      restoreTemporalWorkspace();
+      const loteInput = document.getElementById('lote');
+      if (!loteInput || !String(loteInput.value || '').trim()) {
+        recalcularCodigoLoteAuto({ consumeNewSeq: false });
+      }
+    }
+    function calcularDatosLote() {
+      const totalesIngredientes = { vino: 0, vodka: 0, jugo: 0, sirope: 0, agua: 0 };
+      let totalVolumenFinalMl = 0;
+      const unidadesPorPresentacion = [];
+      PRESENTACIONES.forEach(p => {
+        const unidades = normQtyInt(getNumberValue("plan-" + p.id));
+        if (unidades > 0) {
+          unidadesPorPresentacion.push({ id: p.id, nombre: p.nombre, unidades });
+        }
+        if (unidades <= 0) return;
+        INGREDIENTES.forEach(ing => {
+          const mlPorUnidad = getNumberValue("receta-" + p.id + "-" + ing);
+          totalesIngredientes[ing] += unidades * mlPorUnidad;
+        });
+        totalVolumenFinalMl += unidades * p.volumenMl;
+      });
+      const loteNombre = (document.getElementById("lote").value || "").trim();
+      const fechaProdStr = document.getElementById("fecha-produccion").value || "";
+      const fechaProd = fechaProdStr ? new Date(fechaProdStr + "T00:00:00") : null;
+      const fechaCad = calcularCaducidad(fechaProdStr);
+      const notas = document.getElementById("notas").value || "";
+      return {
+        totalesIngredientes,
+        totalVolumenFinalMl,
+        unidadesPorPresentacion,
+        loteNombre,
+        fechaProd,
+        fechaProdStr,
+        fechaCad,
+        notas
+      };
+    }
+    function calcularTotales() {
+      const datos = serializarDatosCalculo(calcularDatosLote());
+      renderResultadosDesdeDatos(datos);
+      guardarMetaLote(datos);
+    }
+    function limpiarCantidades() {
+      PRESENTACIONES.forEach(p => {
+        const el = document.getElementById("plan-" + p.id);
+        if (el) el.value = "";
+      });
+      limpiarResultadosVisuales();
+      persistTemporalWorkspace(null);
+    }
+
+    async function guardarCalculoComoLote() {
+      const datos = serializarDatosCalculo(calcularDatosLote());
+
+      if (!A33HasCalculoPrevio) {
+        alert("Primero usa CALCULAR para confirmar el resumen temporal antes de guardar.");
+        actualizarEstadoBotonGuardar(datos);
+        return;
+      }
+
+      if (!datos.unidadesPorPresentacion.length) {
+        alert("No se puede guardar un cálculo vacío. Indica unidades en el plan y vuelve a calcular.");
+        actualizarEstadoBotonGuardar(datos);
+        return;
+      }
+
+      if (!actualizarEstadoBotonGuardar(datos)) {
+        alert("GUARDAR solo se habilita cuando existe un cálculo temporal válido.");
+        return;
+      }
+
+      const info = readTemporalRecordsWithMeta();
+      let registros = Array.isArray(info.data) ? info.data.slice() : [];
+      const baseRevRegistros = (info.meta && typeof info.meta.rev === 'number') ? info.meta.rev : null;
+
+      const loteInput = document.getElementById('lote');
+      const rawCodigo = loteInput ? loteInput.value : '';
+      let v = validarCodigoLoteFuerte(rawCodigo);
+      if (!v.ok) {
+        alert(v.msg || 'Código inválido.');
+        return;
+      }
+
+      if (loteInput) setCodigoLoteValue(v.code);
+
+      let codigoFinal = v.code;
+      let seqFinal = v.seq;
+
+      const checkDuplicado = () => {
+        const last = obtenerUltimoConsecutivoNumerico();
+        const suggestedUpper = normalizarCodigoLote(A33SuggestedCode || '');
+        const isSuggested = (normalizarCodigoLote(codigoFinal) === suggestedUpper);
+        const yaExiste = registros.some(reg => normalizarCodigoLote(reg && reg.codigo) === normalizarCodigoLote(codigoFinal));
+        const quedoAtras = (typeof seqFinal === 'number' && seqFinal <= last && isSuggested);
+        return { yaExiste, quedoAtras };
+      };
+
+      let dup = checkDuplicado();
+      if (dup.yaExiste || dup.quedoAtras) {
+        const nextCode = proponerSiguienteCodigoDisponible(codigoFinal, registros);
+        const aplicar = await A33ModalDuplicadoCodigo(nextCode);
+        if (!aplicar) return;
+        codigoFinal = nextCode;
+        v = validarCodigoLoteFuerte(codigoFinal);
+        if (!v.ok) {
+          alert('No se pudo asignar un código libre. Reintentá.');
+          return;
+        }
+        seqFinal = v.seq;
+        if (loteInput) setCodigoLoteValue(codigoFinal);
+        A33CodigoLoteMode = 'AUTO';
+        A33AutoSeq = pad4(extraerSeqDeCodigo(codigoFinal) || 0).slice(-4);
+        A33SuggestedCode = codigoFinal;
+        setPillEstadoCodigo('SUGERIDO');
+        try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, 'AUTO'); } catch (e) {}
+        registros = readTemporalRecordsWithMeta().data || [];
+        dup = checkDuplicado();
+        if (dup.yaExiste || dup.quedoAtras) {
+          alert('No se pudo asignar un código libre. Reintentá.');
+          return;
+        }
+      }
+
+      const lastNow = obtenerUltimoConsecutivoNumerico();
+      const suggestedNow = normalizarCodigoLote(A33SuggestedCode || '');
+      const isSuggestedNow = (normalizarCodigoLote(codigoFinal) === suggestedNow);
+      if (A33CodigoLoteMode === 'MANUAL' && !isSuggestedNow && typeof seqFinal === 'number' && seqFinal <= lastNow) {
+        alert('Código no permitido: va hacia atrás o implica reutilización del consecutivo. Usa el sugerido o uno más adelante.');
+        return;
+      }
+
+      const plan = capturarPlanTemporal();
+      const recipeSnapshot = capturarPayloadRecetasDesdeUI();
+      const nowIso = new Date().toISOString();
+      const registro = normalizarRegistroTemporal({
+        id: 'temporal_' + normalizarCodigoLote(codigoFinal),
+        codigo: codigoFinal,
+        fechaProduccion: datos.fechaProdStr || hoyLocalISO(),
+        fechaCaducidad: datos.fechaCadStr || '',
+        notas: datos.notas || '',
+        plan,
+        resultados: Object.assign({}, datos, { loteNombre: codigoFinal }),
+        recipeSnapshot,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      });
+
+      const idx = registros.findIndex(item => item.id === registro.id || normalizarCodigoLote(item.codigo) === normalizarCodigoLote(registro.codigo));
+      if (idx >= 0) {
+        alert('Ese código ya existe dentro del historial temporal. Usa el siguiente sugerido o elimina el registro anterior si ya no lo necesitas.');
+        setPillEstadoCodigo(A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO');
+        return;
+      }
+      registros.unshift(registro);
+      registros = dedupeRegistrosTemporales(registros);
+
+      try {
+        writeTemporalData(STORAGE_REGISTROS_KEY, registros, { baseRev: baseRevRegistros, conflictPolicy: 'block' });
+      } catch (e) {
+        alert((e && e.message) ? e.message : 'No se pudo guardar el cálculo temporal en el navegador.');
+        setPillEstadoCodigo(A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO');
+        return;
+      }
+
+      setPillEstadoCodigo('OK');
+
+      let seq4 = '';
+      try {
+        seq4 = commitConsecutivoDespuesDeGuardar(codigoFinal, seqFinal);
+        if (/^\d{4}$/.test(String(seq4 || ''))) A33AutoSeq = seq4;
+      } catch (e) {}
+
+      alert('Cálculo temporal guardado correctamente en el historial propio de este módulo. No se creó ningún lote oficial.');
+      A33HasCalculoPrevio = false;
+      actualizarEstadoBotonGuardar(null);
+      renderTemporalHistory();
+      persistTemporalWorkspace(Object.assign({}, registro.resultados, { loteNombre: registro.codigo }));
+
+      A33CodigoLoteMode = 'AUTO';
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, 'AUTO'); } catch (e) {}
+      setPillEstadoCodigo('SUGERIDO');
+      A33AutoSeq = '';
+      recalcularCodigoLoteAuto({ consumeNewSeq: false });
+      guardarMetaLote(Object.assign({}, registro.resultados, { loteNombre: registro.codigo }));
+    }
+function init() {
+      construirTablaRecetas();
+      construirTablaPlan();
+      cargarRecetas();
+      cargarMetaLote();
+      renderTemporalHistory();
+      resetNotasAlEntrar();
+      document.getElementById("btn-guardar-receta").addEventListener("click", guardarRecetas);
+      document.getElementById("btn-calcular").addEventListener("click", calcularTotales);
+      document.getElementById("btn-limpiar").addEventListener("click", limpiarCantidades);
+      const btnGuardarLote = document.getElementById("btn-guardar-lote");
+      if (btnGuardarLote) btnGuardarLote.addEventListener("click", guardarCalculoComoLote);
+      const loteInput = document.getElementById("lote");
+      const fechaProdInput = document.getElementById("fecha-produccion");
+      const notasInput = document.getElementById("notas");
+      const btnRegenerar = document.getElementById("btn-regenerar-codigo");
+
+      if (btnRegenerar) {
+        btnRegenerar.addEventListener("click", () => {
+          // Regenerar: vuelve a AUTO y recalcula el código sugerido (preview) SIN comprometer consecutivo
+          recalcularCodigoLoteAuto({ consumeNewSeq: false });
+          guardarMetaLote();
+        });
+      }
+
+      if (loteInput) {
+        const onManual = () => {
+          if (A33SuppressCodigoInput) return;
+          marcarCodigoComoManual();
+          guardarMetaLote();
+          actualizarEstadoBotonGuardar(readTemporalData(STORAGE_WORKSPACE_KEY, null)?.result || null);
+        };
+        loteInput.addEventListener("input", onManual);
+        loteInput.addEventListener("change", onManual);
+        loteInput.addEventListener("keyup", onManual);
+        loteInput.addEventListener("focus", () => { if (!A33SuppressCodigoInput) setPillEstadoCodigo("EDITADO"); });
+      }
+
+      if (fechaProdInput) {
+        const onFecha = () => {
+          guardarMetaLote();
+          actualizarTextoCaducidad();
+          // Si está en AUTO, recalcula con el MISMO consecutivo (sin consumir otro)
+          if (A33CodigoLoteMode === "AUTO") {
+            recalcularCodigoLoteAuto({ consumeNewSeq: false });
+          } else {
+            // MANUAL: solo actualizamos el hint de fecha hebrea
+            actualizarFechaHebrea();
+          }
+          actualizarEstadoBotonGuardar(readTemporalData(STORAGE_WORKSPACE_KEY, null)?.result || null);
+        };
+        fechaProdInput.addEventListener("change", onFecha);
+        fechaProdInput.addEventListener("keyup", onFecha);
+      }
+
+      if (notasInput) {
+        const onNotas = () => {
+          const currentResult = readTemporalData(STORAGE_WORKSPACE_KEY, null)?.result || null;
+          guardarMetaLote(currentResult);
+          actualizarEstadoBotonGuardar(currentResult);
+        };
+        notasInput.addEventListener("change", onNotas);
+        notasInput.addEventListener("keyup", onNotas);
+      }
+
+      PRESENTACIONES.forEach(p => {
+        const planInput = document.getElementById('plan-' + p.id);
+        if (planInput) {
+          const onPlan = () => { persistTemporalWorkspace(null); limpiarResultadosVisuales(); };
+          planInput.addEventListener('change', onPlan);
+          planInput.addEventListener('keyup', onPlan);
+        }
+        const costoInput = document.getElementById('costo-unit-' + p.id);
+        if (costoInput) {
+          const onCosto = () => {
+            const currentResult = readTemporalData(STORAGE_WORKSPACE_KEY, null)?.result || null;
+            persistTemporalWorkspace(currentResult);
+            actualizarEstadoBotonGuardar(currentResult);
+          };
+          costoInput.addEventListener('change', onCosto);
+          costoInput.addEventListener('keyup', onCosto);
+        }
+        INGREDIENTES.forEach(ing => {
+          const recetaInput = document.getElementById('receta-' + p.id + '-' + ing);
+          if (!recetaInput) return;
+          const onReceta = () => { persistTemporalWorkspace(null); limpiarResultadosVisuales(); };
+          recetaInput.addEventListener('change', onReceta);
+          recetaInput.addEventListener('keyup', onReceta);
+        });
+      });
+
+      actualizarTextoCaducidad();
+      actualizarFechaHebrea();
+}
+
+    document.addEventListener("DOMContentLoaded", init);
+
+    window.addEventListener("pageshow", () => {
+      try { restoreTemporalWorkspace(); } catch (e) {}
+      try { renderTemporalHistory(); } catch (e) {}
+    });
+  </script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=2"></script>
+</body>
+</html>
