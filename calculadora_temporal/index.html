@@ -1197,18 +1197,35 @@
       }
       if (reg.recipeSnapshot) aplicarPayloadRecetasEnUI(reg.recipeSnapshot);
       aplicarPlanTemporal(reg.plan || {});
-      setCodigoLoteValue(reg.codigo || '');
       const fechaProdInput = document.getElementById('fecha-produccion');
       const notasInput = document.getElementById('notas');
       if (fechaProdInput) fechaProdInput.value = reg.fechaProduccion || hoyLocalISO();
       if (notasInput) notasInput.value = reg.notas || '';
-      A33CodigoLoteMode = 'MANUAL';
-      A33AutoSeq = /^\d{4}$/.test(String(extraerSeqDeCodigo(reg.codigo) || '')) ? pad4(extraerSeqDeCodigo(reg.codigo)).slice(-4) : '';
-      A33SuggestedCode = reg.codigo || '';
-      setPillEstadoCodigo('EDITADO');
+
+      // Cargar desde historial debe servir como base de una NUEVA corrida temporal,
+      // no como reutilización del código histórico guardado.
+      A33CodigoLoteMode = 'AUTO';
+      A33AutoSeq = '';
+      A33SuggestedCode = '';
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, 'AUTO'); } catch (e) {}
+      setCodigoLoteValue('');
+      setPillEstadoCodigo('SUGERIDO');
       actualizarTextoCaducidad();
       actualizarFechaHebrea();
-      renderResultadosDesdeDatos(reg.resultados || {});
+      recalcularCodigoLoteAuto({ forceNewPreview: true });
+
+      const codigoActual = ((document.getElementById('lote') && document.getElementById('lote').value) || '').trim();
+      const datosCargados = serializarDatosCalculo(Object.assign({}, reg.resultados || {}, {
+        loteNombre: codigoActual,
+        fechaProdStr: (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : (reg.fechaProduccion || hoyLocalISO()),
+        fechaCadStr: (() => {
+          const fechaBase = (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : (reg.fechaProduccion || hoyLocalISO());
+          const cad = calcularCaducidad(fechaBase);
+          return cad ? cad.toISOString().slice(0, 10) : String((reg.resultados && reg.resultados.fechaCadStr) || reg.fechaCaducidad || '');
+        })(),
+        notas: (notasInput && notasInput.value) ? notasInput.value : (reg.notas || '')
+      }));
+      renderResultadosDesdeDatos(datosCargados);
     }
 
     function eliminarRegistroTemporal(id) {
