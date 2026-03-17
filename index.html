@@ -239,13 +239,13 @@
 
     /* --- NÚCLEO A33 --- */
     .hidden{ display:none !important; }
-    #support-grid{ grid-template-columns:1fr; }
+    #support-grid{ grid-template-columns:1fr; align-items:start; }
     #support-grid .card{ min-width:0; }
     @media (min-width: 720px){
-      #support-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
-      #card-backup-hub{ grid-column:1; grid-row:1; }
-      #card-centro-mando{ grid-column:2; grid-row:1; }
-      #card-calculadora-temporal-home{ grid-column:2; grid-row:2; }
+      #support-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @media (min-width: 920px){
+      #support-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
     }
 
     /* --- Respaldo (Backup) --- */

@@ -222,6 +222,16 @@
       filter: brightness(1.05);
       background: linear-gradient(135deg, #258552, #53c87d);
     }
+    .a33-main-actions .a33-danger-action {
+      border-color: rgba(192, 58, 58, 0.92);
+      background: linear-gradient(135deg, #7b1818, #b12626);
+      color: #fff3f3;
+      box-shadow: 0 0 0 1px rgba(192, 58, 58, 0.14), 0 8px 20px rgba(0, 0, 0, 0.22);
+    }
+    .a33-main-actions .a33-danger-action:hover {
+      filter: brightness(1.05);
+      background: linear-gradient(135deg, #8c1f1f, #c93434);
+    }
     .a33-main-actions .a33-main-action:disabled,
     .btn-secondary:disabled,
     .btn-main:disabled,
@@ -532,6 +542,7 @@
     <div class="a33-main-actions" role="group" aria-label="Acciones principales de la Calculadora Temporal">
       <button id="btn-calcular" class="btn-main a33-main-action">CALCULAR</button>
       <button id="btn-guardar-lote" class="btn-secondary a33-main-action" disabled aria-disabled="true">GUARDAR</button>
+      <button id="btn-limpiar" class="btn-secondary a33-main-action a33-danger-action">BORRAR</button>
     </div>
     <p id="hint-resultados" class="hint" style="text-align:center;">Calcula para revisar el resumen y luego guarda el cálculo confirmado dentro de la Temporal.</p>
 
@@ -548,7 +559,6 @@
       <p class="hint">Este resumen pertenece solo a la Calculadora Temporal. GUARDAR confirma el cálculo dentro de este módulo y no crea un lote oficial.</p>
     </div>
 
-    <button id="btn-limpiar" class="btn-secondary">Limpiar cantidades (no borra recetas)</button>
 
     <div class="section">
       <h2>4. Historial temporal guardado</h2>
