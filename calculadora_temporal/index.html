@@ -212,6 +212,16 @@
       border-color: rgba(221,191,100,0.42);
       background: #1e1e1e;
     }
+    .a33-main-actions #btn-guardar-lote.a33-save-ready {
+      border-color: rgba(71, 184, 111, 0.9);
+      background: linear-gradient(135deg, #1f6f46, #47b86f);
+      color: #f7fff9;
+      box-shadow: 0 0 0 1px rgba(71, 184, 111, 0.16), 0 8px 20px rgba(0, 0, 0, 0.24);
+    }
+    .a33-main-actions #btn-guardar-lote.a33-save-ready:hover {
+      filter: brightness(1.05);
+      background: linear-gradient(135deg, #258552, #53c87d);
+    }
     .a33-main-actions .a33-main-action:disabled,
     .btn-secondary:disabled,
     .btn-main:disabled,
@@ -861,6 +871,7 @@
       const canSave = !!A33HasCalculoPrevio && tieneCalculoTemporalValido(datosLike);
       btn.disabled = !canSave;
       btn.setAttribute('aria-disabled', canSave ? 'false' : 'true');
+      btn.classList.toggle('a33-save-ready', canSave);
       return canSave;
     }
 
