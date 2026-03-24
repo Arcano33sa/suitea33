@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Arcano 33 · Agenda</title>
+  <meta name="description" content="Agenda de Suite A33 cerrada como módulo operativo: Pendientes primero, filtros por estado, cliente compartido con POS, pedido opcional con producto, precio y total automático, y UX pulida para desktop, iPad y PWA." />
+  <meta name="theme-color" content="#7b1818" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=6" />
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=8" />
+</head>
+<body>
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Agenda</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.77">v...</div>
+  </header>
+
+  <main class="agenda-main" role="main">
+    <section class="agenda-hero agenda-card" aria-labelledby="agenda-title">
+      <div class="agenda-hero-copy">
+        <span class="agenda-kicker">Núcleo A33</span>
+        <h1 id="agenda-title">Agenda</h1>
+        <p class="agenda-lead">Agenda queda cerrada como módulo operativo real: Pendientes abre primero, los estados se mueven con filtros claros, Reunión y Tarea comparten un solo flujo limpio, Cliente vive en un campo único conectado con POS y el bloque Pedido ya trabaja con Producto real, precio automático y total calculado sin convertir esto en un mini monstruo.</p>
+      </div>
+      <div class="agenda-hero-side">
+        <div class="agenda-mini-stat">
+          <span class="agenda-mini-label">Estado</span>
+          <strong id="agendaModeLabel">Lista vacía</strong>
+        </div>
+        <div class="agenda-mini-stat">
+          <span class="agenda-mini-label">Registros</span>
+          <strong id="agendaCountLabel">0</strong>
+        </div>
+        <div class="agenda-mini-stat">
+          <span class="agenda-mini-label">Último movimiento</span>
+          <strong id="agendaLastUpdate">—</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="agenda-workspace" aria-label="Área operativa de Agenda">
+      <article class="agenda-card agenda-panel agenda-form-panel">
+        <div class="agenda-panel-head">
+          <div>
+            <p class="agenda-eyebrow">Flujo operativo real</p>
+            <h2 id="agendaFormTitle">Nueva Reunión</h2>
+          </div>
+        </div>
+
+        <form id="agendaForm" class="agenda-form" novalidate>
+          <fieldset class="agenda-type-group" aria-labelledby="agendaTypeLegend">
+            <legend id="agendaTypeLegend">Tipo</legend>
+            <label class="agenda-type-option">
+              <input type="radio" name="type" value="reunion" checked />
+              <span>Reunión</span>
+            </label>
+            <label class="agenda-type-option">
+              <input type="radio" name="type" value="tarea" />
+              <span>Tarea</span>
+            </label>
+          </fieldset>
+
+          <div class="agenda-form-grid">
+            <label class="agenda-field agenda-field--full">
+              <span>Asunto</span>
+              <input id="agendaSubject" name="subject" type="text" maxlength="120" placeholder="Ej. Seguimiento con cliente / Preparar materiales para evento" autocomplete="off" required />
+            </label>
+
+            <label class="agenda-field agenda-field--full agenda-client-field">
+              <span>Cliente</span>
+              <select id="agendaClientSelect" name="clientSelect" required>
+                <option value="">Cargando clientes…</option>
+              </select>
+              <div class="agenda-client-new" id="agendaClientNewWrap" hidden>
+                <input id="agendaClientNew" name="clientNew" type="text" maxlength="120" placeholder="Escribe el nombre del cliente nuevo" autocomplete="off" />
+                <small class="agenda-field-note">Al guardar el ítem, este cliente también se agregará al catálogo compartido del POS.</small>
+              </div>
+              <input id="agendaClient" name="client" type="hidden" required />
+              <small class="agenda-field-note" id="agendaClientNote">Campo único para Reunión, Tarea y Pedido. Selecciona uno existente o agrega uno nuevo sin salir de Agenda.</small>
+            </label>
+
+            <label class="agenda-field agenda-field--full agenda-meeting-only" id="agendaMeetingModalityField">
+              <span>Modalidad</span>
+              <select id="agendaModality" name="modality">
+                <option value="presencial">Presencial</option>
+                <option value="llamada">Llamada</option>
+                <option value="videollamada">Videollamada</option>
+              </select>
+              <small class="agenda-field-note">Aplica a Reunión. En Tarea desaparece para no meter ruido.</small>
+            </label>
+
+            <label class="agenda-field">
+              <span>Fecha</span>
+              <input id="agendaDate" name="date" type="date" required />
+            </label>
+
+            <label class="agenda-field">
+              <span>Hora</span>
+              <input id="agendaTime" name="time" type="time" />
+            </label>
+
+            <label class="agenda-field">
+              <span>Estado</span>
+              <select id="agendaStatus" name="status">
+                <option value="pendiente">Pendiente</option>
+                <option value="hecho">Hecho</option>
+                <option value="cancelado">Cancelado</option>
+              </select>
+            </label>
+
+            <label class="agenda-field">
+              <span>Prioridad</span>
+              <select id="agendaPriority" name="priority">
+                <option value="baja">Baja</option>
+                <option value="media" selected>Media</option>
+                <option value="alta">Alta</option>
+              </select>
+            </label>
+
+            <div class="agenda-pedido-toggle-wrap agenda-field--full">
+              <button type="button" class="agenda-toggle-card" id="agendaPedidoToggle" aria-pressed="false" aria-controls="agendaPedidoPanel">
+                <span class="agenda-toggle-copy">
+                  <strong>Agregar Pedido</strong>
+                  <small>Actívalo solo cuando este ítem realmente necesite bloque de pedido.</small>
+                </span>
+                <span class="agenda-toggle-pill" id="agendaPedidoTogglePill">Apagado</span>
+              </button>
+            </div>
+
+            <section class="agenda-pedido-panel agenda-field--full" id="agendaPedidoPanel" hidden aria-label="Bloque opcional de pedido">
+              <div class="agenda-pedido-head">
+                <div>
+                  <span class="agenda-eyebrow">Pedido opcional</span>
+                  <h3>Detalle rápido del pedido</h3>
+                </div>
+                <span class="agenda-badge agenda-badge--soft" id="agendaPedidoBadge">Activo</span>
+              </div>
+
+              <div class="agenda-form-grid agenda-form-grid--pedido">
+                <label class="agenda-field">
+                  <span>Producto</span>
+                  <select id="agendaPedidoProduct" name="pedidoProduct">
+                    <option value="">Cargando catálogo…</option>
+                  </select>
+                  <small class="agenda-field-note">Selector real de Producto desde el catálogo del POS. Precio se completa solo.</small>
+                </label>
+
+                <label class="agenda-field">
+                  <span>Entrega</span>
+                  <input id="agendaPedidoDelivery" name="pedidoDelivery" type="date" />
+                </label>
+
+                <label class="agenda-field">
+                  <span>Precio</span>
+                  <input id="agendaPedidoPrice" name="pedidoPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" readonly />
+                  <small class="agenda-field-note">Se toma del catálogo del producto seleccionado.</small>
+                </label>
+
+                <label class="agenda-field">
+                  <span>Cantidad</span>
+                  <input id="agendaPedidoQuantity" name="pedidoQuantity" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" />
+                </label>
+
+                <label class="agenda-field agenda-field--full">
+                  <span>Total</span>
+                  <input id="agendaPedidoTotal" name="pedidoTotal" type="text" readonly placeholder="Se calcula automáticamente" />
+                  <small class="agenda-field-note">Cliente reutiliza el campo único del ítem. Aquí no se duplica nada.</small>
+                </label>
+              </div>
+            </section>
+
+            <label class="agenda-field agenda-field--full">
+              <span>Notas simples</span>
+              <textarea id="agendaNotes" name="notes" rows="5" maxlength="1200" placeholder="Notas breves del ítem. Pedido sigue siendo opcional."></textarea>
+            </label>
+          </div>
+
+          <div class="agenda-form-meta" id="agendaFormMeta" aria-live="polite">
+            <span><strong>ID:</strong> <span id="agendaMetaId">Nuevo</span></span>
+            <span><strong>Creado:</strong> <span id="agendaMetaCreated">—</span></span>
+            <span><strong>Actualizado:</strong> <span id="agendaMetaUpdated">—</span></span>
+          </div>
+
+          <div class="agenda-form-actions">
+            <button class="agenda-btn agenda-btn--ghost" type="button" id="agendaNewBtn">Nuevo</button>
+            <button class="agenda-btn agenda-btn--danger" type="button" id="agendaDeleteBtn" hidden>Eliminar</button>
+            <button class="agenda-btn agenda-btn--primary" type="submit" id="agendaSaveBtn">Guardar ítem</button>
+          </div>
+          <p class="agenda-helper">Reunión y Tarea siguen limpias. Pendientes abre primero, Cliente usa catálogo compartido con POS y Pedido mantiene producto, precio y total automáticos sin meter ruido.</p>
+        </form>
+      </article>
+
+      <article class="agenda-card agenda-panel agenda-list-panel">
+        <div class="agenda-panel-head">
+          <div>
+            <p class="agenda-eyebrow">Vista operativa</p>
+            <h2>Agenda del día a día</h2>
+          </div>
+          <span class="agenda-badge agenda-badge--soft" id="agendaListBadge">0 elementos</span>
+        </div>
+
+        <div class="agenda-toolbar">
+          <div class="agenda-toolbar-copy">
+            <strong id="agendaToolbarTitle">Pendientes primero</strong>
+            <span id="agendaToolbarText">La entrada al módulo arranca con foco en lo pendiente, sin esconder Hechos ni Cancelados.</span>
+          </div>
+          <div class="agenda-toolbar-filters" id="agendaFilters" role="tablist" aria-label="Filtrar por estado">
+            <button type="button" class="agenda-filter-chip is-active" data-filter="pendiente" role="tab" aria-selected="true">Pendientes</button>
+            <button type="button" class="agenda-filter-chip" data-filter="hecho" role="tab" aria-selected="false">Hechos</button>
+            <button type="button" class="agenda-filter-chip" data-filter="cancelado" role="tab" aria-selected="false">Cancelados</button>
+            <button type="button" class="agenda-filter-chip" data-filter="todos" role="tab" aria-selected="false">Todos</button>
+          </div>
+        </div>
+
+        <div class="agenda-pending-pulse" id="agendaPendingPulse" aria-live="polite">
+          <span class="agenda-pulse-chip agenda-pulse-chip--primary" id="agendaPendingPulseTotal">Sin pendientes</span>
+          <span class="agenda-pulse-chip" id="agendaPendingPulseOverdue">Atrasados: 0</span>
+          <span class="agenda-pulse-chip" id="agendaPendingPulseToday">Hoy: 0</span>
+          <span class="agenda-pulse-chip" id="agendaPendingPulseUpcoming">Próximos: 0</span>
+        </div>
+
+        <div id="agendaEmptyState" class="agenda-empty" hidden>
+          <div class="agenda-empty-icon" aria-hidden="true">🗂️</div>
+          <h3 id="agendaEmptyTitle">Aún no hay ítems</h3>
+          <p id="agendaEmptyText">La Agenda ya tiene flujo real. Falta que guardes el primero para verla trabajar.</p>
+        </div>
+
+        <div id="agendaList" class="agenda-list-stack" aria-live="polite"></div>
+      </article>
+    </section>
+
+    <section class="agenda-grid agenda-grid--support" aria-label="Soporte y base de Agenda">
+      <article class="agenda-card agenda-panel">
+        <div class="agenda-panel-head">
+          <div>
+            <p class="agenda-eyebrow">Modelo cerrado</p>
+            <h2>Qué guarda cada ítem</h2>
+          </div>
+        </div>
+        <ul class="agenda-list agenda-list--plain">
+          <li>Asunto, tipo, fecha obligatoria y hora opcional.</li>
+          <li>Cliente único por ítem para Reunión, Tarea y Pedido, conectado al catálogo compartido de POS.</li>
+          <li>Modalidad por selector cuando el tipo es Reunión.</li>
+          <li>Estado limitado a Pendiente, Hecho o Cancelado.</li>
+          <li>Prioridad acotada, notas simples y timestamps automáticos.</li>
+          <li>Persistencia estable tras recarga o reapertura, sin romper registros previos válidos.</li>
+        </ul>
+      </article>
+
+      <article class="agenda-card agenda-panel">
+        <div class="agenda-panel-head">
+          <div>
+            <p class="agenda-eyebrow">Arquitectura lista</p>
+            <h2>Lo que queda cerrado</h2>
+          </div>
+        </div>
+        <ol class="agenda-roadmap">
+          <li>Pendientes abre primero y conserva el protagonismo operativo.</li>
+          <li>Hechos, Cancelados y Todos siguen disponibles con filtros simples y rápidos.</li>
+          <li>Cliente compartido con POS y alta de nuevo cliente desde Agenda sin duplicar campos.</li>
+          <li>Pedido opcional mantiene producto, precio y total automáticos sin contaminar otros módulos.</li>
+        </ol>
+        <p class="agenda-note">Traducción franca: Agenda ya quedó para trabajar de verdad. Menos vueltas, menos residuos de etapa y bastante menos beta con disfraz de módulo serio.</p>
+      </article>
+    </section>
+  </main>
+
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=4"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=7"></script>
+  <script src="script.js?v=4.20.77&r=8"></script>
+</body>
+</html>

@@ -1018,29 +1018,16 @@
 
     function persistTemporalWorkspace(resultData) {
       const prev = readTemporalData(STORAGE_WORKSPACE_KEY, null) || {};
-      const fechaActual = ((document.getElementById('fecha-produccion') && document.getElementById('fecha-produccion').value) || hoyLocalISO()).trim() || hoyLocalISO();
-      const codigoActual = ((document.getElementById('lote') && document.getElementById('lote').value) || '').trim();
-      const notasActuales = ((document.getElementById('notas') && document.getElementById('notas').value) || '');
-      const baseResult = resultData === undefined ? (prev.result || null) : resultData;
-      const cad = calcularCaducidad(fechaActual);
-      const resultNormalizado = baseResult
-        ? serializarDatosCalculo(Object.assign({}, baseResult, {
-            loteNombre: codigoActual || String((baseResult && baseResult.loteNombre) || '').trim(),
-            fechaProdStr: fechaActual,
-            fechaCadStr: cad ? cad.toISOString().slice(0, 10) : '',
-            notas: notasActuales
-          }))
-        : null;
       const payload = {
         version: 2,
-        codigo: codigoActual,
+        codigo: ((document.getElementById('lote') && document.getElementById('lote').value) || '').trim(),
         codigoMode: A33CodigoLoteMode,
         autoSeq: A33AutoSeq || '',
         suggestedCode: A33SuggestedCode || '',
-        fechaProduccion: fechaActual,
-        notas: notasActuales,
+        fechaProduccion: ((document.getElementById('fecha-produccion') && document.getElementById('fecha-produccion').value) || '').trim(),
+        notas: ((document.getElementById('notas') && document.getElementById('notas').value) || ''),
         plan: capturarPlanTemporal(),
-        result: resultNormalizado,
+        result: resultData === undefined ? (prev.result || null) : resultData,
         updatedAt: new Date().toISOString()
       };
       try { writeTemporalData(STORAGE_WORKSPACE_KEY, payload); } catch (e) { console.warn('No se pudo guardar el borrador temporal.', e); }
@@ -1120,11 +1107,9 @@
 
     function restoreTemporalWorkspace() {
       const workspace = readTemporalData(STORAGE_WORKSPACE_KEY, null);
-      const fechaActiva = hoyLocalISO();
-      const fechaCadActiva = calcularCaducidad(fechaActiva);
       if (!workspace || typeof workspace !== 'object') {
         const fechaProdInput = document.getElementById('fecha-produccion');
-        if (fechaProdInput) fechaProdInput.value = fechaActiva;
+        if (fechaProdInput && !fechaProdInput.value) fechaProdInput.value = hoyLocalISO();
         actualizarTextoCaducidad();
         return;
       }
@@ -1132,7 +1117,7 @@
       const fechaProdInput = document.getElementById('fecha-produccion');
       const notasInput = document.getElementById('notas');
       if (loteInput) setCodigoLoteValue(workspace.codigo || '');
-      if (fechaProdInput) fechaProdInput.value = fechaActiva;
+      if (fechaProdInput) fechaProdInput.value = workspace.fechaProduccion || hoyLocalISO();
       if (notasInput) notasInput.value = workspace.notas || '';
       aplicarPlanTemporal(workspace.plan || {});
       A33CodigoLoteMode = workspace.codigoMode === 'MANUAL' ? 'MANUAL' : 'AUTO';
@@ -1142,12 +1127,7 @@
       actualizarTextoCaducidad();
       actualizarFechaHebrea();
       if (workspace.result) {
-        renderResultadosDesdeDatos(Object.assign({}, workspace.result, {
-          loteNombre: ((loteInput && loteInput.value) || (workspace.result && workspace.result.loteNombre) || '').trim(),
-          fechaProdStr: fechaActiva,
-          fechaCadStr: fechaCadActiva ? fechaCadActiva.toISOString().slice(0, 10) : '',
-          notas: (notasInput && notasInput.value) ? notasInput.value : (workspace.notas || '')
-        }));
+        renderResultadosDesdeDatos(workspace.result);
       } else {
         limpiarResultadosVisuales();
       }
@@ -1219,8 +1199,7 @@
       aplicarPlanTemporal(reg.plan || {});
       const fechaProdInput = document.getElementById('fecha-produccion');
       const notasInput = document.getElementById('notas');
-      const fechaActiva = hoyLocalISO();
-      if (fechaProdInput) fechaProdInput.value = fechaActiva;
+      if (fechaProdInput) fechaProdInput.value = reg.fechaProduccion || hoyLocalISO();
       if (notasInput) notasInput.value = reg.notas || '';
 
       // Cargar desde historial debe servir como base de una NUEVA corrida temporal,
@@ -1238,9 +1217,10 @@
       const codigoActual = ((document.getElementById('lote') && document.getElementById('lote').value) || '').trim();
       const datosCargados = serializarDatosCalculo(Object.assign({}, reg.resultados || {}, {
         loteNombre: codigoActual,
-        fechaProdStr: fechaActiva,
+        fechaProdStr: (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : (reg.fechaProduccion || hoyLocalISO()),
         fechaCadStr: (() => {
-          const cad = calcularCaducidad(fechaActiva);
+          const fechaBase = (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : (reg.fechaProduccion || hoyLocalISO());
+          const cad = calcularCaducidad(fechaBase);
           return cad ? cad.toISOString().slice(0, 10) : String((reg.resultados && reg.resultados.fechaCadStr) || reg.fechaCaducidad || '');
         })(),
         notas: (notasInput && notasInput.value) ? notasInput.value : (reg.notas || '')
@@ -1914,8 +1894,8 @@ function a33WireNumericInput(el, mode) {
       setPillEstadoCodigo("SUGERIDO");
       restoreTemporalWorkspace();
       const loteInput = document.getElementById('lote');
-      if (A33CodigoLoteMode === 'AUTO' || !loteInput || !String(loteInput.value || '').trim()) {
-        recalcularCodigoLoteAuto({ consumeNewSeq: false, force: true });
+      if (!loteInput || !String(loteInput.value || '').trim()) {
+        recalcularCodigoLoteAuto({ consumeNewSeq: false });
       }
     }
     function calcularDatosLote() {
@@ -2196,7 +2176,7 @@ function init() {
     document.addEventListener("DOMContentLoaded", init);
 
     window.addEventListener("pageshow", () => {
-      try { cargarMetaLote(); } catch (e) {}
+      try { restoreTemporalWorkspace(); } catch (e) {}
       try { renderTemporalHistory(); } catch (e) {}
     });
   </script>
