@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=2" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=3" />
   <style>
     * {
       box-sizing: border-box;
@@ -442,7 +442,7 @@
     }
 
   </style>
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=2" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=3" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -578,12 +578,12 @@
       </div>
     </div>
   </div>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=3"></script>
 
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.77&r=2"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=3"></script>
 
   <script>
     const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
@@ -606,6 +606,7 @@
     const STORAGE_LOTE_CODE_MODE_KEY = "arcano33_temporal_codigo_mode"; // AUTO | MANUAL
     const STORAGE_LOTE_SEQ_LAST_KEY = "arcano33_temporal_ultimo_consecutivo"; // 4 dígitos (último usado)
     const STORAGE_LOTE_SEQ_CURRENT_KEY = "arcano33_temporal_consecutivo_actual"; // 4 dígitos (auto en curso)
+    const SESSION_HISTORIAL_ACTIVO_KEY = "arcano33_temporal_historial_activo_v1";
     let A33CodigoLoteMode = "AUTO";
     let A33AutoSeq = "";
     let A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
@@ -1016,6 +1017,17 @@
       return { data: registros, meta: current.meta || { rev: null } };
     }
 
+    function leerHistorialTemporalActivo() {
+      try { return String(sessionStorage.getItem(SESSION_HISTORIAL_ACTIVO_KEY) || '').trim(); } catch (e) { return ''; }
+    }
+
+    function fijarHistorialTemporalActivo(id) {
+      try {
+        if (id) sessionStorage.setItem(SESSION_HISTORIAL_ACTIVO_KEY, String(id));
+        else sessionStorage.removeItem(SESSION_HISTORIAL_ACTIVO_KEY);
+      } catch (e) {}
+    }
+
     function persistTemporalWorkspace(resultData) {
       const prev = readTemporalData(STORAGE_WORKSPACE_KEY, null) || {};
       const payload = {
@@ -1028,6 +1040,7 @@
         notas: ((document.getElementById('notas') && document.getElementById('notas').value) || ''),
         plan: capturarPlanTemporal(),
         result: resultData === undefined ? (prev.result || null) : resultData,
+        sourceRecordId: leerHistorialTemporalActivo(),
         updatedAt: new Date().toISOString()
       };
       try { writeTemporalData(STORAGE_WORKSPACE_KEY, payload); } catch (e) { console.warn('No se pudo guardar el borrador temporal.', e); }
@@ -1105,12 +1118,55 @@
       persistTemporalWorkspace(datos);
     }
 
+    function esFechaProduccionRestaurable(fechaIso) {
+      const valor = String(fechaIso || '').trim();
+      return /^\d{4}-\d{2}-\d{2}$/.test(valor) && valor === hoyLocalISO();
+    }
+
+    function prepararPantallaParaNuevoCalculoTemporal(opts) {
+      const opciones = opts || {};
+      const fechaObjetivo = esFechaProduccionRestaurable(opciones.fechaProduccion)
+        ? String(opciones.fechaProduccion).trim()
+        : hoyLocalISO();
+      const limpiarHistorialActivo = opciones.clearHistory !== false;
+      if (limpiarHistorialActivo) fijarHistorialTemporalActivo('');
+      const loteInput = document.getElementById('lote');
+      const fechaProdInput = document.getElementById('fecha-produccion');
+      const notasInput = document.getElementById('notas');
+      if (loteInput) setCodigoLoteValue('');
+      if (fechaProdInput) fechaProdInput.value = fechaObjetivo;
+      if (notasInput) notasInput.value = '';
+      aplicarPlanTemporal({});
+      A33CodigoLoteMode = 'AUTO';
+      A33AutoSeq = '';
+      A33SuggestedCode = '';
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, 'AUTO'); } catch (e) {}
+      setPillEstadoCodigo('SUGERIDO');
+      limpiarResultadosVisuales();
+      persistTemporalWorkspace(null);
+      actualizarTextoCaducidad();
+      actualizarFechaHebrea();
+      recalcularCodigoLoteAuto({ consumeNewSeq: false, forceNewPreview: true });
+    }
+
+    function iniciarNuevaSesionTemporalDelDia() {
+      prepararPantallaParaNuevoCalculoTemporal({ fechaProduccion: hoyLocalISO(), clearHistory: true });
+    }
+
+    function limpiarDespuesDeGuardarCalculoTemporal() {
+      prepararPantallaParaNuevoCalculoTemporal({ fechaProduccion: hoyLocalISO(), clearHistory: true });
+    }
+
     function restoreTemporalWorkspace() {
       const workspace = readTemporalData(STORAGE_WORKSPACE_KEY, null);
       if (!workspace || typeof workspace !== 'object') {
-        const fechaProdInput = document.getElementById('fecha-produccion');
-        if (fechaProdInput && !fechaProdInput.value) fechaProdInput.value = hoyLocalISO();
-        actualizarTextoCaducidad();
+        iniciarNuevaSesionTemporalDelDia();
+        return;
+      }
+      const historialActivo = leerHistorialTemporalActivo();
+      const permitirHistorial = !!historialActivo && String(workspace.sourceRecordId || '').trim() === historialActivo;
+      if (!permitirHistorial && !esFechaProduccionRestaurable(workspace.fechaProduccion)) {
+        iniciarNuevaSesionTemporalDelDia();
         return;
       }
       const loteInput = document.getElementById('lote');
@@ -1189,9 +1245,11 @@
     }
 
     function cargarRegistroTemporal(id) {
+      fijarHistorialTemporalActivo(id);
       const registros = readTemporalRecordsWithMeta().data || [];
       const reg = registros.find(item => item.id === id);
       if (!reg) {
+        fijarHistorialTemporalActivo('');
         alert('No se encontró ese cálculo temporal.');
         return;
       }
@@ -2065,18 +2123,9 @@ function a33WireNumericInput(el, mode) {
         if (/^\d{4}$/.test(String(seq4 || ''))) A33AutoSeq = seq4;
       } catch (e) {}
 
-      alert('Cálculo temporal guardado correctamente en el historial propio de este módulo. No se creó ningún lote oficial.');
-      A33HasCalculoPrevio = false;
-      actualizarEstadoBotonGuardar(null);
       renderTemporalHistory();
-      persistTemporalWorkspace(Object.assign({}, registro.resultados, { loteNombre: registro.codigo }));
-
-      A33CodigoLoteMode = 'AUTO';
-      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, 'AUTO'); } catch (e) {}
-      setPillEstadoCodigo('SUGERIDO');
-      A33AutoSeq = '';
-      recalcularCodigoLoteAuto({ consumeNewSeq: false });
-      guardarMetaLote(Object.assign({}, registro.resultados, { loteNombre: registro.codigo }));
+      limpiarDespuesDeGuardarCalculoTemporal();
+      alert('Cálculo temporal guardado correctamente en el historial propio de este módulo. No se creó ningún lote oficial.');
     }
 function init() {
       construirTablaRecetas();
@@ -2180,6 +2229,6 @@ function init() {
       try { renderTemporalHistory(); } catch (e) {}
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=4"></script>
 </body>
 </html>

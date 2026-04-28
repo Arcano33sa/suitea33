@@ -1,0 +1,8 @@
+ETAPA 10 — Control real por rol
+
+1) En la raíz del proyecto: firebase deploy --only hosting
+2) Después: firebase deploy --only functions
+3) Inicia sesión con un usuario real.
+4) Verifica en HOME que solo se muestren los módulos habilitados por su rol.
+5) Prueba URL directa a un módulo no permitido: la suite debe bloquearlo con mensaje limpio.
+6) Si un usuario viejo no refleja permisos nuevos, ábrelo y guárdalo desde Configuración → Usuarios y Roles para resincronizar su perfil.

@@ -879,9 +879,26 @@ function ccSafeParseJSON(raw) {
   try { return JSON.parse(raw); } catch (_) { return null; }
 }
 
+function ccRound2(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+function ccBuildEmptyConsolidated() {
+  return {
+    totalNio: 0,
+    totalUsd: 0,
+    equivalentNio: null,
+    equivalentUsd: null,
+    fxRateUsed: null,
+    updatedAtISO: '',
+    updatedAtDisplay: ''
+  };
+}
+
 function ccBuildEmptySnapshot() {
   return {
-    version: 1,
+    version: 3,
     currencies: {
       NIO: {
         denoms: CC_DENOMS.NIO.map(d => ({ id: d.id, value: d.value, chip: d.chip || '', count: null })),
@@ -892,6 +909,8 @@ function ccBuildEmptySnapshot() {
         total: 0
       }
     },
+    consolidated: ccBuildEmptyConsolidated(),
+    fxRateDraft: null,
     updatedAtISO: '',
     updatedAtDisplay: ''
   };
@@ -914,7 +933,10 @@ function ccNormalizeSnapshot(obj) {
   if (!obj || typeof obj !== 'object') return ccBuildEmptySnapshot();
 
   const out = ccBuildEmptySnapshot();
-  const cur = obj.currencies || {};
+  const cur = obj.currencies || {
+    NIO: obj.NIO || obj.nio || obj.cordobas || obj.cordoba || {},
+    USD: obj.USD || obj.usd || obj.dolares || obj.dolar || {}
+  };
 
   (['NIO', 'USD']).forEach(code => {
     const src = cur[code] || {};
@@ -1021,6 +1043,38 @@ function ccNormalizeSnapshot(obj) {
 
   out.updatedAtISO = typeof obj.updatedAtISO === 'string' ? obj.updatedAtISO : '';
   out.updatedAtDisplay = typeof obj.updatedAtDisplay === 'string' ? obj.updatedAtDisplay : '';
+
+  const srcCon = (obj.consolidated && typeof obj.consolidated === 'object') ? obj.consolidated : null;
+  const legacyFx = Number(obj.fxRateDraft ?? obj.fxRate ?? obj.fxRateUsed ?? (srcCon ? srcCon.fxRateUsed : null));
+  out.fxRateDraft = (Number.isFinite(legacyFx) && legacyFx > 0) ? ccRound2(legacyFx) : null;
+
+  const fallbackFx = ccCoerceFxRate(out.fxRateDraft);
+  const fallbackConsolidated = {
+    totalNio: out.currencies.NIO.total,
+    totalUsd: out.currencies.USD.total,
+    equivalentNio: fallbackFx ? ccRound2(out.currencies.NIO.total + (out.currencies.USD.total * fallbackFx)) : null,
+    equivalentUsd: fallbackFx ? ccRound2(out.currencies.USD.total + (out.currencies.NIO.total / fallbackFx)) : null,
+    fxRateUsed: fallbackFx,
+    updatedAtISO: out.updatedAtISO,
+    updatedAtDisplay: out.updatedAtDisplay
+  };
+
+  const con = srcCon || fallbackConsolidated;
+  const fxUsed = Number(con.fxRateUsed);
+  const eqNio = Number(con.equivalentNio);
+  const eqUsd = Number(con.equivalentUsd);
+
+  out.consolidated = {
+    totalNio: ccRound2(con.totalNio ?? fallbackConsolidated.totalNio),
+    totalUsd: ccRound2(con.totalUsd ?? fallbackConsolidated.totalUsd),
+    equivalentNio: Number.isFinite(eqNio) ? ccRound2(eqNio) : null,
+    equivalentUsd: Number.isFinite(eqUsd) ? ccRound2(eqUsd) : null,
+    fxRateUsed: (Number.isFinite(fxUsed) && fxUsed > 0) ? ccRound2(fxUsed) : null,
+    updatedAtISO: typeof con.updatedAtISO === 'string' ? con.updatedAtISO : fallbackConsolidated.updatedAtISO,
+    updatedAtDisplay: typeof con.updatedAtDisplay === 'string' ? con.updatedAtDisplay : fallbackConsolidated.updatedAtDisplay
+  };
+
+  if (!out.fxRateDraft && out.consolidated.fxRateUsed) out.fxRateDraft = out.consolidated.fxRateUsed;
   return out;
 }
 
@@ -1029,24 +1083,182 @@ function ccSetMsg(text) {
   if (el) el.textContent = text || '';
 }
 
-async function ccLoadSnapshot() {
-  const raw = localStorage.getItem(CC_STORAGE_KEY);
-  const fromLS = raw ? ccSafeParseJSON(raw) : null;
-  if (fromLS) {
-    ccSnapshot = ccNormalizeSnapshot(fromLS);
-    return ccSnapshot;
+function ccSetText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function ccFormatNIO(value) {
+  return `C$ ${fmtCurrency(value || 0)}`;
+}
+
+function ccFormatUSD(value) {
+  return `US$ ${fmtCurrency(value || 0)}`;
+}
+
+function ccCoerceFxRate(value) {
+  const n = Number(value);
+  return (Number.isFinite(n) && n > 0) ? ccRound2(n) : null;
+}
+
+function ccReadFxRate() {
+  const el = document.getElementById('cc-fx-rate');
+  if (!el) return null;
+  const raw = String(el.value || '').trim().replace(',', '.');
+  if (!raw) return null;
+  return ccCoerceFxRate(raw);
+}
+
+function ccGetLastSavedFxRate(snap = ccSnapshot) {
+  if (!snap || typeof snap !== 'object') return null;
+  return ccCoerceFxRate(
+    snap.fxRateDraft ?? (snap.consolidated ? snap.consolidated.fxRateUsed : null)
+  );
+}
+
+function ccGetFxRateForSave() {
+  const el = document.getElementById('cc-fx-rate');
+  const raw = el ? String(el.value || '').trim().replace(',', '.') : '';
+  const typed = ccCoerceFxRate(raw);
+  if (typed) return typed;
+
+  // Si el campo está vacío por una carga vieja o un render intermedio, preservar el último T/C guardado.
+  // Esto evita obligar al usuario a escribirlo de nuevo cuando ya existe uno válido.
+  if (!raw) return ccGetLastSavedFxRate();
+  return null;
+}
+
+function ccSetFxInputFromSnapshot(overwrite = false) {
+  const el = document.getElementById('cc-fx-rate');
+  if (!el) return;
+  if (!overwrite && String(el.value || '').trim() !== '') return;
+
+  const n = ccGetLastSavedFxRate();
+  el.value = n ? n.toFixed(2) : '';
+}
+
+function ccUpdateConsolidatedSummary() {
+  const snap = ccSnapshot || ccBuildEmptySnapshot();
+  const con = (snap.consolidated && typeof snap.consolidated === 'object')
+    ? snap.consolidated
+    : ccBuildEmptyConsolidated();
+
+  ccSetText('cc-summary-nio', ccFormatNIO(con.totalNio || 0));
+  ccSetText('cc-summary-usd', ccFormatUSD(con.totalUsd || 0));
+
+  const fxUsed = Number(con.fxRateUsed);
+  const eqNio = Number(con.equivalentNio);
+  const eqUsd = Number(con.equivalentUsd);
+
+  if (Number.isFinite(fxUsed) && fxUsed > 0 && Number.isFinite(eqNio) && Number.isFinite(eqUsd)) {
+    ccSetText('cc-summary-eq-nio', ccFormatNIO(eqNio));
+    ccSetText('cc-summary-eq-usd', ccFormatUSD(eqUsd));
+    ccSetText('cc-summary-fx-used', fxUsed.toFixed(2));
+  } else {
+    ccSetText('cc-summary-eq-nio', '—');
+    ccSetText('cc-summary-eq-usd', '—');
+    ccSetText('cc-summary-fx-used', '—');
   }
 
+  ccSetText('cc-summary-last-update', con.updatedAtDisplay || 'Sin actualizar');
+}
+
+function ccBuildConsolidatedFromCurrent(now, fxRate) {
+  const snap = ccSnapshot || ccBuildEmptySnapshot();
+  const nioTotal = ccRound2(ccComputeCurrencyTotal('NIO', snap));
+  const usdTotal = ccRound2(ccComputeCurrencyTotal('USD', snap));
+  const stamp = now instanceof Date ? now : new Date();
+  const used = Number(fxRate);
+
+  const out = {
+    totalNio: nioTotal,
+    totalUsd: usdTotal,
+    equivalentNio: null,
+    equivalentUsd: null,
+    fxRateUsed: null,
+    updatedAtISO: stamp.toISOString(),
+    updatedAtDisplay: fmtDDMMYYYYHHMM(stamp)
+  };
+
+  if (Number.isFinite(used) && used > 0) {
+    out.fxRateUsed = ccRound2(used);
+    out.equivalentNio = ccRound2(nioTotal + (usdTotal * used));
+    out.equivalentUsd = ccRound2(usdTotal + (nioTotal / used));
+  }
+
+  return out;
+}
+
+function ccNormalizeFxInputDisplay() {
+  const el = document.getElementById('cc-fx-rate');
+  if (!el) return;
+  const raw = String(el.value || '').trim().replace(',', '.');
+  if (!raw) return;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) el.value = n.toFixed(2);
+}
+
+function ccSnapshotStamp(snap) {
+  if (!snap || typeof snap !== 'object') return 0;
+  const con = (snap.consolidated && typeof snap.consolidated === 'object') ? snap.consolidated : null;
+  const raw = (con && con.updatedAtISO) || snap.updatedAtISO || '';
+  const t = raw ? Date.parse(raw) : 0;
+  return Number.isFinite(t) ? t : 0;
+}
+
+function ccSnapshotHasData(snap) {
+  if (!snap || typeof snap !== 'object') return false;
+  const nio = Number(snap.currencies && snap.currencies.NIO ? snap.currencies.NIO.total : 0);
+  const usd = Number(snap.currencies && snap.currencies.USD ? snap.currencies.USD.total : 0);
+  const con = (snap.consolidated && typeof snap.consolidated === 'object') ? snap.consolidated : null;
+  const conNio = Number(con ? con.totalNio : 0);
+  const conUsd = Number(con ? con.totalUsd : 0);
+  return !!(
+    (Number.isFinite(nio) && nio > 0) ||
+    (Number.isFinite(usd) && usd > 0) ||
+    (Number.isFinite(conNio) && conNio > 0) ||
+    (Number.isFinite(conUsd) && conUsd > 0) ||
+    ccGetLastSavedFxRate(snap) ||
+    (snap.updatedAtISO || snap.updatedAtDisplay)
+  );
+}
+
+function ccPickNewestSnapshot(a, b) {
+  if (!a) return b || ccBuildEmptySnapshot();
+  if (!b) return a;
+
+  const at = ccSnapshotStamp(a);
+  const bt = ccSnapshotStamp(b);
+  if (bt !== at) return bt > at ? b : a;
+
+  const ah = ccSnapshotHasData(a);
+  const bh = ccSnapshotHasData(b);
+  if (bh && !ah) return b;
+  return a;
+}
+
+async function ccLoadSnapshot() {
+  let fromLS = null;
+  try {
+    const raw = localStorage.getItem(CC_STORAGE_KEY);
+    const parsed = raw ? ccSafeParseJSON(raw) : null;
+    fromLS = parsed ? ccNormalizeSnapshot(parsed) : null;
+  } catch (_) {
+    fromLS = null;
+  }
+
+  let fromDB = null;
   try {
     const rec = await finGet('settings', CC_STORAGE_KEY);
     const data = rec && rec.data ? rec.data : null;
-    ccSnapshot = ccNormalizeSnapshot(data);
-    try { localStorage.setItem(CC_STORAGE_KEY, JSON.stringify(ccSnapshot)); } catch (_) {}
-    return ccSnapshot;
-  } catch (err) {
-    ccSnapshot = ccBuildEmptySnapshot();
-    return ccSnapshot;
+    fromDB = data ? ccNormalizeSnapshot(data) : null;
+  } catch (_) {
+    fromDB = null;
   }
+
+  ccSnapshot = ccPickNewestSnapshot(fromLS, fromDB);
+  try { localStorage.setItem(CC_STORAGE_KEY, JSON.stringify(ccSnapshot)); } catch (_) {}
+  return ccSnapshot;
 }
 
 function ccUpdateTotal() {
@@ -1178,6 +1390,7 @@ function ccRenderCurrency() {
   }
 
   ccUpdateTotal();
+  ccUpdateConsolidatedSummary();
 }
 
 async function ccSaveSnapshot() {
@@ -1186,8 +1399,21 @@ async function ccSaveSnapshot() {
   ccSnapshot.currencies.USD.total = ccComputeCurrencyTotal('USD', ccSnapshot);
 
   const now = new Date();
+  const fxRate = ccGetFxRateForSave();
+  const fxInput = document.getElementById('cc-fx-rate');
+
+  if (fxInput) {
+    if (fxRate) {
+      fxInput.value = fxRate.toFixed(2);
+      ccSnapshot.fxRateDraft = ccRound2(fxRate);
+    } else {
+      ccSnapshot.fxRateDraft = null;
+    }
+  }
+
   ccSnapshot.updatedAtISO = now.toISOString();
   ccSnapshot.updatedAtDisplay = fmtDDMMYYYYHHMM(now);
+  ccSnapshot.consolidated = ccBuildConsolidatedFromCurrent(now, fxRate);
 
   try {
     await finPut('settings', { id: CC_STORAGE_KEY, data: ccSnapshot });
@@ -1200,17 +1426,50 @@ async function ccSaveSnapshot() {
 
   const upd = document.getElementById('cc-updated');
   if (upd) upd.textContent = `Actualizado: ${ccSnapshot.updatedAtDisplay}`;
+  ccUpdateConsolidatedSummary();
 
   showToast('Caja Chica guardada');
-  ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay}`);
+  if (fxRate) {
+    ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay}`);
+  } else {
+    ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay} · T/C inválido`);
+  }
 }
 
-async function ccReset() {
+function ccResetCountsOnly() {
+  if (!ccSnapshot) ccSnapshot = ccBuildEmptySnapshot();
+
+  (['NIO', 'USD']).forEach(code => {
+    const cur = ccSnapshot.currencies && ccSnapshot.currencies[code];
+    if (!cur || !Array.isArray(cur.denoms)) return;
+    cur.denoms.forEach(d => { d.count = null; });
+    cur.total = 0;
+  });
+}
+
+function ccReset() {
   const ok = confirm('Reset a cero: esto borrara los conteos actuales (solo informativo).');
   if (!ok) return;
-  ccSnapshot = ccBuildEmptySnapshot();
+
+  const lastFx = ccGetFxRateForSave() || ccGetLastSavedFxRate();
+  const currentConsolidated = (ccSnapshot && ccSnapshot.consolidated)
+    ? ccSnapshot.consolidated
+    : ccBuildEmptyConsolidated();
+  const currentUpdatedAtISO = ccSnapshot ? (ccSnapshot.updatedAtISO || '') : '';
+  const currentUpdatedAtDisplay = ccSnapshot ? (ccSnapshot.updatedAtDisplay || '') : '';
+
+  if (!ccSnapshot) ccSnapshot = ccBuildEmptySnapshot();
+  ccResetCountsOnly();
+  ccSnapshot.consolidated = currentConsolidated;
+  ccSnapshot.updatedAtISO = currentUpdatedAtISO;
+  ccSnapshot.updatedAtDisplay = currentUpdatedAtDisplay;
+  ccSnapshot.fxRateDraft = lastFx || ccSnapshot.fxRateDraft || null;
+
+  const fxInput = document.getElementById('cc-fx-rate');
+  if (fxInput && lastFx) fxInput.value = lastFx.toFixed(2);
+
   ccRenderCurrency();
-  await ccSaveSnapshot();
+  ccSetMsg('Reset a cero listo · presiona Guardar');
 }
 
 function setupCajaChicaUI() {
@@ -1233,9 +1492,22 @@ function setupCajaChicaUI() {
   if (btnRecalc) btnRecalc.addEventListener('click', async (e) => {
     e.preventDefault();
     await ccLoadSnapshot();
+    ccSetFxInputFromSnapshot(true);
     ccRenderCurrency();
     ccSetMsg('Refrescado');
   });
+
+  const fxInput = document.getElementById('cc-fx-rate');
+  if (fxInput) {
+    fxInput.addEventListener('input', () => {
+      ccSetMsg('');
+    });
+    fxInput.addEventListener('blur', ccNormalizeFxInputDisplay);
+    fxInput.addEventListener('focus', () => {
+      if (String(fxInput.value || '') === '') return;
+      try { setTimeout(() => fxInput.select(), 0); } catch (_) {}
+    });
+  }
 }
 
 function normStr(s, maxLen = 200) {
@@ -9684,6 +9956,7 @@ async function initFinanzas() {
     setupComprasPlanUI();
     setupExportButtons();
     await ccLoadSnapshot();
+    ccSetFxInputFromSnapshot(true);
     ccRenderCurrency();
     await refreshAllFin();
   } catch (err) {

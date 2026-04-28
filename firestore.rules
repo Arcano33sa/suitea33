@@ -1,0 +1,187 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function tokenWorkspace() {
+      return signedIn() && request.auth.token.workspaceId is string && request.auth.token.workspaceId.size() > 0
+        ? request.auth.token.workspaceId
+        : 'default';
+    }
+
+    function requesterPath(workspaceId) {
+      return /databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid);
+    }
+
+    function requesterExists(workspaceId) {
+      return signedIn() && exists(requesterPath(workspaceId));
+    }
+
+    function requesterData(workspaceId) {
+      return get(requesterPath(workspaceId)).data;
+    }
+
+    function requesterActiveMember(workspaceId) {
+      return requesterExists(workspaceId)
+        && requesterData(workspaceId).status == 'active';
+    }
+
+    function requesterAdmin(workspaceId) {
+      return requesterActiveMember(workspaceId)
+        && requesterData(workspaceId).role == 'admin';
+    }
+
+    function requesterAgenda(workspaceId) {
+      return requesterActiveMember(workspaceId)
+        && (requesterData(workspaceId).role == 'admin'
+          || requesterData(workspaceId).role == 'ventas');
+    }
+
+    function sameUser(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validRole(role) {
+      return role == 'admin'
+        || role == 'ventas'
+        || role == 'finanzas'
+        || role == 'consulta';
+    }
+
+    function validStatus(status) {
+      return status == 'active'
+        || status == 'inactive';
+    }
+
+    function validAgendaType(type) {
+      return type == 'reunion'
+        || type == 'tarea';
+    }
+
+    function validAgendaStatus(status) {
+      return status == 'pendiente'
+        || status == 'hecho'
+        || status == 'cancelado';
+    }
+
+    function validAgendaPriority(priority) {
+      return priority == 'baja'
+        || priority == 'media'
+        || priority == 'alta';
+    }
+
+    function validAgendaModality(modality) {
+      return modality == ''
+        || modality == 'presencial'
+        || modality == 'llamada'
+        || modality == 'videollamada';
+    }
+
+    function validAgendaNumber(value) {
+      return value == null
+        || value is int
+        || value is float;
+    }
+
+    function validAgendaPedido(pedido) {
+      return pedido is map
+        && pedido.enabled is bool
+        && pedido.productId is string
+        && pedido.productId.size() <= 120
+        && pedido.product is string
+        && pedido.product.size() <= 160
+        && validAgendaNumber(pedido.price)
+        && validAgendaNumber(pedido.quantity)
+        && validAgendaNumber(pedido.total)
+        && pedido.delivery is string
+        && pedido.delivery.size() <= 10
+        && (!pedido.enabled
+          || (pedido.product.size() >= 2
+            && pedido.delivery.size() == 10
+            && validAgendaNumber(pedido.price)
+            && pedido.price > 0
+            && validAgendaNumber(pedido.quantity)
+            && pedido.quantity > 0
+            && validAgendaNumber(pedido.total)
+            && pedido.total > 0));
+    }
+
+    function validAgendaPayload(workspaceId, recordId) {
+      return request.resource.data.id == recordId
+        && request.resource.data.workspaceId == workspaceId
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() >= 1
+        && request.resource.data.subject.size() <= 120
+        && validAgendaType(request.resource.data.type)
+        && request.resource.data.client is string
+        && request.resource.data.client.size() >= 1
+        && request.resource.data.client.size() <= 120
+        && request.resource.data.clientId is string
+        && request.resource.data.clientId.size() <= 120
+        && validAgendaModality(request.resource.data.modality)
+        && request.resource.data.date is string
+        && request.resource.data.date.size() == 10
+        && request.resource.data.time is string
+        && request.resource.data.time.size() <= 5
+        && validAgendaStatus(request.resource.data.status)
+        && validAgendaPriority(request.resource.data.priority)
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() <= 1200
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdAt.size() >= 10
+        && request.resource.data.createdAt.size() <= 40
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() >= 10
+        && request.resource.data.updatedAt.size() <= 40
+        && request.resource.data.createdAtMs is int
+        && request.resource.data.createdAtMs > 0
+        && request.resource.data.updatedAtMs is int
+        && request.resource.data.updatedAtMs > 0
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 6
+        && request.resource.data.createdBy is string
+        && request.resource.data.createdBy.size() <= 128
+        && request.resource.data.updatedBy is string
+        && request.resource.data.updatedBy.size() <= 128
+        && validAgendaPedido(request.resource.data.pedido);
+    }
+
+    function validMemberPayload(workspaceId, uid) {
+      return request.resource.data.uid == uid
+        && request.resource.data.workspaceId == workspaceId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.email is string
+        && request.resource.data.email.size() >= 5
+        && request.resource.data.email.size() <= 120
+        && validRole(request.resource.data.role)
+        && validStatus(request.resource.data.status);
+    }
+
+    match /workspaces/{workspaceId} {
+      allow get: if requesterActiveMember(workspaceId) || (signedIn() && workspaceId == tokenWorkspace());
+      allow list: if requesterAdmin(workspaceId);
+      allow create, update, delete: if requesterAdmin(workspaceId);
+
+      match /members/{uid} {
+        allow get: if requesterAdmin(workspaceId) || (sameUser(uid) && workspaceId == tokenWorkspace());
+        allow list: if requesterAdmin(workspaceId);
+        allow create, update: if requesterAdmin(workspaceId) && validMemberPayload(workspaceId, uid);
+        allow delete: if requesterAdmin(workspaceId);
+      }
+
+      match /agendaRecords/{recordId} {
+        allow get, list: if requesterAgenda(workspaceId);
+        allow create, update: if requesterAgenda(workspaceId) && validAgendaPayload(workspaceId, recordId);
+        allow delete: if requesterAgenda(workspaceId);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

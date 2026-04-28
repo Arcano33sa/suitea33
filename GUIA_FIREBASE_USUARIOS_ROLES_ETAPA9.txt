@@ -1,0 +1,9 @@
+Firebase Console / CLI — Etapa 9
+1) Build → Firestore Database → crea la base si aún no existe y confirma que las reglas de esta etapa estén desplegadas.
+2) En la raíz del proyecto: firebase deploy --only firestore:rules,firestore:indexes
+3) Luego: cd functions && npm install && cd ..
+4) Después: firebase deploy --only functions
+5) En Authentication → Sign-in method, confirma Email/Password habilitado.
+6) Inicia sesión en la suite con el usuario administrador real.
+7) Si aún no existe Admin inicial del workspace, entra a Configuración → Usuarios y Roles y pulsa “Activar admin inicial”.
+8) Recarga la suite y ya podrás crear/editar/desactivar/borrar usuarios reales desde el panel.

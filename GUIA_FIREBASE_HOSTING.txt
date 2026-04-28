@@ -1,0 +1,8 @@
+1) En Firebase Console abre tu proyecto y activa Hosting.
+2) Abre Cloud Shell y sube/descomprime este proyecto completo.
+3) Entra a la carpeta raíz del proyecto (la que contiene firebase.json).
+4) Ejecuta: npm i -g firebase-tools
+5) Ejecuta: firebase login --no-localhost
+6) Ejecuta: firebase use --add
+7) Ejecuta: firebase deploy --only hosting
+8) Al terminar, abre la URL de Hosting y prueba HOME, Configuración, Agenda y POS.

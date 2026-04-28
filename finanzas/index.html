@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Finanzas – Suite A33</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=2">
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=3">
 </head>
 <body class="fin-body">
   <div class="fin-app">
@@ -1026,6 +1026,46 @@
     </div>
   </div>
 
+  <section class="cc-consolidated-card" aria-label="Resumen consolidado Caja Chica">
+    <div class="cc-consolidated-head">
+      <div>
+        <h3>Resumen consolidado</h3>
+        <p>Vista informativa C$ + USD</p>
+      </div>
+    </div>
+
+    <div class="cc-consolidated-grid">
+      <div class="cc-summary-item">
+        <span>Total C$</span>
+        <strong id="cc-summary-nio">C$ 0.00</strong>
+      </div>
+      <div class="cc-summary-item">
+        <span>Total USD</span>
+        <strong id="cc-summary-usd">US$ 0.00</strong>
+      </div>
+      <div class="cc-summary-item">
+        <span>Total equivalente en C$</span>
+        <strong id="cc-summary-eq-nio">—</strong>
+      </div>
+      <div class="cc-summary-item">
+        <span>Total equivalente en USD</span>
+        <strong id="cc-summary-eq-usd">—</strong>
+      </div>
+      <label class="cc-summary-item cc-summary-rate" for="cc-fx-rate">
+        <span>T/C</span>
+        <input id="cc-fx-rate" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" value="" aria-label="T/C">
+      </label>
+      <div class="cc-summary-item">
+        <span>T/C usado</span>
+        <strong id="cc-summary-fx-used">—</strong>
+      </div>
+      <div class="cc-summary-item cc-summary-item-wide">
+        <span>Última Actualización</span>
+        <strong id="cc-summary-last-update">Sin actualizar</strong>
+      </div>
+    </div>
+  </section>
+
   <div class="fin-table-wrapper cc-table-wrap">
     <table class="fin-table cc-table" aria-label="Conteo Caja Chica">
       <thead>
@@ -1285,13 +1325,13 @@
   <!-- Print root (Recibos) -->
   <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.77&r=2"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=3"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.77&r=2"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=3"></script>
 
-  <script src="script.js?v=4.20.77&r=2"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=2"></script>
+  <script src="script.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=3"></script>
 </body>
 </html>

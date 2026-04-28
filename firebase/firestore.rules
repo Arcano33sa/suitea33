@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberDoc(workspaceId, uid) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(uid));
+    }
+
+    function isMemberOfWorkspace(workspaceId) {
+      return signedIn()
+        && memberDoc(workspaceId, request.auth.uid).data != null
+        && memberDoc(workspaceId, request.auth.uid).data.status == 'ACTIVO';
+    }
+
+    function isAdminOfWorkspace(workspaceId) {
+      return isMemberOfWorkspace(workspaceId)
+        && memberDoc(workspaceId, request.auth.uid).data.role == 'ADMIN';
+    }
+
+    function inviteDoc(code) {
+      return get(/databases/$(database)/documents/workspaceInvites/$(code));
+    }
+
+    function validInviteForSelf(workspaceId, code, role) {
+      return signedIn()
+        && request.auth.uid == request.resource.data.uid
+        && code is string
+        && inviteDoc(code).data != null
+        && inviteDoc(code).data.status == 'ACTIVA'
+        && inviteDoc(code).data.workspaceId == workspaceId
+        && inviteDoc(code).data.role == role;
+    }
+
+    match /users/{uid} {
+      allow get, create, update: if signedIn() && request.auth.uid == uid;
+      allow list, delete: if false;
+    }
+
+    match /workspaces/{workspaceId} {
+      allow get: if signedIn() && (
+        resource.data.ownerUid == request.auth.uid
+        || isMemberOfWorkspace(workspaceId)
+      );
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if signedIn() && isAdminOfWorkspace(workspaceId);
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow get, list: if signedIn() && isMemberOfWorkspace(workspaceId);
+
+        allow create: if signedIn() && request.auth.uid == uid && (
+          (
+            request.resource.data.kind == 'OWNER'
+            && getAfter(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUid == request.auth.uid
+          )
+          || validInviteForSelf(workspaceId, request.resource.data.inviteCode, request.resource.data.role)
+        );
+
+        allow update: if signedIn() && (
+          isAdminOfWorkspace(workspaceId)
+          || (request.auth.uid == uid && validInviteForSelf(workspaceId, request.resource.data.inviteCode, request.resource.data.role))
+        );
+
+        allow delete: if false;
+      }
+    }
+
+    match /workspaceInvites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && isAdminOfWorkspace(request.resource.data.workspaceId);
+      allow update: if signedIn() && isAdminOfWorkspace(resource.data.workspaceId);
+      allow delete: if false;
+    }
+  }
+}

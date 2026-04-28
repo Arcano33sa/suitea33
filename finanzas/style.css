@@ -618,6 +618,104 @@ body.fin-body {
   white-space:nowrap;
 }
 
+.cc-consolidated-card{
+  margin-top:12px;
+  padding:12px;
+  border-radius:16px;
+  border:1px solid rgba(212,175,55,0.26);
+  background:
+    radial-gradient(circle at top left, rgba(212,175,55,0.14), transparent 34%),
+    linear-gradient(135deg, rgba(20,23,34,0.98), rgba(8,10,18,0.96));
+  box-shadow:0 12px 26px rgba(0,0,0,0.42);
+}
+
+.cc-consolidated-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.cc-consolidated-head h3{
+  margin:0;
+  color:var(--fin-gold);
+  font-size:0.95rem;
+  letter-spacing:0.03em;
+}
+
+.cc-consolidated-head p{
+  margin:2px 0 0;
+  color:var(--fin-muted);
+  font-size:0.78rem;
+}
+
+.cc-consolidated-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+  gap:8px;
+  align-items:stretch;
+}
+
+.cc-summary-item{
+  min-width:0;
+  padding:9px 10px;
+  border-radius:13px;
+  border:1px solid rgba(255,255,255,0.06);
+  background:rgba(5,6,8,0.44);
+}
+
+.cc-summary-item span{
+  display:block;
+  color:var(--fin-muted);
+  font-size:0.72rem;
+  line-height:1.2;
+}
+
+.cc-summary-item strong{
+  display:block;
+  margin-top:4px;
+  color:var(--fin-text);
+  font-size:0.95rem;
+  line-height:1.2;
+  overflow-wrap:anywhere;
+}
+
+.cc-summary-rate input{
+  width:100%;
+  margin-top:5px;
+  padding:7px 9px;
+  border-radius:10px;
+  border:1px solid rgba(212,175,55,0.28);
+  background:rgba(16,18,24,0.92);
+  color:var(--fin-text);
+  font-size:0.9rem;
+}
+
+.cc-summary-rate input:focus{
+  outline:none;
+  border-color:var(--fin-gold);
+  box-shadow:0 0 0 2px rgba(212,175,55,0.12);
+}
+
+@media (min-width: 760px){
+  .cc-summary-item-wide{
+    grid-column:span 2;
+  }
+}
+
+@media (max-width: 520px){
+  .cc-consolidated-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+  .cc-summary-item{
+    padding:8px;
+  }
+  .cc-summary-item strong{
+    font-size:0.86rem;
+  }
+}
+
 .cc-table-wrap{overflow-x:hidden;}
 .cc-table{table-layout:fixed;}
 .cc-table th, .cc-table td{vertical-align:middle;}

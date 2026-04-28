@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Suite A33 · Configuración</title>
+  <meta name="description" content="Módulo Configuración de Suite A33. Organiza Respaldo, Usuarios y Roles, y Ajustes Generales dentro de una arquitectura interna limpia y escalable." />
+  <meta name="theme-color" content="#7b1818" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
+  <link rel="apple-touch-icon" href="../icon-a33-192.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.77&r=2" />
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=5" />
+</head>
+<body>
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Configuración</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.77">v...</div>
+  </header>
+
+  <main class="cfg-main" role="main">
+    <section class="cfg-hero cfg-card" aria-labelledby="cfg-title">
+      <div class="cfg-hero-copy">
+        <span class="cfg-kicker">Núcleo A33</span>
+        <h1 id="cfg-title">Configuración</h1>
+        <p class="cfg-lead">Módulo contenedor para ordenar la operación interna de la Suite A33. Ahora <b>Respaldo</b>, <b>Usuarios y Roles</b> y <b>Ajustes Generales</b> viven dentro de una arquitectura clara, compacta y lista para crecer sin hacerse un cajón de sastre.</p>
+      </div>
+      <div class="cfg-hero-side">
+        <div class="cfg-mini-stat">
+          <span class="cfg-mini-label">Secciones base</span>
+          <strong>3 carriles internos</strong>
+        </div>
+        <div class="cfg-mini-stat">
+          <span class="cfg-mini-label">Estado</span>
+          <strong>Usuarios base activos</strong>
+        </div>
+        <div class="cfg-mini-stat">
+          <span class="cfg-mini-label">Estado Firebase</span>
+          <strong id="cfg-hero-firebase-headline">Modo local seguro</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="cfg-shell cfg-card" aria-label="Arquitectura interna de Configuración">
+      <div class="cfg-shell-head">
+        <div>
+          <p class="cfg-eyebrow">Arquitectura interna</p>
+          <h2 class="cfg-shell-title">Secciones del módulo</h2>
+          <p class="cfg-shell-copy">Navegación ligera, lectura limpia y cada bloque en su sitio. Nada de pared infinita ni maquillaje inútil.</p>
+        </div>
+        <span class="cfg-badge cfg-badge--soft">Etapa 5/11</span>
+      </div>
+
+      <div class="cfg-tabs" role="tablist" aria-label="Secciones de Configuración">
+        <button class="cfg-tab is-active" id="cfg-tab-backup" type="button" role="tab" aria-selected="true" aria-controls="cfg-panel-backup" data-target="backup">
+          <span class="cfg-tab-title">Respaldo</span>
+          <span class="cfg-tab-meta">Exportar e importar JSON</span>
+        </button>
+        <button class="cfg-tab" id="cfg-tab-users" type="button" role="tab" aria-selected="false" aria-controls="cfg-panel-users" data-target="users" tabindex="-1">
+          <span class="cfg-tab-title">Usuarios y Roles</span>
+          <span class="cfg-tab-meta">CRUD local + base Firebase</span>
+        </button>
+        <button class="cfg-tab" id="cfg-tab-settings" type="button" role="tab" aria-selected="false" aria-controls="cfg-panel-settings" data-target="settings" tabindex="-1">
+          <span class="cfg-tab-title">Ajustes Generales</span>
+          <span class="cfg-tab-meta">Marco de preferencias</span>
+        </button>
+      </div>
+
+      <div class="cfg-panels">
+        <section class="cfg-panel-view is-active" id="cfg-panel-backup" role="tabpanel" aria-labelledby="cfg-tab-backup" data-panel="backup">
+          <div class="cfg-view-grid">
+            <article class="cfg-card cfg-panel cfg-panel--main" aria-labelledby="cfg-backup-title">
+              <div class="cfg-panel-head">
+                <div>
+                  <p class="cfg-eyebrow">Sección interna</p>
+                  <h2 id="cfg-backup-title">Respaldo</h2>
+                </div>
+                <span class="cfg-badge">JSON local</span>
+              </div>
+
+              <p class="cfg-copy">Exporta o importa un respaldo completo de la Suite A33 sin alterar nombres de claves, payload ni compatibilidad previa. La lógica sigue siendo la misma; ahora solo vive en el lugar correcto.</p>
+
+              <div class="cfg-actions">
+                <button id="cfg-export-backup" class="cfg-btn cfg-btn-primary" type="button">Exportar JSON</button>
+                <button id="cfg-import-backup" class="cfg-btn cfg-btn-ghost" type="button">Importar JSON</button>
+              </div>
+
+              <div class="cfg-note-grid">
+                <div class="cfg-note-card">
+                  <strong>Qué hace</strong>
+                  <p>Exporta un archivo con localStorage e IndexedDB de la Suite detectados en este navegador.</p>
+                </div>
+                <div class="cfg-note-card">
+                  <strong>Qué no cambia</strong>
+                  <p>No toca el formato del JSON ni renombra claves históricas del respaldo.</p>
+                </div>
+                <div class="cfg-note-card">
+                  <strong>Cuidado</strong>
+                  <p>Al importar, se reemplazan los datos actuales de este navegador. Mejor exportar antes; drama evitado.</p>
+                </div>
+              </div>
+            </article>
+
+            <aside class="cfg-card cfg-panel cfg-side-panel" aria-labelledby="cfg-backup-side-title">
+              <div class="cfg-panel-head cfg-panel-head--stack">
+                <div>
+                  <p class="cfg-eyebrow">Validación rápida</p>
+                  <h2 id="cfg-backup-side-title">Regresión mínima</h2>
+                </div>
+                <span class="cfg-badge cfg-badge--soft">Operativo</span>
+              </div>
+              <ul class="cfg-list">
+                <li>Configuración abre como módulo independiente.</li>
+                <li>Respaldo sigue disponible desde su nueva ubicación.</li>
+                <li>El formato JSON histórico permanece intacto.</li>
+                <li>La interfaz conserva lectura sana en desktop e iPad.</li>
+              </ul>
+            </aside>
+          </div>
+        </section>
+
+        <section class="cfg-panel-view" id="cfg-panel-users" role="tabpanel" aria-labelledby="cfg-tab-users" data-panel="users" hidden>
+          <div class="cfg-view-grid">
+            <article class="cfg-card cfg-panel cfg-panel--main" aria-labelledby="cfg-users-title">
+              <div class="cfg-panel-head cfg-panel-head--users">
+                <div>
+                  <p class="cfg-eyebrow">Administración real</p>
+                  <h2 id="cfg-users-title">Usuarios y Roles</h2>
+                </div>
+                <div class="cfg-head-actions">
+                  <span id="cfg-users-mode-badge" class="cfg-badge cfg-badge--soft">Sin backend</span>
+                  <button id="cfg-user-new-top" class="cfg-btn cfg-btn-primary cfg-btn-compact" type="button">+ Nuevo usuario</button>
+                </div>
+              </div>
+
+              <p id="cfg-users-copy" class="cfg-copy">Aquí queda el carril real para perfiles, roles y permisos. Firestore guarda el perfil canónico y Functions se encarga de la parte privilegiada que jamás debería vivir en el cliente.</p>
+
+              <div class="cfg-note-grid cfg-note-grid--dual cfg-note-grid--users">
+                <div class="cfg-note-card">
+                  <strong>Base seria</strong>
+                  <p>Perfiles reales en Firestore, roles extensibles y permisos leíbles por la app sin inventar seguridad de cartón.</p>
+                </div>
+                <div class="cfg-note-card">
+                  <strong>Backend correcto</strong>
+                  <p>Las altas, cambios de rol, activación/desactivación y borrado seguro con archivo previo pasan por Functions + Admin SDK cuando el backend ya está desplegado.</p>
+                </div>
+              </div>
+
+              <section class="cfg-users-runtime-strip" aria-label="Estado del acceso real">
+                <article class="cfg-status-card">
+                  <span class="cfg-status-label">Acceso actual</span>
+                  <strong id="cfg-users-access-current">Sin sesión</strong>
+                  <p id="cfg-users-access-detail" class="cfg-status-copy">Inicia sesión para leer tu perfil real.</p>
+                </article>
+                <article class="cfg-status-card">
+                  <span class="cfg-status-label">Backend admin</span>
+                  <strong id="cfg-users-backend-current">Pendiente</strong>
+                  <p id="cfg-users-backend-detail" class="cfg-status-copy">Functions todavía no ha sido verificado.</p>
+                </article>
+                <article class="cfg-status-card">
+                  <span class="cfg-status-label">Workspace</span>
+                  <strong id="cfg-users-workspace-current">default</strong>
+                  <p id="cfg-users-workspace-detail" class="cfg-status-copy">Preparado para tenant simple sin volver esto un laberinto.</p>
+                </article>
+              </section>
+
+              <section class="cfg-users-toolbar" aria-label="Resumen de usuarios">
+                <div class="cfg-users-metrics">
+                  <article class="cfg-metric-card">
+                    <span class="cfg-metric-label">Usuarios</span>
+                    <strong id="cfg-user-count-total">0</strong>
+                  </article>
+                  <article class="cfg-metric-card">
+                    <span class="cfg-metric-label">Activos</span>
+                    <strong id="cfg-user-count-active">0</strong>
+                  </article>
+                  <article class="cfg-metric-card">
+                    <span class="cfg-metric-label">Inactivos</span>
+                    <strong id="cfg-user-count-inactive">0</strong>
+                  </article>
+                  <article class="cfg-metric-card">
+                    <span class="cfg-metric-label">Rol dominante</span>
+                    <strong id="cfg-user-role-top">—</strong>
+                  </article>
+                </div>
+                <div class="cfg-search-wrap">
+                  <label class="cfg-search-label" for="cfg-user-search">Buscar usuario</label>
+                  <input id="cfg-user-search" class="cfg-input cfg-search-input" type="search" placeholder="Nombre o correo" autocomplete="off" />
+                </div>
+              </section>
+
+              <div class="cfg-users-list-shell">
+                <div id="cfg-users-empty" class="cfg-empty-state" hidden>
+                  <div class="cfg-empty-icon">◎</div>
+                  <h3 id="cfg-users-empty-title">Sin perfiles todavía</h3>
+                  <p id="cfg-users-empty-copy">Cuando el backend esté listo, aquí aparecerán los perfiles reales del workspace.</p>
+                  <button id="cfg-user-empty-cta" class="cfg-btn cfg-btn-primary cfg-btn-compact" type="button">Preparar formulario</button>
+                </div>
+
+                <div class="cfg-users-table-wrap" id="cfg-users-table-wrap" hidden>
+                  <table class="cfg-users-table" aria-label="Listado de usuarios">
+                    <thead>
+                      <tr>
+                        <th scope="col">Usuario</th>
+                        <th scope="col">Correo</th>
+                        <th scope="col">Rol</th>
+                        <th scope="col">Estado</th>
+                        <th scope="col">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="cfg-users-tbody"></tbody>
+                  </table>
+                </div>
+
+                <div id="cfg-users-cards" class="cfg-users-cards" hidden></div>
+                <div id="cfg-users-noresults" class="cfg-inline-empty" hidden>No hay coincidencias para esa búsqueda.</div>
+              </div>
+            </article>
+
+            <aside class="cfg-card cfg-panel cfg-side-panel" aria-labelledby="cfg-users-side-title">
+              <div class="cfg-panel-head cfg-panel-head--stack">
+                <div>
+                  <p class="cfg-eyebrow">Backend seguro</p>
+                  <h2 id="cfg-users-side-title">Operar usuarios</h2>
+                </div>
+                <span id="cfg-users-side-badge" class="cfg-badge">Perfil pendiente</span>
+              </div>
+
+              <form id="cfg-user-form" class="cfg-form" novalidate>
+                <input id="cfg-user-id" type="hidden" />
+
+                <label class="cfg-field">
+                  <span>Nombre</span>
+                  <input id="cfg-user-name" class="cfg-input" type="text" maxlength="80" placeholder="Ej. Mariana López" required />
+                </label>
+
+                <label class="cfg-field">
+                  <span>Correo</span>
+                  <input id="cfg-user-email" class="cfg-input" type="email" maxlength="120" placeholder="correo@dominio.com" autocomplete="email" required />
+                </label>
+
+                <div class="cfg-field-row">
+                  <label class="cfg-field">
+                    <span>Rol</span>
+                    <select id="cfg-user-role" class="cfg-input" required>
+                      <option value="admin">Admin</option>
+                      <option value="ventas">Ventas</option>
+                      <option value="finanzas">Finanzas</option>
+                      <option value="consulta">Consulta</option>
+                    </select>
+                  </label>
+
+                  <label class="cfg-field">
+                    <span>Estado</span>
+                    <select id="cfg-user-status" class="cfg-input" required>
+                      <option value="active">Activo</option>
+                      <option value="inactive">Inactivo</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="cfg-form-actions">
+                  <button id="cfg-user-save" class="cfg-btn cfg-btn-primary cfg-btn-compact" type="submit">Guardar usuario</button>
+                  <button id="cfg-user-cancel" class="cfg-btn cfg-btn-ghost cfg-btn-compact" type="button">Limpiar</button>
+                  <button id="cfg-user-bootstrap" class="cfg-btn cfg-btn-ghost cfg-btn-compact" type="button" hidden>Activar admin inicial</button>
+                </div>
+                <div id="cfg-user-form-hint" class="cfg-form-hint">Cuando Functions esté desplegado y haya un Admin activo, este formulario operará sobre Authentication + Firestore con validaciones para no dejar el workspace sin gobierno.</div>
+              </form>
+
+              <div class="cfg-status-stack cfg-status-stack--users">
+                <div class="cfg-status-card">
+                  <span class="cfg-status-label">Persistencia</span>
+                  <strong id="cfg-users-storage-label">Firestore canónico</strong>
+                  <p id="cfg-users-storage-copy" class="cfg-status-copy">El perfil real vive en Firestore; el backend privilegiado vive en Functions y archiva antes del borrado definitivo.</p>
+                </div>
+                <div class="cfg-status-card">
+                  <span class="cfg-status-label">Permisos</span>
+                  <strong id="cfg-users-permissions-label">Sin perfil todavía</strong>
+                  <p id="cfg-users-permissions-copy" class="cfg-status-copy">La app leerá permisos desde el rol asignado y los expondrá de forma uniforme.</p>
+                </div>
+                <div class="cfg-status-card">
+                  <span class="cfg-status-label">Siguiente salto</span>
+                  <strong id="cfg-users-next-label">UI administrativa progresiva</strong>
+                  <p id="cfg-users-next-copy" class="cfg-status-copy">Esta base ya deja el backend correcto para la administración privilegiada posterior.</p>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="cfg-panel-view" id="cfg-panel-settings" role="tabpanel" aria-labelledby="cfg-tab-settings" data-panel="settings" hidden>
+          <div class="cfg-view-grid">
+            <article class="cfg-card cfg-panel cfg-panel--main" aria-labelledby="cfg-settings-title">
+              <div class="cfg-panel-head">
+                <div>
+                  <p class="cfg-eyebrow">Sección base</p>
+                  <h2 id="cfg-settings-title">Ajustes Generales</h2>
+                </div>
+                <span class="cfg-badge cfg-badge--soft">Marco de ajustes</span>
+              </div>
+
+              <p class="cfg-copy">Aquí queda reservado el espacio para preferencias globales, banderas de comportamiento y parámetros del producto. No se mete lógica sensible aún, pero ya existe el carril correcto para concentrar ajustes sin regarlos por toda la suite.</p>
+
+              <section class="cfg-firebase-block" aria-labelledby="cfg-firebase-title">
+                <div class="cfg-firebase-head">
+                  <div>
+                    <p class="cfg-eyebrow">Firebase</p>
+                    <h3 id="cfg-firebase-title">Firebase y acceso</h3>
+                  </div>
+                  <span id="cfg-firebase-badge" class="cfg-badge cfg-badge--soft">Modo local</span>
+                </div>
+
+                <p id="cfg-firebase-summary" class="cfg-copy">Firebase puede operar en modo local o con acceso real por correo/contraseña, según la vinculación actual del proyecto.</p>
+
+                <div class="cfg-firebase-grid" aria-label="Estado de Firebase y Authentication">
+                  <article class="cfg-firebase-stat">
+                    <span class="cfg-status-label">Modo actual</span>
+                    <strong id="cfg-firebase-mode">Local seguro</strong>
+                  </article>
+                  <article class="cfg-firebase-stat">
+                    <span class="cfg-status-label">Archivo central</span>
+                    <strong id="cfg-firebase-config-file">assets/js/a33-firebase-config.js</strong>
+                  </article>
+                  <article class="cfg-firebase-stat">
+                    <span class="cfg-status-label">Proyecto</span>
+                    <strong id="cfg-firebase-project-id">Pendiente</strong>
+                  </article>
+                </div>
+
+                <div class="cfg-firebase-pill-row" aria-label="Piezas activas de Firebase">
+                  <span id="cfg-firebase-app-pill" class="cfg-pill cfg-pill--firebase">App: pendiente</span>
+                  <span id="cfg-firebase-auth-pill" class="cfg-pill cfg-pill--firebase">Auth: pendiente</span>
+                  <span id="cfg-firebase-db-pill" class="cfg-pill cfg-pill--firebase">Firestore: pendiente</span>
+                  <span id="cfg-firebase-functions-pill" class="cfg-pill cfg-pill--firebase">Functions: pendiente</span>
+                </div>
+
+                <p class="cfg-inline-note">Cuando compartas la configuración real del proyecto, el siguiente paso se integra en el archivo central sin romper el modo local actual.</p>
+              </section>
+
+              <div class="cfg-note-grid cfg-note-grid--dual">
+                <div class="cfg-note-card">
+                  <strong>Familias previstas</strong>
+                  <p>Preferencias visuales, parámetros operativos, defaults del sistema y futuras opciones administrativas.</p>
+                </div>
+                <div class="cfg-note-card">
+                  <strong>Beneficio real</strong>
+                  <p>Cuando entren más ajustes, caerán en un bloque pensado para eso y no en una feria de botones desperdigados.</p>
+                </div>
+              </div>
+
+              <div class="cfg-pill-grid" aria-label="Elementos previstos para Ajustes Generales">
+                <span class="cfg-pill">Preferencias del sistema</span>
+                <span class="cfg-pill">Parámetros globales</span>
+                <span class="cfg-pill">Valores por defecto</span>
+                <span class="cfg-pill">Mantenimiento futuro</span>
+                <span class="cfg-pill">Compatibilidad PWA</span>
+                <span class="cfg-pill">Ajustes administrativos</span>
+              </div>
+            </article>
+
+            <aside class="cfg-card cfg-panel cfg-side-panel" aria-labelledby="cfg-settings-side-title">
+              <div class="cfg-panel-head cfg-panel-head--stack">
+                <div>
+                  <p class="cfg-eyebrow">Orden interno</p>
+                  <h2 id="cfg-settings-side-title">Principios del carril</h2>
+                </div>
+              </div>
+              <ul class="cfg-list">
+                <li>Concentrar ajustes globales en un solo punto lógico.</li>
+                <li>Evitar contaminar módulos funcionales con preferencias dispersas.</li>
+                <li>Preparar el terreno para crecimiento sin deuda visual innecesaria.</li>
+              </ul>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-overlay" id="backup-modal" style="display:none;">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
+      <h2 class="modal-title" id="backup-modal-title">Respaldo</h2>
+      <div class="modal-body" id="backup-modal-body"></div>
+      <div class="modal-actions">
+        <button class="cfg-btn cfg-btn-ghost cfg-btn-modal" id="backup-modal-cancel" type="button">Cancelar</button>
+        <button class="cfg-btn cfg-btn-ghost cfg-btn-modal" id="backup-modal-secondary" type="button" style="display:none;">Secundario</button>
+        <button class="cfg-btn cfg-btn-primary cfg-btn-modal" id="backup-modal-primary" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <input id="backup-file-input" type="file" accept="application/json" style="display:none;" />
+  <div id="a33-toast" class="a33-toast" aria-live="polite"></div>
+
+  <script src="../assets/js/a33-release.js?v=4.20.77&r=6"></script>
+  <script src="../assets/js/a33-storage.js?v=4.20.77&r=2"></script>
+  <script src="../assets/js/a33-firebase-config.js?v=4.20.77&r=7"></script>
+  <script src="../assets/js/a33-firebase-core.js?v=4.20.77&r=8"></script>
+  <script src="../assets/js/a33-firebase-auth.js?v=4.20.77&r=8"></script>
+  <script src="../assets/js/a33-firebase-access.js?v=4.20.77&r=9"></script>
+  <script src="../assets/js/a33-module-access.js?v=4.20.77&r=1"></script>
+  <script src="script.js?v=4.20.77&r=9"></script>
+</body>
+</html>
