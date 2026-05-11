@@ -8587,6 +8587,22 @@ async function refreshSaleBankSelect(){
   }
 }
 
+
+async function resetSalePaymentToCashPOS(){
+  try{
+    const pay = document.getElementById('sale-payment');
+    const bank = document.getElementById('sale-bank');
+    if (pay) pay.value = 'efectivo';
+    if (bank) bank.value = '';
+    try{ await refreshSaleBankSelect(); }catch(_){
+      const row = document.getElementById('sale-bank-row');
+      const note = document.getElementById('sale-bank-note');
+      if (row) row.style.display = 'none';
+      if (note) note.textContent = '';
+    }
+  }catch(_){ }
+}
+
 async function renderBancos(){
   const wrap = document.getElementById('banks-list');
   if (!wrap) return;
@@ -12078,6 +12094,7 @@ async function sellCupsPOS(isCourtesy){
 
   const qtyInp = document.getElementById('cup-qty');
   if (qtyInp) qtyInp.value = 1;
+  await resetSalePaymentToCashPOS();
 
   await renderDay();
   await renderSummary();
@@ -18665,6 +18682,7 @@ async function addSale(){
   afterSaleCustomerHousekeepingPOS(customerName, customerId);
   $('#sale-courtesy-to').value='';
   $('#sale-notes').value=''; // limpiar notas
+  await resetSalePaymentToCashPOS();
   const nextTotal = (courtesy?0:price).toFixed(2);
   const saleTotal2 = $('#sale-total');
   if (saleTotal2) {
@@ -18907,6 +18925,7 @@ async function addExtraSale(extraId){
   $('#sale-courtesy-to').value = '';
   $('#sale-notes').value = '';
   $('#sale-return').checked = false;
+  await resetSalePaymentToCashPOS();
 
   await renderDay();
   await renderSummary();
