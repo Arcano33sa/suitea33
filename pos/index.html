@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=3">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=7">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=4.20.77&r=3">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=3" />
+<link rel="stylesheet" href="styles.css?v=4.20.77&r=7">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=7" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -75,6 +75,12 @@
       <div>
         <label>Fecha</label>
         <input id="sale-date" type="date">
+        <div class="sale-fx-field" id="sale-exchange-rate-wrap">
+          <label for="sale-exchange-rate">T/C</label>
+          <input id="sale-exchange-rate" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="36.80" autocomplete="off">
+          <small id="sale-exchange-rate-status" class="muted">—</small>
+          <small id="sale-exchange-rate-error" class="warn sale-fx-error" style="display:none"></small>
+        </div>
       </div>
     </div>
 
@@ -116,6 +122,42 @@
         <label>Total (C$)</label>
         <input id="sale-total" type="number" inputmode="decimal" step="0.01" disabled>
       </div>
+    </div>
+
+    <div id="sale-cash-tender-card" class="card inner sale-cash-tender" style="display:none">
+      <div class="sale-cash-tender-head">
+        <div>
+          <h4>Cobro en efectivo</h4>
+          <small class="muted">Para ventas en efectivo: C$ normal o USD con vuelto en C$.</small>
+        </div>
+        <div class="sale-cash-tender-mode">
+          <label for="sale-cash-mode">Forma de cobro</label>
+          <select id="sale-cash-mode">
+            <option value="nio" selected>C$ solamente</option>
+            <option value="usd_change_nio">USD con vuelto en C$</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="sale-cash-usd-fields" class="sale-cash-usd-fields" style="display:none">
+        <div>
+          <label for="sale-cash-fx-used">T/C usado</label>
+          <input id="sale-cash-fx-used" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" readonly>
+        </div>
+        <div>
+          <label for="sale-cash-usd-received">Monto recibido USD</label>
+          <input id="sale-cash-usd-received" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="10.00" autocomplete="off">
+        </div>
+        <div>
+          <label for="sale-cash-equivalent">Equivalente C$</label>
+          <input id="sale-cash-equivalent" class="a33-num" type="number" inputmode="decimal" step="0.01" readonly>
+        </div>
+        <div>
+          <label for="sale-cash-change">Vuelto C$</label>
+          <input id="sale-cash-change" class="a33-num" type="number" inputmode="decimal" step="0.01" readonly>
+        </div>
+      </div>
+      <small id="sale-cash-tender-status" class="muted sale-cash-tender-status"></small>
     </div>
 
 
@@ -467,7 +509,7 @@
           <div>Evento: <b id="cashv2-eventid">—</b></div>
           <div>Día operativo: <b id="cashv2-daykey">—</b></div>
         <div>Apertura: <b id="cashv2-opened-at">—</b></div>
-          <div id="cashv2-cashsales-line" style="margin-top:6px;">Ventas en efectivo (C$): <b id="cashv2-cashsales">C$ 0.00</b></div>
+          <div id="cashv2-cashsales-line" style="margin-top:6px;">Ventas en efectivo físicas: <b id="cashv2-cashsales">C$ 0.00</b></div>
         </div>
         <div class="actions end" style="gap:8px; align-items:center; flex-wrap:wrap;">
           <button id="cashv2-btn-hist" class="btn-outline btn-pill" type="button">Histórico</button>
@@ -672,6 +714,7 @@
               <tr><td>Saldo inicial</td><td id="cashv2-sum-initial-usd" class="sub">0.00</td></tr>
               <tr><td>Entradas</td><td id="cashv2-sum-in-usd" class="sub">0.00</td></tr>
               <tr><td>Salidas</td><td id="cashv2-sum-out-usd" class="sub">0.00</td></tr>
+              <tr><td>Ventas en efectivo</td><td id="cashv2-sum-sales-usd" class="sub">0.00</td></tr>
               <tr><td>Ajuste</td><td id="cashv2-sum-adjust-usd" class="sub">0.00</td></tr>
               <tr><td>Saldo esperado</td><td id="cashv2-sum-expected-usd" class="sub">0.00</td></tr>
               <tr><td>Saldo final contado</td><td id="cashv2-sum-final-usd" class="sub">0.00</td></tr>
@@ -1084,7 +1127,7 @@
     </div>
 
     <div class="info" style="margin-top:10px">
-      <small><b>Regla:</b> el tipo de cambio se guarda en este dispositivo. <b>Limpiar</b> solo borra montos.</small>
+      <small><b>Regla:</b> el tipo de cambio usa el T/C único del evento activo. <b>Limpiar</b> solo borra montos.</small>
     </div>
   </section>
 
@@ -1604,24 +1647,23 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=0.18.5"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=7"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.77&r=3"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=3"></script>
-<script src="/assets/js/a33-build.js?v=4.20.77&r=3"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.77&r=7"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=7"></script>
+<script src="/assets/js/a33-build.js?v=4.20.77&r=7"></script>
 <script>
   (function(){
     try{
       const relObj = (window.A33_RELEASE || {});
       const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.77';
-      const rev = '3'; // POS local cache-busting rev
+      const rev = '7'; // POS cache bump local — Etapa 5/5 arqueo USD y vuelto C$
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
       try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
-      const rel = (window.A33_RELEASE && window.A33_RELEASE.label) ? String(window.A33_RELEASE.label) : '';
-      const shown = rel ? ('v' + rel) : ('v' + v);
+      const shown = 'v' + v + ' r' + rev;
       if (verEl) verEl.textContent = shown;
       const bEl = document.getElementById('pos-build-id');
       if (bEl) bEl.textContent = 'POS Build: ' + v;
@@ -1635,12 +1677,12 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.77&r=3"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=3"></script>
+<script src="app.js?v=4.20.77&r=7"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=7"></script>
 <script>
   (function(){
     const BUILD = (window.A33_VERSION || '4.20.77').toString();
-    const REV = (window.A33_ASSET_REV || '3').toString();
+    const REV = (window.A33_ASSET_REV || '2').toString();
     const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV);
 
     const btn = document.getElementById('a33-update-indicator');
