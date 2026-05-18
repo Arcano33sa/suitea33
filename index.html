@@ -323,6 +323,57 @@
       margin-top:0.35rem;
     }
 
+    .config-topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:0.75rem;
+      margin-bottom:1rem;
+      padding:0.75rem;
+      border-radius:18px;
+      border:1px solid rgba(221,191,100,0.25);
+      background:rgba(0,0,0,0.35);
+    }
+    .config-title-block h2{
+      font-size:1.15rem;
+      color:var(--accent);
+      letter-spacing:0.04em;
+      text-transform:uppercase;
+    }
+    .config-title-block p{
+      font-size:0.8rem;
+      color:var(--muted);
+      margin-top:0.2rem;
+    }
+    .config-back-btn{
+      border:none;
+      border-radius:999px;
+      padding:0.45rem 0.85rem;
+      background:rgba(0,0,0,0.45);
+      border:1px solid rgba(221,191,100,0.42);
+      color:var(--accent);
+      cursor:pointer;
+      font-size:0.8rem;
+      white-space:nowrap;
+    }
+    .config-back-btn:hover{ border-color:var(--accent); }
+    .config-lead{
+      color:var(--muted);
+      font-size:0.85rem;
+      line-height:1.45;
+      margin:0 0 0.75rem;
+    }
+    .config-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+      gap:1rem;
+      margin-top:0.75rem;
+    }
+    @media(max-width:560px){
+      .config-topbar{ align-items:flex-start; flex-direction:column; }
+      .config-back-btn{ width:100%; justify-content:center; }
+    }
+
 </style>
 </head>
 <body>
@@ -445,12 +496,12 @@
         <h2 class="menu-title">NÚCLEO A33</h2>
         <div class="grid support-grid" id="support-grid">
 
-          <article class="card" id="card-backup-hub">
-            <div class="pill"><span>🗄️</span><span>Respaldo</span></div>
-            <h2>Respaldo</h2>
-            <p>Exporta o importa un JSON con todos los datos locales (IndexedDB + localStorage) de esta Suite.</p>
+          <article class="card" id="card-config-hub">
+            <div class="pill"><span>⚙️</span><span>Configuración</span></div>
+            <h2>Configuración</h2>
+            <p>Ajustes, respaldo y opciones generales de la Suite.</p>
             <div class="footer-row">
-              <span>Exportar / Importar</span>
+              <span>Organización general</span>
               <button class="link-btn secondary"><span>Abrir</span> →</button>
             </div>
           </article>
@@ -494,6 +545,32 @@
 
       </div>
 
+      <section id="config-view" class="hidden" aria-label="Configuración">
+        <div class="config-topbar">
+          <div class="config-title-block">
+            <h2>Configuración</h2>
+            <p>Ajustes, respaldo y opciones generales de la Suite.</p>
+          </div>
+          <button id="btn-config-back-home" class="config-back-btn" type="button">← Menú principal</button>
+        </div>
+
+        <p class="config-lead">
+          Centro interno para ordenar opciones generales de la Suite. En esta etapa se mueve aquí el respaldo existente, sin cambiar datos, JSON ni llaves históricas.
+        </p>
+
+        <div class="config-grid">
+          <article class="card" id="card-config-backup">
+            <div class="pill"><span>🗄️</span><span>Respaldo</span></div>
+            <h2>Respaldo</h2>
+            <p>Exportar, importar o restaurar datos de la Suite.</p>
+            <div class="footer-row">
+              <span>Exportar / Importar</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -513,8 +590,8 @@
   <input id="calc-only-file-input" type="file" accept="application/json" style="display:none;">
   <div id="a33-toast" class="a33-toast" aria-live="polite"></div>
 
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=2"></script>
-  <script src="assets/js/a33-storage.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=3"></script>
+  <script src="assets/js/a33-storage.js?v=4.20.77&r=3"></script>
   <script>
     // --- Home libre de acceso ---
     function hideBootSplash(){}
@@ -1417,31 +1494,58 @@
       const importCard = document.getElementById('card-import-backup');
       const fileInput = document.getElementById('backup-file-input');
 
-      // Card: Respaldo (hub)
-      const backupHubCard = document.getElementById('card-backup-hub');
-      if (backupHubCard){
-        backupHubCard.addEventListener('click', () => {
-          showModal({
-            title: 'Respaldo',
-            bodyHtml: `
-              <div>Elegí una acción. Esto trabaja <b>solo en este dispositivo</b> (no hay sync).</div>
-              <div class="small-note">Tip: exportá antes de importar, por si acaso.</div>
-            `,
-            primaryText: 'Exportar',
-            onPrimary: () => {
-              hideModal();
-              if (exportCard) exportCard.click();
-            },
-            secondaryText: 'Importar',
-            onSecondary: () => {
-              hideModal();
-              if (importCard) importCard.click();
-            },
-            cancelText: 'Cerrar',
-            onCancel: hideModal
-          });
-
+      function openBackupHub(){
+        showModal({
+          title: 'Respaldo',
+          bodyHtml: `
+            <div>Elegí una acción. Esto trabaja <b>solo en este dispositivo</b> (no hay sync).</div>
+            <div class="small-note">Tip: exportá antes de importar, por si acaso.</div>
+          `,
+          primaryText: 'Exportar',
+          onPrimary: () => {
+            hideModal();
+            if (exportCard) exportCard.click();
+          },
+          secondaryText: 'Importar',
+          onSecondary: () => {
+            hideModal();
+            if (importCard) importCard.click();
+          },
+          cancelText: 'Cerrar',
+          onCancel: hideModal
         });
+      }
+
+      function showHomeView(){
+        const homeView = document.getElementById('home-view');
+        const configView = document.getElementById('config-view');
+        if (configView) configView.classList.add('hidden');
+        if (homeView) homeView.classList.remove('hidden');
+        try{ window.scrollTo({ top: 0, behavior: 'smooth' }); }catch(_){ window.scrollTo(0, 0); }
+      }
+
+      function showConfigView(){
+        const homeView = document.getElementById('home-view');
+        const configView = document.getElementById('config-view');
+        if (homeView) homeView.classList.add('hidden');
+        if (configView) configView.classList.remove('hidden');
+        try{ window.scrollTo({ top: 0, behavior: 'smooth' }); }catch(_){ window.scrollTo(0, 0); }
+      }
+
+      // Card: Configuración (hub)
+      const configHubCard = document.getElementById('card-config-hub');
+      if (configHubCard){
+        configHubCard.addEventListener('click', showConfigView);
+      }
+
+      const configBackHome = document.getElementById('btn-config-back-home');
+      if (configBackHome){
+        configBackHome.addEventListener('click', showHomeView);
+      }
+
+      const configBackupCard = document.getElementById('card-config-backup');
+      if (configBackupCard){
+        configBackupCard.addEventListener('click', openBackupHub);
       }
 
       if (exportCard){
@@ -1609,6 +1713,6 @@
 
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=3"></script>
 </body>
 </html>
