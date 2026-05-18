@@ -59,7 +59,7 @@
     { id: 'fallback-media', name: 'Media 375 ml', price: 150 },
     { id: 'fallback-djeba', name: 'Djeba 750 ml', price: 300 },
     { id: 'fallback-litro', name: 'Litro 1000 ml', price: 330 },
-    { id: 'fallback-galon', name: 'Galón 3750 ml', price: 800 }
+    { id: 'fallback-galon', name: 'Galón 3750 ml', price: 900 }
   ]);
 
   const state = {
