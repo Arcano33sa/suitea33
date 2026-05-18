@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=18">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=27">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=4.20.77&r=18">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=18" />
+<link rel="stylesheet" href="styles.css?v=4.20.77&r=27">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=27" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -253,75 +253,6 @@
       <button id="btn-undo" class="btn-warn">↩︎ Deshacer última</button>
     </div>
 
-        <div class="vasos-panel">
-      <button type="button" id="vasosPanelToggle" class="vasos-panel-toggle btn-pill" aria-expanded="false">
-        <span class="vasos-panel-title">VASOS</span>
-        <span class="vasos-panel-meta">
-          <span class="vasos-panel-state">Mostrar</span>
-          <span class="vasos-panel-caret" aria-hidden="true">▸</span>
-        </span>
-      </button>
-
-      <div id="vasosPanelBody" class="vasos-panel-body is-collapsed" aria-hidden="true">
-        <div class="vasos-panel-actions">
-          <button type="button" id="vasosPanelCloseBtn" class="vasos-panel-close btn-mini">Cerrar</button>
-        </div>
-
-      <div class="card" id="cup-block">
-            <h3>Venta por vaso</h3>
-      
-            <div class="row">
-              <div><strong>Vasos disponibles: <span id="cup-available">0</span></strong></div>
-              <div style="text-align:right"><strong>Galones fraccionados: <span id="cup-gallons">0</span></strong></div>
-            </div>
-      
-            <div class="row3">
-              <div>
-                <label>Galones a fraccionar</label>
-                <input id="cup-fraction-gallons" type="number" inputmode="numeric" step="1" min="1" value="1">
-              </div>
-              <div>
-                <label>Vasos por galón</label>
-                <input id="cup-yield" type="number" inputmode="numeric" step="1" min="1" value="22">
-              </div>
-              <div>
-                <label>&nbsp;</label>
-                <button id="btn-fraction" class="btn-primary btn-pill">Fraccionar</button>
-              </div>
-            </div>
-      
-            <div class="row3">
-              <div>
-                <label>Cantidad de vasos</label>
-                <div class="stepper">
-                  <button id="cup-qty-minus" type="button">−</button>
-                  <input id="cup-qty" type="number" inputmode="numeric" step="1" min="1" value="1">
-                  <button id="cup-qty-plus" type="button">+</button>
-                </div>
-              </div>
-              <div>
-                <label>Precio por vaso (C$)</label>
-                <input id="cup-price" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" step="0.01" min="0" value="0">
-              </div>
-              <div>
-                <label>&nbsp;</label>
-                <div class="row" style="grid-template-columns:1fr 1fr; gap:8px">
-                  <button id="btn-sell-cups" class="btn-ok">Vender vasos</button>
-                  <button id="btn-courtesy-cups" class="btn-warn">Registrar cortesía</button>
-                </div>
-              </div>
-            </div>
-      
-            <div class="info" style="margin-top:10px">
-              <div><b>Vasos creados:</b> <span id="cup-created">0</span> · <b>Vendidos:</b> <span id="cup-sold">0</span> · <b>Cortesía:</b> <span id="cup-courtesy">0</span> · <b>Restantes:</b> <span id="cup-remaining">0</span></div>
-              <div><b>Remanente exacto:</b> <span id="cup-remnant">0</span> ml</div>
-            </div>
-      
-            <small class="muted">Nota: esto controla porciones vendibles (vasos de sangría). No es inventario de vasos plásticos.</small>
-          </div>
-      </div>
-    </div>
-
 
     <div class="card">
       <div class="row">
@@ -461,7 +392,23 @@
         </div>
       </div>
 
-      <div id="reempaque-panel" class="reempaque-panel is-collapsed">
+      <div id="reempaque-panel" class="reempaque-panel is-collapsed rp-mode-simple">
+        <div class="reempaque-card reempaque-mode-card">
+          <div class="reempaque-title">Modo</div>
+          <div class="reempaque-mode-options" role="radiogroup" aria-label="Modo de Reempaque">
+            <label class="reempaque-mode-pill">
+              <input type="radio" name="rp-mode" value="SIMPLE" checked>
+              <span>Simple</span>
+              <small>1 origen → 1 destino</small>
+            </label>
+            <label class="reempaque-mode-pill">
+              <input type="radio" name="rp-mode" value="MULTIPLE">
+              <span>Múltiple</span>
+              <small>1 origen → varios destinos</small>
+            </label>
+          </div>
+        </div>
+
         <div class="reempaque-grid">
           <div class="reempaque-card">
             <div class="reempaque-title">Origen</div>
@@ -471,9 +418,14 @@
             <input id="rp-source-qty" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 1">
             <label>Costo unitario origen</label>
             <input id="rp-source-unit-cost" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Auto o manual">
+            <div class="rp-multi-only">
+              <label>Volumen total origen en ml</label>
+              <input id="rp-source-total-ml-manual" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Auto o manual">
+              <small class="muted">Si el catálogo no tiene ml, indícalo aquí.</small>
+            </div>
           </div>
 
-          <div class="reempaque-card">
+          <div id="rp-simple-ui" class="reempaque-card rp-simple-only">
             <div class="reempaque-title">Destino</div>
             <label>Producto destino</label>
             <select id="rp-target-product"></select>
@@ -497,7 +449,7 @@
           </div>
         </div>
 
-        <div class="reempaque-grid reempaque-grid-3">
+        <div class="reempaque-grid reempaque-grid-3 rp-simple-only">
           <div class="reempaque-card soft">
             <div class="reempaque-title">Referencia de conversión</div>
             <div class="reempaque-kv"><span>Volumen/capacidad origen</span><b id="rp-source-capacity">—</b></div>
@@ -518,6 +470,48 @@
           <div class="reempaque-card soft">
             <div class="reempaque-title">Notas</div>
             <textarea id="rp-note" rows="4" placeholder="Nota opcional"></textarea>
+          </div>
+        </div>
+
+        <div id="rp-multiple-ui" class="rp-multi-only">
+          <div class="reempaque-grid reempaque-grid-3">
+            <div class="reempaque-card soft">
+              <div class="reempaque-title">Origen múltiple</div>
+              <div class="reempaque-kv"><span>Producto origen</span><b id="rp-multi-source-name">—</b></div>
+              <div class="reempaque-kv"><span>Cantidad origen</span><b id="rp-multi-source-qty">—</b></div>
+              <div class="reempaque-kv"><span>Volumen total origen</span><b id="rp-multi-source-total-ml">—</b></div>
+              <div class="reempaque-kv"><span>Costo total origen</span><b id="rp-multi-cost-origin-total">N/D</b></div>
+              <div class="reempaque-kv"><span>Costo por ml estimado</span><b id="rp-multi-cost-per-ml">N/D</b></div>
+              <div class="reempaque-kv"><span>Stock disponible</span><b id="rp-multi-source-stock">—</b></div>
+            </div>
+
+            <div class="reempaque-card soft reempaque-destinations-card">
+              <div class="reempaque-title">Destinos</div>
+              <div id="rp-multi-destinations" class="reempaque-destinations-list"></div>
+              <div class="actions end" style="margin-top:8px">
+                <button id="btn-rp-add-destination" class="btn-outline btn-pill btn-pill-mini" type="button">Agregar destino</button>
+              </div>
+            </div>
+
+            <div class="reempaque-card soft">
+              <div class="reempaque-title">Resumen múltiple</div>
+              <div class="reempaque-kv"><span>Volumen total origen</span><b id="rp-multi-volume-origin">—</b></div>
+              <div class="reempaque-kv"><span>Volumen distribuido</span><b id="rp-multi-volume-distributed">—</b></div>
+              <div class="reempaque-kv"><span>Volumen sobrante/merma</span><b id="rp-multi-volume-left">—</b></div>
+              <div class="reempaque-kv"><span>Costo total origen</span><b id="rp-multi-cost-origin">N/D</b></div>
+              <div class="reempaque-kv"><span>Costo líquido distribuido</span><b id="rp-multi-cost-distributed">N/D</b></div>
+              <div class="reempaque-kv"><span>Costo adicional destinos</span><b id="rp-multi-cost-additional">C$ 0.00</b></div>
+              <div class="reempaque-kv"><span>Costo final destinos</span><b id="rp-multi-cost-final">N/D</b></div>
+              <div class="reempaque-kv"><span>Costo sobrante/merma</span><b id="rp-multi-cost-left">N/D</b></div>
+              <div id="rp-multi-warning" class="reempaque-warning muted">Sin advertencias.</div>
+            </div>
+          </div>
+
+          <div class="reempaque-grid">
+            <div class="reempaque-card soft">
+              <div class="reempaque-title">Notas</div>
+              <textarea id="rp-note-multi" rows="3" placeholder="Nota opcional"></textarea>
+            </div>
           </div>
         </div>
 
@@ -549,7 +543,7 @@
       </thead>
       <tbody></tbody>
     </table>
-    <div class="info"><small>“Manejar” desactiva inventario para productos que no se controlan aquí. Inicial se guarda por evento. Reposición y Ajuste crean movimientos fechados. <b>Nota:</b> la <i>Venta por vaso</i> se gestiona en el bloque “Venta por vaso” (no aparece en este inventario).</small></div>
+    <div class="info"><small>“Manejar” desactiva inventario para productos que no se controlan aquí. Inicial se guarda por evento. Reposición y Ajuste crean movimientos fechados. <b>Nota:</b> Vasos se alimenta formalmente desde Inventario → Reempaque y se vende como producto normal.</small></div>
   </section>
 
   <section id="tab-eventos" class="tab card" style="display:none">
@@ -1155,6 +1149,53 @@
     </div>
   </section>
 
+<!-- Modal Editar producto (Productos) -->
+<div id="product-edit-modal" class="modal" aria-hidden="true">
+  <div class="panel panel-compact product-edit-panel">
+    <button id="product-edit-close" class="close btn-warn btn-pill btn-pill-mini" type="button">Cerrar</button>
+    <h3>Editar producto</h3>
+
+    <p class="hint small" id="product-edit-current" style="margin-top:0.25rem;">Producto actual: —</p>
+
+    <div id="product-edit-history-note" class="warn product-edit-history-note" style="display:none">
+      <small>Este producto ya tiene movimientos. Los cambios aplicarán hacia adelante y no modificarán el historial anterior.</small>
+    </div>
+
+    <div class="product-edit-form">
+      <div>
+        <label for="product-edit-name">Nombre del producto</label>
+        <input id="product-edit-name" autocomplete="off" placeholder="Nombre">
+      </div>
+      <div>
+        <label for="product-edit-price">Precio de venta (C$)</label>
+        <input id="product-edit-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+      </div>
+      <div>
+        <label for="product-edit-capacity">ml por unidad / capacidad</label>
+        <input id="product-edit-capacity" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Ej: 120">
+      </div>
+      <div>
+        <label for="product-edit-unit-cost">Costo unitario de referencia (C$)</label>
+        <input id="product-edit-unit-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+      </div>
+    </div>
+
+    <div class="product-edit-flags">
+      <label class="flag"><input type="checkbox" id="product-edit-active"> Activo</label>
+      <label class="flag"><input type="checkbox" id="product-edit-manage"> Manejar inventario</label>
+    </div>
+
+    <small id="product-edit-msg" class="muted product-edit-msg"></small>
+
+    <div class="row" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:12px">
+      <button id="product-edit-save" class="btn-ok btn-pill" type="button">Guardar</button>
+      <button id="product-edit-cancel" class="btn-secondary btn-pill" type="button">Cancelar</button>
+    </div>
+
+    <div class="info" style="margin-top:10px"><small>Se conserva el identificador interno del producto. No mueve ventas, caja, efectivo ni diario.</small></div>
+  </div>
+</div>
+
   <section id="tab-calculadora" class="tab card" style="display:none">
     <h2>Calculadora</h2>
 
@@ -1750,17 +1791,17 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=0.18.5"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=18"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=27"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.77&r=18"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=18"></script>
-<script src="/assets/js/a33-build.js?v=4.20.77&r=18"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.77&r=27"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=27"></script>
+<script src="/assets/js/a33-build.js?v=4.20.77&r=27"></script>
 <script>
   (function(){
     try{
       const relObj = (window.A33_RELEASE || {});
       const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.77';
-      const rev = '18'; // POS cache bump local — Galón default C$900
+      const rev = '27'; // POS cache bump local — Editar productos desde Reempaque
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
       try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }
@@ -1780,8 +1821,8 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.77&r=18"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=18"></script>
+<script src="app.js?v=4.20.77&r=27"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=27"></script>
 <script>
   (function(){
     const BUILD = (window.A33_VERSION || '4.20.77').toString();

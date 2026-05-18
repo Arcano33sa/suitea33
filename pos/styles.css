@@ -254,58 +254,8 @@ input[type="date"]{padding:10px}
 }
 
 
-/* Vasos panel (colapsable persistente) */
+/* Utilidad compartida para paneles colapsables */
 .is-collapsed{display:none !important}
-
-.vasos-panel{margin:12px 0}
-
-.vasos-panel-toggle{
-  background:var(--panel);
-  color:var(--text);
-  border:1px solid rgba(212,175,55,0.35);
-  box-shadow:0 6px 16px rgba(0,0,0,0.22);
-  justify-content:space-between;
-  padding:10px 14px;
-}
-
-.vasos-panel-toggle .vasos-panel-title{
-  font-weight:800;
-  letter-spacing:.2px;
-}
-
-.vasos-panel-toggle .vasos-panel-meta{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  color:var(--muted);
-  font-weight:700;
-}
-
-.vasos-panel-toggle .vasos-panel-caret{
-  color:var(--accent);
-  font-weight:900;
-}
-
-.vasos-panel-body{
-  margin-top:10px;
-}
-
-.vasos-panel-actions{
-  display:flex;
-  justify-content:flex-end;
-  margin:0 0 8px;
-}
-
-.vasos-panel-close{
-  width:auto;
-  border-radius:999px;
-  padding:7px 10px;
-  border:1px solid rgba(212,175,55,0.25);
-  background:#141414;
-  color:var(--accent);
-  font-weight:800;
-  box-shadow:0 6px 16px rgba(0,0,0,0.18);
-}
 
 .btn-mini{width:auto; padding:8px 10px; border-radius:10px; font-size:13px}
 
@@ -534,8 +484,7 @@ small.muted{color:var(--muted)}
 .sell-locked #sell-block,
 .sell-locked .row4,
 .sell-locked #sale-bank-row,
-.sell-locked details.card,
-.sell-locked #cup-block{opacity:.55;filter:saturate(.88)}
+.sell-locked details.card{opacity:.55;filter:saturate(.88)}
 
 /* Efectivo v2: modo solo lectura (candado base) */
 .cashv2-readonly #cashv2-fx-card,
@@ -949,6 +898,7 @@ small.muted{color:var(--muted)}
   color:var(--muted);
 }
 .reempaque-history-meta span{min-width:0;overflow-wrap:anywhere}
+.reempaque-history-meta .reempaque-history-wide{grid-column:1 / -1}
 .reempaque-history-meta strong{color:#ddd}
 .reempaque-empty{
   padding:9px 10px;
@@ -1662,4 +1612,96 @@ small.muted{color:var(--muted)}
   .sale-cash-tender-mode{
     width:100%;
   }
+}
+
+/* Reempaque múltiple (POS > Inventario) — Etapa 2/3 UI */
+.reempaque-panel.rp-mode-simple .rp-multi-only,
+.reempaque-panel.rp-mode-multiple .rp-simple-only{display:none !important}
+.reempaque-mode-card{margin-bottom:10px;background:#141414;border-color:rgba(212,175,55,.18)}
+.reempaque-mode-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+.reempaque-mode-pill{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid rgba(254,254,254,.10);
+  background:#101010;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+.reempaque-mode-pill input{margin:0 0 4px 0;width:auto}
+.reempaque-mode-pill span{font-weight:900;color:#fff}
+.reempaque-mode-pill small{color:var(--muted);line-height:1.25}
+.reempaque-mode-pill:has(input:checked){border-color:rgba(212,175,55,.58);box-shadow:0 0 0 1px rgba(212,175,55,.18) inset;background:rgba(212,175,55,.08)}
+.reempaque-destinations-card{grid-column:span 1}
+.reempaque-destinations-list{display:grid;gap:8px;margin-top:6px}
+.reempaque-dest-card{
+  min-width:0;
+  padding:10px;
+  border-radius:13px;
+  border:1px solid rgba(212,175,55,.18);
+  background:#151515;
+}
+.reempaque-dest-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.reempaque-dest-head b{color:#fff;font-size:13px}
+.reempaque-dest-head button{min-height:32px;padding:6px 10px}
+.reempaque-dest-card label{font-size:12.5px;color:var(--muted)}
+.reempaque-dest-card select,
+.reempaque-dest-card input{width:100%}
+
+.rp-multi-target-kind{width:100%;margin-bottom:8px}
+.rp-multi-new-wrap{margin:8px 0 10px}
+.rp-multi-new-wrap[hidden]{display:none !important}
+.rp-multi-existing-wrap{min-width:0}
+.rp-multi-new-mode{border-color:rgba(212,175,55,.34);background:linear-gradient(180deg, rgba(212,175,55,.055), rgba(21,21,21,1))}
+.rp-multi-new-mode .rp-multi-target-kind{border-color:rgba(212,175,55,.38)}
+.reempaque-mini-grid{display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:8px}
+.reempaque-warning{margin-top:8px;padding:8px 10px;border-radius:12px;border:1px dashed rgba(254,254,254,.12);background:#131313;font-size:12.5px;line-height:1.35}
+.reempaque-warning.warn{color:#f0a31a;border-color:rgba(240,163,26,.42);background:rgba(240,163,26,.08)}
+.reempaque-warning.ok{color:#1db954;border-color:rgba(29,185,84,.35);background:rgba(29,185,84,.08)}
+@media (max-width: 900px){
+  .reempaque-mode-options{grid-template-columns:1fr}
+  .reempaque-mini-grid{grid-template-columns:1fr}
+}
+
+
+/* Productos: edición segura desde modal (Reempaque compatible) */
+.product-card-a33{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+}
+.product-card-a33 .product-title{font-weight:800; font-size:1.05rem; word-break:break-word}
+.product-meta-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin-top:8px;
+}
+.product-meta-item{
+  border:1px solid #2a2a2a;
+  border-radius:12px;
+  padding:8px 10px;
+  background:rgba(255,255,255,.03);
+  min-width:0;
+}
+.product-meta-item small{display:block; opacity:.72; margin-bottom:2px}
+.product-actions-a33{display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end}
+.product-edit-form{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px}
+.product-edit-form input{width:100%; min-width:0}
+.product-edit-flags{display:flex; flex-wrap:wrap; gap:10px; margin-top:10px}
+.product-edit-history-note{margin:8px 0}
+.product-edit-msg{display:block; min-height:1.25em; margin-top:8px; white-space:pre-wrap}
+@media (max-width: 720px){
+  .product-card-a33{grid-template-columns:1fr}
+  .product-actions-a33{justify-content:stretch}
+  .product-actions-a33 button{flex:1 1 140px}
+  .product-meta-grid{grid-template-columns:1fr 1fr}
+  .product-edit-form{grid-template-columns:1fr}
+}
+@media (max-width: 420px){
+  .product-meta-grid{grid-template-columns:1fr}
 }
