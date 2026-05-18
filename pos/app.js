@@ -7,7 +7,7 @@ let db;
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.77';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r7');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r8');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -7912,6 +7912,11 @@ const SEED = [
 ];
 const DEFAULT_EVENTS = [{name:'General'}];
 
+function isValidCatalogPricePOS(value){
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+}
+
 async function seedMissingDefaults(force=false){
   const list = await getAll('products');
   const keys = new Set(list.map(p=>normKeyPOS(p.name)));
@@ -7923,27 +7928,32 @@ async function seedMissingDefaults(force=false){
 
   for (const s of SEED){
     const k = normKeyPOS(s.name);
-    const existing = list.find(p=>normKeyPOS(p.name)===k);
+    let existing = list.find(p=>normKeyPOS(p.name)===k);
+    if (!existing && k === normKeyPOS(CANON_GALON_LABEL)){
+      // Si solo existe el Galón legacy (3800 ml u otra variante), usarlo como existente y no crear duplicado.
+      existing = list.find(p => p && mapProductNameToFinishedId(p.name || '') === 'galon');
+    }
 
     if (force || !existing){
       if (existing){
-        existing.active = true;
-        if (!existing.price || existing.price <= 0) existing.price = s.price;
-        // Ajuste suave: si era el default viejo del galón (900), lo alineamos a 800.
-        if (k === normKeyPOS(CANON_GALON_LABEL) && Number(existing.price) === 900) existing.price = 800;
-        if (typeof existing.manageStock === 'undefined') existing.manageStock = s.manageStock;
-        if (s.internalType) existing.internalType = s.internalType;
-        await put('products', existing);
+        let changed = false;
+        if (existing.active !== true){ existing.active = true; changed = true; }
+        if (k === normKeyPOS(CANON_GALON_LABEL) && existing.name !== s.name && !list.some(p => p && p.id !== existing.id && normKeyPOS(p.name) === k)){ existing.name = s.name; changed = true; }
+        // Catálogo global editable: un precio válido del usuario NUNCA se pisa por defaults.
+        if (!isValidCatalogPricePOS(existing.price)){ existing.price = s.price; changed = true; }
+        if (typeof existing.manageStock === 'undefined'){ existing.manageStock = s.manageStock; changed = true; }
+        if (s.internalType && existing.internalType !== s.internalType){ existing.internalType = s.internalType; changed = true; }
+        if (changed) await put('products', existing);
       } else {
         await put('products', {...s});
       }
     } else {
-      // Existe: solo completar faltantes (sin pisar custom)
+      // Existe: solo completar faltantes (sin pisar precios manuales válidos).
       let changed = false;
       if (typeof existing.active === 'undefined'){ existing.active = true; changed = true; }
+      if (k === normKeyPOS(CANON_GALON_LABEL) && existing.name !== s.name && !list.some(p => p && p.id !== existing.id && normKeyPOS(p.name) === k)){ existing.name = s.name; changed = true; }
       if (typeof existing.manageStock === 'undefined'){ existing.manageStock = s.manageStock; changed = true; }
-      if (!(Number(existing.price) > 0)) { existing.price = s.price; changed = true; }
-      if (k === normKeyPOS(CANON_GALON_LABEL) && Number(existing.price) === 900) { existing.price = 800; changed = true; }
+      if (!isValidCatalogPricePOS(existing.price)) { existing.price = s.price; changed = true; }
       if (changed) await put('products', existing);
     }
   }
@@ -9205,23 +9215,39 @@ async function normalizeLegacyGallonProductPOS(){
     if (!Array.isArray(products) || !products.length) return;
 
     const canonicalName = CANON_GALON_LABEL;
+    const canonicalKey = normKeyPOS(canonicalName);
+    const defaultGallon = (SEED.find(x => normKeyPOS(x.name) === canonicalKey) || {}).price || 800;
 
     // Identificar productos tipo "galón" con la misma heurística usada por inventario.
     const galonProducts = products.filter(p => p && mapProductNameToFinishedId(p.name || '') === 'galon');
     if (!galonProducts.length) return;
 
-    const canonicalKey = normKeyPOS(canonicalName);
+    const activeValidLegacy = galonProducts.find(p =>
+      normKeyPOS(p.name) !== canonicalKey && p.active !== false && isValidCatalogPricePOS(p.price)
+    );
 
-    // Elegir canon: preferir ya-3750, luego cualquiera.
-    let canon = galonProducts.find(p => normKeyPOS(p.name) === canonicalKey)
+    // Elegir canon de forma conservadora: preferir el canónico activo; si no existe, usar un legacy activo válido.
+    let canon = galonProducts.find(p => normKeyPOS(p.name) === canonicalKey && p.active !== false)
+      || galonProducts.find(p => normKeyPOS(p.name) === canonicalKey)
+      || activeValidLegacy
       || galonProducts.find(p => normName(p.name).includes('3750'))
       || galonProducts[0];
 
-    // Canon: label estándar + precio solo si faltaba/0 o si venía con el default viejo 900.
+    // Precio a conservar: si el canon no tiene precio válido, tomar otro precio válido existente; nunca tratar C$900 como default inválido.
+    let preservedPrice = isValidCatalogPricePOS(canon.price) ? Number(canon.price) : null;
+    if (activeValidLegacy && (!isValidCatalogPricePOS(canon.price) || Number(canon.price) === Number(defaultGallon))){
+      preservedPrice = Number(activeValidLegacy.price);
+    }
+    if (!isValidCatalogPricePOS(preservedPrice)){
+      const anyValid = galonProducts.find(p => isValidCatalogPricePOS(p.price));
+      preservedPrice = anyValid ? Number(anyValid.price) : Number(defaultGallon);
+    }
+
+    // Canon: label estándar + estructura. El precio solo se llena si faltaba/era inválido.
     let changedCanon = false;
     if (canon.name !== canonicalName){ canon.name = canonicalName; changedCanon = true; }
-    const pr = Number(canon.price || 0);
-    if (!(pr > 0) || pr === 900){ canon.price = 800; changedCanon = true; }
+    if (!isValidCatalogPricePOS(canon.price)){ canon.price = preservedPrice; changedCanon = true; }
+    else if (Number(canon.price) !== Number(preservedPrice) && activeValidLegacy){ canon.price = preservedPrice; changedCanon = true; }
     if (typeof canon.manageStock === 'undefined'){ canon.manageStock = true; changedCanon = true; }
     if (typeof canon.active === 'undefined'){ canon.active = true; changedCanon = true; }
     if (changedCanon) await put('products', canon);
@@ -9230,12 +9256,9 @@ async function normalizeLegacyGallonProductPOS(){
     for (const p of galonProducts){
       if (!p || p.id === canon.id) continue;
       let ch = false;
-      // Display consistente: no dejar “3800” visible.
-      if (p.name !== canonicalName){ p.name = canonicalName; ch = true; }
-      // Completar precio solo si faltaba/0 (no pisar custom)
-      const ppr = Number(p.price || 0);
-      if (!(ppr > 0)){ p.price = 800; ch = true; }
-      // Ocultar de catálogo de venta
+      // No pisar precios válidos de duplicados/legacy: solo completar si faltaba o era inválido.
+      if (!isValidCatalogPricePOS(p.price)){ p.price = preservedPrice; ch = true; }
+      // Ocultar de catálogo de venta; no borrar ni tocar ventas históricas.
       if (p.active !== false){ p.active = false; ch = true; }
       if (typeof p.manageStock === 'undefined'){ p.manageStock = true; ch = true; }
       if (ch) await put('products', p);
@@ -14676,6 +14699,98 @@ function syncSummaryAllButtonStatePOS(){
   try{ btnAll.setAttribute('aria-pressed', active ? 'true' : 'false'); }catch(_){ }
 }
 
+function getSummaryProductDisplayNamePOS(name){
+  const raw = String(name || '—').trim() || '—';
+  try{
+    const ui = uiProductNamePOS(raw);
+    return String(ui || raw).trim() || '—';
+  }catch(_){
+    return raw;
+  }
+}
+
+function getSummarySaleQtyPOS(s){
+  if (!s) return 0;
+  const fields = ['qty','quantity','cantidad'];
+  for (const f of fields){
+    if (s[f] == null || s[f] === '') continue;
+    const n = Number(s[f]);
+    if (Number.isFinite(n) && Math.abs(n) > 1e-9) return n;
+  }
+  // Compatibilidad con ventas antiguas: si había total pero no cantidad, contar una unidad segura.
+  const total = Number(s.total || 0);
+  if (Number.isFinite(total) && Math.abs(total) > 1e-9) return s.isReturn ? -1 : 1;
+  return 0;
+}
+
+function normalizeSummaryProductAggPOS(v){
+  if (v && typeof v === 'object'){
+    const total = Number(v.total ?? v.amount ?? v.val ?? v.value ?? 0) || 0;
+    const hasQty = (v.qty != null || v.quantity != null || v.cantidad != null || v.sold != null || v.vendido != null);
+    const qty = hasQty ? (Number(v.qty ?? v.quantity ?? v.cantidad ?? v.sold ?? v.vendido ?? 0) || 0) : 0;
+    const qtyKnown = (v.qtyKnown === false) ? false : !!hasQty;
+    return { total, qty, qtyKnown };
+  }
+  return { total: Number(v || 0) || 0, qty: 0, qtyKnown: false };
+}
+
+function addSummaryProductAggPOS(map, productName, total, qty, qtyKnown){
+  if (!map) return;
+  const key = getSummaryProductDisplayNamePOS(productName);
+  const prev = normalizeSummaryProductAggPOS(map.get(key));
+  prev.total += Number(total || 0) || 0;
+  if (qtyKnown !== false){
+    prev.qty += Number(qty || 0) || 0;
+    prev.qtyKnown = true;
+  }
+  map.set(key, prev);
+}
+
+function formatSummarySoldQtyPOS(qty, qtyKnown){
+  if (qtyKnown === false || qty == null || qty === '') return '—';
+  const n = Number(qty);
+  if (!Number.isFinite(n)) return '—';
+  if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+  return n.toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function parseSummaryProductSheetRowPOS(row, header){
+  const r = Array.isArray(row) ? row : [];
+  const h = Array.isArray(header) ? header : [];
+  const name = getSummaryProductDisplayNamePOS(r[0] || '');
+  const h1 = String(h[1] || '').toLowerCase();
+  const h2 = String(h[2] || '').toLowerCase();
+  const isNewShape = r.length >= 3 || h1.includes('vendido') || h1.includes('cantidad') || h2.includes('total');
+  if (isNewShape){
+    const qtyRaw = (r[1] == null || r[1] === '') ? null : Number(r[1]);
+    const qtyKnown = qtyRaw != null && Number.isFinite(qtyRaw);
+    return { key: name, qty: qtyKnown ? qtyRaw : 0, qtyKnown, total: Number(r[2] || 0) || 0 };
+  }
+  return { key: name, qty: 0, qtyKnown: false, total: Number(r[1] || 0) || 0 };
+}
+
+function summaryProductRowsFromMapPOS(map){
+  return Array.from((map || new Map()).entries())
+    .map(([k,v])=>{
+      const agg = normalizeSummaryProductAggPOS(v);
+      return { key: getSummaryProductDisplayNamePOS(k), qty: agg.qty || 0, qtyKnown: !!agg.qtyKnown, total: agg.total || 0, val: agg.total || 0 };
+    })
+    .filter(it=>it.key && !(/\(Cortesía\)/i.test(String(it.key))))
+    .sort((a,b)=>String(a.key).localeCompare(String(b.key),'es-NI'));
+}
+
+function summaryProductItemTotalPOS(it){
+  return Number((it && (it.total ?? it.amount ?? it.val ?? it.value)) || 0) || 0;
+}
+
+function summaryProductItemQtyPOS(it){
+  const src = (it && typeof it === 'object') ? it : {};
+  const hasQty = !!(src.qty != null || src.quantity != null || src.cantidad != null || src.sold != null || src.vendido != null);
+  const qtyKnown = (src.qtyKnown === false) ? false : hasQty;
+  const qty = qtyKnown ? (Number(src.qty ?? src.quantity ?? src.cantidad ?? src.sold ?? src.vendido ?? 0) || 0) : 0;
+  return { qty, qtyKnown };
+}
+
 function renderSummaryFromSnapshotPOS(archive){
   const a = archive || {};
   const snap = (a.snapshot && typeof a.snapshot === 'object') ? a.snapshot : {};
@@ -14760,17 +14875,19 @@ function renderSummaryFromSnapshotPOS(archive){
     }
   }
 
-  const byProdRows = readSheetRowsPOS(sheets, 'PorProducto').slice(1)
-    .map(r=>({ k: String((r&&r[0])||'').trim(), v: Number((r&&r[1])||0) || 0 }))
-    .filter(it=>it.k);
-  byProdRows.sort((a,b)=>a.k.localeCompare(b.k,'es-NI'));
+  const prodSheetRows = readSheetRowsPOS(sheets, 'PorProducto');
+  const prodHeader = Array.isArray(prodSheetRows) && prodSheetRows.length ? prodSheetRows[0] : [];
+  const byProdRows = (prodSheetRows || []).slice(1)
+    .map(r=>parseSummaryProductSheetRowPOS(r, prodHeader))
+    .filter(it=>it.key);
+  byProdRows.sort((a,b)=>String(a.key).localeCompare(String(b.key),'es-NI'));
 
   const tbP = document.querySelector('#tbl-por-prod tbody');
   if (tbP){
     tbP.innerHTML = '';
     for (const it of byProdRows){
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${escapeHtml(it.k)}</td><td>${fmt(it.v)}</td>`;
+      tr.innerHTML = `<td>${escapeHtml(it.key)}</td><td>${formatSummarySoldQtyPOS(it.qty, it.qtyKnown)}</td><td>${fmt(it.total)}</td>`;
       tbP.appendChild(tr);
     }
   }
@@ -14995,7 +15112,7 @@ async function renderSummary(){
       grand += total;
 
       byDay.set(s.date, (byDay.get(s.date) || 0) + total);
-      byProd.set(s.productName, (byProd.get(s.productName) || 0) + total);
+      addSummaryProductAggPOS(byProd, s.productName, total, getSummarySaleQtyPOS(s), true);
       byPay.set(s.payment || 'efectivo', (byPay.get(s.payment || 'efectivo') || 0) + total);
       byEvent.set(s.eventName || 'General', (byEvent.get(s.eventName || 'General') || 0) + total);
 
@@ -15093,11 +15210,13 @@ async function renderSummary(){
         }
       }
 
-      // Por producto: excluir cualquier llave tipo "(Cortesía)"
+      // Por producto: excluir cualquier llave tipo "(Cortesía)" y conservar cantidad si existe.
       if (t.byProduct){
         for (const k of Object.keys(t.byProduct)){
           if (/\(Cortesía\)/i.test(String(k))) continue;
-          byProd.set(k, (byProd.get(k) || 0) + (t.byProduct[k] || 0));
+          const raw = t.byProduct[k];
+          const agg = normalizeSummaryProductAggPOS(raw);
+          addSummaryProductAggPOS(byProd, k, agg.total, agg.qty, agg.qtyKnown);
         }
       }
 
@@ -15217,14 +15336,11 @@ async function renderSummary(){
   const tbP = document.querySelector('#tbl-por-prod tbody');
   if (tbP){
     tbP.innerHTML = '';
-    [...byProd.entries()]
-      .filter(([k,_v])=> !(/\(Cortesía\)/i.test(String(k))))
-      .sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'es-NI'))
-      .forEach(([k,v])=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${escapeHtml(k)}</td><td>${fmt(v)}</td>`;
-        tbP.appendChild(tr);
-      });
+    summaryProductRowsFromMapPOS(byProd).forEach((it)=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(it.key)}</td><td>${formatSummarySoldQtyPOS(it.qty, it.qtyKnown)}</td><td>${fmt(it.total)}</td>`;
+      tbP.appendChild(tr);
+    });
   }
 
   const tbPay = document.querySelector('#tbl-por-pago tbody');
@@ -16366,7 +16482,7 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
     if (!courtesy){
       grand += total;
       byDay.set(s.date, (byDay.get(s.date) || 0) + total);
-      byProd.set(s.productName, (byProd.get(s.productName) || 0) + total);
+      addSummaryProductAggPOS(byProd, s.productName, total, getSummarySaleQtyPOS(s), true);
       byPay.set(s.payment || 'efectivo', (byPay.get(s.payment || 'efectivo') || 0) + total);
       byEvent.set(s.eventName || 'General', (byEvent.get(s.eventName || 'General') || 0) + total);
 
@@ -16429,6 +16545,7 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
     .sort((a,b)=> (Number(b.val||0) - Number(a.val||0)));
   const sortMapDateAsc = (m) => Array.from(m.entries()).map(([k,v])=>({ key:k, val:v }))
     .sort((a,b)=> String(a.key).localeCompare(String(b.key)));
+  const sortProductAggAlpha = (m) => summaryProductRowsFromMapPOS(m);
 
   return {
     periodKey,
@@ -16445,7 +16562,7 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
     },
     byEvent: sortMapDesc(byEvent),
     byDay: sortMapDateAsc(byDay),
-    byProd: sortMapDesc(byProd),
+    byProd: sortProductAggAlpha(byProd),
     byPay: sortMapDesc(byPay),
     transferByBank: transferList,
     courtesyByProd: courtesyList,
@@ -16486,8 +16603,11 @@ function buildSummarySheetsFromDataPOS(data){
   sheets.push({ name: 'PorDia', rows: dRows });
 
   // Hoja PorProducto
-  const pRows = [['Producto','Total C$']];
-  for (const it of (data.byProd || [])) pRows.push([it.key, it.val || 0]);
+  const pRows = [['Producto','Vendido','Total C$']];
+  for (const it of (data.byProd || [])){
+    const q = summaryProductItemQtyPOS(it);
+    pRows.push([it.key, q.qtyKnown ? q.qty : '', summaryProductItemTotalPOS(it)]);
+  }
   sheets.push({ name: 'PorProducto', rows: pRows });
 
   // Hoja PorPago
