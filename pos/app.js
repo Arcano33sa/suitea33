@@ -7,7 +7,7 @@ let db;
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.77';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r27');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r28');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -5951,10 +5951,19 @@ async function reempaqueCreateBaseRecordPOS(input={}){
   const costoOrigenTotal = costoOrigenTotalManual > 0
     ? costoOrigenTotalManual
     : ((costoUnitarioOrigen > 0 && cantidadOrigen > 0) ? round2(costoUnitarioOrigen * cantidadOrigen) : 0);
-  const costoAdicionalTotal = reempaqueMoneyPOS(input.costoAdicionalTotal ?? input.costoEmpaqueTotal ?? input.extraCostTotal ?? 0);
+  const costoAdicionalUnitarioInput = reempaqueMoneyPOS(input.costoAdicionalUnitario ?? input.costoEmpaqueUnitario ?? input.extraUnitCost ?? input.additionalUnitCost ?? 0);
+  const costoAdicionalTotalManual = reempaqueMoneyPOS(input.costoAdicionalTotal ?? input.costoEmpaqueTotal ?? input.extraCostTotal ?? 0);
+  const costoAdicionalTotal = (costoAdicionalUnitarioInput > 0 && cantidadFinalRegistrada > 0)
+    ? round2(costoAdicionalUnitarioInput * cantidadFinalRegistrada)
+    : costoAdicionalTotalManual;
+  const costoAdicionalUnitario = costoAdicionalUnitarioInput > 0
+    ? costoAdicionalUnitarioInput
+    : ((cantidadFinalRegistrada > 0 && costoAdicionalTotal > 0) ? round2(costoAdicionalTotal / cantidadFinalRegistrada) : 0);
+  const costoLiquidoTotal = costoOrigenTotal;
+  const costoLiquidoUnitario = (cantidadFinalRegistrada > 0 && costoLiquidoTotal > 0) ? round2(costoLiquidoTotal / cantidadFinalRegistrada) : 0;
   const costoTotalManual = reempaqueMoneyPOS(input.costoTotalReempaque ?? input.totalCostReempaque ?? 0);
-  const costoTotalReempaque = (costoOrigenTotal > 0 || costoAdicionalTotal > 0)
-    ? round2(costoOrigenTotal + costoAdicionalTotal)
+  const costoTotalReempaque = (costoLiquidoTotal > 0 || costoAdicionalTotal > 0)
+    ? round2(costoLiquidoTotal + costoAdicionalTotal)
     : costoTotalManual;
   const costoUnitarioDestino = (cantidadFinalRegistrada > 0 && costoTotalReempaque > 0)
     ? round2(costoTotalReempaque / cantidadFinalRegistrada)
@@ -6000,7 +6009,14 @@ async function reempaqueCreateBaseRecordPOS(input={}){
     costoUnitarioOrigen,
     costoFuenteOrigen,
     costoOrigenTotal,
+    costoLiquidoTotal,
+    costoLiquidoDistribuido: costoLiquidoTotal,
+    costoLiquidoUnitario,
+    costoUnitarioLiquido: costoLiquidoUnitario,
+    costoAdicionalUnitario,
+    costoEmpaqueUnitario: costoAdicionalUnitario,
     costoAdicionalTotal,
+    costoEmpaqueTotal: costoAdicionalTotal,
     costoTotalReempaque,
     costoUnitarioDestino,
     nota: String(input.nota || input.note || '').trim(),
@@ -13291,10 +13307,19 @@ async function reempaqueApplyMovementPOS(input={}){
   const costoOrigenTotal = costoOrigenTotalManual > 0
     ? costoOrigenTotalManual
     : ((costoUnitarioOrigen > 0 && qtySource > 0) ? round2(costoUnitarioOrigen * qtySource) : 0);
-  const costoAdicionalTotal = reempaqueMoneyPOS(base.costoAdicionalTotal ?? base.costoEmpaqueTotal ?? base.extraCostTotal ?? 0);
+  const costoAdicionalUnitarioInput = reempaqueMoneyPOS(base.costoAdicionalUnitario ?? base.costoEmpaqueUnitario ?? base.extraUnitCost ?? base.additionalUnitCost ?? 0);
+  const costoAdicionalTotalManual = reempaqueMoneyPOS(base.costoAdicionalTotal ?? base.costoEmpaqueTotal ?? base.extraCostTotal ?? 0);
+  const costoAdicionalTotal = (costoAdicionalUnitarioInput > 0 && qtyTarget > 0)
+    ? round2(costoAdicionalUnitarioInput * qtyTarget)
+    : costoAdicionalTotalManual;
+  const costoAdicionalUnitario = costoAdicionalUnitarioInput > 0
+    ? costoAdicionalUnitarioInput
+    : ((qtyTarget > 0 && costoAdicionalTotal > 0) ? round2(costoAdicionalTotal / qtyTarget) : 0);
+  const costoLiquidoTotal = costoOrigenTotal;
+  const costoLiquidoUnitario = (qtyTarget > 0 && costoLiquidoTotal > 0) ? round2(costoLiquidoTotal / qtyTarget) : 0;
   const costoTotalManual = reempaqueMoneyPOS(base.costoTotalReempaque ?? base.totalCostReempaque ?? 0);
-  const costoTotalReempaque = (costoOrigenTotal > 0 || costoAdicionalTotal > 0)
-    ? round2(costoOrigenTotal + costoAdicionalTotal)
+  const costoTotalReempaque = (costoLiquidoTotal > 0 || costoAdicionalTotal > 0)
+    ? round2(costoLiquidoTotal + costoAdicionalTotal)
     : costoTotalManual;
   const costoUnitarioDestino = (costoTotalReempaque > 0 && qtyTarget > 0)
     ? round2(costoTotalReempaque / qtyTarget)
@@ -13327,7 +13352,14 @@ async function reempaqueApplyMovementPOS(input={}){
     costoUnitarioOrigen,
     costoFuenteOrigen: String(base.costoFuenteOrigen || base.costSourceOrigin || '').trim(),
     costoOrigenTotal,
+    costoLiquidoTotal,
+    costoLiquidoDistribuido: costoLiquidoTotal,
+    costoLiquidoUnitario,
+    costoUnitarioLiquido: costoLiquidoUnitario,
+    costoAdicionalUnitario,
+    costoEmpaqueUnitario: costoAdicionalUnitario,
     costoAdicionalTotal,
+    costoEmpaqueTotal: costoAdicionalTotal,
     costoTotalReempaque,
     costoUnitarioDestino,
     estado: 'REGISTRADO',
@@ -13360,7 +13392,11 @@ async function reempaqueApplyMovementPOS(input={}){
     affectsCash: false,
     affectsAccountingIncome: false,
     costoTotalReempaque,
-    costoUnitarioDestino
+    costoUnitarioDestino,
+    costoLiquidoTotal,
+    costoLiquidoUnitario,
+    costoAdicionalUnitario,
+    costoAdicionalTotal
   };
 
   const sourceRow = {
@@ -13373,6 +13409,9 @@ async function reempaqueApplyMovementPOS(input={}){
     reempaqueRole: 'origen',
     costoUnitarioOrigen,
     costoOrigenTotal,
+    costoLiquidoTotal,
+    costoLiquidoUnitario,
+    costoAdicionalUnitario,
     costoAdicionalTotal,
     targetProductId: targetId,
     targetProductName: dstName
@@ -13387,6 +13426,10 @@ async function reempaqueApplyMovementPOS(input={}){
     notes: reempaqueMovementNotePOS('entrada', srcName, dstName, note),
     reempaqueRole: 'destino',
     costoUnitarioDestino,
+    costoLiquidoTotal,
+    costoLiquidoUnitario,
+    costoAdicionalUnitario,
+    costoAdicionalTotal,
     sourceProductId: sourceId,
     sourceProductName: srcName
   };
@@ -15539,13 +15582,20 @@ async function reempaqueGetUiStatePOS(productsArg){
   const fieldIsManual = !!(unitCostEl && unitCostEl.dataset.rpqAutoCost === '0' && fieldUnitCost > 0);
   const unitCost = fieldUnitCost > 0 ? fieldUnitCost : reempaqueMoneyPOS(sourceCostInfo.value);
   const unitCostSource = fieldIsManual ? 'manual' : (sourceCostInfo.source || (unitCost > 0 ? 'manual' : ''));
-  const costAdditional = reempaqueMoneyPOS(extraCostEl ? extraCostEl.value : 0);
+  const extraCostInfo = reempaqueInputNumberInfoPOS(extraCostEl);
+  const costAdditionalUnit = extraCostInfo.value > 0 ? round2(extraCostInfo.value) : 0;
+  const costAdditionalTotal = (qtyTarget > 0 && costAdditionalUnit > 0) ? round2(qtyTarget * costAdditionalUnit) : 0;
   const costOriginTotal = (unitCost > 0 && qtySource > 0) ? round2(unitCost * qtySource) : 0;
-  const costTotal = (costOriginTotal > 0 || costAdditional > 0) ? round2(costOriginTotal + costAdditional) : 0;
+  const liquidUnitTarget = (costOriginTotal > 0 && qtyTarget > 0) ? round2(costOriginTotal / qtyTarget) : 0;
+  const costTotal = (costOriginTotal > 0 || costAdditionalTotal > 0) ? round2(costOriginTotal + costAdditionalTotal) : 0;
   const unitTarget = (costTotal > 0 && qtyTarget > 0) ? round2(costTotal / qtyTarget) : 0;
   return {
     products, source, target, selectedTarget, newTarget, qtySource, qtyTarget, sourceCap, targetCap, suggested,
-    unitCost, unitCostSource, costOriginTotal, costAdditional, costTotal, unitTarget
+    unitCost, unitCostSource, costOriginTotal,
+    extraCostInfo, costAdditionalUnit, costAdditionalTotal,
+    // Compatibilidad interna: costAdditional representa el TOTAL calculado.
+    costAdditional: costAdditionalTotal,
+    liquidUnitTarget, costTotal, unitTarget
   };
 }
 
@@ -15556,7 +15606,11 @@ async function reempaqueUpdatePreviewPOS(opts){
   const targetCapEl = document.getElementById('rp-target-capacity');
   const suggestedEl = document.getElementById('rp-suggested-qty');
   const costOriginEl = document.getElementById('rp-cost-origin-total');
+  const costAdditionalUnitEl = document.getElementById('rp-cost-additional-unit');
+  const targetQtySummaryEl = document.getElementById('rp-cost-target-qty');
   const costAdditionalEl = document.getElementById('rp-cost-additional-total');
+  const liquidDistributedEl = document.getElementById('rp-cost-liquid-distributed');
+  const liquidUnitEl = document.getElementById('rp-cost-liquid-unit');
   const costTotalEl = document.getElementById('rp-cost-total-used');
   const unitTargetEl = document.getElementById('rp-cost-unit-target');
   const qtyTargetEl = document.getElementById('rp-target-qty');
@@ -15572,12 +15626,20 @@ async function reempaqueUpdatePreviewPOS(opts){
       qtyTargetEl.value = reempaqueFmtQtyPOS(state.suggested);
       qtyTargetEl.dataset.rpqAuto = '1';
       state.qtyTarget = reempaquePositivePOS(qtyTargetEl.value);
+      state.costAdditionalTotal = (state.qtyTarget > 0 && state.costAdditionalUnit > 0) ? round2(state.qtyTarget * state.costAdditionalUnit) : 0;
+      state.costAdditional = state.costAdditionalTotal;
+      state.liquidUnitTarget = (state.costOriginTotal > 0 && state.qtyTarget > 0) ? round2(state.costOriginTotal / state.qtyTarget) : 0;
+      state.costTotal = (state.costOriginTotal > 0 || state.costAdditionalTotal > 0) ? round2(state.costOriginTotal + state.costAdditionalTotal) : 0;
       state.unitTarget = (state.costTotal > 0 && state.qtyTarget > 0) ? round2(state.costTotal / state.qtyTarget) : 0;
     }
   }
 
   if (costOriginEl) costOriginEl.textContent = reempaqueFmtMoneyPOS(state.costOriginTotal);
-  if (costAdditionalEl) costAdditionalEl.textContent = state.costAdditional > 0 ? reempaqueFmtMoneyPOS(state.costAdditional) : 'N/D';
+  if (costAdditionalUnitEl) costAdditionalUnitEl.textContent = reempaqueFmtMoneyPOS(state.costAdditionalUnit, 'C$ 0.00');
+  if (targetQtySummaryEl) targetQtySummaryEl.textContent = state.qtyTarget > 0 ? reempaqueFmtQtyPOS(state.qtyTarget) : '—';
+  if (costAdditionalEl) costAdditionalEl.textContent = reempaqueFmtMoneyPOS(state.costAdditionalTotal, 'C$ 0.00');
+  if (liquidDistributedEl) liquidDistributedEl.textContent = reempaqueFmtMoneyPOS(state.costOriginTotal);
+  if (liquidUnitEl) liquidUnitEl.textContent = reempaqueFmtMoneyPOS(state.liquidUnitTarget);
   if (costTotalEl) costTotalEl.textContent = reempaqueFmtMoneyPOS(state.costTotal);
   if (unitTargetEl) unitTargetEl.textContent = reempaqueFmtMoneyPOS(state.unitTarget);
   return state;
@@ -16453,7 +16515,7 @@ async function reempaqueRefreshUiPOS(){
 }
 
 function reempaqueClearValidationPOS(){
-  ['rp-source-product','rp-source-qty','rp-source-unit-cost','rp-source-total-ml-manual','rp-target-product','rp-target-qty','rp-new-target-name','rp-new-target-capacity','rp-new-target-price'].forEach(id=>reempaqueSetFieldInvalidPOS(id, false));
+  ['rp-source-product','rp-source-qty','rp-source-unit-cost','rp-source-total-ml-manual','rp-target-product','rp-target-qty','rp-extra-cost','rp-new-target-name','rp-new-target-capacity','rp-new-target-price'].forEach(id=>reempaqueSetFieldInvalidPOS(id, false));
   try{ reempaqueClearMultiValidationPOS(); }catch(_){ }
 }
 
@@ -16474,11 +16536,15 @@ async function registrarReempaqueUiPOS(){
   if (!state.source) { errors.push('Producto origen requerido.'); reempaqueSetFieldInvalidPOS('rp-source-product', true); }
   if (!(state.qtySource > 0)) { errors.push('Cantidad origen mayor que 0.'); reempaqueSetFieldInvalidPOS('rp-source-qty', true); }
   if (!state.target) { errors.push('Producto destino requerido.'); reempaqueSetFieldInvalidPOS('rp-target-product', true); }
-  if (state.newTarget && state.newTarget.name && state.newTarget.capacityMl < 0){
-    errors.push('Capacidad del destino nuevo inválida.');
+  if (state.newTarget && state.newTarget.name && !(state.newTarget.capacityMl > 0)){
+    errors.push('Capacidad ml del destino nuevo mayor que 0.');
     reempaqueSetFieldInvalidPOS('rp-new-target-capacity', true);
   }
   if (!(state.qtyTarget > 0)) { errors.push('Cantidad creada mayor que 0.'); reempaqueSetFieldInvalidPOS('rp-target-qty', true); }
+  if (state.extraCostInfo && (state.extraCostInfo.invalid || (!state.extraCostInfo.empty && state.extraCostInfo.value < 0))){
+    errors.push('Costo adicional unitario inválido.');
+    reempaqueSetFieldInvalidPOS('rp-extra-cost', true);
+  }
   if (state.source && state.target && (String(state.source.id) === String(state.target.id) || ((typeof normKeyPOS === 'function') && normKeyPOS(state.source.name || '') === normKeyPOS(state.target.name || '')))){
     errors.push('El producto origen y destino no deberían ser el mismo.');
     reempaqueSetFieldInvalidPOS('rp-source-product', true);
@@ -16517,7 +16583,10 @@ async function registrarReempaqueUiPOS(){
       costoUnitarioOrigen: state.unitCost > 0 ? state.unitCost : 0,
       costoFuenteOrigen: state.unitCostSource || '',
       costoOrigenTotal: state.costOriginTotal > 0 ? state.costOriginTotal : 0,
-      costoAdicionalTotal: state.costAdditional > 0 ? state.costAdditional : 0,
+      costoLiquidoTotal: state.costOriginTotal > 0 ? state.costOriginTotal : 0,
+      costoLiquidoUnitario: state.liquidUnitTarget > 0 ? state.liquidUnitTarget : 0,
+      costoAdicionalUnitario: state.costAdditionalUnit > 0 ? state.costAdditionalUnit : 0,
+      costoAdicionalTotal: state.costAdditionalTotal > 0 ? state.costAdditionalTotal : 0,
       costoTotalReempaque: state.costTotal > 0 ? state.costTotal : 0,
       costoUnitarioDestino: state.unitTarget > 0 ? state.unitTarget : 0,
       nota: note
