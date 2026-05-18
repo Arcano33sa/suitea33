@@ -3,31 +3,31 @@
 */
 
 // A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=9'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=10'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
   : '4.20.77';
-const SW_REV = '9'; // POS cache bump local — Etapa 2/2 resumen por producto
+const SW_REV = '10'; // POS cache bump local — ordenar Productos por monto vendido
 
 const MODULE = 'pos';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.77&r=9',
-  './styles.css?v=4.20.77&r=9',
-  './app.js?v=4.20.77&r=9',
-  './manifest.webmanifest?v=4.20.77&r=9',
+  './index.html?v=4.20.77&r=10',
+  './styles.css?v=4.20.77&r=10',
+  './app.js?v=4.20.77&r=10',
+  './manifest.webmanifest?v=4.20.77&r=10',
   './offline.html',
   './logo.png',
-  './vendor/xlsx.full.min.js?v=4.20.77&r=9',
-  '/assets/js/a33-release.js?v=4.20.77&r=9',
+  './vendor/xlsx.full.min.js?v=4.20.77&r=10',
+  '/assets/js/a33-release.js?v=4.20.77&r=10',
 
-  '/assets/js/a33-input-ux.js?v=4.20.77&r=9',
-  '/assets/js/a33-storage.js?v=4.20.77&r=9',
-  '/assets/js/a33-presentations.js?v=4.20.77&r=9',
-  '/assets/css/a33-header.css?v=4.20.77&r=9'
+  '/assets/js/a33-input-ux.js?v=4.20.77&r=10',
+  '/assets/js/a33-storage.js?v=4.20.77&r=10',
+  '/assets/js/a33-presentations.js?v=4.20.77&r=10',
+  '/assets/css/a33-header.css?v=4.20.77&r=10'
 ];
 
 function sameOrigin(url){
@@ -94,7 +94,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.77&r=9')) ||
+      (await cache.match('./index.html?v=4.20.77&r=10')) ||
       (await cache.match('./index.html', { ignoreSearch: true })) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||

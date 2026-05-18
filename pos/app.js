@@ -9437,9 +9437,89 @@ function escapeHtml(str){
     .replace(/'/g,'&#039;');
 }
 
+function productSalesSortKeyPOS(name){
+  return normName(getSummaryProductDisplayNamePOS(name || '')).replace(/\s+/g, ' ').trim();
+}
+
+async function getProductSalesAmountIndexPOS(products){
+  const totalsById = new Map();
+  const totalsByName = new Map();
+  const hasSalesById = new Set();
+  const hasSalesByName = new Set();
+
+  const productIds = new Set();
+  for (const p of (products || [])){
+    const id = Number(p && p.id);
+    if (Number.isFinite(id)) productIds.add(id);
+  }
+
+  let sales = [];
+  try{ sales = await getAll('sales'); }catch(_){ sales = []; }
+
+  for (const s of (sales || [])){
+    if (!s) continue;
+    if (s.courtesy || s.isCourtesy) continue;
+
+    const total = Number(s.total || 0);
+    if (!Number.isFinite(total)) continue;
+
+    const pid = (s.productId != null && s.productId !== '') ? Number(s.productId) : null;
+    if (pid != null && Number.isFinite(pid) && productIds.has(pid)){
+      totalsById.set(pid, (totalsById.get(pid) || 0) + total);
+      hasSalesById.add(pid);
+      continue;
+    }
+
+    const key = productSalesSortKeyPOS(s.productName || '');
+    if (key){
+      totalsByName.set(key, (totalsByName.get(key) || 0) + total);
+      hasSalesByName.add(key);
+    }
+  }
+
+  return { totalsById, totalsByName, hasSalesById, hasSalesByName };
+}
+
+function getProductSalesAmountForSortPOS(product, salesIndex){
+  const idx = salesIndex || {};
+  const id = Number(product && product.id);
+  const key = productSalesSortKeyPOS(product && product.name);
+
+  let total = 0;
+  let hasSales = false;
+
+  if (Number.isFinite(id)){
+    total += Number((idx.totalsById && idx.totalsById.get(id)) || 0) || 0;
+    if (idx.hasSalesById && idx.hasSalesById.has(id)) hasSales = true;
+  }
+
+  if (key){
+    total += Number((idx.totalsByName && idx.totalsByName.get(key)) || 0) || 0;
+    if (idx.hasSalesByName && idx.hasSalesByName.has(key)) hasSales = true;
+  }
+
+  return { total, hasSales };
+}
+
+function sortProductsBySalesAmountPOS(products, salesIndex){
+  return (products || []).slice().sort((a,b)=>{
+    const aa = getProductSalesAmountForSortPOS(a, salesIndex);
+    const bb = getProductSalesAmountForSortPOS(b, salesIndex);
+
+    if (aa.hasSales !== bb.hasSales) return aa.hasSales ? -1 : 1;
+
+    const diff = Number(bb.total || 0) - Number(aa.total || 0);
+    if (Math.abs(diff) > 1e-9) return diff;
+
+    return String(a && a.name || '').localeCompare(String(b && b.name || ''), 'es-NI', { sensitivity:'base' });
+  });
+}
+
 // Productos
 async function renderProductos(){
-  const list = await getAll('products');
+  const rawList = await getAll('products');
+  const salesIndex = await getProductSalesAmountIndexPOS(rawList);
+  const list = sortProductsBySalesAmountPOS(rawList, salesIndex);
   const wrap = $('#productos-list');
   if (!wrap) return;
   wrap.innerHTML = '';
