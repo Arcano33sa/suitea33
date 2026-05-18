@@ -8,7 +8,7 @@ try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=10'); } catch (e) {}
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
   : '4.20.77';
-const SW_REV = '10'; // POS cache bump local — ordenar Productos por monto vendido
+const SW_REV = '10'; // POS cache bump local — Etapa 1/1 ordenar Por Producto por Total
 
 const MODULE = 'pos';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;

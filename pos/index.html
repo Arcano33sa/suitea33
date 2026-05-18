@@ -1657,7 +1657,7 @@
     try{
       const relObj = (window.A33_RELEASE || {});
       const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.77';
-      const rev = '10'; // POS cache bump local — ordenar Productos por monto vendido
+      const rev = '9'; // POS cache bump local — Etapa 1/1 ordenar Por Producto por Total
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
       try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }

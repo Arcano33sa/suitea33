@@ -9437,89 +9437,9 @@ function escapeHtml(str){
     .replace(/'/g,'&#039;');
 }
 
-function productSalesSortKeyPOS(name){
-  return normName(getSummaryProductDisplayNamePOS(name || '')).replace(/\s+/g, ' ').trim();
-}
-
-async function getProductSalesAmountIndexPOS(products){
-  const totalsById = new Map();
-  const totalsByName = new Map();
-  const hasSalesById = new Set();
-  const hasSalesByName = new Set();
-
-  const productIds = new Set();
-  for (const p of (products || [])){
-    const id = Number(p && p.id);
-    if (Number.isFinite(id)) productIds.add(id);
-  }
-
-  let sales = [];
-  try{ sales = await getAll('sales'); }catch(_){ sales = []; }
-
-  for (const s of (sales || [])){
-    if (!s) continue;
-    if (s.courtesy || s.isCourtesy) continue;
-
-    const total = Number(s.total || 0);
-    if (!Number.isFinite(total)) continue;
-
-    const pid = (s.productId != null && s.productId !== '') ? Number(s.productId) : null;
-    if (pid != null && Number.isFinite(pid) && productIds.has(pid)){
-      totalsById.set(pid, (totalsById.get(pid) || 0) + total);
-      hasSalesById.add(pid);
-      continue;
-    }
-
-    const key = productSalesSortKeyPOS(s.productName || '');
-    if (key){
-      totalsByName.set(key, (totalsByName.get(key) || 0) + total);
-      hasSalesByName.add(key);
-    }
-  }
-
-  return { totalsById, totalsByName, hasSalesById, hasSalesByName };
-}
-
-function getProductSalesAmountForSortPOS(product, salesIndex){
-  const idx = salesIndex || {};
-  const id = Number(product && product.id);
-  const key = productSalesSortKeyPOS(product && product.name);
-
-  let total = 0;
-  let hasSales = false;
-
-  if (Number.isFinite(id)){
-    total += Number((idx.totalsById && idx.totalsById.get(id)) || 0) || 0;
-    if (idx.hasSalesById && idx.hasSalesById.has(id)) hasSales = true;
-  }
-
-  if (key){
-    total += Number((idx.totalsByName && idx.totalsByName.get(key)) || 0) || 0;
-    if (idx.hasSalesByName && idx.hasSalesByName.has(key)) hasSales = true;
-  }
-
-  return { total, hasSales };
-}
-
-function sortProductsBySalesAmountPOS(products, salesIndex){
-  return (products || []).slice().sort((a,b)=>{
-    const aa = getProductSalesAmountForSortPOS(a, salesIndex);
-    const bb = getProductSalesAmountForSortPOS(b, salesIndex);
-
-    if (aa.hasSales !== bb.hasSales) return aa.hasSales ? -1 : 1;
-
-    const diff = Number(bb.total || 0) - Number(aa.total || 0);
-    if (Math.abs(diff) > 1e-9) return diff;
-
-    return String(a && a.name || '').localeCompare(String(b && b.name || ''), 'es-NI', { sensitivity:'base' });
-  });
-}
-
 // Productos
 async function renderProductos(){
-  const rawList = await getAll('products');
-  const salesIndex = await getProductSalesAmountIndexPOS(rawList);
-  const list = sortProductsBySalesAmountPOS(rawList, salesIndex);
+  const list = await getAll('products');
   const wrap = $('#productos-list');
   if (!wrap) return;
   wrap.innerHTML = '';
@@ -14856,11 +14776,42 @@ function summaryProductRowsFromMapPOS(map){
       return { key: getSummaryProductDisplayNamePOS(k), qty: agg.qty || 0, qtyKnown: !!agg.qtyKnown, total: agg.total || 0, val: agg.total || 0 };
     })
     .filter(it=>it.key && !(/\(Cortesía\)/i.test(String(it.key))))
-    .sort((a,b)=>String(a.key).localeCompare(String(b.key),'es-NI'));
+    .sort(compareSummaryProductByTotalDescPOS);
 }
 
 function summaryProductItemTotalPOS(it){
   return Number((it && (it.total ?? it.amount ?? it.val ?? it.value)) || 0) || 0;
+}
+
+function summaryProductItemNamePOS(it){
+  const src = (it && typeof it === 'object') ? it : {};
+  return getSummaryProductDisplayNamePOS(src.key ?? src.name ?? src.producto ?? src.product ?? src.productName ?? '');
+}
+
+function compareSummaryProductByTotalDescPOS(a, b){
+  const ta = summaryProductItemTotalPOS(a);
+  const tb = summaryProductItemTotalPOS(b);
+  const diff = tb - ta;
+  if (Math.abs(diff) > 0.000001) return diff;
+  return String(summaryProductItemNamePOS(a)).localeCompare(String(summaryProductItemNamePOS(b)), 'es-NI');
+}
+
+function sortSummaryProductItemsByTotalPOS(items){
+  return (Array.isArray(items) ? items.slice() : []).sort(compareSummaryProductByTotalDescPOS);
+}
+
+function sortSummaryPorProductoSheetRowsPOS(rows){
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (safeRows.length <= 2) return safeRows.slice();
+  const header = Array.isArray(safeRows[0]) ? safeRows[0] : [];
+  const sortedBody = safeRows.slice(1)
+    .map((row, idx)=>({ row, idx, item: parseSummaryProductSheetRowPOS(row, header) }))
+    .sort((a,b)=>{
+      const cmp = compareSummaryProductByTotalDescPOS(a.item, b.item);
+      return cmp || (a.idx - b.idx);
+    })
+    .map(x=>x.row);
+  return [safeRows[0], ...sortedBody];
 }
 
 function summaryProductItemQtyPOS(it){
@@ -14960,7 +14911,7 @@ function renderSummaryFromSnapshotPOS(archive){
   const byProdRows = (prodSheetRows || []).slice(1)
     .map(r=>parseSummaryProductSheetRowPOS(r, prodHeader))
     .filter(it=>it.key);
-  byProdRows.sort((a,b)=>String(a.key).localeCompare(String(b.key),'es-NI'));
+  byProdRows.sort(compareSummaryProductByTotalDescPOS);
 
   const tbP = document.querySelector('#tbl-por-prod tbody');
   if (tbP){
@@ -16620,12 +16571,12 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
   const courtesyList = Array.from(courtesyByProd.entries()).map(([name, o]) => ({ name, qty: o.qty || 0, cost: o.cost || 0, equiv: o.equiv || 0 }))
     .sort((a,b)=> (Number(b.cost||0) - Number(a.cost||0)));
 
-  // Tablawt helper: para el Excel, listas ordenadas
+  // Helpers para Excel/listas ordenadas
   const sortMapDesc = (m) => Array.from(m.entries()).map(([k,v])=>({ key:k, val:v }))
     .sort((a,b)=> (Number(b.val||0) - Number(a.val||0)));
   const sortMapDateAsc = (m) => Array.from(m.entries()).map(([k,v])=>({ key:k, val:v }))
     .sort((a,b)=> String(a.key).localeCompare(String(b.key)));
-  const sortProductAggAlpha = (m) => summaryProductRowsFromMapPOS(m);
+  const sortProductAggByTotal = (m) => summaryProductRowsFromMapPOS(m);
 
   return {
     periodKey,
@@ -16642,7 +16593,7 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
     },
     byEvent: sortMapDesc(byEvent),
     byDay: sortMapDateAsc(byDay),
-    byProd: sortProductAggAlpha(byProd),
+    byProd: sortProductAggByTotal(byProd),
     byPay: sortMapDesc(byPay),
     transferByBank: transferList,
     courtesyByProd: courtesyList,
@@ -16684,9 +16635,9 @@ function buildSummarySheetsFromDataPOS(data){
 
   // Hoja PorProducto
   const pRows = [['Producto','Vendido','Total C$']];
-  for (const it of (data.byProd || [])){
+  for (const it of sortSummaryProductItemsByTotalPOS(data.byProd || [])){
     const q = summaryProductItemQtyPOS(it);
-    pRows.push([it.key, q.qtyKnown ? q.qty : '', summaryProductItemTotalPOS(it)]);
+    pRows.push([summaryProductItemNamePOS(it), q.qtyKnown ? q.qty : '', summaryProductItemTotalPOS(it)]);
   }
   sheets.push({ name: 'PorProducto', rows: pRows });
 
@@ -16714,8 +16665,10 @@ function writeWorkbookFromSheetsPOS(filename, sheets){
   }
   const wb = XLSX.utils.book_new();
   for (const sh of (sheets || [])){
-    const ws = XLSX.utils.aoa_to_sheet(sh.rows || []);
-    XLSX.utils.book_append_sheet(wb, ws, sh.name || 'Hoja');
+    const sheetName = sh.name || 'Hoja';
+    const rows = (String(sheetName) === 'PorProducto') ? sortSummaryPorProductoSheetRowsPOS(sh.rows || []) : (sh.rows || []);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
   }
   XLSX.writeFile(wb, filename);
 }
