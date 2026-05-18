@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=10">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=11">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=4.20.77&r=10">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=10" />
+<link rel="stylesheet" href="styles.css?v=4.20.77&r=11">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=11" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -872,6 +872,10 @@
           <div class="value">C$ <span id="grand-total">0</span></div>
         </div>
         <div class="metric">
+          <div class="label">Total descuento</div>
+          <div class="value">C$ <span id="grand-discount">0</span></div>
+        </div>
+        <div class="metric">
           <div class="label">Costo estimado</div>
           <div class="value">C$ <span id="grand-cost">0</span></div>
         </div>
@@ -942,7 +946,15 @@
       </div>
     </div>
 
-
+    <div class="row">
+      <div class="card full">
+        <h3>Descuentos</h3>
+        <table id="tbl-discounts-byprod">
+          <thead><tr><th>Producto</th><th>Total descuento</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
 
     <div class="row">
       <div class="card full">
@@ -1647,11 +1659,11 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=0.18.5"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=10"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=11"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.77&r=10"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=10"></script>
-<script src="/assets/js/a33-build.js?v=4.20.77&r=10"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.77&r=11"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=11"></script>
+<script src="/assets/js/a33-build.js?v=4.20.77&r=11"></script>
 <script>
   (function(){
     try{
@@ -1677,8 +1689,8 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.77&r=10"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=10"></script>
+<script src="app.js?v=4.20.77&r=11"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=11"></script>
 <script>
   (function(){
     const BUILD = (window.A33_VERSION || '4.20.77').toString();
