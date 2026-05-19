@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=28">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=30">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=4.20.77&r=28">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=28" />
+<link rel="stylesheet" href="styles.css?v=4.20.77&r=30">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=30" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -115,7 +115,8 @@
         <select id="sale-payment">
           <option value="efectivo" selected>Efectivo</option>
           <option value="transferencia">Transferencia</option>
-          <option value="credito">Crédito</option>
+          <option value="tarjeta">Tarjeta</option>
+          <option value="credito">Crédito cliente</option>
         </select>
       </div>
       <div>
@@ -224,7 +225,7 @@
 
     <div class="row" id="sale-bank-row" style="display:none">
       <div>
-        <label>Banco (solo Transferencia)</label>
+        <label>Banco / medio de cobro</label>
         <select id="sale-bank">
           <option value="">— Selecciona banco —</option>
         </select>
@@ -1146,11 +1147,28 @@
     <div class="card">
       <h3>Bancos</h3>
       <div id="banks-list"></div>
-      <div class="row">
-        <input id="bank-new-name" placeholder="Nombre del banco">
-        <button id="btn-add-bank" class="btn-ok btn-pill">+ Agregar banco</button>
+      <div class="row bank-new-row">
+        <div>
+          <label for="bank-new-name">Banco</label>
+          <input id="bank-new-name" placeholder="Nombre del banco o medio de cobro">
+        </div>
+        <div>
+          <label for="bank-new-type">Tipo</label>
+          <select id="bank-new-type">
+            <option value="transferencia" selected>Transferencia</option>
+            <option value="tarjeta">Tarjeta</option>
+          </select>
+        </div>
+        <div>
+          <label for="bank-new-commission">Comisión %</label>
+          <input id="bank-new-commission" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" value="0" placeholder="0">
+        </div>
+        <div style="align-self:end">
+          <label>&nbsp;</label>
+          <button id="btn-add-bank" class="btn-ok btn-pill">+ Agregar banco</button>
+        </div>
       </div>
-      <div class="info"><small>Consejo: mejor <b>desactivar</b> bancos en lugar de borrarlos, para que el historial no quede huérfano.</small></div>
+      <div class="info"><small>Transferencia y Tarjeta se manejan por separado. La comisión solo se muestra aquí.</small></div>
     </div>
   </section>
 
@@ -1796,17 +1814,17 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=0.18.5"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=28"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=30"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.77&r=28"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=28"></script>
-<script src="/assets/js/a33-build.js?v=4.20.77&r=28"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.77&r=30"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=30"></script>
+<script src="/assets/js/a33-build.js?v=4.20.77&r=30"></script>
 <script>
   (function(){
     try{
       const relObj = (window.A33_RELEASE || {});
       const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.77';
-      const rev = '28'; // POS cache bump local — Reempaque Simple costo adicional unitario
+      const rev = '30'; // POS cache bump local — validación final Tarjeta/Bancos
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
       try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }
@@ -1826,8 +1844,8 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.77&r=28"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=28"></script>
+<script src="app.js?v=4.20.77&r=30"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=30"></script>
 <script>
   (function(){
     const BUILD = (window.A33_VERSION || '4.20.77').toString();

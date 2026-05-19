@@ -7,7 +7,7 @@ let db;
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.77';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r28');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r29');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -1594,7 +1594,7 @@ function getSaleTenderTotalPOS(){
 }
 
 function isSalePaymentCashPOS(){
-  try{ return String(document.getElementById('sale-payment')?.value || 'efectivo') === 'efectivo'; }catch(_){ return true; }
+  try{ return normalizePaymentMethodPOS(document.getElementById('sale-payment')?.value || 'efectivo') === 'efectivo'; }catch(_){ return true; }
 }
 
 function getSaleCashTenderModePOS(){
@@ -1699,7 +1699,7 @@ function resetSaleCashTenderPOS(){
 }
 
 function validateSaleCashTenderPOS({ payment, total, courtesy, isReturn }){
-  const pay = String(payment || 'efectivo');
+  const pay = normalizePaymentMethodPOS(payment || 'efectivo');
   const saleTotal = saleTenderRound2POS(total);
 
   if (pay !== 'efectivo') return { ok:true, tender:null };
@@ -1806,8 +1806,8 @@ function applySaleCashTenderToRecordPOS(saleRecord, tender){
 function getSaleCashExpectedDeltaPOS(sale){
   try{
     if (!sale || typeof sale !== 'object') return { NIO:0, USD:0 };
-    const pay = String(sale.payment || '').toLowerCase();
-    if (pay !== 'efectivo' && pay !== 'cash') return { NIO:0, USD:0 };
+    const pay = normalizePaymentMethodPOS(sale.payment || '');
+    if (pay !== 'efectivo') return { NIO:0, USD:0 };
 
     const direct = sale.cashExpectedDelta;
     if (direct && typeof direct === 'object'){
@@ -1842,14 +1842,15 @@ function getSaleCashExpectedDeltaPOS(sale){
 function getSalePaymentLabelPOS(sale, bankMap){
   try{
     if (!sale) return '';
-    if (String(sale.payment || '') === 'efectivo'){
-      if (String(sale.cashTenderMode || '').toUpperCase() === 'USD_CHANGE_NIO') return 'Efec · USD';
-      return 'Efec';
+    const payment = normalizePaymentMethodPOS(sale.payment || '');
+    if (payment === 'efectivo'){
+      if (String(sale.cashTenderMode || '').toUpperCase() === 'USD_CHANGE_NIO') return 'Efectivo · USD';
+      return 'Efectivo';
     }
-    if (String(sale.payment || '') === 'transferencia') return 'Transferencia · ' + getSaleBankLabel(sale, bankMap);
-    if (String(sale.payment || '') === 'credito') return 'Cred';
-    return String(sale.payment || '');
-  }catch(_){ return String(sale && sale.payment || ''); }
+    if (payment === 'transferencia') return 'Transferencia · ' + getSaleBankLabel(sale, bankMap);
+    if (payment === 'tarjeta') return 'Tarjeta · ' + getSaleBankLabel(sale, bankMap);
+    return getPaymentMethodLabelPOS(payment);
+  }catch(_){ return getPaymentMethodLabelPOS(sale && sale.payment || ''); }
 }
 
 
@@ -1857,7 +1858,7 @@ function getSaleCashTenderPartsPOS(sale){
   const out = { fx:'', usd:'', change:'', equivalent:'', text:'' };
   try{
     if (!sale || typeof sale !== 'object') return out;
-    if (String(sale.payment || '') !== 'efectivo') return out;
+    if (normalizePaymentMethodPOS(sale.payment || '') !== 'efectivo') return out;
     const mode = String(sale.cashTenderMode || '').toUpperCase();
     const usdRaw = Number(sale.usdReceived ?? sale.receivedUSD ?? (sale.cashBreakdown && sale.cashBreakdown.receivedUSD));
     if (mode !== 'USD_CHANGE_NIO' && !(Number.isFinite(usdRaw) && usdRaw > 0)) return out;
@@ -2162,8 +2163,8 @@ async function cashV2ComputeCashSalesPhysicalPOS(eventId, dayKey){
   for (const s of (sales || [])){
     if (!s || typeof s !== 'object') continue;
     if (safeYMD(s.date || '') !== dk) continue;
-    const pay = String(s.payment || '').toLowerCase();
-    if (pay !== 'efectivo' && pay !== 'cash') continue;
+    const pay = normalizePaymentMethodPOS(s.payment || '');
+    if (pay !== 'efectivo') continue;
     try{ if (typeof isCourtesySalePOS === 'function' && isCourtesySalePOS(s)) continue; }catch(_){ }
 
     let t = Number(s.total != null ? s.total : 0);
@@ -4930,7 +4931,7 @@ function openDB(opts) {
       if (!d.objectStoreNames.contains('meta')) {
         d.createObjectStore('meta', { keyPath: 'id' });
       }
-// Catálogo de bancos (para transferencias)
+// Catálogo de bancos (transferencias / tarjeta)
       if (!d.objectStoreNames.contains('banks')) {
         const b = d.createObjectStore('banks', { keyPath: 'id', autoIncrement: true });
         try { b.createIndex('by_name', 'name', { unique: false }); } catch {}
@@ -5120,9 +5121,10 @@ async function ensureFinanzasDB() {
 
 // Mapea forma de pago del POS a cuenta contable
 function mapSaleToCuentaCobro(sale) {
-  const pay = sale.payment || 'efectivo';
+  const pay = normalizePaymentMethodPOS(sale && sale.payment || 'efectivo');
   if (pay === 'efectivo') return '1100';   // Caja
   if (pay === 'transferencia') return '1200'; // Banco
+  if (pay === 'tarjeta') return '1200';       // Banco / POS bancario
   if (pay === 'credito') return '1300';    // Clientes
   return '1200'; // Otros métodos similares a banco
 }
@@ -5172,9 +5174,10 @@ async function createJournalEntryForSalePOS(sale) {
     if (!(amount > 0) && !(amountCost > 0)) return;
 
     // Selección de cuenta de caja/banco según método de pago
-    const payment = (sale.payment || 'efectivo').toString();
+    const payment = normalizePaymentMethodPOS(sale.payment || 'efectivo');
     let cashAccount = '1100';
     if (payment === 'transferencia') cashAccount = '1200';
+    if (payment === 'tarjeta') cashAccount = '1200';
     if (payment === 'credito') cashAccount = '1300';
 
     // Descripción / tipo
@@ -9092,10 +9095,10 @@ function validateSaleMinimalPOS(sale){
     if (!(Number.isFinite(pid) && pid > 0)) return { ok:false, msg:'Venta inválida: producto inválido.' };
   }
 
-  const pay = String(sale.payment || '');
-  if (pay === 'transferencia'){
+  const pay = normalizePaymentMethodPOS(sale.payment || '');
+  if (isBankPaymentMethodPOS(pay)){
     const bid = Number(sale.bankId);
-    if (!(Number.isFinite(bid) && bid > 0)) return { ok:false, msg:'Venta inválida: falta banco de transferencia.' };
+    if (!(Number.isFinite(bid) && bid > 0)) return { ok:false, msg:`Venta inválida: falta banco para ${getPaymentMethodLabelPOS(pay)}.` };
   }
 
   if (pay === 'efectivo' && String(sale.cashTenderMode || '').toUpperCase() === 'USD_CHANGE_NIO'){
@@ -9496,7 +9499,7 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
     if (courtesy){
       courtesyQty += Math.abs(qty || 0);
     } else {
-      const pay = String(s.payment || 'otros');
+      const pay = normalizePaymentMethodPOS(s.payment || '') || 'otros';
       byPay[pay] = (byPay[pay] || 0) + total;
       grand += total;
     }
@@ -10043,17 +10046,77 @@ async function ensureDefaults(){
     if (evs.length) await setMeta('currentEventId', evs[0].id);
   }
 
-  // Bancos (catálogo para transferencias)
+  // Bancos (catálogo para transferencias / tarjeta)
   await ensureBanksDefaults();
 }
 
-// --- Bancos (transferencias)
+// --- Bancos (transferencias / tarjeta)
 // Seed base para catálogo de bancos (se pre-carga solo si el store está vacío)
 // Nota: mantener nombres en mayúsculas para consistencia visual y de reportes.
 const BANKS_SEED = ['BAC', 'BANPRO', 'LAFISE', 'BDF'];
 
 function normBankName(name){
   return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizePaymentMethodPOS(payment){
+  const original = String(payment || '').trim();
+  const raw = original.toLowerCase();
+  let key = raw;
+  try{ key = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }catch(_){ }
+  key = key.replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  if (!key) return '';
+  if (key === 'cash' || key === 'efectivo') return 'efectivo';
+  if (key === 'transferencia' || key === 'transfer' || key === 'transferencias') return 'transferencia';
+  if (key === 'tarjeta' || key === 'card') return 'tarjeta';
+  if (key === 'credito' || key === 'credito cliente' || key === 'cliente credito' || key === 'fiado') return 'credito';
+  return raw;
+}
+
+function normalizeBankTypePOS(value){
+  const raw = String(value || '').trim().toLowerCase();
+  return raw === 'tarjeta' ? 'tarjeta' : 'transferencia';
+}
+
+function getBankTypePOS(bank){
+  if (!bank || typeof bank !== 'object') return 'transferencia';
+  return normalizeBankTypePOS(bank.type || bank.bankType || bank.paymentType || 'transferencia');
+}
+
+function getBankTypeLabelPOS(value){
+  return normalizeBankTypePOS(value) === 'tarjeta' ? 'Tarjeta' : 'Transferencia';
+}
+
+function normalizeBankCommissionPOS(value){
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return round2(n);
+}
+
+function getBankCommissionPctPOS(bank){
+  if (!bank || typeof bank !== 'object') return 0;
+  return normalizeBankCommissionPOS(bank.commissionPct ?? bank.commission ?? bank.feePct ?? 0);
+}
+
+function isBankForPaymentPOS(bank, payment){
+  const pay = normalizePaymentMethodPOS(payment);
+  if (pay !== 'transferencia' && pay !== 'tarjeta') return false;
+  return !!bank && bank.isActive !== false && getBankTypePOS(bank) === pay;
+}
+
+function isBankPaymentMethodPOS(payment){
+  const pay = normalizePaymentMethodPOS(payment);
+  return pay === 'transferencia' || pay === 'tarjeta';
+}
+
+function getPaymentMethodLabelPOS(payment){
+  const pay = normalizePaymentMethodPOS(payment);
+  if (pay === 'efectivo') return 'Efectivo';
+  if (pay === 'transferencia') return 'Transferencia';
+  if (pay === 'tarjeta') return 'Tarjeta';
+  if (pay === 'credito') return 'Crédito cliente';
+  return String(payment || '').trim();
 }
 
 async function getAllBanksSafe(){
@@ -10066,7 +10129,7 @@ async function ensureBanksDefaults(){
     if (!banks.length){
       const now = new Date().toISOString();
       for (const name of BANKS_SEED){
-        await put('banks', { name, isActive: true, createdAt: now });
+        await put('banks', { name, isActive: true, type: 'transferencia', commissionPct: 0, createdAt: now });
       }
       banks = await getAllBanksSafe();
     }
@@ -10077,6 +10140,10 @@ async function ensureBanksDefaults(){
       let changed = false;
       if (typeof b.isActive === 'undefined'){ b.isActive = true; changed = true; }
       if (!b.createdAt){ b.createdAt = new Date().toISOString(); changed = true; }
+      const nextType = getBankTypePOS(b);
+      if (b.type !== nextType){ b.type = nextType; changed = true; }
+      const nextCommission = nextType === 'tarjeta' ? getBankCommissionPctPOS(b) : 0;
+      if (Number(b.commissionPct) !== nextCommission){ b.commissionPct = nextCommission; changed = true; }
       // Normalizar solo LAFISE a mayúsculas (para que quede consistente con los otros)
       if (normBankName(b.name) === 'lafise' && String(b.name).trim() !== 'LAFISE'){
         b.name = 'LAFISE';
@@ -10090,7 +10157,7 @@ async function ensureBanksDefaults(){
 }
 
 function getSaleBankLabel(sale, bankMap){
-  if (!sale || (sale.payment || '') !== 'transferencia') return '';
+  if (!sale || !isBankPaymentMethodPOS(sale.payment)) return '';
   let name = (sale.bankName || '').trim();
   const bid = sale.bankId;
   if (!name && bid != null && bankMap && bankMap.has(Number(bid))){
@@ -10105,8 +10172,8 @@ async function refreshSaleBankSelect(){
   const note = document.getElementById('sale-bank-note');
   if (!row || !sel) return;
 
-  const payment = document.getElementById('sale-payment')?.value || 'efectivo';
-  if (payment !== 'transferencia'){
+  const payment = normalizePaymentMethodPOS(document.getElementById('sale-payment')?.value || 'efectivo');
+  if (!isBankPaymentMethodPOS(payment)){
     row.style.display = 'none';
     sel.value = '';
     if (note) note.textContent = '';
@@ -10114,10 +10181,10 @@ async function refreshSaleBankSelect(){
   }
 
   row.style.display = 'block';
-  const banks = (await getAllBanksSafe()).filter(b => b && b.isActive !== false);
+  const banks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
   banks.sort((a,b)=> String(a.name||'').localeCompare(String(b.name||''), 'es-NI', { sensitivity:'base' }));
 
-  // Mantener selección si aún existe
+  // Mantener selección si aún existe dentro del tipo seleccionado
   const prev = sel.value;
 
   sel.innerHTML = '';
@@ -10131,10 +10198,11 @@ async function refreshSaleBankSelect(){
     o.textContent = b.name;
     sel.appendChild(o);
   }
-  if (prev) sel.value = prev;
+  if (prev && banks.some(b => String(b.id) === String(prev))) sel.value = prev;
+  else sel.value = '';
 
   if (!banks.length){
-    if (note) note.textContent = 'No hay bancos activos. Agregá uno en Productos.';
+    if (note) note.textContent = `No hay bancos activos tipo ${getPaymentMethodLabelPOS(payment)}. Agregá uno en Productos.`;
   } else {
     if (note) note.textContent = '';
   }
@@ -10145,26 +10213,36 @@ async function renderBancos(){
   if (!wrap) return;
   const banks = await getAllBanksSafe();
   if (!banks.length){
-    wrap.innerHTML = '<div class="warn">No hay bancos. Agrega al menos uno para usar Transferencias.</div>';
+    wrap.innerHTML = '<div class="warn">No hay bancos. Agrega al menos uno para usar Transferencia o Tarjeta.</div>';
     return;
   }
   const rows = banks.slice().sort((a,b)=>{
     const aa = (a && a.isActive !== false) ? 0 : 1;
     const bb = (b && b.isActive !== false) ? 0 : 1;
     if (aa !== bb) return aa - bb;
+    const ta = getBankTypePOS(a);
+    const tb = getBankTypePOS(b);
+    if (ta !== tb) return ta.localeCompare(tb, 'es-NI');
     return String(a.name||'').localeCompare(String(b.name||''), 'es-NI', { sensitivity:'base' });
   });
 
-  let html = '<table class="table small"><thead><tr><th>Banco</th><th>Estado</th><th></th></tr></thead><tbody>';
+  let html = '<table class="table small bank-table"><thead><tr><th>Banco</th><th>Estado</th><th>Tipo</th><th>Comisión</th><th>Acción</th></tr></thead><tbody>';
   for (const b of rows){
     const active = b && b.isActive !== false;
     const estado = active ? 'Activo' : 'Inactivo';
     const btnTxt = active ? 'Desactivar' : 'Activar';
     const btnClass = active ? 'btn-warn' : 'btn-ok';
-    html += `<tr>
-      <td>${escapeHtml(b.name||'')}</td>
-      <td>${estado}</td>
-      <td><button class="${btnClass} btn-mini btn-toggle-bank" data-id="${b.id}">${btnTxt}</button></td>
+    const type = getBankTypePOS(b);
+    const commission = type === 'tarjeta' ? getBankCommissionPctPOS(b) : 0;
+    html += `<tr data-bank-id="${b.id}">
+      <td data-label="Banco"><input class="bank-edit-name" data-id="${b.id}" value="${escapeHtml(b.name||'')}" aria-label="Banco"></td>
+      <td data-label="Estado"><span class="tag ${active ? 'open' : 'closed'}">${estado}</span></td>
+      <td data-label="Tipo"><select class="bank-edit-type" data-id="${b.id}" aria-label="Tipo">
+        <option value="transferencia" ${type === 'transferencia' ? 'selected' : ''}>Transferencia</option>
+        <option value="tarjeta" ${type === 'tarjeta' ? 'selected' : ''}>Tarjeta</option>
+      </select></td>
+      <td data-label="Comisión"><input class="bank-edit-commission a33-num" data-id="${b.id}" type="number" inputmode="decimal" step="0.01" min="0" value="${commission}" aria-label="Comisión porcentual"></td>
+      <td data-label="Acción"><div class="actions bank-actions"><button class="btn-ok btn-mini btn-save-bank" data-id="${b.id}">Guardar</button><button class="${btnClass} btn-mini btn-toggle-bank" data-id="${b.id}">${btnTxt}</button></div></td>
     </tr>`;
   }
   html += '</tbody></table>';
@@ -10632,16 +10710,43 @@ document.addEventListener('click', async (e)=>{
 
 // Delegación de eventos para Bancos
 document.addEventListener('click', async (e)=>{
+  const saveBtn = e.target.closest('.btn-save-bank');
   const tBtn = e.target.closest('.btn-toggle-bank');
-  if (!tBtn) return;
-  const id = parseInt(tBtn.dataset.id || '0', 10);
+  if (!saveBtn && !tBtn) return;
+
+  const id = parseInt((saveBtn || tBtn).dataset.id || '0', 10);
   if (!id) return;
 
   const banks = await getAllBanksSafe();
   const b = banks.find(x => Number(x.id) === id);
   if (!b) return;
+
+  if (saveBtn){
+    const row = saveBtn.closest('tr');
+    const name = String(row?.querySelector('.bank-edit-name')?.value || '').trim();
+    const type = normalizeBankTypePOS(row?.querySelector('.bank-edit-type')?.value || 'transferencia');
+    const commissionPct = type === 'tarjeta' ? normalizeBankCommissionPOS(row?.querySelector('.bank-edit-commission')?.value || 0) : 0;
+    if (!name){ alert('Nombre del banco'); return; }
+
+    const dup = banks.find(x => Number(x.id) !== id && normBankName(x?.name) === normBankName(name) && getBankTypePOS(x) === type);
+    if (dup){ alert('Ya existe un banco con ese nombre y tipo.'); return; }
+
+    b.name = name;
+    b.type = type;
+    b.commissionPct = commissionPct;
+    b.updatedAt = new Date().toISOString();
+    await put('banks', b);
+    await renderBancos();
+    await refreshSaleBankSelect();
+    toast('Banco guardado');
+    return;
+  }
+
   const currentlyActive = (b.isActive !== false);
   b.isActive = !currentlyActive;
+  b.type = getBankTypePOS(b);
+  b.commissionPct = getBankTypePOS(b) === 'tarjeta' ? getBankCommissionPctPOS(b) : 0;
+  b.updatedAt = new Date().toISOString();
   await put('banks', b);
   await renderBancos();
   await refreshSaleBankSelect();
@@ -16853,9 +16958,10 @@ async function renderDay(){
     filtered.sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a)));
     for (const s of filtered){
       total += Number(s.total || 0);
-      const payClass = s.payment==='efectivo'
+      const payKey = normalizePaymentMethodPOS(s.payment || '');
+      const payClass = payKey === 'efectivo'
         ? 'pay-ef'
-        : (s.payment==='transferencia' ? 'pay-tr' : 'pay-cr');
+        : (payKey === 'transferencia' ? 'pay-tr' : (payKey === 'tarjeta' ? 'pay-card' : 'pay-cr'));
       const payTxt = getSalePaymentLabelPOS(s, bankMap);
       const tenderDetail = getSaleCashTenderDetailTextPOS(s);
       const tr = document.createElement('tr');
@@ -17507,7 +17613,7 @@ function renderSummaryFromSnapshotPOS(archive){
     tbPay.innerHTML = '';
     for (const it of byPayRows){
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${escapeHtml(it.k)}</td><td>${fmt(it.v)}</td>`;
+      tr.innerHTML = `<td>${escapeHtml(getPaymentMethodLabelPOS(it.k))}</td><td>${fmt(it.v)}</td>`;
       tbPay.appendChild(tr);
     }
   }
@@ -17724,11 +17830,12 @@ async function renderSummary(){
 
       byDay.set(s.date, (byDay.get(s.date) || 0) + total);
       addSummaryProductAggPOS(byProd, s.productName, total, getSummarySaleQtyPOS(s), true);
-      byPay.set(s.payment || 'efectivo', (byPay.get(s.payment || 'efectivo') || 0) + total);
+      const payKey = normalizePaymentMethodPOS(s.payment || 'efectivo') || 'efectivo';
+      byPay.set(payKey, (byPay.get(payKey) || 0) + total);
       byEvent.set(s.eventName || 'General', (byEvent.get(s.eventName || 'General') || 0) + total);
 
       // Transferencias por banco
-      if ((s.payment || '') === 'transferencia'){
+      if (normalizePaymentMethodPOS(s.payment || '') === 'transferencia'){
         const label = getSaleBankLabel(s, bankMap);
         const cur = transferByBank.get(label) || { total: 0, count: 0 };
         cur.total += total;
@@ -17990,7 +18097,7 @@ async function renderSummary(){
       .sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'es-NI'))
       .forEach(([k,v])=>{
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${escapeHtml(k)}</td><td>${fmt(v)}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(getPaymentMethodLabelPOS(k))}</td><td>${fmt(v)}</td>`;
         tbPay.appendChild(tr);
       });
   }
@@ -19128,10 +19235,11 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
       addSummaryDiscountAggPOS(byDiscount, s.productName, saleDiscount);
       byDay.set(s.date, (byDay.get(s.date) || 0) + total);
       addSummaryProductAggPOS(byProd, s.productName, total, getSummarySaleQtyPOS(s), true);
-      byPay.set(s.payment || 'efectivo', (byPay.get(s.payment || 'efectivo') || 0) + total);
+      const payKey = normalizePaymentMethodPOS(s.payment || 'efectivo') || 'efectivo';
+      byPay.set(payKey, (byPay.get(payKey) || 0) + total);
       byEvent.set(s.eventName || 'General', (byEvent.get(s.eventName || 'General') || 0) + total);
 
-      if ((s.payment || '') === 'transferencia'){
+      if (normalizePaymentMethodPOS(s.payment || '') === 'transferencia'){
         const label = getSaleBankLabel(s, bankMap);
         const cur = transferByBank.get(label) || { total: 0, count: 0 };
         cur.total += total;
@@ -19269,7 +19377,7 @@ function buildSummarySheetsFromDataPOS(data){
 
   // Hoja PorPago
   const payRows = [['Método','Total C$']];
-  for (const it of (data.byPay || [])) payRows.push([it.key, it.val || 0]);
+  for (const it of (data.byPay || [])) payRows.push([getPaymentMethodLabelPOS(it.key), it.val || 0]);
   sheets.push({ name: 'PorPago', rows: payRows });
 
   // Hoja TransferenciasBanco
@@ -20981,7 +21089,7 @@ async function openEventView(eventId){
   const utilidadBruta = total - costoProductos;
 
   const byPay = sales.reduce((m,s)=>{ 
-    const k = (s && s.payment) ? s.payment : '';
+    const k = normalizePaymentMethodPOS((s && s.payment) || '') || '';
     m[k] = (m[k] || 0) + (Number(s && s.total) || 0); 
     return m; 
   },{});
@@ -20998,7 +21106,8 @@ async function openEventView(eventId){
   <div><b>Utilidad bruta aprox.:</b> C$ ${fmt(utilidadBruta)}</div>
   <div><b>Efectivo:</b> C$ ${fmt(byPay.efectivo||0)}</div>
   <div><b>Transferencia:</b> C$ ${fmt(byPay.transferencia||0)}</div>
-  <div><b>Crédito:</b> C$ ${fmt(byPay.credito||0)}</div>`;
+  <div><b>Tarjeta:</b> C$ ${fmt(byPay.tarjeta||0)}</div>
+  <div><b>Crédito cliente:</b> C$ ${fmt(byPay.credito||0)}</div>`;
 
   const byDay = Array.from((()=>{
     const m = new Map();
@@ -21053,9 +21162,7 @@ async function openEventView(eventId){
   const tb = $('#ev-sales tbody'); tb.innerHTML='';
   // Más reciente primero
   sales.sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a))).forEach(s=>{
-    const payLabel = (s.payment === 'transferencia')
-      ? (`Transferencia · ${getSaleBankLabel(s, bankMap)}`)
-      : (s.payment || '');
+    const payLabel = getSalePaymentLabelPOS(s, bankMap);
     const tr=document.createElement('tr'); tr.innerHTML = `<td>${getSaleSeqDisplayPOS(s)}</td><td>${s.date}</td><td>${getSaleTimeTextPOS(s)}</td><td>${escapeHtml(uiProductNamePOS(s.productName))}</td><td>${s.qty}</td><td>${fmt(s.unitPrice)}</td><td>${fmt(getSaleDiscountTotalPOS(s))}</td><td>${fmt(s.total)}</td><td>${payLabel}</td><td>${s.courtesy?'✓':''}</td><td>${s.isReturn?'✓':''}</td><td>${s.customerName||s.customer||''}</td><td>${s.courtesyTo||''}</td><td>${s.notes||''}</td>`;
     tb.appendChild(tr);
   });
@@ -21075,14 +21182,14 @@ async function exportEventSalesCSV(eventId){
   const rows = [['N°','id','fecha','hora','producto','cant','PU','desc_C$','total','pago','banco','cortesia','devolucion','cortesia_a','notas','cliente']];
   const ordered = [...sales].sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a)));
   for (const s of ordered){
-    const bank = (s.payment === 'transferencia') ? getSaleBankLabel(s, bankMap) : '';
-    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, (s.payment||''), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', s.customerName||s.customer||'']);
+    const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
+    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', s.customerName||s.customer||'']);
   }
   const safeName = (ev?ev.name:'evento').replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
 }
 function buildCorteSummaryRows(eName, sales){
-  let efectivo=0, trans=0, credito=0, descuentos=0, cortesiasU=0, cortesiasVal=0, devolU=0, devolVal=0, bruto=0;
+  let efectivo=0, trans=0, tarjeta=0, credito=0, descuentos=0, cortesiasU=0, cortesiasVal=0, devolU=0, devolVal=0, bruto=0;
   for (const s of sales){
     const absQty = Math.abs(s.qty||0);
     const absTotal = Math.abs(s.total||0);
@@ -21091,13 +21198,15 @@ function buildCorteSummaryRows(eName, sales){
     descuentos += disc * (s.isReturn?-1:1);
     if (s.courtesy){ cortesiasU += absQty; cortesiasVal += (s.unitPrice*absQty); }
     if (s.isReturn){ devolU += absQty; devolVal += absTotal; }
-    if (s.payment==='efectivo') efectivo += s.total;
-    else if (s.payment==='transferencia') trans += s.total;
-    else if (s.payment==='credito'){ credito += s.total; }
+    const pay = normalizePaymentMethodPOS(s.payment || '');
+    if (pay === 'efectivo') efectivo += s.total;
+    else if (pay === 'transferencia') trans += s.total;
+    else if (pay === 'tarjeta') tarjeta += s.total;
+    else if (pay === 'credito'){ credito += s.total; }
   }
-  const cobrado = efectivo + trans;
+  const cobrado = efectivo + trans + tarjeta;
   const neto = cobrado;
-  return {efectivo, trans, credito, descuentos, cortesiasU, cortesiasVal, devolU, devolVal, bruto, cobrado, neto};
+  return {efectivo, trans, tarjeta, credito, descuentos, cortesiasU, cortesiasVal, devolU, devolVal, bruto, cobrado, neto};
 }
 async function generateCorteCSV(eventId){
   const events = await getAll('events');
@@ -21111,7 +21220,7 @@ async function generateCorteCSV(eventId){
   // Transferencias por banco
   const transferByBank = new Map();
   for (const s of sales){
-    if ((s.payment || '') !== 'transferencia') continue;
+    if (normalizePaymentMethodPOS(s.payment || '') !== 'transferencia') continue;
     const label = getSaleBankLabel(s, bankMap);
     const cur = transferByBank.get(label) || { total: 0, count: 0 };
     cur.total += Number(s.total || 0);
@@ -21126,8 +21235,9 @@ async function generateCorteCSV(eventId){
   rows.push(['Resumen de cobros']);
   rows.push(['Efectivo', sum.efectivo.toFixed(2)]);
   rows.push(['Transferencia', sum.trans.toFixed(2)]);
-  rows.push(['Crédito', sum.credito.toFixed(2)]);
-  rows.push(['Cobrado (sin crédito)', sum.cobrado.toFixed(2)]);
+  rows.push(['Tarjeta', sum.tarjeta.toFixed(2)]);
+  rows.push(['Crédito cliente', sum.credito.toFixed(2)]);
+  rows.push(['Cobrado (sin crédito cliente)', sum.cobrado.toFixed(2)]);
   if (transferByBank.size){
     rows.push([]);
     rows.push(['Transferencias por banco']);
@@ -21152,9 +21262,9 @@ async function generateCorteCSV(eventId){
   rows.push(['Detalle de ventas']);
   rows.push(['id','fecha','hora','producto','cant','PU','desc_C$','total','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
   for (const s of sales){
-    const bank = (s.payment === 'transferencia') ? getSaleBankLabel(s, bankMap) : '';
+    const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
     const tp = getSaleCashTenderPartsPOS(s);
-    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, (s.payment||''), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', s.customerName||s.customer||'']);
+    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', s.customerName||s.customer||'']);
   }
   const safeName = ev.name.replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`corte_${safeName}.xlsx`, 'Corte', rows);
@@ -21184,7 +21294,7 @@ async function exportEventExcel(eventId){
   for (const b of banks){ if (b && b.id != null) bankMap.set(Number(b.id), b.name || ''); }
   const transferByBank = new Map();
   for (const s of sales){
-    if ((s.payment || '') !== 'transferencia') continue;
+    if (normalizePaymentMethodPOS(s.payment || '') !== 'transferencia') continue;
     const label = getSaleBankLabel(s, bankMap);
     const cur = transferByBank.get(label) || { total: 0, count: 0 };
     cur.total += Number(s.total || 0);
@@ -21206,7 +21316,7 @@ async function exportEventExcel(eventId){
   resumenRows.push(['Total vendido C$', totalVentas]);
 
   const byPay = sales.reduce((m,s)=>{
-    const pay = s.payment || 'desconocido';
+    const pay = normalizePaymentMethodPOS(s.payment || '') || 'desconocido';
     m[pay] = (m[pay] || 0) + (s.total || 0);
     return m;
   },{});
@@ -21214,7 +21324,8 @@ async function exportEventExcel(eventId){
   resumenRows.push(['Cobros por forma de pago']);
   resumenRows.push(['Efectivo C$', byPay.efectivo || 0]);
   resumenRows.push(['Transferencia C$', byPay.transferencia || 0]);
-  resumenRows.push(['Crédito C$', byPay.credito || 0]);
+  resumenRows.push(['Tarjeta C$', byPay.tarjeta || 0]);
+  resumenRows.push(['Crédito cliente C$', byPay.credito || 0]);
 
   if (transferByBank.size){
     resumenRows.push([]);
@@ -21250,12 +21361,12 @@ async function exportEventExcel(eventId){
       s.total || 0,
       costUnit || 0,
       costTotal || 0,
-      s.payment || '',
+      getPaymentMethodLabelPOS(s.payment),
       getSaleCashTenderPartsPOS(s).fx || '',
       getSaleCashTenderPartsPOS(s).usd || '',
       getSaleCashTenderPartsPOS(s).change || '',
       getSaleCashTenderPartsPOS(s).equivalent || '',
-      (s.payment === 'transferencia') ? getSaleBankLabel(s, bankMap) : '',
+      isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '',
       s.courtesy ? 1 : 0,
       s.isReturn ? 1 : 0,
       s.courtesyTo || '',
@@ -21841,30 +21952,38 @@ async function init(){
   if (addBankBtn){
     addBankBtn.onclick = async ()=>{
       const input = document.getElementById('bank-new-name');
+      const typeEl = document.getElementById('bank-new-type');
+      const commissionEl = document.getElementById('bank-new-commission');
       const raw = (input?.value || '').trim();
       if (!raw){ alert('Nombre del banco'); return; }
 
+      const type = normalizeBankTypePOS(typeEl?.value || 'transferencia');
+      const commissionPct = type === 'tarjeta' ? normalizeBankCommissionPOS(commissionEl?.value || 0) : 0;
       const banks = await getAllBanksSafe();
       const key = normBankName(raw);
-      const dup = banks.find(b => normBankName(b?.name) === key);
+      const dup = banks.find(b => normBankName(b?.name) === key && getBankTypePOS(b) === type);
       if (dup){
         if (dup.isActive === false){
-          if (confirm('Ese banco ya existe pero está inactivo. ¿Activarlo?')){
+          if (confirm('Ese banco ya existe con ese tipo, pero está inactivo. ¿Activarlo?')){
             dup.isActive = true;
+            dup.commissionPct = commissionPct;
+            dup.updatedAt = new Date().toISOString();
             await put('banks', dup);
             if (input) input.value = '';
+            if (commissionEl) commissionEl.value = '0';
             await renderBancos();
             await refreshSaleBankSelect();
             toast('Banco activado');
           }
           return;
         }
-        alert('Ese banco ya existe.');
+        alert('Ese banco ya existe con ese tipo.');
         return;
       }
 
-      await put('banks', { name: raw, isActive: true, createdAt: new Date().toISOString() });
+      await put('banks', { name: raw, isActive: true, type, commissionPct, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       if (input) input.value = '';
+      if (commissionEl) commissionEl.value = '0';
       await renderBancos();
       await refreshSaleBankSelect();
       toast('Banco agregado');
@@ -22067,7 +22186,7 @@ async function addSale(){
   if (discTrim && !Number.isFinite(discParsed)) { alert('Descuento inválido'); return; }
   if (Number.isFinite(discParsed) && discParsed < 0) { alert('Descuento inválido'); return; }
   const discountPerUnit = Math.max(0, Number.isFinite(discParsed) ? discParsed : 0);
-  const payment = $('#sale-payment').value;
+  const payment = normalizePaymentMethodPOS($('#sale-payment').value || 'efectivo');
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
   const customerInputName = getCustomerNameFromUI_POS();
@@ -22088,25 +22207,32 @@ async function addSale(){
   // Etapa 1: confirmación si no hay cliente seleccionado
   if (!confirmProceedSaleWithoutCustomerPOS()) return;
 
-  // Banco (obligatorio si es Transferencia)
+  // Banco obligatorio para Transferencia y Tarjeta
   let bankId = null;
   let bankName = '';
-  if (payment === 'transferencia'){
-    const activeBanks = (await getAllBanksSafe()).filter(b => b && b.isActive !== false);
+  let bankType = null;
+  if (isBankPaymentMethodPOS(payment)){
+    const activeBanks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
+    const label = getPaymentMethodLabelPOS(payment);
     if (!activeBanks.length){
-      alert('No hay bancos activos. Agregá uno en Productos.');
+      alert(`No hay bancos activos tipo ${label}. Agregá uno en Productos.`);
       return;
     }
     const sel = document.getElementById('sale-bank');
     const raw = sel ? String(sel.value || '').trim() : '';
     const id = parseInt(raw || '0', 10);
     if (!id){
-      alert('Selecciona el banco para la transferencia.');
+      alert(`Selecciona el banco para ${label}.`);
       return;
     }
     const found = activeBanks.find(b => Number(b.id) === id);
+    if (!found){
+      alert(`Selecciona un banco activo tipo ${label}.`);
+      return;
+    }
     bankId = id;
     bankName = (found && found.name) ? String(found.name) : '';
+    bankType = getBankTypePOS(found);
   }
 
   const events = await getAll('events');
@@ -22193,8 +22319,9 @@ async function addSale(){
     discount,
     discountPerUnit: discountPerUnitEff,
     payment,
-    bankId: (payment === 'transferencia') ? bankId : null,
-    bankName: (payment === 'transferencia') ? bankName : null,
+    bankId: isBankPaymentMethodPOS(payment) ? bankId : null,
+    bankName: isBankPaymentMethodPOS(payment) ? bankName : null,
+    bankType: isBankPaymentMethodPOS(payment) ? bankType : null,
     courtesy,
     isReturn,
     // Compat: mantenemos "customer" y añadimos "customerName" (nuevo)
@@ -22319,7 +22446,7 @@ async function addExtraSale(extraId){
   const qtyIn = parseFloat($('#sale-qty').value||'0');
   const qty = Math.abs(qtyIn);
   const discountPerUnit = Math.max(0, parseFloat($('#sale-discount').value||'0'));
-  const payment = $('#sale-payment').value;
+  const payment = normalizePaymentMethodPOS($('#sale-payment').value || 'efectivo');
   const courtesy = $('#sale-courtesy').checked;
   const isReturn = $('#sale-return').checked;
   const customerInputName = getCustomerNameFromUI_POS();
@@ -22340,25 +22467,32 @@ async function addExtraSale(extraId){
   // Candado: si sección está activada y el día está cerrado, NO permitir ventas
   if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
 
-  // Banco (obligatorio si es Transferencia)
+  // Banco obligatorio para Transferencia y Tarjeta
   let bankId = null;
   let bankName = '';
-  if (payment === 'transferencia'){
-    const activeBanks = (await getAllBanksSafe()).filter(b => b && b.isActive !== false);
+  let bankType = null;
+  if (isBankPaymentMethodPOS(payment)){
+    const activeBanks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
+    const label = getPaymentMethodLabelPOS(payment);
     if (!activeBanks.length){
-      alert('No hay bancos activos. Agregá uno en Productos.');
+      alert(`No hay bancos activos tipo ${label}. Agregá uno en Productos.`);
       return;
     }
     const sel = document.getElementById('sale-bank');
     const raw = sel ? String(sel.value || '').trim() : '';
     const id = parseInt(raw || '0', 10);
     if (!id){
-      alert('Selecciona el banco para la transferencia.');
+      alert(`Selecciona el banco para ${label}.`);
       return;
     }
     const found = activeBanks.find(b => Number(b.id) === id);
+    if (!found){
+      alert(`Selecciona un banco activo tipo ${label}.`);
+      return;
+    }
     bankId = id;
     bankName = (found && found.name) ? String(found.name) : '';
+    bankType = getBankTypePOS(found);
   }
 
   const extras = sanitizeExtrasPOS(ev.extras).filter(x=>x && x.active!==false);
@@ -22449,6 +22583,7 @@ async function addExtraSale(extraId){
     payment,
     bankId,
     bankName,
+    bankType,
     // Compat: mantenemos "customer" y añadimos "customerName" (nuevo)
     customer: customerName,
     customerName,
@@ -22619,13 +22754,13 @@ async function getCierreTotalGrupoData(){
   for (const s of salesGrupo){
     const t = s.total || 0;
     const qty = s.qty || 0;
-    const pago = s.payment || 'otro';
+    const pago = normalizePaymentMethodPOS(s.payment || '') || 'otro';
 
     data.totalGrupo += t;
     if (!data.porPago[pago]) data.porPago[pago] = 0;
     data.porPago[pago] += t;
 
-    if ((s.payment || '') === 'transferencia'){
+    if (normalizePaymentMethodPOS(s.payment || '') === 'transferencia'){
       const label = getSaleBankLabel(s, bankMap);
       const cur = transferByBankMap.get(label) || { total: 0, count: 0 };
       cur.total += Number(s.total || 0);
@@ -22702,13 +22837,13 @@ async function computeCierreTotalGrupo(){
   const ya = new Set();
   for (const metodo of ordenPagos){
     if (data.porPago[metodo] != null){
-      html += `<li>${metodo}: C$ ${fmt(data.porPago[metodo])}</li>`;
+      html += `<li>${getPaymentMethodLabelPOS(metodo)}: C$ ${fmt(data.porPago[metodo])}</li>`;
       ya.add(metodo);
     }
   }
   for (const metodo in data.porPago){
     if (!ya.has(metodo)){
-      html += `<li>${metodo}: C$ ${fmt(data.porPago[metodo])}</li>`;
+      html += `<li>${getPaymentMethodLabelPOS(metodo)}: C$ ${fmt(data.porPago[metodo])}</li>`;
     }
   }
   html += '</ul>';
@@ -22763,13 +22898,13 @@ async function exportCierreTotalGrupoExcel(){
   const ya = new Set();
   for (const metodo of ordenPagos){
     if (data.porPago[metodo] != null){
-      resumenRows.push([metodo, data.porPago[metodo]]);
+      resumenRows.push([getPaymentMethodLabelPOS(metodo), data.porPago[metodo]]);
       ya.add(metodo);
     }
   }
   for (const metodo in data.porPago){
     if (!ya.has(metodo)){
-      resumenRows.push([metodo, data.porPago[metodo]]);
+      resumenRows.push([getPaymentMethodLabelPOS(metodo), data.porPago[metodo]]);
     }
   }
   resumenRows.push([]);
