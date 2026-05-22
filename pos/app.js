@@ -7,7 +7,7 @@ let db;
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.77';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r29');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r9');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -209,9 +209,7 @@ async function cashV2OpenTodayFromPrevClosed(eventId, todayDayKey){
   }catch(_){ }
 
   let inheritedFx = null;
-  try{ inheritedFx = await cashV2ReadEventFxCanon(eid); }catch(_){ inheritedFx = null; }
-  // Fallback: si el día anterior tenía FX válido y aún no hay canon/cache, heredar ese.
-  try{ if (inheritedFx == null){ inheritedFx = cashV2FxNorm(prev && prev.fx); } }catch(_){ }
+  try{ inheritedFx = posCurrencyCentralExchangeRatePOS(); }catch(_){ inheritedFx = null; }
 
   const rec = {
     version: 2,
@@ -301,12 +299,12 @@ async function cashV2Ensure(eventId, dayKey){
       }
     }catch(_){ }
 
-    // Etapa 2/3: Herencia automática de FX al abrir día (sin reingresar) — ensure (existing)
+    // Etapa 8/9: si el día abierto no tiene T/C propio, reflejar el T/C central sin tocar días cerrados.
     try{
-      if (cashV2FxNorm(existing.fx) == null){
-        const canon = await cashV2ReadEventFxCanon(eid);
-        if (canon != null){
-          existing.fx = cashV2CoerceFx(canon);
+      if (cashV2NormStatus(existing.status) !== 'CLOSED' && cashV2FxNorm(existing.fx) == null){
+        const central = posCurrencyCentralExchangeRatePOS();
+        if (central != null){
+          existing.fx = cashV2CoerceFx(central);
           changed = true;
         }
       }
@@ -332,7 +330,7 @@ async function cashV2Ensure(eventId, dayKey){
   }catch(_){ }
 
   let inheritedFx = null;
-  try{ inheritedFx = await cashV2ReadEventFxCanon(eid); }catch(_){ inheritedFx = null; }
+  try{ inheritedFx = posCurrencyCentralExchangeRatePOS(); }catch(_){ inheritedFx = null; }
 
   const cashDay = {
     version: 2,
@@ -1113,17 +1111,9 @@ async function cashV2ReadEventFxCanon(eventId){
 }
 
 function cashV2GetFxEffective(rec, eventId, evObj){
-  // a) canon en evento
-  let rate = cashV2GetFxFromEventObj(evObj);
-  // b) cache por evento
-  if (rate == null && eventId){
-    try{ rate = cashV2FxGetCached(eventId); }catch(_){ rate = null; }
-  }
-  // c) último recurso: fx del día
-  if (rate == null){
-    rate = cashV2FxNorm(rec && rec.fx);
-  }
-  return rate;
+  // Etapa 8/9 Moneda → POS: para operaciones nuevas, POS toma el T/C central.
+  // No se recalculan ni migran registros históricos; los T/C guardados quedan como dato de auditoría.
+  return posCurrencyCentralExchangeRatePOS();
 }
 
 
@@ -1136,9 +1126,16 @@ function cashV2CoerceFx(v){
 function cashV2SetFxEnabled(en){
   const card = document.getElementById('cashv2-fx-card');
   if (!card) return;
-  const ok = !!en;
-  try{ const inp = document.getElementById('cashv2-fx-input'); if (inp) inp.disabled = !ok; }catch(_){ }
-  try{ const btn = document.getElementById('cashv2-btn-save-fx'); if (btn) btn.disabled = !ok; }catch(_){ }
+  // T/C ahora se gobierna desde Configuración → Moneda. Este campo queda como visor protegido.
+  try{
+    const inp = document.getElementById('cashv2-fx-input');
+    if (inp){
+      inp.disabled = true;
+      inp.readOnly = true;
+      inp.title = 'T/C central desde Configuración → Moneda';
+    }
+  }catch(_){ }
+  try{ const btn = document.getElementById('cashv2-btn-save-fx'); if (btn) btn.disabled = true; }catch(_){ }
 }
 
 function cashV2ApplyFxToDom(rec, eventId, evObj){
@@ -1147,16 +1144,20 @@ function cashV2ApplyFxToDom(rec, eventId, evObj){
   const err = document.getElementById('cashv2-fx-error');
   const errSm = err ? err.querySelector('small') : null;
 
-  try{ if (err) err.style.display = 'none'; }catch(_){ }
-  try{ if (errSm) errSm.textContent = ''; }catch(_){ }
+  const fixed = posCurrencyCentralExchangeRateFixedPOS();
+  try{
+    if (err){
+      err.style.display = fixed ? 'none' : 'block';
+    }
+  }catch(_){ }
+  try{ if (errSm) errSm.textContent = fixed ? '' : POS_CURRENCY_TC_REQUIRED_MSG; }catch(_){ }
 
   if (!inp) return;
 
-  let rate = cashV2GetFxEffective(rec, eventId, evObj);
-
-  const fixed = (rate != null) ? cashV2FxFmt2(rate) : '';
   try{ inp.value = fixed; }catch(_){ }
-  try{ if (st) st.textContent = fixed ? `Actual: ${fixed}` : '—'; }catch(_){ }
+  try{ inp.disabled = true; inp.readOnly = true; inp.title = 'T/C central desde Configuración → Moneda'; }catch(_){ }
+  try{ const btn = document.getElementById('cashv2-btn-save-fx'); if (btn) btn.disabled = true; }catch(_){ }
+  try{ if (st) st.textContent = fixed ? `Desde Moneda: ${fixed}` : POS_CURRENCY_TC_REQUIRED_MSG; }catch(_){ }
 }
 
 
@@ -1316,6 +1317,56 @@ function formatExchangeRate2(value){
   return cashV2FxFmt2(value);
 }
 
+const POS_CURRENCY_TC_REQUIRED_MSG = 'Configure el T/C en Configuración → Moneda';
+
+function posCurrencyCentralStatePOS(){
+  if (window.A33Currency && typeof window.A33Currency.getState === 'function'){
+    try{ return window.A33Currency.getState(); }catch(_){ }
+  }
+  let parsed = null;
+  try{
+    const key = (window.A33Currency && window.A33Currency.storageKey) || 'suite_a33_currency_settings_v1';
+    const raw = localStorage.getItem(key) || '';
+    parsed = raw ? JSON.parse(raw) : null;
+  }catch(_){ parsed = null; }
+  const fixed = cashV2FxFmt2(cashV2FxNorm(parsed && parsed.exchangeRate));
+  return {
+    ok: true,
+    primary: { name:'Córdoba nicaragüense', symbol:'C$', code:'NIO' },
+    secondary: { name:'Dólar estadounidense', symbol:'US$', code:'USD' },
+    exchangeRate: fixed ? Number(fixed) : null,
+    exchangeRateText: fixed ? ('T/C ' + fixed) : 'T/C no configurado',
+    hasExchangeRate: !!fixed,
+    settings: { exchangeRate: fixed, updatedAt: (parsed && parsed.updatedAt) || '' }
+  };
+}
+
+function posCurrencyCentralExchangeRatePOS(){
+  try{
+    const state = posCurrencyCentralStatePOS();
+    const n = cashV2FxNorm(state && (state.exchangeRate != null ? state.exchangeRate : state.settings && state.settings.exchangeRate));
+    return n == null ? null : n;
+  }catch(_){
+    return null;
+  }
+}
+
+function posCurrencyCentralExchangeRateFixedPOS(){
+  const n = posCurrencyCentralExchangeRatePOS();
+  return n == null ? '' : formatExchangeRate2(n);
+}
+
+function posCurrencyCentralStatusTextPOS(){
+  const fixed = posCurrencyCentralExchangeRateFixedPOS();
+  return fixed ? ('Desde Moneda: ' + fixed) : POS_CURRENCY_TC_REQUIRED_MSG;
+}
+
+function posCurrencyRequireCentralExchangeRatePOS(){
+  const rate = posCurrencyCentralExchangeRatePOS();
+  if (rate == null) return { ok:false, rate:null, fixed:'', msg: POS_CURRENCY_TC_REQUIRED_MSG };
+  return { ok:true, rate, fixed: formatExchangeRate2(rate), msg: 'Desde Moneda: ' + formatExchangeRate2(rate) };
+}
+
 let __A33_POS_EVENT_FX_DRAFT = null;
 
 function setEventFxDraftPOS(eventId, value){
@@ -1364,9 +1415,7 @@ async function getActiveEventExchangeRate(){
   try{
     const ev = await getCurrentEventForExchangeRatePOS();
     if (!ev || ev.closedAt) return null;
-    const fromEvent = cashV2GetFxFromEventObj(ev);
-    if (fromEvent != null) return fromEvent;
-    return await cashV2ReadEventFxCanon(ev.id);
+    return posCurrencyCentralExchangeRatePOS();
   }catch(_){
     return null;
   }
@@ -1398,12 +1447,14 @@ async function setEventExchangeRateByIdPOS(eventId, value){
 
 async function setActiveEventExchangeRate(value){
   const rate = normalizeExchangeRate(value);
-  if (rate == null) return false;
+  const central = posCurrencyCentralExchangeRatePOS();
+  if (rate == null || central == null) return false;
 
   const ev = await getCurrentEventForExchangeRatePOS();
   if (!ev || ev.closedAt) return false;
 
-  return await setEventExchangeRateByIdPOS(ev.id, rate);
+  // El T/C editable vive en Configuración → Moneda; aquí solo se valida que coincida.
+  return formatExchangeRate2(rate) === formatExchangeRate2(central);
 }
 
 function setSaleExchangeRateStatusPOS(msg, isError){
@@ -1424,38 +1475,21 @@ async function syncExchangeRateInputs(){
   const saleInp = document.getElementById('sale-exchange-rate');
   const saleWrap = document.getElementById('sale-exchange-rate-wrap');
   let ev = null;
-  let editable = false;
   let fixed = '';
 
   try{
     ev = await getCurrentEventForExchangeRatePOS();
-    editable = !!(ev && !ev.closedAt);
-    let rate = null;
-    if (ev){
-      rate = cashV2GetFxFromEventObj(ev);
-      if (rate == null){
-        rate = await cashV2ReadEventFxCanon(ev.id);
-        // Consolidación conservadora: si venía de cache/legacy y el evento está activo, dejarlo ya en events.fx.
-        if (rate != null && editable){
-          try{
-            ev[CASHV2_EVENT_FX_PROP] = formatExchangeRate2(rate);
-            await put('events', ev);
-          }catch(_){ }
-        }
-      }
-    }
-    const draftRate = ev && editable ? getEventFxDraftPOS(ev.id) : null;
-    if (draftRate != null) rate = draftRate;
-    fixed = rate != null ? formatExchangeRate2(rate) : '';
+    fixed = posCurrencyCentralExchangeRateFixedPOS();
   }catch(_){
     ev = null;
-    editable = false;
     fixed = '';
   }
 
   if (saleInp){
-    try{ saleInp.disabled = !editable; }catch(_){ }
+    try{ saleInp.disabled = true; }catch(_){ }
+    try{ saleInp.readOnly = true; }catch(_){ }
     try{ saleInp.value = fixed; }catch(_){ }
+    try{ saleInp.title = 'T/C central desde Configuración → Moneda'; }catch(_){ }
   }
   if (saleWrap){
     try{ saleWrap.dataset.eventId = ev && ev.id != null ? String(ev.id) : ''; }catch(_){ }
@@ -1466,52 +1500,55 @@ async function syncExchangeRateInputs(){
   } else if (ev.closedAt){
     setSaleExchangeRateStatusPOS('Evento cerrado', false);
   } else if (fixed){
-    setSaleExchangeRateStatusPOS('Actual: ' + fixed, false);
+    setSaleExchangeRateStatusPOS('Desde Moneda: ' + fixed, false);
   } else {
-    setSaleExchangeRateStatusPOS('Sin T/C guardado', false);
+    setSaleExchangeRateStatusPOS(POS_CURRENCY_TC_REQUIRED_MSG, true);
   }
 
   // Mantener coherente el campo existente de Efectivo si está presente en el DOM.
   try{
-    const cashCard = document.getElementById('cashv2-fx-card');
-    const cashCardEid = cashCard ? String(cashCard.dataset.eventId || '').trim() : '';
-    const evId = ev && ev.id != null ? String(ev.id) : '';
-    if (!cashCardEid || !evId || cashCardEid === evId){
-      const cashInp = document.getElementById('cashv2-fx-input');
-      const cashSt = document.getElementById('cashv2-fx-save-status');
-      const activeEl = document.activeElement;
-      if (cashInp && (activeEl !== cashInp || String(window.__A33_ACTIVE_TAB || '') !== 'efectivo')) cashInp.value = fixed;
-      if (cashSt) cashSt.textContent = fixed ? ('Actual: ' + fixed) : '—';
+    const cashInp = document.getElementById('cashv2-fx-input');
+    const cashSt = document.getElementById('cashv2-fx-save-status');
+    const cashErr = document.getElementById('cashv2-fx-error');
+    const cashErrSm = cashErr ? cashErr.querySelector('small') : null;
+    if (cashInp){
+      cashInp.disabled = true;
+      cashInp.readOnly = true;
+      cashInp.value = fixed;
+      cashInp.title = 'T/C central desde Configuración → Moneda';
     }
+    if (cashSt) cashSt.textContent = fixed ? ('Desde Moneda: ' + fixed) : POS_CURRENCY_TC_REQUIRED_MSG;
+    if (cashErr) cashErr.style.display = fixed ? 'none' : 'block';
+    if (cashErrSm) cashErrSm.textContent = fixed ? '' : POS_CURRENCY_TC_REQUIRED_MSG;
+    const cashBtn = document.getElementById('cashv2-btn-save-fx');
+    if (cashBtn) cashBtn.disabled = true;
   }catch(_){ }
 
-  // Mantener coherente el campo de Calculadora sin convertirlo en otra fuente de verdad.
+  // Mantener coherente el campo de Calculadora POS sin convertirlo en otra fuente de verdad.
   try{
     const calcInp = document.getElementById('fx-rate');
     const calcMeta = document.getElementById('fx-meta');
     const calcStatus = document.getElementById('fx-status');
     if (calcInp){
-      const activeEl = document.activeElement;
-      if (activeEl !== calcInp || String(window.__A33_ACTIVE_TAB || '') !== 'calculadora'){
-        calcInp.disabled = !editable;
-        calcInp.value = fixed;
-      }
-      calcInp.title = editable ? 'T/C del evento activo' : 'Selecciona un evento activo para editar el T/C';
+      calcInp.disabled = true;
+      calcInp.readOnly = true;
+      calcInp.value = fixed;
+      calcInp.title = 'T/C central desde Configuración → Moneda';
     }
     if (String(window.__A33_ACTIVE_TAB || '') === 'calculadora'){
       if (calcMeta){
-        if (!ev) calcMeta.textContent = 'Sin evento activo · T/C del evento';
-        else if (ev.closedAt) calcMeta.textContent = 'Evento cerrado · T/C no editable';
-        else calcMeta.textContent = `Evento activo: ${ev.name || 'Sin nombre'} · T/C del evento`;
+        if (!ev) calcMeta.textContent = 'Sin evento activo · T/C desde Moneda';
+        else if (ev.closedAt) calcMeta.textContent = 'Evento cerrado · T/C desde Moneda';
+        else calcMeta.textContent = `Evento activo: ${ev.name || 'Sin nombre'} · T/C desde Moneda`;
       }
       if (calcStatus){
         calcStatus.style.display = 'block';
-        calcStatus.textContent = !ev ? 'Selecciona un evento activo para usar el T/C.' : (ev.closedAt ? 'Evento cerrado.' : (fixed ? ('Actual: ' + fixed) : 'Sin T/C guardado.'));
+        calcStatus.textContent = fixed ? ('Desde Moneda: ' + fixed) : POS_CURRENCY_TC_REQUIRED_MSG;
       }
     }
   }catch(_){ }
 
-  // Vender: mantener el T/C usado del cobro USD alineado al evento activo.
+  // Vender: mantener el T/C usado del cobro USD alineado al valor central.
   try{ refreshSaleCashTenderUiPOS({ forceFx:true }); }catch(_){ }
 }
 
@@ -1520,42 +1557,23 @@ function setupSaleExchangeRateUIOnce(){
   if (!inp || inp.dataset.ready === '1') return;
 
   const persist = async ()=>{
-    const raw = String(inp.value || '').trim();
-    const rate = normalizeExchangeRate(raw);
-    if (rate == null){
-      const existing = await getActiveEventExchangeRate();
-      if (existing != null){
-        try{ inp.value = formatExchangeRate2(existing); }catch(_){ }
-      }
-      setSaleExchangeRateStatusPOS('Ingresa un T/C válido mayor que 0.', true);
+    const central = posCurrencyRequireCentralExchangeRatePOS();
+    if (!central.ok){
+      try{ inp.value = ''; }catch(_){ }
+      setSaleExchangeRateStatusPOS(central.msg, true);
       return false;
     }
 
-    const fixed = formatExchangeRate2(rate);
-    try{ inp.value = fixed; }catch(_){ }
-    const ok = await setActiveEventExchangeRate(fixed);
-    if (!ok){
-      setSaleExchangeRateStatusPOS('No se pudo guardar el T/C del evento.', true);
-      return false;
-    }
-
-    setSaleExchangeRateStatusPOS('Guardado: ' + fixed, false);
+    try{ inp.value = central.fixed; }catch(_){ }
+    setSaleExchangeRateStatusPOS(central.msg, false);
     try{ await syncExchangeRateInputs(); }catch(_){ }
     return true;
   };
 
   inp.addEventListener('input', ()=>{
-    const rate = normalizeExchangeRate(inp.value);
-    try{
-      const wrap = document.getElementById('sale-exchange-rate-wrap');
-      const eid = wrap ? String(wrap.dataset.eventId || '').trim() : '';
-      if (eid && rate != null) setEventFxDraftPOS(eid, rate);
-    }catch(_){ }
-    if (String(inp.value || '').trim() && rate == null){
-      setSaleExchangeRateStatusPOS('T/C inválido', true);
-    } else {
-      setSaleExchangeRateStatusPOS(rate != null ? ('Actual: ' + formatExchangeRate2(rate)) : 'Sin T/C guardado', false);
-    }
+    const central = posCurrencyRequireCentralExchangeRatePOS();
+    try{ inp.value = central.fixed || ''; }catch(_){ }
+    setSaleExchangeRateStatusPOS(central.msg, !central.ok);
     try{ refreshSaleCashTenderUiPOS({ forceFx:true }); }catch(_){ }
   });
 
@@ -1643,8 +1661,8 @@ function refreshSaleCashTenderUiPOS(opts){
   try{ if (fields) fields.style.display = isUsd ? 'grid' : 'none'; }catch(_){ }
 
   if (fxUsed){
-    const saleFx = normalizeExchangeRate(document.getElementById('sale-exchange-rate')?.value || '');
-    if (saleFx != null && (opts.forceFx || document.activeElement !== fxUsed)) fxUsed.value = formatExchangeRate2(saleFx);
+    const saleFx = posCurrencyCentralExchangeRatePOS();
+    if (opts.forceFx || document.activeElement !== fxUsed) fxUsed.value = saleFx != null ? formatExchangeRate2(saleFx) : '';
   }
 
   if (!isUsd){
@@ -1662,7 +1680,7 @@ function updateSaleCashTenderComputedPOS(){
   if (!isCash || mode !== 'usd_change_nio') return;
 
   const total = getSaleTenderTotalPOS();
-  const fx = normalizeExchangeRate(document.getElementById('sale-exchange-rate')?.value || document.getElementById('sale-cash-fx-used')?.value || '');
+  const fx = posCurrencyCentralExchangeRatePOS();
   const usdRaw = parseNumPOS(document.getElementById('sale-cash-usd-received')?.value || '', NaN);
   const usd = Number.isFinite(usdRaw) ? saleTenderRound2POS(usdRaw) : NaN;
   const eq = (fx != null && Number.isFinite(usd)) ? saleTenderRound2POS(usd * fx) : NaN;
@@ -1677,7 +1695,7 @@ function updateSaleCashTenderComputedPOS(){
 
   clearSaleCashTenderInvalidPOS();
   if (fx == null){
-    setSaleCashTenderStatusPOS('Falta T/C válido del evento.', true);
+    setSaleCashTenderStatusPOS(POS_CURRENCY_TC_REQUIRED_MSG, true);
     try{ toggleInvalidBorderPOS(document.getElementById('sale-cash-fx-used'), true); }catch(_){ }
   } else if (!Number.isFinite(usd) || usd <= 0){
     setSaleCashTenderStatusPOS('Ingresa el monto recibido en USD.', false);
@@ -1730,10 +1748,10 @@ function validateSaleCashTenderPOS({ payment, total, courtesy, isReturn }){
     return { ok:false, msg:'El cobro USD con vuelto C$ solo aplica a ventas normales con total mayor que 0.' };
   }
 
-  const fx = normalizeExchangeRate(document.getElementById('sale-exchange-rate')?.value || document.getElementById('sale-cash-fx-used')?.value || '');
+  const fx = posCurrencyCentralExchangeRatePOS();
   if (fx == null){
     try{ toggleInvalidBorderPOS(document.getElementById('sale-cash-fx-used'), true); }catch(_){ }
-    return { ok:false, msg:'Ingresa un T/C válido mayor que 0 antes de guardar.' };
+    return { ok:false, msg: POS_CURRENCY_TC_REQUIRED_MSG };
   }
 
   const usdRaw = parseNumPOS(document.getElementById('sale-cash-usd-received')?.value || '', NaN);
@@ -2203,7 +2221,7 @@ async function cashV2ComputeCashSalesUSD(eventId, dayKey){
 async function cashV2ReadEventCashSalesPreparedPOS(eventId, dayKey){
   const eid = String(eventId || '').trim();
   const dk = safeYMD(dayKey);
-  const fx = eid ? await cashV2ReadEventFxCanon(eid) : null;
+  const fx = eid ? posCurrencyCentralExchangeRatePOS() : null;
   const phys = eid ? await cashV2ComputeCashSalesPhysicalPOS(eid, dk) : { NIO:0, USD:0, grossNIO:0, changeNIO:0 };
 
   return {
@@ -15422,10 +15440,59 @@ function reempaqueFmtMlPOS(value){
   return n > 0 ? (reempaqueFmtQtyPOS(n) + ' ml') : '—';
 }
 
+function reempaqueCurrencyStatePOS(){
+  if (window.A33Currency && typeof window.A33Currency.getState === 'function'){
+    try{ return window.A33Currency.getState(); }catch(_){ }
+  }
+  let parsed = null;
+  try{
+    const key = (window.A33Currency && window.A33Currency.storageKey) || 'suite_a33_currency_settings_v1';
+    const raw = localStorage.getItem(key) || '';
+    parsed = raw ? JSON.parse(raw) : null;
+  }catch(_){ parsed = null; }
+  const rawRate = String((parsed && parsed.exchangeRate) || '').trim().replace(',', '.');
+  const okRate = /^\d+(?:\.\d{0,2})?$/.test(rawRate) && Number(rawRate) > 0;
+  const rate = okRate ? Number(rawRate).toFixed(2) : '';
+  return {
+    primary: { name:'Córdoba nicaragüense', symbol:'C$', code:'NIO' },
+    secondary: { name:'Dólar estadounidense', symbol:'US$', code:'USD' },
+    exchangeRate: rate ? Number(rate) : null,
+    exchangeRateText: rate ? ('T/C ' + rate) : 'T/C no configurado',
+    hasExchangeRate: !!rate,
+    settings: { updatedAt: (parsed && parsed.updatedAt) || '', exchangeRate: rate }
+  };
+}
+
+function reempaqueFormatCordobasPOS(value){
+  const n = reempaqueMoneyPOS(value);
+  if (window.A33Currency && typeof window.A33Currency.formatCordobas === 'function'){
+    try{ return window.A33Currency.formatCordobas(n); }catch(_){ }
+  }
+  const fixed = Math.abs(n).toFixed(2);
+  const parts = fixed.split('.');
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (n < 0 ? '-' : '') + 'C$' + intPart + '.' + (parts[1] || '00');
+}
+
 function reempaqueFmtMoneyPOS(value, emptyText){
   const n = reempaqueMoneyPOS(value);
   if (!(n > 0)) return emptyText || 'N/D';
-  return 'C$ ' + fmt(n);
+  return reempaqueFormatCordobasPOS(n);
+}
+
+function reempaqueUpdateCurrencyNotePOS(){
+  const state = reempaqueCurrencyStatePOS();
+  const primary = state.primary || { symbol:'C$', code:'NIO' };
+  const text = state.hasExchangeRate
+    ? `Moneda: ${primary.symbol || 'C$'} / ${primary.code || 'NIO'} · ${state.exchangeRateText}. Sin conversiones automáticas.`
+    : 'T/C no configurado en Moneda. Reempaque sigue operando en C$ sin conversiones silenciosas.';
+  ['rp-currency-note', 'rp-multi-currency-note'].forEach((id)=>{
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('warn', !state.hasExchangeRate);
+  });
+  return state;
 }
 
 function reempaqueSetMsgPOS(msg, type){
@@ -15450,6 +15517,7 @@ function reempaqueSetOpenPOS(open){
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   if (open){
     reempaqueSetMsgPOS('', '');
+    reempaqueUpdateCurrencyNotePOS();
     reempaqueRefreshUiPOS().catch(err=>console.warn('No se pudo refrescar Reempaque', err));
   }
 }
@@ -15706,6 +15774,7 @@ async function reempaqueGetUiStatePOS(productsArg){
 
 async function reempaqueUpdatePreviewPOS(opts){
   opts = opts || {};
+  reempaqueUpdateCurrencyNotePOS();
   const state = await reempaqueGetUiStatePOS(opts.products);
   const sourceCapEl = document.getElementById('rp-source-capacity');
   const targetCapEl = document.getElementById('rp-target-capacity');
@@ -15740,9 +15809,9 @@ async function reempaqueUpdatePreviewPOS(opts){
   }
 
   if (costOriginEl) costOriginEl.textContent = reempaqueFmtMoneyPOS(state.costOriginTotal);
-  if (costAdditionalUnitEl) costAdditionalUnitEl.textContent = reempaqueFmtMoneyPOS(state.costAdditionalUnit, 'C$ 0.00');
+  if (costAdditionalUnitEl) costAdditionalUnitEl.textContent = reempaqueFmtMoneyPOS(state.costAdditionalUnit, reempaqueFormatCordobasPOS(0));
   if (targetQtySummaryEl) targetQtySummaryEl.textContent = state.qtyTarget > 0 ? reempaqueFmtQtyPOS(state.qtyTarget) : '—';
-  if (costAdditionalEl) costAdditionalEl.textContent = reempaqueFmtMoneyPOS(state.costAdditionalTotal, 'C$ 0.00');
+  if (costAdditionalEl) costAdditionalEl.textContent = reempaqueFmtMoneyPOS(state.costAdditionalTotal, reempaqueFormatCordobasPOS(0));
   if (liquidDistributedEl) liquidDistributedEl.textContent = reempaqueFmtMoneyPOS(state.costOriginTotal);
   if (liquidUnitEl) liquidUnitEl.textContent = reempaqueFmtMoneyPOS(state.liquidUnitTarget);
   if (costTotalEl) costTotalEl.textContent = reempaqueFmtMoneyPOS(state.costTotal);
@@ -15781,15 +15850,17 @@ function reempaqueFmtMlSignedPOS(value){
 function reempaqueFmtMoneySignedPOS(value, emptyText){
   const n = Number(value);
   if (!Number.isFinite(n)) return emptyText || 'N/D';
-  if (Math.abs(n) < 0.005) return 'C$ 0.00';
+  if (Math.abs(n) < 0.005) return reempaqueFormatCordobasPOS(0);
   const sign = n < 0 ? '-' : '';
-  return sign + 'C$ ' + fmt(Math.abs(round2(n)));
+  return sign + reempaqueFormatCordobasPOS(Math.abs(round2(n)));
 }
 
 function reempaqueFmtCostPerMlPOS(value){
   const n = Number(value);
   if (!Number.isFinite(n) || !(n > 0)) return 'N/D';
-  return 'C$ ' + reempaqueFmtQtyPOS(reempaqueRound4POS(n));
+  const state = reempaqueCurrencyStatePOS();
+  const symbol = (state.primary && state.primary.symbol) ? state.primary.symbol : 'C$';
+  return symbol + reempaqueFmtQtyPOS(reempaqueRound4POS(n));
 }
 
 function reempaqueSetTextPOS(id, text){
@@ -16065,6 +16136,7 @@ async function reempaqueGetMultipleUiStatePOS(productsArg){
 
 async function reempaqueUpdateMultiplePreviewPOS(opts){
   opts = opts || {};
+  reempaqueUpdateCurrencyNotePOS();
   const state = await reempaqueGetMultipleUiStatePOS(opts.products);
   reempaqueSetTextPOS('rp-multi-source-name', state.source ? (state.source.name || 'Producto') : '—');
   reempaqueSetTextPOS('rp-multi-source-qty', state.qtySource > 0 ? reempaqueFmtQtyPOS(state.qtySource) : '—');
@@ -16077,7 +16149,7 @@ async function reempaqueUpdateMultiplePreviewPOS(opts){
   reempaqueSetTextPOS('rp-multi-volume-left', state.volumeOrigin > 0 ? reempaqueFmtMlSignedPOS(state.volumeLeft) : '—');
   reempaqueSetTextPOS('rp-multi-cost-origin', reempaqueFmtMoneyPOS(state.costOriginTotal));
   reempaqueSetTextPOS('rp-multi-cost-distributed', reempaqueFmtMoneyPOS(state.liquidCostDistributed));
-  reempaqueSetTextPOS('rp-multi-cost-additional', reempaqueFmtMoneyPOS(state.additionalCostTotal, 'C$ 0.00'));
+  reempaqueSetTextPOS('rp-multi-cost-additional', reempaqueFmtMoneyPOS(state.additionalCostTotal, reempaqueFormatCordobasPOS(0)));
   reempaqueSetTextPOS('rp-multi-cost-final', reempaqueFmtMoneyPOS(state.costDistributed));
   reempaqueSetTextPOS('rp-multi-cost-left', state.costOriginTotal > 0 ? reempaqueFmtMoneySignedPOS(state.costLeft) : 'N/D');
 
@@ -16089,7 +16161,7 @@ async function reempaqueUpdateMultiplePreviewPOS(opts){
     const totalEl = d.card.querySelector('.rp-multi-target-total-cost');
     if (volEl) volEl.textContent = d.volume > 0 ? reempaqueFmtMlPOS(d.volume) : '—';
     if (liquidUnitEl) liquidUnitEl.textContent = reempaqueFmtMoneyPOS(d.liquidUnitCost);
-    if (extraTotalEl) extraTotalEl.textContent = reempaqueFmtMoneyPOS(d.extraTotalCost, 'C$ 0.00');
+    if (extraTotalEl) extraTotalEl.textContent = reempaqueFmtMoneyPOS(d.extraTotalCost, reempaqueFormatCordobasPOS(0));
     if (unitEl) unitEl.textContent = reempaqueFmtMoneyPOS(d.unitCost);
     if (totalEl) totalEl.textContent = reempaqueFmtMoneyPOS(d.totalCost);
   });
@@ -16455,7 +16527,7 @@ function reempaqueHistoryRecordPartsPOS(r){
     const name = d.label || d.name || 'Destino';
     const ml = d.ml > 0 ? `${reempaqueFmtQtyPOS(d.ml)} ml c/u` : 'ml N/D';
     const liquid = reempaqueFmtMoneyPOS(d.liquidUnitCost);
-    const extra = reempaqueFmtMoneyPOS(d.extraUnitCost, 'C$ 0.00');
+    const extra = reempaqueFmtMoneyPOS(d.extraUnitCost, reempaqueFormatCordobasPOS(0));
     const unit = reempaqueFmtMoneyPOS(d.unitCost);
     const total = reempaqueFmtMoneyPOS(d.totalCost);
     const volume = d.volume > 0 ? `${reempaqueFmtQtyPOS(d.volume)} ml` : 'volumen N/D';
@@ -16519,7 +16591,7 @@ async function renderReempaqueHistoryPOS(eventId){
     const destinosHtml = (p.destinoDetalle || []).map((line, idx)=>
       `<span class="reempaque-history-wide"><strong>Destino ${idx + 1}:</strong> ${escapeHtml(line)}</span>`
     ).join('');
-    const mermaTxt = `${p.mermaMl > 0 ? reempaqueFmtMlPOS(p.mermaMl) : '0 ml'} / ${reempaqueFmtMoneyPOS(p.mermaCosto, 'C$ 0.00')}`;
+    const mermaTxt = `${p.mermaMl > 0 ? reempaqueFmtMlPOS(p.mermaMl) : '0 ml'} / ${reempaqueFmtMoneyPOS(p.mermaCosto, reempaqueFormatCordobasPOS(0))}`;
     return `
       <article class="reempaque-history-item">
         <div class="reempaque-history-main">
@@ -22993,7 +23065,7 @@ function posCalcFmt2(n){
   return (Math.round(x * 100) / 100).toFixed(2);
 }
 
-// REQUISITO CLAVE: source of truth = T/C canónico del evento activo (events.fx).
+// REQUISITO CLAVE: source of truth = T/C central de Configuración → Moneda.
 function initPosCalculatorTabOnce(){
   if (__A33_POS_CALC_INIT) return;
   __A33_POS_CALC_INIT = true;
@@ -23154,7 +23226,7 @@ function initPosCalculatorTabOnce(){
     try{
       if (!rate){
         if (els.fxNio) els.fxNio.value = '';
-        fxShowStatus('Ingresa un tipo de cambio válido para convertir.');
+        fxShowStatus(POS_CURRENCY_TC_REQUIRED_MSG);
       } else {
         fxShowStatus('');
         if (els.fxNio) els.fxNio.value = (usd == null) ? '' : posCalcFmt2(usd * rate);
@@ -23173,7 +23245,7 @@ function initPosCalculatorTabOnce(){
     try{
       if (!rate){
         if (els.fxUsd) els.fxUsd.value = '';
-        fxShowStatus('Ingresa un tipo de cambio válido para convertir.');
+        fxShowStatus(POS_CURRENCY_TC_REQUIRED_MSG);
       } else {
         fxShowStatus('');
         if (els.fxUsd) els.fxUsd.value = (nio == null) ? '' : posCalcFmt2(nio / rate);
@@ -23210,30 +23282,17 @@ function initPosCalculatorTabOnce(){
   async function fxPersistRate(){
     try{
       if (!els.fxRate) return false;
-      const n = posCalcParsePositiveNumber(els.fxRate.value);
-      if (!n){
-        fxShowStatus('Ingresa un tipo de cambio válido mayor que 0.');
-        try{ toggleInvalidBorderPOS(els.fxRate, true); }catch(_){ }
-        return false;
-      }
-
-      const fixed = posCalcFmt2(n);
-      try{ els.fxRate.value = fixed; }catch(_){ }
-      const ok = await setActiveEventExchangeRate(fixed);
-      if (!ok){
-        fxShowStatus('No se pudo guardar el T/C del evento activo.');
-        try{ toggleInvalidBorderPOS(els.fxRate, true); }catch(_){ }
-        return false;
-      }
-
-      try{ toggleInvalidBorderPOS(els.fxRate, false); }catch(_){ }
+      const central = posCurrencyRequireCentralExchangeRatePOS();
+      try{ els.fxRate.value = central.fixed || ''; }catch(_){ }
+      try{ els.fxRate.disabled = true; els.fxRate.readOnly = true; }catch(_){ }
+      try{ toggleInvalidBorderPOS(els.fxRate, !central.ok); }catch(_){ }
       try{ await syncExchangeRateInputs(); }catch(_){ }
       try{ fxRecompute(); }catch(_){ }
-      fxShowStatus('Guardado: ' + fixed);
-      return true;
+      fxShowStatus(central.msg);
+      return !!central.ok;
     }catch(err){
-      console.error('[A33][POS][FX][CALC] No se pudo guardar T/C del evento', err);
-      fxShowStatus('No se pudo guardar el T/C del evento activo.');
+      console.error('[A33][POS][FX][CALC] No se pudo leer T/C central', err);
+      fxShowStatus(POS_CURRENCY_TC_REQUIRED_MSG);
       try{ toggleInvalidBorderPOS(els.fxRate, true); }catch(_){ }
       return false;
     }
@@ -23244,14 +23303,10 @@ function initPosCalculatorTabOnce(){
   if (els.fxNio) els.fxNio.addEventListener('input', fxUpdateFromNIO);
   if (els.fxRate){
     els.fxRate.addEventListener('input', ()=>{
-      try{ toggleInvalidBorderPOS(els.fxRate, false); }catch(_){ }
-      const n = posCalcParsePositiveNumber(els.fxRate.value);
-      try{
-        getCurrentEventForExchangeRatePOS().then(ev=>{
-          try{ if (ev && !ev.closedAt && n) setEventFxDraftPOS(ev.id, n); }catch(_){ }
-        }).catch(()=>{});
-      }catch(_){ }
-      fxShowStatus(n ? ('Actual: ' + posCalcFmt2(n)) : '');
+      const central = posCurrencyRequireCentralExchangeRatePOS();
+      try{ els.fxRate.value = central.fixed || ''; }catch(_){ }
+      try{ toggleInvalidBorderPOS(els.fxRate, !central.ok); }catch(_){ }
+      fxShowStatus(central.msg);
       fxRecompute();
     });
     els.fxRate.addEventListener('change', ()=>{ fxPersistRate().catch(err=>console.error('[A33][POS][FX][CALC] change save', err)); });
@@ -23291,37 +23346,25 @@ async function onOpenPosCalculatorTab(){
   if (!rateEl || !metaEl || !statusEl) return;
 
   let ev = null;
-  let rate = null;
+  let fixed = '';
   try{ ev = await getCurrentEventForExchangeRatePOS(); }catch(_){ ev = null; }
-  try{
-    if (ev){
-      rate = cashV2GetFxFromEventObj(ev);
-      if (rate == null) rate = await cashV2ReadEventFxCanon(ev.id);
-    }
-  }catch(_){ rate = null; }
+  try{ fixed = posCurrencyCentralExchangeRateFixedPOS(); }catch(_){ fixed = ''; }
 
-  const editable = !!(ev && !ev.closedAt);
-  try{
-    const draftRate = ev && editable ? getEventFxDraftPOS(ev.id) : null;
-    if (draftRate != null) rate = draftRate;
-  }catch(_){ }
-  const fixed = rate != null ? posCalcFmt2(rate) : '';
-
-  try{ rateEl.disabled = !editable; }catch(_){ }
-  try{ rateEl.readOnly = false; }catch(_){ }
+  try{ rateEl.disabled = true; }catch(_){ }
+  try{ rateEl.readOnly = true; }catch(_){ }
   try{ rateEl.value = fixed; }catch(_){ }
-  try{ rateEl.title = editable ? 'T/C del evento activo' : 'Selecciona un evento activo para editar el T/C'; }catch(_){ }
-  try{ toggleInvalidBorderPOS(rateEl, false); }catch(_){ }
+  try{ rateEl.title = 'T/C central desde Configuración → Moneda'; }catch(_){ }
+  try{ toggleInvalidBorderPOS(rateEl, !fixed); }catch(_){ }
 
   if (!ev){
-    metaEl.textContent = 'Sin evento activo · T/C del evento';
-    statusEl.textContent = 'Selecciona un evento activo para usar el T/C.';
+    metaEl.textContent = 'Sin evento activo · T/C desde Moneda';
+    statusEl.textContent = fixed ? ('Desde Moneda: ' + fixed) : POS_CURRENCY_TC_REQUIRED_MSG;
   } else if (ev.closedAt){
-    metaEl.textContent = `Evento cerrado: ${ev.name || 'Sin nombre'} · T/C no editable`;
-    statusEl.textContent = fixed ? ('Actual: ' + fixed) : 'Evento cerrado sin T/C guardado.';
+    metaEl.textContent = `Evento cerrado: ${ev.name || 'Sin nombre'} · T/C desde Moneda`;
+    statusEl.textContent = fixed ? ('Desde Moneda: ' + fixed) : POS_CURRENCY_TC_REQUIRED_MSG;
   } else {
-    metaEl.textContent = `Evento activo: ${ev.name || 'Sin nombre'} · T/C del evento`;
-    statusEl.textContent = fixed ? ('Actual: ' + fixed) : 'Sin T/C guardado.';
+    metaEl.textContent = `Evento activo: ${ev.name || 'Sin nombre'} · T/C desde Moneda`;
+    statusEl.textContent = fixed ? ('Desde Moneda: ' + fixed) : POS_CURRENCY_TC_REQUIRED_MSG;
   }
   statusEl.style.display = 'block';
 

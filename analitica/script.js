@@ -1646,6 +1646,14 @@ function rebuildHorasEventOptions(filteredSales){
     const ws = XLSX.utils.aoa_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Hoja1');
+    try{
+      if (window.A33ExportCurrency && typeof window.A33ExportCurrency.appendWorkbookMetadataSheet === 'function'){
+        window.A33ExportCurrency.appendWorkbookMetadataSheet(wb, XLSX, {
+          title: 'Referencia monetaria — Analítica',
+          sheetName: 'Moneda'
+        });
+      }
+    }catch(_){ }
     XLSX.writeFile(wb, filename);
   }
 

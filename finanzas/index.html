@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <title>Finanzas – Suite A33</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=3">
+  <meta name="theme-color" content="#060606">
+  <script src="/assets/js/a33-theme.js?v=4.20.77&r=10"></script>
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=10">
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=10">
 </head>
 <body class="fin-body">
   <div class="fin-app">
@@ -51,6 +54,18 @@
 </header>
 
     <main class="fin-main">
+
+      <section id="fin-currency-reference" class="fin-currency-reference" aria-live="polite">
+        <div class="fin-currency-reference__main">
+          <strong>Referencia monetaria</strong>
+          <span id="fin-currency-primary">C$ / NIO</span>
+          <span class="fin-currency-sep">·</span>
+          <span id="fin-currency-secondary">US$ / USD</span>
+          <span class="fin-currency-sep">·</span>
+          <span id="fin-currency-rate">T/C no configurado</span>
+        </div>
+        <p id="fin-currency-note">Finanzas mantiene C$ como moneda base y no convierte valores sin T/C configurado.</p>
+      </section>
 
       <!-- TABLERO FINANZAS -->
       <section id="view-tablero" class="fin-view active">
@@ -1051,16 +1066,22 @@
         <span>Total equivalente en USD</span>
         <strong id="cc-summary-eq-usd">—</strong>
       </div>
-      <label class="cc-summary-item cc-summary-rate" for="cc-fx-rate">
-        <span>T/C</span>
-        <input id="cc-fx-rate" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" value="" aria-label="T/C">
+      <label class="cc-summary-item cc-summary-rate cc-summary-rate-readonly" for="cc-fx-rate">
+        <span>T/C central</span>
+        <input id="cc-fx-rate" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Configurar en Moneda" value="" aria-label="T/C central desde Configuración Moneda" readonly disabled>
+        <small id="cc-central-fx-note" class="cc-central-fx-note">Fuente: Configuración → Moneda</small>
       </label>
       <div class="cc-summary-item">
-        <span>T/C usado</span>
+        <span>T/C usado en consolidado</span>
         <strong id="cc-summary-fx-used">—</strong>
+        <small id="cc-summary-fx-source" class="cc-central-fx-note">Sin fuente activa</small>
       </div>
       <div class="cc-summary-item cc-summary-item-wide">
-        <span>Última Actualización</span>
+        <span>Última actualización Moneda</span>
+        <strong id="cc-currency-updated-at">Sin registros</strong>
+      </div>
+      <div class="cc-summary-item cc-summary-item-wide">
+        <span>Última Actualización Caja Chica</span>
         <strong id="cc-summary-last-update">Sin actualizar</strong>
       </div>
     </div>
@@ -1325,13 +1346,15 @@
   <!-- Print root (Recibos) -->
   <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.77&r=3"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.77&r=7"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=10"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.77&r=3"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=10"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
+  <script src="/assets/js/a33-export-currency.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=10"></script>
 
-  <script src="script.js?v=4.20.77&r=3"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=3"></script>
+  <script src="script.js?v=4.20.77&r=10"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=10"></script>
 </body>
 </html>

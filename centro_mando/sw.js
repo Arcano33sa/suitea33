@@ -4,27 +4,27 @@
 */
 
 // A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=2'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=10'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
   : '4.20.77';
 const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null))
   ? String(self.A33_RELEASE.rev)
-  : '2';
+  : '10';
 
 const MODULE = 'centro_mando';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.77&r=2',
-  './style.css?v=4.20.77&r=2',
-  './script.js?v=4.20.77&r=2',
-  './manifest.webmanifest?v=4.20.77&r=2',
+  './index.html?v=4.20.77&r=7',
+  './style.css?v=4.20.77&r=7',
+  './script.js?v=4.20.77&r=7',
+  './manifest.webmanifest?v=4.20.77&r=7',
   './offline.html',
-  './offline.html?v=4.20.77&r=2',
-  '/assets/js/a33-release.js?v=4.20.77&r=2'
+  './offline.html?v=4.20.77&r=7',
+  '/assets/js/a33-release.js?v=4.20.77&r=10'
 ];
 
 function sameOrigin(url){
@@ -99,7 +99,7 @@ self.addEventListener('fetch', (event) => {
       const cache = await caches.open(CACHE_NAME);
       return (
         (await cache.match(event.request)) ||
-        (await cache.match('./index.html?v=4.20.77&r=2')) ||
+        (await cache.match('./index.html?v=4.20.77&r=7')) ||
         (await cache.match('./index.html', { ignoreSearch: true })) ||
         (await cache.match('./offline.html')) ||
         new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })

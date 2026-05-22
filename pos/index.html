@@ -4,23 +4,43 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=31">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=10">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f"/>
-<link rel="stylesheet" href="styles.css?v=4.20.77&r=31">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=31" />
+  <!-- Etapa 4/5 — aplicar Apariencia antes del CSS para evitar parpadeos -->
+<script>
+  (function(){
+    try{
+      var key = 'suite_a33_appearance_preference';
+      var pref = localStorage.getItem(key) || 'dark';
+      if (!/^(dark|light|auto)$/.test(pref)) pref = 'dark';
+      var resolved = pref === 'auto'
+        ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')
+        : pref;
+      document.documentElement.setAttribute('data-a33-theme-preference', pref);
+      document.documentElement.setAttribute('data-theme', resolved);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', resolved === 'light' ? '#f4ead8' : '#060606');
+    }catch(_){
+      document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
+<link rel="stylesheet" href="styles.css?v=4.20.77&r=10">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=10" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=10" />
+  <script src="/assets/js/a33-theme.js?v=4.20.77&r=10"></script>
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">POS · Eventos</div>
     <div class="a33-right">
-      <button id="a33-update-indicator" class="a33-update-indicator is-idle" type="button" aria-label="Sin update disponible" title="Sin update disponible">↻<span class="a33-update-badge" aria-hidden="true"></span></button>
       <div class="a33-version" id="a33-version-text" data-a33-version="1" data-a33-fallback="v4.20.77">v...</div>
-      <div id="a33-update-tip" class="a33-update-tip" role="status" aria-live="polite" aria-atomic="true" style="display:none"></div>
     </div>
   </header>
 <div id="offlineBar" class="offline">Trabajando sin conexión</div>
@@ -460,12 +480,13 @@
 
           <div class="reempaque-card soft">
             <div class="reempaque-title">Costos</div>
+            <div id="rp-currency-note" class="reempaque-currency-note" aria-live="polite">Moneda: C$ / NIO · T/C no configurado en Moneda.</div>
             <label>Costo adicional unitario</label>
             <input id="rp-extra-cost" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 8">
             <small class="muted">Se multiplicará por la cantidad destino.</small>
-            <div class="reempaque-kv"><span>Costo adicional unitario</span><b id="rp-cost-additional-unit">C$ 0.00</b></div>
+            <div class="reempaque-kv"><span>Costo adicional unitario</span><b id="rp-cost-additional-unit">C$0.00</b></div>
             <div class="reempaque-kv"><span>Cantidad destino</span><b id="rp-cost-target-qty">—</b></div>
-            <div class="reempaque-kv"><span>Costo adicional total</span><b id="rp-cost-additional-total">C$ 0.00</b></div>
+            <div class="reempaque-kv"><span>Costo adicional total</span><b id="rp-cost-additional-total">C$0.00</b></div>
             <div class="reempaque-kv"><span>Costo líquido distribuido</span><b id="rp-cost-liquid-distributed">N/D</b></div>
             <div class="reempaque-kv"><span>Costo líquido unitario</span><b id="rp-cost-liquid-unit">N/D</b></div>
             <div class="reempaque-kv"><span>Costo final unitario estimado</span><b id="rp-cost-unit-target">N/D</b></div>
@@ -501,12 +522,13 @@
 
             <div class="reempaque-card soft">
               <div class="reempaque-title">Resumen múltiple</div>
+              <div id="rp-multi-currency-note" class="reempaque-currency-note" aria-live="polite">Moneda: C$ / NIO · T/C no configurado en Moneda.</div>
               <div class="reempaque-kv"><span>Volumen total origen</span><b id="rp-multi-volume-origin">—</b></div>
               <div class="reempaque-kv"><span>Volumen distribuido</span><b id="rp-multi-volume-distributed">—</b></div>
               <div class="reempaque-kv"><span>Volumen sobrante/merma</span><b id="rp-multi-volume-left">—</b></div>
               <div class="reempaque-kv"><span>Costo total origen</span><b id="rp-multi-cost-origin">N/D</b></div>
               <div class="reempaque-kv"><span>Costo líquido distribuido</span><b id="rp-multi-cost-distributed">N/D</b></div>
-              <div class="reempaque-kv"><span>Costo adicional destinos</span><b id="rp-multi-cost-additional">C$ 0.00</b></div>
+              <div class="reempaque-kv"><span>Costo adicional destinos</span><b id="rp-multi-cost-additional">C$0.00</b></div>
               <div class="reempaque-kv"><span>Costo final destinos</span><b id="rp-multi-cost-final">N/D</b></div>
               <div class="reempaque-kv"><span>Costo sobrante/merma</span><b id="rp-multi-cost-left">N/D</b></div>
               <div id="rp-multi-warning" class="reempaque-warning muted">Sin advertencias.</div>
@@ -1814,17 +1836,18 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=0.18.5"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=31"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=10"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.77&r=31"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=31"></script>
-<script src="/assets/js/a33-build.js?v=4.20.77&r=31"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.77&r=10"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=10"></script>
+<script src="/assets/js/a33-build.js?v=4.20.77&r=10"></script>
 <script>
   (function(){
     try{
       const relObj = (window.A33_RELEASE || {});
       const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.77';
-      const rev = '31'; // POS cache bump local — orden Resumen Transferencias/Descuentos
+      const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '10'; // POS cache bump local — Moneda Etapa 9 cierre final
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
       try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }
@@ -1844,180 +1867,17 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.77&r=31"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=31"></script>
+<script src="app.js?v=4.20.77&r=10"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.77&r=10"></script>
 <script>
   (function(){
     const BUILD = (window.A33_VERSION || '4.20.77').toString();
-    const REV = (window.A33_ASSET_REV || '2').toString();
+    const REV = (window.A33_ASSET_REV || '8').toString();
     const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV);
-
-    const btn = document.getElementById('a33-update-indicator');
-    const badge = btn ? btn.querySelector('.a33-update-badge') : null;
-    const tip = document.getElementById('a33-update-tip');
-
-    const LS_KEY = 'a33_pos_update_detected_ts';
-    let regRef = null;
-    let updateAvailable = false;
-    let detectedTs = null;
-    let userRequestedReload = false;
-    let tick = null;
-
-    function lsGet(){
-      try{
-        const v = localStorage.getItem(LS_KEY);
-        if(!v) return null;
-        const n = Number(v);
-        return Number.isFinite(n) && n > 0 ? n : null;
-      }catch(_){ return null; }
-    }
-    function lsSet(ts){ try{ localStorage.setItem(LS_KEY, String(ts)); }catch(_){ } }
-    function lsClear(){ try{ localStorage.removeItem(LS_KEY); }catch(_){ } }
-
-    function fmtAge(ms){
-      try{
-        if (!Number.isFinite(ms) || ms < 0) ms = 0;
-        const totalM = Math.floor(ms / 60000);
-        const h = Math.floor(totalM / 60);
-        const m = totalM % 60;
-        if (h <= 0) return 'hace ' + m + 'm';
-        if (m <= 0) return 'hace ' + h + 'h';
-        return 'hace ' + h + 'h ' + m + 'm';
-      }catch(_){ return 'hace 0m'; }
-    }
-
-    function badgeState(ageMs){
-      const H = 3600000;
-      if (ageMs < 2*H) return 'green';
-      if (ageMs < 24*H) return 'yellow';
-      return 'red';
-    }
-
-    function showTip(msg){
-      try{
-        if(!tip) return;
-        tip.textContent = msg;
-        tip.style.display = 'block';
-        clearTimeout(tip.__t);
-        tip.__t = setTimeout(()=>{ try{ tip.style.display='none'; }catch(_){} }, 1600);
-      }catch(_){}
-    }
-
-    function render(){
-      try{
-        if(!btn) return;
-
-        if (updateAvailable){
-          const now = Date.now();
-          if (!detectedTs) detectedTs = lsGet();
-          if (!detectedTs){
-            detectedTs = now;
-            lsSet(detectedTs);
-          }
-          const ageMs = Math.max(0, now - detectedTs);
-          const state = badgeState(ageMs);
-          const msg = 'Update disponible — ' + fmtAge(ageMs);
-
-          btn.classList.remove('is-idle');
-          btn.classList.add('is-available');
-
-          btn.setAttribute('aria-label', msg);
-          btn.title = msg;
-
-          if (badge){
-            badge.style.display = 'block';
-            badge.classList.remove('green','yellow','red');
-            badge.classList.add(state);
-          }
-        }else{
-          btn.classList.remove('is-available');
-          btn.classList.add('is-idle');
-
-          btn.setAttribute('aria-label','Sin update disponible');
-          btn.title = 'Sin update disponible';
-
-          if (badge){
-            badge.style.display = 'none';
-            badge.classList.remove('green','yellow','red');
-          }
-
-          detectedTs = null;
-          lsClear();
-        }
-      }catch(_){}
-    }
-
-    function setUpdateAvailable(flag){
-      updateAvailable = !!flag;
-      if (tick){ clearInterval(tick); tick = null; }
-      render();
-      if (updateAvailable){
-        tick = setInterval(render, 60000);
-      }
-    }
-
-    function detectWaiting(reg){
-      try{
-        if (reg && reg.waiting && navigator.serviceWorker.controller){
-          setUpdateAvailable(true);
-          return true;
-        }
-      }catch(_){}
-      setUpdateAvailable(false);
-      return false;
-    }
-
-    render(); // icono visible desde el arranque
-
-    if(!('serviceWorker' in navigator)) return;
-
-    navigator.serviceWorker.register(SW_URL).then((reg)=>{
-      regRef = reg;
-
-      detectWaiting(reg);
-
-      try{
-        reg.addEventListener('updatefound', ()=>{
-          const nw = reg.installing;
-          if(!nw) return;
-          nw.addEventListener('statechange', ()=>{
-            try{
-              if (nw.state === 'installed' && navigator.serviceWorker.controller){
-                // Esperado: reg.waiting. Si un SW anterior hace skipWaiting, igual marcamos update.
-                setUpdateAvailable(true);
-              }
-            }catch(_){}
-          });
-        });
-      }catch(_){}
-
-      if (btn){
-        btn.addEventListener('click', ()=>{
-          try{
-            if (updateAvailable && detectedTs){
-              showTip('Update disponible — ' + fmtAge(Date.now() - detectedTs));
-            }
-            if (!regRef) return;
-            if (regRef.waiting){
-              userRequestedReload = true;
-              try{ regRef.waiting.postMessage({ type: 'SKIP_WAITING' }); }catch(_){}
-              return;
-            }
-            // Sin waiting: solo check suave, sin recargar.
-            try{ regRef.update(); }catch(_){}
-          }catch(_){}
-        });
-      }
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register(SW_URL).then((reg) => {
+      try{ reg.update(); }catch(_){ }
     }).catch(()=>{});
-
-    navigator.serviceWorker.addEventListener('controllerchange', ()=>{
-      // PROHIBIDO auto-reload: solo recarga si fue acción del usuario.
-      try{ setUpdateAvailable(false); }catch(_){}
-      if (userRequestedReload){
-        userRequestedReload = false;
-        try{ location.reload(); }catch(_){}
-      }
-    });
   })();
 </script>
 

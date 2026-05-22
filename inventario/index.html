@@ -6,13 +6,35 @@
   <title>Arcano 33 · Inventario</title>
   <meta name="description" content="Inventario interno de insumos, botellas y producto terminado de Arcano 33." />
   <meta name="theme-color" content="#7b1818" />
+  <!-- Etapa 4/5 — aplicar Apariencia antes del CSS para evitar parpadeos -->
+<script>
+  (function(){
+    try{
+      var key = 'suite_a33_appearance_preference';
+      var pref = localStorage.getItem(key) || 'dark';
+      if (!/^(dark|light|auto)$/.test(pref)) pref = 'dark';
+      var resolved = pref === 'auto'
+        ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')
+        : pref;
+      document.documentElement.setAttribute('data-a33-theme-preference', pref);
+      document.documentElement.setAttribute('data-theme', resolved);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', resolved === 'light' ? '#f4ead8' : '#060606');
+    }catch(_){
+      document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
 
   <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=2" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=8" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=2" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=2" />
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=8" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=8" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=8" />
+  <script src="/assets/js/a33-theme.js?v=4.20.77&r=8"></script>
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -21,6 +43,23 @@
     <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.77">v...</div>
   </header>
   <main class="app-main">
+
+    <section class="card table-card inv-span-2 inv-currency-card" aria-labelledby="inv-currency-title">
+      <div class="table-header inv-currency-header">
+        <div>
+          <h2 id="inv-currency-title">Referencia de Moneda</h2>
+          <p class="hint">Lectura segura desde Configuración → Moneda para formato monetario y T/C. No recalcula existencias ni movimientos históricos.</p>
+        </div>
+        <span id="inv-currency-badge" class="inv-currency-badge">C$ / NIO</span>
+      </div>
+      <div class="inv-currency-grid" aria-label="Estado de moneda en Inventario">
+        <div class="inv-currency-item"><span>Moneda principal</span><strong id="inv-currency-primary">C$ / NIO</strong><small>Córdoba nicaragüense</small></div>
+        <div class="inv-currency-item"><span>Moneda secundaria</span><strong id="inv-currency-secondary">US$ / USD</strong><small>Dólar estadounidense</small></div>
+        <div class="inv-currency-item"><span>T/C central</span><strong id="inv-currency-rate">T/C no configurado</strong><small id="inv-currency-rate-note">Sin conversiones silenciosas.</small></div>
+        <div class="inv-currency-item"><span>Última actualización</span><strong id="inv-currency-updated-at">Sin registros</strong><small>Dato leído desde Moneda.</small></div>
+      </div>
+      <div id="inv-currency-note" class="inv-currency-note" aria-live="polite">Inventario opera en C$ y solo lee Moneda como referencia visual segura.</div>
+    </section>
     <section class="card form-card inv-span-2">
       <h2>Inventario de materia prima líquida</h2>
       <p class="hint">Control en mililitros de los líquidos base que se utilizan en las recetas y producción.</p>
@@ -200,13 +239,14 @@
       </div>
     </div>
   </div>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=10"></script>
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.77&r=2"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=8"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=8"></script>
 
-  <script src="script.js?v=4.20.77&r=2"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=2"></script>
+  <script src="script.js?v=4.20.77&r=8"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=8"></script>
 </body>
 </html>

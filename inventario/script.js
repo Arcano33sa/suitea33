@@ -76,6 +76,90 @@ function parseNumber(value) {
 }
 
 // ------------------------------
+// Moneda central — Etapa 6/9
+// Lectura/formato seguro para Inventario. No toca existencias ni movimientos.
+// ------------------------------
+function invCurrencyNormalizeRate(value){
+  if (window.A33Currency && typeof window.A33Currency.normalizeExchangeRateValue === 'function'){
+    return window.A33Currency.normalizeExchangeRateValue(value);
+  }
+  const raw = String(value ?? '').trim().replace(',', '.');
+  if (!raw || !/^\d+(?:\.\d{0,2})?$/.test(raw)) return '';
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n.toFixed(2) : '';
+}
+
+function invCurrencyReadState(){
+  if (window.A33Currency && typeof window.A33Currency.getState === 'function'){
+    try{ return window.A33Currency.getState(); }catch(_){ }
+  }
+  let parsed = null;
+  try{
+    const key = (window.A33Currency && window.A33Currency.storageKey) || 'suite_a33_currency_settings_v1';
+    const raw = localStorage.getItem(key) || '';
+    parsed = raw ? JSON.parse(raw) : null;
+  }catch(_){ parsed = null; }
+  const rate = invCurrencyNormalizeRate(parsed && parsed.exchangeRate);
+  return {
+    ok: true,
+    primary: { name:'Córdoba nicaragüense', symbol:'C$', code:'NIO' },
+    secondary: { name:'Dólar estadounidense', symbol:'US$', code:'USD' },
+    exchangeRate: rate ? Number(rate) : null,
+    exchangeRateText: rate ? ('T/C ' + rate) : 'T/C no configurado',
+    hasExchangeRate: !!rate,
+    settings: { updatedAt: (parsed && parsed.updatedAt) || '', exchangeRate: rate }
+  };
+}
+
+function invCurrencyFormatTimestamp(value){
+  const raw = String(value || '').trim();
+  if (!raw) return 'Sin registros';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yy} ${hh}:${mi}`;
+}
+
+function invCurrencyFormatCordobas(value, fallback){
+  const n = parseNumber(value);
+  if (!(n > 0) && fallback) return fallback;
+  if (window.A33Currency && typeof window.A33Currency.formatCordobas === 'function'){
+    try{ return window.A33Currency.formatCordobas(n); }catch(_){ }
+  }
+  const fixed = Math.abs(n).toFixed(2);
+  const parts = fixed.split('.');
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (n < 0 ? '-' : '') + 'C$' + intPart + '.' + (parts[1] || '00');
+}
+
+function renderInventoryCurrencyReference(){
+  const state = invCurrencyReadState();
+  const primary = state.primary || { name:'Córdoba nicaragüense', symbol:'C$', code:'NIO' };
+  const secondary = state.secondary || { name:'Dólar estadounidense', symbol:'US$', code:'USD' };
+  const setText = (id, text)=>{ const el = $(id); if (el) el.textContent = String(text); };
+  setText('inv-currency-primary', `${primary.symbol || 'C$'} / ${primary.code || 'NIO'}`);
+  setText('inv-currency-secondary', `${secondary.symbol || 'US$'} / ${secondary.code || 'USD'}`);
+  setText('inv-currency-rate', state.exchangeRateText || 'T/C no configurado');
+  setText('inv-currency-updated-at', invCurrencyFormatTimestamp(state.settings && state.settings.updatedAt));
+  setText('inv-currency-badge', `${primary.symbol || 'C$'} / ${primary.code || 'NIO'}`);
+  const note = $('inv-currency-note');
+  if (note){
+    note.textContent = state.hasExchangeRate
+      ? `Referencia activa: ${state.exchangeRateText}. Inventario mantiene C$ como moneda principal y no recalcula históricos.`
+      : 'T/C no configurado en Moneda. Inventario sigue operando en C$ sin conversiones silenciosas.';
+    note.classList.toggle('is-warn', !state.hasExchangeRate);
+  }
+  const rateNote = $('inv-currency-rate-note');
+  if (rateNote){
+    rateNote.textContent = state.hasExchangeRate ? 'Disponible solo como referencia segura.' : 'Sin conversiones silenciosas.';
+  }
+}
+
+// ------------------------------
 // Integridad dura (Etapa 1)
 // - No aceptar NaN/Infinity/strings raras al guardar.
 // - Bloquear negativos donde no aplique.
@@ -2177,7 +2261,7 @@ function installSmokeHooks(inv){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.77&r=2")
+      .register("./sw.js?v=4.20.77&r=8")
       .catch((err) => console.error("SW error", err));
   }
 }
@@ -2193,10 +2277,16 @@ document.addEventListener("DOMContentLoaded", () => {
   renderCaps(inv);
   renderVarios(inv);
   renderProductosTerminados(inv);
+  renderInventoryCurrencyReference();
 
   wireViewControls();
   attachListeners(inv);
   applyAllViews();
+  try{
+    window.addEventListener('storage', (ev)=>{
+      if (ev && ev.key === 'suite_a33_currency_settings_v1') renderInventoryCurrencyReference();
+    });
+  }catch(_){ }
   // Si no hubo alertas, dejar señal corta de listo
   const statusEl = $("inv-status");
   if (statusEl && !statusEl.textContent) {

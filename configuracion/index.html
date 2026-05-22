@@ -1,409 +1,930 @@
 <!DOCTYPE html>
+
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Suite A33 · Configuración</title>
-  <meta name="description" content="Módulo Configuración de Suite A33. Organiza Respaldo, Usuarios y Roles, y Ajustes Generales dentro de una arquitectura interna limpia y escalable." />
-  <meta name="theme-color" content="#7b1818" />
-  <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
-  <link rel="apple-touch-icon" href="../icon-a33-192.png" />
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>Suite A33 · Configuración</title>
+<meta content="Módulo Configuración de Suite A33. Organiza PWA, Identidad, Apariencia, Reportes, Moneda, Seguridad y Respaldo en un solo lugar." name="description"/>
+<meta content="#7b1818" name="theme-color"/>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-
-  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.77&r=2" />
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=5" />
+<script src="/assets/js/a33-theme.js?v=4.20.77&r=7"></script>
+<link href="../icon-a33-192.png" rel="icon" sizes="192x192" type="image/png"/>
+<link href="../icon-a33-192.png" rel="apple-touch-icon"/>
+<script>
+(function(){
+  try{
+    var key = 'suite_a33_appearance_preference';
+    var pref = localStorage.getItem(key) || 'dark';
+    if (pref !== 'dark' && pref !== 'light' && pref !== 'auto') pref = 'dark';
+    var resolved = pref;
+    if (pref === 'auto'){
+      resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-a33-theme-preference', pref);
+    document.documentElement.setAttribute('data-theme', resolved);
+  }catch(_){
+    document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+})();
+</script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="../assets/css/a33-header.css?v=4.20.77&amp;r=7" rel="stylesheet"/>
+<link href="style.css?v=4.20.77&amp;r=14" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=7" />
 </head>
 <body>
-  <header class="a33-header" role="banner">
-    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
-    <div class="a33-title">Configuración</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.77">v...</div>
-  </header>
+<header class="a33-header" role="banner">
+<a aria-label="Ir al Menú principal" class="a33-btn-menu" href="../index.html">⌂ Menú principal</a>
+<div class="a33-title">Configuración</div>
+<div class="a33-version" data-a33-fallback="v4.20.77" data-a33-version="1">v...</div>
+</header>
+<main class="cfg-main" role="main">
+<section aria-label="Apartados de Configuración" class="cfg-shell cfg-card">
+<div class="cfg-shell-head">
+<div>
+<p class="cfg-eyebrow">Configuración</p>
+<h2 class="cfg-shell-title">Apartados de Configuración</h2>
+<p class="cfg-shell-copy">Seleccioná una tarjeta para abrir su apartado. Al entrar, las demás opciones se ocultan y quedan disponibles los accesos para volver a Configuración o ir al Menú principal.</p>
+</div>
+</div>
+<div aria-label="Tarjetas de Configuración" class="cfg-tabs"><button aria-controls="cfg-panel-pwa" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="pwa" id="cfg-tab-pwa" type="button"><span class="cfg-tab-title">PWA</span><span class="cfg-tab-meta">Actualización central de la Suite</span></button><button aria-controls="cfg-panel-identity" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="identity" id="cfg-tab-identity" type="button"><span class="cfg-tab-title">Identidad</span><span class="cfg-tab-meta">Marca, datos generales y presentación</span></button><button aria-controls="cfg-panel-appearance" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="appearance" id="cfg-tab-appearance" type="button"><span class="cfg-tab-title">Apariencia</span><span class="cfg-tab-meta">Modo claro, oscuro o sistema</span></button><button aria-controls="cfg-panel-reports" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="reports" id="cfg-tab-reports" type="button"><span class="cfg-tab-title">Reportes</span><span class="cfg-tab-meta">Preferencias de reportes y salida</span></button><button aria-controls="cfg-panel-currency" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="currency" id="cfg-tab-currency" type="button"><span class="cfg-tab-title">Moneda</span><span class="cfg-tab-meta">Parámetros monetarios globales</span></button><button aria-controls="cfg-panel-users" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="security" id="cfg-tab-users" type="button"><span class="cfg-tab-title">Seguridad</span><span class="cfg-tab-meta">Usuarios, roles y permisos</span></button><button aria-controls="cfg-panel-backup" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="backup" id="cfg-tab-backup" type="button"><span class="cfg-tab-title">Respaldo</span><span class="cfg-tab-meta">Exportar e importar JSON</span></button></div>
+<div class="cfg-panels" hidden="">
 
-  <main class="cfg-main" role="main">
-    <section class="cfg-hero cfg-card" aria-labelledby="cfg-title">
-      <div class="cfg-hero-copy">
-        <span class="cfg-kicker">Núcleo A33</span>
-        <h1 id="cfg-title">Configuración</h1>
-        <p class="cfg-lead">Módulo contenedor para ordenar la operación interna de la Suite A33. Ahora <b>Respaldo</b>, <b>Usuarios y Roles</b> y <b>Ajustes Generales</b> viven dentro de una arquitectura clara, compacta y lista para crecer sin hacerse un cajón de sastre.</p>
-      </div>
-      <div class="cfg-hero-side">
-        <div class="cfg-mini-stat">
-          <span class="cfg-mini-label">Secciones base</span>
-          <strong>3 carriles internos</strong>
-        </div>
-        <div class="cfg-mini-stat">
-          <span class="cfg-mini-label">Estado</span>
-          <strong>Usuarios base activos</strong>
-        </div>
-        <div class="cfg-mini-stat">
-          <span class="cfg-mini-label">Estado Firebase</span>
-          <strong id="cfg-hero-firebase-headline">Modo local seguro</strong>
-        </div>
-      </div>
-    </section>
 
-    <section class="cfg-shell cfg-card" aria-label="Arquitectura interna de Configuración">
-      <div class="cfg-shell-head">
-        <div>
-          <p class="cfg-eyebrow">Arquitectura interna</p>
-          <h2 class="cfg-shell-title">Secciones del módulo</h2>
-          <p class="cfg-shell-copy">Navegación ligera, lectura limpia y cada bloque en su sitio. Nada de pared infinita ni maquillaje inútil.</p>
-        </div>
-        <span class="cfg-badge cfg-badge--soft">Etapa 5/11</span>
-      </div>
 
-      <div class="cfg-tabs" role="tablist" aria-label="Secciones de Configuración">
-        <button class="cfg-tab is-active" id="cfg-tab-backup" type="button" role="tab" aria-selected="true" aria-controls="cfg-panel-backup" data-target="backup">
-          <span class="cfg-tab-title">Respaldo</span>
-          <span class="cfg-tab-meta">Exportar e importar JSON</span>
-        </button>
-        <button class="cfg-tab" id="cfg-tab-users" type="button" role="tab" aria-selected="false" aria-controls="cfg-panel-users" data-target="users" tabindex="-1">
-          <span class="cfg-tab-title">Usuarios y Roles</span>
-          <span class="cfg-tab-meta">CRUD local + base Firebase</span>
-        </button>
-        <button class="cfg-tab" id="cfg-tab-settings" type="button" role="tab" aria-selected="false" aria-controls="cfg-panel-settings" data-target="settings" tabindex="-1">
-          <span class="cfg-tab-title">Ajustes Generales</span>
-          <span class="cfg-tab-meta">Marco de preferencias</span>
-        </button>
-      </div>
-
-      <div class="cfg-panels">
-        <section class="cfg-panel-view is-active" id="cfg-panel-backup" role="tabpanel" aria-labelledby="cfg-tab-backup" data-panel="backup">
-          <div class="cfg-view-grid">
-            <article class="cfg-card cfg-panel cfg-panel--main" aria-labelledby="cfg-backup-title">
-              <div class="cfg-panel-head">
-                <div>
-                  <p class="cfg-eyebrow">Sección interna</p>
-                  <h2 id="cfg-backup-title">Respaldo</h2>
-                </div>
-                <span class="cfg-badge">JSON local</span>
-              </div>
-
-              <p class="cfg-copy">Exporta o importa un respaldo completo de la Suite A33 sin alterar nombres de claves, payload ni compatibilidad previa. La lógica sigue siendo la misma; ahora solo vive en el lugar correcto.</p>
-
-              <div class="cfg-actions">
-                <button id="cfg-export-backup" class="cfg-btn cfg-btn-primary" type="button">Exportar JSON</button>
-                <button id="cfg-import-backup" class="cfg-btn cfg-btn-ghost" type="button">Importar JSON</button>
-              </div>
-
-              <div class="cfg-note-grid">
-                <div class="cfg-note-card">
-                  <strong>Qué hace</strong>
-                  <p>Exporta un archivo con localStorage e IndexedDB de la Suite detectados en este navegador.</p>
-                </div>
-                <div class="cfg-note-card">
-                  <strong>Qué no cambia</strong>
-                  <p>No toca el formato del JSON ni renombra claves históricas del respaldo.</p>
-                </div>
-                <div class="cfg-note-card">
-                  <strong>Cuidado</strong>
-                  <p>Al importar, se reemplazan los datos actuales de este navegador. Mejor exportar antes; drama evitado.</p>
-                </div>
-              </div>
-            </article>
-
-            <aside class="cfg-card cfg-panel cfg-side-panel" aria-labelledby="cfg-backup-side-title">
-              <div class="cfg-panel-head cfg-panel-head--stack">
-                <div>
-                  <p class="cfg-eyebrow">Validación rápida</p>
-                  <h2 id="cfg-backup-side-title">Regresión mínima</h2>
-                </div>
-                <span class="cfg-badge cfg-badge--soft">Operativo</span>
-              </div>
-              <ul class="cfg-list">
-                <li>Configuración abre como módulo independiente.</li>
-                <li>Respaldo sigue disponible desde su nueva ubicación.</li>
-                <li>El formato JSON histórico permanece intacto.</li>
-                <li>La interfaz conserva lectura sana en desktop e iPad.</li>
-              </ul>
-            </aside>
-          </div>
-        </section>
-
-        <section class="cfg-panel-view" id="cfg-panel-users" role="tabpanel" aria-labelledby="cfg-tab-users" data-panel="users" hidden>
-          <div class="cfg-view-grid">
-            <article class="cfg-card cfg-panel cfg-panel--main" aria-labelledby="cfg-users-title">
-              <div class="cfg-panel-head cfg-panel-head--users">
-                <div>
-                  <p class="cfg-eyebrow">Administración real</p>
-                  <h2 id="cfg-users-title">Usuarios y Roles</h2>
-                </div>
-                <div class="cfg-head-actions">
-                  <span id="cfg-users-mode-badge" class="cfg-badge cfg-badge--soft">Sin backend</span>
-                  <button id="cfg-user-new-top" class="cfg-btn cfg-btn-primary cfg-btn-compact" type="button">+ Nuevo usuario</button>
-                </div>
-              </div>
-
-              <p id="cfg-users-copy" class="cfg-copy">Aquí queda el carril real para perfiles, roles y permisos. Firestore guarda el perfil canónico y Functions se encarga de la parte privilegiada que jamás debería vivir en el cliente.</p>
-
-              <div class="cfg-note-grid cfg-note-grid--dual cfg-note-grid--users">
-                <div class="cfg-note-card">
-                  <strong>Base seria</strong>
-                  <p>Perfiles reales en Firestore, roles extensibles y permisos leíbles por la app sin inventar seguridad de cartón.</p>
-                </div>
-                <div class="cfg-note-card">
-                  <strong>Backend correcto</strong>
-                  <p>Las altas, cambios de rol, activación/desactivación y borrado seguro con archivo previo pasan por Functions + Admin SDK cuando el backend ya está desplegado.</p>
-                </div>
-              </div>
-
-              <section class="cfg-users-runtime-strip" aria-label="Estado del acceso real">
-                <article class="cfg-status-card">
-                  <span class="cfg-status-label">Acceso actual</span>
-                  <strong id="cfg-users-access-current">Sin sesión</strong>
-                  <p id="cfg-users-access-detail" class="cfg-status-copy">Inicia sesión para leer tu perfil real.</p>
-                </article>
-                <article class="cfg-status-card">
-                  <span class="cfg-status-label">Backend admin</span>
-                  <strong id="cfg-users-backend-current">Pendiente</strong>
-                  <p id="cfg-users-backend-detail" class="cfg-status-copy">Functions todavía no ha sido verificado.</p>
-                </article>
-                <article class="cfg-status-card">
-                  <span class="cfg-status-label">Workspace</span>
-                  <strong id="cfg-users-workspace-current">default</strong>
-                  <p id="cfg-users-workspace-detail" class="cfg-status-copy">Preparado para tenant simple sin volver esto un laberinto.</p>
-                </article>
-              </section>
-
-              <section class="cfg-users-toolbar" aria-label="Resumen de usuarios">
-                <div class="cfg-users-metrics">
-                  <article class="cfg-metric-card">
-                    <span class="cfg-metric-label">Usuarios</span>
-                    <strong id="cfg-user-count-total">0</strong>
-                  </article>
-                  <article class="cfg-metric-card">
-                    <span class="cfg-metric-label">Activos</span>
-                    <strong id="cfg-user-count-active">0</strong>
-                  </article>
-                  <article class="cfg-metric-card">
-                    <span class="cfg-metric-label">Inactivos</span>
-                    <strong id="cfg-user-count-inactive">0</strong>
-                  </article>
-                  <article class="cfg-metric-card">
-                    <span class="cfg-metric-label">Rol dominante</span>
-                    <strong id="cfg-user-role-top">—</strong>
-                  </article>
-                </div>
-                <div class="cfg-search-wrap">
-                  <label class="cfg-search-label" for="cfg-user-search">Buscar usuario</label>
-                  <input id="cfg-user-search" class="cfg-input cfg-search-input" type="search" placeholder="Nombre o correo" autocomplete="off" />
-                </div>
-              </section>
-
-              <div class="cfg-users-list-shell">
-                <div id="cfg-users-empty" class="cfg-empty-state" hidden>
-                  <div class="cfg-empty-icon">◎</div>
-                  <h3 id="cfg-users-empty-title">Sin perfiles todavía</h3>
-                  <p id="cfg-users-empty-copy">Cuando el backend esté listo, aquí aparecerán los perfiles reales del workspace.</p>
-                  <button id="cfg-user-empty-cta" class="cfg-btn cfg-btn-primary cfg-btn-compact" type="button">Preparar formulario</button>
-                </div>
-
-                <div class="cfg-users-table-wrap" id="cfg-users-table-wrap" hidden>
-                  <table class="cfg-users-table" aria-label="Listado de usuarios">
-                    <thead>
-                      <tr>
-                        <th scope="col">Usuario</th>
-                        <th scope="col">Correo</th>
-                        <th scope="col">Rol</th>
-                        <th scope="col">Estado</th>
-                        <th scope="col">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody id="cfg-users-tbody"></tbody>
-                  </table>
-                </div>
-
-                <div id="cfg-users-cards" class="cfg-users-cards" hidden></div>
-                <div id="cfg-users-noresults" class="cfg-inline-empty" hidden>No hay coincidencias para esa búsqueda.</div>
-              </div>
-            </article>
-
-            <aside class="cfg-card cfg-panel cfg-side-panel" aria-labelledby="cfg-users-side-title">
-              <div class="cfg-panel-head cfg-panel-head--stack">
-                <div>
-                  <p class="cfg-eyebrow">Backend seguro</p>
-                  <h2 id="cfg-users-side-title">Operar usuarios</h2>
-                </div>
-                <span id="cfg-users-side-badge" class="cfg-badge">Perfil pendiente</span>
-              </div>
-
-              <form id="cfg-user-form" class="cfg-form" novalidate>
-                <input id="cfg-user-id" type="hidden" />
-
-                <label class="cfg-field">
-                  <span>Nombre</span>
-                  <input id="cfg-user-name" class="cfg-input" type="text" maxlength="80" placeholder="Ej. Mariana López" required />
-                </label>
-
-                <label class="cfg-field">
-                  <span>Correo</span>
-                  <input id="cfg-user-email" class="cfg-input" type="email" maxlength="120" placeholder="correo@dominio.com" autocomplete="email" required />
-                </label>
-
-                <div class="cfg-field-row">
-                  <label class="cfg-field">
-                    <span>Rol</span>
-                    <select id="cfg-user-role" class="cfg-input" required>
-                      <option value="admin">Admin</option>
-                      <option value="ventas">Ventas</option>
-                      <option value="finanzas">Finanzas</option>
-                      <option value="consulta">Consulta</option>
-                    </select>
-                  </label>
-
-                  <label class="cfg-field">
-                    <span>Estado</span>
-                    <select id="cfg-user-status" class="cfg-input" required>
-                      <option value="active">Activo</option>
-                      <option value="inactive">Inactivo</option>
-                    </select>
-                  </label>
-                </div>
-
-                <div class="cfg-form-actions">
-                  <button id="cfg-user-save" class="cfg-btn cfg-btn-primary cfg-btn-compact" type="submit">Guardar usuario</button>
-                  <button id="cfg-user-cancel" class="cfg-btn cfg-btn-ghost cfg-btn-compact" type="button">Limpiar</button>
-                  <button id="cfg-user-bootstrap" class="cfg-btn cfg-btn-ghost cfg-btn-compact" type="button" hidden>Activar admin inicial</button>
-                </div>
-                <div id="cfg-user-form-hint" class="cfg-form-hint">Cuando Functions esté desplegado y haya un Admin activo, este formulario operará sobre Authentication + Firestore con validaciones para no dejar el workspace sin gobierno.</div>
-              </form>
-
-              <div class="cfg-status-stack cfg-status-stack--users">
-                <div class="cfg-status-card">
-                  <span class="cfg-status-label">Persistencia</span>
-                  <strong id="cfg-users-storage-label">Firestore canónico</strong>
-                  <p id="cfg-users-storage-copy" class="cfg-status-copy">El perfil real vive en Firestore; el backend privilegiado vive en Functions y archiva antes del borrado definitivo.</p>
-                </div>
-                <div class="cfg-status-card">
-                  <span class="cfg-status-label">Permisos</span>
-                  <strong id="cfg-users-permissions-label">Sin perfil todavía</strong>
-                  <p id="cfg-users-permissions-copy" class="cfg-status-copy">La app leerá permisos desde el rol asignado y los expondrá de forma uniforme.</p>
-                </div>
-                <div class="cfg-status-card">
-                  <span class="cfg-status-label">Siguiente salto</span>
-                  <strong id="cfg-users-next-label">UI administrativa progresiva</strong>
-                  <p id="cfg-users-next-copy" class="cfg-status-copy">Esta base ya deja el backend correcto para la administración privilegiada posterior.</p>
-                </div>
-              </div>
-            </aside>
-          </div>
-        </section>
-
-        <section class="cfg-panel-view" id="cfg-panel-settings" role="tabpanel" aria-labelledby="cfg-tab-settings" data-panel="settings" hidden>
-          <div class="cfg-view-grid">
-            <article class="cfg-card cfg-panel cfg-panel--main" aria-labelledby="cfg-settings-title">
-              <div class="cfg-panel-head">
-                <div>
-                  <p class="cfg-eyebrow">Sección base</p>
-                  <h2 id="cfg-settings-title">Ajustes Generales</h2>
-                </div>
-                <span class="cfg-badge cfg-badge--soft">Marco de ajustes</span>
-              </div>
-
-              <p class="cfg-copy">Aquí queda reservado el espacio para preferencias globales, banderas de comportamiento y parámetros del producto. No se mete lógica sensible aún, pero ya existe el carril correcto para concentrar ajustes sin regarlos por toda la suite.</p>
-
-              <section class="cfg-firebase-block" aria-labelledby="cfg-firebase-title">
-                <div class="cfg-firebase-head">
-                  <div>
-                    <p class="cfg-eyebrow">Firebase</p>
-                    <h3 id="cfg-firebase-title">Firebase y acceso</h3>
-                  </div>
-                  <span id="cfg-firebase-badge" class="cfg-badge cfg-badge--soft">Modo local</span>
-                </div>
-
-                <p id="cfg-firebase-summary" class="cfg-copy">Firebase puede operar en modo local o con acceso real por correo/contraseña, según la vinculación actual del proyecto.</p>
-
-                <div class="cfg-firebase-grid" aria-label="Estado de Firebase y Authentication">
-                  <article class="cfg-firebase-stat">
-                    <span class="cfg-status-label">Modo actual</span>
-                    <strong id="cfg-firebase-mode">Local seguro</strong>
-                  </article>
-                  <article class="cfg-firebase-stat">
-                    <span class="cfg-status-label">Archivo central</span>
-                    <strong id="cfg-firebase-config-file">assets/js/a33-firebase-config.js</strong>
-                  </article>
-                  <article class="cfg-firebase-stat">
-                    <span class="cfg-status-label">Proyecto</span>
-                    <strong id="cfg-firebase-project-id">Pendiente</strong>
-                  </article>
-                </div>
-
-                <div class="cfg-firebase-pill-row" aria-label="Piezas activas de Firebase">
-                  <span id="cfg-firebase-app-pill" class="cfg-pill cfg-pill--firebase">App: pendiente</span>
-                  <span id="cfg-firebase-auth-pill" class="cfg-pill cfg-pill--firebase">Auth: pendiente</span>
-                  <span id="cfg-firebase-db-pill" class="cfg-pill cfg-pill--firebase">Firestore: pendiente</span>
-                  <span id="cfg-firebase-functions-pill" class="cfg-pill cfg-pill--firebase">Functions: pendiente</span>
-                </div>
-
-                <p class="cfg-inline-note">Cuando compartas la configuración real del proyecto, el siguiente paso se integra en el archivo central sin romper el modo local actual.</p>
-              </section>
-
-              <div class="cfg-note-grid cfg-note-grid--dual">
-                <div class="cfg-note-card">
-                  <strong>Familias previstas</strong>
-                  <p>Preferencias visuales, parámetros operativos, defaults del sistema y futuras opciones administrativas.</p>
-                </div>
-                <div class="cfg-note-card">
-                  <strong>Beneficio real</strong>
-                  <p>Cuando entren más ajustes, caerán en un bloque pensado para eso y no en una feria de botones desperdigados.</p>
-                </div>
-              </div>
-
-              <div class="cfg-pill-grid" aria-label="Elementos previstos para Ajustes Generales">
-                <span class="cfg-pill">Preferencias del sistema</span>
-                <span class="cfg-pill">Parámetros globales</span>
-                <span class="cfg-pill">Valores por defecto</span>
-                <span class="cfg-pill">Mantenimiento futuro</span>
-                <span class="cfg-pill">Compatibilidad PWA</span>
-                <span class="cfg-pill">Ajustes administrativos</span>
-              </div>
-            </article>
-
-            <aside class="cfg-card cfg-panel cfg-side-panel" aria-labelledby="cfg-settings-side-title">
-              <div class="cfg-panel-head cfg-panel-head--stack">
-                <div>
-                  <p class="cfg-eyebrow">Orden interno</p>
-                  <h2 id="cfg-settings-side-title">Principios del carril</h2>
-                </div>
-              </div>
-              <ul class="cfg-list">
-                <li>Concentrar ajustes globales en un solo punto lógico.</li>
-                <li>Evitar contaminar módulos funcionales con preferencias dispersas.</li>
-                <li>Preparar el terreno para crecimiento sin deuda visual innecesaria.</li>
-              </ul>
-            </aside>
-          </div>
-        </section>
-      </div>
-    </section>
-  </main>
-
-  <div class="modal-overlay" id="backup-modal" style="display:none;">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
-      <h2 class="modal-title" id="backup-modal-title">Respaldo</h2>
-      <div class="modal-body" id="backup-modal-body"></div>
-      <div class="modal-actions">
-        <button class="cfg-btn cfg-btn-ghost cfg-btn-modal" id="backup-modal-cancel" type="button">Cancelar</button>
-        <button class="cfg-btn cfg-btn-ghost cfg-btn-modal" id="backup-modal-secondary" type="button" style="display:none;">Secundario</button>
-        <button class="cfg-btn cfg-btn-primary cfg-btn-modal" id="backup-modal-primary" type="button">OK</button>
-      </div>
-    </div>
-  </div>
-
-  <input id="backup-file-input" type="file" accept="application/json" style="display:none;" />
-  <div id="a33-toast" class="a33-toast" aria-live="polite"></div>
-
-  <script src="../assets/js/a33-release.js?v=4.20.77&r=6"></script>
-  <script src="../assets/js/a33-storage.js?v=4.20.77&r=2"></script>
-  <script src="../assets/js/a33-firebase-config.js?v=4.20.77&r=7"></script>
-  <script src="../assets/js/a33-firebase-core.js?v=4.20.77&r=8"></script>
-  <script src="../assets/js/a33-firebase-auth.js?v=4.20.77&r=8"></script>
-  <script src="../assets/js/a33-firebase-access.js?v=4.20.77&r=9"></script>
-  <script src="../assets/js/a33-module-access.js?v=4.20.77&r=1"></script>
-  <script src="script.js?v=4.20.77&r=9"></script>
+<section aria-hidden="true" aria-labelledby="cfg-tab-pwa" class="cfg-panel-view" data-panel="pwa" hidden="" id="cfg-panel-pwa" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="cfg-pwa-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Primer apartado</p>
+<h2 id="cfg-pwa-title">PWA</h2>
+</div>
+<span class="cfg-badge">Motor central</span>
+</div>
+<p class="cfg-copy">Actualización y control de la versión instalada de la Suite. Este apartado ejecuta la búsqueda central de Service Workers registrados, guarda la última búsqueda, detecta si hay actualización pendiente y permite aplicarla de forma controlada.</p>
+<div aria-label="Estado PWA de la Suite" class="cfg-pwa-dashboard">
+<article class="cfg-status-card cfg-pwa-stat">
+<span class="cfg-status-label">Estado</span>
+<strong id="cfg-pwa-status">Sin revisar</strong>
+<p class="cfg-status-copy">Estado central de revisión PWA.</p>
+</article>
+<article class="cfg-status-card cfg-pwa-stat">
+<span class="cfg-status-label">Última búsqueda</span>
+<strong id="cfg-pwa-last-check">Sin registros</strong>
+<p class="cfg-status-copy">Se mostrará en formato DD/MM/AAAA HH:mm.</p>
+</article>
+<article class="cfg-status-card cfg-pwa-stat">
+<span class="cfg-status-label">Última actualización</span>
+<strong id="cfg-pwa-last-update">Sin registros</strong>
+<p class="cfg-status-copy">Solo cambia cuando se aplique correctamente una actualización.</p>
+</article>
+</div>
+<div class="cfg-actions cfg-actions--pwa">
+<button class="cfg-btn cfg-btn-primary" id="cfg-pwa-check" type="button">Buscar actualizaciones</button>
+</div>
+</article>
+<aside aria-labelledby="cfg-pwa-side-title" class="cfg-card cfg-panel cfg-side-panel">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Actualizaciones</p>
+<h2 id="cfg-pwa-side-title">Motor central</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft">Centralizado</span>
+</div>
+<ul class="cfg-list">
+<li>Busca actualizaciones disponibles para la Suite.</li>
+<li>Permite aplicar una actualización pendiente de forma controlada.</li>
+<li>Muestra última búsqueda, última actualización y estado actual.</li>
+</ul>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-identity" class="cfg-panel-view" data-panel="identity" hidden="" id="cfg-panel-identity" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="identity-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="identity-title">Identidad</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft">Guardado local</span>
+</div>
+<p class="cfg-copy">Datos generales de identidad del negocio y de la Suite. En esta fase se guardan localmente para conservarse al recargar la app, sin alimentar reportes, PDFs, POS, Finanzas ni otros módulos.</p>
+<form aria-label="Formulario de Identidad" class="cfg-identity-form" id="cfg-identity-form" novalidate="">
+<div class="cfg-identity-grid">
+<label class="cfg-field">
+<span>Nombre comercial</span>
+<input autocomplete="organization" class="cfg-input" id="cfg-identity-commercial-name" maxlength="120" placeholder="Ingrese el nombre comercial" type="text"/>
+</label>
+<label class="cfg-field">
+<span>Nombre legal</span>
+<input autocomplete="organization" class="cfg-input" id="cfg-identity-legal-name" maxlength="160" placeholder="Ingrese el nombre legal" type="text"/>
+</label>
+<label class="cfg-field">
+<span>RUC / identificación fiscal</span>
+<input class="cfg-input" id="cfg-identity-tax-id" maxlength="60" placeholder="Ingrese identificación fiscal" type="text"/>
+</label>
+<label class="cfg-field">
+<span>Teléfono</span>
+<input autocomplete="tel" class="cfg-input" id="cfg-identity-phone" inputmode="tel" maxlength="40" placeholder="Ingrese teléfono" type="tel"/>
+</label>
+<label class="cfg-field">
+<span>WhatsApp</span>
+<input autocomplete="tel" class="cfg-input" id="cfg-identity-whatsapp" inputmode="tel" maxlength="40" placeholder="Ingrese WhatsApp" type="tel"/>
+</label>
+<label class="cfg-field">
+<span>Correo</span>
+<input autocomplete="email" class="cfg-input" id="cfg-identity-email" maxlength="120" placeholder="Ingrese correo" type="email"/>
+</label>
+<label class="cfg-field cfg-field--full">
+<span>Dirección</span>
+<textarea class="cfg-input cfg-textarea" id="cfg-identity-address" maxlength="240" placeholder="Ingrese dirección" rows="3"></textarea>
+</label>
+<label class="cfg-field">
+<span>Nombre de la Suite</span>
+<input class="cfg-input" id="cfg-identity-suite-name" maxlength="120" placeholder="Ingrese nombre de la Suite" type="text"/>
+</label>
+<label class="cfg-field">
+<span>Marca principal</span>
+<input class="cfg-input" id="cfg-identity-main-brand" maxlength="120" placeholder="Ingrese marca principal" type="text"/>
+</label>
+<label class="cfg-field cfg-field--full">
+<span>Descripción corta / lema</span>
+<textarea class="cfg-input cfg-textarea" id="cfg-identity-tagline" maxlength="220" placeholder="Ingrese descripción corta o lema" rows="3"></textarea>
+</label>
+<div aria-labelledby="cfg-identity-logo-label" class="cfg-field cfg-field--full cfg-logo-field" role="group">
+<span id="cfg-identity-logo-label">Logo principal</span>
+<div class="cfg-logo-shell">
+<div class="cfg-logo-preview" id="cfg-identity-logo-preview" aria-hidden="true">
+<span class="cfg-logo-placeholder" id="cfg-identity-logo-placeholder">◇</span>
+<img alt="Previsualización del logo principal" id="cfg-identity-logo-img" hidden=""/>
+</div>
+<div>
+<strong id="cfg-identity-logo-title">Sin logo cargado</strong>
+<p id="cfg-identity-logo-meta">Podés subir una imagen común compatible con navegador. Se guardará localmente junto con la Identidad.</p>
+</div>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-compact" id="cfg-identity-logo-button" type="button">Subir logo</button>
+<input accept="image/*" id="cfg-identity-logo-input" type="file"/>
+</div>
+</div>
+</div>
+<div class="cfg-form-actions cfg-identity-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-identity-save" type="submit">Guardar</button>
+</div>
+<div class="cfg-form-hint" id="cfg-identity-status">Los campos empiezan vacíos. Al guardar, la Identidad queda conservada en este navegador.</div>
+</form>
+</article>
+<aside aria-labelledby="identity-side-title" class="cfg-card cfg-panel cfg-side-panel cfg-identity-summary-card">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Vista resumen</p>
+<h2 id="identity-side-title">Identidad guardada</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-identity-summary-state">Vacía</span>
+</div>
+<div class="cfg-identity-summary-hero" aria-label="Resumen visual de Identidad">
+<div class="cfg-identity-summary-logo" aria-hidden="true">
+<span id="cfg-identity-summary-logo-placeholder">◇</span>
+<img alt="" id="cfg-identity-summary-logo-img" hidden=""/>
+</div>
+<div class="cfg-identity-summary-titlebox">
+<strong id="cfg-identity-summary-name">Sin nombre comercial</strong>
+<p id="cfg-identity-summary-tagline">La identidad aparecerá aquí cuando guardés los datos.</p>
+</div>
+</div>
+<div class="cfg-identity-summary-empty" id="cfg-identity-summary-empty">Aún no hay datos guardados. La tarjeta está lista; solo falta alimentar al dragón.</div>
+<dl class="cfg-identity-summary-list" id="cfg-identity-summary-list">
+<div><dt>Nombre comercial</dt><dd id="cfg-identity-summary-commercial-name">—</dd></div>
+<div><dt>Nombre legal</dt><dd id="cfg-identity-summary-legal-name">—</dd></div>
+<div><dt>RUC / identificación fiscal</dt><dd id="cfg-identity-summary-tax-id">—</dd></div>
+<div><dt>Teléfono</dt><dd id="cfg-identity-summary-phone">—</dd></div>
+<div><dt>WhatsApp</dt><dd id="cfg-identity-summary-whatsapp">—</dd></div>
+<div><dt>Correo</dt><dd id="cfg-identity-summary-email">—</dd></div>
+<div><dt>Dirección</dt><dd id="cfg-identity-summary-address">—</dd></div>
+<div><dt>Nombre de la Suite</dt><dd id="cfg-identity-summary-suite-name">—</dd></div>
+<div><dt>Marca principal</dt><dd id="cfg-identity-summary-main-brand">—</dd></div>
+</dl>
+<div class="cfg-identity-summary-footer">
+<span>Último guardado</span>
+<strong id="cfg-identity-summary-updated">Sin registros</strong>
+</div>
+<div class="cfg-identity-summary-note">
+<p>Este resumen solo vive en Configuración → Identidad. No alimenta reportes, PDFs, POS, Finanzas ni otros módulos todavía.</p>
+</div>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-appearance" class="cfg-panel-view" data-panel="appearance" hidden="" id="cfg-panel-appearance" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="appearance-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="appearance-title">Apariencia</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-theme-badge">Modo oscuro</span>
+</div>
+<p class="cfg-copy">Personaliza el modo visual de Suite A33.</p>
+<div class="cfg-appearance-status" aria-live="polite">
+<span>Modo actual</span>
+<strong id="cfg-theme-current">Modo actual: Oscuro</strong>
+<p id="cfg-theme-resolved">Tema aplicado: Oscuro.</p>
+</div>
+<div aria-label="Selector de modo visual" class="cfg-theme-selector" role="radiogroup">
+<button aria-checked="false" class="cfg-theme-option" data-theme-pref="dark" role="radio" type="button">
+<span class="cfg-theme-preview cfg-theme-preview--dark" aria-hidden="true">
+<span class="cfg-theme-preview-top"></span>
+<span class="cfg-theme-preview-card"></span>
+<span class="cfg-theme-preview-line"></span>
+</span>
+<span class="cfg-theme-option-copy">
+<strong>Oscuro</strong>
+<small>Modo A33 clásico, negro premium con acentos dorados y rojo A33.</small>
+</span>
+</button>
+<button aria-checked="false" class="cfg-theme-option" data-theme-pref="light" role="radio" type="button">
+<span class="cfg-theme-preview cfg-theme-preview--light" aria-hidden="true">
+<span class="cfg-theme-preview-top"></span>
+<span class="cfg-theme-preview-card"></span>
+<span class="cfg-theme-preview-line"></span>
+</span>
+<span class="cfg-theme-option-copy">
+<strong>Claro</strong>
+<small>Crema premium, texto oscuro y acentos A33. Nada de blanco quirúrgico.</small>
+</span>
+</button>
+<button aria-checked="false" class="cfg-theme-option" data-theme-pref="auto" role="radio" type="button">
+<span class="cfg-theme-preview cfg-theme-preview--auto" aria-hidden="true">
+<span class="cfg-theme-preview-split cfg-theme-preview-split--dark"></span>
+<span class="cfg-theme-preview-split cfg-theme-preview-split--light"></span>
+<span class="cfg-theme-preview-card"></span>
+<span class="cfg-theme-preview-line"></span>
+</span>
+<span class="cfg-theme-option-copy">
+<strong>Automático</strong>
+<small>Usa la preferencia visual del dispositivo o navegador.</small>
+</span>
+</button>
+</div>
+<p class="cfg-inline-note cfg-theme-save-note">La selección se guarda automáticamente al tocar una opción. Sin botón adicional: un toque y listo.</p>
+</article>
+<aside aria-labelledby="appearance-side-title" class="cfg-card cfg-panel cfg-side-panel">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Vista previa</p>
+<h2 id="appearance-side-title">Base global</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-theme-resolved-badge">Aplicado</span>
+</div>
+<div class="cfg-theme-live-preview" id="cfg-theme-live-preview" aria-label="Vista previa visual del tema actual">
+<div class="cfg-theme-live-top"></div>
+<div class="cfg-theme-live-card">
+<strong>Suite A33</strong>
+<p>Tarjeta premium con acento dorado, rojo A33 y lectura clara.</p>
+<span>Vista previa</span>
+</div>
+</div>
+<ul class="cfg-list cfg-theme-list">
+<li>Oscuro conserva la base visual actual de la Suite.</li>
+<li>Claro usa crema premium, no blanco puro.</li>
+<li>Automático responde a cambios del sistema cuando el navegador lo permite.</li>
+</ul>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-reports" class="cfg-panel-view" data-panel="reports" hidden="" id="cfg-panel-reports" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid cfg-reports-view">
+<article aria-labelledby="reports-title" class="cfg-card cfg-panel cfg-panel--main cfg-reports-panel">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="reports-title">Reportes</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-reports-save-state">Preferencias generales</span>
+</div>
+<p class="cfg-copy">Configuración inicial para reportes futuros: Identidad, formato, Moneda, exportaciones, privacidad, POS y vista previa controlada.</p>
+<div class="cfg-reports-hero" aria-label="Estado funcional de Reportes">
+<div>
+<span class="cfg-report-mini-label">Guardado funcional</span>
+<strong>Preferencias generales listas para conservarse</strong>
+<p>Estos ajustes solo preparan la base futura de reportes. No modifican PDFs, Excel, POS, Finanzas ni exportaciones reales.</p>
+</div>
+<span class="cfg-report-seal">A33</span>
+</div>
+<form aria-label="Preferencias generales de Reportes" class="cfg-reports-form" id="cfg-reports-form" novalidate="">
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-identity-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◇</span>
+<div>
+<h3 id="reports-identity-title">Identidad en reportes</h3>
+<p>Elegí qué datos de Configuración → Identidad podrán usarse en reportes futuros. Todas las opciones inician activadas.</p>
+</div>
+</div>
+<div class="cfg-report-options" aria-label="Datos de Identidad permitidos en reportes futuros">
+<label class="cfg-report-option" for="cfg-reports-identity-logo"><input id="cfg-reports-identity-logo" data-reports-identity-field="logo" type="checkbox"/><span><strong>Logo principal</strong><small>Imagen principal de la marca.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-commercial-name"><input id="cfg-reports-identity-commercial-name" data-reports-identity-field="commercialName" type="checkbox"/><span><strong>Nombre comercial</strong><small>Nombre público del negocio.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-legal-name"><input id="cfg-reports-identity-legal-name" data-reports-identity-field="legalName" type="checkbox"/><span><strong>Nombre legal</strong><small>Razón o nombre legal.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-tax-id"><input id="cfg-reports-identity-tax-id" data-reports-identity-field="taxId" type="checkbox"/><span><strong>RUC / identificación fiscal</strong><small>Dato fiscal registrado.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-phone"><input id="cfg-reports-identity-phone" data-reports-identity-field="phone" type="checkbox"/><span><strong>Teléfono</strong><small>Número general de contacto.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-whatsapp"><input id="cfg-reports-identity-whatsapp" data-reports-identity-field="whatsapp" type="checkbox"/><span><strong>WhatsApp</strong><small>Contacto directo comercial.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-email"><input id="cfg-reports-identity-email" data-reports-identity-field="email" type="checkbox"/><span><strong>Correo</strong><small>Correo de contacto.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-address"><input id="cfg-reports-identity-address" data-reports-identity-field="address" type="checkbox"/><span><strong>Dirección</strong><small>Dirección registrada.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-tagline"><input id="cfg-reports-identity-tagline" data-reports-identity-field="tagline" type="checkbox"/><span><strong>Descripción corta / lema</strong><small>Frase o descripción breve.</small></span></label>
+</div>
+<div class="cfg-report-reference" aria-label="Referencia compacta de Identidad actual">
+<div class="cfg-report-reference-head">
+<strong>Referencia actual de Identidad</strong>
+<span>No editable desde Reportes</span>
+</div>
+<div class="cfg-report-reference-body">
+<div class="cfg-report-logo-ref" aria-label="Logo principal configurado">
+<img alt="Logo principal de Identidad" hidden="" id="cfg-reports-ref-logo-img"/>
+<span id="cfg-reports-ref-logo-placeholder">A33</span>
+<small id="cfg-reports-ref-logo-text">No configurado</small>
+</div>
+<dl class="cfg-report-ref-list">
+<div><dt>Nombre comercial</dt><dd id="cfg-reports-ref-commercial-name">No configurado</dd></div>
+<div><dt>Nombre legal</dt><dd id="cfg-reports-ref-legal-name">No configurado</dd></div>
+<div><dt>RUC / identificación fiscal</dt><dd id="cfg-reports-ref-tax-id">No configurado</dd></div>
+<div><dt>Teléfono</dt><dd id="cfg-reports-ref-phone">No configurado</dd></div>
+<div><dt>WhatsApp</dt><dd id="cfg-reports-ref-whatsapp">No configurado</dd></div>
+<div><dt>Correo</dt><dd id="cfg-reports-ref-email">No configurado</dd></div>
+<div><dt>Dirección</dt><dd id="cfg-reports-ref-address">No configurado</dd></div>
+<div><dt>Descripción corta / lema</dt><dd id="cfg-reports-ref-tagline">No configurado</dd></div>
+</dl>
+</div>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-format-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◷</span>
+<div>
+<h3 id="reports-format-title">Formato general</h3>
+<p>Estándar protegido para toda la base futura de reportes. Sin selector por ahora: menos invento, más orden.</p>
+</div>
+</div>
+<div class="cfg-report-format-grid" aria-label="Formato general fijo de reportes">
+<div class="cfg-report-format-item"><span>Fecha</span><strong>DD/MM/AAAA</strong><small>Formato estándar</small></div>
+<div class="cfg-report-format-item"><span>Fecha y hora</span><strong>DD/MM/AAAA HH:mm</strong><small>Hora militar</small></div>
+<div class="cfg-report-format-item"><span>AM/PM</span><strong>No usar</strong><small>Sin AM/PM</small></div>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide cfg-reports-currency-card" aria-labelledby="reports-currency-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">C$</span>
+<div>
+<h3 id="reports-currency-title">Moneda para reportes</h3>
+<p>Referencia segura leída desde Configuración → Moneda. Prepara reportes futuros sin recalcular montos ni tocar exportaciones reales.</p>
+</div>
+</div>
+<div class="cfg-currency-preview-grid cfg-reports-currency-grid" aria-label="Referencia monetaria para reportes futuros">
+<div class="cfg-currency-preview-item"><span>Moneda principal</span><strong id="cfg-reports-currency-primary">C$ / NIO</strong><small id="cfg-reports-currency-primary-name">Córdoba nicaragüense</small></div>
+<div class="cfg-currency-preview-item"><span>Moneda secundaria</span><strong id="cfg-reports-currency-secondary">US$ / USD</strong><small id="cfg-reports-currency-secondary-name">Dólar estadounidense</small></div>
+<div class="cfg-currency-preview-item"><span>T/C actual</span><strong id="cfg-reports-currency-rate">No configurado</strong><small id="cfg-reports-currency-rate-state">Estado seguro: sin conversiones automáticas.</small></div>
+<div class="cfg-currency-preview-item"><span>Última actualización</span><strong id="cfg-reports-currency-updated-at">Sin registros</strong><small>Fecha/hora proveniente de Moneda.</small></div>
+</div>
+<div class="cfg-report-currency-note" aria-live="polite" id="cfg-reports-currency-note">Estos valores provienen de Configuración → Moneda.</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-export-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⇩</span>
+<div>
+<h3 id="reports-export-title">Exportaciones y nombre de archivos</h3>
+<p>Preferencias futuras para nombrar archivos y ordenar formatos por módulo, sin activar exportadores reales todavía.</p>
+</div>
+</div>
+<div class="cfg-report-file-grid" aria-label="Nombre base futuro de archivos exportados">
+<label class="cfg-report-field" for="cfg-reports-file-base-name">
+<span>Nombre base de archivos</span>
+<input autocomplete="off" id="cfg-reports-file-base-name" maxlength="64" name="reportsFileBaseName" type="text"/>
+<small id="cfg-reports-file-base-hint">Se recomienda usar el Nombre comercial de Identidad. Si no existe, se usa SuiteA33.</small>
+</label>
+<div class="cfg-report-file-example" aria-live="polite">
+<span>Ejemplo futuro</span>
+<strong id="cfg-reports-file-example">SuiteA33_Modulo_TipoReporte_2026-05-21.xlsx</strong>
+<small>Vista conceptual. No cambia nombres reales ni genera archivos desde Reportes.</small>
+</div>
+</div>
+<div class="cfg-report-finance-rule" aria-label="Regla fija de Finanzas">
+<div>
+<span class="cfg-report-mini-label">Regla fija protegida</span>
+<strong>Finanzas: exportaciones exclusivamente en Excel.</strong>
+<p>No se permite TXT ni CSV para reportes financieros. Esto queda protegido como preferencia base futura.</p>
+</div>
+<span class="cfg-report-protected-pill">Protegido</span>
+</div>
+<div class="cfg-report-module-grid" aria-label="Preferencias futuras de formatos por módulo">
+<div class="cfg-report-module-card cfg-report-module-card--locked" data-report-module-card="finances">
+<div class="cfg-report-module-head"><strong>Finanzas</strong><span>Excel exclusivo</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip cfg-report-format-chip--locked"><input checked="" disabled="" id="cfg-reports-format-finances-excel" type="checkbox"/>Excel</label>
+<span class="cfg-report-format-chip cfg-report-format-chip--blocked">Sin CSV/TXT</span>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="pos">
+<div class="cfg-report-module-head"><strong>POS</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="pos" id="cfg-reports-format-pos-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="pos" id="cfg-reports-format-pos-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="pos" id="cfg-reports-format-pos-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="inventory">
+<div class="cfg-report-module-head"><strong>Inventario</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="inventory" id="cfg-reports-format-inventory-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="inventory" id="cfg-reports-format-inventory-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="inventory" id="cfg-reports-format-inventory-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="repack">
+<div class="cfg-report-module-head"><strong>Reempaque</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="repack" id="cfg-reports-format-repack-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="repack" id="cfg-reports-format-repack-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="repack" id="cfg-reports-format-repack-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="calculator">
+<div class="cfg-report-module-head"><strong>Calculadora</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="calculator" id="cfg-reports-format-calculator-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="calculator" id="cfg-reports-format-calculator-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="calculator" id="cfg-reports-format-calculator-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="agenda">
+<div class="cfg-report-module-head"><strong>Agenda</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="agenda" id="cfg-reports-format-agenda-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="agenda" id="cfg-reports-format-agenda-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="agenda" id="cfg-reports-format-agenda-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="suite">
+<div class="cfg-report-module-head"><strong>Base general</strong><span>Respaldo técnico futuro</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="json" data-report-module="suite" id="cfg-reports-format-suite-json" type="checkbox"/>JSON</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="suite" id="cfg-reports-format-suite-preview" type="checkbox"/>Impresión futura</label>
+</div>
+</div>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-privacy-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◆</span>
+<div>
+<h3 id="reports-privacy-title">Privacidad / Información sensible</h3>
+<p>Preferencias futuras para controlar datos delicados. Costos y utilidad inician ocultos; comisiones internas quedan protegidas por regla fija.</p>
+</div>
+</div>
+<div class="cfg-report-options cfg-report-options--sensitive" aria-label="Preferencias de privacidad para reportes futuros">
+<label class="cfg-report-option" for="cfg-reports-privacy-show-costs"><input id="cfg-reports-privacy-show-costs" data-reports-privacy="showCosts" type="checkbox"/><span><strong>Mostrar costos en reportes futuros</strong><small>Desactivado por defecto. Solo se usará cuando una etapa futura conecte reportes reales.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-privacy-show-profit"><input id="cfg-reports-privacy-show-profit" data-reports-privacy="showProfit" type="checkbox"/><span><strong>Mostrar utilidad en reportes futuros</strong><small>Desactivado por defecto. Se guarda como preferencia, no cambia cálculos actuales.</small></span></label>
+<label class="cfg-report-option cfg-report-option--protected" for="cfg-reports-privacy-protect-commissions"><input id="cfg-reports-privacy-protect-commissions" data-reports-privacy="protectInternalCommissions" checked="" disabled="" type="checkbox"/><span><strong>Comisiones internas protegidas</strong><small>Regla fija: pueden existir como lógica interna, pero no se exponen desde Reportes.</small></span><em>Protegido</em></label>
+<label class="cfg-report-option cfg-report-option--protected" for="cfg-reports-privacy-hide-commission-sale"><input id="cfg-reports-privacy-hide-commission-sale" data-reports-privacy="hideCommissionPerSale" checked="" disabled="" type="checkbox"/><span><strong>Ocultar comisión por venta</strong><small>Regla fija: no se crea opción para mostrar comisión usada por venta.</small></span><em>Protegido</em></label>
+</div>
+<div class="cfg-report-protected-note" aria-label="Regla protegida de comisiones">
+<strong>Comisiones de tarjeta</strong>
+<p>No se muestran por venta, no se agregan a registros visibles y no se toca la lógica existente de bancos o tarjeta.</p>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-pos-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">▣</span>
+<div>
+<h3 id="reports-pos-title">POS en reportes futuros</h3>
+<p>Opciones futuras para reportes POS. Todas inician activadas y no modifican ventas, resumen, cierres ni reportes reales todavía.</p>
+</div>
+</div>
+<div class="cfg-report-options" aria-label="Preferencias POS para reportes futuros">
+<label class="cfg-report-option" for="cfg-reports-pos-discounts"><input id="cfg-reports-pos-discounts" data-reports-pos="includeDiscounts" type="checkbox"/><span><strong>Incluir descuentos</strong><small>Preferencia futura para reportes POS.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-courtesy"><input id="cfg-reports-pos-courtesy" data-reports-pos="includeCourtesy" type="checkbox"/><span><strong>Incluir cortesías</strong><small>Preferencia futura para reportes POS.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-bank-transfers"><input id="cfg-reports-pos-bank-transfers" data-reports-pos="includeBankTransfers" type="checkbox"/><span><strong>Incluir transferencias por banco</strong><small>Preferencia futura para consolidar transferencias por banco.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-payment-method"><input id="cfg-reports-pos-payment-method" data-reports-pos="includePaymentMethod" type="checkbox"/><span><strong>Incluir método de pago</strong><small>Preferencia futura para reportar efectivo, transferencia, tarjeta o crédito.</small></span></label>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-preview-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◈</span>
+<div>
+<h3 id="reports-preview-title">Vista previa</h3>
+<p>Preferencia futura para revisar reportes antes de exportar. Queda activada por defecto, sin implementar motor real todavía.</p>
+</div>
+</div>
+<div class="cfg-report-options cfg-report-options--single" aria-label="Preferencia futura de vista previa">
+<label class="cfg-report-option" for="cfg-reports-preview-before-export"><input id="cfg-reports-preview-before-export" data-reports-preview="beforeExport" type="checkbox"/><span><strong>Vista previa antes de exportar</strong><small>Activada por defecto. No genera reportes ni archivos desde esta sección.</small></span></label>
+</div>
+</section>
+<div class="cfg-report-final-note" aria-label="Cierre funcional de Reportes">
+<strong>Aplicación futura por módulos</strong>
+<p>Reportes actualmente guarda preferencias generales y lee Moneda como referencia segura. La aplicación real en POS, Finanzas, Inventario y otros módulos se hará en etapas específicas para evitar romper partes sensibles.</p>
+</div>
+<div class="cfg-actions cfg-reports-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-reports-save" type="submit">Guardar preferencias</button>
+<p class="cfg-action-inline-note" id="cfg-reports-status">Preferencias listas. Se guardan únicamente al presionar el botón.</p>
+</div>
+</form>
+</article>
+<aside aria-labelledby="reports-side-title" class="cfg-card cfg-panel cfg-side-panel cfg-reports-side">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Alcance protegido</p>
+<h2 id="reports-side-title">Reportes</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-reports-side-badge">Base local</span>
+</div>
+<ul class="cfg-list">
+<li>Guarda preferencias de Reportes en una clave aislada.</li>
+<li>Lee Identidad solo como referencia compacta.</li>
+<li>Lee Moneda como referencia segura: C$ / NIO, US$ / USD, T/C y última actualización.</li>
+<li>Mantiene fecha DD/MM/AAAA y fecha-hora DD/MM/AAAA HH:mm.</li>
+<li>Prepara nombre base de archivos usando Identidad o fallback SuiteA33.</li>
+<li>Protege Finanzas como Excel exclusivo, sin CSV ni TXT.</li>
+<li>Guarda privacidad sensible: costos, utilidad y comisiones internas.</li>
+<li>Prepara preferencias POS: descuentos, cortesías, transferencias y método de pago.</li>
+<li>Mantiene vista previa futura activada por defecto.</li>
+<li>No toca reportes reales, exportaciones, POS, Finanzas ni módulos sensibles.</li>
+<li>Respeta Oscuro, Claro y Automático/Sistema.</li>
+</ul>
+<div class="cfg-report-lockbox">
+<strong>Regla de oro</strong>
+<p>Reportes queda funcional para guardar preferencias generales, sin abrir todavía la puerta de los módulos delicados. Candado puesto; llave guardada.</p>
+</div>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-currency" class="cfg-panel-view" data-panel="currency" hidden="" id="cfg-panel-currency" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid cfg-currency-view">
+<article aria-labelledby="currency-title" class="cfg-card cfg-panel cfg-panel--main cfg-currency-panel">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="currency-title">Moneda</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-currency-save-state">Base local</span>
+</div>
+<p class="cfg-copy">Configuración inicial de moneda para Suite A33: Córdoba nicaragüense como moneda principal, dólar estadounidense como moneda secundaria y tipo de cambio manual guardado localmente.</p>
+<div class="cfg-currency-hero" aria-label="Estado funcional de Moneda">
+<div>
+<span class="cfg-report-mini-label">Tipo de cambio manual</span>
+<strong>Último T/C guardado: <span id="cfg-currency-hero-rate">Sin configurar</span></strong>
+<p id="cfg-currency-hero-copy">Este apartado guarda el parámetro monetario base y lo lee desde el motor central seguro. La conexión con POS, Finanzas y demás módulos queda para etapas posteriores.</p>
+</div>
+<span class="cfg-currency-seal">C$ / US$</span>
+</div>
+<form aria-label="Configuración de Moneda" class="cfg-currency-form" id="cfg-currency-form" novalidate="">
+<section class="cfg-currency-card" aria-labelledby="cfg-currency-primary-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">C$</span>
+<div>
+<h3 id="cfg-currency-primary-title">Moneda principal</h3>
+<p>Moneda fija para la operación base de la Suite.</p>
+</div>
+</div>
+<div class="cfg-currency-info-grid" aria-label="Datos de moneda principal">
+<div><span>Nombre</span><strong>Córdoba nicaragüense</strong></div>
+<div><span>Símbolo</span><strong>C$</strong></div>
+<div><span>Código</span><strong>NIO</strong></div>
+</div>
+</section>
+<section class="cfg-currency-card" aria-labelledby="cfg-currency-secondary-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">US$</span>
+<div>
+<h3 id="cfg-currency-secondary-title">Moneda secundaria</h3>
+<p>Moneda fija para referencias en dólares estadounidenses.</p>
+</div>
+</div>
+<div class="cfg-currency-info-grid" aria-label="Datos de moneda secundaria">
+<div><span>Nombre</span><strong>Dólar estadounidense</strong></div>
+<div><span>Símbolo</span><strong>US$</strong></div>
+<div><span>Código</span><strong>USD</strong></div>
+</div>
+</section>
+<section class="cfg-currency-card cfg-currency-card--wide" aria-labelledby="cfg-currency-rate-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⇄</span>
+<div>
+<h3 id="cfg-currency-rate-title">Tipo de cambio</h3>
+<p>Manual, editable y guardado únicamente al presionar Guardar. Debe ser mayor que 0 y tener máximo 2 decimales.</p>
+</div>
+</div>
+<div class="cfg-currency-rate-grid">
+<label class="cfg-report-field cfg-currency-rate-field" for="cfg-currency-rate-input">
+<span>T/C manual</span>
+<input autocomplete="off" id="cfg-currency-rate-input" inputmode="decimal" maxlength="12" name="currencyRate" placeholder="Ej. 36.80" type="text"/>
+<small>Usá punto o coma decimal. Al guardar se mostrará siempre con 2 decimales.</small>
+</label>
+<div class="cfg-currency-last-update" aria-live="polite">
+<span>Última actualización</span>
+<strong id="cfg-currency-updated-at">Sin registros</strong>
+<small>No cambia si el guardado falla.</small>
+</div>
+</div>
+<div class="cfg-currency-message" id="cfg-currency-status" role="status" aria-live="polite">El T/C inicia vacío si aún no hay dato guardado.</div>
+</section>
+<section class="cfg-currency-card cfg-currency-card--wide" aria-labelledby="cfg-currency-preview-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◈</span>
+<div>
+<h3 id="cfg-currency-preview-title">Vista previa monetaria</h3>
+<p>Ejemplo visual del formato base. Es solo referencia de Configuración en esta etapa.</p>
+</div>
+</div>
+<div class="cfg-currency-preview-grid" aria-label="Vista previa de moneda">
+<div class="cfg-currency-preview-item"><span>Córdoba</span><strong id="cfg-currency-preview-primary">C$1,250.00</strong><small>Formato principal</small></div>
+<div class="cfg-currency-preview-item"><span>Dólar</span><strong id="cfg-currency-preview-secondary">US$35.50</strong><small>Formato secundario</small></div>
+<div class="cfg-currency-preview-item"><span>Tipo de cambio</span><strong id="cfg-currency-preview-rate">T/C no configurado</strong><small id="cfg-currency-preview-note">Configurá un T/C válido para activar la vista previa.</small></div>
+</div>
+</section>
+<div class="cfg-report-final-note cfg-currency-safe-note" aria-label="Alcance protegido de Moneda">
+<strong>Alcance de esta etapa</strong>
+<p>Moneda queda funcional para guardar el último T/C, sin conectar todavía POS, Ventas, Caja Chica, Finanzas, Reportes reales, Inventario, Reempaque, Calculadora ni Agenda/Pedidos.</p>
+</div>
+<div class="cfg-actions cfg-currency-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-currency-save" type="submit">Guardar</button>
+<p class="cfg-action-inline-note" id="cfg-currency-inline-note">Solo se guarda el último T/C. Sin historial, sin automatismos y sin tocar otros módulos.</p>
+</div>
+</form>
+</article>
+<aside aria-labelledby="currency-side-title" class="cfg-card cfg-panel cfg-side-panel cfg-currency-side">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Base monetaria</p>
+<h2 id="currency-side-title">Moneda</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-currency-side-badge">Aislado</span>
+</div>
+<ul class="cfg-list">
+<li>Moneda principal fija: Córdoba nicaragüense, C$, NIO.</li>
+<li>Moneda secundaria fija: Dólar estadounidense, US$, USD.</li>
+<li>T/C manual editable desde Configuración.</li>
+<li>Motor central disponible para lectura, formato y conversión segura.</li>
+<li>Guardado con botón Guardar.</li>
+<li>Solo conserva el último T/C, sin historial.</li>
+<li>Última actualización en formato DD/MM/AAAA HH:mm.</li>
+<li>No conecta todavía con módulos reales.</li>
+<li>Respeta Oscuro, Claro y Automático/Sistema.</li>
+</ul>
+<div class="cfg-report-lockbox cfg-currency-lockbox">
+<strong>Regla de seguridad</strong>
+<p>Esta etapa prepara la llave; todavía no abre la bóveda de POS ni Finanzas. Paso firme, sin patinar en córdobas.</p>
+</div>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-users" class="cfg-panel-view" data-panel="security" hidden="" id="cfg-panel-users" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="cfg-users-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head cfg-panel-head--users">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="cfg-users-title">Seguridad</h2>
+</div>
+<div class="cfg-head-actions">
+<span class="cfg-badge cfg-badge--soft" id="cfg-users-mode-badge">Sin backend</span>
+<button class="cfg-btn cfg-btn-primary cfg-btn-compact" id="cfg-user-new-top" type="button">+ Nuevo usuario</button>
+</div>
+</div>
+<p class="cfg-copy" id="cfg-users-copy">Control de usuarios, roles, permisos y acceso administrativo. Este apartado concentra la seguridad de Configuración sin mezclarla con ventas, inventario ni finanzas.</p>
+<div class="cfg-note-grid cfg-note-grid--dual cfg-note-grid--users">
+<div class="cfg-note-card">
+<strong>Base seria</strong>
+<p>Perfiles reales en Firestore, roles extensibles y permisos leíbles por la app sin inventar seguridad de cartón.</p>
+</div>
+<div class="cfg-note-card">
+<strong>Backend correcto</strong>
+<p>Las altas, cambios de rol, activación/desactivación y borrado seguro con archivo previo pasan por Functions + Admin SDK cuando el backend ya está desplegado.</p>
+</div>
+</div>
+<section aria-label="Estado del acceso real" class="cfg-users-runtime-strip">
+<article class="cfg-status-card">
+<span class="cfg-status-label">Acceso actual</span>
+<strong id="cfg-users-access-current">Sin sesión</strong>
+<p class="cfg-status-copy" id="cfg-users-access-detail">Inicia sesión para leer tu perfil real.</p>
+</article>
+<article class="cfg-status-card">
+<span class="cfg-status-label">Backend admin</span>
+<strong id="cfg-users-backend-current">Pendiente</strong>
+<p class="cfg-status-copy" id="cfg-users-backend-detail">Functions todavía no ha sido verificado.</p>
+</article>
+<article class="cfg-status-card">
+<span class="cfg-status-label">Workspace</span>
+<strong id="cfg-users-workspace-current">default</strong>
+<p class="cfg-status-copy" id="cfg-users-workspace-detail">Preparado para tenant simple sin volver esto un laberinto.</p>
+</article>
+</section>
+<section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
+<div class="cfg-users-metrics">
+<article class="cfg-metric-card">
+<span class="cfg-metric-label">Usuarios</span>
+<strong id="cfg-user-count-total">0</strong>
+</article>
+<article class="cfg-metric-card">
+<span class="cfg-metric-label">Activos</span>
+<strong id="cfg-user-count-active">0</strong>
+</article>
+<article class="cfg-metric-card">
+<span class="cfg-metric-label">Inactivos</span>
+<strong id="cfg-user-count-inactive">0</strong>
+</article>
+<article class="cfg-metric-card">
+<span class="cfg-metric-label">Rol dominante</span>
+<strong id="cfg-user-role-top">—</strong>
+</article>
+</div>
+<div class="cfg-search-wrap">
+<label class="cfg-search-label" for="cfg-user-search">Buscar usuario</label>
+<input autocomplete="off" class="cfg-input cfg-search-input" id="cfg-user-search" placeholder="Nombre o correo" type="search"/>
+</div>
+</section>
+<div class="cfg-users-list-shell">
+<div class="cfg-empty-state" hidden="" id="cfg-users-empty">
+<div class="cfg-empty-icon">◎</div>
+<h3 id="cfg-users-empty-title">Sin perfiles todavía</h3>
+<p id="cfg-users-empty-copy">Cuando el backend esté listo, aquí aparecerán los perfiles reales del workspace.</p>
+<button class="cfg-btn cfg-btn-primary cfg-btn-compact" id="cfg-user-empty-cta" type="button">Preparar formulario</button>
+</div>
+<div class="cfg-users-table-wrap" hidden="" id="cfg-users-table-wrap">
+<table aria-label="Listado de usuarios" class="cfg-users-table">
+<thead>
+<tr>
+<th scope="col">Usuario</th>
+<th scope="col">Correo</th>
+<th scope="col">Rol</th>
+<th scope="col">Estado</th>
+<th scope="col">Acciones</th>
+</tr>
+</thead>
+<tbody id="cfg-users-tbody"></tbody>
+</table>
+</div>
+<div class="cfg-users-cards" hidden="" id="cfg-users-cards"></div>
+<div class="cfg-inline-empty" hidden="" id="cfg-users-noresults">No hay coincidencias para esa búsqueda.</div>
+</div>
+</article>
+<aside aria-labelledby="cfg-users-side-title" class="cfg-card cfg-panel cfg-side-panel">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Seguridad</p>
+<h2 id="cfg-users-side-title">Usuarios y roles</h2>
+</div>
+<span class="cfg-badge" id="cfg-users-side-badge">Perfil pendiente</span>
+</div>
+<form class="cfg-form" id="cfg-user-form" novalidate="">
+<input id="cfg-user-id" type="hidden"/>
+<label class="cfg-field">
+<span>Nombre</span>
+<input class="cfg-input" id="cfg-user-name" maxlength="80" placeholder="Ej. Mariana López" required="" type="text"/>
+</label>
+<label class="cfg-field">
+<span>Correo</span>
+<input autocomplete="email" class="cfg-input" id="cfg-user-email" maxlength="120" placeholder="correo@dominio.com" required="" type="email"/>
+</label>
+<div class="cfg-field-row">
+<label class="cfg-field">
+<span>Rol</span>
+<select class="cfg-input" id="cfg-user-role" required="">
+<option value="admin">Admin</option>
+<option value="ventas">Ventas</option>
+<option value="finanzas">Finanzas</option>
+<option value="consulta">Consulta</option>
+</select>
+</label>
+<label class="cfg-field">
+<span>Estado</span>
+<select class="cfg-input" id="cfg-user-status" required="">
+<option value="active">Activo</option>
+<option value="inactive">Inactivo</option>
+</select>
+</label>
+</div>
+<div class="cfg-form-actions">
+<button class="cfg-btn cfg-btn-primary cfg-btn-compact" id="cfg-user-save" type="submit">Guardar usuario</button>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-compact" id="cfg-user-cancel" type="button">Limpiar</button>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-compact" hidden="" id="cfg-user-bootstrap" type="button">Activar admin inicial</button>
+</div>
+<div class="cfg-form-hint" id="cfg-user-form-hint">Cuando Functions esté desplegado y haya un Admin activo, este formulario operará sobre Authentication + Firestore con validaciones para no dejar el workspace sin gobierno.</div>
+</form>
+<div class="cfg-status-stack cfg-status-stack--users">
+<div class="cfg-status-card">
+<span class="cfg-status-label">Persistencia</span>
+<strong id="cfg-users-storage-label">Firestore canónico</strong>
+<p class="cfg-status-copy" id="cfg-users-storage-copy">El perfil real vive en Firestore; el backend privilegiado vive en Functions y archiva antes del borrado definitivo.</p>
+</div>
+<div class="cfg-status-card">
+<span class="cfg-status-label">Permisos</span>
+<strong id="cfg-users-permissions-label">Sin perfil todavía</strong>
+<p class="cfg-status-copy" id="cfg-users-permissions-copy">La app leerá permisos desde el rol asignado y los expondrá de forma uniforme.</p>
+</div>
+<div class="cfg-status-card">
+<span class="cfg-status-label">Siguiente salto</span>
+<strong id="cfg-users-next-label">Administración progresiva</strong>
+<p class="cfg-status-copy" id="cfg-users-next-copy">La base queda lista para crecer con permisos y controles administrativos dentro del apartado correcto.</p>
+</div>
+</div>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-backup" class="cfg-panel-view" data-panel="backup" hidden="" id="cfg-panel-backup" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="cfg-backup-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="cfg-backup-title">Respaldo</h2>
+</div>
+<span class="cfg-badge">JSON local</span>
+</div>
+<p class="cfg-copy">Exporta o importa un respaldo completo de la Suite A33 sin alterar nombres de claves, payload ni compatibilidad previa. La lógica sigue siendo la misma; ahora solo vive en el lugar correcto.</p>
+<div class="cfg-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-export-backup" type="button">Exportar JSON</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-import-backup" type="button">Importar JSON</button>
+</div>
+<div class="cfg-note-grid">
+<div class="cfg-note-card">
+<strong>Qué hace</strong>
+<p>Exporta un archivo con localStorage e IndexedDB de la Suite detectados en este navegador.</p>
+</div>
+<div class="cfg-note-card">
+<strong>Qué no cambia</strong>
+<p>No toca el formato del JSON ni renombra claves históricas del respaldo.</p>
+</div>
+<div class="cfg-note-card">
+<strong>Cuidado</strong>
+<p>Al importar, se reemplazan los datos actuales de este navegador. Mejor exportar antes; drama evitado.</p>
+</div>
+</div>
+</article>
+<aside aria-labelledby="cfg-backup-side-title" class="cfg-card cfg-panel cfg-side-panel">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Respaldo</p>
+<h2 id="cfg-backup-side-title">Operación segura</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft">Operativo</span>
+</div>
+<ul class="cfg-list">
+<li>Exporta respaldo JSON completo.</li>
+<li>Importa respaldo JSON desde este navegador.</li>
+<li>Mantiene el formato histórico del archivo.</li>
+<li>Conserva lectura clara en desktop e iPad.</li>
+</ul>
+</aside>
+</div>
+</section></div>
+</section>
+</main>
+<div class="modal-overlay" id="backup-modal" style="display:none;">
+<div aria-labelledby="backup-modal-title" aria-modal="true" class="modal-card" role="dialog">
+<h2 class="modal-title" id="backup-modal-title">Respaldo</h2>
+<div class="modal-body" id="backup-modal-body"></div>
+<div class="modal-actions">
+<button class="cfg-btn cfg-btn-ghost cfg-btn-modal" id="backup-modal-cancel" type="button">Cancelar</button>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-modal" id="backup-modal-secondary" style="display:none;" type="button">Secundario</button>
+<button class="cfg-btn cfg-btn-primary cfg-btn-modal" id="backup-modal-primary" type="button">OK</button>
+</div>
+</div>
+</div>
+<input accept="application/json" id="backup-file-input" style="display:none;" type="file"/>
+<div aria-live="polite" class="a33-toast" id="a33-toast"></div>
+<script src="../assets/js/a33-release.js?v=4.20.77&amp;r=10"></script>
+<script src="../assets/js/a33-storage.js?v=4.20.77&amp;r=7"></script>
+<script src="../assets/js/a33-currency.js?v=4.20.77&amp;r=14"></script>
+<script src="../assets/js/a33-export-currency.js?v=4.20.77&amp;r=2"></script>
+<script src="../assets/js/a33-firebase-config.js?v=4.20.77&amp;r=7"></script>
+<script src="../assets/js/a33-firebase-core.js?v=4.20.77&amp;r=7"></script>
+<script src="../assets/js/a33-firebase-auth.js?v=4.20.77&amp;r=7"></script>
+<script src="../assets/js/a33-firebase-access.js?v=4.20.77&amp;r=7"></script>
+<script src="../assets/js/a33-module-access.js?v=4.20.77&amp;r=7"></script>
+<script src="script.js?v=4.20.77&amp;r=14"></script>
 </body>
 </html>

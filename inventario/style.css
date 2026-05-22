@@ -784,3 +784,88 @@ tr:nth-child(even) td {
     flex: 1 1 180px;
   }
 }
+
+
+/* ==============================
+   Inventario — Moneda central (Etapa 6/9)
+   ============================== */
+.inv-currency-card{
+  position:relative;
+  overflow:hidden;
+}
+.inv-currency-header{
+  align-items:flex-start;
+}
+.inv-currency-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:34px;
+  padding:0.35rem 0.7rem;
+  border-radius:999px;
+  border:1px solid rgba(221,191,100,0.34);
+  background:rgba(221,191,100,0.10);
+  color:var(--color-accent-soft);
+  font-size:0.78rem;
+  font-weight:800;
+  white-space:nowrap;
+}
+.inv-currency-grid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:0.7rem;
+  margin-top:0.8rem;
+}
+.inv-currency-item{
+  min-width:0;
+  border:1px solid rgba(255,255,255,0.08);
+  background:rgba(0,0,0,0.18);
+  border-radius:14px;
+  padding:0.75rem;
+}
+.inv-currency-item span,
+.inv-currency-item small{
+  display:block;
+  color:var(--color-text-muted);
+  font-size:0.76rem;
+}
+.inv-currency-item strong{
+  display:block;
+  margin:0.22rem 0;
+  color:var(--color-text);
+  font-size:0.98rem;
+  font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere;
+}
+.inv-currency-note{
+  margin-top:0.75rem;
+  border:1px solid rgba(221,191,100,0.22);
+  background:rgba(221,191,100,0.08);
+  color:var(--color-text-muted);
+  border-radius:14px;
+  padding:0.65rem 0.75rem;
+  font-size:0.82rem;
+}
+.inv-currency-note.is-warn{
+  border-color:rgba(255,213,128,0.34);
+  background:rgba(255,213,128,0.08);
+  color:#ffd580;
+}
+html[data-theme="light"] .inv-currency-badge,
+html[data-theme="light"] .inv-currency-note,
+html[data-theme="light"] .inv-currency-item{
+  border-color:var(--a33-border);
+  background:rgba(157,111,31,0.08);
+}
+html[data-theme="light"] .inv-currency-note.is-warn{
+  color:#7a4b11;
+  background:rgba(157,111,31,0.10);
+}
+@media (max-width: 920px){
+  .inv-currency-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px){
+  .inv-currency-header{ align-items:stretch; }
+  .inv-currency-badge{ width:100%; }
+  .inv-currency-grid{ grid-template-columns:1fr; }
+}

@@ -321,6 +321,71 @@ function $(id) {
   return document.getElementById(id);
 }
 
+
+// --- Moneda central A33 (lectura/formato seguro) ---
+function getA33PedidosCurrencyState(){
+  try{
+    if (window.A33Currency && typeof window.A33Currency.getState === 'function'){
+      return window.A33Currency.getState();
+    }
+  }catch(_){ }
+
+  try{
+    const key = (window.A33Currency && window.A33Currency.storageKey) || 'suite_a33_currency_settings_v1';
+    let raw = '';
+    if (window.A33Storage && typeof A33Storage.getItem === 'function') raw = A33Storage.getItem(key, 'local') || '';
+    if (!raw && window.localStorage) raw = window.localStorage.getItem(key) || '';
+    const parsed = raw ? JSON.parse(raw) : {};
+    const rateRaw = String((parsed && parsed.exchangeRate) || '').trim().replace(',', '.');
+    const rateNum = (/^\d+(?:\.\d{1,2})?$/.test(rateRaw) && Number(rateRaw) > 0) ? Number(rateRaw) : null;
+    return {
+      primary: { symbol:'C$', code:'NIO', name:'Córdoba nicaragüense' },
+      secondary: { symbol:'US$', code:'USD', name:'Dólar estadounidense' },
+      exchangeRate: rateNum,
+      hasExchangeRate: !!rateNum,
+      exchangeRateText: rateNum ? ('T/C ' + rateNum.toFixed(2)) : 'T/C no configurado'
+    };
+  }catch(_){
+    return {
+      primary: { symbol:'C$', code:'NIO', name:'Córdoba nicaragüense' },
+      secondary: { symbol:'US$', code:'USD', name:'Dólar estadounidense' },
+      exchangeRate: null,
+      hasExchangeRate: false,
+      exchangeRateText: 'T/C no configurado'
+    };
+  }
+}
+
+function formatA33Cordobas(value){
+  try{
+    if (window.A33Currency && typeof window.A33Currency.formatCordobas === 'function'){
+      return window.A33Currency.formatCordobas(value);
+    }
+  }catch(_){ }
+  const n = Number(String(value ?? 0).replace(',', '.'));
+  const safe = Number.isFinite(n) ? n : 0;
+  const sign = safe < 0 ? '-' : '';
+  const fixed = Math.abs(safe).toFixed(2);
+  const parts = fixed.split('.');
+  const entero = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return 'C$' + sign + entero + '.' + (parts[1] || '00');
+}
+
+function getA33CurrencyNoteText(){
+  const st = getA33PedidosCurrencyState();
+  const primary = st && st.primary ? st.primary : { symbol:'C$', code:'NIO' };
+  const base = 'Moneda: ' + (primary.symbol || 'C$') + ' / ' + (primary.code || 'NIO');
+  return st && st.hasExchangeRate
+    ? base + ' · ' + (st.exchangeRateText || ('T/C ' + Number(st.exchangeRate || 0).toFixed(2)))
+    : base + ' · T/C no configurado en Moneda';
+}
+
+function renderPedidosCurrencyReference(){
+  const el = $('pedidos-currency-note');
+  if (!el) return;
+  el.textContent = getA33CurrencyNoteText();
+}
+
 // --- Tabla (UX iPad + rendimiento) ---
 const A33_TABLE_PAGE_SIZE = 60;
 let activeLimit = A33_TABLE_PAGE_SIZE;
@@ -1085,7 +1150,7 @@ function renderTable() {
     const totalTd = document.createElement("td");
     totalTd.className = "col-money";
     const total = typeof p.totalPagar === "number" ? p.totalPagar : 0;
-    totalTd.textContent = total.toFixed(2);
+    totalTd.textContent = formatA33Cordobas(total);
     tr.appendChild(totalTd);
 
     const entregadoTd = document.createElement("td");
@@ -1232,7 +1297,7 @@ function renderArchivedTable() {
     totalTd.className = "col-money";
     const tot = (typeof p.totalPagar === "number") ? p.totalPagar
       : ((typeof p.total === "number") ? p.total : 0);
-    totalTd.textContent = Number(tot || 0).toFixed(2);
+    totalTd.textContent = formatA33Cordobas(tot || 0);
     tr.appendChild(totalTd);
 
     const accionesTd = document.createElement("td");
@@ -1309,22 +1374,22 @@ function verPedido(id) {
   PRESENTACIONES.forEach((pres) => {
     const cant = parseNumber(p[pres.qtyId] ?? 0);
     const unit = (snap && typeof snap[pres.key] === 'number') ? snap[pres.key] : 0;
-    lines.push(`  ${pres.label}: cant ${cant || 0}, unit C$ ${unit.toFixed(2)}`);
+    lines.push(`  ${pres.label}: cant ${cant || 0}, unit ${formatA33Cordobas(unit)}`);
   });
   lines.push("");
   const subtotal = typeof p.subtotal === 'number' ? p.subtotal : 0;
   const envio = typeof p.envio === 'number' ? p.envio : parseNumber(p.envio);
   const total = typeof p.totalPagar === 'number' ? p.totalPagar : (subtotal - parseNumber(descuento) + (envio || 0));
   const saldo = typeof p.saldoPendiente === 'number' ? p.saldoPendiente : (total - parseNumber(pagoAnt));
-  lines.push(`Subtotal: C$ ${subtotal.toFixed(2)}`);
-  lines.push(`Descuento: C$ ${parseNumber(descuento).toFixed(2)}`);
-  lines.push(`Envío: C$ ${(envio || 0).toFixed(2)}`);
-  lines.push(`Total a pagar: C$ ${total.toFixed(2)}`);
+  lines.push(`Subtotal: ${formatA33Cordobas(subtotal)}`);
+  lines.push(`Descuento: ${formatA33Cordobas(parseNumber(descuento))}`);
+  lines.push(`Envío: ${formatA33Cordobas(envio || 0)}`);
+  lines.push(`Total a pagar: ${formatA33Cordobas(total)}`);
   lines.push("");
   lines.push("Pago / Estado:");
   lines.push(`  Método: ${p.metodoPago || ""}`);
-  lines.push(`  Pago anticipado: C$ ${parseNumber(pagoAnt).toFixed(2)}`);
-  lines.push(`  Saldo pendiente: C$ ${saldo.toFixed(2)}`);
+  lines.push(`  Pago anticipado: ${formatA33Cordobas(parseNumber(pagoAnt))}`);
+  lines.push(`  Saldo pendiente: ${formatA33Cordobas(saldo)}`);
   lines.push(`  Estado: ${estado === 'entregado' ? 'Entregado' : 'Pendiente'}`);
   if (p.lotesRelacionados) lines.push(`Lotes relacionados: ${p.lotesRelacionados}`);
 
@@ -1489,7 +1554,7 @@ function createICSEventFromPedido(p) {
   if (p.clienteDireccion) descLines.push(`Dirección (legacy): ${p.clienteDireccion.replace(/\r?\n/g, " ")}`);
   if (p.lotesRelacionados) descLines.push(`Lotes: ${p.lotesRelacionados.replace(/\r?\n/g, " ")}`);
   const total = typeof p.totalPagar === "number" ? p.totalPagar.toFixed(2) : "";
-  if (total) descLines.push(`Total a cobrar: C$ ${total}`);
+  if (total) descLines.push(`Total a cobrar: ${formatA33Cordobas(total)}`);
   const descRaw = descLines.join("\n");
 
   function icsEscape(str) {
@@ -1692,8 +1757,18 @@ async function exportToCSV() {
   }
 }
 
+
+window.addEventListener('storage', (event) => {
+  try{
+    const key = (window.A33Currency && window.A33Currency.storageKey) || 'suite_a33_currency_settings_v1';
+    if (!event || event.key === key) renderPedidosCurrencyReference();
+  }catch(_){ }
+});
+
+
 document.addEventListener("DOMContentLoaded", () => {
   clearForm();
+  renderPedidosCurrencyReference();
   // Precalentar cache de precios (si el POS está disponible)
   getPosPricesMapSafe().catch(() => {});
 
@@ -2085,7 +2160,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js?v=4.20.77&r=2').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.77&r=8').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

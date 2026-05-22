@@ -5,7 +5,7 @@ Objetivo: confirmar que **toda la Suite A33** opera bajo **una sola versión: 4.
 ## Caso A — Menú principal
 1) Abrir `index.html` (menú principal).
 2) Navegar a cualquier módulo desde el menú.
-3) Verificar que **todas las cargas de assets** usan `?v=4.20.77&r=2`.
+3) Verificar que **todas las cargas de assets** usan `?v=4.20.77&r=7`.
 
 ## Caso B — Ver versión en cada módulo
 Entrar a cada módulo y verificar que la UI muestra **v4.20.77 r2** (donde aplique):

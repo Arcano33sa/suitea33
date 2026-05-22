@@ -7,7 +7,8 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=2" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=7" />
+  <script src="/assets/js/a33-theme.js?v=4.20.77&r=7"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -232,6 +233,12 @@
       gap: 0.5rem;
       margin-top: 0.5rem;
     }
+
+    .a33-currency-note {
+      margin-top: 0.45rem;
+      opacity: 0.85;
+    }
+
     .badge {
       padding: 0.3rem 0.6rem;
       border-radius: 999px;
@@ -347,9 +354,10 @@
     .a33-btn-primary-pill:hover { filter: brightness(1.05); }
 
   </style>
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=2" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=7" />
 </head>
-<body>
+<body class="calc-body calc-main-body">
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Calculadora</div>
@@ -474,12 +482,13 @@
       </div>
     </div>
   </div>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=10"></script>
 
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.77&r=2"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=7"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=7"></script>
 
   <script>
     const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
@@ -912,6 +921,70 @@
         .replace(/\"/g, "&quot;")
         .replace(/'/g, "&#039;");
     }
+
+
+    // --- Moneda central A33 (lectura/formato seguro) ---
+    function getA33CalculadoraCurrencyState(){
+      try{
+        if (window.A33Currency && typeof window.A33Currency.getState === "function"){
+          return window.A33Currency.getState();
+        }
+      }catch(e){ }
+
+      try{
+        const key = (window.A33Currency && window.A33Currency.storageKey) || "suite_a33_currency_settings_v1";
+        let raw = "";
+        if (window.A33Storage && typeof A33Storage.getItem === "function") raw = A33Storage.getItem(key, "local") || "";
+        if (!raw && window.localStorage) raw = window.localStorage.getItem(key) || "";
+        const parsed = raw ? JSON.parse(raw) : {};
+        const rateRaw = String((parsed && parsed.exchangeRate) || "").trim().replace(",", ".");
+        const rateNum = (/^\d+(?:\.\d{1,2})?$/.test(rateRaw) && Number(rateRaw) > 0) ? Number(rateRaw) : null;
+        return {
+          primary: { symbol:"C$", code:"NIO", name:"Córdoba nicaragüense" },
+          secondary: { symbol:"US$", code:"USD", name:"Dólar estadounidense" },
+          exchangeRate: rateNum,
+          hasExchangeRate: !!rateNum,
+          exchangeRateText: rateNum ? ("T/C " + rateNum.toFixed(2)) : "T/C no configurado"
+        };
+      }catch(e){
+        return {
+          primary: { symbol:"C$", code:"NIO", name:"Córdoba nicaragüense" },
+          secondary: { symbol:"US$", code:"USD", name:"Dólar estadounidense" },
+          exchangeRate: null,
+          hasExchangeRate: false,
+          exchangeRateText: "T/C no configurado"
+        };
+      }
+    }
+
+    function formatA33Cordobas(value){
+      try{
+        if (window.A33Currency && typeof window.A33Currency.formatCordobas === "function"){
+          return window.A33Currency.formatCordobas(value);
+        }
+      }catch(e){ }
+      const n = Number(String(value ?? 0).replace(",", "."));
+      const safe = Number.isFinite(n) ? n : 0;
+      const sign = safe < 0 ? "-" : "";
+      const fixed = Math.abs(safe).toFixed(2);
+      const parts = fixed.split(".");
+      const entero = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      return "C$" + sign + entero + "." + (parts[1] || "00");
+    }
+
+    function getA33CurrencyNoteText(){
+      const st = getA33CalculadoraCurrencyState();
+      const primary = st && st.primary ? st.primary : { symbol:"C$", code:"NIO" };
+      const base = "Moneda: " + (primary.symbol || "C$") + " / " + (primary.code || "NIO");
+      return st && st.hasExchangeRate
+        ? base + " · " + (st.exchangeRateText || ("T/C " + Number(st.exchangeRate || 0).toFixed(2)))
+        : base + " · T/C no configurado en Moneda";
+    }
+
+    function buildA33CurrencyNoteHtml(){
+      return "<p class='hint a33-currency-note'>" + escapeHtml(getA33CurrencyNoteText()) + "</p>";
+    }
+
     function slugify(text) {
       return text
         .toString()
@@ -1737,10 +1810,10 @@ function a33WireNumericInput(el, mode) {
         let htmlCostos = "";
         if (filas.length) {
           htmlCostos += "<div class='flex-row'>";
-          htmlCostos += "<div class='badge'>Costo total estimado del lote: <strong>C$ " + costoTotal.toFixed(2) + "</strong></div>";
+          htmlCostos += "<div class='badge'>Costo total estimado del lote: <strong>" + formatA33Cordobas(costoTotal) + "</strong></div>";
           if (datos.totalVolumenFinalMl > 0) {
             const costoPorLitro = costoTotal / (datos.totalVolumenFinalMl / 1000);
-            htmlCostos += "<div class='badge'>Costo aprox. por litro: <strong>C$ " + costoPorLitro.toFixed(2) + "</strong></div>";
+            htmlCostos += "<div class='badge'>Costo aprox. por litro: <strong>" + formatA33Cordobas(costoPorLitro) + "</strong></div>";
           }
           htmlCostos += "</div>";
 
@@ -1749,8 +1822,8 @@ function a33WireNumericInput(el, mode) {
             htmlCostos += "<tr>";
             htmlCostos += "<td style='text-align:left;'>" + escapeHtml(f.nombre) + "</td>";
             htmlCostos += "<td>" + f.unidades + "</td>";
-            htmlCostos += "<td>" + f.costoUnidad.toFixed(2) + "</td>";
-            htmlCostos += "<td>" + f.subtotal.toFixed(2) + "</td>";
+            htmlCostos += "<td>" + formatA33Cordobas(f.costoUnidad) + "</td>";
+            htmlCostos += "<td>" + formatA33Cordobas(f.subtotal) + "</td>";
             htmlCostos += "</tr>";
           });
           htmlCostos += "</tbody></table>";
@@ -1758,6 +1831,7 @@ function a33WireNumericInput(el, mode) {
           htmlCostos = "<p class='hint'>Para ver costos, llena la columna de costo unitario y el plan de producción.</p>";
         }
 
+        htmlCostos += buildA33CurrencyNoteHtml();
         resumenCostosDiv.innerHTML = htmlCostos;
       }
 
@@ -2192,6 +2266,6 @@ function init() {
       try { resetNotasAlEntrar(); } catch (e) {}
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=2"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=7"></script>
 </body>
 </html>

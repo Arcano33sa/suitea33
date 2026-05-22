@@ -5,8 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Suite A33 · Arcano 33</title>
   <meta name="theme-color" content="#000000">
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-a33-192.png">
+  
+<script src="/assets/js/a33-theme.js?v=4.20.77&r=7"></script>
+<link rel="icon" type="image/png" sizes="192x192" href="icon-a33-192.png">
   <link rel="apple-touch-icon" href="icon-a33-192.png">
+  <script>
+    (function(){
+      try{
+        var key = 'suite_a33_appearance_preference';
+        var pref = localStorage.getItem(key) || 'dark';
+        if (pref !== 'dark' && pref !== 'light' && pref !== 'auto') pref = 'dark';
+        var resolved = pref;
+        if (pref === 'auto'){
+          resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-a33-theme-preference', pref);
+        document.documentElement.setAttribute('data-theme', resolved);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', resolved === 'light' ? '#f4ead8' : '#060606');
+      }catch(_){
+        document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
   <style>
     :root{
       --bg:#000000;
@@ -21,6 +43,20 @@
       --radius:18px;
     }
     *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+    html{max-width:100%;overflow-x:hidden;}
+    html[data-theme="dark"]{color-scheme:dark;}
+    html[data-theme="light"]{
+      color-scheme:light;
+      --bg:#f4ead8;
+      --bg-alt:#eadcc6;
+      --card:#fff8ea;
+      --primary:#7b1818;
+      --primary-soft:#9d6f1f;
+      --accent:#9d6f1f;
+      --text:#1f1710;
+      --muted:rgba(31,23,16,0.72);
+      --danger:#8f1515;
+    }
     body{
       min-height:100vh;
       background:radial-gradient(circle at top,#1b1b1b 0,#000000 55%,#000000 100%);
@@ -29,6 +65,7 @@
       align-items:center;
       justify-content:center;
       padding:1.5rem;
+      overflow-x:hidden;
     }
     .shell{
       width:100%;
@@ -369,12 +406,158 @@
       gap:1rem;
       margin-top:0.75rem;
     }
+    .config-pwa-status{
+      display:grid;
+      gap:0.45rem;
+      margin:0.75rem 0 0.9rem;
+      padding:0.75rem;
+      border-radius:16px;
+      border:1px solid rgba(221,191,100,0.18);
+      background:rgba(0,0,0,0.22);
+    }
+    .config-pwa-row{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:0.75rem;
+      color:var(--muted);
+      font-size:0.78rem;
+      line-height:1.35;
+    }
+    .config-pwa-row strong{
+      color:var(--text);
+      text-align:right;
+      word-break:break-word;
+    }
+    .config-pwa-card .link-btn{
+      min-height:44px;
+      justify-content:center;
+    }
     @media(max-width:560px){
       .config-topbar{ align-items:flex-start; flex-direction:column; }
       .config-back-btn{ width:100%; justify-content:center; }
     }
 
+
+    /* --- Apariencia global: Menú principal responde a Oscuro / Claro / Automático --- */
+    html[data-theme="light"] body{
+      background:
+        radial-gradient(circle at top right, rgba(221,191,100,0.24), transparent 30%),
+        radial-gradient(circle at bottom left, rgba(123,24,24,0.10), transparent 34%),
+        linear-gradient(180deg, #f6ecdc 0%, #eadcc6 100%);
+    }
+    html[data-theme="light"] .shell{
+      background:rgba(255,248,234,0.84);
+      border-color:rgba(139,98,30,0.28);
+      box-shadow:0 20px 42px rgba(92,62,24,0.18);
+    }
+    html[data-theme="light"] header img{
+      background:#fff8ea;
+      border-color:rgba(139,98,30,0.34);
+      box-shadow:0 10px 24px rgba(92,62,24,0.12);
+    }
+    html[data-theme="light"] .title-block h1,
+    html[data-theme="light"] .card h2,
+    html[data-theme="light"] .modal-title,
+    html[data-theme="light"] .config-title-block h2{
+      color:#1f1710;
+    }
+    html[data-theme="light"] .menu-title{
+      color:rgba(31,23,16,0.74);
+    }
+    html[data-theme="light"] .card{
+      background:
+        radial-gradient(circle at top right, rgba(221,191,100,0.14), transparent 36%),
+        linear-gradient(135deg, rgba(255,250,240,0.98), rgba(246,235,216,0.98));
+      border-color:rgba(139,98,30,0.24);
+      box-shadow:0 14px 30px rgba(92,62,24,0.12);
+    }
+    html[data-theme="light"] .card::before{
+      background:radial-gradient(circle at top,var(--primary) 0,transparent 56%);
+      opacity:0.04;
+    }
+    html[data-theme="light"] .card:hover{
+      box-shadow:0 18px 34px rgba(92,62,24,0.18);
+      border-color:rgba(157,111,31,0.52);
+    }
+    html[data-theme="light"] .card:hover::before{
+      opacity:0.10;
+    }
+    html[data-theme="light"] .pill,
+    html[data-theme="light"] .link-btn.secondary,
+    html[data-theme="light"] .btn-ghost,
+    html[data-theme="light"] .config-back-btn{
+      background:rgba(255,255,255,0.46);
+      border-color:rgba(139,98,30,0.26);
+      color:#1f1710;
+    }
+    html[data-theme="light"] .pill{
+      color:var(--accent);
+    }
+    html[data-theme="light"] .link-btn,
+    html[data-theme="light"] .btn-primary{
+      background:linear-gradient(180deg, rgba(123,24,24,0.98), rgba(92,15,15,1));
+      color:#fff;
+      box-shadow:0 10px 22px rgba(123,24,24,0.18);
+    }
+    html[data-theme="light"] .footer-row,
+    html[data-theme="light"] .card p,
+    html[data-theme="light"] .title-block p,
+    html[data-theme="light"] .config-lead,
+    html[data-theme="light"] .config-title-block p,
+    html[data-theme="light"] .config-pwa-row{
+      color:rgba(31,23,16,0.72);
+    }
+    html[data-theme="light"] .field label,
+    html[data-theme="light"] .kv .k,
+    html[data-theme="light"] details summary,
+    html[data-theme="light"] .config-pwa-row strong{
+      color:var(--accent);
+    }
+    html[data-theme="light"] .field input[type="text"]{
+      background:rgba(255,250,240,0.98);
+      border-color:rgba(139,98,30,0.22);
+      color:#1f1710;
+    }
+    html[data-theme="light"] .config-topbar,
+    html[data-theme="light"] .config-pwa-status{
+      background:rgba(255,255,255,0.40);
+      border-color:rgba(139,98,30,0.22);
+    }
+    html[data-theme="light"] .modal-overlay{
+      background:rgba(58,38,16,0.32);
+    }
+    html[data-theme="light"] .modal-card{
+      background:linear-gradient(145deg,#fff8ea,#f1e2c9);
+      border-color:rgba(139,98,30,0.30);
+      box-shadow:0 18px 40px rgba(92,62,24,0.20);
+      color:#1f1710;
+    }
+    html[data-theme="light"] .modal-body,
+    html[data-theme="light"] .kv .v{
+      color:#1f1710;
+    }
+    html[data-theme="light"] .modal-body .muted,
+    html[data-theme="light"] .small-note{
+      color:rgba(31,23,16,0.70);
+    }
+    html[data-theme="light"] .modal-body hr{
+      border-top-color:rgba(139,98,30,0.18);
+    }
+    html[data-theme="light"] .badge-warn{
+      background:rgba(123,24,24,0.08);
+      border-color:rgba(123,24,24,0.34);
+      color:#7b1818;
+    }
+    html[data-theme="light"] .a33-toast{
+      background:rgba(255,248,234,0.96);
+      border-color:rgba(139,98,30,0.28);
+      color:#1f1710;
+      box-shadow:0 16px 40px rgba(92,62,24,0.20);
+    }
+
 </style>
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=7" />
 </head>
 <body>
 
@@ -496,7 +679,7 @@
         <h2 class="menu-title">NÚCLEO A33</h2>
         <div class="grid support-grid" id="support-grid">
 
-          <article class="card" id="card-config-hub">
+          <article class="card" id="card-config-hub" data-link="configuracion/index.html">
             <div class="pill"><span>⚙️</span><span>Configuración</span></div>
             <h2>Configuración</h2>
             <p>Ajustes, respaldo y opciones generales de la Suite.</p>
@@ -555,10 +738,25 @@
         </div>
 
         <p class="config-lead">
-          Centro interno para ordenar opciones generales de la Suite. En esta etapa se mueve aquí el respaldo existente, sin cambiar datos, JSON ni llaves históricas.
+          Centro interno para ordenar opciones generales de la Suite. El primer apartado concentra el control PWA; Respaldo queda después, sin cambiar datos, JSON ni llaves históricas.
         </p>
 
         <div class="config-grid">
+          <article class="card config-pwa-card" id="card-config-pwa">
+            <div class="pill"><span>📲</span><span>PWA</span></div>
+            <h2>PWA</h2>
+            <p>Actualización y control de la versión instalada de la Suite.</p>
+            <div class="config-pwa-status" aria-label="Estado PWA">
+              <div class="config-pwa-row"><span>Estado</span><strong id="cfg-pwa-status">Sin revisar</strong></div>
+              <div class="config-pwa-row"><span>Última búsqueda</span><strong id="cfg-pwa-last-check">Sin registros</strong></div>
+              <div class="config-pwa-row"><span>Última actualización</span><strong id="cfg-pwa-last-update">Sin registros</strong></div>
+            </div>
+            <div class="footer-row">
+              <span>Control central</span>
+              <button id="cfg-pwa-check" class="link-btn secondary" type="button"><span>Buscar actualizaciones</span></button>
+            </div>
+          </article>
+
           <article class="card" id="card-config-backup">
             <div class="pill"><span>🗄️</span><span>Respaldo</span></div>
             <h2>Respaldo</h2>
@@ -590,9 +788,86 @@
   <input id="calc-only-file-input" type="file" accept="application/json" style="display:none;">
   <div id="a33-toast" class="a33-toast" aria-live="polite"></div>
 
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=3"></script>
-  <script src="assets/js/a33-storage.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=10"></script>
+  <script src="assets/js/a33-storage.js?v=4.20.77&r=7"></script>
+  <script src="assets/js/a33-currency.js?v=4.20.77&r=14"></script>
+  <script src="assets/js/a33-export-currency.js?v=4.20.77&r=2"></script>
   <script>
+
+    // --- Apariencia global: leer la preferencia creada en Configuración → Apariencia ---
+    (function(){
+      const APPEARANCE_STORAGE_KEY = 'suite_a33_appearance_preference';
+      const valid = new Set(['dark', 'light', 'auto']);
+      let mql = null;
+
+      function normalize(value){
+        const v = String(value || '').trim().toLowerCase();
+        return valid.has(v) ? v : 'dark';
+      }
+
+      function resolve(pref){
+        if (pref === 'auto'){
+          try{
+            return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+          }catch(_){ return 'dark'; }
+        }
+        return pref;
+      }
+
+      function read(){
+        try{ return normalize(localStorage.getItem(APPEARANCE_STORAGE_KEY)); }
+        catch(_){ return 'dark'; }
+      }
+
+      function apply(pref){
+        const preference = normalize(pref || read());
+        const resolved = resolve(preference);
+        try{
+          document.documentElement.setAttribute('data-a33-theme-preference', preference);
+          document.documentElement.setAttribute('data-theme', resolved);
+          if (document.body){
+            document.body.setAttribute('data-a33-theme-preference', preference);
+            document.body.setAttribute('data-theme', resolved);
+          }
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', resolved === 'light' ? '#f4ead8' : '#060606');
+        }catch(_){ }
+        return { preference, resolved };
+      }
+
+      function bindSystem(){
+        try{
+          if (!window.matchMedia) return;
+          mql = window.matchMedia('(prefers-color-scheme: dark)');
+          const onChange = () => {
+            if (read() === 'auto') apply('auto');
+          };
+          if (typeof mql.addEventListener === 'function') mql.addEventListener('change', onChange);
+          else if (typeof mql.addListener === 'function') mql.addListener(onChange);
+        }catch(_){ }
+      }
+
+      try{
+        window.A33Theme = Object.assign({}, window.A33Theme || {}, {
+          key: APPEARANCE_STORAGE_KEY,
+          read,
+          apply,
+          getPreference: read,
+          getResolvedTheme: () => resolve(read())
+        });
+        window.addEventListener('storage', (event) => {
+          if (!event || event.key === APPEARANCE_STORAGE_KEY) apply(read());
+        });
+      }catch(_){ }
+
+      if (document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', () => { apply(read()); bindSystem(); }, { once:true });
+      }else{
+        apply(read());
+        bindSystem();
+      }
+    })();
+
     // --- Home libre de acceso ---
     function hideBootSplash(){}
 
@@ -1240,12 +1515,19 @@
       const cleanIndexed = sanitizeIndexedDbPayload(dataIndexedDB, dbSchemas, dbVersions);
 
       const backup = {
-        meta: {
-          appName: BACKUP_APP_NAME,
-          exportedAt: new Date().toISOString(),
-          dbVersions: cleanIndexed.versions,
-          dbSchemas: cleanIndexed.schemas
-        },
+        meta: (window.A33ExportCurrency && typeof window.A33ExportCurrency.decorateJsonMeta === 'function')
+          ? window.A33ExportCurrency.decorateJsonMeta({
+            appName: BACKUP_APP_NAME,
+            exportedAt: new Date().toISOString(),
+            dbVersions: cleanIndexed.versions,
+            dbSchemas: cleanIndexed.schemas
+          })
+          : {
+            appName: BACKUP_APP_NAME,
+            exportedAt: new Date().toISOString(),
+            dbVersions: cleanIndexed.versions,
+            dbSchemas: cleanIndexed.schemas
+          },
         data: {
           indexedDB: cleanIndexed.data,
           localStorage: sanitizeSuiteLocalStorageMap(lsSnap.data)
@@ -1480,7 +1762,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-
       // Navegación: tarjetas del menú principal
       document.querySelectorAll('[data-link]').forEach(card => {
         card.addEventListener('click', () => {
@@ -1516,6 +1797,74 @@
         });
       }
 
+      const PWA_KEYS = {
+        lastCheck: 'suite_a33_pwa_last_check_at',
+        lastUpdate: 'suite_a33_pwa_last_update_at',
+        status: 'suite_a33_pwa_update_status'
+      };
+
+      function pwaStorageGet(key){
+        try{
+          if (window.A33Storage && typeof window.A33Storage.getItem === 'function'){
+            const v = window.A33Storage.getItem(key);
+            if (v !== undefined && v !== null && String(v).trim() !== '') return String(v);
+          }
+        }catch(_){ }
+        try{
+          const v = localStorage.getItem(key);
+          return (v && String(v).trim()) ? String(v) : '';
+        }catch(_){ return ''; }
+      }
+
+      function pwaStorageSet(key, value){
+        try{
+          if (window.A33Storage && typeof window.A33Storage.setItem === 'function'){
+            window.A33Storage.setItem(key, String(value));
+            return;
+          }
+        }catch(_){ }
+        try{ localStorage.setItem(key, String(value)); }catch(_){ }
+      }
+
+      function formatPwaTimestamp(value){
+        const raw = String(value || '').trim();
+        if (!raw) return 'Sin registros';
+        let date = null;
+        const num = Number(raw);
+        if (Number.isFinite(num) && num > 0) date = new Date(num);
+        if (!date || Number.isNaN(date.getTime())) date = new Date(raw);
+        if (!date || Number.isNaN(date.getTime())) return raw;
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      }
+
+      function renderPwaCard(){
+        const statusEl = document.getElementById('cfg-pwa-status');
+        const lastCheckEl = document.getElementById('cfg-pwa-last-check');
+        const lastUpdateEl = document.getElementById('cfg-pwa-last-update');
+        const status = pwaStorageGet(PWA_KEYS.status) || 'Sin revisar';
+        const lastCheck = pwaStorageGet(PWA_KEYS.lastCheck);
+        const lastUpdate = pwaStorageGet(PWA_KEYS.lastUpdate);
+        if (statusEl) statusEl.textContent = status;
+        if (lastCheckEl) lastCheckEl.textContent = formatPwaTimestamp(lastCheck);
+        if (lastUpdateEl) lastUpdateEl.textContent = formatPwaTimestamp(lastUpdate);
+      }
+
+      function registerPwaCheckClick(){
+        const btn = document.getElementById('cfg-pwa-check');
+        if (!btn) return;
+        btn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          window.location.href = 'configuracion/index.html';
+        });
+      }
+
+      // PWA: renderizar tarjeta después de declarar constantes y helpers.
+      // Esto evita cortar el DOMContentLoaded antes de registrar la navegación del menú.
+      renderPwaCard();
+      registerPwaCheckClick();
+
       function showHomeView(){
         const homeView = document.getElementById('home-view');
         const configView = document.getElementById('config-view');
@@ -1534,8 +1883,10 @@
 
       // Card: Configuración (hub)
       const configHubCard = document.getElementById('card-config-hub');
-      if (configHubCard){
-        configHubCard.addEventListener('click', showConfigView);
+      if (configHubCard && !configHubCard.getAttribute('data-link')){
+        configHubCard.addEventListener('click', () => {
+          window.location.href = 'configuracion/index.html';
+        });
       }
 
       const configBackHome = document.getElementById('btn-config-back-home');
@@ -1713,6 +2064,6 @@
 
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=7"></script>
 </body>
 </html>

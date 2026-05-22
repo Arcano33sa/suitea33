@@ -30,6 +30,18 @@ let posEventsLoadedAt = 0;
 
 const $ = (sel) => document.querySelector(sel);
 
+function finAttachExportCurrencyMetadata(wb, title = 'Referencia monetaria — Finanzas') {
+  try {
+    if (window.A33ExportCurrency && typeof window.A33ExportCurrency.appendWorkbookMetadataSheet === 'function') {
+      window.A33ExportCurrency.appendWorkbookMetadataSheet(wb, XLSX, {
+        title,
+        sheetName: 'Moneda'
+      });
+    }
+  } catch (_) {}
+  return wb;
+}
+
 /* ---------- IndexedDB helpers: Finanzas ---------- */
 
 function openFinDB() {
@@ -839,6 +851,103 @@ function fmtCurrency(v) {
   });
 }
 
+/* ---------- Moneda central: Finanzas / Banco (solo lectura, sin recalcular históricos) ---------- */
+
+function finGetCurrencyStateSafe() {
+  try {
+    if (window.A33Currency && typeof window.A33Currency.getState === 'function') {
+      return window.A33Currency.getState();
+    }
+  } catch (_) {}
+  try {
+    if (window.A33ExportCurrency && typeof window.A33ExportCurrency.getState === 'function') {
+      return window.A33ExportCurrency.getState();
+    }
+  } catch (_) {}
+  return {
+    primary: { symbol: 'C$', code: 'NIO' },
+    secondary: { symbol: 'US$', code: 'USD' },
+    exchangeRate: null,
+    exchangeRateValue: '',
+    exchangeRateText: 'T/C no configurado',
+    updatedAtText: 'Sin registros',
+    hasExchangeRate: false
+  };
+}
+
+function finCurrencySymbol(kind = 'NIO') {
+  const state = finGetCurrencyStateSafe();
+  const k = String(kind || '').trim().toUpperCase();
+  const cur = (k === 'USD' || k === 'US$' || k === 'SECONDARY') ? state.secondary : state.primary;
+  return String((cur && cur.symbol) || (k === 'USD' ? 'US$' : 'C$')).trim();
+}
+
+function finCurrencyCode(kind = 'NIO') {
+  const state = finGetCurrencyStateSafe();
+  const k = String(kind || '').trim().toUpperCase();
+  const cur = (k === 'USD' || k === 'US$' || k === 'SECONDARY') ? state.secondary : state.primary;
+  return String((cur && cur.code) || (k === 'USD' ? 'USD' : 'NIO')).trim().toUpperCase();
+}
+
+function finNormalizeMoneySpacing(text) {
+  const raw = String(text ?? '').trim();
+  return raw.replace(/^(C\$|US\$)(-?\d)/, '$1 $2');
+}
+
+function finFormatMoney(value, kind = 'NIO') {
+  const k = String(kind || '').trim().toUpperCase();
+  try {
+    if (window.A33Currency && typeof window.A33Currency.formatMoney === 'function') {
+      return finNormalizeMoneySpacing(window.A33Currency.formatMoney(value, k || 'NIO'));
+    }
+  } catch (_) {}
+  const symbol = finCurrencySymbol(k || 'NIO');
+  return `${symbol} ${fmtCurrency(value)}`;
+}
+
+function finFormatCordobas(value) {
+  return finFormatMoney(value, 'NIO');
+}
+
+function finFormatDollars(value) {
+  return finFormatMoney(value, 'USD');
+}
+
+function finPrimaryAmountHeader() {
+  return `Monto ${finCurrencySymbol('NIO')}`;
+}
+
+function finMoneyColumnHeader(label) {
+  return `${label} (${finCurrencySymbol('NIO')})`;
+}
+
+function finRenderCurrencyReference() {
+  try {
+    const state = finGetCurrencyStateSafe();
+    const primary = `${finCurrencySymbol('NIO')} / ${finCurrencyCode('NIO')}`;
+    const secondary = `${finCurrencySymbol('USD')} / ${finCurrencyCode('USD')}`;
+    const hasRate = !!(state && state.hasExchangeRate);
+    const rateText = hasRate
+      ? (state.exchangeRateText || `T/C ${Number(state.exchangeRate || state.exchangeRateValue || 0).toFixed(2)}`)
+      : 'T/C no configurado';
+    const updated = hasRate ? (state.updatedAtText || 'Sin registros') : 'Sin registros';
+    const note = hasRate
+      ? `Finanzas trabaja en ${primary}; ${secondary} queda como referencia segura. Última actualización: ${updated}.`
+      : `Finanzas sigue operando en ${primary}. No se inventa T/C ni se convierten valores sin configuración.`;
+
+    const root = document.getElementById('fin-currency-reference');
+    const elPrimary = document.getElementById('fin-currency-primary');
+    const elSecondary = document.getElementById('fin-currency-secondary');
+    const elRate = document.getElementById('fin-currency-rate');
+    const elNote = document.getElementById('fin-currency-note');
+    if (root) root.classList.toggle('fin-currency-reference--warn', !hasRate);
+    if (elPrimary) elPrimary.textContent = primary;
+    if (elSecondary) elSecondary.textContent = secondary;
+    if (elRate) elRate.textContent = rateText;
+    if (elNote) elNote.textContent = note;
+  } catch (_) {}
+}
+
 /* ---------- Caja Chica (física / informativa, NO contable) ---------- */
 
 const CC_STORAGE_KEY = 'a33_finanzas_caja_chica_v1';
@@ -1089,11 +1198,11 @@ function ccSetText(id, text) {
 }
 
 function ccFormatNIO(value) {
-  return `C$ ${fmtCurrency(value || 0)}`;
+  return finFormatCordobas(value || 0);
 }
 
 function ccFormatUSD(value) {
-  return `US$ ${fmtCurrency(value || 0)}`;
+  return finFormatDollars(value || 0);
 }
 
 function ccCoerceFxRate(value) {
@@ -1101,12 +1210,110 @@ function ccCoerceFxRate(value) {
   return (Number.isFinite(n) && n > 0) ? ccRound2(n) : null;
 }
 
-function ccReadFxRate() {
-  const el = document.getElementById('cc-fx-rate');
-  if (!el) return null;
-  const raw = String(el.value || '').trim().replace(',', '.');
-  if (!raw) return null;
+
+function ccNormalizeCentralFxRate(value) {
+  if (window.A33Currency && typeof window.A33Currency.normalizeExchangeRateValue === 'function') {
+    const normalized = window.A33Currency.normalizeExchangeRateValue(value);
+    return normalized ? ccCoerceFxRate(normalized) : null;
+  }
+  const raw = String(value ?? '').trim().replace(',', '.');
+  if (!/^\d+(?:\.\d{0,2})?$/.test(raw)) return null;
   return ccCoerceFxRate(raw);
+}
+
+function ccFormatCurrencyTimestamp(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Sin registros';
+  if (/^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}$/.test(raw)) return raw;
+  let d = null;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) d = new Date(n);
+  if (!d || Number.isNaN(d.getTime())) d = new Date(raw);
+  if (!d || Number.isNaN(d.getTime())) return raw;
+  return fmtDDMMYYYYHHMM(d);
+}
+
+function ccReadCentralCurrencyState() {
+  try {
+    if (window.A33Currency && typeof window.A33Currency.getState === 'function') {
+      const state = window.A33Currency.getState();
+      const settings = (state && state.settings && typeof state.settings === 'object') ? state.settings : {};
+      const rate = ccNormalizeCentralFxRate(settings.exchangeRate ?? state.exchangeRate);
+      return {
+        hasExchangeRate: !!rate,
+        rate,
+        rateText: state && state.exchangeRateText ? String(state.exchangeRateText) : (rate ? `T/C ${rate.toFixed(2)}` : 'T/C no configurado'),
+        updatedAtRaw: String(settings.updatedAt || '').trim(),
+        updatedAtDisplay: ccFormatCurrencyTimestamp(settings.updatedAt),
+        source: 'Configuración → Moneda'
+      };
+    }
+  } catch (_) {}
+
+  let raw = '';
+  const key = (window.A33Currency && window.A33Currency.storageKey) || 'suite_a33_currency_settings_v1';
+  try {
+    if (window.A33Storage && typeof window.A33Storage.getItem === 'function') {
+      const stored = window.A33Storage.getItem(key, 'local');
+      if (stored !== undefined && stored !== null) raw = String(stored);
+    }
+  } catch (_) {}
+  if (!raw) {
+    try { raw = localStorage.getItem(key) || ''; } catch (_) { raw = ''; }
+  }
+
+  let settings = {};
+  if (raw) {
+    try { settings = JSON.parse(raw); }
+    catch (_) { settings = { exchangeRate: raw }; }
+  }
+
+  const rate = ccNormalizeCentralFxRate(settings.exchangeRate);
+  return {
+    hasExchangeRate: !!rate,
+    rate,
+    rateText: rate ? `T/C ${rate.toFixed(2)}` : 'T/C no configurado',
+    updatedAtRaw: String(settings.updatedAt || '').trim(),
+    updatedAtDisplay: ccFormatCurrencyTimestamp(settings.updatedAt),
+    source: 'Configuración → Moneda'
+  };
+}
+
+function ccGetCentralFxRate() {
+  const central = ccReadCentralCurrencyState();
+  return central.hasExchangeRate ? central.rate : null;
+}
+
+function ccUpdateCentralCurrencyReference() {
+  const central = ccReadCentralCurrencyState();
+  const input = document.getElementById('cc-fx-rate');
+  if (input) {
+    input.readOnly = true;
+    input.disabled = true;
+    input.value = central.hasExchangeRate ? central.rate.toFixed(2) : '';
+    input.placeholder = 'Configurar en Moneda';
+    input.title = central.hasExchangeRate
+      ? `Fuente: Configuración → Moneda · ${central.rateText}`
+      : 'Configure el T/C en Configuración → Moneda';
+  }
+
+  const note = document.getElementById('cc-central-fx-note');
+  if (note) {
+    note.textContent = central.hasExchangeRate
+      ? `Fuente: Configuración → Moneda · ${central.rateText}`
+      : 'Configure el T/C en Configuración → Moneda';
+    note.classList.toggle('is-ok', central.hasExchangeRate);
+    note.classList.toggle('is-warn', !central.hasExchangeRate);
+  }
+
+  const updated = document.getElementById('cc-currency-updated-at');
+  if (updated) updated.textContent = central.updatedAtDisplay || 'Sin registros';
+
+  return central;
+}
+
+function ccReadFxRate() {
+  return ccGetCentralFxRate();
 }
 
 function ccGetLastSavedFxRate(snap = ccSnapshot) {
@@ -1117,24 +1324,14 @@ function ccGetLastSavedFxRate(snap = ccSnapshot) {
 }
 
 function ccGetFxRateForSave() {
-  const el = document.getElementById('cc-fx-rate');
-  const raw = el ? String(el.value || '').trim().replace(',', '.') : '';
-  const typed = ccCoerceFxRate(raw);
-  if (typed) return typed;
-
-  // Si el campo está vacío por una carga vieja o un render intermedio, preservar el último T/C guardado.
-  // Esto evita obligar al usuario a escribirlo de nuevo cuando ya existe uno válido.
-  if (!raw) return ccGetLastSavedFxRate();
-  return null;
+  // Etapa 7/9 Moneda: Caja Chica ya no decide su propio T/C.
+  // La única fuente válida para nuevas consolidaciones es Configuración → Moneda.
+  return ccGetCentralFxRate();
 }
 
 function ccSetFxInputFromSnapshot(overwrite = false) {
-  const el = document.getElementById('cc-fx-rate');
-  if (!el) return;
-  if (!overwrite && String(el.value || '').trim() !== '') return;
-
-  const n = ccGetLastSavedFxRate();
-  el.value = n ? n.toFixed(2) : '';
+  // Nombre conservado por compatibilidad interna; ahora sincroniza la UI con Moneda central.
+  ccUpdateCentralCurrencyReference();
 }
 
 function ccUpdateConsolidatedSummary() {
@@ -1142,6 +1339,7 @@ function ccUpdateConsolidatedSummary() {
   const con = (snap.consolidated && typeof snap.consolidated === 'object')
     ? snap.consolidated
     : ccBuildEmptyConsolidated();
+  const central = ccUpdateCentralCurrencyReference();
 
   ccSetText('cc-summary-nio', ccFormatNIO(con.totalNio || 0));
   ccSetText('cc-summary-usd', ccFormatUSD(con.totalUsd || 0));
@@ -1149,15 +1347,33 @@ function ccUpdateConsolidatedSummary() {
   const fxUsed = Number(con.fxRateUsed);
   const eqNio = Number(con.equivalentNio);
   const eqUsd = Number(con.equivalentUsd);
+  const fxSource = document.getElementById('cc-summary-fx-source');
 
   if (Number.isFinite(fxUsed) && fxUsed > 0 && Number.isFinite(eqNio) && Number.isFinite(eqUsd)) {
     ccSetText('cc-summary-eq-nio', ccFormatNIO(eqNio));
     ccSetText('cc-summary-eq-usd', ccFormatUSD(eqUsd));
     ccSetText('cc-summary-fx-used', fxUsed.toFixed(2));
+    if (fxSource) {
+      const sameAsCentral = central && central.hasExchangeRate && Math.abs(Number(central.rate) - fxUsed) < 0.005;
+      fxSource.textContent = sameAsCentral
+        ? 'Fuente: Configuración → Moneda'
+        : (central && central.hasExchangeRate
+          ? `Último consolidado; T/C central actual ${central.rate.toFixed(2)}`
+          : 'Último consolidado; falta T/C central');
+      fxSource.classList.toggle('is-ok', sameAsCentral);
+      fxSource.classList.toggle('is-warn', !sameAsCentral);
+    }
   } else {
     ccSetText('cc-summary-eq-nio', '—');
     ccSetText('cc-summary-eq-usd', '—');
     ccSetText('cc-summary-fx-used', '—');
+    if (fxSource) {
+      fxSource.textContent = central && central.hasExchangeRate
+        ? 'Listo para consolidar desde Moneda al guardar.'
+        : 'Configure el T/C en Configuración → Moneda';
+      fxSource.classList.toggle('is-ok', !!(central && central.hasExchangeRate));
+      fxSource.classList.toggle('is-warn', !(central && central.hasExchangeRate));
+    }
   }
 
   ccSetText('cc-summary-last-update', con.updatedAtDisplay || 'Sin actualizar');
@@ -1190,12 +1406,7 @@ function ccBuildConsolidatedFromCurrent(now, fxRate) {
 }
 
 function ccNormalizeFxInputDisplay() {
-  const el = document.getElementById('cc-fx-rate');
-  if (!el) return;
-  const raw = String(el.value || '').trim().replace(',', '.');
-  if (!raw) return;
-  const n = Number(raw);
-  if (Number.isFinite(n) && n > 0) el.value = n.toFixed(2);
+  ccUpdateCentralCurrencyReference();
 }
 
 function ccSnapshotStamp(snap) {
@@ -1400,20 +1611,17 @@ async function ccSaveSnapshot() {
 
   const now = new Date();
   const fxRate = ccGetFxRateForSave();
-  const fxInput = document.getElementById('cc-fx-rate');
-
-  if (fxInput) {
-    if (fxRate) {
-      fxInput.value = fxRate.toFixed(2);
-      ccSnapshot.fxRateDraft = ccRound2(fxRate);
-    } else {
-      ccSnapshot.fxRateDraft = null;
-    }
-  }
+  const previousConsolidated = (ccSnapshot.consolidated && typeof ccSnapshot.consolidated === 'object')
+    ? ccSnapshot.consolidated
+    : ccBuildEmptyConsolidated();
+  ccUpdateCentralCurrencyReference();
+  ccSnapshot.fxRateDraft = fxRate ? ccRound2(fxRate) : null;
 
   ccSnapshot.updatedAtISO = now.toISOString();
   ccSnapshot.updatedAtDisplay = fmtDDMMYYYYHHMM(now);
-  ccSnapshot.consolidated = ccBuildConsolidatedFromCurrent(now, fxRate);
+  ccSnapshot.consolidated = fxRate
+    ? ccBuildConsolidatedFromCurrent(now, fxRate)
+    : previousConsolidated;
 
   try {
     await finPut('settings', { id: CC_STORAGE_KEY, data: ccSnapshot });
@@ -1430,9 +1638,9 @@ async function ccSaveSnapshot() {
 
   showToast('Caja Chica guardada');
   if (fxRate) {
-    ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay}`);
+    ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay} · T/C desde Moneda ${fxRate.toFixed(2)}`);
   } else {
-    ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay} · T/C inválido`);
+    ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay} · consolidado no recalculado; configure el T/C en Configuración → Moneda`);
   }
 }
 
@@ -1451,7 +1659,7 @@ function ccReset() {
   const ok = confirm('Reset a cero: esto borrara los conteos actuales (solo informativo).');
   if (!ok) return;
 
-  const lastFx = ccGetFxRateForSave() || ccGetLastSavedFxRate();
+  const centralFx = ccGetFxRateForSave();
   const currentConsolidated = (ccSnapshot && ccSnapshot.consolidated)
     ? ccSnapshot.consolidated
     : ccBuildEmptyConsolidated();
@@ -1463,11 +1671,9 @@ function ccReset() {
   ccSnapshot.consolidated = currentConsolidated;
   ccSnapshot.updatedAtISO = currentUpdatedAtISO;
   ccSnapshot.updatedAtDisplay = currentUpdatedAtDisplay;
-  ccSnapshot.fxRateDraft = lastFx || ccSnapshot.fxRateDraft || null;
+  ccSnapshot.fxRateDraft = centralFx ? ccRound2(centralFx) : null;
 
-  const fxInput = document.getElementById('cc-fx-rate');
-  if (fxInput && lastFx) fxInput.value = lastFx.toFixed(2);
-
+  ccUpdateCentralCurrencyReference();
   ccRenderCurrency();
   ccSetMsg('Reset a cero listo · presiona Guardar');
 }
@@ -1499,15 +1705,20 @@ function setupCajaChicaUI() {
 
   const fxInput = document.getElementById('cc-fx-rate');
   if (fxInput) {
-    fxInput.addEventListener('input', () => {
-      ccSetMsg('');
-    });
+    fxInput.readOnly = true;
+    fxInput.disabled = true;
     fxInput.addEventListener('blur', ccNormalizeFxInputDisplay);
-    fxInput.addEventListener('focus', () => {
-      if (String(fxInput.value || '') === '') return;
-      try { setTimeout(() => fxInput.select(), 0); } catch (_) {}
-    });
   }
+
+  try {
+    window.addEventListener('storage', (ev) => {
+      const key = (window.A33Currency && window.A33Currency.storageKey) || 'suite_a33_currency_settings_v1';
+      if (!ev || ev.key !== key) return;
+      ccUpdateCentralCurrencyReference();
+      ccUpdateConsolidatedSummary();
+      ccSetMsg('T/C central actualizado desde Moneda.');
+    });
+  } catch (_) {}
 }
 
 function normStr(s, maxLen = 200) {
@@ -2218,9 +2429,9 @@ function renderRentabilidadPresentacion(/* dataFinanzas */) {
       tr.innerHTML = `
         <td>${def.label}</td>
         <td class="num">${botellas.toFixed(0)}</td>
-        <td class="num">C$ ${fmtCurrency(ingresos)}</td>
-        <td class="num">C$ ${fmtCurrency(costo)}</td>
-        <td class="num">C$ ${fmtCurrency(margen)}</td>
+        <td class="num">${finFormatCordobas(ingresos)}</td>
+        <td class="num">${finFormatCordobas(costo)}</td>
+        <td class="num">${finFormatCordobas(margen)}</td>
         <td class="num">${margenPct.toFixed(1)}%</td>
       `;
       tbody.appendChild(tr);
@@ -2357,10 +2568,10 @@ function renderComparativoEventos(data) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${evName}</td>
-      <td class="num">C$ ${fmtCurrency(ingresos)}</td>
-      <td class="num">C$ ${fmtCurrency(costos)}</td>
-      <td class="num">C$ ${fmtCurrency(gastos)}</td>
-      <td class="num">C$ ${fmtCurrency(resultado)}</td>
+      <td class="num">${finFormatCordobas(ingresos)}</td>
+      <td class="num">${finFormatCordobas(costos)}</td>
+      <td class="num">${finFormatCordobas(gastos)}</td>
+      <td class="num">${finFormatCordobas(resultado)}</td>
       <td class="num">${margenPct.toFixed(1)}%</td>
     `;
     tbody.appendChild(tr);
@@ -2375,10 +2586,10 @@ function renderComparativoEventos(data) {
   trTotal.classList.add('fin-row-strong');
   trTotal.innerHTML = `
     <td>Total</td>
-    <td class="num">C$ ${fmtCurrency(totalIngresos)}</td>
-    <td class="num">C$ ${fmtCurrency(totalCostos)}</td>
-    <td class="num">C$ ${fmtCurrency(totalGastos)}</td>
-    <td class="num">C$ ${fmtCurrency(totalResultado)}</td>
+    <td class="num">${finFormatCordobas(totalIngresos)}</td>
+    <td class="num">${finFormatCordobas(totalCostos)}</td>
+    <td class="num">${finFormatCordobas(totalGastos)}</td>
+    <td class="num">${finFormatCordobas(totalResultado)}</td>
     <td class="num">${margenTotalPct.toFixed(1)}%</td>
   `;
   tbody.appendChild(trTotal);
@@ -2546,7 +2757,7 @@ function renderFlujoCaja(data) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${label}</td>
-      <td class="num">C$ ${fmtCurrency(val)}</td>
+      <td class="num">${finFormatCordobas(val)}</td>
     `;
     tbody.appendChild(tr);
   }
@@ -2645,7 +2856,7 @@ async function exportDiarioExcel() {
   });
 
   const rows = [];
-  rows.push(['Fecha', 'Descripción', 'Tipo', 'Evento', 'Proveedor', 'Pago', 'Referencia', 'Origen', 'Debe total', 'Haber total']);
+  rows.push(['Fecha', 'Descripción', 'Tipo', 'Evento', 'Proveedor', 'Pago', 'Referencia', 'Origen', finMoneyColumnHeader('Debe total'), finMoneyColumnHeader('Haber total')]);
 
   for (const e of sorted) {
     const tipo = e.tipoMovimiento || 'otro';
@@ -2739,6 +2950,7 @@ async function exportDiarioExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Diario');
   const filename = `finanzas_diario_${todayStr()}.xlsx`;
+  finAttachExportCurrencyMetadata(wb);
   XLSX.writeFile(wb, filename);
   showToast('Diario exportado a Excel');
 }
@@ -2812,7 +3024,7 @@ async function exportEstadoResultadosExcel() {
   rows.push(['Periodo', `${desde} a ${hasta}`]);
   rows.push(['Evento', eventoLabel]);
   rows.push([]);
-  rows.push(['Concepto', 'Monto C$']);
+  rows.push(['Concepto', finPrimaryAmountHeader()]);
   rows.push(['Ingresos (4xxx)', num(ingresos)]);
   rows.push(['Costos de venta (5xxx)', num(costos)]);
   rows.push(['Gastos de operación (6xxx)', num(gastos)]);
@@ -2823,6 +3035,7 @@ async function exportEstadoResultadosExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'EstadoResultados');
   const filename = `finanzas_ER_${todayStr()}.xlsx`;
+  finAttachExportCurrencyMetadata(wb);
   XLSX.writeFile(wb, filename);
   showToast('Estado de Resultados exportado a Excel');
 }
@@ -2852,7 +3065,7 @@ async function exportBalanceGeneralExcel() {
   rows.push(['Balance General', '']);
   rows.push(['Corte al', corte]);
   rows.push([]);
-  rows.push(['Grupo', 'Monto C$']);
+  rows.push(['Grupo', finPrimaryAmountHeader()]);
   rows.push(['Activos (1xxx)', num(activos)]);
   rows.push(['Pasivos (2xxx)', num(pasivos)]);
   rows.push(['Patrimonio (3xxx)', num(patrimonio)]);
@@ -2862,6 +3075,7 @@ async function exportBalanceGeneralExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'BalanceGeneral');
   const filename = `finanzas_BG_${todayStr()}.xlsx`;
+  finAttachExportCurrencyMetadata(wb);
   XLSX.writeFile(wb, filename);
   showToast('Balance General exportado a Excel');
 }
@@ -2892,7 +3106,7 @@ async function exportFlujoCajaExcel() {
   rows.push(['Flujo de Caja', '']);
   rows.push(['Periodo', `${r.desde} a ${r.hasta}`]);
   rows.push([]);
-  rows.push(['Concepto', 'Monto C$']);
+  rows.push(['Concepto', finPrimaryAmountHeader()]);
   rows.push(['Saldo inicial Caja + Banco', num(r.saldoInicial)]);
   rows.push(['Flujo neto de operación (cobros - pagos)', num(r.netOp)]);
   rows.push(['Flujo neto aportes / retiros del dueño', num(r.netOwner)]);
@@ -2903,6 +3117,7 @@ async function exportFlujoCajaExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'FlujoCaja');
   const filename = `finanzas_FC_${todayStr()}.xlsx`;
+  finAttachExportCurrencyMetadata(wb);
   XLSX.writeFile(wb, filename);
   showToast('Flujo de Caja exportado a Excel');
 }
@@ -3229,15 +3444,15 @@ function renderTablero(data) {
   const tabCaja = $('#tab-caja');
   const tabBanco = $('#tab-banco');
 
-  if (tabIng) tabIng.textContent = `C$ ${fmtCurrency(ingresos)}`;
-  if (tabCos) tabCos.textContent = `C$ ${fmtCurrency(costos)}`;
-  if (tabCort) tabCort.textContent = `C$ ${fmtCurrency(cortesias)}`;
-  if (tabBru) tabBru.textContent = `C$ ${fmtCurrency(bruta)}`;
-  if (tabPost) tabPost.textContent = `C$ ${fmtCurrency(postCortesias)}`;
-  if (tabGas) tabGas.textContent = `C$ ${fmtCurrency(gastos)}`;
-  if (tabRes) tabRes.textContent = `C$ ${fmtCurrency(neta)}`;
-  if (tabCaja) tabCaja.textContent = `C$ ${fmtCurrency(caja)}`;
-  if (tabBanco) tabBanco.textContent = `C$ ${fmtCurrency(banco)}`;
+  if (tabIng) tabIng.textContent = finFormatCordobas(ingresos);
+  if (tabCos) tabCos.textContent = finFormatCordobas(costos);
+  if (tabCort) tabCort.textContent = finFormatCordobas(cortesias);
+  if (tabBru) tabBru.textContent = finFormatCordobas(bruta);
+  if (tabPost) tabPost.textContent = finFormatCordobas(postCortesias);
+  if (tabGas) tabGas.textContent = finFormatCordobas(gastos);
+  if (tabRes) tabRes.textContent = finFormatCordobas(neta);
+  if (tabCaja) tabCaja.textContent = finFormatCordobas(caja);
+  if (tabBanco) tabBanco.textContent = finFormatCordobas(banco);
 }
 
 /* ---------- Render: Diario y Ajustes ---------- */
@@ -3780,15 +3995,15 @@ function renderDiario(data) {
         const inc = !!(data && data.inconsistentEntryIds && data.inconsistentEntryIds.has(Number(e.id)));
         const incPill = inc ? (' ' + makePill('Inconsistente', 'red')) : '';
         const mm = getPosCloseMismatchAmount(e);
-        const pill = mm ? (' ' + makePill(`Cierre con diferencia: C$ ${fmtCurrency(mm)}`, 'red')) : '';
+        const pill = mm ? (' ' + makePill(`Cierre con diferencia: ${finFormatCordobas(mm)}`, 'red')) : '';
         return base + incPill + pill;
       })()}</td>
       <td>${escapeHtml(tipoMov)}</td>
       <td>${evCell || '—'}</td>
       <td>${escapeHtml(getSupplierLabelFromEntry(e, data))}</td>
       <td>${origenCell}</td>
-      <td class="num">C$ ${fmtCurrency(displayDebe)}</td>
-      <td class="num">C$ ${fmtCurrency(displayHaber)}</td>
+      <td class="num">${finFormatCordobas(displayDebe)}</td>
+      <td class="num">${finFormatCordobas(displayHaber)}</td>
       <td><button type="button" class="btn-link ver-detalle" data-id="${e.id}">Ver detalle</button></td>
     `;
     tbody.appendChild(tr);
@@ -3833,15 +4048,15 @@ function openDetalleModal(entryId) {
     if (cv > 0 || cc > 0) {
       const inv = n2(entry?.posCosts?.costoTotalSalidaInventario);
       costsLine = `
-        <p><strong>COGS (5100):</strong> C$ ${fmtCurrency(cv)}</p>
-        <p><strong>Cortesías (6105):</strong> C$ ${fmtCurrency(cc)}</p>
-        <p><strong>Salida de inventario (1500):</strong> C$ ${fmtCurrency(inv || (cv + cc))}</p>
+        <p><strong>COGS (5100):</strong> ${finFormatCordobas(cv)}</p>
+        <p><strong>Cortesías (6105):</strong> ${finFormatCordobas(cc)}</p>
+        <p><strong>Salida de inventario (1500):</strong> ${finFormatCordobas(inv || (cv + cc))}</p>
       `;
     }
   }
 
     const mm = getPosCloseMismatchAmount(entry);
-    if (mm) mismatchLine = `<p>${makePill(`Cierre con diferencia: C$ ${fmtCurrency(mm)}`, 'red')}</p>`;
+    if (mm) mismatchLine = `<p>${makePill(`Cierre con diferencia: ${finFormatCordobas(mm)}`, 'red')}</p>`;
   const origenRaw = entry.origen || 'Interno';
   const origenLabel = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
 
@@ -3877,8 +4092,8 @@ tbody.innerHTML = '';
     tr.innerHTML = `
       <td>${ln.accountCode}</td>
       <td>${nombre}</td>
-      <td class="num">C$ ${fmtCurrency(ln.debe || 0)}</td>
-      <td class="num">C$ ${fmtCurrency(ln.haber || 0)}</td>
+      <td class="num">${finFormatCordobas(ln.debe || 0)}</td>
+      <td class="num">${finFormatCordobas(ln.haber || 0)}</td>
     `;
     tbody.appendChild(tr);
   }
@@ -3937,11 +4152,11 @@ function renderEstadoResultados(data) {
   const elBruta = $('#er-bruta');
   const elNeta = $('#er-neta');
 
-  if (elIng) elIng.textContent = `C$ ${fmtCurrency(ingresos)}`;
-  if (elCos) elCos.textContent = `C$ ${fmtCurrency(costos)}`;
-  if (elGas) elGas.textContent = `C$ ${fmtCurrency(gastos)}`;
-  if (elBruta) elBruta.textContent = `C$ ${fmtCurrency(bruta)}`;
-  if (elNeta) elNeta.textContent = `C$ ${fmtCurrency(neta)}`;
+  if (elIng) elIng.textContent = finFormatCordobas(ingresos);
+  if (elCos) elCos.textContent = finFormatCordobas(costos);
+  if (elGas) elGas.textContent = finFormatCordobas(gastos);
+  if (elBruta) elBruta.textContent = finFormatCordobas(bruta);
+  if (elNeta) elNeta.textContent = finFormatCordobas(neta);
 }
 
 /* ---------- Render: Balance General ---------- */
@@ -3957,10 +4172,10 @@ function renderBalanceGeneral(data) {
   const elPt = $('#bg-patrimonio');
   const elC = $('#bg-cuadre');
 
-  if (elA) elA.textContent = `C$ ${fmtCurrency(activos)}`;
-  if (elP) elP.textContent = `C$ ${fmtCurrency(pasivos)}`;
-  if (elPt) elPt.textContent = `C$ ${fmtCurrency(patrimonio)}`;
-  if (elC) elC.textContent = `C$ ${fmtCurrency(cuadre)}`;
+  if (elA) elA.textContent = finFormatCordobas(activos);
+  if (elP) elP.textContent = finFormatCordobas(pasivos);
+  if (elPt) elPt.textContent = finFormatCordobas(patrimonio);
+  if (elC) elC.textContent = finFormatCordobas(cuadre);
 }
 
 /* ---------- Guardar movimiento manual ---------- */
@@ -4208,7 +4423,7 @@ async function provRenderProductsModalReadOnly() {
         <span class="prov-prod-modal-val" title="${escapeHtml(tipo)}">${escapeHtml(tipo)}</span>
       </div>
       <div class="prov-prod-modal-cell num" data-label="Precio">
-        <span class="prov-prod-modal-val" title="C$ ${escapeHtml(fmtCurrency(precio))}">C$ ${escapeHtml(fmtCurrency(precio))}</span>
+        <span class="prov-prod-modal-val" title="${escapeHtml(finFormatCordobas(precio))}">${escapeHtml(finFormatCordobas(precio))}</span>
       </div>
       <div class="prov-prod-modal-cell num" data-label="Unidades por caja">
         <span class="prov-prod-modal-val" title="${escapeHtml(String(unidades))}">${escapeHtml(String(unidades))}</span>
@@ -4504,7 +4719,7 @@ function provRenderProductsList(supplier) {
         <div class="prov-prod-title" title="${escapeHtml(p.nombre || '')}">${escapeHtml(p.nombre || '—')}</div>
         <div class="prov-prod-meta">
           <span class="prov-prod-chip">${escapeHtml(tipoLabel)}</span>
-          <span>Precio: C$ ${escapeHtml(fmtCurrency(p.precio))}</span>
+          <span>Precio: ${escapeHtml(finFormatCordobas(p.precio))}</span>
           <span>${escapeHtml(tipo === 'CAJAS' ? `U/Caja: ${String(normNumNonNeg(p.unidadesPorCaja))}` : 'U/Caja: 0')}</span>
         </div>
       </div>
@@ -5224,6 +5439,7 @@ async function catExportCatalogExcel() {
     if (!wb) return;
     const stamp = catMakeFileStamp(new Date());
     const filename = `A33_Finanzas_CatalogoCuentas_${stamp}.xlsx`;
+    finAttachExportCurrencyMetadata(wb);
     XLSX.writeFile(wb, filename);
     showToast('Catálogo exportado a Excel');
   } catch (err) {
@@ -5602,7 +5818,7 @@ function compraRenderTotalCalc() {
   }
 
   const total = Math.max(0, price) * Math.max(0, qty);
-  totalEl.value = `C$ ${fmtCurrency(total)}`;
+  totalEl.value = finFormatCordobas(total);
   compraMaybeSyncMonto(total);
 }
 
@@ -5867,7 +6083,7 @@ function compraRenderProductoHint(data) {
   const hasPriceRef = compraProductHasPriceRef(p);
   const precio = normNumNonNeg(p.precio);
   hint.textContent = hasPriceRef
-    ? `Tipo: ${tipoLabel} · Precio ref: C$ ${fmtCurrency(precio)}`
+    ? `Tipo: ${tipoLabel} · Precio ref: ${finFormatCordobas(precio)}`
     : `Tipo: ${tipoLabel} · Precio ref: —`;
 }
 
@@ -6311,9 +6527,9 @@ function renderComprasPorProveedor(data) {
     tr.innerHTML = `
       <td>${r.supplier}</td>
       <td class="num">${r.count}</td>
-      <td class="num">C$ ${fmtCurrency(r.total)}</td>
-      <td class="num">C$ ${fmtCurrency(r.cash)}</td>
-      <td class="num">C$ ${fmtCurrency(r.bank)}</td>
+      <td class="num">${finFormatCordobas(r.total)}</td>
+      <td class="num">${finFormatCordobas(r.cash)}</td>
+      <td class="num">${finFormatCordobas(r.bank)}</td>
     `;
     tbody.appendChild(tr);
   }
@@ -6321,7 +6537,7 @@ function renderComprasPorProveedor(data) {
   const totalAll = rows.reduce((s, r) => s + r.total, 0);
   const cntAll = rows.reduce((s, r) => s + r.count, 0);
   if (ayuda) {
-    ayuda.textContent = `Periodo: ${periodo.desde} → ${periodo.hasta} · Compras: ${cntAll} · Total: C$ ${fmtCurrency(totalAll)}`;
+    ayuda.textContent = `Periodo: ${periodo.desde} → ${periodo.hasta} · Compras: ${cntAll} · Total: ${finFormatCordobas(totalAll)}`;
   }
 }
 
@@ -6705,9 +6921,9 @@ function pcUpdateComputedUI() {
   const elVar = document.getElementById('pc-total-varias');
   const elGen = document.getElementById('pc-total-general');
 
-  if (elProv) elProv.textContent = `C$ ${fmtCurrency(totals.proveedores)}`;
-  if (elVar) elVar.textContent = `C$ ${fmtCurrency(totals.varias)}`;
-  if (elGen) elGen.textContent = `C$ ${fmtCurrency(totals.general)}`;
+  if (elProv) elProv.textContent = finFormatCordobas(totals.proveedores);
+  if (elVar) elVar.textContent = finFormatCordobas(totals.varias);
+  if (elGen) elGen.textContent = finFormatCordobas(totals.general);
 
   const tbody = document.getElementById('pc-product-tbody');
   if (tbody) {
@@ -6732,7 +6948,7 @@ function pcUpdateComputedUI() {
         tdQ.textContent = pcFmtQty(r.qty);
         const tdT = document.createElement('td');
         tdT.className = 'num';
-        tdT.textContent = `C$ ${fmtCurrency(r.total)}`;
+        tdT.textContent = finFormatCordobas(r.total);
         tr.appendChild(tdP);
         tr.appendChild(tdQ);
         tr.appendChild(tdT);
@@ -6968,7 +7184,7 @@ function pcRenderSection(sectionKey) {
           // Autofill UI (sin pelearse: solo ocurre al seleccionar).
           try { if (selTipo) selTipo.value = line.type; } catch (_) {}
           try { if (inpPrice) inpPrice.value = line.price; } catch (_) {}
-          try { totalEl.textContent = `C$ ${fmtCurrency(pcGetLineTotal(line))}`; } catch (_) {}
+          try { totalEl.textContent = finFormatCordobas(pcGetLineTotal(line)); } catch (_) {}
         } else {
           // No existe en catálogo: mantenemos texto actual y evitamos crash.
           line.product = (line.product || '').toString();
@@ -7015,7 +7231,7 @@ function pcRenderSection(sectionKey) {
     cTotal.className = 'purchase-cell cell-total';
     const totalEl = document.createElement('div');
     totalEl.className = 'purchase-total-cell';
-    totalEl.textContent = `C$ ${fmtCurrency(pcGetLineTotal(line))}`;
+    totalEl.textContent = finFormatCordobas(pcGetLineTotal(line));
     cTotal.appendChild(totalEl);
 
     // Cantidad
@@ -7028,7 +7244,7 @@ function pcRenderSection(sectionKey) {
     inpQty.value = (line.quantity == null) ? '' : String(line.quantity);
     inpQty.addEventListener('input', () => {
       line.quantity = inpQty.value;
-      totalEl.textContent = `C$ ${fmtCurrency(pcGetLineTotal(line))}`;
+      totalEl.textContent = finFormatCordobas(pcGetLineTotal(line));
       pcUpdateComputedUI();
     });
     pcAttachSelectAllOnFocus(inpQty);
@@ -7044,7 +7260,7 @@ function pcRenderSection(sectionKey) {
     inpPrice.value = (line.price == null) ? '' : String(line.price);
     inpPrice.addEventListener('input', () => {
       line.price = inpPrice.value;
-      totalEl.textContent = `C$ ${fmtCurrency(pcGetLineTotal(line))}`;
+      totalEl.textContent = finFormatCordobas(pcGetLineTotal(line));
       pcUpdateComputedUI();
     });
     pcAttachSelectAllOnFocus(inpPrice);
@@ -7155,7 +7371,7 @@ function pcRenderHistoryList() {
 
       const tdT = document.createElement('td');
       tdT.className = 'num';
-      tdT.textContent = `C$ ${fmtCurrency(rec.totals && rec.totals.general)}`;
+      tdT.textContent = finFormatCordobas(rec.totals && rec.totals.general);
 
       const tdC = document.createElement('td');
       tdC.className = 'num';
@@ -7253,9 +7469,9 @@ function pcOpenHistoryModal(recordId) {
   const tProv = document.getElementById('ph-modal-total-proveedores');
   const tVar = document.getElementById('ph-modal-total-varias');
   const tGen = document.getElementById('ph-modal-total-general');
-  if (tProv) tProv.textContent = `C$ ${fmtCurrency(rec.totals && rec.totals.proveedores)}`;
-  if (tVar) tVar.textContent = `C$ ${fmtCurrency(rec.totals && rec.totals.varias)}`;
-  if (tGen) tGen.textContent = `C$ ${fmtCurrency(rec.totals && rec.totals.general)}`;
+  if (tProv) tProv.textContent = finFormatCordobas(rec.totals && rec.totals.proveedores);
+  if (tVar) tVar.textContent = finFormatCordobas(rec.totals && rec.totals.varias);
+  if (tGen) tGen.textContent = finFormatCordobas(rec.totals && rec.totals.general);
 
   const fillLines = (tbodyId, lines) => {
     const tb = document.getElementById(tbodyId);
@@ -7351,7 +7567,7 @@ function pcBuildWorkbook(payload) {
 
   const buildDetailSheet = (lines) => {
     const rows = [[
-      'PROVEEDOR', 'PRODUCTO', 'TIPO', 'CANTIDAD', 'PRECIO', 'TOTAL'
+      'PROVEEDOR', 'PRODUCTO', 'TIPO', 'CANTIDAD', finMoneyColumnHeader('PRECIO'), finMoneyColumnHeader('TOTAL')
     ]];
     (Array.isArray(lines) ? lines : []).forEach(l => {
       rows.push([
@@ -7377,7 +7593,7 @@ function pcBuildWorkbook(payload) {
   XLSX.utils.book_append_sheet(wb, wsVar, 'Compras Varias');
 
   if (productSummary && productSummary.length) {
-    const rows = [['PRODUCTO', 'CANTIDAD TOTAL', 'TOTAL']];
+    const rows = [['PRODUCTO', 'CANTIDAD TOTAL', finMoneyColumnHeader('TOTAL')]];
     productSummary.forEach(r => {
       rows.push([r.product, r.qty, r.total]);
     });
@@ -7406,6 +7622,7 @@ function pcExportCurrentExcel() {
   if (!wb) return;
 
   const filename = `A33_Finanzas_Compras_${pcMakeFileStamp(stampISO)}.xlsx`;
+  finAttachExportCurrencyMetadata(wb);
   XLSX.writeFile(wb, filename);
   showToast('Compras exportadas a Excel');
 }
@@ -7423,6 +7640,7 @@ function pcExportRecordExcel(rec) {
   if (!wb) return;
 
   const filename = `A33_Finanzas_Compras_HIST_${pcMakeFileStamp(stamp)}.xlsx`;
+  finAttachExportCurrencyMetadata(wb);
   XLSX.writeFile(wb, filename);
   showToast('Histórico exportado a Excel');
 }
@@ -7788,7 +8006,7 @@ function rcStatusPill(status){
   return '<span class="fin-pill fin-pill--muted">BORRADOR</span>';
 }
 
-function rcFmtMoney(v){ return `C$ ${fmtCurrency(v)}`; }
+function rcFmtMoney(v){ return finFormatCordobas(v); }
 
 function rcHasActiveFilters(){
   return Boolean(String(rcQuery||'').trim())
@@ -9056,6 +9274,7 @@ async function refreshAllFin() {
   fillCuentaSelect(data);
   fillCompraCuentaDebe(data);
   fillCompraCuentaHaber(data);
+  finRenderCurrencyReference();
   renderTablero(data);
   renderDiario(data);
   renderComprasPorProveedor(data);
@@ -9944,6 +10163,7 @@ async function initFinanzas() {
     // Compras (planificación)
     await pcLoadAll();
     fillMonthYearSelects();
+    finRenderCurrencyReference();
     setupTabs();
     setupCajaChicaUI();
     setupEstadosSubtabs();
@@ -9972,4 +10192,21 @@ document.addEventListener('DOMContentLoaded', () => {
   initFinanzas().catch(err => {
     console.error('Error en initFinanzas', err);
   });
+});
+
+window.addEventListener('storage', (ev) => {
+  try {
+    const key = ev && ev.key ? String(ev.key) : '';
+    const expected = (window.A33Currency && window.A33Currency.storageKey) || 'suite_a33_currency_settings_v1';
+    if (!key || key === expected) {
+      finRenderCurrencyReference();
+      if (finCachedData) {
+        renderTablero(finCachedData);
+        renderEstadoResultados(finCachedData);
+        renderBalanceGeneral(finCachedData);
+        renderFlujoCaja(finCachedData);
+        renderDiario(finCachedData);
+      }
+    }
+  } catch (_) {}
 });
