@@ -2701,13 +2701,13 @@
     const model = {
       badgeText: 'Modo local',
       badgeState: 'local',
-      summary: 'Firebase puede quedar en modo local o con acceso real activo. Aquí ves si Authentication ya está lista para abrir la suite con correo y contraseña.',
+      summary: 'Firebase puede quedar en modo local o con prueba real activa. Aquí ves si Realtime Database está listo para una prueba técnica segura.',
       mode: 'Local seguro',
       configFile,
       projectId: projectId || 'Pendiente',
       appPill: 'App: pendiente',
       authPill: 'Auth: pendiente',
-      dbPill: 'Firestore: pendiente',
+      dbPill: 'Realtime DB: pendiente',
       functionsPill: 'Functions: pendiente',
       appReady: false,
       authReady: false,
@@ -2723,7 +2723,7 @@
       model.projectId = projectId || 'Detectado';
       model.appPill = 'App: arrancando';
       model.authPill = 'Auth: preparando';
-      model.dbPill = 'Firestore: preparando';
+      model.dbPill = 'Realtime DB: preparando';
       model.functionsPill = 'Functions: preparando';
       return model;
     }
@@ -2731,16 +2731,16 @@
     if (status === 'ready'){
       model.badgeText = 'Firebase listo';
       model.badgeState = 'ready';
-      model.summary = current.message || 'Firebase ya está enlazado y Authentication puede controlar el acceso básico de la suite.';
+      model.summary = current.message || 'Firebase ya está enlazado y Realtime Database puede ejecutar la prueba técnica.';
       model.mode = 'Firebase preparado';
       model.projectId = projectId || 'Sin nombre';
       model.appPill = 'App: lista';
       model.authPill = current.authReady ? 'Auth: listo' : 'Auth: pendiente';
-      model.dbPill = current.firestoreReady ? 'Firestore: listo' : 'Firestore: pendiente';
+      model.dbPill = current.databaseReady ? 'Realtime DB: listo' : 'Realtime DB: pendiente';
       model.functionsPill = current.functionsReady ? 'Functions: listo' : 'Functions: pendiente';
       model.appReady = !!current.appReady;
       model.authReady = !!current.authReady;
-      model.dbReady = !!current.firestoreReady;
+      model.dbReady = !!current.databaseReady;
       model.functionsReady = !!current.functionsReady;
       return model;
     }
@@ -2753,7 +2753,7 @@
       model.projectId = projectId || 'Detectado';
       model.appPill = 'App: con error';
       model.authPill = 'Auth: pendiente';
-      model.dbPill = 'Firestore: pendiente';
+      model.dbPill = 'Realtime DB: pendiente';
       model.functionsPill = 'Functions: pendiente';
       return model;
     }
@@ -2828,6 +2828,1105 @@
         });
       });
     }
+  }
+
+
+  const FIREBASE_SETTINGS_KEY = (window.A33FirebaseSettings && window.A33FirebaseSettings.storageKey) || 'suite_a33_firebase_settings_v1';
+  const FIREBASE_DEVICE_KEY = (window.A33FirebaseSettings && window.A33FirebaseSettings.deviceKey) || 'suite_a33_firebase_device_id_v1';
+  const FIREBASE_CREDENTIAL_KEYS = [
+    'apiKey',
+    'authDomain',
+    'databaseURL',
+    'projectId',
+    'storageBucket',
+    'messagingSenderId',
+    'appId',
+    'measurementId'
+  ];
+  const FIREBASE_REQUIRED_WHEN_ENABLED = [
+    { key: 'apiKey', label: 'apiKey' },
+    { key: 'authDomain', label: 'authDomain' },
+    { key: 'databaseURL', label: 'databaseURL' },
+    { key: 'projectId', label: 'projectId' },
+    { key: 'appId', label: 'appId' }
+  ];
+  const FIREBASE_FIELD_MAP = [
+    { path: 'enabled', id: 'cfg-firebase-enabled', type: 'checkbox' },
+    { path: 'credentials.apiKey', id: 'cfg-firebase-apiKey' },
+    { path: 'credentials.authDomain', id: 'cfg-firebase-authDomain' },
+    { path: 'credentials.databaseURL', id: 'cfg-firebase-databaseURL' },
+    { path: 'credentials.projectId', id: 'cfg-firebase-projectId' },
+    { path: 'credentials.storageBucket', id: 'cfg-firebase-storageBucket' },
+    { path: 'credentials.messagingSenderId', id: 'cfg-firebase-messagingSenderId' },
+    { path: 'credentials.appId', id: 'cfg-firebase-appId' },
+    { path: 'credentials.measurementId', id: 'cfg-firebase-measurementId' },
+    { path: 'workspaceId', id: 'cfg-firebase-workspaceId' },
+    { path: 'workspaceName', id: 'cfg-firebase-workspaceName' },
+    { path: 'environment', id: 'cfg-firebase-environment' },
+    { path: 'deviceId', id: 'cfg-firebase-deviceId' },
+    { path: 'deviceName', id: 'cfg-firebase-deviceName' }
+  ];
+  let firebaseClearCredentialsArmed = false;
+  let firebaseClearCredentialsTimer = null;
+  const FIREBASE_PASSPHRASE_KEY = 'suite_a33_firebase_passphrase_hash_v1';
+  const FIREBASE_PASSPHRASE_MIN_LENGTH = 6;
+  let firebaseSectionUnlocked = false;
+
+  function getFirebasePassphraseRecord(){
+    try{
+      const raw = localStorage.getItem(FIREBASE_PASSPHRASE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && parsed.hash && parsed.salt ? parsed : null;
+    }catch(error){
+      return null;
+    }
+  }
+
+  function makeFirebaseSalt(){
+    try{
+      const bytes = new Uint8Array(16);
+      if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+      else bytes.forEach((_, idx) => { bytes[idx] = Math.floor(Math.random() * 256); });
+      return Array.from(bytes).map((n) => n.toString(16).padStart(2, '0')).join('');
+    }catch(error){
+      return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+    }
+  }
+
+  function bufferToHex(buffer){
+    return Array.from(new Uint8Array(buffer)).map((n) => n.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function hashFirebasePassphrase(passphrase, salt, iterations){
+    const phrase = String(passphrase || '');
+    const cleanSalt = String(salt || '');
+    const count = Math.max(120000, Number(iterations || 150000));
+    if (window.crypto && window.crypto.subtle && window.TextEncoder){
+      const enc = new TextEncoder();
+      const keyMaterial = await window.crypto.subtle.importKey('raw', enc.encode(phrase), { name: 'PBKDF2' }, false, ['deriveBits']);
+      const bits = await window.crypto.subtle.deriveBits({ name: 'PBKDF2', salt: enc.encode(cleanSalt), iterations: count, hash: 'SHA-256' }, keyMaterial, 256);
+      return { algo: 'PBKDF2-SHA256', iterations: count, hash: bufferToHex(bits) };
+    }
+    let h1 = 2166136261;
+    let h2 = 16777619;
+    const input = `${cleanSalt}::${phrase}`;
+    for (let round = 0; round < 12000; round += 1){
+      for (let i = 0; i < input.length; i += 1){
+        h1 ^= input.charCodeAt(i) + round;
+        h1 = Math.imul(h1, 16777619);
+        h2 ^= h1 >>> 13;
+        h2 = Math.imul(h2, 2246822519);
+      }
+    }
+    return { algo: 'LOCAL-FALLBACK', iterations: 12000, hash: `${(h1 >>> 0).toString(16)}${(h2 >>> 0).toString(16)}` };
+  }
+
+  async function verifyFirebasePassphrase(passphrase){
+    const record = getFirebasePassphraseRecord();
+    if (!record) return false;
+    const hashed = await hashFirebasePassphrase(passphrase, record.salt, record.iterations);
+    return String(hashed.hash) === String(record.hash);
+  }
+
+  async function saveFirebasePassphrase(passphrase){
+    const clean = String(passphrase || '');
+    if (clean.length < FIREBASE_PASSPHRASE_MIN_LENGTH) return { ok: false, message: 'La palabra clave debe tener al menos 6 caracteres.' };
+    const salt = makeFirebaseSalt();
+    const hashed = await hashFirebasePassphrase(clean, salt, 150000);
+    const record = {
+      version: 1,
+      algo: hashed.algo,
+      iterations: hashed.iterations,
+      salt,
+      hash: hashed.hash,
+      createdAt: formatPwaDateForStorage(new Date()),
+      updatedAt: formatPwaDateForStorage(new Date())
+    };
+    localStorage.setItem(FIREBASE_PASSPHRASE_KEY, JSON.stringify(record));
+    return { ok: true };
+  }
+
+  function setFirebasePassphraseMessage(message, isError){
+    const el = document.getElementById('cfg-firebase-lock-message');
+    if (el){
+      el.textContent = message || '';
+      el.dataset.state = isError ? 'error' : 'ok';
+    }
+  }
+
+  function setFirebaseProtectedUi(unlocked){
+    firebaseSectionUnlocked = !!unlocked;
+    const hasPassphrase = !!getFirebasePassphraseRecord();
+    const panel = document.querySelector('.cfg-firebase-panel');
+    const form = document.getElementById('cfg-firebase-form');
+    const createBox = document.getElementById('cfg-firebase-create-passphrase-box');
+    const unlockBox = document.getElementById('cfg-firebase-unlock-box');
+    const status = document.getElementById('cfg-firebase-passphrase-status');
+    if (panel) panel.dataset.firebaseUnlocked = firebaseSectionUnlocked ? 'true' : 'false';
+    if (form) form.hidden = !firebaseSectionUnlocked;
+    if (createBox) createBox.hidden = hasPassphrase;
+    if (unlockBox) unlockBox.hidden = !hasPassphrase || firebaseSectionUnlocked;
+    if (status){
+      status.textContent = !hasPassphrase
+        ? 'Palabra clave no configurada'
+        : (firebaseSectionUnlocked ? 'Apartado desbloqueado' : 'Apartado bloqueado');
+    }
+    setFirebaseBadge(firebaseSectionUnlocked ? 'Desbloqueado' : (hasPassphrase ? 'Bloqueado' : 'Clave pendiente'), firebaseSectionUnlocked ? 'ready' : 'disabled');
+    if (!hasPassphrase){
+      setFirebasePassphraseMessage('Crear palabra clave inicial para ver/editar Firebase. Protección local, no seguridad fuerte de Firebase.', false);
+    } else if (firebaseSectionUnlocked){
+      setFirebasePassphraseMessage('Apartado Firebase desbloqueado en esta sesión. Podés bloquear manualmente al terminar.', false);
+    } else {
+      setFirebasePassphraseMessage('Ingresá la palabra clave para ver credenciales o ejecutar acciones sensibles.', false);
+    }
+  }
+
+  function requireFirebaseUnlocked(actionLabel){
+    if (firebaseSectionUnlocked) return true;
+    setFirebaseProtectedUi(false);
+    showToast(`${actionLabel || 'Esta acción'} requiere desbloquear Firebase.`);
+    return false;
+  }
+
+  function clearFirebasePassphraseInputs(scope){
+    const ids = scope === 'change'
+      ? ['cfg-firebase-current-passphrase', 'cfg-firebase-change-passphrase', 'cfg-firebase-change-passphrase-confirm']
+      : scope === 'create'
+        ? ['cfg-firebase-new-passphrase', 'cfg-firebase-confirm-passphrase']
+        : ['cfg-firebase-passphrase'];
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+  }
+
+  async function createFirebasePassphrase(){
+    const one = document.getElementById('cfg-firebase-new-passphrase');
+    const two = document.getElementById('cfg-firebase-confirm-passphrase');
+    const value = one ? one.value : '';
+    const confirm = two ? two.value : '';
+    if (value !== confirm){
+      setFirebasePassphraseMessage('Las palabras clave no coinciden.', true);
+      showToast('Las palabras clave no coinciden.');
+      return;
+    }
+    const result = await saveFirebasePassphrase(value);
+    if (!result.ok){
+      setFirebasePassphraseMessage(result.message, true);
+      showToast(result.message);
+      return;
+    }
+    clearFirebasePassphraseInputs('create');
+    setFirebaseProtectedUi(true);
+    renderFirebaseSettings(readFirebaseSettings());
+    showToast('Palabra clave creada. Firebase quedó desbloqueado localmente.');
+  }
+
+  async function unlockFirebaseSection(){
+    const input = document.getElementById('cfg-firebase-passphrase');
+    const ok = await verifyFirebasePassphrase(input ? input.value : '');
+    if (!ok){
+      setFirebasePassphraseMessage('Palabra clave incorrecta. Revisá y probá de nuevo.', true);
+      showToast('Palabra clave incorrecta.');
+      return;
+    }
+    clearFirebasePassphraseInputs('unlock');
+    setFirebaseProtectedUi(true);
+    renderFirebaseSettings(readFirebaseSettings());
+    showToast('Firebase desbloqueado.');
+  }
+
+  async function changeFirebasePassphrase(){
+    if (!requireFirebaseUnlocked('Cambiar palabra clave')) return;
+    const current = document.getElementById('cfg-firebase-current-passphrase');
+    const next = document.getElementById('cfg-firebase-change-passphrase');
+    const confirm = document.getElementById('cfg-firebase-change-passphrase-confirm');
+    const ok = await verifyFirebasePassphrase(current ? current.value : '');
+    if (!ok){
+      showToast('La palabra clave actual no es correcta.');
+      return;
+    }
+    if ((next ? next.value : '') !== (confirm ? confirm.value : '')){
+      showToast('La nueva palabra clave no coincide.');
+      return;
+    }
+    const result = await saveFirebasePassphrase(next ? next.value : '');
+    if (!result.ok){
+      showToast(result.message);
+      return;
+    }
+    clearFirebasePassphraseInputs('change');
+    setFirebaseProtectedUi(true);
+    showToast('Palabra clave cambiada localmente.');
+  }
+
+  function lockFirebaseSection(){
+    resetFirebaseClearButton();
+    clearFirebasePassphraseInputs('unlock');
+    clearFirebasePassphraseInputs('change');
+    setFirebaseProtectedUi(false);
+    showToast('Firebase bloqueado.');
+  }
+
+  function toggleFirebasePassphraseVisibility(scope){
+    const map = {
+      create: ['cfg-firebase-new-passphrase', 'cfg-firebase-confirm-passphrase'],
+      unlock: ['cfg-firebase-passphrase'],
+      change: ['cfg-firebase-current-passphrase', 'cfg-firebase-change-passphrase', 'cfg-firebase-change-passphrase-confirm']
+    };
+    (map[scope] || []).forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.type = el.type === 'password' ? 'text' : 'password';
+    });
+  }
+
+  function initFirebaseLocalLock(){
+    setFirebaseProtectedUi(false);
+    const createBtn = document.getElementById('cfg-firebase-create-passphrase');
+    if (createBtn) createBtn.addEventListener('click', createFirebasePassphrase);
+    const unlockBtn = document.getElementById('cfg-firebase-unlock');
+    if (unlockBtn) unlockBtn.addEventListener('click', unlockFirebaseSection);
+    const lockBtn = document.getElementById('cfg-firebase-lock-now');
+    if (lockBtn) lockBtn.addEventListener('click', lockFirebaseSection);
+    const changeBtn = document.getElementById('cfg-firebase-change-passphrase-btn');
+    if (changeBtn) changeBtn.addEventListener('click', changeFirebasePassphrase);
+    document.querySelectorAll('[data-firebase-toggle-passphrase]').forEach((btn) => {
+      btn.addEventListener('click', () => toggleFirebasePassphraseVisibility(btn.dataset.firebaseTogglePassphrase));
+    });
+    document.querySelectorAll('[data-target]').forEach((btn) => {
+      if (btn.dataset.target !== 'firebase') btn.addEventListener('click', () => { if (firebaseSectionUnlocked) lockFirebaseSection(); });
+    });
+    document.querySelectorAll('#cfg-panel-firebase [data-cfg-back], #cfg-panel-firebase .cfg-nav-chip--home').forEach((btn) => {
+      btn.addEventListener('click', () => { if (firebaseSectionUnlocked) lockFirebaseSection(); });
+    });
+    ['cfg-firebase-passphrase', 'cfg-firebase-new-passphrase', 'cfg-firebase-confirm-passphrase'].forEach((id) => {
+      const input = document.getElementById(id);
+      if (!input) return;
+      input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        if (id === 'cfg-firebase-passphrase') unlockFirebaseSection();
+        else createFirebasePassphrase();
+      });
+    });
+  }
+
+  function generateFirebaseDeviceId(){
+    const stamp = Date.now().toString(36);
+    const random = Math.random().toString(36).slice(2, 10);
+    return `device_${stamp}_${random}`;
+  }
+
+  function ensureFirebaseDeviceId(){
+    if (window.A33FirebaseSettings && typeof window.A33FirebaseSettings.ensureDeviceId === 'function'){
+      return window.A33FirebaseSettings.ensureDeviceId();
+    }
+    try{
+      const current = localStorage.getItem(FIREBASE_DEVICE_KEY);
+      if (current) return cleanFirebaseText(current, 120);
+      const next = generateFirebaseDeviceId();
+      localStorage.setItem(FIREBASE_DEVICE_KEY, next);
+      return next;
+    }catch(_){
+      return generateFirebaseDeviceId();
+    }
+  }
+
+  function normalizeFirebaseWorkspaceId(value){
+    if (window.A33FirebaseSettings && typeof window.A33FirebaseSettings.normalizeWorkspaceId === 'function'){
+      return window.A33FirebaseSettings.normalizeWorkspaceId(value);
+    }
+    let raw = cleanFirebaseText(value, 100).toLowerCase();
+    try{ raw = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }catch(_){ }
+    return raw.replace(/\s+/g, '').replace(/[^a-z0-9_-]/g, '').slice(0, 80);
+  }
+
+  function isProbablyFirebaseDatabaseURL(value){
+    if (window.A33FirebaseSettings && typeof window.A33FirebaseSettings.isProbablyDatabaseURL === 'function'){
+      return window.A33FirebaseSettings.isProbablyDatabaseURL(value);
+    }
+    const raw = cleanFirebaseText(value, 420);
+    if (!raw) return false;
+    try{
+      const url = new URL(raw);
+      const host = String(url.hostname || '').toLowerCase();
+      return url.protocol === 'https:' && (
+        host.endsWith('.firebaseio.com') ||
+        host.endsWith('.firebasedatabase.app') ||
+        host.includes('-default-rtdb.')
+      );
+    }catch(_){
+      return false;
+    }
+  }
+
+  function buildDefaultFirebaseSettings(){
+    if (window.A33FirebaseSettings && typeof window.A33FirebaseSettings.defaults === 'function'){
+      return window.A33FirebaseSettings.defaults();
+    }
+    return {
+      version: 2,
+      enabled: false,
+      configured: false,
+      mode: 'hybrid',
+      workspaceId: 'arcano33',
+      workspaceName: 'Arcano 33',
+      environment: 'production',
+      deviceId: ensureFirebaseDeviceId(),
+      deviceName: '',
+      credentials: {
+        apiKey: '',
+        authDomain: '',
+        databaseURL: '',
+        projectId: '',
+        storageBucket: '',
+        messagingSenderId: '',
+        appId: '',
+        measurementId: ''
+      },
+      lastConnectionTestAt: '',
+      lastConnectionStatus: 'not-tested',
+      lastConnectionPath: '',
+      lastSyncAt: '',
+      lastError: '',
+      pendingLocalCount: 0,
+      updatedAt: ''
+    };
+  }
+
+  function cleanFirebaseText(value, maxLen = 480){
+    return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, maxLen);
+  }
+
+  function normalizeFirebaseEnvironment(value){
+    const env = cleanFirebaseText(value, 40).toLowerCase();
+    return ['production', 'staging', 'development'].includes(env) ? env : 'production';
+  }
+
+  function hasMinimumFirebaseSettings(settings){
+    if (window.A33FirebaseSettings && typeof window.A33FirebaseSettings.hasMinimumConfig === 'function'){
+      return window.A33FirebaseSettings.hasMinimumConfig(settings);
+    }
+    const data = settings && typeof settings === 'object' ? settings : {};
+    const c = data.credentials && typeof data.credentials === 'object' ? data.credentials : {};
+    return !!(
+      normalizeFirebaseWorkspaceId(data.workspaceId || '') &&
+      cleanFirebaseText(c.apiKey) &&
+      cleanFirebaseText(c.authDomain) &&
+      cleanFirebaseText(c.databaseURL) &&
+      isProbablyFirebaseDatabaseURL(c.databaseURL) &&
+      cleanFirebaseText(c.projectId) &&
+      cleanFirebaseText(c.appId)
+    );
+  }
+
+  function normalizeFirebaseSettings(settings){
+    if (window.A33FirebaseSettings && typeof window.A33FirebaseSettings.normalize === 'function'){
+      return window.A33FirebaseSettings.normalize(settings);
+    }
+    const base = buildDefaultFirebaseSettings();
+    const src = (settings && typeof settings === 'object') ? settings : {};
+    const srcCreds = (src.credentials && typeof src.credentials === 'object') ? src.credentials : src;
+    const credentials = {};
+    FIREBASE_CREDENTIAL_KEYS.forEach((key) => {
+      credentials[key] = cleanFirebaseText(srcCreds[key]);
+    });
+    const hasWorkspace = Object.prototype.hasOwnProperty.call(src, 'workspaceId');
+    const rawWorkspace = hasWorkspace ? src.workspaceId : base.workspaceId;
+    const data = {
+      ...base,
+      version: 2,
+      enabled: !!src.enabled,
+      mode: 'hybrid',
+      workspaceId: normalizeFirebaseWorkspaceId(rawWorkspace),
+      workspaceName: cleanFirebaseText(src.workspaceName || base.workspaceName, 140) || base.workspaceName,
+      environment: normalizeFirebaseEnvironment(src.environment || base.environment),
+      deviceId: cleanFirebaseText(src.deviceId, 120) || ensureFirebaseDeviceId(),
+      deviceName: cleanFirebaseText(src.deviceName, 120),
+      credentials,
+      lastConnectionTestAt: cleanFirebaseText(src.lastConnectionTestAt, 80),
+      lastConnectionStatus: cleanFirebaseText(src.lastConnectionStatus, 80) || 'not-tested',
+      lastConnectionPath: cleanFirebaseText(src.lastConnectionPath, 240),
+      lastSyncAt: cleanFirebaseText(src.lastSyncAt, 80),
+      lastError: cleanFirebaseText(src.lastError, 240),
+      pendingLocalCount: Math.max(0, Number.parseInt(src.pendingLocalCount || 0, 10) || 0),
+      updatedAt: cleanFirebaseText(src.updatedAt, 80)
+    };
+    data.configured = hasMinimumFirebaseSettings(data);
+    return data;
+  }
+
+  function readFirebaseSettings(){
+    if (window.A33FirebaseSettings && typeof window.A33FirebaseSettings.read === 'function'){
+      return normalizeFirebaseSettings(window.A33FirebaseSettings.read());
+    }
+    try{
+      if (window.A33Storage && typeof window.A33Storage.getJSON === 'function'){
+        return normalizeFirebaseSettings(window.A33Storage.getJSON(FIREBASE_SETTINGS_KEY, buildDefaultFirebaseSettings(), 'local'));
+      }
+    }catch(_){ }
+    try{
+      const raw = localStorage.getItem(FIREBASE_SETTINGS_KEY);
+      return normalizeFirebaseSettings(raw ? JSON.parse(raw) : buildDefaultFirebaseSettings());
+    }catch(_){
+      return normalizeFirebaseSettings(buildDefaultFirebaseSettings());
+    }
+  }
+
+  function writeFirebaseSettings(settings){
+    const data = normalizeFirebaseSettings(settings);
+    if (window.A33FirebaseSettings && typeof window.A33FirebaseSettings.save === 'function'){
+      const result = window.A33FirebaseSettings.save(data);
+      return !!(result && result.ok);
+    }
+    try{
+      if (window.A33Storage && typeof window.A33Storage.setJSON === 'function'){
+        return !!window.A33Storage.setJSON(FIREBASE_SETTINGS_KEY, data, 'local');
+      }
+    }catch(_){ }
+    try{
+      localStorage.setItem(FIREBASE_SETTINGS_KEY, JSON.stringify(data));
+      return true;
+    }catch(_){
+      return false;
+    }
+  }
+
+  function getFirebaseValueByPath(data, path){
+    const parts = String(path || '').split('.');
+    let cur = data;
+    for (const part of parts){
+      if (!cur || typeof cur !== 'object') return '';
+      cur = cur[part];
+    }
+    return cur ?? '';
+  }
+
+  function setFirebaseValueByPath(data, path, value){
+    const parts = String(path || '').split('.');
+    let cur = data;
+    while (parts.length > 1){
+      const part = parts.shift();
+      if (!cur[part] || typeof cur[part] !== 'object') cur[part] = {};
+      cur = cur[part];
+    }
+    cur[parts[0]] = value;
+  }
+
+  function setFirebaseText(id, value){
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = String(value || '');
+  }
+
+  function formatFirebaseStamp(value){
+    return value ? formatPwaTimestamp(value) : 'Sin registros';
+  }
+
+  function updateFirebaseOnlineStatus(){
+    const el = document.getElementById('cfg-firebase-online-status');
+    if (!el) return;
+    if (typeof navigator === 'undefined' || typeof navigator.onLine !== 'boolean'){
+      el.textContent = 'Sin detectar';
+      return;
+    }
+    el.textContent = navigator.onLine ? 'En línea' : 'Sin conexión';
+  }
+
+  function setFirebaseBadge(text, state){
+    const main = document.getElementById('cfg-firebase-save-state');
+    const side = document.getElementById('cfg-firebase-side-badge');
+    [main, side].forEach((badge) => {
+      if (!badge) return;
+      badge.textContent = text;
+      if (state) badge.dataset.firebaseState = state;
+    });
+  }
+
+  function markFirebaseFieldInvalid(id, invalid){
+    const el = document.getElementById(id);
+    const field = el && el.closest ? el.closest('.cfg-report-field') : null;
+    if (!field) return;
+    field.classList.toggle('cfg-field-invalid', !!invalid);
+  }
+
+  function getFirebaseSecretWarnings(data){
+    const creds = data && data.credentials ? data.credentials : {};
+    const joined = FIREBASE_CREDENTIAL_KEYS.map((key) => cleanFirebaseText(creds[key], 1200).toLowerCase()).join(' ');
+    const forbidden = ['private_key', 'serviceaccount', 'service_account', 'client_email', 'admin sdk', 'begin private key'];
+    return forbidden.some((needle) => joined.includes(needle));
+  }
+
+  function getFirebaseValidation(data, options = {}){
+    const normalized = normalizeFirebaseSettings(data);
+    const creds = normalized.credentials || {};
+    const errors = [];
+    const warnings = [];
+    const invalidIds = new Set();
+
+    if (!normalized.workspaceId){
+      errors.push('workspaceId no puede quedar vacío. Usá letras, números, guion o guion bajo.');
+      invalidIds.add('cfg-firebase-workspaceId');
+    }
+
+    if (getFirebaseSecretWarnings(normalized)){
+      errors.push('No se pueden guardar llaves privadas, serviceAccount, client_email de servidor ni JSON de Admin SDK.');
+      FIREBASE_CREDENTIAL_KEYS.forEach((key) => invalidIds.add(`cfg-firebase-${key}`));
+    }
+
+    FIREBASE_REQUIRED_WHEN_ENABLED.forEach((field) => {
+      const value = cleanFirebaseText(creds[field.key]);
+      if (normalized.enabled && !value){
+        errors.push(`${field.label} es obligatorio cuando Firebase está activado.`);
+        invalidIds.add(`cfg-firebase-${field.key}`);
+      }
+    });
+
+    const dbValue = cleanFirebaseText(creds.databaseURL, 420);
+    if (dbValue && !isProbablyFirebaseDatabaseURL(dbValue)){
+      const msg = 'databaseURL no parece una URL válida de Firebase Realtime Database. Ejemplo: https://proyecto-default-rtdb.firebaseio.com';
+      if (normalized.enabled){
+        errors.push(msg);
+        invalidIds.add('cfg-firebase-databaseURL');
+      } else {
+        warnings.push(msg);
+        invalidIds.add('cfg-firebase-databaseURL');
+      }
+    }
+
+    if (options.includeConfiguredHint && normalized.enabled && normalized.configured){
+      warnings.push('Campos mínimos completos. Ya se puede usar Probar conexión técnica sin sincronizar datos de negocio.');
+    }
+
+    return { errors, warnings, invalidIds };
+  }
+
+  function renderFirebaseValidation(data, options = {}){
+    const validation = getFirebaseValidation(data, options);
+    const box = document.getElementById('cfg-firebase-validation');
+    const list = document.getElementById('cfg-firebase-validation-list');
+    FIREBASE_FIELD_MAP.forEach((field) => {
+      if (field.type === 'checkbox') return;
+      markFirebaseFieldInvalid(field.id, validation.invalidIds.has(field.id));
+    });
+    if (!box || !list) return validation;
+    const items = validation.errors.concat(validation.warnings);
+    const shouldShow = !!options.force || validation.errors.length > 0 || validation.warnings.length > 0;
+    box.hidden = !shouldShow;
+    box.dataset.level = validation.errors.length ? 'error' : 'warning';
+    list.innerHTML = '';
+    items.forEach((msg) => {
+      const li = document.createElement('li');
+      li.textContent = msg;
+      list.appendChild(li);
+    });
+    return validation;
+  }
+
+
+  function getFirebaseConnectionPathFromData(data){
+    const normalized = normalizeFirebaseSettings(data);
+    const workspace = normalizeFirebaseWorkspaceId(normalized.workspaceId || 'arcano33') || 'arcano33';
+    const device = cleanFirebaseText(normalized.deviceId, 120).toLowerCase().replace(/[^a-z0-9_-]/g, '_') || 'device';
+    return `workspaces/${workspace}/_meta/syncEngineTests/${device}`;
+  }
+
+  function getFirebaseCloudSyncStatus(){
+    try{
+      if (window.A33CloudSync && typeof window.A33CloudSync.getStatus === 'function'){
+        return window.A33CloudSync.getStatus();
+      }
+    }catch(_){ }
+    const data = normalizeFirebaseSettings(readFirebaseSettings());
+    const online = !(typeof navigator !== 'undefined' && navigator && navigator.onLine === false);
+    const configured = !!(data.enabled && data.configured);
+    const label = !data.enabled ? 'Inactivo' : (!online ? 'Sin conexión' : (configured ? 'Listo' : 'Error'));
+    const status = !data.enabled ? 'inactive' : (!online ? 'offline' : (configured ? 'ready' : 'error'));
+    return {
+      status,
+      label,
+      message: configured ? 'Motor listo para sincronización manual de Configuración y Catálogos. La Suite sigue local-first.' : 'Firebase debe estar activo y configurado para sincronizar manualmente.',
+      pendingCount: Number(data.pendingLocalCount || 0) || 0,
+      syncedCount: 0,
+      errorCount: 0,
+      lastSyncAt: data.lastSyncAt || '',
+      lastError: data.lastError || '',
+      technicalPath: getFirebaseConnectionPathFromData(data),
+      queueStorageKey: 'suite_a33_sync_queue_v1'
+    };
+  }
+
+  function renderFirebaseCloudSyncStatus(status){
+    const sync = status && typeof status === 'object' ? status : getFirebaseCloudSyncStatus();
+    const labelMap = {
+      inactive: 'Inactivo',
+      ready: 'Listo',
+      offline: 'Sin conexión',
+      error: 'Error',
+      testing: 'Listo',
+      queued: 'Listo'
+    };
+    const label = sync.label || labelMap[sync.status] || 'Inactivo';
+    const pending = Math.max(0, Number(sync.pendingCount || 0) || 0);
+    const errorCount = Math.max(0, Number(sync.errorCount || 0) || 0);
+    setFirebaseText('cfg-firebase-sync-state', label);
+    setFirebaseText('cfg-firebase-sync-state-detail', sync.message || 'Firebase no reemplaza almacenamiento local.');
+    setFirebaseText('cfg-firebase-pending-count', String(pending));
+    setFirebaseText('cfg-firebase-pending-detail', errorCount
+      ? `${errorCount} registro(s) con error; no se procesan datos reales en esta etapa.`
+      : 'syncQueue local creada; alcance Configuración/Catálogos.');
+    setFirebaseText('cfg-firebase-sync-last-sync', formatFirebaseStamp(sync.lastSyncAt));
+    setFirebaseText('cfg-firebase-sync-last-error', sync.lastError || 'Sin errores');
+    setFirebaseText('cfg-firebase-test-path', sync.technicalPath || getFirebaseConnectionPathFromData(readFirebaseSettings()));
+    const note = document.getElementById('cfg-firebase-sync-note');
+    if (note && sync.message){
+      note.textContent = sync.message;
+    }
+  }
+
+  function getFirebaseConnectionStatusLabel(status){
+    const value = cleanFirebaseText(status, 80) || 'not-tested';
+    const map = {
+      'not-tested': { text: 'No probado', detail: 'Sin prueba ejecutada.', badge: 'Listo local', state: 'local' },
+      'disabled': { text: 'Desactivado', detail: 'Firebase debe activarse y guardarse antes de probar.', badge: 'Desactivado', state: 'disabled' },
+      'not-configured': { text: 'No configurado', detail: 'Faltan credenciales mínimas guardadas.', badge: 'Revisar campos', state: 'error' },
+      'ready-to-test': { text: 'Listo para probar', detail: 'Credenciales mínimas guardadas.', badge: 'Listo local', state: 'ready' },
+      'testing': { text: 'Probando...', detail: 'Ejecutando escritura/lectura técnica.', badge: 'Probando', state: 'local' },
+      'connected': { text: 'Conexión OK', detail: 'Lectura/escritura técnica completada.', badge: 'Conectado', state: 'ready' },
+      'ok': { text: 'Conexión OK', detail: 'Lectura/escritura técnica completada.', badge: 'Conectado', state: 'ready' },
+      'permission-denied': { text: 'Reglas bloquean', detail: 'Firebase respondió, pero las reglas no permiten esta prueba.', badge: 'Reglas bloquean', state: 'error' },
+      'offline': { text: 'Sin conexión', detail: 'El navegador no tiene conexión o no pudo cargar el SDK.', badge: 'Sin conexión', state: 'error' },
+      'error': { text: 'Error de conexión', detail: 'Revisá credenciales, databaseURL y reglas.', badge: 'Error conexión', state: 'error' }
+    };
+    return map[value] || map.error;
+  }
+
+  function renderFirebaseRuntimeState(state){
+    const current = state && typeof state === 'object' ? state : null;
+    if (!current) return;
+    const testResult = document.getElementById('cfg-firebase-test-result');
+    const testDetail = document.getElementById('cfg-firebase-test-detail');
+    const statusStrong = document.getElementById('cfg-firebase-status-connection');
+    const statusDetail = document.getElementById('cfg-firebase-status-connection-detail');
+    const path = cleanFirebaseText(current.connectionPath, 240);
+    const label = getFirebaseConnectionStatusLabel(current.status || 'not-tested');
+    if (testResult) testResult.textContent = label.text;
+    if (testDetail) testDetail.textContent = current.message || label.detail;
+    if (statusStrong) statusStrong.textContent = label.text;
+    if (statusDetail) statusDetail.textContent = current.message || label.detail;
+    setFirebaseText('cfg-firebase-status-path', path || getFirebaseConnectionPathFromData(readFirebaseSettings()));
+    setFirebaseText('cfg-firebase-test-path', path || getFirebaseConnectionPathFromData(readFirebaseSettings()));
+    if (current.lastConnectionTestAt){
+      setFirebaseText('cfg-firebase-status-last-test', formatFirebaseStamp(current.lastConnectionTestAt));
+    }
+    if (current.lastError){
+      setFirebaseText('cfg-firebase-status-last-error', current.lastError);
+    }
+    if (current.status === 'connected'){
+      setFirebaseText('cfg-firebase-status-last-error', 'Sin errores');
+    }
+  }
+
+  function getFirebaseStateLabel(data){
+    const normalized = normalizeFirebaseSettings(data);
+    const connection = getFirebaseConnectionStatusLabel(normalized.lastConnectionStatus);
+    if (normalized.enabled && normalized.configured && ['connected', 'ok'].includes(normalized.lastConnectionStatus)) return { text: 'Conexión probada', badge: connection.badge, state: connection.state };
+    if (normalized.enabled && normalized.configured) return { text: 'Listo para probar conexión', badge: 'Listo local', state: 'ready' };
+    if (normalized.configured) return { text: 'Configurado localmente', badge: 'Configurado local', state: 'local' };
+    if (!normalized.enabled) return { text: 'No configurado', badge: 'Desactivado', state: 'disabled' };
+    return { text: 'No configurado', badge: 'Revisar campos', state: 'error' };
+  }
+
+  function renderFirebaseSettings(settings, options = {}){
+    const data = normalizeFirebaseSettings(settings);
+    FIREBASE_FIELD_MAP.forEach((field) => {
+      const el = document.getElementById(field.id);
+      if (!el) return;
+      const value = getFirebaseValueByPath(data, field.path);
+      if (field.type === 'checkbox'){
+        el.checked = !!value;
+      } else {
+        el.value = String(value || '');
+      }
+    });
+
+    const enabledText = data.enabled ? 'Activado' : 'Desactivado';
+    const stateLabel = getFirebaseStateLabel(data);
+    const lastErrorText = data.lastError || 'Sin errores';
+    const connectionLabel = getFirebaseConnectionStatusLabel(data.lastConnectionStatus);
+    const connectionPath = data.lastConnectionPath || getFirebaseConnectionPathFromData(data);
+
+    setFirebaseText('cfg-firebase-status-enabled', enabledText);
+    setFirebaseText('cfg-firebase-status-configured', stateLabel.text);
+    setFirebaseText('cfg-firebase-status-mode', 'Híbrido local-first');
+    setFirebaseText('cfg-firebase-status-workspace', data.workspaceId || 'arcano33');
+    setFirebaseText('cfg-firebase-status-workspace-name', data.workspaceName || 'Arcano 33');
+    setFirebaseText('cfg-firebase-status-device', data.deviceId || 'Sin deviceId');
+    setFirebaseText('cfg-firebase-status-device-name', data.deviceName || 'Nombre opcional pendiente');
+    setFirebaseText('cfg-firebase-status-last-test', formatFirebaseStamp(data.lastConnectionTestAt));
+    setFirebaseText('cfg-firebase-status-connection', connectionLabel.text);
+    setFirebaseText('cfg-firebase-status-connection-detail', data.lastError || connectionLabel.detail);
+    setFirebaseText('cfg-firebase-status-path', connectionPath);
+    setFirebaseText('cfg-firebase-test-result', connectionLabel.text);
+    setFirebaseText('cfg-firebase-test-detail', data.lastError || connectionLabel.detail);
+    setFirebaseText('cfg-firebase-test-path', connectionPath);
+    setFirebaseText('cfg-firebase-status-last-sync', formatFirebaseStamp(data.lastSyncAt));
+    setFirebaseText('cfg-firebase-status-last-error', lastErrorText);
+    setFirebaseText('cfg-firebase-hero-workspace', data.workspaceId || 'arcano33');
+    renderFirebaseCloudSyncStatus(getFirebaseCloudSyncStatus());
+
+    const heroCopy = document.getElementById('cfg-firebase-hero-copy');
+    if (heroCopy){
+      if (data.enabled && data.configured){
+        heroCopy.textContent = 'Campos mínimos completos. Podés probar conexión técnica y preparar el motor híbrido sin sincronizar datos de negocio.';
+      } else if (data.configured){
+        heroCopy.textContent = 'Credenciales web guardadas localmente. Firebase sigue desactivado hasta que lo activés para la prueba técnica.';
+      } else if (data.enabled){
+        heroCopy.textContent = 'Firebase está activado localmente, pero faltan campos principales o databaseURL válida.';
+      } else {
+        heroCopy.textContent = 'Firebase está desactivado. La Suite conserva almacenamiento local como prioridad y mantiene syncQueue local en espera.';
+      }
+    }
+
+    setFirebaseBadge(stateLabel.badge, stateLabel.state);
+    updateFirebaseOnlineStatus();
+    renderFirebaseValidation(data, { force: false });
+    renderFirebaseRuntimeState((window.A33Firebase && typeof window.A33Firebase.getState === 'function') ? window.A33Firebase.getState() : null);
+
+    if (!options.silent){
+      const note = document.getElementById('cfg-firebase-inline-note');
+      if (note){
+        note.textContent = data.updatedAt
+          ? `Último guardado local: ${formatPwaTimestamp(data.updatedAt)}. Prueba técnica disponible; sincronización cerrada.`
+          : 'Guardado local y prueba técnica solamente. Sin sincronización de datos de negocio.';
+      }
+    }
+  }
+
+  function collectFirebaseSettingsFromForm(){
+    const data = normalizeFirebaseSettings(readFirebaseSettings());
+    FIREBASE_FIELD_MAP.forEach((field) => {
+      const el = document.getElementById(field.id);
+      if (!el) return;
+      const value = field.type === 'checkbox' ? !!el.checked : cleanFirebaseText(el.value, 520);
+      setFirebaseValueByPath(data, field.path, value);
+    });
+    data.workspaceId = normalizeFirebaseWorkspaceId(data.workspaceId);
+    data.deviceId = cleanFirebaseText(data.deviceId, 120) || ensureFirebaseDeviceId();
+    data.deviceName = cleanFirebaseText(data.deviceName, 120);
+    data.mode = 'hybrid';
+    data.lastConnectionTestAt = cleanFirebaseText(data.lastConnectionTestAt, 80);
+    data.lastConnectionStatus = cleanFirebaseText(data.lastConnectionStatus, 80) || 'not-tested';
+    data.lastConnectionPath = cleanFirebaseText(data.lastConnectionPath, 240);
+    data.lastSyncAt = cleanFirebaseText(data.lastSyncAt, 80);
+    data.lastError = cleanFirebaseText(data.lastError, 240);
+    data.updatedAt = formatPwaDateForStorage(new Date());
+    return normalizeFirebaseSettings(data);
+  }
+
+  function markFirebaseDirty(){
+    if (!requireFirebaseUnlocked('Editar Firebase')) return;
+    const data = collectFirebaseSettingsFromForm();
+    renderFirebaseSettings(data, { silent: true });
+    setFirebaseBadge('Cambios pendientes', 'local');
+    const note = document.getElementById('cfg-firebase-inline-note');
+    if (note) note.textContent = 'Hay cambios sin guardar. Presioná Guardar configuración Firebase para conservarlos localmente.';
+  }
+
+  function saveFirebaseSettings(event){
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (!requireFirebaseUnlocked('Guardar configuración Firebase')) return;
+    const data = collectFirebaseSettingsFromForm();
+    const validation = renderFirebaseValidation(data, { force: true });
+    if (validation.errors.length){
+      setFirebaseBadge('Revisar campos', 'error');
+      const note = document.getElementById('cfg-firebase-inline-note');
+      if (note) note.textContent = 'No se guardó. Corregí las advertencias obligatorias de Firebase.';
+      showToast('Revisá los campos obligatorios de Firebase.');
+      return;
+    }
+    const ok = writeFirebaseSettings(data);
+    if (!ok){
+      setFirebaseBadge('Error local', 'error');
+      showToast('No se pudo guardar Firebase en este navegador.');
+      return;
+    }
+    renderFirebaseSettings(data);
+    const stateLabel = getFirebaseStateLabel(data);
+    setFirebaseBadge(stateLabel.badge, stateLabel.state);
+    showToast(data.enabled && data.configured
+      ? 'Firebase quedó listo localmente para probar conexión.'
+      : (data.configured ? 'Configuración Firebase guardada localmente.' : 'Firebase guardado localmente como base no configurada.'));
+  }
+
+  function resetFirebaseClearButton(){
+    firebaseClearCredentialsArmed = false;
+    const btn = document.getElementById('cfg-firebase-clear-credentials');
+    if (btn) btn.textContent = 'Limpiar credenciales';
+    if (firebaseClearCredentialsTimer){
+      clearTimeout(firebaseClearCredentialsTimer);
+      firebaseClearCredentialsTimer = null;
+    }
+  }
+
+  function clearFirebaseCredentials(event){
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (!requireFirebaseUnlocked('Limpiar credenciales Firebase')) return;
+    const btn = document.getElementById('cfg-firebase-clear-credentials');
+    const note = document.getElementById('cfg-firebase-inline-note');
+    if (!firebaseClearCredentialsArmed){
+      firebaseClearCredentialsArmed = true;
+      if (btn) btn.textContent = 'Confirmar limpiar credenciales';
+      if (note) note.textContent = 'Confirmación requerida: volver a presionar para borrar solo credenciales Firebase. No toca datos de negocio.';
+      firebaseClearCredentialsTimer = setTimeout(resetFirebaseClearButton, 9000);
+      return;
+    }
+    const data = collectFirebaseSettingsFromForm();
+    FIREBASE_CREDENTIAL_KEYS.forEach((key) => { data.credentials[key] = ''; });
+    data.configured = false;
+    data.lastError = '';
+    data.lastConnectionStatus = 'not-tested';
+    data.lastConnectionPath = '';
+    data.lastConnectionTestAt = '';
+    data.updatedAt = formatPwaDateForStorage(new Date());
+    const ok = writeFirebaseSettings(data);
+    resetFirebaseClearButton();
+    if (!ok){
+      setFirebaseBadge('Error local', 'error');
+      showToast('No se pudieron limpiar las credenciales.');
+      return;
+    }
+    renderFirebaseSettings(data);
+    setFirebaseBadge(data.enabled ? 'Revisar campos' : 'Desactivado', data.enabled ? 'error' : 'disabled');
+    if (note) note.textContent = 'Credenciales Firebase limpiadas. Workspace, dispositivo y datos de negocio permanecen intactos.';
+    showToast('Credenciales Firebase limpiadas localmente.');
+  }
+
+
+  async function testFirebaseConnection(event){
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (!requireFirebaseUnlocked('Probar conexión Firebase')) return;
+    const btn = document.getElementById('cfg-firebase-test-connection');
+    const note = document.getElementById('cfg-firebase-inline-note');
+    const saved = normalizeFirebaseSettings(readFirebaseSettings());
+    const validation = renderFirebaseValidation(saved, { force: true });
+
+    if (validation.errors.length){
+      const message = validation.errors[0] || 'Faltan credenciales mínimas guardadas para probar Firebase.';
+      saved.lastConnectionTestAt = formatPwaDateForStorage(new Date());
+      saved.lastConnectionStatus = 'not-configured';
+      saved.lastConnectionPath = getFirebaseConnectionPathFromData(saved);
+      saved.lastError = message;
+      writeFirebaseSettings(saved);
+      renderFirebaseSettings(saved);
+      setFirebaseBadge('Revisar campos', 'error');
+      if (note) note.textContent = message;
+      showToast('Guardá credenciales Firebase válidas antes de probar conexión.');
+      return;
+    }
+
+    if (!window.A33Firebase || typeof window.A33Firebase.testConnection !== 'function'){
+      setFirebaseBadge('SDK pendiente', 'error');
+      if (note) note.textContent = 'No se encontró el helper central A33Firebase para probar conexión.';
+      showToast('No se encontró A33Firebase.testConnection.');
+      return;
+    }
+
+    try{
+      if (btn) btn.disabled = true;
+      setFirebaseBadge('Probando...', 'local');
+      setFirebaseText('cfg-firebase-test-result', 'Probando...');
+      setFirebaseText('cfg-firebase-test-detail', 'Cargando SDK oficial y probando ruta técnica segura en _meta/syncEngineTests.');
+      if (note) note.textContent = 'Probando conexión técnica en _meta/syncEngineTests. No se toca POS, Finanzas, Caja Chica, Catálogos ni ventas.';
+      renderFirebaseRuntimeState({
+        status: 'testing',
+        message: 'Ejecutando prueba técnica en Realtime Database…',
+        connectionPath: getFirebaseConnectionPathFromData(saved),
+        lastConnectionTestAt: formatPwaDateForStorage(new Date())
+      });
+      const result = await window.A33Firebase.testConnection();
+      const fresh = normalizeFirebaseSettings(readFirebaseSettings());
+      renderFirebaseSettings(fresh);
+      renderFirebaseRuntimeState(window.A33Firebase.getState ? window.A33Firebase.getState() : null);
+      const stateLabel = getFirebaseConnectionStatusLabel(result && result.status);
+      setFirebaseBadge(stateLabel.badge, stateLabel.state);
+      if (note){
+        note.textContent = result && result.ok
+          ? 'Conexión correcta. Solo se escribió/leyó una marca técnica en _meta/syncEngineTests.'
+          : (result && result.message ? result.message : 'La prueba no se pudo completar.');
+      }
+      showToast(result && result.ok ? 'Conexión Firebase correcta.' : (result && result.message ? result.message : 'No se pudo probar Firebase.'));
+    }catch(error){
+      const msg = 'No se pudo completar la prueba de conexión Firebase.';
+      setFirebaseBadge('Error conexión', 'error');
+      setFirebaseText('cfg-firebase-test-result', 'Error de conexión');
+      setFirebaseText('cfg-firebase-test-detail', msg);
+      if (note) note.textContent = msg;
+      showToast(msg);
+    }finally{
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function syncFirebaseNow(event){
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (!requireFirebaseUnlocked('Sincronizar datos ahora')) return;
+    const btn = document.getElementById('cfg-firebase-sync-now');
+    const note = document.getElementById('cfg-firebase-sync-note') || document.getElementById('cfg-firebase-inline-note');
+    const saved = normalizeFirebaseSettings(readFirebaseSettings());
+    const validation = renderFirebaseValidation(saved, { force: true });
+    if (validation.errors.length){
+      const message = validation.errors[0] || 'Faltan credenciales mínimas guardadas para preparar sincronización.';
+      if (note) note.textContent = message;
+      renderFirebaseCloudSyncStatus(getFirebaseCloudSyncStatus());
+      showToast('Guardá credenciales Firebase válidas antes de sincronizar.');
+      return;
+    }
+    if (!window.A33CloudSync || typeof window.A33CloudSync.syncNow !== 'function'){
+      const message = 'No se encontró A33CloudSync.syncNow.';
+      setFirebaseBadge('Motor faltante', 'error');
+      if (note) note.textContent = message;
+      showToast(message);
+      return;
+    }
+    try{
+      if (btn) btn.disabled = true;
+      setFirebaseBadge('Probando motor', 'local');
+      if (note) note.textContent = 'Sincronizando Configuración y Catálogos. POS, ventas, Finanzas y Caja Chica no se tocan.';
+      const result = await window.A33CloudSync.syncNow();
+      const fresh = normalizeFirebaseSettings(readFirebaseSettings());
+      renderFirebaseSettings(fresh);
+      renderFirebaseCloudSyncStatus(window.A33CloudSync.getStatus ? window.A33CloudSync.getStatus() : null);
+      if (result && result.ok){
+        setFirebaseBadge('Sincronizado', 'ready');
+        const summary = result.summary || {};
+        const msg = result.message || `Sincronización completada · Subidos: ${summary.uploaded || 0} · Descargados: ${summary.downloaded || 0} · Conflictos: ${summary.conflicts || 0} · Errores: ${summary.errors || 0}.`;
+        if (note) note.textContent = msg;
+        showToast('Sincronización completada.');
+      } else {
+        setFirebaseBadge('Error motor', 'error');
+        const summary = result && result.summary ? result.summary : {};
+        const msg = result && result.message ? result.message : 'No se pudo completar la sincronización manual.';
+        if (note) note.textContent = `${msg} · Subidos: ${summary.uploaded || 0} · Descargados: ${summary.downloaded || 0} · Conflictos: ${summary.conflicts || 0} · Errores: ${summary.errors || 0}.`;
+        showToast(msg);
+      }
+    }catch(error){
+      const message = 'No se pudo ejecutar la sincronización manual de Configuración/Catálogos.';
+      setFirebaseBadge('Error motor', 'error');
+      if (note) note.textContent = message;
+      showToast(message);
+    }finally{
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function viewFirebaseSyncStatus(event){
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (!requireFirebaseUnlocked('Ver estado de sincronización')) return;
+    if (window.A33CloudSync && typeof window.A33CloudSync.refreshStatus === 'function'){
+      window.A33CloudSync.refreshStatus();
+    }
+    const status = getFirebaseCloudSyncStatus();
+    renderFirebaseCloudSyncStatus(status);
+    const note = document.getElementById('cfg-firebase-sync-note') || document.getElementById('cfg-firebase-inline-note');
+    const summary = status.lastSummary || {};
+    const message = `Estado: ${status.label || 'Inactivo'} · Pendientes: ${status.pendingCount || 0} · Subidos: ${summary.uploaded || status.uploadedCount || 0} · Descargados: ${summary.downloaded || status.downloadedCount || 0} · Conflictos: ${summary.conflicts || status.conflictCount || 0}`;
+    if (note) note.textContent = message;
+    showToast(message);
+  }
+
+  async function retryFirebasePending(event){
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (!requireFirebaseUnlocked('Reintentar pendientes')) return;
+    const btn = document.getElementById('cfg-firebase-retry-pending');
+    const note = document.getElementById('cfg-firebase-sync-note') || document.getElementById('cfg-firebase-inline-note');
+    if (!window.A33CloudSync || typeof window.A33CloudSync.retryPending !== 'function'){
+      const message = 'No se encontró A33CloudSync.retryPending.';
+      if (note) note.textContent = message;
+      showToast(message);
+      return;
+    }
+    try{
+      if (btn) btn.disabled = true;
+      const result = await window.A33CloudSync.retryPending();
+      renderFirebaseCloudSyncStatus(window.A33CloudSync.getStatus ? window.A33CloudSync.getStatus() : null);
+      const message = result && result.message ? result.message : 'Pendientes revisados localmente.';
+      if (note) note.textContent = message;
+      showToast(message);
+    }catch(error){
+      const message = 'No se pudo revisar syncQueue local.';
+      if (note) note.textContent = message;
+      showToast(message);
+    }finally{
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function initFirebaseSettingsSection(){
+    const form = document.getElementById('cfg-firebase-form');
+    if (!form) return;
+    renderFirebaseSettings(readFirebaseSettings());
+    initFirebaseLocalLock();
+    form.addEventListener('submit', saveFirebaseSettings);
+    const saveBtn = document.getElementById('cfg-firebase-save');
+    if (saveBtn){
+      saveBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        saveFirebaseSettings(event);
+      });
+    }
+    const clearBtn = document.getElementById('cfg-firebase-clear-credentials');
+    if (clearBtn){
+      clearBtn.addEventListener('click', clearFirebaseCredentials);
+    }
+    const testBtn = document.getElementById('cfg-firebase-test-connection');
+    if (testBtn){
+      testBtn.addEventListener('click', testFirebaseConnection);
+    }
+    const syncNowBtn = document.getElementById('cfg-firebase-sync-now');
+    if (syncNowBtn){
+      syncNowBtn.addEventListener('click', syncFirebaseNow);
+    }
+    const viewSyncBtn = document.getElementById('cfg-firebase-view-sync-status');
+    if (viewSyncBtn){
+      viewSyncBtn.addEventListener('click', viewFirebaseSyncStatus);
+    }
+    const retryPendingBtn = document.getElementById('cfg-firebase-retry-pending');
+    if (retryPendingBtn){
+      retryPendingBtn.addEventListener('click', retryFirebasePending);
+    }
+    if (window.A33CloudSync && typeof window.A33CloudSync.ensureQueue === 'function'){
+      window.A33CloudSync.ensureQueue();
+      renderFirebaseCloudSyncStatus(window.A33CloudSync.getStatus ? window.A33CloudSync.getStatus() : null);
+    }
+    FIREBASE_FIELD_MAP.forEach((field) => {
+      const el = document.getElementById(field.id);
+      if (!el || el.readOnly) return;
+      el.addEventListener(field.type === 'checkbox' ? 'change' : 'input', markFirebaseDirty);
+      if (el.tagName === 'SELECT') el.addEventListener('change', markFirebaseDirty);
+    });
+    window.addEventListener('online', updateFirebaseOnlineStatus);
+    window.addEventListener('offline', updateFirebaseOnlineStatus);
+    window.addEventListener('a33:firebase-status', (event) => {
+      renderFirebaseRuntimeState(event && event.detail ? event.detail : null);
+    });
+    window.addEventListener('a33:cloud-sync-status', (event) => {
+      renderFirebaseCloudSyncStatus(event && event.detail ? event.detail : null);
+    });
+    window.A33FirebaseConfigLocal = Object.assign({}, window.A33FirebaseConfigLocal || {}, {
+      storageKey: FIREBASE_SETTINGS_KEY,
+      deviceKey: FIREBASE_DEVICE_KEY,
+      read: () => normalizeFirebaseSettings(readFirebaseSettings()),
+      save: (settings) => writeFirebaseSettings(settings),
+      defaults: buildDefaultFirebaseSettings,
+      hasMinimumConfig: hasMinimumFirebaseSettings,
+      normalizeWorkspaceId: normalizeFirebaseWorkspaceId,
+      isProbablyDatabaseURL: isProbablyFirebaseDatabaseURL,
+      testConnection: testFirebaseConnection,
+      syncNow: syncFirebaseNow,
+      getSyncStatus: getFirebaseCloudSyncStatus
+    });
   }
 
 
@@ -3632,6 +4731,7 @@
     initAppearanceSection();
     initReportsSection();
     initCurrencySection();
+    initFirebaseSettingsSection();
     initUsersSection();
     initFirebaseStatus();
 

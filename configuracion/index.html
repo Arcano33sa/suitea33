@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
 <title>Suite A33 · Configuración</title>
-<meta content="Módulo Configuración de Suite A33. Organiza PWA, Identidad, Apariencia, Reportes, Moneda, Seguridad y Respaldo en un solo lugar." name="description"/>
+<meta content="Módulo Configuración de Suite A33. Organiza PWA, Identidad, Apariencia, Reportes, Moneda, Firebase, Seguridad y Respaldo en un solo lugar." name="description"/>
 <meta content="#7b1818" name="theme-color"/>
 
 <script src="/assets/js/a33-theme.js?v=4.20.77&r=7"></script>
@@ -33,7 +33,7 @@
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
 <link href="../assets/css/a33-header.css?v=4.20.77&amp;r=7" rel="stylesheet"/>
-<link href="style.css?v=4.20.77&amp;r=14" rel="stylesheet"/>
+<link href="style.css?v=4.20.77&amp;r=19" rel="stylesheet"/>
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=7" />
 </head>
 <body>
@@ -51,7 +51,7 @@
 <p class="cfg-shell-copy">Seleccioná una tarjeta para abrir su apartado. Al entrar, las demás opciones se ocultan y quedan disponibles los accesos para volver a Configuración o ir al Menú principal.</p>
 </div>
 </div>
-<div aria-label="Tarjetas de Configuración" class="cfg-tabs"><button aria-controls="cfg-panel-pwa" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="pwa" id="cfg-tab-pwa" type="button"><span class="cfg-tab-title">PWA</span><span class="cfg-tab-meta">Actualización central de la Suite</span></button><button aria-controls="cfg-panel-identity" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="identity" id="cfg-tab-identity" type="button"><span class="cfg-tab-title">Identidad</span><span class="cfg-tab-meta">Marca, datos generales y presentación</span></button><button aria-controls="cfg-panel-appearance" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="appearance" id="cfg-tab-appearance" type="button"><span class="cfg-tab-title">Apariencia</span><span class="cfg-tab-meta">Modo claro, oscuro o sistema</span></button><button aria-controls="cfg-panel-reports" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="reports" id="cfg-tab-reports" type="button"><span class="cfg-tab-title">Reportes</span><span class="cfg-tab-meta">Preferencias de reportes y salida</span></button><button aria-controls="cfg-panel-currency" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="currency" id="cfg-tab-currency" type="button"><span class="cfg-tab-title">Moneda</span><span class="cfg-tab-meta">Parámetros monetarios globales</span></button><button aria-controls="cfg-panel-users" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="security" id="cfg-tab-users" type="button"><span class="cfg-tab-title">Seguridad</span><span class="cfg-tab-meta">Usuarios, roles y permisos</span></button><button aria-controls="cfg-panel-backup" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="backup" id="cfg-tab-backup" type="button"><span class="cfg-tab-title">Respaldo</span><span class="cfg-tab-meta">Exportar e importar JSON</span></button></div>
+<div aria-label="Tarjetas de Configuración" class="cfg-tabs"><button aria-controls="cfg-panel-pwa" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="pwa" id="cfg-tab-pwa" type="button"><span class="cfg-tab-title">PWA</span><span class="cfg-tab-meta">Actualización central de la Suite</span></button><button aria-controls="cfg-panel-identity" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="identity" id="cfg-tab-identity" type="button"><span class="cfg-tab-title">Identidad</span><span class="cfg-tab-meta">Marca, datos generales y presentación</span></button><button aria-controls="cfg-panel-appearance" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="appearance" id="cfg-tab-appearance" type="button"><span class="cfg-tab-title">Apariencia</span><span class="cfg-tab-meta">Modo claro, oscuro o sistema</span></button><button aria-controls="cfg-panel-reports" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="reports" id="cfg-tab-reports" type="button"><span class="cfg-tab-title">Reportes</span><span class="cfg-tab-meta">Preferencias de reportes y salida</span></button><button aria-controls="cfg-panel-currency" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="currency" id="cfg-tab-currency" type="button"><span class="cfg-tab-title">Moneda</span><span class="cfg-tab-meta">Parámetros monetarios globales</span></button><button aria-controls="cfg-panel-firebase" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="firebase" id="cfg-tab-firebase" type="button"><span class="cfg-tab-title">Firebase</span><span class="cfg-tab-meta">Híbrido local-first y credenciales web</span></button><button aria-controls="cfg-panel-users" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="security" id="cfg-tab-users" type="button"><span class="cfg-tab-title">Seguridad</span><span class="cfg-tab-meta">Usuarios, roles y permisos</span></button><button aria-controls="cfg-panel-backup" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="backup" id="cfg-tab-backup" type="button"><span class="cfg-tab-title">Respaldo</span><span class="cfg-tab-meta">Exportar e importar JSON</span></button></div>
 <div class="cfg-panels" hidden="">
 
 
@@ -694,6 +694,206 @@
 </div>
 </aside>
 </div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-firebase" class="cfg-panel-view" data-panel="firebase" hidden="" id="cfg-panel-firebase" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid cfg-firebase-view">
+<article aria-labelledby="cfg-firebase-title" class="cfg-card cfg-panel cfg-panel--main cfg-firebase-panel">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="cfg-firebase-title">Firebase</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-firebase-save-state">Base local</span>
+</div>
+<p class="cfg-copy">Sincronización híbrida local-first con Firebase Realtime Database. En esta etapa se sincronizan manualmente Configuración y Catálogos; POS, ventas, Finanzas y Caja Chica siguen locales.</p>
+<div class="cfg-firebase-hero" aria-label="Estado funcional de Firebase">
+<div>
+<span class="cfg-report-mini-label">Modo híbrido local-first</span>
+<strong>Workspace: <span id="cfg-firebase-hero-workspace">arcano33</span></strong>
+<p id="cfg-firebase-hero-copy">Firebase inicia desactivado. La Suite conserva el almacenamiento local como prioridad y usa Firebase como espejo manual para datos de bajo riesgo.</p>
+</div>
+<span class="cfg-firebase-seal">FB</span>
+</div>
+
+<div class="cfg-firebase-local-lock" id="cfg-firebase-local-lock" aria-live="polite">
+  <section class="cfg-firebase-card cfg-firebase-card--wide cfg-firebase-lock-card" aria-labelledby="cfg-firebase-lock-title">
+    <div class="cfg-report-card-head">
+      <span class="cfg-report-icon">🔐</span>
+      <div>
+        <h3 id="cfg-firebase-lock-title">Protección local con palabra clave</h3>
+        <p>La palabra clave protege este apartado dentro de la Suite. La seguridad real de la base depende de las reglas de Firebase.</p>
+      </div>
+    </div>
+    <div class="cfg-firebase-lock-status">
+      <span>Estado</span>
+      <strong id="cfg-firebase-passphrase-status">Revisando...</strong>
+      <small id="cfg-firebase-passphrase-help">Si olvidás la palabra clave, será necesario restablecer la configuración local de Firebase. No se borran datos de negocio.</small>
+    </div>
+    <div class="cfg-firebase-passphrase-grid" id="cfg-firebase-create-passphrase-box" hidden>
+      <label class="cfg-report-field" for="cfg-firebase-new-passphrase"><span>Nueva palabra clave</span><input autocomplete="new-password" id="cfg-firebase-new-passphrase" placeholder="Crear palabra clave local" type="password"/><small>Mínimo 6 caracteres. No se guarda en texto plano.</small></label>
+      <label class="cfg-report-field" for="cfg-firebase-confirm-passphrase"><span>Confirmar palabra clave</span><input autocomplete="new-password" id="cfg-firebase-confirm-passphrase" placeholder="Repetir palabra clave" type="password"/><small>Debe coincidir exactamente.</small></label>
+      <button class="cfg-btn cfg-btn-primary" id="cfg-firebase-create-passphrase" type="button">Crear palabra clave</button>
+      <button class="cfg-btn cfg-btn-ghost" data-firebase-toggle-passphrase="create" type="button">Mostrar/Ocultar palabra clave</button>
+    </div>
+    <div class="cfg-firebase-passphrase-grid" id="cfg-firebase-unlock-box" hidden>
+      <label class="cfg-report-field" for="cfg-firebase-passphrase"><span>Palabra clave</span><input autocomplete="current-password" id="cfg-firebase-passphrase" placeholder="Ingresar palabra clave" type="password"/><small>Desbloquea credenciales, guardado, limpieza y prueba de conexión.</small></label>
+      <button class="cfg-btn cfg-btn-primary" id="cfg-firebase-unlock" type="button">Desbloquear</button>
+      <button class="cfg-btn cfg-btn-ghost" data-firebase-toggle-passphrase="unlock" type="button">Mostrar/Ocultar palabra clave</button>
+    </div>
+    <p class="cfg-action-inline-note" id="cfg-firebase-lock-message">Protección local pendiente.</p>
+  </section>
+</div>
+<form aria-label="Configuración Firebase" class="cfg-firebase-form" id="cfg-firebase-form" novalidate="">
+<section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-status-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◉</span>
+<div>
+<h3 id="cfg-firebase-status-title">Estado</h3>
+<p>Resumen local, estado del motor híbrido y resultado de la prueba técnica de Firebase Realtime Database.</p>
+</div>
+</div>
+<div class="cfg-firebase-status-grid" aria-label="Estado Firebase local">
+<div class="cfg-firebase-status-item"><span>Firebase</span><strong id="cfg-firebase-status-enabled">Desactivado</strong><small>Valor inicial seguro: enabled false.</small></div>
+<div class="cfg-firebase-status-item"><span>Estado</span><strong id="cfg-firebase-status-configured">No configurado</strong><small>Se calcula con campos principales guardados localmente.</small></div>
+<div class="cfg-firebase-status-item"><span>Modo</span><strong id="cfg-firebase-status-mode">Híbrido local-first</strong><small>Sin sincronización automática.</small></div>
+<div class="cfg-firebase-status-item"><span>Workspace</span><strong id="cfg-firebase-status-workspace">arcano33</strong><small id="cfg-firebase-status-workspace-name">Arcano 33</small></div>
+<div class="cfg-firebase-status-item"><span>Dispositivo</span><strong id="cfg-firebase-status-device">Generando...</strong><small id="cfg-firebase-status-device-name">Nombre opcional pendiente</small></div>
+<div class="cfg-firebase-status-item"><span>Última prueba de conexión</span><strong id="cfg-firebase-status-last-test">Sin registros</strong><small>Se actualiza al presionar Probar conexión.</small></div>
+<div class="cfg-firebase-status-item"><span>Estado de prueba</span><strong id="cfg-firebase-status-connection">No probado</strong><small id="cfg-firebase-status-connection-detail">Sin prueba ejecutada.</small></div>
+<div class="cfg-firebase-status-item"><span>Última sincronización</span><strong id="cfg-firebase-status-last-sync">Sin registros</strong><small>Config./Catálogos manual.</small></div>
+<div class="cfg-firebase-status-item cfg-firebase-status-item--wide"><span>Ruta técnica de prueba</span><strong id="cfg-firebase-status-path">workspaces/arcano33/_meta/syncEngineTests/device</strong><small>Ruta segura: no toca productos, ventas, finanzas, caja, pedidos ni catálogos.</small></div>
+<div class="cfg-firebase-status-item cfg-firebase-status-item--wide"><span>Último error</span><strong id="cfg-firebase-status-last-error">Sin errores</strong><small>Errores controlados de SDK, reglas o conexión.</small></div>
+</div>
+<label class="cfg-firebase-toggle" for="cfg-firebase-enabled">
+<input id="cfg-firebase-enabled" name="enabled" type="checkbox"/>
+<span><strong>Activar Firebase para prueba técnica</strong><small>Permite ejecutar Probar conexión. No activa sincronización ni descarga datos.</small></span>
+</label>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-credentials-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">{ }</span>
+<div>
+<h3 id="cfg-firebase-credentials-title">Credenciales Web</h3>
+<p>Usar solo credenciales web públicas de Firebase. No pegar llaves privadas ni archivos Admin SDK.</p>
+</div>
+</div>
+<div class="cfg-firebase-fields-grid" aria-label="Credenciales web Firebase">
+<label class="cfg-report-field" for="cfg-firebase-apiKey"><span>apiKey</span><input autocomplete="off" id="cfg-firebase-apiKey" name="apiKey" placeholder="Credencial web pública" type="text"/><small>Permitido vacío en esta etapa.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-authDomain"><span>authDomain</span><input autocomplete="off" id="cfg-firebase-authDomain" name="authDomain" placeholder="proyecto.firebaseapp.com" type="text"/><small>Sin Google Sign-In en esta etapa.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-databaseURL"><span>databaseURL</span><input autocomplete="off" id="cfg-firebase-databaseURL" name="databaseURL" placeholder="https://proyecto-default-rtdb.firebaseio.com" type="text"/><small>Referencia futura para Realtime Database.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-projectId"><span>projectId</span><input autocomplete="off" id="cfg-firebase-projectId" name="projectId" placeholder="ID del proyecto" type="text"/><small>Campo principal para estado configurado.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-storageBucket"><span>storageBucket</span><input autocomplete="off" id="cfg-firebase-storageBucket" name="storageBucket" placeholder="proyecto.appspot.com" type="text"/><small>Opcional por ahora.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-messagingSenderId"><span>messagingSenderId</span><input autocomplete="off" id="cfg-firebase-messagingSenderId" name="messagingSenderId" placeholder="Número de sender" type="text"/><small>Opcional por ahora.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-appId"><span>appId</span><input autocomplete="off" id="cfg-firebase-appId" name="appId" placeholder="ID de la app web" type="text"/><small>Campo principal para estado configurado.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-measurementId"><span>measurementId</span><input autocomplete="off" id="cfg-firebase-measurementId" name="measurementId" placeholder="G-XXXXXXXXXX" type="text"/><small>Opcional. Analytics no se activa aquí.</small></label>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Regla de seguridad</strong>
+<p>Usar solo credenciales web públicas de Firebase. No pegar private_key, serviceAccount, client_email de servidor, Admin SDK JSON ni secretos de backend.</p>
+</div>
+<div class="cfg-firebase-validation" id="cfg-firebase-validation" role="alert" hidden="">
+<strong>Revisión de campos</strong>
+<ul id="cfg-firebase-validation-list"></ul>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-workspace-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⌁</span>
+<div>
+<h3 id="cfg-firebase-workspace-title">Workspace</h3>
+<p>Identificador operativo para separar la ruta técnica de prueba sin alterar módulos reales.</p>
+</div>
+</div>
+<div class="cfg-firebase-fields-grid cfg-firebase-fields-grid--workspace" aria-label="Workspace Firebase">
+<label class="cfg-report-field" for="cfg-firebase-workspaceId"><span>workspaceId</span><input autocomplete="off" id="cfg-firebase-workspaceId" name="workspaceId" placeholder="arcano33" type="text"/><small>Debe iniciar como arcano33.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-workspaceName"><span>workspaceName</span><input autocomplete="organization" id="cfg-firebase-workspaceName" name="workspaceName" placeholder="Arcano 33" type="text"/><small>Nombre visible del workspace.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-environment"><span>environment</span><select id="cfg-firebase-environment" name="environment"><option value="production">production</option><option value="staging">staging</option><option value="development">development</option></select><small>Valor inicial: production.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-deviceId"><span>deviceId</span><input autocomplete="off" id="cfg-firebase-deviceId" name="deviceId" readonly="" type="text"/><small>Se genera automático y queda estable por navegador/dispositivo.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-deviceName"><span>deviceName</span><input autocomplete="off" id="cfg-firebase-deviceName" name="deviceName" placeholder="Ej. ipad-eventos o macbook-admin" type="text"/><small>Opcional y editable para identificar el equipo.</small></label>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-sync-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⇅</span>
+<div>
+<h3 id="cfg-firebase-sync-title">Motor híbrido local-first</h3>
+<p>A33CloudSync, syncQueue local y sincronización manual de Configuración + Catálogos.</p>
+</div>
+</div>
+<div class="cfg-firebase-sync-grid" aria-label="Estado de sincronización futura">
+<div class="cfg-firebase-status-item"><span>Estado</span><strong id="cfg-firebase-sync-state">Inactivo</strong><small id="cfg-firebase-sync-state-detail">Firebase no reemplaza almacenamiento local.</small></div>
+<div class="cfg-firebase-status-item"><span>Estado online/offline</span><strong id="cfg-firebase-online-status">Sin detectar</strong><small>Lectura segura de navigator.onLine.</small></div>
+<div class="cfg-firebase-status-item"><span>Resultado prueba</span><strong id="cfg-firebase-test-result">No probado</strong><small id="cfg-firebase-test-detail">La prueba usa la configuración guardada localmente.</small></div>
+<div class="cfg-firebase-status-item"><span>Pendientes locales</span><strong id="cfg-firebase-pending-count">0</strong><small id="cfg-firebase-pending-detail">syncQueue local creada; alcance Configuración/Catálogos.</small></div>
+<div class="cfg-firebase-status-item"><span>Última sincronización</span><strong id="cfg-firebase-sync-last-sync">Sin registros</strong><small>Sincronización manual de bajo riesgo.</small></div>
+<div class="cfg-firebase-status-item"><span>Último error</span><strong id="cfg-firebase-sync-last-error">Sin errores</strong><small>Errores controlados del motor híbrido.</small></div>
+<div class="cfg-firebase-status-item cfg-firebase-status-item--wide"><span>Ruta de sincronización</span><strong id="cfg-firebase-test-path">workspaces/arcano33/_meta/sync</strong><small>Rutas permitidas: Configuración y Catálogos. No toca POS, Finanzas ni Caja Chica.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-firebase-test-connection" type="button">Probar conexión</button>
+<button class="cfg-btn cfg-btn-primary" id="cfg-firebase-sync-now" type="button">Sincronizar datos ahora</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-firebase-view-sync-status" type="button">Ver estado de sincronización</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-firebase-retry-pending" type="button">Reintentar pendientes</button>
+<p class="cfg-action-inline-note" id="cfg-firebase-sync-note">Probar conexión usa ruta técnica. Sincronizar datos ahora sube/baja solo Configuración y Catálogos.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-firebase-passphrase-admin" aria-labelledby="cfg-firebase-passphrase-admin-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⚿</span>
+<div>
+<h3 id="cfg-firebase-passphrase-admin-title">Palabra clave</h3>
+<p>Permite cambiar la protección local del apartado Firebase sin activar Google Sign-In ni Firebase Auth.</p>
+</div>
+</div>
+<div class="cfg-firebase-passphrase-grid">
+<label class="cfg-report-field" for="cfg-firebase-current-passphrase"><span>Palabra clave actual</span><input autocomplete="current-password" id="cfg-firebase-current-passphrase" placeholder="Actual" type="password"/></label>
+<label class="cfg-report-field" for="cfg-firebase-change-passphrase"><span>Nueva palabra clave</span><input autocomplete="new-password" id="cfg-firebase-change-passphrase" placeholder="Nueva" type="password"/></label>
+<label class="cfg-report-field" for="cfg-firebase-change-passphrase-confirm"><span>Confirmar nueva palabra clave</span><input autocomplete="new-password" id="cfg-firebase-change-passphrase-confirm" placeholder="Confirmar" type="password"/></label>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-firebase-change-passphrase-btn" type="button">Cambiar palabra clave</button>
+<button class="cfg-btn cfg-btn-ghost" data-firebase-toggle-passphrase="change" type="button">Mostrar/Ocultar palabra clave</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-firebase-lock-now" type="button">Bloquear</button>
+</div>
+<p class="cfg-action-inline-note">Si olvidás la palabra clave, será necesario restablecer la configuración local de Firebase. No se implementa recuperación compleja todavía.</p>
+</section>
+<div class="cfg-report-final-note cfg-firebase-safe-note" aria-label="Alcance protegido de Firebase">
+<strong>Alcance de esta etapa</strong>
+<p>Firebase queda limitado a Configuración, Catálogos, A33CloudSync y syncQueue base. No toca POS, Finanzas, Caja Chica, ventas, cierres, pedidos históricos, saldos ni movimientos críticos.</p>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-firebase-save" type="submit">Guardar configuración Firebase</button>
+<button class="cfg-btn cfg-btn-ghost cfg-firebase-clear-btn" id="cfg-firebase-clear-credentials" type="button">Limpiar credenciales</button>
+<p class="cfg-action-inline-note" id="cfg-firebase-inline-note">Guardado local y prueba técnica solamente. Sin sincronización de datos de negocio.</p>
+</div>
+</form>
+</article>
+<aside aria-labelledby="cfg-firebase-side-title" class="cfg-card cfg-panel cfg-side-panel cfg-firebase-side">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Firebase</p>
+<h2 id="cfg-firebase-side-title">Preparación segura</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-firebase-side-badge">Local-first</span>
+</div>
+<ul class="cfg-list">
+<li>Ordenado después de Moneda y antes de Seguridad.</li>
+<li>Guarda enabled, configured, mode, workspace, dispositivo y credenciales web.</li>
+<li>Usa workspaceId arcano33, mode hybrid, environment production y enabled false por defecto.</li>
+<li>Permite Probar conexión técnica y Sincronizar datos ahora con resumen de subidos, descargados, conflictos y errores.</li>
+<li>Sincroniza manualmente Configuración y Catálogos como datos de bajo riesgo.</li>
+<li>No pide ni guarda llaves privadas, Admin SDK JSON ni secretos de servidor.</li>
+<li>Respeta Oscuro, Claro y Automático/Sistema.</li>
+</ul>
+<div class="cfg-report-lockbox cfg-firebase-lockbox">
+<strong>Puerta cerrada</strong>
+<p>La tarjeta abre solo una rendija técnica para comprobar que la llave gira. La bodega de datos de negocio sigue bajo siete candados.</p>
+</div>
+</aside>
+</div>
 </section><section aria-hidden="true" aria-labelledby="cfg-tab-users" class="cfg-panel-view" data-panel="security" hidden="" id="cfg-panel-users" role="tabpanel">
 <div aria-label="Navegación del apartado" class="cfg-section-nav">
 <button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
@@ -916,15 +1116,16 @@
 </div>
 <input accept="application/json" id="backup-file-input" style="display:none;" type="file"/>
 <div aria-live="polite" class="a33-toast" id="a33-toast"></div>
-<script src="../assets/js/a33-release.js?v=4.20.77&amp;r=10"></script>
+<script src="../assets/js/a33-release.js?v=4.20.77&amp;r=19"></script>
 <script src="../assets/js/a33-storage.js?v=4.20.77&amp;r=7"></script>
 <script src="../assets/js/a33-currency.js?v=4.20.77&amp;r=14"></script>
 <script src="../assets/js/a33-export-currency.js?v=4.20.77&amp;r=2"></script>
-<script src="../assets/js/a33-firebase-config.js?v=4.20.77&amp;r=7"></script>
-<script src="../assets/js/a33-firebase-core.js?v=4.20.77&amp;r=7"></script>
-<script src="../assets/js/a33-firebase-auth.js?v=4.20.77&amp;r=7"></script>
-<script src="../assets/js/a33-firebase-access.js?v=4.20.77&amp;r=7"></script>
-<script src="../assets/js/a33-module-access.js?v=4.20.77&amp;r=7"></script>
-<script src="script.js?v=4.20.77&amp;r=14"></script>
+<script src="../assets/js/a33-firebase-config.js?v=4.20.77&amp;r=18"></script>
+<script src="../assets/js/a33-firebase-core.js?v=4.20.77&amp;r=18"></script>
+<script src="../assets/js/a33-cloud-sync.js?v=4.20.77&amp;r=2"></script>
+<script src="../assets/js/a33-firebase-auth.js?v=4.20.77&amp;r=15"></script>
+<script src="../assets/js/a33-firebase-access.js?v=4.20.77&amp;r=15"></script>
+<script src="../assets/js/a33-module-access.js?v=4.20.77&amp;r=15"></script>
+<script src="script.js?v=4.20.77&amp;r=20"></script>
 </body>
 </html>
