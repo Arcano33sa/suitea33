@@ -302,6 +302,9 @@ let currentCustomer = { id: '', name: '' };
 
 // --- POS (fuente única de precios) ---
 const POS_DB_NAME = 'a33-pos';
+const CANON_GALON_LABEL_PED = 'Galón 3750 ml';
+const LEGACY_GALON_PRICE_PED = 800;
+const DEFAULT_GALON_PRICE_PED = 900;
 let posDB = null;
 let posPricesCache = null;
 let posPricesLoadedAt = 0;
@@ -543,6 +546,40 @@ function mapProductNameToPresKey(name) {
   if (n.includes('litro')) return 'litro';
   if (n.includes('galon')) return 'galon';
   return null;
+}
+
+function compactProductKeyPED(value){
+  return normName(value).replace(/\s+/g, '');
+}
+
+function isValidCatalogPricePED(value){
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+}
+
+function scoreCatalogProductPED(product){
+  if (!product) return -9999;
+  const name = String(product.name || product.nombre || '');
+  const key = mapProductNameToPresKey(name);
+  const compact = compactProductKeyPED(name);
+  let score = 0;
+  if (product.active !== false) score += 1000;
+  if (isValidCatalogPricePED(product.price)) score += 100;
+  if (product.manageStock !== false) score += 15;
+  if (key) score += 20;
+  if (key === 'galon'){
+    if (compact === compactProductKeyPED(CANON_GALON_LABEL_PED)) score += 80;
+    if (normName(name).includes('3750')) score += 40;
+    if (Number(product.price) === LEGACY_GALON_PRICE_PED) score -= 60;
+    if (Number(product.price) === DEFAULT_GALON_PRICE_PED) score += 12;
+  }
+  try{
+    const t = Date.parse(product.updatedAt || product.createdAt || '');
+    if (Number.isFinite(t)) score += Math.min(10, t / 1e15);
+  }catch(_){ }
+  const id = Number(product.id);
+  if (Number.isFinite(id)) score -= Math.min(1, id / 1000000);
+  return score;
 }
 
 // --- Clientes (desde POS) ---
@@ -835,6 +872,9 @@ function openPosDB() {
     }
     req.onsuccess = () => {
       posDB = req.result;
+      try{
+        posDB.onversionchange = () => { try{ posDB.close(); }catch(_){ } posDB = null; };
+      }catch(_){ }
       resolve(posDB);
     };
     req.onerror = () => {
@@ -890,14 +930,17 @@ async function getPosPricesMapSafe({ force = false } = {}) {
 
   for (const p of (Array.isArray(list) ? list : [])) {
     if (!p || p.active === false) continue;
-    const key = mapProductNameToPresKey(p.name);
+    const key = mapProductNameToPresKey(p.name || p.nombre);
     if (!key) continue;
     const price = typeof p.price === 'number' ? p.price : parseNumber(p.price);
-    if (!(price >= 0)) continue;
-    // Preferir el registro más reciente si hay duplicados (id autoIncrement).
+    if (!isValidCatalogPricePED(price)) continue;
+
+    // Catálogos manda: elegir el producto activo y canónico, no el último id legacy.
+    // Esto evita que un Galón viejo de C$800 pise el Galón actual configurado en Catálogos.
+    const candidate = { id: p.id, price, __score: scoreCatalogProductPED(p) };
     const prev = best[key];
-    if (!prev || (typeof p.id === 'number' && typeof prev.id === 'number' && p.id > prev.id)) {
-      best[key] = { id: p.id, price };
+    if (!prev || candidate.__score > prev.__score) {
+      best[key] = candidate;
     }
   }
 

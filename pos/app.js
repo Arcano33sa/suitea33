@@ -1,13 +1,13 @@
 // --- IndexedDB helpers POS
 const DB_NAME = 'a33-pos';
-const DB_VER = 33; // Vasos desde Reempaque: Vaso vendible normal + flujo legacy final
+const DB_VER = 34; // Catálogos Etapa 3: Extras maestros + Bancos centralizados
 let db;
 
 // --- Build / version (fuente unica de verdad)
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.77';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r9');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r12');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -4957,6 +4957,15 @@ function openDB(opts) {
       } else {
         try { e.target.transaction.objectStore('banks').createIndex('by_name', 'name'); } catch {}
         try { e.target.transaction.objectStore('banks').createIndex('by_active', 'isActive'); } catch {}
+      }
+
+      if (!d.objectStoreNames.contains('extras')) {
+        const ex = d.createObjectStore('extras', { keyPath: 'id', autoIncrement: true });
+        try { ex.createIndex('by_name', 'name', { unique: false }); } catch {}
+        try { ex.createIndex('by_active', 'active', { unique: false }); } catch {}
+      } else {
+        try { e.target.transaction.objectStore('extras').createIndex('by_name', 'name', { unique: false }); } catch {}
+        try { e.target.transaction.objectStore('extras').createIndex('by_active', 'active', { unique: false }); } catch {}
       }
 
       // --- POS: cierres diarios (snapshot) + candado por (evento,día)
@@ -10220,7 +10229,7 @@ async function refreshSaleBankSelect(){
   else sel.value = '';
 
   if (!banks.length){
-    if (note) note.textContent = `No hay bancos activos tipo ${getPaymentMethodLabelPOS(payment)}. Agregá uno en Productos.`;
+    if (note) note.textContent = `No hay bancos activos tipo ${getPaymentMethodLabelPOS(payment)}. Agregá uno en Catálogos → Bancos.`;
   } else {
     if (note) note.textContent = '';
   }
@@ -10582,13 +10591,58 @@ async function getHiddenProductIdsPOS(){
   return new Set();
 }
 
+// Catálogos Etapa 2: lectura canónica de productos para venta POS.
+// La administración se movió a Gestión Operativa → Catálogos → Productos.
+function posProductCanonicalGroupKey(product){
+  const name = String((product && (product.name || product.nombre)) || '').trim();
+  const fid = (typeof mapProductNameToFinishedId === 'function') ? mapProductNameToFinishedId(name) : null;
+  return fid ? ('sku:' + fid) : ('name:' + productEditNormKeyPOS(name));
+}
+
+function posProductCanonicalScore(product){
+  if (!product) return -9999;
+  const name = String(product.name || product.nombre || '');
+  const fid = (typeof mapProductNameToFinishedId === 'function') ? mapProductNameToFinishedId(name) : null;
+  const nk = productEditNormKeyPOS(name);
+  let score = 0;
+  if (product.active !== false) score += 1000;
+  if (isValidCatalogPricePOS(product.price)) score += 100;
+  if (product.manageStock !== false) score += 15;
+  if (fid) score += 20;
+  if (fid === 'galon'){
+    if (nk === productEditNormKeyPOS(CANON_GALON_LABEL)) score += 80;
+    if (normName(name).includes('3750')) score += 40;
+    if (Number(product.price) === LEGACY_DEFAULT_GALON_PRICE_POS) score -= 60;
+    if (Number(product.price) === DEFAULT_GALON_PRICE_POS) score += 12;
+  }
+  try{
+    const t = Date.parse(product.updatedAt || product.createdAt || '');
+    if (Number.isFinite(t)) score += Math.min(10, t / 1e15);
+  }catch(_){ }
+  const id = Number(product.id);
+  if (Number.isFinite(id)) score -= Math.min(1, id / 1000000);
+  return score;
+}
+
+function posCanonicalProductsForSale(products){
+  const groups = new Map();
+  for (const p of (Array.isArray(products) ? products : [])){
+    if (!p || p.active === false) continue;
+    const key = posProductCanonicalGroupKey(p);
+    if (!key || key === 'name:') continue;
+    const cur = groups.get(key);
+    if (!cur || posProductCanonicalScore(p) > posProductCanonicalScore(cur)) groups.set(key, p);
+  }
+  return Array.from(groups.values());
+}
+
 // Chips de productos (todos los activos)
 async function renderProductChips(){
   const chips = $('#product-chips'); if (!chips) return;
   chips.innerHTML='';
 
   const hiddenIds = await getHiddenProductIdsPOS();
-  let list = (await getAll('products')).filter(p=>p.active!==false && !hiddenIds.has(p.id));
+  let list = posCanonicalProductsForSale((await getAll('products')).filter(p=>p && !hiddenIds.has(p.id)));
 
   // Orden con prioridad de Arcano 33
   const priority = ['pulso','media','djeba','litro','galon','galón','galon 3750','galón 3750','galon 3800','galón 3800'];
@@ -10680,7 +10734,7 @@ async function renderProductChips(){
   if (list.length===0){
     const warn = document.createElement('div');
     warn.className = 'warn';
-    warn.textContent = 'No hay productos activos. Activa productos en la pestaña Productos o Inventario.';
+    warn.textContent = 'No hay productos activos. Actívalos en Gestión Operativa → Catálogos → Productos.';
     chips.appendChild(warn);
   }
 }
@@ -10986,7 +11040,7 @@ const tabs = $$('.tab');
 
   // Render específico por pestaña (misma lógica de antes)
   if (name==='resumen') renderSummary();
-  if (name==='productos') renderProductos();
+  if (name==='extras') { renderExtrasUI().catch(err=>console.error(err)); renderBancos().catch(err=>console.error(err)); }
   if (name==='eventos') renderEventos();
   if (name==='inventario') renderInventario();
   if (name==='efectivo') renderEfectivoTab().catch(err=>console.error(err));
@@ -11001,12 +11055,12 @@ const tabs = $$('.tab');
 // --- Deep-link mínimo (Centro de Mando -> POS)
 function getTabFromUrlPOS(){
   try{
-    const allowed = new Set(['venta','inventario','eventos','efectivo','resumen','productos','calculadora','checklist']);
+    const allowed = new Set(['venta','inventario','eventos','efectivo','resumen','extras','calculadora','checklist']);
     // Querystring
     const qs = new URLSearchParams(window.location.search || '');
     const qTab = (qs.get('tab') || '').trim();
     if (qTab){
-      const qt = (qTab === 'vender') ? 'venta' : qTab;
+      const qt = (qTab === 'vender') ? 'venta' : (qTab === 'productos' ? 'extras' : qTab);
       if (allowed.has(qt)) return qt;
     }
 
@@ -11018,10 +11072,10 @@ function getTabFromUrlPOS(){
     if (h.startsWith('checklist-reminders')) return 'checklist';
     if (h.startsWith('tab=')){
       const ht = h.slice(4).trim();
-      const htab = (ht === 'vender') ? 'venta' : ht;
+      const htab = (ht === 'vender') ? 'venta' : (ht === 'productos' ? 'extras' : ht);
       if (allowed.has(htab)) return htab;
     }
-    const hh = (h === 'vender') ? 'venta' : h;
+    const hh = (h === 'vender') ? 'venta' : (h === 'productos' ? 'extras' : h);
     if (allowed.has(hh)) return hh;
   }catch(_){ }
   return null;
@@ -12533,7 +12587,7 @@ async function refreshProductSelect(opts){
 
   const hiddenIds = await getHiddenProductIdsPOS();
   const all = await getAll('products');
-  const list = all.filter(p => !hiddenIds.has(p.id));
+  const list = posCanonicalProductsForSale(all.filter(p => p && !hiddenIds.has(p.id)));
 
   const sel = $('#sale-product');
   if (!sel) return;
@@ -12648,6 +12702,8 @@ function sanitizeExtrasPOS(raw){
       unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
       lowStockAlert: (lowStockAlert>0?lowStockAlert:5),
       active: (x.active === false) ? false : true,
+      catalogExtraId: x.catalogExtraId || null,
+      source: x.source || null,
       createdAt: x.createdAt || null,
       updatedAt: x.updatedAt || null
     });
@@ -12726,6 +12782,111 @@ function resetExtraFormPOS(){
   if (btnCancel) btnCancel.style.display = 'none';
 }
 
+async function getAllMasterExtrasSafePOS(){
+  try{ return await getAll('extras'); }catch(e){ return []; }
+}
+
+function normalizeMasterExtraPOS(x){
+  if (!x || typeof x !== 'object') return null;
+  const name = String(x.name || x.nombre || '').trim();
+  if (!name) return null;
+  const price = Number(x.basePrice ?? x.price ?? x.unitPrice ?? x.precioBase ?? 0);
+  const unitCost = Number(x.unitCost ?? x.costoUnitario ?? x.costPerUnit ?? 0);
+  const lowStockAlert = safeInt(x.lowStockAlert ?? x.stockLowAlert ?? 5, 5);
+  return {
+    id: Number(x.id || 0),
+    name,
+    unitPrice: Number.isFinite(price) && price >= 0 ? round2(price) : 0,
+    unitCost: Number.isFinite(unitCost) && unitCost >= 0 ? round2(unitCost) : 0,
+    lowStockAlert: lowStockAlert > 0 ? lowStockAlert : 5,
+    active: x.active === false ? false : true
+  };
+}
+
+async function renderMasterExtrasImportPOS(ev){
+  const sel = document.getElementById('extra-master-select');
+  const note = document.getElementById('extra-master-note');
+  const stock = document.getElementById('extra-master-stock');
+  const btn = document.getElementById('btn-import-master-extra');
+  if (!sel) return;
+  const enabled = !!ev;
+  if (stock) stock.disabled = !enabled;
+  if (btn) btn.disabled = !enabled;
+  sel.disabled = !enabled;
+  sel.innerHTML = '';
+  const opt0 = document.createElement('option');
+  opt0.value = '';
+  opt0.textContent = enabled ? '— Selecciona extra maestro —' : 'Activa un evento primero';
+  sel.appendChild(opt0);
+  if (!enabled){
+    if (note) note.textContent = 'Activa un evento para importar extras maestros.';
+    return;
+  }
+  const masters = (await getAllMasterExtrasSafePOS()).map(normalizeMasterExtraPOS).filter(x => x && x.active !== false);
+  masters.sort((a,b)=> a.name.localeCompare(b.name, 'es-NI', { sensitivity:'base' }));
+  for (const x of masters){
+    const opt = document.createElement('option');
+    opt.value = String(x.id);
+    opt.textContent = `${x.name} (C${fmt(x.unitPrice)})`;
+    sel.appendChild(opt);
+  }
+  if (note){
+    note.textContent = masters.length ? 'Se importan como snapshot al evento activo; ventas pasadas no cambian.' : 'No hay extras maestros activos. Créelos en Gestión Operativa → Catálogos → Extras.';
+  }
+}
+
+async function importMasterExtraToEventPOS(){
+  const ev = await getActiveEventPOS();
+  if (!ev){ alert('Activa un evento para importar un Extra maestro.'); return; }
+  const sel = document.getElementById('extra-master-select');
+  const stockEl = document.getElementById('extra-master-stock');
+  const masterId = parseInt(String(sel?.value || '0'), 10);
+  if (!masterId){ alert('Selecciona un Extra maestro.'); return; }
+  const stock = Number(String(stockEl?.value || '').replace(',', '.'));
+  if (!Number.isFinite(stock) || stock < 0){ alert('Cantidad inicial inválida.'); return; }
+  const masters = (await getAllMasterExtrasSafePOS()).map(normalizeMasterExtraPOS).filter(Boolean);
+  const master = masters.find(x => Number(x.id) === Number(masterId));
+  if (!master || master.active === false){ alert('Extra maestro no disponible.'); return; }
+
+  ensureEventExtraSeqPOS(ev);
+  const extras = sanitizeExtrasPOS(ev.extras);
+  const key = normKeyPOS(master.name);
+  let x = extras.find(z => normKeyPOS(z.name) === key);
+  const nowIso = new Date().toISOString();
+  if (x){
+    x.active = true;
+    x.catalogExtraId = master.id;
+    x.unitPrice = master.unitPrice;
+    x.unitCost = master.unitCost;
+    x.lowStockAlert = master.lowStockAlert;
+    x.stock = Number(x.stock || 0) + stock;
+    x.updatedAt = nowIso;
+  } else {
+    ev.extraSeq = safeInt(ev.extraSeq, 0) + 1;
+    x = {
+      id: ev.extraSeq,
+      catalogExtraId: master.id,
+      name: master.name,
+      stock,
+      unitCost: master.unitCost,
+      unitPrice: master.unitPrice,
+      lowStockAlert: master.lowStockAlert,
+      active: true,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      source: 'catalogos_extras'
+    };
+    extras.push(x);
+  }
+  ev.extras = extras;
+  await put('events', ev);
+  if (sel) sel.value = '';
+  if (stockEl) stockEl.value = '';
+  await renderExtrasUI();
+  await refreshProductSelect({ keepSelection:true });
+  toast('Extra maestro agregado al evento');
+}
+
 async function renderExtrasUI(){
   const label = document.getElementById('extras-event-label');
   const note = document.getElementById('extras-disabled-note');
@@ -12737,11 +12898,13 @@ async function renderExtrasUI(){
   if (label) label.textContent = enabled ? (ev.name || '—') : '—';
   if (note) note.style.display = enabled ? 'none' : 'block';
 
-  const idsToDisable = ['extra-name','extra-stock','extra-cost','extra-price','extra-low','btn-save-extra'];
+  const idsToDisable = ['extra-name','extra-stock','extra-cost','extra-price','extra-low','btn-save-extra','extra-master-select','extra-master-stock','btn-import-master-extra'];
   for (const id of idsToDisable){
     const el = document.getElementById(id);
     if (el) el.disabled = !enabled;
   }
+
+  try{ await renderMasterExtrasImportPOS(enabled ? ev : null); }catch(e){ console.warn('No se pudo cargar Extras maestros', e); }
 
   if (!listEl) return;
 
@@ -15531,12 +15694,19 @@ async function reempaqueSelectableProductsPOS(){
   let hiddenIds = new Set();
   try{ hiddenIds = await getHiddenProductIdsPOS(); }catch(_){ hiddenIds = new Set(); }
   const all = await getAll('products').catch(()=>[]);
-  return (Array.isArray(all) ? all : [])
-    .filter(p => p && p.id != null && !hiddenIds.has(p.id))
+  const base = (Array.isArray(all) ? all : []).filter(p => p && p.id != null && !hiddenIds.has(p.id));
+  const canonical = (typeof posCanonicalProductsForSale === 'function') ? posCanonicalProductsForSale(base) : base.filter(p => p && p.active !== false);
+  return canonical
+    .filter(p => p && p.active !== false)
     .sort((a,b)=>{
-      const aa = (a && a.active === false) ? 1 : 0;
-      const bb = (b && b.active === false) ? 1 : 0;
-      if (aa !== bb) return aa - bb;
+      const rank = (name)=>{
+        const k = (typeof mapProductNameToFinishedId === 'function') ? mapProductNameToFinishedId(name || '') : '';
+        const order = { pulso:1, media:2, djeba:3, litro:4, galon:5 };
+        return order[k || ''] || 99;
+      };
+      const ra = rank(a && a.name);
+      const rb = rank(b && b.name);
+      if (ra !== rb) return ra - rb;
       return String(a.name || '').localeCompare(String(b.name || ''), 'es-NI', { sensitivity:'base' });
     });
 }
@@ -21600,7 +21770,9 @@ async function init(){
   await runStep('refreshSaleBankSelect', refreshSaleBankSelect);
   await runStep('renderDay', renderDay);
   await runStep('renderSummary', renderSummary);
-  await runStep('renderProductos', renderProductos);
+  await runStep('renderProductosLegacyNoUi', renderProductos);
+  await runStep('renderExtrasUI', renderExtrasUI);
+  await runStep('renderBancos', renderBancos);
   await runStep('renderEventos', renderEventos);
   await runStep('renderInventario', renderInventario);
   await runStep('updateSellEnabled', updateSellEnabled);
@@ -21804,6 +21976,10 @@ async function init(){
   const btnCancelExtra = document.getElementById('btn-cancel-extra');
   if (btnCancelExtra){
     btnCancelExtra.addEventListener('click', ()=> resetExtraFormPOS());
+  }
+  const btnImportMasterExtra = document.getElementById('btn-import-master-extra');
+  if (btnImportMasterExtra){
+    btnImportMasterExtra.addEventListener('click', ()=> importMasterExtraToEventPOS().catch(err=>console.error(err)));
   }
   const extrasList = document.getElementById('extras-list');
   if (extrasList){
@@ -22014,12 +22190,16 @@ async function init(){
   $('#qty-plus').addEventListener('click', ()=>{ const v = Math.max(1, parseInt($('#sale-qty').value||'1',10) + 1); $('#sale-qty').value = v; recomputeTotal(); });
 
 
-  // Productos: agregar + restaurar
+  // Productos: administración retirada del POS. Se conserva guardia legacy por si existe HTML antiguo en caché.
   try{ setupProductEditModalPOS(); }catch(_){ }
-  document.getElementById('btn-add-prod').onclick = async()=>{ const name = $('#new-name').value.trim(); const price = parseFloat($('#new-price').value||'0'); if (!name || !(price>0)) return alert('Nombre y precio'); try{ await put('products', {name, price, manageStock:true, active:true, capacityMl:0, capacidadMl:0, unitCost:0, costoUnitario:0, costPerUnit:0, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()}); $('#new-name').value=''; $('#new-price').value=''; await renderProductos(); await refreshProductSelect(); await renderInventario(); try{ await reempaquePopulateSelectorsPOS(); }catch(_){ } toast('Producto agregado'); }catch(err){ alert('No se pudo agregar. ¿Nombre duplicado?'); } };
-  document.getElementById('btn-restore-seed').onclick = restoreSeed;
+  const legacyAddProdBtn = document.getElementById('btn-add-prod');
+  if (legacyAddProdBtn){
+    legacyAddProdBtn.onclick = async()=>{ const name = $('#new-name').value.trim(); const price = parseFloat($('#new-price').value||'0'); if (!name || !(price>0)) return alert('Nombre y precio'); try{ await put('products', {name, price, manageStock:true, active:true, capacityMl:0, capacidadMl:0, unitCost:0, costoUnitario:0, costPerUnit:0, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()}); $('#new-name').value=''; $('#new-price').value=''; await renderProductos(); await refreshProductSelect(); await renderInventario(); try{ await reempaquePopulateSelectorsPOS(); }catch(_){ } toast('Producto agregado'); }catch(err){ alert('No se pudo agregar. ¿Nombre duplicado?'); } };
+  }
+  const legacyRestoreSeedBtn = document.getElementById('btn-restore-seed');
+  if (legacyRestoreSeedBtn) legacyRestoreSeedBtn.onclick = restoreSeed;
 
-  // Bancos: agregar desde pestaña Productos
+  // Bancos: compatibilidad legacy; fuente maestra en Catálogos → Bancos
   const addBankBtn = document.getElementById('btn-add-bank');
   if (addBankBtn){
     addBankBtn.onclick = async ()=>{
@@ -22287,7 +22467,7 @@ async function addSale(){
     const activeBanks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
     const label = getPaymentMethodLabelPOS(payment);
     if (!activeBanks.length){
-      alert(`No hay bancos activos tipo ${label}. Agregá uno en Productos.`);
+      alert(`No hay bancos activos tipo ${label}. Agregá uno en Catálogos → Bancos.`);
       return;
     }
     const sel = document.getElementById('sale-bank');
@@ -22547,7 +22727,7 @@ async function addExtraSale(extraId){
     const activeBanks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
     const label = getPaymentMethodLabelPOS(payment);
     if (!activeBanks.length){
-      alert(`No hay bancos activos tipo ${label}. Agregá uno en Productos.`);
+      alert(`No hay bancos activos tipo ${label}. Agregá uno en Catálogos → Bancos.`);
       return;
     }
     const sel = document.getElementById('sale-bank');

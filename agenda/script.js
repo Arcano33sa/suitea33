@@ -54,13 +54,11 @@
   const POS_CUSTOMER_CATALOG_KEY = 'a33_pos_customersCatalog';
   const CLIENT_SELECT_NEW_VALUE = '__new__';
 
-  const PRODUCT_CATALOG_FALLBACK = Object.freeze([
-    { id: 'fallback-pulso', name: 'Pulso 250 ml', price: 120 },
-    { id: 'fallback-media', name: 'Media 375 ml', price: 150 },
-    { id: 'fallback-djeba', name: 'Djeba 750 ml', price: 300 },
-    { id: 'fallback-litro', name: 'Litro 1000 ml', price: 330 },
-    { id: 'fallback-galon', name: 'Galón 3750 ml', price: 900 }
-  ]);
+  // Sin fallback de precios inventados: si Catálogos no tiene productos, Agenda muestra vacío.
+  const PRODUCT_CATALOG_FALLBACK = Object.freeze([]);
+  const CANON_GALON_LABEL_AGD = 'Galón 3750 ml';
+  const LEGACY_GALON_PRICE_AGD = 800;
+  const DEFAULT_GALON_PRICE_AGD = 900;
 
   const state = {
     records: [],
@@ -193,9 +191,49 @@
     return 999;
   }
 
+  function mapProductNameToCatalogGroupAGD(name){
+    const key = normalizeProductKey(name);
+    if (!key) return '';
+    if (key.includes('pulso')) return 'pulso';
+    if (key.includes('media')) return 'media';
+    if (key.includes('djeba')) return 'djeba';
+    if (key.includes('litro')) return 'litro';
+    if (key.includes('galon')) return 'galon';
+    return '';
+  }
+
+  function compactProductKeyAGD(value){
+    return normalizeProductKey(value).replace(/\s+/g, '');
+  }
+
+  function scoreProductCatalogItemAGD(item){
+    if (!item) return -9999;
+    const name = String(item.name || item.nombre || '');
+    const group = mapProductNameToCatalogGroupAGD(name);
+    const compact = compactProductKeyAGD(name);
+    let score = 0;
+    if (item.active !== false) score += 1000;
+    if (normalizeNumberInput(item.price) != null && Number(item.price) > 0) score += 100;
+    if (item.manageStock !== false) score += 15;
+    if (group) score += 20;
+    if (group === 'galon'){
+      if (compact === compactProductKeyAGD(CANON_GALON_LABEL_AGD)) score += 80;
+      if (normalizeProductKey(name).includes('3750')) score += 40;
+      if (Number(item.price) === LEGACY_GALON_PRICE_AGD) score -= 60;
+      if (Number(item.price) === DEFAULT_GALON_PRICE_AGD) score += 12;
+    }
+    try{
+      const t = Date.parse(item.updatedAt || item.createdAt || '');
+      if (Number.isFinite(t)) score += Math.min(10, t / 1e15);
+    }catch(_){ }
+    const id = Number(item.id);
+    if (Number.isFinite(id)) score -= Math.min(1, id / 1000000);
+    return score;
+  }
+
   function sanitizeProductCatalogItem(item){
     const source = item && typeof item === 'object' ? item : {};
-    const name = String(source.name || '').trim();
+    const name = String(source.name || source.nombre || '').trim();
     const price = normalizeNumberInput(source.price);
     const active = source.active !== false;
     const internalType = String(source.internalType || '').trim().toLowerCase();
@@ -209,32 +247,38 @@
     return {
       id: String(source.id != null ? source.id : key),
       name,
-      price
+      price,
+      active,
+      manageStock: source.manageStock !== false,
+      createdAt: source.createdAt || '',
+      updatedAt: source.updatedAt || '',
+      __score: scoreProductCatalogItemAGD(source)
     };
   }
 
   function normalizeProductCatalog(list){
     const items = Array.isArray(list) ? list : [];
-    const sorted = items
-      .map(sanitizeProductCatalogItem)
-      .filter(Boolean)
+    const grouped = new Map();
+
+    items.forEach(function(raw){
+      const item = sanitizeProductCatalogItem(raw);
+      if (!item) return;
+      const group = mapProductNameToCatalogGroupAGD(item.name);
+      const key = group ? ('sku:' + group) : ('name:' + compactProductKeyAGD(item.name));
+      if (!key || key === 'name:') return;
+      const prev = grouped.get(key);
+      if (!prev || item.__score > prev.__score) grouped.set(key, item);
+    });
+
+    return Array.from(grouped.values())
       .sort(function(a, b){
         const rankDiff = productSortRank(a.name) - productSortRank(b.name);
         if (rankDiff !== 0) return rankDiff;
         return a.name.localeCompare(b.name, 'es');
+      })
+      .map(function(item){
+        return { id:item.id, name:item.name, price:item.price };
       });
-
-    const deduped = [];
-    const seen = new Set();
-
-    sorted.forEach(function(item){
-      const key = normalizeProductKey(item.name);
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      deduped.push(item);
-    });
-
-    return deduped;
   }
 
   function getFallbackProductCatalog(){
@@ -960,11 +1004,11 @@
 
     return readProductCatalogFromPOS().then(function(products){
       state.productCatalog = products.length ? products : getFallbackProductCatalog();
-      state.productCatalogSource = products.length ? 'pos' : 'fallback';
+      state.productCatalogSource = products.length ? 'catalogos' : 'empty';
       renderPedidoProductOptions();
     }).catch(function(){
       state.productCatalog = getFallbackProductCatalog();
-      state.productCatalogSource = 'fallback';
+      state.productCatalogSource = 'empty';
       renderPedidoProductOptions();
     });
   }

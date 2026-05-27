@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Suite A33 · Catálogos</title>
+  <meta name="description" content="Catálogos operativos de Suite A33: productos, extras, bancos y datos maestros." />
+  <meta name="theme-color" content="#7b1818" />
+  <script src="/assets/js/a33-theme.js?v=4.20.77&r=11"></script>
+  <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
+  <link rel="apple-touch-icon" href="../icon-a33-192.png" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=3" />
+  <script>
+    (function(){
+      try{
+        var key = 'suite_a33_appearance_preference';
+        var pref = localStorage.getItem(key) || 'dark';
+        if (pref !== 'dark' && pref !== 'light' && pref !== 'auto') pref = 'dark';
+        var resolved = pref;
+        if (pref === 'auto'){
+          resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-a33-theme-preference', pref);
+        document.documentElement.setAttribute('data-theme', resolved);
+      }catch(_){
+        document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.77&r=11" />
+  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.77&r=11" />
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=3" />
+</head>
+<body>
+  <header class="a33-header" role="banner">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Ir al Menú principal">⌂ Menú principal</a>
+    <div class="a33-title">Catálogos</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.77">v...</div>
+  </header>
+
+  <main class="cat-main" role="main">
+    <section class="cat-hero cat-card" aria-labelledby="cat-title">
+      <div class="cat-hero-content">
+        <p class="cat-eyebrow">Gestión Operativa</p>
+        <h1 id="cat-title">Catálogos</h1>
+        <p class="cat-lead">Administración maestra de Productos, Extras y Bancos para consumo seguro de la Suite.</p>
+      </div>
+      <div class="cat-hero-badge" aria-label="Estado de implementación">
+        <span>Datos maestros</span>
+        <strong>Productos · Extras · Bancos</strong>
+      </div>
+    </section>
+
+    <section class="cat-card cat-shell" aria-label="Apartados de Catálogos">
+      <div class="cat-tabs" role="tablist" aria-label="Secciones de Catálogos">
+        <button class="cat-tab is-active" id="tab-productos" type="button" role="tab" aria-selected="true" aria-controls="panel-productos" data-target="productos">
+          <span class="cat-tab-icon">🍷</span>
+          <span>
+            <strong>Productos</strong>
+            <small>Presentaciones y precios base</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-extras" type="button" role="tab" aria-selected="false" aria-controls="panel-extras" data-target="extras">
+          <span class="cat-tab-icon">➕</span>
+          <span>
+            <strong>Extras</strong>
+            <small>Complementos operativos</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-bancos" type="button" role="tab" aria-selected="false" aria-controls="panel-bancos" data-target="bancos">
+          <span class="cat-tab-icon">🏦</span>
+          <span>
+            <strong>Bancos</strong>
+            <small>Cuentas y entidades</small>
+          </span>
+        </button>
+      </div>
+
+      <div class="cat-panels">
+        <section class="cat-panel is-active" id="panel-productos" role="tabpanel" aria-labelledby="tab-productos" data-panel="productos">
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Productos maestros</p>
+              <h2>Fuente central para POS</h2>
+              <p>Administra aquí los productos vendibles, precios actuales, estado, capacidad y referencias de inventario. POS solo consume esta fuente; no administra productos.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Los cambios aplican hacia adelante.</li>
+              <li>No recalcula ventas, pedidos ni cierres históricos.</li>
+              <li>Duplicados legacy se resuelven por lectura canónica segura.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Productos vendibles</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-products" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+                <button id="cat-restore-seed" class="cat-btn cat-btn-warn" type="button">Restaurar base A33</button>
+              </div>
+            </div>
+
+            <div id="cat-products-status" class="cat-status" role="status" aria-live="polite">Cargando productos…</div>
+            <div id="cat-products-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Nuevo producto</p>
+              <h2>Agregar producto vendible</h2>
+            </div>
+            <div class="cat-product-form">
+              <label>Nombre
+                <input id="cat-new-name" autocomplete="off" placeholder="Ej: Botella especial">
+              </label>
+              <label>Precio de venta (C$)
+                <input id="cat-new-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+              </label>
+              <label>ml por unidad / capacidad
+                <input id="cat-new-capacity" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
+              </label>
+              <label>Costo unitario ref. (C$)
+                <input id="cat-new-unit-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
+              </label>
+              <label class="cat-flag"><input id="cat-new-active" type="checkbox" checked> Activo</label>
+              <label class="cat-flag"><input id="cat-new-manage" type="checkbox" checked> Manejar inventario</label>
+            </div>
+            <div class="cat-actions-end">
+              <button id="cat-add-product" class="cat-btn cat-btn-ok" type="button">+ Agregar producto</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="cat-panel" id="panel-extras" role="tabpanel" aria-labelledby="tab-extras" data-panel="extras" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Extras maestros</p>
+              <h2>Complementos reutilizables</h2>
+              <p>Administra aquí los extras base. POS puede tomarlos como plantilla para el evento activo, conservando precio y snapshot histórico en cada venta.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Los cambios aplican hacia adelante.</li>
+              <li>No recalcula ventas ni cierres anteriores.</li>
+              <li>No borra extras históricos de eventos pasados.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Extras</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-extras" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+              </div>
+            </div>
+            <div id="cat-extras-status" class="cat-status" role="status" aria-live="polite">Cargando extras…</div>
+            <div id="cat-extras-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Extra maestro</p>
+              <h2>Agregar / editar extra</h2>
+            </div>
+            <div class="cat-product-form">
+              <label>Nombre
+                <input id="cat-extra-name" autocomplete="off" placeholder="Ej: Charcutería">
+              </label>
+              <label>Precio base (C$)
+                <input id="cat-extra-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+              </label>
+              <label>Costo unitario ref. (C$)
+                <input id="cat-extra-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
+              </label>
+              <label>Alerta stock bajo ref.
+                <input id="cat-extra-low" type="number" inputmode="numeric" step="1" min="0" placeholder="5">
+              </label>
+              <label class="cat-flag"><input id="cat-extra-active" type="checkbox" checked> Activo</label>
+            </div>
+            <div class="cat-actions-end">
+              <button id="cat-cancel-extra" class="cat-btn cat-btn-secondary" type="button" hidden>Cancelar edición</button>
+              <button id="cat-save-extra" class="cat-btn cat-btn-ok" type="button">+ Agregar extra</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="cat-panel" id="panel-bancos" role="tabpanel" aria-labelledby="tab-bancos" data-panel="bancos" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Bancos maestros</p>
+              <h2>Bancos y medios de cobro</h2>
+              <p>Administra aquí bancos/cuentas para transferencias y tarjeta. POS lee esta fuente sin recalcular ventas, cierres ni asientos anteriores.</p>
+            </div>
+            <ul class="cat-list">
+              <li>No inventa saldos ni modifica movimientos bancarios.</li>
+              <li>Activa/inactiva bancos para uso futuro.</li>
+              <li>Conserva compatibilidad con POS y reportes existentes.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Bancos</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-banks" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+                <button id="cat-restore-banks" class="cat-btn cat-btn-warn" type="button">Restaurar base bancaria</button>
+              </div>
+            </div>
+            <div id="cat-banks-status" class="cat-status" role="status" aria-live="polite">Cargando bancos…</div>
+            <div id="cat-banks-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Banco maestro</p>
+              <h2>Agregar / editar banco</h2>
+            </div>
+            <div class="cat-product-form">
+              <label>Nombre del banco
+                <input id="cat-bank-name" autocomplete="off" placeholder="Ej: BAC">
+              </label>
+              <label>Uso
+                <select id="cat-bank-type">
+                  <option value="transferencia" selected>Transferencia</option>
+                  <option value="tarjeta">Tarjeta</option>
+                </select>
+              </label>
+              <label>Moneda
+                <select id="cat-bank-currency">
+                  <option value="NIO" selected>C$ / NIO</option>
+                  <option value="USD">US$ / USD</option>
+                  <option value="MIXED">Mixta</option>
+                </select>
+              </label>
+              <label>Cuenta / referencia
+                <input id="cat-bank-ref" autocomplete="off" placeholder="Opcional">
+              </label>
+              <label>Comisión tarjeta %
+                <input id="cat-bank-commission" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+              </label>
+              <label class="cat-flag"><input id="cat-bank-active" type="checkbox" checked> Activo</label>
+            </div>
+            <div class="cat-actions-end">
+              <button id="cat-cancel-bank" class="cat-btn cat-btn-secondary" type="button" hidden>Cancelar edición</button>
+              <button id="cat-save-bank" class="cat-btn cat-btn-ok" type="button">+ Agregar banco</button>
+            </div>
+          </article>
+        </section>
+      </div>
+    </section>
+  </main>
+
+
+  <div id="cat-product-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-product-modal-title">
+      <button id="cat-product-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Producto maestro</p>
+      <h2 id="cat-product-modal-title">Editar producto</h2>
+      <p id="cat-product-current" class="cat-muted">Producto actual: —</p>
+      <div id="cat-product-history-note" class="cat-warn" hidden>Este producto puede tener ventas, inventario o reempaques asociados. Los cambios aplican hacia adelante y no modifican históricos.</div>
+
+      <div class="cat-product-form cat-product-form-modal">
+        <label>Nombre del producto
+          <input id="cat-edit-name" autocomplete="off" placeholder="Nombre">
+        </label>
+        <label>Precio de venta (C$)
+          <input id="cat-edit-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </label>
+        <label>ml por unidad / capacidad
+          <input id="cat-edit-capacity" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Ej: 750">
+        </label>
+        <label>Costo unitario ref. (C$)
+          <input id="cat-edit-unit-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </label>
+        <label class="cat-flag"><input id="cat-edit-active" type="checkbox"> Activo</label>
+        <label class="cat-flag"><input id="cat-edit-manage" type="checkbox"> Manejar inventario</label>
+      </div>
+      <small id="cat-edit-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-save" class="cat-btn cat-btn-ok" type="button">Guardar</button>
+        <button id="cat-edit-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+  <div id="cat-toast" class="cat-toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
+
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=14"></script>
+  <script src="script.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=11"></script>
+</body>
+</html>
