@@ -33,7 +33,7 @@
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
 <link href="../assets/css/a33-header.css?v=4.20.77&amp;r=7" rel="stylesheet"/>
-<link href="style.css?v=4.20.77&amp;r=19" rel="stylesheet"/>
+<link href="style.css?v=4.20.77&amp;r=20" rel="stylesheet"/>
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=7" />
 </head>
 <body>
@@ -746,6 +746,25 @@
     <p class="cfg-action-inline-note" id="cfg-firebase-lock-message">Protección local pendiente.</p>
   </section>
 </div>
+<div class="cfg-firebase-locked-notice" id="cfg-firebase-locked-notice" aria-live="polite">
+  <section class="cfg-firebase-card cfg-firebase-card--wide cfg-firebase-locked-card" aria-labelledby="cfg-firebase-locked-title">
+    <div class="cfg-report-card-head">
+      <span class="cfg-report-icon">🔒</span>
+      <div>
+        <h3 id="cfg-firebase-locked-title">Credenciales protegidas</h3>
+        <p>Desbloqueá Firebase para mostrar y editar los espacios de credenciales web.</p>
+      </div>
+    </div>
+    <div class="cfg-firebase-locked-fields" aria-label="Campos protegidos de credenciales Firebase">
+      <span>apiKey</span>
+      <span>authDomain</span>
+      <span>databaseURL</span>
+      <span>projectId</span>
+      <span>appId</span>
+    </div>
+    <p class="cfg-action-inline-note">Mientras esté bloqueado no se muestran valores guardados ni credenciales. Al desbloquear, aparece el formulario completo.</p>
+  </section>
+</div>
 <form aria-label="Configuración Firebase" class="cfg-firebase-form" id="cfg-firebase-form" novalidate="">
 <section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-status-title">
 <div class="cfg-report-card-head">
@@ -1116,7 +1135,7 @@
 </div>
 <input accept="application/json" id="backup-file-input" style="display:none;" type="file"/>
 <div aria-live="polite" class="a33-toast" id="a33-toast"></div>
-<script src="../assets/js/a33-release.js?v=4.20.77&amp;r=19"></script>
+<script src="../assets/js/a33-release.js?v=4.20.77&amp;r=20"></script>
 <script src="../assets/js/a33-storage.js?v=4.20.77&amp;r=7"></script>
 <script src="../assets/js/a33-currency.js?v=4.20.77&amp;r=14"></script>
 <script src="../assets/js/a33-export-currency.js?v=4.20.77&amp;r=2"></script>
@@ -1126,6 +1145,6 @@
 <script src="../assets/js/a33-firebase-auth.js?v=4.20.77&amp;r=15"></script>
 <script src="../assets/js/a33-firebase-access.js?v=4.20.77&amp;r=15"></script>
 <script src="../assets/js/a33-module-access.js?v=4.20.77&amp;r=15"></script>
-<script src="script.js?v=4.20.77&amp;r=20"></script>
+<script src="script.js?v=4.20.77&amp;r=21"></script>
 </body>
 </html>

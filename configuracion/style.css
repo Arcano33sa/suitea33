@@ -3363,18 +3363,57 @@ html[data-theme="light"] .cfg-badge[data-firebase-state="error"]{
   display:none !important;
 }
 
+.cfg-firebase-locked-notice{
+  margin:0 0 14px;
+}
+
+.cfg-firebase-locked-notice[hidden]{
+  display:none !important;
+}
+
+.cfg-firebase-locked-card{
+  border-color:rgba(221,191,100,0.22);
+  background:
+    radial-gradient(circle at top right, rgba(221,191,100,0.08), transparent 36%),
+    linear-gradient(180deg, rgba(18,18,18,0.94), rgba(8,8,8,0.98));
+}
+
+.cfg-firebase-locked-fields{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(0, 1fr));
+  gap:10px;
+}
+
+.cfg-firebase-locked-fields span{
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px dashed rgba(221,191,100,0.34);
+  background:rgba(255,255,255,0.035);
+  color:var(--cfg-gold);
+  font-size:0.84rem;
+  font-weight:800;
+  overflow-wrap:anywhere;
+}
+
 .cfg-firebase-panel[data-firebase-unlocked="false"] .cfg-firebase-hero{
   opacity:0.78;
 }
 
 html[data-theme="light"] .cfg-firebase-lock-card,
-html[data-theme="light"] .cfg-firebase-lock-status{
+html[data-theme="light"] .cfg-firebase-lock-status,
+html[data-theme="light"] .cfg-firebase-locked-card,
+html[data-theme="light"] .cfg-firebase-locked-fields span{
   background:linear-gradient(180deg, rgba(255,250,240,0.98), rgba(246,235,216,0.98));
   border-color:rgba(139,98,30,0.20);
 }
 
 @media (max-width: 980px){
-  .cfg-firebase-passphrase-grid{
+  .cfg-firebase-passphrase-grid,
+  .cfg-firebase-locked-fields{
     grid-template-columns:1fr;
   }
 }

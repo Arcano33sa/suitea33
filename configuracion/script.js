@@ -2960,11 +2960,13 @@
     const hasPassphrase = !!getFirebasePassphraseRecord();
     const panel = document.querySelector('.cfg-firebase-panel');
     const form = document.getElementById('cfg-firebase-form');
+    const lockedNotice = document.getElementById('cfg-firebase-locked-notice');
     const createBox = document.getElementById('cfg-firebase-create-passphrase-box');
     const unlockBox = document.getElementById('cfg-firebase-unlock-box');
     const status = document.getElementById('cfg-firebase-passphrase-status');
     if (panel) panel.dataset.firebaseUnlocked = firebaseSectionUnlocked ? 'true' : 'false';
     if (form) form.hidden = !firebaseSectionUnlocked;
+    if (lockedNotice) lockedNotice.hidden = firebaseSectionUnlocked;
     if (createBox) createBox.hidden = hasPassphrase;
     if (unlockBox) unlockBox.hidden = !hasPassphrase || firebaseSectionUnlocked;
     if (status){
@@ -2974,11 +2976,11 @@
     }
     setFirebaseBadge(firebaseSectionUnlocked ? 'Desbloqueado' : (hasPassphrase ? 'Bloqueado' : 'Clave pendiente'), firebaseSectionUnlocked ? 'ready' : 'disabled');
     if (!hasPassphrase){
-      setFirebasePassphraseMessage('Crear palabra clave inicial para ver/editar Firebase. Protección local, no seguridad fuerte de Firebase.', false);
+      setFirebasePassphraseMessage('Crear palabra clave inicial para mostrar los espacios de credenciales y editar Firebase. Protección local, no seguridad fuerte de Firebase.', false);
     } else if (firebaseSectionUnlocked){
       setFirebasePassphraseMessage('Apartado Firebase desbloqueado en esta sesión. Podés bloquear manualmente al terminar.', false);
     } else {
-      setFirebasePassphraseMessage('Ingresá la palabra clave para ver credenciales o ejecutar acciones sensibles.', false);
+      setFirebasePassphraseMessage('Ingresá la palabra clave para mostrar los espacios de credenciales o ejecutar acciones sensibles.', false);
     }
   }
 
