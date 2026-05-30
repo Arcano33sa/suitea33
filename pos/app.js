@@ -6479,6 +6479,12 @@ function coerceCustomerObjectPOS(raw, disabledSet, existingIds){
       createdAt: Date.now(),
       updatedAt: null,
       normalizedName,
+      celular: '',
+      telefono: '',
+      whatsapp: '',
+      correo: '',
+      direccion: '',
+      notas: '',
       // Clientes v3 (Identidad): campos opcionales (migración suave)
       aliases: [],
       nameHistory: [],
@@ -6549,10 +6555,21 @@ function coerceCustomerObjectPOS(raw, disabledSet, existingIds){
   const mergedAt = (Number.isFinite(mergedAtNum) && mergedAtNum > 0) ? mergedAtNum : null;
   const mergeReason = sanitizeCustomerDisplayPOS(raw.mergeReason || '');
 
+  const celular = sanitizeCustomerDisplayPOS(raw.celular || raw.cellular || raw.mobile || raw.movil || raw.whatsapp || raw.wa || raw.whatsApp || raw.telefono || raw.phone || raw.telefonoCliente || '');
+
   return {
+    ...raw,
     id,
     name,
+    nombre: sanitizeCustomerDisplayPOS(raw.nombre || name),
+    celular,
+    telefono: celular,
+    whatsapp: '',
+    correo: sanitizeCustomerDisplayPOS(raw.correo || raw.email || raw.mail || ''),
+    direccion: sanitizeCustomerDisplayPOS(raw.direccion || raw.address || ''),
+    notas: String(raw.notas || raw.notes || '').trim(),
     isActive: !!isActive,
+    active: !!isActive,
     createdAt,
     updatedAt,
     normalizedName,

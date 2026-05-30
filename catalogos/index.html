@@ -30,7 +30,7 @@
   </script>
   <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.77&r=11" />
   <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.77&r=11" />
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=4" />
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=6" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -268,7 +268,7 @@
             <div>
               <p class="cat-eyebrow">Clientes maestros</p>
               <h2>Directorio central para POS</h2>
-              <p>Administra aquí clientes usados por POS sin mover ventas históricas ni limpiar todavía la interfaz de Vender. Esta etapa usa la misma fuente local de Catálogos/POS para evitar duplicados visuales sin tocar históricos.</p>
+              <p>Administra aquí clientes usados por POS sin mover ventas históricas. Esta vista usa la misma fuente local de Catálogos/POS para evitar duplicados visuales sin tocar históricos.</p>
             </div>
             <ul class="cat-list">
               <li>Los clientes inactivos se conservan para trazabilidad.</li>
@@ -289,7 +289,7 @@
             </div>
             <div class="cat-search-row">
               <label>Buscar cliente
-                <input id="cat-customer-search" autocomplete="off" placeholder="Nombre, teléfono, correo…">
+                <input id="cat-customer-search" autocomplete="off" placeholder="Nombre, celular, correo…">
               </label>
             </div>
             <div id="cat-customers-status" class="cat-status" role="status" aria-live="polite">Cargando clientes…</div>
@@ -299,17 +299,14 @@
           <article class="cat-product-form-card">
             <div>
               <p class="cat-eyebrow">Cliente maestro</p>
-              <h2>Agregar / editar cliente</h2>
+              <h2>Agregar cliente</h2>
             </div>
             <div class="cat-product-form cat-customer-form">
               <label>Nombre
                 <input id="cat-customer-name" autocomplete="off" placeholder="Nombre del cliente">
               </label>
-              <label>Teléfono
-                <input id="cat-customer-phone" autocomplete="off" inputmode="tel" placeholder="Opcional">
-              </label>
-              <label>WhatsApp
-                <input id="cat-customer-whatsapp" autocomplete="off" inputmode="tel" placeholder="Opcional">
+              <label>Celular
+                <input id="cat-customer-cell" autocomplete="off" inputmode="tel" placeholder="Opcional">
               </label>
               <label>Correo
                 <input id="cat-customer-email" autocomplete="off" inputmode="email" placeholder="Opcional">
@@ -324,7 +321,6 @@
             </div>
             <small id="cat-customer-msg" class="cat-muted cat-edit-msg"></small>
             <div class="cat-actions-end">
-              <button id="cat-cancel-customer" class="cat-btn cat-btn-secondary" type="button" hidden>Cancelar edición</button>
               <button id="cat-save-customer" class="cat-btn cat-btn-ok" type="button">+ Agregar cliente</button>
             </div>
           </article>
@@ -365,11 +361,46 @@
       </div>
     </div>
   </div>
+
+
+  <div id="cat-customer-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel cat-customer-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-customer-modal-title">
+      <button id="cat-customer-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Cliente maestro</p>
+      <h2 id="cat-customer-modal-title">Editar cliente</h2>
+      <p id="cat-customer-current" class="cat-muted">Cliente actual: —</p>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Ventas históricas conservan su snapshot y no se reescriben.</div>
+
+      <div class="cat-product-form cat-product-form-modal cat-customer-form-modal">
+        <label>Nombre
+          <input id="cat-edit-customer-name" autocomplete="off" placeholder="Nombre del cliente">
+        </label>
+        <label>Celular
+          <input id="cat-edit-customer-cell" autocomplete="off" inputmode="tel" placeholder="Opcional">
+        </label>
+        <label>Correo
+          <input id="cat-edit-customer-email" autocomplete="off" inputmode="email" placeholder="Opcional">
+        </label>
+        <label>Dirección
+          <input id="cat-edit-customer-address" autocomplete="off" placeholder="Opcional">
+        </label>
+        <label class="cat-flag"><input id="cat-edit-customer-active" type="checkbox"> Activo</label>
+        <label class="cat-field-full">Notas
+          <textarea id="cat-edit-customer-notes" rows="3" placeholder="Opcional"></textarea>
+        </label>
+      </div>
+      <small id="cat-edit-customer-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-customer-save" class="cat-btn cat-btn-ok" type="button">Guardar cambios</button>
+        <button id="cat-edit-customer-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
   <div id="cat-toast" class="cat-toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
 
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=22"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=23"></script>
   <script src="/assets/js/a33-storage.js?v=4.20.77&r=13"></script>
-  <script src="script.js?v=4.20.77&r=5"></script>
+  <script src="script.js?v=4.20.77&r=6"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=11"></script>
 </body>
 </html>

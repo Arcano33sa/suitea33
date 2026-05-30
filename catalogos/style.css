@@ -424,3 +424,12 @@ html[data-theme="light"] .cat-customer-empty{background:rgba(255,255,255,0.34);}
 @media(max-width:760px){
   .cat-tabs{grid-template-columns:1fr;}
 }
+
+
+/* Clientes: edición en mini ventana y campo único Celular */
+.cat-customer-form{grid-template-columns:repeat(2,minmax(0,1fr));}
+.cat-customer-modal-panel{width:min(680px, calc(100vw - 28px));}
+body.cat-modal-open{overflow:hidden;}
+@media(max-width:560px){
+  .cat-customer-form,.cat-customer-form-modal{grid-template-columns:1fr;}
+}

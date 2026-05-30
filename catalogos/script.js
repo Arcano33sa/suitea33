@@ -53,7 +53,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.77&r=5').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.77&r=6').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -1105,6 +1105,11 @@
     return true;
   }
 
+  function getCustomerCellularCAT(c){
+    if (!c) return '';
+    return sanitizeCustomerName(c.celular || c.cellular || c.mobile || c.movil || c.whatsapp || c.wa || c.whatsApp || c.telefono || c.phone || c.telefonoCliente || '');
+  }
+
   function normalizeCustomerObjectCAT(raw, disabledSet, existingIds){
     const now = Date.now();
     if (typeof raw === 'string'){
@@ -1118,6 +1123,7 @@
         id:String(id),
         name,
         nombre:name,
+        celular:'',
         telefono:'',
         whatsapp:'',
         correo:'',
@@ -1157,8 +1163,9 @@
     obj.id = String(id);
     obj.name = name;
     obj.nombre = sanitizeCustomerName(raw.nombre || name);
-    obj.telefono = sanitizeCustomerName(raw.telefono || raw.phone || raw.telefonoCliente || '');
-    obj.whatsapp = sanitizeCustomerName(raw.whatsapp || raw.wa || raw.whatsApp || '');
+    obj.celular = getCustomerCellularCAT(raw);
+    obj.telefono = obj.celular;
+    obj.whatsapp = ''; // Compat legacy: la UI ya no separa WhatsApp de Teléfono.
     obj.correo = sanitizeCustomerName(raw.correo || raw.email || raw.mail || '');
     obj.direccion = sanitizeCustomerName(raw.direccion || raw.address || '');
     obj.notas = String(raw.notas || raw.notes || '').trim();
@@ -1247,7 +1254,7 @@
 
   function customerSearchTextCAT(c){
     if (!c) return '';
-    const parts = [c.name, c.nombre, c.telefono, c.whatsapp, c.correo, c.direccion, c.notas];
+    const parts = [c.name, c.nombre, getCustomerCellularCAT(c), c.correo, c.direccion, c.notas];
     if (Array.isArray(c.aliases)) parts.push(...c.aliases);
     return normalizeCustomerKeyCAT(parts.filter(Boolean).join(' '));
   }
@@ -1267,13 +1274,12 @@
 
   function resetCustomerFormCAT(){
     currentCustomerEditId = null;
-    ['cat-customer-name','cat-customer-phone','cat-customer-whatsapp','cat-customer-email','cat-customer-address','cat-customer-notes'].forEach(id => {
+    ['cat-customer-name','cat-customer-cell','cat-customer-email','cat-customer-address','cat-customer-notes'].forEach(id => {
       const el = byId(id);
       if (el) el.value = '';
     });
     const active = byId('cat-customer-active'); if (active) active.checked = true;
     const save = byId('cat-save-customer'); if (save) save.textContent = '+ Agregar cliente';
-    const cancel = byId('cat-cancel-customer'); if (cancel) cancel.hidden = true;
     setCustomerMsgCAT('');
   }
 
@@ -1281,33 +1287,36 @@
     if (!customer) return;
     currentCustomerEditId = String(customer.id || '');
     const fields = {
-      'cat-customer-name': customer.name || '',
-      'cat-customer-phone': customer.telefono || customer.phone || '',
-      'cat-customer-whatsapp': customer.whatsapp || customer.wa || '',
-      'cat-customer-email': customer.correo || customer.email || '',
-      'cat-customer-address': customer.direccion || customer.address || '',
-      'cat-customer-notes': customer.notas || customer.notes || ''
+      'cat-edit-customer-name': customer.name || '',
+      'cat-edit-customer-cell': getCustomerCellularCAT(customer),
+      'cat-edit-customer-email': customer.correo || customer.email || '',
+      'cat-edit-customer-address': customer.direccion || customer.address || '',
+      'cat-edit-customer-notes': customer.notas || customer.notes || ''
     };
     Object.keys(fields).forEach(id => { const el = byId(id); if (el) el.value = fields[id]; });
-    const active = byId('cat-customer-active'); if (active) active.checked = customerActiveCAT(customer);
-    const save = byId('cat-save-customer'); if (save) save.textContent = 'Guardar cambios';
-    const cancel = byId('cat-cancel-customer'); if (cancel) cancel.hidden = false;
-    setCustomerMsgCAT('Editando: ' + (customer.name || 'cliente'), '');
-    setTimeout(()=>{ try{ byId('cat-customer-name')?.focus({ preventScroll:true }); byId('cat-customer-name')?.select(); }catch(_){ } }, 40);
+    const active = byId('cat-edit-customer-active'); if (active) active.checked = customerActiveCAT(customer);
+    const current = byId('cat-customer-current'); if (current) current.textContent = 'Cliente actual: ' + (customer.name || '—');
+    setEditCustomerMsgCAT('', '');
+    openCustomerModalCAT();
+    setTimeout(()=>{ try{ byId('cat-edit-customer-name')?.focus({ preventScroll:true }); byId('cat-edit-customer-name')?.select(); }catch(_){ } }, 60);
   }
 
-  function readCustomerFormCAT(){
-    const name = sanitizeCustomerName(byId('cat-customer-name')?.value || '');
-    const telefono = sanitizeCustomerName(byId('cat-customer-phone')?.value || '');
-    const whatsapp = sanitizeCustomerName(byId('cat-customer-whatsapp')?.value || '');
-    const correo = sanitizeCustomerName(byId('cat-customer-email')?.value || '');
-    const direccion = sanitizeCustomerName(byId('cat-customer-address')?.value || '');
-    const notas = String(byId('cat-customer-notes')?.value || '').trim();
-    const active = !!byId('cat-customer-active')?.checked;
+  function readCustomerFieldsCAT(prefix){
+    const modal = prefix === 'edit';
+    const name = sanitizeCustomerName(byId(modal ? 'cat-edit-customer-name' : 'cat-customer-name')?.value || '');
+    const celular = sanitizeCustomerName(byId(modal ? 'cat-edit-customer-cell' : 'cat-customer-cell')?.value || '');
+    const correo = sanitizeCustomerName(byId(modal ? 'cat-edit-customer-email' : 'cat-customer-email')?.value || '');
+    const direccion = sanitizeCustomerName(byId(modal ? 'cat-edit-customer-address' : 'cat-customer-address')?.value || '');
+    const notas = String(byId(modal ? 'cat-edit-customer-notes' : 'cat-customer-notes')?.value || '').trim();
+    const active = !!byId(modal ? 'cat-edit-customer-active' : 'cat-customer-active')?.checked;
     if (!name) return { ok:false, msg:'Nombre obligatorio.' };
     const normalizedName = normalizeCustomerKeyCAT(name);
     if (!normalizedName) return { ok:false, msg:'Nombre inválido.' };
-    return { ok:true, name, telefono, whatsapp, correo, direccion, notas, active, normalizedName };
+    return { ok:true, name, celular, correo, direccion, notas, active, normalizedName };
+  }
+
+  function readCustomerFormCAT(){
+    return readCustomerFieldsCAT(currentCustomerEditId ? 'edit' : 'add');
   }
 
   function findCustomerDuplicateCAT(list, normalizedName, currentId){
@@ -1349,8 +1358,7 @@
         const isMerged = !!(c && c.mergedIntoId);
         const card = document.createElement('div');
         card.className = 'cat-product-card' + (active ? '' : ' is-inactive');
-        const phone = c.telefono || c.phone || '—';
-        const wa = c.whatsapp || c.wa || '—';
+        const celular = getCustomerCellularCAT(c) || '—';
         const email = c.correo || c.email || '—';
         const address = c.direccion || c.address || '—';
         card.innerHTML = `
@@ -1362,8 +1370,7 @@
               ${isMerged ? '<span class="cat-pill muted">Fusionado</span>' : ''}
             </div>
             <div class="cat-product-meta">
-              <div><small>Teléfono</small><b>${escapeHtml(phone)}</b></div>
-              <div><small>WhatsApp</small><b>${escapeHtml(wa)}</b></div>
+              <div><small>Celular</small><b>${escapeHtml(celular)}</b></div>
               <div><small>Correo</small><b>${escapeHtml(email)}</b></div>
               <div><small>Dirección</small><b>${escapeHtml(address)}</b></div>
             </div>
@@ -1383,18 +1390,18 @@
 
   async function saveCustomerMaster(){
     const data = readCustomerFormCAT();
-    if (!data.ok){ setCustomerMsgCAT(data.msg, 'warn'); return; }
+    if (!data.ok){ setCurrentCustomerMsgCAT(data.msg, 'warn'); return; }
     const list = readCustomerCatalogCAT();
     const duplicate = findCustomerDuplicateCAT(list, data.normalizedName, currentCustomerEditId);
-    if (duplicate){ setCustomerMsgCAT('Ya existe un cliente con ese nombre. No se duplicó nada.', 'warn'); return; }
+    if (duplicate){ setCurrentCustomerMsgCAT('Ya existe un cliente con ese nombre. No se duplicó nada.', 'warn'); return; }
 
     const now = Date.now();
     let row = null;
     const isEdit = !!currentCustomerEditId;
     if (isEdit){
       row = list.find(c => c && String(c.id) === String(currentCustomerEditId));
-      if (!row){ setCustomerMsgCAT('El cliente ya no existe. Actualiza e intenta de nuevo.', 'warn'); resetCustomerFormCAT(); await renderCustomers(); return; }
-      if (row.mergedIntoId){ setCustomerMsgCAT('Este cliente está fusionado. Administra el destino final.', 'warn'); return; }
+      if (!row){ setCurrentCustomerMsgCAT('El cliente ya no existe. Actualiza e intenta de nuevo.', 'warn'); resetCustomerFormCAT(); await renderCustomers(); return; }
+      if (row.mergedIntoId){ setCurrentCustomerMsgCAT('Este cliente está fusionado. Administra el destino final.', 'warn'); return; }
       const oldName = sanitizeCustomerName(row.name || '');
       if (oldName && normalizeCustomerKeyCAT(oldName) !== data.normalizedName){
         if (!Array.isArray(row.nameHistory)) row.nameHistory = [];
@@ -1420,8 +1427,9 @@
 
     row.name = data.name;
     row.nombre = data.name;
-    row.telefono = data.telefono;
-    row.whatsapp = data.whatsapp;
+    row.celular = data.celular;
+    row.telefono = data.celular; // Compat legacy: antes existía Teléfono.
+    row.whatsapp = ''; // WhatsApp separado eliminado de la UI.
     row.correo = data.correo;
     row.direccion = data.direccion;
     row.notas = data.notas;
@@ -1433,8 +1441,9 @@
     row.updatedFrom = 'catalogos_clientes';
 
     const ok = saveCustomerCatalogCAT(list);
-    if (!ok){ setCustomerMsgCAT('No se pudo guardar. Revisa almacenamiento local.', 'warn'); return; }
+    if (!ok){ setCurrentCustomerMsgCAT('No se pudo guardar. Revisa almacenamiento local.', 'warn'); return; }
     resetCustomerFormCAT();
+    if (isEdit) closeCustomerModalCAT();
     await renderCustomers();
     toast(isEdit ? 'Cliente guardado' : 'Cliente agregado');
   }
@@ -1457,6 +1466,36 @@
     toast(next ? 'Cliente activado' : 'Cliente inactivado');
   }
 
+  function setEditCustomerMsgCAT(message, kind){
+    const el = byId('cat-edit-customer-msg');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'cat-muted cat-edit-msg' + (kind ? (' ' + kind) : '');
+  }
+
+  function setCurrentCustomerMsgCAT(message, kind){
+    if (currentCustomerEditId) setEditCustomerMsgCAT(message, kind);
+    else setCustomerMsgCAT(message, kind);
+  }
+
+  function openCustomerModalCAT(){
+    const modal = byId('cat-customer-modal');
+    if (!modal) return;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    try{ document.body.classList.add('cat-modal-open'); }catch(_){ }
+  }
+
+  function closeCustomerModalCAT(){
+    const modal = byId('cat-customer-modal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    currentCustomerEditId = null;
+    setEditCustomerMsgCAT('', '');
+    try{ document.body.classList.remove('cat-modal-open'); }catch(_){ }
+  }
+
   function editCustomerMaster(id){
     const cid = id != null ? String(id).trim() : '';
     const list = readCustomerCatalogCAT();
@@ -1477,7 +1516,19 @@
       });
     }
     byId('cat-save-customer')?.addEventListener('click', ()=>saveCustomerMaster().catch(err=>{ console.error(err); setCustomerMsgCAT('No se pudo guardar el cliente.', 'warn'); }));
-    byId('cat-cancel-customer')?.addEventListener('click', resetCustomerFormCAT);
+    byId('cat-edit-customer-save')?.addEventListener('click', ()=>saveCustomerMaster().catch(err=>{ console.error(err); setEditCustomerMsgCAT('No se pudo guardar el cliente.', 'warn'); }));
+    byId('cat-edit-customer-cancel')?.addEventListener('click', closeCustomerModalCAT);
+    byId('cat-customer-close')?.addEventListener('click', closeCustomerModalCAT);
+    const customerModal = byId('cat-customer-modal');
+    if (customerModal){
+      customerModal.addEventListener('click', (e)=>{ if (e.target === customerModal) closeCustomerModalCAT(); });
+    }
+    document.addEventListener('keydown', (e)=>{
+      if (e && e.key === 'Escape'){
+        const modal = byId('cat-customer-modal');
+        if (modal && modal.classList.contains('show')) closeCustomerModalCAT();
+      }
+    });
     byId('cat-refresh-customers')?.addEventListener('click', async ()=>{ resetCustomerFormCAT(); await renderCustomers(); toast('Clientes actualizados'); });
     byId('cat-customer-search')?.addEventListener('input', ()=>renderCustomers().catch(err=>console.error(err)));
   }

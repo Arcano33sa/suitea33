@@ -408,6 +408,12 @@
         createdAt: Date.now(),
         updatedAt: null,
         normalizedName,
+        celular: '',
+        telefono: '',
+        whatsapp: '',
+        correo: '',
+        direccion: '',
+        notas: '',
         aliases: [],
         nameHistory: [],
         mergedIntoId: null,
@@ -473,10 +479,21 @@
     const updatedAt = Number(item.updatedAt);
     const mergedAt = Number(item.mergedAt);
 
+    const celular = sanitizeCustomerDisplay(item.celular || item.cellular || item.mobile || item.movil || item.whatsapp || item.wa || item.whatsApp || item.telefono || item.phone || item.telefonoCliente || '');
+
     return {
+      ...item,
       id,
       name,
+      nombre: sanitizeCustomerDisplay(item.nombre || name),
+      celular,
+      telefono: celular,
+      whatsapp: '',
+      correo: sanitizeCustomerDisplay(item.correo || item.email || item.mail || ''),
+      direccion: sanitizeCustomerDisplay(item.direccion || item.address || ''),
+      notas: String(item.notas || item.notes || '').trim(),
       isActive: item.isActive !== false && item.active !== false,
+      active: item.isActive !== false && item.active !== false,
       createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now(),
       updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : null,
       normalizedName,
@@ -873,6 +890,12 @@
       createdAt: Date.now(),
       updatedAt: null,
       normalizedName: normalizeCustomerKey(typedName),
+      celular: '',
+      telefono: '',
+      whatsapp: '',
+      correo: '',
+      direccion: '',
+      notas: '',
       aliases: [],
       nameHistory: [],
       mergedIntoId: null,

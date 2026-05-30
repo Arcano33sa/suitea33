@@ -3,7 +3,7 @@
 */
 
 // A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=14'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=23'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
@@ -19,12 +19,12 @@ const PRECACHE_URLS = [
   './',
   './index.html?v=4.20.77&r=9',
   './style.css?v=4.20.77&r=7',
-  './script.js?v=4.20.77&r=9',
+  './script.js?v=4.20.77&r=10',
   './vendor/xlsx.full.min.js?v=4.20.77&r=7',
   './manifest.webmanifest?v=4.20.77&r=7',
   './offline.html',
   './images/logo.png',
-  '/assets/js/a33-release.js?v=4.20.77&r=14',
+  '/assets/js/a33-release.js?v=4.20.77&r=23',
 
   '/assets/js/a33-input-ux.js?v=4.20.77&r=7',
   '/assets/js/a33-storage.js?v=4.20.77&r=7',

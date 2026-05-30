@@ -846,7 +846,7 @@ function addNewCustomerToPosCatalog(name){
 
   if (type === 'object'){
     const id = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,9);
-    raw.push({ id, name: display });
+    raw.push({ id, name: display, nombre: display, celular: '', telefono: '', whatsapp: '', correo: '', direccion: '', notas: '', isActive: true, active: true, createdAt: Date.now(), updatedAt: null, normalizedName: k, aliases: [], nameHistory: [], mergedIntoId: null, mergedAt: null, mergeReason: '', mergeHistory: [] });
     writePosCustomersRaw(raw);
     return { ok:true, existed:false, id, name: display, isActive:true };
   }
@@ -2203,7 +2203,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js?v=4.20.77&r=8').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.77&r=10').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

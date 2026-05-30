@@ -1696,7 +1696,7 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=4.20.77&r=13"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=22"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=23"></script>
 
 <script src="/assets/js/a33-storage.js?v=4.20.77&r=13"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
@@ -1707,7 +1707,7 @@
     try{
       const relObj = (window.A33_RELEASE || {});
       const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.77';
-      const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '22'; // POS cache bump local — Clientes Etapa 3
+      const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '23'; // POS cache bump local — Clientes UX Celular
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
       try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }
@@ -1727,7 +1727,7 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.77&r=15"></script>
+<script src="app.js?v=4.20.77&r=16"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=13"></script>
 <script>
   (function(){
