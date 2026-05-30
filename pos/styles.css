@@ -329,6 +329,7 @@ small.muted{color:var(--muted)}
 .customer-v2-actions .flag{margin:0}
 .customer-v2-actions .btn-link{padding:6px 0}
 .customer-v2-sticky{font-size:13px}
+.customer-catalog-hint{display:block;margin-top:4px}
 
 .customer-manage{margin-top:8px}
 	.customer-manage-list{display:flex;flex-direction:column;gap:8px}

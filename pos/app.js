@@ -4687,8 +4687,8 @@ function saleFingerprintPOS(sale){
       bankId: (sale.bankId == null ? null : Number(sale.bankId)),
       courtesy: !!sale.courtesy,
       isReturn: !!sale.isReturn,
-      customerId: (sale.customerId == null ? null : Number(sale.customerId)),
-      customerName: String(sale.customerName || sale.customer || ''),
+      customerId: (sale.customerId == null ? null : String(sale.customerId)),
+      customerName: getSaleCustomerSnapshotNamePOS(sale),
       courtesyTo: String(sale.courtesyTo || ''),
       notes: String(sale.notes || '')
     };
@@ -5212,7 +5212,7 @@ async function createJournalEntryForSalePOS(sale) {
     const eventName = (sale.eventName || '').toString();
     const courtesyTo = (sale.courtesyTo || '').toString().trim();
     // Etapa 5: referencia de cliente (NO CxC / no afecta montos ni cuentas)
-    const customerName = (sale.customerName || '').toString().trim();
+    const customerName = getSaleCustomerSnapshotNamePOS(sale);
 
     const baseParts = [];
     if (prodName) baseParts.push(prodName);
@@ -6395,7 +6395,7 @@ const HIDDEN_GROUPS_KEY = 'a33_pos_hiddenGroups';
 const GROUP_CATALOG_KEY = 'a33_pos_groupCatalog_v1';
 
 
-// --- Ventas: Cliente (Clientes v2: picker propio + pegajoso + gestión)
+// --- Ventas: Cliente (selector + pegajoso; administración en Catálogos)
 // Etapa 2 (Datos): catálogo con customerId + migración suave. Analítica sigue usando customerName.
 const CUSTOMER_CATALOG_KEY = 'a33_pos_customersCatalog';
 const CUSTOMER_DISABLED_KEY = 'a33_pos_customersDisabled'; // legado (Etapa 1). En Etapa 2 se mantiene sincronizado.
@@ -6658,7 +6658,6 @@ function migrateCustomerCatalogToObjectsPOS(){
   const disabled = loadCustomerDisabledSetPOS();
 
   const existingIds = new Set();
-  const seenNorm = new Set();
   const out = [];
   let changed = false;
 
@@ -6667,17 +6666,9 @@ function migrateCustomerCatalogToObjectsPOS(){
       const obj = coerceCustomerObjectPOS(item, disabled, existingIds);
       if (!obj) { if (item) changed = true; continue; }
 
-      if (seenNorm.has(obj.normalizedName)){
-        // Merge: mantener el primero, pero si alguno está activo, se queda activo.
-        const prev = out.find(x => x.normalizedName === obj.normalizedName);
-        if (prev && prev.isActive === false && obj.isActive === true) prev.isActive = true;
-        changed = true;
-        continue;
-      }
-
-      seenNorm.add(obj.normalizedName);
-
-      // Si el raw ya era objeto pero faltaba normalizedName/isActive/id, marcamos changed
+      // Etapa 3/3: migración conservadora.
+      // No fusionar ni borrar duplicados por nombre: se preservan IDs y datos existentes.
+      // El selector operativo deduplica visualmente cuando puede hacerlo sin destruir información.
       if (typeof item === 'string') changed = true;
       else {
         if (!item.id || item.normalizedName !== obj.normalizedName || typeof item.isActive !== 'boolean' || typeof item.createdAt !== 'number') changed = true;
@@ -6888,6 +6879,50 @@ function clearCustomerSelectionUI_POS(){
   if (inp.dataset) delete inp.dataset.customerId;
 }
 
+function getSaleCustomerSnapshotNamePOS(s){
+  // Snapshot conservador: histórico primero. Nunca reescribe por nombre actual del catálogo.
+  return sanitizeCustomerDisplayPOS(s && (s.customerName || s.customer || ''));
+}
+
+function dedupeSelectableCustomersPOS(list){
+  const out = [];
+  const seen = new Set();
+  for (const c of (Array.isArray(list) ? list : [])){
+    if (!c || c.isActive === false || c.mergedIntoId) continue;
+    const key = normalizeCustomerKeyPOS(c.name || c.normalizedName || '');
+    const id = (c.id != null) ? String(c.id).trim() : '';
+    const dedupeKey = key || ('id:' + id);
+    if (dedupeKey && seen.has(dedupeKey)) continue;
+    if (dedupeKey) seen.add(dedupeKey);
+    out.push(c);
+  }
+  return sortCustomerObjectsAZ_POS(out);
+}
+
+function validateCurrentCustomerSelectionPOS({ updateName = true } = {}){
+  const inp = document.getElementById('sale-customer');
+  if (!inp) return false;
+  const rawName = sanitizeCustomerDisplayPOS(inp.value || '');
+  const rawId = (inp.dataset) ? String(inp.dataset.customerId || '').trim() : '';
+  if (!rawName && !rawId){
+    persistCustomerLastPOS('');
+    return false;
+  }
+
+  const resolved = resolveCustomerIdForSalePOS(rawName, rawId || null);
+  if (resolved && resolved.id){
+    const displayName = resolved.displayName || rawName;
+    if (updateName) setCustomerSelectionUI_POS({ id: String(resolved.id), name: displayName });
+    if (isCustomerStickyPOS()) persistCustomerLastPOS(displayName);
+    return true;
+  }
+
+  // Cliente desactivado/eliminado/fusionado inválido: fallback seguro.
+  clearCustomerSelectionUI_POS();
+  persistCustomerLastPOS('');
+  return false;
+}
+
 
 // Etapa 2 (POS): al cambiar de evento, limpiar cliente seleccionado (UI + persistencia)
 function clearCustomerSelectionOnEventSwitchPOS(){
@@ -7003,35 +7038,42 @@ function resolveCustomerIdForSalePOS(customerName, uiHintId){
 
   const catalog = loadCustomerCatalogPOS();
   const resolver = buildCustomerResolverPOS(catalog);
+  const isSelectable = (finalId)=>{
+    const fid = finalId ? String(finalId).trim() : '';
+    if (!fid) return false;
+    const c = resolver.byId.get(fid);
+    return !!(c && c.isActive !== false && !c.mergedIntoId);
+  };
 
-  // 1) Hint de UI: si existe el ID, lo respetamos (y resolvemos merges)
+  // 1) Hint de UI: si existe el ID, lo respetamos solo si el destino final está activo.
   if (uiHintId){
     const hid = String(uiHintId).trim();
     if (hid && resolver.byId.has(hid)){
       const finalId = resolver.resolveFinalId(hid);
-      const displayName = resolver.getDisplayName(finalId) || name;
-      return { id: String(finalId), displayName, isNew: false };
+      if (isSelectable(finalId)){
+        const displayName = resolver.getDisplayName(finalId) || name;
+        return { id: String(finalId), displayName, isNew: false };
+      }
     }
   }
 
-  // 2) Match robusto por nombre (name / aliases / nameHistory / clientes fusionados)
+  // 2) Match robusto por nombre (name / aliases / nameHistory / clientes fusionados), pero solo para clientes activos.
   const finalId2 = resolver.matchNameToFinalId(name);
-  if (finalId2){
+  if (finalId2 && isSelectable(finalId2)){
     const displayName = resolver.getDisplayName(finalId2) || name;
     return { id: String(finalId2), displayName, isNew: false };
   }
 
-  // 3) Nuevo (se agregará al catálogo al completar la venta)
-  const existingIds = new Set(catalog.map(c => c && c.id).filter(Boolean).map(String));
-  const newId = generateCustomerIdPOS(existingIds);
-  return { id: String(newId), displayName: name, isNew: true };
+  // Etapa 2/3: POS no crea clientes desde Vender. Si no existe/está inactivo, se registra sin ID.
+  return { id: null, displayName: '', isNew: false };
 }
 
 // Venta sin cliente (Etapa 1): confirmación antes de registrar
 function isNoCustomerSelectedForSalePOS(){
   const name = getCustomerNameFromUI_POS();
   const hint = getCustomerIdHintFromUI_POS();
-  return !name && !hint;
+  const resolved = resolveCustomerIdForSalePOS(name, hint);
+  return !(resolved && resolved.id);
 }
 
 function confirmProceedSaleWithoutCustomerPOS(){
@@ -7108,7 +7150,7 @@ function ensureCustomerInCatalogPOS(name, preferredId){
 
 function getActiveCustomersPOS(){
   const all = loadCustomerCatalogPOS();
-  return all.filter(c => c && c.isActive !== false);
+  return dedupeSelectableCustomersPOS(all);
 }
 
 function addCustomerToCatalogPOS(name, preferredId){
@@ -7599,14 +7641,15 @@ function renderCustomerManageListPOS(){
 }
 
 function refreshCustomerUI_POS(){
-  // Migración suave: al refrescar UI aseguramos que el catálogo esté en formato objeto
+  // Migración suave: al refrescar UI aseguramos que el catálogo esté en formato objeto.
+  // Etapa 2/3: POS solo selecciona clientes; la administración vive en Catálogos.
   loadCustomerCatalogPOS();
 
-  // Si el picker está abierto, re-render para respetar desactivados/búsqueda
-  if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
+  // Etapa 3/3: si el cliente seleccionado fue desactivado/invalidado fuera del POS, se limpia sin tocar pagos/productos/totales.
+  try{ validateCurrentCustomerSelectionPOS({ updateName: true }); }catch(_){ }
 
-  // Si la gestión existe (y esté abierto o no), render listo para cuando se abra
-  renderCustomerManageListPOS();
+  // Si el picker está abierto, re-render para respetar activos/búsqueda.
+  if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
 }
 
 function toggleCustomerManagePanelPOS(){
@@ -7864,27 +7907,26 @@ function initCustomerUXPOS(){
   const sticky = document.getElementById('sale-customer-sticky');
   const clearBtn = document.getElementById('btn-clear-customer');
   const pickBtn = document.getElementById('btn-pick-customer');
-  const manageBtn = document.getElementById('btn-toggle-customer-manage');
 
   if (!inp || !sticky) return;
 
+  // Etapa 2/3: POS solo selecciona clientes activos; no administra ni crea clientes.
+  try{ inp.setAttribute('readonly', 'readonly'); inp.setAttribute('aria-readonly', 'true'); }catch(_){ }
   setupCustomerPickerModalPOS();
-  setupCustomerEditModalPOS();
-  setupCustomerMergeModalPOS();
   refreshCustomerUI_POS();
 
-  // Estado pegajoso + último cliente
+  // Estado pegajoso + último cliente: restaurar solo si todavía existe y está activo.
   const stickyOn = (A33Storage.getItem(CUSTOMER_STICKY_KEY) === '1');
   sticky.checked = stickyOn;
   if (stickyOn){
     const last = A33Storage.getItem(CUSTOMER_LAST_KEY) || '';
     if (last){
-      inp.value = sanitizeCustomerDisplayPOS(last);
-      // restaurar customerId si existe por match normalizado
-      const r = resolveCustomerIdForSalePOS(inp.value, null);
-      if (r && r.id && inp.dataset){
-        inp.dataset.customerId = String(r.id);
-        if (!r.isNew && r.displayName) inp.value = r.displayName;
+      const r = resolveCustomerIdForSalePOS(last, null);
+      if (r && r.id){
+        setCustomerSelectionUI_POS({ id: String(r.id), name: r.displayName || last });
+      } else {
+        clearCustomerSelectionUI_POS();
+        persistCustomerLastPOS('');
       }
     }
   }
@@ -7896,21 +7938,28 @@ function initCustomerUXPOS(){
     }
   });
 
-  // Si el usuario teclea, invalidamos el hint de id (se re-resuelve al vender)
+  // Defensa: si algo externo cambia el input, solo se acepta si resuelve a cliente activo.
   inp.addEventListener('input', ()=>{
-    if (inp.dataset) delete inp.dataset.customerId;
-    if (isCustomerStickyPOS()) persistCustomerLastPOS(inp.value || '');
+    const raw = sanitizeCustomerDisplayPOS(inp.value || '');
+    const r = resolveCustomerIdForSalePOS(raw, null);
+    if (r && r.id){
+      setCustomerSelectionUI_POS({ id: String(r.id), name: r.displayName || raw });
+      if (isCustomerStickyPOS()) persistCustomerLastPOS(r.displayName || raw);
+    } else {
+      if (inp.dataset) delete inp.dataset.customerId;
+    }
   });
 
-  // Si el usuario escribe un alias / nombre viejo / cliente fusionado, lo resolvemos al destino final
   inp.addEventListener('blur', ()=>{
     const raw = sanitizeCustomerDisplayPOS(inp.value || '');
     if (!raw) return;
-    const r = resolveCustomerIdForSalePOS(raw, null);
-    if (r && r.id && !r.isNew){
-      if (inp.dataset) inp.dataset.customerId = String(r.id);
-      if (r.displayName) inp.value = r.displayName;
-      if (isCustomerStickyPOS()) persistCustomerLastPOS(inp.value || '');
+    const r = resolveCustomerIdForSalePOS(raw, getCustomerIdHintFromUI_POS());
+    if (r && r.id){
+      setCustomerSelectionUI_POS({ id: String(r.id), name: r.displayName || raw });
+      if (isCustomerStickyPOS()) persistCustomerLastPOS(r.displayName || raw);
+    } else {
+      clearCustomerSelectionUI_POS();
+      persistCustomerLastPOS('');
     }
   });
 
@@ -7918,7 +7967,7 @@ function initCustomerUXPOS(){
     clearBtn.addEventListener('click', ()=>{
       clearCustomerSelectionUI_POS();
       persistCustomerLastPOS('');
-      inp.focus();
+      try{ pickBtn ? pickBtn.focus() : inp.focus(); }catch(_){ }
     });
   }
 
@@ -7926,117 +7975,33 @@ function initCustomerUXPOS(){
     pickBtn.addEventListener('click', ()=> openCustomerPickerPOS());
   }
 
-  if (manageBtn){
-    manageBtn.addEventListener('click', ()=> toggleCustomerManagePanelPOS());
-  }
-
-  // Gestión: agregar cliente sin venta
-  const addInp = document.getElementById('customer-add-name');
-  const addBtn = document.getElementById('customer-add-save');
-  const addMsg = document.getElementById('customer-add-msg');
-  if (addBtn && addInp){
-    const save = ()=>{
-      const name = sanitizeCustomerDisplayPOS(addInp.value || '');
-      if (!name){
-        if (addMsg) addMsg.textContent = 'Escribe un nombre.';
-        addInp.focus();
-        return;
+  // Catálogos vive fuera de POS: si otra pantalla cambia clientes, POS se auto-blinda.
+  try{
+    window.addEventListener('storage', (ev)=>{
+      if (!ev || ev.key === CUSTOMER_CATALOG_KEY || ev.key === CUSTOMER_DISABLED_KEY){
+        refreshCustomerUI_POS();
       }
-      const res = addCustomerToCatalogPOS(name);
-      if (!res || !res.ok){
-        if (res && res.reason === 'exists'){
-          // Si existe pero estaba desactivado, reactivar
-          const list2 = loadCustomerCatalogPOS();
-          const ex = list2.find(c => c && String(c.id) === String(res.id));
-          if (ex && ex.isActive === false && !ex.mergedIntoId){
-            setCustomerActiveByIdPOS(ex.id, true);
-            if (addMsg) addMsg.textContent = 'Ya existía (reactivado).';
-          } else {
-            if (addMsg) addMsg.textContent = 'Ya existe.';
-          }
-          return;
-        }
-        if (addMsg) addMsg.textContent = 'No se pudo guardar.';
-        return;
-      }
-
-      addInp.value = '';
-      if (addMsg) addMsg.textContent = 'Guardado.';
-      renderCustomerManageListPOS();
-      if (isCustomerPickerOpenPOS()) renderCustomerPickerListPOS();
-      addInp.focus();
-    };
-
-    addBtn.addEventListener('click', save);
-    addInp.addEventListener('keydown', (e)=>{
-      if (e.key === 'Enter') save();
     });
-  }
-
-  // Gestión: buscador
-  const manageSearch = document.getElementById('customer-manage-search');
-  if (manageSearch){
-    manageSearch.addEventListener('input', ()=> renderCustomerManageListPOS());
-  }
-
-  // Gestión: filtros + compacto + expandir/colapsar
-  const filterActiveBtn = document.getElementById('customer-manage-filter-active');
-  const filterAllBtn = document.getElementById('customer-manage-filter-all');
-  const compactChk = document.getElementById('customer-manage-compact');
-  const collapseAllBtn = document.getElementById('customer-manage-collapse-all');
-  const expandAllBtn = document.getElementById('customer-manage-expand-all');
-
-  if (filterActiveBtn){
-    filterActiveBtn.addEventListener('click', ()=>{
-      setCustomerManageFilterPOS('active');
-      // no forzamos colapsar/expandir; mantenemos preferencia actual
-      renderCustomerManageListPOS();
-      manageSearch?.focus();
-    });
-  }
-  if (filterAllBtn){
-    filterAllBtn.addEventListener('click', ()=>{
-      setCustomerManageFilterPOS('all');
-      renderCustomerManageListPOS();
-      manageSearch?.focus();
-    });
-  }
-  if (compactChk){
-    // estado inicial
-    compactChk.checked = isCustomerManageCompactPOS();
-    compactChk.addEventListener('change', ()=>{
-      setCustomerManageCompactPOS(!!compactChk.checked);
-      renderCustomerManageListPOS();
-    });
-  }
-  if (collapseAllBtn){
-    collapseAllBtn.addEventListener('click', ()=>{
-      setAllCustomerManageGroupsPOS(false);
-      renderCustomerManageListPOS();
-    });
-  }
-  if (expandAllBtn){
-    expandAllBtn.addEventListener('click', ()=>{
-      setAllCustomerManageGroupsPOS(true);
-      renderCustomerManageListPOS();
-    });
-  }
-
-  // Estado inicial visual (botones activos / clase compacto)
-  applyCustomerManageUIStatePOS();
+  }catch(_){ }
 }
 
 function afterSaleCustomerHousekeepingPOS(customerName, customerId){
   const n = sanitizeCustomerDisplayPOS(customerName);
-  if (n){
-    // asegurar catálogo con ID (si es nuevo, se crea con el ID ya usado en la venta)
-    ensureCustomerInCatalogPOS(n, customerId || null);
-    persistCustomerLastPOS(n);
-  } else {
+  const resolved = resolveCustomerIdForSalePOS(n, customerId || getCustomerIdHintFromUI_POS());
+
+  // Etapa 3/3: pegajoso seguro. Si el cliente ya no está activo, vuelve a cliente por defecto sin tocar pago/productos/extras/totales.
+  if (!(resolved && resolved.id)){
     persistCustomerLastPOS('');
+    clearCustomerSelectionUI_POS();
+    return;
   }
 
-  if (!isCustomerStickyPOS()){
+  const displayName = resolved.displayName || n;
+  persistCustomerLastPOS(displayName);
+
+  if (isCustomerStickyPOS()){
+    setCustomerSelectionUI_POS({ id: String(resolved.id), name: displayName });
+  } else {
     clearCustomerSelectionUI_POS();
   }
 }
@@ -17218,7 +17183,7 @@ async function renderDay(){
         <td><span class="tag ${payClass}" title="${escapeHtml(tenderDetail)}">${payTxt}</span>${tenderDetail ? `<div class="muted"><small>${escapeHtml(tenderDetail)}</small></div>` : ''}</td>
         <td>${s.courtesy?'✓':''}</td>
         <td>${s.isReturn?'✓':''}</td>
-        <td>${s.customerName||s.customer||''}</td>
+        <td>${escapeHtml(getSaleCustomerSnapshotNamePOS(s))}</td>
         <td>${s.courtesyTo||''}</td>
         <td><button data-id="${s.id}" title="Eliminar venta" class="btn-danger btn-mini del-sale">Eliminar</button></td>`;
       tbody.appendChild(tr);
@@ -17320,23 +17285,17 @@ function syncSummaryCustomerFilterUI_POS(filter, resolver){
 
 function deriveSaleCustomerIdentityForSummaryPOS(s, resolver){
   let finalId = '';
+  const rawName = getSaleCustomerSnapshotNamePOS(s);
   try{
     const rawId = (s && s.customerId != null) ? String(s.customerId).trim() : '';
     if (rawId){
       finalId = resolver ? (resolver.resolveFinalId(rawId) || rawId) : rawId;
-    } else {
-      const nm = sanitizeCustomerDisplayPOS(s && s.customerName || '');
-      if (nm && resolver){
-        finalId = resolver.matchNameToFinalId(nm) || '';
-      }
     }
+    // Etapa 3/3: ventas antiguas solo con nombre NO se vinculan por coincidencia.
+    // Así se evita asociarlas a un cliente incorrecto tras renombres/duplicados.
   }catch(_){ }
 
-  const rawName = sanitizeCustomerDisplayPOS(s && s.customerName || '');
-  let displayName = rawName;
-  if (finalId && resolver){
-    displayName = resolver.getDisplayName(finalId) || rawName || displayName;
-  }
+  const displayName = rawName || (finalId && resolver ? resolver.getDisplayName(finalId) : '') || '';
   const nameKey = normalizeCustomerKeyPOS(displayName || rawName);
   const hasCustomer = !!(finalId || rawName);
   return { finalId, displayName, nameKey, rawName, hasCustomer };
@@ -18106,10 +18065,11 @@ async function renderSummary(){
       let custName = '';
 
       if (ident && ident.finalId){
-        custKey = 'id:' + ident.finalId;
+        const snapKey = normalizeCustomerKeyPOS(ident.rawName || ident.displayName || '');
+        custKey = 'id:' + ident.finalId + (snapKey ? (':snap:' + snapKey) : '');
         custFilterType = 'id';
         custFilterValue = ident.finalId;
-        custName = (resolver ? (resolver.getDisplayName(ident.finalId) || '') : '') || ident.rawName || ident.displayName || 'Cliente';
+        custName = ident.rawName || ident.displayName || (resolver ? (resolver.getDisplayName(ident.finalId) || '') : '') || 'Cliente';
       } else {
         const nk = normalizeCustomerKeyPOS((ident && (ident.rawName || ident.displayName)) || '');
         if (nk){
@@ -21405,7 +21365,7 @@ async function openEventView(eventId){
   // Más reciente primero
   sales.sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a))).forEach(s=>{
     const payLabel = getSalePaymentLabelPOS(s, bankMap);
-    const tr=document.createElement('tr'); tr.innerHTML = `<td>${getSaleSeqDisplayPOS(s)}</td><td>${s.date}</td><td>${getSaleTimeTextPOS(s)}</td><td>${escapeHtml(uiProductNamePOS(s.productName))}</td><td>${s.qty}</td><td>${fmt(s.unitPrice)}</td><td>${fmt(getSaleDiscountTotalPOS(s))}</td><td>${fmt(s.total)}</td><td>${payLabel}</td><td>${s.courtesy?'✓':''}</td><td>${s.isReturn?'✓':''}</td><td>${s.customerName||s.customer||''}</td><td>${s.courtesyTo||''}</td><td>${s.notes||''}</td>`;
+    const tr=document.createElement('tr'); tr.innerHTML = `<td>${getSaleSeqDisplayPOS(s)}</td><td>${s.date}</td><td>${getSaleTimeTextPOS(s)}</td><td>${escapeHtml(uiProductNamePOS(s.productName))}</td><td>${s.qty}</td><td>${fmt(s.unitPrice)}</td><td>${fmt(getSaleDiscountTotalPOS(s))}</td><td>${fmt(s.total)}</td><td>${payLabel}</td><td>${s.courtesy?'✓':''}</td><td>${s.isReturn?'✓':''}</td><td>${escapeHtml(getSaleCustomerSnapshotNamePOS(s))}</td><td>${s.courtesyTo||''}</td><td>${s.notes||''}</td>`;
     tb.appendChild(tr);
   });
 
@@ -21425,7 +21385,7 @@ async function exportEventSalesCSV(eventId){
   const ordered = [...sales].sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a)));
   for (const s of ordered){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
-    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', s.customerName||s.customer||'']);
+    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = (ev?ev.name:'evento').replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
@@ -21506,7 +21466,7 @@ async function generateCorteCSV(eventId){
   for (const s of sales){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
     const tp = getSaleCashTenderPartsPOS(s);
-    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', s.customerName||s.customer||'']);
+    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = ev.name.replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`corte_${safeName}.xlsx`, 'Corte', rows);
@@ -21613,7 +21573,7 @@ async function exportEventExcel(eventId){
       s.isReturn ? 1 : 0,
       s.courtesyTo || '',
       s.notes || '',
-      s.customerName || s.customer || ''
+      getSaleCustomerSnapshotNamePOS(s)
     ]);
   }
   const wsVentas = XLSX.utils.aoa_to_sheet(ventasRows);
@@ -22443,8 +22403,8 @@ async function addSale(){
   const isReturn = $('#sale-return').checked;
   const customerInputName = getCustomerNameFromUI_POS();
   const customerResolved = resolveCustomerIdForSalePOS(customerInputName, getCustomerIdHintFromUI_POS());
-  const customerId = customerResolved ? customerResolved.id : null;
-  const customerName = (customerResolved && customerResolved.displayName) ? customerResolved.displayName : customerInputName;
+  const customerId = (customerResolved && customerResolved.id) ? customerResolved.id : null;
+  const customerName = (customerResolved && customerResolved.id && customerResolved.displayName) ? customerResolved.displayName : '';
   const courtesyTo = $('#sale-courtesy-to').value || '';
   const notes = $('#sale-notes').value || '';
   if (!date || !productId || !qty) { alert('Completa fecha, producto y cantidad'); return; }
@@ -22703,8 +22663,8 @@ async function addExtraSale(extraId){
   const isReturn = $('#sale-return').checked;
   const customerInputName = getCustomerNameFromUI_POS();
   const customerResolved = resolveCustomerIdForSalePOS(customerInputName, getCustomerIdHintFromUI_POS());
-  const customerId = customerResolved ? customerResolved.id : null;
-  const customerName = (customerResolved && customerResolved.displayName) ? customerResolved.displayName : customerInputName;
+  const customerId = (customerResolved && customerResolved.id) ? customerResolved.id : null;
+  const customerName = (customerResolved && customerResolved.id && customerResolved.displayName) ? customerResolved.displayName : '';
   const courtesyTo = $('#sale-courtesy-to').value || '';
   const notes = $('#sale-notes').value || '';
 

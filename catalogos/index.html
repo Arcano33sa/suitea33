@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Suite A33 · Catálogos</title>
-  <meta name="description" content="Catálogos operativos de Suite A33: productos, extras, bancos y datos maestros." />
+  <meta name="description" content="Catálogos operativos de Suite A33: productos, extras, bancos, clientes y datos maestros." />
   <meta name="theme-color" content="#7b1818" />
   <script src="/assets/js/a33-theme.js?v=4.20.77&r=11"></script>
   <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
   <link rel="apple-touch-icon" href="../icon-a33-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=3" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=4" />
   <script>
     (function(){
       try{
@@ -30,7 +30,7 @@
   </script>
   <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.77&r=11" />
   <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.77&r=11" />
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=3" />
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=4" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -44,11 +44,11 @@
       <div class="cat-hero-content">
         <p class="cat-eyebrow">Gestión Operativa</p>
         <h1 id="cat-title">Catálogos</h1>
-        <p class="cat-lead">Administración maestra de Productos, Extras y Bancos para consumo seguro de la Suite.</p>
+        <p class="cat-lead">Administración maestra de Productos, Extras, Bancos y Clientes para consumo seguro de la Suite.</p>
       </div>
       <div class="cat-hero-badge" aria-label="Estado de implementación">
         <span>Datos maestros</span>
-        <strong>Productos · Extras · Bancos</strong>
+        <strong>Productos · Extras · Bancos · Clientes</strong>
       </div>
     </section>
 
@@ -73,6 +73,13 @@
           <span>
             <strong>Bancos</strong>
             <small>Cuentas y entidades</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-clientes" type="button" role="tab" aria-selected="false" aria-controls="panel-clientes" data-target="clientes">
+          <span class="cat-tab-icon">👥</span>
+          <span>
+            <strong>Clientes</strong>
+            <small>Directorio maestro</small>
           </span>
         </button>
       </div>
@@ -255,6 +262,73 @@
             </div>
           </article>
         </section>
+
+        <section class="cat-panel" id="panel-clientes" role="tabpanel" aria-labelledby="tab-clientes" data-panel="clientes" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Clientes maestros</p>
+              <h2>Directorio central para POS</h2>
+              <p>Administra aquí clientes usados por POS sin mover ventas históricas ni limpiar todavía la interfaz de Vender. Esta etapa usa la misma fuente local de Catálogos/POS para evitar duplicados visuales sin tocar históricos.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Los clientes inactivos se conservan para trazabilidad.</li>
+              <li>No cambia ventas, cierres ni históricos.</li>
+              <li>No crea rutas nuevas ni sincronización Firebase para clientes.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Clientes</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-customers" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+              </div>
+            </div>
+            <div class="cat-search-row">
+              <label>Buscar cliente
+                <input id="cat-customer-search" autocomplete="off" placeholder="Nombre, teléfono, correo…">
+              </label>
+            </div>
+            <div id="cat-customers-status" class="cat-status" role="status" aria-live="polite">Cargando clientes…</div>
+            <div id="cat-customers-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Cliente maestro</p>
+              <h2>Agregar / editar cliente</h2>
+            </div>
+            <div class="cat-product-form cat-customer-form">
+              <label>Nombre
+                <input id="cat-customer-name" autocomplete="off" placeholder="Nombre del cliente">
+              </label>
+              <label>Teléfono
+                <input id="cat-customer-phone" autocomplete="off" inputmode="tel" placeholder="Opcional">
+              </label>
+              <label>WhatsApp
+                <input id="cat-customer-whatsapp" autocomplete="off" inputmode="tel" placeholder="Opcional">
+              </label>
+              <label>Correo
+                <input id="cat-customer-email" autocomplete="off" inputmode="email" placeholder="Opcional">
+              </label>
+              <label>Dirección
+                <input id="cat-customer-address" autocomplete="off" placeholder="Opcional">
+              </label>
+              <label class="cat-flag"><input id="cat-customer-active" type="checkbox" checked> Activo</label>
+              <label class="cat-field-full">Notas
+                <textarea id="cat-customer-notes" rows="3" placeholder="Opcional"></textarea>
+              </label>
+            </div>
+            <small id="cat-customer-msg" class="cat-muted cat-edit-msg"></small>
+            <div class="cat-actions-end">
+              <button id="cat-cancel-customer" class="cat-btn cat-btn-secondary" type="button" hidden>Cancelar edición</button>
+              <button id="cat-save-customer" class="cat-btn cat-btn-ok" type="button">+ Agregar cliente</button>
+            </div>
+          </article>
+        </section>
       </div>
     </section>
   </main>
@@ -293,8 +367,9 @@
   </div>
   <div id="cat-toast" class="cat-toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
 
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=14"></script>
-  <script src="script.js?v=4.20.77&r=3"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=22"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.77&r=13"></script>
+  <script src="script.js?v=4.20.77&r=5"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=11"></script>
 </body>
 </html>

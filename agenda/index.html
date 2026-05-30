@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Arcano 33 · Agenda</title>
-  <meta name="description" content="Agenda de Suite A33 cerrada como módulo operativo: Pendientes primero, filtros por estado, cliente compartido con POS, pedido opcional con producto, precio y total automático, y UX pulida para desktop, iPad y PWA." />
+  <meta name="description" content="Agenda de Suite A33 cerrada como módulo operativo: Pendientes primero, filtros por estado, cliente compartido con Catálogos/POS, pedido opcional con producto, precio y total automático, y UX pulida para desktop, iPad y PWA." />
   <meta name="theme-color" content="#7b1818" />
 
   
@@ -81,7 +81,7 @@
               </select>
               <div class="agenda-client-new" id="agendaClientNewWrap" hidden>
                 <input id="agendaClientNew" name="clientNew" type="text" maxlength="120" placeholder="Escribe el nombre del cliente nuevo" autocomplete="off" />
-                <small class="agenda-field-note">Al guardar el ítem, este cliente también se agregará al catálogo compartido del POS.</small>
+                <small class="agenda-field-note">Al guardar el ítem, este cliente también se agregará al Catálogos → Clientes.</small>
               </div>
               <input id="agendaClient" name="client" type="hidden" required />
               <small class="agenda-field-note" id="agendaClientNote">Campo único para Reunión, Tarea y Pedido. Selecciona uno existente o agrega uno nuevo sin salir de Agenda.</small>
@@ -194,7 +194,7 @@
             <button class="agenda-btn agenda-btn--danger" type="button" id="agendaDeleteBtn" hidden>Eliminar</button>
             <button class="agenda-btn agenda-btn--primary" type="submit" id="agendaSaveBtn">Guardar ítem</button>
           </div>
-          <p class="agenda-helper">Reunión y Tarea siguen limpias. Pendientes abre primero, Cliente usa catálogo compartido con POS y Pedido mantiene producto, precio y total automáticos sin meter ruido.</p>
+          <p class="agenda-helper">Reunión y Tarea siguen limpias. Pendientes abre primero, Cliente usa Catálogos → Clientes y Pedido mantiene producto, precio y total automáticos sin meter ruido.</p>
         </form>
       </article>
 
@@ -239,8 +239,8 @@
 
   </main>
 
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=14"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=22"></script>
   <script src="/assets/js/a33-storage.js?v=4.20.77&r=7"></script>
-  <script src="script.js?v=4.20.77&r=8"></script>
+  <script src="script.js?v=4.20.77&r=9"></script>
 </body>
 </html>

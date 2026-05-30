@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=13">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=14">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -30,7 +30,7 @@
     }
   })();
 </script>
-<link rel="stylesheet" href="styles.css?v=4.20.77&r=13">
+<link rel="stylesheet" href="styles.css?v=4.20.77&r=14">
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.77&r=13" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=13" />
   <script src="/assets/js/a33-theme.js?v=4.20.77&r=13"></script>
@@ -182,64 +182,20 @@
     </div>
 
 
-<!-- Cliente (opcional) · Clientes v2 -->
+<!-- Cliente (opcional) · Etapa 2/3: selector POS, administración en Catálogos -->
 <div class="row" id="sale-customer-row">
   <div class="customer-v2">
     <div class="customer-v2-field">
       <label>Cliente</label>
-      <input id="sale-customer" placeholder="Escribe cliente…">
+      <input id="sale-customer" placeholder="Selecciona cliente…" readonly aria-readonly="true">
+      <small class="muted customer-catalog-hint">Los clientes se administran desde Catálogos.</small>
     </div>
 
     <div class="customer-v2-actions">
       <button id="btn-pick-customer" class="btn-outline btn-pill btn-pill-mini" type="button">Seleccionar</button>
       <button id="btn-clear-customer" class="btn-outline btn-pill btn-pill-mini" type="button">Limpiar</button>
       <label class="flag customer-v2-sticky"><input id="sale-customer-sticky" type="checkbox"> Pegajoso</label>
-      <button id="btn-toggle-customer-manage" class="btn-outline btn-pill btn-pill-mini" type="button" aria-expanded="false">Gestionar ▾</button>
     </div>
-  </div>
-</div>
-
-<div id="customer-manage-panel" class="customer-manage" style="display:none">
-  <div class="card inner">
-    <h4 style="margin:0 0 10px 0">Clientes</h4>
-
-    <div class="row" style="align-items:end">
-      <div>
-        <label>Agregar cliente (sin venta)</label>
-        <input id="customer-add-name" placeholder="Nombre del cliente">
-        <small id="customer-add-msg" class="muted"></small>
-      </div>
-      <div style="align-self:end">
-        <label>&nbsp;</label>
-        <button id="customer-add-save" class="btn-ok btn-pill btn-pill-mini" type="button">Guardar</button>
-      </div>
-    </div>
-
-
-	    <div class="customer-manage-toolbar">
-	      <div class="customer-manage-toolbar-top">
-	        <div class="customer-manage-search">
-	          <label>Buscar</label>
-	          <input id="customer-manage-search" placeholder="Buscar cliente…">
-	          <small id="customer-manage-count" class="muted"></small>
-	        </div>
-	        <div class="customer-manage-actions">
-	          <div class="customer-manage-filters" role="group" aria-label="Filtro clientes">
-	            <button id="customer-manage-filter-active" class="btn-outline btn-pill btn-pill-mini" type="button">Activos</button>
-	            <button id="customer-manage-filter-all" class="btn-outline btn-pill btn-pill-mini" type="button">Todos</button>
-	          </div>
-	          <label class="flag customer-manage-compact-toggle"><input id="customer-manage-compact" type="checkbox"> Compacto</label>
-	          <button id="customer-manage-collapse-all" class="btn-outline btn-pill btn-pill-mini" type="button" title="Colapsar letras">Colapsar</button>
-	          <button id="customer-manage-expand-all" class="btn-outline btn-pill btn-pill-mini" type="button" title="Expandir letras">Expandir</button>
-	        </div>
-	      </div>
-	    </div>
-
-	    <div class="customer-manage-scroll">
-	      <div id="customer-manage-list" class="customer-manage-list"></div>
-	    </div>
-
-    <div class="info"><small>Desactivar solo oculta del selector. Ventas históricas no se tocan.</small></div>
   </div>
 </div>
 
@@ -1674,68 +1630,7 @@
       <div id="customer-picker-list" class="customer-picker-list"></div>
     </div>
 
-    <div class="warn"><small>Solo se muestran clientes activos. Para ver desactivados o administrar, usa “Gestionar ▾”.</small></div>
-  </div>
-</div>
-
-<!-- Modal Editar Cliente (Clientes v3) -->
-<div id="customer-edit-modal" class="modal">
-  <div class="panel panel-compact">
-    <button id="customer-edit-close" class="close btn-warn btn-pill btn-pill-mini" type="button">Cerrar</button>
-    <h3>Editar cliente</h3>
-
-    <p class="hint small" id="customer-edit-current" style="margin-top:0.25rem;">Actual: —</p>
-
-    <div class="row" style="grid-template-columns:1fr; gap:10px">
-      <input id="customer-edit-name" placeholder="Nuevo nombre…" autocomplete="off">
-      <input id="customer-edit-reason" placeholder="Motivo (opcional)…" autocomplete="off">
-      <small id="customer-edit-msg" class="muted"></small>
-    </div>
-
-    <div class="row" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:10px">
-      <button id="customer-edit-save" class="btn-ok btn-pill" type="button">Guardar</button>
-      <button id="customer-edit-cancel" class="btn-secondary btn-pill" type="button">Cancelar</button>
-    </div>
-
-    <div class="warn"><small>Editar cambia <b>solo</b> el nombre. El ID se mantiene y el historial no se reescribe.</small></div>
-  </div>
-</div>
-
-<!-- Modal Fusionar Clientes (Clientes v3) -->
-<div id="customer-merge-modal" class="modal">
-  <div class="panel panel-compact">
-    <button id="customer-merge-close" class="close btn-warn btn-pill btn-pill-mini" type="button">Cerrar</button>
-    <h3>Fusionar clientes</h3>
-
-    <div class="warn" style="margin-top:8px">
-      <small><b>Advertencia:</b> Esto NO borra ventas históricas. La “Fuente” quedará desactivada y apuntará al “Destino”.</small>
-    </div>
-
-    <div class="grid" style="margin-top:10px">
-      <div>
-        <label class="muted" for="customer-merge-source">Fuente (se absorbe)</label>
-        <select id="customer-merge-source"></select>
-      </div>
-      <div>
-        <label class="muted" for="customer-merge-dest">Destino (se queda)</label>
-        <select id="customer-merge-dest"></select>
-      </div>
-    </div>
-
-    <div class="row" style="grid-template-columns:1fr; gap:10px; margin-top:10px">
-      <input id="customer-merge-reason" placeholder="Motivo (opcional)…" autocomplete="off">
-      <label class="muted" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <input id="customer-merge-confirm" type="checkbox"> Confirmo que entiendo y quiero fusionar.
-      </label>
-      <small id="customer-merge-msg" class="muted"></small>
-    </div>
-
-    <div class="row" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:10px">
-      <button id="customer-merge-run" class="btn-warn btn-pill" type="button">Fusionar</button>
-      <button id="customer-merge-cancel" class="btn-secondary btn-pill" type="button">Cancelar</button>
-    </div>
-
-    <div class="info"><small>Consejo: si te equivocas, podés revertir creando una nueva identidad y fusionando de nuevo (no es ideal, pero mantiene trazabilidad).</small></div>
+    <div class="warn"><small>Solo se muestran clientes activos. Para administrar, usa Gestión Operativa → Catálogos → Clientes.</small></div>
   </div>
 </div>
 
@@ -1801,18 +1696,18 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=4.20.77&r=13"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=14"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=22"></script>
 
 <script src="/assets/js/a33-storage.js?v=4.20.77&r=13"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.77&r=13"></script>
-<script src="/assets/js/a33-build.js?v=4.20.77&r=13"></script>
+<script src="/assets/js/a33-build.js?v=4.20.77&r=14"></script>
 <script>
   (function(){
     try{
       const relObj = (window.A33_RELEASE || {});
       const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.77';
-      const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '13'; // POS cache bump local — Catálogos Etapa 4
+      const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '22'; // POS cache bump local — Clientes Etapa 3
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
       try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }
@@ -1832,7 +1727,7 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.77&r=13"></script>
+<script src="app.js?v=4.20.77&r=15"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=13"></script>
 <script>
   (function(){
