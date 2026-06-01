@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Suite A33 · Catálogos</title>
-  <meta name="description" content="Catálogos operativos de Suite A33: productos, extras, bancos, clientes y datos maestros." />
+  <meta name="description" content="Catálogos operativos de Suite A33: productos, extras, bancos, clientes, proveedores y datos maestros." />
   <meta name="theme-color" content="#7b1818" />
   <script src="/assets/js/a33-theme.js?v=4.20.77&r=11"></script>
   <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
   <link rel="apple-touch-icon" href="../icon-a33-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=4" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.77&r=7" />
   <script>
     (function(){
       try{
@@ -30,7 +30,7 @@
   </script>
   <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.77&r=11" />
   <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.77&r=11" />
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=6" />
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=8" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -44,11 +44,11 @@
       <div class="cat-hero-content">
         <p class="cat-eyebrow">Gestión Operativa</p>
         <h1 id="cat-title">Catálogos</h1>
-        <p class="cat-lead">Administración maestra de Productos, Extras, Bancos y Clientes para consumo seguro de la Suite.</p>
+        <p class="cat-lead">Administración maestra de Productos, Extras, Bancos, Clientes y Proveedores para consumo seguro de la Suite.</p>
       </div>
       <div class="cat-hero-badge" aria-label="Estado de implementación">
         <span>Datos maestros</span>
-        <strong>Productos · Extras · Bancos · Clientes</strong>
+        <strong>Productos · Extras · Bancos · Clientes · Proveedores</strong>
       </div>
     </section>
 
@@ -80,6 +80,13 @@
           <span>
             <strong>Clientes</strong>
             <small>Directorio maestro</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-proveedores" type="button" role="tab" aria-selected="false" aria-controls="panel-proveedores" data-target="proveedores">
+          <span class="cat-tab-icon">🚚</span>
+          <span>
+            <strong>Proveedores</strong>
+            <small>Directorio y productos</small>
           </span>
         </button>
       </div>
@@ -325,6 +332,62 @@
             </div>
           </article>
         </section>
+
+        <section class="cat-panel" id="panel-proveedores" role="tabpanel" aria-labelledby="tab-proveedores" data-panel="proveedores" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Proveedores maestros</p>
+              <h2>Directorio central para Finanzas</h2>
+              <p>Administra aquí los proveedores y sus productos usando la misma fuente local que Finanzas. Compras históricas conservan su snapshot y no se recalcula nada.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Los cambios aplican hacia adelante.</li>
+              <li>No borra ni modifica compras históricas.</li>
+              <li>No crea rutas nuevas ni sincronización Firebase para proveedores.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Proveedores</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-suppliers" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+              </div>
+            </div>
+            <div class="cat-search-row">
+              <label>Buscar proveedor
+                <input id="cat-supplier-search" autocomplete="off" placeholder="Nombre, teléfono, nota o producto…">
+              </label>
+            </div>
+            <div id="cat-suppliers-status" class="cat-status" role="status" aria-live="polite">Cargando proveedores…</div>
+            <div id="cat-suppliers-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Proveedor maestro</p>
+              <h2>Agregar proveedor</h2>
+            </div>
+            <div class="cat-product-form cat-supplier-form">
+              <label>Nombre del proveedor
+                <input id="cat-supplier-name" autocomplete="off" placeholder="Ej: Global Brand">
+              </label>
+              <label>Teléfono
+                <input id="cat-supplier-phone" autocomplete="off" inputmode="tel" placeholder="Opcional">
+              </label>
+              <label class="cat-field-full">Nota
+                <textarea id="cat-supplier-note" rows="3" placeholder="Opcional"></textarea>
+              </label>
+            </div>
+            <small id="cat-supplier-msg" class="cat-muted cat-edit-msg"></small>
+            <div class="cat-actions-end">
+              <button id="cat-save-supplier" class="cat-btn cat-btn-ok" type="button">+ Agregar proveedor</button>
+            </div>
+          </article>
+        </section>
       </div>
     </section>
   </main>
@@ -396,11 +459,92 @@
       </div>
     </div>
   </div>
+
+
+  <div id="cat-supplier-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel cat-supplier-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-supplier-modal-title">
+      <button id="cat-supplier-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Proveedor maestro</p>
+      <h2 id="cat-supplier-modal-title">Editar proveedor</h2>
+      <p id="cat-supplier-current" class="cat-muted">Proveedor actual: —</p>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Compras históricas conservan proveedor y producto guardados en el asiento.</div>
+
+      <div class="cat-product-form cat-product-form-modal cat-supplier-form-modal">
+        <label>Nombre del proveedor
+          <input id="cat-edit-supplier-name" autocomplete="off" placeholder="Nombre del proveedor">
+        </label>
+        <label>Teléfono
+          <input id="cat-edit-supplier-phone" autocomplete="off" inputmode="tel" placeholder="Opcional">
+        </label>
+        <label class="cat-field-full">Nota
+          <textarea id="cat-edit-supplier-note" rows="3" placeholder="Opcional"></textarea>
+        </label>
+      </div>
+      <small id="cat-edit-supplier-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-supplier-save" class="cat-btn cat-btn-ok" type="button">Guardar cambios</button>
+        <button id="cat-edit-supplier-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cat-supplier-products-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel cat-supplier-products-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-supplier-products-title">
+      <button id="cat-supplier-products-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Productos del proveedor</p>
+      <h2 id="cat-supplier-products-title">Productos</h2>
+      <p id="cat-supplier-products-sub" class="cat-muted">Proveedor: —</p>
+      <div class="cat-warn">Agregar, editar o borrar productos del proveedor no modifica compras históricas.</div>
+      <div class="cat-toolbar cat-supplier-products-toolbar">
+        <div>
+          <p class="cat-eyebrow">Catálogo asociado</p>
+          <h2>Productos registrados</h2>
+        </div>
+        <div class="cat-toolbar-actions">
+          <button id="cat-add-supplier-product" class="cat-btn cat-btn-ok" type="button">+ Agregar producto</button>
+        </div>
+      </div>
+      <div id="cat-supplier-products-status" class="cat-status" role="status" aria-live="polite">Cargando productos…</div>
+      <div id="cat-supplier-products-list" class="cat-products-list cat-supplier-products-list"></div>
+    </div>
+  </div>
+
+  <div id="cat-supplier-product-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel cat-supplier-product-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-supplier-product-title">
+      <button id="cat-supplier-product-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Producto del proveedor</p>
+      <h2 id="cat-supplier-product-title">Agregar producto</h2>
+      <p id="cat-supplier-product-current" class="cat-muted">Producto actual: —</p>
+      <div class="cat-product-form cat-product-form-modal cat-supplier-product-form-modal">
+        <label>Nombre del producto
+          <input id="cat-supplier-product-name" autocomplete="off" placeholder="Ej: Botella 750 ml">
+        </label>
+        <label>Tipo
+          <select id="cat-supplier-product-type">
+            <option value="">Seleccionar…</option>
+            <option value="CAJAS">CAJAS</option>
+            <option value="UNIDADES">UNIDADES</option>
+          </select>
+        </label>
+        <label>Precio ref. C$
+          <input id="cat-supplier-product-price" type="text" inputmode="decimal" autocomplete="off" placeholder="Opcional">
+        </label>
+        <label>Unidades por caja
+          <input id="cat-supplier-product-units" type="text" inputmode="numeric" autocomplete="off" placeholder="Solo CAJAS">
+        </label>
+      </div>
+      <small id="cat-supplier-product-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-supplier-product-save" class="cat-btn cat-btn-ok" type="button">Guardar producto</button>
+        <button id="cat-supplier-product-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
   <div id="cat-toast" class="cat-toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
 
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=23"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=26"></script>
   <script src="/assets/js/a33-storage.js?v=4.20.77&r=13"></script>
-  <script src="script.js?v=4.20.77&r=6"></script>
+  <script src="script.js?v=4.20.77&r=9"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=11"></script>
 </body>
 </html>

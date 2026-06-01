@@ -1930,3 +1930,45 @@ body.rc-printing .rc-print-root{
     break-after: avoid-page;
   }
 }
+
+
+/* Etapa 3/3 — Proveedores: Finanzas queda como consumidor, no administrador */
+.fin-provider-master-notice{
+  max-width: 860px;
+}
+.fin-provider-master-notice h3{
+  margin: 0 0 8px;
+  font-size: 1.08rem;
+  color: var(--fin-gold);
+}
+.fin-provider-master-notice p{
+  margin: 0 0 10px;
+  color: var(--fin-muted);
+  line-height: 1.45;
+}
+.fin-provider-master-notice ul{
+  margin: 8px 0 16px 18px;
+  padding: 0;
+  color: var(--fin-muted);
+  line-height: 1.45;
+}
+.fin-provider-master-notice li{ margin-bottom: 6px; }
+.fin-provider-eyebrow{
+  margin: 0 0 6px !important;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-size: .72rem;
+  color: rgba(212,175,55,.9) !important;
+}
+.fin-provider-catalog-link{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-left: 0;
+  text-decoration: none;
+  width: fit-content;
+}
+@media (max-width: 640px){
+  .fin-provider-catalog-link{ width: 100%; }
+}

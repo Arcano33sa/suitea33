@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#060606">
   <script src="/assets/js/a33-theme.js?v=4.20.77&r=10"></script>
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=10">
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=11">
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=10">
 </head>
 <body class="fin-body">
@@ -46,7 +46,7 @@
       <button type="button" class="fin-tab-btn" data-view="estados">Estados Financieros</button>
       <button type="button" class="fin-tab-btn" data-view="comprasplan">Compras</button>
       <button type="button" class="fin-tab-btn" data-view="compras">Compras a Proveedor</button>
-      <button type="button" class="fin-tab-btn" data-view="proveedores">Proveedores</button>
+      <button type="button" class="fin-tab-btn" data-view="proveedores">Proveedores (Catálogos)</button>
       <button type="button" class="fin-tab-btn" data-view="recibos">Recibos</button>
       <button type="button" class="fin-tab-btn" data-view="catalogo">Catálogo de Cuentas</button>
     </div>
@@ -658,108 +658,24 @@
 <section id="view-proveedores" class="fin-view">
   <header class="fin-section-header">
     <h2>Proveedores</h2>
-    <p>Catálogo simple de proveedores. Sirve para filtrar el Diario y el reporte de compras.</p>
+    <p>Finanzas ya no administra proveedores. Este módulo solo consume la fuente maestra definida en Catálogos.</p>
   </header>
 
-  <form id="form-proveedor" class="fin-form">
-    <input type="hidden" id="prov-id">
-
-    <div class="fin-form-row">
-      <label class="fin-form-grow">
-        Nombre (obligatorio)
-        <input type="text" id="prov-nombre" placeholder="Ej: Global Brand">
-      </label>
-
-      <label>
-        Teléfono
-        <input type="text" id="prov-telefono" placeholder="Opcional">
-      </label>
-    </div>
-
-    <div class="fin-form-row">
-      <label class="fin-form-grow">
-        Nota
-        <input type="text" id="prov-nota" placeholder="Opcional">
-      </label>
-
-      <div class="fin-actions">
-        <button type="button" id="prov-guardar" class="btn-primary">Guardar proveedor</button>
-        <button type="button" id="prov-guardar-addprod" class="btn-primary btn-primary--gold">Guardar y agregar productos</button>
-        <button type="button" id="prov-cancelar" class="btn-ghost hidden">Cancelar</button>
-      </div>
-    </div>
-
-    <p class="fin-help">
-      Tip: aunque borres un proveedor del catálogo, las compras históricas se quedan con el nombre guardado en el asiento.
+  <article class="fin-cardbox fin-provider-master-notice" aria-label="Proveedores administrados desde Catálogos">
+    <p class="fin-provider-eyebrow">Fuente maestra</p>
+    <h3>Gestión Operativa → Catálogos → Proveedores</h3>
+    <p>
+      Crea, edita o elimina proveedores desde Catálogos. Compras a Proveedor, filtros, reportes internos y snapshots siguen leyendo esa misma fuente compatible, sin duplicar administración dentro de Finanzas.
     </p>
-  </form>
-
-  <!-- Productos del proveedor (solo en modo editar) -->
-  <section id="prov-products-section" class="fin-cardbox hidden" aria-label="Productos del proveedor">
-    <header class="fin-section-header fin-section-header--sub">
-      <h3>Productos del proveedor</h3>
-      <p>Catálogo rápido para registrar qué te vende este proveedor (referencias y unidades por caja).</p>
-    </header>
-
-    <div class="fin-inline-group" style="justify-content:space-between; flex-wrap:wrap;">
-      <div id="prov-products-hint" class="fin-muted">Selecciona un proveedor para ver/editar sus productos.</div>
-      <button type="button" id="prov-prod-add" class="btn-small">+ Agregar producto</button>
-    </div>
-
-    <div id="prov-products-empty" class="fin-empty hidden">Sin productos.</div>
-    <div id="prov-products-list" class="prov-prod-list"></div>
-
-    <div id="prov-prod-editor" class="prov-prod-editor hidden">
-      <input type="hidden" id="prov-prod-editid" value="">
-
-      <div class="fin-form-row">
-        <label class="fin-form-grow">
-          Nombre (obligatorio)
-          <input type="text" id="prov-prod-nombre" placeholder="Ej: Botella 750 ml" autocomplete="off">
-        </label>
-
-        <label>
-          Tipo
-          <select id="prov-prod-tipo">
-            <option value="">Seleccionar…</option>
-            <option value="CAJAS">CAJAS</option>
-            <option value="UNIDADES">UNIDADES</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="fin-form-row">
-        <label>
-          Precio ref (C$)
-          <!-- Input tipo text + inputmode para permitir select-all fiable en iPad/Safari (sin mostrar 0 por defecto) -->
-          <input type="text" id="prov-prod-precio" inputmode="decimal" autocomplete="off">
-        </label>
-
-        <label>
-          Unidades por caja
-          <input type="text" id="prov-prod-unidades" inputmode="numeric" autocomplete="off">
-        </label>
-
-        <div class="fin-actions">
-          <button type="button" id="prov-prod-guardar" class="btn-primary">Guardar producto</button>
-          <button type="button" id="prov-prod-cancelar" class="btn-ghost">Cancelar</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <div class="fin-table-wrapper">
-    <table class="fin-table">
-      <thead>
-        <tr>
-          <th>Nombre</th>
-          <th>Nota</th>
-          <th>Acciones</th>
-        </tr>
-      </thead>
-      <tbody id="proveedores-tbody"></tbody>
-    </table>
-  </div>
+    <ul>
+      <li>Las compras nuevas usan proveedor y producto vigentes desde Catálogos.</li>
+      <li>Las compras históricas conservan el nombre, producto, tipo, precio y unidades guardadas como snapshot cuando existen.</li>
+      <li>No se toca Firebase para Proveedores en esta etapa.</li>
+    </ul>
+    <a class="btn-primary btn-primary--gold fin-provider-catalog-link" href="../catalogos/index.html#proveedores">
+      Abrir Catálogos → Proveedores
+    </a>
+  </article>
 </section>
 
 <!-- RECIBOS -->
@@ -1347,14 +1263,14 @@
   <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.77&r=7"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=23"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=26"></script>
 
   <script src="/assets/js/a33-storage.js?v=4.20.77&r=10"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
   <script src="/assets/js/a33-export-currency.js?v=4.20.77&r=2"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.77&r=10"></script>
 
-  <script src="script.js?v=4.20.77&r=10"></script>
+  <script src="script.js?v=4.20.77&r=12"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=10"></script>
 </body>
 </html>

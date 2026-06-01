@@ -118,7 +118,7 @@ html[data-theme="light"] .cat-hero-badge{background:rgba(255,255,255,0.38);}
 .cat-shell{padding:18px;}
 .cat-tabs{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(5,minmax(0,1fr));
   gap:12px;
   margin-bottom:16px;
 }
@@ -432,4 +432,36 @@ html[data-theme="light"] .cat-customer-empty{background:rgba(255,255,255,0.34);}
 body.cat-modal-open{overflow:hidden;}
 @media(max-width:560px){
   .cat-customer-form,.cat-customer-form-modal{grid-template-columns:1fr;}
+}
+
+
+/* Etapa 1/3 — Proveedores maestros */
+.cat-supplier-form{grid-template-columns:repeat(2,minmax(0,1fr));}
+.cat-supplier-modal-panel{width:min(680px, calc(100vw - 28px));}
+.cat-supplier-products-modal-panel{width:min(920px, calc(100vw - 28px));}
+.cat-supplier-product-modal-panel{width:min(680px, calc(100vw - 28px));}
+.cat-supplier-products-toolbar{margin-top:12px;}
+.cat-supplier-product-card .cat-product-meta{grid-template-columns:repeat(4,minmax(0,1fr));}
+.cat-supplier-products-list{margin-top:10px;}
+.cat-supplier-empty{
+  padding:14px;
+  border:1px dashed rgba(221,191,100,0.24);
+  border-radius:16px;
+  color:var(--cat-muted);
+  background:rgba(0,0,0,0.12);
+}
+html[data-theme="light"] .cat-supplier-empty{background:rgba(255,255,255,0.34);}
+.cat-supplier-product-form-modal select:disabled,
+.cat-supplier-product-form-modal input:disabled{
+  opacity:.62;
+  cursor:not-allowed;
+}
+@media(max-width:980px){
+  .cat-supplier-product-card .cat-product-meta{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:560px){
+  .cat-supplier-form,
+  .cat-supplier-form-modal,
+  .cat-supplier-product-form-modal{grid-template-columns:1fr;}
+  .cat-supplier-product-card .cat-product-meta{grid-template-columns:1fr;}
 }

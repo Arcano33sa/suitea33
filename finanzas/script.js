@@ -1879,6 +1879,13 @@ function normalizeSupplierProduct(raw) {
   const precioStr = (precioRaw == null) ? '' : String(precioRaw).trim();
   const hasFlag = Object.prototype.hasOwnProperty.call(obj, 'precioSet');
   const precioSet = hasFlag ? normBool01(obj.precioSet) : ((precioStr !== '') && (normNumNonNeg(precioRaw) !== 0));
+  const unidadesRaw = (obj.unidadesPorCaja != null)
+    ? obj.unidadesPorCaja
+    : ((obj.supplierProductUnitsPerBox != null)
+      ? obj.supplierProductUnitsPerBox
+      : ((obj.supplierProductUnitsPerCaja != null)
+        ? obj.supplierProductUnitsPerCaja
+        : ((obj.unitsPerBox != null) ? obj.unitsPerBox : obj.unidadesCaja)));
 
   return {
     id: normStrKeep(obj.id, 80),
@@ -1886,7 +1893,7 @@ function normalizeSupplierProduct(raw) {
     tipo: normalizeProductType(obj.tipo),
     precio: normNumNonNeg(obj.precio),
     precioSet,
-    unidadesPorCaja: normNumNonNeg(obj.unidadesPorCaja)
+    unidadesPorCaja: normNumNonNeg(unidadesRaw)
   };
 }
 
@@ -1914,6 +1921,50 @@ function getSupplierLabelFromEntry(entry, data) {
     if (s && s.nombre) return s.nombre;
   }
   return '—';
+}
+
+function finIsSupplierAvailableForNewPurchases(s) {
+  if (!s || typeof s !== 'object') return false;
+  if (s.deleted === true || s.isDeleted === true || s.removed === true) return false;
+  if (s.active === false || s.isActive === false || s.enabled === false) return false;
+  const estado = String(s.estado || s.status || '').trim().toLowerCase();
+  if (['inactivo', 'inactive', 'eliminado', 'deleted', 'borrado', 'archivado', 'archived'].includes(estado)) return false;
+  if (String(s.deletedAt || s.removedAt || '').trim()) return false;
+  return true;
+}
+
+function finSupplierVisualDedupeKey(s) {
+  const name = normStrKeep(s && s.nombre, 120).toLowerCase();
+  if (!name) return '';
+  const tel = normStrKeep(s && s.telefono, 80).toLowerCase();
+  return `${name}|${tel}`;
+}
+
+function finSupplierRichnessScore(s) {
+  if (!s || typeof s !== 'object') return 0;
+  let score = 0;
+  if (String(s.telefono || '').trim()) score += 1;
+  if (String(s.nota || '').trim()) score += 1;
+  if (Array.isArray(s.productos)) score += Math.min(50, s.productos.length * 3);
+  if (finIsSupplierAvailableForNewPurchases(s)) score += 100;
+  return score;
+}
+
+function finGetSuppliersForNewPurchases(data) {
+  const raw = (data && Array.isArray(data.suppliers)) ? data.suppliers : [];
+  const chosen = new Map();
+  const loose = [];
+  for (const s of raw) {
+    if (!finIsSupplierAvailableForNewPurchases(s)) continue;
+    const key = finSupplierVisualDedupeKey(s);
+    if (!key) {
+      loose.push(s);
+      continue;
+    }
+    const prev = chosen.get(key);
+    if (!prev || finSupplierRichnessScore(s) > finSupplierRichnessScore(prev)) chosen.set(key, s);
+  }
+  return [...chosen.values(), ...loose].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
 }
 
 /* ---------- Cuentas: display name por lookup (compatibilidad con históricos) ---------- */
@@ -3289,6 +3340,7 @@ function updateEventFilters(entries) {
 function updateSupplierSelects(data) {
   const suppliers = (data && Array.isArray(data.suppliers)) ? [...data.suppliers] : [];
   suppliers.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+  const suppliersForNewPurchases = finGetSuppliersForNewPurchases(data);
 
   // Diario: filtro proveedor
   const diarioSel = document.getElementById('filtro-proveedor');
@@ -3325,7 +3377,7 @@ function updateSupplierSelects(data) {
   if (compraSel) {
     const prev = compraSel.value;
     compraSel.innerHTML = '<option value="">Seleccione proveedor…</option>';
-    for (const s of suppliers) {
+    for (const s of suppliersForNewPurchases) {
       const opt = document.createElement('option');
       opt.value = String(s.id);
       opt.textContent = s.nombre || `Proveedor ${s.id}`;
@@ -5993,7 +6045,10 @@ function compraStartEditFromEntryId(entryId) {
       id: pid,
       nombre: entry.supplierProductName || null,
       tipo: entry.tipo || entry.supplierProductType || null,
-      precioRef: (entry.supplierProductPriceRef != null) ? entry.supplierProductPriceRef : null
+      precioRef: (entry.supplierProductPriceRef != null) ? entry.supplierProductPriceRef : null,
+      unidadesPorCaja: (entry.supplierProductUnitsPerBox != null || entry.supplierProductUnitsPerCaja != null || entry.unidadesPorCaja != null)
+        ? (entry.supplierProductUnitsPerBox ?? entry.supplierProductUnitsPerCaja ?? entry.unidadesPorCaja)
+        : 0
     };
   } else {
     compraMissingProductSnapshot = null;
@@ -6062,7 +6117,8 @@ function compraGetSelectedProduct(data) {
       nombre: snap.nombre || 'Producto no disponible',
       tipo: snap.tipo || '',
       precio: snap.precioRef,
-      precioSet: (snap.precioRef != null)
+      precioSet: (snap.precioRef != null),
+      unidadesPorCaja: snap.unidadesPorCaja
     });
   }
   return null;
@@ -6082,9 +6138,10 @@ function compraRenderProductoHint(data) {
   const tipoLabel = (tipo === 'CAJAS' || tipo === 'UNIDADES') ? tipo : '—';
   const hasPriceRef = compraProductHasPriceRef(p);
   const precio = normNumNonNeg(p.precio);
+  const unitsPart = (tipoLabel === 'CAJAS') ? ` · U/caja: ${pcFmtQty ? pcFmtQty(normNumNonNeg(p.unidadesPorCaja)) : String(normNumNonNeg(p.unidadesPorCaja))}` : '';
   hint.textContent = hasPriceRef
-    ? `Tipo: ${tipoLabel} · Precio ref: ${finFormatCordobas(precio)}`
-    : `Tipo: ${tipoLabel} · Precio ref: —`;
+    ? `Tipo: ${tipoLabel} · Precio ref: ${finFormatCordobas(precio)}${unitsPart}`
+    : `Tipo: ${tipoLabel} · Precio ref: —${unitsPart}`;
 }
 
 function compraUpdateProductoSelect(data) {
@@ -6329,12 +6386,14 @@ async function guardarCompraProveedor() {
       const p = compraGetSelectedProduct(finCachedData);
       if (p) {
         const hasPriceRef = compraProductHasPriceRef(p);
+        const tipoProd = String((p.tipo || 'UNIDADES')).toUpperCase();
         productSnapshot = {
           id: String(p.id || ''),
           nombre: String(p.nombre || ''),
-          tipo: String((p.tipo || 'UNIDADES')).toUpperCase(),
+          tipo: tipoProd,
           precio: hasPriceRef ? normNumNonNeg(p.precio) : null,
-          precioSet: hasPriceRef
+          precioSet: hasPriceRef,
+          unidadesPorCaja: (tipoProd === 'CAJAS') ? normNumNonNeg(p.unidadesPorCaja) : 0
         };
       }
     } catch (_) {
@@ -6352,6 +6411,39 @@ async function guardarCompraProveedor() {
   const precioUnit = (Number.isFinite(priceN) && priceN >= 0) ? priceN : 0;
   const cantidad = (Number.isFinite(qtyN) && qtyN >= 0) ? qtyN : 0;
 
+  const isEdit = (compraEditingEntryId != null);
+  const existing = (isEdit && finCachedData && Array.isArray(finCachedData.entries))
+    ? (finCachedData.entries.find(e => Number(e.id) === Number(compraEditingEntryId)) || null)
+    : null;
+  const entryBase = existing ? { ...existing } : {};
+  const sameSupplierOnEdit = !!(isEdit && String(entryBase.supplierId ?? '') === String(supplierId));
+  const existingProductId = String(entryBase.supplierProductId || entryBase.productoId || '').trim();
+  const sameProductOnEdit = !!(sameSupplierOnEdit && existingProductId && String(existingProductId) === String(productId || ''));
+  const supplierNameForEntry = (sameSupplierOnEdit && String(entryBase.supplierName || '').trim())
+    ? String(entryBase.supplierName).trim()
+    : supplierName;
+
+  const entryBaseUnitsFallback = (entryBase && (entryBase.supplierProductUnitsPerBox != null || entryBase.supplierProductUnitsPerCaja != null || entryBase.unidadesPorCaja != null))
+    ? (entryBase.supplierProductUnitsPerBox ?? entryBase.supplierProductUnitsPerCaja ?? entryBase.unidadesPorCaja)
+    : null;
+  const missingUnitsFallback = (compraMissingProductSnapshot && Number(compraMissingProductSnapshot.supplierId) === Number(supplierId) && String(compraMissingProductSnapshot.id || '') === String(productId || ''))
+    ? compraMissingProductSnapshot.unidadesPorCaja
+    : null;
+  const unidadesPorCajaSnap = (sameProductOnEdit && entryBaseUnitsFallback != null)
+    ? normNumNonNeg(entryBaseUnitsFallback)
+    : (productSnapshot
+      ? normNumNonNeg(productSnapshot.unidadesPorCaja)
+      : normNumNonNeg(missingUnitsFallback ?? entryBaseUnitsFallback));
+  const productNameForEntry = (sameProductOnEdit && String(entryBase.supplierProductName || '').trim())
+    ? String(entryBase.supplierProductName).trim()
+    : (productSnapshot ? productSnapshot.nombre : ((prodOptLabel || null) || (entryBase.supplierProductName || null)));
+  const productTypeForEntry = (sameProductOnEdit && String(entryBase.supplierProductType || entryBase.tipo || '').trim())
+    ? String(entryBase.supplierProductType || entryBase.tipo).trim().toUpperCase()
+    : (productSnapshot ? productSnapshot.tipo : (tipoSnap || entryBase.tipo || entryBase.supplierProductType || null));
+  const productPriceRefForEntry = (sameProductOnEdit && Object.prototype.hasOwnProperty.call(entryBase, 'supplierProductPriceRef'))
+    ? entryBase.supplierProductPriceRef
+    : (productSnapshot ? productSnapshot.precio : (entryBase.supplierProductPriceRef || null));
+
   // Si el producto no existe en catálogo pero sí está seleccionado, guardar snapshot para no crashear al reabrir.
   if (productId && !productSnapshot) {
     compraMissingProductSnapshot = {
@@ -6359,7 +6451,8 @@ async function guardarCompraProveedor() {
       id: productId,
       nombre: desc || null,
       tipo: tipoSnapUI || null,
-      precioRef: null
+      precioRef: null,
+      unidadesPorCaja: unidadesPorCajaSnap
     };
   } else if (productSnapshot) {
     compraMissingProductSnapshot = {
@@ -6367,22 +6460,17 @@ async function guardarCompraProveedor() {
       id: productSnapshot.id,
       nombre: productSnapshot.nombre,
       tipo: productSnapshot.tipo,
-      precioRef: productSnapshot.precio
+      precioRef: productSnapshot.precio,
+      unidadesPorCaja: productSnapshot.unidadesPorCaja
     };
   }
 
-  const isEdit = (compraEditingEntryId != null);
-  const existing = (isEdit && finCachedData && Array.isArray(finCachedData.entries))
-    ? (finCachedData.entries.find(e => Number(e.id) === Number(compraEditingEntryId)) || null)
-    : null;
-
-  const entryBase = existing ? { ...existing } : {};
 
   const entry = {
     ...entryBase,
     ...(isEdit ? { id: Number(compraEditingEntryId) } : null),
     fecha,
-    descripcion: desc || `Compra a proveedor: ${supplierName}`,
+    descripcion: desc || `Compra a proveedor: ${supplierNameForEntry}`,
     tipoMovimiento: 'egreso',
     evento: normalizeEventForPurchases(),
     origen: 'Interno',
@@ -6394,19 +6482,23 @@ async function guardarCompraProveedor() {
     entryType: 'purchase',
     purchaseKind: tipoCompra,
     supplierId,
-    supplierName,
+    supplierName: supplierNameForEntry,
     paymentMethod: pm,
     reference: ref,
 
     // Producto asistido (opcional) - snapshot para robustez (si luego se borra del proveedor)
     supplierProductId: productSnapshot ? productSnapshot.id : (productId || null),
-    supplierProductName: productSnapshot ? productSnapshot.nombre : ((prodOptLabel || null) || (entryBase.supplierProductName || null)),
-    supplierProductType: productSnapshot ? productSnapshot.tipo : (tipoSnap || entryBase.tipo || entryBase.supplierProductType || null),
-    supplierProductPriceRef: productSnapshot ? productSnapshot.precio : (entryBase.supplierProductPriceRef || null),
+    supplierProductName: productNameForEntry,
+    supplierProductType: productTypeForEntry,
+    supplierProductPriceRef: productPriceRefForEntry,
+    supplierProductUnitsPerBox: unidadesPorCajaSnap,
+    supplierProductUnitsPerCaja: unidadesPorCajaSnap,
+    supplierProductPriceUsed: precioUnit,
 
     // Etapa 2: campos persistidos del flujo Cantidad/PrecioUnit/Total (compatibles con registros viejos)
     productoId: productId || null,
-    tipo: tipoSnap || entryBase.tipo || entryBase.supplierProductType || null,
+    tipo: productTypeForEntry || tipoSnap || entryBase.tipo || entryBase.supplierProductType || null,
+    unidadesPorCaja: unidadesPorCajaSnap,
     precioUnit,
     cantidad,
     total
@@ -6753,6 +6845,11 @@ function pcNormBool(v) {
 function pcNormalizeLine(src) {
   const base = pcBuildEmptyLine();
   if (!src || typeof src !== 'object') return base;
+  const unitsRaw = (src.supplierProductUnitsPerBox != null || src.supplierProductUnitsPerCaja != null || src.unidadesPorCaja != null)
+    ? (src.supplierProductUnitsPerBox ?? src.supplierProductUnitsPerCaja ?? src.unidadesPorCaja)
+    : '';
+  const priceRefRaw = (src.supplierProductPriceRef != null) ? src.supplierProductPriceRef : '';
+  const priceUsedRaw = (src.supplierProductPriceUsed != null) ? src.supplierProductPriceUsed : src.price;
   return {
     id: src.id ? String(src.id) : base.id,
     supplierId: src.supplierId == null ? '' : String(src.supplierId),
@@ -6762,7 +6859,14 @@ function pcNormalizeLine(src) {
     type: (String(src.type || '').toUpperCase() === 'CAJAS') ? 'CAJAS' : 'UNIDADES',
     quantity: (src.quantity == null) ? '' : String(src.quantity),
     price: (src.price == null) ? '' : String(src.price),
-    purchased: pcNormBool(src.purchased)
+    purchased: pcNormBool(src.purchased),
+    supplierProductName: src.supplierProductName ? String(src.supplierProductName) : (src.product ? String(src.product) : ''),
+    supplierProductType: src.supplierProductType ? String(src.supplierProductType) : (src.type ? String(src.type) : ''),
+    supplierProductPriceRef: priceRefRaw === '' ? null : pcParseNum(priceRefRaw),
+    supplierProductPriceUsed: (priceUsedRaw == null || String(priceUsedRaw).trim() === '') ? null : pcParseNum(priceUsedRaw),
+    supplierProductUnitsPerBox: unitsRaw === '' ? 0 : pcParseNum(unitsRaw),
+    supplierProductUnitsPerCaja: unitsRaw === '' ? 0 : pcParseNum(unitsRaw),
+    unidadesPorCaja: unitsRaw === '' ? 0 : pcParseNum(unitsRaw)
   };
 }
 
@@ -6863,6 +6967,55 @@ function pcGetLineTotal(line) {
   const p = pcParseNum(line && line.price);
   const t = q * p;
   return Math.round(t * 100) / 100;
+}
+
+function pcFindLiveSupplierById(supplierId) {
+  const sid = Number(supplierId || 0);
+  if (!Number.isFinite(sid) || sid <= 0) return null;
+  return (finCachedData && finCachedData.suppliersMap) ? (finCachedData.suppliersMap.get(sid) || null) : null;
+}
+
+function pcFindLiveProductByIds(supplierId, productId) {
+  const pid = String(productId || '').trim();
+  if (!pid) return null;
+  const catalog = pcGetSupplierCatalogById(supplierId);
+  return (Array.isArray(catalog) ? catalog : []).find(p => String(p && p.id) === pid) || null;
+}
+
+function pcSnapshotLineForward(line) {
+  const out = pcNormalizeLine(line);
+  const supplier = pcFindLiveSupplierById(out.supplierId);
+  if (supplier && supplier.nombre) out.supplierName = String(supplier.nombre);
+
+  const liveProduct = pcFindLiveProductByIds(out.supplierId, out.productId);
+  if (liveProduct) {
+    const p = normalizeSupplierProduct(liveProduct);
+    const tipo = String(p.tipo || '').toUpperCase();
+    out.product = p.nombre || out.product || '';
+    out.supplierProductName = p.nombre || out.product || '';
+    out.type = (tipo === 'CAJAS') ? 'CAJAS' : 'UNIDADES';
+    out.supplierProductType = out.type;
+    out.supplierProductPriceRef = compraProductHasPriceRef(p) ? normNumNonNeg(p.precio) : null;
+    out.supplierProductUnitsPerBox = (out.type === 'CAJAS') ? normNumNonNeg(p.unidadesPorCaja) : 0;
+    out.supplierProductUnitsPerCaja = out.supplierProductUnitsPerBox;
+    out.unidadesPorCaja = out.supplierProductUnitsPerBox;
+  } else {
+    out.supplierProductName = out.supplierProductName || out.product || '';
+    out.supplierProductType = out.supplierProductType || out.type || '';
+  }
+
+  out.supplierProductPriceUsed = (String(out.price || '').trim() === '') ? null : pcParseNum(out.price);
+  return out;
+}
+
+function pcSnapshotSectionsForward(sections) {
+  const sec = sections || {};
+  const prov = Array.isArray(sec.proveedores) ? sec.proveedores : [];
+  const varr = Array.isArray(sec.varias) ? sec.varias : [];
+  return {
+    proveedores: prov.map(pcSnapshotLineForward),
+    varias: varr.map(pcSnapshotLineForward)
+  };
 }
 
 function pcComputeSectionTotal(lines) {
@@ -6976,8 +7129,7 @@ function pcBuildSupplierSelect(currentId, currentName) {
   optEmpty.textContent = '—';
   sel.appendChild(optEmpty);
 
-  const suppliers = (finCachedData && Array.isArray(finCachedData.suppliers)) ? [...finCachedData.suppliers] : [];
-  suppliers.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+  const suppliers = finGetSuppliersForNewPurchases(finCachedData || {});
 
   const idStr = currentId ? String(currentId) : '';
   let found = false;
@@ -7131,6 +7283,12 @@ function pcRenderSection(sectionKey) {
       if (next !== prev) {
         line.productId = '';
         line.product = '';
+        line.supplierProductName = '';
+        line.supplierProductType = '';
+        line.supplierProductPriceRef = null;
+        line.supplierProductUnitsPerBox = 0;
+        line.supplierProductUnitsPerCaja = 0;
+        line.unidadesPorCaja = 0;
         line.type = 'UNIDADES';
         line.price = '';
       }
@@ -7146,11 +7304,9 @@ function pcRenderSection(sectionKey) {
     const catalog = pcGetSupplierCatalogById(line.supplierId);
     const hasCatalog = Array.isArray(catalog) && catalog.length > 0;
 
-    // Si venía texto sin productId y coincide por nombre, lo enlazamos para que el select quede consistente.
-    if (hasCatalog && !line.productId && (line.product || '').trim()) {
-      const m = pcFindProductInCatalogByName(catalog, line.product);
-      if (m && m.id) line.productId = String(m.id);
-    }
+    // Snapshot conservador: si una línea histórica/manual solo tiene nombre y no tiene ID,
+    // no la vinculamos automáticamente por coincidencia de nombre. Así evitamos enlazar
+    // compras antiguas a un producto incorrecto después de editar Catálogos.
 
     let prodControl = null;
     if (hasCatalog) {
@@ -7167,6 +7323,12 @@ function pcRenderSection(sectionKey) {
         if (!v) {
           line.productId = '';
           line.product = '';
+          line.supplierProductName = '';
+          line.supplierProductType = '';
+          line.supplierProductPriceRef = null;
+          line.supplierProductUnitsPerBox = 0;
+          line.supplierProductUnitsPerCaja = 0;
+          line.unidadesPorCaja = 0;
           pcUpdateComputedUI();
           return;
         }
@@ -7177,9 +7339,16 @@ function pcRenderSection(sectionKey) {
 
         if (p) {
           line.product = (p.nombre || '').toString();
+          line.supplierProductName = line.product;
           const tipo = String(p.tipo || '').toUpperCase();
           line.type = (tipo === 'CAJAS') ? 'CAJAS' : 'UNIDADES';
-          line.price = String(Math.round(normNumNonNeg(p.precio) * 100) / 100);
+          line.supplierProductType = line.type;
+          const hasPriceRef = compraProductHasPriceRef(p);
+          line.supplierProductPriceRef = hasPriceRef ? normNumNonNeg(p.precio) : null;
+          line.supplierProductUnitsPerBox = (line.type === 'CAJAS') ? normNumNonNeg(p.unidadesPorCaja) : 0;
+          line.supplierProductUnitsPerCaja = line.supplierProductUnitsPerBox;
+          line.unidadesPorCaja = line.supplierProductUnitsPerBox;
+          line.price = hasPriceRef ? String(Math.round(normNumNonNeg(p.precio) * 100) / 100) : '';
 
           // Autofill UI (sin pelearse: solo ocurre al seleccionar).
           try { if (selTipo) selTipo.value = line.type; } catch (_) {}
@@ -7188,6 +7357,7 @@ function pcRenderSection(sectionKey) {
         } else {
           // No existe en catálogo: mantenemos texto actual y evitamos crash.
           line.product = (line.product || '').toString();
+          line.supplierProductName = line.supplierProductName || line.product;
         }
 
         pcUpdateComputedUI();
@@ -7222,6 +7392,12 @@ function pcRenderSection(sectionKey) {
     selTipo.value = (String(line.type || '').toUpperCase() === 'CAJAS') ? 'CAJAS' : 'UNIDADES';
     selTipo.addEventListener('change', () => {
       line.type = selTipo.value;
+      line.supplierProductType = selTipo.value;
+      if (line.type !== 'CAJAS') {
+        line.supplierProductUnitsPerBox = 0;
+        line.supplierProductUnitsPerCaja = 0;
+        line.unidadesPorCaja = 0;
+      }
       pcUpdateComputedUI();
     });
     cTipo.appendChild(selTipo);
@@ -7260,6 +7436,7 @@ function pcRenderSection(sectionKey) {
     inpPrice.value = (line.price == null) ? '' : String(line.price);
     inpPrice.addEventListener('input', () => {
       line.price = inpPrice.value;
+      line.supplierProductPriceUsed = String(inpPrice.value || '').trim() === '' ? null : pcParseNum(inpPrice.value);
       totalEl.textContent = finFormatCordobas(pcGetLineTotal(line));
       pcUpdateComputedUI();
     });
@@ -7652,6 +7829,7 @@ async function pcAutoSaveDraftSilent() {
   const now = new Date();
   pcCurrent.updatedAtISO = now.toISOString();
   pcCurrent.updatedAtDisplay = fmtDDMMYYYYHHMM(now);
+  pcCurrent.sections = pcSnapshotSectionsForward(pcCurrent.sections || { proveedores: [], varias: [] });
   pcSetUpdatedUI();
   // Guardado silencioso: sin toast / alert por click
   pcAutoSaveChain = pcAutoSaveChain.then(() => pcPersistSetting(PC_CURRENT_KEY, pcCurrent));
@@ -7667,6 +7845,7 @@ async function pcSaveDraft() {
   const now = new Date();
   pcCurrent.updatedAtISO = now.toISOString();
   pcCurrent.updatedAtDisplay = fmtDDMMYYYYHHMM(now);
+  pcCurrent.sections = pcSnapshotSectionsForward(pcCurrent.sections || { proveedores: [], varias: [] });
 
   await pcPersistSetting(PC_CURRENT_KEY, pcCurrent);
   pcSetUpdatedUI();
@@ -7682,11 +7861,12 @@ async function pcSaveToHistory() {
   const snapshotNotes = notesEl ? String(notesEl.value || '') : (pcCurrent.notes || '');
 
   const now = new Date();
+  const snapshotSections = pcSnapshotSectionsForward(pcCurrent.sections || { proveedores: [], varias: [] });
   const rec = {
     id: pcNewId('p'),
     notes: snapshotNotes,
-    sections: pcDeepClone(pcCurrent.sections || { proveedores: [], varias: [] }),
-    totals: pcComputeTotalsFromSections(pcCurrent.sections || { proveedores: [], varias: [] }),
+    sections: pcDeepClone(snapshotSections),
+    totals: pcComputeTotalsFromSections(snapshotSections),
     createdAtISO: now.toISOString(),
     createdAtDisplay: fmtDDMMYYYYHHMM(now)
   };

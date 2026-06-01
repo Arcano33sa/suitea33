@@ -20,10 +20,16 @@
   let currentExtraEditId = null;
   let currentBankEditId = null;
   let currentCustomerEditId = null;
+  let finDbCAT = null;
+  let currentSupplierEditIdCAT = null;
+  let currentSupplierProductsIdCAT = null;
+  let currentSupplierProductEditIdCAT = null;
 
   const CUSTOMER_CATALOG_KEY = 'a33_pos_customersCatalog';
   const CUSTOMER_DISABLED_KEY = 'a33_pos_customersDisabled';
   const CUSTOMER_SCHEMA_VERSION = 1;
+  const FIN_DB_NAME_CAT = 'finanzasDB';
+  const FIN_DB_VERSION_CAT = 6;
 
   function qs(selector, root){ return (root || document).querySelector(selector); }
   function qsa(selector, root){ return Array.prototype.slice.call((root || document).querySelectorAll(selector)); }
@@ -44,16 +50,37 @@
     });
   }
 
+  function getInitialTabFromUrl(){
+    const allowed = new Set(['productos','extras','bancos','clientes','proveedores']);
+    let key = '';
+    try{
+      key = String(new URLSearchParams(window.location.search || '').get('tab') || '').trim().toLowerCase();
+    }catch(_){ key = ''; }
+    if (!key) {
+      key = String((window.location.hash || '').replace(/^#/, '')).trim().toLowerCase();
+    }
+    return allowed.has(key) ? key : '';
+  }
+
+  function activateTabFromUrl(){
+    const key = getInitialTabFromUrl();
+    if (key) activateTab(key);
+  }
+
   function bindTabs(){
     qsa('.cat-tab').forEach((tab) => {
-      tab.addEventListener('click', () => activateTab(tab.getAttribute('data-target')));
+      tab.addEventListener('click', () => {
+        const target = tab.getAttribute('data-target');
+        activateTab(target);
+        try { window.history.replaceState(null, '', '#' + target); } catch(_){ }
+      });
     });
   }
 
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.77&r=6').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.77&r=8').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -1540,6 +1567,657 @@
     await renderCustomers();
   }
 
+
+
+  // --- Etapa 1/3 — Proveedores maestros dentro de Catálogos (misma fuente local de Finanzas)
+  function catEnsureFinanceSchema(d, event){
+    if (!d.objectStoreNames.contains('accounts')) d.createObjectStore('accounts', { keyPath:'code' });
+    if (!d.objectStoreNames.contains('journalEntries')) d.createObjectStore('journalEntries', { keyPath:'id', autoIncrement:true });
+    if (!d.objectStoreNames.contains('journalLines')) d.createObjectStore('journalLines', { keyPath:'id', autoIncrement:true });
+    if (!d.objectStoreNames.contains('suppliers')) d.createObjectStore('suppliers', { keyPath:'id', autoIncrement:true });
+    if (!d.objectStoreNames.contains('receipts')){
+      const st = d.createObjectStore('receipts', { keyPath:'receiptId' });
+      try{ st.createIndex('dateISO','dateISO',{ unique:false }); }catch(_){ }
+      try{ st.createIndex('status','status',{ unique:false }); }catch(_){ }
+      try{ st.createIndex('updatedAt','updatedAt',{ unique:false }); }catch(_){ }
+    } else {
+      try{
+        const st = event && event.target && event.target.transaction ? event.target.transaction.objectStore('receipts') : null;
+        if (st && !st.indexNames.contains('dateISO')) st.createIndex('dateISO','dateISO',{ unique:false });
+        if (st && !st.indexNames.contains('status')) st.createIndex('status','status',{ unique:false });
+        if (st && !st.indexNames.contains('updatedAt')) st.createIndex('updatedAt','updatedAt',{ unique:false });
+      }catch(_){ }
+    }
+    if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath:'id' });
+    if (!d.objectStoreNames.contains('posDailyCloseImports')){
+      const st = d.createObjectStore('posDailyCloseImports', { keyPath:'closureId' });
+      try{ st.createIndex('eventDateKey','eventDateKey',{ unique:false }); }catch(_){ }
+    } else {
+      try{
+        const st = event && event.target && event.target.transaction ? event.target.transaction.objectStore('posDailyCloseImports') : null;
+        if (st && !st.indexNames.contains('eventDateKey')) st.createIndex('eventDateKey','eventDateKey',{ unique:false });
+      }catch(_){ }
+    }
+  }
+
+  function openFinanceDBCAT(){
+    if (finDbCAT) return Promise.resolve(finDbCAT);
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open(FIN_DB_NAME_CAT, FIN_DB_VERSION_CAT);
+      req.onupgradeneeded = (event)=>{
+        catEnsureFinanceSchema(event.target.result, event);
+      };
+      req.onsuccess = ()=>{
+        finDbCAT = req.result;
+        try{ finDbCAT.onversionchange = ()=>{ try{ finDbCAT.close(); }catch(_){ } finDbCAT = null; }; }catch(_){ }
+        resolve(finDbCAT);
+      };
+      req.onerror = ()=>{
+        const err = req.error;
+        if (err && err.name === 'VersionError'){
+          const req2 = indexedDB.open(FIN_DB_NAME_CAT);
+          req2.onsuccess = ()=>{
+            finDbCAT = req2.result;
+            try{ finDbCAT.onversionchange = ()=>{ try{ finDbCAT.close(); }catch(_){ } finDbCAT = null; }; }catch(_){ }
+            if (!finDbCAT.objectStoreNames.contains('suppliers')){
+              reject(new Error('La base de Finanzas existe pero no tiene store suppliers.'));
+              return;
+            }
+            resolve(finDbCAT);
+          };
+          req2.onerror = ()=>reject(req2.error || err);
+          return;
+        }
+        reject(err);
+      };
+      req.onblocked = ()=>reject(new Error('IndexedDB de Finanzas bloqueado por otra pestaña.'));
+    });
+  }
+
+  async function finGetAllCAT(storeName){
+    if (!finDbCAT) await openFinanceDBCAT();
+    if (!finDbCAT.objectStoreNames.contains(storeName)) throw new Error('Store no disponible: ' + storeName);
+    return new Promise((resolve, reject)=>{
+      const tx = finDbCAT.transaction(storeName, 'readonly');
+      const req = tx.objectStore(storeName).getAll();
+      req.onsuccess = ()=>resolve(req.result || []);
+      req.onerror = ()=>reject(req.error || tx.error);
+      tx.onerror = ()=>reject(tx.error || req.error);
+    });
+  }
+
+  async function finGetCAT(storeName, key){
+    if (!finDbCAT) await openFinanceDBCAT();
+    if (!finDbCAT.objectStoreNames.contains(storeName)) throw new Error('Store no disponible: ' + storeName);
+    return new Promise((resolve, reject)=>{
+      const tx = finDbCAT.transaction(storeName, 'readonly');
+      const req = tx.objectStore(storeName).get(key);
+      req.onsuccess = ()=>resolve(req.result || null);
+      req.onerror = ()=>reject(req.error || tx.error);
+      tx.onerror = ()=>reject(tx.error || req.error);
+    });
+  }
+
+  async function finAddCAT(storeName, value){
+    if (!finDbCAT) await openFinanceDBCAT();
+    if (!finDbCAT.objectStoreNames.contains(storeName)) throw new Error('Store no disponible: ' + storeName);
+    return new Promise((resolve, reject)=>{
+      const tx = finDbCAT.transaction(storeName, 'readwrite');
+      const req = tx.objectStore(storeName).add(value);
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error || tx.error);
+      tx.onerror = ()=>reject(tx.error || req.error);
+    });
+  }
+
+  async function finPutCAT(storeName, value){
+    if (!finDbCAT) await openFinanceDBCAT();
+    if (!finDbCAT.objectStoreNames.contains(storeName)) throw new Error('Store no disponible: ' + storeName);
+    return new Promise((resolve, reject)=>{
+      const tx = finDbCAT.transaction(storeName, 'readwrite');
+      const req = tx.objectStore(storeName).put(value);
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error || tx.error);
+      tx.onerror = ()=>reject(tx.error || req.error);
+    });
+  }
+
+  async function finDeleteCAT(storeName, key){
+    if (!finDbCAT) await openFinanceDBCAT();
+    if (!finDbCAT.objectStoreNames.contains(storeName)) throw new Error('Store no disponible: ' + storeName);
+    return new Promise((resolve, reject)=>{
+      const tx = finDbCAT.transaction(storeName, 'readwrite');
+      const req = tx.objectStore(storeName).delete(key);
+      req.onsuccess = ()=>resolve(true);
+      req.onerror = ()=>reject(req.error || tx.error);
+      tx.onerror = ()=>reject(tx.error || req.error);
+    });
+  }
+
+  function catNormNumNonNeg(v){
+    const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
+    return (Number.isFinite(n) && n >= 0) ? n : 0;
+  }
+
+  function catParseNonNegInput(value){
+    const raw = String(value ?? '').trim();
+    if (!raw) return { ok:true, empty:true, value:0 };
+    const n = parseFloat(raw.replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0) return { ok:false, empty:false, value:0 };
+    return { ok:true, empty:false, value:n };
+  }
+
+  function catNormStrKeep(v, maxLen){
+    const s = (v == null) ? '' : String(v);
+    const out = s.trim();
+    const ml = Number(maxLen || 120);
+    return (Number.isFinite(ml) && ml > 0 && out.length > ml) ? out.slice(0, ml) : out;
+  }
+
+  function catNormBool(v){
+    if (v === true) return true;
+    if (v === false || v == null) return false;
+    const s = String(v).trim().toLowerCase();
+    return s === 'true' || s === '1' || s === 'si' || s === 'sí' || s === 'yes';
+  }
+
+  function normalizeSupplierProductTypeCAT(v){
+    const t = catNormStrKeep(v, 24).toUpperCase();
+    return (t === 'CAJAS' || t === 'UNIDADES') ? t : '—';
+  }
+
+  function normalizeSupplierProductCAT(raw){
+    const obj = (raw && typeof raw === 'object') ? raw : {};
+    const precioRaw = obj.precio;
+    const precioStr = (precioRaw == null) ? '' : String(precioRaw).trim();
+    const hasFlag = Object.prototype.hasOwnProperty.call(obj, 'precioSet');
+    const precioSet = hasFlag ? catNormBool(obj.precioSet) : ((precioStr !== '') && (catNormNumNonNeg(precioRaw) !== 0));
+    return {
+      ...obj,
+      id: catNormStrKeep(obj.id, 80),
+      nombre: catNormStrKeep(obj.nombre, 120),
+      tipo: normalizeSupplierProductTypeCAT(obj.tipo),
+      precio: catNormNumNonNeg(obj.precio),
+      precioSet,
+      unidadesPorCaja: catNormNumNonNeg(obj.unidadesPorCaja)
+    };
+  }
+
+  function normalizeSupplierCAT(raw){
+    const obj = (raw && typeof raw === 'object') ? raw : {};
+    const productos = Array.isArray(obj.productos) ? obj.productos.map(normalizeSupplierProductCAT) : [];
+    return {
+      ...obj,
+      id: obj.id,
+      nombre: catNormStrKeep(obj.nombre, 120),
+      telefono: catNormStrKeep(obj.telefono, 80),
+      nota: catNormStrKeep(obj.nota, 220),
+      productos
+    };
+  }
+
+  function supplierSearchTextCAT(supplier){
+    const s = normalizeSupplierCAT(supplier);
+    const parts = [s.nombre, s.telefono, s.nota];
+    for (const p of (Array.isArray(s.productos) ? s.productos : [])) parts.push(p.nombre, p.tipo);
+    return normName(parts.filter(Boolean).join(' '));
+  }
+
+  function sortSuppliersCAT(a,b){
+    const ida = Number(a && a.id || 0);
+    const idb = Number(b && b.id || 0);
+    if (idb !== ida) return idb - ida;
+    return String((a && a.nombre) || '').localeCompare(String((b && b.nombre) || ''), 'es-NI', { sensitivity:'base' });
+  }
+
+  function setSupplierMsgCAT(message, kind){
+    const el = byId('cat-supplier-msg');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'cat-muted cat-edit-msg' + (kind ? (' ' + kind) : '');
+  }
+
+  function setEditSupplierMsgCAT(message, kind){
+    const el = byId('cat-edit-supplier-msg');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'cat-muted cat-edit-msg' + (kind ? (' ' + kind) : '');
+  }
+
+  function setCurrentSupplierMsgCAT(message, kind){
+    if (currentSupplierEditIdCAT) setEditSupplierMsgCAT(message, kind);
+    else setSupplierMsgCAT(message, kind);
+  }
+
+  function setSupplierProductMsgCAT(message, kind){
+    const el = byId('cat-supplier-product-msg');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'cat-muted cat-edit-msg' + (kind ? (' ' + kind) : '');
+  }
+
+  function updateModalBodyStateCAT(){
+    const any = qsa('.cat-modal.show').length > 0;
+    try{ document.body.classList.toggle('cat-modal-open', any); }catch(_){ }
+  }
+
+  function openModalCAT(id){
+    const modal = byId(id);
+    if (!modal) return;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden','false');
+    updateModalBodyStateCAT();
+  }
+
+  function closeModalCAT(id){
+    const modal = byId(id);
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden','true');
+    updateModalBodyStateCAT();
+  }
+
+  function resetSupplierFormCAT(){
+    currentSupplierEditIdCAT = null;
+    ['cat-supplier-name','cat-supplier-phone','cat-supplier-note'].forEach(id => { const el = byId(id); if (el) el.value = ''; });
+    setSupplierMsgCAT('');
+  }
+
+  function readSupplierFieldsCAT(mode){
+    const edit = mode === 'edit';
+    const nombre = catNormStrKeep(byId(edit ? 'cat-edit-supplier-name' : 'cat-supplier-name')?.value || '', 120);
+    const telefono = catNormStrKeep(byId(edit ? 'cat-edit-supplier-phone' : 'cat-supplier-phone')?.value || '', 80);
+    const nota = catNormStrKeep(byId(edit ? 'cat-edit-supplier-note' : 'cat-supplier-note')?.value || '', 220);
+    if (!nombre) return { ok:false, msg:'El nombre del proveedor es obligatorio.' };
+    return { ok:true, nombre, telefono, nota };
+  }
+
+  async function getSupplierByIdCAT(id){
+    const sid = Number(id || 0);
+    if (!Number.isFinite(sid) || sid <= 0) return null;
+    const raw = await finGetCAT('suppliers', sid);
+    return raw ? normalizeSupplierCAT(raw) : null;
+  }
+
+  async function renderSuppliersCAT(){
+    try{
+      await openFinanceDBCAT();
+      let list = (await finGetAllCAT('suppliers')).map(normalizeSupplierCAT).sort(sortSuppliersCAT);
+      const q = normName(byId('cat-supplier-search')?.value || '');
+      const all = list;
+      if (q) list = list.filter(s => supplierSearchTextCAT(s).includes(q));
+      const wrap = byId('cat-suppliers-list');
+      if (!wrap) return;
+      wrap.innerHTML = '';
+      const totalProducts = all.reduce((acc, s)=>acc + (Array.isArray(s.productos) ? s.productos.length : 0), 0);
+      const status = all.length
+        ? `${all.length} proveedor(es) maestro(s) · ${totalProducts} producto(s) asociado(s)${q ? ' · ' + list.length + ' resultado(s)' : ''}.`
+        : 'No hay proveedores registrados todavía. Puedes crear el primero aquí o conservar los que Finanzas genere.';
+      setStatusById('cat-suppliers-status', status, all.length ? 'ok' : 'warn');
+      if (!list.length){
+        const empty = document.createElement('div');
+        empty.className = 'cat-supplier-empty';
+        empty.textContent = q ? 'Sin resultados para la búsqueda.' : 'Sin proveedores registrados.';
+        wrap.appendChild(empty);
+        return;
+      }
+      for (const s of list){
+        const count = Array.isArray(s.productos) ? s.productos.length : 0;
+        const tel = s.telefono || '—';
+        const nota = s.nota || '—';
+        const card = document.createElement('div');
+        card.className = 'cat-product-card cat-supplier-card';
+        card.innerHTML = `
+          <div class="cat-product-main">
+            <div class="cat-product-title-row">
+              <strong>${escapeHtml(s.nombre || 'Proveedor sin nombre')}</strong>
+              <span class="cat-pill gold">Maestro</span>
+              <span class="cat-pill muted">${escapeHtml(String(count))} producto(s)</span>
+            </div>
+            <div class="cat-product-meta">
+              <div><small>Teléfono</small><b>${escapeHtml(tel)}</b></div>
+              <div><small>Nota</small><b>${escapeHtml(nota)}</b></div>
+              <div><small>Productos</small><b>${escapeHtml(String(count))}</b></div>
+              <div><small>Histórico</small><b>No recalcula</b></div>
+            </div>
+          </div>
+          <div class="cat-product-actions">
+            <button class="cat-btn cat-btn-secondary cat-supplier-products" data-id="${escapeHtml(String(s.id))}" type="button">Productos</button>
+            <button class="cat-btn cat-btn-ok cat-edit-supplier" data-id="${escapeHtml(String(s.id))}" type="button">Editar</button>
+            <button class="cat-btn cat-btn-warn cat-delete-supplier" data-id="${escapeHtml(String(s.id))}" type="button">Eliminar</button>
+          </div>
+        `;
+        wrap.appendChild(card);
+      }
+    }catch(err){
+      console.error(err);
+      setStatusById('cat-suppliers-status', 'No se pudieron cargar los proveedores maestros. Cierra otras pestañas de Finanzas y vuelve a intentar.', 'warn');
+    }
+  }
+
+  async function saveSupplierNewCAT(){
+    const data = readSupplierFieldsCAT('add');
+    if (!data.ok){ setSupplierMsgCAT(data.msg, 'warn'); return; }
+    const now = new Date().toISOString();
+    const row = {
+      nombre:data.nombre,
+      telefono:data.telefono,
+      nota:data.nota,
+      productos:[],
+      createdAt:now,
+      updatedAt:now,
+      updatedFrom:'catalogos_proveedores'
+    };
+    await finAddCAT('suppliers', row);
+    resetSupplierFormCAT();
+    await renderSuppliersCAT();
+    toast('Proveedor agregado');
+  }
+
+  async function openSupplierModalCAT(id){
+    const s = await getSupplierByIdCAT(id);
+    if (!s){ toast('Proveedor no encontrado'); return; }
+    currentSupplierEditIdCAT = Number(s.id);
+    const current = byId('cat-supplier-current'); if (current) current.textContent = 'Proveedor actual: ' + (s.nombre || '—');
+    const fields = {
+      'cat-edit-supplier-name': s.nombre || '',
+      'cat-edit-supplier-phone': s.telefono || '',
+      'cat-edit-supplier-note': s.nota || ''
+    };
+    Object.keys(fields).forEach(id => { const el = byId(id); if (el) el.value = fields[id]; });
+    setEditSupplierMsgCAT('');
+    openModalCAT('cat-supplier-modal');
+    setTimeout(()=>{ try{ byId('cat-edit-supplier-name')?.focus({ preventScroll:true }); byId('cat-edit-supplier-name')?.select(); }catch(_){ } }, 60);
+  }
+
+  function closeSupplierModalCAT(){
+    closeModalCAT('cat-supplier-modal');
+    currentSupplierEditIdCAT = null;
+    setEditSupplierMsgCAT('');
+  }
+
+  async function saveSupplierEditCAT(){
+    if (!currentSupplierEditIdCAT){ setEditSupplierMsgCAT('Proveedor inválido.', 'warn'); return; }
+    const data = readSupplierFieldsCAT('edit');
+    if (!data.ok){ setEditSupplierMsgCAT(data.msg, 'warn'); return; }
+    const existing = await finGetCAT('suppliers', Number(currentSupplierEditIdCAT));
+    if (!existing){ setEditSupplierMsgCAT('El proveedor ya no existe. Actualiza la lista.', 'warn'); return; }
+    const productos = Array.isArray(existing.productos) ? existing.productos : [];
+    await finPutCAT('suppliers', {
+      ...existing,
+      nombre:data.nombre,
+      telefono:data.telefono,
+      nota:data.nota,
+      productos,
+      updatedAt:new Date().toISOString(),
+      updatedFrom:'catalogos_proveedores'
+    });
+    closeSupplierModalCAT();
+    await renderSuppliersCAT();
+    toast('Proveedor guardado');
+  }
+
+  async function deleteSupplierCAT(id){
+    const sid = Number(id || 0);
+    if (!Number.isFinite(sid) || sid <= 0) return;
+    const ok = confirm('¿Eliminar este proveedor? Las compras históricas se mantienen.');
+    if (!ok) return;
+    await finDeleteCAT('suppliers', sid);
+    if (currentSupplierProductsIdCAT && Number(currentSupplierProductsIdCAT) === sid) closeSupplierProductsModalCAT();
+    if (currentSupplierEditIdCAT && Number(currentSupplierEditIdCAT) === sid) closeSupplierModalCAT();
+    await renderSuppliersCAT();
+    toast('Proveedor eliminado');
+  }
+
+  function supplierProductTypeLabelCAT(tipo){
+    const t = normalizeSupplierProductTypeCAT(tipo);
+    return (t === 'CAJAS' || t === 'UNIDADES') ? t : '—';
+  }
+
+  async function openSupplierProductsModalCAT(id){
+    const s = await getSupplierByIdCAT(id);
+    if (!s){ toast('Proveedor no encontrado'); return; }
+    currentSupplierProductsIdCAT = Number(s.id);
+    const title = byId('cat-supplier-products-title'); if (title) title.textContent = 'Productos de ' + (s.nombre || 'Proveedor');
+    const sub = byId('cat-supplier-products-sub');
+    if (sub){
+      const parts = [];
+      if (s.telefono) parts.push('Tel: ' + s.telefono);
+      if (s.nota) parts.push(s.nota);
+      sub.textContent = parts.length ? parts.join(' · ') : 'Proveedor: ' + (s.nombre || '—');
+    }
+    openModalCAT('cat-supplier-products-modal');
+    await renderSupplierProductsModalCAT();
+  }
+
+  function closeSupplierProductsModalCAT(){
+    closeSupplierProductModalCAT();
+    closeModalCAT('cat-supplier-products-modal');
+    currentSupplierProductsIdCAT = null;
+    setStatusById('cat-supplier-products-status', 'Cargando productos…');
+    const list = byId('cat-supplier-products-list'); if (list) list.innerHTML = '';
+  }
+
+  async function renderSupplierProductsModalCAT(){
+    const list = byId('cat-supplier-products-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const sid = Number(currentSupplierProductsIdCAT || 0);
+    if (!Number.isFinite(sid) || sid <= 0){
+      setStatusById('cat-supplier-products-status', 'Proveedor inválido.', 'warn');
+      return;
+    }
+    const supplier = await getSupplierByIdCAT(sid);
+    if (!supplier){
+      setStatusById('cat-supplier-products-status', 'El proveedor ya no existe.', 'warn');
+      return;
+    }
+    const productos = Array.isArray(supplier.productos) ? supplier.productos.map(normalizeSupplierProductCAT).sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||''),'es-NI',{sensitivity:'base'})) : [];
+    setStatusById('cat-supplier-products-status', productos.length ? `${productos.length} producto(s) registrado(s).` : 'Sin productos registrados para este proveedor.', productos.length ? 'ok' : 'warn');
+    if (!productos.length){
+      const empty = document.createElement('div');
+      empty.className = 'cat-supplier-empty';
+      empty.textContent = 'Sin productos. Puedes agregar el primero desde el botón superior.';
+      list.appendChild(empty);
+      return;
+    }
+    for (const p of productos){
+      const tipo = supplierProductTypeLabelCAT(p.tipo);
+      const unidades = tipo === 'CAJAS' ? catNormNumNonNeg(p.unidadesPorCaja) : 0;
+      const card = document.createElement('div');
+      card.className = 'cat-product-card cat-supplier-product-card';
+      card.innerHTML = `
+        <div class="cat-product-main">
+          <div class="cat-product-title-row">
+            <strong>${escapeHtml(p.nombre || 'Producto sin nombre')}</strong>
+            <span class="cat-pill gold">${escapeHtml(tipo)}</span>
+          </div>
+          <div class="cat-product-meta">
+            <div><small>Tipo</small><b>${escapeHtml(tipo)}</b></div>
+            <div><small>Precio ref. C$</small><b>${escapeHtml(p.precioSet ? displayMoney(p.precio) : '—')}</b></div>
+            <div><small>Unidades por caja</small><b>${escapeHtml(String(unidades))}</b></div>
+            <div><small>Histórico</small><b>No recalcula</b></div>
+          </div>
+        </div>
+        <div class="cat-product-actions">
+          <button class="cat-btn cat-btn-ok cat-edit-supplier-product" data-pid="${escapeHtml(String(p.id))}" type="button">Editar</button>
+          <button class="cat-btn cat-btn-warn cat-delete-supplier-product" data-pid="${escapeHtml(String(p.id))}" type="button">Borrar</button>
+        </div>
+      `;
+      list.appendChild(card);
+    }
+  }
+
+  function updateSupplierProductUnitsStateCAT(){
+    const typeEl = byId('cat-supplier-product-type');
+    const unitsEl = byId('cat-supplier-product-units');
+    if (!typeEl || !unitsEl) return;
+    const t = String(typeEl.value || '').toUpperCase();
+    if (t === 'CAJAS'){
+      unitsEl.disabled = false;
+      const last = unitsEl.dataset && typeof unitsEl.dataset.a33LastUnits === 'string' ? unitsEl.dataset.a33LastUnits : '';
+      if (!String(unitsEl.value || '').trim() && last) unitsEl.value = last;
+    } else {
+      const cur = String(unitsEl.value || '').trim();
+      if (cur){ try{ unitsEl.dataset.a33LastUnits = cur; }catch(_){ } }
+      unitsEl.value = '';
+      unitsEl.disabled = true;
+    }
+  }
+
+  async function openSupplierProductModalCAT(productId){
+    const sid = Number(currentSupplierProductsIdCAT || 0);
+    if (!Number.isFinite(sid) || sid <= 0){ toast('Primero selecciona un proveedor'); return; }
+    const supplier = await getSupplierByIdCAT(sid);
+    if (!supplier){ toast('Proveedor no encontrado'); return; }
+    const pid = String(productId || '').trim();
+    const product = pid ? (supplier.productos || []).map(normalizeSupplierProductCAT).find(p => String(p.id || '') === pid) : null;
+    if (pid && !product){ toast('Producto no encontrado'); return; }
+    currentSupplierProductEditIdCAT = product ? String(product.id || '') : null;
+    const title = byId('cat-supplier-product-title'); if (title) title.textContent = product ? 'Editar producto' : 'Agregar producto';
+    const current = byId('cat-supplier-product-current'); if (current) current.textContent = 'Producto actual: ' + (product && product.nombre ? product.nombre : 'Nuevo producto');
+    const name = byId('cat-supplier-product-name'); if (name) name.value = product ? (product.nombre || '') : '';
+    const type = byId('cat-supplier-product-type'); if (type) type.value = product && (product.tipo === 'CAJAS' || product.tipo === 'UNIDADES') ? product.tipo : '';
+    const price = byId('cat-supplier-product-price'); if (price) price.value = product && product.precioSet ? String(catNormNumNonNeg(product.precio)) : '';
+    const units = byId('cat-supplier-product-units');
+    if (units){
+      const val = product && product.tipo === 'CAJAS' && product.unidadesPorCaja != null ? String(catNormNumNonNeg(product.unidadesPorCaja)) : '';
+      units.value = val;
+      try{ units.dataset.a33LastUnits = val; }catch(_){ }
+    }
+    setSupplierProductMsgCAT('');
+    updateSupplierProductUnitsStateCAT();
+    openModalCAT('cat-supplier-product-modal');
+    setTimeout(()=>{ try{ name?.focus({ preventScroll:true }); name?.select(); }catch(_){ } }, 60);
+  }
+
+  function closeSupplierProductModalCAT(){
+    closeModalCAT('cat-supplier-product-modal');
+    currentSupplierProductEditIdCAT = null;
+    setSupplierProductMsgCAT('');
+  }
+
+  function genSupplierProductIdCAT(){
+    return 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+  }
+
+  async function saveSupplierProductCAT(){
+    const sid = Number(currentSupplierProductsIdCAT || 0);
+    if (!Number.isFinite(sid) || sid <= 0){ setSupplierProductMsgCAT('Proveedor inválido.', 'warn'); return; }
+    const supplierRaw = await finGetCAT('suppliers', sid);
+    if (!supplierRaw){ setSupplierProductMsgCAT('El proveedor ya no existe.', 'warn'); return; }
+    const nombre = catNormStrKeep(byId('cat-supplier-product-name')?.value || '', 120);
+    const tipo = String(byId('cat-supplier-product-type')?.value || '').trim().toUpperCase();
+    const priceParsed = catParseNonNegInput(byId('cat-supplier-product-price')?.value || '');
+    const unitsParsed = catParseNonNegInput(byId('cat-supplier-product-units')?.value || '');
+    if (!nombre){ setSupplierProductMsgCAT('El nombre del producto es obligatorio.', 'warn'); return; }
+    if (!(tipo === 'CAJAS' || tipo === 'UNIDADES')){ setSupplierProductMsgCAT('Selecciona CAJAS o UNIDADES.', 'warn'); return; }
+    if (!priceParsed.ok){ setSupplierProductMsgCAT('Precio ref. C$ inválido.', 'warn'); return; }
+    if (tipo === 'CAJAS' && !unitsParsed.ok){ setSupplierProductMsgCAT('Unidades por caja inválidas.', 'warn'); return; }
+    const editId = currentSupplierProductEditIdCAT ? String(currentSupplierProductEditIdCAT) : '';
+    const productId = editId || genSupplierProductIdCAT();
+    const payload = {
+      id: productId,
+      nombre,
+      tipo,
+      precio: round2(priceParsed.value),
+      precioSet: !priceParsed.empty,
+      unidadesPorCaja: tipo === 'CAJAS' ? catNormNumNonNeg(unitsParsed.value) : 0
+    };
+    const arr = Array.isArray(supplierRaw.productos) ? supplierRaw.productos : [];
+    let found = false;
+    const updated = arr.map(p => {
+      const pid = String((p && p.id) || '');
+      if (pid && pid === productId){
+        found = true;
+        return { ...p, ...payload };
+      }
+      return p;
+    });
+    if (!found) updated.push(payload);
+    await finPutCAT('suppliers', { ...supplierRaw, productos:updated, updatedAt:new Date().toISOString(), updatedFrom:'catalogos_proveedores_productos' });
+    closeSupplierProductModalCAT();
+    await renderSupplierProductsModalCAT();
+    await renderSuppliersCAT();
+    toast(editId ? 'Producto actualizado' : 'Producto agregado');
+  }
+
+  async function deleteSupplierProductCAT(productId){
+    const sid = Number(currentSupplierProductsIdCAT || 0);
+    const pid = String(productId || '').trim();
+    if (!Number.isFinite(sid) || sid <= 0 || !pid) return;
+    const ok = confirm('¿Borrar este producto del proveedor? Las compras históricas se mantienen.');
+    if (!ok) return;
+    const supplierRaw = await finGetCAT('suppliers', sid);
+    if (!supplierRaw){ toast('Proveedor no encontrado'); return; }
+    const arr = Array.isArray(supplierRaw.productos) ? supplierRaw.productos : [];
+    const updated = arr.filter(p => String((p && p.id) || '') !== pid);
+    await finPutCAT('suppliers', { ...supplierRaw, productos:updated, updatedAt:new Date().toISOString(), updatedFrom:'catalogos_proveedores_productos_borrar' });
+    if (currentSupplierProductEditIdCAT && String(currentSupplierProductEditIdCAT) === pid) closeSupplierProductModalCAT();
+    await renderSupplierProductsModalCAT();
+    await renderSuppliersCAT();
+    toast('Producto borrado');
+  }
+
+  function bindSupplierUi(){
+    const suppliersList = byId('cat-suppliers-list');
+    if (suppliersList){
+      suppliersList.addEventListener('click', async (e)=>{
+        const products = e.target.closest('.cat-supplier-products');
+        const edit = e.target.closest('.cat-edit-supplier');
+        const del = e.target.closest('.cat-delete-supplier');
+        if (products){ await openSupplierProductsModalCAT(products.dataset.id); return; }
+        if (edit){ await openSupplierModalCAT(edit.dataset.id); return; }
+        if (del){ await deleteSupplierCAT(del.dataset.id); return; }
+      });
+    }
+    byId('cat-save-supplier')?.addEventListener('click', ()=>saveSupplierNewCAT().catch(err=>{ console.error(err); setSupplierMsgCAT('No se pudo guardar el proveedor.', 'warn'); }));
+    byId('cat-refresh-suppliers')?.addEventListener('click', async ()=>{ await renderSuppliersCAT(); toast('Proveedores actualizados'); });
+    byId('cat-supplier-search')?.addEventListener('input', ()=>renderSuppliersCAT().catch(err=>console.error(err)));
+
+    byId('cat-edit-supplier-save')?.addEventListener('click', ()=>saveSupplierEditCAT().catch(err=>{ console.error(err); setEditSupplierMsgCAT('No se pudo guardar el proveedor.', 'warn'); }));
+    byId('cat-edit-supplier-cancel')?.addEventListener('click', closeSupplierModalCAT);
+    byId('cat-supplier-close')?.addEventListener('click', closeSupplierModalCAT);
+    const supplierModal = byId('cat-supplier-modal');
+    if (supplierModal) supplierModal.addEventListener('click', (e)=>{ if (e.target === supplierModal) closeSupplierModalCAT(); });
+
+    byId('cat-supplier-products-close')?.addEventListener('click', closeSupplierProductsModalCAT);
+    byId('cat-add-supplier-product')?.addEventListener('click', ()=>openSupplierProductModalCAT(null).catch(err=>{ console.error(err); toast('No se pudo abrir el producto'); }));
+    const productsModal = byId('cat-supplier-products-modal');
+    if (productsModal) productsModal.addEventListener('click', (e)=>{ if (e.target === productsModal) closeSupplierProductsModalCAT(); });
+    const productsList = byId('cat-supplier-products-list');
+    if (productsList){
+      productsList.addEventListener('click', async (e)=>{
+        const edit = e.target.closest('.cat-edit-supplier-product');
+        const del = e.target.closest('.cat-delete-supplier-product');
+        if (edit){ await openSupplierProductModalCAT(edit.dataset.pid); return; }
+        if (del){ await deleteSupplierProductCAT(del.dataset.pid); return; }
+      });
+    }
+
+    byId('cat-supplier-product-close')?.addEventListener('click', closeSupplierProductModalCAT);
+    byId('cat-supplier-product-cancel')?.addEventListener('click', closeSupplierProductModalCAT);
+    byId('cat-supplier-product-save')?.addEventListener('click', ()=>saveSupplierProductCAT().catch(err=>{ console.error(err); setSupplierProductMsgCAT('No se pudo guardar el producto.', 'warn'); }));
+    byId('cat-supplier-product-type')?.addEventListener('change', updateSupplierProductUnitsStateCAT);
+    const productModal = byId('cat-supplier-product-modal');
+    if (productModal) productModal.addEventListener('click', (e)=>{ if (e.target === productModal) closeSupplierProductModalCAT(); });
+
+    document.addEventListener('keydown', (e)=>{
+      if (!e || e.key !== 'Escape') return;
+      const product = byId('cat-supplier-product-modal');
+      const products = byId('cat-supplier-products-modal');
+      const supplier = byId('cat-supplier-modal');
+      if (product && product.classList.contains('show')){ closeSupplierProductModalCAT(); return; }
+      if (products && products.classList.contains('show')){ closeSupplierProductsModalCAT(); return; }
+      if (supplier && supplier.classList.contains('show')) closeSupplierModalCAT();
+    });
+  }
+
+  async function initSuppliers(){
+    await openFinanceDBCAT();
+    await renderSuppliersCAT();
+  }
+
   function bindExtraBankUi(){
     const extrasList = byId('cat-extras-list');
     if (extrasList){
@@ -1624,6 +2302,8 @@
     bindProductUi();
     bindExtraBankUi();
     bindCustomerUi();
+    bindSupplierUi();
+    activateTabFromUrl();
     if (!qs('.cat-panel.is-active')) activateTab('productos');
     try{ if (window.A33_applyReleaseLabel) window.A33_applyReleaseLabel(); }catch(_){ }
     initProducts().catch(err=>{
@@ -1639,6 +2319,11 @@
       console.error(err);
       setStatusById('cat-customers-status', 'No se pudo abrir Catálogos → Clientes.', 'warn');
     });
+    initSuppliers().catch(err=>{
+      console.error(err);
+      setStatusById('cat-suppliers-status', 'No se pudo abrir Catálogos → Proveedores.', 'warn');
+    });
+    window.addEventListener('hashchange', activateTabFromUrl);
     registerServiceWorker();
   });
 })();
