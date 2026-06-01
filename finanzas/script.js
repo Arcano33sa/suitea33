@@ -9259,6 +9259,12 @@ function escapeAttr(s){
 
 function setActiveFinView(view) {
   const buttons = document.querySelectorAll('.fin-tab-btn');
+  const blockedViews = new Set(['proveedores']);
+
+  if (blockedViews.has(String(view || '').trim())) {
+    view = 'compras';
+  }
+
   let target = null;
 
   buttons.forEach(btn => {
@@ -9302,7 +9308,7 @@ function setupTabs() {
   if (window.location.hash && window.location.hash.startsWith('#tab=')) {
     const v = window.location.hash.slice(5).trim();
     if (v) {
-      initialView = v;
+      initialView = v === 'proveedores' ? 'compras' : v;
     }
   }
 
@@ -10348,7 +10354,7 @@ async function initFinanzas() {
     setupCajaChicaUI();
     setupEstadosSubtabs();
     setupModoERToggle();
-    setupFilterListeners();    setupProveedoresUI();
+    setupFilterListeners();
     setupRecibosUI();
     await rcEnterView(true);
     setupCatalogoUI();

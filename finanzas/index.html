@@ -46,7 +46,6 @@
       <button type="button" class="fin-tab-btn" data-view="estados">Estados Financieros</button>
       <button type="button" class="fin-tab-btn" data-view="comprasplan">Compras</button>
       <button type="button" class="fin-tab-btn" data-view="compras">Compras a Proveedor</button>
-      <button type="button" class="fin-tab-btn" data-view="proveedores">Proveedores (Catálogos)</button>
       <button type="button" class="fin-tab-btn" data-view="recibos">Recibos</button>
       <button type="button" class="fin-tab-btn" data-view="catalogo">Catálogo de Cuentas</button>
     </div>
@@ -654,29 +653,6 @@
   </section>
 </section>
 
-<!-- PROVEEDORES -->
-<section id="view-proveedores" class="fin-view">
-  <header class="fin-section-header">
-    <h2>Proveedores</h2>
-    <p>Finanzas ya no administra proveedores. Este módulo solo consume la fuente maestra definida en Catálogos.</p>
-  </header>
-
-  <article class="fin-cardbox fin-provider-master-notice" aria-label="Proveedores administrados desde Catálogos">
-    <p class="fin-provider-eyebrow">Fuente maestra</p>
-    <h3>Gestión Operativa → Catálogos → Proveedores</h3>
-    <p>
-      Crea, edita o elimina proveedores desde Catálogos. Compras a Proveedor, filtros, reportes internos y snapshots siguen leyendo esa misma fuente compatible, sin duplicar administración dentro de Finanzas.
-    </p>
-    <ul>
-      <li>Las compras nuevas usan proveedor y producto vigentes desde Catálogos.</li>
-      <li>Las compras históricas conservan el nombre, producto, tipo, precio y unidades guardadas como snapshot cuando existen.</li>
-      <li>No se toca Firebase para Proveedores en esta etapa.</li>
-    </ul>
-    <a class="btn-primary btn-primary--gold fin-provider-catalog-link" href="../catalogos/index.html#proveedores">
-      Abrir Catálogos → Proveedores
-    </a>
-  </article>
-</section>
 
 <!-- RECIBOS -->
 <section id="view-recibos" class="fin-view">
@@ -1215,22 +1191,6 @@
     <div id="toast" class="fin-toast"></div>
 
 
-    <!-- Modal: Productos por proveedor (base) -->
-    <div id="prov-prod-modal" class="fin-modal" aria-hidden="true">
-      <div class="fin-modal-content" role="dialog" aria-modal="true" aria-labelledby="prov-prod-modal-title">
-        <div class="fin-modal-header">
-          <div>
-            <strong id="prov-prod-modal-title">Productos</strong>
-            <div id="prov-prod-modal-sub" class="fin-help" style="margin:2px 0 0"></div>
-          </div>
-          <button type="button" id="prov-prod-modal-close" class="btn-close" aria-label="Cerrar">×</button>
-        </div>
-        <div class="fin-modal-body">
-          <div id="prov-prod-modal-body" class="fin-empty">Aquí se mostrará el listado de productos del proveedor.</div>
-        </div>
-      </div>
-    </div>
-
     <!-- Modal detalle de asiento -->
     <div id="detalle-modal" class="fin-modal">
       <div class="fin-modal-content">
@@ -1270,7 +1230,7 @@
   <script src="/assets/js/a33-export-currency.js?v=4.20.77&r=2"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.77&r=10"></script>
 
-  <script src="script.js?v=4.20.77&r=12"></script>
+  <script src="script.js?v=4.20.77&r=13"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=10"></script>
 </body>
 </html>
