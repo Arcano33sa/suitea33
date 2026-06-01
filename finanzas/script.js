@@ -7,8 +7,14 @@
 const FIN_DB_NAME = 'finanzasDB';
 // IMPORTANTE: subir versión cuando se agregan stores/nuevas estructuras.
 // v3 agrega el store `suppliers` para Proveedores (sin romper data existente).
-const FIN_DB_VERSION = 6; // + Recibos (store `receipts`) + Importación cierres diarios POS
+const FIN_DB_VERSION = 8; // + Transferencias Internas (store `internalTransfers`) + Cuentas Financieras + Recibos + Importación cierres diarios POS
 const CENTRAL_EVENT = 'CENTRAL';
+
+// Hardening Etapa 10/10: límites de render visual para reportes largos.
+// Excel conserva el detalle completo; la UI evita trabarse en iPad/PWA.
+const FIN_REPORT_UI_LIMIT = 120;
+const FIN_REPORT_JOURNAL_UI_LIMIT = 80;
+const FIN_REPORT_BALANZA_UI_LIMIT = 180;
 
 let finDB = null;
 let finCachedData = null; // {accounts, accountsMap, entries, lines, linesByEntry}
@@ -93,6 +99,45 @@ function openFinDB() {
           if (st && !st.indexNames.contains('updatedAt')) st.createIndex('updatedAt', 'updatedAt', { unique: false });
         } catch (err) {}
       }
+      // Cuentas Financieras (configuración multibanco/multimoneda, no contable)
+      if (!db.objectStoreNames.contains('financialAccounts')) {
+        const st = db.createObjectStore('financialAccounts', { keyPath: 'id' });
+        try { st.createIndex('uniqueKey', 'uniqueKey', { unique: true }); } catch (e) {}
+        try { st.createIndex('type', 'type', { unique: false }); } catch (e) {}
+        try { st.createIndex('currency', 'moneda', { unique: false }); } catch (e) {}
+        try { st.createIndex('active', 'activa', { unique: false }); } catch (e) {}
+        try { st.createIndex('bankId', 'bancoId', { unique: false }); } catch (e) {}
+      } else {
+        try {
+          const st = e.target.transaction.objectStore('financialAccounts');
+          if (st && !st.indexNames.contains('uniqueKey')) st.createIndex('uniqueKey', 'uniqueKey', { unique: true });
+          if (st && !st.indexNames.contains('type')) st.createIndex('type', 'type', { unique: false });
+          if (st && !st.indexNames.contains('currency')) st.createIndex('currency', 'moneda', { unique: false });
+          if (st && !st.indexNames.contains('active')) st.createIndex('active', 'activa', { unique: false });
+          if (st && !st.indexNames.contains('bankId')) st.createIndex('bankId', 'bancoId', { unique: false });
+        } catch (err) {}
+      }
+
+
+      // Transferencias Internas (movimiento entre cuentas financieras, no ingreso/egreso)
+      if (!db.objectStoreNames.contains('internalTransfers')) {
+        const st = db.createObjectStore('internalTransfers', { keyPath: 'transferId' });
+        try { st.createIndex('fecha', 'fecha', { unique: false }); } catch (e) {}
+        try { st.createIndex('journalEntryId', 'journalEntryId', { unique: false }); } catch (e) {}
+        try { st.createIndex('cuentaOrigenId', 'cuentaOrigenId', { unique: false }); } catch (e) {}
+        try { st.createIndex('cuentaDestinoId', 'cuentaDestinoId', { unique: false }); } catch (e) {}
+        try { st.createIndex('createdAtISO', 'createdAtISO', { unique: false }); } catch (e) {}
+      } else {
+        try {
+          const st = e.target.transaction.objectStore('internalTransfers');
+          if (st && !st.indexNames.contains('fecha')) st.createIndex('fecha', 'fecha', { unique: false });
+          if (st && !st.indexNames.contains('journalEntryId')) st.createIndex('journalEntryId', 'journalEntryId', { unique: false });
+          if (st && !st.indexNames.contains('cuentaOrigenId')) st.createIndex('cuentaOrigenId', 'cuentaOrigenId', { unique: false });
+          if (st && !st.indexNames.contains('cuentaDestinoId')) st.createIndex('cuentaDestinoId', 'cuentaDestinoId', { unique: false });
+          if (st && !st.indexNames.contains('createdAtISO')) st.createIndex('createdAtISO', 'createdAtISO', { unique: false });
+        } catch (err) {}
+      }
+
       // Settings / snapshots (no contable): por ejemplo Caja Chica física.
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'id' });
@@ -337,6 +382,32 @@ function getAllPosEventsSafe() {
   });
 }
 
+
+function getAllPosBanksSafe() {
+  return new Promise(async (resolve) => {
+    const db = await openPosDB();
+    if (!db) {
+      resolve([]);
+      return;
+    }
+    let store;
+    try {
+      store = posTx('banks', 'readonly');
+    } catch (err) {
+      // Catálogos → Bancos puede no existir todavía en instalaciones viejas.
+      console.warn('Store banks no encontrada en a33-pos', err);
+      resolve([]);
+      return;
+    }
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => {
+      console.warn('No se pudieron leer los bancos maestros desde Catálogos', req.error);
+      resolve([]);
+    };
+  });
+}
+
 function getAllPosDailyClosuresSafe() {
   return new Promise(async (resolve) => {
     const db = await openPosDB();
@@ -452,10 +523,12 @@ function populateMovimientoEventoSelect() {
 /* ---------- Catálogo de cuentas base ---------- */
 
 const BASE_ACCOUNTS = [
-  // 1xxx Activos
-  { code: '1100', nombre: 'Caja general', tipo: 'activo', systemProtected: true },
-  { code: '1110', nombre: 'Caja eventos', tipo: 'activo', systemProtected: true },
-  { code: '1200', nombre: 'Banco', tipo: 'activo', systemProtected: true },
+  // 1xxx Activos · Etapa 2/10: base multimoneda conservadora
+  { code: '1100', nombre: 'Caja general C$', tipo: 'activo', systemProtected: true, rootType: 'ACTIVO', accountRole: 'cash_general', currency: 'NIO', currencyCode: 'NIO', isCash: true, financialAccount: true, legacyNames: ['Caja general'] },
+  { code: '1105', nombre: 'Caja general US$', tipo: 'activo', systemProtected: true, rootType: 'ACTIVO', accountRole: 'cash_general', currency: 'USD', currencyCode: 'USD', isCash: true, financialAccount: true },
+  { code: '1110', nombre: 'Caja eventos C$', tipo: 'activo', systemProtected: true, rootType: 'ACTIVO', accountRole: 'cash_events', currency: 'NIO', currencyCode: 'NIO', isCash: true, financialAccount: true, legacyNames: ['Caja eventos'] },
+  { code: '1115', nombre: 'Caja eventos US$', tipo: 'activo', systemProtected: true, rootType: 'ACTIVO', accountRole: 'cash_events', currency: 'USD', currencyCode: 'USD', isCash: true, financialAccount: true },
+  { code: '1200', nombre: 'Banco legacy / histórico', tipo: 'activo', systemProtected: true, rootType: 'ACTIVO', accountRole: 'bank_legacy', currency: 'NIO', currencyCode: 'NIO', isBank: true, financialAccount: true, isLegacy: true, legacyFinancialAccount: true, legacyNames: ['Banco'] },
   { code: '1300', nombre: 'Clientes (crédito)', tipo: 'activo', systemProtected: true },
   { code: '1310', nombre: 'Deudores varios', tipo: 'activo', systemProtected: true },
   { code: '1400', nombre: 'Inventario insumos líquidos', tipo: 'activo', systemProtected: true },
@@ -511,14 +584,475 @@ function getTipoCuenta(acc) {
   return acc.tipo || inferTipoFromCode(acc.code);
 }
 
+/* ---------- Compatibilidad financiera legacy / futura multibanco ---------- */
 
+const FIN_LEGACY_ACCOUNT_CODES = Object.freeze({
+  cashGeneral: '1100',
+  cashEvents: '1110',
+  bank: '1200'
+});
+
+const FIN_MULTICURRENCY_ACCOUNT_CODES = Object.freeze({
+  cashGeneralNIO: '1100',
+  cashGeneralUSD: '1105',
+  cashEventsNIO: '1110',
+  cashEventsUSD: '1115',
+  bankLegacy: '1200'
+});
+
+const FIN_BASE_CURRENCY_CODE = 'NIO';
+const FIN_SUPPORTED_CURRENCY_CODES = Object.freeze(['NIO', 'USD']);
+const FIN_MULTICURRENCY_STAGE = 'finanzas_multibanco_etapa_3_10';
+const FIN_CORE_FINANCIAL_ACCOUNT_CODES = Object.freeze([
+  FIN_MULTICURRENCY_ACCOUNT_CODES.cashGeneralNIO,
+  FIN_MULTICURRENCY_ACCOUNT_CODES.cashGeneralUSD,
+  FIN_MULTICURRENCY_ACCOUNT_CODES.cashEventsNIO,
+  FIN_MULTICURRENCY_ACCOUNT_CODES.cashEventsUSD,
+  FIN_MULTICURRENCY_ACCOUNT_CODES.bankLegacy
+]);
+const FIN_CASH_ACCOUNT_CODES = Object.freeze([
+  FIN_MULTICURRENCY_ACCOUNT_CODES.cashGeneralNIO,
+  FIN_MULTICURRENCY_ACCOUNT_CODES.cashGeneralUSD,
+  FIN_MULTICURRENCY_ACCOUNT_CODES.cashEventsNIO,
+  FIN_MULTICURRENCY_ACCOUNT_CODES.cashEventsUSD
+]);
+const FIN_LEGACY_CASH_ACCOUNT_CODES = Object.freeze([
+  FIN_LEGACY_ACCOUNT_CODES.cashGeneral,
+  FIN_LEGACY_ACCOUNT_CODES.cashEvents
+]);
+const FIN_LEGACY_BANK_ACCOUNT_CODES = Object.freeze([FIN_LEGACY_ACCOUNT_CODES.bank]);
+const FIN_DYNAMIC_BANK_CODE_MIN = 1201;
+const FIN_DYNAMIC_BANK_CODE_MAX = 1999;
+
+function finNormalizeAccountCode(code) {
+  const raw = String(code ?? '').trim();
+  if (!raw) return '';
+  const n = safeParseCodeNum(raw);
+  if (Number.isFinite(n) && String(n) === raw.replace(/^0+/, '') && raw.length <= 4) {
+    return String(n).padStart(4, '0');
+  }
+  return raw;
+}
+
+function finGetLegacyCashGeneralAccountCode() {
+  return FIN_LEGACY_ACCOUNT_CODES.cashGeneral;
+}
+
+function finGetLegacyCashEventsAccountCode() {
+  return FIN_LEGACY_ACCOUNT_CODES.cashEvents;
+}
+
+function finGetLegacyBankAccountCode() {
+  // Cuenta 1200 se conserva como legacy para históricos.
+  return FIN_LEGACY_ACCOUNT_CODES.bank;
+}
+
+function finGetCashGeneralAccountCode(currency = 'NIO') {
+  return finNormalizeCurrencyCode(currency) === 'USD'
+    ? FIN_MULTICURRENCY_ACCOUNT_CODES.cashGeneralUSD
+    : FIN_MULTICURRENCY_ACCOUNT_CODES.cashGeneralNIO;
+}
+
+function finGetCashEventsAccountCode(currency = 'NIO') {
+  return finNormalizeCurrencyCode(currency) === 'USD'
+    ? FIN_MULTICURRENCY_ACCOUNT_CODES.cashEventsUSD
+    : FIN_MULTICURRENCY_ACCOUNT_CODES.cashEventsNIO;
+}
+
+function finGetCurrentCashAccountCodes(currency) {
+  if (currency) {
+    const cur = finNormalizeCurrencyCode(currency);
+    return FIN_CASH_ACCOUNT_CODES.filter(code => finGetFinancialAccountCurrencyCode({ code }) === cur);
+  }
+  return [...FIN_CASH_ACCOUNT_CODES];
+}
+
+function finGetCurrentBankAccountCodes(data) {
+  const codes = new Set([finGetLegacyBankAccountCode()]);
+  const accounts = Array.isArray(data && data.accounts) ? data.accounts : [];
+  for (const acc of accounts) {
+    if (finIsBankAccount(acc)) {
+      const code = finNormalizeAccountCode(acc.code ?? acc.accountCode ?? acc.codigo ?? '');
+      if (code) codes.add(code);
+    }
+  }
+  return [...codes].sort((a, b) => a.localeCompare(b));
+}
+
+function finIsLegacyCashAccountCode(code) {
+  return FIN_LEGACY_CASH_ACCOUNT_CODES.includes(finNormalizeAccountCode(code));
+}
+
+function finIsLegacyBankAccountCode(code) {
+  return FIN_LEGACY_BANK_ACCOUNT_CODES.includes(finNormalizeAccountCode(code));
+}
+
+function finIsLegacyFinancialAccountCode(code) {
+  const c = finNormalizeAccountCode(code);
+  return finIsLegacyCashAccountCode(c) || finIsLegacyBankAccountCode(c);
+}
+
+function finIsLegacyAccountCode(code) {
+  return finIsLegacyFinancialAccountCode(code);
+}
+
+function finIsCoreFinancialAccountCode(code) {
+  return FIN_CORE_FINANCIAL_ACCOUNT_CODES.includes(finNormalizeAccountCode(code));
+}
+
+function finIsDynamicBankAccountCode(code) {
+  const n = safeParseCodeNum(code);
+  if (!Number.isFinite(n)) return false;
+  if (n < FIN_DYNAMIC_BANK_CODE_MIN || n > FIN_DYNAMIC_BANK_CODE_MAX) return false;
+  if (n === Number(finGetLegacyBankAccountCode())) return false;
+  const rem = (n - FIN_DYNAMIC_BANK_CODE_MIN) % 10;
+  return rem === 0 || rem === 1; // pares generados: 1201/1202, 1211/1212, etc.
+}
+
+function finGetFinancialAccountCurrencyCode(accOrCode) {
+  if (accOrCode && typeof accOrCode === 'object') {
+    const explicit = accOrCode.currencyCode ?? accOrCode.currency ?? accOrCode.moneda ?? accOrCode.currencyId ?? '';
+    if (explicit) return finNormalizeCurrencyCode(explicit);
+    const name = normText(accOrCode.nombre || accOrCode.name || '');
+    if (name.includes('us$') || name.includes('usd') || name.includes('dolar') || name.includes('dólar')) return 'USD';
+    const code = finNormalizeAccountCode(accOrCode.code ?? accOrCode.accountCode ?? accOrCode.codigo ?? '');
+    return finGetFinancialAccountCurrencyCode(code);
+  }
+
+  const code = finNormalizeAccountCode(accOrCode);
+  if (code === FIN_MULTICURRENCY_ACCOUNT_CODES.cashGeneralUSD || code === FIN_MULTICURRENCY_ACCOUNT_CODES.cashEventsUSD) return 'USD';
+  if (code === FIN_MULTICURRENCY_ACCOUNT_CODES.cashGeneralNIO || code === FIN_MULTICURRENCY_ACCOUNT_CODES.cashEventsNIO || code === FIN_MULTICURRENCY_ACCOUNT_CODES.bankLegacy) return 'NIO';
+
+  const n = safeParseCodeNum(code);
+  if (Number.isFinite(n) && n >= FIN_DYNAMIC_BANK_CODE_MIN && n <= FIN_DYNAMIC_BANK_CODE_MAX) {
+    return (n % 10 === 2) ? 'USD' : 'NIO';
+  }
+  return FIN_BASE_CURRENCY_CODE;
+}
+
+function finGetCurrentCashAccounts(data) {
+  const map = data && data.accountsMap;
+  const list = Array.isArray(data && data.accounts) ? data.accounts : [];
+  return finGetCurrentCashAccountCodes()
+    .map(code => (map && typeof map.get === 'function') ? map.get(code) : list.find(a => String(a && a.code) === code))
+    .filter(Boolean);
+}
+
+function finGetCurrentBankAccounts(data) {
+  const list = Array.isArray(data && data.accounts) ? data.accounts : [];
+  const map = data && data.accountsMap;
+  const all = list.length ? list : (map && typeof map.values === 'function' ? [...map.values()] : []);
+  return all
+    .filter(acc => acc && finIsBankAccount(acc))
+    .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
+}
+
+function finIsCashAccount(accOrCode) {
+  if (accOrCode && typeof accOrCode === 'object') {
+    const code = accOrCode.code ?? accOrCode.accountCode ?? accOrCode.codigo ?? '';
+    if (finGetCurrentCashAccountCodes().includes(finNormalizeAccountCode(code))) return true;
+    if (accOrCode.isCash === true || accOrCode.cash === true) return true;
+    const role = String(accOrCode.role || accOrCode.kind || accOrCode.accountRole || '').toLowerCase();
+    if (role.includes('cash') || role.includes('caja')) return true;
+    const name = String(accOrCode.nombre || accOrCode.name || '').toLowerCase();
+    return name.includes('caja') || name.includes('efectivo') || name.includes('cash');
+  }
+  return finGetCurrentCashAccountCodes().includes(finNormalizeAccountCode(accOrCode));
+}
+
+function finIsBankAccount(accOrCode) {
+  if (accOrCode && typeof accOrCode === 'object') {
+    const code = accOrCode.code ?? accOrCode.accountCode ?? accOrCode.codigo ?? '';
+    if (finIsLegacyBankAccountCode(code)) return true;
+    if (accOrCode.isBank === true || accOrCode.bank === true) return true;
+    const role = String(accOrCode.role || accOrCode.kind || accOrCode.accountRole || '').toLowerCase();
+    if (role.includes('bank') || role.includes('banco')) return true;
+    const name = String(accOrCode.nombre || accOrCode.name || '').toLowerCase();
+    if (name.includes('banco') || name.includes('bank')) return true;
+    return finIsDynamicBankAccountCode(code);
+  }
+  const code = finNormalizeAccountCode(accOrCode);
+  return finIsLegacyBankAccountCode(code) || finIsDynamicBankAccountCode(code);
+}
+
+function finIsFinancialCashOrBankAccount(accOrCode) {
+  return finIsCashAccount(accOrCode) || finIsBankAccount(accOrCode);
+}
+
+function finGetFinanceBaseCurrencyCode() {
+  return FIN_BASE_CURRENCY_CODE;
+}
+
+function finNormalizeCurrencyCode(value) {
+  const raw = String(value ?? '').trim().toUpperCase();
+  if (!raw || raw === 'PRIMARY' || raw === 'BASE' || raw === 'C$' || raw === 'CORDOBA' || raw === 'CÓRDOBA' || raw === 'CORDOBAS' || raw === 'CÓRDOBAS') return 'NIO';
+  if (raw === 'SECONDARY' || raw === 'US$' || raw === '$' || raw === 'DOLAR' || raw === 'DÓLAR' || raw === 'DOLARES' || raw === 'DÓLARES') return 'USD';
+  return FIN_SUPPORTED_CURRENCY_CODES.includes(raw) ? raw : 'NIO';
+}
+
+function finFormatFinancialMoney(value, currency = FIN_BASE_CURRENCY_CODE) {
+  return finFormatMoney(value, finNormalizeCurrencyCode(currency));
+}
+
+function finResolveLegacyCashOrBankCodeByMedium(medium) {
+  const m = String(medium || '').trim().toLowerCase();
+  if (m === 'bank' || m === 'banco' || m === 'transferencia' || m === 'transfer' || m === 'tarjeta') {
+    return finGetLegacyBankAccountCode();
+  }
+  return finGetLegacyCashGeneralAccountCode();
+}
+
+function finGetFinancialCompatInfo(data) {
+  return Object.freeze({
+    baseCurrency: finGetFinanceBaseCurrencyCode(),
+    supportedCurrencies: [...FIN_SUPPORTED_CURRENCY_CODES],
+    cashAccounts: finGetCurrentCashAccountCodes(),
+    bankAccounts: finGetCurrentBankAccountCodes(data),
+    legacyBankAccount: finGetLegacyBankAccountCode(),
+    legacyCashGeneralAccount: finGetLegacyCashGeneralAccountCode(),
+    legacyCashEventsAccount: finGetLegacyCashEventsAccountCode(),
+    stage: FIN_MULTICURRENCY_STAGE
+  });
+}
+
+function finAccountDefinitionToRow(def, nowISO) {
+  const row = {
+    code: finNormalizeAccountCode(def.code),
+    nombre: def.nombre || def.name || `Cuenta ${def.code}`,
+    name: def.name || def.nombre || `Cuenta ${def.code}`,
+    tipo: def.tipo || inferTipoFromCode(def.code),
+    rootType: String(def.rootType || inferRootTypeFromCode(def.code) || 'OTROS').toUpperCase(),
+    systemProtected: !!def.systemProtected,
+    isHidden: false,
+    active: true,
+    a33FinanceStage: FIN_MULTICURRENCY_STAGE,
+    a33FinanceMultibankStage: FIN_MULTICURRENCY_STAGE,
+    updatedAtISO: nowISO
+  };
+
+  const passthrough = [
+    'accountRole', 'role', 'kind', 'currency', 'currencyCode', 'moneda',
+    'isCash', 'isBank', 'financialAccount', 'isLegacy', 'legacyFinancialAccount',
+    'bankCatalogId', 'bankCatalogName', 'bankNameSnapshot', 'bankTypeSnapshot',
+    'generatedFrom', 'generatedFromModule', 'sourceCatalog', 'legacyReason', 'legacyNote'
+  ];
+  for (const key of passthrough) {
+    if (def[key] !== undefined) row[key] = def[key];
+  }
+
+  if (row.financialAccount === undefined && (row.isCash || row.isBank || row.isLegacy)) row.financialAccount = true;
+  if (row.currencyCode === undefined && row.currency !== undefined) row.currencyCode = finNormalizeCurrencyCode(row.currency);
+  if (row.currency === undefined && row.currencyCode !== undefined) row.currency = finNormalizeCurrencyCode(row.currencyCode);
+  return row;
+}
+
+function finShouldUpgradeAccountName(current, def) {
+  if (!current) return true;
+  const currentName = normText(current.nombre || current.name || '');
+  if (!currentName) return true;
+  const target = normText(def.nombre || def.name || '');
+  if (currentName === target) return false;
+
+  const legacyNames = Array.isArray(def.legacyNames) ? def.legacyNames : [];
+  if (legacyNames.map(normText).includes(currentName)) return true;
+
+  // Las cuentas generadas desde Catálogos pueden seguir el nombre vivo del banco.
+  if (def.generatedFrom === 'catalogos_bancos' && current.generatedFrom === 'catalogos_bancos') return true;
+
+  return false;
+}
+
+function finApplyAccountDefinition(current, def, nowISO) {
+  const base = finAccountDefinitionToRow(def, nowISO);
+  const out = current ? { ...current } : { code: base.code, createdAtISO: nowISO };
+  let changed = !current;
+
+  const codeStr = String(base.code);
+  if (String(out.code || '') !== codeStr) {
+    out.code = codeStr;
+    changed = true;
+  }
+
+  if (finShouldUpgradeAccountName(out, def)) {
+    out.nombre = base.nombre;
+    out.name = base.name || base.nombre;
+    changed = true;
+  } else {
+    if (!out.nombre && out.name) { out.nombre = out.name; changed = true; }
+    if (!out.name && out.nombre) { out.name = out.nombre; changed = true; }
+  }
+
+  const forceKeys = [
+    'tipo', 'rootType', 'systemProtected', 'accountRole', 'role', 'kind',
+    'currency', 'currencyCode', 'moneda', 'isCash', 'isBank', 'financialAccount',
+    'isLegacy', 'legacyFinancialAccount', 'bankCatalogId', 'bankCatalogName',
+    'bankNameSnapshot', 'bankTypeSnapshot', 'generatedFrom', 'generatedFromModule',
+    'sourceCatalog', 'legacyReason', 'legacyNote', 'a33FinanceStage', 'a33FinanceMultibankStage'
+  ];
+
+  for (const key of forceKeys) {
+    if (base[key] === undefined) continue;
+    if (out[key] !== base[key]) {
+      out[key] = base[key];
+      changed = true;
+    }
+  }
+
+  if (typeof out.isHidden !== 'boolean') {
+    out.isHidden = false;
+    changed = true;
+  }
+  if (out.active === undefined) {
+    out.active = true;
+    changed = true;
+  }
+  if (!out.createdAtISO) {
+    out.createdAtISO = nowISO;
+    changed = true;
+  }
+  if (changed) out.updatedAtISO = nowISO;
+
+  return { row: out, changed };
+}
+
+function finCatalogBankIsActive(bank) {
+  if (!bank || typeof bank !== 'object') return false;
+  return bank.isActive === false || bank.active === false ? false : true;
+}
+
+function finNormalizeCatalogBankName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function finCatalogBankSortKey(bank) {
+  return normText(finNormalizeCatalogBankName(bank && (bank.name || bank.nombre || bank.bankName || bank.label || '')));
+}
+
+function finGetUniqueActiveCatalogBanks(rawBanks) {
+  const map = new Map();
+  for (const bank of (Array.isArray(rawBanks) ? rawBanks : [])) {
+    if (!finCatalogBankIsActive(bank)) continue;
+    const name = finNormalizeCatalogBankName(bank.name || bank.nombre || bank.bankName || bank.label || '');
+    if (!name) continue;
+    const key = normText(name);
+    if (!map.has(key)) map.set(key, { ...bank, name });
+  }
+  return [...map.values()].sort((a, b) => finCatalogBankSortKey(a).localeCompare(finCatalogBankSortKey(b)));
+}
+
+function finBankPreferredSlot(bank, index) {
+  const n = Number(bank && bank.id);
+  if (Number.isFinite(n) && n >= 1 && n <= 89) return Math.floor(n) - 1;
+  return index;
+}
+
+function finBankCodePairFromSlot(slot) {
+  const base = 1201 + (Number(slot) * 10);
+  return {
+    NIO: String(base).padStart(4, '0'),
+    USD: String(base + 1).padStart(4, '0')
+  };
+}
+
+function finExistingAccountMatchesBankCurrency(acc, bank, currency) {
+  if (!acc) return true;
+  const wantedCur = finNormalizeCurrencyCode(currency);
+  const accCur = finGetFinancialAccountCurrencyCode(acc);
+  if (accCur !== wantedCur) return false;
+
+  const bankId = String(bank && bank.id != null ? bank.id : '');
+  if (bankId && String(acc.bankCatalogId || '') === bankId) return true;
+
+  const wantedName = normText(bank && (bank.name || bank.nombre || bank.bankName || ''));
+  const accName = normText(acc.nombre || acc.name || acc.bankNameSnapshot || '');
+  return !!wantedName && accName.includes(wantedName);
+}
+
+function finBuildBankAccountDefinitionsFromCatalog(rawBanks, existingByCode) {
+  const banks = finGetUniqueActiveCatalogBanks(rawBanks);
+  const defs = [];
+  const occupied = new Set();
+
+  // Respetar cuentas existentes de usuario; si una cuenta generada coincide con el banco, se puede reforzar.
+  for (const code of (existingByCode && typeof existingByCode.keys === 'function' ? existingByCode.keys() : [])) {
+    occupied.add(finNormalizeAccountCode(code));
+  }
+  for (const code of BASE_ACCOUNTS.map(a => a.code)) occupied.add(finNormalizeAccountCode(code));
+
+  banks.forEach((bank, index) => {
+    let slot = finBankPreferredSlot(bank, index);
+    let pair = finBankCodePairFromSlot(slot);
+    let guard = 0;
+
+    while (guard < 90) {
+      const accNIO = existingByCode && existingByCode.get(pair.NIO);
+      const accUSD = existingByCode && existingByCode.get(pair.USD);
+      const pairIsFreeOrSameBank =
+        (!occupied.has(pair.NIO) || finExistingAccountMatchesBankCurrency(accNIO, bank, 'NIO')) &&
+        (!occupied.has(pair.USD) || finExistingAccountMatchesBankCurrency(accUSD, bank, 'USD'));
+      if (pairIsFreeOrSameBank) break;
+      slot += 1;
+      pair = finBankCodePairFromSlot(slot);
+      guard += 1;
+    }
+
+    const bankId = String(bank && bank.id != null ? bank.id : `bank-${index + 1}`);
+    const bankName = finNormalizeCatalogBankName(bank.name || bank.nombre || bank.bankName || `Banco ${index + 1}`);
+    const bankType = String(bank.type || bank.bankType || 'transferencia');
+
+    const common = {
+      tipo: 'activo',
+      rootType: 'ACTIVO',
+      systemProtected: true,
+      accountRole: 'bank',
+      role: 'bank',
+      kind: 'bank',
+      isBank: true,
+      financialAccount: true,
+      bankCatalogId: bankId,
+      bankCatalogName: bankName,
+      bankNameSnapshot: bankName,
+      bankTypeSnapshot: bankType,
+      generatedFrom: 'catalogos_bancos',
+      generatedFromModule: 'catalogos',
+      sourceCatalog: 'Gestión Operativa → Catálogos → Bancos'
+    };
+
+    defs.push({ ...common, code: pair.NIO, nombre: `Banco / ${bankName} C$`, name: `Banco / ${bankName} C$`, currency: 'NIO', currencyCode: 'NIO' });
+    defs.push({ ...common, code: pair.USD, nombre: `Banco / ${bankName} US$`, name: `Banco / ${bankName} US$`, currency: 'USD', currencyCode: 'USD' });
+    occupied.add(pair.NIO);
+    occupied.add(pair.USD);
+  });
+
+  return defs;
+}
+
+async function ensureDynamicBankAccountsFromCatalog(existingByCode) {
+  const banks = await getAllPosBanksSafe();
+  const defs = finBuildBankAccountDefinitionsFromCatalog(banks, existingByCode);
+  const nowISO = new Date().toISOString();
+
+  for (const def of defs) {
+    const codeStr = finNormalizeAccountCode(def.code);
+    const current = existingByCode.get(codeStr);
+    const { row, changed } = finApplyAccountDefinition(current, def, nowISO);
+    if (!current || changed) {
+      await finPut('accounts', row);
+      existingByCode.set(codeStr, row);
+    }
+  }
+
+  return defs.length;
+}
 
 // Revisa si una cuenta ya se ha usado en journalLines (para migraciones seguras)
 async function finAccountCodeHasLines(code) {
   try {
     await openFinDB();
     return await new Promise((resolve) => {
-      const tx = db.transaction(['journalLines'], 'readonly');
+      const tx = finDB.transaction(['journalLines'], 'readonly');
       const st = tx.objectStore('journalLines');
       const req = st.openCursor();
       req.onerror = () => resolve(false);
@@ -537,53 +1071,26 @@ async function finAccountCodeHasLines(code) {
 async function ensureBaseAccounts() {
   await openFinDB();
   const existing = await finGetAll('accounts');
-  const byCode = new Map(existing.map(a => [String(a.code), a]));
+  const byCode = new Map(existing.map(a => [finNormalizeAccountCode(a.code), a]));
+  const nowISO = new Date().toISOString();
 
   for (const base of BASE_ACCOUNTS) {
-    const codeStr = String(base.code);
+    const codeStr = finNormalizeAccountCode(base.code);
     const current = byCode.get(codeStr);
-
-    if (!current) {
-      // Cuenta no existe → la creamos completa
-      await finAdd('accounts', {
-        code: codeStr,
-        nombre: base.nombre,
-        tipo: base.tipo,
-        systemProtected: !!base.systemProtected
-      });
-    } else {
-      // Cuenta ya existe → reforzamos campos faltantes
-      let changed = false;
-
-      // Si venía de versiones viejas con "name" en lugar de "nombre"
-      if (!current.nombre && current.name) {
-        current.nombre = current.name;
-        changed = true;
-      }
-
-      // Si sigue sin nombre, usamos el del catálogo base
-      if (!current.nombre) {
-        current.nombre = base.nombre;
-        changed = true;
-      }
-
-      // Tipo contable
-      if (!current.tipo) {
-        current.tipo = base.tipo;
-        changed = true;
-      }
-
-      // Protección de sistema
-      if (base.systemProtected && !current.systemProtected) {
-        current.systemProtected = true;
-        changed = true;
-      }
-
-      if (changed) {
-        await finPut('accounts', current);
-      }
+    const def = {
+      ...base,
+      legacyReason: base.isLegacy ? 'Cuenta bancaria histórica conservada para compatibilidad total con movimientos anteriores.' : base.legacyReason,
+      legacyNote: base.isLegacy ? 'No migrar ni reclasificar movimientos históricos de 1200.' : base.legacyNote
+    };
+    const { row, changed } = finApplyAccountDefinition(current, def, nowISO);
+    if (!current || changed) {
+      await finPut('accounts', row);
+      byCode.set(codeStr, row);
     }
   }
+
+  // Bancos reales: lectura segura desde Catálogos → Bancos. No crea catálogo paralelo.
+  await ensureDynamicBankAccountsFromCatalog(byCode);
 
   // A33 estándar: 6105 = Cortesías. Si existe con nombre antiguo y no se ha usado, lo renombramos.
   try {
@@ -592,6 +1099,7 @@ async function ensureBaseAccounts() {
       const used = await finAccountCodeHasLines('6105');
       if (!used) {
         acc6105.nombre = 'Cortesías (Promoción)';
+        acc6105.name = 'Cortesías (Promoción)';
         await finPut('accounts', acc6105);
       }
     }
@@ -677,7 +1185,7 @@ function inferSystemProtectedIfMissing(acc) {
   const nombre = acc.nombre || acc.name || '';
   const nm = normText(nombre);
 
-  const criticalCodes = new Set(['1100', '1110', '1200', '4100', '5100', '3300']);
+  const criticalCodes = new Set([...FIN_CORE_FINANCIAL_ACCOUNT_CODES, ...finGetCurrentCashAccountCodes(), ...finGetCurrentBankAccountCodes(), '4100', '5100', '3300']);
   if (criticalCodes.has(codeStr)) return true;
   if (Number.isFinite(codeNum)) {
     const padded = String(codeNum).padStart(4, '0');
@@ -853,31 +1361,147 @@ function fmtCurrency(v) {
 
 /* ---------- Moneda central: Finanzas / Banco (solo lectura, sin recalcular históricos) ---------- */
 
-function finGetCurrencyStateSafe() {
+const FIN_CURRENCY_SOURCE_LABEL = 'Configuración → Moneda';
+const FIN_CURRENCY_STORAGE_KEY = 'suite_a33_currency_settings_v1';
+const FIN_CURRENCY_WARNING_MESSAGE = 'Configure el tipo de cambio vigente en Configuración → Moneda para registrar movimientos en USD.';
+
+function finCurrencyPad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function finFormatCurrencyTimestamp(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Sin registros';
+  if (/^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}$/.test(raw)) return raw;
+  let d = null;
+  const asNumber = Number(raw);
+  if (Number.isFinite(asNumber) && asNumber > 0) d = new Date(asNumber);
+  if (!d || Number.isNaN(d.getTime())) d = new Date(raw);
+  if (!d || Number.isNaN(d.getTime())) return raw;
+  return `${finCurrencyPad2(d.getDate())}/${finCurrencyPad2(d.getMonth() + 1)}/${d.getFullYear()} ${finCurrencyPad2(d.getHours())}:${finCurrencyPad2(d.getMinutes())}`;
+}
+
+function finReadCurrencySettingsSafe() {
   try {
-    if (window.A33Currency && typeof window.A33Currency.getState === 'function') {
-      return window.A33Currency.getState();
+    if (window.A33Currency && typeof window.A33Currency.readSettings === 'function') {
+      const data = window.A33Currency.readSettings();
+      if (data && typeof data === 'object') return data;
     }
   } catch (_) {}
+
+  let raw = '';
   try {
-    if (window.A33ExportCurrency && typeof window.A33ExportCurrency.getState === 'function') {
-      return window.A33ExportCurrency.getState();
+    if (window.A33Storage && typeof window.A33Storage.getItem === 'function') {
+      const v = window.A33Storage.getItem(FIN_CURRENCY_STORAGE_KEY, 'local');
+      if (v !== undefined && v !== null) raw = String(v || '');
     }
   } catch (_) {}
+  if (!raw) {
+    try { raw = localStorage.getItem(FIN_CURRENCY_STORAGE_KEY) || ''; } catch (_) { raw = ''; }
+  }
+
+  let parsed = null;
+  if (raw) {
+    try { parsed = JSON.parse(raw); }
+    catch (_) { parsed = { exchangeRate: raw }; }
+  }
+
+  const fallback = {
+    version: 1,
+    mode: 'manual',
+    primary: { name: 'Córdoba nicaragüense', symbol: 'C$', code: 'NIO' },
+    secondary: { name: 'Dólar estadounidense', symbol: 'US$', code: 'USD' },
+    exchangeRate: '',
+    updatedAt: ''
+  };
+
+  try {
+    if (window.A33Currency && typeof window.A33Currency.normalizeSettings === 'function') {
+      return window.A33Currency.normalizeSettings(parsed || fallback);
+    }
+  } catch (_) {}
+
   return {
-    primary: { symbol: 'C$', code: 'NIO' },
-    secondary: { symbol: 'US$', code: 'USD' },
-    exchangeRate: null,
-    exchangeRateValue: '',
-    exchangeRateText: 'T/C no configurado',
-    updatedAtText: 'Sin registros',
-    hasExchangeRate: false
+    ...fallback,
+    ...(parsed && typeof parsed === 'object' ? parsed : {}),
+    primary: fallback.primary,
+    secondary: fallback.secondary
   };
 }
 
-function finCurrencySymbol(kind = 'NIO') {
+function finNormalizeExchangeRateValue(value) {
+  try {
+    if (window.A33Currency && typeof window.A33Currency.normalizeExchangeRateValue === 'function') {
+      return window.A33Currency.normalizeExchangeRateValue(value);
+    }
+  } catch (_) {}
+  const raw = String(value ?? '').trim().replace(',', '.');
+  if (!raw || !/^\d+(?:\.\d{0,2})?$/.test(raw)) return '';
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n.toFixed(2) : '';
+}
+
+function finParseCurrencyAmount(value) {
+  try {
+    if (window.A33Currency && typeof window.A33Currency.parseAmount === 'function') {
+      const parsed = window.A33Currency.parseAmount(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+  } catch (_) {}
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  let raw = String(value ?? '').trim();
+  if (!raw) return null;
+  raw = raw.replace(/[^0-9,.-]/g, '');
+  const hasComma = raw.includes(',');
+  const hasDot = raw.includes('.');
+  if (hasComma && hasDot) raw = raw.replace(/,/g, '');
+  else if (hasComma && !hasDot) raw = raw.replace(',', '.');
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function finRoundCurrency2(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+function finGetCurrencyStateSafe() {
+  const settings = finReadCurrencySettingsSafe();
+  const normalizedRate = finNormalizeExchangeRateValue(settings.exchangeRate);
+  const rate = normalizedRate ? Number(normalizedRate) : null;
+  const state = {
+    ok: true,
+    settings,
+    primary: settings.primary || { symbol: 'C$', code: 'NIO' },
+    secondary: settings.secondary || { symbol: 'US$', code: 'USD' },
+    baseCurrency: 'NIO',
+    secondaryCurrency: 'USD',
+    exchangeRate: Number.isFinite(rate) && rate > 0 ? rate : null,
+    exchangeRateValue: normalizedRate,
+    exchangeRateText: normalizedRate ? `T/C ${normalizedRate}` : 'T/C no configurado',
+    updatedAtRaw: String(settings.updatedAt || '').trim(),
+    updatedAtText: finFormatCurrencyTimestamp(settings.updatedAt),
+    hasExchangeRate: !!normalizedRate,
+    source: FIN_CURRENCY_SOURCE_LABEL,
+    storageKey: FIN_CURRENCY_STORAGE_KEY,
+    warningMessage: normalizedRate ? '' : FIN_CURRENCY_WARNING_MESSAGE
+  };
+  return state;
+}
+
+function finGetFinanceBaseCurrency() {
   const state = finGetCurrencyStateSafe();
+  return state.primary || { symbol: 'C$', code: 'NIO' };
+}
+
+function finGetFinanceSecondaryCurrency() {
+  const state = finGetCurrencyStateSafe();
+  return state.secondary || { symbol: 'US$', code: 'USD' };
+}
+
+function finCurrencySymbol(kind = 'NIO') {
   const k = String(kind || '').trim().toUpperCase();
+  const state = finGetCurrencyStateSafe();
   const cur = (k === 'USD' || k === 'US$' || k === 'SECONDARY') ? state.secondary : state.primary;
   return String((cur && cur.symbol) || (k === 'USD' ? 'US$' : 'C$')).trim();
 }
@@ -889,19 +1513,32 @@ function finCurrencyCode(kind = 'NIO') {
   return String((cur && cur.code) || (k === 'USD' ? 'USD' : 'NIO')).trim().toUpperCase();
 }
 
+function finHasValidExchangeRate() {
+  return !!finGetCurrencyStateSafe().hasExchangeRate;
+}
+
+function finGetCurrentExchangeRate() {
+  const state = finGetCurrencyStateSafe();
+  return state.hasExchangeRate ? state.exchangeRate : null;
+}
+
+function finMovementRequiresExchangeRate(currency) {
+  return finNormalizeCurrencyCode(currency) === 'USD';
+}
+
 function finNormalizeMoneySpacing(text) {
   const raw = String(text ?? '').trim();
   return raw.replace(/^(C\$|US\$)(-?\d)/, '$1 $2');
 }
 
 function finFormatMoney(value, kind = 'NIO') {
-  const k = String(kind || '').trim().toUpperCase();
+  const k = finNormalizeCurrencyCode(kind || 'NIO');
   try {
     if (window.A33Currency && typeof window.A33Currency.formatMoney === 'function') {
-      return finNormalizeMoneySpacing(window.A33Currency.formatMoney(value, k || 'NIO'));
+      return finNormalizeMoneySpacing(window.A33Currency.formatMoney(value, k));
     }
   } catch (_) {}
-  const symbol = finCurrencySymbol(k || 'NIO');
+  const symbol = finCurrencySymbol(k);
   return `${symbol} ${fmtCurrency(value)}`;
 }
 
@@ -913,6 +1550,75 @@ function finFormatDollars(value) {
   return finFormatMoney(value, 'USD');
 }
 
+function finFormatOriginalAmount(value, currency = 'NIO') {
+  return finFormatMoney(value, finNormalizeCurrencyCode(currency));
+}
+
+function finConvertUsdToCordobas(amount, explicitRate) {
+  const monto = finParseCurrencyAmount(amount);
+  if (monto === null) {
+    return { ok: false, value: null, formatted: '', reason: 'amount_invalid', message: 'Monto inválido.' };
+  }
+  const rate = explicitRate != null ? Number(finNormalizeExchangeRateValue(explicitRate)) : finGetCurrentExchangeRate();
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return { ok: false, value: null, formatted: '', reason: 'exchange_rate_missing', message: FIN_CURRENCY_WARNING_MESSAGE };
+  }
+  const value = finRoundCurrency2(monto * rate);
+  return {
+    ok: true,
+    value,
+    formatted: finFormatCordobas(value),
+    reason: 'ok',
+    exchangeRate: finRoundCurrency2(rate),
+    exchangeRateText: `T/C ${Number(rate).toFixed(2)}`
+  };
+}
+
+function finBuildExchangeRateSnapshot(input = {}) {
+  const currency = finNormalizeCurrencyCode(input.monedaOriginal ?? input.currency ?? input.moneda ?? 'NIO');
+  const amountRaw = input.montoOriginal ?? input.amount ?? input.monto ?? 0;
+  const amount = finParseCurrencyAmount(amountRaw);
+  const state = finGetCurrencyStateSafe();
+  const base = {
+    monedaOriginal: currency,
+    montoOriginal: Number.isFinite(amount) ? finRoundCurrency2(amount) : null,
+    monedaBase: 'NIO',
+    tipoCambioUsado: null,
+    equivalenteNIO: currency === 'NIO' && Number.isFinite(amount) ? finRoundCurrency2(amount) : null,
+    fechaTipoCambio: '',
+    fuenteTipoCambio: FIN_CURRENCY_SOURCE_LABEL,
+    requiereTipoCambio: finMovementRequiresExchangeRate(currency),
+    ok: true,
+    warningMessage: ''
+  };
+
+  if (amount === null) {
+    return { ...base, ok: false, warningMessage: 'Monto inválido.' };
+  }
+
+  if (currency === 'USD') {
+    if (!state.hasExchangeRate || !Number.isFinite(state.exchangeRate) || state.exchangeRate <= 0) {
+      return { ...base, ok: false, warningMessage: FIN_CURRENCY_WARNING_MESSAGE };
+    }
+    const converted = finConvertUsdToCordobas(amount, state.exchangeRate);
+    return {
+      ...base,
+      tipoCambioUsado: finRoundCurrency2(state.exchangeRate),
+      equivalenteNIO: converted.ok ? converted.value : null,
+      fechaTipoCambio: state.updatedAtText || '',
+      ok: converted.ok,
+      warningMessage: converted.ok ? '' : FIN_CURRENCY_WARNING_MESSAGE
+    };
+  }
+
+  return base;
+}
+
+function finFormatEquivalentCordobas(amountUsd, explicitRate) {
+  const result = finConvertUsdToCordobas(amountUsd, explicitRate);
+  return result.ok ? result.formatted : '—';
+}
+
 function finPrimaryAmountHeader() {
   return `Monto ${finCurrencySymbol('NIO')}`;
 }
@@ -921,32 +1627,55 @@ function finMoneyColumnHeader(label) {
   return `${label} (${finCurrencySymbol('NIO')})`;
 }
 
+function finSetCurrencyReferenceNode(prefix, state, primary, secondary, rateText, note) {
+  const root = document.getElementById(`${prefix}-currency-reference`);
+  const elPrimary = document.getElementById(`${prefix}-currency-primary`);
+  const elSecondary = document.getElementById(`${prefix}-currency-secondary`);
+  const elRate = document.getElementById(`${prefix}-currency-rate`);
+  const elNote = document.getElementById(`${prefix}-currency-note`);
+  if (root) root.classList.toggle('fin-currency-reference--warn', !state.hasExchangeRate);
+  if (elPrimary) elPrimary.textContent = primary;
+  if (elSecondary) elSecondary.textContent = secondary;
+  if (elRate) elRate.textContent = rateText;
+  if (elNote) elNote.textContent = note;
+}
+
 function finRenderCurrencyReference() {
   try {
     const state = finGetCurrencyStateSafe();
     const primary = `${finCurrencySymbol('NIO')} / ${finCurrencyCode('NIO')}`;
     const secondary = `${finCurrencySymbol('USD')} / ${finCurrencyCode('USD')}`;
-    const hasRate = !!(state && state.hasExchangeRate);
-    const rateText = hasRate
-      ? (state.exchangeRateText || `T/C ${Number(state.exchangeRate || state.exchangeRateValue || 0).toFixed(2)}`)
+    const rateText = state.hasExchangeRate
+      ? `T/C vigente: ${finCurrencySymbol('NIO')}${Number(state.exchangeRate || 0).toFixed(2)} por ${finCurrencySymbol('USD')}1.00`
       : 'T/C no configurado';
-    const updated = hasRate ? (state.updatedAtText || 'Sin registros') : 'Sin registros';
-    const note = hasRate
-      ? `Finanzas trabaja en ${primary}; ${secondary} queda como referencia segura. Última actualización: ${updated}.`
-      : `Finanzas sigue operando en ${primary}. No se inventa T/C ni se convierten valores sin configuración.`;
+    const updated = state.hasExchangeRate ? (state.updatedAtText || 'Sin registros') : 'Sin registros';
+    const note = state.hasExchangeRate
+      ? `Fuente: ${FIN_CURRENCY_SOURCE_LABEL} · Última actualización: ${updated} · Base contable: ${primary}.`
+      : `${FIN_CURRENCY_WARNING_MESSAGE} Base contable: ${primary}.`;
 
-    const root = document.getElementById('fin-currency-reference');
-    const elPrimary = document.getElementById('fin-currency-primary');
-    const elSecondary = document.getElementById('fin-currency-secondary');
-    const elRate = document.getElementById('fin-currency-rate');
-    const elNote = document.getElementById('fin-currency-note');
-    if (root) root.classList.toggle('fin-currency-reference--warn', !hasRate);
-    if (elPrimary) elPrimary.textContent = primary;
-    if (elSecondary) elSecondary.textContent = secondary;
-    if (elRate) elRate.textContent = rateText;
-    if (elNote) elNote.textContent = note;
+    finSetCurrencyReferenceNode('fin', state, primary, secondary, rateText, note);
+    finSetCurrencyReferenceNode('fa', state, primary, secondary, rateText, note);
+    finSetCurrencyReferenceNode('ti', state, primary, secondary, rateText, note);
+    finSetCurrencyReferenceNode('rec', state, primary, secondary, rateText, note);
   } catch (_) {}
 }
+
+try {
+  window.A33FinanzasCurrency = Object.assign({}, window.A33FinanzasCurrency || {}, {
+    source: FIN_CURRENCY_SOURCE_LABEL,
+    warningMessage: FIN_CURRENCY_WARNING_MESSAGE,
+    getState: finGetCurrencyStateSafe,
+    getBaseCurrency: finGetFinanceBaseCurrency,
+    getSecondaryCurrency: finGetFinanceSecondaryCurrency,
+    getExchangeRate: finGetCurrentExchangeRate,
+    hasExchangeRate: finHasValidExchangeRate,
+    requiresExchangeRate: finMovementRequiresExchangeRate,
+    convertUsdToCordobas: finConvertUsdToCordobas,
+    buildExchangeRateSnapshot: finBuildExchangeRateSnapshot,
+    formatEquivalentCordobas: finFormatEquivalentCordobas,
+    formatOriginalAmount: finFormatOriginalAmount
+  });
+} catch (_) {}
 
 /* ---------- Caja Chica (física / informativa, NO contable) ---------- */
 
@@ -2019,14 +2748,17 @@ function getAccountDisplayNameByCode(code, accountsMap, lineForFallback) {
 
 async function getAllFinData() {
   await openFinDB();
-  const [accounts, entries, lines] = await Promise.all([
+  const [accounts, entries, lines, financialAccounts, internalTransfers] = await Promise.all([
     finGetAll('accounts'),
     finGetAll('journalEntries'),
-    finGetAll('journalLines')
+    finGetAll('journalLines'),
+    finGetAll('financialAccounts').catch(() => []),
+    finGetAll('internalTransfers').catch(() => [])
   ]);
 
   let suppliers = [];
   try {
+    // Catálogos → Proveedores administra este store; Finanzas solo lo lee/consume.
     suppliers = await finGetAll('suppliers');
   } catch (err) {
     suppliers = [];
@@ -2120,6 +2852,8 @@ async function getAllFinData() {
     linesByEntry,
     suppliers,
     suppliersMap,
+    financialAccounts: Array.isArray(financialAccounts) ? financialAccounts : [],
+    internalTransfers: Array.isArray(internalTransfers) ? internalTransfers : [],
     journalIntegrity,
     inconsistentEntryIds
   };
@@ -2298,10 +3032,11 @@ function calcCajaBancoUntilDate(data, corte) {
       const haber = Number(ln.haber || 0);
       const delta = (debe - haber);
       const code = String(ln.accountCode);
+      const acc = getAccountByCodeLoose(code, accountsMap);
 
-      if (code === '1100' || code === '1110') {
+      if (finIsCashAccount(acc || code)) {
         caja += delta;
-      } else if (code === '1200') {
+      } else if (finIsBankAccount(acc || code)) {
         banco += delta;
       }
     }
@@ -2651,7 +3386,7 @@ function renderComparativoEventos(data) {
 function calcFlujoCaja(data) {
   if (!data) return null;
 
-  const { entries, linesByEntry } = data;
+  const { entries, linesByEntry, accountsMap } = data;
 
   // Usamos mismo periodo del ER (mes / rango)
   const modoSel = $('#er-modo');
@@ -2708,7 +3443,10 @@ function calcFlujoCaja(data) {
   let ownerIn = 0;
   let ownerOut = 0;
 
-  const isCajaBanco = (code) => (code === '1100' || code === '1110' || code === '1200');
+  const isCajaBanco = (code) => {
+    const acc = getAccountByCodeLoose(code, accountsMap);
+    return finIsFinancialCashOrBankAccount(acc || code);
+  };
   const isOwnerEquity = (code) => (code === '3100' || code === '3200' || code === '3300');
 
   for (const e of entries) {
@@ -2907,7 +3645,7 @@ async function exportDiarioExcel() {
   });
 
   const rows = [];
-  rows.push(['Fecha', 'Descripción', 'Tipo', 'Evento', 'Proveedor', 'Pago', 'Referencia', 'Origen', finMoneyColumnHeader('Debe total'), finMoneyColumnHeader('Haber total')]);
+  rows.push(['Fecha', 'Descripción', 'Tipo', 'Evento', 'Proveedor', 'Pago', 'Referencia', 'Origen', finMoneyColumnHeader('Debe total'), finMoneyColumnHeader('Haber total'), 'Cuenta financiera', 'Moneda original', 'Monto original', 'T/C usado', finMoneyColumnHeader('Equivalente C$')]);
 
   for (const e of sorted) {
     const tipo = e.tipoMovimiento || 'otro';
@@ -2978,6 +3716,7 @@ async function exportDiarioExcel() {
     const pm = (e.paymentMethod || '').toString().trim();
     const pmLabel = pm === 'bank' ? 'Banco' : (pm === 'cash' ? 'Caja' : (pm ? pm : '—'));
 
+    const currencyMeta = finGetEntryManualCurrencyMeta(e);
     rows.push([
       e.fecha || e.date || '',
       e.descripcion || '',
@@ -2988,7 +3727,12 @@ async function exportDiarioExcel() {
       ref,
       origenOut,
       Number(totalDebe.toFixed(2)),
-      Number(totalHaber.toFixed(2))
+      Number(totalHaber.toFixed(2)),
+      currencyMeta ? (currencyMeta.financialAccountName || '') : '',
+      currencyMeta ? currencyMeta.originalCurrency : '',
+      currencyMeta && currencyMeta.originalAmount != null ? Number(Number(currencyMeta.originalAmount).toFixed(2)) : '',
+      currencyMeta && currencyMeta.exchangeRateUsed ? Number(Number(currencyMeta.exchangeRateUsed).toFixed(2)) : '',
+      currencyMeta && currencyMeta.baseAmountNio != null ? Number(Number(currencyMeta.baseAmountNio).toFixed(2)) : ''
     ]);
   }
 
@@ -3454,6 +4198,805 @@ function fillCuentaSelect(data) {
   }
 }
 
+
+function finGetActiveFinancialAccountsForMovements(data) {
+  const rows = Array.isArray(data && data.financialAccounts) ? data.financialAccounts : [];
+  const accountsMap = data && data.accountsMap ? data.accountsMap : new Map();
+  return rows
+    .filter(row => {
+      if (!row || row.activa === false) return false;
+      const code = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || '');
+      if (!code) return false;
+      if (accountsMap && typeof accountsMap.get === 'function' && !accountsMap.get(code)) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const ta = String(a.type || a.tipo || '').localeCompare(String(b.type || b.tipo || ''));
+      if (ta) return ta;
+      return String(a.nombreVisible || '').localeCompare(String(b.nombreVisible || ''), 'es');
+    });
+}
+
+function finFinancialAccountMovementLabel(row) {
+  const name = String(row && (row.nombreVisible || row.financialAccountNameSnapshot || '') || 'Cuenta financiera').trim();
+  const type = finFinancialAccountTypeLabel(row && (row.type || row.tipo || 'caja'));
+  const currency = finNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || 'NIO'));
+  const symbol = String(row && (row.simbolo || row.financialAccountSymbol) || finCurrencySymbol(currency));
+  const code = finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || ''));
+  const accName = String(row && (row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '') || '').trim();
+  return `${name} · ${type} · ${symbol} · ${code}${accName ? ' ' + accName : ''}`;
+}
+
+function fillFinancialAccountSelect(data) {
+  const sel = document.getElementById('mov-financial-account');
+  if (!sel) return;
+  const prev = sel.value;
+  const rows = finGetActiveFinancialAccountsForMovements(data);
+  sel.innerHTML = '';
+
+  const first = document.createElement('option');
+  first.value = '';
+  first.textContent = rows.length ? 'Seleccione cuenta financiera…' : 'Sin cuentas financieras activas';
+  sel.appendChild(first);
+
+  for (const row of rows) {
+    const opt = document.createElement('option');
+    opt.value = String(row.id || row.uniqueKey || '');
+    opt.textContent = finFinancialAccountMovementLabel(row);
+    opt.dataset.currency = finNormalizeCurrencyCode(row.moneda || 'NIO');
+    opt.dataset.accountCode = finNormalizeAccountCode(row.cuentaContableCodigo || '');
+    sel.appendChild(opt);
+  }
+
+  if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
+  else if (!sel.value && rows.length === 1) sel.value = String(rows[0].id || rows[0].uniqueKey || '');
+
+  updateManualMovementCurrencyPreview();
+}
+
+function finGetSelectedFinancialAccount(data) {
+  const sel = document.getElementById('mov-financial-account');
+  const id = String(sel && sel.value || '').trim();
+  if (!id) return null;
+  const rows = Array.isArray(data && data.financialAccounts) ? data.financialAccounts : [];
+  return rows.find(row => String(row && (row.id || row.uniqueKey || '')) === id) || null;
+}
+
+function finBuildManualMovementSnapshot(row, originalAmount, baseAmountNio, exchangeSnapshot) {
+  const currency = finNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || 'NIO'));
+  const type = String(row && (row.type || row.tipo || 'caja') || 'caja').toLowerCase();
+  const code = finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || ''));
+  const accName = String(row && (row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '') || '').trim();
+  const name = String(row && (row.nombreVisible || row.financialAccountNameSnapshot || '') || '').trim();
+  const symbol = String(row && (row.simbolo || row.financialAccountSymbol) || finCurrencySymbol(currency));
+  const rate = currency === 'USD' ? finRoundCurrency2(exchangeSnapshot && exchangeSnapshot.tipoCambioUsado) : null;
+  const rateDate = currency === 'USD' ? String((exchangeSnapshot && exchangeSnapshot.fechaTipoCambio) || '') : '';
+  return {
+    financialAccountId: String(row && (row.id || row.uniqueKey || '') || ''),
+    financialAccountNameSnapshot: name,
+    financialAccountType: type,
+    financialAccountCurrency: currency,
+    financialAccountSymbol: symbol,
+    financialAccountAccountingCode: code,
+    financialAccountAccountingNameSnapshot: accName,
+    originalCurrency: currency,
+    originalAmount: finRoundCurrency2(originalAmount),
+    exchangeRateUsed: rate,
+    exchangeRateDateSnapshot: rateDate,
+    exchangeRateSource: currency === 'USD' ? FIN_CURRENCY_SOURCE_LABEL : '',
+    baseCurrency: 'NIO',
+    baseAmountNio: finRoundCurrency2(baseAmountNio),
+    isMulticurrency: currency === 'USD',
+    // Aliases en español para compatibilidad con helpers ya existentes.
+    cuentaFinancieraId: String(row && (row.id || row.uniqueKey || '') || ''),
+    cuentaFinancieraNombreSnapshot: name,
+    cuentaFinancieraTipo: type,
+    cuentaFinancieraMoneda: currency,
+    cuentaFinancieraSimbolo: symbol,
+    cuentaFinancieraCodigoContable: code,
+    cuentaFinancieraNombreContableSnapshot: accName,
+    monedaOriginal: currency,
+    montoOriginal: finRoundCurrency2(originalAmount),
+    tipoCambioUsado: rate,
+    fechaTipoCambio: rateDate,
+    fuenteTipoCambio: currency === 'USD' ? FIN_CURRENCY_SOURCE_LABEL : '',
+    monedaBase: 'NIO',
+    equivalenteNIO: finRoundCurrency2(baseAmountNio)
+  };
+}
+
+function finGetEntryManualCurrencyMeta(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const has = entry.financialAccountId || entry.cuentaFinancieraId || entry.originalAmount != null || entry.montoOriginal != null;
+  if (!has) return null;
+  const currency = finNormalizeCurrencyCode(entry.originalCurrency || entry.monedaOriginal || entry.financialAccountCurrency || entry.cuentaFinancieraMoneda || 'NIO');
+  const originalAmount = finParseCurrencyAmount(entry.originalAmount ?? entry.montoOriginal ?? entry.baseAmountNio ?? entry.equivalenteNIO ?? 0);
+  const baseAmount = finParseCurrencyAmount(entry.baseAmountNio ?? entry.equivalenteNIO ?? entry.totalDebe ?? 0);
+  const rate = finParseCurrencyAmount(entry.exchangeRateUsed ?? entry.tipoCambioUsado ?? '');
+  return {
+    financialAccountName: String(entry.financialAccountNameSnapshot || entry.cuentaFinancieraNombreSnapshot || '').trim(),
+    financialAccountType: String(entry.financialAccountType || entry.cuentaFinancieraTipo || '').trim(),
+    financialAccountAccountingCode: finNormalizeAccountCode(entry.financialAccountAccountingCode || entry.cuentaFinancieraCodigoContable || ''),
+    originalCurrency: currency,
+    originalAmount: Number.isFinite(originalAmount) ? originalAmount : null,
+    baseAmountNio: Number.isFinite(baseAmount) ? baseAmount : null,
+    exchangeRateUsed: Number.isFinite(rate) ? rate : null,
+    exchangeRateDateSnapshot: String(entry.exchangeRateDateSnapshot || entry.fechaTipoCambio || '').trim(),
+    exchangeRateSource: String(entry.exchangeRateSource || entry.fuenteTipoCambio || '').trim()
+  };
+}
+
+function finRenderEntryFinancialBadges(entry) {
+  const transferBadges = finRenderInternalTransferBadges(entry);
+  if (transferBadges) return transferBadges;
+  const meta = finGetEntryManualCurrencyMeta(entry);
+  if (!meta) return '';
+  const parts = [];
+  if (meta.financialAccountName) parts.push(makePill(meta.financialAccountName, 'muted'));
+  if (meta.originalAmount != null) parts.push(makePill(finFormatOriginalAmount(meta.originalAmount, meta.originalCurrency), meta.originalCurrency === 'USD' ? 'gold' : 'cash'));
+  if (meta.originalCurrency === 'USD' && meta.exchangeRateUsed) parts.push(makePill(`T/C ${Number(meta.exchangeRateUsed).toFixed(2)}`, 'muted'));
+  if (meta.baseAmountNio != null) parts.push(makePill(`Eq. ${finFormatCordobas(meta.baseAmountNio)}`, 'green'));
+  return parts.length ? `<div class="fin-badge-strip">${parts.join(' ')}</div>` : '';
+}
+
+function updateManualMovementCurrencyPreview() {
+  const box = document.getElementById('mov-financial-meta');
+  if (!box) return;
+  const data = finCachedData;
+  const row = finGetSelectedFinancialAccount(data);
+  const rows = finGetActiveFinancialAccountsForMovements(data);
+  if (!rows.length) {
+    box.className = 'fin-movement-meta is-warn';
+    box.textContent = 'Configure al menos una cuenta financiera activa antes de registrar movimientos.';
+    return;
+  }
+  if (!row) {
+    box.className = 'fin-movement-meta';
+    box.textContent = 'Seleccione una cuenta financiera activa para detectar moneda y cuenta contable.';
+    return;
+  }
+
+  const currency = finNormalizeCurrencyCode(row.moneda || 'NIO');
+  const code = finNormalizeAccountCode(row.cuentaContableCodigo || '');
+  const amount = finParseCurrencyAmount(document.getElementById('mov-monto')?.value || '');
+  const state = finGetCurrencyStateSafe();
+  const name = row.nombreVisible || 'Cuenta financiera';
+  const accName = row.cuentaContableNombreSnapshot || '';
+
+  if (currency === 'USD' && !state.hasExchangeRate) {
+    box.className = 'fin-movement-meta is-warn';
+    box.innerHTML = `${escapeHtml(name)} · USD · ${escapeHtml(code)} ${escapeHtml(accName)}<br>${escapeHtml(FIN_CURRENCY_WARNING_MESSAGE)}`;
+    return;
+  }
+
+  let calc = '';
+  if (currency === 'USD' && Number.isFinite(amount) && amount > 0) {
+    const converted = finConvertUsdToCordobas(amount, state.exchangeRate);
+    if (converted.ok) calc = ` · ${finFormatDollars(amount)} × ${Number(state.exchangeRate).toFixed(2)} = ${converted.formatted}`;
+  } else if (currency === 'NIO' && Number.isFinite(amount) && amount > 0) {
+    calc = ` · Equivalente: ${finFormatCordobas(amount)}`;
+  }
+
+  box.className = 'fin-movement-meta';
+  box.innerHTML = `${escapeHtml(name)} · ${escapeHtml(finFinancialAccountTypeLabel(row.type || row.tipo))} · ${escapeHtml(currency)} · ${escapeHtml(code)} ${escapeHtml(accName)}${escapeHtml(calc)}`;
+}
+
+
+/* ---------- Transferencias Internas (Etapa 6/10) ---------- */
+
+const FIN_INTERNAL_TRANSFER_SOURCE = 'internal_transfer';
+const FIN_INTERNAL_TRANSFER_TYPE = 'transferenciaInterna';
+const FIN_TRANSFER_WARNING_MESSAGE = 'Configure el tipo de cambio vigente en Configuración → Moneda para registrar transferencias en US$.';
+
+function finGetFinancialAccountId(row) {
+  return String(row && (row.id || row.uniqueKey || '') || '').trim();
+}
+
+function finFindFinancialAccountById(data, id) {
+  const key = String(id || '').trim();
+  if (!key) return null;
+  const rows = Array.isArray(data && data.financialAccounts) ? data.financialAccounts : [];
+  return rows.find(row => finGetFinancialAccountId(row) === key) || null;
+}
+
+function finFinancialAccountTransferOptionLabel(row) {
+  const name = String(row && (row.nombreVisible || row.financialAccountNameSnapshot || '') || 'Cuenta financiera').trim();
+  const currency = finNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || 'NIO'));
+  const code = finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || ''));
+  const accName = String(row && (row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '') || '').trim();
+  return `${name} — ${finCurrencySymbol(currency)} · ${code}${accName ? ' ' + accName : ''}`;
+}
+
+function finGetActiveFinancialAccountsForTransfers(data) {
+  return finGetActiveFinancialAccountsForMovements(data);
+}
+
+function finPopulateTransferAccountSelects(data) {
+  const originSel = document.getElementById('ti-origen');
+  const destSel = document.getElementById('ti-destino');
+  if (!originSel || !destSel) return;
+
+  const rows = finGetActiveFinancialAccountsForTransfers(data);
+  const prevOrigin = originSel.value;
+  const prevDest = destSel.value;
+
+  const build = (sel, placeholder) => {
+    sel.innerHTML = '';
+    const first = document.createElement('option');
+    first.value = '';
+    first.textContent = rows.length ? placeholder : 'Sin cuentas financieras activas';
+    sel.appendChild(first);
+    for (const row of rows) {
+      const opt = document.createElement('option');
+      opt.value = finGetFinancialAccountId(row);
+      opt.textContent = finFinancialAccountTransferOptionLabel(row);
+      opt.dataset.currency = finNormalizeCurrencyCode(row.moneda || 'NIO');
+      opt.dataset.accountCode = finNormalizeAccountCode(row.cuentaContableCodigo || '');
+      sel.appendChild(opt);
+    }
+  };
+
+  build(originSel, 'Seleccione origen…');
+  build(destSel, 'Seleccione destino…');
+
+  if (prevOrigin && Array.from(originSel.options).some(o => o.value === prevOrigin)) originSel.value = prevOrigin;
+  else if (rows.length >= 1) originSel.value = finGetFinancialAccountId(rows[0]);
+
+  if (prevDest && Array.from(destSel.options).some(o => o.value === prevDest)) destSel.value = prevDest;
+  else if (rows.length >= 2) destSel.value = finGetFinancialAccountId(rows.find(r => finGetFinancialAccountId(r) !== originSel.value) || rows[1]);
+
+  if (originSel.value && destSel.value && originSel.value === destSel.value && rows.length >= 2) {
+    const alt = rows.find(r => finGetFinancialAccountId(r) !== originSel.value);
+    if (alt) destSel.value = finGetFinancialAccountId(alt);
+  }
+}
+
+function finTransferRequiresExchangeRate(originCurrency, destCurrency) {
+  return finNormalizeCurrencyCode(originCurrency) === 'USD' || finNormalizeCurrencyCode(destCurrency) === 'USD';
+}
+
+
+function finTransferRoundingTolerance(rate, currencyWithTwoDecimalLimit = 'NIO') {
+  const r = Number(rate);
+  if (finNormalizeCurrencyCode(currencyWithTwoDecimalLimit) === 'USD' && Number.isFinite(r) && r > 0) {
+    // Medio centavo de dólar convertido a C$ + colchón mínimo por redondeo doble.
+    return Math.max(0.05, finRoundCurrency2((r * 0.005) + 0.02));
+  }
+  return 0.05;
+}
+
+function finGetTransferAccountsFromUI() {
+  const data = finCachedData;
+  const originId = String(document.getElementById('ti-origen')?.value || '').trim();
+  const destId = String(document.getElementById('ti-destino')?.value || '').trim();
+  return {
+    originId,
+    destId,
+    origin: finFindFinancialAccountById(data, originId),
+    dest: finFindFinancialAccountById(data, destId)
+  };
+}
+
+function finTransferAccountSnapshot(row, rolePrefix) {
+  const currency = finNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || 'NIO'));
+  const type = String(row && (row.type || row.tipo || 'caja') || 'caja').toLowerCase();
+  const code = finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || ''));
+  const accName = String(row && (row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '') || '').trim();
+  const name = String(row && (row.nombreVisible || row.financialAccountNameSnapshot || '') || '').trim();
+  return {
+    [`cuenta${rolePrefix}Id`]: finGetFinancialAccountId(row),
+    [`cuenta${rolePrefix}NombreSnapshot`]: name,
+    [`cuenta${rolePrefix}Tipo`]: type,
+    [`cuenta${rolePrefix}Moneda`]: currency,
+    [`cuenta${rolePrefix}CuentaContableCodigo`]: code,
+    [`cuenta${rolePrefix}CuentaContableNombreSnapshot`]: accName
+  };
+}
+
+function finSetTransferMeta(message, isWarn = false) {
+  const box = document.getElementById('ti-meta');
+  if (!box) return;
+  box.className = `fin-movement-meta${isWarn ? ' is-warn' : ''}`;
+  box.innerHTML = message;
+}
+
+function finBuildTransferCalculation({ origin, dest, amountOriginRaw, amountDestRaw, explicitRate } = {}) {
+  const originCurrency = finNormalizeCurrencyCode(origin && (origin.moneda || origin.financialAccountCurrency || 'NIO'));
+  const destCurrency = finNormalizeCurrencyCode(dest && (dest.moneda || dest.financialAccountCurrency || 'NIO'));
+  const amountOrigin = finParseCurrencyAmount(amountOriginRaw);
+  let amountDest = finParseCurrencyAmount(amountDestRaw);
+  const state = finGetCurrencyStateSafe();
+  const requiresRate = finTransferRequiresExchangeRate(originCurrency, destCurrency);
+  const rate = explicitRate != null && explicitRate !== '' ? Number(finNormalizeExchangeRateValue(explicitRate)) : state.exchangeRate;
+
+  const base = {
+    ok: false,
+    originCurrency,
+    destCurrency,
+    amountOrigin: Number.isFinite(amountOrigin) ? finRoundCurrency2(amountOrigin) : null,
+    amountDest: Number.isFinite(amountDest) ? finRoundCurrency2(amountDest) : null,
+    requiresRate,
+    exchangeRateUsed: requiresRate && Number.isFinite(rate) && rate > 0 ? finRoundCurrency2(rate) : null,
+    exchangeRateDateSnapshot: requiresRate ? (state.updatedAtText || '') : '',
+    exchangeRateSource: requiresRate ? FIN_CURRENCY_SOURCE_LABEL : '',
+    equivalenteNIO: null,
+    destEquivalentNIO: null,
+    warningMessage: ''
+  };
+
+  if (!origin || !dest) return { ...base, warningMessage: 'Seleccione cuenta origen y cuenta destino.' };
+  if (finGetFinancialAccountId(origin) && finGetFinancialAccountId(origin) === finGetFinancialAccountId(dest)) {
+    return { ...base, warningMessage: 'La cuenta origen y destino no pueden ser la misma.' };
+  }
+  if (!(Number.isFinite(amountOrigin) && amountOrigin > 0)) {
+    return { ...base, warningMessage: 'El monto origen debe ser mayor que cero.' };
+  }
+  if (requiresRate && !(Number.isFinite(rate) && rate > 0)) {
+    return { ...base, warningMessage: FIN_TRANSFER_WARNING_MESSAGE };
+  }
+
+  let suggestedDest = null;
+  let equivalent = null;
+  let destEquivalent = null;
+
+  if (originCurrency === destCurrency) {
+    suggestedDest = finRoundCurrency2(amountOrigin);
+    if (!(Number.isFinite(amountDest) && amountDest > 0)) amountDest = suggestedDest;
+    if (Math.abs(finRoundCurrency2(amountDest) - suggestedDest) > 0.005) {
+      return { ...base, amountDest: finRoundCurrency2(amountDest), warningMessage: 'En transferencias de la misma moneda, monto origen y destino deben ser iguales.' };
+    }
+    equivalent = originCurrency === 'USD' ? finRoundCurrency2(amountOrigin * rate) : finRoundCurrency2(amountOrigin);
+    destEquivalent = equivalent;
+  } else if (originCurrency === 'NIO' && destCurrency === 'USD') {
+    suggestedDest = finRoundCurrency2(amountOrigin / rate);
+    if (!(Number.isFinite(amountDest) && amountDest > 0)) amountDest = suggestedDest;
+    destEquivalent = finRoundCurrency2(amountDest * rate);
+    equivalent = finRoundCurrency2(amountOrigin);
+    const diff = Math.abs(finRoundCurrency2(destEquivalent - equivalent));
+    const tolerance = finTransferRoundingTolerance(rate, 'USD');
+    if (diff > tolerance) {
+      return {
+        ...base,
+        amountDest: finRoundCurrency2(amountDest),
+        equivalenteNIO: equivalent,
+        destEquivalentNIO: destEquivalent,
+        warningMessage: 'El monto destino no cuadra con el T/C vigente. Solo se permiten diferencias de redondeo.'
+      };
+    }
+    destEquivalent = equivalent; // ajuste controlado por redondeo para asiento balanceado
+  } else if (originCurrency === 'USD' && destCurrency === 'NIO') {
+    suggestedDest = finRoundCurrency2(amountOrigin * rate);
+    if (!(Number.isFinite(amountDest) && amountDest > 0)) amountDest = suggestedDest;
+    equivalent = finRoundCurrency2(amountDest);
+    destEquivalent = finRoundCurrency2(amountOrigin * rate);
+    const diff = Math.abs(finRoundCurrency2(destEquivalent - equivalent));
+    const tolerance = finTransferRoundingTolerance(rate, 'NIO');
+    if (diff > tolerance) {
+      return {
+        ...base,
+        amountDest: finRoundCurrency2(amountDest),
+        equivalenteNIO: equivalent,
+        destEquivalentNIO: destEquivalent,
+        warningMessage: 'El monto destino no cuadra con el T/C vigente. Solo se permiten diferencias de redondeo.'
+      };
+    }
+    destEquivalent = equivalent; // ajuste controlado por redondeo para asiento balanceado
+  }
+
+  if (!(Number.isFinite(equivalent) && equivalent > 0)) {
+    return { ...base, amountDest: finRoundCurrency2(amountDest), warningMessage: 'El equivalente contable en C$ es inválido.' };
+  }
+
+  return {
+    ...base,
+    ok: true,
+    amountOrigin: finRoundCurrency2(amountOrigin),
+    amountDest: finRoundCurrency2(amountDest),
+    suggestedDest: finRoundCurrency2(suggestedDest),
+    equivalenteNIO: finRoundCurrency2(equivalent),
+    destEquivalentNIO: finRoundCurrency2(destEquivalent),
+    warningMessage: ''
+  };
+}
+
+function updateInternalTransferPreview() {
+  const data = finCachedData;
+  const rows = finGetActiveFinancialAccountsForTransfers(data);
+  const status = document.getElementById('ti-status');
+  const originCurrencyEl = document.getElementById('ti-moneda-origen');
+  const destCurrencyEl = document.getElementById('ti-moneda-destino');
+  const rateInput = document.getElementById('ti-tc');
+  const equivalentInput = document.getElementById('ti-equivalente');
+  const amountDestInput = document.getElementById('ti-monto-destino');
+
+  if (status) {
+    status.textContent = rows.length >= 2
+      ? 'Transferencias Internas usa Cuentas Financieras activas. No toca ingresos, egresos, compras, recibos ni Caja Chica.'
+      : 'Configure al menos dos cuentas financieras activas para registrar transferencias internas.';
+    status.className = rows.length >= 2 ? 'fin-help fa-status-ok' : 'fin-help fa-status-warn';
+  }
+
+  const { origin, dest } = finGetTransferAccountsFromUI();
+  const originCurrency = finNormalizeCurrencyCode(origin && (origin.moneda || origin.financialAccountCurrency || 'NIO'));
+  const destCurrency = finNormalizeCurrencyCode(dest && (dest.moneda || dest.financialAccountCurrency || 'NIO'));
+
+  if (originCurrencyEl) originCurrencyEl.value = origin ? originCurrency : '';
+  if (destCurrencyEl) destCurrencyEl.value = dest ? destCurrency : '';
+
+  const state = finGetCurrencyStateSafe();
+  const requiresRate = finTransferRequiresExchangeRate(originCurrency, destCurrency) && origin && dest;
+  if (rateInput) {
+    rateInput.value = requiresRate && state.hasExchangeRate ? Number(state.exchangeRate).toFixed(2) : '';
+    rateInput.disabled = !requiresRate;
+    rateInput.readOnly = true;
+  }
+
+  const amountOriginRaw = document.getElementById('ti-monto-origen')?.value || '';
+  const calc = finBuildTransferCalculation({
+    origin,
+    dest,
+    amountOriginRaw,
+    amountDestRaw: amountDestInput?.value || '',
+    explicitRate: rateInput?.value || ''
+  });
+
+  if (amountDestInput) {
+    amountDestInput.disabled = !(origin && dest);
+    amountDestInput.placeholder = origin && dest
+      ? (originCurrency === destCurrency ? 'Igual al origen' : (destCurrency === 'USD' ? 'Se sugiere en US$' : 'Se sugiere en C$'))
+      : 'Seleccione cuentas';
+  }
+  if (equivalentInput) equivalentInput.value = calc.equivalenteNIO ? finFormatCordobas(calc.equivalenteNIO) : '';
+
+  if (!origin || !dest) {
+    finSetTransferMeta('Seleccione origen y destino para detectar monedas, T/C y asiento contable.', false);
+    return;
+  }
+  if (rows.length < 2) {
+    finSetTransferMeta('Configure al menos dos cuentas financieras activas para registrar transferencias internas.', true);
+    return;
+  }
+  if (requiresRate && !state.hasExchangeRate) {
+    finSetTransferMeta(escapeHtml(FIN_TRANSFER_WARNING_MESSAGE), true);
+    return;
+  }
+
+  if (calc.ok) {
+    const rateText = calc.requiresRate ? ` · T/C snapshot ${Number(calc.exchangeRateUsed).toFixed(2)}` : '';
+    const convText = originCurrency === destCurrency
+      ? `${finFormatOriginalAmount(calc.amountOrigin, originCurrency)} → ${finFormatOriginalAmount(calc.amountDest, destCurrency)}`
+      : `${finFormatOriginalAmount(calc.amountOrigin, originCurrency)} → ${finFormatOriginalAmount(calc.amountDest, destCurrency)}${rateText}`;
+    finSetTransferMeta(`${escapeHtml(origin.nombreVisible || 'Origen')} → ${escapeHtml(dest.nombreVisible || 'Destino')}<br>${escapeHtml(convText)} · Asiento: DEBE destino / HABER origen · ${escapeHtml(finFormatCordobas(calc.equivalenteNIO))}`, false);
+    return;
+  }
+
+  finSetTransferMeta(escapeHtml(calc.warningMessage || 'Complete los datos de la transferencia.'), !!calc.warningMessage);
+}
+
+function finSuggestTransferDestinationAmount(force = false) {
+  const amountDestInput = document.getElementById('ti-monto-destino');
+  if (!amountDestInput) return;
+  if (!force && String(amountDestInput.value || '').trim()) return;
+  const { origin, dest } = finGetTransferAccountsFromUI();
+  const rateValue = document.getElementById('ti-tc')?.value || '';
+  const calc = finBuildTransferCalculation({
+    origin,
+    dest,
+    amountOriginRaw: document.getElementById('ti-monto-origen')?.value || '',
+    amountDestRaw: '',
+    explicitRate: rateValue
+  });
+  if (calc.amountDest && Number.isFinite(calc.amountDest)) {
+    amountDestInput.value = Number(calc.amountDest).toFixed(2);
+  }
+}
+
+function finBuildInternalTransferSnapshot(origin, dest, calc, reference, descripcion, fecha) {
+  const nowISO = new Date().toISOString();
+  const transferId = `trf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const originSnap = finTransferAccountSnapshot(origin, 'Origen');
+  const destSnap = finTransferAccountSnapshot(dest, 'Destino');
+  const originName = originSnap.cuentaOrigenNombreSnapshot || 'Origen';
+  const destName = destSnap.cuentaDestinoNombreSnapshot || 'Destino';
+  return {
+    transferId,
+    fecha,
+    tipoOperacion: FIN_INTERNAL_TRANSFER_TYPE,
+    operationType: FIN_INTERNAL_TRANSFER_TYPE,
+    source: FIN_INTERNAL_TRANSFER_SOURCE,
+    ...originSnap,
+    ...destSnap,
+    montoOrigen: finRoundCurrency2(calc.amountOrigin),
+    monedaOrigen: calc.originCurrency,
+    montoDestino: finRoundCurrency2(calc.amountDest),
+    monedaDestino: calc.destCurrency,
+    tipoCambioUsado: calc.requiresRate ? finRoundCurrency2(calc.exchangeRateUsed) : null,
+    fechaTipoCambioSnapshot: calc.requiresRate ? (calc.exchangeRateDateSnapshot || '') : '',
+    fuenteTipoCambio: calc.requiresRate ? FIN_CURRENCY_SOURCE_LABEL : '',
+    equivalenteNIO: finRoundCurrency2(calc.equivalenteNIO),
+    baseCurrency: 'NIO',
+    referencia: reference,
+    reference,
+    descripcion: descripcion || `Transferencia interna: ${originName} → ${destName}`,
+    createdAtISO: nowISO,
+    updatedAtISO: nowISO
+  };
+}
+
+function finGetEntryInternalTransferMeta(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const raw = entry.internalTransferSnapshot || entry.transferSnapshot || entry;
+  const type = String(raw.tipoOperacion || entry.tipoOperacion || entry.operationType || '').trim();
+  const src = String(entry.source || raw.source || '').trim();
+  const tipoMov = String(entry.tipoMovimiento || '').trim();
+  if (type !== FIN_INTERNAL_TRANSFER_TYPE && src !== FIN_INTERNAL_TRANSFER_SOURCE && tipoMov !== 'transferencia') return null;
+
+  const amountOrigin = finParseCurrencyAmount(raw.montoOrigen ?? entry.montoOrigen ?? entry.originalAmount ?? entry.montoOriginal ?? 0);
+  const amountDest = finParseCurrencyAmount(raw.montoDestino ?? entry.montoDestino ?? 0);
+  const equivalent = finParseCurrencyAmount(raw.equivalenteNIO ?? entry.equivalenteNIO ?? entry.baseAmountNio ?? entry.totalDebe ?? 0);
+  const rate = finParseCurrencyAmount(raw.tipoCambioUsado ?? entry.tipoCambioUsado ?? entry.exchangeRateUsed ?? '');
+  return {
+    transferId: String(raw.transferId || entry.transferId || '').trim(),
+    originName: String(raw.cuentaOrigenNombreSnapshot || entry.cuentaOrigenNombreSnapshot || '').trim(),
+    originCurrency: finNormalizeCurrencyCode(raw.monedaOrigen || raw.cuentaOrigenMoneda || entry.monedaOrigen || 'NIO'),
+    amountOrigin: Number.isFinite(amountOrigin) ? amountOrigin : null,
+    destName: String(raw.cuentaDestinoNombreSnapshot || entry.cuentaDestinoNombreSnapshot || '').trim(),
+    destCurrency: finNormalizeCurrencyCode(raw.monedaDestino || raw.cuentaDestinoMoneda || entry.monedaDestino || 'NIO'),
+    amountDest: Number.isFinite(amountDest) ? amountDest : null,
+    exchangeRateUsed: Number.isFinite(rate) ? rate : null,
+    equivalentNio: Number.isFinite(equivalent) ? equivalent : null,
+    reference: String(raw.reference || raw.referencia || entry.reference || '').trim(),
+    source: String(raw.fuenteTipoCambio || entry.fuenteTipoCambio || '').trim()
+  };
+}
+
+function finRenderInternalTransferBadges(entry) {
+  const meta = finGetEntryInternalTransferMeta(entry);
+  if (!meta) return '';
+  const parts = [];
+  const origin = `${meta.originName || 'Origen'}: ${finFormatOriginalAmount(meta.amountOrigin || 0, meta.originCurrency)}`;
+  const dest = `${meta.destName || 'Destino'}: ${finFormatOriginalAmount(meta.amountDest || 0, meta.destCurrency)}`;
+  parts.push(makePill(origin, 'muted'));
+  parts.push(makePill(dest, meta.destCurrency === 'USD' ? 'gold' : 'cash'));
+  if (meta.exchangeRateUsed) parts.push(makePill(`T/C ${Number(meta.exchangeRateUsed).toFixed(2)}`, 'muted'));
+  if (meta.equivalentNio != null) parts.push(makePill(`Eq. ${finFormatCordobas(meta.equivalentNio)}`, 'green'));
+  return parts.length ? `<div class="fin-badge-strip">${parts.join(' ')}</div>` : '';
+}
+
+async function createInternalTransferWithJournalAtomic(transfer, entry, lines) {
+  await openFinDB();
+  return new Promise((resolve, reject) => {
+    let tx;
+    let entryId = null;
+    try {
+      tx = finDB.transaction(['internalTransfers', 'journalEntries', 'journalLines'], 'readwrite');
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    const stT = tx.objectStore('internalTransfers');
+    const stE = tx.objectStore('journalEntries');
+    const stL = tx.objectStore('journalLines');
+
+    const req = stE.add(entry);
+    req.onsuccess = (e) => {
+      entryId = e.target.result;
+      const savedTransfer = { ...transfer, journalEntryId: entryId };
+      stT.put(savedTransfer);
+      for (const ln of (Array.isArray(lines) ? lines : [])) {
+        stL.add({ ...ln, idEntry: entryId });
+      }
+    };
+
+    tx.oncomplete = () => resolve({ entryId, transferId: transfer && transfer.transferId });
+    tx.onabort = () => reject(tx.error || new Error('Transacción de transferencia abortada'));
+    tx.onerror = () => { /* onabort maneja */ };
+  });
+}
+
+async function guardarTransferenciaInterna() {
+  if (!finCachedData) await refreshAllFin();
+  const rows = finGetActiveFinancialAccountsForTransfers(finCachedData);
+  if (rows.length < 2) {
+    alert('Configure al menos dos cuentas financieras activas para registrar transferencias internas.');
+    return;
+  }
+
+  const fecha = document.getElementById('ti-fecha')?.value || todayStr();
+  const { origin, dest } = finGetTransferAccountsFromUI();
+  const reference = String(document.getElementById('ti-referencia')?.value || '').trim();
+  const descripcion = String(document.getElementById('ti-descripcion')?.value || '').trim();
+  const amountOriginRaw = document.getElementById('ti-monto-origen')?.value || '';
+  const amountDestRaw = document.getElementById('ti-monto-destino')?.value || '';
+  const rateRaw = document.getElementById('ti-tc')?.value || '';
+
+  if (!fecha) { alert('Ingresa la fecha de la transferencia.'); return; }
+  if (!origin) { alert('Selecciona la cuenta financiera origen.'); return; }
+  if (!dest) { alert('Selecciona la cuenta financiera destino.'); return; }
+  if (finGetFinancialAccountId(origin) === finGetFinancialAccountId(dest)) { alert('La cuenta origen y destino no pueden ser la misma.'); return; }
+
+  const originCode = finNormalizeAccountCode(origin.cuentaContableCodigo || '');
+  const destCode = finNormalizeAccountCode(dest.cuentaContableCodigo || '');
+  const accountsMap = finCachedData && finCachedData.accountsMap ? finCachedData.accountsMap : new Map();
+  if (!originCode || !accountsMap.get(originCode)) { alert('La cuenta origen no tiene una cuenta contable válida asociada.'); return; }
+  if (!destCode || !accountsMap.get(destCode)) { alert('La cuenta destino no tiene una cuenta contable válida asociada.'); return; }
+
+  const calc = finBuildTransferCalculation({ origin, dest, amountOriginRaw, amountDestRaw, explicitRate: rateRaw });
+  if (!calc.ok) {
+    alert(calc.warningMessage || 'Revise los datos de la transferencia.');
+    return;
+  }
+
+  const totalDebe = finRoundCurrency2(calc.equivalenteNIO);
+  const totalHaber = finRoundCurrency2(calc.equivalenteNIO);
+  if (!(Number.isFinite(totalDebe) && totalDebe > 0) || Math.abs(totalDebe - totalHaber) > 0.005) {
+    alert('El asiento no cuadra. No se guardó la transferencia.');
+    return;
+  }
+
+  const transfer = finBuildInternalTransferSnapshot(origin, dest, calc, reference, descripcion, fecha);
+  const description = transfer.descripcion;
+  const entry = {
+    fecha,
+    descripcion: description,
+    tipoMovimiento: 'transferencia',
+    tipoOperacion: FIN_INTERNAL_TRANSFER_TYPE,
+    operationType: FIN_INTERNAL_TRANSFER_TYPE,
+    reference,
+    eventScope: 'CENTRAL',
+    origen: 'Interno',
+    origenId: null,
+    source: FIN_INTERNAL_TRANSFER_SOURCE,
+    entryType: 'internal_transfer',
+    paymentMethod: 'internal_transfer',
+    medio: 'transferencia_interna',
+    totalDebe,
+    totalHaber,
+    transferId: transfer.transferId,
+    internalTransferSnapshot: transfer,
+    // Compatibilidad con badges/exportación multimoneda: mostrar origen como moneda original principal.
+    originalCurrency: calc.originCurrency,
+    originalAmount: finRoundCurrency2(calc.amountOrigin),
+    exchangeRateUsed: calc.requiresRate ? finRoundCurrency2(calc.exchangeRateUsed) : null,
+    exchangeRateDateSnapshot: calc.requiresRate ? (calc.exchangeRateDateSnapshot || '') : '',
+    exchangeRateSource: calc.requiresRate ? FIN_CURRENCY_SOURCE_LABEL : '',
+    baseCurrency: 'NIO',
+    baseAmountNio: totalDebe,
+    equivalenteNIO: totalDebe,
+    montoOriginal: finRoundCurrency2(calc.amountOrigin),
+    monedaOriginal: calc.originCurrency,
+    tipoCambioUsado: calc.requiresRate ? finRoundCurrency2(calc.exchangeRateUsed) : null,
+    fechaTipoCambio: calc.requiresRate ? (calc.exchangeRateDateSnapshot || '') : '',
+    fuenteTipoCambio: calc.requiresRate ? FIN_CURRENCY_SOURCE_LABEL : ''
+  };
+
+  const common = {
+    internalTransferId: transfer.transferId,
+    transferId: transfer.transferId,
+    baseCurrency: 'NIO',
+    baseAmountNio: totalDebe,
+    exchangeRateUsed: calc.requiresRate ? finRoundCurrency2(calc.exchangeRateUsed) : null,
+    exchangeRateSource: calc.requiresRate ? FIN_CURRENCY_SOURCE_LABEL : ''
+  };
+
+  const lines = [
+    {
+      accountCode: destCode,
+      debe: totalDebe,
+      haber: 0,
+      accountNameSnapshot: getAccountDisplayNameByCode(destCode, accountsMap),
+      financialAccountId: finGetFinancialAccountId(dest),
+      originalCurrency: calc.destCurrency,
+      originalAmount: finRoundCurrency2(calc.amountDest),
+      ...common
+    },
+    {
+      accountCode: originCode,
+      debe: 0,
+      haber: totalHaber,
+      accountNameSnapshot: getAccountDisplayNameByCode(originCode, accountsMap),
+      financialAccountId: finGetFinancialAccountId(origin),
+      originalCurrency: calc.originCurrency,
+      originalAmount: finRoundCurrency2(calc.amountOrigin),
+      ...common
+    }
+  ];
+
+  try {
+    await createInternalTransferWithJournalAtomic(transfer, entry, lines);
+  } catch (err) {
+    console.error('Error guardando transferencia interna', err);
+    alert('No se pudo guardar la transferencia interna.');
+    return;
+  }
+
+  const amountOriginInput = document.getElementById('ti-monto-origen');
+  const amountDestInput = document.getElementById('ti-monto-destino');
+  const refInput = document.getElementById('ti-referencia');
+  const descInput = document.getElementById('ti-descripcion');
+  if (amountOriginInput) amountOriginInput.value = '';
+  if (amountDestInput) amountDestInput.value = '';
+  if (refInput) refInput.value = '';
+  if (descInput) descInput.value = '';
+
+  showToast('Transferencia interna guardada');
+  await refreshAllFin();
+}
+
+function renderInternalTransfersView(data) {
+  finPopulateTransferAccountSelects(data);
+  const dateInput = document.getElementById('ti-fecha');
+  if (dateInput && !dateInput.value) dateInput.value = todayStr();
+  updateInternalTransferPreview();
+
+  const host = document.getElementById('ti-list');
+  if (!host) return;
+  const transfers = Array.isArray(data && data.internalTransfers) ? data.internalTransfers : [];
+  const sorted = transfers.slice().sort((a, b) => {
+    const fa = String(a.fecha || '');
+    const fb = String(b.fecha || '');
+    if (fa === fb) return String(b.createdAtISO || '').localeCompare(String(a.createdAtISO || ''));
+    return fb.localeCompare(fa);
+  });
+
+  if (!sorted.length) {
+    host.innerHTML = '<div class="fa-empty">Todavía no hay transferencias internas registradas.</div>';
+    return;
+  }
+
+  host.innerHTML = sorted.map(t => {
+    const origin = `${t.cuentaOrigenNombreSnapshot || 'Origen'} · ${finFormatOriginalAmount(t.montoOrigen || 0, t.monedaOrigen || 'NIO')}`;
+    const dest = `${t.cuentaDestinoNombreSnapshot || 'Destino'} · ${finFormatOriginalAmount(t.montoDestino || 0, t.monedaDestino || 'NIO')}`;
+    const rate = t.tipoCambioUsado ? `<span>${escapeHTML(`T/C ${Number(t.tipoCambioUsado).toFixed(2)}`)}</span>` : '';
+    const ref = t.reference || t.referencia ? `<span>${escapeHTML(`Ref: ${t.reference || t.referencia}`)}</span>` : '';
+    return `
+      <article class="ti-card">
+        <div class="ti-card-head">
+          <strong>${escapeHTML(t.fecha || '')}</strong>
+          <span class="fin-pill fin-pill--green">Transferencia interna</span>
+        </div>
+        <div class="ti-route">
+          <div><small>Origen</small><b>${escapeHTML(origin)}</b></div>
+          <div><small>Destino</small><b>${escapeHTML(dest)}</b></div>
+        </div>
+        <div class="ti-card-meta">
+          ${rate}
+          <span>${escapeHTML(`Eq. ${finFormatCordobas(t.equivalenteNIO || 0)}`)}</span>
+          ${ref}
+          ${t.journalEntryId ? `<span>${escapeHTML(`Diario #${t.journalEntryId}`)}</span>` : ''}
+        </div>
+        ${t.descripcion ? `<p>${escapeHTML(t.descripcion)}</p>` : ''}
+      </article>
+    `;
+  }).join('');
+}
+
+function setupInternalTransfersUI() {
+  const ids = ['ti-origen', 'ti-destino', 'ti-monto-origen', 'ti-monto-destino'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const evName = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(evName, () => {
+      if (id === 'ti-origen' || id === 'ti-destino' || id === 'ti-monto-origen') {
+        finSuggestTransferDestinationAmount(true);
+      }
+      updateInternalTransferPreview();
+    });
+  });
+
+  const btn = document.getElementById('ti-guardar');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      guardarTransferenciaInterna().catch(err => {
+        console.error('Error guardando transferencia interna', err);
+        alert('No se pudo guardar la transferencia interna.');
+      });
+    });
+  }
+}
+
 /* ---------- Render: Tablero ---------- */
 
 function renderTablero(data) {
@@ -3747,7 +5290,7 @@ function isLikelyInventoryAccount(code, name, rootType) {
 }
 
 function resolveCashBankNet(entry, normalizedLines, accountsMap) {
-  const stdCodes = new Set(['1100', '1110', '1200', '1300', '1900']);
+  const stdCodes = new Set([...finGetCurrentCashAccountCodes(), ...finGetCurrentBankAccountCodes({ accounts: accountsMap && typeof accountsMap.values === 'function' ? [...accountsMap.values()] : [] }), '1300', '1900']);
 
   // Step 1: flags en catálogo
   const step1 = [];
@@ -4048,12 +5591,13 @@ function renderDiario(data) {
         const incPill = inc ? (' ' + makePill('Inconsistente', 'red')) : '';
         const mm = getPosCloseMismatchAmount(e);
         const pill = mm ? (' ' + makePill(`Cierre con diferencia: ${finFormatCordobas(mm)}`, 'red')) : '';
-        return base + incPill + pill;
+        return base + incPill + pill + finRenderEntryFinancialBadges(e);
       })()}</td>
       <td>${escapeHtml(tipoMov)}</td>
       <td>${evCell || '—'}</td>
       <td>${escapeHtml(getSupplierLabelFromEntry(e, data))}</td>
       <td>${origenCell}</td>
+      <td>${(function(){ const m = finGetEntryManualCurrencyMeta(e); return m ? makePill(m.originalCurrency, m.originalCurrency === 'USD' ? 'gold' : 'cash') : '—'; })()}</td>
       <td class="num">${finFormatCordobas(displayDebe)}</td>
       <td class="num">${finFormatCordobas(displayHaber)}</td>
       <td><button type="button" class="btn-link ver-detalle" data-id="${e.id}">Ver detalle</button></td>
@@ -4121,6 +5665,27 @@ function openDetalleModal(entryId) {
     ? `<p><button type="button" class="btn btn-small btn-edit-compra" data-entry-id="${entry.id}">Editar en Compras</button></p>`
     : '';
 
+  const transferMeta = finGetEntryInternalTransferMeta(entry);
+  const transferLine = transferMeta ? `
+    <div class="fin-detail-currency">
+      <p><strong>Transferencia interna:</strong> ${escapeHtml(transferMeta.originName || 'Origen')} → ${escapeHtml(transferMeta.destName || 'Destino')}</p>
+      <p><strong>Monto origen:</strong> ${escapeHtml(finFormatOriginalAmount(transferMeta.amountOrigin || 0, transferMeta.originCurrency))}</p>
+      <p><strong>Monto destino:</strong> ${escapeHtml(finFormatOriginalAmount(transferMeta.amountDest || 0, transferMeta.destCurrency))}</p>
+      ${transferMeta.exchangeRateUsed ? `<p><strong>T/C snapshot:</strong> ${escapeHtml(Number(transferMeta.exchangeRateUsed).toFixed(2))}</p>` : ''}
+      <p><strong>Equivalente contable:</strong> ${escapeHtml(finFormatCordobas(transferMeta.equivalentNio || 0))}</p>
+    </div>
+  ` : '';
+
+  const multiMeta = transferMeta ? null : finGetEntryManualCurrencyMeta(entry);
+  const multiLine = multiMeta ? `
+    <div class="fin-detail-currency">
+      <p><strong>Cuenta financiera:</strong> ${escapeHtml(multiMeta.financialAccountName || '—')} ${multiMeta.financialAccountAccountingCode ? `(${escapeHtml(multiMeta.financialAccountAccountingCode)})` : ''}</p>
+      <p><strong>Monto original:</strong> ${escapeHtml(finFormatOriginalAmount(multiMeta.originalAmount || 0, multiMeta.originalCurrency))}</p>
+      ${multiMeta.originalCurrency === 'USD' ? `<p><strong>T/C snapshot:</strong> ${escapeHtml(multiMeta.exchangeRateUsed ? Number(multiMeta.exchangeRateUsed).toFixed(2) : '—')} · ${escapeHtml(multiMeta.exchangeRateDateSnapshot || 'Sin fecha')}</p>` : ''}
+      <p><strong>Equivalente contable:</strong> ${escapeHtml(finFormatCordobas(multiMeta.baseAmountNio || 0))}</p>
+    </div>
+  ` : '';
+
   meta.innerHTML = `
     <p><strong>Fecha:</strong> ${escapeHtml(entry.fecha || entry.date || '')}</p>
     <p><strong>Descripción:</strong> ${escapeHtml(uiTextFIN(getDisplayDescription(entry) || ''))}</p>
@@ -4134,6 +5699,8 @@ function openDetalleModal(entryId) {
     ${costsLine}
     ${mismatchLine}
     ${inconsLine}
+    ${transferLine}
+    ${multiLine}
     <p><strong>Origen:</strong> ${escapeHtml(origenLabel)}</p>
   `;
 
@@ -4156,6 +5723,785 @@ tbody.innerHTML = '';
 function closeDetalleModal() {
   const modal = $('#detalle-modal');
   if (modal) modal.classList.remove('open');
+}
+
+
+/* ---------- Reportes Contables Multibanco / Multimoneda (Etapa 9/10) ---------- */
+
+function finReportSafeEntries(data) {
+  return Array.isArray(data && data.entries) ? data.entries : [];
+}
+
+function finReportSafeLines(data) {
+  return Array.isArray(data && data.lines) ? data.lines : [];
+}
+
+function finReportEntryId(entry) {
+  const n = Number(entry && entry.id);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function finReportEntryDate(entry) {
+  return String(entry && (entry.fecha || entry.date || entry.dateISO || entry.createdAtISO || '') || '').slice(0, 10);
+}
+
+function finReportEntryReference(entry) {
+  return String(entry && (entry.reference || entry.referencia || entry.paymentRef || entry.comprobante || entry.origenId || '') || '').trim();
+}
+
+function finReportEntryDescription(entry) {
+  try {
+    const v = getDisplayDescription(entry);
+    if (v) return String(v).trim();
+  } catch (_) {}
+  return String(entry && (entry.descripcion || entry.description || entry.concepto || '') || '').trim();
+}
+
+function finReportLineAmount(v) {
+  const n = finParseCurrencyAmount(v);
+  return Number.isFinite(n) ? finRoundCurrency2(n) : 0;
+}
+
+function finReportEntryLines(data, entry) {
+  const id = finReportEntryId(entry);
+  if (!id) return [];
+  const map = data && data.linesByEntry;
+  if (map && typeof map.get === 'function') {
+    const arr = map.get(id);
+    return Array.isArray(arr) ? arr : [];
+  }
+  return finReportSafeLines(data).filter(l => Number(l && l.idEntry) === id);
+}
+
+function finReportAccountsSorted(data) {
+  return (Array.isArray(data && data.accounts) ? data.accounts : [])
+    .filter(acc => acc && finNormalizeAccountCode(acc.code || acc.accountCode || ''))
+    .sort((a, b) => finNormalizeAccountCode(a.code || '').localeCompare(finNormalizeAccountCode(b.code || ''), 'es'));
+}
+
+function finReportFinancialAccountsSorted(data) {
+  const rows = Array.isArray(data && data.financialAccounts) ? data.financialAccounts.slice() : [];
+  const hasLegacy = rows.some(row => finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || '')) === '1200');
+  const legacyAcc = data && data.accountsMap ? data.accountsMap.get('1200') : null;
+  if (!hasLegacy && legacyAcc) {
+    rows.push({
+      id: 'fa-legacy-banco-1200',
+      uniqueKey: 'legacy:banco:1200',
+      type: 'banco',
+      tipo: 'banco',
+      nombreVisible: 'Banco legacy / histórico — C$',
+      moneda: 'NIO',
+      simbolo: finCurrencySymbol('NIO'),
+      cuentaContableCodigo: '1200',
+      cuentaContableNombreSnapshot: String(legacyAcc.nombre || legacyAcc.name || 'Banco legacy / histórico'),
+      activa: false,
+      legacyFinancialAccount: true,
+      sourceCatalog: 'Cuenta 1200 legacy / histórica'
+    });
+  }
+  return rows
+    .filter(row => row && (row.id || row.uniqueKey || row.legacyFinancialAccount || row.legacyFinancialAccount === true))
+    .sort((a, b) => String(a.nombreVisible || a.financialAccountNameSnapshot || '').localeCompare(String(b.nombreVisible || b.financialAccountNameSnapshot || ''), 'es'));
+}
+
+function finReportBuildFinancialAccountMap(data) {
+  const map = new Map();
+  for (const row of finReportFinancialAccountsSorted(data)) {
+    const id = String(row && (row.id || row.uniqueKey || '') || '').trim();
+    if (id) map.set(id, row);
+  }
+  return map;
+}
+
+function finReportFinancialAccountName(row) {
+  return String(row && (row.nombreVisible || row.financialAccountNameSnapshot || row.cuentaFinancieraNombreSnapshot || '') || '').trim() || 'Cuenta financiera';
+}
+
+function finReportFinancialAccountCode(row) {
+  return finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || row.cuentaFinancieraCodigoContable || ''));
+}
+
+function finReportFinancialAccountCurrency(row) {
+  return finNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || row.cuentaFinancieraMoneda || 'NIO'));
+}
+
+function finReportLineCurrencyMeta(line, entry, data) {
+  const faMap = finReportBuildFinancialAccountMap(data);
+  const faId = String(
+    (line && (line.financialAccountId || line.cuentaFinancieraId)) ||
+    (entry && (entry.financialAccountId || entry.cuentaFinancieraId)) ||
+    ''
+  ).trim();
+  const fa = faId ? faMap.get(faId) : null;
+  const hasExplicitCurrency = !!String(
+    (line && (line.originalCurrency || line.monedaOriginal)) ||
+    (entry && (entry.originalCurrency || entry.monedaOriginal || entry.financialAccountCurrency || entry.cuentaFinancieraMoneda)) ||
+    ''
+  ).trim();
+  const currency = finNormalizeCurrencyCode(
+    (line && (line.originalCurrency || line.monedaOriginal)) ||
+    (entry && (entry.originalCurrency || entry.monedaOriginal || entry.financialAccountCurrency || entry.cuentaFinancieraMoneda)) ||
+    (fa && (fa.moneda || fa.financialAccountCurrency)) ||
+    'NIO'
+  );
+  const rawOriginal = (line && (line.originalAmount ?? line.montoOriginal ?? line.totalOriginal)) ??
+    (entry && (entry.originalAmount ?? entry.montoOriginal ?? entry.totalOriginal));
+  let originalAmount = finParseCurrencyAmount(rawOriginal);
+  const baseAmountRaw = (line && (line.baseAmountNio ?? line.equivalenteNIO)) ??
+    (entry && (entry.baseAmountNio ?? entry.equivalenteNIO));
+  let baseAmountNio = finParseCurrencyAmount(baseAmountRaw);
+  const debe = finReportLineAmount(line && line.debe);
+  const haber = finReportLineAmount(line && line.haber);
+  const lineBase = finRoundCurrency2(Math.max(debe, haber));
+  if (!Number.isFinite(baseAmountNio) || baseAmountNio === 0) baseAmountNio = lineBase;
+  if (!Number.isFinite(originalAmount)) {
+    originalAmount = currency === 'NIO' ? lineBase : null;
+  }
+  const rate = finParseCurrencyAmount((line && (line.exchangeRateUsed ?? line.tipoCambioUsado)) ?? (entry && (entry.exchangeRateUsed ?? entry.tipoCambioUsado)));
+  return {
+    financialAccountId: faId,
+    financialAccountName: String(
+      (line && (line.financialAccountNameSnapshot || line.cuentaFinancieraNombreSnapshot)) ||
+      (entry && (entry.financialAccountNameSnapshot || entry.cuentaFinancieraNombreSnapshot)) ||
+      (fa ? finReportFinancialAccountName(fa) : '') ||
+      ''
+    ).trim(),
+    financialAccountCode: finReportFinancialAccountCode(fa) || finNormalizeAccountCode(entry && (entry.financialAccountAccountingCode || entry.cuentaFinancieraCodigoContable || '')),
+    originalCurrency: currency,
+    originalAmount: Number.isFinite(originalAmount) ? finRoundCurrency2(originalAmount) : null,
+    baseAmountNio: Number.isFinite(baseAmountNio) ? finRoundCurrency2(baseAmountNio) : lineBase,
+    exchangeRateUsed: Number.isFinite(rate) ? finRoundCurrency2(rate) : null,
+    hasMetadata: !!(hasExplicitCurrency || rawOriginal != null || faId || (Number.isFinite(rate) && rate > 0)),
+    isLegacy: !(hasExplicitCurrency || rawOriginal != null || faId || (Number.isFinite(rate) && rate > 0))
+  };
+}
+
+function finReportLineOriginalDisplay(line, entry, data) {
+  const meta = finReportLineCurrencyMeta(line, entry, data);
+  const parts = [];
+  if (meta.originalAmount != null) parts.push(finFormatOriginalAmount(meta.originalAmount, meta.originalCurrency));
+  if (meta.originalCurrency === 'USD') parts.push(`T/C ${meta.exchangeRateUsed ? Number(meta.exchangeRateUsed).toFixed(2) : '—'}`);
+  if (meta.financialAccountName) parts.push(meta.financialAccountName);
+  if (meta.isLegacy) parts.push('Legacy C$');
+  return parts.join(' · ');
+}
+
+function finReportDateInRange(date, desde, hasta) {
+  const d = String(date || '').slice(0, 10);
+  if (desde && d && d < desde) return false;
+  if (hasta && d && d > hasta) return false;
+  return true;
+}
+
+function finReportTextMatch(text, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  return String(text || '').toLowerCase().includes(q);
+}
+
+function finReportGetFilterRange(prefix) {
+  let desde = String(document.getElementById(`${prefix}-desde`)?.value || '').slice(0, 10);
+  let hasta = String(document.getElementById(`${prefix}-hasta`)?.value || '').slice(0, 10);
+  if (desde && hasta && hasta < desde) {
+    const tmp = desde; desde = hasta; hasta = tmp;
+  }
+  return { desde, hasta };
+}
+
+function finReportAccountName(data, code, line) {
+  return getAccountDisplayNameByCode(finNormalizeAccountCode(code), data && data.accountsMap, line);
+}
+
+function finReportCounterpart(data, entry, accountCode) {
+  const code = finNormalizeAccountCode(accountCode);
+  const others = finReportEntryLines(data, entry)
+    .filter(l => finNormalizeAccountCode(l && l.accountCode) !== code)
+    .map(l => `${finNormalizeAccountCode(l.accountCode)} ${finReportAccountName(data, l.accountCode, l)}`.trim());
+  return Array.from(new Set(others)).slice(0, 3).join(' · ');
+}
+
+function finReportSourceKey(entry) {
+  const raw = `${entry && (entry.entryType || '')} ${entry && (entry.source || '')} ${entry && (entry.origen || '')} ${entry && (entry.tipoMovimiento || '')}`.toLowerCase();
+  if (raw.includes('internal_transfer') || raw.includes('transferencia')) return 'transferencia';
+  if (raw.includes('purchase') || raw.includes('supplier') || raw.includes('compra')) return 'compra';
+  if (raw.includes('receipt') || raw.includes('recibo')) return 'recibo';
+  if (raw.includes('pos')) return 'pos';
+  if (raw.includes('manual') || raw.includes('interno')) return 'manual';
+  return 'legacy';
+}
+
+function finReportSourceLabel(entry) {
+  const k = finReportSourceKey(entry);
+  const labels = {
+    manual: 'Registro manual', transferencia: 'Transferencia interna', compra: 'Compra a proveedor',
+    recibo: 'Recibo', pos: 'Importación POS', legacy: 'Legacy / histórico'
+  };
+  return labels[k] || 'Legacy / histórico';
+}
+
+function finReportAlertHtml(items) {
+  const arr = (Array.isArray(items) ? items : []).filter(Boolean);
+  if (!arr.length) return '';
+  return arr.map(it => `<div class="fin-report-alert ${escapeHtml(it.kind || '')}">${escapeHtml(it.text || it)}</div>`).join('');
+}
+
+function finReportRenderEmpty(hostId, text) {
+  const host = document.getElementById(hostId);
+  if (host) host.innerHTML = `<div class="fin-empty">${escapeHtml(text || 'No hay movimientos para los filtros seleccionados.')}</div>`;
+}
+
+function finReportVisibleRows(rows, limit = FIN_REPORT_UI_LIMIT) {
+  const arr = Array.isArray(rows) ? rows : [];
+  const max = Number(limit);
+  if (!Number.isFinite(max) || max <= 0 || arr.length <= max) {
+    return { visible: arr, hidden: 0, limit: arr.length };
+  }
+  return { visible: arr.slice(0, max), hidden: arr.length - max, limit: max };
+}
+
+function finReportLimitNotice(hidden, limit, label = 'movimientos') {
+  const h = Number(hidden || 0);
+  if (!(h > 0)) return '';
+  return `<div class="fin-empty fin-report-limit-note">Se muestran ${escapeHtml(String(limit))} ${escapeHtml(label)}. Hay ${escapeHtml(String(h))} más; usa Exportar Excel para el detalle completo.</div>`;
+}
+
+function finReportEnsureSelectors(data) {
+  // Evita selectores vacíos antes del primer render; no inventa filtros ni modifica datos.
+  try { finReportsFillSelectors(data); } catch (_) {}
+}
+
+function finReportsFillSelectors(data) {
+  const accountSelectIds = ['rep-mayor-cuenta'];
+  const accounts = finReportAccountsSorted(data);
+  for (const id of accountSelectIds) {
+    const sel = document.getElementById(id);
+    if (!sel) continue;
+    const prev = sel.value;
+    sel.innerHTML = accounts.map(acc => {
+      const code = finNormalizeAccountCode(acc.code || '');
+      const name = String(acc.nombre || acc.name || `Cuenta ${code}`);
+      return `<option value="${escapeAttr(code)}">${escapeHtml(code)} — ${escapeHtml(name)}</option>`;
+    }).join('');
+    if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
+    else if (Array.from(sel.options).some(o => o.value === '1200')) sel.value = '1200';
+  }
+
+  const faSel = document.getElementById('rep-estado-fa');
+  if (faSel) {
+    const prev = faSel.value;
+    const rows = finReportFinancialAccountsSorted(data);
+    faSel.innerHTML = rows.map(row => {
+      const id = String(row && (row.id || row.uniqueKey || '') || '').trim();
+      const name = finReportFinancialAccountName(row);
+      const code = finReportFinancialAccountCode(row);
+      const cur = finReportFinancialAccountCurrency(row);
+      const active = row && row.activa === false ? ' · histórica/oculta' : '';
+      return `<option value="${escapeAttr(id)}">${escapeHtml(name)} · ${escapeHtml(cur)}${code ? ` · ${escapeHtml(code)}` : ''}${escapeHtml(active)}</option>`;
+    }).join('');
+    if (prev && Array.from(faSel.options).some(o => o.value === prev)) faSel.value = prev;
+  }
+}
+
+function finBuildMayorReport(data) {
+  const code = finNormalizeAccountCode(document.getElementById('rep-mayor-cuenta')?.value || '');
+  const { desde, hasta } = finReportGetFilterRange('rep-mayor');
+  const q = String(document.getElementById('rep-mayor-buscar')?.value || '').trim();
+  const allEntries = finReportSafeEntries(data).slice().sort((a, b) => `${finReportEntryDate(a)}|${finReportEntryId(a) || 0}`.localeCompare(`${finReportEntryDate(b)}|${finReportEntryId(b) || 0}`));
+  let saldoInicial = 0;
+  const rows = [];
+  let legacyCount = 0;
+  let missingMetaUsd = 0;
+
+  for (const entry of allEntries) {
+    const date = finReportEntryDate(entry);
+    for (const line of finReportEntryLines(data, entry)) {
+      if (finNormalizeAccountCode(line && line.accountCode) !== code) continue;
+      const debe = finReportLineAmount(line.debe);
+      const haber = finReportLineAmount(line.haber);
+      const delta = finRoundCurrency2(debe - haber);
+      if (desde && date && date < desde) {
+        saldoInicial = finRoundCurrency2(saldoInicial + delta);
+        continue;
+      }
+      if (!finReportDateInRange(date, desde, hasta)) continue;
+      const desc = finReportEntryDescription(entry);
+      const ref = finReportEntryReference(entry);
+      const contraparte = finReportCounterpart(data, entry, code);
+      const meta = finReportLineCurrencyMeta(line, entry, data);
+      if (meta.isLegacy) legacyCount++;
+      if (meta.originalCurrency === 'USD' && !meta.exchangeRateUsed) missingMetaUsd++;
+      const text = `${date} ${finReportEntryId(entry) || ''} ${desc} ${ref} ${contraparte} ${finReportSourceLabel(entry)} ${finReportLineOriginalDisplay(line, entry, data)}`;
+      if (!finReportTextMatch(text, q)) continue;
+      rows.push({ entry, line, date, id: finReportEntryId(entry), desc, ref, contraparte, debe, haber, delta, meta });
+    }
+  }
+  let saldo = saldoInicial;
+  for (const r of rows) {
+    saldo = finRoundCurrency2(saldo + r.delta);
+    r.saldo = saldo;
+  }
+  return { accountCode: code, accountName: finReportAccountName(data, code), desde, hasta, rows, saldoInicial, saldoFinal: saldo, legacyCount, missingMetaUsd };
+}
+
+function renderMayorReport(data) {
+  const r = finBuildMayorReport(data);
+  const alerts = [
+    { text: 'Este reporte usa C$ como moneda contable base.' },
+    { text: 'Los movimientos en US$ se muestran con el T/C guardado al momento del registro.' }
+  ];
+  if (r.accountCode === '1200') alerts.push({ text: 'La cuenta 1200 Banco se conserva como legacy para históricos.' });
+  if (r.legacyCount) alerts.push({ text: 'Hay movimientos históricos sin metadata multimoneda; se muestran como C$ legacy.' });
+  if (r.missingMetaUsd) alerts.push({ text: 'Existen movimientos USD sin T/C snapshot. Se muestran sin recalcular.' , kind: 'warn'});
+  const alertHost = document.getElementById('rep-mayor-alerts');
+  if (alertHost) alertHost.innerHTML = finReportAlertHtml(alerts);
+  const summary = document.getElementById('rep-mayor-summary');
+  if (summary) summary.innerHTML = `
+    <article><span>Cuenta</span><strong>${escapeHtml(r.accountCode || '—')} · ${escapeHtml(r.accountName || '—')}</strong></article>
+    <article><span>Saldo inicial</span><strong>${escapeHtml(finFormatCordobas(r.saldoInicial))}</strong></article>
+    <article><span>Saldo final</span><strong>${escapeHtml(finFormatCordobas(r.saldoFinal))}</strong></article>
+    <article><span>Movimientos</span><strong>${escapeHtml(String(r.rows.length))}</strong></article>`;
+  const host = document.getElementById('rep-mayor-list');
+  if (!host) return;
+  if (!r.rows.length) return finReportRenderEmpty('rep-mayor-list');
+  const limited = finReportVisibleRows(r.rows, FIN_REPORT_UI_LIMIT);
+  host.innerHTML = limited.visible.map(row => `
+    <article class="fin-report-card">
+      <div class="fin-report-card-head">
+        <div><strong>${escapeHtml(row.date || 'Sin fecha')}</strong> <span class="fin-muted">· Asiento #${escapeHtml(row.id || '—')}</span></div>
+        <div class="fin-report-balance">Saldo ${escapeHtml(finFormatCordobas(row.saldo))}</div>
+      </div>
+      <div class="fin-report-title">${escapeHtml(row.desc || 'Sin descripción')}</div>
+      <div class="fin-report-grid">
+        <div><span>Debe</span><strong>${escapeHtml(finFormatCordobas(row.debe))}</strong></div>
+        <div><span>Haber</span><strong>${escapeHtml(finFormatCordobas(row.haber))}</strong></div>
+        <div><span>Contraparte</span><strong>${escapeHtml(row.contraparte || '—')}</strong></div>
+        <div><span>Referencia</span><strong>${escapeHtml(row.ref || '—')}</strong></div>
+      </div>
+      <div class="fin-badge-strip">${finReportLineOriginalDisplay(row.line, row.entry, data).split(' · ').filter(Boolean).map(x => makePill(x, x.includes('T/C') ? 'muted' : (x.includes('US$') ? 'gold' : 'cash'))).join('')}</div>
+    </article>`).join('') + finReportLimitNotice(limited.hidden, limited.limit);
+}
+
+function finBuildEstadoCuentaReport(data) {
+  const faId = String(document.getElementById('rep-estado-fa')?.value || '').trim();
+  const faMap = finReportBuildFinancialAccountMap(data);
+  const fa = faMap.get(faId) || null;
+  const accountCode = finReportFinancialAccountCode(fa);
+  const currency = finReportFinancialAccountCurrency(fa);
+  const { desde, hasta } = finReportGetFilterRange('rep-estado');
+  const q = String(document.getElementById('rep-estado-buscar')?.value || '').trim();
+  const allEntries = finReportSafeEntries(data).slice().sort((a, b) => `${finReportEntryDate(a)}|${finReportEntryId(a) || 0}`.localeCompare(`${finReportEntryDate(b)}|${finReportEntryId(b) || 0}`));
+  let saldoInicialBase = 0;
+  let saldoInicialPrincipal = 0;
+  let principalUnknown = 0;
+  const rows = [];
+  let legacyCount = 0;
+
+  for (const entry of allEntries) {
+    const date = finReportEntryDate(entry);
+    for (const line of finReportEntryLines(data, entry)) {
+      if (!accountCode || finNormalizeAccountCode(line && line.accountCode) !== accountCode) continue;
+      const debe = finReportLineAmount(line.debe);
+      const haber = finReportLineAmount(line.haber);
+      const entradaBase = debe;
+      const salidaBase = haber;
+      const deltaBase = finRoundCurrency2(entradaBase - salidaBase);
+      const meta = finReportLineCurrencyMeta(line, entry, data);
+      const principalAmount = currency === 'USD'
+        ? (meta.originalCurrency === 'USD' && meta.originalAmount != null ? meta.originalAmount : null)
+        : Math.max(entradaBase, salidaBase);
+      const entradaPrincipal = principalAmount != null ? (debe > 0 ? principalAmount : 0) : null;
+      const salidaPrincipal = principalAmount != null ? (haber > 0 ? principalAmount : 0) : null;
+      const deltaPrincipal = principalAmount != null ? finRoundCurrency2((entradaPrincipal || 0) - (salidaPrincipal || 0)) : null;
+      if (desde && date && date < desde) {
+        saldoInicialBase = finRoundCurrency2(saldoInicialBase + deltaBase);
+        if (deltaPrincipal != null) saldoInicialPrincipal = finRoundCurrency2(saldoInicialPrincipal + deltaPrincipal);
+        else principalUnknown++;
+        continue;
+      }
+      if (!finReportDateInRange(date, desde, hasta)) continue;
+      const desc = finReportEntryDescription(entry);
+      const ref = finReportEntryReference(entry);
+      const source = finReportSourceLabel(entry);
+      if (meta.isLegacy) legacyCount++;
+      const text = `${date} ${desc} ${ref} ${source} ${finReportLineOriginalDisplay(line, entry, data)}`;
+      if (!finReportTextMatch(text, q)) continue;
+      rows.push({ entry, line, date, id: finReportEntryId(entry), desc, ref, source, entradaBase, salidaBase, deltaBase, entradaPrincipal, salidaPrincipal, deltaPrincipal, meta });
+    }
+  }
+  let saldoBase = saldoInicialBase;
+  let saldoPrincipal = saldoInicialPrincipal;
+  for (const row of rows) {
+    saldoBase = finRoundCurrency2(saldoBase + row.deltaBase);
+    row.saldoBase = saldoBase;
+    if (row.deltaPrincipal != null) saldoPrincipal = finRoundCurrency2(saldoPrincipal + row.deltaPrincipal);
+    else principalUnknown++;
+    row.saldoPrincipal = row.deltaPrincipal != null ? saldoPrincipal : null;
+  }
+  return { fa, faId, accountCode, currency, desde, hasta, rows, saldoInicialBase, saldoBase, saldoInicialPrincipal, saldoPrincipal, principalUnknown, legacyCount };
+}
+
+function renderEstadoCuentaReport(data) {
+  const r = finBuildEstadoCuentaReport(data);
+  const alerts = [
+    { text: 'No se reclasifican históricos ni se vinculan bancos por nombre.' },
+    { text: 'Los movimientos en US$ se muestran con snapshots; no usan el T/C actual.' }
+  ];
+  if (r.accountCode === '1200') alerts.push({ text: 'La cuenta 1200 Banco se conserva como legacy para históricos.' });
+  if (r.legacyCount || r.principalUnknown) alerts.push({ text: 'Algunos movimientos históricos no tienen metadata de moneda; se muestran como C$ legacy o sin saldo original inventado.', kind: 'warn' });
+  const alertHost = document.getElementById('rep-estado-alerts');
+  if (alertHost) alertHost.innerHTML = finReportAlertHtml(alerts);
+  const summary = document.getElementById('rep-estado-summary');
+  if (summary) summary.innerHTML = `
+    <article><span>Cuenta financiera</span><strong>${escapeHtml(r.fa ? finReportFinancialAccountName(r.fa) : '—')}</strong></article>
+    <article><span>Cuenta contable</span><strong>${escapeHtml(r.accountCode || '—')}</strong></article>
+    <article><span>Saldo ${escapeHtml(r.currency)}</span><strong>${r.currency === 'USD' ? escapeHtml(finFormatDollars(r.saldoPrincipal)) : escapeHtml(finFormatCordobas(r.saldoBase))}</strong></article>
+    <article><span>Equivalente C$</span><strong>${escapeHtml(finFormatCordobas(r.saldoBase))}</strong></article>`;
+  const host = document.getElementById('rep-estado-list');
+  if (!host) return;
+  if (!r.fa || !r.accountCode) return finReportRenderEmpty('rep-estado-list', 'Seleccione una cuenta financiera válida.');
+  if (!r.rows.length) return finReportRenderEmpty('rep-estado-list');
+  const limited = finReportVisibleRows(r.rows, FIN_REPORT_UI_LIMIT);
+  host.innerHTML = limited.visible.map(row => {
+    const entP = row.entradaPrincipal != null ? (r.currency === 'USD' ? finFormatDollars(row.entradaPrincipal) : finFormatCordobas(row.entradaPrincipal)) : '—';
+    const salP = row.salidaPrincipal != null ? (r.currency === 'USD' ? finFormatDollars(row.salidaPrincipal) : finFormatCordobas(row.salidaPrincipal)) : '—';
+    const saldoP = row.saldoPrincipal != null ? (r.currency === 'USD' ? finFormatDollars(row.saldoPrincipal) : finFormatCordobas(row.saldoPrincipal)) : '—';
+    return `
+    <article class="fin-report-card">
+      <div class="fin-report-card-head">
+        <div><strong>${escapeHtml(row.date || 'Sin fecha')}</strong> <span class="fin-muted">· ${escapeHtml(row.source)}</span></div>
+        <div class="fin-report-balance">Saldo ${escapeHtml(saldoP)}</div>
+      </div>
+      <div class="fin-report-title">${escapeHtml(row.desc || 'Sin descripción')}</div>
+      <div class="fin-report-grid">
+        <div><span>Entrada</span><strong>${escapeHtml(entP)}</strong></div>
+        <div><span>Salida</span><strong>${escapeHtml(salP)}</strong></div>
+        <div><span>Eq. C$ entrada/salida</span><strong>${escapeHtml(finFormatCordobas(row.entradaBase))} / ${escapeHtml(finFormatCordobas(row.salidaBase))}</strong></div>
+        <div><span>Referencia</span><strong>${escapeHtml(row.ref || '—')}</strong></div>
+      </div>
+      <div class="fin-badge-strip">${finReportLineOriginalDisplay(row.line, row.entry, data).split(' · ').filter(Boolean).map(x => makePill(x, x.includes('T/C') ? 'muted' : (x.includes('US$') ? 'gold' : 'cash'))).join('')}</div>
+    </article>`;
+  }).join('') + finReportLimitNotice(limited.hidden, limited.limit);
+}
+
+function finBuildBalanzaReport(data) {
+  const { desde, hasta } = finReportGetFilterRange('rep-balanza');
+  const q = String(document.getElementById('rep-balanza-buscar')?.value || '').trim();
+  const groups = new Map();
+  let missingAccountLines = 0;
+  for (const entry of finReportSafeEntries(data)) {
+    const date = finReportEntryDate(entry);
+    if (!finReportDateInRange(date, desde, hasta)) continue;
+    for (const line of finReportEntryLines(data, entry)) {
+      const code = finNormalizeAccountCode(line && line.accountCode);
+      if (!code) { missingAccountLines++; continue; }
+      const name = finReportAccountName(data, code, line);
+      const text = `${code} ${name}`;
+      if (!finReportTextMatch(text, q)) continue;
+      if (!groups.has(code)) groups.set(code, { code, name, debe: 0, haber: 0 });
+      const g = groups.get(code);
+      g.debe = finRoundCurrency2(g.debe + finReportLineAmount(line.debe));
+      g.haber = finRoundCurrency2(g.haber + finReportLineAmount(line.haber));
+    }
+  }
+  const rows = Array.from(groups.values()).sort((a, b) => a.code.localeCompare(b.code, 'es'));
+  let totalDebe = 0;
+  let totalHaber = 0;
+  for (const r of rows) {
+    totalDebe = finRoundCurrency2(totalDebe + r.debe);
+    totalHaber = finRoundCurrency2(totalHaber + r.haber);
+    const saldo = finRoundCurrency2(r.debe - r.haber);
+    r.saldoDeudor = saldo > 0 ? saldo : 0;
+    r.saldoAcreedor = saldo < 0 ? Math.abs(saldo) : 0;
+  }
+  return { desde, hasta, rows, totalDebe, totalHaber, diff: finRoundCurrency2(totalDebe - totalHaber), missingAccountLines };
+}
+
+function renderBalanzaReport(data) {
+  const r = finBuildBalanzaReport(data);
+  const alerts = [{ text: 'La balanza está expresada en C$ / NIO y usa journalLines como fuente principal.' }];
+  if (Math.abs(r.diff) > 0.005) alerts.push({ text: `Advertencia: total DEBE y HABER no cuadran. Diferencia ${finFormatCordobas(r.diff)}. No se modificó ningún dato.`, kind: 'warn' });
+  if (r.missingAccountLines) alerts.push({ text: `Hay ${r.missingAccountLines} líneas sin cuenta contable.`, kind: 'warn' });
+  const alertHost = document.getElementById('rep-balanza-alerts');
+  if (alertHost) alertHost.innerHTML = finReportAlertHtml(alerts);
+  const summary = document.getElementById('rep-balanza-summary');
+  if (summary) summary.innerHTML = `
+    <article><span>Total DEBE</span><strong>${escapeHtml(finFormatCordobas(r.totalDebe))}</strong></article>
+    <article><span>Total HABER</span><strong>${escapeHtml(finFormatCordobas(r.totalHaber))}</strong></article>
+    <article><span>Diferencia</span><strong>${escapeHtml(finFormatCordobas(r.diff))}</strong></article>
+    <article><span>Cuentas</span><strong>${escapeHtml(String(r.rows.length))}</strong></article>`;
+  const host = document.getElementById('rep-balanza-list');
+  if (!host) return;
+  if (!r.rows.length) return finReportRenderEmpty('rep-balanza-list');
+  const limited = finReportVisibleRows(r.rows, FIN_REPORT_BALANZA_UI_LIMIT);
+  host.innerHTML = limited.visible.map(row => `
+    <article class="fin-report-card fin-report-card--compact">
+      <div class="fin-report-card-head"><div><strong>${escapeHtml(row.code)}</strong> · ${escapeHtml(row.name)}</div></div>
+      <div class="fin-report-grid fin-report-grid--four">
+        <div><span>Debe</span><strong>${escapeHtml(finFormatCordobas(row.debe))}</strong></div>
+        <div><span>Haber</span><strong>${escapeHtml(finFormatCordobas(row.haber))}</strong></div>
+        <div><span>Saldo deudor</span><strong>${escapeHtml(finFormatCordobas(row.saldoDeudor))}</strong></div>
+        <div><span>Saldo acreedor</span><strong>${escapeHtml(finFormatCordobas(row.saldoAcreedor))}</strong></div>
+      </div>
+    </article>`).join('') + finReportLimitNotice(limited.hidden, limited.limit, 'cuentas');
+}
+
+function finBuildLibroReport(data) {
+  const { desde, hasta } = finReportGetFilterRange('rep-libro');
+  const q = String(document.getElementById('rep-libro-buscar')?.value || '').trim();
+  const origen = String(document.getElementById('rep-libro-origen')?.value || 'todos');
+  let unbalanced = 0;
+  let missingLines = 0;
+  const rows = [];
+  for (const entry of finReportSafeEntries(data).slice().sort((a, b) => `${finReportEntryDate(a)}|${finReportEntryId(a) || 0}`.localeCompare(`${finReportEntryDate(b)}|${finReportEntryId(b) || 0}`))) {
+    const date = finReportEntryDate(entry);
+    if (!finReportDateInRange(date, desde, hasta)) continue;
+    const key = finReportSourceKey(entry);
+    if (origen !== 'todos' && key !== origen) continue;
+    const lines = finReportEntryLines(data, entry);
+    if (!lines.length) missingLines++;
+    const desc = finReportEntryDescription(entry);
+    const ref = finReportEntryReference(entry);
+    const source = finReportSourceLabel(entry);
+    const textLines = lines.map(l => `${l.accountCode} ${finReportAccountName(data, l.accountCode, l)} ${finReportLineOriginalDisplay(l, entry, data)}`).join(' ');
+    const text = `${date} ${finReportEntryId(entry) || ''} ${desc} ${ref} ${source} ${textLines}`;
+    if (!finReportTextMatch(text, q)) continue;
+    const totalDebe = finRoundCurrency2(lines.reduce((s, l) => s + finReportLineAmount(l.debe), 0));
+    const totalHaber = finRoundCurrency2(lines.reduce((s, l) => s + finReportLineAmount(l.haber), 0));
+    const diff = finRoundCurrency2(totalDebe - totalHaber);
+    if (Math.abs(diff) > 0.005) unbalanced++;
+    rows.push({ entry, id: finReportEntryId(entry), date, desc, ref, source, lines, totalDebe, totalHaber, diff });
+  }
+  return { desde, hasta, rows, unbalanced, missingLines };
+}
+
+function renderLibroReport(data) {
+  const r = finBuildLibroReport(data);
+  const alerts = [{ text: 'Los asientos se muestran agrupados; los históricos sin metadata se conservan sin inventar datos.' }];
+  if (r.unbalanced) alerts.push({ text: `Hay ${r.unbalanced} asientos descuadrados en el filtro. No se corrigieron automáticamente.`, kind: 'warn' });
+  if (r.missingLines) alerts.push({ text: `Hay ${r.missingLines} asientos sin líneas contables visibles.`, kind: 'warn' });
+  const alertHost = document.getElementById('rep-libro-alerts');
+  if (alertHost) alertHost.innerHTML = finReportAlertHtml(alerts);
+  const summary = document.getElementById('rep-libro-summary');
+  if (summary) summary.innerHTML = `
+    <article><span>Asientos</span><strong>${escapeHtml(String(r.rows.length))}</strong></article>
+    <article><span>Descuadrados</span><strong>${escapeHtml(String(r.unbalanced))}</strong></article>
+    <article><span>Sin líneas</span><strong>${escapeHtml(String(r.missingLines))}</strong></article>`;
+  const host = document.getElementById('rep-libro-list');
+  if (!host) return;
+  if (!r.rows.length) return finReportRenderEmpty('rep-libro-list');
+  const limited = finReportVisibleRows(r.rows, FIN_REPORT_JOURNAL_UI_LIMIT);
+  host.innerHTML = limited.visible.map(row => `
+    <article class="fin-report-card fin-report-journal-card">
+      <div class="fin-report-card-head">
+        <div><strong>${escapeHtml(row.date || 'Sin fecha')}</strong> <span class="fin-muted">· Asiento #${escapeHtml(row.id || '—')} · ${escapeHtml(row.source)}</span></div>
+        <div class="${Math.abs(row.diff) > 0.005 ? 'fin-report-balance is-warn' : 'fin-report-balance'}">${Math.abs(row.diff) > 0.005 ? 'Descuadrado' : 'Cuadrado'}</div>
+      </div>
+      <div class="fin-report-title">${escapeHtml(row.desc || 'Sin descripción')}</div>
+      <div class="fin-report-ref">Referencia: ${escapeHtml(row.ref || '—')}</div>
+      <div class="fin-report-lines">
+        ${row.lines.map(line => `
+          <div class="fin-report-line">
+            <div><strong>${escapeHtml(finNormalizeAccountCode(line.accountCode))}</strong> · ${escapeHtml(finReportAccountName(data, line.accountCode, line))}</div>
+            <div class="num">DEBE ${escapeHtml(finFormatCordobas(finReportLineAmount(line.debe)))} · HABER ${escapeHtml(finFormatCordobas(finReportLineAmount(line.haber)))}</div>
+            <div class="fin-report-line-meta">${escapeHtml(finReportLineOriginalDisplay(line, row.entry, data) || 'Sin metadata multimoneda')}</div>
+          </div>`).join('')}
+      </div>
+    </article>`).join('') + finReportLimitNotice(limited.hidden, limited.limit, 'asientos');
+}
+
+function finReportFinancialAccountCodesSet(data) {
+  const set = new Set();
+  for (const row of finReportFinancialAccountsSorted(data)) {
+    const code = finReportFinancialAccountCode(row);
+    if (code) set.add(code);
+  }
+  for (const acc of finReportAccountsSorted(data)) {
+    if (finIsFinancialCashOrBankAccount(acc)) set.add(finNormalizeAccountCode(acc.code));
+  }
+  return set;
+}
+
+function finBuildResumenMonedaReport(data) {
+  const { desde, hasta } = finReportGetFilterRange('rep-moneda');
+  const finCodes = finReportFinancialAccountCodesSet(data);
+  const totals = {
+    NIO: { entradas: 0, salidas: 0, movimientos: 0, equivalenteEntradas: 0, equivalenteSalidas: 0 },
+    USD: { entradas: 0, salidas: 0, movimientos: 0, equivalenteEntradas: 0, equivalenteSalidas: 0 }
+  };
+  let legacyCount = 0;
+  let missingUsdRate = 0;
+  const rows = [];
+  for (const entry of finReportSafeEntries(data)) {
+    const date = finReportEntryDate(entry);
+    if (!finReportDateInRange(date, desde, hasta)) continue;
+    for (const line of finReportEntryLines(data, entry)) {
+      const code = finNormalizeAccountCode(line && line.accountCode);
+      if (!finCodes.has(code)) continue;
+      const meta = finReportLineCurrencyMeta(line, entry, data);
+      const cur = meta.originalCurrency === 'USD' ? 'USD' : 'NIO';
+      const debe = finReportLineAmount(line.debe);
+      const haber = finReportLineAmount(line.haber);
+      const baseAmt = finRoundCurrency2(Math.max(debe, haber));
+      const origAmt = meta.originalAmount != null ? meta.originalAmount : (cur === 'USD' ? 0 : baseAmt);
+      if (debe > 0) {
+        totals[cur].entradas = finRoundCurrency2(totals[cur].entradas + origAmt);
+        totals[cur].equivalenteEntradas = finRoundCurrency2(totals[cur].equivalenteEntradas + baseAmt);
+      }
+      if (haber > 0) {
+        totals[cur].salidas = finRoundCurrency2(totals[cur].salidas + origAmt);
+        totals[cur].equivalenteSalidas = finRoundCurrency2(totals[cur].equivalenteSalidas + baseAmt);
+      }
+      totals[cur].movimientos += 1;
+      if (meta.isLegacy) legacyCount++;
+      if (cur === 'USD' && !meta.exchangeRateUsed) missingUsdRate++;
+      rows.push({ date, code, accountName: finReportAccountName(data, code, line), desc: finReportEntryDescription(entry), cur, debe, haber, baseAmt, origAmt, meta });
+    }
+  }
+  const totalGeneralEq = finRoundCurrency2(totals.NIO.equivalenteEntradas - totals.NIO.equivalenteSalidas + totals.USD.equivalenteEntradas - totals.USD.equivalenteSalidas);
+  return { desde, hasta, totals, rows, legacyCount, missingUsdRate, totalGeneralEq };
+}
+
+function renderResumenMonedaReport(data) {
+  const r = finBuildResumenMonedaReport(data);
+  const alerts = [{ text: 'Los movimientos USD usan snapshots guardados; no se recalculan con el T/C actual.' }];
+  if (r.legacyCount) alerts.push({ text: 'Algunos movimientos históricos no tienen metadata de moneda; se muestran como C$ legacy.', kind: 'warn' });
+  if (r.missingUsdRate) alerts.push({ text: 'Existen movimientos USD sin T/C snapshot. Se muestran sin recalcular.', kind: 'warn' });
+  const alertHost = document.getElementById('rep-moneda-alerts');
+  if (alertHost) alertHost.innerHTML = finReportAlertHtml(alerts);
+  const t = r.totals;
+  const summary = document.getElementById('rep-moneda-summary');
+  if (summary) summary.innerHTML = `
+    <article><span>Total entradas C$</span><strong>${escapeHtml(finFormatCordobas(t.NIO.entradas))}</strong></article>
+    <article><span>Total salidas C$</span><strong>${escapeHtml(finFormatCordobas(t.NIO.salidas))}</strong></article>
+    <article><span>Total entradas US$</span><strong>${escapeHtml(finFormatDollars(t.USD.entradas))}</strong><small>Eq. ${escapeHtml(finFormatCordobas(t.USD.equivalenteEntradas))}</small></article>
+    <article><span>Total salidas US$</span><strong>${escapeHtml(finFormatDollars(t.USD.salidas))}</strong><small>Eq. ${escapeHtml(finFormatCordobas(t.USD.equivalenteSalidas))}</small></article>
+    <article><span>Movimientos C$</span><strong>${escapeHtml(String(t.NIO.movimientos))}</strong></article>
+    <article><span>Movimientos US$</span><strong>${escapeHtml(String(t.USD.movimientos))}</strong></article>
+    <article><span>Total general equivalente</span><strong>${escapeHtml(finFormatCordobas(r.totalGeneralEq))}</strong></article>`;
+  const host = document.getElementById('rep-moneda-list');
+  if (!host) return;
+  if (!r.rows.length) return finReportRenderEmpty('rep-moneda-list');
+  const byCur = ['NIO', 'USD'].map(cur => {
+    const rows = r.rows.filter(x => x.cur === cur);
+    if (!rows.length) return '';
+    const limited = finReportVisibleRows(rows, FIN_REPORT_JOURNAL_UI_LIMIT);
+    return `<article class="fin-report-card">
+      <div class="fin-report-card-head"><div><strong>${cur === 'USD' ? 'US$ / USD' : 'C$ / NIO'}</strong></div><div>${rows.length} movimientos</div></div>
+      <div class="fin-report-lines">
+        ${limited.visible.map(row => `<div class="fin-report-line"><div><strong>${escapeHtml(row.date || 'Sin fecha')}</strong> · ${escapeHtml(row.code)} ${escapeHtml(row.accountName)}</div><div>${escapeHtml(row.desc || 'Sin descripción')}</div><div class="fin-report-line-meta">${escapeHtml(finFormatOriginalAmount(row.origAmt, row.cur))} · Eq. ${escapeHtml(finFormatCordobas(row.baseAmt))}${row.meta.exchangeRateUsed ? ` · T/C ${escapeHtml(Number(row.meta.exchangeRateUsed).toFixed(2))}` : ''}</div></div>`).join('')}
+        ${finReportLimitNotice(limited.hidden, limited.limit)}
+      </div>
+    </article>`;
+  }).join('');
+  host.innerHTML = byCur;
+}
+
+function renderAccountingReports(data) {
+  try {
+    finReportsFillSelectors(data);
+    renderMayorReport(data);
+    renderEstadoCuentaReport(data);
+    renderBalanzaReport(data);
+    renderLibroReport(data);
+    renderResumenMonedaReport(data);
+  } catch (err) {
+    console.error('Error renderizando Reportes Contables', err);
+    ['rep-mayor-list', 'rep-estado-list', 'rep-balanza-list', 'rep-libro-list', 'rep-moneda-list'].forEach(id => finReportRenderEmpty(id, 'No se pudo renderizar el reporte. Revisa consola.'));
+  }
+}
+
+function finExportReportWorkbook(sheetName, rows, filename, title) {
+  if (typeof XLSX === 'undefined') {
+    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    return;
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  finAttachExportCurrencyMetadata(wb, title);
+  XLSX.writeFile(wb, filename);
+}
+
+async function exportMayorReportExcel() {
+  if (!finCachedData) await refreshAllFin();
+  const r = finBuildMayorReport(finCachedData);
+  if (!r.rows.length) return alert('No hay datos para exportar el Mayor por cuenta.');
+  const rows = [['Mayor por cuenta'], ['Cuenta', `${r.accountCode} ${r.accountName}`], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], [], ['Fecha', 'Asiento', 'Descripción', 'Referencia', 'Contraparte', 'Debe C$', 'Haber C$', 'Saldo C$', 'Moneda original', 'Monto original', 'T/C usado', 'Equivalente C$']];
+  for (const x of r.rows) rows.push([x.date, x.id || '', x.desc, x.ref, x.contraparte, x.debe, x.haber, x.saldo, x.meta.originalCurrency, x.meta.originalAmount ?? '', x.meta.exchangeRateUsed ?? '', x.meta.baseAmountNio ?? '']);
+  finExportReportWorkbook('Mayor', rows, `finanzas_mayor_${r.accountCode || 'cuenta'}_${todayStr()}.xlsx`, 'Mayor por cuenta');
+  showToast('Mayor exportado a Excel');
+}
+
+async function exportEstadoCuentaReportExcel() {
+  if (!finCachedData) await refreshAllFin();
+  const r = finBuildEstadoCuentaReport(finCachedData);
+  if (!r.rows.length) return alert('No hay datos para exportar el Estado de cuenta.');
+  const rows = [['Estado de cuenta financiera'], ['Cuenta financiera', r.fa ? finReportFinancialAccountName(r.fa) : ''], ['Cuenta contable', r.accountCode || ''], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], [], ['Fecha', 'Asiento', 'Operación', 'Descripción', 'Referencia', 'Entrada original', 'Salida original', 'Saldo original', 'Entrada C$', 'Salida C$', 'Saldo C$', 'Moneda', 'Monto original', 'T/C usado']];
+  for (const x of r.rows) rows.push([x.date, x.id || '', x.source, x.desc, x.ref, x.entradaPrincipal ?? '', x.salidaPrincipal ?? '', x.saldoPrincipal ?? '', x.entradaBase, x.salidaBase, x.saldoBase, x.meta.originalCurrency, x.meta.originalAmount ?? '', x.meta.exchangeRateUsed ?? '']);
+  finExportReportWorkbook('EstadoCuenta', rows, `finanzas_estado_cuenta_${r.accountCode || 'cuenta'}_${todayStr()}.xlsx`, 'Estado de cuenta financiera');
+  showToast('Estado de cuenta exportado a Excel');
+}
+
+async function exportBalanzaReportExcel() {
+  if (!finCachedData) await refreshAllFin();
+  const r = finBuildBalanzaReport(finCachedData);
+  if (!r.rows.length) return alert('No hay datos para exportar la Balanza.');
+  const rows = [['Balanza de comprobación'], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], ['Total DEBE', r.totalDebe], ['Total HABER', r.totalHaber], ['Diferencia', r.diff], [], ['Código', 'Cuenta', 'Total DEBE C$', 'Total HABER C$', 'Saldo deudor C$', 'Saldo acreedor C$']];
+  for (const x of r.rows) rows.push([x.code, x.name, x.debe, x.haber, x.saldoDeudor, x.saldoAcreedor]);
+  finExportReportWorkbook('Balanza', rows, `finanzas_balanza_${todayStr()}.xlsx`, 'Balanza de comprobación');
+  showToast('Balanza exportada a Excel');
+}
+
+async function exportLibroReportExcel() {
+  if (!finCachedData) await refreshAllFin();
+  const r = finBuildLibroReport(finCachedData);
+  if (!r.rows.length) return alert('No hay datos para exportar el Libro Diario.');
+  const rows = [['Libro Diario mejorado'], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], [], ['Fecha', 'Asiento', 'Origen', 'Descripción', 'Referencia', 'Cuenta', 'Nombre cuenta', 'Debe C$', 'Haber C$', 'Moneda original', 'Monto original', 'T/C usado', 'Cuenta financiera']];
+  for (const e of r.rows) {
+    for (const l of e.lines) {
+      const meta = finReportLineCurrencyMeta(l, e.entry, finCachedData);
+      rows.push([e.date, e.id || '', e.source, e.desc, e.ref, finNormalizeAccountCode(l.accountCode), finReportAccountName(finCachedData, l.accountCode, l), finReportLineAmount(l.debe), finReportLineAmount(l.haber), meta.originalCurrency, meta.originalAmount ?? '', meta.exchangeRateUsed ?? '', meta.financialAccountName || '']);
+    }
+  }
+  finExportReportWorkbook('LibroDiario', rows, `finanzas_libro_diario_${todayStr()}.xlsx`, 'Libro Diario mejorado');
+  showToast('Libro Diario exportado a Excel');
+}
+
+async function exportResumenMonedaReportExcel() {
+  if (!finCachedData) await refreshAllFin();
+  const r = finBuildResumenMonedaReport(finCachedData);
+  if (!r.rows.length) return alert('No hay datos para exportar el Resumen por moneda.');
+  const rows = [['Resumen por moneda'], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], [], ['Moneda', 'Entradas originales', 'Salidas originales', 'Eq. entradas C$', 'Eq. salidas C$', 'Movimientos'], ['NIO', r.totals.NIO.entradas, r.totals.NIO.salidas, r.totals.NIO.equivalenteEntradas, r.totals.NIO.equivalenteSalidas, r.totals.NIO.movimientos], ['USD', r.totals.USD.entradas, r.totals.USD.salidas, r.totals.USD.equivalenteEntradas, r.totals.USD.equivalenteSalidas, r.totals.USD.movimientos], ['Total general equivalente C$', r.totalGeneralEq], [], ['Fecha', 'Cuenta', 'Nombre cuenta', 'Descripción', 'Moneda', 'Monto original', 'Equivalente C$', 'T/C usado']];
+  for (const x of r.rows) rows.push([x.date, x.code, x.accountName, x.desc, x.cur, x.origAmt, x.baseAmt, x.meta.exchangeRateUsed ?? '']);
+  finExportReportWorkbook('ResumenMoneda', rows, `finanzas_resumen_moneda_${todayStr()}.xlsx`, 'Resumen por moneda');
+  showToast('Resumen por moneda exportado a Excel');
+}
+
+function setupAccountingReportsUI() {
+  const render = () => { if (finCachedData) renderAccountingReports(finCachedData); };
+  [
+    'rep-mayor-cuenta', 'rep-mayor-desde', 'rep-mayor-hasta', 'rep-estado-fa', 'rep-estado-desde', 'rep-estado-hasta',
+    'rep-balanza-desde', 'rep-balanza-hasta', 'rep-libro-desde', 'rep-libro-hasta', 'rep-libro-origen', 'rep-moneda-desde', 'rep-moneda-hasta'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', render);
+  });
+  ['rep-mayor-buscar', 'rep-estado-buscar', 'rep-balanza-buscar', 'rep-libro-buscar'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => {
+      clearTimeout(el._a33ReportTimer);
+      el._a33ReportTimer = setTimeout(render, 180);
+    });
+  });
+  const bind = (id, fn) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.addEventListener('click', (ev) => { ev.preventDefault(); fn().catch(err => { console.error('Error exportando reporte contable', err); alert('No se pudo exportar el reporte a Excel.'); }); });
+  };
+  bind('btn-export-mayor', exportMayorReportExcel);
+  bind('btn-export-estado', exportEstadoCuentaReportExcel);
+  bind('btn-export-balanza', exportBalanzaReportExcel);
+  bind('btn-export-libro', exportLibroReportExcel);
+  bind('btn-export-moneda', exportResumenMonedaReportExcel);
 }
 
 /* ---------- Render: Estado de Resultados ---------- */
@@ -4239,9 +6585,9 @@ async function guardarMovimientoManual() {
 
   const fecha = $('#mov-fecha')?.value || todayStr();
   const tipo = $('#mov-tipo')?.value || 'ingreso';
-  const medio = $('#mov-medio')?.value || 'caja';
-  const montoRaw = $('#mov-monto')?.value || '0';
-  const cuentaCode = $('#mov-cuenta')?.value || '';
+  const montoRaw = $('#mov-monto')?.value || '';
+  const cuentaCode = finNormalizeAccountCode($('#mov-cuenta')?.value || '');
+  const financialAccount = finGetSelectedFinancialAccount(finCachedData);
 
   const eventoSel = ($('#mov-evento-sel')?.value || 'CENTRAL').toString();
   let eventScope = 'CENTRAL';
@@ -4253,47 +6599,87 @@ async function guardarMovimientoManual() {
     if (id) {
       eventScope = 'POS';
       posEventId = id;
-      // Snapshot: nombre actual (si existe). Sirve si luego renombraron o si POS no está accesible.
       posEventNameSnapshot = getPosEventNameLiveById(id) || (Array.isArray(posActiveEvents) ? (posActiveEvents.find(e => e.id === id)?.name || null) : null);
     }
   }
 
   const reference = ($('#mov-evento')?.value || '').trim();
   const descripcion = ($('#mov-descripcion')?.value || '').trim();
-
-  const monto = parseFloat(montoRaw.replace(',', '.'));
+  const originalAmount = finParseCurrencyAmount(montoRaw);
 
   if (!fecha) {
     alert('Ingresa la fecha del movimiento.');
     return;
   }
-  if (!cuentaCode) {
-    alert('Selecciona la cuenta principal.');
+  if (tipo === 'transferencia') {
+    alert('Use la sección Transferencias Internas para registrar movimientos entre cuentas financieras.');
     return;
   }
-  if (!(monto > 0)) {
-    alert('El monto debe ser mayor que cero.');
+  if (!financialAccount) {
+    alert('Configure al menos una cuenta financiera activa antes de registrar movimientos.');
+    return;
+  }
+  if (!cuentaCode) {
+    alert('Selecciona la cuenta contable contraparte.');
+    return;
+  }
+  if (!(Number.isFinite(originalAmount) && originalAmount > 0)) {
+    alert('El monto original debe ser mayor que cero.');
     return;
   }
 
-  const cajaCode = medio === 'banco' ? '1200' : '1100';
+  const financialCode = finNormalizeAccountCode(financialAccount.cuentaContableCodigo || '');
+  const financialAccountRecord = financialCode && finCachedData.accountsMap ? finCachedData.accountsMap.get(financialCode) : null;
+  const counterpartAccount = finCachedData.accountsMap ? finCachedData.accountsMap.get(cuentaCode) : null;
+  if (!financialCode || !financialAccountRecord) {
+    alert('La cuenta financiera seleccionada no tiene una cuenta contable válida asociada. Revise Cuentas Financieras.');
+    return;
+  }
+  if (!counterpartAccount) {
+    alert('La cuenta contable contraparte no existe.');
+    return;
+  }
+  if (cuentaCode === financialCode) {
+    alert('La cuenta contable contraparte no puede ser la misma cuenta financiera.');
+    return;
+  }
+
+  const financialCurrency = finNormalizeCurrencyCode(financialAccount.moneda || financialAccount.financialAccountCurrency || 'NIO');
+  const snapshot = finBuildExchangeRateSnapshot({ currency: financialCurrency, amount: originalAmount });
+  if (!snapshot.ok || !Number.isFinite(Number(snapshot.equivalenteNIO)) || Number(snapshot.equivalenteNIO) <= 0) {
+    alert(snapshot.warningMessage || FIN_CURRENCY_WARNING_MESSAGE);
+    return;
+  }
+
+  const baseAmountNio = finRoundCurrency2(snapshot.equivalenteNIO);
+  if (!Number.isFinite(baseAmountNio) || baseAmountNio <= 0) {
+    alert('El equivalente contable en C$ es inválido.');
+    return;
+  }
+
   let debeCode;
   let haberCode;
 
   if (tipo === 'ingreso') {
-    // DEBE: Caja/Banco · HABER: cuenta ingreso
-    debeCode = cajaCode;
+    debeCode = financialCode;
     haberCode = cuentaCode;
   } else if (tipo === 'egreso') {
-    // DEBE: cuenta gasto/costo · HABER: Caja/Banco
     debeCode = cuentaCode;
-    haberCode = cajaCode;
+    haberCode = financialCode;
   } else {
-    // Ajuste simple: cuenta seleccionada contra Caja/Banco (asumimos aumento en la cuenta)
     debeCode = cuentaCode;
-    haberCode = cajaCode;
+    haberCode = financialCode;
   }
 
+  const totalDebe = finRoundCurrency2(baseAmountNio);
+  const totalHaber = finRoundCurrency2(baseAmountNio);
+  if (Math.abs(Number(totalDebe) - Number(totalHaber)) > 0.005) {
+    alert('El asiento no cuadra. No se guardó el movimiento.');
+    return;
+  }
+
+  const movementSnapshot = finBuildManualMovementSnapshot(financialAccount, originalAmount, baseAmountNio, snapshot);
+  const paymentMethod = String(financialAccount.type || financialAccount.tipo || '').toLowerCase() === 'banco' ? 'bank' : 'cash';
   const entry = {
     fecha,
     descripcion: descripcion || `Movimiento ${tipo}`,
@@ -4304,31 +6690,42 @@ async function guardarMovimientoManual() {
     posEventNameSnapshot,
     origen: 'Interno',
     origenId: null,
-    totalDebe: monto,
-    totalHaber: monto
+    source: 'manual_financial_account',
+    paymentMethod,
+    medio: paymentMethod === 'bank' ? 'banco' : 'caja',
+    totalDebe,
+    totalHaber,
+    ...movementSnapshot
   };
 
+  const commonLineMeta = {
+    originalCurrency: movementSnapshot.originalCurrency,
+    originalAmount: movementSnapshot.originalAmount,
+    baseCurrency: 'NIO',
+    baseAmountNio: movementSnapshot.baseAmountNio,
+    exchangeRateUsed: movementSnapshot.exchangeRateUsed,
+    financialAccountId: movementSnapshot.financialAccountId
+  };
+  const lines = [
+    { accountCode: String(debeCode), debe: totalDebe, haber: 0, accountNameSnapshot: getAccountDisplayNameByCode(debeCode, finCachedData.accountsMap), ...commonLineMeta },
+    { accountCode: String(haberCode), debe: 0, haber: totalHaber, accountNameSnapshot: getAccountDisplayNameByCode(haberCode, finCachedData.accountsMap), ...commonLineMeta }
+  ];
+
   // Guardado atómico: o se guarda TODO (asiento + líneas) o no se guarda NADA.
-  let entryId;
   try {
-    entryId = await createJournalEntryWithLinesAtomic(entry, [
-      { accountCode: String(debeCode), debe: monto, haber: 0 },
-      { accountCode: String(haberCode), debe: 0, haber: monto }
-    ]);
+    await createJournalEntryWithLinesAtomic(entry, lines);
   } catch (err) {
     console.error('Error en guardado atómico del movimiento', err);
     alert('No se pudo guardar el movimiento (guardado atómico falló).');
     return;
   }
 
-
-  // Limpia campos clave
   const montoInput = $('#mov-monto');
   const descInput = $('#mov-descripcion');
   const eventoInput = $('#mov-evento');
   if (montoInput) montoInput.value = '';
   if (descInput) descInput.value = '';
-  if (eventoInput) eventoInput.value = reference; // puede repetirse por factura / referencia
+  if (eventoInput) eventoInput.value = reference;
 
   showToast('Movimiento guardado en el Diario');
   await refreshAllFin();
@@ -5870,8 +8267,10 @@ function compraRenderTotalCalc() {
   }
 
   const total = Math.max(0, price) * Math.max(0, qty);
-  totalEl.value = finFormatCordobas(total);
+  const currency = compraGetSelectedFinancialCurrency(finCachedData || null);
+  totalEl.value = finFormatOriginalAmount(total, currency);
   compraMaybeSyncMonto(total);
+  try { compraSyncFinancialAccountUI(finCachedData || null); } catch (_) {}
 }
 
 function compraProductHasPriceRef(p) {
@@ -5963,11 +8362,15 @@ function compraCancelEditMode() {
   try { document.getElementById('compra-fecha').value = todayStr(); } catch (_) {}
   try { document.getElementById('compra-tipo').value = 'inventory'; } catch (_) {}
   try { document.getElementById('compra-medio').value = 'cash'; } catch (_) {}
+  try { document.getElementById('compra-financial-account').value = ''; } catch (_) {}
+  try { document.getElementById('compra-moneda').value = ''; } catch (_) {}
+  try { document.getElementById('compra-tc').value = ''; } catch (_) {}
+  try { document.getElementById('compra-equivalente').value = ''; } catch (_) {}
   try { document.getElementById('compra-descripcion').value = ''; } catch (_) {}
   try { document.getElementById('compra-referencia').value = ''; } catch (_) {}
   try { document.getElementById('compra-monto').value = ''; } catch (_) {}
   try { document.getElementById('compra-producto').value = ''; } catch (_) {}
-  try { if (finCachedData) { fillCompraCuentaDebe(finCachedData); fillCompraCuentaHaber(finCachedData); } } catch (_) {}
+  try { if (finCachedData) { compraPopulateFinancialAccountSelect(finCachedData); fillCompraCuentaDebe(finCachedData); fillCompraCuentaHaber(finCachedData); compraSyncFinancialAccountUI(finCachedData); } } catch (_) {}
   try { compraClearCalcFields({ resetMontoAuto: true, clearMissingSnapshot: true }); } catch (_) {}
   try { compraRenderProductoHint(finCachedData || null); } catch (_) {}
   try { compraRenderTotalCalc(); } catch (_) {}
@@ -6015,7 +8418,10 @@ function compraStartEditFromEntryId(entryId) {
   if (refEl) refEl.value = String(entry.reference || '').trim();
 
   const montoEl = document.getElementById('compra-monto');
-  const amount = n2(entry.totalDebe != null ? entry.totalDebe : (entry.total || 0));
+  const amountSource = (entry.originalAmount != null || entry.montoOriginal != null || entry.totalOriginal != null)
+    ? (entry.originalAmount ?? entry.montoOriginal ?? entry.totalOriginal)
+    : (entry.totalDebe != null ? entry.totalDebe : (entry.total || 0));
+  const amount = n2(amountSource);
   if (montoEl) montoEl.value = amount > 0 ? amount.toFixed(2) : '';
 
   // Cuentas desde líneas
@@ -6036,6 +8442,25 @@ function compraStartEditFromEntryId(entryId) {
     compraEnsureOption(haberSel, code, acc ? `${code} – ${(acc.nombre || acc.name || 'Cuenta')}` : code);
     haberSel.value = code;
   }
+
+  // Cuenta financiera de pago (nuevas compras ya traen snapshot; históricas pueden inferirse por cuenta HABER solo al editar)
+  try {
+    compraPopulateFinancialAccountSelect(finCachedData);
+    const faSel = document.getElementById('compra-financial-account');
+    if (faSel) {
+      const savedFaId = String(entry.financialAccountId || entry.cuentaFinancieraId || '').trim();
+      const rows = finGetActiveFinancialAccountsForMovements(finCachedData);
+      let fa = savedFaId ? rows.find(r => finGetFinancialAccountId(r) === savedFaId) : null;
+      if (!fa && lHaber?.accountCode) {
+        const code = finNormalizeAccountCode(lHaber.accountCode);
+        fa = rows.find(r => finNormalizeAccountCode(r.cuentaContableCodigo || r.financialAccountAccountingCode || '') === code) || null;
+      }
+      if (fa) {
+        faSel.value = finGetFinancialAccountId(fa);
+        compraSyncFinancialAccountUI(finCachedData);
+      }
+    }
+  } catch (_) {}
 
   // Producto (live o snapshot)
   const pid = String(entry.productoId || entry.supplierProductId || '').trim();
@@ -6140,7 +8565,7 @@ function compraRenderProductoHint(data) {
   const precio = normNumNonNeg(p.precio);
   const unitsPart = (tipoLabel === 'CAJAS') ? ` · U/caja: ${pcFmtQty ? pcFmtQty(normNumNonNeg(p.unidadesPorCaja)) : String(normNumNonNeg(p.unidadesPorCaja))}` : '';
   hint.textContent = hasPriceRef
-    ? `Tipo: ${tipoLabel} · Precio ref: ${finFormatCordobas(precio)}${unitsPart}`
+    ? `Tipo: ${tipoLabel} · Precio ref: ${finFormatOriginalAmount(precio, compraGetSelectedFinancialCurrency(data || finCachedData || null))}${unitsPart}`
     : `Tipo: ${tipoLabel} · Precio ref: —${unitsPart}`;
 }
 
@@ -6323,12 +8748,206 @@ function fillCompraCuentaHaber(data) {
     sel.appendChild(opt);
   }
 
-  const defaultCode = (pm === 'bank') ? '1200' : '1100';
+  const defaultCode = finResolveLegacyCashOrBankCodeByMedium(pm);
   if (Array.from(sel.options).some(o => o.value === defaultCode)) {
     sel.value = defaultCode;
   } else if (sel.options.length > 1) {
     sel.selectedIndex = 1;
   }
+}
+
+
+/* ---------- Compras a Proveedor: cuenta financiera / moneda / T.C. (Etapa 7/10) ---------- */
+
+const FIN_PURCHASE_WARNING_MESSAGE = 'Configure el tipo de cambio vigente en Configuración → Moneda para registrar compras en US$.';
+
+function compraFinancialAccountOptionLabel(row) {
+  const name = String(row && (row.nombreVisible || row.financialAccountNameSnapshot || '') || 'Cuenta financiera').trim();
+  const currency = finNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || 'NIO'));
+  const symbol = String(row && (row.simbolo || row.financialAccountSymbol) || finCurrencySymbol(currency));
+  const code = finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || ''));
+  const accName = String(row && (row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '') || '').trim();
+  return `${name} · ${symbol} · ${code}${accName ? ' ' + accName : ''}`;
+}
+
+function compraPopulateFinancialAccountSelect(data) {
+  const sel = document.getElementById('compra-financial-account');
+  if (!sel) return;
+  const prev = String(sel.value || '').trim();
+  const rows = finGetActiveFinancialAccountsForMovements(data);
+  sel.innerHTML = '';
+
+  const first = document.createElement('option');
+  first.value = '';
+  first.textContent = rows.length ? 'Seleccione cuenta financiera…' : 'Sin cuentas financieras activas';
+  sel.appendChild(first);
+
+  for (const row of rows) {
+    const opt = document.createElement('option');
+    opt.value = finGetFinancialAccountId(row);
+    opt.textContent = compraFinancialAccountOptionLabel(row);
+    opt.dataset.currency = finNormalizeCurrencyCode(row.moneda || row.financialAccountCurrency || 'NIO');
+    opt.dataset.accountCode = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || '');
+    sel.appendChild(opt);
+  }
+
+  if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
+  else if (!sel.value && rows.length === 1) sel.value = finGetFinancialAccountId(rows[0]);
+
+  compraSyncFinancialAccountUI(data);
+}
+
+function compraGetSelectedFinancialAccount(data) {
+  const sel = document.getElementById('compra-financial-account');
+  const id = String(sel && sel.value || '').trim();
+  if (!id) return null;
+  return finFindFinancialAccountById(data, id);
+}
+
+function compraGetSelectedFinancialCurrency(data) {
+  const row = compraGetSelectedFinancialAccount(data || finCachedData || null);
+  return finNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || 'NIO'));
+}
+
+function compraGetCurrentOriginalTotal() {
+  const priceN = compraParseNumMaybe(document.getElementById('compra-precio-unit')?.value || '');
+  const qtyN = compraParseNumMaybe(document.getElementById('compra-cantidad')?.value || '');
+  const calcValid = Number.isFinite(priceN) && priceN >= 0 && Number.isFinite(qtyN) && qtyN >= 0;
+  if (calcValid) return Math.max(0, priceN) * Math.max(0, qtyN);
+  const montoRaw = document.getElementById('compra-monto')?.value || '';
+  const monto = compraParseNumMaybe(montoRaw);
+  return (Number.isFinite(monto) && monto >= 0) ? monto : NaN;
+}
+
+function compraEnsureHaberOptionForFinancialAccount(row, data) {
+  const sel = document.getElementById('compra-cuenta-haber');
+  if (!sel || !row) return;
+  const code = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || '');
+  if (!code) return;
+  const acc = (data && data.accountsMap && data.accountsMap.get(code)) ? data.accountsMap.get(code) : null;
+  compraEnsureOption(sel, code, acc ? `${code} – ${(acc.nombre || acc.name || 'Cuenta')}` : compraFinancialAccountOptionLabel(row));
+  sel.value = code;
+}
+
+function compraSyncFinancialAccountUI(data) {
+  const row = compraGetSelectedFinancialAccount(data || finCachedData || null);
+  const pmEl = document.getElementById('compra-medio');
+  const monedaEl = document.getElementById('compra-moneda');
+  const tcEl = document.getElementById('compra-tc');
+  const eqEl = document.getElementById('compra-equivalente');
+
+  if (pmEl && row) {
+    const type = String(row.type || row.tipo || '').toLowerCase();
+    pmEl.value = type === 'banco' ? 'bank' : 'cash';
+  }
+
+  if (row) compraEnsureHaberOptionForFinancialAccount(row, data || finCachedData || null);
+
+  const currency = row ? finNormalizeCurrencyCode(row.moneda || row.financialAccountCurrency || 'NIO') : '';
+  if (monedaEl) monedaEl.value = row ? `${finCurrencySymbol(currency)} / ${currency}` : '';
+
+  const amount = compraGetCurrentOriginalTotal();
+  const snapshot = row ? finBuildExchangeRateSnapshot({ currency, amount: Number.isFinite(amount) ? amount : 0 }) : null;
+
+  if (tcEl) {
+    tcEl.value = (row && currency === 'USD' && snapshot && snapshot.tipoCambioUsado)
+      ? Number(snapshot.tipoCambioUsado).toFixed(2)
+      : '';
+  }
+  if (eqEl) {
+    const hasAmount = Number.isFinite(amount) && amount > 0;
+    eqEl.value = (row && hasAmount && snapshot && Number.isFinite(Number(snapshot.equivalenteNIO)))
+      ? finFormatCordobas(snapshot.equivalenteNIO)
+      : '';
+  }
+
+  compraUpdateFinancialPreview(data || finCachedData || null, row, snapshot);
+}
+
+function compraUpdateFinancialPreview(data, row, snapshotArg) {
+  const box = document.getElementById('compra-financial-meta');
+  if (!box) return;
+  const rows = finGetActiveFinancialAccountsForMovements(data || {});
+  if (!rows.length) {
+    box.className = 'fin-movement-meta compra-financial-meta is-warn';
+    box.textContent = 'Configure al menos una cuenta financiera activa antes de registrar compras.';
+    return;
+  }
+  if (!row) {
+    box.className = 'fin-movement-meta compra-financial-meta';
+    box.textContent = 'Seleccione una cuenta financiera activa para detectar moneda, T/C y cuenta contable de pago.';
+    return;
+  }
+
+  const currency = finNormalizeCurrencyCode(row.moneda || row.financialAccountCurrency || 'NIO');
+  const code = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || '');
+  const accName = String(row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '').trim();
+  const name = String(row.nombreVisible || row.financialAccountNameSnapshot || 'Cuenta financiera').trim();
+  const amount = compraGetCurrentOriginalTotal();
+  const snapshot = snapshotArg || finBuildExchangeRateSnapshot({ currency, amount: Number.isFinite(amount) ? amount : 0 });
+
+  if (currency === 'USD' && (!snapshot || snapshot.ok === false)) {
+    box.className = 'fin-movement-meta compra-financial-meta is-warn';
+    box.textContent = FIN_PURCHASE_WARNING_MESSAGE;
+    return;
+  }
+
+  const amountText = Number.isFinite(amount) && amount > 0 ? ` · Total original: ${finFormatOriginalAmount(amount, currency)}` : '';
+  const rateText = currency === 'USD' && snapshot && snapshot.tipoCambioUsado ? ` · T/C snapshot ${Number(snapshot.tipoCambioUsado).toFixed(2)}` : '';
+  const eqText = Number.isFinite(amount) && amount > 0 && snapshot && Number.isFinite(Number(snapshot.equivalenteNIO)) ? ` · Eq. ${finFormatCordobas(snapshot.equivalenteNIO)}` : '';
+  box.className = 'fin-movement-meta compra-financial-meta';
+  box.innerHTML = `${escapeHtml(name)} · ${escapeHtml(finFinancialAccountTypeLabel(row.type || row.tipo))} · ${escapeHtml(finCurrencySymbol(currency))} / ${escapeHtml(currency)} · HABER ${escapeHtml(code)} ${escapeHtml(accName)}${escapeHtml(amountText + rateText + eqText)}`;
+}
+
+function compraBuildPurchaseFinancialSnapshot(row, originalAmount, baseAmountNio, exchangeSnapshot) {
+  const currency = finNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || 'NIO'));
+  const type = String(row && (row.type || row.tipo || 'caja') || 'caja').toLowerCase();
+  const code = finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || ''));
+  const accName = String(row && (row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '') || '').trim();
+  const name = String(row && (row.nombreVisible || row.financialAccountNameSnapshot || '') || '').trim();
+  const symbol = String(row && (row.simbolo || row.financialAccountSymbol) || finCurrencySymbol(currency));
+  const rate = currency === 'USD' ? finRoundCurrency2(exchangeSnapshot && exchangeSnapshot.tipoCambioUsado) : null;
+  const rateDate = currency === 'USD' ? String((exchangeSnapshot && exchangeSnapshot.fechaTipoCambio) || '') : '';
+  const roundedOriginal = finRoundCurrency2(originalAmount);
+  const roundedBase = finRoundCurrency2(baseAmountNio);
+  return {
+    financialAccountId: finGetFinancialAccountId(row),
+    financialAccountNameSnapshot: name,
+    financialAccountType: type,
+    financialAccountCurrency: currency,
+    financialAccountSymbol: symbol,
+    financialAccountAccountingCode: code,
+    financialAccountAccountingNameSnapshot: accName,
+    originalCurrency: currency,
+    originalSymbol: symbol,
+    originalAmount: roundedOriginal,
+    exchangeRateUsed: rate,
+    exchangeRateDateSnapshot: rateDate,
+    exchangeRateSource: currency === 'USD' ? FIN_CURRENCY_SOURCE_LABEL : '',
+    baseCurrency: 'NIO',
+    baseAmountNio: roundedBase,
+    isMulticurrency: currency === 'USD',
+    purchasePaymentSource: 'financial_account',
+
+    // Aliases en español / conceptuales para reportes e históricos.
+    cuentaFinancieraId: finGetFinancialAccountId(row),
+    cuentaFinancieraNombreSnapshot: name,
+    cuentaFinancieraTipo: type,
+    cuentaFinancieraMoneda: currency,
+    cuentaFinancieraSimbolo: symbol,
+    cuentaFinancieraCodigoContable: code,
+    cuentaFinancieraNombreContableSnapshot: accName,
+    monedaOriginal: currency,
+    simboloOriginal: symbol,
+    montoOriginal: roundedOriginal,
+    totalOriginal: roundedOriginal,
+    tipoCambioUsado: rate,
+    fechaTipoCambio: rateDate,
+    fuenteTipoCambio: currency === 'USD' ? FIN_CURRENCY_SOURCE_LABEL : '',
+    monedaBase: 'NIO',
+    equivalenteNIO: roundedBase,
+    baseAmount: roundedBase
+  };
 }
 
 async function guardarCompraProveedor() {
@@ -6337,10 +8956,13 @@ async function guardarCompraProveedor() {
   const supplierIdStr = document.getElementById('compra-proveedor')?.value || '';
   const fecha = document.getElementById('compra-fecha')?.value || todayStr();
   const tipoCompra = document.getElementById('compra-tipo')?.value || 'inventory';
-  const pm = document.getElementById('compra-medio')?.value || 'cash';
+  const financialRows = finGetActiveFinancialAccountsForMovements(finCachedData);
+  const financialAccount = compraGetSelectedFinancialAccount(finCachedData);
+  const financialType = String(financialAccount && (financialAccount.type || financialAccount.tipo || '') || '').toLowerCase();
+  const pm = financialAccount ? (financialType === 'banco' ? 'bank' : 'cash') : (document.getElementById('compra-medio')?.value || 'cash');
   const montoRaw = document.getElementById('compra-monto')?.value || '';
   const debeCode = document.getElementById('compra-cuenta-debe')?.value || '';
-  const haberCode = document.getElementById('compra-cuenta-haber')?.value || '';
+  let haberCode = '';
   const desc = (document.getElementById('compra-descripcion')?.value || '').trim();
   const ref = (document.getElementById('compra-referencia')?.value || '').trim();
 
@@ -6373,10 +8995,45 @@ async function guardarCompraProveedor() {
     alert('Selecciona la cuenta DEBE.');
     return;
   }
-  if (!haberCode) {
-    alert('Selecciona la cuenta HABER.');
+  if (!financialRows.length) {
+    alert('Configure al menos una cuenta financiera activa antes de registrar compras.');
     return;
   }
+  if (!financialAccount) {
+    alert('Selecciona la cuenta financiera de pago.');
+    return;
+  }
+  if (financialAccount.activa === false) {
+    alert('La cuenta financiera seleccionada está inactiva.');
+    return;
+  }
+
+  const financialCode = finNormalizeAccountCode(financialAccount.cuentaContableCodigo || financialAccount.financialAccountAccountingCode || '');
+  const financialAccountRecord = financialCode && finCachedData.accountsMap ? finCachedData.accountsMap.get(financialCode) : null;
+  if (!financialCode || !financialAccountRecord) {
+    alert('La cuenta financiera seleccionada no tiene una cuenta contable válida asociada. Revise Cuentas Financieras.');
+    return;
+  }
+  if (String(debeCode) === String(financialCode)) {
+    alert('La cuenta DEBE no puede ser la misma cuenta financiera de pago.');
+    return;
+  }
+
+  haberCode = financialCode;
+  const financialCurrency = finNormalizeCurrencyCode(financialAccount.moneda || financialAccount.financialAccountCurrency || 'NIO');
+  const exchangeSnapshot = finBuildExchangeRateSnapshot({ currency: financialCurrency, amount: monto });
+  if (!exchangeSnapshot || exchangeSnapshot.ok === false) {
+    alert(financialCurrency === 'USD' ? FIN_PURCHASE_WARNING_MESSAGE : (exchangeSnapshot && exchangeSnapshot.warningMessage) || 'El equivalente contable en C$ es inválido.');
+    return;
+  }
+  const baseAmountNio = finRoundCurrency2(exchangeSnapshot.equivalenteNIO);
+  if (!(Number.isFinite(baseAmountNio) && baseAmountNio > 0)) {
+    alert('El equivalente contable en C$ es inválido.');
+    return;
+  }
+  const purchaseFinancialSnapshot = compraBuildPurchaseFinancialSnapshot(financialAccount, monto, baseAmountNio, exchangeSnapshot);
+  const totalDebe = finRoundCurrency2(baseAmountNio);
+  const totalHaber = finRoundCurrency2(baseAmountNio);
 
   // Producto asistido (opcional) + snapshot robusto (si luego se borra del proveedor)
   const productId = String(document.getElementById('compra-producto')?.value || '').trim();
@@ -6475,8 +9132,8 @@ async function guardarCompraProveedor() {
     evento: normalizeEventForPurchases(),
     origen: 'Interno',
     origenId: null,
-    totalDebe: monto,
-    totalHaber: monto,
+    totalDebe,
+    totalHaber,
 
     // Metadata compras
     entryType: 'purchase',
@@ -6484,7 +9141,9 @@ async function guardarCompraProveedor() {
     supplierId,
     supplierName: supplierNameForEntry,
     paymentMethod: pm,
+    paymentAccountSource: 'financial_account',
     reference: ref,
+    ...purchaseFinancialSnapshot,
 
     // Producto asistido (opcional) - snapshot para robustez (si luego se borra del proveedor)
     supplierProductId: productSnapshot ? productSnapshot.id : (productId || null),
@@ -6506,8 +9165,8 @@ async function guardarCompraProveedor() {
   // Guardado atómico: o se guarda TODO (asiento + líneas) o no se guarda NADA.
   try {
     const lines = [
-      { accountCode: String(debeCode), debe: monto, haber: 0 },
-      { accountCode: String(haberCode), debe: 0, haber: monto }
+      { accountCode: String(debeCode), debe: totalDebe, haber: 0, originalAmount: finRoundCurrency2(monto), originalCurrency: financialCurrency, financialAccountId: finGetFinancialAccountId(financialAccount), exchangeRateUsed: purchaseFinancialSnapshot.exchangeRateUsed },
+      { accountCode: String(haberCode), debe: 0, haber: totalHaber, originalAmount: finRoundCurrency2(monto), originalCurrency: financialCurrency, financialAccountId: finGetFinancialAccountId(financialAccount), exchangeRateUsed: purchaseFinancialSnapshot.exchangeRateUsed }
     ];
 
     if (isEdit) {
@@ -6600,36 +9259,51 @@ function renderComprasPorProveedor(data) {
     const key = String(e.supplierId || '');
     const name = getSupplierLabelFromEntry(e, data);
     if (!map.has(key)) {
-      map.set(key, { supplierId: key, supplier: name, count: 0, total: 0, cash: 0, bank: 0 });
+      map.set(key, { supplierId: key, supplier: name, count: 0, totalBase: 0, originals: new Map(), accounts: new Set(), rates: new Set() });
     }
     const b = map.get(key);
-    const amt = Number(e.totalDebe || e.totalHaber || 0);
+    const baseAmt = finParseCurrencyAmount(e.baseAmountNio ?? e.equivalenteNIO ?? e.totalDebe ?? e.totalHaber ?? 0) || 0;
+    const currency = finNormalizeCurrencyCode(e.originalCurrency || e.monedaOriginal || e.financialAccountCurrency || e.cuentaFinancieraMoneda || 'NIO');
+    const origAmtParsed = finParseCurrencyAmount(e.originalAmount ?? e.montoOriginal ?? e.totalOriginal ?? baseAmt);
+    const origAmt = Number.isFinite(origAmtParsed) ? origAmtParsed : baseAmt;
     b.count += 1;
-    b.total += amt;
+    b.totalBase += baseAmt;
+    b.originals.set(currency, (b.originals.get(currency) || 0) + origAmt);
 
-    const pm = (e.paymentMethod || '').toString().trim();
-    if (pm === 'bank') b.bank += amt;
-    else b.cash += amt;
+    const faName = String(e.financialAccountNameSnapshot || e.cuentaFinancieraNombreSnapshot || '').trim();
+    if (faName) b.accounts.add(faName);
+    else {
+      const pm = String(e.paymentMethod || '').trim();
+      b.accounts.add(pm === 'bank' ? 'Banco legacy' : 'Caja legacy');
+    }
+    const rate = finParseCurrencyAmount(e.exchangeRateUsed ?? e.tipoCambioUsado ?? '');
+    if (currency === 'USD' && Number.isFinite(rate) && rate > 0) b.rates.add(Number(rate).toFixed(2));
   }
 
   const rows = Array.from(map.values()).sort((a, b) => a.supplier.localeCompare(b.supplier, 'es'));
 
   for (const r of rows) {
+    const originalParts = Array.from(r.originals.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([currency, amount]) => `<span class="fin-pill ${currency === 'USD' ? 'fin-pill--gold' : 'fin-pill--cash'}">${escapeHtml(finFormatOriginalAmount(amount, currency))}</span>`);
+    const accountParts = Array.from(r.accounts).slice(0, 3).map(name => `<span class="fin-pill fin-pill--muted">${escapeHtml(name)}</span>`);
+    if (r.accounts.size > 3) accountParts.push(`<span class="fin-pill fin-pill--muted">+${r.accounts.size - 3}</span>`);
+    const rateParts = Array.from(r.rates).slice(0, 2).map(rate => `<span class="fin-pill fin-pill--muted">T/C ${escapeHtml(rate)}</span>`);
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${r.supplier}</td>
+      <td>${escapeHtml(r.supplier)}</td>
       <td class="num">${r.count}</td>
-      <td class="num">${finFormatCordobas(r.total)}</td>
-      <td class="num">${finFormatCordobas(r.cash)}</td>
-      <td class="num">${finFormatCordobas(r.bank)}</td>
+      <td class="num">${finFormatCordobas(r.totalBase)}</td>
+      <td><div class="fin-badge-strip">${originalParts.concat(rateParts).join(' ') || '<span class="fin-pill fin-pill--muted">—</span>'}</div></td>
+      <td><div class="fin-badge-strip">${accountParts.join(' ') || '<span class="fin-pill fin-pill--muted">Legacy</span>'}</div></td>
     `;
     tbody.appendChild(tr);
   }
 
-  const totalAll = rows.reduce((s, r) => s + r.total, 0);
+  const totalAll = rows.reduce((s, r) => s + r.totalBase, 0);
   const cntAll = rows.reduce((s, r) => s + r.count, 0);
   if (ayuda) {
-    ayuda.textContent = `Periodo: ${periodo.desde} → ${periodo.hasta} · Compras: ${cntAll} · Total: ${finFormatCordobas(totalAll)}`;
+    ayuda.textContent = `Periodo: ${periodo.desde} → ${periodo.hasta} · Compras: ${cntAll} · Total contable: ${finFormatCordobas(totalAll)}`;
   }
 }
 
@@ -6752,18 +9426,27 @@ function setupComprasUI() {
   // Si el usuario toca Monto manualmente, desactivar auto-sync visual
   const montoEl = document.getElementById('compra-monto');
   if (montoEl) {
-    const onMonto = () => { try { compraSetMontoAuto(false); } catch (_) {} };
+    const onMonto = () => { try { compraSetMontoAuto(false); compraSyncFinancialAccountUI(finCachedData || null); } catch (_) {} };
     montoEl.addEventListener('input', onMonto);
+    montoEl.addEventListener('change', onMonto);
   }
 
   // Change handlers for accounts
   const tipoSel = document.getElementById('compra-tipo');
   const pmSel = document.getElementById('compra-medio');
+  const compraFaSel = document.getElementById('compra-financial-account');
   if (tipoSel) tipoSel.addEventListener('change', () => {
     if (finCachedData) fillCompraCuentaDebe(finCachedData);
   });
   if (pmSel) pmSel.addEventListener('change', () => {
     if (finCachedData) fillCompraCuentaHaber(finCachedData);
+  });
+  if (compraFaSel) compraFaSel.addEventListener('change', () => {
+    try {
+      compraSyncFinancialAccountUI(finCachedData || null);
+      compraRenderTotalCalc();
+      compraRenderProductoHint(finCachedData || null);
+    } catch (_) {}
   });
 }
 
@@ -8068,6 +10751,310 @@ function rcPayPill(pt){
   return '<span class="fin-pill fin-pill--cash">EFECTIVO</span>';
 }
 
+const RC_FINANCIAL_STAGE = 'finanzas_multibanco_etapa_8_10_recibos';
+const RC_EXCHANGE_WARNING_MESSAGE = 'Configure el tipo de cambio vigente en Configuración → Moneda para registrar recibos en US$.';
+const RC_FINANCIAL_ACCOUNT_WARNING_MESSAGE = 'Configure al menos una cuenta financiera activa antes de registrar recibos.';
+
+function rcNormalizeCurrencyCode(value){
+  try { return finNormalizeCurrencyCode(value || 'NIO'); } catch (_) {
+    const raw = String(value || 'NIO').trim().toUpperCase();
+    return (raw === 'USD' || raw === 'US$') ? 'USD' : 'NIO';
+  }
+}
+
+function rcCurrencySymbol(currency){
+  try { return finCurrencySymbol(rcNormalizeCurrencyCode(currency)); } catch (_) {
+    return rcNormalizeCurrencyCode(currency) === 'USD' ? 'US$' : 'C$';
+  }
+}
+
+function rcFormatOriginalMoney(value, currency){
+  try { return finFormatOriginalAmount(value, rcNormalizeCurrencyCode(currency)); } catch (_) {
+    const symbol = rcCurrencySymbol(currency);
+    return `${symbol} ${fmtCurrency(value)}`;
+  }
+}
+
+function rcGetReceiptCurrency(receipt){
+  return rcNormalizeCurrencyCode(receipt && (receipt.monedaOriginal || receipt.originalCurrency || receipt.financialAccountCurrency || receipt.cuentaFinancieraMoneda || 'NIO'));
+}
+
+function rcGetReceiptSymbol(receipt){
+  const explicit = String(receipt && (receipt.simboloOriginal || receipt.originalSymbol || receipt.financialAccountSymbol || '') || '').trim();
+  return explicit || rcCurrencySymbol(rcGetReceiptCurrency(receipt));
+}
+
+function rcGetReceiptOriginalTotal(receipt){
+  if (!receipt) return 0;
+  const explicit = receipt.totalOriginal ?? receipt.originalAmount ?? receipt.montoOriginal;
+  if (explicit !== undefined && explicit !== null && explicit !== '') {
+    const n = Number(explicit);
+    if (Number.isFinite(n)) return n;
+  }
+  return rcSafeNum(receipt.totals && receipt.totals.total);
+}
+
+function rcGetReceiptBaseAmount(receipt){
+  if (!receipt) return 0;
+  const explicit = receipt.baseAmountNio ?? receipt.equivalenteNIO ?? receipt.equivalenteCordobas;
+  if (explicit !== undefined && explicit !== null && explicit !== '') {
+    const n = Number(explicit);
+    if (Number.isFinite(n)) return n;
+  }
+  const currency = rcGetReceiptCurrency(receipt);
+  if (currency === 'NIO') return rcGetReceiptOriginalTotal(receipt);
+  return 0;
+}
+
+function rcReceiptHasFinancialMetadata(receipt){
+  return !!(receipt && (
+    receipt.financialAccountId ||
+    receipt.cuentaFinancieraId ||
+    receipt.financialAccountNameSnapshot ||
+    receipt.cuentaFinancieraNombreSnapshot ||
+    receipt.receiptCurrencyStage ||
+    receipt.journalEntryId ||
+    receipt.exchangeRateUsed ||
+    receipt.tipoCambioUsado
+  ));
+}
+
+function rcGetActiveFinancialAccounts(data){
+  try { return finGetActiveFinancialAccountsForMovements(data); } catch (_) { return []; }
+}
+
+function rcFindFinancialAccount(data, id){
+  const key = String(id || '').trim();
+  if (!key) return null;
+  try {
+    if (typeof finFindFinancialAccountById === 'function') return finFindFinancialAccountById(data, key);
+  } catch (_) {}
+  const rows = Array.isArray(data && data.financialAccounts) ? data.financialAccounts : [];
+  return rows.find(row => String(row && (row.id || row.uniqueKey || '')) === key) || null;
+}
+
+function rcFinancialAccountLabel(row){
+  const name = String(row && (row.nombreVisible || row.financialAccountNameSnapshot || '') || 'Cuenta financiera').trim();
+  const currency = rcNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || 'NIO'));
+  const symbol = String(row && (row.simbolo || row.financialAccountSymbol) || rcCurrencySymbol(currency)).trim();
+  const code = finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || ''));
+  const accName = String(row && (row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '') || '').trim();
+  return `${name} · ${symbol} · ${code}${accName ? ' ' + accName : ''}`;
+}
+
+function rcPopulateFinancialAccountSelect(data){
+  const sel = document.getElementById('rec-financial-account');
+  if (!sel) return;
+  const prev = sel.value;
+  const rows = rcGetActiveFinancialAccounts(data);
+  sel.innerHTML = '';
+
+  const first = document.createElement('option');
+  first.value = '';
+  first.textContent = rows.length ? 'Seleccione cuenta financiera…' : 'Sin cuentas financieras activas';
+  sel.appendChild(first);
+
+  for (const row of rows) {
+    const opt = document.createElement('option');
+    opt.value = String(row.id || row.uniqueKey || '');
+    opt.textContent = rcFinancialAccountLabel(row);
+    opt.dataset.currency = rcNormalizeCurrencyCode(row.moneda || row.financialAccountCurrency || 'NIO');
+    opt.dataset.accountCode = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || '');
+    sel.appendChild(opt);
+  }
+
+  if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
+  else if (rcCurrent && rcCurrent.financialAccountId && Array.from(sel.options).some(o => o.value === String(rcCurrent.financialAccountId))) sel.value = String(rcCurrent.financialAccountId);
+
+  rcSyncFinancialAccountUI();
+}
+
+function rcGetSelectedFinancialAccount(){
+  const sel = document.getElementById('rec-financial-account');
+  const id = String(sel && sel.value || '').trim();
+  if (!id) return null;
+  return rcFindFinancialAccount(finCachedData, id);
+}
+
+function rcBuildFinancialSnapshot(row, totalOriginal){
+  const currency = rcNormalizeCurrencyCode(row && (row.moneda || row.financialAccountCurrency || 'NIO'));
+  const symbol = String(row && (row.simbolo || row.financialAccountSymbol) || rcCurrencySymbol(currency));
+  const type = String(row && (row.type || row.tipo || 'caja') || 'caja').toLowerCase();
+  const code = finNormalizeAccountCode(row && (row.cuentaContableCodigo || row.financialAccountAccountingCode || ''));
+  const accName = String(row && (row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '') || '').trim();
+  const name = String(row && (row.nombreVisible || row.financialAccountNameSnapshot || '') || '').trim();
+  const snapshot = finBuildExchangeRateSnapshot({ currency, amount: totalOriginal });
+  const baseAmount = currency === 'USD' ? snapshot.equivalenteNIO : finRoundCurrency2(totalOriginal);
+  return {
+    ok: !!(snapshot && snapshot.ok),
+    warningMessage: snapshot && snapshot.warningMessage ? String(snapshot.warningMessage).replace('movimientos en USD', 'recibos en US$') : '',
+    receiptId: rcCurrent && rcCurrent.receiptId ? rcCurrent.receiptId : '',
+    totalOriginal: finRoundCurrency2(totalOriginal),
+    originalAmount: finRoundCurrency2(totalOriginal),
+    montoOriginal: finRoundCurrency2(totalOriginal),
+    monedaOriginal: currency,
+    originalCurrency: currency,
+    simboloOriginal: symbol,
+    originalSymbol: symbol,
+    financialAccountId: String(row && (row.id || row.uniqueKey || '') || ''),
+    cuentaFinancieraId: String(row && (row.id || row.uniqueKey || '') || ''),
+    financialAccountNameSnapshot: name,
+    cuentaFinancieraNombreSnapshot: name,
+    financialAccountType: type,
+    cuentaFinancieraTipo: type,
+    financialAccountCurrency: currency,
+    cuentaFinancieraMoneda: currency,
+    financialAccountSymbol: symbol,
+    financialAccountAccountingCode: code,
+    cuentaFinancieraCodigoContable: code,
+    financialAccountAccountingNameSnapshot: accName,
+    cuentaFinancieraCuentaNombreSnapshot: accName,
+    exchangeRateUsed: currency === 'USD' ? finRoundCurrency2(snapshot && snapshot.tipoCambioUsado) : null,
+    tipoCambioUsado: currency === 'USD' ? finRoundCurrency2(snapshot && snapshot.tipoCambioUsado) : null,
+    exchangeRateDateSnapshot: currency === 'USD' ? String((snapshot && snapshot.fechaTipoCambio) || '') : '',
+    exchangeRateSource: FIN_CURRENCY_SOURCE_LABEL,
+    fuenteTipoCambio: FIN_CURRENCY_SOURCE_LABEL,
+    baseCurrency: 'NIO',
+    monedaBase: 'NIO',
+    baseAmountNio: finRoundCurrency2(baseAmount),
+    equivalenteNIO: finRoundCurrency2(baseAmount),
+    referenciaPago: String(rcCurrent && rcCurrent.paymentRef || '').trim(),
+    formaPagoSnapshot: rcPayLabel(rcCurrent && rcCurrent.paymentType),
+    bancoNombreSnapshot: String(rcCurrent && rcCurrent.paymentBank || row && row.bancoNombreSnapshot || '').trim(),
+    fechaRegistro: new Date().toISOString(),
+    exchangeRateDateRaw: finGetCurrencyStateSafe().updatedAtRaw || '',
+    exchangeRateUpdatedAtText: finGetCurrencyStateSafe().updatedAtText || '',
+    receiptCurrencyStage: RC_FINANCIAL_STAGE,
+    a33FinanceStage: RC_FINANCIAL_STAGE
+  };
+}
+
+function rcApplyFinancialSnapshotToCurrent(){
+  if (!rcCurrent) return { ok:false, msg:'No hay recibo en edición.' };
+  const rows = rcGetActiveFinancialAccounts(finCachedData);
+  if (!rows.length) return { ok:false, msg:RC_FINANCIAL_ACCOUNT_WARNING_MESSAGE };
+  const row = rcGetSelectedFinancialAccount();
+  if (!row) return { ok:false, msg:'Seleccione la cuenta financiera de cobro.' };
+  const code = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || '');
+  const accountsMap = finCachedData && finCachedData.accountsMap ? finCachedData.accountsMap : new Map();
+  if (!code || (accountsMap && typeof accountsMap.get === 'function' && !accountsMap.get(code))) {
+    return { ok:false, msg:'La cuenta financiera de cobro no tiene una cuenta contable válida asociada.' };
+  }
+  const currency = rcNormalizeCurrencyCode(row.moneda || row.financialAccountCurrency || 'NIO');
+  const totalOriginal = rcSafeNum(rcCurrent.totals && rcCurrent.totals.total);
+  const snap = rcBuildFinancialSnapshot(row, totalOriginal);
+  if (currency === 'USD' && !snap.ok) return { ok:false, msg:RC_EXCHANGE_WARNING_MESSAGE };
+  Object.assign(rcCurrent, snap);
+  return { ok:true, msg:'', row, snapshot:snap };
+}
+
+function rcSyncFinancialAccountUI(){
+  const sel = document.getElementById('rec-financial-account');
+  const meta = document.getElementById('rec-financial-meta');
+  const currencyLabel = document.getElementById('rec-currency-label');
+  const baseTotal = document.getElementById('rec-base-total');
+  const rows = rcGetActiveFinancialAccounts(finCachedData);
+  const row = rcGetSelectedFinancialAccount();
+  if (sel && rcCurrent && rcCurrent.financialAccountId && sel.value !== rcCurrent.financialAccountId && Array.from(sel.options).some(o => o.value === String(rcCurrent.financialAccountId))) {
+    sel.value = String(rcCurrent.financialAccountId);
+  }
+
+  const total = rcSafeNum(rcCurrent && rcCurrent.totals && rcCurrent.totals.total);
+  let currency = rcGetReceiptCurrency(rcCurrent);
+  let symbol = rcGetReceiptSymbol(rcCurrent);
+  let base = rcGetReceiptBaseAmount(rcCurrent);
+  let rateText = '';
+
+  if (rcEditorMode === 'view' && rcCurrent && !row) {
+    if (rcReceiptHasFinancialMetadata(rcCurrent)) {
+      const acct = String(rcCurrent.financialAccountNameSnapshot || rcCurrent.cuentaFinancieraNombreSnapshot || 'Cuenta financiera histórica').trim();
+      const code = String(rcCurrent.financialAccountAccountingCode || rcCurrent.cuentaFinancieraCodigoContable || '').trim();
+      const rate = rcCurrent.exchangeRateUsed || rcCurrent.tipoCambioUsado || null;
+      if (currency === 'USD' && rate) rateText = ` · T/C ${Number(rate).toFixed(2)}`;
+      if (meta) {
+        meta.className = 'fin-movement-meta';
+        meta.innerHTML = `${escapeHTML(acct)}${code ? ` · ${escapeHTML(code)}` : ''}<br>${escapeHTML(rcFormatOriginalMoney(rcGetReceiptOriginalTotal(rcCurrent), currency))}${currency === 'USD' ? ` · Eq. ${escapeHTML(finFormatCordobas(base))}${rate ? ` · T/C ${escapeHTML(Number(rate).toFixed(2))}` : ''}` : ''}`;
+      }
+      if (currencyLabel) currencyLabel.textContent = `${symbol} / ${currency}${rateText}`;
+      if (baseTotal) baseTotal.textContent = finFormatCordobas(base || 0);
+      const elSub = document.getElementById('rec-subtotal');
+      const elDisc = document.getElementById('rec-discount');
+      const elTot = document.getElementById('rec-total');
+      if (elSub) elSub.textContent = rcFormatOriginalMoney(rcSafeNum(rcCurrent.totals && rcCurrent.totals.subtotal), currency);
+      if (elDisc) elDisc.textContent = rcFormatOriginalMoney(rcSafeNum(rcCurrent.totals && rcCurrent.totals.discountTotal), currency);
+      if (elTot) elTot.textContent = rcFormatOriginalMoney(rcSafeNum(rcCurrent.totals && rcCurrent.totals.total), currency);
+      return;
+    }
+    if (meta) {
+      meta.className = 'fin-movement-meta';
+      meta.textContent = 'Recibo histórico sin metadata multicuenta/multimoneda. Se conserva como estaba.';
+    }
+    currency = 'NIO'; symbol = rcCurrencySymbol(currency); base = total;
+    if (currencyLabel) currencyLabel.textContent = `${symbol} / ${currency}`;
+    if (baseTotal) baseTotal.textContent = finFormatCordobas(base || 0);
+    const elSub = document.getElementById('rec-subtotal');
+    const elDisc = document.getElementById('rec-discount');
+    const elTot = document.getElementById('rec-total');
+    if (elSub) elSub.textContent = rcFormatOriginalMoney(rcSafeNum(rcCurrent.totals && rcCurrent.totals.subtotal), currency);
+    if (elDisc) elDisc.textContent = rcFormatOriginalMoney(rcSafeNum(rcCurrent.totals && rcCurrent.totals.discountTotal), currency);
+    if (elTot) elTot.textContent = rcFormatOriginalMoney(rcSafeNum(rcCurrent.totals && rcCurrent.totals.total), currency);
+    return;
+  }
+
+  if (!rows.length) {
+    if (meta) { meta.className = 'fin-movement-meta is-warn'; meta.textContent = RC_FINANCIAL_ACCOUNT_WARNING_MESSAGE; }
+    currency = 'NIO'; symbol = rcCurrencySymbol(currency); base = total;
+  } else if (!row) {
+    if (meta) { meta.className = 'fin-movement-meta'; meta.textContent = 'Seleccione una cuenta financiera activa para detectar moneda, cuenta contable y equivalente C$.'; }
+  } else {
+    currency = rcNormalizeCurrencyCode(row.moneda || row.financialAccountCurrency || 'NIO');
+    symbol = String(row.simbolo || row.financialAccountSymbol || rcCurrencySymbol(currency));
+    const code = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || '');
+    const name = String(row.nombreVisible || row.financialAccountNameSnapshot || 'Cuenta financiera');
+    const type = finFinancialAccountTypeLabel(row.type || row.tipo || 'caja');
+    const accName = String(row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '').trim();
+    if (currency === 'USD') {
+      const state = finGetCurrencyStateSafe();
+      if (!state.hasExchangeRate) {
+        if (meta) {
+          meta.className = 'fin-movement-meta is-warn';
+          meta.innerHTML = `${escapeHTML(name)} · US$ / USD · ${escapeHTML(code)} ${escapeHTML(accName)}<br>${escapeHTML(RC_EXCHANGE_WARNING_MESSAGE)}`;
+        }
+        base = 0;
+      } else {
+        const converted = finConvertUsdToCordobas(total, state.exchangeRate);
+        base = converted.ok ? converted.value : 0;
+        rateText = ` · T/C ${Number(state.exchangeRate).toFixed(2)}`;
+        if (meta) {
+          meta.className = 'fin-movement-meta';
+          meta.innerHTML = `${escapeHTML(name)} · ${escapeHTML(type)} · US$ / USD · ${escapeHTML(code)} ${escapeHTML(accName)}<br>${escapeHTML(rcFormatOriginalMoney(total, 'USD'))} × ${escapeHTML(Number(state.exchangeRate).toFixed(2))} = ${escapeHTML(finFormatCordobas(base))} · Fuente: ${escapeHTML(FIN_CURRENCY_SOURCE_LABEL)}`;
+        }
+      }
+    } else {
+      base = finRoundCurrency2(total);
+      if (meta) {
+        meta.className = 'fin-movement-meta';
+        meta.innerHTML = `${escapeHTML(name)} · ${escapeHTML(type)} · C$ / NIO · ${escapeHTML(code)} ${escapeHTML(accName)}<br>Equivalente contable: ${escapeHTML(finFormatCordobas(base))}`;
+      }
+    }
+  }
+
+  if (currencyLabel) currencyLabel.textContent = `${symbol} / ${currency}${rateText}`;
+  if (baseTotal) baseTotal.textContent = finFormatCordobas(base || 0);
+
+  const elSub = document.getElementById('rec-subtotal');
+  const elDisc = document.getElementById('rec-discount');
+  const elTot = document.getElementById('rec-total');
+  if (rcCurrent) {
+    const sub = rcSafeNum(rcCurrent.totals && rcCurrent.totals.subtotal);
+    const disc = rcSafeNum(rcCurrent.totals && rcCurrent.totals.discountTotal);
+    const tot = rcSafeNum(rcCurrent.totals && rcCurrent.totals.total);
+    if (elSub) elSub.textContent = rcFormatOriginalMoney(sub, currency);
+    if (elDisc) elDisc.textContent = rcFormatOriginalMoney(disc, currency);
+    if (elTot) elTot.textContent = rcFormatOriginalMoney(tot, currency);
+  }
+}
+
 function rcSanitizeFilePart(s){
   // Reglas: sin caracteres inválidos / \ : * ? " < > |
   let out = String(s || '').trim();
@@ -8148,7 +11135,35 @@ function rcNormalizeReceipt(r){
       subtotal: rcSafeNum(r.totals.subtotal),
       discountTotal: rcSafeNum(r.totals.discountTotal),
       total: rcSafeNum(r.totals.total)
-    } : { subtotal: 0, discountTotal: 0, total: 0 }
+    } : { subtotal: 0, discountTotal: 0, total: 0 },
+    totalOriginal: rcSafeNum(r && (r.totalOriginal ?? r.originalAmount ?? r.montoOriginal ?? (r.totals && r.totals.total))),
+    originalAmount: rcSafeNum(r && (r.originalAmount ?? r.totalOriginal ?? r.montoOriginal ?? (r.totals && r.totals.total))),
+    montoOriginal: rcSafeNum(r && (r.montoOriginal ?? r.totalOriginal ?? r.originalAmount ?? (r.totals && r.totals.total))),
+    monedaOriginal: rcNormalizeCurrencyCode(r && (r.monedaOriginal || r.originalCurrency || r.financialAccountCurrency || r.cuentaFinancieraMoneda || 'NIO')),
+    originalCurrency: rcNormalizeCurrencyCode(r && (r.originalCurrency || r.monedaOriginal || r.financialAccountCurrency || r.cuentaFinancieraMoneda || 'NIO')),
+    simboloOriginal: String(r && (r.simboloOriginal || r.originalSymbol || r.financialAccountSymbol || '') || '').trim(),
+    financialAccountId: String(r && (r.financialAccountId || r.cuentaFinancieraId || '') || '').trim(),
+    cuentaFinancieraId: String(r && (r.cuentaFinancieraId || r.financialAccountId || '') || '').trim(),
+    financialAccountNameSnapshot: String(r && (r.financialAccountNameSnapshot || r.cuentaFinancieraNombreSnapshot || '') || '').trim(),
+    cuentaFinancieraNombreSnapshot: String(r && (r.cuentaFinancieraNombreSnapshot || r.financialAccountNameSnapshot || '') || '').trim(),
+    financialAccountType: String(r && (r.financialAccountType || r.cuentaFinancieraTipo || '') || '').trim(),
+    financialAccountCurrency: rcNormalizeCurrencyCode(r && (r.financialAccountCurrency || r.cuentaFinancieraMoneda || r.monedaOriginal || 'NIO')),
+    financialAccountSymbol: String(r && (r.financialAccountSymbol || r.simboloOriginal || '') || '').trim(),
+    financialAccountAccountingCode: finNormalizeAccountCode(r && (r.financialAccountAccountingCode || r.cuentaFinancieraCodigoContable || '')),
+    financialAccountAccountingNameSnapshot: String(r && (r.financialAccountAccountingNameSnapshot || r.cuentaFinancieraCuentaNombreSnapshot || '') || '').trim(),
+    exchangeRateUsed: (r && (r.exchangeRateUsed ?? r.tipoCambioUsado)) != null && (r && (r.exchangeRateUsed ?? r.tipoCambioUsado)) !== '' ? finRoundCurrency2(r.exchangeRateUsed ?? r.tipoCambioUsado) : null,
+    tipoCambioUsado: (r && (r.tipoCambioUsado ?? r.exchangeRateUsed)) != null && (r && (r.tipoCambioUsado ?? r.exchangeRateUsed)) !== '' ? finRoundCurrency2(r.tipoCambioUsado ?? r.exchangeRateUsed) : null,
+    exchangeRateDateSnapshot: String(r && (r.exchangeRateDateSnapshot || r.fechaTipoCambio || '') || '').trim(),
+    exchangeRateSource: String(r && (r.exchangeRateSource || r.fuenteTipoCambio || '') || '').trim(),
+    baseCurrency: rcNormalizeCurrencyCode(r && (r.baseCurrency || r.monedaBase || 'NIO')),
+    baseAmountNio: rcSafeNum(r && (r.baseAmountNio ?? r.equivalenteNIO ?? r.equivalenteCordobas ?? (r.totals && r.totals.total))),
+    equivalenteNIO: rcSafeNum(r && (r.equivalenteNIO ?? r.baseAmountNio ?? r.equivalenteCordobas ?? (r.totals && r.totals.total))),
+    referenciaPago: String(r && (r.referenciaPago || r.paymentRef || '') || '').trim(),
+    formaPagoSnapshot: String(r && (r.formaPagoSnapshot || '') || '').trim(),
+    bancoNombreSnapshot: String(r && (r.bancoNombreSnapshot || r.paymentBank || '') || '').trim(),
+    journalEntryId: r && r.journalEntryId ? String(r.journalEntryId) : '',
+    fechaRegistro: String(r && (r.fechaRegistro || '') || '').trim(),
+    receiptCurrencyStage: String(r && (r.receiptCurrencyStage || r.a33FinanceStage || '') || '').trim()
   };
 
   if (!out.lines.length) {
@@ -8261,6 +11276,12 @@ function rcRenderList(){
     const fecha = (r.dateISO ? rcDateDisplayFromISO(r.dateISO) : (r.dateDisplay || '')) || '—';
     const cli = r.clientName || '—';
     const total = (r.totals && Number.isFinite(Number(r.totals.total))) ? Number(r.totals.total) : 0;
+    const currency = rcGetReceiptCurrency(r);
+    const totalOriginal = rcGetReceiptOriginalTotal(r);
+    const baseAmount = rcGetReceiptBaseAmount(r);
+    const acctName = String(r.financialAccountNameSnapshot || r.cuentaFinancieraNombreSnapshot || '').trim();
+    const ref = String(r.paymentRef || r.referenciaPago || '').trim();
+    const rate = r.exchangeRateUsed || r.tipoCambioUsado || null;
 
     const st = String(r.status || 'DRAFT');
     const canEdit = st === 'DRAFT';
@@ -8272,8 +11293,11 @@ function rcRenderList(){
       <td>${escapeHTML(num)}</td>
       <td>${escapeHTML(fecha)}</td>
       <td><span class="fin-cell-text fin-clamp-2">${escapeHTML(cli)}</span></td>
-      <td>${rcPayPill(r.paymentType)}</td>
-      <td class="num">${rcFmtMoney(total)}</td>
+      <td>
+        ${rcPayPill(r.paymentType)}
+        ${(acctName || ref) ? `<div class="rec-account-mini">${acctName ? escapeHTML(acctName) : ''}${ref ? `${acctName ? ' · ' : ''}Ref: ${escapeHTML(ref)}` : ''}</div>` : ''}
+      </td>
+      <td class="num"><div class="rec-total-stack"><strong>${rcFormatOriginalMoney(totalOriginal || total, currency)}</strong>${currency === 'USD' ? `<span>Eq. ${escapeHTML(finFormatCordobas(baseAmount))}</span>${rate ? `<span>T/C ${escapeHTML(Number(rate).toFixed(2))}</span>` : ''}` : ''}</div></td>
       <td>${rcStatusPill(r.status)}</td>
       <td class="fin-actions-cell">
         <div class="fin-actions-inline">
@@ -8334,6 +11358,11 @@ function rcUpdateEditorMeta(){
   ];
   if (rcCurrent.paymentType === 'TRANSFER' && bank) parts.push(`Banco: ${escapeHTML(bank)}`);
   if (rcCurrent.paymentType === 'TRANSFER' && ref) parts.push(`Ref: ${escapeHTML(ref)}`);
+  const faName = String(rcCurrent.financialAccountNameSnapshot || rcCurrent.cuentaFinancieraNombreSnapshot || '').trim();
+  const cur = rcGetReceiptCurrency(rcCurrent);
+  if (faName) parts.push(`Cuenta: ${escapeHTML(faName)}`);
+  if (rcReceiptHasFinancialMetadata(rcCurrent)) parts.push(`Moneda: ${escapeHTML(rcGetReceiptSymbol(rcCurrent))}/${escapeHTML(cur)}`);
+  if (cur === 'USD' && (rcCurrent.exchangeRateUsed || rcCurrent.tipoCambioUsado)) parts.push(`T/C: ${escapeHTML(Number(rcCurrent.exchangeRateUsed || rcCurrent.tipoCambioUsado).toFixed(2))}`);
 
   if (st === 'VOID') {
     const vr = String(rcCurrent.voidReason || '').trim();
@@ -8366,7 +11395,7 @@ function rcSetEditorMode(mode){
 
   const isView = (rcEditorMode === 'view');
 
-  const idsDisable = ['rec-client','rec-date','rec-bank','rec-ref'];
+  const idsDisable = ['rec-client','rec-date','rec-bank','rec-ref','rec-financial-account'];
   idsDisable.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = isView;
@@ -8431,6 +11460,7 @@ function rcSetPaymentType(pt){
   }
 
   rcUpdateEditorMeta();
+  try { rcSyncFinancialAccountUI(); } catch (_) {}
 }
 
 function rcRecalc(r){
@@ -8470,6 +11500,10 @@ function rcRecalc(r){
   if (elSub) elSub.textContent = rcFmtMoney(receipt.totals.subtotal);
   if (elDisc) elDisc.textContent = rcFmtMoney(receipt.totals.discountTotal);
   if (elTot) elTot.textContent = rcFmtMoney(receipt.totals.total);
+
+  if (receipt === rcCurrent) {
+    try { rcSyncFinancialAccountUI(); } catch (_) {}
+  }
 }
 
 function rcRenderLines(){
@@ -8510,6 +11544,7 @@ function rcFillEditor(){
   const date = document.getElementById('rec-date');
   const bank = document.getElementById('rec-bank');
   const ref = document.getElementById('rec-ref');
+  const fa = document.getElementById('rec-financial-account');
 
   if (id) id.value = rcCurrent.receiptId;
   if (cli) cli.value = rcCurrent.clientName || '';
@@ -8517,6 +11552,10 @@ function rcFillEditor(){
   if (date) date.value = rcCurrent.dateISO || '';
   if (bank) bank.value = rcCurrent.paymentBank || '';
   if (ref) ref.value = rcCurrent.paymentRef || '';
+  if (fa) {
+    rcPopulateFinancialAccountSelect(finCachedData);
+    fa.value = rcCurrent.financialAccountId || rcCurrent.cuentaFinancieraId || '';
+  }
 
   rcSetPaymentType(rcCurrent.paymentType || 'CASH');
   rcRenderLines();
@@ -8540,6 +11579,13 @@ function rcNewDraft(){
     paymentType: 'CASH',
     paymentBank: '',
     paymentRef: '',
+    financialAccountId: '',
+    cuentaFinancieraId: '',
+    monedaOriginal: 'NIO',
+    simboloOriginal: rcCurrencySymbol('NIO'),
+    baseCurrency: 'NIO',
+    baseAmountNio: 0,
+    exchangeRateSource: FIN_CURRENCY_SOURCE_LABEL,
     lines: [{ itemName: '', qty: 1, unitPrice: 0, discountPerUnit: 0, lineTotal: 0 }],
     totals: { subtotal: 0, discountTotal: 0, total: 0 }
   });
@@ -8568,6 +11614,9 @@ function rcValidateCurrent(opts={}){
 
   const clientName = String(rcCurrent.clientName || '').trim();
   if (!clientName) return { ok:false, msg:'Cliente es obligatorio.' };
+
+  const dateISO = String(rcCurrent.dateISO || '').trim();
+  if (!dateISO) return { ok:false, msg:'Fecha es obligatoria.' };
 
   const pt = rcCurrent.paymentType;
   if (pt !== 'CASH' && pt !== 'TRANSFER') return { ok:false, msg:'Tipo de pago inválido.' };
@@ -8621,8 +11670,14 @@ function rcValidateCurrent(opts={}){
   if (![t.subtotal, t.discountTotal, t.total].every(x => Number.isFinite(Number(x)))) {
     return { ok:false, msg:'Totales inválidos.' };
   }
+  if (Number(t.total) <= 0) return { ok:false, msg:'El total del recibo debe ser mayor que 0.' };
+
+  const finSnap = rcApplyFinancialSnapshotToCurrent();
+  if (!finSnap.ok) return { ok:false, msg:finSnap.msg || 'Cuenta financiera inválida.' };
 
   rcCurrent.clientName = clientName;
+  rcCurrent.dateISO = dateISO;
+  rcCurrent.dateDisplay = rcDateDisplayFromISO(dateISO);
 
   return { ok:true, msg:'' };
 }
@@ -8649,7 +11704,7 @@ function rcSetSaving(on){
   if (btnRef) btnRef.disabled = rcSaving;
 
   // Inputs principales
-  const ids = ['rec-client','rec-date','rec-bank','rec-ref'];
+  const ids = ['rec-client','rec-date','rec-bank','rec-ref','rec-financial-account'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el && rcEditorMode === 'edit') el.disabled = rcSaving;
@@ -8812,6 +11867,16 @@ function rcReemitReceiptById(id){
     paymentType: (base.paymentType === 'TRANSFER') ? 'TRANSFER' : 'CASH',
     paymentBank: (base.paymentType === 'TRANSFER') ? String(base.paymentBank || '') : '',
     paymentRef: (base.paymentType === 'TRANSFER') ? String(base.paymentRef || '') : '',
+    financialAccountId: base.financialAccountId || base.cuentaFinancieraId || '',
+    cuentaFinancieraId: base.cuentaFinancieraId || base.financialAccountId || '',
+    financialAccountNameSnapshot: base.financialAccountNameSnapshot || base.cuentaFinancieraNombreSnapshot || '',
+    financialAccountType: base.financialAccountType || '',
+    financialAccountCurrency: base.financialAccountCurrency || base.monedaOriginal || 'NIO',
+    financialAccountSymbol: base.financialAccountSymbol || base.simboloOriginal || '',
+    financialAccountAccountingCode: base.financialAccountAccountingCode || '',
+    financialAccountAccountingNameSnapshot: base.financialAccountAccountingNameSnapshot || '',
+    monedaOriginal: base.monedaOriginal || 'NIO',
+    simboloOriginal: base.simboloOriginal || '',
     lines: (base.lines || []).map(l => ({
       itemName: String(l.itemName || ''),
       qty: rcSafeNum(l.qty),
@@ -8843,6 +11908,12 @@ function rcBuildPrintReceiptInnerHTML(r){
   const showTransfer = (receipt.paymentType === 'TRANSFER');
   const showRef = showTransfer && (ref.trim() !== '');
   const bankDisp = bank || '—';
+  const currency = rcGetReceiptCurrency(receipt);
+  const accountName = String(receipt.financialAccountNameSnapshot || receipt.cuentaFinancieraNombreSnapshot || '').trim();
+  const accountCode = String(receipt.financialAccountAccountingCode || receipt.cuentaFinancieraCodigoContable || '').trim();
+  const rate = receipt.exchangeRateUsed || receipt.tipoCambioUsado || null;
+  const baseAmount = rcGetReceiptBaseAmount(receipt);
+  const hasFinancial = rcReceiptHasFinancialMetadata(receipt);
 
   const cli = String(receipt.clientName || '').trim() || '—';
 
@@ -8857,9 +11928,9 @@ function rcBuildPrintReceiptInnerHTML(r){
         <td class="ncol">${idx + 1}</td>
         <td>${escapeHTML(name)}</td>
         <td class="num qcol">${escapeHTML(qDisp)}</td>
-        <td class="num pcol">${rcFmtMoneyPrint(ln.unitPrice || 0)}</td>
-        <td class="num dcol">${discCell}</td>
-        <td class="num tcol">${rcFmtMoneyPrint(ln.lineTotal || 0)}</td>
+        <td class="num pcol">${rcFormatOriginalMoney(ln.unitPrice || 0, currency)}</td>
+        <td class="num dcol">${discCell ? rcFormatOriginalMoney(ln.discountPerUnit || 0, currency) : ''}</td>
+        <td class="num tcol">${rcFormatOriginalMoney(ln.lineTotal || 0, currency)}</td>
       </tr>
     `;
   }).join('');
@@ -8868,7 +11939,11 @@ function rcBuildPrintReceiptInnerHTML(r){
   const disc = receipt.totals?.discountTotal ?? 0;
   const tot = receipt.totals?.total ?? 0;
 
-  const discTotalDisp = (rcSafeNum(disc) === 0) ? '' : rcFmtMoneyPrint(disc);
+  const discTotalDisp = (rcSafeNum(disc) === 0) ? '' : rcFormatOriginalMoney(disc, currency);
+  const currencyNote = hasFinancial ? `
+    <div><span class="lbl">CUENTA:</span> ${escapeHTML(accountName || '—')}${accountCode ? ` · ${escapeHTML(accountCode)}` : ''}</div><div><span class="lbl">MONEDA:</span> ${escapeHTML(rcGetReceiptSymbol(receipt))} / ${escapeHTML(currency)}</div>
+    ${currency === 'USD' ? `<div><span class="lbl">T/C:</span> ${escapeHTML(rate ? Number(rate).toFixed(2) : '—')}</div><div><span class="lbl">EQ. C$:</span> ${escapeHTML(finFormatCordobas(baseAmount))}</div>` : ''}
+  ` : '';
 
   return `
     <div class="rc-print-header">
@@ -8883,6 +11958,7 @@ function rcBuildPrintReceiptInnerHTML(r){
       <div><span class="lbl">CLIENTE:</span> ${escapeHTML(cli)}</div>
       ${showTransfer ? `<div><span class="lbl">BANCO:</span> ${escapeHTML(bankDisp)}</div><div></div>` : ``}
       ${showRef ? `<div><span class="lbl">REF:</span> ${escapeHTML(ref)}</div><div></div>` : ``}
+      ${currencyNote}
     </div>
 
     <table class="rc-print-table">
@@ -8902,9 +11978,10 @@ function rcBuildPrintReceiptInnerHTML(r){
     </table>
 
     <div class="rc-print-totals">
-      <div class="row"><div><strong>SUBTOTAL</strong></div><div>${rcFmtMoneyPrint(sub)}</div></div>
+      <div class="row"><div><strong>SUBTOTAL</strong></div><div>${rcFormatOriginalMoney(sub, currency)}</div></div>
       <div class="row"><div><strong>DESCUENTO</strong></div><div>${discTotalDisp}</div></div>
-      <div class="row"><div><strong>TOTAL</strong></div><div><strong>${rcFmtMoneyPrint(tot)}</strong></div></div>
+      <div class="row"><div><strong>TOTAL</strong></div><div><strong>${rcFormatOriginalMoney(tot, currency)}</strong></div></div>
+      ${currency === 'USD' ? `<div class="row"><div><strong>EQUIV. CONTABLE C$</strong></div><div><strong>${escapeHTML(finFormatCordobas(baseAmount))}</strong></div></div>` : ''}
     </div>
 
     <div class="rc-print-sign">
@@ -9070,6 +12147,7 @@ function setupRecibosUI(){
   const date = document.getElementById('rec-date');
   const bank = document.getElementById('rec-bank');
   const ref = document.getElementById('rec-ref');
+  const financialAccount = document.getElementById('rec-financial-account');
   const payCash = document.getElementById('rec-pay-cash');
   const payTr = document.getElementById('rec-pay-transfer');
 
@@ -9148,8 +12226,30 @@ function setupRecibosUI(){
       rcUpdateEditorMeta();
     }
   });
-  if (bank) bank.addEventListener('input', () => { if (rcCurrent && rcEditorMode === 'edit') { rcCurrent.paymentBank = bank.value; rcUpdateEditorMeta(); } });
-  if (ref) ref.addEventListener('input', () => { if (rcCurrent && rcEditorMode === 'edit') { rcCurrent.paymentRef = ref.value; rcUpdateEditorMeta(); } });
+  if (bank) bank.addEventListener('input', () => { if (rcCurrent && rcEditorMode === 'edit') { rcCurrent.paymentBank = bank.value; rcUpdateEditorMeta(); rcSyncFinancialAccountUI(); } });
+  if (ref) ref.addEventListener('input', () => { if (rcCurrent && rcEditorMode === 'edit') { rcCurrent.paymentRef = ref.value; rcUpdateEditorMeta(); rcSyncFinancialAccountUI(); } });
+  if (financialAccount) financialAccount.addEventListener('change', () => {
+    if (!rcCurrent || rcEditorMode !== 'edit') { rcSyncFinancialAccountUI(); return; }
+    const row = rcGetSelectedFinancialAccount();
+    rcCurrent.financialAccountId = financialAccount.value || '';
+    rcCurrent.cuentaFinancieraId = rcCurrent.financialAccountId;
+    if (row) {
+      rcCurrent.monedaOriginal = rcNormalizeCurrencyCode(row.moneda || row.financialAccountCurrency || 'NIO');
+      rcCurrent.simboloOriginal = String(row.simbolo || row.financialAccountSymbol || rcCurrencySymbol(rcCurrent.monedaOriginal));
+      rcCurrent.financialAccountNameSnapshot = String(row.nombreVisible || row.financialAccountNameSnapshot || '');
+      rcCurrent.financialAccountCurrency = rcCurrent.monedaOriginal;
+      rcCurrent.financialAccountSymbol = rcCurrent.simboloOriginal;
+      rcCurrent.financialAccountType = String(row.type || row.tipo || '');
+      rcCurrent.financialAccountAccountingCode = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || '');
+      rcCurrent.financialAccountAccountingNameSnapshot = String(row.cuentaContableNombreSnapshot || row.financialAccountAccountingNameSnapshot || '');
+      if (String(row.type || row.tipo || '').toLowerCase() === 'banco' && rcCurrent.paymentType === 'TRANSFER' && !String(rcCurrent.paymentBank || '').trim()) {
+        rcCurrent.paymentBank = String(row.bancoNombreSnapshot || row.nombreVisible || '').replace(/—\s*(C\$|US\$)\s*$/,'').trim();
+        if (bank) bank.value = rcCurrent.paymentBank;
+      }
+    }
+    rcSyncFinancialAccountUI();
+    rcUpdateEditorMeta();
+  });
 
   if (btnAdd) btnAdd.addEventListener('click', () => {
     if (!rcCurrent || rcEditorMode !== 'edit' || rcSaving) return;
@@ -9253,22 +12353,445 @@ function escapeAttr(s){
 }
 
 
+/* ---------- Cuentas Financieras (Etapa 3/10) ---------- */
+
+const FIN_FINANCIAL_ACCOUNTS_STAGE = 'finanzas_multibanco_etapa_3_10';
+const FINANCIAL_ACCOUNTS_SOURCE = 'Gestión Operativa → Catálogos → Bancos';
+const FINANCIAL_ACCOUNT_CASH_DEFS = Object.freeze([
+  { id:'fa-caja-general-nio', uniqueKey:'caja:caja_general:NIO', type:'caja', cajaKey:'caja_general', nombreVisible:'Caja general C$', moneda:'NIO', simbolo:'C$', cuentaContableCodigo:'1100' },
+  { id:'fa-caja-general-usd', uniqueKey:'caja:caja_general:USD', type:'caja', cajaKey:'caja_general', nombreVisible:'Caja general US$', moneda:'USD', simbolo:'US$', cuentaContableCodigo:'1105' },
+  { id:'fa-caja-eventos-nio', uniqueKey:'caja:caja_eventos:NIO', type:'caja', cajaKey:'caja_eventos', nombreVisible:'Caja eventos C$', moneda:'NIO', simbolo:'C$', cuentaContableCodigo:'1110' },
+  { id:'fa-caja-eventos-usd', uniqueKey:'caja:caja_eventos:USD', type:'caja', cajaKey:'caja_eventos', nombreVisible:'Caja eventos US$', moneda:'USD', simbolo:'US$', cuentaContableCodigo:'1115' }
+]);
+
+function finFinancialAccountCurrencySymbol(code) {
+  return finCurrencySymbol(finNormalizeCurrencyCode(code));
+}
+
+function finFinancialAccountTypeLabel(type) {
+  return String(type || '').toLowerCase() === 'banco' ? 'Banco' : 'Caja';
+}
+
+function finFinancialAccountStatusLabel(row) {
+  return row && row.activa === false ? 'Inactiva' : 'Activa';
+}
+
+function finGetCatalogBanksForFinancialAccounts(rawBanks) {
+  const map = new Map();
+  for (const bank of (Array.isArray(rawBanks) ? rawBanks : [])) {
+    if (!bank || typeof bank !== 'object') continue;
+    const name = finNormalizeCatalogBankName(bank.name || bank.nombre || bank.bankName || bank.label || '');
+    if (!name) continue;
+    const id = bank.id != null ? String(bank.id) : '';
+    const type = String(bank.type || bank.bankType || bank.paymentType || 'transferencia').trim().toLowerCase();
+    const key = id ? `id:${id}` : `name:${normText(name)}:${type}`;
+    if (!map.has(key)) map.set(key, { ...bank, id: id || key.replace(/[^a-z0-9_-]/gi, '-'), name });
+  }
+  return [...map.values()].sort((a, b) => finCatalogBankSortKey(a).localeCompare(finCatalogBankSortKey(b)));
+}
+
+function finGetActiveCatalogBanksForFinancialAccounts(rawBanks) {
+  return finGetCatalogBanksForFinancialAccounts(rawBanks).filter(finCatalogBankIsActive);
+}
+
+function finFindSpecificBankAccountCode(bank, currency, accounts) {
+  const cur = finNormalizeCurrencyCode(currency);
+  const bankId = String(bank && bank.id != null ? bank.id : '');
+  const bankName = normText(bank && (bank.name || bank.nombre || bank.bankName || ''));
+  const list = Array.isArray(accounts) ? accounts : [];
+
+  const candidates = list.filter(acc => {
+    if (!acc || !finIsBankAccount(acc)) return false;
+    if (finIsLegacyBankAccountCode(acc.code || acc.accountCode || acc.codigo || '')) return false;
+    return finGetFinancialAccountCurrencyCode(acc) === cur;
+  });
+
+  if (bankId) {
+    const byId = candidates.find(acc => String(acc.bankCatalogId || '') === bankId);
+    if (byId) return finNormalizeAccountCode(byId.code || byId.accountCode || byId.codigo || '');
+  }
+
+  if (bankName) {
+    const byName = candidates.find(acc => {
+      const text = normText(`${acc.nombre || acc.name || ''} ${acc.bankCatalogName || ''} ${acc.bankNameSnapshot || ''}`);
+      return text.includes(bankName);
+    });
+    if (byName) return finNormalizeAccountCode(byName.code || byName.accountCode || byName.codigo || '');
+  }
+
+  const slot = finBankPreferredSlot(bank, 0);
+  const pair = finBankCodePairFromSlot(slot);
+  const expected = pair[cur];
+  const byExpected = candidates.find(acc => finNormalizeAccountCode(acc.code || acc.accountCode || acc.codigo || '') === expected);
+  return byExpected ? expected : '';
+}
+
+function finBuildFinancialAccountDefinitions(rawBanks, accounts) {
+  const defs = FINANCIAL_ACCOUNT_CASH_DEFS.map(d => ({ ...d, bancoId:null, bancoNombreSnapshot:'', sourceCatalog:'Finanzas → Caja operativa' }));
+  const banks = finGetActiveCatalogBanksForFinancialAccounts(rawBanks);
+
+  for (const bank of banks) {
+    const bankId = String(bank && bank.id != null ? bank.id : '');
+    const bankName = finNormalizeCatalogBankName(bank.name || bank.nombre || bank.bankName || 'Banco');
+    for (const currency of FIN_SUPPORTED_CURRENCY_CODES) {
+      const cur = finNormalizeCurrencyCode(currency);
+      const symbol = finFinancialAccountCurrencySymbol(cur);
+      const accountCode = finFindSpecificBankAccountCode(bank, cur, accounts);
+      defs.push({
+        id: `fa-banco-${bankId || normText(bankName).replace(/[^a-z0-9]+/g, '-')}-${cur.toLowerCase()}`,
+        uniqueKey: `banco:${bankId || normText(bankName)}:${cur}`,
+        type: 'banco',
+        bancoId: bankId,
+        bancoNombreSnapshot: bankName,
+        bancoTipoSnapshot: String(bank.type || bank.bankType || bank.paymentType || 'transferencia'),
+        nombreVisible: `${bankName} — ${symbol}`,
+        moneda: cur,
+        simbolo: symbol,
+        cuentaContableCodigo: accountCode,
+        sourceCatalog: FINANCIAL_ACCOUNTS_SOURCE
+      });
+    }
+  }
+
+  return defs;
+}
+
+function finFinancialAccountDefinitionToRecord(def, accountsMap, nowISO) {
+  const code = finNormalizeAccountCode(def.cuentaContableCodigo || '');
+  const acc = code && accountsMap && accountsMap.get(code) ? accountsMap.get(code) : null;
+  return {
+    id: String(def.id || def.uniqueKey || `fa-${Date.now()}`),
+    uniqueKey: String(def.uniqueKey || def.id || ''),
+    type: String(def.type || 'caja').toLowerCase(),
+    tipo: String(def.type || 'caja').toLowerCase(),
+    cajaKey: def.cajaKey || '',
+    bancoId: def.bancoId != null ? String(def.bancoId) : null,
+    bancoNombreSnapshot: def.bancoNombreSnapshot || '',
+    bancoTipoSnapshot: def.bancoTipoSnapshot || '',
+    nombreVisible: def.nombreVisible || 'Cuenta financiera',
+    moneda: finNormalizeCurrencyCode(def.moneda),
+    simbolo: finCurrencySymbol(def.moneda),
+    cuentaContableCodigo: code,
+    cuentaContableNombreSnapshot: acc ? String(acc.nombre || acc.name || `Cuenta ${code}`) : '',
+    activa: true,
+    fechaCreacion: nowISO,
+    fechaActualizacion: nowISO,
+    createdAtISO: nowISO,
+    updatedAtISO: nowISO,
+    sourceCatalog: def.sourceCatalog || '',
+    generatedFrom: 'finanzas_cuentas_financieras',
+    a33FinanceStage: FIN_FINANCIAL_ACCOUNTS_STAGE
+  };
+}
+
+function finMergeFinancialAccountRecord(current, def, accountsMap, nowISO) {
+  const base = finFinancialAccountDefinitionToRecord(def, accountsMap, nowISO);
+  if (!current) return base;
+
+  const out = { ...current };
+  const forceKeys = [
+    'uniqueKey', 'type', 'tipo', 'cajaKey', 'bancoId', 'bancoNombreSnapshot', 'bancoTipoSnapshot',
+    'nombreVisible', 'moneda', 'simbolo', 'sourceCatalog', 'generatedFrom', 'a33FinanceStage'
+  ];
+  for (const k of forceKeys) out[k] = base[k];
+
+  const currentCode = finNormalizeAccountCode(current.cuentaContableCodigo || '');
+  if (currentCode && accountsMap && accountsMap.get(currentCode)) {
+    out.cuentaContableCodigo = currentCode;
+    const acc = accountsMap.get(currentCode);
+    out.cuentaContableNombreSnapshot = String(acc.nombre || acc.name || `Cuenta ${currentCode}`);
+  } else {
+    out.cuentaContableCodigo = base.cuentaContableCodigo;
+    out.cuentaContableNombreSnapshot = base.cuentaContableNombreSnapshot;
+  }
+
+  if (typeof current.activa === 'boolean') out.activa = current.activa;
+  else out.activa = true;
+
+  out.fechaCreacion = current.fechaCreacion || current.createdAtISO || nowISO;
+  out.createdAtISO = current.createdAtISO || current.fechaCreacion || nowISO;
+  out.fechaActualizacion = nowISO;
+  out.updatedAtISO = nowISO;
+  return out;
+}
+
+async function finEnsureFinancialAccountsBase() {
+  await openFinDB();
+  const [existing, accounts, rawBanks] = await Promise.all([
+    finGetAll('financialAccounts').catch(() => []),
+    finGetAll('accounts'),
+    getAllPosBanksSafe()
+  ]);
+  const accountsMap = new Map((accounts || []).map(acc => [finNormalizeAccountCode(acc.code), acc]));
+  const defs = finBuildFinancialAccountDefinitions(rawBanks, accounts);
+  const byId = new Map((existing || []).map(row => [String(row && row.id), row]));
+  const nowISO = new Date().toISOString();
+  let changed = 0;
+
+  for (const def of defs) {
+    const row = finMergeFinancialAccountRecord(byId.get(String(def.id)), def, accountsMap, nowISO);
+    await finPut('financialAccounts', row);
+    byId.set(String(row.id), row);
+    changed += 1;
+  }
+
+  return changed;
+}
+
+function finBuildFinancialAccountWarnings(row, accountsMap, banksById) {
+  const warnings = [];
+  const code = finNormalizeAccountCode(row && row.cuentaContableCodigo);
+  const mappedAcc = code && accountsMap ? accountsMap.get(code) : null;
+  if (!code || !mappedAcc) {
+    warnings.push('Sin cuenta contable válida asociada.');
+  } else if (finGetFinancialAccountCurrencyCode(mappedAcc) !== finNormalizeCurrencyCode(row && row.moneda)) {
+    warnings.push('La moneda de la cuenta contable asociada no coincide con esta cuenta financiera.');
+  }
+  if (String(row && row.type) === 'banco') {
+    if (!row.bancoId) warnings.push('Banco sin id maestro; se conserva por compatibilidad.');
+    const bank = row.bancoId ? banksById.get(String(row.bancoId)) : null;
+    if (bank && !finCatalogBankIsActive(bank)) warnings.push('Banco inactivo en Catálogos.');
+    if (code && finIsLegacyBankAccountCode(code)) warnings.push('1200 es legacy/histórica; usa una cuenta bancaria específica para operaciones nuevas.');
+  }
+  return warnings;
+}
+
+function finAccountOptionLabel(acc) {
+  const code = finNormalizeAccountCode(acc && (acc.code || acc.accountCode || acc.codigo || ''));
+  const name = String(acc && (acc.nombre || acc.name || '') || '').trim();
+  const cur = finGetFinancialAccountCurrencyCode(acc);
+  const extra = finIsLegacyBankAccountCode(code) ? ' · legacy' : (finIsCashAccount(acc) || finIsBankAccount(acc) ? ` · ${finFinancialAccountCurrencySymbol(cur)}` : '');
+  return `${code} — ${name || 'Cuenta sin nombre'}${extra}`;
+}
+
+function finGetFinancialAccountSelectableAccounts(accounts) {
+  return (Array.isArray(accounts) ? accounts : [])
+    .filter(acc => {
+      if (!acc) return false;
+      if (acc.isHidden === true) return false;
+      const root = String(acc.rootType || inferRootTypeFromCode(acc.code) || '').toUpperCase();
+      const tipo = String(acc.tipo || '').toLowerCase();
+      return root === 'ACTIVO' || tipo === 'activo' || finIsFinancialCashOrBankAccount(acc);
+    })
+    .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
+}
+
+function finRenderFinancialAccountCard(row, accounts, accountsMap, banksById) {
+  const id = escapeAttr(row.id);
+  const code = finNormalizeAccountCode(row.cuentaContableCodigo || '');
+  const warnings = finBuildFinancialAccountWarnings(row, accountsMap, banksById);
+  const isActive = row.activa !== false;
+  const type = String(row.type || row.tipo || 'caja').toLowerCase();
+  const selectOptions = accounts.map(acc => {
+    const accCode = finNormalizeAccountCode(acc.code || acc.accountCode || acc.codigo || '');
+    const selected = accCode === code ? ' selected' : '';
+    return `<option value="${escapeAttr(accCode)}"${selected}>${escapeHTML(finAccountOptionLabel(acc))}</option>`;
+  }).join('');
+  const warningHTML = warnings.length
+    ? `<div class="fa-warnings">${warnings.map(w => `<span>${escapeHTML(w)}</span>`).join('')}</div>`
+    : '';
+  const inactiveClass = isActive ? '' : ' is-inactive';
+  return `
+    <article class="fa-card${inactiveClass}" data-fa-id="${id}">
+      <div class="fa-card-head">
+        <div class="fa-title-block">
+          <div class="fa-title-row">
+            <strong>${escapeHTML(row.nombreVisible || 'Cuenta financiera')}</strong>
+            <span class="fin-pill ${type === 'banco' ? 'fin-pill--gold' : 'fin-pill--cash'}">${escapeHTML(finFinancialAccountTypeLabel(type))}</span>
+            <span class="fin-pill ${isActive ? 'fin-pill--green' : 'fin-pill--muted'}">${escapeHTML(finFinancialAccountStatusLabel(row))}</span>
+          </div>
+          <p>${escapeHTML(row.sourceCatalog || (type === 'banco' ? FINANCIAL_ACCOUNTS_SOURCE : 'Caja operativa'))}</p>
+        </div>
+        <span class="fa-currency">${escapeHTML(row.simbolo || finFinancialAccountCurrencySymbol(row.moneda))}</span>
+      </div>
+      <div class="fa-meta-grid">
+        <div><small>Moneda</small><b>${escapeHTML(finNormalizeCurrencyCode(row.moneda))}</b></div>
+        <div><small>Banco</small><b>${escapeHTML(row.bancoNombreSnapshot || (type === 'banco' ? 'Banco maestro' : '—'))}</b></div>
+        <div><small>Cuenta actual</small><b>${escapeHTML(code ? `${code} · ${row.cuentaContableNombreSnapshot || 'Sin nombre'}` : 'Sin mapear')}</b></div>
+        <div><small>ID interno</small><b>${escapeHTML(row.id || '—')}</b></div>
+      </div>
+      ${warningHTML}
+      <div class="fa-edit-row">
+        <label>
+          Cuenta contable asociada
+          <select class="fa-account-select" data-fa-id="${id}">
+            <option value="">Seleccionar cuenta…</option>
+            ${selectOptions}
+          </select>
+        </label>
+        <label class="fa-active-check">
+          <input type="checkbox" class="fa-active-input" data-fa-id="${id}" ${isActive ? 'checked' : ''}>
+          Activa
+        </label>
+        <button type="button" class="btn-small fa-save" data-fa-id="${id}">Guardar</button>
+      </div>
+    </article>
+  `;
+}
+
+async function renderFinancialAccountsView() {
+  const host = document.getElementById('fa-list');
+  if (!host) return;
+  const status = document.getElementById('fa-status');
+  const summary = document.getElementById('fa-summary');
+  try {
+    await openFinDB();
+    const [rows, accounts, rawBanks] = await Promise.all([
+      finGetAll('financialAccounts').catch(() => []),
+      finGetAll('accounts'),
+      getAllPosBanksSafe()
+    ]);
+    const accountsMap = new Map((accounts || []).map(acc => [finNormalizeAccountCode(acc.code), acc]));
+    const banks = finGetCatalogBanksForFinancialAccounts(rawBanks);
+    const banksById = new Map(banks.map(b => [String(b.id), b]));
+    const selectableAccounts = finGetFinancialAccountSelectableAccounts(accounts);
+    const sortedRows = (Array.isArray(rows) ? rows : []).slice().sort((a, b) => {
+      const ta = String(a.type || a.tipo || '').localeCompare(String(b.type || b.tipo || ''));
+      if (ta) return ta;
+      const na = String(a.nombreVisible || '');
+      const nb = String(b.nombreVisible || '');
+      return na.localeCompare(nb, 'es');
+    });
+
+    const activeBanks = banks.filter(finCatalogBankIsActive).length;
+    const activeRows = sortedRows.filter(r => r && r.activa !== false).length;
+    const missingMap = sortedRows.filter(r => !r.cuentaContableCodigo || !accountsMap.get(finNormalizeAccountCode(r.cuentaContableCodigo))).length;
+
+    if (summary) {
+      summary.innerHTML = `
+        <div class="fa-summary-item"><span>Cuentas configuradas</span><strong>${sortedRows.length}</strong></div>
+        <div class="fa-summary-item"><span>Activas</span><strong>${activeRows}</strong></div>
+        <div class="fa-summary-item"><span>Bancos activos leídos</span><strong>${activeBanks}</strong></div>
+        <div class="fa-summary-item"><span>Alertas de mapeo</span><strong>${missingMap}</strong></div>
+      `;
+    }
+
+    if (status) {
+      status.textContent = banks.length
+        ? 'Bancos leídos desde Gestión Operativa → Catálogos → Bancos. Finanzas no administra bancos aquí.'
+        : 'No hay bancos maestros disponibles todavía. Crea bancos en Gestión Operativa → Catálogos → Bancos.';
+      status.className = banks.length ? 'fin-help fa-status-ok' : 'fin-help fa-status-warn';
+    }
+
+    if (!sortedRows.length) {
+      host.innerHTML = '<div class="fa-empty">No hay cuentas financieras preparadas. Usa “Revisar base” para inicializar la capa.</div>';
+      return;
+    }
+
+    host.innerHTML = sortedRows.map(row => finRenderFinancialAccountCard(row, selectableAccounts, accountsMap, banksById)).join('');
+  } catch (err) {
+    console.error('Error renderizando Cuentas Financieras', err);
+    if (status) {
+      status.textContent = 'No se pudieron cargar las Cuentas Financieras.';
+      status.className = 'fin-help fa-status-warn';
+    }
+    host.innerHTML = '<div class="fa-empty">Error cargando la sección. Revisa consola.</div>';
+  }
+}
+
+async function finSaveFinancialAccountFromUI(id) {
+  await openFinDB();
+  const row = await finGet('financialAccounts', id);
+  if (!row) {
+    alert('La cuenta financiera ya no existe.');
+    await renderFinancialAccountsView();
+    return;
+  }
+  const select = Array.from(document.querySelectorAll('.fa-account-select')).find(el => String(el.getAttribute('data-fa-id') || '') === String(id));
+  const active = Array.from(document.querySelectorAll('.fa-active-input')).find(el => String(el.getAttribute('data-fa-id') || '') === String(id));
+  const code = finNormalizeAccountCode(select ? select.value : '');
+  const acc = code ? await finGet('accounts', code) : null;
+  if (!acc) {
+    alert('Selecciona una cuenta contable existente antes de guardar. Aquí no hacemos magia negra contable, todavía.');
+    return;
+  }
+  row.cuentaContableCodigo = code;
+  row.cuentaContableNombreSnapshot = String(acc.nombre || acc.name || `Cuenta ${code}`);
+  row.activa = active ? !!active.checked : row.activa !== false;
+  row.fechaActualizacion = new Date().toISOString();
+  row.updatedAtISO = row.fechaActualizacion;
+  row.manualEdited = true;
+  row.updatedFrom = 'finanzas_cuentas_financieras_ui';
+  await finPut('financialAccounts', row);
+  showToast('Cuenta financiera guardada');
+  if (finCachedData) await refreshAllFin();
+  else await renderFinancialAccountsView();
+}
+
+function setupFinancialAccountsUI() {
+  const btnRefresh = document.getElementById('fa-refresh');
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', async () => {
+      try {
+        await ensureBaseAccounts();
+        await finEnsureFinancialAccountsBase();
+        await renderFinancialAccountsView();
+        if (finCachedData) await refreshAllFin();
+        showToast('Cuentas Financieras revisadas');
+      } catch (err) {
+        console.error('Error revisando Cuentas Financieras', err);
+        alert('No se pudieron revisar las Cuentas Financieras.');
+      }
+    });
+  }
+
+  const btnGoBanks = document.getElementById('fa-go-banks');
+  if (btnGoBanks) {
+    btnGoBanks.addEventListener('click', () => {
+      window.location.href = '../catalogos/index.html#bancos';
+    });
+  }
+
+  const host = document.getElementById('fa-list');
+  if (host) {
+    host.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.fa-save');
+      if (!btn) return;
+      const id = btn.getAttribute('data-fa-id') || '';
+      if (!id) return;
+      finSaveFinancialAccountFromUI(id).catch(err => {
+        console.error('Error guardando cuenta financiera', err);
+        alert('No se pudo guardar la cuenta financiera.');
+      });
+    });
+  }
+}
+
 /* ---------- Tabs y eventos UI ---------- */
 
 
 
+function finNormalizeViewName(view) {
+  const raw = String(view || '').trim().toLowerCase();
+  const aliases = {
+    proveedores: 'compras',
+    proveedor: 'compras',
+    comprasproveedor: 'compras',
+    cuentasfinancieras: 'cuentasfinancieras',
+    cuentas_financieras: 'cuentasfinancieras',
+    transferenciasinternas: 'transferencias',
+    transferencias_internas: 'transferencias'
+  };
+  const candidate = aliases[raw] || raw || 'tablero';
+  const btn = Array.from(document.querySelectorAll('.fin-tab-btn')).find(b => b.dataset.view === candidate);
+  return btn ? candidate : 'tablero';
+}
+
+function finRunViewSideEffects(view) {
+  const v = finNormalizeViewName(view);
+  if (v === 'recibos') { rcEnterView(true).catch(() => {}); }
+  if (v === 'cuentasfinancieras') { renderFinancialAccountsView().catch(() => {}); }
+  if (v === 'transferencias') { try { renderInternalTransfersView(finCachedData || {}); } catch (_) {} }
+  if (v === 'estados' && finCachedData) { try { finReportEnsureSelectors(finCachedData); renderAccountingReports(finCachedData); } catch (_) {} }
+}
+
 function setActiveFinView(view) {
   const buttons = document.querySelectorAll('.fin-tab-btn');
-  const blockedViews = new Set(['proveedores']);
-
-  if (blockedViews.has(String(view || '').trim())) {
-    view = 'compras';
-  }
-
+  const normalized = finNormalizeViewName(view);
   let target = null;
 
   buttons.forEach(btn => {
-    if (btn.dataset.view === view) {
+    if (btn.dataset.view === normalized) {
       target = btn;
     }
   });
@@ -9276,46 +12799,64 @@ function setActiveFinView(view) {
   // Si no se encuentra una vista válida, usar la primera como fallback
   if (!target && buttons.length > 0) {
     target = buttons[0];
-    view = target.dataset.view;
   }
+
+  const activeView = (target && target.dataset && target.dataset.view) ? target.dataset.view : normalized;
 
   buttons.forEach(btn => {
     btn.classList.toggle('active', btn === target);
   });
 
   document.querySelectorAll('.fin-view').forEach(sec => {
-    sec.classList.toggle('active', sec.id === `view-${view}`);
+    sec.classList.toggle('active', sec.id === `view-${activeView}`);
   });
+
+  return activeView;
 }
 
 function setupTabs() {
   const buttons = document.querySelectorAll('.fin-tab-btn');
 
   buttons.forEach(btn => {
+    if (btn.dataset.a33TabBound === '1') return;
+    btn.dataset.a33TabBound = '1';
     btn.addEventListener('click', () => {
-      const view = btn.dataset.view;
-      setActiveFinView(view);
-      if (view === 'recibos') { rcEnterView(true).catch(() => {}); }
+      const view = finNormalizeViewName(btn.dataset.view);
+      const activeView = setActiveFinView(view);
+      finRunViewSideEffects(activeView);
       // Actualizar hash para que si el usuario regresa, mantenga la pestaña
-      if (view) {
-        window.location.hash = `tab=${view}`;
+      if (activeView && window.location.hash !== `#tab=${activeView}`) {
+        window.location.hash = `tab=${activeView}`;
       }
     });
   });
 
-  // Vista inicial según hash de la URL (#tab=tablero, #tab=diario, #tab=estados)
-  let initialView = 'tablero';
-  if (window.location.hash && window.location.hash.startsWith('#tab=')) {
-    const v = window.location.hash.slice(5).trim();
-    if (v) {
-      initialView = v === 'proveedores' ? 'compras' : v;
-    }
+  // Vista inicial según hash de la URL (#tab=tablero, #tab=diario, #tab=estados).
+  const initialView = (window.location.hash && window.location.hash.startsWith('#tab='))
+    ? finNormalizeViewName(window.location.hash.slice(5))
+    : 'tablero';
+
+  const activeView = setActiveFinView(initialView);
+  finRunViewSideEffects(activeView);
+  if (window.location.hash && window.location.hash !== `#tab=${activeView}`) {
+    try { window.history.replaceState(null, '', `#tab=${activeView}`); } catch (_) { window.location.hash = `tab=${activeView}`; }
   }
 
-  setActiveFinView(initialView);
+  if (!window.__a33FinHashBound) {
+    window.__a33FinHashBound = true;
+    window.addEventListener('hashchange', () => {
+      try {
+        const next = (window.location.hash && window.location.hash.startsWith('#tab='))
+          ? finNormalizeViewName(window.location.hash.slice(5))
+          : 'tablero';
+        const active = setActiveFinView(next);
+        finRunViewSideEffects(active);
+      } catch (_) {}
+    });
+  }
+}
 
-  if (initialView === 'recibos') { rcEnterView(true).catch(() => {}); }
-}function setupEstadosSubtabs() {
+function setupEstadosSubtabs() {
   const btns = document.querySelectorAll('.fin-subtab-btn');
   btns.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -9390,7 +12931,18 @@ function setupFilterListeners() {
   if (movTipo) {
     movTipo.addEventListener('change', () => {
       if (finCachedData) fillCuentaSelect(finCachedData);
+      updateManualMovementCurrencyPreview();
     });
+  }
+
+  const movFinancialAccount = document.getElementById('mov-financial-account');
+  if (movFinancialAccount) {
+    movFinancialAccount.addEventListener('change', updateManualMovementCurrencyPreview);
+  }
+
+  const movMonto = document.getElementById('mov-monto');
+  if (movMonto) {
+    movMonto.addEventListener('input', updateManualMovementCurrencyPreview);
   }
 
   const btnGuardar = $('#mov-guardar');
@@ -9402,6 +12954,9 @@ function setupFilterListeners() {
       });
     });
   }
+
+
+  setupInternalTransfersUI();
 
   // Estados de Resultados + Rentabilidad + Comparativo eventos + Flujo de Caja
   ['er-mes', 'er-anio', 'er-desde', 'er-hasta', 'er-evento'].forEach(id => {
@@ -9458,23 +13013,26 @@ async function refreshAllFin() {
   updateEventFilters(data.entries);
   updateSupplierSelects(data);
   fillCuentaSelect(data);
+  fillFinancialAccountSelect(data);
+  rcPopulateFinancialAccountSelect(data);
+  compraPopulateFinancialAccountSelect(data);
   fillCompraCuentaDebe(data);
   fillCompraCuentaHaber(data);
+  compraSyncFinancialAccountUI(data);
   finRenderCurrencyReference();
   renderTablero(data);
   renderDiario(data);
   renderComprasPorProveedor(data);
-  renderProveedores(data);
-  // Proveedores: si veníamos editando, restaurar modo edición y UI de productos.
-  provApplyEditStateFromCache();
-  // Proveedores: si el modal de productos está abierto, mantenerlo coherente (ediciones/borrados).
-  provSyncOpenProductsModal();
+  // Proveedores se administran en Catálogos. Finanzas solo consume el store maestro para Compras.
   renderCatalogoCuentas(data);
+  renderFinancialAccountsView().catch(() => {});
+  renderInternalTransfersView(data);
   renderEstadoResultados(data);
   renderBalanceGeneral(data);
   renderRentabilidadPresentacion(data);
   renderComparativoEventos(data);
   renderFlujoCaja(data);
+  renderAccountingReports(data);
 
   // Compras (planificación)
   if (typeof pcRenderAll === 'function') pcRenderAll();
@@ -9860,8 +13418,11 @@ async function createPosDailyCloseEntry(closure, data) {
   const costoTotalSalidaInventario = n2(costoVentasTotal + costoCortesiasTotal);
 
   const lines = [];
-  if (efectivo > 0) lines.push({ accountCode: '1110', debe: efectivo, haber: 0 });
-  if (transferencia > 0) lines.push({ accountCode: '1200', debe: transferencia, haber: 0 });
+  const legacyCajaEventosCode = finGetLegacyCashEventsAccountCode();
+  const legacyBancoCode = finGetLegacyBankAccountCode();
+
+  if (efectivo > 0) lines.push({ accountCode: legacyCajaEventosCode, debe: efectivo, haber: 0 });
+  if (transferencia > 0) lines.push({ accountCode: legacyBancoCode, debe: transferencia, haber: 0 });
   if (credito > 0) lines.push({ accountCode: '1300', debe: credito, haber: 0 });
   if (otros > 0) lines.push({ accountCode: '1900', debe: otros, haber: 0 });
 
@@ -9888,10 +13449,10 @@ async function createPosDailyCloseEntry(closure, data) {
   const pcIngresos = n2(petty?.ingresosNio);
   if (pcEgresos > 0) {
     lines.push({ accountCode: '6100', debe: pcEgresos, haber: 0 });
-    lines.push({ accountCode: '1110', debe: 0, haber: pcEgresos });
+    lines.push({ accountCode: legacyCajaEventosCode, debe: 0, haber: pcEgresos });
   }
   if (pcIngresos > 0) {
-    lines.push({ accountCode: '1110', debe: pcIngresos, haber: 0 });
+    lines.push({ accountCode: legacyCajaEventosCode, debe: pcIngresos, haber: 0 });
     lines.push({ accountCode: '7100', debe: 0, haber: pcIngresos });
   }
 
@@ -10345,15 +13906,18 @@ async function initFinanzas() {
     await openFinDB();
     await ensureBaseAccounts();
     await normalizeAccountsCatalog();
+    await finEnsureFinancialAccountsBase();
 
     // Compras (planificación)
     await pcLoadAll();
     fillMonthYearSelects();
     finRenderCurrencyReference();
     setupTabs();
+    setupFinancialAccountsUI();
     setupCajaChicaUI();
     setupEstadosSubtabs();
     setupModoERToggle();
+    setupAccountingReportsUI();
     setupFilterListeners();
     setupRecibosUI();
     await rcEnterView(true);
@@ -10392,6 +13956,8 @@ window.addEventListener('storage', (ev) => {
         renderBalanceGeneral(finCachedData);
         renderFlujoCaja(finCachedData);
         renderDiario(finCachedData);
+        renderAccountingReports(finCachedData);
+        updateManualMovementCurrencyPreview();
       }
     }
   } catch (_) {}

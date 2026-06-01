@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#060606">
   <script src="/assets/js/a33-theme.js?v=4.20.77&r=10"></script>
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=11">
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=19">
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=10">
 </head>
 <body class="fin-body">
@@ -43,6 +43,8 @@
       <button type="button" class="fin-tab-btn active" data-view="tablero">Tablero Finanzas</button>
       <button type="button" class="fin-tab-btn" data-view="diario">Diario y Ajustes</button>
       <button type="button" class="fin-tab-btn" data-view="cajachica">Caja Chica</button>
+      <button type="button" class="fin-tab-btn" data-view="cuentasfinancieras">Cuentas Financieras</button>
+      <button type="button" class="fin-tab-btn" data-view="transferencias">Transferencias Internas</button>
       <button type="button" class="fin-tab-btn" data-view="estados">Estados Financieros</button>
       <button type="button" class="fin-tab-btn" data-view="comprasplan">Compras</button>
       <button type="button" class="fin-tab-btn" data-view="compras">Compras a Proveedor</button>
@@ -221,27 +223,28 @@
                 <option value="ingreso">Ingreso</option>
                 <option value="egreso">Egreso</option>
                 <option value="ajuste">Ajuste</option>
-                            <option value="transferencia">Transferencia</option>
-            </select>
-            </label>
-
-            <label>
-              Medio
-              <select id="mov-medio">
-                <option value="caja">Caja</option>
-                <option value="banco">Banco</option>
+                <option value="transferencia">Transferencia interna</option>
               </select>
             </label>
 
-            <label>
-              Monto
-              <input type="number" id="mov-monto" step="0.01" min="0">
+            <label class="fin-form-grow">
+              Cuenta financiera
+              <select id="mov-financial-account"></select>
             </label>
+
+            <label>
+              Monto original
+              <input type="number" id="mov-monto" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+            </label>
+          </div>
+
+          <div class="fin-movement-meta" id="mov-financial-meta">
+            Seleccione una cuenta financiera activa para detectar moneda y cuenta contable.
           </div>
 
           <div class="fin-form-row">
             <label class="fin-form-grow">
-              Cuenta principal
+              Cuenta contable contraparte
               <select id="mov-cuenta"></select>
             </label>
 
@@ -270,11 +273,11 @@
           </div>
 
           <p class="fin-help">
-            En Fase 3A el asiento sigue siendo de dos líneas automáticas:
+            Los movimientos nuevos usan cuenta financiera específica y guardan moneda original.
             <br>
-            <strong>Ingreso:</strong> DEBE Caja/Banco · HABER Cuenta de ingreso seleccionada.<br>
-            <strong>Egreso:</strong> DEBE Cuenta de gasto/costo · HABER Caja/Banco.<br>
-            <strong>Ajuste simple:</strong> Caja/Banco contra la cuenta seleccionada.
+            <strong>Ingreso:</strong> DEBE Cuenta financiera · HABER Cuenta contraparte.<br>
+            <strong>Egreso:</strong> DEBE Cuenta contraparte · HABER Cuenta financiera.<br>
+            <strong>USD:</strong> usa T/C vigente de Configuración → Moneda y guarda snapshot histórico.
           </p>
         </form>
 
@@ -296,6 +299,7 @@
                 <th>Evento / Ref</th>
                 <th>Proveedor</th>
                 <th>Origen</th>
+                <th>Moneda</th>
                 <th>Debe</th>
                 <th>Haber</th>
                 <th></th>
@@ -514,17 +518,41 @@
         </select>
       </label>
 
-      <label>
-        Pago
-        <select id="compra-medio">
+      <label class="fin-form-grow compra-financial-account-field">
+        Cuenta financiera de pago
+        <select id="compra-financial-account"></select>
+      </label>
+
+      <label class="compra-medio-legacy hidden" aria-hidden="true">
+        Pago legacy
+        <select id="compra-medio" tabindex="-1">
           <option value="cash">Caja</option>
           <option value="bank">Banco</option>
         </select>
       </label>
 
       <label>
-        Monto
+        Monto original
         <input type="number" id="compra-monto" step="0.01" min="0" inputmode="decimal">
+      </label>
+    </div>
+
+    <div id="compra-financial-meta" class="fin-movement-meta compra-financial-meta">
+      Seleccione una cuenta financiera activa para detectar moneda, T/C y cuenta contable de pago.
+    </div>
+
+    <div class="fin-form-row compra-currency-preview">
+      <label class="fin-form-mini">
+        Moneda
+        <input type="text" id="compra-moneda" readonly placeholder="—">
+      </label>
+      <label class="fin-form-mini">
+        T/C snapshot
+        <input type="text" id="compra-tc" readonly placeholder="—">
+      </label>
+      <label class="fin-form-grow">
+        Equivalente contable C$
+        <input type="text" id="compra-equivalente" readonly placeholder="—">
       </label>
     </div>
 
@@ -563,9 +591,9 @@
         <select id="compra-cuenta-debe"></select>
       </label>
 
-      <label class="fin-form-grow">
-        Cuenta HABER
-        <select id="compra-cuenta-haber"></select>
+      <label class="fin-form-grow compra-haber-legacy hidden" aria-hidden="true">
+        Cuenta HABER legacy
+        <select id="compra-cuenta-haber" tabindex="-1"></select>
       </label>
     </div>
 
@@ -587,14 +615,14 @@
 
     <p class="fin-help">
       Aquí no existe “Proveedores por pagar”. Toda compra queda registrada como pagada al momento.
-      Se guarda bajo <strong>General/Central</strong> (sin evento).
+      La cuenta financiera seleccionada define moneda, cuenta contable de pago y snapshot histórico de T/C si aplica.
     </p>
   </form>
 
   <section class="fin-subsection">
     <header class="fin-section-header fin-section-header--sub">
       <h3>Reporte rápido: Compras por Proveedor</h3>
-      <p>Filtra por mes o por rango de fechas. Totales por proveedor y desglose por método de pago.</p>
+      <p>Filtra por mes o por rango de fechas. Totales por proveedor con moneda original, equivalente C$ y cuenta financiera de pago.</p>
     </header>
 
     <div class="fin-filters-row fin-filters-row--compact">
@@ -640,9 +668,9 @@
           <tr>
             <th>Proveedor</th>
             <th># compras</th>
-            <th>Total</th>
-            <th>Caja</th>
-            <th>Banco</th>
+            <th>Total C$</th>
+            <th>Original</th>
+            <th>Cuenta financiera</th>
           </tr>
         </thead>
         <tbody id="compras-tbody"></tbody>
@@ -658,8 +686,15 @@
 <section id="view-recibos" class="fin-view">
   <header class="fin-section-header">
     <h2>Recibos</h2>
-    <p>Flujo oficial: BORRADOR → EMITIDO (bloqueo) · EMITIDO → ANULADO (motivo) · REEMITIR (nuevo borrador). (Etapa 3)</p>
+    <p>Flujo oficial multicuenta y multimoneda: BORRADOR → EMITIDO · cuenta financiera de cobro · moneda original · T/C snapshot si aplica. (Etapa 8/10)</p>
   </header>
+
+  <div id="rec-currency-reference" class="fin-currency-reference">
+    <div><strong>Base contable:</strong> <span id="rec-currency-primary">C$ / NIO</span></div>
+    <div><strong>Moneda secundaria:</strong> <span id="rec-currency-secondary">US$ / USD</span></div>
+    <div><strong>Tipo de cambio:</strong> <span id="rec-currency-rate">T/C no configurado</span></div>
+    <div id="rec-currency-note" class="fin-help">Fuente: Configuración → Moneda.</div>
+  </div>
 
   <!-- LISTA / HISTÓRICO -->
   <div id="recibos-list">
@@ -720,8 +755,8 @@
             <th>N°</th>
             <th>Fecha</th>
             <th>Cliente</th>
-            <th>Pago</th>
-            <th class="num">Total</th>
+            <th>Pago / Cuenta</th>
+            <th class="num">Total / Eq.</th>
             <th>Estado</th>
             <th class="fin-actions-cell">Acciones</th>
           </tr>
@@ -759,6 +794,17 @@
           <input type="date" id="rec-date">
         </label>
       </div>
+
+      <div class="fin-form-row">
+        <label class="fin-form-grow">
+          Cuenta financiera de cobro
+          <select id="rec-financial-account">
+            <option value="">Seleccione cuenta financiera…</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="rec-financial-meta" class="fin-movement-meta">Seleccione una cuenta financiera activa para detectar moneda, cuenta contable y equivalente C$.</div>
 
       <div class="fin-form-row">
         <div class="fin-form-grow">
@@ -807,10 +853,12 @@
         <div class="fin-inline-group" style="margin-top:10px; justify-content:space-between; flex-wrap:wrap;">
           <button type="button" id="rec-add-line" class="btn-small">+ Agregar línea</button>
 
-          <div class="rec-totals">
+          <div class="rec-totals rec-totals--multi">
+            <div><span class="fin-muted">Moneda</span> <strong id="rec-currency-label">C$ / NIO</strong></div>
             <div><span class="fin-muted">Subtotal</span> <strong id="rec-subtotal">C$ 0.00</strong></div>
             <div><span class="fin-muted">Descuento</span> <strong id="rec-discount">C$ 0.00</strong></div>
-            <div><span class="fin-muted">Total</span> <strong id="rec-total">C$ 0.00</strong></div>
+            <div><span class="fin-muted">Total original</span> <strong id="rec-total">C$ 0.00</strong></div>
+            <div><span class="fin-muted">Equiv. C$</span> <strong id="rec-base-total">C$ 0.00</strong></div>
           </div>
         </div>
       </section>
@@ -824,7 +872,7 @@
         </div>
       </div>
 
-      <p class="fin-help">Regla: si el pago es <strong>Transferencia</strong>, el <strong>Banco</strong> es obligatorio. La referencia es opcional.</p>
+      <p class="fin-help">Regla: todo recibo nuevo requiere <strong>cuenta financiera de cobro</strong>. Si la cuenta es <strong>US$</strong>, el T/C vigente se lee desde <strong>Configuración → Moneda</strong> y queda guardado como snapshot. Si el pago es transferencia, el banco es obligatorio.</p>
     </form>
   </div>
 </section>
@@ -1008,17 +1056,170 @@
   <p class="fin-help">Tip: este snapshot lo puede leer POS manualmente como saldo inicial cuando lo habilitas con “Sincronizar”.</p>
 </section>
 
+
+<!-- CUENTAS FINANCIERAS (CONFIGURACIÓN MULTIBANCO / MULTIMONEDA) -->
+<section id="view-cuentasfinancieras" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Cuentas Financieras</h2>
+    <p>Mapea cajas operativas y bancos maestros a cuentas contables específicas por moneda. Esta capa no registra movimientos ni recalcula históricos.</p>
+  </header>
+
+  <section class="fa-source-card" aria-label="Fuente de bancos">
+    <div>
+      <h3>Fuente maestra</h3>
+      <p>Los bancos se administran en Gestión Operativa → Catálogos → Bancos. Finanzas solo los lee y los mapea a cuentas contables.</p>
+    </div>
+    <div class="fa-actions">
+      <button type="button" id="fa-refresh" class="btn-small">Revisar base</button>
+      <button type="button" id="fa-go-banks" class="btn-ghost">Ir a Catálogos → Bancos</button>
+    </div>
+  </section>
+
+  <section id="fa-currency-reference" class="fin-currency-reference fin-currency-reference--inside" aria-live="polite">
+    <div class="fin-currency-reference__main">
+      <strong>T/C para Finanzas</strong>
+      <span id="fa-currency-primary">C$ / NIO</span>
+      <span class="fin-currency-sep">·</span>
+      <span id="fa-currency-secondary">US$ / USD</span>
+      <span class="fin-currency-sep">·</span>
+      <span id="fa-currency-rate">T/C no configurado</span>
+    </div>
+    <p id="fa-currency-note">Fuente: Configuración → Moneda. Esta sección solo prepara snapshots futuros; no recalcula históricos.</p>
+  </section>
+
+  <div id="fa-status" class="fin-help">Preparando Cuentas Financieras…</div>
+  <div id="fa-summary" class="fa-summary-grid" aria-label="Resumen de cuentas financieras"></div>
+  <div id="fa-list" class="fa-list" aria-label="Listado de cuentas financieras"></div>
+
+  <p class="fin-help fa-final-note">
+    Etapa 7/10: Cuentas Financieras alimenta Diario manual, Transferencias Internas y Compras a Proveedor. Recibos, Caja Chica y Firebase quedan intactos.
+  </p>
+
+</section>
+
+<!-- TRANSFERENCIAS INTERNAS (MULTICUENTA / MULTIMONEDA) -->
+<section id="view-transferencias" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Transferencias Internas</h2>
+    <p>Mueve dinero entre cuentas financieras sin registrarlo como ingreso ni gasto. Cada transferencia genera DEBE destino / HABER origen en C$.</p>
+  </header>
+
+  <section id="ti-currency-reference" class="fin-currency-reference fin-currency-reference--inside" aria-live="polite">
+    <div class="fin-currency-reference__main">
+      <strong>T/C para transferencias</strong>
+      <span id="ti-currency-primary">C$ / NIO</span>
+      <span class="fin-currency-sep">·</span>
+      <span id="ti-currency-secondary">US$ / USD</span>
+      <span class="fin-currency-sep">·</span>
+      <span id="ti-currency-rate">T/C no configurado</span>
+    </div>
+    <p id="ti-currency-note">Fuente: Configuración → Moneda. El T/C queda guardado como snapshot histórico.</p>
+  </section>
+
+  <div id="ti-status" class="fin-help fa-status-warn">Preparando Transferencias Internas…</div>
+
+  <form id="form-transferencia-interna" class="fin-form ti-form">
+    <div class="fin-form-row">
+      <label>
+        Fecha
+        <input type="date" id="ti-fecha">
+      </label>
+
+      <label class="fin-form-grow">
+        Cuenta financiera origen
+        <select id="ti-origen"></select>
+      </label>
+
+      <label class="fin-form-grow">
+        Cuenta financiera destino
+        <select id="ti-destino"></select>
+      </label>
+    </div>
+
+    <div class="fin-form-row">
+      <label>
+        Moneda origen
+        <input type="text" id="ti-moneda-origen" class="ti-readonly" readonly>
+      </label>
+
+      <label>
+        Moneda destino
+        <input type="text" id="ti-moneda-destino" class="ti-readonly" readonly>
+      </label>
+
+      <label>
+        Monto origen
+        <input type="number" id="ti-monto-origen" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+      </label>
+
+      <label>
+        Monto destino
+        <input type="number" id="ti-monto-destino" step="0.01" min="0" inputmode="decimal" placeholder="Se calcula según moneda">
+      </label>
+    </div>
+
+    <div class="fin-form-row">
+      <label>
+        T/C usado
+        <input type="number" id="ti-tc" step="0.01" min="0" inputmode="decimal" class="ti-readonly" readonly placeholder="Solo si aplica">
+      </label>
+
+      <label>
+        Equivalente contable en C$
+        <input type="text" id="ti-equivalente" class="ti-readonly" readonly placeholder="C$ 0.00">
+      </label>
+
+      <label class="fin-form-grow">
+        Referencia / comprobante
+        <input type="text" id="ti-referencia" placeholder="Transferencia # / comprobante (opcional)">
+      </label>
+    </div>
+
+    <div class="fin-form-row">
+      <label class="fin-form-grow">
+        Descripción / nota
+        <input type="text" id="ti-descripcion" placeholder="Nota opcional de la transferencia">
+      </label>
+
+      <button type="button" id="ti-guardar" class="btn-primary">
+        Guardar transferencia
+      </button>
+    </div>
+
+    <div class="fin-movement-meta" id="ti-meta">
+      Seleccione origen y destino para detectar monedas, T/C y asiento contable.
+    </div>
+
+    <p class="fin-help">
+      Misma moneda: monto origen = monto destino. Con US$: usa T/C de Configuración → Moneda y guarda snapshot. No toca Caja Chica, Compras, Recibos ni Firebase.
+    </p>
+  </form>
+
+  <section class="fin-subsection">
+    <header class="fin-section-header fin-section-header--sub">
+      <h3>Listado de transferencias</h3>
+      <p>Histórico local-first de transferencias internas nuevas. Los asientos también quedan visibles en Diario.</p>
+    </header>
+    <div id="ti-list" class="ti-list" aria-label="Listado de transferencias internas"></div>
+  </section>
+</section>
+
       <!-- ESTADOS FINANCIEROS -->
       <section id="view-estados" class="fin-view">
         <header class="fin-section-header">
           <h2>Estados Financieros</h2>
-          <p>Estado de Resultados, Balance General y Flujo de Caja usando los asientos de Finanzas.</p>
+          <p>Estado de Resultados, Balance General, Flujo de Caja y Reportes Contables multicuenta/multimoneda usando los asientos de Finanzas.</p>
         </header>
 
         <div class="fin-subtabs">
           <button type="button" class="fin-subtab-btn active" data-subview="er">Estado de Resultados</button>
           <button type="button" class="fin-subtab-btn" data-subview="bg">Balance General</button>
           <button type="button" class="fin-subtab-btn" data-subview="fc">Flujo de Caja</button>
+          <button type="button" class="fin-subtab-btn" data-subview="mayor">Mayor por cuenta</button>
+          <button type="button" class="fin-subtab-btn" data-subview="estado-cuenta">Estado de cuenta</button>
+          <button type="button" class="fin-subtab-btn" data-subview="balanza">Balanza</button>
+          <button type="button" class="fin-subtab-btn" data-subview="libro-diario">Libro Diario</button>
+          <button type="button" class="fin-subtab-btn" data-subview="resumen-moneda">Resumen por moneda</button>
         </div>
 
         <!-- Estado de Resultados -->
@@ -1184,6 +1385,107 @@
             Exportar Flujo de Caja a Excel
           </button>
         </section>
+
+        <!-- Reportes Contables Multibanco / Multimoneda -->
+        <section id="sub-mayor" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Mayor por cuenta</h3>
+            <p>Consulta movimientos por cuenta contable, con saldos en C$, moneda original y T/C snapshot cuando exista metadata.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-mayor-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label class="fin-form-grow">
+              Cuenta contable
+              <select id="rep-mayor-cuenta"></select>
+            </label>
+            <label>Desde<input type="date" id="rep-mayor-desde"></label>
+            <label>Hasta<input type="date" id="rep-mayor-hasta"></label>
+            <label class="fin-form-grow">Buscar<input type="text" id="rep-mayor-buscar" placeholder="Descripción, referencia, asiento…"></label>
+            <button type="button" id="btn-export-mayor" class="fin-btn-export">Exportar Mayor a Excel</button>
+          </div>
+          <div id="rep-mayor-summary" class="fin-report-summary"></div>
+          <div id="rep-mayor-list" class="fin-report-list" aria-label="Mayor por cuenta"></div>
+        </section>
+
+        <section id="sub-estado-cuenta" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Estado de cuenta financiera</h3>
+            <p>Revisa entradas, salidas y saldo de una caja o banco específico sin reclasificar históricos.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-estado-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label class="fin-form-grow">
+              Cuenta financiera
+              <select id="rep-estado-fa"></select>
+            </label>
+            <label>Desde<input type="date" id="rep-estado-desde"></label>
+            <label>Hasta<input type="date" id="rep-estado-hasta"></label>
+            <label class="fin-form-grow">Buscar<input type="text" id="rep-estado-buscar" placeholder="Descripción, referencia, operación…"></label>
+            <button type="button" id="btn-export-estado" class="fin-btn-export">Exportar Estado de cuenta a Excel</button>
+          </div>
+          <div id="rep-estado-summary" class="fin-report-summary"></div>
+          <div id="rep-estado-list" class="fin-report-list" aria-label="Estado de cuenta financiera"></div>
+        </section>
+
+        <section id="sub-balanza" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Balanza de comprobación</h3>
+            <p>Totales DEBE/HABER por cuenta en moneda contable base C$.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-balanza-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label>Desde<input type="date" id="rep-balanza-desde"></label>
+            <label>Hasta<input type="date" id="rep-balanza-hasta"></label>
+            <label class="fin-form-grow">Buscar cuenta<input type="text" id="rep-balanza-buscar" placeholder="Código o nombre…"></label>
+            <button type="button" id="btn-export-balanza" class="fin-btn-export">Exportar Balanza a Excel</button>
+          </div>
+          <div id="rep-balanza-summary" class="fin-report-summary"></div>
+          <div id="rep-balanza-list" class="fin-report-list" aria-label="Balanza de comprobación"></div>
+        </section>
+
+        <section id="sub-libro-diario" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Libro Diario mejorado</h3>
+            <p>Vista formal por asiento, agrupada para iPad: líneas DEBE/HABER, origen, cuenta financiera y moneda original.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-libro-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label>Desde<input type="date" id="rep-libro-desde"></label>
+            <label>Hasta<input type="date" id="rep-libro-hasta"></label>
+            <label>
+              Origen / operación
+              <select id="rep-libro-origen">
+                <option value="todos">Todos</option>
+                <option value="manual">Registro manual</option>
+                <option value="transferencia">Transferencia interna</option>
+                <option value="compra">Compra a proveedor</option>
+                <option value="recibo">Recibo</option>
+                <option value="pos">Importación POS</option>
+                <option value="legacy">Legacy / histórico</option>
+              </select>
+            </label>
+            <label class="fin-form-grow">Buscar<input type="text" id="rep-libro-buscar" placeholder="Descripción, referencia, cuenta…"></label>
+            <button type="button" id="btn-export-libro" class="fin-btn-export">Exportar Libro Diario a Excel</button>
+          </div>
+          <div id="rep-libro-summary" class="fin-report-summary"></div>
+          <div id="rep-libro-list" class="fin-report-list" aria-label="Libro Diario mejorado"></div>
+        </section>
+
+        <section id="sub-resumen-moneda" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Resumen por moneda</h3>
+            <p>Actividad financiera separada por moneda original. Los US$ usan el T/C guardado en cada movimiento.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-moneda-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label>Desde<input type="date" id="rep-moneda-desde"></label>
+            <label>Hasta<input type="date" id="rep-moneda-hasta"></label>
+            <button type="button" id="btn-export-moneda" class="fin-btn-export">Exportar Resumen por moneda a Excel</button>
+          </div>
+          <div id="rep-moneda-summary" class="fin-report-summary fin-report-summary--wide"></div>
+          <div id="rep-moneda-list" class="fin-report-list" aria-label="Resumen por moneda"></div>
+        </section>
+
       </section>
     </main>
 
@@ -1223,14 +1525,14 @@
   <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.77&r=7"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=26"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=32"></script>
 
   <script src="/assets/js/a33-storage.js?v=4.20.77&r=10"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
   <script src="/assets/js/a33-export-currency.js?v=4.20.77&r=2"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.77&r=10"></script>
 
-  <script src="script.js?v=4.20.77&r=13"></script>
+  <script src="script.js?v=4.20.77&r=23"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=10"></script>
 </body>
 </html>
