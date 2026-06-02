@@ -9076,9 +9076,8 @@ function openDetalleModal(entryId) {
   const inconsLine = isInconsistent ? `<p>${makePill('Inconsistente: asiento sin líneas', 'red')} <span class="fin-muted">No se borró nada. Esto suele pasar por cortes/crash antiguos durante guardado.</span></p>` : '';
 
   const isPurchase = (entry && entry.entryType === 'purchase');
-  const editCompraBtn = isPurchase
-    ? `<p><button type="button" class="btn btn-small btn-edit-compra" data-entry-id="${entry.id}">Editar en Compras</button></p>`
-    : '';
+  // Compras a Proveedor queda dormido: no mostrar accesos visuales al editor legacy.
+  const editCompraBtn = '';
   const posNoEditLine = isPosOrigin
     ? `<p>${makePill('Solo consulta', 'muted')} <span class="fin-muted">Este asiento proviene de POS y no se edita directamente. Use un asiento de ajuste si necesita corregirlo.</span></p>`
     : '';
@@ -17627,6 +17626,33 @@ function setupFinancialAccountsUI() {
 
 
 
+const FIN_HIDDEN_MAIN_VIEWS = Object.freeze(['cuentasfinancieras', 'transferencias', 'compras']);
+
+function finIsHiddenMainView(view) {
+  const v = String(view || '').trim().toLowerCase();
+  return FIN_HIDDEN_MAIN_VIEWS.indexOf(v) >= 0;
+}
+
+function finFindVisibleTabButton(view) {
+  const candidate = String(view || '').trim().toLowerCase();
+  return Array.from(document.querySelectorAll('.fin-tab-btn')).find((btn) => {
+    const btnView = btn && btn.dataset ? String(btn.dataset.view || '').trim().toLowerCase() : '';
+    return btnView === candidate && !finIsHiddenMainView(btnView) && btn.hidden !== true;
+  }) || null;
+}
+
+function finFallbackVisibleView() {
+  const preferred = ['diario', 'catalogo', 'tablero'];
+  for (const view of preferred) {
+    if (finFindVisibleTabButton(view)) return view;
+  }
+  const firstVisible = Array.from(document.querySelectorAll('.fin-tab-btn')).find((btn) => {
+    const btnView = btn && btn.dataset ? String(btn.dataset.view || '').trim().toLowerCase() : '';
+    return btnView && !finIsHiddenMainView(btnView) && btn.hidden !== true;
+  });
+  return firstVisible && firstVisible.dataset ? firstVisible.dataset.view : 'diario';
+}
+
 function finNormalizeViewName(view) {
   const raw = String(view || '').trim().toLowerCase();
   const rawKey = raw.replace(/[\s_-]+/g, '');
@@ -17634,6 +17660,9 @@ function finNormalizeViewName(view) {
     proveedores: 'compras',
     proveedor: 'compras',
     comprasproveedor: 'compras',
+    compras_proveedor: 'compras',
+    comprasaproveedor: 'compras',
+    compras_a_proveedor: 'compras',
     cuentasfinancieras: 'cuentasfinancieras',
     cuentas_financieras: 'cuentasfinancieras',
     transferenciasinternas: 'transferencias',
@@ -17645,8 +17674,8 @@ function finNormalizeViewName(view) {
     journal: 'diario'
   };
   const candidate = aliases[raw] || aliases[rawKey] || raw || 'tablero';
-  const btn = Array.from(document.querySelectorAll('.fin-tab-btn')).find(b => b.dataset.view === candidate);
-  return btn ? candidate : 'tablero';
+  if (finIsHiddenMainView(candidate)) return finFallbackVisibleView();
+  return finFindVisibleTabButton(candidate) ? candidate : finFallbackVisibleView();
 }
 
 function finRunViewSideEffects(view) {
@@ -17668,9 +17697,13 @@ function setActiveFinView(view) {
     }
   });
 
-  // Si no se encuentra una vista válida, usar la primera como fallback
+  // Si no se encuentra una vista válida, usar una pestaña visible segura.
   if (!target && buttons.length > 0) {
-    target = buttons[0];
+    const fallback = finFallbackVisibleView();
+    target = finFindVisibleTabButton(fallback) || Array.from(buttons).find((btn) => {
+      const btnView = btn && btn.dataset ? String(btn.dataset.view || '').trim().toLowerCase() : '';
+      return btnView && !finIsHiddenMainView(btnView) && btn.hidden !== true;
+    }) || null;
   }
 
   const activeView = (target && target.dataset && target.dataset.view) ? target.dataset.view : normalized;
@@ -17698,7 +17731,7 @@ function setupTabs() {
       finRunViewSideEffects(activeView);
       // Actualizar hash para que si el usuario regresa, mantenga la pestaña
       if (activeView && window.location.hash !== `#tab=${activeView}`) {
-        window.location.hash = `tab=${activeView}`;
+        try { window.history.replaceState(null, '', `#tab=${activeView}`); } catch (_) { window.location.hash = `tab=${activeView}`; }
       }
     });
   });
@@ -17723,6 +17756,9 @@ function setupTabs() {
           : 'tablero';
         const active = setActiveFinView(next);
         finRunViewSideEffects(active);
+        if (active && window.location.hash !== `#tab=${active}`) {
+          try { window.history.replaceState(null, '', `#tab=${active}`); } catch (_) {}
+        }
       } catch (_) {}
     });
   }

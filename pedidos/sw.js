@@ -3,7 +3,7 @@
 */
 
 // A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=43'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.77&r=44'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
@@ -24,7 +24,7 @@ const PRECACHE_URLS = [
   './manifest.webmanifest?v=4.20.77&r=7',
   './offline.html',
   './images/logo.png',
-  '/assets/js/a33-release.js?v=4.20.77&r=43',
+  '/assets/js/a33-release.js?v=4.20.77&r=44',
 
   '/assets/js/a33-input-ux.js?v=4.20.77&r=7',
   '/assets/js/a33-storage.js?v=4.20.77&r=7',
