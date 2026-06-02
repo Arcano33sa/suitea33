@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#060606">
   <script src="/assets/js/a33-theme.js?v=4.20.77&r=10"></script>
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=19">
+  <link rel="stylesheet" href="style.css?v=4.20.77&r=26">
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=10">
 </head>
 <body class="fin-body">
@@ -41,7 +41,7 @@
     <div class="nav-group">
       <span class="nav-group-label">Finanzas</span>
       <button type="button" class="fin-tab-btn active" data-view="tablero">Tablero Finanzas</button>
-      <button type="button" class="fin-tab-btn" data-view="diario">Diario y Ajustes</button>
+      <button type="button" class="fin-tab-btn" data-view="diario">Diario Contable</button>
       <button type="button" class="fin-tab-btn" data-view="cajachica">Caja Chica</button>
       <button type="button" class="fin-tab-btn" data-view="cuentasfinancieras">Cuentas Financieras</button>
       <button type="button" class="fin-tab-btn" data-view="transferencias">Transferencias Internas</button>
@@ -151,13 +151,109 @@
         </section>
       </section>
 
-      <!-- DIARIO Y AJUSTES -->
+      <!-- DIARIO CONTABLE -->
       <section id="view-diario" class="fin-view">
         <header class="fin-section-header">
-          <h2>Diario y Ajustes</h2>
-          <p>Registra ingresos, egresos y ajustes manuales. Por detrás se generan asientos DEBE/HABER.</p>
+          <h2>Diario Contable</h2>
+          <p>Registra asientos contables reales con líneas Cuenta / Debe / Haber, T/C snapshot cuando aplica y etiqueta automática.</p>
         </header>
 
+        <form id="form-diario-contable" class="fin-form fin-journal-form" autocomplete="off">
+          <div class="fin-journal-stage-row">
+            <span class="fin-pill fin-pill--gold">Diario activo</span>
+            <span class="fin-muted">Cabecera, líneas Debe/Haber, T/C snapshot, etiqueta automática y origen manual.</span>
+          </div>
+
+          <section class="fin-journal-card" aria-label="Cabecera del asiento contable">
+            <header class="fin-journal-card-head">
+              <div>
+                <h3>Cabecera del asiento</h3>
+                <p>Datos generales del asiento. La fecha carga con el día actual y puede editarse.</p>
+              </div>
+            </header>
+
+            <div class="fin-form-row fin-journal-header-grid">
+              <label>
+                Fecha
+                <input type="date" id="journal-date">
+              </label>
+
+              <label>
+                Moneda
+                <select id="journal-currency">
+                  <option value="NIO">C$</option>
+                  <option value="USD">US$</option>
+                </select>
+              </label>
+
+              <label id="journal-rate-wrap" class="fin-journal-rate-wrap hidden">
+                T/C desde Moneda
+                <input type="text" id="journal-rate" readonly inputmode="decimal" placeholder="Configurar en Moneda">
+              </label>
+
+              <label class="fin-form-grow">
+                Referencia <span class="fin-muted">(opcional)</span>
+                <input type="text" id="journal-reference" placeholder="Ej: APERTURA-2026, REC-0001, POS-20260601">
+              </label>
+            </div>
+
+            <div class="fin-form-row">
+              <label class="fin-form-grow">
+                Descripción general
+                <input type="text" id="journal-description" placeholder="Ej: Saldo inicial de apertura, compra de inventario, aporte del dueño">
+              </label>
+            </div>
+
+            <p id="journal-currency-hint" class="fin-help">Moneda base: C$. Si selecciona US$, se mostrará el T/C vigente de Configuración → Moneda.</p>
+          </section>
+
+          <section class="fin-journal-card" aria-label="Líneas del asiento contable">
+            <header class="fin-journal-card-head">
+              <div>
+                <h3>Líneas del asiento</h3>
+                <p>Seleccione cuentas posteables activas. Las raíces, agrupadoras e inactivas no aparecen.</p>
+              </div>
+              <button type="button" id="journal-add-line" class="btn-small">+ Agregar línea</button>
+            </header>
+
+            <div id="journal-no-postable-msg" class="fin-journal-warning hidden">
+              No hay cuentas posteables disponibles. Cree subcuentas posteables en el Catálogo de Cuentas para registrar asientos.
+            </div>
+
+            <div id="journal-lines" class="fin-journal-lines" aria-label="Cuenta Debe Haber"></div>
+          </section>
+
+          <section class="fin-journal-card fin-journal-totals-card" aria-label="Totales del asiento contable">
+            <div class="fin-journal-totals">
+              <div>
+                <span>Total Debe</span>
+                <strong id="journal-total-debit">C$ 0.00</strong>
+              </div>
+              <div>
+                <span>Total Haber</span>
+                <strong id="journal-total-credit">C$ 0.00</strong>
+              </div>
+              <div>
+                <span>Diferencia</span>
+                <strong id="journal-difference">C$ 0.00</strong>
+              </div>
+            </div>
+            <div id="journal-equivalent" class="fin-journal-equivalent hidden"></div>
+            <div id="journal-status" class="fin-journal-status">Complete mínimo dos líneas para validar el asiento.</div>
+            <div class="fin-journal-actions">
+              <button type="button" id="journal-clear" class="btn-ghost">Limpiar asiento</button>
+              <button type="button" id="journal-validate" class="btn-primary">Guardar asiento</button>
+            </div>
+          </section>
+        </form>
+
+        <section class="fin-history-panel" aria-label="Historial del Diario Contable">
+          <header class="fin-journal-history-head">
+            <div>
+              <h3>Historial de movimientos</h3>
+              <p>Históricos legacy, POS, compras, recibos y transferencias se conservan abajo sin recalcular.</p>
+            </div>
+          </header>
         <div class="fin-filters-row fin-filters-row--compact">
           <label>
             Tipo
@@ -179,10 +275,14 @@
             Origen
             <select id="filtro-origen">
               <option value="todos">Todos</option>
-              <option value="Interno">Interno</option>
+              <option value="Manual">Manual</option>
               <option value="POS">POS (todo)</option>
               <option value="POS_CIERRES">POS — Cierres diarios</option>
-              <option value="POS_LEGACY">LEGACY — ventas individuales</option>
+              <option value="POS_LEGACY">POS — Legacy histórico</option>
+              <option value="Compra">Compra</option>
+              <option value="Recibo">Recibo</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Legacy">Legacy / histórico</option>
             </select>
           </label>
 
@@ -209,77 +309,6 @@
             <button type="button" class="btn-small" data-diario-preset="todo">Todo</button>
           </div>
         </div>
-
-        <form id="form-movimiento" class="fin-form">
-          <div class="fin-form-row">
-            <label>
-              Fecha
-              <input type="date" id="mov-fecha">
-            </label>
-
-            <label>
-              Tipo de movimiento
-              <select id="mov-tipo">
-                <option value="ingreso">Ingreso</option>
-                <option value="egreso">Egreso</option>
-                <option value="ajuste">Ajuste</option>
-                <option value="transferencia">Transferencia interna</option>
-              </select>
-            </label>
-
-            <label class="fin-form-grow">
-              Cuenta financiera
-              <select id="mov-financial-account"></select>
-            </label>
-
-            <label>
-              Monto original
-              <input type="number" id="mov-monto" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
-            </label>
-          </div>
-
-          <div class="fin-movement-meta" id="mov-financial-meta">
-            Seleccione una cuenta financiera activa para detectar moneda y cuenta contable.
-          </div>
-
-          <div class="fin-form-row">
-            <label class="fin-form-grow">
-              Cuenta contable contraparte
-              <select id="mov-cuenta"></select>
-            </label>
-
-            <label class="fin-form-grow">
-              Evento
-              <select id="mov-evento-sel"></select>
-            </label>
-          </div>
-
-          <div class="fin-form-row">
-            <label class="fin-form-grow">
-              Referencia
-              <input type="text" id="mov-evento" placeholder="Factura # / Referencia (opcional)">
-            </label>
-          </div>
-
-          <div class="fin-form-row">
-            <label class="fin-form-grow">
-              Descripción
-              <input type="text" id="mov-descripcion" placeholder="Descripción del movimiento">
-            </label>
-
-            <button type="button" id="mov-guardar" class="btn-primary">
-              Guardar movimiento
-            </button>
-          </div>
-
-          <p class="fin-help">
-            Los movimientos nuevos usan cuenta financiera específica y guardan moneda original.
-            <br>
-            <strong>Ingreso:</strong> DEBE Cuenta financiera · HABER Cuenta contraparte.<br>
-            <strong>Egreso:</strong> DEBE Cuenta contraparte · HABER Cuenta financiera.<br>
-            <strong>USD:</strong> usa T/C vigente de Configuración → Moneda y guarda snapshot histórico.
-          </p>
-        </form>
 
         <div class="cc-actions" id="diario-actions-bar">
           <button type="button" id="btn-export-diario" class="fin-btn-export">Exportar Diario a Excel</button>
@@ -308,6 +337,7 @@
             <tbody id="diario-tbody"></tbody>
           </table>
         </div>
+        </section>
       </section>
 
       
@@ -686,7 +716,7 @@
 <section id="view-recibos" class="fin-view">
   <header class="fin-section-header">
     <h2>Recibos</h2>
-    <p>Flujo oficial multicuenta y multimoneda: BORRADOR → EMITIDO · cuenta financiera de cobro · moneda original · T/C snapshot si aplica. (Etapa 8/10)</p>
+    <p>Flujo oficial multicuenta y multimoneda: BORRADOR → EMITIDO · cuenta financiera de cobro · moneda original · T/C snapshot si aplica.</p>
   </header>
 
   <div id="rec-currency-reference" class="fin-currency-reference">
@@ -881,7 +911,7 @@
 <section id="view-catalogo" class="fin-view">
   <header class="fin-section-header">
     <h2>Catálogo de Cuentas</h2>
-    <p>Crea, edita y oculta cuentas sin afectar movimientos ya registrados.</p>
+    <p>Catálogo jerárquico base con reglas seguras: raíces fijas, subcuentas con código automático, cuentas agrupadoras/posteables y bloqueos para no dañar históricos.</p>
   </header>
 
   <div class="fin-filters-row fin-filters-row--compact fin-catalog-toolbar">
@@ -891,15 +921,27 @@
     </label>
 
     <div class="fin-inline-group fin-catalog-actions">
-      <button type="button" id="cat-new" class="btn-small">+ Nueva cuenta</button>
+      <button type="button" id="cat-new" class="btn-small" title="Crear subcuenta con código automático">+ Nueva subcuenta</button>
       <button type="button" id="cat-refresh" class="btn-small">Actualizar</button>
       <button type="button" id="cat-export" class="btn-small">Exportar Excel</button>
     </div>
   </div>
 
   <p id="cat-help" class="fin-help">
-    Tip: Las cuentas protegidas no se editan ni se ocultan. Las cuentas ocultas siguen visibles aquí y en históricos.
+    El Catálogo inicia con las 7 raíces fijas. Las agrupadoras ordenan y permiten subcuentas; las posteables aceptarán movimientos en el futuro Diario Contable. Las cuentas con movimientos o subcuentas quedan protegidas.
   </p>
+
+  <section class="fin-account-selector-card" aria-label="Selector contable reutilizable">
+    <div class="fin-account-selector-card-head">
+      <div>
+        <h3>Selector contable</h3>
+        <p>Prueba segura del selector reutilizable para futuras líneas Cuenta / Debe / Haber. No registra movimientos ni modifica el Diario actual.</p>
+      </div>
+      <span class="fin-pill fin-pill--gold">Selector activo</span>
+    </div>
+    <div id="cat-account-selector-test"></div>
+    <p id="cat-account-selector-selected" class="fin-help">Sin cuenta seleccionada.</p>
+  </section>
 
   <div class="fin-table-wrapper">
     <table class="fin-table fin-catalog-table" aria-label="Catálogo de cuentas">
@@ -935,21 +977,41 @@
         <input type="hidden" id="cat-edit-code" value="">
 
         <div class="fin-form-row">
-          <label>
-            Código (4 dígitos)
-            <input type="text" id="cat-code" inputmode="numeric" pattern="\d{4}" placeholder="Ej: 4101">
+          <label class="fin-form-grow">
+            Cuenta padre
+            <select id="cat-parent"></select>
           </label>
 
+          <label>
+            Código sugerido
+            <input type="text" id="cat-code" readonly placeholder="Automático">
+          </label>
+        </div>
+
+        <div class="fin-form-row">
           <label class="fin-form-grow">
             Nombre
-            <input type="text" id="cat-name" placeholder="Ej: Ingresos por comida">
+            <input type="text" id="cat-name" placeholder="Ej: Caja, Bancos, Banco Lafise C$">
+          </label>
+
+          <label>
+            Tipo
+            <input type="text" id="cat-type-preview" readonly placeholder="—">
+          </label>
+
+          <label>
+            Naturaleza
+            <input type="text" id="cat-nature-preview" readonly placeholder="—">
           </label>
         </div>
 
         <div class="fin-form-row">
           <label>
-            Tipo (rootType)
-            <select id="cat-root"></select>
+            Clasificación
+            <select id="cat-postable">
+              <option value="postable">Posteable</option>
+              <option value="grouping">Agrupadora</option>
+            </select>
           </label>
 
           <div class="fin-actions">
@@ -960,6 +1022,32 @@
 
         <p id="cat-form-msg" class="fin-help"></p>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SELECTOR CONTABLE REUTILIZABLE -->
+<div id="account-picker-modal" class="fin-modal fin-account-picker-modal" aria-hidden="true">
+  <div class="fin-modal-content fin-account-picker-content" role="dialog" aria-modal="true" aria-labelledby="account-picker-title">
+    <div class="fin-modal-header">
+      <div>
+        <strong id="account-picker-title">Seleccionar cuenta contable</strong>
+        <div id="account-picker-count" class="fin-help" style="margin:2px 0 0">Solo cuentas activas y posteables</div>
+      </div>
+      <button type="button" id="account-picker-close" class="btn-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="fin-modal-body">
+      <div class="fin-account-picker-search-row">
+        <label class="fin-form-grow">
+          Buscar cuenta por código o nombre
+          <input type="text" id="account-picker-search" placeholder="Ej: 1211, banco, ventas…" autocomplete="off">
+        </label>
+        <button type="button" id="account-picker-clear" class="btn-small">Limpiar</button>
+      </div>
+      <div id="account-picker-results" class="fin-account-picker-results"></div>
+      <div class="fin-actions fin-account-picker-footer">
+        <button type="button" id="account-picker-cancel" class="btn-ghost">Cancelar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1092,7 +1180,7 @@
   <div id="fa-list" class="fa-list" aria-label="Listado de cuentas financieras"></div>
 
   <p class="fin-help fa-final-note">
-    Etapa 7/10: Cuentas Financieras alimenta Diario manual, Transferencias Internas y Compras a Proveedor. Recibos, Caja Chica y Firebase quedan intactos.
+    Cuentas Financieras alimenta Diario manual, Transferencias Internas y Compras a Proveedor. Recibos, Caja Chica y Firebase quedan intactos.
   </p>
 
 </section>
@@ -1294,8 +1382,7 @@
           </button>
 
           <p class="fin-help">
-            Nota: en Fase 3A los costos (5xxx) se pueden registrar manualmente.
-            En Fase 3B los costos de venta se generarán en automático desde el POS según presentaciones de Arcano 33.
+            Nota: los costos (5xxx) se pueden registrar manualmente. La generación automática de costos de venta desde POS queda para una fase futura segura.
           </p>
 
           <!-- Aquí, debajo, el JS inserta:
@@ -1348,8 +1435,7 @@
           </button>
 
           <p class="fin-help">
-            Idealmente el Balance cuadra (Activos = Pasivos + Patrimonio).
-            En esta Fase 3A solo se usan las cuentas 1xxx, 2xxx y 3xxx que entren en los asientos.
+            Idealmente el Balance cuadra (Activos = Pasivos + Patrimonio). Se consideran las cuentas 1xxx, 2xxx y 3xxx presentes en los asientos registrados.
           </p>
         </section>
 
@@ -1525,14 +1611,14 @@
   <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.77&r=7"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=32"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.77&r=39"></script>
 
   <script src="/assets/js/a33-storage.js?v=4.20.77&r=10"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
   <script src="/assets/js/a33-export-currency.js?v=4.20.77&r=2"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.77&r=10"></script>
 
-  <script src="script.js?v=4.20.77&r=23"></script>
+  <script src="script.js?v=4.20.77&r=32"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=10"></script>
 </body>
 </html>

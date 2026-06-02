@@ -1005,7 +1005,7 @@ body.fin-body {
 .fin-catalog-table td:nth-child(6) { width: 86px; }
 
 .fin-catalog-table th:nth-child(7),
-.fin-catalog-table td:nth-child(7) { width: 164px; }
+.fin-catalog-table td:nth-child(7) { width: 230px; }
 
 .fin-pill {
   display: inline-block;
@@ -2618,4 +2618,515 @@ body.fin-body {
   .fin-report-grid--four {
     grid-template-columns: 1fr;
   }
+}
+
+/* Etapa 4/9 Diario Contable: reglas visuales del Catálogo jerárquico */
+.cat-root-row .cat-account-name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cat-root-row .cat-account-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cat-root-row .cat-account-badges .fin-pill {
+  font-size: 0.68rem;
+  padding: 1px 7px;
+}
+
+.fin-catalog-actions button[disabled] {
+  opacity: 0.68;
+  cursor: not-allowed;
+}
+
+
+.cat-account-row .cat-account-name {
+  padding-left: var(--cat-indent, 0px);
+  position: relative;
+}
+
+.cat-account-row .cat-account-name::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--cat-indent, 0px) - 12px);
+  top: 10px;
+  width: 8px;
+  height: 1px;
+  background: rgba(210, 166, 76, 0.5);
+  display: none;
+}
+
+.cat-level-2 .cat-account-name::before,
+.cat-level-3 .cat-account-name::before,
+.cat-level-4 .cat-account-name::before {
+  display: block;
+}
+
+.cat-actions-cell {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.cat-actions-cell .btn-small {
+  white-space: nowrap;
+}
+
+
+.cat-inactive-row {
+  opacity: 0.78;
+}
+
+.cat-actions-cell .btn-danger[disabled],
+.cat-actions-cell .btn-small[disabled] {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.cat-actions-cell .btn-danger {
+  padding-inline: 9px;
+}
+
+#cat-code[readonly],
+#cat-type-preview[readonly],
+#cat-nature-preview[readonly] {
+  opacity: 0.92;
+  cursor: default;
+}
+
+@media (max-width: 760px) {
+  .cat-actions-cell {
+    min-width: 160px;
+  }
+
+  .cat-account-row .cat-account-name {
+    padding-left: min(var(--cat-indent, 0px), 42px);
+  }
+}
+
+/* Selector contable reutilizable — Etapa 5/9 */
+.fin-account-selector-card {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid rgba(212,175,55,0.28);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(20,23,34,0.96), rgba(8,9,14,0.96));
+  box-shadow: 0 14px 28px rgba(0,0,0,0.28);
+}
+
+.fin-account-selector-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.fin-account-selector-card h3 {
+  margin: 0;
+  font-size: 0.98rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fin-account-selector-card p {
+  margin: 3px 0 0;
+  color: var(--fin-muted);
+  font-size: 0.82rem;
+}
+
+.fin-account-selector-host {
+  min-width: 0;
+}
+
+.fin-account-selector {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.fin-account-selector-label {
+  font-size: 0.78rem;
+  color: var(--fin-muted);
+}
+
+.fin-account-selector-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.fin-account-selector-trigger {
+  flex: 1;
+  min-height: 42px;
+  min-width: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(212,175,55,0.38);
+  background: rgba(5,6,10,0.88);
+  color: var(--fin-text);
+  text-align: left;
+  padding: 9px 13px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fin-account-selector-trigger.has-value {
+  border-color: rgba(40,162,111,0.55);
+}
+
+.fin-account-selector-trigger:hover,
+.fin-account-selector-trigger:focus-visible {
+  outline: none;
+  border-color: var(--fin-gold);
+  box-shadow: 0 0 0 3px rgba(212,175,55,0.12);
+}
+
+.fin-account-selector-meta {
+  color: var(--fin-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.fin-account-picker-content {
+  width: min(760px, 96vw);
+}
+
+.fin-account-picker-search-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.fin-account-picker-search-row input {
+  width: 100%;
+}
+
+.fin-account-picker-results {
+  display: grid;
+  gap: 8px;
+  max-height: min(54vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}
+
+.fin-account-picker-result {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: rgba(10,12,18,0.94);
+  color: var(--fin-text);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fin-account-picker-result:hover,
+.fin-account-picker-result:focus-visible {
+  outline: none;
+  border-color: rgba(212,175,55,0.55);
+  background: rgba(18,21,31,0.98);
+}
+
+.fin-account-picker-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fin-account-picker-main strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fin-account-picker-meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--fin-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.fin-account-picker-empty {
+  padding: 14px;
+  border: 1px dashed rgba(212,175,55,0.28);
+  border-radius: 14px;
+  color: var(--fin-muted);
+  background: rgba(255,255,255,0.03);
+  text-align: center;
+}
+
+.fin-account-picker-footer {
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+@media (max-width: 720px) {
+  .fin-account-selector-card-head,
+  .fin-account-selector-row,
+  .fin-account-picker-search-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fin-account-selector-clear,
+  #account-picker-clear,
+  #account-picker-cancel {
+    min-height: 42px;
+  }
+}
+
+/* Diario Contable real — Etapa 7/9 */
+.fin-journal-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.fin-journal-stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(212,175,55,0.24);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.035);
+}
+
+.fin-journal-card,
+.fin-history-panel {
+  border: 1px solid rgba(212,175,55,0.26);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(18,21,31,0.96), rgba(7,8,12,0.96));
+  box-shadow: 0 16px 32px rgba(0,0,0,0.26);
+  padding: 14px;
+  min-width: 0;
+}
+
+.fin-journal-card-head,
+.fin-journal-history-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fin-journal-card-head h3,
+.fin-journal-history-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fin-journal-card-head p,
+.fin-journal-history-head p {
+  margin: 4px 0 0;
+  color: var(--fin-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.fin-journal-header-grid {
+  align-items: flex-end;
+}
+
+.fin-journal-rate-wrap input[readonly] {
+  color: var(--fin-gold);
+  background: rgba(212,175,55,0.08);
+  border-color: rgba(212,175,55,0.35);
+}
+
+.fin-journal-lines {
+  display: grid;
+  gap: 10px;
+}
+
+.fin-journal-line {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(118px, 150px) minmax(118px, 150px) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  background: rgba(5,6,10,0.58);
+  min-width: 0;
+}
+
+.fin-journal-line-account {
+  min-width: 0;
+}
+
+.fin-journal-line label {
+  min-width: 0;
+}
+
+.fin-journal-line input[type="number"] {
+  width: 100%;
+  text-align: right;
+}
+
+.fin-journal-warning,
+.fin-journal-equivalent,
+.fin-journal-status {
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.fin-journal-warning {
+  margin-bottom: 10px;
+  border: 1px solid rgba(192,50,50,0.38);
+  background: rgba(192,50,50,0.12);
+  color: #ffd0d0;
+}
+
+.fin-journal-equivalent {
+  margin-top: 10px;
+  border: 1px solid rgba(212,175,55,0.28);
+  background: rgba(212,175,55,0.08);
+  color: var(--fin-gold);
+}
+
+.fin-journal-status {
+  margin-top: 10px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  color: var(--fin-muted);
+}
+
+.fin-journal-status.is-ok {
+  border-color: rgba(40,162,111,0.44);
+  background: rgba(40,162,111,0.13);
+  color: #bff4dc;
+}
+
+.fin-journal-status.is-warn {
+  border-color: rgba(212,175,55,0.42);
+  background: rgba(212,175,55,0.11);
+  color: #f6df91;
+}
+
+.fin-journal-status.is-muted {
+  color: var(--fin-muted);
+}
+
+.fin-journal-warn-text {
+  color: #f6df91;
+}
+
+.fin-journal-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.fin-journal-totals > div {
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.035);
+}
+
+.fin-journal-totals span {
+  display: block;
+  color: var(--fin-muted);
+  font-size: 0.78rem;
+  margin-bottom: 4px;
+}
+
+.fin-journal-totals strong {
+  display: block;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+}
+
+#journal-difference.is-balanced {
+  color: #bff4dc;
+}
+
+#journal-difference.is-unbalanced {
+  color: #f6df91;
+}
+
+.fin-journal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.fin-history-panel {
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .fin-journal-line {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .fin-journal-line-account {
+    grid-column: 1 / -1;
+  }
+
+  .journal-remove-line {
+    grid-column: 1 / -1;
+    min-height: 42px;
+  }
+}
+
+@media (max-width: 680px) {
+  .fin-journal-card-head,
+  .fin-journal-history-head,
+  .fin-journal-stage-row,
+  .fin-journal-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fin-journal-line,
+  .fin-journal-totals {
+    grid-template-columns: 1fr;
+  }
+
+  .fin-journal-line input[type="number"] {
+    text-align: left;
+  }
+}
+
+
+/* Diario Contable real — Etapa 7/9 */
+.fin-badge-strip--compact {
+  margin-top: 4px;
+}
+
+.fin-detail-line-meta {
+  margin-top: 3px;
+  font-size: 0.72rem;
+  color: var(--fin-muted);
+  line-height: 1.25;
+}
+
+#journal-validate:disabled {
+  opacity: 0.72;
+  cursor: progress;
 }

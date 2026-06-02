@@ -4,7 +4,7 @@
   'use strict';
 
   const suiteVersion = '4.20.77';
-  const rev = 32;
+  const rev = 39;
   const revLabel = `r${rev}`;
   const label = `${suiteVersion} ${revLabel}`;
 
@@ -36,7 +36,7 @@
       if (typeof document === 'undefined' || !document || !document.querySelectorAll) return;
 
       const fromRelease = (g.A33_RELEASE && g.A33_RELEASE.label) ? String(g.A33_RELEASE.label) : '';
-      const lastResort = '4.20.77 r32';
+      const lastResort = '4.20.77 r39';
 
       const isPlaceholder = (t) => {
         const s = (t || '').toString().trim().toLowerCase();

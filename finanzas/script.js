@@ -624,6 +624,48 @@ const FIN_LEGACY_BANK_ACCOUNT_CODES = Object.freeze([FIN_LEGACY_ACCOUNT_CODES.ba
 const FIN_DYNAMIC_BANK_CODE_MIN = 1201;
 const FIN_DYNAMIC_BANK_CODE_MAX = 1999;
 
+
+// Etapa 5/9 Diario Contable: selector contable reutilizable sobre cuentas posteables.
+// Las cuentas legacy se conservan internas para históricos y flujos actuales.
+const FIN_ACCOUNTING_REDESIGN_STAGE = 'finanzas_diario_contable_etapa_7_9';
+const FIN_ACCOUNT_SELECTOR_STAGE = 'finanzas_diario_contable_etapa_7_9_selector_posteables';
+const FIN_ACCOUNT_HIERARCHY_VERSION = 5;
+const FIN_FIXED_ROOT_ACCOUNTS = Object.freeze([
+  Object.freeze({ code: '1000', name: 'Activos', nombre: 'Activos', type: 'activo', tipo: 'activo', rootType: 'ACTIVO', nature: 'deudora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
+  Object.freeze({ code: '2000', name: 'Pasivos', nombre: 'Pasivos', type: 'pasivo', tipo: 'pasivo', rootType: 'PASIVO', nature: 'acreedora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
+  Object.freeze({ code: '3000', name: 'Capital', nombre: 'Capital', type: 'capital', tipo: 'patrimonio', rootType: 'PATRIMONIO', nature: 'acreedora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
+  Object.freeze({ code: '4000', name: 'Ingresos', nombre: 'Ingresos', type: 'ingreso', tipo: 'ingreso', rootType: 'INGRESOS', nature: 'acreedora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
+  Object.freeze({ code: '5000', name: 'Costos', nombre: 'Costos', type: 'costo', tipo: 'costo', rootType: 'COSTOS', nature: 'deudora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
+  Object.freeze({ code: '6000', name: 'Gastos', nombre: 'Gastos', type: 'gasto', tipo: 'gasto', rootType: 'GASTOS', nature: 'deudora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
+  Object.freeze({ code: '7000', name: 'Otros ingresos', nombre: 'Otros ingresos', type: 'otros_ingresos', tipo: 'ingreso', rootType: 'OTROS', nature: 'acreedora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 })
+]);
+const FIN_FIXED_ROOT_CODES = Object.freeze(FIN_FIXED_ROOT_ACCOUNTS.map(a => a.code));
+const FIN_FIXED_ROOTS_BY_CODE = Object.freeze(FIN_FIXED_ROOT_ACCOUNTS.reduce((acc, root) => {
+  acc[root.code] = root;
+  return acc;
+}, {}));
+
+const FIN_ACCOUNT_CATALOG_VISIBLE_MODE = 'hierarchical_rules_etapa_4_9';
+const FIN_ACCOUNT_CATALOG_LOCK_MESSAGE = 'Esta cuenta raíz es fija y no puede editarse.';
+const FIN_ACCOUNT_CATALOG_STRUCTURAL_LOCK_MESSAGE = 'Esta cuenta tiene movimientos y no puede modificarse de forma estructural.';
+const FIN_ACCOUNT_CATALOG_CHILDREN_LOCK_MESSAGE = 'Esta cuenta tiene subcuentas y funciona como agrupadora.';
+const FIN_ACCOUNT_CATALOG_POSTABLE_CHILD_LOCK_MESSAGE = 'Una cuenta posteable no puede tener subcuentas. Cambiala a agrupadora antes de crear niveles debajo.';
+const FIN_ACCOUNT_MAX_LEVEL = 4;
+const FIN_ACCOUNT_CATALOG_SOURCE = 'finanzas_catalogo_cuentas';
+
+// Mapa de fuentes actuales: lectura/documentación interna para blindar históricos legacy.
+const FIN_ACCOUNTING_DATA_SOURCES = Object.freeze({
+  accounts: Object.freeze({ store: 'accounts', key: 'code', use: 'Catálogo de cuentas actual y futuras raíces jerárquicas' }),
+  journalEntries: Object.freeze({ store: 'journalEntries', key: 'id', use: 'Cabeceras de movimientos/asientos manuales, automáticos y POS' }),
+  journalLines: Object.freeze({ store: 'journalLines', key: 'id', use: 'Líneas DEBE/HABER vinculadas a journalEntryId' }),
+  financialAccounts: Object.freeze({ store: 'financialAccounts', key: 'id', use: 'Cuentas financieras multibanco/multimoneda; no reemplaza el catálogo contable' }),
+  internalTransfers: Object.freeze({ store: 'internalTransfers', key: 'transferId', use: 'Transferencias internas entre cuentas financieras' }),
+  receipts: Object.freeze({ store: 'receipts', key: 'receiptId', use: 'Recibos y estados de emisión/anulación' }),
+  suppliers: Object.freeze({ store: 'suppliers', key: 'id', use: 'Proveedores legacy/local de Finanzas conservados por compatibilidad' }),
+  settings: Object.freeze({ store: 'settings', key: 'id', use: 'Snapshots no contables como Caja Chica física' }),
+  posDailyCloseImports: Object.freeze({ store: 'posDailyCloseImports', key: 'closureId', use: 'Idempotencia de cierres diarios POS importados' })
+});
+
 function finNormalizeAccountCode(code) {
   const raw = String(code ?? '').trim();
   if (!raw) return '';
@@ -632,6 +674,513 @@ function finNormalizeAccountCode(code) {
     return String(n).padStart(4, '0');
   }
   return raw;
+}
+
+
+function finGetFixedAccountRoots() {
+  return FIN_FIXED_ROOT_ACCOUNTS.map(root => ({ ...root }));
+}
+
+function finGetAccountCode(accountOrCode) {
+  if (accountOrCode && typeof accountOrCode === 'object') {
+    return finNormalizeAccountCode(accountOrCode.code ?? accountOrCode.accountCode ?? accountOrCode.codigo ?? accountOrCode.id ?? '');
+  }
+  return finNormalizeAccountCode(accountOrCode);
+}
+
+function finGetAccountName(account) {
+  if (!account || typeof account !== 'object') return '';
+  return String(account.nombre || account.name || account.label || account.title || finGetAccountCode(account) || '').trim();
+}
+
+function getAccountCode(accountOrCode) { return finGetAccountCode(accountOrCode); }
+function getAccountName(account) { return finGetAccountName(account); }
+
+function finGetRootFromCode(code) {
+  const n = safeParseCodeNum(code);
+  if (!Number.isFinite(n) || n < 1000) return '';
+  const root = Math.floor(n / 1000) * 1000;
+  const rootCode = String(root).padStart(4, '0');
+  return FIN_FIXED_ROOT_CODES.includes(rootCode) ? rootCode : '';
+}
+
+function getRootFromCode(code) { return finGetRootFromCode(code); }
+
+function finGetAccountLevelFromCode(code) {
+  const c = finGetAccountCode(code);
+  const n = safeParseCodeNum(c);
+  if (!Number.isFinite(n) || c.length !== 4) return 0;
+  if (FIN_FIXED_ROOT_CODES.includes(c)) return 1;
+  if (!finGetRootFromCode(c)) return 0;
+  if (n % 100 === 0) return 2;
+  if (n % 10 === 0) return 3;
+  return 4;
+}
+
+function getAccountLevelFromCode(code) { return finGetAccountLevelFromCode(code); }
+
+function finInferParentCodeFromCode(code) {
+  const c = finGetAccountCode(code);
+  const n = safeParseCodeNum(c);
+  if (!Number.isFinite(n) || c.length !== 4) return null;
+  const rootCode = finGetRootFromCode(c);
+  if (!rootCode || FIN_FIXED_ROOT_CODES.includes(c)) return null;
+  const level = finGetAccountLevelFromCode(c);
+  if (level === 2) return rootCode;
+  if (level === 3) return String(Math.floor(n / 100) * 100).padStart(4, '0');
+  if (level === 4) return String(Math.floor(n / 10) * 10).padStart(4, '0');
+  return null;
+}
+
+function finInferNatureFromRoot(rootCode) {
+  const root = FIN_FIXED_ROOTS_BY_CODE[finGetAccountCode(rootCode)];
+  return root ? root.nature : '';
+}
+
+function inferNatureFromRoot(rootCode) { return finInferNatureFromRoot(rootCode); }
+
+function finGetAccountNature(accountOrRootCode) {
+  if (accountOrRootCode && typeof accountOrRootCode === 'object') {
+    const explicit = accountOrRootCode.nature || accountOrRootCode.naturaleza || accountOrRootCode.accountNature;
+    if (explicit) return String(explicit).trim().toLowerCase();
+    return finInferNatureFromRoot(accountOrRootCode.rootCode || finGetRootFromCode(finGetAccountCode(accountOrRootCode)));
+  }
+  return finInferNatureFromRoot(finGetRootFromCode(accountOrRootCode) || accountOrRootCode);
+}
+
+function getAccountNature(accountOrRootCode) { return finGetAccountNature(accountOrRootCode); }
+
+function finGetAccountType(account) {
+  if (!account || typeof account !== 'object') return inferTipoFromCode(account);
+  const explicit = account.type || account.tipo || account.rootType || account.accountType;
+  if (explicit) return String(explicit).trim();
+  const root = FIN_FIXED_ROOTS_BY_CODE[finGetRootFromCode(finGetAccountCode(account))];
+  return root ? root.type : inferTipoFromCode(finGetAccountCode(account));
+}
+
+function getAccountType(account) { return finGetAccountType(account); }
+
+function finIsRootAccount(accountOrCode) {
+  const code = finGetAccountCode(accountOrCode);
+  if (accountOrCode && typeof accountOrCode === 'object' && accountOrCode.isRoot === true) return true;
+  return FIN_FIXED_ROOT_CODES.includes(code);
+}
+
+function isRootAccount(accountOrCode) { return finIsRootAccount(accountOrCode); }
+
+function finIsLegacyAccount(accountOrCode) {
+  if (accountOrCode && typeof accountOrCode === 'object') {
+    if (accountOrCode.isLegacy === true || accountOrCode.legacyFinancialAccount === true || accountOrCode.legacy === true) return true;
+    const origin = String(accountOrCode.generatedFrom || accountOrCode.source || accountOrCode.sourceModule || '').toLowerCase();
+    if (origin.includes('legacy')) return true;
+  }
+  return finIsLegacyAccountCode(finGetAccountCode(accountOrCode));
+}
+
+function isLegacyAccount(accountOrCode) { return finIsLegacyAccount(accountOrCode); }
+
+function finIsActiveAccount(account) {
+  if (!account || typeof account !== 'object') return true;
+  if (account.isActive === false || account.active === false || account.activa === false || account.inactive === true || account.isHidden === true) return false;
+  return true;
+}
+
+function finIsGroupingAccount(account) {
+  if (!account || typeof account !== 'object') return false;
+  if (finIsRootAccount(account)) return true;
+  if (account.hasChildren === true || account.childrenCount > 0) return true;
+  if (account.isGrouping === true || account.grouping === true || account.esAgrupadora === true || account.agrupadora === true) return true;
+  if (String(account.accountMode || account.mode || '').toLowerCase() === 'grouping') return true;
+  return false;
+}
+
+function finIsPostableAccount(account) {
+  // El Diario Contable futuro usará solo cuentas posteables; aquí se respeta la bandera sin romper históricos.
+  if (!account || typeof account !== 'object') return false;
+  if (!finIsActiveAccount(account)) return false;
+  if (finIsRootAccount(account)) return false;
+  if (finIsGroupingAccount(account)) return false;
+  if (account.isPostable === false || account.postable === false || account.noPostable === true) return false;
+  return true;
+}
+
+function isPostableAccount(account) { return finIsPostableAccount(account); }
+
+
+function finGetAccountChildrenIndex(accounts) {
+  const rows = Array.isArray(accounts) ? accounts : [];
+  const byParent = new Map();
+  for (const raw of rows) {
+    const acc = finNormalizeAccountForView(raw);
+    if (!acc || !acc.code) continue;
+    const parent = finGetAccountCode(acc.parentId || acc.parentCode || finInferParentCodeFromCode(acc.code) || '');
+    if (!parent) continue;
+    if (!byParent.has(parent)) byParent.set(parent, []);
+    byParent.get(parent).push(acc);
+  }
+  return byParent;
+}
+
+function finAccountHasChildrenInList(accounts, code) {
+  const c = finGetAccountCode(code);
+  if (!c) return false;
+  const byParent = finGetAccountChildrenIndex(accounts);
+  const children = byParent.get(c) || [];
+  return children.length > 0;
+}
+
+function finAccountHasActiveChildrenInList(accounts, code) {
+  const c = finGetAccountCode(code);
+  if (!c) return false;
+  const byParent = finGetAccountChildrenIndex(accounts);
+  const children = byParent.get(c) || [];
+  return children.some(child => finIsActiveAccount(child) && child.isHidden !== true);
+}
+
+function finNormalizeAccountSearchText(value) {
+  return normText(String(value || '').replace(/\s+/g, ' ').trim());
+}
+
+function finBuildSelectorDataFromAccounts(accountsOrData) {
+  if (accountsOrData && Array.isArray(accountsOrData.accounts)) return accountsOrData;
+  const rows = Array.isArray(accountsOrData) ? accountsOrData : [];
+  return {
+    accounts: rows,
+    accountsMap: new Map(rows.map(acc => [finGetAccountCode(acc), acc]).filter(pair => pair[0]))
+  };
+}
+
+function finGetAccountPathLabel(account, accountsOrData) {
+  const data = finBuildSelectorDataFromAccounts(accountsOrData || finCachedData || {});
+  const rows = Array.isArray(data.accounts) ? data.accounts : [];
+  const map = data.accountsMap && typeof data.accountsMap.get === 'function'
+    ? data.accountsMap
+    : new Map(rows.map(acc => [finGetAccountCode(acc), acc]).filter(pair => pair[0]));
+  const parts = [];
+  let cursor = finNormalizeAccountForView(account);
+  let guard = 0;
+  while (cursor && guard < 8) {
+    const label = `${cursor.code} ${cursor.nombre || cursor.name || ''}`.trim();
+    if (label) parts.unshift(label);
+    const parentCode = finGetAccountCode(cursor.parentId || cursor.parentCode || finInferParentCodeFromCode(cursor.code) || '');
+    if (!parentCode) break;
+    const parent = map.get(parentCode) || FIN_FIXED_ROOTS_BY_CODE[parentCode] || null;
+    cursor = parent ? finNormalizeAccountForView(parent) : null;
+    guard += 1;
+  }
+  return parts.join(' › ');
+}
+
+function finAccountSelectorMetaText(account, data) {
+  const row = finNormalizeAccountForView(account);
+  if (!row) return '';
+  const type = String(row.type || row.tipo || '').trim();
+  const nature = String(row.nature || row.naturaleza || '').trim();
+  const currency = finGetFinancialAccountCurrencyCode(row);
+  const currencyTxt = currency && currency !== FIN_BASE_CURRENCY_CODE ? ` · ${currency}` : (row.currency || row.currencyCode || row.moneda ? ` · ${currency}` : '');
+  const path = finGetAccountPathLabel(row, data);
+  const parentText = path && path !== `${row.code} ${row.nombre || row.name || ''}`.trim() ? ` · ${path}` : '';
+  return `${type || 'Cuenta'}${nature ? ` · ${nature}` : ''} · Posteable · Activa${currencyTxt}${parentText}`;
+}
+
+function getPostableAccountsForSelector(accountsOrData) {
+  const data = finBuildSelectorDataFromAccounts(accountsOrData || finCachedData || {});
+  const rawRows = Array.isArray(data.accounts) ? data.accounts : [];
+  const visibleRows = finGetVisibleCatalogAccounts(data);
+  const sourceRows = visibleRows.length ? visibleRows : rawRows;
+  const rowsForChildren = rawRows.length ? rawRows : sourceRows;
+
+  return sourceRows
+    .map(acc => finNormalizeAccountForView(acc))
+    .filter(Boolean)
+    .map(acc => {
+      let state = null;
+      try { state = catBuildAccountRuleState(data, acc); } catch (_) { state = null; }
+      const hasChildren = state ? !!state.hasChildren : finAccountHasChildrenInList(rowsForChildren, acc.code);
+      const hasActiveChildren = state ? Number(state.activeChildrenCount || 0) > 0 : finAccountHasActiveChildrenInList(rowsForChildren, acc.code);
+      const active = state ? !!state.isActive : (finIsActiveAccount(acc) && acc.isHidden !== true);
+      const lockedForPosting = !!(acc.lockedForPosting || acc.noPosting || acc.blockPosting || acc.postingLocked);
+      const legacy = state ? !!state.isLegacy : finIsLegacyAccount(acc);
+      const grouping = state ? !!state.isGrouping : finIsGroupingAccount({ ...acc, hasChildren });
+      const postable = state ? !!state.effectivePostable : finIsPostableAccount({ ...acc, hasChildren });
+      return { ...acc, hasChildren, hasActiveChildren, isActive: active, lockedForPosting, isLegacy: legacy, isGrouping: grouping, effectivePostable: postable };
+    })
+    .filter(acc => {
+      if (!acc || !acc.code) return false;
+      if (!acc.isActive || acc.isHidden === true) return false;
+      if (finIsRootAccount(acc) || FIN_FIXED_ROOT_CODES.includes(finGetAccountCode(acc))) return false;
+      if (acc.isLegacy || finIsLegacyAccount(acc)) return false;
+      if (acc.lockedForPosting === true || acc.noPosting === true || acc.blockPosting === true || acc.postingLocked === true) return false;
+      if (acc.hasChildren || acc.hasActiveChildren) return false;
+      if (acc.isGrouping || acc.grouping === true || String(acc.accountMode || '').toLowerCase() === 'grouping') return false;
+      if (acc.isPostable === false || acc.postable === false || acc.noPostable === true) return false;
+      return acc.effectivePostable === true || finIsPostableAccount({ ...acc, hasChildren: false, isGrouping: false });
+    })
+    .sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'es', { numeric: true }));
+}
+
+function getSelectablePostingAccounts(accountsOrData) { return getPostableAccountsForSelector(accountsOrData); }
+function filterChartAccountsForPicker(accountsOrData, query = '') {
+  const q = finNormalizeAccountSearchText(query);
+  const rows = getPostableAccountsForSelector(accountsOrData);
+  if (!q) return rows;
+  const data = finBuildSelectorDataFromAccounts(accountsOrData || finCachedData || {});
+  return rows.filter(acc => {
+    const haystack = finNormalizeAccountSearchText([
+      acc.code,
+      acc.nombre,
+      acc.name,
+      finGetAccountType(acc),
+      finGetAccountNature(acc),
+      finGetAccountPathLabel(acc, data),
+      acc.currency,
+      acc.currencyCode,
+      acc.moneda
+    ].filter(Boolean).join(' '));
+    return haystack.includes(q);
+  });
+}
+
+function finNormalizeAccountForView(account) {
+  if (!account || typeof account !== 'object') return null;
+  const code = finGetAccountCode(account);
+  const rootCode = finGetRootFromCode(code) || finGetAccountCode(account.rootCode || '');
+  const level = finGetAccountLevelFromCode(code);
+  const root = FIN_FIXED_ROOTS_BY_CODE[rootCode] || null;
+  const parentId = account.parentId !== undefined ? account.parentId : (account.parentCode || finInferParentCodeFromCode(code));
+  const isRoot = finIsRootAccount(account);
+  const isLegacy = finIsLegacyAccount(account);
+  const isActive = finIsActiveAccount(account);
+  const isPostable = finIsPostableAccount({ ...account, code, isRoot, isActive });
+  const nowISO = new Date().toISOString();
+
+  return {
+    ...account,
+    id: account.id || code,
+    code,
+    name: finGetAccountName(account) || (root && root.name) || `Cuenta ${code}`,
+    nombre: finGetAccountName(account) || (root && root.nombre) || `Cuenta ${code}`,
+    parentId: parentId || null,
+    rootCode: rootCode || null,
+    level: level || account.level || 0,
+    type: finGetAccountType(account),
+    tipo: account.tipo || (root && root.tipo) || inferTipoFromCode(code),
+    nature: finGetAccountNature(account) || (root && root.nature) || '',
+    isRoot,
+    isLocked: isRoot || account.isLocked === true || account.systemProtected === true,
+    isPostable,
+    isActive,
+    isLegacy,
+    createdAt: account.createdAt || account.createdAtISO || nowISO,
+    updatedAt: account.updatedAt || account.updatedAtISO || nowISO,
+    a33AccountHierarchyStage: FIN_ACCOUNTING_REDESIGN_STAGE,
+    a33AccountHierarchyVersion: FIN_ACCOUNT_HIERARCHY_VERSION
+  };
+}
+
+function normalizeAccountForView(account) { return finNormalizeAccountForView(account); }
+
+function finBuildFixedRootAccountRow(root, existing = null, nowISO = new Date().toISOString()) {
+  const base = root || FIN_FIXED_ROOTS_BY_CODE[finGetAccountCode(existing)] || null;
+  if (!base) return null;
+  const created = existing && (existing.createdAt || existing.createdAtISO) ? (existing.createdAt || existing.createdAtISO) : nowISO;
+  return {
+    ...(existing || {}),
+    ...base,
+    id: base.code,
+    code: base.code,
+    name: base.name,
+    nombre: base.nombre,
+    parentId: null,
+    parentCode: null,
+    rootCode: base.code,
+    level: 1,
+    type: base.type,
+    tipo: base.tipo,
+    rootType: base.rootType,
+    nature: base.nature,
+    isRoot: true,
+    isLocked: true,
+    systemProtected: true,
+    isPostable: false,
+    postable: false,
+    noPostable: true,
+    isGrouping: true,
+    grouping: true,
+    isActive: true,
+    active: true,
+    isHidden: false,
+    isLegacy: false,
+    createdAt: created,
+    updatedAt: nowISO,
+    createdAtISO: existing && existing.createdAtISO ? existing.createdAtISO : created,
+    updatedAtISO: nowISO,
+    a33AccountCatalogVisibleMode: FIN_ACCOUNT_CATALOG_VISIBLE_MODE,
+    a33AccountHierarchyStage: FIN_ACCOUNTING_REDESIGN_STAGE,
+    a33AccountHierarchyVersion: FIN_ACCOUNT_HIERARCHY_VERSION
+  };
+}
+
+function finBuildFixedRootAccountRows(nowISO = new Date().toISOString()) {
+  return FIN_FIXED_ROOT_ACCOUNTS
+    .map(root => finBuildFixedRootAccountRow(root, null, nowISO))
+    .filter(Boolean);
+}
+
+function finIsCatalogManagedAccount(account) {
+  if (!account || typeof account !== 'object') return false;
+  if (finIsRootAccount(account)) return true;
+  if (account.a33CatalogVisible === true) return true;
+  if (account.a33CatalogUserCreated === true) return true;
+  if (String(account.generatedFrom || '') === FIN_ACCOUNT_CATALOG_SOURCE) return true;
+  if (String(account.sourceModule || '') === FIN_ACCOUNT_CATALOG_SOURCE) return true;
+  return false;
+}
+
+function finGetCatalogManagedAccounts(data) {
+  const rows = Array.isArray(data && data.accounts) ? data.accounts : [];
+  return rows
+    .map(acc => finNormalizeAccountForView(acc))
+    .filter(Boolean)
+    .filter(acc => finIsCatalogManagedAccount(acc) && finGetRootFromCode(acc.code));
+}
+
+function finGetVisibleCatalogAccounts(data) {
+  const rows = Array.isArray(data && data.accounts) ? data.accounts : [];
+  const map = new Map(rows.map(acc => [finGetAccountCode(acc), acc]).filter(pair => pair[0]));
+  const nowISO = new Date().toISOString();
+  const out = [];
+  const seen = new Set();
+
+  for (const root of FIN_FIXED_ROOT_ACCOUNTS) {
+    const rootRow = finBuildFixedRootAccountRow(root, map.get(root.code) || null, nowISO);
+    if (!rootRow) continue;
+    out.push(rootRow);
+    seen.add(rootRow.code);
+  }
+
+  for (const acc of finGetCatalogManagedAccounts(data)) {
+    const code = finGetAccountCode(acc);
+    if (!code || seen.has(code) || FIN_FIXED_ROOT_CODES.includes(code)) continue;
+    if (!acc.rootCode || !FIN_FIXED_ROOT_CODES.includes(finGetAccountCode(acc.rootCode))) continue;
+    out.push(acc);
+    seen.add(code);
+  }
+
+  return out;
+}
+
+function finGetCatalogCodeReservationAccounts(data) {
+  // Para sugerir códigos se toma en cuenta el árbol visible/administrado, no las cuentas legacy internas.
+  // Si un código legacy existe pero aún no fue incorporado al árbol, puede ser reclamado sin duplicar clave.
+  return finGetVisibleCatalogAccounts(data);
+}
+
+function finIsCatalogRootLocked(accountOrCode) {
+  const code = finGetAccountCode(accountOrCode);
+  return FIN_FIXED_ROOT_CODES.includes(code) || finIsRootAccount(accountOrCode) || (accountOrCode && typeof accountOrCode === 'object' && accountOrCode.isLocked === true);
+}
+
+function finGetExistingChildCodes(parentAccountOrCode, allAccounts) {
+  const parentCode = finGetAccountCode(parentAccountOrCode);
+  const rows = Array.isArray(allAccounts) ? allAccounts : [];
+  return rows
+    .map(acc => finNormalizeAccountForView(acc))
+    .filter(Boolean)
+    .filter(acc => String(acc.parentId || finInferParentCodeFromCode(acc.code) || '') === parentCode)
+    .map(acc => acc.code)
+    .filter(Boolean);
+}
+
+function finSuggestNextAccountCode(parentAccount, allAccounts = []) {
+  const parentCode = finGetAccountCode(parentAccount);
+  const parentLevel = finIsRootAccount(parentAccount) ? 1 : finGetAccountLevelFromCode(parentCode);
+  const parentRoot = finGetRootFromCode(parentCode) || (finIsRootAccount(parentCode) ? parentCode : '');
+  const existing = new Set((Array.isArray(allAccounts) ? allAccounts : [])
+    .map(acc => finGetAccountCode(acc))
+    .filter(Boolean));
+  const childCodes = new Set(finGetExistingChildCodes(parentAccount, allAccounts));
+
+  if (!parentCode || !parentRoot) {
+    return { ok: false, code: '', reason: 'invalid_parent', message: 'La cuenta padre no pertenece a una raíz válida.' };
+  }
+  if (parentLevel < 1 || parentLevel > 3) {
+    return { ok: false, code: '', reason: 'level_full', message: 'Este nivel no permite más subcuentas.' };
+  }
+
+  let candidates = [];
+  const base = safeParseCodeNum(parentCode);
+  if (!Number.isFinite(base)) {
+    return { ok: false, code: '', reason: 'invalid_parent_code', message: 'El código de la cuenta padre no es válido.' };
+  }
+
+  if (parentLevel === 1) {
+    const root = safeParseCodeNum(parentRoot);
+    for (let n = root + 100; n <= root + 900; n += 100) candidates.push(String(n).padStart(4, '0'));
+  } else if (parentLevel === 2) {
+    for (let n = base + 10; n <= base + 90; n += 10) candidates.push(String(n).padStart(4, '0'));
+  } else if (parentLevel === 3) {
+    for (let n = base + 1; n <= base + 9; n += 1) candidates.push(String(n).padStart(4, '0'));
+  }
+
+  const available = candidates.find(code => !existing.has(code) && !childCodes.has(code));
+  if (!available) {
+    return { ok: false, code: '', reason: 'no_space', message: 'No hay códigos disponibles en este nivel.' };
+  }
+  return { ok: true, code: available, reason: '', message: '', parentCode, parentLevel, rootCode: parentRoot };
+}
+
+function suggestNextAccountCode(parentAccount, allAccounts = []) { return finSuggestNextAccountCode(parentAccount, allAccounts); }
+
+function finClassifyJournalEntryDraft(entry = {}, lines = []) {
+  const text = normText([
+    entry.tipo, entry.type, entry.category, entry.source, entry.sourceModule, entry.generatedFrom,
+    entry.description, entry.descripcion, entry.concepto, entry.reference, entry.referencia, entry.autoLabel
+  ].filter(Boolean).join(' '));
+  const rows = Array.isArray(lines) ? lines : [];
+  const lineCode = (ln) => finGetAccountCode(ln.accountCode || ln.account || ln.code || ln.cuenta || ln.cuentaCodigo || '');
+  const lineName = (ln) => normText(ln.accountName || ln.accountNameSnapshot || ln.accountNombre || ln.cuentaNombre || ln.name || '');
+  const debitVal = (ln) => Number(ln.debit ?? ln.debe ?? ln.debitOriginal ?? 0) || 0;
+  const creditVal = (ln) => Number(ln.credit ?? ln.haber ?? ln.creditOriginal ?? 0) || 0;
+  const hasDebitRoot = (rootCode) => rows.some(ln => debitVal(ln) > 0 && finGetRootFromCode(lineCode(ln)) === rootCode);
+  const hasCreditRoot = (rootCode) => rows.some(ln => creditVal(ln) > 0 && finGetRootFromCode(lineCode(ln)) === rootCode);
+  const hasDebitCode = (code) => rows.some(ln => debitVal(ln) > 0 && lineCode(ln) === finGetAccountCode(code));
+  const hasDebitName = (rx) => rows.some(ln => debitVal(ln) > 0 && rx.test(lineName(ln)));
+  const hasCreditName = (rx) => rows.some(ln => creditVal(ln) > 0 && rx.test(lineName(ln)));
+
+  const debitActivo = hasDebitRoot('1000');
+  const creditActivo = hasCreditRoot('1000');
+  const debitCapital = hasDebitRoot('3000');
+  const creditCapital = hasCreditRoot('3000');
+  const debitPasivo = hasDebitRoot('2000');
+  const creditPasivo = hasCreditRoot('2000');
+  const debitIngreso = hasDebitRoot('4000') || hasDebitRoot('7000');
+  const creditIngreso = hasCreditRoot('4000') || hasCreditRoot('7000');
+  const debitCostoGasto = hasDebitRoot('5000') || hasDebitRoot('6000');
+  const creditCostoGasto = hasCreditRoot('5000') || hasCreditRoot('6000');
+  const inventoryDebit = hasDebitName(/inventario|existencia|producto/) || hasDebitCode('1400') || hasDebitCode('1500');
+  const openingCredit = hasCreditName(/resultado|acumulad|apertura|inicial|capital inicial/);
+
+  if (text.includes('saldo inicial') || text.includes('apertura')) return 'Saldo inicial';
+  if (text.includes('prestamo') || text.includes('préstamo')) return 'Préstamo recibido';
+  if (text.includes('pos') || text.includes('venta') || text.includes('ingreso por venta')) return 'Venta / Ingreso';
+  if (text.includes('aporte')) return 'Aporte';
+  if (text.includes('transferencia')) return 'Transferencia interna';
+  if (text.includes('compra') || text.includes('inventario')) return 'Compra / Inventario';
+
+  if (debitActivo && creditCapital && openingCredit) return 'Saldo inicial';
+  if (debitActivo && creditPasivo) return 'Préstamo recibido';
+  if (debitActivo && creditIngreso) return 'Venta / Ingreso';
+  if (debitActivo && creditCapital) return 'Aporte';
+  if (debitActivo && creditActivo && !debitPasivo && !creditPasivo && !debitCapital && !creditCapital && !debitIngreso && !creditIngreso && !debitCostoGasto && !creditCostoGasto) return 'Transferencia interna';
+  if (inventoryDebit && (creditActivo || creditPasivo)) return 'Compra / Inventario';
+  if (debitCostoGasto && creditActivo) return 'Egreso';
+  if ((hasDebitRoot('5000') || hasDebitRoot('6000')) && (creditActivo || creditPasivo)) return 'Egreso';
+  return 'Asiento contable';
+}
+
+function finGetAutomaticEntryLabel(entry = {}, lines = []) {
+  return finClassifyJournalEntryDraft(entry, lines);
 }
 
 function finGetLegacyCashGeneralAccountCode() {
@@ -848,6 +1397,7 @@ function finAccountDefinitionToRow(def, nowISO) {
 
 function finShouldUpgradeAccountName(current, def) {
   if (!current) return true;
+  if (current.a33CatalogVisible === true || current.a33CatalogUserCreated === true) return false;
   const currentName = normText(current.nombre || current.name || '');
   if (!currentName) return true;
   const target = normText(def.nombre || def.name || '');
@@ -890,8 +1440,12 @@ function finApplyAccountDefinition(current, def, nowISO) {
     'sourceCatalog', 'legacyReason', 'legacyNote', 'a33FinanceStage', 'a33FinanceMultibankStage'
   ];
 
+  const isUserCatalogVisible = out.a33CatalogVisible === true || out.a33CatalogUserCreated === true;
+  const userCatalogPreserveKeys = new Set(['generatedFrom', 'generatedFromModule', 'sourceCatalog']);
+
   for (const key of forceKeys) {
     if (base[key] === undefined) continue;
+    if (isUserCatalogVisible && userCatalogPreserveKeys.has(key)) continue;
     if (out[key] !== base[key]) {
       out[key] = base[key];
       changed = true;
@@ -1074,6 +1628,19 @@ async function ensureBaseAccounts() {
   const byCode = new Map(existing.map(a => [finNormalizeAccountCode(a.code), a]));
   const nowISO = new Date().toISOString();
 
+  // Nuevo Catálogo de Cuentas: asegurar exactamente las 7 raíces visibles, fijas y no posteables.
+  for (const root of FIN_FIXED_ROOT_ACCOUNTS) {
+    const codeStr = finNormalizeAccountCode(root.code);
+    const current = byCode.get(codeStr) || null;
+    const rootRow = finBuildFixedRootAccountRow(root, current, nowISO);
+    if (!current || JSON.stringify({ ...current, updatedAt: undefined, updatedAtISO: undefined }) !== JSON.stringify({ ...rootRow, updatedAt: undefined, updatedAtISO: undefined })) {
+      await finPut('accounts', rootRow);
+      byCode.set(codeStr, rootRow);
+    }
+  }
+
+  // Capa legacy: se conserva/asegura solo para históricos y para que el formulario actual siga operativo.
+  // No forma parte del Catálogo de Cuentas visible salvo que el usuario reclame ese código en el árbol.
   for (const base of BASE_ACCOUNTS) {
     const codeStr = finNormalizeAccountCode(base.code);
     const current = byCode.get(codeStr);
@@ -1207,11 +1774,23 @@ async function normalizeAccountsCatalog() {
   if (!accounts || !accounts.length) return;
 
   const nowISO = new Date().toISOString();
+  const childParentCodes = new Set((Array.isArray(accounts) ? accounts : [])
+    .map(row => finNormalizeAccountForView(row))
+    .filter(Boolean)
+    .map(row => row.parentId || finInferParentCodeFromCode(row.code) || '')
+    .filter(Boolean));
 
   for (const acc of accounts) {
     if (!acc || acc.code === undefined || acc.code === null) continue;
 
     let changed = false;
+
+    // Las 7 raíces fijas se fuerzan a su forma protegida; no se pueden editar, inactivar ni postear.
+    if (FIN_FIXED_ROOT_CODES.includes(finGetAccountCode(acc))) {
+      const rootRow = finBuildFixedRootAccountRow(FIN_FIXED_ROOTS_BY_CODE[finGetAccountCode(acc)], acc, nowISO);
+      await finPut('accounts', rootRow);
+      continue;
+    }
 
     // Compatibilidad name/nombre (sin borrar ninguno)
     const hasNombre = !!(acc.nombre && String(acc.nombre).trim());
@@ -1226,9 +1805,21 @@ async function normalizeAccountsCatalog() {
       changed = true;
     }
 
-    // isHidden default false (solo si falta / inválido)
+    // isHidden/isActive default seguros (solo si falta / inválido)
     if (typeof acc.isHidden !== 'boolean') {
       acc.isHidden = false;
+      changed = true;
+    }
+    if (acc.isActive === undefined) {
+      acc.isActive = acc.active === false || acc.isHidden === true ? false : true;
+      changed = true;
+    }
+    if (acc.active === undefined) {
+      acc.active = acc.isActive !== false;
+      changed = true;
+    }
+    if (acc.inactive === undefined && acc.isActive === false) {
+      acc.inactive = true;
       changed = true;
     }
 
@@ -1251,6 +1842,44 @@ async function normalizeAccountsCatalog() {
 
       acc.rootType = rt;
       changed = true;
+    }
+
+    // Preparación no destructiva para el Catálogo jerárquico futuro.
+    // No recalcular históricos legacy; solo completar metadatos faltantes.
+    const futureShape = finNormalizeAccountForView(acc);
+    if (futureShape) {
+      const safeHierarchyKeys = [
+        'id', 'parentId', 'rootCode', 'level', 'type', 'nature',
+        'isRoot', 'isLocked', 'isPostable', 'isActive', 'isLegacy',
+        'a33AccountHierarchyStage', 'a33AccountHierarchyVersion'
+      ];
+      for (const key of safeHierarchyKeys) {
+        if (acc[key] === undefined && futureShape[key] !== undefined) {
+          acc[key] = futureShape[key];
+          changed = true;
+        }
+      }
+      if (!acc.createdAt && futureShape.createdAt) {
+        acc.createdAt = futureShape.createdAt;
+        changed = true;
+      }
+      if (!acc.updatedAt && futureShape.updatedAt) {
+        acc.updatedAt = futureShape.updatedAt;
+        changed = true;
+      }
+    }
+
+    // Si una cuenta tiene hijos, queda como agrupadora/no posteable.
+    if (childParentCodes.has(finGetAccountCode(acc)) && !finIsRootAccount(acc)) {
+      if (acc.isPostable !== false || acc.postable !== false || acc.noPostable !== true || acc.isGrouping !== true || acc.grouping !== true || acc.accountMode !== 'grouping') {
+        acc.isPostable = false;
+        acc.postable = false;
+        acc.noPostable = true;
+        acc.isGrouping = true;
+        acc.grouping = true;
+        acc.accountMode = 'grouping';
+        changed = true;
+      }
     }
 
     // createdAtISO / updatedAtISO (opcionales pero consistentes)
@@ -2748,12 +3377,13 @@ function getAccountDisplayNameByCode(code, accountsMap, lineForFallback) {
 
 async function getAllFinData() {
   await openFinDB();
-  const [accounts, entries, lines, financialAccounts, internalTransfers] = await Promise.all([
+  const [accounts, entries, lines, financialAccounts, internalTransfers, receipts] = await Promise.all([
     finGetAll('accounts'),
     finGetAll('journalEntries'),
     finGetAll('journalLines'),
     finGetAll('financialAccounts').catch(() => []),
-    finGetAll('internalTransfers').catch(() => [])
+    finGetAll('internalTransfers').catch(() => []),
+    finGetAll('receipts').catch(() => [])
   ]);
 
   let suppliers = [];
@@ -2854,6 +3484,7 @@ async function getAllFinData() {
     suppliersMap,
     financialAccounts: Array.isArray(financialAccounts) ? financialAccounts : [],
     internalTransfers: Array.isArray(internalTransfers) ? internalTransfers : [],
+    receipts: Array.isArray(receipts) ? receipts : [],
     journalIntegrity,
     inconsistentEntryIds
   };
@@ -3591,23 +4222,14 @@ async function exportDiarioExcel() {
     if (diarioHasta && fechaMov > diarioHasta) continue;
 
     // Origen (compat con filtros POS_CIERRES / POS_LEGACY)
-    const origenRaw0 = e.origen || 'Interno';
-    const origenBase0 = (origenRaw0 === 'Manual') ? 'Interno' : origenRaw0;
+    const originInfo0 = finGetEntryOriginPresentation(e);
+    const origenRaw0 = originInfo0.label;
+    const origenBase0 = originInfo0.base;
     const isPos0 = (origenBase0 === 'POS');
     const isPosClose0 = isPos0 && isPosDailyCloseEntry(e);
     const origenKey0 = isPos0 ? (isPosClose0 ? 'POS_CIERRES' : 'POS_LEGACY') : origenBase0;
 
-    if (origenFilter !== 'todos') {
-      if (origenFilter === 'POS') {
-        if (origenBase0 !== 'POS') continue;
-      } else if (origenFilter === 'POS_CIERRES') {
-        if (origenKey0 !== 'POS_CIERRES') continue;
-      } else if (origenFilter === 'POS_LEGACY') {
-        if (origenKey0 !== 'POS_LEGACY') continue;
-      } else {
-        if (origenBase0 !== origenFilter) continue;
-      }
-    }
+    if (!finEntryOriginMatchesFilter(e, origenFilter)) continue;
 
     if (!matchEvent(e, eventoFilter)) continue;
 
@@ -3645,37 +4267,24 @@ async function exportDiarioExcel() {
   });
 
   const rows = [];
-  rows.push(['Fecha', 'Descripción', 'Tipo', 'Evento', 'Proveedor', 'Pago', 'Referencia', 'Origen', finMoneyColumnHeader('Debe total'), finMoneyColumnHeader('Haber total'), 'Cuenta financiera', 'Moneda original', 'Monto original', 'T/C usado', finMoneyColumnHeader('Equivalente C$')]);
+  const detailRows = [];
+  rows.push(['Fecha', 'Descripción', 'Tipo', 'Evento', 'Proveedor', 'Pago', 'Referencia', 'Origen', 'Etiqueta', finMoneyColumnHeader('Debe total'), finMoneyColumnHeader('Haber total'), 'Cuenta financiera', 'Moneda original', 'Monto original', 'T/C usado', finMoneyColumnHeader('Equivalente C$')]);
+  detailRows.push(['Fecha', 'Asiento', 'Origen', 'Descripción', 'Referencia', 'Etiqueta', 'Cuenta', 'Nombre cuenta', finMoneyColumnHeader('Debe'), finMoneyColumnHeader('Haber'), 'Moneda original', 'Monto original', 'T/C usado', finMoneyColumnHeader('Equivalente C$')]);
 
   for (const e of sorted) {
     const tipo = e.tipoMovimiento || 'otro';
     if (tipoFilter !== 'todos' && tipo !== tipoFilter) continue;
 
-    // Origen (compat con filtros POS_CIERRES / POS_LEGACY)
-    const origenRaw = e.origen || 'Interno';
-    const origenBase = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
+    const originInfo = finGetEntryOriginPresentation(e);
+    const origenBase = originInfo.base;
     const isPos = (origenBase === 'POS');
-    const isPosClose = isPos && isPosDailyCloseEntry(e);
-    const origenKey = isPos ? (isPosClose ? 'POS_CIERRES' : 'POS_LEGACY') : origenBase;
-    const origenOut = isPos
-      ? (isPosClose ? 'POS — Cierre diario' : 'LEGACY — ventas individuales')
-      : origenBase;
+    const origenOut = finEntryOriginLabelForHistory(e);
     const fechaMov = String(e.fecha || e.date || '').slice(0, 10);
     if ((diarioDesde || diarioHasta) && !fechaMov) continue;
     if (diarioDesde && fechaMov < diarioDesde) continue;
     if (diarioHasta && fechaMov > diarioHasta) continue;
 
-    if (origenFilter !== 'todos') {
-      if (origenFilter === 'POS') {
-        if (origenBase !== 'POS') continue;
-      } else if (origenFilter === 'POS_CIERRES') {
-        if (origenKey !== 'POS_CIERRES') continue;
-      } else if (origenFilter === 'POS_LEGACY') {
-        if (origenKey !== 'POS_LEGACY') continue;
-      } else {
-        if (origenBase !== origenFilter) continue;
-      }
-    }
+    if (!finEntryOriginMatchesFilter(e, origenFilter)) continue;
 
     if (!matchEvent(e, eventoFilter)) continue;
 
@@ -3716,6 +4325,7 @@ async function exportDiarioExcel() {
     const pm = (e.paymentMethod || '').toString().trim();
     const pmLabel = pm === 'bank' ? 'Banco' : (pm === 'cash' ? 'Caja' : (pm ? pm : '—'));
 
+    const autoLabel = finGetEntryAutoLabel(e) || '';
     const currencyMeta = finGetEntryManualCurrencyMeta(e);
     rows.push([
       e.fecha || e.date || '',
@@ -3726,6 +4336,7 @@ async function exportDiarioExcel() {
       pmLabel,
       ref,
       origenOut,
+      autoLabel,
       Number(totalDebe.toFixed(2)),
       Number(totalHaber.toFixed(2)),
       currencyMeta ? (currencyMeta.financialAccountName || '') : '',
@@ -3734,6 +4345,45 @@ async function exportDiarioExcel() {
       currencyMeta && currencyMeta.exchangeRateUsed ? Number(Number(currencyMeta.exchangeRateUsed).toFixed(2)) : '',
       currencyMeta && currencyMeta.baseAmountNio != null ? Number(Number(currencyMeta.baseAmountNio).toFixed(2)) : ''
     ]);
+
+    if (normLines.length) {
+      for (const ln of normLines) {
+        const lineCurrency = finReportLineCurrencyMeta(ln, e, data);
+        detailRows.push([
+          e.fecha || e.date || '',
+          e.id || '',
+          origenOut,
+          e.descripcion || '',
+          ref,
+          autoLabel,
+          ln.accountCode || '',
+          getAccountDisplayNameByCode(ln.accountCode, accountsMap, ln),
+          Number(finReportLineAmount(ln.debit).toFixed(2)),
+          Number(finReportLineAmount(ln.credit).toFixed(2)),
+          lineCurrency.originalCurrency || '',
+          lineCurrency.originalAmount != null ? Number(Number(lineCurrency.originalAmount).toFixed(2)) : '',
+          lineCurrency.exchangeRateUsed ? Number(Number(lineCurrency.exchangeRateUsed).toFixed(2)) : '',
+          lineCurrency.baseAmountNio != null ? Number(Number(lineCurrency.baseAmountNio).toFixed(2)) : ''
+        ]);
+      }
+    } else {
+      detailRows.push([
+        e.fecha || e.date || '',
+        e.id || '',
+        origenOut,
+        e.descripcion || '',
+        ref,
+        autoLabel,
+        '—',
+        'Movimiento histórico / legacy',
+        '',
+        '',
+        currencyMeta ? currencyMeta.originalCurrency : '',
+        currencyMeta && currencyMeta.originalAmount != null ? Number(Number(currencyMeta.originalAmount).toFixed(2)) : '',
+        currencyMeta && currencyMeta.exchangeRateUsed ? Number(Number(currencyMeta.exchangeRateUsed).toFixed(2)) : '',
+        currencyMeta && currencyMeta.baseAmountNio != null ? Number(Number(currencyMeta.baseAmountNio).toFixed(2)) : ''
+      ]);
+    }
   }
 
   if (rows.length <= 1) {
@@ -3742,8 +4392,10 @@ async function exportDiarioExcel() {
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Diario');
+  XLSX.utils.book_append_sheet(wb, wsDetail, 'Lineas_Debe_Haber');
   const filename = `finanzas_diario_${todayStr()}.xlsx`;
   finAttachExportCurrencyMetadata(wb);
   XLSX.writeFile(wb, filename);
@@ -4172,8 +4824,9 @@ function fillCuentaSelect(data) {
   sel.innerHTML = '<option value="">Seleccione cuenta…</option>';
 
   for (const acc of cuentas) {
-    // Cuentas ocultas: no deben aparecer en selects para movimientos nuevos.
-    if (acc && acc.isHidden === true) continue;
+    // Cuentas inactivas, raíces y agrupadoras no deben aparecer en selects para movimientos nuevos.
+    if (!finIsActiveAccount(acc) || (acc && acc.isHidden === true)) continue;
+    if (finIsRootAccount(acc) || !finIsPostableAccount(acc)) continue;
 
     const tipo = getTipoCuenta(acc);
     let permitido = false;
@@ -4207,7 +4860,9 @@ function finGetActiveFinancialAccountsForMovements(data) {
       if (!row || row.activa === false) return false;
       const code = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || '');
       if (!code) return false;
-      if (accountsMap && typeof accountsMap.get === 'function' && !accountsMap.get(code)) return false;
+      const mappedAcc = accountsMap && typeof accountsMap.get === 'function' ? accountsMap.get(code) : null;
+      if (!mappedAcc) return false;
+      if (!finIsActiveAccount(mappedAcc) || !finIsPostableAccount(mappedAcc)) return false;
       return true;
     })
     .sort((a, b) => {
@@ -4785,7 +5440,7 @@ async function createInternalTransferWithJournalAtomic(transfer, entry, lines) {
       const savedTransfer = { ...transfer, journalEntryId: entryId };
       stT.put(savedTransfer);
       for (const ln of (Array.isArray(lines) ? lines : [])) {
-        stL.add({ ...ln, idEntry: entryId });
+        stL.add({ ...ln, idEntry: entryId, journalEntryId: entryId, entryId });
       }
     };
 
@@ -5486,6 +6141,108 @@ function getPosPrincipalAmounts(entry, lines, accountsMap) {
   };
 }
 
+
+function finIsManualJournalEntry(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  const src = String(entry.source || '').trim();
+  return src === 'manual_journal_entry' || entry.entryType === 'journal_entry' || entry.stage === FIN_JOURNAL_REAL_STAGE;
+}
+
+function finGetEntryAutoLabel(entry) {
+  if (!entry || typeof entry !== 'object') return '';
+  return String(entry.autoLabel || entry.etiquetaAutomatica || '').trim();
+}
+
+function finGetEntryOriginPresentation(entry) {
+  const rawText = normText([
+    entry && entry.entryType,
+    entry && entry.source,
+    entry && entry.origin,
+    entry && entry.origen,
+    entry && entry.tipoMovimiento,
+    entry && entry.purchaseKind,
+    entry && entry.receiptId,
+    entry && entry.internalTransferSnapshot && entry.internalTransferSnapshot.tipoOperacion
+  ].filter(Boolean).join(' '));
+
+  if (!entry || typeof entry !== 'object') return { base: 'Legacy', label: 'Legacy / histórico' };
+
+  if (rawText.includes('pos') || String(entry.source || '') === POS_DAILY_CLOSE_SOURCE || String(entry.source || '') === POS_DAILY_CLOSE_REVERSAL_SOURCE) {
+    return { base: 'POS', label: 'POS' };
+  }
+  if (rawText.includes('internal_transfer') || rawText.includes('transferencia interna') || String(entry.tipoMovimiento || '') === 'transferencia') {
+    return { base: 'Transferencia', label: 'Transferencia' };
+  }
+  if (String(entry.entryType || '') === 'purchase' || rawText.includes('purchase') || rawText.includes('compra')) {
+    return { base: 'Compra', label: 'Compra' };
+  }
+  if (String(entry.entryType || '') === 'receipt' || rawText.includes('receipt') || rawText.includes('recibo')) {
+    return { base: 'Recibo', label: 'Recibo' };
+  }
+  if (finIsManualJournalEntry(entry) || String(entry.source || '') === 'manual_financial_account') {
+    return { base: 'Manual', label: 'Manual' };
+  }
+
+  const origenRaw = String(entry.origen || entry.origin || '').trim();
+  if (origenRaw) {
+    const normalized = normText(origenRaw);
+    if (normalized.includes('manual') || normalized.includes('interno')) return { base: 'Manual', label: 'Manual' };
+    return { base: origenRaw, label: origenRaw };
+  }
+
+  return { base: 'Legacy', label: 'Legacy / histórico' };
+}
+
+function finEntryOriginMatchesFilter(entry, filterValue) {
+  const filter = String(filterValue || 'todos');
+  if (filter === 'todos') return true;
+
+  const info = finGetEntryOriginPresentation(entry);
+  const base = info.base;
+
+  if (filter === 'POS' || filter === 'POS_CIERRES' || filter === 'POS_LEGACY') {
+    if (base !== 'POS') return false;
+    if (filter === 'POS') return true;
+    const close = isPosDailyCloseEntry(entry);
+    if (filter === 'POS_CIERRES') return close;
+    if (filter === 'POS_LEGACY') return !close;
+  }
+
+  return base === filter;
+}
+
+function finEntryOriginLabelForHistory(entry) {
+  const info = finGetEntryOriginPresentation(entry);
+  if (info.base === 'POS') return isPosDailyCloseEntry(entry) ? 'POS — Cierre diario' : 'POS — Legacy';
+  return info.label || info.base || 'Legacy / histórico';
+}
+
+function finEntryOriginPillVariant(entry) {
+  const base = finGetEntryOriginPresentation(entry).base;
+  if (base === 'Manual' || base === 'POS') return 'gold';
+  if (base === 'Compra' || base === 'Recibo' || base === 'Transferencia') return 'cash';
+  if (base === 'Legacy') return 'muted';
+  return 'muted';
+}
+
+function finJournalDetailAmountCell(line, side) {
+  const baseRaw = side === 'debit'
+    ? (line.debe ?? line.debit ?? line.debitBase ?? 0)
+    : (line.haber ?? line.credit ?? line.creditBase ?? 0);
+  const originalRaw = side === 'debit'
+    ? (line.debitOriginal ?? line.debeOriginal ?? null)
+    : (line.creditOriginal ?? line.haberOriginal ?? null);
+  const base = finParseCurrencyAmount(baseRaw);
+  const original = finParseCurrencyAmount(originalRaw);
+  const currency = finNormalizeCurrencyCode(line.originalCurrency || line.monedaOriginal || line.currency || 'NIO');
+  const rate = finParseCurrencyAmount(line.exchangeRateUsed ?? line.tipoCambioUsado ?? '');
+  const main = finFormatCordobas(Number.isFinite(base) ? base : 0);
+  if (currency === 'USD' && Number.isFinite(original) && original > 0) {
+    return `${main}<div class="fin-detail-line-meta">${escapeHtml(finFormatDollars(original))}${Number.isFinite(rate) && rate > 0 ? ` · T/C ${escapeHtml(Number(rate).toFixed(2))}` : ''}</div>`;
+  }
+  return main;
+}
+
 function renderDiario(data) {
   const tbody = $('#diario-tbody');
   if (!tbody) return;
@@ -5515,17 +6272,20 @@ function renderDiario(data) {
     return fb.localeCompare(fa); // ISO strings: DESC
   });
 
+  let renderedRows = 0;
+
   for (const e of sorted) {
     const tipoMov = e.tipoMovimiento || '';
-    const origenRaw = e.origen || 'Interno';
-    const origenBase = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
+    const originInfo = finGetEntryOriginPresentation(e);
+    const origenRaw = originInfo.label;
+    const origenBase = originInfo.base;
 
     // POS: distinguir cierres diarios vs históricos legacy (ventas individuales)
     const isPos = (origenBase === 'POS');
     const isPosClose = isPos && isPosDailyCloseEntry(e);
     const origenKey = isPos ? (isPosClose ? 'POS_CIERRES' : 'POS_LEGACY') : origenBase;
-    const origenLabel = isPos ? (isPosClose ? 'POS — Cierre diario' : 'LEGACY — ventas individuales') : origenBase;
-    const origenCell = isPos ? makePill(origenLabel, isPosClose ? 'gold' : 'muted') : escapeHtml(origenLabel);
+    const origenLabel = finEntryOriginLabelForHistory(e);
+    const origenCell = makePill(origenLabel, finEntryOriginPillVariant(e));
 
     const fechaMov = String(e.fecha || e.date || '').slice(0, 10);
     if ((diarioDesde || diarioHasta) && !fechaMov) continue;
@@ -5534,17 +6294,7 @@ function renderDiario(data) {
 
     if (tipoFilter !== 'todos' && tipoMov !== tipoFilter) continue;
     if (!matchEvent(e, eventoFilter)) continue;
-    if (origenFilter !== 'todos') {
-      if (origenFilter === 'POS') {
-        if (origenBase !== 'POS') continue;
-      } else if (origenFilter === 'POS_CIERRES') {
-        if (origenKey !== 'POS_CIERRES') continue;
-      } else if (origenFilter === 'POS_LEGACY') {
-        if (origenKey !== 'POS_LEGACY') continue;
-      } else {
-        if (origenBase !== origenFilter) continue;
-      }
-    }
+    if (!finEntryOriginMatchesFilter(e, origenFilter)) continue;
 
 
     const sid = (e.supplierId != null) ? String(e.supplierId) : '';
@@ -5593,7 +6343,7 @@ function renderDiario(data) {
         const pill = mm ? (' ' + makePill(`Cierre con diferencia: ${finFormatCordobas(mm)}`, 'red')) : '';
         return base + incPill + pill + finRenderEntryFinancialBadges(e);
       })()}</td>
-      <td>${escapeHtml(tipoMov)}</td>
+      <td>${(function(){ const auto = finGetEntryAutoLabel(e); return `${escapeHtml(tipoMov || 'asiento')}${auto ? '<div class="fin-badge-strip fin-badge-strip--compact">' + makePill(auto, 'gold') + '</div>' : ''}`; })()}</td>
       <td>${evCell || '—'}</td>
       <td>${escapeHtml(getSupplierLabelFromEntry(e, data))}</td>
       <td>${origenCell}</td>
@@ -5602,6 +6352,13 @@ function renderDiario(data) {
       <td class="num">${finFormatCordobas(displayHaber)}</td>
       <td><button type="button" class="btn-link ver-detalle" data-id="${e.id}">Ver detalle</button></td>
     `;
+    tbody.appendChild(tr);
+    renderedRows++;
+  }
+
+  if (!renderedRows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="10" class="fin-empty-cell">No hay movimientos para mostrar.</td>';
     tbody.appendChild(tr);
   }
 }
@@ -5653,8 +6410,9 @@ function openDetalleModal(entryId) {
 
     const mm = getPosCloseMismatchAmount(entry);
     if (mm) mismatchLine = `<p>${makePill(`Cierre con diferencia: ${finFormatCordobas(mm)}`, 'red')}</p>`;
-  const origenRaw = entry.origen || 'Interno';
-  const origenLabel = (origenRaw === 'Manual') ? 'Interno' : origenRaw;
+  const detailOriginInfo = finGetEntryOriginPresentation(entry);
+  const isPosOrigin = detailOriginInfo.base === 'POS';
+  const origenLabel = finEntryOriginLabelForHistory(entry);
 
   const lines = linesByEntry.get(entry.id) || [];
   const isInconsistent = lines.length === 0;
@@ -5663,6 +6421,9 @@ function openDetalleModal(entryId) {
   const isPurchase = (entry && entry.entryType === 'purchase');
   const editCompraBtn = isPurchase
     ? `<p><button type="button" class="btn btn-small btn-edit-compra" data-entry-id="${entry.id}">Editar en Compras</button></p>`
+    : '';
+  const posNoEditLine = isPosOrigin
+    ? `<p>${makePill('Solo consulta', 'muted')} <span class="fin-muted">Este asiento proviene de POS y no se edita directamente. Use un asiento de ajuste si necesita corregirlo.</span></p>`
     : '';
 
   const transferMeta = finGetEntryInternalTransferMeta(entry);
@@ -5694,7 +6455,14 @@ function openDetalleModal(entryId) {
     <p><strong>Proveedor:</strong> ${escapeHtml(supplierLabel)}</p>
     <p><strong>Pago:</strong> ${escapeHtml(pmLabel)}</p>
     <p><strong>Referencia:</strong> ${ref ? escapeHtml(ref) : '—'}</p>
+    ${finGetEntryAutoLabel(entry) ? `<p><strong>Etiqueta:</strong> ${escapeHtml(finGetEntryAutoLabel(entry))}</p>` : ''}
+    ${entry.currency || entry.originalCurrency || entry.monedaOriginal ? `<p><strong>Moneda:</strong> ${escapeHtml(finNormalizeCurrencyCode(entry.currency || entry.originalCurrency || entry.monedaOriginal))}</p>` : ''}
+    ${entry.exchangeRateUsed || entry.tipoCambioUsado ? `<p><strong>T/C snapshot:</strong> ${escapeHtml(Number(entry.exchangeRateUsed || entry.tipoCambioUsado).toFixed(2))}</p>` : ''}
+    ${entry.totalDebitBase != null || entry.totalDebe != null ? `<p><strong>Total Debe:</strong> ${escapeHtml(finFormatCordobas(entry.totalDebitBase ?? entry.totalDebe ?? 0))}</p>` : ''}
+    ${entry.totalCreditBase != null || entry.totalHaber != null ? `<p><strong>Total Haber:</strong> ${escapeHtml(finFormatCordobas(entry.totalCreditBase ?? entry.totalHaber ?? 0))}</p>` : ''}
+    ${entry.differenceBase != null || entry.diferenciaBase != null ? `<p><strong>Diferencia:</strong> ${escapeHtml(finFormatCordobas(entry.differenceBase ?? entry.diferenciaBase ?? 0))}</p>` : ''}
     ${editCompraBtn}
+    ${posNoEditLine}
     ${closureLine}
     ${costsLine}
     ${mismatchLine}
@@ -5705,16 +6473,22 @@ function openDetalleModal(entryId) {
   `;
 
 tbody.innerHTML = '';
-  for (const ln of lines) {
-    const nombre = getAccountDisplayNameByCode(ln.accountCode, accountsMap, ln);
+  if (!lines.length) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${ln.accountCode}</td>
-      <td>${nombre}</td>
-      <td class="num">${finFormatCordobas(ln.debe || 0)}</td>
-      <td class="num">${finFormatCordobas(ln.haber || 0)}</td>
-    `;
+    tr.innerHTML = '<td colspan="4" class="fin-empty-cell">Movimiento histórico / legacy. No se exigen líneas Debe/Haber nuevas.</td>';
     tbody.appendChild(tr);
+  } else {
+    for (const ln of lines) {
+      const nombre = getAccountDisplayNameByCode(ln.accountCode, accountsMap, ln);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(ln.accountCode || '')}</td>
+        <td>${escapeHtml(nombre)}</td>
+        <td class="num">${finJournalDetailAmountCell(ln, 'debit')}</td>
+        <td class="num">${finJournalDetailAmountCell(ln, 'credit')}</td>
+      `;
+      tbody.appendChild(tr);
+    }
   }
 
   modal.classList.add('open');
@@ -5844,11 +6618,11 @@ function finReportLineCurrencyMeta(line, entry, data) {
     (fa && (fa.moneda || fa.financialAccountCurrency)) ||
     'NIO'
   );
-  const rawOriginal = (line && (line.originalAmount ?? line.montoOriginal ?? line.totalOriginal)) ??
-    (entry && (entry.originalAmount ?? entry.montoOriginal ?? entry.totalOriginal));
+  const rawOriginal = (line && (line.originalAmount ?? line.montoOriginal ?? line.totalOriginal ?? line.debitOriginal ?? line.creditOriginal)) ??
+    (entry && (entry.originalAmount ?? entry.montoOriginal ?? entry.totalOriginal ?? entry.totalDebitOriginal ?? entry.totalDebeOriginal));
   let originalAmount = finParseCurrencyAmount(rawOriginal);
-  const baseAmountRaw = (line && (line.baseAmountNio ?? line.equivalenteNIO)) ??
-    (entry && (entry.baseAmountNio ?? entry.equivalenteNIO));
+  const baseAmountRaw = (line && (line.baseAmountNio ?? line.equivalenteNIO ?? line.debitBase ?? line.creditBase)) ??
+    (entry && (entry.baseAmountNio ?? entry.equivalenteNIO ?? entry.totalDebitBase ?? entry.totalDebe));
   let baseAmountNio = finParseCurrencyAmount(baseAmountRaw);
   const debe = finReportLineAmount(line && line.debe);
   const haber = finReportLineAmount(line && line.haber);
@@ -5921,12 +6695,12 @@ function finReportCounterpart(data, entry, accountCode) {
 }
 
 function finReportSourceKey(entry) {
-  const raw = `${entry && (entry.entryType || '')} ${entry && (entry.source || '')} ${entry && (entry.origen || '')} ${entry && (entry.tipoMovimiento || '')}`.toLowerCase();
-  if (raw.includes('internal_transfer') || raw.includes('transferencia')) return 'transferencia';
-  if (raw.includes('purchase') || raw.includes('supplier') || raw.includes('compra')) return 'compra';
-  if (raw.includes('receipt') || raw.includes('recibo')) return 'recibo';
-  if (raw.includes('pos')) return 'pos';
-  if (raw.includes('manual') || raw.includes('interno')) return 'manual';
+  const base = finGetEntryOriginPresentation(entry).base;
+  if (base === 'Transferencia') return 'transferencia';
+  if (base === 'Compra') return 'compra';
+  if (base === 'Recibo') return 'recibo';
+  if (base === 'POS') return 'pos';
+  if (base === 'Manual') return 'manual';
   return 'legacy';
 }
 
@@ -5934,7 +6708,7 @@ function finReportSourceLabel(entry) {
   const k = finReportSourceKey(entry);
   const labels = {
     manual: 'Registro manual', transferencia: 'Transferencia interna', compra: 'Compra a proveedor',
-    recibo: 'Recibo', pos: 'Importación POS', legacy: 'Legacy / histórico'
+    recibo: 'Recibo', pos: 'POS', legacy: 'Legacy / histórico'
   };
   return labels[k] || 'Legacy / histórico';
 }
@@ -6730,6 +7504,667 @@ async function guardarMovimientoManual() {
   showToast('Movimiento guardado en el Diario');
   await refreshAllFin();
 }
+
+/* ---------- Diario Contable real (Etapa 7/9) ---------- */
+
+const FIN_JOURNAL_REAL_STAGE = 'finanzas_diario_contable_etapa_7_9_persist';
+let finJournalLineSeq = 0;
+let finJournalUiReady = false;
+let finJournalSaving = false;
+
+function finJournalMoneySymbol(currency) {
+  return finNormalizeCurrencyCode(currency) === 'USD' ? 'US$' : 'C$';
+}
+
+function finJournalFormatMoney(value, currency) {
+  return finNormalizeCurrencyCode(currency) === 'USD' ? finFormatDollars(value) : finFormatCordobas(value);
+}
+
+function finJournalGetCurrency() {
+  return finNormalizeCurrencyCode(document.getElementById('journal-currency')?.value || 'NIO');
+}
+
+function finJournalGetExchangeRate() {
+  const state = finGetCurrencyStateSafe();
+  return state.hasExchangeRate && Number.isFinite(state.exchangeRate) && state.exchangeRate > 0 ? finRoundCurrency2(state.exchangeRate) : null;
+}
+
+function finJournalSetMessage(text, kind = '') {
+  const el = document.getElementById('journal-status');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = `fin-journal-status${kind ? ' is-' + kind : ''}`;
+}
+
+function finJournalLineRows() {
+  return Array.from(document.querySelectorAll('#journal-lines .fin-journal-line'));
+}
+
+function finJournalLineSelectorId(lineId) {
+  return `journal-line-selector-${lineId}`;
+}
+
+function finJournalGetLineData(row) {
+  if (!row) return null;
+  const lineId = String(row.dataset.lineId || '');
+  const selectorId = finJournalLineSelectorId(lineId);
+  const selectorState = finAccountSelectorInstances.get(selectorId);
+  const accountCode = selectorState ? finGetAccountCode(selectorState.value || '') : '';
+  const account = selectorState ? selectorState.account : null;
+  const debitInput = row.querySelector('.journal-debit');
+  const creditInput = row.querySelector('.journal-credit');
+  const debitRaw = debitInput ? debitInput.value : '';
+  const creditRaw = creditInput ? creditInput.value : '';
+  const debit = finParseCurrencyAmount(debitRaw);
+  const credit = finParseCurrencyAmount(creditRaw);
+  const debitValue = Number.isFinite(debit) && debit > 0 ? finRoundCurrency2(debit) : 0;
+  const creditValue = Number.isFinite(credit) && credit > 0 ? finRoundCurrency2(credit) : 0;
+  return {
+    lineId,
+    accountCode,
+    accountName: account ? (account.nombre || account.name || '') : '',
+    account,
+    debitRaw,
+    creditRaw,
+    debit: debitValue || 0,
+    credit: creditValue || 0,
+    hasDebitRaw: String(debitRaw || '').trim() !== '',
+    hasCreditRaw: String(creditRaw || '').trim() !== ''
+  };
+}
+
+function finJournalAccountSnapshot(account, accountCode) {
+  const row = account ? finNormalizeAccountForView(account) : null;
+  const code = finGetAccountCode(accountCode || row?.code || '');
+  const rootCode = finGetRootFromCode(code);
+  return {
+    accountId: String(row?.id || code || ''),
+    accountCode: code,
+    accountName: String(row?.nombre || row?.name || account?.nombre || account?.name || `Cuenta ${code}`).trim(),
+    accountType: finGetAccountType(row || account || code),
+    accountNature: finGetAccountNature(row || account || code),
+    accountRootCode: rootCode,
+    accountRootName: FIN_FIXED_ROOTS_BY_CODE[rootCode]?.name || '',
+    accountLevel: finGetAccountLevelFromCode(code),
+    accountNameSnapshot: String(row?.nombre || row?.name || account?.nombre || account?.name || `Cuenta ${code}`).trim(),
+    accountCodeSnapshot: code,
+    accountTypeSnapshot: finGetAccountType(row || account || code),
+    accountNatureSnapshot: finGetAccountNature(row || account || code)
+  };
+}
+
+function finJournalBuildDraftPayload() {
+  const currency = finJournalGetCurrency();
+  const exchangeRate = currency === 'USD' ? finJournalGetExchangeRate() : null;
+  const rate = currency === 'USD' ? exchangeRate : null;
+  const nowISO = new Date().toISOString();
+  const rows = finJournalLineRows()
+    .map(finJournalGetLineData)
+    .filter(Boolean)
+    .filter(row => row.accountCode || row.debit > 0 || row.credit > 0 || row.hasDebitRaw || row.hasCreditRaw);
+  const lines = rows.map((row, idx) => {
+    const debitOriginal = finRoundCurrency2(row.debit || 0) || 0;
+    const creditOriginal = finRoundCurrency2(row.credit || 0) || 0;
+    const debitBase = currency === 'USD' && rate ? finRoundCurrency2(debitOriginal * rate) : debitOriginal;
+    const creditBase = currency === 'USD' && rate ? finRoundCurrency2(creditOriginal * rate) : creditOriginal;
+    const snap = finJournalAccountSnapshot(row.account, row.accountCode);
+    return {
+      lineUid: `jl-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 8)}`,
+      lineId: row.lineId,
+      lineNumber: idx + 1,
+      ...snap,
+      debitOriginal,
+      creditOriginal,
+      debitBase: debitBase || 0,
+      creditBase: creditBase || 0,
+      debe: debitBase || 0,
+      haber: creditBase || 0,
+      debit: debitBase || 0,
+      credit: creditBase || 0,
+      originalCurrency: currency,
+      monedaOriginal: currency,
+      currency,
+      currencySymbol: finCurrencySymbol(currency),
+      exchangeRateUsed: currency === 'USD' ? rate : null,
+      tipoCambioUsado: currency === 'USD' ? rate : null,
+      baseCurrency: 'NIO',
+      monedaBase: 'NIO',
+      baseAmountNio: Math.max(debitBase || 0, creditBase || 0),
+      equivalenteNIO: Math.max(debitBase || 0, creditBase || 0),
+      originalAmount: Math.max(debitOriginal, creditOriginal),
+      montoOriginal: Math.max(debitOriginal, creditOriginal),
+      createdAt: nowISO,
+      createdAtISO: nowISO,
+      updatedAt: nowISO,
+      updatedAtISO: nowISO
+    };
+  });
+  const totalDebit = finRoundCurrency2(lines.reduce((sum, ln) => sum + (Number(ln.debitOriginal) || 0), 0)) || 0;
+  const totalCredit = finRoundCurrency2(lines.reduce((sum, ln) => sum + (Number(ln.creditOriginal) || 0), 0)) || 0;
+  const totalDebitBase = finRoundCurrency2(lines.reduce((sum, ln) => sum + (Number(ln.debitBase) || 0), 0)) || 0;
+  const totalCreditBase = finRoundCurrency2(lines.reduce((sum, ln) => sum + (Number(ln.creditBase) || 0), 0)) || 0;
+  const difference = finRoundCurrency2(totalDebit - totalCredit) || 0;
+  const differenceBase = finRoundCurrency2(totalDebitBase - totalCreditBase) || 0;
+  const draftEntry = {
+    stage: FIN_JOURNAL_REAL_STAGE,
+    date: document.getElementById('journal-date')?.value || todayStr(),
+    fecha: document.getElementById('journal-date')?.value || todayStr(),
+    currency,
+    originalCurrency: currency,
+    monedaOriginal: currency,
+    currencySymbol: finCurrencySymbol(currency),
+    exchangeRateUsed: currency === 'USD' ? rate : null,
+    tipoCambioUsado: currency === 'USD' ? rate : null,
+    description: String(document.getElementById('journal-description')?.value || '').trim(),
+    descripcion: String(document.getElementById('journal-description')?.value || '').trim(),
+    reference: String(document.getElementById('journal-reference')?.value || '').trim(),
+    referencia: String(document.getElementById('journal-reference')?.value || '').trim(),
+    source: 'manual_journal_entry',
+    origin: 'manual',
+    origen: 'Manual',
+    status: 'posted',
+    estado: 'posted',
+    schemaVersion: 2,
+    legacyCompatible: true,
+    createdAt: nowISO,
+    createdAtISO: nowISO,
+    updatedAt: nowISO,
+    updatedAtISO: nowISO,
+    totalDebitOriginal: totalDebit,
+    totalCreditOriginal: totalCredit,
+    totalDebeOriginal: totalDebit,
+    totalHaberOriginal: totalCredit,
+    totalDebitBase,
+    totalCreditBase,
+    totalDebe: totalDebitBase,
+    totalHaber: totalCreditBase,
+    totalOriginal: totalDebit,
+    originalAmount: totalDebit,
+    montoOriginal: totalDebit,
+    baseCurrency: 'NIO',
+    monedaBase: 'NIO',
+    baseAmountNio: totalDebitBase,
+    equivalenteNIO: totalDebitBase,
+    differenceOriginal: difference,
+    differenceBase,
+    diferenciaOriginal: difference,
+    diferenciaBase: differenceBase,
+    linesCount: lines.length
+  };
+  const autoLabel = finGetAutomaticEntryLabel(draftEntry, lines);
+  draftEntry.autoLabel = autoLabel;
+  draftEntry.etiquetaAutomatica = autoLabel;
+  draftEntry.tipoMovimiento = finJournalAutoLabelToTipoMovimiento(autoLabel);
+  draftEntry.entryType = 'journal_entry';
+  return {
+    stage: FIN_JOURNAL_REAL_STAGE,
+    ...draftEntry,
+    lines,
+    totals: {
+      totalDebit,
+      totalCredit,
+      totalDebitBase,
+      totalCreditBase,
+      difference,
+      differenceBase
+    }
+  };
+}
+
+function finJournalAutoLabelToTipoMovimiento(autoLabel) {
+  const s = normText(autoLabel || '');
+  if (s.includes('venta') || s.includes('ingreso')) return 'ingreso';
+  if (s.includes('egreso') || s.includes('compra') || s.includes('inventario')) return 'egreso';
+  if (s.includes('transferencia')) return 'transferencia';
+  return 'ajuste';
+}
+
+function finJournalIsValidIsoDate(value) {
+  const v = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
+
+function finJournalLineHasNegativeRaw(row) {
+  const d = finParseCurrencyAmount(row && row.debitRaw);
+  const c = finParseCurrencyAmount(row && row.creditRaw);
+  return (Number.isFinite(d) && d < 0) || (Number.isFinite(c) && c < 0) || String(row?.debitRaw || '').includes('-') || String(row?.creditRaw || '').includes('-');
+}
+
+function finJournalValidateForSave() {
+  const data = finCachedData || { accounts: [] };
+  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  const selectable = getPostableAccountsForSelector(data);
+  const currency = finJournalGetCurrency();
+  const date = String(document.getElementById('journal-date')?.value || '').trim();
+  const desc = String(document.getElementById('journal-description')?.value || '').trim();
+  const rows = finJournalLineRows().map(finJournalGetLineData).filter(Boolean);
+  const used = rows.filter(row => row.accountCode || row.debit > 0 || row.credit > 0 || row.hasDebitRaw || row.hasCreditRaw);
+
+  const fail = (message) => ({ ok: false, message });
+  if (!selectable.length) return fail('No hay cuentas posteables disponibles. Cree una subcuenta posteable en el Catálogo de Cuentas.');
+  if (!finJournalIsValidIsoDate(date)) return fail('Ingrese una fecha válida.');
+  if (!desc) return fail('La descripción general es requerida.');
+  if (used.length < 2) return fail('El asiento debe tener al menos dos líneas completas.');
+  if (currency === 'USD' && !finJournalGetExchangeRate()) return fail('Para asientos en US$ se requiere un T/C válido.');
+
+  for (let i = 0; i < used.length; i += 1) {
+    const row = used[i];
+    if (finJournalLineHasNegativeRaw(row)) return fail('No se permiten valores negativos en Debe/Haber.');
+    if (!row.accountCode) return fail(`Falta cuenta en la línea ${i + 1}.`);
+    const account = finAccountSelectorFindAccountByCode(row.accountCode, data) || row.account;
+    if (!account) return fail('Seleccione cuentas posteables en todas las líneas.');
+    if (!finIsActiveAccount(account)) return fail('Seleccione cuentas posteables en todas las líneas.');
+    if (finIsRootAccount(account)) return fail('Seleccione cuentas posteables en todas las líneas.');
+    if (finIsGroupingAccount(account)) return fail('Seleccione cuentas posteables en todas las líneas.');
+    if (!finIsPostableAccount(account)) return fail('Seleccione cuentas posteables en todas las líneas.');
+    if (finAccountHasActiveChildrenInList(accounts, row.accountCode)) return fail('Seleccione cuentas posteables en todas las líneas.');
+    if (row.debit > 0 && row.credit > 0) return fail(`La línea ${i + 1} no puede tener Debe y Haber al mismo tiempo.`);
+    if (!(row.debit > 0 || row.credit > 0)) return fail(`Falta monto Debe o Haber en la línea ${i + 1}.`);
+  }
+
+  const payload = finJournalBuildDraftPayload();
+  const totalDebit = Number(payload?.totals?.totalDebit || 0);
+  const totalCredit = Number(payload?.totals?.totalCredit || 0);
+  const diff = Number(payload?.totals?.difference || 0);
+  const diffBase = Number(payload?.totals?.differenceBase || 0);
+  if (!(totalDebit > 0 && totalCredit > 0)) return fail('Debe y Haber deben tener montos mayores que cero.');
+  if (Math.abs(diff) > 0.004 || Math.abs(diffBase) > 0.004) return fail('El asiento debe cuadrar antes de guardarse.');
+
+  const journalEntryUid = `je-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const entry = { ...payload };
+  delete entry.lines;
+  delete entry.totals;
+  entry.journalEntryUid = journalEntryUid;
+  entry.entryUid = journalEntryUid;
+  entry.idStable = journalEntryUid;
+  const lines = payload.lines.map((ln) => ({
+    ...ln,
+    entryUid: journalEntryUid,
+    journalEntryUid,
+    description: payload.description,
+    descripcion: payload.description,
+    reference: payload.reference,
+    referencia: payload.reference,
+    autoLabel: payload.autoLabel,
+    source: payload.source,
+    origin: payload.origin,
+    origen: payload.origen,
+    status: payload.status
+  }));
+  return { ok: true, payload, entry, lines };
+}
+
+async function finJournalSaveEntry() {
+  if (finJournalSaving) return;
+  if (!finCachedData) await refreshAllFin();
+  const validation = finJournalValidateForSave();
+  if (!validation.ok) {
+    finJournalSetMessage(validation.message || 'No se pudo guardar el asiento.', 'warn');
+    showToast(validation.message || 'Revise las líneas incompletas.');
+    return;
+  }
+
+  const btn = document.getElementById('journal-validate');
+  finJournalSaving = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.originalText = btn.dataset.originalText || btn.textContent || 'Guardar asiento';
+    btn.textContent = 'Guardando…';
+  }
+  try {
+    await createJournalEntryWithLinesAtomic(validation.entry, validation.lines);
+    finJournalSetMessage('Asiento guardado correctamente.', 'ok');
+    showToast('Asiento guardado correctamente.');
+    finJournalClear({ silent: true });
+    await refreshAllFin();
+    finJournalSetMessage('Asiento guardado correctamente.', 'ok');
+  } catch (err) {
+    console.error('No se pudo guardar el asiento del Diario Contable', err);
+    finJournalSetMessage('No se pudo guardar el asiento. Revise las líneas incompletas.', 'warn');
+    showToast('No se pudo guardar el asiento.');
+  } finally {
+    finJournalSaving = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = btn.dataset.originalText || 'Guardar asiento';
+    }
+  }
+}
+
+function finJournalRefreshCurrencyUi() {
+  const currency = finJournalGetCurrency();
+  const state = finGetCurrencyStateSafe();
+  const rateWrap = document.getElementById('journal-rate-wrap');
+  const rateInput = document.getElementById('journal-rate');
+  const hint = document.getElementById('journal-currency-hint');
+
+  if (currency === 'USD') {
+    if (rateWrap) rateWrap.classList.remove('hidden');
+    if (rateInput) rateInput.value = state.hasExchangeRate ? Number(state.exchangeRate).toFixed(2) : '';
+    if (hint) {
+      hint.textContent = state.hasExchangeRate
+        ? `Fuente: ${FIN_CURRENCY_SOURCE_LABEL} · ${state.exchangeRateText} · Última actualización: ${state.updatedAtText}`
+        : FIN_CURRENCY_WARNING_MESSAGE;
+      hint.className = `fin-help${state.hasExchangeRate ? '' : ' fin-journal-warn-text'}`;
+    }
+  } else {
+    if (rateWrap) rateWrap.classList.add('hidden');
+    if (rateInput) rateInput.value = '';
+    if (hint) {
+      hint.textContent = 'Moneda base: C$. No requiere T/C.';
+      hint.className = 'fin-help';
+    }
+  }
+}
+
+function finJournalTotals() {
+  const rows = finJournalLineRows().map(finJournalGetLineData).filter(Boolean);
+  const totalDebit = finRoundCurrency2(rows.reduce((sum, row) => sum + (Number(row.debit) || 0), 0)) || 0;
+  const totalCredit = finRoundCurrency2(rows.reduce((sum, row) => sum + (Number(row.credit) || 0), 0)) || 0;
+  const difference = finRoundCurrency2(totalDebit - totalCredit) || 0;
+  return { rows, totalDebit, totalCredit, difference };
+}
+
+function finJournalUpdateTotals() {
+  const currency = finJournalGetCurrency();
+  const { rows, totalDebit, totalCredit, difference } = finJournalTotals();
+  const totalDebitEl = document.getElementById('journal-total-debit');
+  const totalCreditEl = document.getElementById('journal-total-credit');
+  const diffEl = document.getElementById('journal-difference');
+  const equiv = document.getElementById('journal-equivalent');
+  if (totalDebitEl) totalDebitEl.textContent = finJournalFormatMoney(totalDebit, currency);
+  if (totalCreditEl) totalCreditEl.textContent = finJournalFormatMoney(totalCredit, currency);
+  if (diffEl) {
+    diffEl.textContent = finJournalFormatMoney(Math.abs(difference), currency);
+    diffEl.classList.toggle('is-balanced', Math.abs(difference) <= 0.005 && totalDebit > 0 && totalCredit > 0);
+    diffEl.classList.toggle('is-unbalanced', Math.abs(difference) > 0.005);
+  }
+
+  if (equiv) {
+    if (currency === 'USD') {
+      const rate = finJournalGetExchangeRate();
+      if (rate) {
+        const eqDebit = finRoundCurrency2(totalDebit * rate) || 0;
+        const eqCredit = finRoundCurrency2(totalCredit * rate) || 0;
+        equiv.classList.remove('hidden');
+        equiv.textContent = `Equivalente contable: Debe ${finFormatCordobas(eqDebit)} · Haber ${finFormatCordobas(eqCredit)} · T/C ${Number(rate).toFixed(2)}`;
+      } else {
+        equiv.classList.remove('hidden');
+        equiv.textContent = 'Equivalente contable pendiente: falta T/C válido en Configuración → Moneda.';
+      }
+    } else {
+      equiv.classList.add('hidden');
+      equiv.textContent = '';
+    }
+  }
+
+  const used = rows.filter(row => row.accountCode || row.debit > 0 || row.credit > 0 || row.hasDebitRaw || row.hasCreditRaw);
+  if (!used.length) {
+    finJournalSetMessage('Complete mínimo dos líneas para validar el asiento.', 'muted');
+  } else if (Math.abs(difference) <= 0.005 && totalDebit > 0 && totalCredit > 0) {
+    finJournalSetMessage('Asiento cuadrado visualmente. Presione Guardar asiento para registrarlo.', 'ok');
+  } else {
+    finJournalSetMessage(`Asiento descuadrado. Diferencia: ${finJournalFormatMoney(Math.abs(difference), currency)}.`, 'warn');
+  }
+}
+
+function finJournalNormalizeAmountInput(input, mirrorSelector) {
+  if (!input) return;
+  const raw = String(input.value || '').trim();
+  if (!raw) {
+    finJournalUpdateTotals();
+    return;
+  }
+  if (raw.includes('-')) {
+    input.value = '';
+    finJournalSetMessage('No se permiten valores negativos en Debe/Haber.', 'warn');
+    finJournalUpdateTotals();
+    return;
+  }
+  const value = finParseCurrencyAmount(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    input.value = '';
+    finJournalSetMessage('Ingrese un número válido en Debe/Haber.', 'warn');
+    finJournalUpdateTotals();
+    return;
+  }
+  if (value > 0 && mirrorSelector) {
+    const row = input.closest('.fin-journal-line');
+    const mirror = row ? row.querySelector(mirrorSelector) : null;
+    if (mirror) mirror.value = '';
+  }
+  finJournalUpdateTotals();
+}
+
+function finJournalFormatAmountOnBlur(input) {
+  if (!input) return;
+  const raw = String(input.value || '').trim();
+  if (!raw) return;
+  const value = finParseCurrencyAmount(raw);
+  input.value = Number.isFinite(value) && value >= 0 ? Number(value).toFixed(2) : '';
+  finJournalUpdateTotals();
+}
+
+function finJournalCreateLine() {
+  const list = document.getElementById('journal-lines');
+  if (!list) return null;
+  const lineId = ++finJournalLineSeq;
+  const row = document.createElement('div');
+  row.className = 'fin-journal-line';
+  row.dataset.lineId = String(lineId);
+  row.innerHTML = `
+    <div class="fin-journal-line-account" id="journal-account-host-${lineId}"></div>
+    <label>
+      Debe
+      <input type="number" class="journal-debit" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+    </label>
+    <label>
+      Haber
+      <input type="number" class="journal-credit" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+    </label>
+    <button type="button" class="btn-small btn-danger journal-remove-line" title="Quitar línea">Quitar</button>
+  `;
+  list.appendChild(row);
+
+  const host = row.querySelector(`#journal-account-host-${lineId}`);
+  createAccountSelect(host, {
+    instanceId: finJournalLineSelectorId(lineId),
+    data: finCachedData || { accounts: [] },
+    label: 'Cuenta',
+    placeholder: 'Buscar cuenta por código o nombre',
+    emptyHint: 'Solo cuentas activas y posteables.',
+    onSelect: () => finJournalUpdateTotals()
+  });
+
+  const debit = row.querySelector('.journal-debit');
+  const credit = row.querySelector('.journal-credit');
+  if (debit) {
+    debit.addEventListener('input', () => finJournalNormalizeAmountInput(debit, '.journal-credit'));
+    debit.addEventListener('blur', () => finJournalFormatAmountOnBlur(debit));
+  }
+  if (credit) {
+    credit.addEventListener('input', () => finJournalNormalizeAmountInput(credit, '.journal-debit'));
+    credit.addEventListener('blur', () => finJournalFormatAmountOnBlur(credit));
+  }
+
+  return row;
+}
+
+function finJournalEnsureMinimumLines() {
+  const list = document.getElementById('journal-lines');
+  if (!list) return;
+  while (finJournalLineRows().length < 2) finJournalCreateLine();
+}
+
+function finJournalRemoveLine(row) {
+  if (!row) return;
+  const rows = finJournalLineRows();
+  if (rows.length <= 2) {
+    finJournalSetMessage('El asiento debe tener al menos dos líneas.', 'warn');
+    return;
+  }
+  const lineId = String(row.dataset.lineId || '');
+  finAccountSelectorInstances.delete(finJournalLineSelectorId(lineId));
+  row.remove();
+  finJournalUpdateTotals();
+}
+
+function finJournalClear({ silent = false } = {}) {
+  const desc = document.getElementById('journal-description');
+  const ref = document.getElementById('journal-reference');
+  const date = document.getElementById('journal-date');
+  const currency = document.getElementById('journal-currency');
+  if (desc) desc.value = '';
+  if (ref) ref.value = '';
+  if (date) date.value = todayStr();
+  if (currency) currency.value = 'NIO';
+
+  for (const row of finJournalLineRows()) {
+    const lineId = String(row.dataset.lineId || '');
+    finAccountSelectorInstances.delete(finJournalLineSelectorId(lineId));
+  }
+  const list = document.getElementById('journal-lines');
+  if (list) list.innerHTML = '';
+  finJournalEnsureMinimumLines();
+  finJournalRefreshCurrencyUi();
+  finJournalUpdateTotals();
+  if (!silent) finJournalSetMessage('Asiento limpiado. Fecha del día y moneda C$ listas.', 'ok');
+}
+
+function finJournalUpdateSelectorData(data) {
+  const rows = finJournalLineRows();
+  for (const row of rows) {
+    const lineId = String(row.dataset.lineId || '');
+    const state = finAccountSelectorInstances.get(finJournalLineSelectorId(lineId));
+    if (!state) continue;
+    state.data = data || finCachedData || { accounts: [] };
+    if (state.value) {
+      finAccountSelectorSetValue(state.id, state.value, { emit: false, data: state.data });
+    }
+  }
+}
+
+function finJournalValidateVisual() {
+  const data = finCachedData || { accounts: [] };
+  const selectable = getPostableAccountsForSelector(data);
+  const currency = finJournalGetCurrency();
+  const rows = finJournalLineRows().map(finJournalGetLineData).filter(Boolean);
+  const used = rows.filter(row => row.accountCode || row.debit > 0 || row.credit > 0 || row.hasDebitRaw || row.hasCreditRaw);
+  const desc = String(document.getElementById('journal-description')?.value || '').trim();
+
+  if (!selectable.length) {
+    finJournalSetMessage('No hay cuentas posteables disponibles. Cree una subcuenta posteable en el Catálogo de Cuentas.', 'warn');
+    return false;
+  }
+  if (!desc) {
+    finJournalSetMessage('La descripción general es requerida para validar el asiento.', 'warn');
+    return false;
+  }
+  if (currency === 'USD' && !finJournalGetExchangeRate()) {
+    finJournalSetMessage(FIN_CURRENCY_WARNING_MESSAGE, 'warn');
+    return false;
+  }
+  if (rows.length < 2 || used.length < 2) {
+    finJournalSetMessage('El asiento debe tener al menos dos líneas completas.', 'warn');
+    return false;
+  }
+
+  for (let i = 0; i < used.length; i += 1) {
+    const row = used[i];
+    if (!row.accountCode) {
+      finJournalSetMessage(`Falta cuenta en la línea ${i + 1}.`, 'warn');
+      return false;
+    }
+    const account = finAccountSelectorFindAccountByCode(row.accountCode, data) || row.account;
+    if (!account || !finIsActiveAccount(account) || !finIsPostableAccount(account) || finIsRootAccount(account) || finAccountHasActiveChildrenInList(data.accounts, row.accountCode)) {
+      finJournalSetMessage(`La cuenta ${row.accountCode || ''} no es posteable activa.`, 'warn');
+      return false;
+    }
+    if (row.debit > 0 && row.credit > 0) {
+      finJournalSetMessage(`La línea ${i + 1} no puede tener Debe y Haber al mismo tiempo.`, 'warn');
+      return false;
+    }
+    if (!(row.debit > 0 || row.credit > 0)) {
+      finJournalSetMessage(`Falta monto Debe o Haber en la línea ${i + 1}.`, 'warn');
+      return false;
+    }
+  }
+
+  const { totalDebit, totalCredit, difference } = finJournalTotals();
+  if (!(totalDebit > 0 && totalCredit > 0)) {
+    finJournalSetMessage('Debe y Haber deben tener montos mayores que cero.', 'warn');
+    return false;
+  }
+  if (Math.abs(difference) > 0.005) {
+    finJournalSetMessage(`El asiento debe cuadrar antes de guardarse. Diferencia: ${finJournalFormatMoney(Math.abs(difference), currency)}.`, 'warn');
+    return false;
+  }
+
+  const payload = finJournalBuildDraftPayload();
+  window.__A33_FIN_JOURNAL_LAST_VALID_DRAFT__ = payload;
+  finJournalSetMessage('Asiento listo para guardarse.', 'ok');
+  showToast('Asiento listo para guardar');
+  return true;
+}
+
+function setupDiarioContableVisualUI() {
+  if (finJournalUiReady) return;
+  const form = document.getElementById('form-diario-contable');
+  if (!form) return;
+  finJournalUiReady = true;
+
+  const date = document.getElementById('journal-date');
+  if (date && !date.value) date.value = todayStr();
+
+  const currency = document.getElementById('journal-currency');
+  if (currency) currency.addEventListener('change', () => {
+    finJournalRefreshCurrencyUi();
+    finJournalUpdateTotals();
+  });
+
+  const add = document.getElementById('journal-add-line');
+  if (add) add.addEventListener('click', () => {
+    finJournalCreateLine();
+    finJournalUpdateTotals();
+  });
+
+  const lines = document.getElementById('journal-lines');
+  if (lines) {
+    lines.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.journal-remove-line');
+      if (!btn) return;
+      finJournalRemoveLine(btn.closest('.fin-journal-line'));
+    });
+  }
+
+  const clear = document.getElementById('journal-clear');
+  if (clear) clear.addEventListener('click', () => finJournalClear());
+
+  const validate = document.getElementById('journal-validate');
+  if (validate) validate.addEventListener('click', () => finJournalSaveEntry());
+
+  ['journal-description', 'journal-reference', 'journal-date'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => finJournalUpdateTotals());
+  });
+
+  finJournalEnsureMinimumLines();
+  finJournalRefreshCurrencyUi();
+  finJournalUpdateTotals();
+}
+
+function renderDiarioContableVisual(data) {
+  setupDiarioContableVisualUI();
+  const msg = document.getElementById('journal-no-postable-msg');
+  const selectable = getPostableAccountsForSelector(data || finCachedData || { accounts: [] });
+  if (msg) msg.classList.toggle('hidden', selectable.length > 0);
+  finJournalUpdateSelectorData(data || finCachedData || { accounts: [] });
+  finJournalRefreshCurrencyUi();
+  finJournalUpdateTotals();
+}
+
 
 /* ---------- Proveedores (CRUD) ---------- */
 
@@ -7618,9 +9053,17 @@ function setupProveedoresUI() {
 function catComputeDiaryRevision(data) {
   const entries = (data && Array.isArray(data.entries)) ? data.entries : [];
   const lines = (data && Array.isArray(data.lines)) ? data.lines : [];
-  const lastEntryId = entries.length ? Number(entries[entries.length - 1].id || 0) : 0;
-  const lastLineId = lines.length ? Number(lines[lines.length - 1].id || 0) : 0;
-  return `e${entries.length}-le${lastEntryId}-l${lines.length}-ll${lastLineId}`;
+  const receipts = (data && Array.isArray(data.receipts)) ? data.receipts : [];
+  const transfers = (data && Array.isArray(data.internalTransfers)) ? data.internalTransfers : [];
+  const financialAccounts = (data && Array.isArray(data.financialAccounts)) ? data.financialAccounts : [];
+  const lastId = (arr, key = 'id') => {
+    if (!Array.isArray(arr) || !arr.length) return 0;
+    const last = arr[arr.length - 1] || {};
+    const raw = last[key] ?? last.receiptId ?? last.transferId ?? last.journalEntryId ?? 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : String(raw || '').slice(-18);
+  };
+  return `e${entries.length}-${lastId(entries)}-l${lines.length}-${lastId(lines)}-r${receipts.length}-${lastId(receipts, 'receiptId')}-t${transfers.length}-${lastId(transfers, 'transferId')}-fa${financialAccounts.length}`;
 }
 
 function catReadUsageCache() {
@@ -7646,6 +9089,51 @@ function catWriteUsageCache(rev, countsObj) {
   } catch (e) {}
 }
 
+function catAddUsageCount(counts, code, weight = 1) {
+  const c = finGetAccountCode(code);
+  if (!c || !finGetRootFromCode(c)) return;
+  counts[c] = (counts[c] || 0) + Math.max(1, Number(weight) || 1);
+}
+
+function catLooksLikeAccountField(key) {
+  const k = String(key || '').toLowerCase();
+  if (!k) return false;
+  if (k.includes('account') || k.includes('cuenta') || k.includes('contable')) return true;
+  if (k === 'debeCode'.toLowerCase() || k === 'haberCode'.toLowerCase() || k === 'debitcode' || k === 'creditcode') return true;
+  return false;
+}
+
+function catCollectAccountCodesFromValue(value, keyHint = '', out = new Set(), depth = 0) {
+  if (value == null || depth > 4) return out;
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    if (!catLooksLikeAccountField(keyHint)) return out;
+    const raw = String(value || '').trim();
+    const direct = finGetAccountCode(raw);
+    if (direct && finGetRootFromCode(direct)) out.add(direct);
+    const matches = raw.match(/\b[1-7][0-9]{3}\b/g) || [];
+    matches.forEach(code => {
+      const c = finGetAccountCode(code);
+      if (c && finGetRootFromCode(c)) out.add(c);
+    });
+    return out;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) catCollectAccountCodesFromValue(item, keyHint, out, depth + 1);
+    return out;
+  }
+
+  if (typeof value === 'object') {
+    for (const [key, child] of Object.entries(value)) {
+      const lower = String(key || '').toLowerCase();
+      if (lower.includes('date') || lower.includes('fecha') || lower.includes('phone') || lower.includes('telefono')) continue;
+      catCollectAccountCodesFromValue(child, key, out, depth + 1);
+    }
+  }
+  return out;
+}
+
 function catGetUsageCounts(data) {
   const rev = catComputeDiaryRevision(data);
 
@@ -7659,18 +9147,126 @@ function catGetUsageCounts(data) {
     return { rev, countsObj: cached.counts };
   }
 
-  // Recalcular
-  const lines = (data && Array.isArray(data.lines)) ? data.lines : [];
   const counts = {};
-  for (const ln of lines) {
-    const code = String(ln.accountCode || '').trim();
-    if (!code) continue;
-    counts[code] = (counts[code] || 0) + 1;
+  const scanRecord = (record, weight = 1) => {
+    const codes = catCollectAccountCodesFromValue(record);
+    codes.forEach(code => catAddUsageCount(counts, code, weight));
+  };
+
+  const lines = (data && Array.isArray(data.lines)) ? data.lines : [];
+  for (const ln of lines) scanRecord(ln, 1);
+
+  const entries = (data && Array.isArray(data.entries)) ? data.entries : [];
+  for (const entry of entries) scanRecord(entry, 1);
+
+  const receipts = (data && Array.isArray(data.receipts)) ? data.receipts : [];
+  for (const receipt of receipts) scanRecord(receipt, 1);
+
+  const transfers = (data && Array.isArray(data.internalTransfers)) ? data.internalTransfers : [];
+  for (const tr of transfers) scanRecord(tr, 1);
+
+  // Si una cuenta contable está vinculada a una cuenta financiera activa, se considera vinculada a estructura activa.
+  const financialAccounts = (data && Array.isArray(data.financialAccounts)) ? data.financialAccounts : [];
+  for (const fa of financialAccounts) {
+    catAddUsageCount(counts, fa && (fa.cuentaContableCodigo || fa.financialAccountAccountingCode || fa.accountCode), 1);
   }
 
   catUsageCache = { rev, countsObj: counts, updatedAt: new Date().toISOString() };
   catWriteUsageCache(rev, counts);
   return { rev, countsObj: counts };
+}
+
+function catGetCatalogChildren(data, parentCode) {
+  const p = finGetAccountCode(parentCode);
+  if (!p) return [];
+  return finGetVisibleCatalogAccounts(data || finCachedData || {})
+    .map(acc => finNormalizeAccountForView(acc))
+    .filter(Boolean)
+    .filter(acc => finGetAccountCode(acc) !== p)
+    .filter(acc => String(acc.parentId || finInferParentCodeFromCode(acc.code) || '') === p)
+    .sort((a, b) => String(a.code).localeCompare(String(b.code)));
+}
+
+function catAccountHasChildren(data, accountOrCode) {
+  return catGetCatalogChildren(data, accountOrCode).length > 0;
+}
+
+function catGetActiveChildren(data, accountOrCode) {
+  return catGetCatalogChildren(data, accountOrCode).filter(child => finIsActiveAccount(child) && child.isHidden !== true);
+}
+
+function catGetAccountUsageCount(data, accountOrCode) {
+  const code = finGetAccountCode(accountOrCode);
+  if (!code) return 0;
+  const { countsObj } = catGetUsageCounts(data || finCachedData || {});
+  return Number(countsObj?.[code] || 0);
+}
+
+function catBuildAccountRuleState(data, account) {
+  const row = finNormalizeAccountForView(account);
+  if (!row) return null;
+  const hasChildren = catAccountHasChildren(data, row.code);
+  const activeChildrenCount = catGetActiveChildren(data, row.code).length;
+  const usedCount = catGetAccountUsageCount(data, row.code);
+  const hasMovements = usedCount > 0;
+  const isRoot = catIsRootLockedForUI(row);
+  const isLocked = isRoot || row.isLocked === true || row.systemProtected === true;
+  const isLegacy = finIsLegacyAccount(row);
+  const isActive = finIsActiveAccount(row) && row.isHidden !== true;
+  const effectivePostable = !isRoot && !hasChildren && isActive && finIsPostableAccount({ ...row, hasChildren: false });
+  const isGrouping = isRoot || hasChildren || !effectivePostable;
+  const level = Number(row.level || finGetAccountLevelFromCode(row.code) || 0);
+  const canEditName = !isRoot && !isLocked && !isLegacy && !hasMovements;
+  const canChangePostable = !isRoot && !isLocked && !isLegacy && !hasChildren && !hasMovements;
+  const canCreateChild = isActive && level >= 1 && level < FIN_ACCOUNT_MAX_LEVEL && !!finGetRootFromCode(row.code) && !effectivePostable && (!hasMovements || isRoot);
+  const canToggleActive = !isRoot && !isLocked && !isLegacy && (isActive ? activeChildrenCount === 0 : true);
+  const canDelete = !isRoot && !isLocked && !isLegacy && !hasChildren && !hasMovements;
+
+  let createChildMessage = '';
+  if (!isActive) createChildMessage = 'La cuenta está inactiva y no acepta nuevas subcuentas.';
+  else if (level >= FIN_ACCOUNT_MAX_LEVEL) createChildMessage = 'Por ahora el catálogo permite hasta 4 niveles.';
+  else if (effectivePostable) createChildMessage = FIN_ACCOUNT_CATALOG_POSTABLE_CHILD_LOCK_MESSAGE;
+  else if (hasMovements && !isRoot) createChildMessage = FIN_ACCOUNT_CATALOG_STRUCTURAL_LOCK_MESSAGE;
+
+  let editMessage = '';
+  if (isRoot) editMessage = FIN_ACCOUNT_CATALOG_LOCK_MESSAGE;
+  else if (isLocked || isLegacy) editMessage = 'Esta cuenta está protegida por compatibilidad histórica.';
+  else if (hasMovements) editMessage = FIN_ACCOUNT_CATALOG_STRUCTURAL_LOCK_MESSAGE;
+
+  let toggleMessage = '';
+  if (isRoot) toggleMessage = FIN_ACCOUNT_CATALOG_LOCK_MESSAGE;
+  else if (isLocked || isLegacy) toggleMessage = 'Esta cuenta está protegida por compatibilidad histórica.';
+  else if (isActive && activeChildrenCount > 0) toggleMessage = 'No se puede inactivar una cuenta con subcuentas activas.';
+
+  let deleteMessage = '';
+  if (isRoot) deleteMessage = FIN_ACCOUNT_CATALOG_LOCK_MESSAGE;
+  else if (isLocked || isLegacy) deleteMessage = 'Esta cuenta está protegida por compatibilidad histórica.';
+  else if (hasChildren) deleteMessage = 'No se puede borrar una cuenta con subcuentas.';
+  else if (hasMovements) deleteMessage = 'No se puede borrar una cuenta con movimientos.';
+
+  return {
+    ...row,
+    hasChildren,
+    activeChildrenCount,
+    usedCount,
+    hasMovements,
+    isRoot,
+    isLocked,
+    isLegacy,
+    isActive,
+    isGrouping,
+    effectivePostable,
+    canPost: effectivePostable,
+    canCreateChild,
+    canEditName,
+    canChangePostable,
+    canToggleActive,
+    canDelete,
+    createChildMessage,
+    editMessage,
+    toggleMessage,
+    deleteMessage
+  };
 }
 
 function inferTipoForNewAccount(code) {
@@ -7703,24 +9299,440 @@ function uiTextFIN(text){
   return String(text || '');
 }
 
+function catIsRootLockedForUI(acc) {
+  return finIsRootAccount(acc) || FIN_FIXED_ROOT_CODES.includes(finGetAccountCode(acc));
+}
+
+function catCanHaveChildren(acc, data = finCachedData) {
+  const state = catBuildAccountRuleState(data || finCachedData || {}, acc);
+  return !!(state && state.canCreateChild);
+}
+
+function catParentLabel(acc) {
+  const row = finNormalizeAccountForView(acc);
+  if (!row) return '';
+  const level = Number(row.level || 1);
+  const indent = level > 1 ? '· '.repeat(Math.max(0, level - 1)) : '';
+  return `${indent}${row.code} — ${row.nombre || row.name || 'Cuenta'}`;
+}
+
+function catFindVisibleAccountByCode(data, code) {
+  const c = finGetAccountCode(code);
+  return finGetVisibleCatalogAccounts(data || finCachedData || {})
+    .find(acc => finGetAccountCode(acc) === c) || null;
+}
+
+function catGetParentSelectValue() {
+  return finGetAccountCode(document.getElementById('cat-parent')?.value || '');
+}
+
+function catGetPostableChoice() {
+  const raw = String(document.getElementById('cat-postable')?.value || 'postable').toLowerCase();
+  return raw === 'grouping' ? 'grouping' : 'postable';
+}
+
+function catGetSuggestedCodeForParent(parentCode) {
+  const data = finCachedData || { accounts: [] };
+  const parent = catFindVisibleAccountByCode(data, parentCode);
+  if (!parent) return { ok: false, code: '', message: 'Seleccione una cuenta padre válida.' };
+  const state = catBuildAccountRuleState(data, parent);
+  if (!state || !state.canCreateChild) {
+    return { ok: false, code: '', message: (state && state.createChildMessage) || 'Cuenta padre inválida o sin espacio para más niveles.' };
+  }
+  return finSuggestNextAccountCode(parent, finGetCatalogCodeReservationAccounts(data));
+}
+
+function catRefreshSuggestedCode() {
+  const codeEl = document.getElementById('cat-code');
+  const typeEl = document.getElementById('cat-type-preview');
+  const natureEl = document.getElementById('cat-nature-preview');
+  const parentCode = catGetParentSelectValue();
+  const data = finCachedData || { accounts: [] };
+  const parent = catFindVisibleAccountByCode(data, parentCode);
+  const suggestion = parent ? catGetSuggestedCodeForParent(parentCode) : { ok: false, code: '', message: 'Seleccione una cuenta padre válida.' };
+  if (codeEl) codeEl.value = suggestion.ok ? suggestion.code : '';
+  if (typeEl) typeEl.value = parent ? (finGetAccountType(parent) || '').toString() : '';
+  if (natureEl) natureEl.value = parent ? (finGetAccountNature(parent) || '').toString() : '';
+  if (!suggestion.ok && parentCode) setCatFormMessage(suggestion.message || 'No hay códigos disponibles bajo esta cuenta padre.', true);
+  else setCatFormMessage('');
+  return suggestion;
+}
+
+function catHasVisibleDuplicateName(data, parentCode, name, ignoreCode = '') {
+  const target = normText(name).trim();
+  if (!target) return false;
+  const p = finGetAccountCode(parentCode);
+  const ignore = finGetAccountCode(ignoreCode);
+  return finGetVisibleCatalogAccounts(data || {})
+    .map(acc => finNormalizeAccountForView(acc))
+    .filter(Boolean)
+    .some(acc => {
+      if (ignore && finGetAccountCode(acc) === ignore) return false;
+      const accParent = String(acc.parentId || finInferParentCodeFromCode(acc.code) || '');
+      if (accParent !== p) return false;
+      return normText(acc.nombre || acc.name || '').trim() === target;
+    });
+}
+
+function catBuildAccountRowForSave({ existing = null, code, name, parent, postableChoice }) {
+  const nowISO = new Date().toISOString();
+  const parentRow = finNormalizeAccountForView(parent);
+  const rootCode = finGetRootFromCode(parentRow.code) || parentRow.code;
+  const root = FIN_FIXED_ROOTS_BY_CODE[rootCode] || null;
+  const level = Math.min(FIN_ACCOUNT_MAX_LEVEL, Number(parentRow.level || finGetAccountLevelFromCode(parentRow.code) || 1) + 1);
+  const isPostable = postableChoice !== 'grouping';
+  const previousName = existing ? String(existing.nombre || existing.name || '').trim() : '';
+  const legacyNames = Array.isArray(existing && existing.legacyNames) ? [...existing.legacyNames] : [];
+  if (previousName && !legacyNames.map(normText).includes(normText(previousName))) legacyNames.push(previousName);
+
+  return {
+    ...(existing || {}),
+    id: code,
+    code,
+    nombre: name,
+    name,
+    parentId: parentRow.code,
+    parentCode: parentRow.code,
+    rootCode,
+    level,
+    type: root ? root.type : finGetAccountType(parentRow),
+    tipo: root ? root.tipo : (parentRow.tipo || finGetAccountType(parentRow)),
+    rootType: root ? root.rootType : String(parentRow.rootType || inferRootTypeFromCode(code) || 'OTROS').toUpperCase(),
+    nature: root ? root.nature : finGetAccountNature(parentRow),
+    isRoot: false,
+    isLocked: false,
+    isPostable,
+    postable: isPostable,
+    noPostable: !isPostable,
+    isGrouping: !isPostable,
+    grouping: !isPostable,
+    accountMode: isPostable ? 'postable' : 'grouping',
+    isActive: true,
+    active: true,
+    isHidden: false,
+    isLegacy: existing && existing.isLegacy === true ? true : false,
+    a33CatalogVisible: true,
+    a33CatalogUserCreated: true,
+    a33CatalogActivatedAt: existing && existing.a33CatalogActivatedAt ? existing.a33CatalogActivatedAt : nowISO,
+    generatedFrom: existing && existing.generatedFrom ? existing.generatedFrom : FIN_ACCOUNT_CATALOG_SOURCE,
+    sourceModule: FIN_ACCOUNT_CATALOG_SOURCE,
+    sourceCatalog: 'Finanzas → Catálogo de Cuentas',
+    legacyNames,
+    createdAt: existing && (existing.createdAt || existing.createdAtISO) ? (existing.createdAt || existing.createdAtISO) : nowISO,
+    updatedAt: nowISO,
+    createdAtISO: existing && existing.createdAtISO ? existing.createdAtISO : nowISO,
+    updatedAtISO: nowISO,
+    a33AccountCatalogVisibleMode: FIN_ACCOUNT_CATALOG_VISIBLE_MODE,
+    a33AccountHierarchyStage: FIN_ACCOUNTING_REDESIGN_STAGE,
+    a33AccountHierarchyVersion: FIN_ACCOUNT_HIERARCHY_VERSION
+  };
+}
+
+function catFillParentSelect(selectedCode = '') {
+  const sel = document.getElementById('cat-parent');
+  if (!sel) return;
+  const data = finCachedData || { accounts: [] };
+  const rows = finGetVisibleCatalogAccounts(data)
+    .map(acc => finNormalizeAccountForView(acc))
+    .filter(Boolean)
+    .filter(acc => catCanHaveChildren(acc))
+    .sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+  const prev = finGetAccountCode(selectedCode || sel.value || '');
+  sel.innerHTML = '<option value="">Seleccione cuenta padre…</option>';
+  for (const acc of rows) {
+    const opt = document.createElement('option');
+    opt.value = acc.code;
+    opt.textContent = catParentLabel(acc);
+    sel.appendChild(opt);
+  }
+  if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
+  else if (!sel.value && rows.length) sel.value = rows[0].code;
+  catRefreshSuggestedCode();
+}
+
+
+
+/* ---------- Selector contable reutilizable (Etapa 5/9) ---------- */
+
+const finAccountSelectorInstances = new Map();
+let finAccountSelectorSeq = 0;
+let finAccountPickerState = null;
+
+function finAccountSelectorFindAccountByCode(code, data = finCachedData || {}) {
+  const c = finGetAccountCode(code);
+  if (!c) return null;
+  const selectable = getPostableAccountsForSelector(data);
+  return selectable.find(acc => finGetAccountCode(acc) === c) || null;
+}
+
+function finAccountSelectorDisplayLabel(accountOrCode, data = finCachedData || {}) {
+  const acc = (accountOrCode && typeof accountOrCode === 'object')
+    ? finNormalizeAccountForView(accountOrCode)
+    : finAccountSelectorFindAccountByCode(accountOrCode, data);
+  if (!acc) return '';
+  return `${acc.code} — ${acc.nombre || acc.name || 'Cuenta'}`;
+}
+
+function finAccountSelectorSetValue(instanceId, accountOrCode, opts = {}) {
+  const state = finAccountSelectorInstances.get(instanceId);
+  if (!state) return null;
+  const data = opts.data || finCachedData || state.data || { accounts: [] };
+  const account = (accountOrCode && typeof accountOrCode === 'object')
+    ? finNormalizeAccountForView(accountOrCode)
+    : finAccountSelectorFindAccountByCode(accountOrCode, data);
+
+  state.value = account ? finGetAccountCode(account) : '';
+  state.account = account || null;
+  state.data = data;
+
+  const host = state.host;
+  if (host) {
+    const hidden = host.querySelector('.fin-account-selector-value');
+    const trigger = host.querySelector('.fin-account-selector-trigger');
+    const meta = host.querySelector('.fin-account-selector-meta');
+    const clear = host.querySelector('.fin-account-selector-clear');
+    if (hidden) hidden.value = state.value;
+    if (trigger) {
+      trigger.textContent = account ? finAccountSelectorDisplayLabel(account, data) : (state.placeholder || 'Buscar cuenta por código o nombre');
+      trigger.classList.toggle('has-value', !!account);
+    }
+    if (meta) {
+      meta.textContent = account
+        ? finAccountSelectorMetaText(account, data)
+        : (state.emptyHint || 'Solo muestra cuentas activas y posteables.');
+    }
+    if (clear) clear.hidden = !account;
+  }
+
+  if (opts.emit !== false && typeof state.onSelect === 'function') {
+    try { state.onSelect(account, state.value); } catch (err) { console.error('Error en selector contable', err); }
+  }
+  return account;
+}
+
+function createAccountSelect(target, options = {}) {
+  const host = typeof target === 'string' ? document.querySelector(target) : target;
+  if (!host) return null;
+
+  const instanceId = String(options.instanceId || host.dataset.accountSelectorId || `fin-account-selector-${++finAccountSelectorSeq}`);
+  host.dataset.accountSelectorId = instanceId;
+
+  const state = {
+    id: instanceId,
+    host,
+    value: finGetAccountCode(options.value || ''),
+    account: null,
+    data: options.data || finCachedData || { accounts: [] },
+    label: options.label || 'Cuenta contable',
+    placeholder: options.placeholder || 'Buscar cuenta por código o nombre',
+    emptyHint: options.emptyHint || 'Solo muestra cuentas activas y posteables.',
+    onSelect: typeof options.onSelect === 'function' ? options.onSelect : null
+  };
+  finAccountSelectorInstances.set(instanceId, state);
+
+  host.classList.add('fin-account-selector-host');
+  host.innerHTML = `
+    <div class="fin-account-selector" data-selector-id="${escapeHtml(instanceId)}">
+      <label class="fin-account-selector-label">${escapeHtml(state.label)}</label>
+      <div class="fin-account-selector-row">
+        <button type="button" class="fin-account-selector-trigger">${escapeHtml(state.placeholder)}</button>
+        <button type="button" class="btn-small fin-account-selector-clear" hidden>Limpiar</button>
+      </div>
+      <input type="hidden" class="fin-account-selector-value" value="">
+      <div class="fin-account-selector-meta">${escapeHtml(state.emptyHint)}</div>
+    </div>
+  `;
+
+  const trigger = host.querySelector('.fin-account-selector-trigger');
+  const clear = host.querySelector('.fin-account-selector-clear');
+  if (trigger) trigger.addEventListener('click', () => openAccountPicker({ instanceId }));
+  if (clear) clear.addEventListener('click', () => finAccountSelectorSetValue(instanceId, null));
+
+  if (state.value) finAccountSelectorSetValue(instanceId, state.value, { emit: false, data: state.data });
+
+  return {
+    id: instanceId,
+    getValue: () => (finAccountSelectorInstances.get(instanceId) || {}).value || '',
+    getAccount: () => (finAccountSelectorInstances.get(instanceId) || {}).account || null,
+    setValue: (value, setOpts = {}) => finAccountSelectorSetValue(instanceId, value, setOpts),
+    clear: () => finAccountSelectorSetValue(instanceId, null),
+    destroy: () => {
+      finAccountSelectorInstances.delete(instanceId);
+      if (host) host.innerHTML = '';
+    }
+  };
+}
+
+function renderAccountSelector(target, options = {}) { return createAccountSelect(target, options); }
+function setupAccountSearchSelector(target, options = {}) { return createAccountSelect(target, options); }
+
+function finEnsureAccountPickerModal() {
+  const modal = document.getElementById('account-picker-modal');
+  if (!modal || modal.dataset.bound === '1') return modal;
+  modal.dataset.bound = '1';
+
+  const close = document.getElementById('account-picker-close');
+  const cancel = document.getElementById('account-picker-cancel');
+  const search = document.getElementById('account-picker-search');
+  const clear = document.getElementById('account-picker-clear');
+  const results = document.getElementById('account-picker-results');
+
+  const closePicker = () => closeAccountPicker();
+  if (close) close.addEventListener('click', closePicker);
+  if (cancel) cancel.addEventListener('click', closePicker);
+  if (clear && search) clear.addEventListener('click', () => {
+    search.value = '';
+    if (finAccountPickerState) finAccountPickerState.query = '';
+    finRenderAccountPickerResults();
+    search.focus();
+  });
+  if (search) search.addEventListener('input', () => {
+    if (finAccountPickerState) finAccountPickerState.query = search.value || '';
+    finRenderAccountPickerResults();
+  });
+  if (results) results.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-account-code]');
+    if (!btn || !finAccountPickerState) return;
+    const account = finAccountPickerState.accounts.find(acc => finGetAccountCode(acc) === finGetAccountCode(btn.dataset.accountCode));
+    if (!account) return;
+    finAccountSelectorSetValue(finAccountPickerState.instanceId, account, { data: finAccountPickerState.data });
+    closeAccountPicker();
+  });
+  modal.addEventListener('click', (ev) => {
+    if (ev.target === modal) closeAccountPicker();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && modal.classList.contains('open')) closeAccountPicker();
+  });
+  return modal;
+}
+
+function openAccountPicker(options = {}) {
+  const instanceId = String(options.instanceId || '');
+  const instance = finAccountSelectorInstances.get(instanceId);
+  if (!instance) return;
+  const modal = finEnsureAccountPickerModal();
+  if (!modal) return;
+  const data = options.data || finCachedData || instance.data || { accounts: [] };
+  const accounts = getPostableAccountsForSelector(data);
+  finAccountPickerState = { instanceId, data, accounts, query: '' };
+
+  const search = document.getElementById('account-picker-search');
+  if (search) search.value = '';
+  const title = document.getElementById('account-picker-title');
+  if (title) title.textContent = instance.label || 'Seleccionar cuenta contable';
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  finRenderAccountPickerResults();
+  setTimeout(() => search?.focus(), 0);
+}
+
+function closeAccountPicker() {
+  const modal = document.getElementById('account-picker-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+  finAccountPickerState = null;
+}
+
+function finRenderAccountPickerResults() {
+  const results = document.getElementById('account-picker-results');
+  const count = document.getElementById('account-picker-count');
+  if (!results || !finAccountPickerState) return;
+  const q = finNormalizeAccountSearchText(finAccountPickerState.query || '');
+  const data = finAccountPickerState.data || { accounts: [] };
+  const filtered = q
+    ? finAccountPickerState.accounts.filter(acc => {
+        const haystack = finNormalizeAccountSearchText([
+          acc.code,
+          acc.nombre,
+          acc.name,
+          finGetAccountType(acc),
+          finGetAccountNature(acc),
+          finGetAccountPathLabel(acc, data),
+          acc.currency,
+          acc.currencyCode,
+          acc.moneda
+        ].filter(Boolean).join(' '));
+        return haystack.includes(q);
+      })
+    : finAccountPickerState.accounts;
+
+  if (count) {
+    count.textContent = finAccountPickerState.accounts.length
+      ? `${filtered.length} cuenta${filtered.length === 1 ? '' : 's'} disponible${filtered.length === 1 ? '' : 's'}`
+      : 'Sin cuentas posteables disponibles';
+  }
+
+  if (!finAccountPickerState.accounts.length) {
+    results.innerHTML = `<div class="fin-account-picker-empty">No hay cuentas posteables disponibles. Cree una subcuenta posteable en el Catálogo de Cuentas.</div>`;
+    return;
+  }
+  if (!filtered.length) {
+    results.innerHTML = `<div class="fin-account-picker-empty">No hay resultados para esta búsqueda.</div>`;
+    return;
+  }
+
+  results.innerHTML = filtered.slice(0, 80).map(acc => {
+    const label = finAccountSelectorDisplayLabel(acc, data);
+    const meta = finAccountSelectorMetaText(acc, data);
+    return `
+      <button type="button" class="fin-account-picker-result" data-account-code="${escapeHtml(acc.code)}">
+        <span class="fin-account-picker-main">
+          <strong>${escapeHtml(label)}</strong>
+          <span class="fin-pill fin-pill--green">Posteable</span>
+        </span>
+        <span class="fin-account-picker-meta">${escapeHtml(meta)}</span>
+      </button>
+    `;
+  }).join('') + (filtered.length > 80 ? `<div class="fin-account-picker-empty">Mostrando 80 resultados. Afine la búsqueda para ver menos ruido.</div>` : '');
+}
+
+function renderCatalogAccountSelectorDemo(data) {
+  const host = document.getElementById('cat-account-selector-test');
+  if (!host) return;
+  const selectedText = document.getElementById('cat-account-selector-selected');
+  createAccountSelect(host, {
+    instanceId: 'cat-account-selector-test-instance',
+    data: data || finCachedData || { accounts: [] },
+    label: 'Prueba segura de selector contable',
+    placeholder: 'Buscar cuenta por código o nombre',
+    emptyHint: 'No registra movimientos; solo valida qué cuentas serían seleccionables en el futuro Diario Contable.',
+    onSelect: (account) => {
+      if (selectedText) {
+        selectedText.textContent = account
+          ? `Seleccionada: ${finAccountSelectorDisplayLabel(account, data || finCachedData || {})}`
+          : 'Sin cuenta seleccionada.';
+      }
+    }
+  });
+  if (selectedText && !selectedText.textContent.trim()) selectedText.textContent = 'Sin cuenta seleccionada.';
+}
+
+function finSetupAccountPickerModal() {
+  finEnsureAccountPickerModal();
+}
 
 function renderCatalogoCuentas(data) {
   const tbody = document.getElementById('cat-tbody');
   if (!tbody) return;
 
-  const accounts = (data && Array.isArray(data.accounts)) ? [...data.accounts] : [];
+  const accounts = finGetVisibleCatalogAccounts(data)
+    .map(acc => catBuildAccountRuleState(data, acc))
+    .filter(Boolean);
   const q = normText(catQuery || '').trim();
 
-  const { countsObj } = catGetUsageCounts(data);
-
-  // Orden por código asc
   accounts.sort((a, b) => String(a.code).localeCompare(String(b.code)));
 
   const filtered = q
     ? accounts.filter(a => {
         const code = String(a.code || '');
         const name = String(a.nombre || a.name || '');
-        return normText(code).includes(q) || normText(name).includes(q);
+        const parent = String(a.parentId || '');
+        return normText(code).includes(q) || normText(name).includes(q) || normText(parent).includes(q);
       })
     : accounts;
 
@@ -7736,39 +9748,54 @@ function renderCatalogoCuentas(data) {
   for (const acc of filtered) {
     const code = String(acc.code);
     const name = (acc.nombre || acc.name || '').toString();
+    const level = Number(acc.level || finGetAccountLevelFromCode(code) || 1);
     const rootType = String(acc.rootType || inferRootTypeFromCode(code) || 'OTROS').toUpperCase();
-    const isHidden = !!acc.isHidden;
-    const isProtected = !!acc.systemProtected;
-    const usedCount = Number(countsObj?.[code] || 0);
+    const isRoot = acc.isRoot;
+    const isProtected = isRoot || acc.isLocked;
+    const usedCount = Number(acc.usedCount || 0);
     const isUsed = usedCount > 0;
-
-    const estadoPill = isHidden ? catMakePill('Oculta', 'red') : catMakePill('Activa', 'green');
-    const protPill = isProtected ? catMakePill('Sí', 'gold') : catMakePill('No', 'muted');
+    const estadoPill = acc.isActive ? catMakePill('Activa', 'green') : catMakePill('Inactiva', 'red');
+    const protPill = isRoot ? catMakePill('Raíz', 'gold') : (isProtected ? catMakePill('Protegida', 'gold') : catMakePill('Editable', 'muted'));
     const usedPill = isUsed ? catMakePill(`Sí (${usedCount})`, 'green') : catMakePill('No', 'muted');
     const typePill = catMakePill(rootType, 'muted');
+    const classPill = acc.effectivePostable ? catMakePill('Posteable', 'green') : catMakePill('Agrupadora', 'gold');
+    const inactivePill = acc.isActive ? '' : catMakePill('Inactiva', 'red');
+    const childPill = acc.hasChildren ? catMakePill(`${acc.activeChildrenCount || 0} hijas activas`, 'muted') : '';
+    const levelPill = catMakePill(`Nivel ${level}`, isRoot ? 'gold' : 'muted');
 
     const tr = document.createElement('tr');
+    tr.className = `cat-account-row cat-level-${Math.max(1, Math.min(FIN_ACCOUNT_MAX_LEVEL, level))}${isRoot ? ' cat-root-row' : ''}${!acc.isActive ? ' cat-inactive-row' : ''}`;
 
-    const editDisabled = isProtected;
-    const hideDisabled = isProtected;
-
-    const hideLabel = isHidden ? 'Mostrar' : 'Ocultar';
-    const hideClass = isHidden ? 'btn-small' : 'btn-danger';
+    const pad = Math.max(0, level - 1) * 18;
+    const safeName = escapeHtml(name) || '—';
+    const addTitle = acc.canCreateChild ? 'Agregar subcuenta' : (acc.createChildMessage || 'No se puede agregar subcuenta');
+    const editTitle = acc.canEditName ? 'Editar nombre y clasificación segura' : (acc.editMessage || 'No se puede editar esta cuenta');
+    const toggleTitle = acc.canToggleActive ? (acc.isActive ? 'Inactivar cuenta' : 'Reactivar cuenta') : (acc.toggleMessage || 'No se puede cambiar el estado');
+    const deleteTitle = acc.canDelete ? 'Borrar cuenta sin movimientos ni subcuentas' : (acc.deleteMessage || 'No se puede borrar esta cuenta');
 
     tr.innerHTML = `
-      <td>${code}</td>
-      <td>${escapeHtml(name) || '—'}</td>
+      <td><strong>${escapeHtml(code)}</strong></td>
+      <td>
+        <div class="cat-account-name" style="--cat-indent:${pad}px">
+          <strong>${safeName}</strong>
+          <div class="cat-account-badges">${levelPill}${classPill}${inactivePill}${childPill}</div>
+        </div>
+      </td>
       <td>${typePill}</td>
       <td>${estadoPill}</td>
       <td>${protPill}</td>
       <td>${usedPill}</td>
-      <td class="fin-actions-cell">
-        <button type="button" class="btn-small cat-edit" data-code="${code}" ${editDisabled ? 'disabled title="Cuenta protegida por sistema"' : ''}>Editar</button>
-        <button type="button" class="${hideClass} cat-toggle" data-code="${code}" ${hideDisabled ? 'disabled title="Cuenta protegida por sistema"' : ''}>${hideLabel}</button>
+      <td class="fin-actions-cell cat-actions-cell">
+        <button type="button" class="btn-small cat-add-child" data-code="${escapeHtml(code)}" ${acc.canCreateChild ? '' : 'disabled'} title="${escapeHtml(addTitle)}">+ Subcuenta</button>
+        <button type="button" class="btn-small cat-edit" data-code="${escapeHtml(code)}" ${acc.canEditName ? '' : 'disabled'} title="${escapeHtml(editTitle)}">Editar</button>
+        <button type="button" class="btn-small cat-toggle" data-code="${escapeHtml(code)}" ${acc.canToggleActive ? '' : 'disabled'} title="${escapeHtml(toggleTitle)}">${isRoot ? 'Fija' : (acc.isActive ? 'Inactivar' : 'Activar')}</button>
+        <button type="button" class="btn-small btn-danger cat-delete" data-code="${escapeHtml(code)}" ${acc.canDelete ? '' : 'disabled'} title="${escapeHtml(deleteTitle)}">Borrar</button>
       </td>
     `;
     tbody.appendChild(tr);
   }
+
+  renderCatalogAccountSelectorDemo(data);
 }
 
 function catMakeFileStamp(d) {
@@ -7787,8 +9814,9 @@ function catBuildCatalogWorkbook(data) {
     return null;
   }
 
-  const accounts = (data && Array.isArray(data.accounts)) ? [...data.accounts] : [];
-  const { countsObj } = catGetUsageCounts(data || { entries: [], lines: [] });
+  const accounts = finGetVisibleCatalogAccounts(data)
+    .map(acc => catBuildAccountRuleState(data, acc))
+    .filter(Boolean);
 
   // Orden por código asc
   accounts.sort((a, b) => String(a.code).localeCompare(String(b.code)));
@@ -7798,8 +9826,9 @@ function catBuildCatalogWorkbook(data) {
     'Código',
     'Nombre',
     'Raíz/Tipo',
-    'Estado (Activa/Oculta)',
-    'Protegida (Sí/No)',
+    'Estado (Activa/Inactiva)',
+    'Protegida',
+    'Posteable',
     'Usada (Sí/No)',
     '#Movimientos (count)'
   ]];
@@ -7814,21 +9843,22 @@ function catBuildCatalogWorkbook(data) {
     if (!code) continue;
     const name = (acc.nombre || acc.name || '').toString();
     const rootType = String(acc.rootType || inferRootTypeFromCode(code) || 'OTROS').toUpperCase();
-    const isHidden = !!acc.isHidden;
-    const isProtected = !!acc.systemProtected;
-    const usedCount = Number(countsObj?.[code] || 0);
+    const isActive = !!acc.isActive;
+    const isProtected = !!(acc.systemProtected || acc.isLocked || acc.isRoot);
+    const usedCount = Number(acc.usedCount || 0);
     const isUsed = usedCount > 0;
 
     total += 1;
-    if (isHidden) ocultas += 1; else activas += 1;
+    if (isActive) activas += 1; else ocultas += 1;
     byRoot[rootType] = (byRoot[rootType] || 0) + 1;
 
     rows.push([
       code,
       name,
       rootType,
-      isHidden ? 'Oculta' : 'Activa',
+      isActive ? 'Activa' : 'Inactiva',
       isProtected ? 'Sí' : 'No',
+      acc.effectivePostable ? 'Sí' : 'No / Agrupadora',
       isUsed ? 'Sí' : 'No',
       usedCount
     ]);
@@ -7842,6 +9872,7 @@ function catBuildCatalogWorkbook(data) {
     { wch: 20 },
     { wch: 18 },
     { wch: 14 },
+    { wch: 18 },
     { wch: 18 }
   ];
 
@@ -7853,7 +9884,7 @@ function catBuildCatalogWorkbook(data) {
     [],
     ['Total de cuentas', total],
     ['Activas', activas],
-    ['Ocultas', ocultas],
+    ['Inactivas', ocultas],
     [],
     ['Por rootType', 'Conteo']
   ];
@@ -7919,51 +9950,57 @@ function setCatFormMessage(msg, isError = false) {
 }
 
 function populateCatRootSelect() {
-  const sel = document.getElementById('cat-root');
-  if (!sel) return;
-  sel.innerHTML = '';
-  for (const rt of ROOT_TYPES) {
-    const opt = document.createElement('option');
-    opt.value = rt;
-    opt.textContent = rt;
-    sel.appendChild(opt);
-  }
+  catFillParentSelect();
 }
 
-function setCatModalMode(mode, acc = null) {
+function setCatModalMode(mode, acc = null, parentCodeForNew = '') {
   const modeEl = document.getElementById('cat-mode');
   const editCodeEl = document.getElementById('cat-edit-code');
   const codeEl = document.getElementById('cat-code');
   const nameEl = document.getElementById('cat-name');
-  const rootEl = document.getElementById('cat-root');
+  const parentEl = document.getElementById('cat-parent');
+  const postableEl = document.getElementById('cat-postable');
   const titleEl = document.getElementById('cat-modal-title');
   const subEl = document.getElementById('cat-modal-sub');
 
-  if (!modeEl || !editCodeEl || !codeEl || !nameEl || !rootEl) return;
+  if (!modeEl || !editCodeEl || !codeEl || !nameEl || !parentEl) return;
 
   setCatFormMessage('');
-  catAutoRootType = true;
+  codeEl.disabled = true;
+  codeEl.readOnly = true;
 
   if (mode === 'edit' && acc) {
-    const code = String(acc.code);
+    const row = catBuildAccountRuleState(finCachedData || {}, acc) || finNormalizeAccountForView(acc);
+    const code = String(row.code);
     modeEl.value = 'edit';
     editCodeEl.value = code;
     codeEl.value = code;
-    codeEl.disabled = true;
-    nameEl.value = (acc.nombre || acc.name || '').toString();
-    const rt = String(acc.rootType || inferRootTypeFromCode(code) || 'OTROS').toUpperCase();
-    rootEl.value = ROOT_TYPES.includes(rt) ? rt : 'OTROS';
+    nameEl.value = (row.nombre || row.name || '').toString();
+    nameEl.disabled = !row.canEditName;
+    catFillParentSelect(row.parentId || finInferParentCodeFromCode(code) || '');
+    parentEl.disabled = true;
+    if (postableEl) {
+      postableEl.value = row.effectivePostable ? 'postable' : 'grouping';
+      postableEl.disabled = !row.canChangePostable;
+    }
     if (titleEl) titleEl.textContent = 'Editar cuenta';
-    if (subEl) subEl.textContent = `Código bloqueado: ${code}`;
+    if (subEl) subEl.textContent = `Código automático bloqueado: ${code}`;
+    if (!row.canEditName && row.editMessage) setCatFormMessage(row.editMessage, true);
+    catRefreshSuggestedCode();
+    codeEl.value = code;
   } else {
     modeEl.value = 'new';
     editCodeEl.value = '';
-    codeEl.value = '';
-    codeEl.disabled = false;
     nameEl.value = '';
-    rootEl.value = 'INGRESOS';
-    if (titleEl) titleEl.textContent = 'Nueva cuenta';
-    if (subEl) subEl.textContent = 'Tip: escribe el código y te sugerimos el rootType.';
+    nameEl.disabled = false;
+    parentEl.disabled = false;
+    if (postableEl) {
+      postableEl.disabled = false;
+      postableEl.value = 'postable';
+    }
+    catFillParentSelect(parentCodeForNew || '1000');
+    if (titleEl) titleEl.textContent = 'Nueva subcuenta';
+    if (subEl) subEl.textContent = 'Selecciona la cuenta padre; el código se asigna automáticamente.';
   }
 }
 
@@ -7971,43 +10008,70 @@ async function saveCatAccount() {
   if (!finCachedData) await refreshAllFin();
 
   const mode = document.getElementById('cat-mode')?.value || 'new';
-  const editCode = document.getElementById('cat-edit-code')?.value || '';
-
+  const editCode = finGetAccountCode(document.getElementById('cat-edit-code')?.value || '');
   const codeEl = document.getElementById('cat-code');
   const nameEl = document.getElementById('cat-name');
-  const rootEl = document.getElementById('cat-root');
+  const parentEl = document.getElementById('cat-parent');
 
-  const codeRaw = String(codeEl?.value || '').trim();
+  const codeRaw = finGetAccountCode(codeEl?.value || '');
   const name = String(nameEl?.value || '').trim();
-  const rootType = String(rootEl?.value || '').toUpperCase();
+  const parentCode = finGetAccountCode(parentEl?.value || '');
+  const postableChoice = catGetPostableChoice();
 
   if (!name) {
     setCatFormMessage('El nombre es obligatorio.', true);
-    return;
-  }
-  if (!isValidRootType(rootType)) {
-    setCatFormMessage('Selecciona un rootType válido.', true);
     return;
   }
 
   await openFinDB();
 
   if (mode === 'edit') {
-    const code = String(editCode || codeRaw).trim();
+    const code = editCode || codeRaw;
     const existing = finCachedData.accountsMap.get(code) || await finGet('accounts', code);
     if (!existing) {
       setCatFormMessage('No se encontró la cuenta a editar.', true);
       return;
     }
-    if (existing.systemProtected) {
-      setCatFormMessage('Cuenta protegida por sistema. No se puede editar.', true);
+    const state = catBuildAccountRuleState(finCachedData, existing);
+    if (!state || state.isRoot) {
+      setCatFormMessage(FIN_ACCOUNT_CATALOG_LOCK_MESSAGE, true);
+      return;
+    }
+    if (!state.canEditName) {
+      setCatFormMessage(state.editMessage || FIN_ACCOUNT_CATALOG_STRUCTURAL_LOCK_MESSAGE, true);
+      return;
+    }
+    const parentCodeEdit = state.parentId || finInferParentCodeFromCode(code) || '';
+    if (catHasVisibleDuplicateName(finCachedData, parentCodeEdit, name, code)) {
+      setCatFormMessage('Ya existe una cuenta con ese nombre bajo la misma cuenta padre.', true);
+      return;
+    }
+
+    const wantsPostable = postableChoice !== 'grouping';
+    if (wantsPostable && state.hasChildren) {
+      setCatFormMessage(FIN_ACCOUNT_CATALOG_CHILDREN_LOCK_MESSAGE, true);
+      return;
+    }
+    if (wantsPostable !== state.effectivePostable && !state.canChangePostable) {
+      setCatFormMessage(state.hasMovements ? FIN_ACCOUNT_CATALOG_STRUCTURAL_LOCK_MESSAGE : 'No se puede cambiar la clasificación de esta cuenta.', true);
       return;
     }
 
     existing.nombre = name;
     existing.name = name;
-    existing.rootType = rootType;
-    existing.updatedAtISO = new Date().toISOString();
+    existing.isPostable = wantsPostable;
+    existing.postable = wantsPostable;
+    existing.noPostable = !wantsPostable;
+    existing.isGrouping = !wantsPostable;
+    existing.grouping = !wantsPostable;
+    existing.accountMode = wantsPostable ? 'postable' : 'grouping';
+    existing.a33CatalogVisible = true;
+    existing.a33CatalogUserCreated = true;
+    existing.a33AccountCatalogVisibleMode = FIN_ACCOUNT_CATALOG_VISIBLE_MODE;
+    existing.a33AccountHierarchyStage = FIN_ACCOUNTING_REDESIGN_STAGE;
+    existing.a33AccountHierarchyVersion = FIN_ACCOUNT_HIERARCHY_VERSION;
+    existing.updatedAt = new Date().toISOString();
+    existing.updatedAtISO = existing.updatedAt;
     await finPut('accounts', existing);
     showToast('Cuenta actualizada');
     closeCatModal();
@@ -8015,58 +10079,93 @@ async function saveCatAccount() {
     return;
   }
 
-  // new
-  if (!/^\d{4}$/.test(codeRaw)) {
-    setCatFormMessage('El código debe tener 4 dígitos (ej: 4101).', true);
-    return;
-  }
-  if (finCachedData.accountsMap.has(codeRaw)) {
-    setCatFormMessage('Ese código ya existe. Usa otro.', true);
-    return;
-  }
-  const already = await finGet('accounts', codeRaw);
-  if (already) {
-    setCatFormMessage('Ese código ya existe. Usa otro.', true);
+  const parent = catFindVisibleAccountByCode(finCachedData, parentCode);
+  const parentState = parent ? catBuildAccountRuleState(finCachedData, parent) : null;
+  if (!parent || !parentState || !parentState.canCreateChild) {
+    setCatFormMessage((parentState && parentState.createChildMessage) || 'Cuenta padre inválida o sin espacio para más niveles.', true);
     return;
   }
 
-  const now = new Date().toISOString();
-  const newAcc = {
-    code: codeRaw,
-    nombre: name,
-    name,
-    tipo: inferTipoForNewAccount(codeRaw),
-    rootType,
-    isHidden: false,
-    systemProtected: false,
-    createdAtISO: now,
-    updatedAtISO: now
-  };
+  const suggestion = catGetSuggestedCodeForParent(parentCode);
+  if (!suggestion.ok || !suggestion.code) {
+    setCatFormMessage(suggestion.message || 'No hay códigos disponibles bajo esta cuenta padre.', true);
+    return;
+  }
+  const code = suggestion.code;
 
-  await finAdd('accounts', newAcc);
-  showToast('Cuenta creada');
+  if (FIN_FIXED_ROOT_CODES.includes(code)) {
+    setCatFormMessage('La raíz está protegida.', true);
+    return;
+  }
+  if (catFindVisibleAccountByCode(finCachedData, code)) {
+    setCatFormMessage('Ya existe una cuenta con ese código.', true);
+    return;
+  }
+  if (catHasVisibleDuplicateName(finCachedData, parentCode, name)) {
+    setCatFormMessage('Ya existe una cuenta con ese nombre bajo la misma cuenta padre.', true);
+    return;
+  }
+
+  const existingInternal = await finGet('accounts', code);
+  if (existingInternal && finIsCatalogManagedAccount(existingInternal) && !finIsRootAccount(existingInternal)) {
+    setCatFormMessage('Ya existe una cuenta con ese código.', true);
+    return;
+  }
+
+  const newAcc = catBuildAccountRowForSave({ existing: existingInternal || null, code, name, parent, postableChoice });
+  await finPut('accounts', newAcc);
+  showToast('Cuenta creada correctamente');
   closeCatModal();
   await refreshAllFin();
 }
 
 async function toggleCatAccount(code) {
   if (!finCachedData) await refreshAllFin();
-  const acc = finCachedData.accountsMap.get(String(code));
+  const c = finGetAccountCode(code);
+  const acc = finCachedData.accountsMap.get(c) || await finGet('accounts', c);
   if (!acc) return;
-  if (acc.systemProtected) {
-    showToast('Cuenta protegida: no se puede ocultar');
+  const state = catBuildAccountRuleState(finCachedData, acc);
+  if (!state || !state.canToggleActive) {
+    showToast((state && state.toggleMessage) || FIN_ACCOUNT_CATALOG_LOCK_MESSAGE);
     return;
   }
-  acc.isHidden = !acc.isHidden;
-  acc.updatedAtISO = new Date().toISOString();
+
+  const nextActive = !state.isActive;
+  acc.isActive = nextActive;
+  acc.active = nextActive;
+  acc.activa = nextActive;
+  acc.inactive = !nextActive;
+  // Compatibilidad con filtros legacy: isHidden equivale a inactiva para registros nuevos.
+  acc.isHidden = !nextActive;
+  acc.updatedAt = new Date().toISOString();
+  acc.updatedAtISO = acc.updatedAt;
   await openFinDB();
   await finPut('accounts', acc);
-  showToast(acc.isHidden ? 'Cuenta oculta' : 'Cuenta visible');
+  showToast(nextActive ? 'Cuenta reactivada' : 'La cuenta se inactivó. Seguirá disponible en históricos.');
+  await refreshAllFin();
+}
+
+async function deleteCatAccount(code) {
+  if (!finCachedData) await refreshAllFin();
+  const c = finGetAccountCode(code);
+  const acc = finCachedData.accountsMap.get(c) || await finGet('accounts', c);
+  if (!acc) return;
+  const state = catBuildAccountRuleState(finCachedData, acc);
+  if (!state || !state.canDelete) {
+    showToast((state && state.deleteMessage) || 'No se puede borrar esta cuenta.');
+    return;
+  }
+  const label = `${state.code} — ${state.nombre || state.name || 'Cuenta'}`;
+  if (!confirm(`¿Borrar la cuenta ${label}?\n\nSolo se permite porque no tiene movimientos ni subcuentas.`)) return;
+  await openFinDB();
+  await finDelete('accounts', c);
+  showToast('Cuenta borrada');
   await refreshAllFin();
 }
 
 function setupCatalogoUI() {
-  populateCatRootSelect();
+  catFillParentSelect();
+  finSetupAccountPickerModal();
 
   const search = document.getElementById('cat-search');
   const btnNew = document.getElementById('cat-new');
@@ -8079,8 +10178,8 @@ function setupCatalogoUI() {
   const cancelBtn = document.getElementById('cat-cancel');
   const saveBtn = document.getElementById('cat-save');
 
-  const codeEl = document.getElementById('cat-code');
-  const rootEl = document.getElementById('cat-root');
+  const parentEl = document.getElementById('cat-parent');
+  const postableEl = document.getElementById('cat-postable');
 
   if (search) {
     search.addEventListener('input', (e) => {
@@ -8099,10 +10198,13 @@ function setupCatalogoUI() {
   }
 
   if (btnNew) {
+    btnNew.disabled = false;
+    btnNew.title = 'Crear subcuenta con código automático';
+    btnNew.textContent = '+ Nueva subcuenta';
     btnNew.addEventListener('click', () => {
-      setCatModalMode('new');
+      setCatModalMode('new', null, '1000');
       openCatModal();
-      setTimeout(() => document.getElementById('cat-code')?.focus(), 0);
+      setTimeout(() => document.getElementById('cat-name')?.focus(), 0);
     });
   }
 
@@ -8115,12 +10217,27 @@ function setupCatalogoUI() {
 
   if (tbody) {
     tbody.addEventListener('click', (e) => {
+      const add = e.target.closest('.cat-add-child');
       const edit = e.target.closest('.cat-edit');
       const tog = e.target.closest('.cat-toggle');
+      const del = e.target.closest('.cat-delete');
+
+      if (add && add.disabled) { showToast(add.title || 'No se puede agregar subcuenta.'); return; }
+      if (edit && edit.disabled) { showToast(edit.title || 'No se puede editar esta cuenta.'); return; }
+      if (tog && tog.disabled) { showToast(tog.title || 'No se puede cambiar el estado.'); return; }
+      if (del && del.disabled) { showToast(del.title || 'No se puede borrar esta cuenta.'); return; }
+
+      if (add && !add.disabled) {
+        const code = String(add.dataset.code || '');
+        setCatModalMode('new', null, code);
+        openCatModal();
+        setTimeout(() => document.getElementById('cat-name')?.focus(), 0);
+        return;
+      }
 
       if (edit && !edit.disabled) {
         const code = String(edit.dataset.code || '');
-        const acc = finCachedData?.accountsMap.get(code);
+        const acc = catFindVisibleAccountByCode(finCachedData || {}, code) || finCachedData?.accountsMap.get(code);
         if (!acc) return;
         setCatModalMode('edit', acc);
         openCatModal();
@@ -8131,8 +10248,17 @@ function setupCatalogoUI() {
       if (tog && !tog.disabled) {
         const code = String(tog.dataset.code || '');
         toggleCatAccount(code).catch(err => {
-          console.error('Error ocultando/mostrando cuenta', err);
+          console.error('Error activando/inactivando cuenta', err);
           alert('No se pudo actualizar la cuenta.');
+        });
+        return;
+      }
+
+      if (del && !del.disabled) {
+        const code = String(del.dataset.code || '');
+        deleteCatAccount(code).catch(err => {
+          console.error('Error borrando cuenta', err);
+          alert('No se pudo borrar la cuenta.');
         });
       }
     });
@@ -8167,21 +10293,15 @@ function setupCatalogoUI() {
     });
   }
 
-  if (rootEl) {
-    rootEl.addEventListener('change', () => {
-      catAutoRootType = false;
+  if (parentEl) {
+    parentEl.addEventListener('change', () => {
+      catRefreshSuggestedCode();
     });
   }
 
-  if (codeEl) {
-    codeEl.addEventListener('input', () => {
-      // Solo dígitos, máximo 4
-      const cleaned = String(codeEl.value || '').replace(/\D+/g, '').slice(0, 4);
-      if (codeEl.value !== cleaned) codeEl.value = cleaned;
-      if (catAutoRootType && cleaned.length === 4 && rootEl) {
-        const inferred = inferRootTypeFromCode(cleaned) || 'OTROS';
-        if (ROOT_TYPES.includes(inferred)) rootEl.value = inferred;
-      }
+  if (postableEl) {
+    postableEl.addEventListener('change', () => {
+      setCatFormMessage('');
     });
   }
 }
@@ -8689,8 +10809,8 @@ function fillCompraCuentaDebe(data) {
   sel.innerHTML = '<option value="">Seleccione cuenta…</option>';
 
   for (const acc of cuentas) {
-    // Cuentas ocultas: no deben aparecer en selects para movimientos nuevos.
-    if (acc && acc.isHidden === true) continue;
+    // Cuentas inactivas y agrupadoras no deben aparecer en selects para movimientos nuevos.
+    if (!finIsActiveAccount(acc) || (acc && acc.isHidden === true) || !finIsPostableAccount(acc)) continue;
 
     const tipo = getTipoCuenta(acc);
     const code = String(acc.code);
@@ -8732,8 +10852,8 @@ function fillCompraCuentaHaber(data) {
   sel.innerHTML = '<option value="">Seleccione cuenta…</option>';
 
   for (const acc of cuentas) {
-    // Cuentas ocultas: no deben aparecer en selects para movimientos nuevos.
-    if (acc && acc.isHidden === true) continue;
+    // Cuentas inactivas y agrupadoras no deben aparecer en selects para movimientos nuevos.
+    if (!finIsActiveAccount(acc) || (acc && acc.isHidden === true) || !finIsPostableAccount(acc)) continue;
 
     const tipo = getTipoCuenta(acc);
     const code = String(acc.code);
@@ -12568,7 +14688,7 @@ function finGetFinancialAccountSelectableAccounts(accounts) {
   return (Array.isArray(accounts) ? accounts : [])
     .filter(acc => {
       if (!acc) return false;
-      if (acc.isHidden === true) return false;
+      if (!finIsActiveAccount(acc) || acc.isHidden === true || !finIsPostableAccount(acc)) return false;
       const root = String(acc.rootType || inferRootTypeFromCode(acc.code) || '').toUpperCase();
       const tipo = String(acc.tipo || '').toLowerCase();
       return root === 'ACTIVO' || tipo === 'activo' || finIsFinancialCashOrBankAccount(acc);
@@ -12763,6 +14883,7 @@ function setupFinancialAccountsUI() {
 
 function finNormalizeViewName(view) {
   const raw = String(view || '').trim().toLowerCase();
+  const rawKey = raw.replace(/[\s_-]+/g, '');
   const aliases = {
     proveedores: 'compras',
     proveedor: 'compras',
@@ -12770,9 +14891,14 @@ function finNormalizeViewName(view) {
     cuentasfinancieras: 'cuentasfinancieras',
     cuentas_financieras: 'cuentasfinancieras',
     transferenciasinternas: 'transferencias',
-    transferencias_internas: 'transferencias'
+    transferencias_internas: 'transferencias',
+    diarioyajustes: 'diario',
+    diario_y_ajustes: 'diario',
+    diarioajustes: 'diario',
+    ajustes: 'diario',
+    journal: 'diario'
   };
-  const candidate = aliases[raw] || raw || 'tablero';
+  const candidate = aliases[raw] || aliases[rawKey] || raw || 'tablero';
   const btn = Array.from(document.querySelectorAll('.fin-tab-btn')).find(b => b.dataset.view === candidate);
   return btn ? candidate : 'tablero';
 }
@@ -12859,6 +14985,8 @@ function setupTabs() {
 function setupEstadosSubtabs() {
   const btns = document.querySelectorAll('.fin-subtab-btn');
   btns.forEach(btn => {
+    if (btn.dataset.a33SubtabBound === '1') return;
+    btn.dataset.a33SubtabBound = '1';
     btn.addEventListener('click', () => {
       const view = btn.dataset.subview;
       btns.forEach(b => b.classList.remove('active'));
@@ -13021,6 +15149,7 @@ async function refreshAllFin() {
   compraSyncFinancialAccountUI(data);
   finRenderCurrencyReference();
   renderTablero(data);
+  renderDiarioContableVisual(data);
   renderDiario(data);
   renderComprasPorProveedor(data);
   // Proveedores se administran en Catálogos. Finanzas solo consume el store maestro para Compras.
@@ -13226,6 +15355,35 @@ function getMissingAccountCodes(codes, accountsMap) {
   }
   return out;
 }
+
+function validatePostableAccountCodesForAutoEntry(codes, data, contextLabel = 'asiento automático') {
+  const accountsMap = data && data.accountsMap ? data.accountsMap : null;
+  const accounts = Array.isArray(data && data.accounts) ? data.accounts : [];
+  const missing = [];
+  const blocked = [];
+  const seen = new Set();
+
+  for (const rawCode of (Array.isArray(codes) ? codes : [])) {
+    const code = finNormalizeAccountCode(rawCode);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    const acc = accountsMap && typeof accountsMap.get === 'function' ? accountsMap.get(code) : null;
+    if (!acc) {
+      missing.push(code);
+      continue;
+    }
+    const view = finNormalizeAccountForView({ ...acc, hasChildren: finAccountHasChildrenInList(accounts, code) });
+    if (!finIsPostableAccount(view)) blocked.push(`${code} ${finGetAccountName(view) || ''}`.trim());
+  }
+
+  if (missing.length) {
+    return { ok: false, message: `Para convertir POS a asiento contable completo, cree y configure cuentas posteables. Faltan: ${missing.join(', ')}.` };
+  }
+  if (blocked.length) {
+    return { ok: false, message: `Para ${contextLabel}, las cuentas deben ser posteables y activas. Revise: ${blocked.join(', ')}.` };
+  }
+  return { ok: true, message: '' };
+}
 // Útil para importaciones críticas (POS→Finanzas).
 async function createJournalEntryWithLinesAtomic(entry, lines) {
   await openFinDB();
@@ -13246,7 +15404,7 @@ async function createJournalEntryWithLinesAtomic(entry, lines) {
     req.onsuccess = (e) => {
       entryId = e.target.result;
       for (const ln of (Array.isArray(lines) ? lines : [])) {
-        stL.add({ ...ln, idEntry: entryId });
+        stL.add({ ...ln, idEntry: entryId, journalEntryId: entryId, entryId });
       }
     };
 
@@ -13292,7 +15450,7 @@ async function updateJournalEntryWithLinesAtomic(entryId, entry, lines) {
       if (!cursor) {
         for (const ln of (Array.isArray(lines) ? lines : [])) {
           if (!ln) continue;
-          stL.add({ ...ln, idEntry: id });
+          stL.add({ ...ln, idEntry: id, journalEntryId: id, entryId: id });
         }
         return;
       }
@@ -13510,10 +15668,9 @@ async function createPosDailyCloseEntry(closure, data) {
     throw new Error('Asiento POS desbalanceado (DEBE/HABER).');
   }
 
-  const accountsMap = data?.accountsMap || null;
-  const missing = getMissingAccountCodes(lines.map(l => l && l.accountCode), accountsMap);
-  if (missing.length) {
-    throw new Error(`Falta ${missing.length === 1 ? `la cuenta ${missing[0]}` : `las cuentas ${missing.join(', ')}`} para importar el cierre.`);
+  const accountValidation = validatePostableAccountCodesForAutoEntry(lines.map(l => l && l.accountCode), data, 'importar el cierre POS');
+  if (!accountValidation.ok) {
+    throw new Error(accountValidation.message);
   }
 
   return { entry, lines };
@@ -13573,10 +15730,9 @@ async function createPosDailyCloseReversal(prevImport, reversingClosure, data) {
   };
 
   // Guardas: cuentas deben existir (si alguien borró cuentas luego de importar)
-  const accountsMap = data?.accountsMap || null;
-  const missing = getMissingAccountCodes(revLines.map(l => l && l.accountCode), accountsMap);
-  if (missing.length) {
-    throw new Error(`Falta ${missing.length === 1 ? `la cuenta ${missing[0]}` : `las cuentas ${missing.join(', ')}`} para reversar.`);
+  const accountValidation = validatePostableAccountCodesForAutoEntry(revLines.map(l => l && l.accountCode), data, 'reversar el cierre POS');
+  if (!accountValidation.ok) {
+    throw new Error(accountValidation.message);
   }
 
   if (Math.abs(n2(totalDebe - totalHaber)) > 0.01) {
@@ -13919,6 +16075,7 @@ async function initFinanzas() {
     setupModoERToggle();
     setupAccountingReportsUI();
     setupFilterListeners();
+    setupDiarioContableVisualUI();
     setupRecibosUI();
     await rcEnterView(true);
     setupCatalogoUI();
@@ -13955,6 +16112,7 @@ window.addEventListener('storage', (ev) => {
         renderEstadoResultados(finCachedData);
         renderBalanceGeneral(finCachedData);
         renderFlujoCaja(finCachedData);
+        renderDiarioContableVisual(finCachedData);
         renderDiario(finCachedData);
         renderAccountingReports(finCachedData);
         updateManualMovementCurrencyPreview();
