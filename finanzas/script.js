@@ -9274,7 +9274,11 @@ function catBuildAccountRuleState(data, account) {
   const level = Number(row.level || finGetAccountLevelFromCode(row.code) || 0);
   const canEditName = !isRoot && !isLocked && !isLegacy;
   const canChangePostable = !isRoot && !isLocked && !isLegacy && !hasChildren && !hasMovements;
-  const canCreateChild = isActive && level >= 1 && level < FIN_ACCOUNT_MAX_LEVEL && !!finGetRootFromCode(row.code) && !effectivePostable && !isLocked && !isLegacy;
+  // Una raíz está bloqueada para edición/borrado/inactivación, pero SÍ debe servir como padre.
+  // El bloqueo de raíz no puede impedir la creación de subcuentas de nivel 2.
+  const belongsToValidRoot = isRoot || !!finGetRootFromCode(row.code);
+  const lockedForChildren = !isRoot && (isLocked || isLegacy);
+  const canCreateChild = isActive && level >= 1 && level < FIN_ACCOUNT_MAX_LEVEL && belongsToValidRoot && !effectivePostable && !lockedForChildren;
   const canToggleActive = !isRoot && !isLocked && !isLegacy && (isActive ? activeChildrenCount === 0 : true);
   const canDelete = !isRoot && !isLocked && !isLegacy && !hasChildren && !hasMovements;
 
@@ -9282,7 +9286,7 @@ function catBuildAccountRuleState(data, account) {
   if (!isActive) createChildMessage = 'La cuenta está inactiva y no acepta nuevas subcuentas.';
   else if (level >= FIN_ACCOUNT_MAX_LEVEL) createChildMessage = 'Por ahora el catálogo permite hasta 4 niveles.';
   else if (effectivePostable) createChildMessage = FIN_ACCOUNT_CATALOG_POSTABLE_CHILD_LOCK_MESSAGE;
-  else if (isLocked || isLegacy) createChildMessage = 'Esta cuenta está protegida por compatibilidad histórica.';
+  else if (!isRoot && (isLocked || isLegacy)) createChildMessage = 'Esta cuenta está protegida por compatibilidad histórica.';
 
   let editMessage = '';
   if (isRoot) editMessage = FIN_ACCOUNT_CATALOG_LOCK_MESSAGE;
@@ -9362,6 +9366,27 @@ function catIsRootLockedForUI(acc) {
 function catCanHaveChildren(acc, data = finCachedData) {
   const state = catBuildAccountRuleState(data || finCachedData || {}, acc);
   return !!(state && state.canCreateChild);
+}
+
+function catGetParentCandidateAccounts(data = finCachedData || {}) {
+  const source = data || { accounts: [] };
+  const rows = finGetVisibleCatalogAccounts(source)
+    .map(acc => finNormalizeAccountForView(acc))
+    .filter(Boolean);
+  const byCode = new Map();
+  for (const root of finBuildFixedRootAccountRows()) {
+    const r = finNormalizeAccountForView(root);
+    if (r && r.code) byCode.set(r.code, r);
+  }
+  for (const row of rows) {
+    if (row && row.code) byCode.set(row.code, row);
+  }
+  return Array.from(byCode.values())
+    .filter(acc => {
+      const state = catBuildAccountRuleState(source, acc);
+      return !!(state && state.canCreateChild);
+    })
+    .sort((a, b) => String(a.code).localeCompare(String(b.code), 'es', { numeric: true }));
 }
 
 function catParentLabel(acc) {
@@ -9491,11 +9516,7 @@ function catFillParentSelect(selectedCode = '') {
   const sel = document.getElementById('cat-parent');
   if (!sel) return;
   const data = finCachedData || { accounts: [] };
-  const rows = finGetVisibleCatalogAccounts(data)
-    .map(acc => finNormalizeAccountForView(acc))
-    .filter(Boolean)
-    .filter(acc => catCanHaveChildren(acc))
-    .sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const rows = catGetParentCandidateAccounts(data);
 
   const prev = finGetAccountCode(selectedCode || sel.value || '');
   sel.innerHTML = '<option value="">Seleccione cuenta padre…</option>';
@@ -9509,6 +9530,7 @@ function catFillParentSelect(selectedCode = '') {
   else if (!sel.value && rows.length) sel.value = rows[0].code;
   catRefreshSuggestedCode();
 }
+
 
 
 
