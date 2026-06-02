@@ -629,7 +629,7 @@ const FIN_DYNAMIC_BANK_CODE_MAX = 1999;
 // Las cuentas legacy se conservan internas para históricos y flujos actuales.
 const FIN_ACCOUNTING_REDESIGN_STAGE = 'finanzas_diario_contable_etapa_7_9';
 const FIN_ACCOUNT_SELECTOR_STAGE = 'finanzas_diario_contable_etapa_7_9_selector_posteables';
-const FIN_ACCOUNT_HIERARCHY_VERSION = 6;
+const FIN_ACCOUNT_HIERARCHY_VERSION = 7;
 const FIN_FIXED_ROOT_ACCOUNTS = Object.freeze([
   Object.freeze({ code: '1000', name: 'Activos', nombre: 'Activos', type: 'activo', tipo: 'activo', rootType: 'ACTIVO', nature: 'deudora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
   Object.freeze({ code: '2000', name: 'Pasivos', nombre: 'Pasivos', type: 'pasivo', tipo: 'pasivo', rootType: 'PASIVO', nature: 'acreedora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
@@ -9779,9 +9779,39 @@ function renderCatalogoCuentas(data) {
   const tbody = document.getElementById('cat-tbody');
   if (!tbody) return;
 
-  const accounts = finGetVisibleCatalogAccounts(data)
-    .map(acc => catBuildAccountRuleState(data, acc))
-    .filter(Boolean);
+  let accounts = [];
+  try {
+    accounts = finGetVisibleCatalogAccounts(data || finCachedData || { accounts: [] })
+      .map(acc => catBuildAccountRuleState(data || finCachedData || { accounts: [] }, acc))
+      .filter(Boolean);
+  } catch (err) {
+    console.error('Error preparando Catálogo de Cuentas; usando raíces de emergencia', err);
+    accounts = finBuildFixedRootAccountRows()
+      .map(acc => ({
+        ...acc,
+        hasChildren: false,
+        activeChildrenCount: 0,
+        usedCount: 0,
+        hasMovements: false,
+        isRoot: true,
+        isLocked: true,
+        isLegacy: false,
+        isActive: true,
+        isGrouping: true,
+        effectivePostable: false,
+        canPost: false,
+        canCreateChild: true,
+        canEditName: false,
+        canChangePostable: false,
+        canToggleActive: false,
+        canDelete: false,
+        createChildMessage: '',
+        editMessage: FIN_ACCOUNT_CATALOG_LOCK_MESSAGE,
+        toggleMessage: FIN_ACCOUNT_CATALOG_LOCK_MESSAGE,
+        deleteMessage: FIN_ACCOUNT_CATALOG_LOCK_MESSAGE
+      }));
+  }
+
   const q = normText(catQuery || '').trim();
 
   accounts.sort((a, b) => String(a.code).localeCompare(String(b.code)));
@@ -9799,7 +9829,7 @@ function renderCatalogoCuentas(data) {
 
   if (!filtered.length) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="7">Sin resultados.</td>`;
+    tr.innerHTML = `<td colspan="7">Sin resultados. Presione Actualizar; si continúa, cierre y abra de nuevo la PWA.</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -9854,7 +9884,7 @@ function renderCatalogoCuentas(data) {
     tbody.appendChild(tr);
   }
 
-  renderCatalogAccountSelectorDemo(data);
+  try { renderCatalogAccountSelectorDemo(data || finCachedData || { accounts: [] }); } catch (err) { console.error('Error renderizando demo del selector contable', err); }
 }
 
 function catMakeFileStamp(d) {
@@ -10266,7 +10296,11 @@ function setupCatalogoUI() {
 
   if (btnRefresh) {
     btnRefresh.addEventListener('click', () => {
-      refreshAllFin().catch(err => {
+      (async () => {
+        await ensureBaseAccounts();
+        await normalizeAccountsCatalog();
+        await refreshAllFin();
+      })().catch(err => {
         console.error('Error refrescando Finanzas', err);
         alert('No se pudo actualizar Finanzas.');
       });
@@ -10278,9 +10312,19 @@ function setupCatalogoUI() {
     btnNew.title = 'Crear subcuenta con código automático';
     btnNew.textContent = '+ Nueva subcuenta';
     btnNew.addEventListener('click', () => {
-      setCatModalMode('new', null, '1000');
-      openCatModal();
-      setTimeout(() => document.getElementById('cat-name')?.focus(), 0);
+      (async () => {
+        if (!finCachedData || !catFindVisibleAccountByCode(finCachedData, '1000')) {
+          await ensureBaseAccounts();
+          await normalizeAccountsCatalog();
+          await refreshAllFin();
+        }
+        setCatModalMode('new', null, '1000');
+        openCatModal();
+        setTimeout(() => document.getElementById('cat-name')?.focus(), 0);
+      })().catch(err => {
+        console.error('Error abriendo nueva cuenta del catálogo', err);
+        alert('No se pudo abrir el formulario de cuenta. Presione Actualizar y vuelva a intentar.');
+      });
     });
   }
 
@@ -15209,6 +15253,15 @@ function setupFilterListeners() {
 
 /* ---------- Ciclo principal ---------- */
 
+function finSafeRenderBlock(label, fn) {
+  try {
+    if (typeof fn === 'function') return fn();
+  } catch (err) {
+    console.error(`Error renderizando ${label}`, err);
+  }
+  return null;
+}
+
 async function refreshAllFin() {
   finCachedData = await getAllFinData();
   const data = finCachedData;
@@ -15226,20 +15279,20 @@ async function refreshAllFin() {
   fillCompraCuentaHaber(data);
   compraSyncFinancialAccountUI(data);
   finRenderCurrencyReference();
-  renderTablero(data);
-  renderDiarioContableVisual(data);
-  renderDiario(data);
-  renderComprasPorProveedor(data);
-  // Proveedores se administran en Catálogos. Finanzas solo consume el store maestro para Compras.
-  renderCatalogoCuentas(data);
-  renderFinancialAccountsView().catch(() => {});
-  renderInternalTransfersView(data);
-  renderEstadoResultados(data);
-  renderBalanceGeneral(data);
-  renderRentabilidadPresentacion(data);
-  renderComparativoEventos(data);
-  renderFlujoCaja(data);
-  renderAccountingReports(data);
+  // El Catálogo debe pintarse aunque otra sección de Finanzas falle en iPad/PWA.
+  finSafeRenderBlock('Catálogo de Cuentas', () => renderCatalogoCuentas(data));
+  finSafeRenderBlock('Tablero', () => renderTablero(data));
+  finSafeRenderBlock('Diario Contable visual', () => renderDiarioContableVisual(data));
+  finSafeRenderBlock('Diario histórico', () => renderDiario(data));
+  finSafeRenderBlock('Compras a Proveedor', () => renderComprasPorProveedor(data));
+  renderFinancialAccountsView().catch(err => console.error('Error renderizando Cuentas Financieras', err));
+  finSafeRenderBlock('Transferencias Internas', () => renderInternalTransfersView(data));
+  finSafeRenderBlock('Estado de Resultados', () => renderEstadoResultados(data));
+  finSafeRenderBlock('Balance General', () => renderBalanceGeneral(data));
+  finSafeRenderBlock('Rentabilidad por presentación', () => renderRentabilidadPresentacion(data));
+  finSafeRenderBlock('Comparativo de eventos', () => renderComparativoEventos(data));
+  finSafeRenderBlock('Flujo de Caja', () => renderFlujoCaja(data));
+  finSafeRenderBlock('Reportes contables', () => renderAccountingReports(data));
 
   // Compras (planificación)
   if (typeof pcRenderAll === 'function') pcRenderAll();
@@ -16157,6 +16210,8 @@ async function initFinanzas() {
     setupRecibosUI();
     await rcEnterView(true);
     setupCatalogoUI();
+    // Pintado preventivo: en iPad/PWA el usuario debe ver las raíces aunque otra carga tarde o falle.
+    finSafeRenderBlock('Catálogo de Cuentas inicial', () => renderCatalogoCuentas({ accounts: finBuildFixedRootAccountRows(), entries: [], lines: [] }));
     setupComprasUI();
     setupComprasPlanUI();
     setupExportButtons();
