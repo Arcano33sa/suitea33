@@ -629,7 +629,7 @@ const FIN_DYNAMIC_BANK_CODE_MAX = 1999;
 // Las cuentas legacy se conservan internas para históricos y flujos actuales.
 const FIN_ACCOUNTING_REDESIGN_STAGE = 'finanzas_diario_contable_etapa_7_9';
 const FIN_ACCOUNT_SELECTOR_STAGE = 'finanzas_diario_contable_etapa_7_9_selector_posteables';
-const FIN_ACCOUNT_HIERARCHY_VERSION = 5;
+const FIN_ACCOUNT_HIERARCHY_VERSION = 6;
 const FIN_FIXED_ROOT_ACCOUNTS = Object.freeze([
   Object.freeze({ code: '1000', name: 'Activos', nombre: 'Activos', type: 'activo', tipo: 'activo', rootType: 'ACTIVO', nature: 'deudora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
   Object.freeze({ code: '2000', name: 'Pasivos', nombre: 'Pasivos', type: 'pasivo', tipo: 'pasivo', rootType: 'PASIVO', nature: 'acreedora', isRoot: true, isLocked: true, isPostable: false, isActive: true, parentId: null, level: 1 }),
@@ -770,6 +770,10 @@ function isRootAccount(accountOrCode) { return finIsRootAccount(accountOrCode); 
 
 function finIsLegacyAccount(accountOrCode) {
   if (accountOrCode && typeof accountOrCode === 'object') {
+    // Una cuenta creada/gestionada desde el nuevo Catálogo puede usar códigos históricos
+    // (por ejemplo 1100/1200) sin heredar el candado legacy. Los históricos se conservan
+    // por código y snapshots; la administración del árbol debe responder a la marca de catálogo.
+    if (finIsUserCatalogAccount(accountOrCode)) return false;
     if (accountOrCode.isLegacy === true || accountOrCode.legacyFinancialAccount === true || accountOrCode.legacy === true) return true;
     const origin = String(accountOrCode.generatedFrom || accountOrCode.source || accountOrCode.sourceModule || '').toLowerCase();
     if (origin.includes('legacy')) return true;
@@ -949,7 +953,8 @@ function finNormalizeAccountForView(account) {
   const root = FIN_FIXED_ROOTS_BY_CODE[rootCode] || null;
   const parentId = account.parentId !== undefined ? account.parentId : (account.parentCode || finInferParentCodeFromCode(code));
   const isRoot = finIsRootAccount(account);
-  const isLegacy = finIsLegacyAccount(account);
+  const isUserCatalog = finIsUserCatalogAccount({ ...account, code, isRoot });
+  const isLegacy = isUserCatalog ? false : finIsLegacyAccount(account);
   const isActive = finIsActiveAccount(account);
   const isPostable = finIsPostableAccount({ ...account, code, isRoot, isActive });
   const nowISO = new Date().toISOString();
@@ -967,7 +972,8 @@ function finNormalizeAccountForView(account) {
     tipo: account.tipo || (root && root.tipo) || inferTipoFromCode(code),
     nature: finGetAccountNature(account) || (root && root.nature) || '',
     isRoot,
-    isLocked: isRoot || account.isLocked === true || account.systemProtected === true,
+    isLocked: isRoot || (!isUserCatalog && (account.isLocked === true || account.systemProtected === true)),
+    systemProtected: isUserCatalog ? false : account.systemProtected,
     isPostable,
     isActive,
     isLegacy,
@@ -1035,6 +1041,15 @@ function finIsCatalogManagedAccount(account) {
   if (String(account.generatedFrom || '') === FIN_ACCOUNT_CATALOG_SOURCE) return true;
   if (String(account.sourceModule || '') === FIN_ACCOUNT_CATALOG_SOURCE) return true;
   return false;
+}
+
+function finIsUserCatalogAccount(account) {
+  if (!account || typeof account !== 'object') return false;
+  if (finIsRootAccount(account)) return false;
+  if (account.a33CatalogUserCreated === true) return true;
+  const generated = String(account.generatedFrom || '').trim();
+  const sourceModule = String(account.sourceModule || '').trim();
+  return account.a33CatalogVisible === true && (generated === FIN_ACCOUNT_CATALOG_SOURCE || sourceModule === FIN_ACCOUNT_CATALOG_SOURCE);
 }
 
 function finGetCatalogManagedAccounts(data) {
@@ -1416,6 +1431,46 @@ function finApplyAccountDefinition(current, def, nowISO) {
   const base = finAccountDefinitionToRow(def, nowISO);
   const out = current ? { ...current } : { code: base.code, createdAtISO: nowISO };
   let changed = !current;
+
+  if (current && finIsUserCatalogAccount(current)) {
+    const codeStr = String(base.code);
+    if (String(out.code || '') !== codeStr) { out.code = codeStr; changed = true; }
+    const safeKeys = {
+      isRoot: false,
+      isLocked: false,
+      systemProtected: false,
+      isLegacy: false,
+      legacy: false,
+      legacyFinancialAccount: false,
+      a33CatalogVisible: true,
+      a33CatalogUserCreated: true,
+      generatedFrom: FIN_ACCOUNT_CATALOG_SOURCE,
+      sourceModule: FIN_ACCOUNT_CATALOG_SOURCE,
+      sourceCatalog: 'Finanzas → Catálogo de Cuentas',
+      a33AccountCatalogVisibleMode: FIN_ACCOUNT_CATALOG_VISIBLE_MODE,
+      a33AccountHierarchyStage: FIN_ACCOUNTING_REDESIGN_STAGE,
+      a33AccountHierarchyVersion: FIN_ACCOUNT_HIERARCHY_VERSION
+    };
+    for (const [key, value] of Object.entries(safeKeys)) {
+      if (out[key] !== value) { out[key] = value; changed = true; }
+    }
+    if (!out.nombre && out.name) { out.nombre = out.name; changed = true; }
+    if (!out.name && out.nombre) { out.name = out.nombre; changed = true; }
+    if (!out.parentId && out.parentCode) { out.parentId = out.parentCode; changed = true; }
+    if (!out.parentCode && out.parentId) { out.parentCode = out.parentId; changed = true; }
+    if (!out.rootCode) { out.rootCode = finGetRootFromCode(out.code); changed = true; }
+    if (!out.level) { out.level = finGetAccountLevelFromCode(out.code); changed = true; }
+    if (out.isPostable === false || out.postable === false || out.noPostable === true || out.isGrouping === true || out.grouping === true || String(out.accountMode || '').toLowerCase() === 'grouping') {
+      if (out.isPostable !== false) { out.isPostable = false; changed = true; }
+      if (out.postable !== false) { out.postable = false; changed = true; }
+      if (out.noPostable !== true) { out.noPostable = true; changed = true; }
+      if (out.isGrouping !== true) { out.isGrouping = true; changed = true; }
+      if (out.grouping !== true) { out.grouping = true; changed = true; }
+      if (out.accountMode !== 'grouping') { out.accountMode = 'grouping'; changed = true; }
+    }
+    if (changed) { out.updatedAtISO = nowISO; out.updatedAt = nowISO; }
+    return { row: out, changed };
+  }
 
   const codeStr = String(base.code);
   if (String(out.code || '') !== codeStr) {
@@ -9210,15 +9265,16 @@ function catBuildAccountRuleState(data, account) {
   const usedCount = catGetAccountUsageCount(data, row.code);
   const hasMovements = usedCount > 0;
   const isRoot = catIsRootLockedForUI(row);
-  const isLocked = isRoot || row.isLocked === true || row.systemProtected === true;
-  const isLegacy = finIsLegacyAccount(row);
+  const isUserCatalog = finIsUserCatalogAccount(row);
+  const isLocked = isRoot || (!isUserCatalog && (row.isLocked === true || row.systemProtected === true));
+  const isLegacy = isUserCatalog ? false : finIsLegacyAccount(row);
   const isActive = finIsActiveAccount(row) && row.isHidden !== true;
   const effectivePostable = !isRoot && !hasChildren && isActive && finIsPostableAccount({ ...row, hasChildren: false });
   const isGrouping = isRoot || hasChildren || !effectivePostable;
   const level = Number(row.level || finGetAccountLevelFromCode(row.code) || 0);
-  const canEditName = !isRoot && !isLocked && !isLegacy && !hasMovements;
+  const canEditName = !isRoot && !isLocked && !isLegacy;
   const canChangePostable = !isRoot && !isLocked && !isLegacy && !hasChildren && !hasMovements;
-  const canCreateChild = isActive && level >= 1 && level < FIN_ACCOUNT_MAX_LEVEL && !!finGetRootFromCode(row.code) && !effectivePostable && (!hasMovements || isRoot);
+  const canCreateChild = isActive && level >= 1 && level < FIN_ACCOUNT_MAX_LEVEL && !!finGetRootFromCode(row.code) && !effectivePostable && !isLocked && !isLegacy;
   const canToggleActive = !isRoot && !isLocked && !isLegacy && (isActive ? activeChildrenCount === 0 : true);
   const canDelete = !isRoot && !isLocked && !isLegacy && !hasChildren && !hasMovements;
 
@@ -9226,7 +9282,7 @@ function catBuildAccountRuleState(data, account) {
   if (!isActive) createChildMessage = 'La cuenta está inactiva y no acepta nuevas subcuentas.';
   else if (level >= FIN_ACCOUNT_MAX_LEVEL) createChildMessage = 'Por ahora el catálogo permite hasta 4 niveles.';
   else if (effectivePostable) createChildMessage = FIN_ACCOUNT_CATALOG_POSTABLE_CHILD_LOCK_MESSAGE;
-  else if (hasMovements && !isRoot) createChildMessage = FIN_ACCOUNT_CATALOG_STRUCTURAL_LOCK_MESSAGE;
+  else if (isLocked || isLegacy) createChildMessage = 'Esta cuenta está protegida por compatibilidad histórica.';
 
   let editMessage = '';
   if (isRoot) editMessage = FIN_ACCOUNT_CATALOG_LOCK_MESSAGE;
@@ -9401,6 +9457,7 @@ function catBuildAccountRowForSave({ existing = null, code, name, parent, postab
     nature: root ? root.nature : finGetAccountNature(parentRow),
     isRoot: false,
     isLocked: false,
+    systemProtected: false,
     isPostable,
     postable: isPostable,
     noPostable: !isPostable,
@@ -9410,11 +9467,13 @@ function catBuildAccountRowForSave({ existing = null, code, name, parent, postab
     isActive: true,
     active: true,
     isHidden: false,
-    isLegacy: existing && existing.isLegacy === true ? true : false,
+    isLegacy: false,
+    legacy: false,
+    legacyFinancialAccount: false,
     a33CatalogVisible: true,
     a33CatalogUserCreated: true,
     a33CatalogActivatedAt: existing && existing.a33CatalogActivatedAt ? existing.a33CatalogActivatedAt : nowISO,
-    generatedFrom: existing && existing.generatedFrom ? existing.generatedFrom : FIN_ACCOUNT_CATALOG_SOURCE,
+    generatedFrom: FIN_ACCOUNT_CATALOG_SOURCE,
     sourceModule: FIN_ACCOUNT_CATALOG_SOURCE,
     sourceCatalog: 'Finanzas → Catálogo de Cuentas',
     legacyNames,
@@ -9953,6 +10012,14 @@ function populateCatRootSelect() {
   catFillParentSelect();
 }
 
+function catDefaultPostableChoiceForParent(parentCode) {
+  const parent = catFindVisibleAccountByCode(finCachedData || {}, parentCode);
+  const level = parent ? Number(finNormalizeAccountForView(parent)?.level || finGetAccountLevelFromCode(parentCode) || 1) : 1;
+  // Nivel 2 y 3 suelen ser agrupadores para permitir llegar a nivel 3/4.
+  // El cuarto nivel ya debe quedar listo para recibir Debe/Haber.
+  return level >= 3 ? 'postable' : 'grouping';
+}
+
 function setCatModalMode(mode, acc = null, parentCodeForNew = '') {
   const modeEl = document.getElementById('cat-mode');
   const editCodeEl = document.getElementById('cat-edit-code');
@@ -9996,9 +10063,10 @@ function setCatModalMode(mode, acc = null, parentCodeForNew = '') {
     parentEl.disabled = false;
     if (postableEl) {
       postableEl.disabled = false;
-      postableEl.value = 'postable';
+      postableEl.value = catDefaultPostableChoiceForParent(parentCodeForNew || '1000');
     }
     catFillParentSelect(parentCodeForNew || '1000');
+    if (postableEl) postableEl.value = catDefaultPostableChoiceForParent(catGetParentSelectValue() || parentCodeForNew || '1000');
     if (titleEl) titleEl.textContent = 'Nueva subcuenta';
     if (subEl) subEl.textContent = 'Selecciona la cuenta padre; el código se asigna automáticamente.';
   }
@@ -10065,6 +10133,14 @@ async function saveCatAccount() {
     existing.isGrouping = !wantsPostable;
     existing.grouping = !wantsPostable;
     existing.accountMode = wantsPostable ? 'postable' : 'grouping';
+    existing.isLocked = false;
+    existing.systemProtected = false;
+    existing.isLegacy = false;
+    existing.legacy = false;
+    existing.legacyFinancialAccount = false;
+    existing.generatedFrom = FIN_ACCOUNT_CATALOG_SOURCE;
+    existing.sourceModule = FIN_ACCOUNT_CATALOG_SOURCE;
+    existing.sourceCatalog = 'Finanzas → Catálogo de Cuentas';
     existing.a33CatalogVisible = true;
     existing.a33CatalogUserCreated = true;
     existing.a33AccountCatalogVisibleMode = FIN_ACCOUNT_CATALOG_VISIBLE_MODE;
@@ -10295,6 +10371,8 @@ function setupCatalogoUI() {
 
   if (parentEl) {
     parentEl.addEventListener('change', () => {
+      const mode = document.getElementById('cat-mode')?.value || 'new';
+      if (mode === 'new' && postableEl) postableEl.value = catDefaultPostableChoiceForParent(parentEl.value);
       catRefreshSuggestedCode();
     });
   }
