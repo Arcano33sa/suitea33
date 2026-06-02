@@ -5,9 +5,9 @@
   <title>Finanzas – Suite A33</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#060606">
-  <script src="/assets/js/a33-theme.js?v=4.20.77&r=10"></script>
-  <link rel="stylesheet" href="style.css?v=4.20.77&r=27">
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.77&r=10">
+  <script src="/assets/js/a33-theme.js?v=4.20.80&r=10"></script>
+  <link rel="stylesheet" href="style.css?v=4.20.80&r=1">
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.80&r=10">
 </head>
 <body class="fin-body">
   <div class="fin-app">
@@ -22,7 +22,7 @@
     <div class="fin-title-block">
       <h1>Suite A33</h1>
       <p>Finanzas · Contabilidad básica de Arcano 33</p>
-      <p class="fin-version" data-a33-version="1" data-a33-fallback="v4.20.77">v...</p>
+      <p class="fin-version" data-a33-version="1" data-a33-fallback="v4.20.80">v...</p>
     </div>
   </div>
 
@@ -87,63 +87,115 @@
           </label>
         </div>
 
-        <div class="fin-cards-grid">
+        <div class="fin-cards-grid fin-cards-grid--tablero">
           <article class="fin-card">
-            <h3>Ingresos (4xxx)</h3>
+            <h3>Ingresos operativos</h3>
             <p id="tab-ingresos" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card">
-            <h3>COGS (5100)</h3>
+            <h3>Otros ingresos</h3>
+            <p id="tab-post-cortesias" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Costos de producción / costo de ventas</h3>
             <p id="tab-costos" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card">
-            <h3>Cortesías (6105)</h3>
-            <p id="tab-cortesias" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Margen bruto del periodo</h3>
-            <p id="tab-bruta" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Utilidad después de cortesías</h3>
-            <p id="tab-post-cortesias" class="fin-card-number">C$ 0.00</p>
-          </article>
-          <article class="fin-card">
-            <h3>Gastos de operación (6xxx)</h3>
+            <h3>Gastos operativos</h3>
             <p id="tab-gastos" class="fin-card-number">C$ 0.00</p>
           </article>
 
+          <article class="fin-card">
+            <h3>Ajustes comerciales</h3>
+            <p id="tab-cortesias" class="fin-card-number">C$ 0.00</p>
+          </article>
+
           <article class="fin-card fin-card-strong">
-            <h3>Resultado neto del periodo</h3>
+            <h3>Utilidad bruta</h3>
+            <p id="tab-bruta" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card fin-card-strong">
+            <h3>Utilidad neta</h3>
             <p id="tab-resultado" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card">
-            <h3>Saldo Caja (1100 + 1110)</h3>
+            <h3>Total caja equivalente C$</h3>
             <p id="tab-caja" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card">
-            <h3>Saldo Banco (1200)</h3>
+            <h3>Total bancos equivalente C$</h3>
             <p id="tab-banco" class="fin-card-number">C$ 0.00</p>
           </article>
         </div>
 
-        <!-- Gráfico Ingresos / Costos / Resultado -->
+        <section class="fin-subsection fin-tablero-liquidity-section">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Caja, Bancos y multimoneda</h3>
+            <p id="tab-liquidity-note">Saldo acumulado al cierre del período. Caja y Bancos son saldos globales.</p>
+          </header>
+
+          <div class="fin-liquidity-grid">
+            <article class="fin-liquidity-panel">
+              <div class="fin-liquidity-head">
+                <h4>Caja por moneda</h4>
+                <span>Fuente: Diario Contable</span>
+              </div>
+              <div class="fin-liquidity-totals">
+                <div><small>Caja C$</small><strong id="tab-cash-nio">C$ 0.00</strong></div>
+                <div><small>Caja US$</small><strong id="tab-cash-usd">US$ 0.00</strong></div>
+                <div><small>Total caja equivalente C$</small><strong id="tab-cash-equivalent">C$ 0.00</strong></div>
+              </div>
+              <div id="tab-cash-detail" class="fin-liquidity-list"></div>
+            </article>
+
+            <article class="fin-liquidity-panel">
+              <div class="fin-liquidity-head">
+                <h4>Bancos por banco y moneda</h4>
+                <span>Sin bancos hardcodeados</span>
+              </div>
+              <div class="fin-liquidity-totals">
+                <div><small>Bancos C$</small><strong id="tab-bank-nio">C$ 0.00</strong></div>
+                <div><small>Bancos US$</small><strong id="tab-bank-usd">US$ 0.00</strong></div>
+                <div><small>Total bancos equivalente C$</small><strong id="tab-bank-equivalent">C$ 0.00</strong></div>
+              </div>
+              <div id="tab-bank-detail" class="fin-liquidity-list"></div>
+            </article>
+
+            <article class="fin-liquidity-panel fin-liquidity-panel--summary">
+              <div class="fin-liquidity-head">
+                <h4>Consolidado operativo</h4>
+                <span>Equivalente en C$</span>
+              </div>
+              <div class="fin-liquidity-hero">
+                <small>Total efectivo + bancos equivalente C$</small>
+                <strong id="tab-liquidity-equivalent">C$ 0.00</strong>
+                <p>No recalcula históricos: usa equivalentes y T/C snapshot guardados.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="fin-subsection fin-tablero-alerts-section">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Alertas del Tablero</h3>
+            <p>Lectura informativa de clasificación contable. No bloquea ni modifica datos.</p>
+          </header>
+          <div class="fin-report-alerts" id="tab-alerts"></div>
+        </section>
+
         <section class="fin-subsection">
           <header class="fin-section-header fin-section-header--sub">
-            <h3>Gráfico Ingresos / Costos / Resultado</h3>
-            <p>
-              Visualiza el comportamiento del periodo y evento seleccionados.
-              Barras en colores de la Suite A33.
-            </p>
+            <h3>Gráfico del resultado contable</h3>
+            <p>Visualiza ingresos, costos, gastos y utilidad neta usando los asientos reales del periodo.</p>
           </header>
           <div class="fin-chart-wrapper">
-            <canvas id="tab-chart" width="480" height="240"></canvas>
+            <canvas id="tab-chart" width="720" height="300"></canvas>
           </div>
         </section>
       </section>
@@ -1607,15 +1659,15 @@
   <!-- Print root (Recibos) -->
   <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.77&r=7"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.77&r=44"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.80&r=7"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.80&r=1"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.77&r=10"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.77&r=14"></script>
-  <script src="/assets/js/a33-export-currency.js?v=4.20.77&r=2"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.77&r=10"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.80&r=10"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.80&r=14"></script>
+  <script src="/assets/js/a33-export-currency.js?v=4.20.80&r=2"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.80&r=10"></script>
 
-  <script src="script.js?v=4.20.77&r=37"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.77&r=10"></script>
+  <script src="script.js?v=4.20.80&r=1"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.80&r=10"></script>
 </body>
 </html>

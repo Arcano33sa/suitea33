@@ -6208,28 +6208,32 @@ function calcResultadosForFilter(data, filtros) {
 }
 
 
-// Total de cortesías provenientes del POS (cuenta 6105) en el rango/evento.
-// Nota: usamos origen='POS' y descripcion contiene 'Cortesía POS' para NO mezclar con otros gastos manuales en 6105.
+// Total de cortesías provenientes del POS.
+// Compatibilidad: antes se leía 6105; ahora también respeta el snapshot de cuenta posteable usado por cada cierre.
 function calcCortesiasPos6105ForFilter(data, filtros) {
-  // Cortesías deben detectarse por accountCode + source (NO por texto en descripción)
   const entriesInRange = filterEntriesByDateAndEvent(data?.entries || [], filtros);
-  const allowedEntryIds = new Set();
+  const allowedByEntry = new Map();
 
   for (const e of entriesInRange) {
     const src = String(e?.source || '');
     if (src === POS_DAILY_CLOSE_SOURCE || src === POS_DAILY_CLOSE_REVERSAL_SOURCE) {
       const id = Number(e?.id || 0);
-      if (id) allowedEntryIds.add(id);
+      if (!id) continue;
+      const code = finNormalizeAccountCode(e?.cortesia?.expenseAccountCode || e?.posCosts?.courtesyAccountCode || '6105');
+      allowedByEntry.set(id, code || '6105');
     }
   }
 
-  if (!allowedEntryIds.size) return 0;
+  if (!allowedByEntry.size) return 0;
 
   let sum = 0;
   for (const ln of (data?.lines || [])) {
     if (!ln) continue;
-    if (!allowedEntryIds.has(Number(ln.idEntry || 0))) continue;
-    if (String(ln.accountCode) !== '6105') continue;
+    const eid = Number(ln.idEntry || 0);
+    if (!allowedByEntry.has(eid)) continue;
+    const expected = allowedByEntry.get(eid);
+    const lineCode = finNormalizeAccountCode(ln.accountCode);
+    if (lineCode !== expected && lineCode !== '6105') continue;
     sum += (n0(ln.debe) - n0(ln.haber));
   }
   return n2(sum);
@@ -6305,32 +6309,323 @@ function calcBalanceGroupsUntilDate(data, corte) {
   return { activos, pasivos, patrimonio };
 }
 
-function calcCajaBancoUntilDate(data, corte) {
-  const { entries, linesByEntry, accountsMap } = data;
+function finDashboardBuildFinancialAccountLookups(data) {
+  const rows = Array.isArray(data && data.financialAccounts) ? data.financialAccounts : [];
+  const byId = new Map();
+  const byCode = new Map();
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const id = String(row.id || row.uniqueKey || row.financialAccountId || '').trim();
+    const code = finNormalizeAccountCode(row.cuentaContableCodigo || row.financialAccountAccountingCode || row.accountCode || '');
+    if (id && !byId.has(id)) byId.set(id, row);
+    if (code && !byCode.has(code)) byCode.set(code, row);
+  }
+  return { byId, byCode };
+}
+
+function finDashboardGetFinancialAccountForLine(line, entry, data, lookups) {
+  const maps = lookups || finDashboardBuildFinancialAccountLookups(data);
+  const id = String(
+    (line && (line.financialAccountId || line.cuentaFinancieraId)) ||
+    (entry && (entry.financialAccountId || entry.cuentaFinancieraId)) ||
+    ''
+  ).trim();
+  if (id && maps.byId && maps.byId.has(id)) return maps.byId.get(id);
+  const code = finNormalizeAccountCode(line && line.accountCode);
+  if (code && maps.byCode && maps.byCode.has(code)) return maps.byCode.get(code);
+  return null;
+}
+
+function finDashboardCurrencyRaw(account, line, entry, financialAccount) {
+  const candidates = [
+    line && (line.originalCurrency || line.monedaOriginal || line.currency || line.moneda),
+    entry && (entry.originalCurrency || entry.monedaOriginal || entry.financialAccountCurrency || entry.cuentaFinancieraMoneda || entry.currency || entry.moneda),
+    financialAccount && (financialAccount.moneda || financialAccount.financialAccountCurrency || financialAccount.currency || financialAccount.currencyCode),
+    account && (account.currencyCode || account.currency || account.moneda || account.currencyId)
+  ];
+  for (const raw of candidates) {
+    const s = String(raw ?? '').trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+function finDashboardInferCurrency(account, line, entry, financialAccount) {
+  const raw = finDashboardCurrencyRaw(account, line, entry, financialAccount);
+  if (raw) {
+    return {
+      currency: finNormalizeCurrencyCode(raw),
+      confidence: 'explicit'
+    };
+  }
+
+  const text = normText([
+    financialAccount && (financialAccount.nombreVisible || financialAccount.financialAccountNameSnapshot || financialAccount.name || financialAccount.nombre),
+    account && (account.nombre || account.name),
+    line && (line.accountNameSnapshot || line.accountName || line.nombreCuenta),
+    entry && (entry.descripcion || entry.description || entry.reference || entry.referencia)
+  ].filter(Boolean).join(' '));
+
+  if (/(^|\s)(us\$|usd)(\s|$)/.test(text) || text.includes('dolar')) {
+    return { currency: 'USD', confidence: 'inferredText' };
+  }
+  if (/(^|\s)(c\$|nio)(\s|$)/.test(text) || text.includes('cordoba')) {
+    return { currency: 'NIO', confidence: 'inferredText' };
+  }
+
+  const code = finNormalizeAccountCode(
+    (account && (account.code || account.accountCode || account.codigo)) ||
+    (line && line.accountCode) ||
+    ''
+  );
+  const inferredByCode = finGetFinancialAccountCurrencyCode(code);
+  if (code && inferredByCode === 'USD') return { currency: 'USD', confidence: 'inferredCode' };
+  return { currency: 'NIO', confidence: 'legacyDefault' };
+}
+
+function finDashboardNormalizeBankName(text) {
+  let out = String(text || '').trim();
+  out = out.replace(/^banco\s*\/\s*/i, '');
+  out = out.replace(/^banco\s+/i, '');
+  out = out.replace(/\s+[·|-]\s*(c\$|us\$|nio|usd)$/i, '');
+  out = out.replace(/\s+(c\$|us\$|nio|usd)$/i, '');
+  out = out.replace(/\s+/g, ' ').trim();
+  return out || 'Banco sin clasificar';
+}
+
+function finDashboardResolveBankName(account, line, entry, financialAccount) {
+  const candidates = [
+    financialAccount && (financialAccount.bancoNombreSnapshot || financialAccount.bankNameSnapshot || financialAccount.bankCatalogName || financialAccount.nombreBanco),
+    account && (account.bankNameSnapshot || account.bankCatalogName || account.bancoNombreSnapshot || account.nombreBanco),
+    financialAccount && (financialAccount.nombreVisible || financialAccount.financialAccountNameSnapshot || financialAccount.name || financialAccount.nombre),
+    line && (line.financialAccountNameSnapshot || line.cuentaFinancieraNombreSnapshot || line.bankNameSnapshot || line.accountNameSnapshot || line.accountName),
+    account && (account.nombre || account.name)
+  ];
+  for (const raw of candidates) {
+    const value = finDashboardNormalizeBankName(raw);
+    if (value && value !== 'Banco sin clasificar') return value;
+  }
+  return 'Banco sin clasificar';
+}
+
+function finDashboardResolveCashName(account, line, entry, financialAccount) {
+  const raw =
+    (financialAccount && (financialAccount.nombreVisible || financialAccount.financialAccountNameSnapshot || financialAccount.name || financialAccount.nombre)) ||
+    (account && (account.nombre || account.name)) ||
+    (line && (line.accountNameSnapshot || line.accountName)) ||
+    '';
+  const txt = String(raw || '').trim();
+  if (!txt) return 'Caja';
+  if (/caja/i.test(txt)) return txt.replace(/\s+/g, ' ').trim();
+  return 'Caja';
+}
+
+function finDashboardParseMoneyLike(value) {
+  const n = finParseCurrencyAmount(value);
+  return Number.isFinite(n) ? finRoundCurrency2(n) : null;
+}
+
+function finDashboardGetSnapshotRate(line, entry) {
+  const raw =
+    (line && (line.exchangeRateUsed ?? line.tipoCambioUsado ?? line.exchangeRate ?? line.tipoCambio)) ??
+    (entry && (entry.exchangeRateUsed ?? entry.tipoCambioUsado ?? entry.exchangeRate ?? entry.tipoCambio));
+  const n = finDashboardParseMoneyLike(raw);
+  return Number.isFinite(n) && n > 0 ? finRoundCurrency2(n) : null;
+}
+
+function finDashboardOriginalDelta(line, entry, currency, baseDelta, rate) {
+  const dOrig = finDashboardParseMoneyLike(line && (line.debitOriginal ?? line.debeOriginal));
+  const hOrig = finDashboardParseMoneyLike(line && (line.creditOriginal ?? line.haberOriginal));
+  if ((Number.isFinite(dOrig) && dOrig > 0) || (Number.isFinite(hOrig) && hOrig > 0)) {
+    return finRoundCurrency2((dOrig || 0) - (hOrig || 0));
+  }
+
+  const rawOriginalLine = line && (line.originalAmount ?? line.montoOriginal ?? line.totalOriginal);
+  const lineOriginal = finDashboardParseMoneyLike(rawOriginalLine);
+  if (Number.isFinite(lineOriginal) && lineOriginal > 0) {
+    return finRoundCurrency2((baseDelta < 0 ? -1 : 1) * lineOriginal);
+  }
+
+  if (currency === 'NIO') return finRoundCurrency2(baseDelta);
+
+  const rawOriginalEntry = entry && (entry.originalAmount ?? entry.montoOriginal ?? entry.totalOriginal);
+  const entryOriginal = finDashboardParseMoneyLike(rawOriginalEntry);
+  if (Number.isFinite(entryOriginal) && entryOriginal > 0) {
+    return finRoundCurrency2((baseDelta < 0 ? -1 : 1) * entryOriginal);
+  }
+
+  if (currency === 'USD' && Number.isFinite(rate) && rate > 0 && Number.isFinite(baseDelta)) {
+    return finRoundCurrency2(baseDelta / rate);
+  }
+  return null;
+}
+
+function finDashboardMakeLiquidityRow(kind, key, label, currency) {
+  return {
+    kind,
+    key,
+    label,
+    currency: finNormalizeCurrencyCode(currency),
+    balanceOriginal: 0,
+    equivalentNio: 0,
+    accountCodes: new Set(),
+    lineCount: 0,
+    legacyCurrencyCount: 0,
+    inferredCurrencyCount: 0,
+    missingUsdRateCount: 0,
+    missingOriginalUsdCount: 0,
+    usedStoredEquivalentWithoutRateCount: 0,
+    unclassifiedBankCount: 0
+  };
+}
+
+function finDashboardAddLiquidityRow(map, row, originalDelta, equivalentDelta, accountCode, meta) {
+  if (!map.has(row.key)) map.set(row.key, row);
+  const target = map.get(row.key);
+  if (Number.isFinite(originalDelta)) target.balanceOriginal = finRoundCurrency2(target.balanceOriginal + originalDelta);
+  if (Number.isFinite(equivalentDelta)) target.equivalentNio = finRoundCurrency2(target.equivalentNio + equivalentDelta);
+  if (accountCode) target.accountCodes.add(accountCode);
+  target.lineCount += 1;
+  if (meta && meta.currencyConfidence === 'legacyDefault') target.legacyCurrencyCount += 1;
+  if (meta && (meta.currencyConfidence === 'inferredText' || meta.currencyConfidence === 'inferredCode')) target.inferredCurrencyCount += 1;
+  if (meta && meta.missingUsdRate) target.missingUsdRateCount += 1;
+  if (meta && meta.missingOriginalUsd) target.missingOriginalUsdCount += 1;
+  if (meta && meta.usedStoredEquivalentWithoutRate) target.usedStoredEquivalentWithoutRateCount += 1;
+  if (meta && meta.unclassifiedBank) target.unclassifiedBankCount += 1;
+}
+
+function calcCajaBancoMultimonedaUntilDate(data, corte) {
+  const safeData = data || {};
+  const entries = Array.isArray(safeData.entries) ? safeData.entries : [];
+  const linesByEntry = safeData.linesByEntry instanceof Map ? safeData.linesByEntry : new Map();
+  const accountsMap = safeData.accountsMap instanceof Map ? safeData.accountsMap : new Map();
   const cutoff = corte || todayStr();
-  let caja = 0;
-  let banco = 0;
+  const lookups = finDashboardBuildFinancialAccountLookups(safeData);
+  const cashRows = new Map();
+  const bankRows = new Map();
+  const stats = {
+    scannedEntries: 0,
+    scannedLines: 0,
+    liquidityLines: 0,
+    usdWithoutRate: 0,
+    usdWithoutOriginal: 0,
+    legacyCurrency: 0,
+    inferredCurrency: 0,
+    unclassifiedBank: 0,
+    groupingLiquidityLines: 0
+  };
 
-  for (const e of entries) {
-    const f = e.fecha || e.date || '';
+  for (const entry of entries) {
+    const f = String((entry && (entry.fecha || entry.date)) || '').slice(0, 10);
     if (f && f > cutoff) continue;
-    const lines = linesByEntry.get(e.id) || [];
-    for (const ln of lines) {
-      const debe = Number(ln.debe || 0);
-      const haber = Number(ln.haber || 0);
-      const delta = (debe - haber);
-      const code = String(ln.accountCode);
-      const acc = getAccountByCodeLoose(code, accountsMap);
+    stats.scannedEntries += 1;
+    const entryId = Number(entry && entry.id);
+    const lines = linesByEntry.get(entry && entry.id) || linesByEntry.get(entryId) || [];
+    for (const line of lines) {
+      if (!line || typeof line !== 'object') continue;
+      stats.scannedLines += 1;
+      const accountCode = finNormalizeAccountCode(line.accountCode);
+      const account = getAccountByCodeLoose(accountCode, accountsMap);
+      const isCash = finIsCashAccount(account || accountCode);
+      const isBank = !isCash && finIsBankAccount(account || accountCode);
+      if (!isCash && !isBank) continue;
 
-      if (finIsCashAccount(acc || code)) {
-        caja += delta;
-      } else if (finIsBankAccount(acc || code)) {
-        banco += delta;
+      stats.liquidityLines += 1;
+      if (account && (finIsRootAccount(account) || finIsGroupingAccount(account))) stats.groupingLiquidityLines += 1;
+
+      const financialAccount = finDashboardGetFinancialAccountForLine(line, entry, safeData, lookups);
+      const curInfo = finDashboardInferCurrency(account, line, entry, financialAccount);
+      const currency = finNormalizeCurrencyCode(curInfo.currency);
+      const rate = finDashboardGetSnapshotRate(line, entry);
+      const debe = n0(line.debe);
+      const haber = n0(line.haber);
+      const baseDelta = finRoundCurrency2(debe - haber);
+      const originalDelta = finDashboardOriginalDelta(line, entry, currency, baseDelta, rate);
+
+      const missingUsdRate = currency === 'USD' && !rate;
+      const missingOriginalUsd = currency === 'USD' && !Number.isFinite(originalDelta);
+      const usedStoredEquivalentWithoutRate = currency === 'USD' && missingUsdRate && Number.isFinite(baseDelta) && Math.abs(baseDelta) > 0.005;
+      if (missingUsdRate) stats.usdWithoutRate += 1;
+      if (missingOriginalUsd) stats.usdWithoutOriginal += 1;
+      if (curInfo.confidence === 'legacyDefault') stats.legacyCurrency += 1;
+      if (curInfo.confidence === 'inferredText' || curInfo.confidence === 'inferredCode') stats.inferredCurrency += 1;
+
+      if (isCash) {
+        const label = currency === 'USD' ? 'Caja US$' : 'Caja C$';
+        const row = finDashboardMakeLiquidityRow('cash', `cash-${currency}`, label, currency);
+        row.cashName = finDashboardResolveCashName(account, line, entry, financialAccount);
+        finDashboardAddLiquidityRow(cashRows, row, originalDelta, baseDelta, accountCode, {
+          currencyConfidence: curInfo.confidence,
+          missingUsdRate,
+          missingOriginalUsd,
+          usedStoredEquivalentWithoutRate
+        });
+      } else if (isBank) {
+        const bankName = finDashboardResolveBankName(account, line, entry, financialAccount);
+        const unclassifiedBank = bankName === 'Banco sin clasificar';
+        if (unclassifiedBank) stats.unclassifiedBank += 1;
+        const row = finDashboardMakeLiquidityRow('bank', `bank-${normText(bankName)}-${currency}`, `${bankName} ${currency === 'USD' ? 'US$' : 'C$'}`, currency);
+        row.bankName = bankName;
+        finDashboardAddLiquidityRow(bankRows, row, originalDelta, baseDelta, accountCode, {
+          currencyConfidence: curInfo.confidence,
+          missingUsdRate,
+          missingOriginalUsd,
+          usedStoredEquivalentWithoutRate,
+          unclassifiedBank
+        });
       }
     }
   }
 
-  return { caja, banco };
+  const toRows = (map) => [...map.values()]
+    .map(row => ({
+      ...row,
+      accountCodes: [...row.accountCodes].sort((a, b) => String(a).localeCompare(String(b), 'es')),
+      balanceOriginal: finRoundCurrency2(row.balanceOriginal),
+      equivalentNio: finRoundCurrency2(row.equivalentNio)
+    }))
+    .sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
+      if (a.currency !== b.currency) return a.currency === 'NIO' ? -1 : 1;
+      return String(a.label).localeCompare(String(b.label), 'es');
+    });
+
+  const cash = toRows(cashRows);
+  const bank = toRows(bankRows);
+  const sumRows = (rows, currency) => finRoundCurrency2(rows.filter(r => r.currency === currency).reduce((sum, r) => sum + n0(r.balanceOriginal), 0));
+  const sumEq = (rows) => finRoundCurrency2(rows.reduce((sum, r) => sum + n0(r.equivalentNio), 0));
+
+  const totals = {
+    cashNio: sumRows(cash, 'NIO'),
+    cashUsd: sumRows(cash, 'USD'),
+    cashEquivalentNio: sumEq(cash),
+    bankNio: sumRows(bank, 'NIO'),
+    bankUsd: sumRows(bank, 'USD'),
+    bankEquivalentNio: sumEq(bank)
+  };
+  totals.liquidityEquivalentNio = finRoundCurrency2(totals.cashEquivalentNio + totals.bankEquivalentNio);
+
+  const alerts = [
+    { text: 'Caja y Bancos se calculan como saldo acumulado global al cierre del período; el filtro de evento no se aplica para evitar saldos artificiales.' }
+  ];
+  if (stats.usdWithoutRate) alerts.push({ kind: 'warn', text: `${stats.usdWithoutRate} línea(s) USD de Caja/Bancos no tienen T/C snapshot. Se respeta el equivalente guardado cuando existe y no se recalcula con el T/C actual.` });
+  if (stats.usdWithoutOriginal) alerts.push({ kind: 'warn', text: `${stats.usdWithoutOriginal} línea(s) USD no tienen monto original suficiente para mostrar saldo en US$. El equivalente C$ guardado se mantiene.` });
+  if (stats.legacyCurrency) alerts.push({ text: `${stats.legacyCurrency} línea(s) legacy de Caja/Bancos no tenían moneda explícita; se tratan como C$ legacy sin modificar históricos.` });
+  if (stats.inferredCurrency) alerts.push({ text: `${stats.inferredCurrency} línea(s) de Caja/Bancos usaron moneda inferida por cuenta/nombre/código.` });
+  if (stats.unclassifiedBank) alerts.push({ kind: 'warn', text: `${stats.unclassifiedBank} línea(s) bancarias no tienen banco identificable; se agrupan como Banco sin clasificar.` });
+  if (stats.groupingLiquidityLines) alerts.push({ kind: 'warn', text: `${stats.groupingLiquidityLines} línea(s) de Caja/Bancos parecen usar cuentas raíz/agrupadoras. Se muestran sin bloquear, pero conviene corregir con asientos de ajuste.` });
+  if (!stats.liquidityLines) alerts.push({ text: 'No hay movimientos reales de Caja/Bancos acumulados al corte seleccionado.' });
+
+  return { cash, bank, totals, alerts, stats, cutoff };
+}
+
+function calcCajaBancoUntilDate(data, corte) {
+  const detail = calcCajaBancoMultimonedaUntilDate(data, corte);
+  return {
+    caja: detail.totals.cashEquivalentNio,
+    banco: detail.totals.bankEquivalentNio,
+    detail
+  };
 }
 
 /* ---------- Rentabilidad por presentación (lectura POS) ---------- */
@@ -8311,6 +8606,340 @@ function setupInternalTransfersUI() {
 
 /* ---------- Render: Tablero ---------- */
 
+function finDashboardAccountText(account, line) {
+  const parts = [];
+  if (account && typeof account === 'object') {
+    parts.push(
+      finGetAccountCode(account),
+      finGetAccountName(account),
+      account.tipo,
+      account.type,
+      account.category,
+      account.categoria,
+      account.rubro,
+      account.group,
+      account.grupo,
+      account.clase,
+      account.accountClass,
+      account.dashboardClass,
+      account.reportClass,
+      account.classification,
+      account.clasificacion
+    );
+  }
+  if (line && typeof line === 'object') {
+    parts.push(
+      line.accountCode,
+      line.accountName,
+      line.accountNameSnapshot,
+      line.accountNombre,
+      line.nombreCuenta,
+      line.category,
+      line.categoria,
+      line.rubro,
+      line.classification,
+      line.clasificacion
+    );
+  }
+  return normStr(parts.filter(v => v != null && String(v).trim()).join(' '), 400);
+}
+
+function finDashboardAccountType(account, line) {
+  let raw = '';
+  if (account && typeof account === 'object') raw = String(finGetAccountType(account) || getTipoCuenta(account) || '').toLowerCase();
+  else {
+    const code = finGetAccountCode(line && line.accountCode);
+    raw = String(inferTipoFromCode(code) || '').toLowerCase();
+  }
+  if (raw === 'otros_ingresos' || raw === 'otro_ingreso') return 'ingreso';
+  if (raw === 'capital') return 'patrimonio';
+  return raw;
+}
+
+function finDashboardRootCode(account, line) {
+  return finGetRootFromCode(finGetAccountCode(account || (line && line.accountCode)));
+}
+
+function finDashboardIsOtherIncome(account, line) {
+  const tipo = finDashboardAccountType(account, line);
+  if (tipo !== 'ingreso') return false;
+  const root = finDashboardRootCode(account, line);
+  const text = finDashboardAccountText(account, line);
+  if (root === '7000') return true;
+  return /(^|\s)(otro|otros)\s+ingres/.test(text) || /ingreso\s+no\s+operativ/.test(text) || /no\s+operativ/.test(text);
+}
+
+function finDashboardIsCommercialAdjustment(account, line) {
+  const code = finGetAccountCode(account || (line && line.accountCode));
+  const text = finDashboardAccountText(account, line);
+  if (code === '6105') return true;
+  return /(cortesia|cortesias|descuento|descuentos|ajuste\s+comercial|ajustes\s+comerciales|promocion|promociones|bonificacion|bonificaciones)/.test(text);
+}
+
+function finDashboardLineNaturalAmount(account, line) {
+  const tipo = finDashboardAccountType(account, line);
+  const debe = n0(line && line.debe);
+  const haber = n0(line && line.haber);
+  if (tipo === 'ingreso') return haber - debe;
+  if (tipo === 'costo' || tipo === 'gasto' || tipo === 'activo') return debe - haber;
+  if (tipo === 'pasivo' || tipo === 'patrimonio') return haber - debe;
+  return debe - haber;
+}
+
+function calcTableroClasificadoForFilter(data, filtros) {
+  const safeData = data || {};
+  const entries = Array.isArray(safeData.entries) ? safeData.entries : [];
+  const linesByEntry = safeData.linesByEntry instanceof Map ? safeData.linesByEntry : new Map();
+  const accountsMap = safeData.accountsMap instanceof Map ? safeData.accountsMap : new Map();
+  const subset = filterEntriesByDateAndEvent(entries, filtros || {});
+
+  const totals = {
+    ingresosOperativos: 0,
+    otrosIngresos: 0,
+    costosProduccion: 0,
+    gastosOperativos: 0,
+    ajustesComerciales: 0,
+    utilidadBruta: 0,
+    utilidadNeta: 0,
+    alerts: [],
+    stats: {
+      entries: subset.length,
+      lines: 0,
+      missingAccounts: 0,
+      groupingLines: 0,
+      rootLines: 0,
+      unclassifiedLines: 0,
+      entriesWithoutLines: 0,
+      legacyAdjustmentLines: 0
+    }
+  };
+
+  for (const e of subset) {
+    const entryLines = linesByEntry.get(e && e.id) || [];
+    if (!entryLines.length) {
+      totals.stats.entriesWithoutLines += 1;
+      continue;
+    }
+
+    for (const ln of entryLines) {
+      if (!ln || typeof ln !== 'object') continue;
+      totals.stats.lines += 1;
+      const code = finGetAccountCode(ln.accountCode);
+      const acc = getAccountByCodeLoose(code, accountsMap);
+      if (!acc) {
+        totals.stats.missingAccounts += 1;
+        continue;
+      }
+
+      if (finIsRootAccount(acc)) totals.stats.rootLines += 1;
+      if (finIsGroupingAccount(acc)) totals.stats.groupingLines += 1;
+
+      const tipo = finDashboardAccountType(acc, ln);
+      const amount = finDashboardLineNaturalAmount(acc, ln);
+      const ajuste = finDashboardIsCommercialAdjustment(acc, ln);
+      if (ajuste) {
+        totals.ajustesComerciales += (tipo === 'ingreso') ? (n0(ln.debe) - n0(ln.haber)) : (n0(ln.debe) - n0(ln.haber));
+        if (code === '6105') totals.stats.legacyAdjustmentLines += 1;
+      }
+
+      if (tipo === 'ingreso') {
+        if (finDashboardIsOtherIncome(acc, ln)) totals.otrosIngresos += amount;
+        else totals.ingresosOperativos += amount;
+      } else if (tipo === 'costo') {
+        totals.costosProduccion += amount;
+      } else if (tipo === 'gasto') {
+        totals.gastosOperativos += amount;
+      } else if (!['activo', 'pasivo', 'patrimonio', 'capital'].includes(tipo)) {
+        totals.stats.unclassifiedLines += 1;
+      }
+    }
+  }
+
+  totals.ingresosOperativos = n2(totals.ingresosOperativos);
+  totals.otrosIngresos = n2(totals.otrosIngresos);
+  totals.costosProduccion = n2(totals.costosProduccion);
+  totals.gastosOperativos = n2(totals.gastosOperativos);
+  totals.ajustesComerciales = n2(Math.abs(totals.ajustesComerciales) < 0.005 ? 0 : totals.ajustesComerciales);
+  totals.utilidadBruta = n2(totals.ingresosOperativos - totals.costosProduccion);
+  totals.utilidadNeta = n2(totals.ingresosOperativos + totals.otrosIngresos - totals.costosProduccion - totals.gastosOperativos);
+
+  const ji = safeData.journalIntegrity || {};
+  if (totals.stats.missingAccounts) totals.alerts.push({ kind: 'warn', text: `${totals.stats.missingAccounts} línea(s) del periodo usan cuentas que no se encontraron en el Catálogo. Se omitieron para no inventar clasificación.` });
+  if (totals.stats.groupingLines || totals.stats.rootLines) totals.alerts.push({ kind: 'warn', text: `Hay ${totals.stats.groupingLines || totals.stats.rootLines} línea(s) registradas contra cuentas raíz/agrupadoras. El Tablero las lee, pero conviene corregirlas con asientos de ajuste si afectan reportes.` });
+  if (totals.stats.unclassifiedLines) totals.alerts.push({ kind: 'warn', text: `${totals.stats.unclassifiedLines} línea(s) no pudieron clasificarse como ingreso, costo o gasto.` });
+  if (totals.stats.entriesWithoutLines || ji.entriesWithoutLinesCount) totals.alerts.push({ text: `Existen asientos históricos sin líneas visibles (${totals.stats.entriesWithoutLines} en este filtro; ${Number(ji.entriesWithoutLinesCount || 0)} en la base). No se recalculó nada.` });
+  if (Number(ji.orphanLinesCount || 0) > 0) totals.alerts.push({ kind: 'warn', text: `La base conserva ${Number(ji.orphanLinesCount || 0)} línea(s) huérfanas. Se mantienen intactas y fuera del Tablero.` });
+  if (totals.stats.legacyAdjustmentLines) totals.alerts.push({ text: `Ajustes comerciales conserva compatibilidad con la cuenta legacy 6105 cuando exista en históricos.` });
+  if (!totals.alerts.length) totals.alerts.push({ text: 'Tablero calculado desde journalEntries, journalLines y accounts; sin datos simulados ni recalcular históricos.' });
+
+  return totals;
+}
+
+function renderTableroAlerts(result) {
+  const host = document.getElementById('tab-alerts');
+  if (!host) return;
+  host.innerHTML = finReportAlertHtml((result && result.alerts) || []);
+}
+
+function renderTableroChart(result) {
+  const canvas = document.getElementById('tab-chart');
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const cssWidth = canvas.clientWidth || canvas.width || 720;
+  const cssHeight = canvas.clientHeight || canvas.height || 300;
+  const width = Math.max(320, Math.floor(cssWidth));
+  const height = Math.max(220, Math.floor(cssHeight));
+  if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const styles = getComputedStyle(document.documentElement);
+  const gold = styles.getPropertyValue('--fin-gold').trim() || '#d4af37';
+  const red = styles.getPropertyValue('--fin-red').trim() || '#c83232';
+  const text = styles.getPropertyValue('--fin-text').trim() || '#f7f1df';
+  const muted = styles.getPropertyValue('--fin-muted').trim() || '#b8ad93';
+  const border = styles.getPropertyValue('--fin-border').trim() || 'rgba(255,255,255,0.12)';
+
+  const rows = [
+    ['Ingresos operativos', n0(result && result.ingresosOperativos), gold],
+    ['Otros ingresos', n0(result && result.otrosIngresos), '#9f8b4a'],
+    ['Costos', n0(result && result.costosProduccion), red],
+    ['Gastos', n0(result && result.gastosOperativos), '#8b1f26'],
+    ['Utilidad neta', n0(result && result.utilidadNeta), (n0(result && result.utilidadNeta) >= 0 ? gold : red)]
+  ];
+  const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r[1])));
+  const hasData = rows.some(r => Math.abs(r[1]) > 0.005);
+
+  ctx.font = '600 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.fillStyle = text;
+  ctx.fillText('Resultado contable del filtro seleccionado', 18, 24);
+
+  if (!hasData) {
+    ctx.font = '12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillStyle = muted;
+    ctx.fillText('No hay montos clasificados para graficar en este periodo.', 18, 58);
+    return;
+  }
+
+  const labelW = Math.min(190, Math.max(130, width * 0.28));
+  const rightPad = 120;
+  const barX = labelW + 22;
+  const barW = Math.max(80, width - barX - rightPad);
+  const top = 54;
+  const gap = 15;
+  const barH = Math.max(18, Math.min(30, (height - top - 28 - gap * (rows.length - 1)) / rows.length));
+
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(barX, top - 10);
+  ctx.lineTo(barX + barW, top - 10);
+  ctx.stroke();
+
+  rows.forEach((row, idx) => {
+    const [label, value, color] = row;
+    const y = top + idx * (barH + gap);
+    const w = Math.max(2, Math.round((Math.abs(value) / maxAbs) * barW));
+
+    ctx.font = '12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillStyle = muted;
+    ctx.fillText(label, 18, y + Math.round(barH * 0.68));
+
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(barX, y, barW, barH);
+
+    ctx.fillStyle = color;
+    ctx.fillRect(barX, y, w, barH);
+
+    ctx.fillStyle = text;
+    ctx.textAlign = 'left';
+    ctx.fillText(finFormatCordobas(value), barX + barW + 12, y + Math.round(barH * 0.68));
+  });
+  ctx.textAlign = 'left';
+}
+
+
+function finTableroMoneyByCurrency(value, currency) {
+  return finNormalizeCurrencyCode(currency) === 'USD' ? finFormatDollars(value) : finFormatCordobas(value);
+}
+
+function finTableroLiquidityRowHtml(row) {
+  const codes = Array.isArray(row.accountCodes) && row.accountCodes.length
+    ? `<span>Cuentas: ${escapeHtml(row.accountCodes.join(', '))}</span>`
+    : '';
+  const flags = [];
+  if (row.missingUsdRateCount) flags.push(`${row.missingUsdRateCount} sin T/C snapshot`);
+  if (row.missingOriginalUsdCount) flags.push(`${row.missingOriginalUsdCount} sin monto US$ original`);
+  if (row.legacyCurrencyCount) flags.push(`${row.legacyCurrencyCount} legacy`);
+  if (row.unclassifiedBankCount) flags.push(`${row.unclassifiedBankCount} sin banco identificado`);
+  const flagsHtml = flags.length ? `<span>${escapeHtml(flags.join(' · '))}</span>` : '';
+  return `
+    <article class="fin-liquidity-row">
+      <div>
+        <strong>${escapeHtml(row.label || 'Sin clasificar')}</strong>
+        <p>${codes}${flagsHtml}</p>
+      </div>
+      <div class="fin-liquidity-row-values">
+        <b>${escapeHtml(finTableroMoneyByCurrency(row.balanceOriginal || 0, row.currency))}</b>
+        <span>Eq. ${escapeHtml(finFormatCordobas(row.equivalentNio || 0))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function finTableroLiquidityEmptyHtml(text) {
+  return `<div class="fin-liquidity-empty">${escapeHtml(text || 'Sin movimientos acumulados al corte.')}</div>`;
+}
+
+function renderTableroLiquidity(detail, context) {
+  const safe = detail || calcCajaBancoMultimonedaUntilDate({}, todayStr());
+  const totals = safe.totals || {};
+  const cashRows = Array.isArray(safe.cash) ? safe.cash : [];
+  const bankRows = Array.isArray(safe.bank) ? safe.bank : [];
+
+  const cashNio = document.getElementById('tab-cash-nio');
+  const cashUsd = document.getElementById('tab-cash-usd');
+  const cashEq = document.getElementById('tab-cash-equivalent');
+  const bankNio = document.getElementById('tab-bank-nio');
+  const bankUsd = document.getElementById('tab-bank-usd');
+  const bankEq = document.getElementById('tab-bank-equivalent');
+  const liquidityEq = document.getElementById('tab-liquidity-equivalent');
+  const cashDetail = document.getElementById('tab-cash-detail');
+  const bankDetail = document.getElementById('tab-bank-detail');
+  const note = document.getElementById('tab-liquidity-note');
+
+  if (cashNio) cashNio.textContent = finFormatCordobas(totals.cashNio || 0);
+  if (cashUsd) cashUsd.textContent = finFormatDollars(totals.cashUsd || 0);
+  if (cashEq) cashEq.textContent = finFormatCordobas(totals.cashEquivalentNio || 0);
+  if (bankNio) bankNio.textContent = finFormatCordobas(totals.bankNio || 0);
+  if (bankUsd) bankUsd.textContent = finFormatDollars(totals.bankUsd || 0);
+  if (bankEq) bankEq.textContent = finFormatCordobas(totals.bankEquivalentNio || 0);
+  if (liquidityEq) liquidityEq.textContent = finFormatCordobas(totals.liquidityEquivalentNio || 0);
+
+  if (cashDetail) {
+    cashDetail.innerHTML = cashRows.length
+      ? cashRows.map(finTableroLiquidityRowHtml).join('')
+      : finTableroLiquidityEmptyHtml('No hay movimientos reales de caja acumulados al corte.');
+  }
+  if (bankDetail) {
+    bankDetail.innerHTML = bankRows.length
+      ? bankRows.map(finTableroLiquidityRowHtml).join('')
+      : finTableroLiquidityEmptyHtml('No hay movimientos reales bancarios acumulados al corte.');
+  }
+  if (note) {
+    const parts = [];
+    const corte = context && context.corte ? context.corte : safe.cutoff;
+    if (corte) parts.push(`Saldo acumulado al cierre del período: ${corte}.`);
+    parts.push('Caja y Bancos son saldos globales, no se filtran por evento.');
+    if (context && context.eventFilter && context.eventFilter !== 'ALL') parts.push('El filtro de evento queda aplicado al resultado contable, no a liquidez.');
+    note.textContent = parts.join(' ');
+  }
+}
+
 function renderTablero(data) {
   const mesSel = $('#tab-mes');
   const anioSel = $('#tab-anio');
@@ -8322,24 +8951,16 @@ function renderTablero(data) {
   const { start, end } = monthRange(Number(anio), Number(mes));
   const eventFilter = eventoSel.value || 'ALL';
 
-  const { ingresos, costos, gastos } = calcResultadosForFilter(data, {
+  const result = calcTableroClasificadoForFilter(data, {
     desde: start,
     hasta: end,
     evento: eventFilter
   });
-
-  const cortesias = calcCortesiasPos6105ForFilter(data, {
-    desde: start,
-    hasta: end,
-    evento: eventFilter
-  });
-
-  const bruta = ingresos - costos;
-  const postCortesias = bruta - cortesias;
-  const neta = bruta - gastos;
 
   const corte = end;
-  const { caja, banco } = calcCajaBancoUntilDate(data, corte);
+  const liquidity = calcCajaBancoMultimonedaUntilDate(data, corte);
+  const caja = liquidity.totals.cashEquivalentNio;
+  const banco = liquidity.totals.bankEquivalentNio;
 
   const tabIng = $('#tab-ingresos');
   const tabCos = $('#tab-costos');
@@ -8351,15 +8972,19 @@ function renderTablero(data) {
   const tabCaja = $('#tab-caja');
   const tabBanco = $('#tab-banco');
 
-  if (tabIng) tabIng.textContent = finFormatCordobas(ingresos);
-  if (tabCos) tabCos.textContent = finFormatCordobas(costos);
-  if (tabCort) tabCort.textContent = finFormatCordobas(cortesias);
-  if (tabBru) tabBru.textContent = finFormatCordobas(bruta);
-  if (tabPost) tabPost.textContent = finFormatCordobas(postCortesias);
-  if (tabGas) tabGas.textContent = finFormatCordobas(gastos);
-  if (tabRes) tabRes.textContent = finFormatCordobas(neta);
+  if (tabIng) tabIng.textContent = finFormatCordobas(result.ingresosOperativos);
+  if (tabPost) tabPost.textContent = finFormatCordobas(result.otrosIngresos);
+  if (tabCos) tabCos.textContent = finFormatCordobas(result.costosProduccion);
+  if (tabGas) tabGas.textContent = finFormatCordobas(result.gastosOperativos);
+  if (tabCort) tabCort.textContent = finFormatCordobas(result.ajustesComerciales);
+  if (tabBru) tabBru.textContent = finFormatCordobas(result.utilidadBruta);
+  if (tabRes) tabRes.textContent = finFormatCordobas(result.utilidadNeta);
   if (tabCaja) tabCaja.textContent = finFormatCordobas(caja);
   if (tabBanco) tabBanco.textContent = finFormatCordobas(banco);
+
+  renderTableroLiquidity(liquidity, { corte, eventFilter });
+  renderTableroAlerts({ ...result, alerts: [...((result && result.alerts) || []), ...((liquidity && liquidity.alerts) || [])] });
+  renderTableroChart(result);
 }
 
 /* ---------- Render: Diario y Ajustes ---------- */
@@ -18175,6 +18800,359 @@ function validatePostableAccountCodesForAutoEntry(codes, data, contextLabel = 'a
   }
   return { ok: true, message: '' };
 }
+
+
+// Etapa 3/3 Tablero: mapeo seguro POS → cuentas posteables del nuevo Catálogo.
+// No crea cuentas; solo resuelve cuentas existentes y bloquea importaciones incompletas.
+function finPosAutoAccountsList(data) {
+  if (Array.isArray(data && data.accounts)) return data.accounts;
+  if (data && data.accountsMap && typeof data.accountsMap.values === 'function') return [...data.accountsMap.values()];
+  return [];
+}
+
+function finPosAutoAccountByCode(data, code) {
+  const c = finNormalizeAccountCode(code);
+  if (!c) return null;
+  const map = data && data.accountsMap;
+  if (map && typeof map.get === 'function' && map.get(c)) return map.get(c);
+  return finPosAutoAccountsList(data).find(a => finGetAccountCode(a) === c) || null;
+}
+
+function finPosAutoIsPostableAccount(data, accountOrCode) {
+  const accounts = finPosAutoAccountsList(data);
+  const acc = (accountOrCode && typeof accountOrCode === 'object') ? accountOrCode : finPosAutoAccountByCode(data, accountOrCode);
+  if (!acc) return false;
+  const code = finGetAccountCode(acc);
+  const view = finNormalizeAccountForView({ ...acc, hasChildren: finAccountHasChildrenInList(accounts, code) });
+  return !!finIsPostableAccount(view);
+}
+
+function finPosAutoAccountName(data, code) {
+  const acc = finPosAutoAccountByCode(data, code);
+  return acc ? finGetAccountName(acc) : '';
+}
+
+function finPosAutoMatchesWords(text, words) {
+  const hay = normText(text || '');
+  const arr = Array.isArray(words) ? words : [words];
+  return arr.every(w => hay.includes(normText(w || '')));
+}
+
+function finPosAutoResolvePostableAccount(data, opts = {}) {
+  const accounts = finPosAutoAccountsList(data);
+  const candidateCodes = Array.isArray(opts.candidateCodes) ? opts.candidateCodes : [];
+  for (const raw of candidateCodes) {
+    const code = finNormalizeAccountCode(raw);
+    if (code && finPosAutoIsPostableAccount(data, code)) return code;
+  }
+
+  const typeWanted = opts.tipo ? normText(opts.tipo) : '';
+  const rootWanted = opts.rootCode ? finNormalizeAccountCode(opts.rootCode) : '';
+  const currencyWanted = opts.currency ? finNormalizeCurrencyCode(opts.currency) : '';
+  const roleWanted = opts.role ? normText(opts.role) : '';
+  const nameGroups = Array.isArray(opts.nameGroups) ? opts.nameGroups : [];
+  const predicate = (typeof opts.predicate === 'function') ? opts.predicate : null;
+
+  const rows = accounts
+    .map(a => {
+      const code = finGetAccountCode(a);
+      return { raw: a, view: finNormalizeAccountForView({ ...a, hasChildren: finAccountHasChildrenInList(accounts, code) }) };
+    })
+    .filter(row => row.view && finIsPostableAccount(row.view));
+
+  const filtered = rows.filter(({ raw, view }) => {
+    if (typeWanted && normText(getTipoCuenta(view)) !== typeWanted && normText(finGetAccountType(view)) !== typeWanted) return false;
+    if (rootWanted && finGetRootFromCode(finGetAccountCode(view)) !== rootWanted) return false;
+    if (currencyWanted && finGetFinancialAccountCurrencyCode(view) !== currencyWanted) return false;
+    if (roleWanted) {
+      const roleText = [raw.role, raw.kind, raw.accountRole, raw.generatedFrom, raw.sourceCatalog, raw.nombre, raw.name].filter(Boolean).join(' ');
+      if (!normText(roleText).includes(roleWanted)) return false;
+    }
+    if (nameGroups.length) {
+      const nm = [view.nombre, view.name, raw.nombre, raw.name, raw.bankCatalogName, raw.bankNameSnapshot].filter(Boolean).join(' ');
+      if (!nameGroups.some(group => finPosAutoMatchesWords(nm, group))) return false;
+    }
+    if (predicate && !predicate(raw, view)) return false;
+    return true;
+  });
+
+  if (!filtered.length) return '';
+  filtered.sort((a, b) => finGetAccountCode(a.view).localeCompare(finGetAccountCode(b.view), 'es'));
+  return finGetAccountCode(filtered[0].view);
+}
+
+function finPosAutoResolveCashAccount(data, currency = 'NIO') {
+  const cur = finNormalizeCurrencyCode(currency);
+  return finPosAutoResolvePostableAccount(data, {
+    candidateCodes: cur === 'USD' ? ['1122', '1112', '1105', '1115'] : ['1121', '1111', '1100', '1110'],
+    tipo: 'activo',
+    currency: cur,
+    nameGroups: cur === 'USD'
+      ? [['caja', 'eventos', 'us'], ['caja', 'general', 'us']]
+      : [['caja', 'eventos'], ['caja', 'general'], ['efectivo']]
+  });
+}
+
+function finPosAutoResolveBankAccount(data, currency = 'NIO') {
+  const cur = finNormalizeCurrencyCode(currency);
+  const generated = finPosAutoResolvePostableAccount(data, {
+    tipo: 'activo',
+    currency: cur,
+    predicate: (raw, view) => finIsBankAccount(raw || view) && String(raw && raw.generatedFrom || '').toLowerCase().includes('catalogos_bancos')
+  });
+  if (generated) return generated;
+  return finPosAutoResolvePostableAccount(data, {
+    candidateCodes: cur === 'USD' ? ['1202', '1212', '1222'] : ['1201', '1211', '1221'],
+    tipo: 'activo',
+    currency: cur,
+    predicate: (raw, view) => finIsBankAccount(raw || view) || normText(finGetAccountName(view)).includes('banco'),
+    nameGroups: [['banco']]
+  });
+}
+
+function finPosAutoResolveCreditAccount(data, currency = 'NIO') {
+  const cur = finNormalizeCurrencyCode(currency);
+  return finPosAutoResolvePostableAccount(data, {
+    candidateCodes: cur === 'USD' ? ['1312'] : ['1311'],
+    tipo: 'activo',
+    currency: cur,
+    nameGroups: [['clientes', 'credito'], ['cuentas', 'cobrar']]
+  });
+}
+
+function finPosAutoResolveIncomeAccount(data) {
+  return finPosAutoResolvePostableAccount(data, {
+    candidateCodes: ['4211', '4111'],
+    tipo: 'ingreso',
+    nameGroups: [['ventas', 'pos'], ['ventas', 'directas'], ['ventas']]
+  });
+}
+
+function finPosProductKeyFromName(name) {
+  const n = normText(name || '');
+  if (n.includes('vaso')) return 'vaso';
+  if (n.includes('pulso') || n.includes('250')) return 'pulso';
+  if (n.includes('media') || n.includes('375')) return 'media';
+  if (n.includes('djeba') || n.includes('750')) return 'djeba';
+  if (n.includes('litro') || n.includes('1000')) return 'litro';
+  if (n.includes('galon') || n.includes('gallon') || n.includes('3750')) return 'galon';
+  return '';
+}
+
+const FIN_POS_PRODUCT_ACCOUNT_MAP = Object.freeze({
+  galon: Object.freeze({ inventory: ['1421'], cogs: ['5211'], income: ['4111'] }),
+  litro: Object.freeze({ inventory: ['1422'], cogs: ['5212'], income: ['4112'] }),
+  djeba: Object.freeze({ inventory: ['1423'], cogs: ['5213'], income: ['4113'] }),
+  media: Object.freeze({ inventory: ['1424'], cogs: ['5214'], income: ['4114'] }),
+  pulso: Object.freeze({ inventory: ['1425'], cogs: ['5215'], income: ['4115'] }),
+  vaso: Object.freeze({ inventory: ['1441'], cogs: ['5131'], income: ['4211'] })
+});
+
+function finPosAutoResolveProductAccount(data, productName, kind) {
+  const key = finPosProductKeyFromName(productName);
+  const spec = key ? FIN_POS_PRODUCT_ACCOUNT_MAP[key] : null;
+  const candidates = spec && Array.isArray(spec[kind]) ? spec[kind] : [];
+  if (kind === 'inventory') {
+    return finPosAutoResolvePostableAccount(data, {
+      candidateCodes: [...candidates, '1421', '1441', '1411'],
+      tipo: 'activo',
+      nameGroups: [['sangria'], ['producto', 'terminado'], ['vasos'], ['inventario']]
+    });
+  }
+  if (kind === 'cogs') {
+    return finPosAutoResolvePostableAccount(data, {
+      candidateCodes: [...candidates, '5211', '5131', '5111'],
+      tipo: 'costo',
+      nameGroups: [['costo', 'vendido'], ['costo', 'vasos'], ['costo']]
+    });
+  }
+  if (kind === 'income') {
+    return finPosAutoResolvePostableAccount(data, {
+      candidateCodes: [...candidates, '4211', '4111'],
+      tipo: 'ingreso',
+      nameGroups: [['ventas', 'pos'], ['ventas']]
+    });
+  }
+  return '';
+}
+
+function finPosAutoResolveCourtesyExpenseAccount(data) {
+  return finPosAutoResolvePostableAccount(data, {
+    candidateCodes: ['6113', '4312', '6111', '6312'],
+    nameGroups: [['degustaciones'], ['muestras'], ['cortesias'], ['cortesías'], ['promocion'], ['promoción']],
+    predicate: (raw, view) => ['gasto', 'ingreso'].includes(normText(getTipoCuenta(view)))
+  });
+}
+
+function finPosAutoResolvePettyExpenseAccount(data) {
+  return finPosAutoResolvePostableAccount(data, {
+    candidateCodes: ['6123', '6121', '6221', '6113'],
+    tipo: 'gasto',
+    nameGroups: [['logistica'], ['transporte'], ['eventos'], ['papeleria'], ['muestras']]
+  });
+}
+
+function finPosAutoResolveOtherIncomeAccount(data) {
+  return finPosAutoResolvePostableAccount(data, {
+    candidateCodes: ['7112', '7111', '7213'],
+    tipo: 'ingreso',
+    nameGroups: [['ajustes', 'favorables'], ['recuperacion'], ['otros', 'ingresos']]
+  });
+}
+
+function finPosAutoLine(data, accountCode, debe, haber, meta = {}) {
+  const code = finNormalizeAccountCode(accountCode);
+  return {
+    accountCode: code,
+    accountNameSnapshot: finPosAutoAccountName(data, code) || null,
+    debe: n2(debe),
+    haber: n2(haber),
+    originalCurrency: meta.originalCurrency || 'NIO',
+    currency: meta.currency || meta.originalCurrency || 'NIO',
+    sourceMap: meta.sourceMap || 'POS_AUTO_POSTABLE_MAP',
+    mapRole: meta.mapRole || null,
+    productNameSnapshot: meta.productNameSnapshot || null
+  };
+}
+
+function finPosAutoAddBalancedCostLines(lines, data, productName, amount, kind = 'paid') {
+  const value = n2(amount);
+  if (!(value > 0)) return;
+  const cogsCode = kind === 'courtesy'
+    ? finPosAutoResolveCourtesyExpenseAccount(data)
+    : finPosAutoResolveProductAccount(data, productName, 'cogs');
+  const invCode = finPosAutoResolveProductAccount(data, productName, 'inventory');
+  if (!cogsCode || !invCode) {
+    throw new Error(`Falta cuenta posteable para costo POS (${productName || 'producto'}).`);
+  }
+  lines.push(finPosAutoLine(data, cogsCode, value, 0, { mapRole: kind === 'courtesy' ? 'courtesy_cost' : 'cogs', productNameSnapshot: productName || null }));
+  lines.push(finPosAutoLine(data, invCode, 0, value, { mapRole: 'inventory_out', productNameSnapshot: productName || null }));
+}
+
+function finPosAutoAddCostBreakdownLines(lines, data, breakdown, fallbackPaid, fallbackCourtesy) {
+  const rows = Array.isArray(breakdown) ? breakdown : [];
+  let usedPaid = 0;
+  let usedCourtesy = 0;
+  for (const row of rows) {
+    const name = String(row && (row.productName || row.name || row.producto || '') || '').trim();
+    const paid = n2(row && row.totalCostPaid);
+    const courtesy = n2(row && row.totalCostCourtesy);
+    if (paid > 0) {
+      finPosAutoAddBalancedCostLines(lines, data, name, paid, 'paid');
+      usedPaid = n2(usedPaid + paid);
+    }
+    if (courtesy > 0) {
+      finPosAutoAddBalancedCostLines(lines, data, name, courtesy, 'courtesy');
+      usedCourtesy = n2(usedCourtesy + courtesy);
+    }
+  }
+  const remPaid = n2(n2(fallbackPaid) - usedPaid);
+  const remCourtesy = n2(n2(fallbackCourtesy) - usedCourtesy);
+  if (remPaid > 0.01) finPosAutoAddBalancedCostLines(lines, data, 'Sangría Artesanal Premium', remPaid, 'paid');
+  if (remCourtesy > 0.01) finPosAutoAddBalancedCostLines(lines, data, 'Sangría Artesanal Premium', remCourtesy, 'courtesy');
+}
+
+function finPosAutoBuildClosureLines(closure, data) {
+  const pm = (closure && closure.totals && closure.totals.ventasPorMetodo) ? closure.totals.ventasPorMetodo : {};
+  const efectivo = n2(pm.efectivo);
+  const transferencia = n2(pm.transferencia);
+  const credito = n2(pm.credito);
+  let otros = 0;
+  const extras = {};
+  if (pm && typeof pm === 'object') {
+    for (const k of Object.keys(pm)) {
+      if (k === 'efectivo' || k === 'transferencia' || k === 'credito') continue;
+      const v = n2(pm[k]);
+      if (v > 0) {
+        otros = n2(otros + v);
+        extras[k] = v;
+      }
+    }
+  }
+
+  const total = n2(efectivo + transferencia + credito + otros);
+  const legacyCortesiaCosto = n2(closure && closure.totals && closure.totals.cortesiaCostoTotal);
+  const costoVentasTotal = n2(closure && closure.totals && closure.totals.costoVentasTotal);
+  let costoCortesiasTotal = n2(closure && closure.totals && closure.totals.costoCortesiasTotal);
+  if (!(costoCortesiasTotal > 0) && legacyCortesiaCosto > 0) costoCortesiasTotal = legacyCortesiaCosto;
+
+  const lines = [];
+  const cashCode = finPosAutoResolveCashAccount(data, 'NIO');
+  const bankCode = finPosAutoResolveBankAccount(data, 'NIO');
+  const creditCode = finPosAutoResolveCreditAccount(data, 'NIO');
+  const otherCollectionCode = bankCode || cashCode;
+  const incomeCode = finPosAutoResolveIncomeAccount(data);
+
+  if (efectivo > 0) {
+    if (!cashCode) throw new Error('Falta cuenta posteable para efectivo C$ de POS.');
+    lines.push(finPosAutoLine(data, cashCode, efectivo, 0, { mapRole: 'payment_cash_nio' }));
+  }
+  if (transferencia > 0) {
+    if (!bankCode) throw new Error('Falta cuenta posteable para transferencia/banco C$ de POS.');
+    lines.push(finPosAutoLine(data, bankCode, transferencia, 0, { mapRole: 'payment_bank_nio' }));
+  }
+  if (credito > 0) {
+    if (!creditCode) throw new Error('Falta cuenta posteable para crédito/CxC C$ de POS.');
+    lines.push(finPosAutoLine(data, creditCode, credito, 0, { mapRole: 'payment_credit_nio' }));
+  }
+  if (otros > 0) {
+    if (!otherCollectionCode) throw new Error('Falta cuenta posteable para otros métodos de cobro POS.');
+    lines.push(finPosAutoLine(data, otherCollectionCode, otros, 0, { mapRole: 'payment_other_nio' }));
+  }
+
+  if (total > 0) {
+    if (!incomeCode) throw new Error('Falta cuenta posteable para ingresos operativos POS.');
+    lines.push(finPosAutoLine(data, incomeCode, 0, total, { mapRole: 'sales_income' }));
+  }
+
+  finPosAutoAddCostBreakdownLines(lines, data, closure && closure.totals && closure.totals.costBreakdown, costoVentasTotal, costoCortesiasTotal);
+
+  const petty = closure && closure.totals ? (closure.totals.pettyCash || null) : null;
+  const pcEgresos = n2(petty && petty.egresosNio);
+  const pcIngresos = n2(petty && petty.ingresosNio);
+  if (pcEgresos > 0) {
+    const expCode = finPosAutoResolvePettyExpenseAccount(data);
+    if (!expCode || !cashCode) throw new Error('Falta cuenta posteable para egresos de Caja Chica POS.');
+    lines.push(finPosAutoLine(data, expCode, pcEgresos, 0, { mapRole: 'petty_expense' }));
+    lines.push(finPosAutoLine(data, cashCode, 0, pcEgresos, { mapRole: 'petty_cash_out' }));
+  }
+  if (pcIngresos > 0) {
+    const otherIncomeCode = finPosAutoResolveOtherIncomeAccount(data);
+    if (!otherIncomeCode || !cashCode) throw new Error('Falta cuenta posteable para ingresos de Caja Chica POS.');
+    lines.push(finPosAutoLine(data, cashCode, pcIngresos, 0, { mapRole: 'petty_cash_in' }));
+    lines.push(finPosAutoLine(data, otherIncomeCode, 0, pcIngresos, { mapRole: 'petty_other_income' }));
+  }
+
+  const mappedPaymentBreakdown = {
+    efectivo,
+    transferencia,
+    credito,
+    otros,
+    extras,
+    total,
+    accounts: { efectivo: cashCode, transferencia: bankCode, credito: creditCode, otros: otherCollectionCode }
+  };
+
+  return {
+    lines,
+    paymentBreakdown: mappedPaymentBreakdown,
+    costBreakdown: {
+      costoVentasTotal,
+      costoCortesiasTotal,
+      costoTotalSalidaInventario: n2(costoVentasTotal + costoCortesiasTotal)
+    },
+    accountMap: {
+      cashCode,
+      bankCode,
+      creditCode,
+      otherCollectionCode,
+      incomeCode,
+      pettyExpenseCode: pcEgresos > 0 ? finPosAutoResolvePettyExpenseAccount(data) : null,
+      pettyIncomeCode: pcIngresos > 0 ? finPosAutoResolveOtherIncomeAccount(data) : null,
+      courtesyExpenseCode: costoCortesiasTotal > 0 ? finPosAutoResolveCourtesyExpenseAccount(data) : null
+    }
+  };
+}
 // Útil para importaciones críticas (POS→Finanzas).
 async function createJournalEntryWithLinesAtomic(entry, lines) {
   await openFinDB();
@@ -18366,44 +19344,16 @@ async function createPosDailyCloseEntry(closure, data) {
   if (!(costoCortesiasTotal > 0) && legacyCortesiaCosto > 0) costoCortesiasTotal = legacyCortesiaCosto;
   const costoTotalSalidaInventario = n2(costoVentasTotal + costoCortesiasTotal);
 
-  const lines = [];
-  const legacyCajaEventosCode = finGetLegacyCashEventsAccountCode();
-  const legacyBancoCode = finGetLegacyBankAccountCode();
+  const posAuto = finPosAutoBuildClosureLines(closure, data);
+  const lines = posAuto.lines;
 
-  if (efectivo > 0) lines.push({ accountCode: legacyCajaEventosCode, debe: efectivo, haber: 0 });
-  if (transferencia > 0) lines.push({ accountCode: legacyBancoCode, debe: transferencia, haber: 0 });
-  if (credito > 0) lines.push({ accountCode: '1300', debe: credito, haber: 0 });
-  if (otros > 0) lines.push({ accountCode: '1900', debe: otros, haber: 0 });
-
-  // Ventas pagadas
-  lines.push({ accountCode: '4100', debe: 0, haber: total });
-
-  // Costos consolidados (balanceado)
-  // DEBE 5100 por costoVentasTotal
-  // DEBE 6105 por costoCortesiasTotal
-  // HABER 1500 por la suma
-  const cogsAccountCode = '5100';
-  const courtesyExpenseCode = '6105';
-  const inventoryAccountCode = '1500';
-
-  if (costoVentasTotal > 0) lines.push({ accountCode: cogsAccountCode, debe: costoVentasTotal, haber: 0 });
-  if (costoCortesiasTotal > 0) lines.push({ accountCode: courtesyExpenseCode, debe: costoCortesiasTotal, haber: 0 });
-  if (costoTotalSalidaInventario > 0) lines.push({ accountCode: inventoryAccountCode, debe: 0, haber: costoTotalSalidaInventario });
-
-  // Caja Chica consolidada (Etapa 2): se importa como parte del mismo POS_DAILY_CLOSE
-  // Egresos: Gastos (DEBE) vs Caja eventos (HABER)
-  // Ingresos: Caja eventos (DEBE) vs Otros ingresos (HABER)
+  // Mapeo real hacia cuentas posteables: se guarda como snapshot técnico para auditoría.
+  const mappedPaymentBreakdown = posAuto.paymentBreakdown;
+  const mappedCostBreakdown = posAuto.costBreakdown;
+  const mappedAccountMap = posAuto.accountMap;
   const petty = closure?.totals?.pettyCash || null;
   const pcEgresos = n2(petty?.egresosNio);
   const pcIngresos = n2(petty?.ingresosNio);
-  if (pcEgresos > 0) {
-    lines.push({ accountCode: '6100', debe: pcEgresos, haber: 0 });
-    lines.push({ accountCode: legacyCajaEventosCode, debe: 0, haber: pcEgresos });
-  }
-  if (pcIngresos > 0) {
-    lines.push({ accountCode: legacyCajaEventosCode, debe: pcIngresos, haber: 0 });
-    lines.push({ accountCode: '7100', debe: 0, haber: pcIngresos });
-  }
 
   const totalDebe = n2(lines.reduce((s, ln) => s + n0(ln.debe), 0));
   const totalHaber = n2(lines.reduce((s, ln) => s + n0(ln.haber), 0));
@@ -18429,18 +19379,19 @@ async function createPosDailyCloseEntry(closure, data) {
     dateKey,
     version,
     eventDateKey: buildEventDateKey(eventId, dateKey),
-    paymentBreakdown: { efectivo, transferencia, credito, otros, extras },
+    paymentBreakdown: mappedPaymentBreakdown,
 
     // Compat legacy: mantenemos bloque cortesia (ahora con costoCortesiasTotal)
-    cortesia: { cantidad: cortesiaCantidad, costoTotal: costoCortesiasTotal, expenseAccountCode: '6105' },
+    cortesia: { cantidad: cortesiaCantidad, costoTotal: costoCortesiasTotal, expenseAccountCode: mappedAccountMap.courtesyExpenseCode || null },
     // Nuevo: costos POS consolidados
     posCosts: {
-      costoVentasTotal,
-      costoCortesiasTotal,
-      costoTotalSalidaInventario,
-      cogsAccountCode: '5100',
-      courtesyAccountCode: '6105',
-      inventoryAccountCode: '1500'
+      costoVentasTotal: mappedCostBreakdown.costoVentasTotal,
+      costoCortesiasTotal: mappedCostBreakdown.costoCortesiasTotal,
+      costoTotalSalidaInventario: mappedCostBreakdown.costoTotalSalidaInventario,
+      cogsAccountCode: null,
+      courtesyAccountCode: mappedAccountMap.courtesyExpenseCode || null,
+      inventoryAccountCode: null,
+      accountMap: mappedAccountMap
     },
     posPettyCash: petty ? {
       ingresosNio: pcIngresos,
@@ -18545,8 +19496,9 @@ async function importPosDailyClosuresToFinanzas() {
     await openFinDB();
     await ensureBaseAccounts();
 
-    if (!finCachedData) await refreshAllFin();
-    const data = finCachedData || (await getAllFinData());
+    // Usar datos frescos después de ensureBaseAccounts: evita validar contra un cache viejo.
+    const data = await getAllFinData();
+    finCachedData = data;
 
     // POS: cierres disponibles
     const closuresRaw = await getAllPosDailyClosuresSafe();

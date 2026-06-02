@@ -4,7 +4,7 @@ const DB_VER = 34; // Catálogos Etapa 3: Extras maestros + Bancos centralizados
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.77';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.80';
 
 
 const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r12');
@@ -5146,14 +5146,287 @@ async function ensureFinanzasDB() {
   }
 }
 
-// Mapea forma de pago del POS a cuenta contable
+
+
+function posFinNormCode(code){
+  return String(code ?? '').trim();
+}
+
+function posFinNormText(value){
+  let out = String(value ?? '').toLowerCase().trim();
+  try { out = out.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch(_){ }
+  return out.replace(/[^a-z0-9$]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+async function posFinGetAllAccountsPOS(){
+  const dbFin = await openFinanzasDB();
+  return await new Promise((resolve) => {
+    try{
+      const tx = dbFin.transaction(['accounts'], 'readonly');
+      const store = tx.objectStore('accounts');
+      const req = store.getAll();
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => resolve([]);
+      tx.onerror = () => resolve([]);
+    }catch(_){ resolve([]); }
+  });
+}
+
+function posFinAccountCodePOS(acc){
+  return posFinNormCode(acc && (acc.code ?? acc.codigo ?? acc.accountCode));
+}
+
+function posFinAccountNamePOS(acc){
+  return String(acc && (acc.name || acc.nombre || acc.label || acc.descripcion) || '').trim();
+}
+
+function posFinAccountTypePOS(acc){
+  return posFinNormText(acc && (acc.type || acc.tipo || acc.rootType || acc.nature || acc.naturaleza));
+}
+
+function posFinAccountByCodePOS(accounts, code){
+  const wanted = posFinNormCode(code);
+  return (accounts || []).find(acc => posFinAccountCodePOS(acc) === wanted) || null;
+}
+
+function posFinAccountHasChildrenPOS(accounts, code){
+  const wanted = posFinNormCode(code);
+  if (!wanted) return false;
+  return (accounts || []).some(acc => {
+    if (!acc) return false;
+    const parent = posFinNormCode(acc.parentId ?? acc.parentCode ?? acc.parent ?? acc.padreCodigo ?? acc.parent_account_code);
+    return parent === wanted;
+  });
+}
+
+function posFinIsPostableAccountPOS(acc, accounts){
+  if (!acc) return false;
+  if (acc.isActive === false || acc.active === false || acc.estado === false) return false;
+  const code = posFinAccountCodePOS(acc);
+  if (!code) return false;
+  if (acc.isRoot === true || acc.root === true) return false;
+  if (acc.isPostable === false || acc.postable === false) return false;
+  const mode = posFinNormText(acc.accountMode || acc.mode || acc.tipoCuenta || acc.claseCuenta);
+  if (mode.includes('group') || mode.includes('agrup') || mode.includes('raiz') || mode.includes('root')) return false;
+  if (acc.isGrouping === true || acc.grouping === true || acc.agrupadora === true) return false;
+  if (posFinAccountHasChildrenPOS(accounts, code) && acc.isPostable !== true) return false;
+  return true;
+}
+
+function posFinAccountCurrencyPOS(acc){
+  const explicit = String(acc && (acc.currency || acc.moneda || acc.currencyCode || acc.currency_code) || '').trim().toUpperCase();
+  if (explicit === 'USD' || explicit === 'US$') return 'USD';
+  if (explicit === 'NIO' || explicit === 'C$' || explicit === 'CORDOBA' || explicit === 'CÓRDOBA') return 'NIO';
+  const code = posFinAccountCodePOS(acc);
+  const name = posFinNormText(posFinAccountNamePOS(acc));
+  if (name.includes('usd') || name.includes('us$') || name.includes('dolar') || name.includes('dolares')) return 'USD';
+  const n = Number(code);
+  if (Number.isFinite(n)) {
+    if (n >= 1201 && n <= 1999) {
+      const rem = (n - 1201) % 10;
+      if (rem === 1) return 'USD';
+      if (rem === 0) return 'NIO';
+    }
+    if (String(code).endsWith('2')) return 'USD';
+    if (String(code).endsWith('1')) return 'NIO';
+  }
+  return 'NIO';
+}
+
+function posFinMatchesWordsPOS(acc, words){
+  const hay = `${posFinNormText(posFinAccountNamePOS(acc))} ${posFinNormText(posFinAccountCodePOS(acc))} ${posFinAccountTypePOS(acc)}`;
+  return (words || []).every(w => hay.includes(posFinNormText(w)));
+}
+
+function posFinResolvePostableAccountPOS(accounts, opts){
+  const cfg = opts || {};
+  const currencyWanted = String(cfg.currency || '').trim().toUpperCase();
+  const types = (cfg.types || []).map(posFinNormText).filter(Boolean);
+  const codes = (cfg.codes || []).map(posFinNormCode).filter(Boolean);
+  const wordSets = cfg.wordSets || [];
+  const acceptable = (acc) => {
+    if (!posFinIsPostableAccountPOS(acc, accounts)) return false;
+    if (currencyWanted && posFinAccountCurrencyPOS(acc) !== currencyWanted) return false;
+    if (types.length) {
+      const t = posFinAccountTypePOS(acc);
+      if (!types.some(type => t.includes(type))) return false;
+    }
+    return true;
+  };
+
+  for (const code of codes) {
+    const acc = posFinAccountByCodePOS(accounts, code);
+    if (acceptable(acc)) return posFinAccountCodePOS(acc);
+  }
+
+  for (const words of wordSets) {
+    const acc = (accounts || []).find(a => acceptable(a) && posFinMatchesWordsPOS(a, Array.isArray(words) ? words : [words]));
+    if (acc) return posFinAccountCodePOS(acc);
+  }
+
+  const fallback = (accounts || []).find(acceptable);
+  if (fallback) return posFinAccountCodePOS(fallback);
+
+  const label = cfg.label || 'cuenta contable';
+  const cur = currencyWanted ? ` ${currencyWanted}` : '';
+  throw new Error(`Falta ${label}${cur}: debe existir una cuenta activa, posteable y no agrupadora en Finanzas.`);
+}
+
+function posFinResolveCashAccountPOS(accounts, currency){
+  const c = String(currency || 'NIO').toUpperCase() === 'USD' ? 'USD' : 'NIO';
+  return posFinResolvePostableAccountPOS(accounts, {
+    label: 'cuenta de Caja para POS', currency: c, types: ['activo'],
+    codes: c === 'USD' ? ['1122','1112','1102','1110'] : ['1121','1111','1101','1110','1100'],
+    wordSets: [['caja','eventos'], ['caja','general'], ['caja']]
+  });
+}
+
+function posFinResolveBankAccountPOS(accounts, currency, payment){
+  const c = String(currency || 'NIO').toUpperCase() === 'USD' ? 'USD' : 'NIO';
+  const pay = normalizePaymentMethodPOS(payment || 'transferencia');
+  return posFinResolvePostableAccountPOS(accounts, {
+    label: pay === 'tarjeta' ? 'cuenta bancaria para tarjeta POS' : 'cuenta bancaria para transferencia POS',
+    currency: c, types: ['activo'],
+    codes: c === 'USD' ? ['1212','1222','1202','1200'] : ['1211','1221','1201','1200'],
+    wordSets: pay === 'tarjeta'
+      ? [['banco','tarjeta'], ['bancos','tarjeta'], ['banco']]
+      : [['banco','transferencia'], ['bancos'], ['banco']]
+  });
+}
+
+function posFinResolveCreditAccountPOS(accounts, currency){
+  const c = String(currency || 'NIO').toUpperCase() === 'USD' ? 'USD' : 'NIO';
+  return posFinResolvePostableAccountPOS(accounts, {
+    label: 'cuenta por cobrar para crédito POS', currency: c, types: ['activo'],
+    codes: c === 'USD' ? ['1312','1302','1300'] : ['1311','1301','1300'],
+    wordSets: [['cuentas','cobrar'], ['clientes'], ['credito']]
+  });
+}
+
+function posFinResolveIncomeAccountPOS(accounts){
+  return posFinResolvePostableAccountPOS(accounts, {
+    label: 'cuenta de ingresos operativos POS', types: ['ingreso'],
+    codes: ['4211','4111','4101','4100'],
+    wordSets: [['ventas','pos'], ['ventas','directas'], ['ingresos','operativos'], ['ventas']]
+  });
+}
+
+function posFinProductKeyPOS(name){
+  const n = posFinNormText(name);
+  if (!n) return '';
+  if (n.includes('vaso')) return 'vaso';
+  if (n.includes('pulso')) return 'pulso';
+  if (n.includes('media')) return 'media';
+  if (n.includes('djeba')) return 'djeba';
+  if (n.includes('litro')) return 'litro';
+  if (n.includes('galon')) return 'galon';
+  return '';
+}
+
+function posFinResolveProductAccountPOS(accounts, productName, side){
+  const key = posFinProductKeyPOS(productName);
+  const maps = {
+    vaso: { cost: ['5131','5216','5101','5100'], inv: ['1441','1425','1501','1500'], wordsCost: [['vasos'], ['costo','ventas']], wordsInv: [['vasos'], ['inventario','producto']] },
+    pulso: { cost: ['5215','5101','5100'], inv: ['1425','1501','1500'], wordsCost: [['costo','pulso'], ['costo','ventas']], wordsInv: [['pulso'], ['inventario','producto']] },
+    media: { cost: ['5214','5101','5100'], inv: ['1424','1501','1500'], wordsCost: [['costo','media'], ['costo','ventas']], wordsInv: [['media'], ['inventario','producto']] },
+    djeba: { cost: ['5213','5101','5100'], inv: ['1423','1501','1500'], wordsCost: [['costo','djeba'], ['costo','ventas']], wordsInv: [['djeba'], ['inventario','producto']] },
+    litro: { cost: ['5212','5101','5100'], inv: ['1422','1501','1500'], wordsCost: [['costo','litro'], ['costo','ventas']], wordsInv: [['litro'], ['inventario','producto']] },
+    galon: { cost: ['5211','5101','5100'], inv: ['1421','1501','1500'], wordsCost: [['costo','galon'], ['costo','ventas']], wordsInv: [['galon'], ['inventario','producto']] }
+  };
+  const m = maps[key] || maps.galon;
+  if (side === 'inventory') {
+    return posFinResolvePostableAccountPOS(accounts, { label: 'cuenta de inventario POS', types: ['activo'], codes: m.inv, wordSets: m.wordsInv });
+  }
+  return posFinResolvePostableAccountPOS(accounts, { label: 'cuenta de costo POS', types: ['costo'], codes: m.cost, wordSets: m.wordsCost });
+}
+
+function posFinResolveCourtesyExpenseAccountPOS(accounts){
+  return posFinResolvePostableAccountPOS(accounts, {
+    label: 'cuenta posteable para cortesías POS', types: ['gasto','costo','ingreso'],
+    codes: ['6113','6123','6105','4312'],
+    wordSets: [['degustaciones'], ['muestras'], ['cortesias'], ['cortesia'], ['descuentos']]
+  });
+}
+
+function posFinLinePOS(accountCode, debe, haber){
+  return { accountCode: posFinNormCode(accountCode), debe: round2(debe || 0), haber: round2(haber || 0) };
+}
+
+function posFinResolveCollectionAccountPOS(sale, accounts){
+  const pay = normalizePaymentMethodPOS(sale && sale.payment || 'efectivo');
+  const currency = String((sale && (sale.currency || sale.moneda || sale.paymentCurrency)) || 'NIO').toUpperCase() === 'USD' ? 'USD' : 'NIO';
+  if (pay === 'efectivo') return posFinResolveCashAccountPOS(accounts, currency);
+  if (pay === 'credito') return posFinResolveCreditAccountPOS(accounts, currency);
+  return posFinResolveBankAccountPOS(accounts, currency, pay);
+}
+
+function posFinBuildSaleAutoLinesPOS(sale, accounts, amounts){
+  const amount = round2(amounts && amounts.amount);
+  const amountCost = round2(amounts && amounts.amountCost);
+  const isCourtesy = !!(amounts && amounts.isCourtesy);
+  const isReturn = !!(amounts && amounts.isReturn);
+  const lines = [];
+  if (isCourtesy) {
+    if (amountCost > 0) {
+      const courtesyCode = posFinResolveCourtesyExpenseAccountPOS(accounts);
+      const inventoryCode = posFinResolveProductAccountPOS(accounts, sale && sale.productName, 'inventory');
+      if (!isReturn) {
+        lines.push(posFinLinePOS(courtesyCode, amountCost, 0));
+        lines.push(posFinLinePOS(inventoryCode, 0, amountCost));
+      } else {
+        lines.push(posFinLinePOS(inventoryCode, amountCost, 0));
+        lines.push(posFinLinePOS(courtesyCode, 0, amountCost));
+      }
+    }
+    return lines;
+  }
+  const collectionCode = amount > 0 ? posFinResolveCollectionAccountPOS(sale, accounts) : null;
+  const incomeCode = amount > 0 ? posFinResolveIncomeAccountPOS(accounts) : null;
+  const costCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, sale && sale.productName, 'cost') : null;
+  const inventoryCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, sale && sale.productName, 'inventory') : null;
+  if (!isReturn) {
+    if (amount > 0) {
+      lines.push(posFinLinePOS(collectionCode, amount, 0));
+      lines.push(posFinLinePOS(incomeCode, 0, amount));
+    }
+    if (amountCost > 0) {
+      lines.push(posFinLinePOS(costCode, amountCost, 0));
+      lines.push(posFinLinePOS(inventoryCode, 0, amountCost));
+    }
+  } else {
+    if (amount > 0) {
+      lines.push(posFinLinePOS(incomeCode, amount, 0));
+      lines.push(posFinLinePOS(collectionCode, 0, amount));
+    }
+    if (amountCost > 0) {
+      lines.push(posFinLinePOS(inventoryCode, amountCost, 0));
+      lines.push(posFinLinePOS(costCode, 0, amountCost));
+    }
+  }
+  return lines;
+}
+
+function posFinValidateAutoLinesPOS(lines, accounts){
+  const errors = [];
+  (lines || []).forEach((line, idx) => {
+    const code = posFinNormCode(line && line.accountCode);
+    const acc = posFinAccountByCodePOS(accounts, code);
+    if (!posFinIsPostableAccountPOS(acc, accounts)) {
+      errors.push(`Línea ${idx + 1}: cuenta ${code || '(vacía)'} no existe o no es posteable.`);
+    }
+  });
+  const debe = round2((lines || []).reduce((s, l) => s + round2(l && l.debe), 0));
+  const haber = round2((lines || []).reduce((s, l) => s + round2(l && l.haber), 0));
+  if (Math.abs(debe - haber) > 0.009) errors.push(`Debe/Haber no cuadra (Debe ${debe}, Haber ${haber}).`);
+  return { ok: !errors.length, errors, debe, haber };
+}
+
+// Mapea forma de pago del POS a cuenta contable posteable sugerida (solo compatibilidad legacy).
 function mapSaleToCuentaCobro(sale) {
   const pay = normalizePaymentMethodPOS(sale && sale.payment || 'efectivo');
-  if (pay === 'efectivo') return '1100';   // Caja
-  if (pay === 'transferencia') return '1200'; // Banco
-  if (pay === 'tarjeta') return '1200';       // Banco / POS bancario
-  if (pay === 'credito') return '1300';    // Clientes
-  return '1200'; // Otros métodos similares a banco
+  if (pay === 'efectivo') return '1121';
+  if (pay === 'credito') return '1311';
+  return '1211';
 }
 
 // Crea/actualiza asiento automático en Finanzas por una venta / devolución del POS
@@ -5165,10 +5438,10 @@ async function createJournalEntryForSalePOS(sale) {
   // - Venta normal: ingreso + COGS
   // - Cortesía: SOLO costo (gasto por cortesía), nunca ingreso
   // - Devolución: asiento inverso
+  // - Etapa Tablero 3/3: solo usa cuentas activas, posteables y no agrupadoras.
 
   if (!sale) return;
 
-  // Nos aseguramos de tener un ID (origenId) para vincular el asiento
   const saleId = (sale.id != null) ? sale.id : (sale.createdAt != null ? sale.createdAt : null);
   if (saleId == null) {
     console.warn('Venta sin id/createdAt, no se genera asiento automático.');
@@ -5178,14 +5451,11 @@ async function createJournalEntryForSalePOS(sale) {
   try {
     await ensureFinanzasDB();
 
-    // --- Datos base ---
     const isCourtesy = !!sale.courtesy;
     const isReturn = !!sale.isReturn;
     const amount = round2(Math.abs(Number(sale.total || 0)));
-
     const qtyAbs = Math.abs(Number(sale.qty || 0)) || 0;
 
-    // Preferimos lineCost si existe (más robusto). Si no, lo calculamos por costo unitario.
     let amountCost = 0;
     const lc = Number(sale.lineCost);
     if (Number.isFinite(lc) && Math.abs(lc) > 0.000001) {
@@ -5196,22 +5466,21 @@ async function createJournalEntryForSalePOS(sale) {
       amountCost = round2((unitCost > 0 ? unitCost : 0) * qtyAbs);
     }
 
-    // Si no hay nada que registrar, salimos.
-    // (Venta sin monto y sin costo no aporta asiento.)
     if (!(amount > 0) && !(amountCost > 0)) return;
 
-    // Selección de cuenta de caja/banco según método de pago
-    const payment = normalizePaymentMethodPOS(sale.payment || 'efectivo');
-    let cashAccount = '1100';
-    if (payment === 'transferencia') cashAccount = '1200';
-    if (payment === 'tarjeta') cashAccount = '1200';
-    if (payment === 'credito') cashAccount = '1300';
+    const finAccounts = await posFinGetAllAccountsPOS();
+    const autoLines = posFinBuildSaleAutoLinesPOS(sale, finAccounts, { amount, amountCost, isCourtesy, isReturn });
+    const autoValidation = posFinValidateAutoLinesPOS(autoLines, finAccounts);
+    if (!autoValidation.ok) {
+      const msg = '⚠️ POS no generó asiento en Finanzas: ' + autoValidation.errors.join(' ');
+      console.warn(msg);
+      notifyFinanzasBridge(msg, { force: true });
+      return;
+    }
 
-    // Descripción / tipo
     const prodName = (sale.productName || '').toString();
     const eventName = (sale.eventName || '').toString();
     const courtesyTo = (sale.courtesyTo || '').toString().trim();
-    // Etapa 5: referencia de cliente (NO CxC / no afecta montos ni cuentas)
     const customerName = getSaleCustomerSnapshotNamePOS(sale);
 
     const baseParts = [];
@@ -5235,20 +5504,9 @@ async function createJournalEntryForSalePOS(sale) {
     }
 
     const evento = eventName || 'General';
+    const totalsDebe = autoValidation.debe;
+    const totalsHaber = autoValidation.haber;
 
-    // Totales del asiento
-    let totalsDebe = 0;
-    let totalsHaber = 0;
-
-    if (isCourtesy) {
-      totalsDebe = amountCost;
-      totalsHaber = amountCost;
-    } else {
-      totalsDebe = amount + amountCost;
-      totalsHaber = amount + amountCost;
-    }
-
-    // --- Crear o actualizar el journalEntry (mismo origenId) ---
     let entryId = null;
     let existingEntry = null;
 
@@ -5268,32 +5526,28 @@ async function createJournalEntryForSalePOS(sale) {
       const txWrite = finDb.transaction(['journalEntries'], 'readwrite');
       const storeWrite = txWrite.objectStore('journalEntries');
 
-      if (existingEntry) {
-        existingEntry.fecha = sale.date;
-        existingEntry.date = sale.date;
-        existingEntry.descripcion = descripcion;
-        existingEntry.tipoMovimiento = tipoMovimiento;
-        existingEntry.evento = evento;
-        existingEntry.origen = 'POS';
-        existingEntry.origenId = saleId;
-        existingEntry.totalDebe = totalsDebe;
-        existingEntry.totalHaber = totalsHaber;
+      const entryBase = {
+        fecha: sale.date,
+        date: sale.date,
+        descripcion,
+        tipoMovimiento,
+        evento,
+        origen: 'POS',
+        origenId: saleId,
+        totalDebe: totalsDebe,
+        totalHaber: totalsHaber,
+        source: 'pos_per_sale',
+        isAutomatic: true,
+        locked: true,
+        validation: { postableAccounts: true, balanced: true }
+      };
 
+      if (existingEntry) {
+        Object.assign(existingEntry, entryBase);
         const reqPut = storeWrite.put(existingEntry);
         reqPut.onsuccess = () => { entryId = existingEntry.id; };
       } else {
-        const entry = {
-          fecha: sale.date,
-          date: sale.date,
-          descripcion,
-          tipoMovimiento,
-          evento,
-          origen: 'POS',
-          origenId: saleId,
-          totalDebe: totalsDebe,
-          totalHaber: totalsHaber
-        };
-        const reqAdd = storeWrite.add(entry);
+        const reqAdd = storeWrite.add(entryBase);
         reqAdd.onsuccess = (ev) => { entryId = ev.target.result; };
       }
 
@@ -5312,7 +5566,6 @@ async function createJournalEntryForSalePOS(sale) {
       return;
     }
 
-    // --- Borrar líneas anteriores de este asiento (evita duplicados) ---
     await new Promise((resolve) => {
       const txDel = finDb.transaction(['journalLines'], 'readwrite');
       const storeDel = txDel.objectStore('journalLines');
@@ -5321,88 +5574,25 @@ async function createJournalEntryForSalePOS(sale) {
         const lines = reqLines.result || [];
         lines
           .filter((l) => String(l.entryId) === String(entryId) || String(l.idEntry) === String(entryId))
-          .forEach((l) => {
-            try { storeDel.delete(l.id); } catch (err) {}
-          });
+          .forEach((l) => { try { storeDel.delete(l.id); } catch (err) {} });
       };
       txDel.oncomplete = () => resolve();
       txDel.onerror = () => resolve();
     });
 
-    // --- Crear nuevas líneas ---
     await new Promise((resolve) => {
       const txLines = finDb.transaction(['journalLines'], 'readwrite');
       const storeLines = txLines.objectStore('journalLines');
-
-      const addLine = (data) => {
-        try {
-          // Guardamos ambos campos: idEntry (lo que Finanzas espera) y entryId (compatibilidad)
-          storeLines.add(Object.assign({ idEntry: entryId, entryId }, data));
-        } catch (err) {
-          console.error('Error guardando línea contable POS', err);
-        }
-      };
-
-      if (isCourtesy) {
-        // Cortesía: SOLO costo
-        //   DEBE: 6105 POS Cortesía
-        //   HABER: 1500 Inventario
-        if (!isReturn) {
-          if (amountCost > 0) {
-            addLine({ accountCode: '6105', debe: amountCost, haber: 0 });
-            addLine({ accountCode: '1500', debe: 0, haber: amountCost });
-          }
-        } else {
-          // Reverso (por si alguna vez se usa):
-          //   DEBE: 1500
-          //   HABER: 6105
-          if (amountCost > 0) {
-            addLine({ accountCode: '1500', debe: amountCost, haber: 0 });
-            addLine({ accountCode: '6105', debe: 0, haber: amountCost });
-          }
-        }
-
-        txLines.oncomplete = () => resolve();
-        txLines.onerror = () => resolve();
-        return;
-      }
-
-      if (!isReturn) {
-        // Venta normal:
-        // Ingreso:
-        //   DEBE: Caja/Banco/Clientes
-        //   HABER: 4100 Ingresos
-        if (amount > 0) {
-          addLine({ accountCode: cashAccount, debe: amount, haber: 0 });
-          addLine({ accountCode: '4100', debe: 0, haber: amount });
-        }
-
-        // Costo de venta (si hay costo disponible):
-        //   DEBE: 5100 Costo de ventas
-        //   HABER: 1500 Inventario
-        if (amountCost > 0) {
-          addLine({ accountCode: '5100', debe: amountCost, haber: 0 });
-          addLine({ accountCode: '1500', debe: 0, haber: amountCost });
-        }
-      } else {
-        // Devolución: asiento inverso
-        if (amount > 0) {
-          addLine({ accountCode: '4100', debe: amount, haber: 0 });
-          addLine({ accountCode: cashAccount, debe: 0, haber: amount });
-        }
-
-        // Costo inverso:
-        if (amountCost > 0) {
-          addLine({ accountCode: '1500', debe: amountCost, haber: 0 });
-          addLine({ accountCode: '5100', debe: 0, haber: amountCost });
-        }
-      }
-
+      autoLines.forEach((line) => {
+        try { storeLines.add(Object.assign({ idEntry: entryId, entryId }, line)); }
+        catch (err) { console.error('Error guardando línea contable POS', err); }
+      });
       txLines.oncomplete = () => resolve();
       txLines.onerror = () => resolve();
     });
   } catch (err) {
     console.error('Error general creando/actualizando asiento automático desde POS', err);
+    notifyFinanzasBridge('⚠️ POS no generó asiento en Finanzas: ' + (err && err.message ? err.message : 'validación contable fallida.'), { force: true });
   }
 }
 

@@ -3130,3 +3130,186 @@ body.fin-body {
   opacity: 0.72;
   cursor: progress;
 }
+
+/* Etapa 1/3 — Tablero Financiero inteligente */
+.fin-cards-grid--tablero{
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.fin-tablero-alerts-section{
+  margin-top: 16px;
+}
+
+.fin-chart-wrapper{
+  margin-top: 10px;
+  width: 100%;
+  min-height: 260px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+
+.fin-chart-wrapper canvas{
+  display: block;
+  width: 100%;
+  height: 300px;
+}
+
+/* Etapa 2/3 — Tablero Finanzas: Caja/Bancos multimoneda */
+.fin-tablero-liquidity-section{
+  margin-top: 16px;
+}
+
+.fin-liquidity-grid{
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.fin-liquidity-panel{
+  border-radius: 16px;
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(20,23,34,0.98), rgba(10,12,18,0.96));
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.45);
+  min-width: 0;
+}
+
+.fin-liquidity-panel--summary{
+  border-color: rgba(212,175,55,0.38);
+  background: linear-gradient(135deg, rgba(212,175,55,0.12), rgba(20,23,34,0.96));
+}
+
+.fin-liquidity-head{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.fin-liquidity-head h4{
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--fin-text);
+}
+
+.fin-liquidity-head span{
+  color: var(--fin-muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.fin-liquidity-totals{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.fin-liquidity-totals div,
+.fin-liquidity-hero{
+  border-radius: 13px;
+  padding: 9px 10px;
+  background: rgba(0,0,0,0.20);
+  border: 1px solid rgba(255,255,255,0.055);
+}
+
+.fin-liquidity-totals small,
+.fin-liquidity-hero small{
+  display: block;
+  color: var(--fin-muted);
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.fin-liquidity-totals strong{
+  display: block;
+  margin-top: 3px;
+  font-size: 0.95rem;
+  color: var(--fin-text);
+}
+
+.fin-liquidity-hero strong{
+  display: block;
+  margin-top: 6px;
+  font-size: 1.32rem;
+  color: var(--fin-gold);
+}
+
+.fin-liquidity-hero p{
+  margin: 7px 0 0;
+  color: var(--fin-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.fin-liquidity-list{
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.fin-liquidity-row{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 9px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.045);
+}
+
+.fin-liquidity-row strong{
+  display: block;
+  font-size: 0.82rem;
+}
+
+.fin-liquidity-row p{
+  margin: 3px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  color: var(--fin-muted);
+  font-size: 0.69rem;
+  line-height: 1.28;
+}
+
+.fin-liquidity-row-values{
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.fin-liquidity-row-values b{
+  display: block;
+  color: var(--fin-text);
+  font-size: 0.82rem;
+}
+
+.fin-liquidity-row-values span{
+  display: block;
+  margin-top: 2px;
+  color: var(--fin-muted);
+  font-size: 0.69rem;
+}
+
+.fin-liquidity-empty{
+  padding: 9px 10px;
+  border-radius: 12px;
+  color: var(--fin-muted);
+  background: rgba(255,255,255,0.025);
+  border: 1px dashed rgba(255,255,255,0.08);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 640px){
+  .fin-liquidity-row{
+    flex-direction: column;
+  }
+  .fin-liquidity-row-values{
+    text-align: left;
+  }
+}
