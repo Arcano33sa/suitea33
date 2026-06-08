@@ -3313,3 +3313,147 @@ body.fin-body {
     text-align: left;
   }
 }
+
+
+/* Etapa 3/5 — Tablero Finanzas Operativo */
+.fin-dashboard-band{
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 280px);
+  gap: 12px;
+  align-items: stretch;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(212,175,55,0.28);
+  background:
+    radial-gradient(circle at top left, rgba(212,175,55,0.15), transparent 38%),
+    linear-gradient(135deg, rgba(255,255,255,0.055), rgba(0,0,0,0.12));
+  box-shadow: 0 16px 30px rgba(0,0,0,0.42);
+}
+
+.fin-filters-row--tablero{
+  margin-top: 0;
+  gap: 10px 12px;
+  align-items: end;
+}
+
+.fin-filters-row--tablero label{
+  min-width: 132px;
+  flex: 1 1 132px;
+}
+
+.fin-dashboard-event-filter{
+  min-width: min(260px, 100%);
+  flex: 2 1 220px;
+}
+
+.fin-dashboard-fx{
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.24);
+  min-width: 0;
+}
+
+.fin-dashboard-fx span{
+  color: var(--fin-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+}
+
+.fin-dashboard-fx strong{
+  color: var(--fin-gold);
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.fin-dashboard-fx small{
+  color: var(--fin-muted);
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.fin-operational-kpis{
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.fin-operational-kpis .fin-card{
+  min-width: 0;
+}
+
+.fin-operational-kpis .fin-card h3{
+  font-size: 0.82rem;
+  line-height: 1.22;
+}
+
+.fin-operational-kpis .fin-card-number{
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 860px){
+  .fin-dashboard-band{
+    grid-template-columns: 1fr;
+  }
+  .fin-dashboard-fx{
+    min-height: 78px;
+  }
+}
+
+@media (max-width: 640px){
+  .fin-filters-row--tablero label,
+  .fin-dashboard-event-filter{
+    min-width: min(100%, 220px);
+    flex-basis: 100%;
+  }
+  .fin-operational-kpis{
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  }
+}
+
+/* Etapa 5/5 — hardening final Tablero operativo / iPad / PWA */
+body.fin-body,
+.fin-app,
+.fin-main,
+.fin-view,
+.fin-dashboard-band,
+.fin-filters-row--tablero,
+.fin-operational-kpis,
+.fin-card {
+  min-width: 0;
+}
+
+.fin-main-nav a,
+.fin-main-nav button,
+.fin-filters-row--tablero select,
+.fin-filters-row--tablero input {
+  min-height: 44px;
+}
+
+.fin-filters-row--tablero select,
+.fin-filters-row--tablero input {
+  width: 100%;
+  max-width: 100%;
+}
+
+.fin-dashboard-band,
+.fin-dashboard-fx,
+.fin-operational-kpis .fin-card {
+  overflow-wrap: anywhere;
+}
+
+.fin-tab-btn[data-a33-hidden-main="1"],
+[hidden][data-a33-hidden-main="1"] {
+  display: none !important;
+}
+
+@media (orientation: landscape) and (min-width: 768px) and (max-width: 1180px) {
+  .fin-app { padding-left: 14px; padding-right: 14px; }
+  .fin-operational-kpis { grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); }
+  .fin-dashboard-band { grid-template-columns: minmax(0, 1fr) minmax(190px, 250px); }
+}

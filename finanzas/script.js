@@ -432,6 +432,31 @@ function getAllPosDailyClosuresSafe() {
   });
 }
 
+function getAllPosCashV2Safe() {
+  return new Promise(async (resolve) => {
+    const db = await openPosDB();
+    if (!db) {
+      resolve([]);
+      return;
+    }
+    let store;
+    try {
+      store = posTx('cashV2', 'readonly');
+    } catch (err) {
+      // Instalaciones anteriores pueden no tener Efectivo v2. Lectura defensiva.
+      console.warn('Store cashV2 no encontrada en a33-pos', err);
+      resolve([]);
+      return;
+    }
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => {
+      console.warn('No se pudieron leer movimientos de Efectivo POS', req.error);
+      resolve([]);
+    };
+  });
+}
+
 async function refreshPosEventsCache() {
   // Lee a33-pos (si existe) y construye mapa + lista de eventos abiertos para el dropdown.
   try {
@@ -3264,6 +3289,521 @@ const FIN_ACCOUNTING_DATA_SOURCES = Object.freeze({
   posDailyCloseImports: Object.freeze({ store: 'posDailyCloseImports', key: 'closureId', use: 'Idempotencia de cierres diarios POS importados' })
 });
 
+// Etapa 1/5 — Tablero Finanzas Operativo: mapa técnico de fuentes.
+// Esta estructura NO cambia la UI, NO migra datos y NO recalcula históricos; solo documenta
+// y centraliza lecturas seguras para las siguientes etapas del Tablero operativo.
+const FIN_OPERATIONAL_DASHBOARD_STAGE = 'finanzas_tablero_operativo_etapa_5_5';
+const FIN_OPERATIONAL_DASHBOARD_SOURCE_MAP = Object.freeze({
+  ventaTotalBruta: Object.freeze({
+    actual: 'POS sales y cierres diarios POS como fallback seguro cuando no hay ventas crudas',
+    futura: 'Mantener POS como fuente primaria, con Diario solo como fallback legacy si fuese necesario',
+    stores: ['finanzasDB.journalEntries', 'finanzasDB.journalLines', 'a33-pos.sales', 'a33-pos.dailyClosures'],
+    camposClave: ['fecha/date', 'source/origen', 'posEventId/eventScope', 'totalDebe/totalHaber', 'accountCode', 'subtotal/total']
+  }),
+  descuentos: Object.freeze({
+    actual: 'Descuentos directos desde ventas POS',
+    futura: 'Mantener lectura de descuentos POS por fecha/evento, sin doble conteo',
+    stores: ['finanzasDB.journalLines', 'a33-pos.sales'],
+    camposClave: ['discount', 'discountPerUnit', 'accountCode', 'accountNameSnapshot']
+  }),
+  cortesias: Object.freeze({
+    actual: 'Cortesías directas desde ventas POS; cierres diarios solo como fallback parcial',
+    futura: 'POS sales.courtesy + costo snapshot por venta/cierre diario',
+    stores: ['finanzasDB.journalEntries', 'finanzasDB.journalLines', 'a33-pos.sales', 'a33-pos.dailyClosures'],
+    camposClave: ['courtesy', 'cortesiaCantidad', 'cortesiaCostoTotal', 'posCosts', 'cortesia']
+  }),
+  ventaNeta: Object.freeze({
+    actual: 'Derivada de Venta Total POS menos descuentos y cortesías',
+    futura: 'Derivada de venta bruta POS menos descuentos/cortesías, con protección anti doble conteo',
+    stores: ['finanzasDB.journalEntries', 'finanzasDB.journalLines', 'a33-pos.sales']
+  }),
+  costosVentas: Object.freeze({
+    actual: 'Cost snapshots de POS sales y cierres POS como fallback',
+    futura: 'Cost snapshots POS, sin recalcular inventario histórico',
+    stores: ['finanzasDB.journalLines', 'a33-pos.sales', 'a33-pos.dailyClosures'],
+    camposClave: ['cost', 'unitCost', 'costo', 'posCosts', 'accountCode']
+  }),
+  ingresosAdicionales: Object.freeze({
+    actual: 'Caja Chica/Efectivo clasificado como Ingreso Adicional y recibos emitidos cuando aplique',
+    futura: 'Caja Chica/Efectivo clasificado como Ingreso Adicional y recibos emitidos cuando aplique',
+    stores: ['finanzasDB.journalEntries', 'finanzasDB.journalLines', 'finanzasDB.receipts', 'a33-pos.cashV2'],
+    camposClave: ['source', 'tipoMovimiento', 'paymentMethod', 'receiptStatus/status', 'total', 'operationalClass']
+  }),
+  gastos: Object.freeze({
+    actual: 'Caja Chica/Efectivo clasificado como Gasto y recibos de egreso cuando aplique',
+    futura: 'Caja Chica/Efectivo clasificado como Gasto + Recibos egreso cuando aplique',
+    stores: ['finanzasDB.journalEntries', 'finanzasDB.journalLines', 'finanzasDB.receipts', 'a33-pos.cashV2'],
+    camposClave: ['tipoMovimiento', 'source', 'accountCode', 'receiptType/tipo', 'operationalClass']
+  }),
+  cajaPeriodo: Object.freeze({
+    actual: 'Movimiento de caja del período desde POS + Caja/Efectivo + Recibos, respetando filtros compatibles',
+    futura: 'Movimientos del período en caja, separando fondos/retiros de ingresos/gastos',
+    stores: ['finanzasDB.journalLines', 'finanzasDB.financialAccounts', 'finanzasDB.settings', 'a33-pos.cashV2'],
+    camposClave: ['financialAccountId', 'paymentMethod', 'medio', 'originalCurrency', 'baseAmountNio', 'operationalClass']
+  }),
+  bancosPeriodo: Object.freeze({
+    actual: 'Movimiento bancario del período desde POS + Recibos, respetando filtros compatibles',
+    futura: 'Movimientos del período por banco/moneda, sin inflar bancos ni duplicar transferencias internas',
+    stores: ['finanzasDB.journalLines', 'finanzasDB.financialAccounts', 'a33-pos.banks'],
+    camposClave: ['bankId', 'financialAccountId', 'paymentMethod', 'originalCurrency', 'exchangeRateUsed', 'operationalClass']
+  }),
+  eventos: Object.freeze({
+    actual: 'Filtros GLOBAL / Por evento usando IDs POS, snapshots y etiquetas compatibles',
+    futura: 'Vista GLOBAL / Por evento con IDs POS preservados y nombre snapshot',
+    stores: ['finanzasDB.journalEntries', 'a33-pos.events'],
+    camposClave: ['eventScope', 'posEventId', 'posEventNameSnapshot', 'evento']
+  }),
+  tipoCambio: Object.freeze({
+    actual: 'Configuración → Moneda, key suite_a33_currency_settings_v1; snapshots ya guardados se respetan',
+    futura: 'Banda superior informativa del Tablero, sin recalcular históricos',
+    stores: ['localStorage.suite_a33_currency_settings_v1'],
+    camposClave: ['exchangeRate', 'updatedAt']
+  })
+});
+const FIN_POS_OPERATIONAL_STORES = Object.freeze(['sales', 'events', 'banks', 'dailyClosures', 'cashV2']);
+
+function finOperationalArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function finBuildOperationalDashboardSourceSnapshot(data) {
+  const safe = data || {};
+  const entries = finOperationalArray(safe.entries);
+  const lines = finOperationalArray(safe.lines);
+  const receipts = finOperationalArray(safe.receipts);
+  const financialAccounts = finOperationalArray(safe.financialAccounts);
+  const internalTransfers = finOperationalArray(safe.internalTransfers);
+  let currency = null;
+  try { currency = finGetCurrencyStateSafe(); } catch (_) { currency = null; }
+
+  return Object.freeze({
+    stage: FIN_OPERATIONAL_DASHBOARD_STAGE,
+    builtAtISO: new Date().toISOString(),
+    visibleUiChanged: false,
+    migratedData: false,
+    recalculatedHistory: false,
+    sources: FIN_OPERATIONAL_DASHBOARD_SOURCE_MAP,
+    counts: Object.freeze({
+      entries: entries.length,
+      lines: lines.length,
+      receipts: receipts.length,
+      financialAccounts: financialAccounts.length,
+      internalTransfers: internalTransfers.length,
+      posCashV2: finOperationalArray(safe.posCashV2).length
+    }),
+    currentCurrency: currency ? Object.freeze({
+      source: currency.source || FIN_CURRENCY_SOURCE_LABEL,
+      exchangeRate: currency.exchangeRate || null,
+      exchangeRateText: currency.exchangeRateText || 'T/C no configurado',
+      updatedAtText: currency.updatedAtText || 'Sin registros',
+      hasExchangeRate: !!currency.hasExchangeRate
+    }) : Object.freeze({
+      source: FIN_CURRENCY_SOURCE_LABEL,
+      exchangeRate: null,
+      exchangeRateText: 'T/C no configurado',
+      updatedAtText: 'Sin registros',
+      hasExchangeRate: false
+    })
+  });
+}
+
+async function finReadPosOperationalSourcesSafe() {
+  const out = {
+    ok: true,
+    dbName: POS_DB_NAME,
+    stores: FIN_POS_OPERATIONAL_STORES.slice(),
+    sales: [],
+    events: [],
+    banks: [],
+    dailyClosures: [],
+    cashV2: [],
+    warnings: [],
+    readAtISO: new Date().toISOString()
+  };
+  try { out.sales = await getAllPosSales(); }
+  catch (err) { out.warnings.push('No se pudo leer POS.sales'); out.ok = false; }
+  try { out.events = await getAllPosEventsSafe(); }
+  catch (err) { out.warnings.push('No se pudo leer POS.events'); out.ok = false; }
+  try { out.banks = await getAllPosBanksSafe(); }
+  catch (err) { out.warnings.push('No se pudo leer POS.banks'); out.ok = false; }
+  try { out.dailyClosures = await getAllPosDailyClosuresSafe(); }
+  catch (err) { out.warnings.push('No se pudo leer POS.dailyClosures'); out.ok = false; }
+  try { out.cashV2 = await getAllPosCashV2Safe(); }
+  catch (err) { out.warnings.push('No se pudo leer POS.cashV2'); out.ok = false; }
+  return out;
+}
+
+const FIN_OPERATIONAL_CLASS_STAGE = 'finanzas_tablero_operativo_etapa_5_5';
+const FIN_OPERATIONAL_CLASSES = Object.freeze({
+  ADDITIONAL_INCOME: 'ADDITIONAL_INCOME',
+  EXPENSE: 'EXPENSE',
+  CASH_IN: 'CASH_IN',
+  CASH_OUT: 'CASH_OUT',
+  UNCLASSIFIED: 'UNCLASSIFIED'
+});
+const FIN_OPERATIONAL_CLASS_LABELS = Object.freeze({
+  ADDITIONAL_INCOME: 'Ingreso Adicional',
+  EXPENSE: 'Gasto',
+  CASH_IN: 'Entrada de efectivo / fondo',
+  CASH_OUT: 'Salida de efectivo / retiro',
+  UNCLASSIFIED: 'No clasificado'
+});
+
+function finNormalizeOperationalClass(value, fallback = FIN_OPERATIONAL_CLASSES.UNCLASSIFIED) {
+  const raw = String(value || '').trim().toUpperCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[\s\-]+/g, '_');
+  if (!raw) return fallback;
+  if (raw === 'ADDITIONAL_INCOME' || raw === 'INGRESO_ADICIONAL' || raw === 'INGRESOS_ADICIONALES' || raw === 'OTHER_INCOME') return FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME;
+  if (raw === 'EXPENSE' || raw === 'GASTO' || raw === 'EGRESO_OPERATIVO') return FIN_OPERATIONAL_CLASSES.EXPENSE;
+  if (raw === 'CASH_IN' || raw === 'ENTRADA_FONDO' || raw === 'ENTRADA_DE_EFECTIVO_FONDO' || raw === 'ENTRADA_EFECTIVO_FONDO' || raw === 'FONDO' || raw === 'ENTRADA') return FIN_OPERATIONAL_CLASSES.CASH_IN;
+  if (raw === 'CASH_OUT' || raw === 'SALIDA_RETIRO' || raw === 'SALIDA_DE_EFECTIVO_RETIRO' || raw === 'SALIDA_EFECTIVO_RETIRO' || raw === 'RETIRO' || raw === 'SALIDA') return FIN_OPERATIONAL_CLASSES.CASH_OUT;
+  if (raw === 'UNCLASSIFIED' || raw === 'NO_CLASIFICADO' || raw === 'SIN_CLASIFICAR') return FIN_OPERATIONAL_CLASSES.UNCLASSIFIED;
+  return fallback;
+}
+
+function finOperationalClassLabel(value) {
+  const cls = finNormalizeOperationalClass(value);
+  return FIN_OPERATIONAL_CLASS_LABELS[cls] || FIN_OPERATIONAL_CLASS_LABELS.UNCLASSIFIED;
+}
+
+function finOperationalClassAffectsUtility(value) {
+  const cls = finNormalizeOperationalClass(value);
+  return cls === FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME || cls === FIN_OPERATIONAL_CLASSES.EXPENSE;
+}
+
+function finOperationalClassIsIncome(value) {
+  return finNormalizeOperationalClass(value) === FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME;
+}
+
+function finOperationalClassIsExpense(value) {
+  return finNormalizeOperationalClass(value) === FIN_OPERATIONAL_CLASSES.EXPENSE;
+}
+
+function finOperationalClassIsCashIn(value) {
+  const cls = finNormalizeOperationalClass(value);
+  return cls === FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME || cls === FIN_OPERATIONAL_CLASSES.CASH_IN;
+}
+
+function finOperationalClassIsCashOut(value) {
+  const cls = finNormalizeOperationalClass(value);
+  return cls === FIN_OPERATIONAL_CLASSES.EXPENSE || cls === FIN_OPERATIONAL_CLASSES.CASH_OUT;
+}
+
+function finInferOperationalClassFromMovementType(tipo, fallback = FIN_OPERATIONAL_CLASSES.UNCLASSIFIED) {
+  const t = String(tipo || '').trim().toLowerCase();
+  if (t === 'ingreso') return FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME;
+  if (t === 'egreso' || t === 'gasto') return FIN_OPERATIONAL_CLASSES.EXPENSE;
+  if (t === 'entrada' || t === 'fondo') return FIN_OPERATIONAL_CLASSES.CASH_IN;
+  if (t === 'salida' || t === 'retiro') return FIN_OPERATIONAL_CLASSES.CASH_OUT;
+  return fallback;
+}
+
+function finInferReceiptOperationalClass(receipt) {
+  const explicit = receipt && (receipt.operationalClass || receipt.clasificacionOperativa || receipt.tipoOperativo || receipt.receiptOperationalClass);
+  if (explicit) return finNormalizeOperationalClass(explicit, FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME);
+  const st = String(receipt && (receipt.status || receipt.estado || '') || '').trim().toUpperCase();
+  if (st === 'VOID' || st === 'ANULADO') return FIN_OPERATIONAL_CLASSES.UNCLASSIFIED;
+  // Recibos existentes representan cobros/ingresos. Lectura defensiva, sin migración masiva.
+  return FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME;
+}
+
+function finInferManualMovementOperationalClass(entry) {
+  const explicit = entry && (entry.operationalClass || entry.clasificacionOperativa || entry.tipoOperativo || entry.cashOperationalClass);
+  if (explicit) return finNormalizeOperationalClass(explicit, FIN_OPERATIONAL_CLASSES.UNCLASSIFIED);
+  return finInferOperationalClassFromMovementType(entry && entry.tipoMovimiento, FIN_OPERATIONAL_CLASSES.UNCLASSIFIED);
+}
+
+function finOperationalPaymentChannel(value, fallback = '') {
+  const raw = String(value || fallback || '').trim().toLowerCase();
+  if (raw.includes('bank') || raw.includes('banco') || raw.includes('transfer')) return 'bank';
+  if (raw.includes('cash') || raw.includes('caja') || raw.includes('efectivo')) return 'cash';
+  return raw || fallback || '';
+}
+
+function finOperationalBaseAmountFromRecord(record) {
+  const candidates = [
+    record && record.baseAmountNio,
+    record && record.equivalenteNIO,
+    record && record.equivalenteCordobas,
+    record && record.totalNio,
+    record && record.totalDebe,
+    record && record.totalHaber,
+    record && record.total,
+    record && record.amount,
+    record && record.monto
+  ];
+  for (const v of candidates) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n !== 0) return finRoundCurrency2(Math.abs(n));
+  }
+  return 0;
+}
+
+function finGetOperationalReceiptsSource(data) {
+  return finOperationalArray(data && data.receipts).filter(r => r && typeof r === 'object').map(r => {
+    const operationalClass = finInferReceiptOperationalClass(r);
+    const currency = finNormalizeCurrencyCode(r.originalCurrency || r.monedaOriginal || r.currency || r.moneda || 'NIO');
+    const originalAmount = finRoundCurrency2(r.totalOriginal || r.originalAmount || r.montoOriginal || (r.totals && r.totals.total) || r.total || r.monto || r.amount || 0);
+    const amountNio = finRoundCurrency2(r.baseAmountNio || r.equivalenteNIO || r.equivalenteCordobas || (currency === 'NIO' ? originalAmount : 0));
+    const paymentMethod = finOperationalPaymentChannel(r.paymentType || r.paymentMethod || r.medio || r.metodoPago, 'cash');
+    return {
+      source: 'receipts',
+      stage: FIN_OPERATIONAL_CLASS_STAGE,
+      receiptId: String(r.receiptId || r.id || ''),
+      status: String(r.status || r.estado || ''),
+      dateISO: String(r.dateISO || r.fecha || r.date || '').slice(0, 10),
+      currency,
+      originalAmount,
+      amountNio,
+      amount: amountNio || originalAmount,
+      eventScope: String(r.eventScope || r.evento || ''),
+      posEventId: r.posEventId || null,
+      paymentMethod,
+      channel: paymentMethod,
+      operationalClass,
+      operationalClassLabel: finOperationalClassLabel(operationalClass),
+      affectsUtility: finOperationalClassAffectsUtility(operationalClass),
+      affectsCash: paymentMethod === 'cash',
+      affectsBank: paymentMethod === 'bank',
+      countsAsAdditionalIncome: finOperationalClassIsIncome(operationalClass),
+      countsAsExpense: finOperationalClassIsExpense(operationalClass),
+      countsAsCashIn: finOperationalClassIsCashIn(operationalClass),
+      countsAsCashOut: finOperationalClassIsCashOut(operationalClass),
+      reference: String(r.paymentRef || r.referenciaPago || r.reference || '').trim(),
+      note: String(r.clientName || r.descripcion || '').trim()
+    };
+  });
+}
+
+function finGetOperationalManualMovementsSource(data) {
+  return finOperationalArray(data && data.entries).filter(e => {
+    const source = String(e && (e.source || e.origen || '') || '').trim();
+    const hasLegacyType = !!String(e && e.tipoMovimiento || '').trim();
+    // Defensivo: solo movimientos manuales/legacy sin fuente explícita.
+    // Evita duplicar POS, compras, recibos o transferencias ya tratadas por su fuente propia.
+    return source === 'manual_financial_account' || source === 'Interno' || (!source && hasLegacyType);
+  }).map(e => {
+    const operationalClass = finInferManualMovementOperationalClass(e);
+    const paymentMethod = finOperationalPaymentChannel(e.paymentMethod || e.medio || e.financialAccountType || '', '');
+    const amountNio = finOperationalBaseAmountFromRecord(e);
+    return {
+      source: String(e.source || e.origen || 'manual'),
+      stage: FIN_OPERATIONAL_CLASS_STAGE,
+      id: e.id || null,
+      fecha: String(e.fecha || e.date || '').slice(0, 10),
+      dateISO: String(e.fecha || e.date || '').slice(0, 10),
+      tipoMovimiento: String(e.tipoMovimiento || ''),
+      paymentMethod,
+      channel: paymentMethod,
+      eventScope: String(e.eventScope || ''),
+      posEventId: e.posEventId || null,
+      totalDebe: finRoundCurrency2(e.totalDebe || 0),
+      totalHaber: finRoundCurrency2(e.totalHaber || 0),
+      originalCurrency: finNormalizeCurrencyCode(e.originalCurrency || e.moneda || 'NIO'),
+      originalAmount: finRoundCurrency2(e.originalAmount || e.montoOriginal || amountNio || 0),
+      amountNio,
+      amount: amountNio,
+      exchangeRateUsed: e.exchangeRateUsed || null,
+      operationalClass,
+      operationalClassLabel: finOperationalClassLabel(operationalClass),
+      affectsUtility: finOperationalClassAffectsUtility(operationalClass),
+      affectsCash: paymentMethod === 'cash',
+      affectsBank: paymentMethod === 'bank',
+      countsAsAdditionalIncome: finOperationalClassIsIncome(operationalClass),
+      countsAsExpense: finOperationalClassIsExpense(operationalClass),
+      countsAsCashIn: finOperationalClassIsCashIn(operationalClass),
+      countsAsCashOut: finOperationalClassIsCashOut(operationalClass),
+      reference: String(e.reference || e.referencia || '').trim(),
+      note: String(e.descripcion || '').trim()
+    };
+  });
+}
+
+function finInferPosCashV2OperationalClass(movement) {
+  const explicit = movement && (movement.operationalClass || movement.clasificacionOperativa || movement.tipoOperativo);
+  if (explicit) return finNormalizeOperationalClass(explicit, FIN_OPERATIONAL_CLASSES.UNCLASSIFIED);
+  const kind = String(movement && movement.kind || '').trim().toUpperCase();
+  if (kind === 'IN') return FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME;
+  if (kind === 'OUT') return FIN_OPERATIONAL_CLASSES.EXPENSE;
+  return FIN_OPERATIONAL_CLASSES.UNCLASSIFIED;
+}
+
+function finGetOperationalPosCashMovementsSource(posCashRows) {
+  const rows = finOperationalArray(posCashRows);
+  const out = [];
+  for (const rec of rows) {
+    const eventId = rec && (rec.eventId || rec.posEventId);
+    const dayKey = String(rec && (rec.dayKey || rec.dateKey || rec.fecha || '') || '').slice(0, 10);
+    const movements = finOperationalArray(rec && rec.movements);
+    for (const m of movements) {
+      if (!m || typeof m !== 'object') continue;
+      const currency = finNormalizeCurrencyCode(m.currency || 'NIO');
+      const amount = finRoundCurrency2(Math.abs(Number(m.amount || 0)));
+      const fx = Number(m.exchangeRateUsed || m.fxUsed || rec.fx || rec.exchangeRateUsed || 0);
+      const amountNio = currency === 'USD'
+        ? (Number.isFinite(fx) && fx > 0 ? finRoundCurrency2(amount * fx) : 0)
+        : amount;
+      const operationalClass = finInferPosCashV2OperationalClass(m);
+      out.push({
+        source: 'pos_cashV2',
+        stage: FIN_OPERATIONAL_CLASS_STAGE,
+        id: String(m.id || ''),
+        eventScope: 'POS',
+        posEventId: eventId || null,
+        dateISO: dayKey,
+        fecha: dayKey,
+        currency,
+        originalCurrency: currency,
+        originalAmount: amount,
+        amount,
+        amountNio,
+        exchangeRateUsed: Number.isFinite(fx) && fx > 0 ? finRoundCurrency2(fx) : null,
+        paymentMethod: 'cash',
+        channel: 'cash',
+        operationalClass,
+        operationalClassLabel: finOperationalClassLabel(operationalClass),
+        affectsUtility: finOperationalClassAffectsUtility(operationalClass),
+        affectsCash: true,
+        affectsBank: false,
+        countsAsAdditionalIncome: finOperationalClassIsIncome(operationalClass),
+        countsAsExpense: finOperationalClassIsExpense(operationalClass),
+        countsAsCashIn: finOperationalClassIsCashIn(operationalClass),
+        countsAsCashOut: finOperationalClassIsCashOut(operationalClass),
+        reference: String(rec && (rec.key || '') || '').trim(),
+        note: String(m.desc || m.note || '').trim()
+      });
+    }
+  }
+  return out;
+}
+
+function finApplyOperationalFilters(row, filters = {}) {
+  if (!row) return false;
+  const date = String(row.dateISO || row.fecha || '').slice(0, 10);
+  const year = Number(filters.year || filters.anio || 0);
+  const month = Number(filters.month || filters.mes || 0);
+  if (year && (!date || Number(date.slice(0, 4)) !== year)) return false;
+  if (month && (!date || Number(date.slice(5, 7)) !== month)) return false;
+  const eventFilter = String(filters.evento || filters.event || filters.posEventId || '').trim();
+  const eventUpper = eventFilter.toUpperCase();
+  if (eventFilter && eventUpper !== 'GLOBAL' && eventUpper !== 'ALL') {
+    if (eventUpper === 'NONE') {
+      if (String(row.posEventId || '').trim() || String(row.eventScope || '').trim()) return false;
+    } else if (eventFilter.startsWith('POS:')) {
+      const id = eventFilter.slice(4);
+      if (String(row.posEventId || '') !== id) return false;
+    } else if (String(row.eventScope || '').toUpperCase() !== eventUpper) {
+      return false;
+    }
+  }
+  return true;
+}
+
+
+function finOperationalRowDedupeKey(row) {
+  if (!row || typeof row !== 'object') return '';
+  const src = String(row.source || '').trim().toLowerCase();
+  const directId = row.receiptId || row.transferId || row.id || row.journalEntryId || '';
+  if (directId) return `${src || 'src'}:${String(directId).trim()}`;
+  return [
+    src || 'manual',
+    String(row.dateISO || row.fecha || '').slice(0, 10),
+    String(row.posEventId || row.eventScope || '').trim(),
+    finNormalizeOperationalClass(row.operationalClass),
+    String(row.paymentMethod || row.channel || '').trim().toLowerCase(),
+    String(row.reference || '').trim().toLowerCase(),
+    String(row.note || '').trim().toLowerCase(),
+    String(finRoundCurrency2(row.amountNio || row.amount || row.originalAmount || 0) || 0)
+  ].join('|');
+}
+
+function finOperationalDedupeRows(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of (Array.isArray(rows) ? rows : [])) {
+    const key = finOperationalRowDedupeKey(row);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
+function finBuildOperationalManualTotals(data, filters = {}) {
+  const manual = finGetOperationalManualMovementsSource(data);
+  const receipts = finGetOperationalReceiptsSource(data).filter(r => {
+    const st = String(r.status || '').toUpperCase();
+    return !st || st === 'ISSUED' || st === 'EMITIDO' || st === 'EMITIDA';
+  });
+  const posCash = finGetOperationalPosCashMovementsSource(data && data.posCashV2);
+  const rawRows = manual.concat(receipts, posCash).filter(row => finApplyOperationalFilters(row, filters));
+  const rows = finOperationalDedupeRows(rawRows);
+  const totals = {
+    stage: FIN_OPERATIONAL_CLASS_STAGE,
+    ingresosAdicionales: 0,
+    gastos: 0,
+    entradasRealesDinero: 0,
+    salidasRealesDinero: 0,
+    movimientoCajaPeriodo: 0,
+    movimientoBancosPeriodo: 0,
+    sinClasificar: 0,
+    count: rows.length,
+    dedupedCount: Math.max(0, rawRows.length - rows.length),
+    sourceCounts: {
+      manual: manual.length,
+      receipts: receipts.length,
+      posCash: posCash.length,
+      filtered: rawRows.length,
+      used: rows.length
+    },
+    rows
+  };
+  for (const row of rows) {
+    const rawAmount = finRoundCurrency2(row.amountNio || row.amount || row.originalAmount || 0);
+    const amount = Math.abs(rawAmount);
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    const cls = finNormalizeOperationalClass(row.operationalClass);
+    const isIncome = cls === FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME;
+    const isExpense = cls === FIN_OPERATIONAL_CLASSES.EXPENSE;
+    const isCashIn = cls === FIN_OPERATIONAL_CLASSES.CASH_IN;
+    const isCashOut = cls === FIN_OPERATIONAL_CLASSES.CASH_OUT;
+
+    if (isIncome) totals.ingresosAdicionales = finRoundCurrency2(totals.ingresosAdicionales + amount);
+    else if (isExpense) totals.gastos = finRoundCurrency2(totals.gastos + amount);
+    else if (cls === FIN_OPERATIONAL_CLASSES.UNCLASSIFIED) totals.sinClasificar = finRoundCurrency2(totals.sinClasificar + amount);
+
+    if (isIncome || isCashIn) totals.entradasRealesDinero = finRoundCurrency2(totals.entradasRealesDinero + amount);
+    if (isExpense || isCashOut) totals.salidasRealesDinero = finRoundCurrency2(totals.salidasRealesDinero + amount);
+
+    const delta = (isIncome || isCashIn) ? amount : ((isExpense || isCashOut) ? -amount : 0);
+    if (row.affectsCash) totals.movimientoCajaPeriodo = finRoundCurrency2(totals.movimientoCajaPeriodo + delta);
+    if (row.affectsBank) totals.movimientoBancosPeriodo = finRoundCurrency2(totals.movimientoBancosPeriodo + delta);
+  }
+  return totals;
+}
+
+async function finReadCajaChicaSnapshotSafe() {
+  let fromDB = null;
+  let fromLocal = null;
+  try {
+    const rec = await finGet('settings', CC_STORAGE_KEY);
+    fromDB = rec && rec.data ? rec.data : null;
+  } catch (_) { fromDB = null; }
+  try {
+    const raw = localStorage.getItem(CC_STORAGE_KEY);
+    fromLocal = raw ? JSON.parse(raw) : null;
+  } catch (_) { fromLocal = null; }
+  const selected = fromDB || fromLocal || null;
+  return {
+    ok: true,
+    source: fromDB ? 'finanzasDB.settings' : (fromLocal ? 'localStorage' : 'empty'),
+    storageKey: CC_STORAGE_KEY,
+    snapshot: selected,
+    readAtISO: new Date().toISOString()
+  };
+}
+
 function finNormalizeAccountCode(code) {
   const raw = String(code ?? '').trim();
   if (!raw) return '';
@@ -6034,13 +6574,14 @@ function getAccountDisplayNameByCode(code, accountsMap, lineForFallback) {
 
 async function getAllFinData() {
   await openFinDB();
-  const [accounts, entries, lines, financialAccounts, internalTransfers, receipts] = await Promise.all([
+  const [accounts, entries, lines, financialAccounts, internalTransfers, receipts, posSources] = await Promise.all([
     finGetAll('accounts'),
     finGetAll('journalEntries'),
     finGetAll('journalLines'),
     finGetAll('financialAccounts').catch(() => []),
     finGetAll('internalTransfers').catch(() => []),
-    finGetAll('receipts').catch(() => [])
+    finGetAll('receipts').catch(() => []),
+    finReadPosOperationalSourcesSafe().catch(() => ({ sales: [], events: [], banks: [], dailyClosures: [], cashV2: [], warnings: ['No se pudieron leer fuentes POS'] }))
   ]);
 
   let suppliers = [];
@@ -6142,26 +6683,105 @@ async function getAllFinData() {
     financialAccounts: Array.isArray(financialAccounts) ? financialAccounts : [],
     internalTransfers: Array.isArray(internalTransfers) ? internalTransfers : [],
     receipts: Array.isArray(receipts) ? receipts : [],
+    posSources: posSources || { sales: [], events: [], banks: [], dailyClosures: [], cashV2: [], warnings: [] },
+    posSales: Array.isArray(posSources && posSources.sales) ? posSources.sales : [],
+    posEvents: Array.isArray(posSources && posSources.events) ? posSources.events : [],
+    posBanks: Array.isArray(posSources && posSources.banks) ? posSources.banks : [],
+    posDailyClosures: Array.isArray(posSources && posSources.dailyClosures) ? posSources.dailyClosures : [],
+    posCashV2: Array.isArray(posSources && posSources.cashV2) ? posSources.cashV2 : [],
     journalIntegrity,
-    inconsistentEntryIds
+    inconsistentEntryIds,
+    operationalDashboardSources: finBuildOperationalDashboardSourceSnapshot({
+      entries,
+      lines,
+      receipts,
+      financialAccounts,
+      internalTransfers,
+      posCashV2: Array.isArray(posSources && posSources.cashV2) ? posSources.cashV2 : []
+    })
   };
 }
 
-function buildEventList(entries) {
-  const set = new Set();
-  for (const e of entries) {
-    const name = getDisplayEventLabel(e);
-    if (name) set.add(name);
+function finDashboardAddEventOption(map, value, label, sortLabel) {
+  const val = String(value || '').trim();
+  const lab = String(label || '').trim();
+  if (!val || !lab) return;
+  if (isCentralEventName(lab)) return;
+  if (!map.has(val)) map.set(val, { value: val, label: lab, sortLabel: String(sortLabel || lab).trim() });
+}
+
+function buildEventList(dataOrEntries) {
+  const map = new Map();
+  const isData = dataOrEntries && !Array.isArray(dataOrEntries) && typeof dataOrEntries === 'object';
+  const entries = isData ? (Array.isArray(dataOrEntries.entries) ? dataOrEntries.entries : []) : (Array.isArray(dataOrEntries) ? dataOrEntries : []);
+  const posEvents = isData ? (Array.isArray(dataOrEntries.posEvents) ? dataOrEntries.posEvents : []) : [];
+  const posSales = isData ? (Array.isArray(dataOrEntries.posSales) ? dataOrEntries.posSales : []) : [];
+  const posClosures = isData ? (Array.isArray(dataOrEntries.posDailyClosures) ? dataOrEntries.posDailyClosures : []) : [];
+  const posCashRows = isData ? (Array.isArray(dataOrEntries.posCashV2) ? dataOrEntries.posCashV2 : []) : [];
+  const receipts = isData ? (Array.isArray(dataOrEntries.receipts) ? dataOrEntries.receipts : []) : [];
+
+  for (const ev of posEvents) {
+    if (!ev) continue;
+    const idRaw = ev.id;
+    const id = (typeof idRaw === 'number') ? idRaw : parseInt(String(idRaw || '').trim(), 10);
+    const name = String(ev.name || ev.nombre || '').trim();
+    if (id && name) finDashboardAddEventOption(map, `POS:${id}`, name, name);
   }
-  return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+
+  for (const s of posSales) {
+    if (!s) continue;
+    const id = (typeof s.eventId === 'number') ? s.eventId : parseInt(String(s.eventId || '').trim(), 10);
+    const name = String(s.eventName || s.eventNameSnapshot || s.posEventNameSnapshot || '').trim() || getPosEventNameLiveById(id);
+    if (id && name) finDashboardAddEventOption(map, `POS:${id}`, name, name);
+  }
+
+  for (const c of posClosures) {
+    if (!c) continue;
+    const id = (typeof c.eventId === 'number') ? c.eventId : parseInt(String(c.eventId || '').trim(), 10);
+    const name = String(c.eventNameSnapshot || c.eventName || c.posEventNameSnapshot || '').trim() || getPosEventNameLiveById(id);
+    if (id && name) finDashboardAddEventOption(map, `POS:${id}`, name, name);
+  }
+
+  for (const rec of posCashRows) {
+    if (!rec) continue;
+    const id = (typeof rec.eventId === 'number') ? rec.eventId : parseInt(String(rec.eventId || rec.posEventId || '').trim(), 10);
+    const name = getPosEventNameLiveById(id) || String(rec.eventName || rec.eventNameSnapshot || '').trim();
+    if (id && name) finDashboardAddEventOption(map, `POS:${id}`, name, name);
+  }
+
+  for (const r of receipts) {
+    if (!r) continue;
+    const id = (typeof r.posEventId === 'number') ? r.posEventId : parseInt(String(r.posEventId || '').trim(), 10);
+    const name = String(r.eventScope || r.evento || r.eventNameSnapshot || '').trim() || getPosEventNameLiveById(id);
+    if (id) finDashboardAddEventOption(map, `POS:${id}`, name || `Evento POS (${id})`, name || `Evento POS (${id})`);
+    else if (name) finDashboardAddEventOption(map, name, displayEventLabel(name), name);
+  }
+
+  for (const e of entries) {
+    if (!e) continue;
+    const id = (typeof e.posEventId === 'number') ? e.posEventId : parseInt(String(e.posEventId || '').trim(), 10);
+    const posName = String(e.posEventNameSnapshot || e.eventNameSnapshot || '').trim() || getPosEventNameLiveById(id);
+    if (id) finDashboardAddEventOption(map, `POS:${id}`, posName || `Evento POS (${id})`, posName || `Evento POS (${id})`);
+    const name = getDisplayEventLabel(e);
+    if (name) finDashboardAddEventOption(map, name, name, name);
+  }
+
+  return Array.from(map.values()).sort((a, b) => String(a.sortLabel || a.label).localeCompare(String(b.sortLabel || b.label), 'es'));
 }
 
 function matchEvent(entry, eventFilter) {
+  const rawFilter = String(eventFilter || '').trim();
+  if (!rawFilter || rawFilter === 'ALL' || rawFilter === 'GLOBAL') return true;
+  if (rawFilter === 'NONE') return !getDisplayEventLabel(entry) && !(entry && entry.posEventId);
+  if (rawFilter.startsWith('POS:')) {
+    const id = rawFilter.slice(4);
+    if (String(entry && entry.posEventId || '') === id) return true;
+    const live = getPosEventNameLiveById(id);
+    const evLabel = getDisplayEventLabel(entry);
+    return !!(live && evLabel && normStr(evLabel) === normStr(live));
+  }
   const evLabel = getDisplayEventLabel(entry);
-  if (!eventFilter || eventFilter === 'ALL') return true;
-  if (eventFilter === 'NONE') return !evLabel;
-  // Soportar filtros antiguos: CENTRAL/GENERAL
-  const f = displayEventLabel(eventFilter);
+  const f = displayEventLabel(rawFilter);
   return evLabel === f;
 }
 
@@ -7647,8 +8267,8 @@ function fillMonthYearSelects() {
   }
 }
 
-function updateEventFilters(entries) {
-  const eventos = buildEventList(entries);
+function updateEventFilters(dataOrEntries) {
+  const eventos = buildEventList(dataOrEntries);
   const selects = [
     $('#tab-evento'),
     $('#filtro-evento-diario'),
@@ -7672,8 +8292,8 @@ function updateEventFilters(entries) {
 
     eventos.forEach(ev => {
       const opt = document.createElement('option');
-      opt.value = ev;
-      opt.textContent = ev;
+      opt.value = String(ev && ev.value || '');
+      opt.textContent = String(ev && ev.label || ev && ev.value || 'Evento');
       sel.appendChild(opt);
     });
 
@@ -8686,91 +9306,350 @@ function finDashboardLineNaturalAmount(account, line) {
   return debe - haber;
 }
 
+function finDashboardSafePct(num, den) {
+  const d = n0(den);
+  if (!Number.isFinite(d) || Math.abs(d) < 0.005) return 0;
+  const pct = (n0(num) / d) * 100;
+  return Number.isFinite(pct) ? n2(pct) : 0;
+}
+
+function finDashboardFormatPct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0%';
+  return `${n.toFixed(2)}%`;
+}
+
+function finDashboardDate(record) {
+  if (!record || typeof record !== 'object') return '';
+  const candidates = [record.dateISO, record.fecha, record.date, record.dayKey, record.dateKey, record.createdAtISO, record.createdAt];
+  for (const v of candidates) {
+    if (v == null || v === '') continue;
+    if (typeof v === 'number') {
+      try {
+        const d = new Date(v);
+        if (Number.isFinite(d.getTime())) return d.toISOString().slice(0, 10);
+      } catch (_) {}
+    }
+    const s = String(v || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const parsed = Date.parse(s);
+    if (!Number.isNaN(parsed)) {
+      try { return new Date(parsed).toISOString().slice(0, 10); } catch (_) {}
+    }
+  }
+  return '';
+}
+
+function finDashboardInRange(record, filtros = {}) {
+  const date = finDashboardDate(record);
+  if (filtros.desde && (!date || date < filtros.desde)) return false;
+  if (filtros.hasta && (!date || date > filtros.hasta)) return false;
+  return true;
+}
+
+function finDashboardEventId(value) {
+  const n = (typeof value === 'number') ? value : parseInt(String(value || '').trim(), 10);
+  return (Number.isFinite(n) && n > 0) ? n : null;
+}
+
+function finDashboardEventLabelFromRecord(record) {
+  if (!record || typeof record !== 'object') return '';
+  const id = finDashboardEventId(record.posEventId || record.eventId);
+  const live = id ? getPosEventNameLiveById(id) : '';
+  return String(record.eventName || record.eventNameSnapshot || record.posEventNameSnapshot || record.eventScope || record.evento || live || '').trim();
+}
+
+function finDashboardRecordMatchesEvent(record, eventFilter) {
+  const raw = String(eventFilter || '').trim();
+  const upper = raw.toUpperCase();
+  if (!raw || upper === 'ALL' || upper === 'GLOBAL') return true;
+  const id = finDashboardEventId(record && (record.posEventId || record.eventId));
+  const label = finDashboardEventLabelFromRecord(record);
+  if (upper === 'NONE') return !id && !label;
+  if (raw.startsWith('POS:')) return String(id || '') === raw.slice(4);
+  return !!(label && normStr(label) === normStr(displayEventLabel(raw)));
+}
+
+function finDashboardEventKey(record) {
+  const id = finDashboardEventId(record && (record.posEventId || record.eventId));
+  if (id) return `POS:${id}`;
+  const label = finDashboardEventLabelFromRecord(record);
+  return label ? `LEGACY:${normStr(label)}` : 'NONE';
+}
+
+function finDashboardPaymentBucket(value) {
+  const raw = normStr(value || '');
+  if (!raw) return 'cash';
+  if (raw.includes('credito') || raw.includes('credit')) return 'credit';
+  if (raw.includes('transfer') || raw.includes('banco') || raw.includes('bank') || raw.includes('tarjeta') || raw.includes('card')) return 'bank';
+  if (raw.includes('efectivo') || raw.includes('cash')) return 'cash';
+  return raw;
+}
+
+function finDashboardSaleDiscount(sale) {
+  if (!sale || typeof sale !== 'object') return 0;
+  const d = Number(sale.discount);
+  if (Number.isFinite(d)) return Math.abs(d);
+  const du = Number(sale.discountPerUnit);
+  if (Number.isFinite(du) && du > 0) return Math.abs(du) * Math.abs(Number(sale.qty || 0));
+  return 0;
+}
+
+function finDashboardSaleLineCost(sale) {
+  if (!sale || typeof sale !== 'object') return 0;
+  const lc = Number(sale.lineCost);
+  if (Number.isFinite(lc)) return Math.abs(lc);
+  const cpu = Number(sale.costPerUnit ?? sale.unitCost ?? sale.cost ?? 0);
+  const qty = Math.abs(Number(sale.qty || 0));
+  if (Number.isFinite(cpu) && Number.isFinite(qty)) return Math.abs(cpu) * qty;
+  return 0;
+}
+
+function finDashboardSaleGrossReference(sale) {
+  if (!sale || typeof sale !== 'object') return 0;
+  const qty = Math.abs(Number(sale.qty || 0));
+  const unit = Math.abs(Number(sale.unitPrice || sale.price || 0));
+  const total = Math.abs(Number(sale.total || 0));
+  const discount = finDashboardSaleDiscount(sale);
+  const ref = unit > 0 && qty > 0 ? unit * qty : 0;
+  return n2(ref || (total + discount));
+}
+
+function finDashboardSaleSign(sale) {
+  const qty = Number(sale && sale.qty || 0);
+  const total = Number(sale && sale.total || 0);
+  return (sale && sale.isReturn) || qty < 0 || total < 0 ? -1 : 1;
+}
+
+function finDashboardSaleCashEquivalentNio(sale) {
+  if (!sale || typeof sale !== 'object') return 0;
+  const direct = sale.cashExpectedDelta;
+  let nio = 0;
+  let usd = 0;
+  if (direct && typeof direct === 'object') {
+    nio = n0(direct.NIO ?? direct.nio ?? 0);
+    usd = n0(direct.USD ?? direct.usd ?? 0);
+  } else {
+    const bx = sale.cashBreakdown && sale.cashBreakdown.expectedBoxByCurrency;
+    if (bx && typeof bx === 'object') {
+      nio = n0(bx.NIO ?? bx.nio ?? 0);
+      usd = n0(bx.USD ?? bx.usd ?? 0);
+    }
+  }
+  const fx = n0(sale.fxUsed ?? sale.exchangeRateUsed ?? (sale.cashBreakdown && (sale.cashBreakdown.fxUsed ?? sale.cashBreakdown.exchangeRateUsed)) ?? 0);
+  let eq = n2(nio + (usd && fx > 0 ? usd * fx : 0));
+  if (Math.abs(eq) < 0.005) eq = n2(sale.total || 0);
+  return eq;
+}
+
+function finDashboardApplyMoneyMovement(totals, channel, amount) {
+  const amt = n2(amount);
+  if (!Number.isFinite(amt) || Math.abs(amt) < 0.005) return;
+  if (amt > 0) totals.entradasRealesDinero = n2(totals.entradasRealesDinero + amt);
+  if (amt < 0) totals.salidasRealesDinero = n2(totals.salidasRealesDinero + Math.abs(amt));
+  if (channel === 'bank') totals.bancosPeriodo = n2(totals.bancosPeriodo + amt);
+  else if (channel === 'cash') totals.cajaPeriodo = n2(totals.cajaPeriodo + amt);
+}
+
+function finDashboardApplyPosSale(totals, sale) {
+  const sign = finDashboardSaleSign(sale);
+  const gross = finDashboardSaleGrossReference(sale) * sign;
+  const discount = finDashboardSaleDiscount(sale) * sign;
+  const courtesy = !!(sale && (sale.courtesy || sale.isCourtesy));
+  const courtesyValue = courtesy ? gross : 0;
+  totals.ventaTotal = n2(totals.ventaTotal + gross);
+  if (courtesy) totals.cortesias = n2(totals.cortesias + courtesyValue);
+  else {
+    totals.descuentos = n2(totals.descuentos + discount);
+    totals.costosVentas = n2(totals.costosVentas + (finDashboardSaleLineCost(sale) * sign));
+
+    const payment = finDashboardPaymentBucket(sale && sale.payment);
+    if (payment === 'cash') {
+      finDashboardApplyMoneyMovement(totals, 'cash', finDashboardSaleCashEquivalentNio(sale));
+    } else if (payment === 'bank') {
+      finDashboardApplyMoneyMovement(totals, 'bank', n2(sale && sale.total || 0));
+    }
+  }
+  totals.eventKeys.add(finDashboardEventKey(sale));
+}
+
+function finDashboardClosureLatestByEventDay(closures) {
+  const map = new Map();
+  for (const c of (Array.isArray(closures) ? closures : [])) {
+    if (!c || typeof c !== 'object') continue;
+    const id = finDashboardEventId(c.eventId);
+    const dk = finDashboardDate(c);
+    if (!id || !dk) continue;
+    const key = `${id}|${dk}`;
+    const current = map.get(key);
+    const ver = Number(c.version || 0);
+    const created = Number(c.createdAt || 0);
+    const curVer = current ? Number(current.version || 0) : -1;
+    const curCreated = current ? Number(current.createdAt || 0) : -1;
+    if (!current || ver > curVer || (ver === curVer && created > curCreated)) map.set(key, c);
+  }
+  return Array.from(map.values());
+}
+
+function finDashboardApplyPosClosureFallback(totals, closure) {
+  const t = (closure && closure.totals && typeof closure.totals === 'object') ? closure.totals : {};
+  const net = n2(t.totalGeneral || 0);
+  totals.ventaTotal = n2(totals.ventaTotal + net);
+  totals.costosVentas = n2(totals.costosVentas + n2(t.costoVentasTotal || 0));
+  totals.eventKeys.add(finDashboardEventKey(closure));
+  totals.stats.closureFallback += 1;
+
+  const pm = (t.ventasPorMetodo && typeof t.ventasPorMetodo === 'object') ? t.ventasPorMetodo : {};
+  Object.keys(pm).forEach(key => {
+    const bucket = finDashboardPaymentBucket(key);
+    const amount = n2(pm[key] || 0);
+    if (bucket === 'cash') finDashboardApplyMoneyMovement(totals, 'cash', amount);
+    else if (bucket === 'bank') finDashboardApplyMoneyMovement(totals, 'bank', amount);
+  });
+}
+
+
+function finDashboardSafeMoney(value) {
+  const n = n2(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function finDashboardFinalizeTotals(totals) {
+  if (!totals || typeof totals !== 'object') return totals;
+  [
+    'ventaTotal', 'descuentos', 'cortesias', 'ventaNeta', 'costosVentas',
+    'utilidadBruta', 'ingresosAdicionales', 'gastos', 'utilidadNeta',
+    'flujoCaja', 'cajaPeriodo', 'bancosPeriodo', 'entradasRealesDinero',
+    'salidasRealesDinero'
+  ].forEach((key) => { totals[key] = finDashboardSafeMoney(totals[key]); });
+  totals.margenBruto = finDashboardSafePct(totals.utilidadBruta, totals.ventaNeta);
+  totals.margenNeto = finDashboardSafePct(totals.utilidadNeta, totals.ventaNeta);
+  if (!Number.isFinite(Number(totals.numeroEventos)) || Number(totals.numeroEventos) < 0) totals.numeroEventos = 0;
+  return totals;
+}
+
 function calcTableroClasificadoForFilter(data, filtros) {
   const safeData = data || {};
-  const entries = Array.isArray(safeData.entries) ? safeData.entries : [];
-  const linesByEntry = safeData.linesByEntry instanceof Map ? safeData.linesByEntry : new Map();
-  const accountsMap = safeData.accountsMap instanceof Map ? safeData.accountsMap : new Map();
-  const subset = filterEntriesByDateAndEvent(entries, filtros || {});
+  const eventFilter = String(filtros && filtros.evento || 'ALL').trim() || 'ALL';
+  const sales = Array.isArray(safeData.posSales) ? safeData.posSales : [];
+  const closures = Array.isArray(safeData.posDailyClosures) ? safeData.posDailyClosures : [];
 
   const totals = {
-    ingresosOperativos: 0,
-    otrosIngresos: 0,
-    costosProduccion: 0,
-    gastosOperativos: 0,
-    ajustesComerciales: 0,
+    stage: FIN_OPERATIONAL_DASHBOARD_STAGE,
+    ventaTotal: 0,
+    descuentos: 0,
+    cortesias: 0,
+    ventaNeta: 0,
+    costosVentas: 0,
     utilidadBruta: 0,
+    ingresosAdicionales: 0,
+    gastos: 0,
     utilidadNeta: 0,
+    margenBruto: 0,
+    margenNeto: 0,
+    numeroEventos: 0,
+    flujoCaja: 0,
+    cajaPeriodo: 0,
+    bancosPeriodo: 0,
+    entradasRealesDinero: 0,
+    salidasRealesDinero: 0,
+    eventKeys: new Set(),
     alerts: [],
     stats: {
-      entries: subset.length,
-      lines: 0,
-      missingAccounts: 0,
-      groupingLines: 0,
-      rootLines: 0,
-      unclassifiedLines: 0,
-      entriesWithoutLines: 0,
-      legacyAdjustmentLines: 0
+      posSales: 0,
+      posCourtesySales: 0,
+      closureFallback: 0,
+      manualRows: 0,
+      receiptRows: 0,
+      posCashRows: 0
     }
   };
 
-  for (const e of subset) {
-    const entryLines = linesByEntry.get(e && e.id) || [];
-    if (!entryLines.length) {
-      totals.stats.entriesWithoutLines += 1;
-      continue;
-    }
-
-    for (const ln of entryLines) {
-      if (!ln || typeof ln !== 'object') continue;
-      totals.stats.lines += 1;
-      const code = finGetAccountCode(ln.accountCode);
-      const acc = getAccountByCodeLoose(code, accountsMap);
-      if (!acc) {
-        totals.stats.missingAccounts += 1;
-        continue;
-      }
-
-      if (finIsRootAccount(acc)) totals.stats.rootLines += 1;
-      if (finIsGroupingAccount(acc)) totals.stats.groupingLines += 1;
-
-      const tipo = finDashboardAccountType(acc, ln);
-      const amount = finDashboardLineNaturalAmount(acc, ln);
-      const ajuste = finDashboardIsCommercialAdjustment(acc, ln);
-      if (ajuste) {
-        totals.ajustesComerciales += (tipo === 'ingreso') ? (n0(ln.debe) - n0(ln.haber)) : (n0(ln.debe) - n0(ln.haber));
-        if (code === '6105') totals.stats.legacyAdjustmentLines += 1;
-      }
-
-      if (tipo === 'ingreso') {
-        if (finDashboardIsOtherIncome(acc, ln)) totals.otrosIngresos += amount;
-        else totals.ingresosOperativos += amount;
-      } else if (tipo === 'costo') {
-        totals.costosProduccion += amount;
-      } else if (tipo === 'gasto') {
-        totals.gastosOperativos += amount;
-      } else if (!['activo', 'pasivo', 'patrimonio', 'capital'].includes(tipo)) {
-        totals.stats.unclassifiedLines += 1;
-      }
-    }
+  const saleDayKeys = new Set();
+  for (const sale of sales) {
+    if (!sale || typeof sale !== 'object') continue;
+    if (!finDashboardInRange(sale, filtros || {})) continue;
+    if (!finDashboardRecordMatchesEvent(sale, eventFilter)) continue;
+    const id = finDashboardEventId(sale.eventId);
+    const dk = finDashboardDate(sale);
+    if (id && dk) saleDayKeys.add(`${id}|${dk}`);
+    totals.stats.posSales += 1;
+    if (sale.courtesy || sale.isCourtesy) totals.stats.posCourtesySales += 1;
+    finDashboardApplyPosSale(totals, sale);
   }
 
-  totals.ingresosOperativos = n2(totals.ingresosOperativos);
-  totals.otrosIngresos = n2(totals.otrosIngresos);
-  totals.costosProduccion = n2(totals.costosProduccion);
-  totals.gastosOperativos = n2(totals.gastosOperativos);
-  totals.ajustesComerciales = n2(Math.abs(totals.ajustesComerciales) < 0.005 ? 0 : totals.ajustesComerciales);
-  totals.utilidadBruta = n2(totals.ingresosOperativos - totals.costosProduccion);
-  totals.utilidadNeta = n2(totals.ingresosOperativos + totals.otrosIngresos - totals.costosProduccion - totals.gastosOperativos);
+  // Fallback defensivo: usar cierre diario solo cuando no hay ventas crudas para ese evento/día.
+  for (const closure of finDashboardClosureLatestByEventDay(closures)) {
+    if (!closure || typeof closure !== 'object') continue;
+    if (!finDashboardInRange(closure, filtros || {})) continue;
+    if (!finDashboardRecordMatchesEvent(closure, eventFilter)) continue;
+    const id = finDashboardEventId(closure.eventId);
+    const dk = finDashboardDate(closure);
+    if (id && dk && saleDayKeys.has(`${id}|${dk}`)) continue;
+    finDashboardApplyPosClosureFallback(totals, closure);
+  }
 
-  const ji = safeData.journalIntegrity || {};
-  if (totals.stats.missingAccounts) totals.alerts.push({ kind: 'warn', text: `${totals.stats.missingAccounts} línea(s) del periodo usan cuentas que no se encontraron en el Catálogo. Se omitieron para no inventar clasificación.` });
-  if (totals.stats.groupingLines || totals.stats.rootLines) totals.alerts.push({ kind: 'warn', text: `Hay ${totals.stats.groupingLines || totals.stats.rootLines} línea(s) registradas contra cuentas raíz/agrupadoras. El Tablero las lee, pero conviene corregirlas con asientos de ajuste si afectan reportes.` });
-  if (totals.stats.unclassifiedLines) totals.alerts.push({ kind: 'warn', text: `${totals.stats.unclassifiedLines} línea(s) no pudieron clasificarse como ingreso, costo o gasto.` });
-  if (totals.stats.entriesWithoutLines || ji.entriesWithoutLinesCount) totals.alerts.push({ text: `Existen asientos históricos sin líneas visibles (${totals.stats.entriesWithoutLines} en este filtro; ${Number(ji.entriesWithoutLinesCount || 0)} en la base). No se recalculó nada.` });
-  if (Number(ji.orphanLinesCount || 0) > 0) totals.alerts.push({ kind: 'warn', text: `La base conserva ${Number(ji.orphanLinesCount || 0)} línea(s) huérfanas. Se mantienen intactas y fuera del Tablero.` });
-  if (totals.stats.legacyAdjustmentLines) totals.alerts.push({ text: `Ajustes comerciales conserva compatibilidad con la cuenta legacy 6105 cuando exista en históricos.` });
-  if (!totals.alerts.length) totals.alerts.push({ text: 'Tablero calculado desde journalEntries, journalLines y accounts; sin datos simulados ni recalcular históricos.' });
+  const month = Number(String(filtros && filtros.desde || '').slice(5, 7));
+  const year = Number(String(filtros && filtros.desde || '').slice(0, 4));
+  const manualTotals = finBuildOperationalManualTotals(safeData, { year, month, evento: eventFilter });
+  totals.ingresosAdicionales = n2(manualTotals.ingresosAdicionales || 0);
+  totals.gastos = n2(manualTotals.gastos || 0);
+  totals.entradasRealesDinero = n2(totals.entradasRealesDinero + n0(manualTotals.entradasRealesDinero));
+  totals.salidasRealesDinero = n2(totals.salidasRealesDinero + n0(manualTotals.salidasRealesDinero));
+  totals.cajaPeriodo = n2(totals.cajaPeriodo + n0(manualTotals.movimientoCajaPeriodo));
+  totals.bancosPeriodo = n2(totals.bancosPeriodo + n0(manualTotals.movimientoBancosPeriodo));
+  totals.stats.manualRows = manualTotals && manualTotals.sourceCounts ? Number(manualTotals.sourceCounts.manual || 0) : 0;
+  totals.stats.receiptRows = manualTotals && manualTotals.sourceCounts ? Number(manualTotals.sourceCounts.receipts || 0) : 0;
+  totals.stats.posCashRows = manualTotals && manualTotals.sourceCounts ? Number(manualTotals.sourceCounts.posCash || 0) : 0;
+  for (const row of (Array.isArray(manualTotals.rows) ? manualTotals.rows : [])) {
+    const key = finDashboardEventKey(row);
+    if (key && key !== 'NONE') totals.eventKeys.add(key);
+  }
+
+  totals.ventaTotal = finDashboardSafeMoney(totals.ventaTotal);
+  totals.descuentos = finDashboardSafeMoney(totals.descuentos);
+  totals.cortesias = finDashboardSafeMoney(totals.cortesias);
+  totals.costosVentas = finDashboardSafeMoney(totals.costosVentas);
+  totals.ventaNeta = finDashboardSafeMoney(totals.ventaTotal - totals.descuentos - totals.cortesias);
+  totals.utilidadBruta = finDashboardSafeMoney(totals.ventaNeta - totals.costosVentas);
+  totals.utilidadNeta = finDashboardSafeMoney(totals.utilidadBruta + totals.ingresosAdicionales - totals.gastos);
+  totals.flujoCaja = finDashboardSafeMoney(totals.entradasRealesDinero - totals.salidasRealesDinero);
+  totals.numeroEventos = eventFilter && eventFilter !== 'ALL' && eventFilter !== 'GLOBAL'
+    ? (totals.eventKeys.size ? 1 : 0)
+    : Array.from(totals.eventKeys).filter(k => k && k !== 'NONE').length;
+  finDashboardFinalizeTotals(totals);
+
+  totals.liquidityPeriod = {
+    cutoff: filtros && filtros.hasta,
+    totals: {
+      cashNio: totals.cajaPeriodo,
+      cashUsd: 0,
+      cashEquivalentNio: totals.cajaPeriodo,
+      bankNio: totals.bancosPeriodo,
+      bankUsd: 0,
+      bankEquivalentNio: totals.bancosPeriodo,
+      liquidityEquivalentNio: n2(totals.cajaPeriodo + totals.bancosPeriodo)
+    },
+    cash: Math.abs(totals.cajaPeriodo) > 0.005 ? [{ label: 'Movimiento de caja del período', currency: 'NIO', balanceOriginal: totals.cajaPeriodo, equivalentNio: totals.cajaPeriodo }] : [],
+    bank: Math.abs(totals.bancosPeriodo) > 0.005 ? [{ label: 'Movimiento bancario del período', currency: 'NIO', balanceOriginal: totals.bancosPeriodo, equivalentNio: totals.bancosPeriodo }] : [],
+    alerts: []
+  };
+
+  if (!totals.stats.posSales && !totals.stats.closureFallback && !totals.stats.manualRows) {
+    totals.alerts.push({ text: 'No hay datos operativos para el filtro seleccionado.' });
+  }
+  if (totals.stats.closureFallback) {
+    totals.alerts.push({ text: `Se usaron ${totals.stats.closureFallback} cierre(s) POS como fallback porque no había ventas crudas para ese evento/día.` });
+  }
+  if (manualTotals.sinClasificar) {
+    totals.alerts.push({ kind: 'warn', text: `Hay ${finFormatCordobas(manualTotals.sinClasificar)} en movimientos sin clasificación operativa; no se sumaron a utilidad.` });
+  }
+  if (manualTotals.dedupedCount) {
+    totals.alerts.push({ kind: 'warn', text: `Se omitieron ${manualTotals.dedupedCount} registro(s) operativo(s) repetido(s) para evitar doble conteo.` });
+  }
+  if (!totals.alerts.length) {
+    totals.alerts.push({ text: 'Tablero operativo calculado desde POS, Caja Chica/Efectivo y Recibos; sin depender del Diario Contable como fuente principal.' });
+  }
 
   return totals;
 }
@@ -8805,10 +9684,10 @@ function renderTableroChart(result) {
   const border = styles.getPropertyValue('--fin-border').trim() || 'rgba(255,255,255,0.12)';
 
   const rows = [
-    ['Ingresos operativos', n0(result && result.ingresosOperativos), gold],
-    ['Otros ingresos', n0(result && result.otrosIngresos), '#9f8b4a'],
-    ['Costos', n0(result && result.costosProduccion), red],
-    ['Gastos', n0(result && result.gastosOperativos), '#8b1f26'],
+    ['Venta Total', n0(result && result.ventaTotal), gold],
+    ['Venta Neta', n0(result && result.ventaNeta), '#9f8b4a'],
+    ['Costos', n0(result && result.costosVentas), red],
+    ['Gastos', n0(result && result.gastos), '#8b1f26'],
     ['Utilidad neta', n0(result && result.utilidadNeta), (n0(result && result.utilidadNeta) >= 0 ? gold : red)]
   ];
   const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r[1])));
@@ -8816,12 +9695,12 @@ function renderTableroChart(result) {
 
   ctx.font = '600 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   ctx.fillStyle = text;
-  ctx.fillText('Resultado contable del filtro seleccionado', 18, 24);
+  ctx.fillText('Resultado operativo del filtro seleccionado', 18, 24);
 
   if (!hasData) {
     ctx.font = '12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
     ctx.fillStyle = muted;
-    ctx.fillText('No hay montos clasificados para graficar en este periodo.', 18, 58);
+    ctx.fillText('No hay montos operativos para graficar en este período.', 18, 58);
     return;
   }
 
@@ -8892,7 +9771,7 @@ function finTableroLiquidityRowHtml(row) {
 }
 
 function finTableroLiquidityEmptyHtml(text) {
-  return `<div class="fin-liquidity-empty">${escapeHtml(text || 'Sin movimientos acumulados al corte.')}</div>`;
+  return `<div class="fin-liquidity-empty">${escapeHtml(text || 'Sin movimientos en el período filtrado.')}</div>`;
 }
 
 function renderTableroLiquidity(detail, context) {
@@ -8923,33 +9802,76 @@ function renderTableroLiquidity(detail, context) {
   if (cashDetail) {
     cashDetail.innerHTML = cashRows.length
       ? cashRows.map(finTableroLiquidityRowHtml).join('')
-      : finTableroLiquidityEmptyHtml('No hay movimientos reales de caja acumulados al corte.');
+      : finTableroLiquidityEmptyHtml('No hay movimientos reales de caja en el período filtrado.');
   }
   if (bankDetail) {
     bankDetail.innerHTML = bankRows.length
       ? bankRows.map(finTableroLiquidityRowHtml).join('')
-      : finTableroLiquidityEmptyHtml('No hay movimientos reales bancarios acumulados al corte.');
+      : finTableroLiquidityEmptyHtml('No hay movimientos reales bancarios en el período filtrado.');
   }
   if (note) {
     const parts = [];
     const corte = context && context.corte ? context.corte : safe.cutoff;
-    if (corte) parts.push(`Saldo acumulado al cierre del período: ${corte}.`);
-    parts.push('Caja y Bancos son saldos globales, no se filtran por evento.');
-    if (context && context.eventFilter && context.eventFilter !== 'ALL') parts.push('El filtro de evento queda aplicado al resultado contable, no a liquidez.');
+    if (corte) parts.push(`Movimiento del período hasta: ${corte}.`);
+    parts.push('Caja y Bancos respetan mes/año y el evento cuando la fuente trae evento asociado.');
+    if (context && context.eventFilter && context.eventFilter !== 'ALL') parts.push('Filtro por evento aplicado a POS, Caja/Efectivo y Recibos compatibles.');
     note.textContent = parts.join(' ');
   }
+}
+
+function finRenderTableroCurrencyBand() {
+  const rateEl = document.getElementById('tab-fx-rate');
+  const updatedEl = document.getElementById('tab-fx-updated');
+  let state = null;
+  try { state = finGetCurrencyStateSafe(); } catch (_) { state = null; }
+  const rateText = state && state.hasExchangeRate && state.exchangeRate
+    ? `T/C vigente ${Number(state.exchangeRate).toFixed(2)}`
+    : 'T/C vigente —';
+  const updatedText = state && state.updatedAtText && state.updatedAtText !== 'Sin registros'
+    ? `Última actualización: ${state.updatedAtText}`
+    : 'Última actualización: —';
+  if (rateEl) rateEl.textContent = rateText;
+  if (updatedEl) updatedEl.textContent = updatedText;
+}
+
+function finSetText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function finResolveDashboardEventFilter(vista, eventoSel) {
+  const mode = String(vista || 'GLOBAL').toUpperCase();
+  if (mode !== 'EVENT') return 'ALL';
+  if (!eventoSel) return 'NONE';
+  let value = String(eventoSel.value || '').trim();
+  if (!value || value === 'ALL') {
+    const firstEvent = Array.from(eventoSel.options || []).find(opt => opt && opt.value && opt.value !== 'ALL' && opt.value !== 'NONE');
+    if (firstEvent) {
+      value = firstEvent.value;
+      try { eventoSel.value = value; } catch (_) {}
+    }
+  }
+  return value || 'NONE';
 }
 
 function renderTablero(data) {
   const mesSel = $('#tab-mes');
   const anioSel = $('#tab-anio');
   const eventoSel = $('#tab-evento');
+  const vistaSel = $('#tab-vista');
+  const eventoWrap = $('#tab-evento-wrap');
   if (!mesSel || !anioSel || !eventoSel) return;
 
   const mes = mesSel.value || pad2(new Date().getMonth() + 1);
   const anio = anioSel.value || String(new Date().getFullYear());
   const { start, end } = monthRange(Number(anio), Number(mes));
-  const eventFilter = eventoSel.value || 'ALL';
+  const vista = String(vistaSel && vistaSel.value || 'GLOBAL').toUpperCase();
+  const isEventView = vista === 'EVENT';
+  if (eventoWrap) eventoWrap.classList.toggle('hidden', !isEventView);
+  if (eventoSel) eventoSel.disabled = !isEventView;
+  const eventFilter = finResolveDashboardEventFilter(vista, eventoSel);
+
+  finRenderTableroCurrencyBand();
 
   const result = calcTableroClasificadoForFilter(data, {
     desde: start,
@@ -8957,33 +9879,32 @@ function renderTablero(data) {
     evento: eventFilter
   });
 
-  const corte = end;
-  const liquidity = calcCajaBancoMultimonedaUntilDate(data, corte);
-  const caja = liquidity.totals.cashEquivalentNio;
-  const banco = liquidity.totals.bankEquivalentNio;
+  finSetText('tab-venta-total', finFormatCordobas(result.ventaTotal));
+  finSetText('tab-descuentos', finFormatCordobas(result.descuentos));
+  finSetText('tab-cortesias', finFormatCordobas(result.cortesias));
+  finSetText('tab-venta-neta', finFormatCordobas(result.ventaNeta));
+  finSetText('tab-costos', finFormatCordobas(result.costosVentas));
+  finSetText('tab-utilidad-bruta', finFormatCordobas(result.utilidadBruta));
+  finSetText('tab-ingresos-adicionales', finFormatCordobas(result.ingresosAdicionales));
+  finSetText('tab-gastos', finFormatCordobas(result.gastos));
+  finSetText('tab-utilidad-neta', finFormatCordobas(result.utilidadNeta));
+  finSetText('tab-margen-bruto', finDashboardFormatPct(result.margenBruto));
+  finSetText('tab-margen-neto', finDashboardFormatPct(result.margenNeto));
+  finSetText('tab-num-eventos', String(result.numeroEventos || 0));
+  finSetText('tab-flujo-caja', finFormatCordobas(result.flujoCaja));
+  finSetText('tab-caja-periodo', finFormatCordobas(result.cajaPeriodo));
+  finSetText('tab-bancos-periodo', finFormatCordobas(result.bancosPeriodo));
 
-  const tabIng = $('#tab-ingresos');
-  const tabCos = $('#tab-costos');
-  const tabCort = $('#tab-cortesias');
-  const tabBru = $('#tab-bruta');
-  const tabPost = $('#tab-post-cortesias');
-  const tabGas = $('#tab-gastos');
-  const tabRes = $('#tab-resultado');
-  const tabCaja = $('#tab-caja');
-  const tabBanco = $('#tab-banco');
+  // Compatibilidad con ids antiguos que pudieran existir en instalaciones cacheadas.
+  finSetText('tab-ingresos', finFormatCordobas(result.ventaTotal));
+  finSetText('tab-post-cortesias', finFormatCordobas(result.ingresosAdicionales));
+  finSetText('tab-bruta', finFormatCordobas(result.utilidadBruta));
+  finSetText('tab-resultado', finFormatCordobas(result.utilidadNeta));
+  finSetText('tab-caja', finFormatCordobas(result.cajaPeriodo));
+  finSetText('tab-banco', finFormatCordobas(result.bancosPeriodo));
 
-  if (tabIng) tabIng.textContent = finFormatCordobas(result.ingresosOperativos);
-  if (tabPost) tabPost.textContent = finFormatCordobas(result.otrosIngresos);
-  if (tabCos) tabCos.textContent = finFormatCordobas(result.costosProduccion);
-  if (tabGas) tabGas.textContent = finFormatCordobas(result.gastosOperativos);
-  if (tabCort) tabCort.textContent = finFormatCordobas(result.ajustesComerciales);
-  if (tabBru) tabBru.textContent = finFormatCordobas(result.utilidadBruta);
-  if (tabRes) tabRes.textContent = finFormatCordobas(result.utilidadNeta);
-  if (tabCaja) tabCaja.textContent = finFormatCordobas(caja);
-  if (tabBanco) tabBanco.textContent = finFormatCordobas(banco);
-
-  renderTableroLiquidity(liquidity, { corte, eventFilter });
-  renderTableroAlerts({ ...result, alerts: [...((result && result.alerts) || []), ...((liquidity && liquidity.alerts) || [])] });
+  renderTableroLiquidity(result.liquidityPeriod, { corte: end, eventFilter, periodMode: true });
+  renderTableroAlerts(result);
   renderTableroChart(result);
 }
 
@@ -16653,7 +17574,11 @@ function rcNormalizeReceipt(r){
     bancoNombreSnapshot: String(r && (r.bancoNombreSnapshot || r.paymentBank || '') || '').trim(),
     journalEntryId: r && r.journalEntryId ? String(r.journalEntryId) : '',
     fechaRegistro: String(r && (r.fechaRegistro || '') || '').trim(),
-    receiptCurrencyStage: String(r && (r.receiptCurrencyStage || r.a33FinanceStage || '') || '').trim()
+    receiptCurrencyStage: String(r && (r.receiptCurrencyStage || r.a33FinanceStage || '') || '').trim(),
+    operationalClass: finInferReceiptOperationalClass(r),
+    clasificacionOperativa: finInferReceiptOperationalClass(r),
+    operationalClassLabel: finOperationalClassLabel(finInferReceiptOperationalClass(r)),
+    operationalStage: FIN_OPERATIONAL_CLASS_STAGE
   };
 
   if (!out.lines.length) {
@@ -16772,6 +17697,8 @@ function rcRenderList(){
     const acctName = String(r.financialAccountNameSnapshot || r.cuentaFinancieraNombreSnapshot || '').trim();
     const ref = String(r.paymentRef || r.referenciaPago || '').trim();
     const rate = r.exchangeRateUsed || r.tipoCambioUsado || null;
+    const opClass = finNormalizeOperationalClass(r.operationalClass || r.clasificacionOperativa, FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME);
+    const opLabel = finOperationalClassLabel(opClass);
 
     const st = String(r.status || 'DRAFT');
     const canEdit = st === 'DRAFT';
@@ -16782,7 +17709,7 @@ function rcRenderList(){
     tr.innerHTML = `
       <td>${escapeHTML(num)}</td>
       <td>${escapeHTML(fecha)}</td>
-      <td><span class="fin-cell-text fin-clamp-2">${escapeHTML(cli)}</span></td>
+      <td><span class="fin-cell-text fin-clamp-2">${escapeHTML(cli)}</span><div class="rec-account-mini">${escapeHTML(opLabel)}</div></td>
       <td>
         ${rcPayPill(r.paymentType)}
         ${(acctName || ref) ? `<div class="rec-account-mini">${acctName ? escapeHTML(acctName) : ''}${ref ? `${acctName ? ' · ' : ''}Ref: ${escapeHTML(ref)}` : ''}</div>` : ''}
@@ -16885,7 +17812,7 @@ function rcSetEditorMode(mode){
 
   const isView = (rcEditorMode === 'view');
 
-  const idsDisable = ['rec-client','rec-date','rec-bank','rec-ref','rec-financial-account'];
+  const idsDisable = ['rec-client','rec-date','rec-bank','rec-ref','rec-financial-account','rec-operational-class'];
   idsDisable.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = isView;
@@ -17035,6 +17962,7 @@ function rcFillEditor(){
   const bank = document.getElementById('rec-bank');
   const ref = document.getElementById('rec-ref');
   const fa = document.getElementById('rec-financial-account');
+  const op = document.getElementById('rec-operational-class');
 
   if (id) id.value = rcCurrent.receiptId;
   if (cli) cli.value = rcCurrent.clientName || '';
@@ -17046,6 +17974,7 @@ function rcFillEditor(){
     rcPopulateFinancialAccountSelect(finCachedData);
     fa.value = rcCurrent.financialAccountId || rcCurrent.cuentaFinancieraId || '';
   }
+  if (op) op.value = finNormalizeOperationalClass(rcCurrent.operationalClass || rcCurrent.clasificacionOperativa, FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME);
 
   rcSetPaymentType(rcCurrent.paymentType || 'CASH');
   rcRenderLines();
@@ -17076,6 +18005,9 @@ function rcNewDraft(){
     baseCurrency: 'NIO',
     baseAmountNio: 0,
     exchangeRateSource: FIN_CURRENCY_SOURCE_LABEL,
+    operationalClass: FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME,
+    clasificacionOperativa: FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME,
+    operationalStage: FIN_OPERATIONAL_CLASS_STAGE,
     lines: [{ itemName: '', qty: 1, unitPrice: 0, discountPerUnit: 0, lineTotal: 0 }],
     totals: { subtotal: 0, discountTotal: 0, total: 0 }
   });
@@ -17165,9 +18097,16 @@ function rcValidateCurrent(opts={}){
   const finSnap = rcApplyFinancialSnapshotToCurrent();
   if (!finSnap.ok) return { ok:false, msg:finSnap.msg || 'Cuenta financiera inválida.' };
 
+  const opSel = document.getElementById('rec-operational-class');
+  const opClass = finNormalizeOperationalClass(opSel ? opSel.value : (rcCurrent.operationalClass || rcCurrent.clasificacionOperativa), FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME);
+
   rcCurrent.clientName = clientName;
   rcCurrent.dateISO = dateISO;
   rcCurrent.dateDisplay = rcDateDisplayFromISO(dateISO);
+  rcCurrent.operationalClass = opClass;
+  rcCurrent.clasificacionOperativa = opClass;
+  rcCurrent.operationalClassLabel = finOperationalClassLabel(opClass);
+  rcCurrent.operationalStage = FIN_OPERATIONAL_CLASS_STAGE;
 
   return { ok:true, msg:'' };
 }
@@ -17194,7 +18133,7 @@ function rcSetSaving(on){
   if (btnRef) btnRef.disabled = rcSaving;
 
   // Inputs principales
-  const ids = ['rec-client','rec-date','rec-bank','rec-ref','rec-financial-account'];
+  const ids = ['rec-client','rec-date','rec-bank','rec-ref','rec-financial-account','rec-operational-class'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el && rcEditorMode === 'edit') el.disabled = rcSaving;
@@ -17638,6 +18577,7 @@ function setupRecibosUI(){
   const bank = document.getElementById('rec-bank');
   const ref = document.getElementById('rec-ref');
   const financialAccount = document.getElementById('rec-financial-account');
+  const operationalClass = document.getElementById('rec-operational-class');
   const payCash = document.getElementById('rec-pay-cash');
   const payTr = document.getElementById('rec-pay-transfer');
 
@@ -17739,6 +18679,15 @@ function setupRecibosUI(){
     }
     rcSyncFinancialAccountUI();
     rcUpdateEditorMeta();
+  });
+
+  if (operationalClass) operationalClass.addEventListener('change', () => {
+    if (!rcCurrent || rcEditorMode !== 'edit') return;
+    const opClass = finNormalizeOperationalClass(operationalClass.value, FIN_OPERATIONAL_CLASSES.ADDITIONAL_INCOME);
+    rcCurrent.operationalClass = opClass;
+    rcCurrent.clasificacionOperativa = opClass;
+    rcCurrent.operationalClassLabel = finOperationalClassLabel(opClass);
+    rcCurrent.operationalStage = FIN_OPERATIONAL_CLASS_STAGE;
   });
 
   if (btnAdd) btnAdd.addEventListener('click', () => {
@@ -18251,7 +19200,7 @@ function setupFinancialAccountsUI() {
 
 
 
-const FIN_HIDDEN_MAIN_VIEWS = Object.freeze(['cuentasfinancieras', 'transferencias', 'compras']);
+const FIN_HIDDEN_MAIN_VIEWS = Object.freeze(['diario', 'estados', 'catalogo', 'comprasplan', 'compras', 'cuentasfinancieras', 'transferencias']);
 
 function finIsHiddenMainView(view) {
   const v = String(view || '').trim().toLowerCase();
@@ -18267,7 +19216,7 @@ function finFindVisibleTabButton(view) {
 }
 
 function finFallbackVisibleView() {
-  const preferred = ['diario', 'catalogo', 'tablero'];
+  const preferred = ['tablero', 'cajachica', 'recibos'];
   for (const view of preferred) {
     if (finFindVisibleTabButton(view)) return view;
   }
@@ -18361,7 +19310,7 @@ function setupTabs() {
     });
   });
 
-  // Vista inicial según hash de la URL (#tab=tablero, #tab=diario, #tab=estados).
+  // Vista inicial según hash de la URL. Las vistas contables/pesadas caen al Tablero operativo.
   const initialView = (window.location.hash && window.location.hash.startsWith('#tab='))
     ? finNormalizeViewName(window.location.hash.slice(5))
     : 'tablero';
@@ -18437,7 +19386,7 @@ function setupModoERToggle() {
 
 function setupFilterListeners() {
   // Tablero
-  ['tab-mes', 'tab-anio', 'tab-evento'].forEach(id => {
+  ['tab-mes', 'tab-anio', 'tab-vista', 'tab-evento'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', () => {
       if (finCachedData) renderTablero(finCachedData);
@@ -18554,7 +19503,7 @@ async function refreshAllFin() {
   // Evento (POS): refrescar lista de eventos activos para dropdown y resolución live por ID.
   await refreshPosEventsCache();
   populateMovimientoEventoSelect();
-  updateEventFilters(data.entries);
+  updateEventFilters(data);
   updateSupplierSelects(data);
   fillCuentaSelect(data);
   fillFinancialAccountSelect(data);

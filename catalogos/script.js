@@ -80,7 +80,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.80&r=8').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.84&r=8').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });

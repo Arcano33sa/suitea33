@@ -4,10 +4,10 @@ const DB_VER = 34; // Catálogos Etapa 3: Extras maestros + Bancos centralizados
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.80';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.84';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r12');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r2');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -1982,7 +1982,7 @@ function cashV2InitInitialUIOnce(){
 
         const nio = (saved && saved.initial && saved.initial.NIO && Number(saved.initial.NIO.total)) || 0;
         const usd = (saved && saved.initial && saved.initial.USD && Number(saved.initial.USD.total)) || 0;
-        console.log(`[A33][CASHv2] initial save ${eid} ${dk} totals NIO=${nio} USD=${usd}`);
+        if (typeof window !== 'undefined' && window.A33_DEBUG_CASHV2) console.info(`[A33][CASHv2] initial save ${eid} ${dk} totals NIO=${nio} USD=${usd}`);
 
         cashV2SetLastRec(saved);
         cashV2ApplyInitialToDom(saved.initial);
@@ -2277,6 +2277,56 @@ function cashV2NewMovementId(){
   return 'M-' + Date.now().toString(36) + '-' + Math.random().toString(16).slice(2,10);
 }
 
+const CASHV2_OPERATIONAL_CLASSES = Object.freeze({
+  ADDITIONAL_INCOME: 'ADDITIONAL_INCOME',
+  EXPENSE: 'EXPENSE',
+  CASH_IN: 'CASH_IN',
+  CASH_OUT: 'CASH_OUT',
+  UNCLASSIFIED: 'UNCLASSIFIED'
+});
+const CASHV2_OPERATIONAL_LABELS = Object.freeze({
+  ADDITIONAL_INCOME: 'Ingreso Adicional',
+  EXPENSE: 'Gasto',
+  CASH_IN: 'Entrada de efectivo / fondo',
+  CASH_OUT: 'Salida de efectivo / retiro',
+  UNCLASSIFIED: 'No clasificado'
+});
+
+function cashV2NormalizeOperationalClass(value, fallback){
+  const fb = fallback || CASHV2_OPERATIONAL_CLASSES.UNCLASSIFIED;
+  const raw = String(value || '').trim().toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s\-]+/g, '_');
+  if (!raw) return fb;
+  if (raw === 'ADDITIONAL_INCOME' || raw === 'INGRESO_ADICIONAL' || raw === 'INGRESOS_ADICIONALES' || raw === 'OTHER_INCOME') return CASHV2_OPERATIONAL_CLASSES.ADDITIONAL_INCOME;
+  if (raw === 'EXPENSE' || raw === 'GASTO' || raw === 'EGRESO_OPERATIVO') return CASHV2_OPERATIONAL_CLASSES.EXPENSE;
+  if (raw === 'CASH_IN' || raw === 'ENTRADA_FONDO' || raw === 'ENTRADA_DE_EFECTIVO_FONDO' || raw === 'ENTRADA_EFECTIVO_FONDO' || raw === 'FONDO' || raw === 'ENTRADA') return CASHV2_OPERATIONAL_CLASSES.CASH_IN;
+  if (raw === 'CASH_OUT' || raw === 'SALIDA_RETIRO' || raw === 'SALIDA_DE_EFECTIVO_RETIRO' || raw === 'SALIDA_EFECTIVO_RETIRO' || raw === 'RETIRO' || raw === 'SALIDA') return CASHV2_OPERATIONAL_CLASSES.CASH_OUT;
+  if (raw === 'IN') return CASHV2_OPERATIONAL_CLASSES.ADDITIONAL_INCOME;
+  if (raw === 'OUT') return CASHV2_OPERATIONAL_CLASSES.EXPENSE;
+  if (raw === 'UNCLASSIFIED' || raw === 'NO_CLASIFICADO' || raw === 'SIN_CLASIFICAR') return CASHV2_OPERATIONAL_CLASSES.UNCLASSIFIED;
+  return fb;
+}
+
+function cashV2OperationalClassLabel(value){
+  const cls = cashV2NormalizeOperationalClass(value);
+  return CASHV2_OPERATIONAL_LABELS[cls] || CASHV2_OPERATIONAL_LABELS.UNCLASSIFIED;
+}
+
+function cashV2OperationalClassToKind(value){
+  const cls = cashV2NormalizeOperationalClass(value);
+  if (cls === CASHV2_OPERATIONAL_CLASSES.ADDITIONAL_INCOME || cls === CASHV2_OPERATIONAL_CLASSES.CASH_IN) return 'IN';
+  if (cls === CASHV2_OPERATIONAL_CLASSES.EXPENSE || cls === CASHV2_OPERATIONAL_CLASSES.CASH_OUT) return 'OUT';
+  return 'ADJUST';
+}
+
+function cashV2OperationalClassFromKind(kind){
+  const k = String(kind || '').trim().toUpperCase();
+  if (k === 'IN') return CASHV2_OPERATIONAL_CLASSES.ADDITIONAL_INCOME;
+  if (k === 'OUT') return CASHV2_OPERATIONAL_CLASSES.EXPENSE;
+  return CASHV2_OPERATIONAL_CLASSES.UNCLASSIFIED;
+}
+
 function cashV2MovementKindToUi(kind){
   const k = String(kind || '').trim().toUpperCase();
   // Etapa 2/7: 3 tipos canónicos
@@ -2400,6 +2450,8 @@ function cashV2RenderMovementsUI(cashDay){
     let amt = cashV2NormAmountInt(m.amount, { allowNegative: allowNeg });
     if (!Number.isFinite(amt)) amt = 0;
     const ui = cashV2MovementKindToUi(k);
+    const opClass = cashV2NormalizeOperationalClass(m.operationalClass || m.clasificacionOperativa || '', cashV2OperationalClassFromKind(k));
+    const opLabel = cashV2OperationalClassLabel(opClass);
     let sign = ui.sign > 0 ? '+' : (ui.sign < 0 ? '−' : '');
     if (k === 'ADJUST') sign = (amt < 0 ? '−' : '+');
     const amountText = `${sign} ${ccyLabel} ${cashV2FmtInt(Math.abs(amt))}`.trim();
@@ -2411,7 +2463,7 @@ function cashV2RenderMovementsUI(cashDay){
       <div class="cashv2-move-left">
         <div class="cashv2-move-top">
           <span class="cashv2-mtag"><b>${escapeHtml(cashV2FmtDateTime(m.ts))}</b></span>
-          <span class="cashv2-mtag">${escapeHtml(ui.text)}</span>
+          <span class="cashv2-mtag">${escapeHtml(opLabel || ui.text)}</span>
           <span class="cashv2-mtag">${escapeHtml(ccyLabel)}</span>
         </div>
         ${descHtml}
@@ -2454,7 +2506,7 @@ function cashV2InitMovementsUIOnce(){
 
   function resetForm(){
     showErr('');
-    try{ if (selKind) selKind.value = 'IN'; }catch(_){ }
+    try{ if (selKind) selKind.value = 'ADDITIONAL_INCOME'; }catch(_){ }
     try{ if (selCcy) selCcy.value = 'NIO'; }catch(_){ }
     try{ if (inpAmt) inpAmt.value = ''; }catch(_){ }
     try{ if (inpDesc) inpDesc.value = ''; }catch(_){ }
@@ -2469,17 +2521,18 @@ function cashV2InitMovementsUIOnce(){
     if (!eid || !dk){ showErr('Falta evento o día.'); return; }
     if (btnAdd && btnAdd.disabled){ return; }
 
-    const kind = selKind ? String(selKind.value || '').trim().toUpperCase() : 'IN';
+    const selectedRaw = selKind ? String(selKind.value || '').trim().toUpperCase() : 'ADDITIONAL_INCOME';
+    const operationalClass = cashV2NormalizeOperationalClass(selectedRaw, CASHV2_OPERATIONAL_CLASSES.ADDITIONAL_INCOME);
+    const kind = cashV2OperationalClassToKind(operationalClass);
     const ccy = selCcy ? String(selCcy.value || '').trim().toUpperCase() : 'NIO';
     const desc = inpDesc ? String(inpDesc.value || '').trim() : '';
-    const ksel = String(selKind ? selKind.value : '').trim().toUpperCase();
-    const allowNeg = (ksel === 'ADJUST');
+    const allowNeg = (kind === 'ADJUST');
     let amt = cashV2NormAmountInt(inpAmt ? inpAmt.value : 0, { allowNegative: allowNeg });
     if (!Number.isFinite(amt)) amt = 0;
     if (!allowNeg) amt = Math.abs(amt);
 
     if (!(kind === 'IN' || kind === 'OUT' || kind === 'ADJUST')){
-      showErr('Tipo inválido.');
+      showErr('Clasificación inválida.');
       return;
     }
     if (!(ccy === 'NIO' || ccy === 'USD')){
@@ -2505,6 +2558,10 @@ function cashV2InitMovementsUIOnce(){
         id: cashV2NewMovementId(),
         ts: Date.now(),
         kind,
+        operationalClass,
+        clasificacionOperativa: operationalClass,
+        operationalClassLabel: cashV2OperationalClassLabel(operationalClass),
+        operationalStage: 'finanzas_tablero_operativo_etapa_2_5',
         currency: ccy,
         amount: amt,
         desc: desc ? desc.slice(0, 120) : ''
@@ -2517,7 +2574,7 @@ function cashV2InitMovementsUIOnce(){
 
       await cashV2RefreshPhysicalSalesOnRecordPOS(next, eid, dk);
       const saved = await cashV2Save(next);
-      console.log(`[A33][CASHv2] movement add: ${kind} ${ccy} ${amt}`);
+      if (typeof window !== 'undefined' && window.A33_DEBUG_CASHV2) console.info(`[A33][CASHv2] movement add: ${kind} ${ccy} ${amt}`);
 
       try{ cashV2SetLastRec(saved); }catch(_){ }
       try{ cashV2RenderMovementsUI(saved); }catch(_){ }
@@ -2613,7 +2670,7 @@ function cashV2InitFinalUIOnce(){
         const nums = cashV2ComputeCloseNumbers(saved, { preferDom: false, finalOverride: final });
         const fn = nums.NIO || { final:0, expected:0, diff:0 };
         const fu = nums.USD || { final:0, expected:0, diff:0 };
-        console.log(`[A33][CASHv2] final save ${eid} ${dk} totals NIO=${fn.final} USD=${fu.final} expected NIO=${fn.expected} USD=${fu.expected} diff NIO=${fn.diff} USD=${fu.diff}`);
+        if (typeof window !== 'undefined' && window.A33_DEBUG_CASHV2) console.info(`[A33][CASHv2] final save ${eid} ${dk} totals NIO=${fn.final} USD=${fu.final} expected NIO=${fn.expected} USD=${fu.expected} diff NIO=${fn.diff} USD=${fu.diff}`);
 
         cashV2SetLastRec(saved);
         cashV2ApplyFinalToDom(saved.final);
@@ -3569,8 +3626,9 @@ function cashV2HistRenderMovements(nioMoves, usdMoves){
     else { sign = (amt >= 0) ? '+' : ''; shown = amt; }
 
     const sym = cashV2HistCurrencySym(ccy);
-    const topTag = `<span class="cashv2-mtag"><b>${escapeHtml(cashV2HistKindLabel(kind))}</b><span>${escapeHtml(sym)}</span></span>`;
-    const note = (m && m.note != null) ? String(m.note).trim() : '';
+    const opClass = cashV2NormalizeOperationalClass(m.operationalClass || m.clasificacionOperativa || '', cashV2OperationalClassFromKind(kind));
+    const topTag = `<span class="cashv2-mtag"><b>${escapeHtml(cashV2OperationalClassLabel(opClass) || cashV2HistKindLabel(kind))}</b><span>${escapeHtml(sym)}</span></span>`;
+    const note = (m && m.note != null) ? String(m.note).trim() : ((m && m.desc != null) ? String(m.desc).trim() : '');
 
     rows.push(`
       <div class="cashv2-move-row">
@@ -4413,7 +4471,7 @@ async function renderEfectivoTab(){
       const lk = `${eventId}|${dayKey}`;
       if (!__CASHV2_LOCK_LOG_ONCE.has(lk)){
         __CASHV2_LOCK_LOG_ONCE.add(lk);
-        console.log(`[A33][CASHv2] lock detected ${eventId} ${dayKey}`);
+        if (typeof window !== 'undefined' && window.A33_DEBUG_CASHV2) console.info(`[A33][CASHv2] lock detected ${eventId} ${dayKey}`);
       }
     }
 

@@ -1,5 +1,5 @@
 /*
-  Suite A33 v4.20.80 — Centro de Mando (OPERATIVO v1)
+  Suite A33 v4.20.84 — Centro de Mando (OPERATIVO v1)
 
   Fuentes reales (descubiertas en /pos/app.js dentro de esta ZIP):
   - DB_NAME: 'a33-pos'
@@ -20,9 +20,10 @@ const CMD_GLOBAL_LABEL = 'GLOBAL (Activos)';
 const CMD_GLOBAL_VALUE = '__GLOBAL_ACTIVOS__';
 const ORDERS_LS_KEY = 'arcano33_pedidos';
 const ORDERS_ROUTE = '../pedidos/index.html';
-const COMPRAS_PLAN_ROUTE = '../finanzas/index.html#tab=comprasplan';
+const COMPRAS_PLAN_ROUTE = '../finanzas/index.html#tab=tablero';
+const CMD_HIDE_PURCHASES_UI = true; // Etapa 4/5 Finanzas: Compras oculto del flujo normal.
 
-// Compras (Finanzas → Compras planificación): solo lectura (dock CdM)
+// Compras (Finanzas → Compras planificación): solo lectura legacy (DATA, sin UI normal)
 const FIN_COMPRAS_CURRENT_KEY = 'a33_finanzas_compras_current_v1';
 const SAFE_SCAN_LIMIT = 4000; // seguridad: evitar loops gigantes
 
@@ -662,6 +663,7 @@ function renderDockCompactCounts(counts){
   const ordersN = (typeof counts.orders === 'number') ? counts.orders : null;
   const remN = (typeof counts.reminders === 'number') ? counts.reminders : null;
   const purchasesN = (typeof counts.purchases === 'number') ? counts.purchases : null;
+  const purchasesVisibleN = CMD_HIDE_PURCHASES_UI ? 0 : purchasesN;
   const invTotal = (typeof counts.invTotal === 'number') ? counts.invTotal : null;
   const invRed = (typeof counts.invRed === 'number') ? counts.invRed : 0;
   const invYellow = (typeof counts.invYellow === 'number') ? counts.invYellow : 0;
@@ -683,12 +685,12 @@ function renderDockCompactCounts(counts){
     else splitEl.textContent = '';
   }
 
-  const allNumbers = (ordersN != null) && (remN != null) && (purchasesN != null) && (invTotal != null);
-  const allZero = allNumbers && (ordersN === 0) && (remN === 0) && (purchasesN === 0) && (invTotal === 0);
+  const allNumbers = (ordersN != null) && (remN != null) && (invTotal != null) && (CMD_HIDE_PURCHASES_UI || purchasesN != null);
+  const allZero = allNumbers && (ordersN === 0) && (remN === 0) && (purchasesVisibleN === 0) && (invTotal === 0);
 
   setDockChipHidden('dockAllGood', !allZero);
   setDockChipHidden('dockOrdersChip', allZero);
-  setDockChipHidden('dockPurchasesChip', allZero);
+  setDockChipHidden('dockPurchasesChip', true);
   setDockChipHidden('dockRemindersChip', allZero);
   setDockChipHidden('dockInvChip', allZero);
 }
@@ -5881,6 +5883,7 @@ function navigateToPedidos(){
 
 function navigateToComprasPlan(){
   try{
+    // Etapa 4/5 Finanzas: Compras queda oculto del uso normal; aterrizar de forma segura en Tablero.
     window.location.href = COMPRAS_PLAN_ROUTE;
   }catch(_){ }
 }
@@ -6547,6 +6550,11 @@ function fmtMoney2(n){
 }
 
 function renderPurchasesBlock(pc){
+  const host = $('purchasesBlock');
+  if (CMD_HIDE_PURCHASES_UI){
+    if (host){ host.hidden = true; try{ host.setAttribute('aria-hidden','true'); }catch(_){} }
+    return;
+  }
   const msgEl = $('purchasesMsg');
   const sectionsEl = $('purchasesSections');
   const byEl = $('purchasesBySupplier');

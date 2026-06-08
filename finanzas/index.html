@@ -5,9 +5,9 @@
   <title>Finanzas – Suite A33</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#060606">
-  <script src="/assets/js/a33-theme.js?v=4.20.80&r=10"></script>
-  <link rel="stylesheet" href="style.css?v=4.20.80&r=1">
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.80&r=10">
+  <script src="/assets/js/a33-theme.js?v=4.20.84&r=10"></script>
+  <link rel="stylesheet" href="style.css?v=4.20.84&r=1">
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=1">
 </head>
 <body class="fin-body">
   <div class="fin-app">
@@ -21,8 +21,8 @@
     </div>
     <div class="fin-title-block">
       <h1>Suite A33</h1>
-      <p>Finanzas · Contabilidad básica de Arcano 33</p>
-      <p class="fin-version" data-a33-version="1" data-a33-fallback="v4.20.80">v...</p>
+      <p>Finanzas · Tablero operativo de Arcano 33</p>
+      <p class="fin-version" data-a33-version="1" data-a33-fallback="v4.20.84">v...</p>
     </div>
   </div>
 
@@ -41,12 +41,12 @@
     <div class="nav-group">
       <span class="nav-group-label">Finanzas</span>
       <button type="button" class="fin-tab-btn active" data-view="tablero">Tablero Finanzas</button>
-      <button type="button" class="fin-tab-btn" data-view="diario">Diario Contable</button>
       <button type="button" class="fin-tab-btn" data-view="cajachica">Caja Chica</button>
-      <button type="button" class="fin-tab-btn" data-view="estados">Estados Financieros</button>
-      <button type="button" class="fin-tab-btn" data-view="comprasplan">Compras</button>
       <button type="button" class="fin-tab-btn" data-view="recibos">Recibos</button>
-      <button type="button" class="fin-tab-btn" data-view="catalogo">Catálogo de Cuentas</button>
+      <button type="button" class="fin-tab-btn" data-view="diario" hidden aria-hidden="true" data-a33-hidden-main="1">Diario Contable</button>
+      <button type="button" class="fin-tab-btn" data-view="estados" hidden aria-hidden="true" data-a33-hidden-main="1">Estados Financieros</button>
+      <button type="button" class="fin-tab-btn" data-view="comprasplan" hidden aria-hidden="true" data-a33-hidden-main="1">Compras</button>
+      <button type="button" class="fin-tab-btn" data-view="catalogo" hidden aria-hidden="true" data-a33-hidden-main="1">Catálogo de Cuentas</button>
     </div>
   </nav>
 </header>
@@ -68,83 +68,128 @@
       <!-- TABLERO FINANZAS -->
       <section id="view-tablero" class="fin-view active">
         <header class="fin-section-header">
-          <h2>Tablero Finanzas</h2>
-          <p>Resumen mensual de ingresos, costos, gastos y resultado. Puedes filtrar por evento.</p>
+          <h2>Tablero Finanzas Operativo</h2>
+          <p>Resultados y movimiento de dinero por período/evento, alimentado por POS, Caja/Efectivo y Recibos.</p>
         </header>
 
-        <div class="fin-filters-row">
-          <label>
-            Mes
-            <select id="tab-mes"></select>
-          </label>
-          <label>
-            Año
-            <select id="tab-anio"></select>
-          </label>
-          <label>
-            Evento
-            <select id="tab-evento"></select>
-          </label>
+        <div class="fin-dashboard-band" aria-label="Filtros y referencia monetaria del Tablero operativo">
+          <div class="fin-filters-row fin-filters-row--tablero">
+            <label>
+              Mes
+              <select id="tab-mes"></select>
+            </label>
+            <label>
+              Año
+              <select id="tab-anio"></select>
+            </label>
+            <label>
+              Vista
+              <select id="tab-vista">
+                <option value="GLOBAL">GLOBAL</option>
+                <option value="EVENT">Por evento</option>
+              </select>
+            </label>
+            <label id="tab-evento-wrap" class="fin-dashboard-event-filter">
+              Evento
+              <select id="tab-evento"></select>
+            </label>
+          </div>
+
+          <div class="fin-dashboard-fx" aria-label="Tipo de cambio vigente">
+            <span>Moneda</span>
+            <strong id="tab-fx-rate">T/C vigente —</strong>
+            <small id="tab-fx-updated">Última actualización: —</small>
+          </div>
         </div>
 
-        <div class="fin-cards-grid fin-cards-grid--tablero">
+        <div class="fin-cards-grid fin-cards-grid--tablero fin-operational-kpis">
           <article class="fin-card">
-            <h3>Ingresos operativos</h3>
-            <p id="tab-ingresos" class="fin-card-number">C$ 0.00</p>
+            <h3>Venta Total</h3>
+            <p id="tab-venta-total" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card">
-            <h3>Otros ingresos</h3>
-            <p id="tab-post-cortesias" class="fin-card-number">C$ 0.00</p>
+            <h3>Descuentos</h3>
+            <p id="tab-descuentos" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card">
-            <h3>Costos de producción / costo de ventas</h3>
-            <p id="tab-costos" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Gastos operativos</h3>
-            <p id="tab-gastos" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Ajustes comerciales</h3>
+            <h3>Cortesías</h3>
             <p id="tab-cortesias" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card fin-card-strong">
-            <h3>Utilidad bruta</h3>
-            <p id="tab-bruta" class="fin-card-number">C$ 0.00</p>
+            <h3>Venta Neta</h3>
+            <p id="tab-venta-neta" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Costos de ventas</h3>
+            <p id="tab-costos" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card fin-card-strong">
-            <h3>Utilidad neta</h3>
-            <p id="tab-resultado" class="fin-card-number">C$ 0.00</p>
+            <h3>Utilidad Bruta</h3>
+            <p id="tab-utilidad-bruta" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card">
-            <h3>Total caja equivalente C$</h3>
-            <p id="tab-caja" class="fin-card-number">C$ 0.00</p>
+            <h3>Ingresos Adicionales</h3>
+            <p id="tab-ingresos-adicionales" class="fin-card-number">C$ 0.00</p>
           </article>
 
           <article class="fin-card">
-            <h3>Total bancos equivalente C$</h3>
-            <p id="tab-banco" class="fin-card-number">C$ 0.00</p>
+            <h3>Gastos</h3>
+            <p id="tab-gastos" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card fin-card-strong">
+            <h3>Utilidad Neta</h3>
+            <p id="tab-utilidad-neta" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Margen Bruto</h3>
+            <p id="tab-margen-bruto" class="fin-card-number">0%</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Margen Neto</h3>
+            <p id="tab-margen-neto" class="fin-card-number">0%</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Número de eventos</h3>
+            <p id="tab-num-eventos" class="fin-card-number">0</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Flujo de Caja</h3>
+            <p id="tab-flujo-caja" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Caja del período</h3>
+            <p id="tab-caja-periodo" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Bancos del período</h3>
+            <p id="tab-bancos-periodo" class="fin-card-number">C$ 0.00</p>
           </article>
         </div>
 
         <section class="fin-subsection fin-tablero-liquidity-section">
           <header class="fin-section-header fin-section-header--sub">
-            <h3>Caja, Bancos y multimoneda</h3>
-            <p id="tab-liquidity-note">Saldo acumulado al cierre del período. Caja y Bancos son saldos globales.</p>
+            <h3>Caja y bancos del período</h3>
+            <p id="tab-liquidity-note">Movimiento de caja y bancos dentro del filtro seleccionado.</p>
           </header>
 
           <div class="fin-liquidity-grid">
             <article class="fin-liquidity-panel">
               <div class="fin-liquidity-head">
                 <h4>Caja por moneda</h4>
-                <span>Fuente: Diario Contable</span>
+                <span>Fuente: POS + Caja/Recibos</span>
               </div>
               <div class="fin-liquidity-totals">
                 <div><small>Caja C$</small><strong id="tab-cash-nio">C$ 0.00</strong></div>
@@ -157,7 +202,7 @@
             <article class="fin-liquidity-panel">
               <div class="fin-liquidity-head">
                 <h4>Bancos por banco y moneda</h4>
-                <span>Sin bancos hardcodeados</span>
+                <span>Fuente: POS + Recibos</span>
               </div>
               <div class="fin-liquidity-totals">
                 <div><small>Bancos C$</small><strong id="tab-bank-nio">C$ 0.00</strong></div>
@@ -173,9 +218,9 @@
                 <span>Equivalente en C$</span>
               </div>
               <div class="fin-liquidity-hero">
-                <small>Total efectivo + bancos equivalente C$</small>
+                <small>Movimiento caja + bancos equivalente C$</small>
                 <strong id="tab-liquidity-equivalent">C$ 0.00</strong>
-                <p>No recalcula históricos: usa equivalentes y T/C snapshot guardados.</p>
+                <p>Lectura del período filtrado; no recalcula históricos ni altera T/C snapshot guardados.</p>
               </div>
             </article>
           </div>
@@ -184,15 +229,15 @@
         <section class="fin-subsection fin-tablero-alerts-section">
           <header class="fin-section-header fin-section-header--sub">
             <h3>Alertas del Tablero</h3>
-            <p>Lectura informativa de clasificación contable. No bloquea ni modifica datos.</p>
+            <p>Lectura informativa del Tablero operativo. No bloquea ni modifica datos.</p>
           </header>
           <div class="fin-report-alerts" id="tab-alerts"></div>
         </section>
 
         <section class="fin-subsection">
           <header class="fin-section-header fin-section-header--sub">
-            <h3>Gráfico del resultado contable</h3>
-            <p>Visualiza ingresos, costos, gastos y utilidad neta usando los asientos reales del periodo.</p>
+            <h3>Gráfico del resultado operativo</h3>
+            <p>Visualiza venta, costos, gastos y utilidad neta del período filtrado.</p>
           </header>
           <div class="fin-chart-wrapper">
             <canvas id="tab-chart" width="720" height="300"></canvas>
@@ -884,6 +929,20 @@
       </div>
 
       <div id="rec-financial-meta" class="fin-movement-meta">Seleccione una cuenta financiera activa para detectar moneda, cuenta contable y equivalente C$.</div>
+
+      <div class="fin-form-row">
+        <label class="fin-form-grow">
+          Clasificación operativa
+          <select id="rec-operational-class">
+            <option value="ADDITIONAL_INCOME">Ingreso Adicional</option>
+            <option value="EXPENSE">Gasto</option>
+            <option value="CASH_IN">Entrada de efectivo / fondo</option>
+            <option value="CASH_OUT">Salida de efectivo / retiro</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="fin-help">Esta clasificación prepara el Tablero operativo: fondos y retiros mueven dinero, pero no se convierten en utilidad ni gasto.</p>
 
       <div class="fin-form-row">
         <div class="fin-form-grow">
@@ -1659,15 +1718,15 @@
   <!-- Print root (Recibos) -->
   <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.80&r=7"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.80&r=1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.84&r=1"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.84&r=1"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.80&r=10"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.80&r=14"></script>
-  <script src="/assets/js/a33-export-currency.js?v=4.20.80&r=2"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.80&r=10"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.84&r=1"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.84&r=1"></script>
+  <script src="/assets/js/a33-export-currency.js?v=4.20.84&r=1"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=1"></script>
 
-  <script src="script.js?v=4.20.80&r=1"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.80&r=10"></script>
+  <script src="script.js?v=4.20.84&r=1"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=1"></script>
 </body>
 </html>

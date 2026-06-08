@@ -8,10 +8,10 @@
   <meta name="theme-color" content="#7b1818" />
 
   
-<script src="/assets/js/a33-theme.js?v=4.20.80&r=7"></script>
-<link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.80&r=7" />
-  <link rel="stylesheet" href="style.css?v=4.20.80&r=7" />
-<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.80&r=7" />
+<script src="/assets/js/a33-theme.js?v=4.20.84&r=7"></script>
+<link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=7" />
+  <link rel="stylesheet" href="style.css?v=4.20.84&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=7" />
 </head>
 <body>
   <!-- HEADER PREMIUM -->
@@ -20,7 +20,7 @@
     <div class="a33-title">Centro de Mando</div>
     <div class="a33-version">
       <span class="cmd-today-label">Hoy: <b id="cmdToday">—</b></span>
-      <span class="cmd-version" data-a33-version="1" data-a33-fallback="v4.20.80">v...</span>
+      <span class="cmd-version" data-a33-version="1" data-a33-fallback="v4.20.84">v...</span>
     </div>
   </header>
 
@@ -190,7 +190,7 @@
         <div class="cmd-dock-mini" aria-label="Resumen del panel inferior">
           <span class="cmd-chip cmd-chip-neutral" id="dockAllGood" hidden>Al día ✅</span>
           <span class="cmd-chip cmd-chip-neutral" id="dockOrdersChip">Pedidos: <b id="dockOrdersN">—</b></span>
-          <span class="cmd-chip cmd-chip-neutral" id="dockPurchasesChip">Compras: <b id="dockPurchasesN">—</b></span>
+          <span class="cmd-chip cmd-chip-neutral" id="dockPurchasesChip" hidden aria-hidden="true">Compras: <b id="dockPurchasesN">—</b></span>
           <span class="cmd-chip cmd-chip-neutral" id="dockRemindersChip">Recordatorios: <b id="dockRemindersN">—</b></span>
           <span class="cmd-chip cmd-chip-neutral" id="dockInvChip">Inventario en riesgo: <b id="dockInvN">—</b><span class="cmd-dock-inv-split" id="dockInvSplit" hidden></span></span>
         </div>
@@ -296,7 +296,7 @@
         </div>
       </div>
 
-      <section class="cmd-card cmd-op cmd-purchases" id="purchasesBlock" aria-label="Compras pendientes">
+      <section class="cmd-card cmd-op cmd-purchases" id="purchasesBlock" aria-label="Compras pendientes" hidden aria-hidden="true">
         <div class="cmd-section-head">
           <div class="cmd-section-title">Compras</div>
           <div class="cmd-purchases-total" id="purchasesTotalLabel" aria-label="Total general de compras pendientes">Total: C$ —</div>
@@ -325,12 +325,12 @@
     </div>
   </div>
   <!-- Arranque libre -->
-  <script src="/assets/js/a33-release.js?v=4.20.80&r=44"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.84&r=44"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.80&r=7"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.80&r=7"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.84&r=7"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=7"></script>
 
-  <script src="app.js?v=4.20.80&r=7"></script>
+  <script src="app.js?v=4.20.84&r=7"></script>
   <!-- Sync report modal -->
   <div class="cmd-modal" id="syncReport" hidden>
     <div class="cmd-modal-overlay" data-close="1"></div>
