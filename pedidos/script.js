@@ -161,23 +161,15 @@ function validatePedidoBeforeSave(payload){
 
   // Cantidades (no negativas, al menos una > 0)
   const qty = payload.qty || {};
-  const keys = Object.keys(qty || {});
+  const keys = ['pulso','media','djeba','litro','galon'];
   let sumQty = 0;
   keys.forEach((k) => {
-    const v = Number(qty[k]);
+    const v = qty[k];
     if (!isFinite(v)) errors.push(`Cantidad ${k}: inválida.`);
     else if (v < 0) errors.push(`Cantidad ${k}: no puede ser negativa.`);
     else sumQty += v;
   });
-
-  if (sumQty <= 0 && Array.isArray(payload.productosPedido)) {
-    payload.productosPedido.forEach((item) => {
-      const v = Number(item && (item.cantidad ?? item.qty ?? 0));
-      if (isFinite(v) && v > 0) sumQty += v;
-    });
-  }
-
-  if (sumQty <= 0) errors.push('Agregá al menos un producto (cantidad > 0).');
+  if (sumQty <= 0) errors.push('Agregá al menos una presentación (cantidad > 0).');
 
   // Totales
   const t = payload.totales || {};
@@ -246,7 +238,7 @@ function coercePedidoForRead(p){
     'pulsoCant','mediaCant','djebaCant','litroCant','galonCant',
     'envio','subtotal','descuento','descuentoFijo','descuentoTotal',
     'totalPagar','pagoAnticipado','montoPagado','saldoPendiente',
-    'pulsoPrecio','mediaPrecio','djebaPrecio','litroPrecio','galonPrecio',
+    'pulsoPrecio','mediaPrecio','djebaPrecio','litroPrecio','galonPrecio',,
     'createdAt', 'updatedAt'];
   numFields.forEach((k) => {
     if (out[k] == null || out[k] === '') return;
@@ -320,18 +312,13 @@ let posPricesLoadedAt = 0;
 // Snapshot de precios (del pedido en edición) para fallback si POS no está disponible.
 let currentPriceSnapshot = null;
 
-const LEGACY_PRESENTACIONES = [
+const PRESENTACIONES = [
   { key: 'pulso', label: 'Pulso 250 ml', qtyId: 'pulsoCant', legacyPrice: 'pulsoPrecio', legacyDesc: 'pulsoDesc' },
   { key: 'media', label: 'Media 375 ml', qtyId: 'mediaCant', legacyPrice: 'mediaPrecio', legacyDesc: 'mediaDesc' },
   { key: 'djeba', label: 'Djeba 750 ml', qtyId: 'djebaCant', legacyPrice: 'djebaPrecio', legacyDesc: 'djebaDesc' },
   { key: 'litro', label: 'Litro 1000 ml', qtyId: 'litroCant', legacyPrice: 'litroPrecio', legacyDesc: 'litroDesc' },
   { key: 'galon', label: 'Galón 3750 ml', qtyId: 'galonCant', legacyPrice: 'galonPrecio', legacyDesc: 'galonDesc' },
 ];
-const LEGACY_PRESENTACIONES_BY_KEY = LEGACY_PRESENTACIONES.reduce((acc, p) => { acc[p.key] = p; return acc; }, {});
-const CATALOG_DELETED_PRODUCTS_KEY_PED = 'a33_catalog_deleted_products_v1';
-let PRESENTACIONES = [];
-let pedidosCatalogProductsLoaded = false;
-let currentHistoricalPedidoItemsPED = [];
 
 function $(id) {
   return document.getElementById(id);
@@ -423,10 +410,7 @@ function buildPedidoSearchHaystack(p){
     const cliente = (p && (p.customerName || p.clienteNombre)) ? (p.customerName || p.clienteNombre) : '';
     const codigo = (p && p.codigo) ? p.codigo : '';
     const fechas = [p && p.fechaEntrega, p && p.fechaCreacion, p && p.archivedAt].map(formatDate).join(' ');
-    const productText = getPedidoDetailProductLinesPED(p, getPriceSnapshotFromPedido(p))
-      .map((item) => [item.label, item.qty].join(' '))
-      .join(' ');
-    const extra = [p && p.clienteTelefono, p && p.clienteTipo, productText, p && p.lotesRelacionados].filter(Boolean).join(' ');
+    const extra = [p && p.clienteTelefono, p && p.clienteTipo].filter(Boolean).join(' ');
     return normalizeCustomerKey([cliente, codigo, estado, fechas, extra].join(' '));
   }catch(_){
     return '';
@@ -598,774 +582,6 @@ function scoreCatalogProductPED(product){
   return score;
 }
 
-function hasOwnPED(obj, key){
-  return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
-}
-
-function boolFromCatalogPED(value, fallback){
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value === 1;
-  const raw = String(value ?? '').trim().toLowerCase();
-  if (['true','1','si','sí','yes','y'].includes(raw)) return true;
-  if (['false','0','no','n'].includes(raw)) return false;
-  return !!fallback;
-}
-
-function deletedCatalogProductKeyPED(value){
-  return normName(value).replace(/\s+/g, '');
-}
-
-function readDeletedProductKeysPED(){
-  try{
-    const raw = window.localStorage ? localStorage.getItem(CATALOG_DELETED_PRODUCTS_KEY_PED) : null;
-    const arr = JSON.parse(raw || '[]');
-    return new Set((Array.isArray(arr) ? arr : []).map(v => String(v || '').trim()).filter(Boolean));
-  }catch(_){ return new Set(); }
-}
-
-function isCatalogProductExactlyDeletedPED(product){
-  const deleted = readDeletedProductKeysPED();
-  if (!deleted.size) return false;
-  const name = String((product && (product.name || product.nombre || product.nombreSnapshot)) || '').trim();
-  const key = deletedCatalogProductKeyPED(name);
-  return !!(key && deleted.has(key));
-}
-
-function productActivePED(product){
-  const p = product && typeof product === 'object' ? product : {};
-  if (hasOwnPED(p, 'active')) return boolFromCatalogPED(p.active, true);
-  if (hasOwnPED(p, 'activo')) return boolFromCatalogPED(p.activo, true);
-  if (hasOwnPED(p, 'isActive')) return boolFromCatalogPED(p.isActive, true);
-  return true;
-}
-
-function productPedidosEnabledPED(product){
-  const p = product && typeof product === 'object' ? product : {};
-  const pedidoFlags = ['pedido','pedidos','showInPedidos','visiblePedidos','vendiblePedidos','sellInPedidos'];
-  for (const key of pedidoFlags){
-    if (hasOwnPED(p, key)) return boolFromCatalogPED(p[key], false);
-  }
-
-  // Planificación de Pedidos usa productos activos de Catálogos.
-  // No depende del checkbox POS/vendible: un producto puede planificarse aunque no se venda directo en POS.
-  return true;
-}
-
-function productPricePED(product){
-  const p = product && typeof product === 'object' ? product : {};
-  const n = Number(String(p.price ?? p.precio ?? p.unitPrice ?? p.precioVenta ?? 0).replace(',', '.'));
-  return Number.isFinite(n) && n >= 0 ? n : 0;
-}
-
-function productLetterPED(product){
-  const p = product && typeof product === 'object' ? product : {};
-  const raw = p.letra ?? p.letter ?? p.codigoCorto ?? p.shortCode ?? '';
-  return String(raw || '').trim().toUpperCase();
-}
-
-function buildProductSnapshotPED(product, fallback){
-  const p = product && typeof product === 'object' ? product : {};
-  const fb = fallback && typeof fallback === 'object' ? fallback : {};
-  const id = String(p.id ?? p.productId ?? p.productoId ?? fb.productId ?? fb.id ?? '').trim();
-  const nombre = String(p.name ?? p.nombre ?? p.productName ?? p.nombreSnapshot ?? fb.productName ?? fb.nombre ?? fb.name ?? '').replace(/\s+/g, ' ').trim();
-  const precioRaw = p.price ?? p.precio ?? p.unitPrice ?? p.precioVenta ?? fb.unitPriceSnapshot ?? fb.unitPrice ?? fb.precio ?? 0;
-  const precio = Number(String(precioRaw ?? 0).replace(',', '.'));
-  const activo = productActivePED(p);
-  const letra = productLetterPED({ ...fb, ...p });
-  const snap = {
-    id,
-    nombre,
-    precio: Number.isFinite(precio) && precio >= 0 ? precio : 0,
-    activo
-  };
-  if (letra) snap.letra = letra;
-  return snap;
-}
-
-function productStableIdPED(product){
-  const p = product && typeof product === 'object' ? product : {};
-  const raw = p.id ?? p.productId ?? p.productoId ?? p.key ?? '';
-  const name = String(p.name || p.nombre || '').trim();
-  const id = String(raw || name || '').trim();
-  return id || ('producto-' + deletedCatalogProductKeyPED(name || Math.random()));
-}
-
-function domSafeProductIdPED(value){
-  return String(value || '').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'producto';
-}
-
-function productToPedidoItemPED(product){
-  const p = product && typeof product === 'object' ? product : {};
-  const name = String(p.name || p.nombre || '').replace(/\s+/g, ' ').trim();
-  if (!name) return null;
-  if (!productActivePED(p)) return null;
-  if (boolFromCatalogPED(p.deleted ?? p.borrado ?? p.isDeleted, false)) return null;
-  if (!productPedidosEnabledPED(p)) return null;
-  if (isCatalogProductExactlyDeletedPED(p)) return null;
-
-  const productId = productStableIdPED(p);
-  const productKey = 'product:' + productId;
-  const domId = domSafeProductIdPED(productId);
-  const legacyKey = mapProductNameToPresKey(name) || '';
-  const legacy = legacyKey ? LEGACY_PRESENTACIONES_BY_KEY[legacyKey] : null;
-
-  return {
-    key: productKey,
-    productId,
-    label: name,
-    price: productPricePED(p),
-    letter: productLetterPED(p),
-    qtyId: 'pedidoProductQty_' + domId,
-    subtotalId: 'pedidoProductSubtotal_' + domId,
-    legacyKey,
-    legacyPrice: legacy ? legacy.legacyPrice : '',
-    legacyDesc: legacy ? legacy.legacyDesc : '',
-    source: 'catalog',
-    rawProduct: p
-  };
-}
-
-function sortPedidoProductItemsPED(a, b){
-  const legacyOrder = { pulso:1, media:2, djeba:3, litro:4, galon:5 };
-  const oa = legacyOrder[a && a.legacyKey] || 99;
-  const ob = legacyOrder[b && b.legacyKey] || 99;
-  if (oa !== ob) return oa - ob;
-  return String((a && a.label) || '').localeCompare(String((b && b.label) || ''), 'es-NI', { sensitivity:'base' });
-}
-
-async function getPedidosCatalogProductsSafe(){
-  const rows = await getAllPosProductsSafe();
-  const candidates = [];
-  for (const p of (Array.isArray(rows) ? rows : [])){
-    const item = productToPedidoItemPED(p);
-    if (!item) continue;
-    item.__score = scoreCatalogProductPED(item.rawProduct);
-    candidates.push(item);
-  }
-
-  candidates.sort((a, b) => (Number(b.__score || 0) - Number(a.__score || 0)));
-
-  const usedIds = new Set();
-  const usedNames = new Set();
-  const usedLetters = new Set();
-  const out = [];
-
-  candidates.forEach((item) => {
-    const idKey = String(item.productId || item.key || '').trim();
-    const nameKey = compactProductKeyPED(item.label || '');
-    const letterKey = String(item.letter || '').trim().toUpperCase();
-
-    if (idKey && usedIds.has(idKey)) return;
-    if (nameKey && usedNames.has(nameKey)) return;
-    if (letterKey && usedLetters.has(letterKey)) return;
-
-    if (idKey) usedIds.add(idKey);
-    if (nameKey) usedNames.add(nameKey);
-    if (letterKey) usedLetters.add(letterKey);
-    out.push(item);
-  });
-
-  return out.sort(sortPedidoProductItemsPED).map((item) => {
-    try{ delete item.__score; }catch(_){ }
-    return item;
-  });
-}
-
-function setPedidosProductsStatus(message, kind){
-  const el = $('pedidos-products-status');
-  if (!el) return;
-  el.textContent = message || '';
-  el.className = 'hint hint-small' + (kind ? (' ' + kind) : '');
-}
-
-function updateLineSubtotalPED(pres, unit){
-  const out = pres && pres.subtotalId ? $(pres.subtotalId) : null;
-  if (!out) return;
-  const qty = parseNumber($(pres.qtyId)?.value || 0);
-  out.textContent = formatA33Cordobas((qty || 0) * (Number(unit || pres.price || 0) || 0));
-}
-
-function getHistoricalPedidoItemIdPED(item){
-  const it = item && typeof item === 'object' ? item : {};
-  const raw = it.productId ?? it.productoId ?? it.id ?? it.productKey ?? it.key ?? it.productName ?? it.nombreSnapshot ?? it.nombre ?? it.name ?? '';
-  return String(raw || '').trim();
-}
-
-function getPedidoItemQtyPED(item){
-  return parseNumber(item && (item.qty ?? item.cantidad ?? item.quantity ?? item.unidades ?? 0));
-}
-
-function getPedidoItemUnitPricePED(item){
-  const raw = item && (item.unitPriceSnapshot ?? item.unitPrice ?? item.precioUnitario ?? item.price ?? item.precio ?? 0);
-  const n = parseNumber(raw);
-  return Number.isFinite(n) && n >= 0 ? n : 0;
-}
-
-function getPedidoItemNamePED(item){
-  const it = item && typeof item === 'object' ? item : {};
-  return String(it.productName ?? it.nombreSnapshot ?? it.nombre ?? it.name ?? (it.productSnapshot && (it.productSnapshot.nombre || it.productSnapshot.name)) ?? 'Producto').replace(/\s+/g, ' ').trim() || 'Producto';
-}
-
-function normalizePedidoItemForStoragePED(item, fallback){
-  const it = item && typeof item === 'object' ? item : {};
-  const fb = fallback && typeof fallback === 'object' ? fallback : {};
-  const productId = String(it.productId ?? it.productoId ?? fb.productId ?? fb.id ?? '').trim();
-  const productKey = String(it.productKey ?? it.key ?? (productId ? ('product:' + productId) : '')).trim();
-  const productName = getPedidoItemNamePED({ ...fb, ...it });
-  const qty = getPedidoItemQtyPED(it);
-  const unitPriceSnapshot = getPedidoItemUnitPricePED({ ...fb, ...it });
-  const productSnapshot = buildProductSnapshotPED((it.productSnapshot && typeof it.productSnapshot === 'object') ? it.productSnapshot : {}, {
-    productId,
-    productName,
-    unitPriceSnapshot,
-    letra: it.letra ?? it.letter ?? fb.letra ?? fb.letter ?? ''
-  });
-  const subtotal = qty * unitPriceSnapshot;
-  const legacyKey = String(it.legacyKey ?? it.legacyId ?? fb.legacyKey ?? '').trim();
-  return {
-    productId,
-    productKey,
-    productName,
-    qty,
-    unitPriceSnapshot,
-    subtotal,
-    productSnapshot,
-
-    // Compatibilidad interna/exportaciones anteriores
-    nombreSnapshot: productName,
-    cantidad: qty,
-    unitPrice: unitPriceSnapshot,
-    precioUnitario: unitPriceSnapshot,
-    legacyKey,
-    source: it.source || fb.source || 'catalog'
-  };
-}
-
-function renderHistoricalPedidoRowsPED(tbody){
-  const rows = Array.isArray(currentHistoricalPedidoItemsPED) ? currentHistoricalPedidoItemsPED : [];
-  rows.forEach((raw, idx) => {
-    const item = normalizePedidoItemForStoragePED(raw);
-    const qty = getPedidoItemQtyPED(item);
-    if (!(qty > 0)) return;
-
-    const tr = document.createElement('tr');
-    tr.className = 'pedido-product-historical-row';
-    tr.dataset.historical = '1';
-
-    const nameTd = document.createElement('td');
-    nameTd.className = 'product-name-cell';
-    nameTd.textContent = getPedidoItemNamePED(item) + ' · Conservado';
-    tr.appendChild(nameTd);
-
-    const priceTd = document.createElement('td');
-    priceTd.textContent = formatA33Cordobas(getPedidoItemUnitPricePED(item));
-    tr.appendChild(priceTd);
-
-    const qtyTd = document.createElement('td');
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.min = '0';
-    input.step = '1';
-    input.value = String(qty || 0);
-    input.className = 'a33-num pedido-product-qty';
-    input.inputMode = 'numeric';
-    input.readOnly = true;
-    input.setAttribute('aria-label', 'Cantidad conservada');
-    input.dataset.historicalIndex = String(idx);
-    qtyTd.appendChild(input);
-    tr.appendChild(qtyTd);
-
-    const subTd = document.createElement('td');
-    const subSpan = document.createElement('span');
-    subSpan.className = 'line-subtotal';
-    subSpan.textContent = formatA33Cordobas(qty * getPedidoItemUnitPricePED(item));
-    subTd.appendChild(subSpan);
-    tr.appendChild(subTd);
-
-    tbody.appendChild(tr);
-  });
-}
-
-function renderPedidosProductRows(items){
-  const tbody = $('presentaciones-body') || (document.querySelector('#presentaciones-table tbody'));
-  if (!tbody) return;
-  tbody.innerHTML = '';
-
-  const list = Array.isArray(items) ? items : [];
-  const historicalCount = (Array.isArray(currentHistoricalPedidoItemsPED) ? currentHistoricalPedidoItemsPED : []).filter(it => getPedidoItemQtyPED(it) > 0).length;
-  if (!list.length && !historicalCount){
-    const tr = document.createElement('tr');
-    tr.className = 'pedidos-products-empty';
-    const td = document.createElement('td');
-    td.colSpan = 4;
-    td.textContent = 'No hay productos activos disponibles en Catálogos.';
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    setPedidosProductsStatus('Agregá o activá productos vendibles en Catálogos para crear pedidos.', 'warn');
-    return;
-  }
-
-  if (list.length){
-    setPedidosProductsStatus(list.length + ' producto' + (list.length === 1 ? '' : 's') + ' activo' + (list.length === 1 ? '' : 's') + ' disponible' + (list.length === 1 ? '' : 's') + '.', '');
-  } else {
-    setPedidosProductsStatus('Este pedido conserva productos anteriores. Agregá productos activos en Catálogos para nuevos pedidos.', 'warn');
-  }
-
-  list.forEach((pres) => {
-    const tr = document.createElement('tr');
-    tr.dataset.productKey = pres.key;
-    tr.dataset.productId = pres.productId || '';
-
-    const nameTd = document.createElement('td');
-    nameTd.className = 'product-name-cell';
-    nameTd.textContent = pres.label || 'Producto';
-    tr.appendChild(nameTd);
-
-    const priceTd = document.createElement('td');
-    priceTd.textContent = formatA33Cordobas(pres.price || 0);
-    tr.appendChild(priceTd);
-
-    const qtyTd = document.createElement('td');
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.id = pres.qtyId;
-    input.min = '0';
-    input.step = '1';
-    input.value = '0';
-    input.className = 'a33-num pedido-product-qty';
-    input.dataset.a33Default = '0';
-    input.dataset.productKey = pres.key;
-    input.inputMode = 'numeric';
-    input.addEventListener('focus', () => {
-      try{ setTimeout(() => input.select(), 0); }catch(_){ }
-    });
-    input.addEventListener('input', () => {
-      calcularTotalesDesdeFormulario().catch(() => {
-        updateLineSubtotalPED(pres, pres.price);
-      });
-    });
-    input.addEventListener('change', () => {
-      calcularTotalesDesdeFormulario().catch(() => {});
-    });
-    qtyTd.appendChild(input);
-    tr.appendChild(qtyTd);
-
-    const subTd = document.createElement('td');
-    const subSpan = document.createElement('span');
-    subSpan.id = pres.subtotalId;
-    subSpan.className = 'line-subtotal';
-    subSpan.textContent = formatA33Cordobas(0);
-    subTd.appendChild(subSpan);
-    tr.appendChild(subTd);
-
-    tbody.appendChild(tr);
-  });
-
-  renderHistoricalPedidoRowsPED(tbody);
-}
-
-async function refreshPedidosProductCatalog(force){
-  if (pedidosCatalogProductsLoaded && !force) return PRESENTACIONES;
-  try{
-    const items = await getPedidosCatalogProductsSafe();
-    PRESENTACIONES = Array.isArray(items) ? items : [];
-    pedidosCatalogProductsLoaded = true;
-    renderPedidosProductRows(PRESENTACIONES);
-  }catch(e){
-    console.warn('Pedidos: no se pudieron leer productos de Catálogos', e);
-    PRESENTACIONES = [];
-    pedidosCatalogProductsLoaded = true;
-    renderPedidosProductRows([]);
-  }
-  return PRESENTACIONES;
-}
-
-function getPedidoProductItemsArray(pedido){
-  const p = pedido && typeof pedido === 'object' ? pedido : {};
-  const candidates = [p.items, p.productosPedido, p.pedidoItems, p.itemsPedido, p.productos];
-  let firstEmpty = null;
-  for (const raw of candidates){
-    if (!Array.isArray(raw)) continue;
-    if (raw.length) return raw;
-    if (!firstEmpty) firstEmpty = raw;
-  }
-  return firstEmpty || [];
-}
-
-function itemMatchesPresentationPED(item, pres){
-  if (!item || !pres) return false;
-  const pid = String(item.productId ?? item.productoId ?? item.id ?? '').trim();
-  const pkey = String(item.productKey ?? item.key ?? '').trim();
-  const legacy = String(item.legacyKey ?? item.legacyId ?? '').trim();
-  return (!!pid && pid === String(pres.productId || '').trim())
-    || (!!pkey && pkey === pres.key)
-    || (!!legacy && !!pres.legacyKey && legacy === pres.legacyKey);
-}
-
-function getPedidoQuantityForPresentation(pedido, pres){
-  const items = getPedidoProductItemsArray(pedido);
-  for (const item of items){
-    if (!itemMatchesPresentationPED(item, pres)) continue;
-    const qty = getPedidoItemQtyPED(item);
-    if (qty > 0) return qty;
-  }
-  if (pres && pres.legacyKey){
-    const legacy = LEGACY_PRESENTACIONES_BY_KEY[pres.legacyKey];
-    if (legacy && pedido && pedido[legacy.qtyId] != null) return parseNumber(pedido[legacy.qtyId]);
-  }
-  if (pres && pedido && pedido[pres.qtyId] != null) return parseNumber(pedido[pres.qtyId]);
-  return 0;
-}
-
-function pushHistoricalPedidoItemPED(out, seen, item){
-  const normalized = normalizePedidoItemForStoragePED(item, item && item.productSnapshot);
-  const qty = getPedidoItemQtyPED(normalized);
-  if (!(qty > 0)) return;
-  const idKey = String(normalized.productId || normalized.productKey || '').trim();
-  const nameKey = compactProductKeyPED(normalized.productName || normalized.nombreSnapshot || '');
-  const uniq = idKey || nameKey;
-  if (uniq && seen.has(uniq)) return;
-  if (uniq) seen.add(uniq);
-  out.push(normalized);
-}
-
-function getHistoricalItemsForPedidoFormPED(pedido){
-  const items = getPedidoProductItemsArray(pedido);
-  const out = [];
-  const seen = new Set();
-  for (const item of items){
-    const qty = getPedidoItemQtyPED(item);
-    if (!(qty > 0)) continue;
-    const matchesActive = (Array.isArray(PRESENTACIONES) ? PRESENTACIONES : []).some((pres) => itemMatchesPresentationPED(item, pres));
-    if (matchesActive) continue;
-    pushHistoricalPedidoItemPED(out, seen, item);
-  }
-
-  LEGACY_PRESENTACIONES.forEach((pres) => {
-    const qty = parseNumber(pedido && pedido[pres.qtyId] != null ? pedido[pres.qtyId] : 0);
-    if (!(qty > 0)) return;
-    const activeMatch = (Array.isArray(PRESENTACIONES) ? PRESENTACIONES : []).some((p) => p && p.legacyKey === pres.key);
-    if (activeMatch) return;
-    const unit = parseNumber((pedido && pedido[pres.legacyPrice] != null) ? pedido[pres.legacyPrice] : 0);
-    pushHistoricalPedidoItemPED(out, seen, {
-      productId: '',
-      productKey: 'legacy:' + pres.key,
-      productName: pres.label,
-      qty,
-      unitPriceSnapshot: unit,
-      subtotal: qty * unit,
-      productSnapshot: { id:'', nombre: pres.label, precio: unit, activo: false },
-      legacyKey: pres.key,
-      source: 'legacy'
-    });
-  });
-
-  return out;
-}
-
-function setPedidoProductQuantitiesFromPedido(pedido){
-  PRESENTACIONES.forEach((pres) => {
-    const el = $(pres.qtyId);
-    if (!el) return;
-    el.value = String(getPedidoQuantityForPresentation(pedido || {}, pres) || 0);
-    updateLineSubtotalPED(pres, pres.price);
-  });
-}
-
-function resetPedidoProductQuantities(){
-  currentHistoricalPedidoItemsPED = [];
-  renderPedidosProductRows(PRESENTACIONES);
-  PRESENTACIONES.forEach((pres) => {
-    const el = $(pres.qtyId);
-    if (el) el.value = '0';
-    updateLineSubtotalPED(pres, pres.price);
-  });
-}
-
-function readPedidoProductsFromForm(){
-  if ((!Array.isArray(PRESENTACIONES) || !PRESENTACIONES.length) && (!Array.isArray(currentHistoricalPedidoItemsPED) || !currentHistoricalPedidoItemsPED.length)){
-    return { ok:false, message:'No hay productos activos disponibles para crear el pedido.' };
-  }
-  const qtyByKey = {};
-  const legacyQty = { pulso:0, media:0, djeba:0, litro:0, galon:0 };
-  const items = [];
-
-  for (const pres of PRESENTACIONES){
-    const q = readFiniteNumber(pres.qtyId, pres.label || 'Producto', { min:0, integer:true });
-    if (!q.ok) return q;
-    qtyByKey[pres.key] = q.value;
-    if (pres.legacyKey && hasOwnPED(legacyQty, pres.legacyKey)) legacyQty[pres.legacyKey] += q.value;
-    if (q.value > 0){
-      const unitPriceSnapshot = Number(pres.price || 0) || 0;
-      const item = normalizePedidoItemForStoragePED({
-        productId: pres.productId || '',
-        productKey: pres.key,
-        productName: pres.label || '',
-        qty: q.value,
-        unitPriceSnapshot,
-        subtotal: q.value * unitPriceSnapshot,
-        productSnapshot: buildProductSnapshotPED(pres.rawProduct || {}, {
-          productId: pres.productId || '',
-          productName: pres.label || '',
-          unitPriceSnapshot,
-          letra: pres.letter || ''
-        }),
-        legacyKey: pres.legacyKey || '',
-        source: 'catalog'
-      });
-      items.push(item);
-    }
-  }
-
-  (Array.isArray(currentHistoricalPedidoItemsPED) ? currentHistoricalPedidoItemsPED : []).forEach((raw) => {
-    const item = normalizePedidoItemForStoragePED(raw, raw && raw.productSnapshot);
-    const qty = getPedidoItemQtyPED(item);
-    if (!(qty > 0)) return;
-    items.push({ ...item, source: item.source || 'snapshot' });
-    if (item.legacyKey && hasOwnPED(legacyQty, item.legacyKey)) legacyQty[item.legacyKey] += qty;
-  });
-
-  const seen = new Set();
-  const deduped = [];
-  items.forEach((item) => {
-    const key = String(item.productId || item.productKey || '').trim() || compactProductKeyPED(item.productName || item.nombreSnapshot || '');
-    if (key && seen.has(key)) return;
-    if (key) seen.add(key);
-    deduped.push(item);
-  });
-
-  return { ok:true, qtyByKey, legacyQty, items: deduped };
-}
-
-function buildLegacyUnitPricesFromSelectionPED(selection, unitPricesUsed){
-  const out = { pulso:0, media:0, djeba:0, litro:0, galon:0 };
-  for (const pres of PRESENTACIONES){
-    if (!pres.legacyKey || !hasOwnPED(out, pres.legacyKey)) continue;
-    const qty = selection && selection.qtyByKey ? Number(selection.qtyByKey[pres.key] || 0) : 0;
-    if (qty <= 0 && out[pres.legacyKey] > 0) continue;
-    const unit = Number((unitPricesUsed && unitPricesUsed[pres.key]) ?? pres.price ?? 0);
-    out[pres.legacyKey] = Number.isFinite(unit) ? unit : 0;
-  }
-
-  // Si el pedido conserva productos históricos/legacy no visibles como opción nueva,
-  // mantener también su precio snapshot en los campos legacy de compatibilidad.
-  const items = selection && Array.isArray(selection.items) ? selection.items : [];
-  items.forEach((item) => {
-    const legacyKey = String(item && (item.legacyKey || item.legacyId) || '').trim();
-    if (!legacyKey || !hasOwnPED(out, legacyKey)) return;
-    const qty = getPedidoItemQtyPED(item);
-    if (!(qty > 0)) return;
-    const unit = getPedidoItemUnitPricePED(item);
-    if (Number.isFinite(unit) && unit >= 0 && (!out[legacyKey] || out[legacyKey] <= 0)) out[legacyKey] = unit;
-  });
-  return out;
-}
-
-function enrichPedidoItemsWithCalculatedPricesPED(items, unitPricesUsed){
-  return (Array.isArray(items) ? items : []).map((item) => {
-    const key = item.productKey || item.key || '';
-    const unit = Number((unitPricesUsed && unitPricesUsed[key]) ?? item.unitPriceSnapshot ?? item.unitPrice ?? 0) || 0;
-    const qty = Number(item.qty ?? item.cantidad ?? 0) || 0;
-    return normalizePedidoItemForStoragePED({ ...item, unitPriceSnapshot: unit, unitPrice: unit, subtotal: qty * unit });
-  });
-}
-
-function getPedidoDetailProductLinesPED(p, snap){
-  const out = [];
-  const seen = new Set();
-  const priceSnap = (snap && typeof snap === 'object') ? snap : getPriceSnapshotFromPedido(p);
-
-  function pushLine(raw, fallback){
-    const item = normalizePedidoItemForStoragePED(raw, fallback || (raw && raw.productSnapshot));
-    const qty = getPedidoItemQtyPED(item);
-    if (!(qty > 0)) return;
-
-    const key = String(item.productKey || item.key || '').trim();
-    const pid = String(item.productId || item.productoId || '').trim();
-    const legacyKey = String(item.legacyKey || item.legacyId || '').trim();
-    const name = getPedidoItemNamePED(item);
-    const uniq = key || (pid ? ('product:' + pid) : '') || (legacyKey ? ('legacy:' + legacyKey) : '') || compactProductKeyPED(name);
-    if (uniq && seen.has(uniq)) return;
-    if (uniq) seen.add(uniq);
-
-    let unit = null;
-    if (key && priceSnap && typeof priceSnap[key] === 'number') unit = priceSnap[key];
-    if ((unit == null || !isFinite(unit)) && pid && priceSnap && typeof priceSnap['product:' + pid] === 'number') unit = priceSnap['product:' + pid];
-    if ((unit == null || !isFinite(unit)) && legacyKey && priceSnap && typeof priceSnap[legacyKey] === 'number') unit = priceSnap[legacyKey];
-    if (unit == null || !isFinite(unit)) unit = getPedidoItemUnitPricePED(item);
-    unit = Number.isFinite(Number(unit)) ? Number(unit) : 0;
-
-    out.push({
-      label: name,
-      qty,
-      unit,
-      subtotal: qty * unit,
-      source: item.source || (legacyKey ? 'legacy' : 'snapshot'),
-      legacyKey
-    });
-  }
-
-  const items = getPedidoProductItemsArray(p);
-  if (items.length){
-    items.forEach((item) => pushLine(item, item && item.productSnapshot));
-  }
-
-  // Compatibilidad: si no hubo items útiles, leer campos legacy fijos.
-  if (!out.length){
-    LEGACY_PRESENTACIONES.forEach((pres) => {
-      const cant = parseNumber(p && p[pres.qtyId] != null ? p[pres.qtyId] : 0);
-      if (!(cant > 0)) return;
-      let unit = priceSnap && typeof priceSnap[pres.key] === 'number' ? priceSnap[pres.key] : null;
-      if ((unit == null || !isFinite(unit)) && p && p[pres.legacyPrice] != null) unit = parseNumber(p[pres.legacyPrice]);
-      pushLine({
-        productId: '',
-        productKey: 'legacy:' + pres.key,
-        productName: pres.label,
-        qty: cant,
-        unitPriceSnapshot: Number.isFinite(Number(unit)) ? Number(unit) : 0,
-        productSnapshot: { id:'', nombre: pres.label, precio: Number.isFinite(Number(unit)) ? Number(unit) : 0, activo:false },
-        legacyKey: pres.key,
-        source: 'legacy'
-      });
-    });
-  }
-
-  return out;
-}
-
-function getPedidoSubtotalFromLinesPED(lines){
-  return (Array.isArray(lines) ? lines : []).reduce((sum, item) => {
-    const sub = Number(item && item.subtotal);
-    if (Number.isFinite(sub)) return sum + sub;
-    const qty = Number(item && item.qty) || 0;
-    const unit = Number(item && item.unit) || 0;
-    return sum + (qty * unit);
-  }, 0);
-}
-
-function getPedidoTotalsForDisplayPED(p){
-  const lines = getPedidoDetailProductLinesPED(p, getPriceSnapshotFromPedido(p));
-  const subtotalLines = getPedidoSubtotalFromLinesPED(lines);
-  const subtotal = (p && typeof p.subtotal === 'number') ? p.subtotal
-    : ((p && typeof p.subtotalPresentaciones === 'number') ? p.subtotalPresentaciones : subtotalLines);
-  const descuento = (p && p.descuento != null) ? p.descuento
-    : ((p && p.descuentoFijo != null) ? p.descuentoFijo
-    : (p && p.descuentoTotal != null ? p.descuentoTotal : 0));
-  const envio = (p && typeof p.envio === 'number') ? p.envio : parseNumber(p && p.envio);
-  const total = (p && typeof p.totalPagar === 'number') ? p.totalPagar : (subtotal - parseNumber(descuento) + (envio || 0));
-  const pagoAnt = (p && p.pagoAnticipado != null) ? p.pagoAnticipado : (p && p.montoPagado != null ? p.montoPagado : 0);
-  const saldo = (p && typeof p.saldoPendiente === 'number') ? p.saldoPendiente : (total - parseNumber(pagoAnt));
-  return { lines, subtotal, descuento: parseNumber(descuento), envio: envio || 0, total, pagoAnt: parseNumber(pagoAnt), saldo };
-}
-
-function buildPedidoProductsExportTextPED(p){
-  const t = getPedidoTotalsForDisplayPED(p);
-  if (!t.lines.length) return '';
-  return t.lines.map((item) => {
-    const qty = Number(item.qty || 0);
-    const unit = Number(item.unit || 0);
-    const subtotal = Number(item.subtotal != null ? item.subtotal : (qty * unit));
-    return `${item.label}: ${qty} x ${unit.toFixed(2)} = ${subtotal.toFixed(2)}`;
-  }).join(' | ');
-}
-
-function setTextPED(id, value){
-  const el = $(id);
-  if (el) el.textContent = value == null ? '' : String(value);
-}
-
-function renderPedidoDetailModalProductRowsPED(lines){
-  const tbody = $('pedido-detail-products-body');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  if (!Array.isArray(lines) || !lines.length){
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 4;
-    td.textContent = 'Sin productos registrados.';
-    td.className = 'pedidos-products-empty-cell';
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    return;
-  }
-  lines.forEach((item) => {
-    const qty = Number(item.qty || 0);
-    const unit = Number(item.unit || 0);
-    const subtotal = Number(item.subtotal != null ? item.subtotal : (qty * unit));
-    const tr = document.createElement('tr');
-
-    const nameTd = document.createElement('td');
-    nameTd.textContent = item.label || 'Producto';
-    tr.appendChild(nameTd);
-
-    const qtyTd = document.createElement('td');
-    qtyTd.className = 'num-cell';
-    qtyTd.textContent = String(qty || 0);
-    tr.appendChild(qtyTd);
-
-    const unitTd = document.createElement('td');
-    unitTd.className = 'num-cell';
-    unitTd.textContent = formatA33Cordobas(unit);
-    tr.appendChild(unitTd);
-
-    const subTd = document.createElement('td');
-    subTd.className = 'num-cell';
-    subTd.textContent = formatA33Cordobas(subtotal);
-    tr.appendChild(subTd);
-
-    tbody.appendChild(tr);
-  });
-}
-
-function closePedidoDetailModalPED(){
-  const modal = $('pedido-detail-modal');
-  if (!modal) return;
-  modal.hidden = true;
-  try{ document.body.classList.remove('a33-modal-open'); }catch(_){ }
-}
-
-function openPedidoDetailModalPED(p, source){
-  const modal = $('pedido-detail-modal');
-  if (!modal) return false;
-  const t = getPedidoTotalsForDisplayPED(p);
-  const clienteLabel = (p && (p.customerName || p.clienteNombre)) ? (p.customerName || p.clienteNombre) : '';
-  const estado = getPedidoEstado(p);
-
-  setTextPED('pedido-detail-title', (source === 'archived' ? 'Pedido histórico' : 'Detalle de pedido'));
-  setTextPED('pedido-detail-code', p && p.codigo ? p.codigo : '');
-  setTextPED('pedido-detail-client', clienteLabel || '');
-  setTextPED('pedido-detail-created', formatDate(p && p.fechaCreacion));
-  setTextPED('pedido-detail-delivery', formatDate(p && p.fechaEntrega));
-  setTextPED('pedido-detail-priority', p && p.prioridad ? p.prioridad : 'normal');
-  setTextPED('pedido-detail-phone', p && p.clienteTelefono ? p.clienteTelefono : '');
-  setTextPED('pedido-detail-type', p && p.clienteTipo ? p.clienteTipo : '');
-  setTextPED('pedido-detail-ref', p && p.clienteReferencia ? p.clienteReferencia : '');
-  setTextPED('pedido-detail-lots', p && p.lotesRelacionados ? p.lotesRelacionados : '');
-  setTextPED('pedido-detail-subtotal', formatA33Cordobas(t.subtotal));
-  setTextPED('pedido-detail-discount', formatA33Cordobas(t.descuento));
-  setTextPED('pedido-detail-shipping', formatA33Cordobas(t.envio));
-  setTextPED('pedido-detail-total', formatA33Cordobas(t.total));
-  setTextPED('pedido-detail-method', p && p.metodoPago ? p.metodoPago : '');
-  setTextPED('pedido-detail-paid', formatA33Cordobas(t.pagoAnt));
-  setTextPED('pedido-detail-balance', formatA33Cordobas(t.saldo));
-  setTextPED('pedido-detail-status', estado === 'entregado' ? 'Entregado' : 'Pendiente');
-
-  renderPedidoDetailModalProductRowsPED(t.lines);
-
-  const closeBtn = $('pedido-detail-close');
-  if (closeBtn) closeBtn.onclick = closePedidoDetailModalPED;
-  const okBtn = $('pedido-detail-ok');
-  if (okBtn) okBtn.onclick = closePedidoDetailModalPED;
-  modal.onclick = (event) => {
-    if (event && event.target === modal) closePedidoDetailModalPED();
-  };
-  modal.hidden = false;
-  try{ document.body.classList.add('a33-modal-open'); }catch(_){ }
-  try{ if (closeBtn) closeBtn.focus({ preventScroll:true }); }catch(_){ }
-  return true;
-}
-
-// --- Clientes (desde POS) ---
 // --- Clientes (desde POS) ---
 function sanitizeCustomerName(name){
   return String(name || '').replace(/\s+/g,' ').trim();
@@ -1744,81 +960,53 @@ async function getPosPricesMapSafe({ force = false } = {}) {
 function getPriceSnapshotFromPedido(p) {
   const snap = {};
   const obj = (p && typeof p.priceSnapshot === 'object' && p.priceSnapshot) ? p.priceSnapshot : null;
-
-  if (obj){
-    Object.keys(obj).forEach((key) => {
-      const val = parseNumber(obj[key]);
-      if (typeof val === 'number' && isFinite(val) && val >= 0) snap[key] = val;
-    });
-  }
-
-  getPedidoProductItemsArray(p).forEach((item) => {
-    const key = String(item.productKey || item.key || '').trim();
-    const legacyKey = String(item.legacyKey || item.legacyId || '').trim();
-    const val = getPedidoItemUnitPricePED(item);
-    if (key && isFinite(val) && val >= 0) snap[key] = val;
-    if (legacyKey && isFinite(val) && val >= 0) snap[legacyKey] = val;
-  });
-
-  LEGACY_PRESENTACIONES.forEach((pres) => {
+  PRESENTACIONES.forEach((pres) => {
     let val = null;
     if (obj && obj[pres.key] != null) val = parseNumber(obj[pres.key]);
-    if ((val == null || !isFinite(val)) && p && p[pres.legacyPrice] != null) val = parseNumber(p[pres.legacyPrice]);
-    if (typeof val === 'number' && isFinite(val) && val >= 0) snap[pres.key] = val;
+    if (val == null || !isFinite(val)) {
+      // legacy: pulsoPrecio, mediaPrecio, etc.
+      if (p && p[pres.legacyPrice] != null) val = parseNumber(p[pres.legacyPrice]);
+    }
+    if (typeof val === 'number' && isFinite(val) && val >= 0) {
+      snap[pres.key] = val;
+    }
   });
-
   return snap;
 }
 
 async function calcularTotalesDesdeFormulario() {
-  if (!pedidosCatalogProductsLoaded) await refreshPedidosProductCatalog(false);
-
   const qty = {};
   PRESENTACIONES.forEach((pres) => {
     const el = $(pres.qtyId);
     qty[pres.key] = el ? parseNumber(el.value) : 0;
   });
 
+  const posPrices = await getPosPricesMapSafe();
   const fallback = (currentPriceSnapshot && typeof currentPriceSnapshot === 'object') ? currentPriceSnapshot : {};
 
   let subtotal = 0;
   const unitUsed = {};
 
   PRESENTACIONES.forEach((pres) => {
-    let unit = (typeof pres.price === 'number' && isFinite(pres.price)) ? pres.price : null;
+    const p = posPrices ? posPrices[pres.key] : null;
+    let unit = (typeof p === 'number' && isFinite(p)) ? p : null;
     if (unit == null) {
-      const f = fallback[pres.key] ?? (pres.legacyKey ? fallback[pres.legacyKey] : null);
+      const f = fallback[pres.key];
       unit = (typeof f === 'number' && isFinite(f)) ? f : 0;
     }
     unitUsed[pres.key] = unit;
-    if (pres.legacyKey) unitUsed[pres.legacyKey] = unit;
-    const lineSubtotal = (qty[pres.key] || 0) * unit;
-    subtotal += lineSubtotal;
-    updateLineSubtotalPED(pres, unit);
+    subtotal += (qty[pres.key] || 0) * unit;
   });
 
-  (Array.isArray(currentHistoricalPedidoItemsPED) ? currentHistoricalPedidoItemsPED : []).forEach((item) => {
-    const qtyHist = getPedidoItemQtyPED(item);
-    if (!(qtyHist > 0)) return;
-    const unitHist = getPedidoItemUnitPricePED(item);
-    const key = String(item.productKey || item.key || '').trim();
-    const pid = String(item.productId || item.productoId || '').trim();
-    const legacyKey = String(item.legacyKey || item.legacyId || '').trim();
-    if (key) unitUsed[key] = unitHist;
-    if (pid) unitUsed['product:' + pid] = unitHist;
-    if (legacyKey) unitUsed[legacyKey] = unitHist;
-    subtotal += qtyHist * unitHist;
-  });
-
-  const envio = parseNumber($('envio')?.value || 0);
-  const descuento = parseNumber($('descuento')?.value || 0);
+  const envio = parseNumber($('envio').value);
+  const descuento = parseNumber($('descuento').value);
   const totalPagar = subtotal - descuento + envio;
-  const pagoAnticipado = parseNumber($('pagoAnticipado')?.value || 0);
+  const pagoAnticipado = parseNumber($('pagoAnticipado').value);
   const saldoPendiente = totalPagar - pagoAnticipado;
 
-  if ($('subtotal')) $('subtotal').value = subtotal.toFixed(2);
-  if ($('totalPagar')) $('totalPagar').value = totalPagar.toFixed(2);
-  if ($('saldoPendiente')) $('saldoPendiente').value = saldoPendiente.toFixed(2);
+  $('subtotal').value = subtotal.toFixed(2);
+  $('totalPagar').value = totalPagar.toFixed(2);
+  $('saldoPendiente').value = saldoPendiente.toFixed(2);
 
   return {
     subtotal,
@@ -1836,6 +1024,11 @@ function clearForm() {
 
   // restaurar valores por defecto numéricos
   const defaults = {
+    pulsoCant: "0",
+    mediaCant: "0",
+    djebaCant: "0",
+    litroCant: "0",
+    galonCant: "0",
     envio: "0",
     descuento: "0",
     pagoAnticipado: "0",
@@ -1845,7 +1038,6 @@ function clearForm() {
     const el = $(id);
     if (el) el.value = val;
   });
-  resetPedidoProductQuantities();
 
   $("subtotal").value = "";
   $("totalPagar").value = "";
@@ -1894,9 +1086,11 @@ function populateForm(pedido) {
   $("clienteDireccion").value = pedido.clienteDireccion || "";
   $("clienteReferencia").value = pedido.clienteReferencia || "";
 
-  currentHistoricalPedidoItemsPED = getHistoricalItemsForPedidoFormPED(pedido);
-  renderPedidosProductRows(PRESENTACIONES);
-  setPedidoProductQuantitiesFromPedido(pedido);
+  $("pulsoCant").value = pedido.pulsoCant ?? "0";
+  $("mediaCant").value = pedido.mediaCant ?? "0";
+  $("djebaCant").value = pedido.djebaCant ?? "0";
+  $("litroCant").value = pedido.litroCant ?? "0";
+  $("galonCant").value = pedido.galonCant ?? "0";
 
   const descuento = (pedido.descuento != null) ? pedido.descuento
     : ((pedido.descuentoFijo != null) ? pedido.descuentoFijo
@@ -1998,7 +1192,7 @@ function renderTable() {
 
     const totalTd = document.createElement("td");
     totalTd.className = "col-money";
-    const total = getPedidoTotalsForDisplayPED(p).total;
+    const total = typeof p.totalPagar === "number" ? p.totalPagar : 0;
     totalTd.textContent = formatA33Cordobas(total);
     tr.appendChild(totalTd);
 
@@ -2144,7 +1338,8 @@ function renderArchivedTable() {
 
     const totalTd = document.createElement("td");
     totalTd.className = "col-money";
-    const tot = getPedidoTotalsForDisplayPED(p).total;
+    const tot = (typeof p.totalPagar === "number") ? p.totalPagar
+      : ((typeof p.total === "number") ? p.total : 0);
     totalTd.textContent = formatA33Cordobas(tot || 0);
     tr.appendChild(totalTd);
 
@@ -2155,17 +1350,9 @@ function renderArchivedTable() {
     verBtn.textContent = "👁";
     verBtn.className = "btn-secondary a33-icon-btn";
     verBtn.type = "button";
-    verBtn.title = "Ver detalle";
-    verBtn.setAttribute("aria-label", "Ver detalle");
-    verBtn.addEventListener("click", () => verPedido(p.id, 'archived'));
-
-    const cargarBtn = document.createElement("button");
-    cargarBtn.textContent = "↩";
-    cargarBtn.className = "btn-primary a33-icon-btn";
-    cargarBtn.type = "button";
-    cargarBtn.title = "Cargar como nuevo";
-    cargarBtn.setAttribute("aria-label", "Cargar como nuevo");
-    cargarBtn.addEventListener("click", () => {
+    verBtn.title = "Ver / cargar";
+    verBtn.setAttribute("aria-label", "Ver / cargar");
+    verBtn.addEventListener("click", () => {
       try{
         viewingArchivedId = p.id;
         populateForm(p);
@@ -2190,7 +1377,6 @@ function renderArchivedTable() {
     borrarBtn.addEventListener("click", () => deleteArchivedPedido(p.id));
 
     accionesTd.appendChild(verBtn);
-    accionesTd.appendChild(cargarBtn);
     accionesTd.appendChild(borrarBtn);
     tr.appendChild(accionesTd);
 
@@ -2199,17 +1385,20 @@ function renderArchivedTable() {
 }
 
 
-function verPedido(id, source) {
-  const lista = (source === 'archived') ? loadArchivedPedidos() : loadPedidos();
-  const p = lista.find((x) => String(x && x.id) === String(id));
+function verPedido(id) {
+  const pedidos = loadPedidos();
+  const p = pedidos.find((x) => x.id === id);
   if (!p) return;
 
-  if (openPedidoDetailModalPED(p, source)) return;
-
-  // Fallback por si el modal no existe en una base antigua.
   const lines = [];
-  const t = getPedidoTotalsForDisplayPED(p);
-  const estado = getPedidoEstado(p);
+  const snap = getPriceSnapshotFromPedido(p);
+
+  const descuento = (p.descuento != null) ? p.descuento
+    : ((p.descuentoFijo != null) ? p.descuentoFijo
+    : (p.descuentoTotal != null ? p.descuentoTotal : 0));
+  const pagoAnt = (p.pagoAnticipado != null) ? p.pagoAnticipado
+    : (p.montoPagado != null ? p.montoPagado : 0);
+  const estado = p.estado || (p.entregado ? 'entregado' : 'pendiente');
 
   lines.push(`Código: ${p.codigo || ""}`);
   lines.push(`Fecha fabricación: ${formatDate(p.fechaCreacion)}`);
@@ -2221,27 +1410,29 @@ function verPedido(id, source) {
   lines.push(`  Nombre / negocio: ${clienteLabel}`);
   lines.push(`  Tipo: ${p.clienteTipo || ""}`);
   lines.push(`  Teléfono: ${p.clienteTelefono || ""}`);
+  if (p.clienteDireccion) lines.push(`  Dirección (legacy): ${p.clienteDireccion}`);
   if (p.clienteReferencia) lines.push(`  Referencia: ${p.clienteReferencia}`);
   lines.push("");
-  lines.push("Productos:");
-  if (t.lines.length){
-    t.lines.forEach((item) => {
-      const sub = Number(item.subtotal != null ? item.subtotal : (Number(item.qty || 0) * Number(item.unit || 0)));
-      lines.push(`  ${item.label}: cant ${item.qty || 0}, unit ${formatA33Cordobas(item.unit || 0)}, subtotal ${formatA33Cordobas(sub || 0)}`);
-    });
-  } else {
-    lines.push('  Sin productos registrados.');
-  }
+  lines.push("Presentaciones:");
+  PRESENTACIONES.forEach((pres) => {
+    const cant = parseNumber(p[pres.qtyId] ?? 0);
+    const unit = (snap && typeof snap[pres.key] === 'number') ? snap[pres.key] : 0;
+    lines.push(`  ${pres.label}: cant ${cant || 0}, unit ${formatA33Cordobas(unit)}`);
+  });
   lines.push("");
-  lines.push(`Subtotal: ${formatA33Cordobas(t.subtotal)}`);
-  lines.push(`Descuento: ${formatA33Cordobas(t.descuento)}`);
-  lines.push(`Envío: ${formatA33Cordobas(t.envio)}`);
-  lines.push(`Total a pagar: ${formatA33Cordobas(t.total)}`);
+  const subtotal = typeof p.subtotal === 'number' ? p.subtotal : 0;
+  const envio = typeof p.envio === 'number' ? p.envio : parseNumber(p.envio);
+  const total = typeof p.totalPagar === 'number' ? p.totalPagar : (subtotal - parseNumber(descuento) + (envio || 0));
+  const saldo = typeof p.saldoPendiente === 'number' ? p.saldoPendiente : (total - parseNumber(pagoAnt));
+  lines.push(`Subtotal: ${formatA33Cordobas(subtotal)}`);
+  lines.push(`Descuento: ${formatA33Cordobas(parseNumber(descuento))}`);
+  lines.push(`Envío: ${formatA33Cordobas(envio || 0)}`);
+  lines.push(`Total a pagar: ${formatA33Cordobas(total)}`);
   lines.push("");
   lines.push("Pago / Estado:");
   lines.push(`  Método: ${p.metodoPago || ""}`);
-  lines.push(`  Pago anticipado: ${formatA33Cordobas(t.pagoAnt)}`);
-  lines.push(`  Saldo pendiente: ${formatA33Cordobas(t.saldo)}`);
+  lines.push(`  Pago anticipado: ${formatA33Cordobas(parseNumber(pagoAnt))}`);
+  lines.push(`  Saldo pendiente: ${formatA33Cordobas(saldo)}`);
   lines.push(`  Estado: ${estado === 'entregado' ? 'Entregado' : 'Pendiente'}`);
   if (p.lotesRelacionados) lines.push(`Lotes relacionados: ${p.lotesRelacionados}`);
 
@@ -2250,12 +1441,12 @@ function verPedido(id, source) {
 
 function editPedido(id) {
   const pedidos = loadPedidos();
-  const p = pedidos.find((x) => String(x && x.id) === String(id));
+  const p = pedidos.find((x) => x.id === id);
   if (!p) return;
   
   viewingArchivedId = null;
   showArchivedModeBanner("");
-  populateForm(p);
+populateForm(p);
 }
 
 async function deletePedido(id) {
@@ -2404,20 +1595,9 @@ function createICSEventFromPedido(p) {
   if (p.clienteTipo) descLines.push(`Tipo: ${p.clienteTipo}`);
   if (p.clienteReferencia) descLines.push(`Referencia: ${p.clienteReferencia.replace(/\r?\n/g, " ")}`);
   if (p.clienteDireccion) descLines.push(`Dirección (legacy): ${p.clienteDireccion.replace(/\r?\n/g, " ")}`);
-
-  const detail = getPedidoTotalsForDisplayPED(p);
-  if (detail.lines.length){
-    descLines.push('Productos:');
-    detail.lines.forEach((item) => {
-      const qty = Number(item.qty || 0);
-      const unit = Number(item.unit || 0);
-      const sub = Number(item.subtotal != null ? item.subtotal : (qty * unit));
-      descLines.push(`- ${item.label}: ${qty} x ${formatA33Cordobas(unit)} = ${formatA33Cordobas(sub)}`);
-    });
-  }
-
   if (p.lotesRelacionados) descLines.push(`Lotes: ${p.lotesRelacionados.replace(/\r?\n/g, " ")}`);
-  descLines.push(`Total a cobrar: ${formatA33Cordobas(detail.total)}`);
+  const total = typeof p.totalPagar === "number" ? p.totalPagar.toFixed(2) : "";
+  if (total) descLines.push(`Total a cobrar: ${formatA33Cordobas(total)}`);
   const descRaw = descLines.join("\n");
 
   function icsEscape(str) {
@@ -2456,7 +1636,7 @@ function createICSEventFromPedido(p) {
 
 function exportPedidoToCalendar(id) {
   const pedidos = loadPedidos();
-  const p = pedidos.find((x) => String(x && x.id) === String(id));
+  const p = pedidos.find((x) => x.id === id);
   if (!p) return;
 
   const ics = createICSEventFromPedido(p);
@@ -2518,140 +1698,95 @@ async function exportToCSV() {
   await new Promise((r) => setTimeout(r, 0));
 
   try{
-    const headers = [
-      "Fecha fabricación",
-      "Fecha entrega",
-      "Código",
-      "Cliente",
-      "Tipo cliente",
-      "Teléfono",
-      "Dirección",
-      "Referencia",
-      "Productos detalle",
-      "Total unidades",
-      "Subtotal productos",
-      "Pulso - Cantidad",
-      "Pulso - Precio",
-      "Pulso - Descuento",
-      "Media - Cantidad",
-      "Media - Precio",
-      "Media - Descuento",
-      "Djeba - Cantidad",
-      "Djeba - Precio",
-      "Djeba - Descuento",
-      "Litro - Cantidad",
-      "Litro - Precio",
-      "Litro - Descuento",
-      "Galón - Cantidad",
-      "Galón - Precio",
-      "Galón - Descuento",
-      "Subtotal presentaciones",
-      "Descuento total",
-      "Envío",
-      "Total a pagar",
-      "Método pago",
-      "Estado pago",
-      "Monto pagado",
-      "Saldo pendiente",
-      "Lotes relacionados",
-      "Entregado",
-    ];
+  const headers = [
+    "Fecha fabricación",
+    "Fecha entrega",
+    "Código",
+    "Cliente",
+    "Tipo cliente",
+    "Teléfono",
+    "Dirección",
+    "Referencia",
+    "Pulso - Cantidad",
+    "Pulso - Precio",
+    "Pulso - Descuento",
+    "Media - Cantidad",
+    "Media - Precio",
+    "Media - Descuento",
+    "Djeba - Cantidad",
+    "Djeba - Precio",
+    "Djeba - Descuento",
+    "Litro - Cantidad",
+    "Litro - Precio",
+    "Litro - Descuento",
+    "Galón - Cantidad",
+    "Galón - Precio",
+    "Galón - Descuento",
+    "Subtotal presentaciones",
+    "Descuento total",
+    "Envío",
+    "Total a pagar",
+    "Método pago",
+    "Estado pago",
+    "Monto pagado",
+    "Saldo pendiente",
+    "Lotes relacionados",
+    "Entregado",
+  ];
 
-    const numOrEmpty = (v) => (typeof v === "number" && Number.isFinite(v) ? Number(v.toFixed(2)) : "");
+  const numOrEmpty = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : "");
 
-    const rows = pedidos.map((p) => {
-      const delivered = (p && (p.estado === 'entregado')) || !!p.entregado;
-      const detail = getPedidoTotalsForDisplayPED(p);
-      const subPres = (typeof p.subtotalPresentaciones === 'number') ? p.subtotalPresentaciones
-        : (typeof p.subtotal === 'number' ? p.subtotal : detail.subtotal);
-      const totalUnits = detail.lines.reduce((sum, item) => sum + (Number(item.qty || 0) || 0), 0);
-      return [
-        formatDate(p.fechaCreacion),
-        formatDate(p.fechaEntrega),
-        p.codigo || "",
-        (p.customerName || p.clienteNombre || ""),
-        p.clienteTipo || "",
-        p.clienteTelefono || "",
-        p.clienteDireccion || "",
-        (p.clienteReferencia || "").replace(/\r?\n/g, " "),
-        buildPedidoProductsExportTextPED(p),
-        totalUnits,
-        numOrEmpty(getPedidoSubtotalFromLinesPED(detail.lines)),
-        p.pulsoCant ?? 0,
-        p.pulsoPrecio ?? 0,
-        p.pulsoDesc ?? 0,
-        p.mediaCant ?? 0,
-        p.mediaPrecio ?? 0,
-        p.mediaDesc ?? 0,
-        p.djebaCant ?? 0,
-        p.djebaPrecio ?? 0,
-        p.djebaDesc ?? 0,
-        p.litroCant ?? 0,
-        p.litroPrecio ?? 0,
-        p.litroDesc ?? 0,
-        p.galonCant ?? 0,
-        p.galonPrecio ?? 0,
-        p.galonDesc ?? 0,
-        numOrEmpty(subPres),
-        numOrEmpty(detail.descuento),
-        numOrEmpty(detail.envio),
-        numOrEmpty(detail.total),
-        p.metodoPago || "",
-        p.estadoPago || "",
-        numOrEmpty(detail.pagoAnt),
-        numOrEmpty(detail.saldo),
-        (p.lotesRelacionados || "").replace(/\r?\n/g, " "),
-        delivered ? "Sí" : "No",
-      ];
-    });
+  const rows = pedidos.map((p) => {
+    const delivered = (p && (p.estado === 'entregado')) || !!p.entregado;
+    const subPres = (typeof p.subtotalPresentaciones === 'number') ? p.subtotalPresentaciones
+      : (typeof p.subtotal === 'number' ? p.subtotal : null);
+    return [
+    formatDate(p.fechaCreacion),
+    formatDate(p.fechaEntrega),
+    p.codigo || "",
+    (p.customerName || p.clienteNombre || ""),
+    p.clienteTipo || "",
+    p.clienteTelefono || "",
+    p.clienteDireccion || "",
+    (p.clienteReferencia || "").replace(/\r?\n/g, " "),
+    p.pulsoCant ?? 0,
+    p.pulsoPrecio ?? 0,
+    p.pulsoDesc ?? 0,
+    p.mediaCant ?? 0,
+    p.mediaPrecio ?? 0,
+    p.mediaDesc ?? 0,
+    p.djebaCant ?? 0,
+    p.djebaPrecio ?? 0,
+    p.djebaDesc ?? 0,
+    p.litroCant ?? 0,
+    p.litroPrecio ?? 0,
+    p.litroDesc ?? 0,
+    p.galonCant ?? 0,
+    p.galonPrecio ?? 0,
+    p.galonDesc ?? 0,
+    numOrEmpty(subPres),
+    numOrEmpty(p.descuentoTotal),
+    numOrEmpty(p.envio),
+    numOrEmpty(p.totalPagar),
+    p.metodoPago || "",
+    p.estadoPago || "",
+    numOrEmpty(p.montoPagado),
+    numOrEmpty(p.saldoPendiente),
+    (p.lotesRelacionados || "").replace(/\r?\n/g, " "),
+    delivered ? "Sí" : "No",
+  ];
+  });
 
-    const detailHeaders = [
-      "Código",
-      "Cliente",
-      "Fecha fabricación",
-      "Fecha entrega",
-      "Producto",
-      "Cantidad",
-      "Precio snapshot",
-      "Subtotal",
-      "Origen"
-    ];
-    const detailRows = [];
-    pedidos.forEach((p) => {
-      const cliente = (p.customerName || p.clienteNombre || "");
-      const detail = getPedidoTotalsForDisplayPED(p);
-      detail.lines.forEach((item) => {
-        const qty = Number(item.qty || 0) || 0;
-        const unit = Number(item.unit || 0) || 0;
-        const sub = Number(item.subtotal != null ? item.subtotal : (qty * unit));
-        detailRows.push([
-          p.codigo || "",
-          cliente,
-          formatDate(p.fechaCreacion),
-          formatDate(p.fechaEntrega),
-          item.label || "Producto",
-          qty,
-          numOrEmpty(unit),
-          numOrEmpty(sub),
-          item.source === 'legacy' ? 'Histórico' : 'Snapshot'
-        ]);
-      });
-    });
+  const aoa = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Pedidos");
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws['!cols'] = headers.map((h) => ({ wch: Math.min(42, Math.max(12, String(h).length + 2)) }));
-    XLSX.utils.book_append_sheet(wb, ws, "Pedidos");
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const filename = `arcano33_pedidos_${timestamp}.xlsx`;
 
-    const wsDetail = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailRows]);
-    wsDetail['!cols'] = [14, 26, 14, 14, 28, 10, 15, 14, 12].map((wch) => ({ wch }));
-    XLSX.utils.book_append_sheet(wb, wsDetail, "Detalle productos");
-
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const filename = `arcano33_pedidos_${timestamp}.xlsx`;
-
-    XLSX.writeFile(wb, filename);
-    setStatus('Listo ✓');
+  XLSX.writeFile(wb, filename);
+  setStatus('Listo ✓');
   }catch(e){
     console.error('Export falló', e);
     setStatus('Falló');
@@ -2674,15 +1809,11 @@ window.addEventListener('storage', (event) => {
 });
 
 
-document.addEventListener("DOMContentLoaded", async () => {
-  document.addEventListener('keydown', (event) => {
-    try{
-      if (event && event.key === 'Escape') closePedidoDetailModalPED();
-    }catch(_){ }
-  });
-  await refreshPedidosProductCatalog(true);
+document.addEventListener("DOMContentLoaded", () => {
   clearForm();
   renderPedidosCurrencyReference();
+  // Precalentar cache de precios (si el POS está disponible)
+  getPosPricesMapSafe().catch(() => {});
 
   // --- Cliente (desde POS) ---
   try{
@@ -2763,9 +1894,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       // Validar números crudos (evitar NaN/valores raros)
-      if (!pedidosCatalogProductsLoaded) await refreshPedidosProductCatalog(false);
-      const productSelection = readPedidoProductsFromForm();
-      if (!productSelection.ok) return productSelection;
+      const qPulso = readFiniteNumber('pulsoCant', 'Pulso 250 ml', { min: 0, integer: true });
+      if (!qPulso.ok) return qPulso;
+      const qMedia = readFiniteNumber('mediaCant', 'Media 375 ml', { min: 0, integer: true });
+      if (!qMedia.ok) return qMedia;
+      const qDjeba = readFiniteNumber('djebaCant', 'Djeba 750 ml', { min: 0, integer: true });
+      if (!qDjeba.ok) return qDjeba;
+      const qLitro = readFiniteNumber('litroCant', 'Litro 1000 ml', { min: 0, integer: true });
+      if (!qLitro.ok) return qLitro;
+      const qGalon = readFiniteNumber('galonCant', 'Galón 3750 ml', { min: 0, integer: true });
+      if (!qGalon.ok) return qGalon;
 
       const nEnvio = readFiniteNumber('envio', 'Envío (C$)', { min: 0 });
       if (!nEnvio.ok) return nEnvio;
@@ -2778,7 +1916,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const fechaEntrega = $("fechaEntrega").value || fechaCreacion;
       const codigo = $("codigoPedido").value || generateCodigo(fechaCreacion);
 
-      // calcular totales antes de guardar (usa precios de Catálogos + fallback snapshot)
+      // calcular totales antes de guardar (usa precios del POS + fallback snapshot)
       const totales = await calcularTotalesDesdeFormulario();
 
       // Normalizar/recalcular con inputs validados (evita saldos negativos raros)
@@ -2792,19 +1930,18 @@ document.addEventListener("DOMContentLoaded", async () => {
         $("saldoPendiente").value = Number(totales.saldoPendiente || 0).toFixed(2);
       }catch(_){}
 
-      const legacyQty = productSelection.legacyQty || { pulso:0, media:0, djeba:0, litro:0, galon:0 };
-      const items = enrichPedidoItemsWithCalculatedPricesPED(productSelection.items, totales.unitPricesUsed);
-      const legacyPrices = buildLegacyUnitPricesFromSelectionPED(productSelection, totales.unitPricesUsed);
-
       const payload = {
         customer,
         fechaCreacion,
         fechaEntrega,
         codigo,
-        qty: productSelection.qtyByKey || {},
-        legacyQty,
-        items,
-        productosPedido: items,
+        qty: {
+          pulso: qPulso.value,
+          media: qMedia.value,
+          djeba: qDjeba.value,
+          litro: qLitro.value,
+          galon: qGalon.value,
+        },
         totales,
       };
 
@@ -2881,29 +2018,26 @@ document.addEventListener("DOMContentLoaded", async () => {
         clienteDireccion: $("clienteDireccion") ? $("clienteDireccion").value.trim() : '',
         clienteReferencia: $("clienteReferencia").value.trim(),
 
-        // Cantidades legacy + productos dinámicos
-        pulsoCant: legacyQty.pulso || 0,
-        mediaCant: legacyQty.media || 0,
-        djebaCant: legacyQty.djeba || 0,
-        litroCant: legacyQty.litro || 0,
-        galonCant: legacyQty.galon || 0,
-        items,
-        productosPedido: items,
-        pedidoItems: items,
+        // Cantidades
+        pulsoCant: qPulso.value,
+        mediaCant: qMedia.value,
+        djebaCant: qDjeba.value,
+        litroCant: qLitro.value,
+        galonCant: qGalon.value,
 
         // Snapshot de precios unitarios (aunque no se muestre en UI)
         priceSnapshot: totales.unitPricesUsed,
 
         // Legacy: mantener campos de precio/desc por línea para no romper pedidos viejos/export
-        pulsoPrecio: legacyPrices.pulso || 0,
+        pulsoPrecio: totales.unitPricesUsed.pulso,
         pulsoDesc: 0,
-        mediaPrecio: legacyPrices.media || 0,
+        mediaPrecio: totales.unitPricesUsed.media,
         mediaDesc: 0,
-        djebaPrecio: legacyPrices.djeba || 0,
+        djebaPrecio: totales.unitPricesUsed.djeba,
         djebaDesc: 0,
-        litroPrecio: legacyPrices.litro || 0,
+        litroPrecio: totales.unitPricesUsed.litro,
         litroDesc: 0,
-        galonPrecio: legacyPrices.galon || 0,
+        galonPrecio: totales.unitPricesUsed.galon,
         galonDesc: 0,
 
         // Totales/Pagos (nuevo esquema)
@@ -2992,9 +2126,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     try { await calcularTotalesDesdeFormulario(); } catch {}
   });
 
-  // Auto-actualizar totales al cambiar envío/descuento/anticipo.
-  // Las cantidades dinámicas se enlazan al renderizar productos desde Catálogos.
+  // Auto-actualizar totales al cambiar cantidades/envío/descuento/anticipo (manteniendo el botón)
   [
+    'pulsoCant','mediaCant','djebaCant','litroCant','galonCant',
     'envio','descuento','pagoAnticipado'
   ].forEach((id) => {
     const el = $(id);
@@ -3069,7 +2203,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js?v=4.20.84&r=17').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.84&r=10').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

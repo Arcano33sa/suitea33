@@ -665,7 +665,7 @@
           <article class="card" data-link="catalogos/index.html">
             <div class="pill"><span>🗂️</span><span>Datos maestros</span></div>
             <h2>Catálogos</h2>
-            <p>Productos, envases, tapas, extras, bancos y clientes que alimentan la Suite.</p>
+            <p>Productos, extras, bancos, clientes y proveedores que alimentan la Suite.</p>
             <div class="footer-row">
               <span>Base operativa central.</span>
               <button class="link-btn"><span>Ir</span> →</button>
@@ -760,7 +760,7 @@
           <article class="card" id="card-config-backup">
             <div class="pill"><span>🗄️</span><span>Respaldo</span></div>
             <h2>Respaldo</h2>
-            <p>Exportar e importar respaldos completos o parciales desde Configuración.</p>
+            <p>Exportar, importar o restaurar datos de la Suite.</p>
             <div class="footer-row">
               <span>Exportar / Importar</span>
               <button class="link-btn secondary"><span>Abrir</span> →</button>
@@ -1896,9 +1896,7 @@
 
       const configBackupCard = document.getElementById('card-config-backup');
       if (configBackupCard){
-        configBackupCard.addEventListener('click', () => {
-          window.location.href = 'configuracion/index.html';
-        });
+        configBackupCard.addEventListener('click', openBackupHub);
       }
 
       if (exportCard){

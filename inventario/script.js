@@ -24,8 +24,6 @@ const FINISHED = [
   { id: "galon", nombre: "Galón 3750 ml (lista)" },
 ];
 
-let INV_FINISHED_DEFS = FINISHED.slice();
-
 const CAPS_KEYS = [
   'gallon',
   'pulsoLitro',
@@ -40,246 +38,13 @@ const CAPS = [
   { id: 'vasos12oz', nombre: 'Vasos 12oz' },
 ];
 
-// Catálogos dinámicos — Inventario solo lee/visualiza. Producción sigue consumiendo.
-const ENVASES_CATALOG_KEY = 'a33_catalog_envases_v1';
-const TAPAS_CATALOG_KEY = 'a33_catalog_tapas_v1';
-
-const ENVASE_ID_TO_INVENTORY_KEY = {
-  envase_pulso: 'pulso',
-  envase_media: 'media',
-  envase_djeba: 'djeba',
-  envase_litro: 'litro',
-  envase_galon: 'galon',
-};
-
-const TAPA_ID_TO_INVENTORY_KEY = {
-  tapa_galon: 'gallon',
-  tapa_pulso_litro: 'pulsoLitro',
-  tapa_djeba_media: 'djebaMedia',
-};
-
-let INV_BOTTLE_DEFS = BOTTLES.slice();
-let INV_CAP_DEFS = CAPS.slice();
-
 function defaultCapsSection(){
   const out = {};
   CAPS_KEYS.forEach((k)=>{ out[k] = { stock: 0, min: 0 }; });
   return out;
 }
 
-function normalizeInvText(value){
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
 
-function normalizeInvKey(value){
-  return normalizeInvText(value).replace(/[^a-z0-9]+/g, '');
-}
-
-function invBool(value, fallback){
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value === 1;
-  const s = String(value ?? '').trim().toLowerCase();
-  if (['true','1','si','sí','yes','y','activo','activa'].includes(s)) return true;
-  if (['false','0','no','n','inactivo','inactiva'].includes(s)) return false;
-  return !!fallback;
-}
-
-function readJsonLocalSafe(key, fallback){
-  try{
-    if (window.A33Storage && typeof A33Storage.getJSON === 'function'){
-      const val = A33Storage.getJSON(key, fallback, 'local');
-      return val == null ? fallback : val;
-    }
-  }catch(_){ }
-  try{
-    if (!window.localStorage) return fallback;
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  }catch(_){ return fallback; }
-}
-
-function normalizeCatalogRow(raw, kind, index){
-  const src = raw && typeof raw === 'object' ? raw : {};
-  const id = String(src.id || src.envaseId || src.tapaId || `${kind}_${index}` || '').trim();
-  const name = String(src.name || src.nombre || src.label || src.descripcion || src.description || '').trim();
-  if (!id && !name) return null;
-  return {
-    ...src,
-    id: id || `${kind}_${normalizeInvKey(name) || index}`,
-    name,
-    nombre: name,
-    active: invBool(src.active ?? src.activo ?? src.isActive, true),
-  };
-}
-
-function readCatalogRowsForInventario(key, kind){
-  const raw = readJsonLocalSafe(key, []);
-  const arr = Array.isArray(raw) ? raw : [];
-  const seen = new Set();
-  const out = [];
-  arr.forEach((item, index) => {
-    const row = normalizeCatalogRow(item, kind, index);
-    if (!row || row.active === false) return;
-    const nameKey = normalizeInvKey(row.name || row.nombre);
-    const idKey = String(row.id || '').trim();
-    const unique = nameKey || idKey;
-    if (!unique || seen.has(unique)) return;
-    seen.add(unique);
-    out.push(row);
-  });
-  out.sort((a, b) => String(a.name || a.nombre || '').localeCompare(String(b.name || b.nombre || ''), 'es-NI', { sensitivity:'base' }));
-  return out;
-}
-
-function legacyBottleIdFromName(value){
-  const n = normalizeInvKey(value);
-  if (!n) return '';
-  if (['pulso','botellapulso','pulso250ml','botellapulso250ml'].includes(n)) return 'pulso';
-  if (['media','botellamedia','media375ml','botellamedia375ml'].includes(n)) return 'media';
-  if (['djeba','botelladjeba','djeba750ml','botelladjeba750ml'].includes(n)) return 'djeba';
-  if (['litro','botellalitro','litro1000ml','botellalitro1000ml'].includes(n)) return 'litro';
-  if (['galon','galón','botellagalon','botellagalón','galon3750ml','botellagalon3750ml'].includes(n)) return 'galon';
-  return '';
-}
-
-function legacyCapIdFromName(value){
-  const n = normalizeInvKey(value);
-  if (!n) return '';
-  if (['tapagalon','tapagallon','galon','gallon'].includes(n)) return 'gallon';
-  if (['tapapulsolitro','pulsolitro'].includes(n)) return 'pulsoLitro';
-  if (['tapadjebamedia','djebamedia'].includes(n)) return 'djebaMedia';
-  if (['vasos12oz','vaso12oz'].includes(n)) return 'vasos12oz';
-  return '';
-}
-
-function bottleInventoryKeyFromCatalog(row){
-  const id = String(row && row.id || '').trim();
-  if (id && ENVASE_ID_TO_INVENTORY_KEY[id]) return ENVASE_ID_TO_INVENTORY_KEY[id];
-  const legacy = legacyBottleIdFromName((row && (row.name || row.nombre)) || id);
-  return legacy || id;
-}
-
-function capInventoryKeyFromCatalog(row){
-  const id = String(row && row.id || '').trim();
-  if (id && TAPA_ID_TO_INVENTORY_KEY[id]) return TAPA_ID_TO_INVENTORY_KEY[id];
-  const legacy = legacyCapIdFromName((row && (row.name || row.nombre)) || id);
-  return legacy || id;
-}
-
-function buildBottleDefs(inv){
-  const defs = BOTTLES.map((x) => ({ ...x, legacy:true }));
-  const seenIds = new Set(defs.map((x) => String(x.id)));
-  const seenNames = new Set(defs.map((x) => normalizeInvKey(x.nombre)));
-
-  readCatalogRowsForInventario(ENVASES_CATALOG_KEY, 'envase').forEach((row) => {
-    const id = bottleInventoryKeyFromCatalog(row);
-    const name = String(row.name || row.nombre || id).trim();
-    const nameKey = normalizeInvKey(name);
-    const legacyName = legacyBottleIdFromName(name);
-    if (!id) return;
-    if (seenIds.has(id)) return;
-    if (legacyName && seenIds.has(legacyName)) return;
-    if (nameKey && seenNames.has(nameKey)) return;
-    defs.push({
-      id,
-      nombre: name || id,
-      catalogId: String(row.id || '').trim(),
-      dynamic:true,
-      source:'catalogos-envases'
-    });
-    seenIds.add(id);
-    if (nameKey) seenNames.add(nameKey);
-  });
-
-  Object.keys((inv && inv.bottles) || {}).forEach((id) => {
-    const key = String(id || '').trim();
-    if (!key || seenIds.has(key)) return;
-    defs.push({ id:key, nombre:key, dynamic:true, source:'inventario-existente' });
-    seenIds.add(key);
-  });
-
-  defs.sort((a, b) => {
-    const ax = a.dynamic ? 1 : 0;
-    const bx = b.dynamic ? 1 : 0;
-    if (ax !== bx) return ax - bx;
-    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es-NI', { sensitivity:'base' });
-  });
-  return defs;
-}
-
-function buildCapDefs(inv){
-  const defs = CAPS.map((x) => ({ ...x, legacy:true }));
-  const seenIds = new Set(defs.map((x) => String(x.id)));
-  const seenNames = new Set(defs.map((x) => normalizeInvKey(x.nombre)));
-
-  readCatalogRowsForInventario(TAPAS_CATALOG_KEY, 'tapa').forEach((row) => {
-    const id = capInventoryKeyFromCatalog(row);
-    const name = String(row.name || row.nombre || id).trim();
-    const nameKey = normalizeInvKey(name);
-    const legacyName = legacyCapIdFromName(name);
-    if (!id) return;
-    if (seenIds.has(id)) return;
-    if (legacyName && seenIds.has(legacyName)) return;
-    if (nameKey && seenNames.has(nameKey)) return;
-    defs.push({
-      id,
-      nombre: name || id,
-      catalogId: String(row.id || '').trim(),
-      dynamic:true,
-      source:'catalogos-tapas'
-    });
-    seenIds.add(id);
-    if (nameKey) seenNames.add(nameKey);
-  });
-
-  Object.keys((inv && inv.caps) || {}).forEach((id) => {
-    const key = String(id || '').trim();
-    if (!key || seenIds.has(key)) return;
-    defs.push({ id:key, nombre:key, dynamic:true, source:'inventario-existente' });
-    seenIds.add(key);
-  });
-
-  defs.sort((a, b) => {
-    const ax = a.dynamic ? 1 : 0;
-    const bx = b.dynamic ? 1 : 0;
-    if (ax !== bx) return ax - bx;
-    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es-NI', { sensitivity:'base' });
-  });
-  return defs;
-}
-
-function ensureDynamicCatalogInventoryInPlace(inv){
-  if (!inv || typeof inv !== 'object') return inv;
-  if (!inv.bottles || typeof inv.bottles !== 'object') inv.bottles = {};
-  if (!inv.caps || typeof inv.caps !== 'object') inv.caps = defaultCapsSection();
-
-  INV_BOTTLE_DEFS = buildBottleDefs(inv);
-  INV_CAP_DEFS = buildCapDefs(inv);
-
-  INV_BOTTLE_DEFS.forEach((b) => {
-    const id = String(b && b.id || '').trim();
-    if (!id) return;
-    if (!inv.bottles[id] || typeof inv.bottles[id] !== 'object') inv.bottles[id] = { stock:0 };
-    const st = toFiniteNumber(inv.bottles[id].stock);
-    inv.bottles[id].stock = Number.isFinite(st) ? Math.trunc(st) : 0;
-  });
-
-  INV_CAP_DEFS.forEach((c) => {
-    const id = String(c && c.id || '').trim();
-    if (!id) return;
-    if (!inv.caps[id] || typeof inv.caps[id] !== 'object') inv.caps[id] = { stock:0, min:0 };
-    const st = toFiniteNumber(inv.caps[id].stock);
-    const mn = toFiniteNumber(inv.caps[id].min);
-    inv.caps[id].stock = Number.isFinite(st) ? Math.trunc(st) : 0;
-    inv.caps[id].min = Number.isFinite(mn) ? Math.max(0, Math.trunc(mn)) : 0;
-  });
-
-  return inv;
-}
 
 function $(id) {
   return document.getElementById(id);
@@ -290,10 +55,8 @@ function defaultInventario() {
     liquids: {},
     bottles: {},
     finished: {},
-    finishedByProductId: {},
     caps: defaultCapsSection(),
     varios: [],
-    movimientos: [],
   };
   LIQUIDS.forEach((l) => {
     inv.liquids[l.id] = { stock: 0, max: 0 };
@@ -310,79 +73,6 @@ function defaultInventario() {
 function parseNumber(value) {
   const n = parseFloat(String(value).replace(",", "."));
   return Number.isNaN(n) ? 0 : n;
-}
-
-function invKnownFinishedIds(){
-  return new Set(FINISHED.map((x) => String(x.id)));
-}
-
-function normalizeProductIdKey(value){
-  return String(value ?? '').trim();
-}
-
-function finishedDisplayName(id, info){
-  const base = info && typeof info === 'object' ? info : {};
-  const known = FINISHED.find((x) => String(x.id) === String(id));
-  if (known) return known.nombre;
-  const raw = String(base.nombre || base.name || base.productName || base.producto || base.label || '').trim();
-  if (raw) return /list[oa]\)/i.test(raw) ? raw : `${raw} (listo)`;
-  return `${String(id || 'Producto')} (listo)`;
-}
-
-function legacyFinishedIdFromName(value){
-  const n = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (!n) return '';
-  if (n.includes('pulso')) return 'pulso';
-  if (n.includes('media')) return 'media';
-  if (n.includes('djeba')) return 'djeba';
-  if (n.includes('litro')) return 'litro';
-  if (n.includes('galon') || n.includes('gal')) return 'galon';
-  return '';
-}
-
-function legacyFinishedIdFromInfo(id, info){
-  if (invKnownFinishedIds().has(String(id || ''))) return String(id || '');
-  const base = info && typeof info === 'object' ? info : {};
-  return legacyFinishedIdFromName(base.nombre || base.name || base.productName || base.producto || base.label || '');
-}
-
-function buildFinishedDefs(inv){
-  const defs = FINISHED.map((x) => ({ ...x }));
-  const seen = invKnownFinishedIds();
-  const addDef = (id, info) => {
-    const key = normalizeProductIdKey(id);
-    if (!key || seen.has(key)) return;
-    const legacyId = legacyFinishedIdFromInfo(key, info);
-    if (legacyId && seen.has(legacyId)) return;
-    seen.add(key);
-    defs.push({
-      id: key,
-      productId: (info && (info.productId ?? info.productoId)) ?? key,
-      nombre: finishedDisplayName(key, info),
-      dynamic: true
-    });
-  };
-
-  const finished = inv && inv.finished && typeof inv.finished === 'object' ? inv.finished : {};
-  Object.keys(finished).forEach((id) => addDef(id, finished[id]));
-
-  const byProduct = inv && inv.finishedByProductId && typeof inv.finishedByProductId === 'object' ? inv.finishedByProductId : {};
-  Object.keys(byProduct).forEach((id) => addDef(id, byProduct[id]));
-
-  defs.sort((a, b) => {
-    const ax = a.dynamic ? 1 : 0;
-    const bx = b.dynamic ? 1 : 0;
-    if (ax !== bx) return ax - bx;
-    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es-NI', { sensitivity:'base' });
-  });
-  return defs;
-}
-
-function getDefsForSection(section){
-  if (section === 'liquids') return LIQUIDS;
-  if (section === 'bottles') return INV_BOTTLE_DEFS && INV_BOTTLE_DEFS.length ? INV_BOTTLE_DEFS : BOTTLES;
-  if (section === 'finished') return INV_FINISHED_DEFS && INV_FINISHED_DEFS.length ? INV_FINISHED_DEFS : FINISHED;
-  return [];
 }
 
 // ------------------------------
@@ -609,24 +299,6 @@ function collectEdits(base, local){
     if (bStock !== lStock) edits.push({ section:'bottles', id, field:'stock', value:lStock });
   });
 
-  const baseF = (base && base.finished && typeof base.finished === 'object') ? base.finished : {};
-  const localF = (local && local.finished && typeof local.finished === 'object') ? local.finished : {};
-  const idsF = new Set([...Object.keys(baseF), ...Object.keys(localF)]);
-  idsF.forEach((id)=>{
-    const bStock = getField(base, 'finished', id, 'stock');
-    const lStock = getField(local, 'finished', id, 'stock');
-    if (bStock !== lStock) edits.push({ section:'finished', id, field:'stock', value:lStock });
-  });
-
-  const baseFP = (base && base.finishedByProductId && typeof base.finishedByProductId === 'object') ? base.finishedByProductId : {};
-  const localFP = (local && local.finishedByProductId && typeof local.finishedByProductId === 'object') ? local.finishedByProductId : {};
-  const idsFP = new Set([...Object.keys(baseFP), ...Object.keys(localFP)]);
-  idsFP.forEach((id)=>{
-    const bStock = getField(base, 'finishedByProductId', id, 'stock');
-    const lStock = getField(local, 'finishedByProductId', id, 'stock');
-    if (bStock !== lStock) edits.push({ section:'finishedByProductId', id, field:'stock', value:lStock });
-  });
-
 
   const baseC = (base && base.caps && typeof base.caps === 'object') ? base.caps : {};
   const localC = (local && local.caps && typeof local.caps === 'object') ? local.caps : {};
@@ -647,11 +319,6 @@ function collectEdits(base, local){
     edits.push({ section:'varios', op:'replace', value: deepClone(localV) });
   }
 
-  const newMovs = movimientosNuevosDesdeBase((base && base.movimientos) ? base.movimientos : [], (local && local.movimientos) ? local.movimientos : []);
-  if (newMovs.length){
-    edits.push({ section:'movimientos', op:'append', value: newMovs });
-  }
-
   return edits;
 }
 
@@ -661,17 +328,11 @@ function applyEditsToCurrent(cur, edits){
   if (!out.liquids || typeof out.liquids !== 'object') out.liquids = {};
   if (!out.bottles || typeof out.bottles !== 'object') out.bottles = {};
   if (!out.finished || typeof out.finished !== 'object') out.finished = {};
-  if (!out.finishedByProductId || typeof out.finishedByProductId !== 'object') out.finishedByProductId = {};
   if (!out.caps || typeof out.caps !== 'object') out.caps = {};
   if (!Array.isArray(out.varios)) out.varios = [];
-  if (!Array.isArray(out.movimientos)) out.movimientos = [];
 
   edits.forEach((e)=>{
     if (!e || !e.section) return;
-    if (e.section === 'movimientos' && e.op === 'append'){
-      out.movimientos = mergeInventarioMovimientos(out.movimientos, e.value);
-      return;
-    }
     if (e.section === 'varios' && e.op === 'replace'){
       out.varios = deepClone(e.value);
       return;
@@ -786,11 +447,6 @@ function normalizeCapsSectionInPlace(inv){
 
   CAPS_KEYS.forEach((k)=>{
     if (!inv.caps[k] || typeof inv.caps[k] !== 'object') inv.caps[k] = { stock: 0, min: 0 };
-  });
-
-  // Compatibilidad dinámica: conservar y sanear cualquier tapa/corcho creado por Producción desde Catálogos.
-  Object.keys(inv.caps || {}).forEach((k)=>{
-    if (!inv.caps[k] || typeof inv.caps[k] !== 'object') inv.caps[k] = { stock: 0, min: 0 };
 
     // stock: entero (permitir negativos; no bloquear si llega negativo en el futuro)
     const s = toFiniteNumber(inv.caps[k].stock);
@@ -856,145 +512,12 @@ function normalizeVariosSectionInPlace(inv){
   inv.varios = out;
 }
 
-
-function normalizeMovimientoText(value, fallback){
-  const raw = String(value ?? '').trim();
-  return raw || String(fallback || '').trim();
-}
-
-function normalizeInventarioMovimientosInPlace(inv){
-  if (!inv || typeof inv !== 'object') return;
-  const raw = Array.isArray(inv.movimientos) ? inv.movimientos : [];
-  const out = [];
-  const used = new Set();
-
-  raw.forEach((mov, index) => {
-    if (!mov || typeof mov !== 'object') return;
-    const fechaRaw = normalizeMovimientoText(mov.fecha || mov.createdAt || mov.createdAtISO, '');
-    const fecha = fechaRaw || (new Date()).toISOString();
-    let id = normalizeMovimientoText(mov.id, `mov_${Date.parse(fecha) || Date.now()}_${index}`);
-    const baseId = id;
-    let n = 2;
-    while (used.has(id)) id = `${baseId}_${n++}`;
-    used.add(id);
-
-    const tipoItem = normalizeMovimientoText(mov.tipoItem || mov.itemType || mov.kind, 'item');
-    const itemId = normalizeMovimientoText(mov.itemId || mov.idItem || mov.id_item || mov.itemID, '');
-    const nombreSnapshot = normalizeMovimientoText(mov.nombreSnapshot || mov.nombre || mov.name || mov.itemName, itemId || 'Item');
-    const tipoMovimiento = normalizeMovimientoText(mov.tipoMovimiento || mov.movimiento || mov.action || mov.tipo, 'ajuste');
-    const origen = normalizeMovimientoText(mov.origen || mov.source, 'inventario/manual');
-    const nota = normalizeMovimientoText(mov.nota || mov.observacion || mov.observación || mov.note, '');
-    const cantidadRaw = toFiniteNumber(mov.cantidad);
-    const deltaRaw = toFiniteNumber(mov.delta);
-    const stockAnteriorRaw = toFiniteNumber(mov.stockAnterior);
-    const stockNuevoRaw = toFiniteNumber(mov.stockNuevo);
-
-    out.push({
-      ...mov,
-      id,
-      tipoItem,
-      itemId,
-      nombreSnapshot,
-      cantidad: Number.isFinite(cantidadRaw) ? Math.trunc(cantidadRaw) : 0,
-      delta: Number.isFinite(deltaRaw) ? Math.trunc(deltaRaw) : 0,
-      tipoMovimiento,
-      fecha,
-      nota,
-      origen,
-      stockAnterior: Number.isFinite(stockAnteriorRaw) ? Math.trunc(stockAnteriorRaw) : 0,
-      stockNuevo: Number.isFinite(stockNuevoRaw) ? Math.trunc(stockNuevoRaw) : 0,
-    });
-  });
-
-  inv.movimientos = out;
-}
-
-function signatureMovimientos(list){
-  try{
-    if (!Array.isArray(list)) return '[]';
-    return JSON.stringify(list.map((x)=>({
-      id: String((x && x.id) || ''),
-      tipoItem: String((x && (x.tipoItem || x.itemType)) || ''),
-      itemId: String((x && (x.itemId || x.idItem)) || ''),
-      nombreSnapshot: String((x && (x.nombreSnapshot || x.nombre || x.name)) || ''),
-      cantidad: Number.isFinite(+((x && x.cantidad))) ? Math.trunc(+x.cantidad) : 0,
-      delta: Number.isFinite(+((x && x.delta))) ? Math.trunc(+x.delta) : 0,
-      tipoMovimiento: String((x && (x.tipoMovimiento || x.tipo || x.action)) || ''),
-      fecha: String((x && x.fecha) || ''),
-      origen: String((x && x.origen) || ''),
-    })));
-  }catch(_){ return '[]'; }
-}
-
-function mergeInventarioMovimientos(currentList, newList){
-  const current = Array.isArray(currentList) ? currentList.slice() : [];
-  const incoming = Array.isArray(newList) ? newList : [];
-  const seen = new Set(current.map((m)=> String((m && m.id) || '')).filter(Boolean));
-  incoming.forEach((mov)=>{
-    const id = String((mov && mov.id) || '').trim();
-    if (!id || seen.has(id)) return;
-    current.push(mov);
-    seen.add(id);
-  });
-  return current;
-}
-
-function movimientosNuevosDesdeBase(baseList, localList){
-  const base = Array.isArray(baseList) ? baseList : [];
-  const local = Array.isArray(localList) ? localList : [];
-  const baseIds = new Set(base.map((m)=> String((m && m.id) || '')).filter(Boolean));
-  return local.filter((m)=>{
-    const id = String((m && m.id) || '').trim();
-    return id && !baseIds.has(id);
-  }).map((m)=> deepClone(m));
-}
-
-function inventarioDefByKind(kind, id){
-  const key = String(id || '').trim();
-  const defs = kind === 'bottle'
-    ? (INV_BOTTLE_DEFS && INV_BOTTLE_DEFS.length ? INV_BOTTLE_DEFS : BOTTLES)
-    : (kind === 'cap' ? (INV_CAP_DEFS && INV_CAP_DEFS.length ? INV_CAP_DEFS : CAPS) : []);
-  return defs.find((d)=> String((d && d.id) || '') === key) || null;
-}
-
-function inventarioNombreSnapshot(kind, id){
-  const def = inventarioDefByKind(kind, id);
-  return String((def && (def.nombre || def.name)) || id || 'Item').trim();
-}
-
-function registrarMovimientoInventario(inv, { kind, id, tipoMovimiento, cantidad, delta, stockAnterior, stockNuevo, nota } = {}){
-  if (!inv || typeof inv !== 'object') return null;
-  if (!Array.isArray(inv.movimientos)) inv.movimientos = [];
-  const itemId = String(id || '').trim();
-  if (!itemId) return null;
-
-  const tipoItem = kind === 'bottle' ? 'envase' : (kind === 'cap' ? 'tapa' : String(kind || 'item'));
-  const qty = Number.isFinite(+cantidad) ? Math.trunc(+cantidad) : Math.abs(Number.isFinite(+delta) ? Math.trunc(+delta) : 0);
-  const mov = {
-    id: `mov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    tipoItem,
-    itemId,
-    nombreSnapshot: inventarioNombreSnapshot(kind, itemId),
-    cantidad: Math.max(0, qty),
-    delta: Number.isFinite(+delta) ? Math.trunc(+delta) : 0,
-    tipoMovimiento: String(tipoMovimiento || 'ajuste').trim(),
-    fecha: (new Date()).toISOString(),
-    nota: String(nota || '').trim(),
-    origen: 'inventario/manual',
-    stockAnterior: Number.isFinite(+stockAnterior) ? Math.trunc(+stockAnterior) : 0,
-    stockNuevo: Number.isFinite(+stockNuevo) ? Math.trunc(+stockNuevo) : 0,
-  };
-  inv.movimientos.push(mov);
-  return mov;
-}
-
 function normalizeInventarioInPlace(inv){
   if (!inv || typeof inv !== 'object') return defaultInventario();
 
   if (!inv.liquids || typeof inv.liquids !== 'object') inv.liquids = {};
   if (!inv.bottles || typeof inv.bottles !== 'object') inv.bottles = {};
   if (!inv.finished || typeof inv.finished !== 'object') inv.finished = {};
-  if (!inv.finishedByProductId || typeof inv.finishedByProductId !== 'object') inv.finishedByProductId = {};
 
   // Compat con data vieja: asegurar llaves conocidas y números seguros
   LIQUIDS.forEach((l) => {
@@ -1018,30 +541,12 @@ function normalizeInventarioInPlace(inv){
     inv.finished[p.id].stock = Number.isFinite(st) ? st : 0;
   });
 
-  Object.keys(inv.finished || {}).forEach((id) => {
-    if (!inv.finished[id] || typeof inv.finished[id] !== 'object') inv.finished[id] = { stock: 0 };
-    const st = toFiniteNumber(inv.finished[id].stock);
-    inv.finished[id].stock = Number.isFinite(st) ? st : 0;
-  });
-
-  Object.keys(inv.finishedByProductId || {}).forEach((id) => {
-    if (!inv.finishedByProductId[id] || typeof inv.finishedByProductId[id] !== 'object') inv.finishedByProductId[id] = { stock: 0 };
-    const st = toFiniteNumber(inv.finishedByProductId[id].stock);
-    inv.finishedByProductId[id].stock = Number.isFinite(st) ? st : 0;
-  });
-
   // Tapas (Auto)
   normalizeCapsSectionInPlace(inv);
-
-  // Envases/Tapas dinámicos desde Catálogos (lectura visual; no produce ni consume).
-  ensureDynamicCatalogInventoryInPlace(inv);
 
   // Inventario Varios (manual)
   if (!Array.isArray(inv.varios)) inv.varios = [];
   normalizeVariosSectionInPlace(inv);
-
-  // Historial técnico de movimientos manuales de envases/tapas.
-  normalizeInventarioMovimientosInPlace(inv);
 
   return inv;
 }
@@ -1087,10 +592,6 @@ function validateBeforeSave(inv){
     inv.caps = defaultCapsSection();
   }
   normalizeCapsSectionInPlace(inv);
-  normalizeInventarioMovimientosInPlace(inv);
-  if (!Array.isArray(inv.movimientos)){
-    return { ok:false, message:'Inventario inválido: movimientos debe ser una lista.' };
-  }
 
   for (const id of Object.keys(inv.caps)){
     const it = inv.caps[id];
@@ -1376,11 +877,7 @@ function applyView(section) {
   const page = INV_UI.pages[section] || 1;
   const limit = INV_UI.pageSize * page;
 
-  const defs = getDefsForSection(section);
-
-  cache.forEach((row) => {
-    if (row && row.tr) row.tr.hidden = true;
-  });
+  const defs = section === "liquids" ? LIQUIDS : (section === "bottles" ? BOTTLES : FINISHED);
 
   let matched = 0;
   defs.forEach((d) => {
@@ -1766,9 +1263,7 @@ function updateFinishedRow(inv, id) {
   const row = INV_ROW_CACHE.finished.get(id);
   if (!row) return;
 
-  const info = (inv && inv.finished && inv.finished[id])
-    ? inv.finished[id]
-    : ((inv && inv.finishedByProductId && inv.finishedByProductId[id]) ? inv.finishedByProductId[id] : { stock: 0 });
+  const info = (inv && inv.finished && inv.finished[id]) ? inv.finished[id] : { stock: 0 };
   const stock = parseNumber(info.stock);
 
   row.tdStock.textContent = Number.isFinite(stock) ? stock.toFixed(0) : "0";
@@ -2068,7 +1563,6 @@ function loadInventario() {
     normalizeCapsSectionInPlace(data);
     if (!Array.isArray(data.varios)) data.varios = [];
     normalizeVariosSectionInPlace(data);
-    normalizeInventarioMovimientosInPlace(data);
 
     return data;
   } catch (e) {
@@ -2101,10 +1595,8 @@ function saveInventario(inv) {
         inv.liquids = r.data.liquids;
         inv.bottles = r.data.bottles;
         inv.finished = r.data.finished;
-        inv.finishedByProductId = r.data.finishedByProductId;
         inv.caps = r.data.caps;
         inv.varios = r.data.varios;
-        inv.movimientos = r.data.movimientos;
       }
       return true;
     }
@@ -2185,8 +1677,7 @@ function renderBotellas(inv) {
   const tbody = $("inv-botellas-body");
   if (!tbody) return;
 
-  ensureDynamicCatalogInventoryInPlace(inv);
-  INV_BOTTLE_DEFS.forEach((b) => {
+  BOTTLES.forEach((b) => {
     ensureBottleRow(tbody, b);
     updateBottleRow(inv, b.id);
   });
@@ -2198,8 +1689,7 @@ function renderCaps(inv) {
   const tbody = $("inv-caps-body");
   if (!tbody) return;
 
-  ensureDynamicCatalogInventoryInPlace(inv);
-  INV_CAP_DEFS.forEach((c) => {
+  CAPS.forEach((c) => {
     ensureCapRow(tbody, c);
     updateCapRow(inv, c.id);
   });
@@ -2214,7 +1704,6 @@ function attachListeners(inv) {
   const variosBody = $("inv-varios-body");
   const variosAdd = $("inv-varios-add");
   const variosSearch = $("inv-varios-search");
-  const finishedClearBtn = $("inv-finished-clear");
 
   const commitSave = (section, id) => {
     setStatus("Guardando…", "info", { sticky: true });
@@ -2225,10 +1714,8 @@ function attachListeners(inv) {
       inv.liquids = fresh.liquids;
       inv.bottles = fresh.bottles;
       inv.finished = fresh.finished;
-      inv.finishedByProductId = fresh.finishedByProductId;
       inv.caps = fresh.caps;
       inv.varios = fresh.varios;
-      inv.movimientos = fresh.movimientos;
       renderLiquidos(inv);
       renderBotellas(inv);
       renderCaps(inv);
@@ -2248,20 +1735,6 @@ function attachListeners(inv) {
   };
 
   const scheduleSave = debounce((section, id) => commitSave(section, id), 220);
-
-  if (finishedClearBtn){
-    finishedClearBtn.addEventListener('click', () => {
-      const ok = window.confirm('¿Estás seguro de borrar productos terminados?');
-      if (!ok) return;
-      const changed = borrarProductosTerminados(inv);
-      const saved = commitSave('finished', '');
-      if (saved){
-        renderProductosTerminados(inv);
-        applyView('finished');
-        setStatus(changed > 0 ? 'Productos borrados.' : 'Productos ya estaban en 0.', 'ok', { timeoutMs: 1400 });
-      }
-    });
-  }
 
   // Buscador (solo UI, no altera modelo)
   if (variosSearch){
@@ -2344,20 +1817,7 @@ function attachListeners(inv) {
           updateBottleRow(inv, id);
           return;
         }
-        const before = Math.trunc(parseNumber(inv.bottles[id].stock));
         inv.bottles[id].stock = n;
-        if (n !== before) {
-          registrarMovimientoInventario(inv, {
-            kind: 'bottle',
-            id,
-            tipoMovimiento: 'ajuste_conteo',
-            cantidad: Math.abs(n - before),
-            delta: n - before,
-            stockAnterior: before,
-            stockNuevo: n,
-            nota: 'Ajuste manual por conteo físico'
-          });
-        }
         updateBottleRow(inv, id);
         scheduleSave("bottles", id);
       }
@@ -2387,21 +1847,7 @@ function attachListeners(inv) {
           updateCapRow(inv, id);
           return;
         }
-        const nextStock = Math.trunc(n);
-        const before = Math.trunc(parseNumber(inv.caps[id].stock));
-        inv.caps[id].stock = nextStock;
-        if (nextStock !== before) {
-          registrarMovimientoInventario(inv, {
-            kind: 'cap',
-            id,
-            tipoMovimiento: 'ajuste_conteo',
-            cantidad: Math.abs(nextStock - before),
-            delta: nextStock - before,
-            stockAnterior: before,
-            stockNuevo: nextStock,
-            nota: 'Ajuste manual por conteo físico'
-          });
-        }
+        inv.caps[id].stock = Math.trunc(n);
         updateCapRow(inv, id);
         scheduleSave("caps", id);
       }
@@ -2618,11 +2064,10 @@ function attachListeners(inv) {
 
     if (kind === "bottle") {
       const item = inv.bottles[id] || { stock: 0 };
-      const before = Math.trunc(parseNumber(item.stock));
       if (action === "entrada") {
-        item.stock = before + cantidad;
+        item.stock = parseNumber(item.stock) + cantidad;
       } else {
-        const next = before - cantidad;
+        const next = parseNumber(item.stock) - cantidad;
         if (next < 0) {
           safeAlert(`Operación bloqueada: la salida dejaría el stock de ${id} en negativo.`);
           return;
@@ -2631,16 +2076,6 @@ function attachListeners(inv) {
       }
       item.stock = Math.trunc(item.stock);
       inv.bottles[id] = item;
-      registrarMovimientoInventario(inv, {
-        kind: 'bottle',
-        id,
-        tipoMovimiento: action === 'entrada' ? 'entrada' : 'salida',
-        cantidad,
-        delta: item.stock - before,
-        stockAnterior: before,
-        stockNuevo: item.stock,
-        nota: action === 'entrada' ? 'Entrada manual desde Inventario' : 'Salida/ajuste manual desde Inventario'
-      });
       updateBottleRow(inv, id);
       commitSave("bottles", id);
       return;
@@ -2649,26 +2084,15 @@ function attachListeners(inv) {
     if (kind === "cap") {
       normalizeCapsSectionInPlace(inv);
       const item = (inv.caps && inv.caps[id]) ? inv.caps[id] : { stock: 0, min: 0 };
-      const before = Math.trunc(parseNumber(item.stock));
       if (action === "entrada") {
-        item.stock = before + cantidad;
+        item.stock = parseNumber(item.stock) + cantidad;
       } else {
-        // permitido negativo por compatibilidad histórica de tapas.
-        item.stock = before - cantidad;
+        // permitido negativo
+        item.stock = parseNumber(item.stock) - cantidad;
       }
       item.stock = Math.trunc(item.stock);
       if (!inv.caps || typeof inv.caps !== 'object') inv.caps = defaultCapsSection();
       inv.caps[id] = item;
-      registrarMovimientoInventario(inv, {
-        kind: 'cap',
-        id,
-        tipoMovimiento: action === 'entrada' ? 'entrada' : 'salida',
-        cantidad,
-        delta: item.stock - before,
-        stockAnterior: before,
-        stockNuevo: item.stock,
-        nota: action === 'entrada' ? 'Entrada manual desde Inventario' : 'Salida/ajuste manual desde Inventario'
-      });
       updateCapRow(inv, id);
       commitSave("caps", id);
       return;
@@ -2694,8 +2118,8 @@ function buildAlertLines(inv) {
     }
   });
 
-  // Botellas/envases en alerta (<=10 unidades), incluyendo Catálogos dinámicos.
-  buildBottleDefs(inv).forEach((b) => {
+  // Botellas en alerta (<=10 unidades)
+  BOTTLES.forEach((b) => {
     const info = inv.bottles[b.id] || { stock: 0 };
     const stock = parseNumber(info.stock);
     if (stock <= 10) {
@@ -2704,8 +2128,8 @@ function buildAlertLines(inv) {
   });
 
   // Producto terminado en alerta (<=10 unidades)
-  buildFinishedDefs(inv).forEach((p) => {
-    const info = (inv.finished && inv.finished[p.id]) || (inv.finishedByProductId && inv.finishedByProductId[p.id]) || { stock: 0 };
+  FINISHED.forEach((p) => {
+    const info = (inv.finished && inv.finished[p.id]) || { stock: 0 };
     const stock = parseNumber(info.stock);
     if (stock <= 10) {
       lines.push(`• ${p.nombre}: ${stock.toFixed(0)} botellas listas`);
@@ -2727,91 +2151,12 @@ function calcularEstadoProductoTerminado(item) {
   return { label: `OK (${stock} unid.)`, className: "status-ok" };
 }
 
-function getFinishedStockRecord(inv, id){
-  const key = String(id || '').trim();
-  if (!key || !inv || typeof inv !== 'object') return null;
-  if (inv.finished && typeof inv.finished === 'object' && inv.finished[key] && typeof inv.finished[key] === 'object') {
-    return { section:'finished', item: inv.finished[key] };
-  }
-  if (inv.finishedByProductId && typeof inv.finishedByProductId === 'object' && inv.finishedByProductId[key] && typeof inv.finishedByProductId[key] === 'object') {
-    return { section:'finishedByProductId', item: inv.finishedByProductId[key] };
-  }
-  return null;
-}
-
-function registrarMovimientoProductoTerminado(inv, def, before){
-  try{
-    if (!inv || typeof inv !== 'object') return null;
-    const qty = Math.abs(Math.trunc(parseNumber(before)));
-    if (!qty) return null;
-    if (!Array.isArray(inv.movimientos)) inv.movimientos = [];
-    const id = String((def && (def.id || def.productId)) || '').trim();
-    if (!id) return null;
-    const mov = {
-      id: `mov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      tipoItem: 'producto',
-      itemId: id,
-      nombreSnapshot: String((def && def.nombre) || id).trim(),
-      cantidad: qty,
-      delta: -qty,
-      tipoMovimiento: 'salida',
-      fecha: (new Date()).toISOString(),
-      nota: '',
-      origen: 'inventario/manual',
-      stockAnterior: Math.trunc(parseNumber(before)),
-      stockNuevo: 0,
-    };
-    inv.movimientos.push(mov);
-    return mov;
-  }catch(_){ return null; }
-}
-
-function borrarProductosTerminados(inv){
-  if (!inv || typeof inv !== 'object') return 0;
-  normalizeInventarioInPlace(inv);
-  const defs = buildFinishedDefs(inv);
-  const touched = new Set();
-  let changed = 0;
-
-  const zeroRecord = (section, id, def) => {
-    try{
-      const key = String(id || '').trim();
-      if (!key || touched.has(`${section}:${key}`)) return;
-      const group = inv && inv[section] && typeof inv[section] === 'object' ? inv[section] : null;
-      const item = group && group[key] && typeof group[key] === 'object' ? group[key] : null;
-      if (!item) return;
-      const before = Math.trunc(parseNumber(item.stock));
-      if (before !== 0){
-        registrarMovimientoProductoTerminado(inv, def || { id:key, nombre:key }, before);
-        item.stock = 0;
-        changed += 1;
-      }else{
-        item.stock = 0;
-      }
-      touched.add(`${section}:${key}`);
-    }catch(_){ }
-  };
-
-  defs.forEach((def) => {
-    const id = String((def && def.id) || '').trim();
-    if (!id) return;
-    zeroRecord('finished', id, def);
-    zeroRecord('finishedByProductId', id, def);
-  });
-
-  Object.keys((inv && inv.finished) || {}).forEach((id) => zeroRecord('finished', id, { id, nombre: finishedDisplayName(id, inv.finished[id]) }));
-  Object.keys((inv && inv.finishedByProductId) || {}).forEach((id) => zeroRecord('finishedByProductId', id, { id, nombre: finishedDisplayName(id, inv.finishedByProductId[id]) }));
-
-  return changed;
-}
-
 function renderProductosTerminados(inv) {
   const tbody = $("inv-productos-body");
   if (!tbody) return;
 
-  INV_FINISHED_DEFS = buildFinishedDefs(inv);
-  INV_FINISHED_DEFS.forEach((pDef) => {
-			ensureFinishedRow(tbody, pDef);
+  FINISHED.forEach((pDef) => {
+		ensureFinishedRow(tbody, pDef);
     updateFinishedRow(inv, pDef.id);
   });
 
@@ -2827,36 +2172,7 @@ function installSmokeHooks(inv){
     if (typeof window === 'undefined') return;
     const api = {
       get: ()=> deepClone(inv),
-      getBottleDefs: ()=> deepClone(buildBottleDefs(inv)),
-      getCapDefs: ()=> deepClone(buildCapDefs(inv)),
       getCaps: ()=> deepClone((inv && inv.caps) ? inv.caps : null),
-      getMovimientos: ()=> deepClone(Array.isArray(inv && inv.movimientos) ? inv.movimientos : []),
-      addBottleStock: (bottleId, cantidad)=>{
-        try{
-          const id = String(bottleId || '').trim();
-          const qty = toNonNegativeInt(cantidad);
-          if (!id || !Number.isFinite(qty) || qty <= 0) return false;
-          if (!inv.bottles || typeof inv.bottles !== 'object') inv.bottles = {};
-          if (!inv.bottles[id] || typeof inv.bottles[id] !== 'object') inv.bottles[id] = { stock: 0 };
-          const before = Math.trunc(parseNumber(inv.bottles[id].stock));
-          inv.bottles[id].stock = before + qty;
-          registrarMovimientoInventario(inv, { kind:'bottle', id, tipoMovimiento:'entrada', cantidad:qty, delta:qty, stockAnterior:before, stockNuevo:before + qty, nota:'Smoke/manual' });
-          return saveInventario(inv);
-        }catch(_){ return false; }
-      },
-      addCapStock: (capId, cantidad)=>{
-        try{
-          const id = String(capId || '').trim();
-          const qty = toNonNegativeInt(cantidad);
-          if (!id || !Number.isFinite(qty) || qty <= 0) return false;
-          normalizeCapsSectionInPlace(inv);
-          if (!inv.caps[id] || typeof inv.caps[id] !== 'object') inv.caps[id] = { stock: 0, min: 0 };
-          const before = Math.trunc(parseNumber(inv.caps[id].stock));
-          inv.caps[id].stock = before + qty;
-          registrarMovimientoInventario(inv, { kind:'cap', id, tipoMovimiento:'entrada', cantidad:qty, delta:qty, stockAnterior:before, stockNuevo:before + qty, nota:'Smoke/manual' });
-          return saveInventario(inv);
-        }catch(_){ return false; }
-      },
       setCaps: (capId, stock, min)=>{
         try{
           normalizeCapsSectionInPlace(inv);
@@ -2928,7 +2244,6 @@ function installSmokeHooks(inv){
           inv.finished = fresh.finished;
           inv.caps = fresh.caps;
           inv.varios = fresh.varios;
-          inv.movimientos = fresh.movimientos;
           return deepClone(inv);
         }catch(_){ return deepClone(inv); }
       }
@@ -2946,7 +2261,7 @@ function installSmokeHooks(inv){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.84&r=13")
+      .register("./sw.js?v=4.20.84&r=8")
       .catch((err) => console.error("SW error", err));
   }
 }

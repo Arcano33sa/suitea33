@@ -411,14 +411,11 @@
     const liquidsIn = isPlainObject(d.liquids) ? d.liquids : {};
     const bottlesIn = isPlainObject(d.bottles) ? d.bottles : {};
     const finishedIn = isPlainObject(d.finished) ? d.finished : {};
-    const finishedByProductIn = isPlainObject(d.finishedByProductId) ? d.finishedByProductId : {};
     const capsIn = isPlainObject(d.caps) ? d.caps : {};
-    const movimientosIn = Array.isArray(d.movimientos) ? d.movimientos : [];
 
     const liquids = {};
     const bottles = {};
     const finished = {};
-    const finishedByProductId = {};
     const caps = {};
 
     // Known IDs (defaults)
@@ -502,30 +499,7 @@
       };
     }
 
-    // Producto terminado dinámico por productId (compat Parte 2 Calculadoras → Parte 3 Lotes)
-    for (const k of Object.keys(finishedByProductIn)){
-      const src = isPlainObject(finishedByProductIn[k]) ? finishedByProductIn[k] : {};
-      const productId = (src.productId != null && String(src.productId).trim()) ? String(src.productId).trim() : String(k).trim();
-      finishedByProductId[productId] = {
-        ...src,
-        productId,
-        stock: coerceNumber(src.stock, 0, 'arcano33_inventario.finishedByProductId.' + productId + '.stock')
-      };
-    }
-
-    return { ...d, liquids, bottles, finished, finishedByProductId, caps, movimientos: movimientosIn.slice() };
-  }
-
-  function mergeInventarioMovimientosStorage(curList, nextList){
-    const out = Array.isArray(curList) ? curList.slice() : [];
-    const seen = new Set(out.map((m)=> String((m && m.id) || '')).filter(Boolean));
-    (Array.isArray(nextList) ? nextList : []).forEach((m)=>{
-      const id = String((m && m.id) || '').trim();
-      if (!id || seen.has(id)) return;
-      out.push(m);
-      seen.add(id);
-    });
-    return out;
+    return { ...d, liquids, bottles, finished, caps };
   }
 
   function mergeInventario(cur, next){
@@ -548,12 +522,9 @@
     out.liquids = mergeSection(a.liquids, b.liquids);
     out.bottles = mergeSection(a.bottles, b.bottles);
     out.finished = mergeSection(a.finished, b.finished);
-    out.finishedByProductId = mergeSection(a.finishedByProductId, b.finishedByProductId);
     out.caps = mergeSection(a.caps, b.caps);
     // Varios (manual): si next trae array, se respeta; si no, preservar el actual
     if (Array.isArray(b.varios)) out.varios = b.varios.slice();
-    // Movimientos: append por id para no perder trazabilidad si otro módulo guardó en paralelo.
-    out.movimientos = mergeInventarioMovimientosStorage(a.movimientos, b.movimientos);
     return out;
   }
 
@@ -652,38 +623,6 @@
     return out;
   }
 
-  function normalizeProducedItems(raw, path){
-    const arr = Array.isArray(raw) ? raw : [];
-    const out = [];
-    for (let j=0;j<arr.length;j++){
-      const it = arr[j];
-      if (!isPlainObject(it)) continue;
-      const item = { ...it };
-      const rawProductId = item.productId ?? item.productoId ?? item.id;
-      const productId = (rawProductId != null) ? String(rawProductId).trim() : '';
-      const nombre = (item.nombreSnapshot != null ? item.nombreSnapshot : item.nombre);
-      const letra = (item.Letra != null ? item.Letra : item.letra);
-      const qty = coerceInt((item.cantidad != null ? item.cantidad : item.unidades), 0, (path || 'productosProducidos') + '[' + j + '].cantidad');
-      if (productId) item.productId = productId;
-      if (nombre != null && String(nombre).trim()) {
-        item.nombreSnapshot = String(nombre).trim();
-        if (item.nombre == null || !String(item.nombre).trim()) item.nombre = item.nombreSnapshot;
-      }
-      if (letra != null && String(letra).trim()) {
-        item.Letra = String(letra).trim().toUpperCase();
-        item.letra = item.Letra;
-      }
-      item.cantidad = qty;
-      item.unidades = qty;
-      if (item.envaseId != null) item.envaseId = String(item.envaseId).trim();
-      if (item.tapaId != null) item.tapaId = String(item.tapaId).trim();
-      if (item.costoUnitario != null) item.costoUnitario = coerceNumber(item.costoUnitario, 0, (path || 'productosProducidos') + '[' + j + '].costoUnitario');
-      if (item.costoTotal != null) item.costoTotal = coerceNumber(item.costoTotal, 0, (path || 'productosProducidos') + '[' + j + '].costoTotal');
-      out.push(item);
-    }
-    return out;
-  }
-
   function normalizeLotes(raw){
     const out = normalizeArrayObjects(raw, 'arcano33_lotes');
     // Sanitizar algunos campos numéricos frecuentes (sin romper data vieja)
@@ -698,9 +637,6 @@
       }
       if (l.totalVolumenFinalMl != null){
         l.totalVolumenFinalMl = coerceNumber(l.totalVolumenFinalMl, 0, 'arcano33_lotes[' + i + '].totalVolumenFinalMl');
-      }
-      if (Array.isArray(l.productosProducidos)){
-        l.productosProducidos = normalizeProducedItems(l.productosProducidos, 'arcano33_lotes[' + i + '].productosProducidos');
       }
     }
     return out;

@@ -11,9 +11,9 @@
 <script src="/assets/js/a33-theme.js?v=4.20.84&r=7"></script>
 <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=8" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=7" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.84&r=8" />
+  <link rel="stylesheet" href="style.css?v=4.20.84&r=7" />
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=7" />
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=7" />
 </head>
@@ -105,23 +105,37 @@
           </div>
         </div>
 
-        <h3>Detalle del pedido · Productos</h3>
-        <p class="hint">Solo productos activos de Catálogos. Los precios se toman del catálogo actual.</p>
-        <p class="hint hint-small" id="pedidos-products-status" aria-live="polite"></p>
+        <h3>Detalle del pedido · Presentaciones</h3>
+        <p class="hint">Solo presentación y cantidad. Los precios se toman automáticamente del POS.</p>
 
         <div class="presentaciones-wrapper">
           <table class="mini-table" id="presentaciones-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="price-col">Precio</th>
+                <th>Presentación</th>
                 <th class="qty-col">Cantidad</th>
-                <th class="line-total-col">Subtotal</th>
               </tr>
             </thead>
-            <tbody id="presentaciones-body">
-              <tr class="pedidos-products-empty">
-                <td colspan="4">Cargando productos activos…</td>
+            <tbody>
+              <tr>
+                <td>Pulso 250 ml</td>
+                <td><input type="number" id="pulsoCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
+              </tr>
+              <tr>
+                <td>Media 375 ml</td>
+                <td><input type="number" id="mediaCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
+              </tr>
+              <tr>
+                <td>Djeba 750 ml</td>
+                <td><input type="number" id="djebaCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
+              </tr>
+              <tr>
+                <td>Litro 1000 ml</td>
+                <td><input type="number" id="litroCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
+              </tr>
+              <tr>
+                <td>Galón 3750 ml</td>
+                <td><input type="number" id="galonCant" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric"></td>
               </tr>
             </tbody>
           </table>
@@ -264,66 +278,6 @@
 
   </main>
 
-
-  <div class="a33-modal-backdrop" id="pedido-detail-modal" hidden role="dialog" aria-modal="true" aria-labelledby="pedido-detail-title">
-    <div class="a33-modal-card pedido-detail-card">
-      <div class="a33-modal-head">
-        <div>
-          <h2 id="pedido-detail-title">Detalle de pedido</h2>
-          <p class="hint hint-small">Resumen limpio con productos guardados por snapshot.</p>
-        </div>
-        <button type="button" class="btn-secondary a33-icon-btn" id="pedido-detail-close" aria-label="Cerrar">×</button>
-      </div>
-
-      <div class="pedido-detail-grid">
-        <div><span>Código</span><strong id="pedido-detail-code"></strong></div>
-        <div><span>Cliente</span><strong id="pedido-detail-client"></strong></div>
-        <div><span>Fabricación</span><strong id="pedido-detail-created"></strong></div>
-        <div><span>Entrega</span><strong id="pedido-detail-delivery"></strong></div>
-        <div><span>Prioridad</span><strong id="pedido-detail-priority"></strong></div>
-        <div><span>Estado</span><strong id="pedido-detail-status"></strong></div>
-        <div><span>Tipo</span><strong id="pedido-detail-type"></strong></div>
-        <div><span>Teléfono</span><strong id="pedido-detail-phone"></strong></div>
-      </div>
-
-      <div class="pedido-detail-block">
-        <h3>Productos</h3>
-        <div class="pedido-detail-table-wrap">
-          <table class="mini-table pedido-detail-products-table">
-            <thead>
-              <tr>
-                <th>Producto</th>
-                <th>Cant.</th>
-                <th>Precio</th>
-                <th>Subtotal</th>
-              </tr>
-            </thead>
-            <tbody id="pedido-detail-products-body"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="pedido-detail-grid totals-grid">
-        <div><span>Subtotal</span><strong id="pedido-detail-subtotal"></strong></div>
-        <div><span>Descuento</span><strong id="pedido-detail-discount"></strong></div>
-        <div><span>Envío</span><strong id="pedido-detail-shipping"></strong></div>
-        <div><span>Total</span><strong id="pedido-detail-total"></strong></div>
-        <div><span>Método</span><strong id="pedido-detail-method"></strong></div>
-        <div><span>Anticipo</span><strong id="pedido-detail-paid"></strong></div>
-        <div><span>Saldo</span><strong id="pedido-detail-balance"></strong></div>
-      </div>
-
-      <div class="pedido-detail-notes">
-        <p><strong>Referencia:</strong> <span id="pedido-detail-ref"></span></p>
-        <p><strong>Lotes:</strong> <span id="pedido-detail-lots"></span></p>
-      </div>
-
-      <div class="form-actions modal-actions">
-        <button type="button" class="btn-primary" id="pedido-detail-ok">Cerrar</button>
-      </div>
-    </div>
-  </div>
-
   <footer class="app-footer">
     <p>Arcano 33 · Planificación interna de pedidos y entregas</p>
   </footer>
@@ -335,7 +289,7 @@
   <script src="/assets/js/a33-currency.js?v=4.20.84&r=14"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.84&r=7"></script>
 
-  <script src="script.js?v=4.20.84&r=13"></script>
+  <script src="script.js?v=4.20.84&r=10"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=7"></script>
 </body>
 </html>

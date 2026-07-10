@@ -7,7 +7,7 @@ let db;
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.84';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r6');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r2');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -4735,9 +4735,9 @@ function saleFingerprintPOS(sale){
       date: safeYMD(sale.date || ''),
       productId: (sale.productId == null ? null : Number(sale.productId)),
       extraId: (sale.extraId == null ? null : Number(sale.extraId)),
-      productName: getSaleProductNameSnapshotPOS(sale),
+      productName: String(sale.productName || ''),
       qty: Number(sale.qty || 0),
-      unitPrice: Number(getSaleUnitPriceSnapshotPOS(sale)),
+      unitPrice: Number(sale.unitPrice || 0),
       discount: Number(sale.discount || 0),
       discountPerUnit: (sale.discountPerUnit == null ? null : Number(sale.discountPerUnit)),
       total: Number(sale.total || 0),
@@ -5389,12 +5389,9 @@ function posFinResolveProductAccountPOS(accounts, productName, side){
     media: { cost: ['5214','5101','5100'], inv: ['1424','1501','1500'], wordsCost: [['costo','media'], ['costo','ventas']], wordsInv: [['media'], ['inventario','producto']] },
     djeba: { cost: ['5213','5101','5100'], inv: ['1423','1501','1500'], wordsCost: [['costo','djeba'], ['costo','ventas']], wordsInv: [['djeba'], ['inventario','producto']] },
     litro: { cost: ['5212','5101','5100'], inv: ['1422','1501','1500'], wordsCost: [['costo','litro'], ['costo','ventas']], wordsInv: [['litro'], ['inventario','producto']] },
-    galon: { cost: ['5211','5101','5100'], inv: ['1421','1501','1500'], wordsCost: [['costo','galon'], ['costo','ventas']], wordsInv: [['galon'], ['inventario','producto']] },
-    generico: { cost: ['5101','5100'], inv: ['1501','1500'], wordsCost: [['costo','ventas']], wordsInv: [['inventario','producto']] }
+    galon: { cost: ['5211','5101','5100'], inv: ['1421','1501','1500'], wordsCost: [['costo','galon'], ['costo','ventas']], wordsInv: [['galon'], ['inventario','producto']] }
   };
-  // Productos dinámicos/temporales no deben caer por accidente en cuentas específicas de Galón.
-  // Si el nombre no mapea a una presentación conocida, se usa cuenta genérica de costo/inventario.
-  const m = maps[key] || maps.generico;
+  const m = maps[key] || maps.galon;
   if (side === 'inventory') {
     return posFinResolvePostableAccountPOS(accounts, { label: 'cuenta de inventario POS', types: ['activo'], codes: m.inv, wordSets: m.wordsInv });
   }
@@ -5430,7 +5427,7 @@ function posFinBuildSaleAutoLinesPOS(sale, accounts, amounts){
   if (isCourtesy) {
     if (amountCost > 0) {
       const courtesyCode = posFinResolveCourtesyExpenseAccountPOS(accounts);
-      const inventoryCode = posFinResolveProductAccountPOS(accounts, getSaleProductNameSnapshotPOS(sale), 'inventory');
+      const inventoryCode = posFinResolveProductAccountPOS(accounts, sale && sale.productName, 'inventory');
       if (!isReturn) {
         lines.push(posFinLinePOS(courtesyCode, amountCost, 0));
         lines.push(posFinLinePOS(inventoryCode, 0, amountCost));
@@ -5443,8 +5440,8 @@ function posFinBuildSaleAutoLinesPOS(sale, accounts, amounts){
   }
   const collectionCode = amount > 0 ? posFinResolveCollectionAccountPOS(sale, accounts) : null;
   const incomeCode = amount > 0 ? posFinResolveIncomeAccountPOS(accounts) : null;
-  const costCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, getSaleProductNameSnapshotPOS(sale), 'cost') : null;
-  const inventoryCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, getSaleProductNameSnapshotPOS(sale), 'inventory') : null;
+  const costCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, sale && sale.productName, 'cost') : null;
+  const inventoryCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, sale && sale.productName, 'inventory') : null;
   if (!isReturn) {
     if (amount > 0) {
       lines.push(posFinLinePOS(collectionCode, amount, 0));
@@ -5518,12 +5515,12 @@ async function createJournalEntryForSalePOS(sale) {
     const qtyAbs = Math.abs(Number(sale.qty || 0)) || 0;
 
     let amountCost = 0;
-    const lc = getSaleLineCostSnapshotPOS(sale);
+    const lc = Number(sale.lineCost);
     if (Number.isFinite(lc) && Math.abs(lc) > 0.000001) {
       amountCost = round2(Math.abs(lc));
     } else {
-      const unitCostFromSale = getSaleCostUnitSnapshotPOS(sale);
-      const unitCost = unitCostFromSale > 0 ? unitCostFromSale : getCostoUnitarioProducto(getSaleProductNameSnapshotPOS(sale));
+      const unitCostFromSale = (typeof sale.costPerUnit === 'number' && sale.costPerUnit > 0) ? sale.costPerUnit : 0;
+      const unitCost = unitCostFromSale > 0 ? unitCostFromSale : getCostoUnitarioProducto(sale.productName);
       amountCost = round2((unitCost > 0 ? unitCost : 0) * qtyAbs);
     }
 
@@ -5539,7 +5536,7 @@ async function createJournalEntryForSalePOS(sale) {
       return;
     }
 
-    const prodName = getSaleProductNameSnapshotPOS(sale).toString();
+    const prodName = (sale.productName || '').toString();
     const eventName = (sale.eventName || '').toString();
     const courtesyTo = (sale.courtesyTo || '').toString().trim();
     const customerName = getSaleCustomerSnapshotNamePOS(sale);
@@ -5727,32 +5724,7 @@ async function deleteFinanzasEntriesForSalePOS(saleId) {
 function tx(name, mode='readonly'){ return db.transaction(name, mode).objectStore(name); }
 function getAll(name){ return new Promise((res,rej)=>{ const r=tx(name).getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); }); }
 function getOne(name, key){ return new Promise((res,rej)=>{ try{ const r=tx(name).get(key); r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error); }catch(err){ rej(err); } }); }
-function put(name, val){
-  return new Promise((res,rej)=>{
-    let result;
-    let settled = false;
-    try{
-      const transaction = db.transaction(name, 'readwrite');
-      const request = transaction.objectStore(name).put(val);
-      const fail = (error)=>{
-        if (settled) return;
-        settled = true;
-        rej(error || request.error || transaction.error || new Error('No se pudo guardar en ' + name));
-      };
-      request.onsuccess = ()=>{ result = request.result; };
-      request.onerror = ()=>fail(request.error);
-      transaction.oncomplete = ()=>{
-        if (settled) return;
-        settled = true;
-        res(result);
-      };
-      transaction.onerror = ()=>fail(transaction.error);
-      transaction.onabort = ()=>fail(transaction.error || new Error('Transacción abortada guardando en ' + name));
-    }catch(error){
-      if (!settled){ settled = true; rej(error); }
-    }
-  });
-}
+function put(name, val){ return new Promise((res,rej)=>{ const r=tx(name,'readwrite').put(val); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function clearStore(name){
   return new Promise((res,rej)=>{
     try{
@@ -8602,41 +8574,13 @@ function invCentralDefaultPOS(){
       litro: { stock: 0 },
       galon: { stock: 0 },
     },
-    // Productos nuevos: stock terminado por Product ID.
-    // Compatibilidad: los cinco legacy siguen viviendo en finished.{pulso,media,djeba,litro,galon}.
-    finishedByProductId: {},
   };
-}
-function invCentralNormalizePOS(data){
-  const out = (data && typeof data === 'object') ? data : invCentralDefaultPOS();
-  if (!out.liquids || typeof out.liquids !== 'object') out.liquids = {};
-  if (!out.bottles || typeof out.bottles !== 'object') out.bottles = {};
-  if (!out.finished || typeof out.finished !== 'object') out.finished = {};
-  if (!out.finishedByProductId || typeof out.finishedByProductId !== 'object') out.finishedByProductId = {};
-
-  ['pulso','media','djeba','litro','galon'].forEach((id)=>{
-    if (!out.finished[id] || typeof out.finished[id] !== 'object') out.finished[id] = { stock: 0 };
-    const info = out.finished[id];
-    info.stock = invParseNumberPOS(info.stock || 0);
-  });
-
-  Object.keys(out.finished || {}).forEach((id)=>{
-    if (!out.finished[id] || typeof out.finished[id] !== 'object') out.finished[id] = { stock: 0 };
-    out.finished[id].stock = invParseNumberPOS(out.finished[id].stock || 0);
-  });
-
-  Object.keys(out.finishedByProductId || {}).forEach((id)=>{
-    if (!out.finishedByProductId[id] || typeof out.finishedByProductId[id] !== 'object') out.finishedByProductId[id] = { stock: 0 };
-    out.finishedByProductId[id].stock = invParseNumberPOS(out.finishedByProductId[id].stock || 0);
-  });
-
-  return out;
 }
 function invCentralLoadPOS(){
   try{
     if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
       const data = A33Storage.sharedGet(STORAGE_KEY_INVENTARIO, invCentralDefaultPOS(), 'local');
-      return invCentralNormalizePOS(data);
+      return (data && typeof data === 'object') ? data : invCentralDefaultPOS();
     }
   }catch(e){
     console.warn('Error leyendo inventario central (sharedGet)', e);
@@ -8645,7 +8589,16 @@ function invCentralLoadPOS(){
   try{
     const raw = A33Storage.getItem(STORAGE_KEY_INVENTARIO);
     let data = raw ? JSON.parse(raw) : null;
-    return invCentralNormalizePOS(data);
+    if (!data || typeof data !== 'object') data = invCentralDefaultPOS();
+    if (!data.liquids) data.liquids = {};
+    if (!data.bottles) data.bottles = {};
+    if (!data.finished) data.finished = {};
+    ['pulso','media','djeba','litro','galon'].forEach((id)=>{
+      if (!data.finished[id]) data.finished[id] = { stock: 0 };
+      const info = data.finished[id];
+      if (typeof info.stock !== 'number') info.stock = invParseNumberPOS(info.stock||0);
+    });
+    return data;
   }catch(e){
     console.warn('Error leyendo inventario central', e);
     return invCentralDefaultPOS();
@@ -8679,69 +8632,21 @@ function mapProductNameToFinishedId(name){
   if (n.includes('gal') && (n.includes('3750') || n.includes('3800') || n.includes('galon') || n.includes('galón'))) return 'galon';
   return null;
 }
-function saleProductIdForInventoryPOS(sale){
-  if (!sale || typeof sale !== 'object') return null;
-  const raw = sale.productId ?? sale.productoId ?? (sale.productSnapshot && (sale.productSnapshot.productId ?? sale.productSnapshot.id));
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-function saleProductNameForInventoryPOS(sale){
-  if (!sale || typeof sale !== 'object') return '';
-  return String(
-    sale.productNameSnapshot ||
-    sale.productName ||
-    sale.name ||
-    (sale.productSnapshot && (sale.productSnapshot.productName || sale.productSnapshot.name)) ||
-    ''
-  ).trim();
-}
-function saleManagesFinishedInventoryPOS(sale){
-  if (!sale || typeof sale !== 'object') return true;
-  if (sale.isExtra) return false;
-  const snap = sale.productSnapshot && typeof sale.productSnapshot === 'object' ? sale.productSnapshot : null;
-  if (snap && snap.manageStock === false) return false;
-  if (sale.manageStock === false) return false;
-  return true;
-}
 function applyFinishedFromSalePOS(sale, direction){
   try{
-    if (!saleManagesFinishedInventoryPOS(sale)) return;
-
     const dir = direction === -1 ? -1 : 1;
-    const productName = saleProductNameForInventoryPOS(sale);
-    const productId = saleProductIdForInventoryPOS(sale);
+    const productName = sale.productName || '';
     const finishedId = mapProductNameToFinishedId(productName);
+    if (!finishedId) return;
     const q = typeof sale.qty === 'number' ? sale.qty : parseFloat(sale.qty||'0');
     const qty = Number.isNaN(q) ? 0 : q;
     if (!qty) return;
-
     const delta = -dir * qty; // dir=+1: registrar venta/devolución; dir=-1: revertir
     const inv = invCentralLoadPOS();
-
-    // Legacy: las presentaciones históricas siguen usando finished.{pulso,media,djeba,litro,galon}.
-    if (finishedId){
-      if (!inv.finished || typeof inv.finished !== 'object') inv.finished = {};
-      if (!inv.finished[finishedId] || typeof inv.finished[finishedId] !== 'object') inv.finished[finishedId] = { stock: 0 };
-      inv.finished[finishedId].stock = invParseNumberPOS(inv.finished[finishedId].stock) + delta;
-      invCentralSavePOS(inv);
-      return;
-    }
-
-    // Productos nuevos: nunca se fuerzan a un legacy. Se descuentan por Product ID.
-    if (productId){
-      const key = String(productId);
-      if (!inv.finishedByProductId || typeof inv.finishedByProductId !== 'object') inv.finishedByProductId = {};
-      if (!inv.finishedByProductId[key] || typeof inv.finishedByProductId[key] !== 'object'){
-        inv.finishedByProductId[key] = { stock: 0 };
-      }
-      const row = inv.finishedByProductId[key];
-      row.stock = invParseNumberPOS(row.stock) + delta;
-      row.productId = productId;
-      row.name = productName || row.name || ('Producto ' + productId);
-      row.productName = productName || row.productName || row.name;
-      row.updatedAt = new Date().toISOString();
-      invCentralSavePOS(inv);
-    }
+    if (!inv.finished) inv.finished = {};
+    if (!inv.finished[finishedId]) inv.finished[finishedId] = { stock: 0 };
+    inv.finished[finishedId].stock = invParseNumberPOS(inv.finished[finishedId].stock) + delta;
+    invCentralSavePOS(inv);
   }catch(e){
     console.error('Error ajustando inventario central desde venta', e);
   }
@@ -8894,41 +8799,17 @@ async function renderCentralFinishedPOS(){
   tbody.innerHTML = '';
   const inv = invCentralLoadPOS();
   const defs = [
-    { id:'pulso', label:'Pulso 250 ml', legacy:true },
-    { id:'media', label:'Media 375 ml', legacy:true },
-    { id:'djeba', label:'Djeba 750 ml', legacy:true },
-    { id:'litro', label:'Litro 1000 ml', legacy:true },
-    { id:'galon', label:'Galón 3750 ml', legacy:true },
+    { id:'pulso', label:'Pulso 250 ml' },
+    { id:'media', label:'Media 375 ml' },
+    { id:'djeba', label:'Djeba 750 ml' },
+    { id:'litro', label:'Litro 1000 ml' },
+    { id:'galon', label:'Galón 3750 ml' },
   ];
-
-  try{
-    const products = await getAll('products');
-    const byId = new Map((Array.isArray(products) ? products : []).map(p => [String(p.id), p]));
-    Object.keys(inv.finishedByProductId || {}).forEach((id)=>{
-      const info = inv.finishedByProductId[id] || {};
-      const p = byId.get(String(id)) || null;
-      const label = String(
-        (p && (p.name || p.nombre)) ||
-        info.productName ||
-        info.name ||
-        ('Producto ' + id)
-      ).trim();
-      defs.push({ id:String(id), label, legacy:false });
-    });
-  }catch(_){
-    Object.keys(inv.finishedByProductId || {}).forEach((id)=>{
-      const info = inv.finishedByProductId[id] || {};
-      defs.push({ id:String(id), label:String(info.productName || info.name || ('Producto ' + id)), legacy:false });
-    });
-  }
-
   defs.forEach(d=>{
-    const info = d.legacy
-      ? ((inv.finished && inv.finished[d.id]) || { stock: 0 })
-      : ((inv.finishedByProductId && inv.finishedByProductId[d.id]) || { stock: 0 });
+    const info = (inv.finished && inv.finished[d.id]) || { stock: 0 };
     const stock = invParseNumberPOS(info.stock);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(d.label)}</td><td>${stock}</td>`;
+    tr.innerHTML = `<td>${d.label}</td><td>${stock}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -8989,299 +8870,66 @@ const DEFAULT_GALON_PRICE_POS = 900;
 const LEGACY_DEFAULT_GALON_PRICE_POS = 800;
 const SEED = [
   // "Vaso" ahora es producto vendible normal; su stock formal viene de Reempaque.
-  {name:'Vaso', price:100, manageStock:true, active:true, capacityMl:null, receta:false, letra:'', pos:true, envaseId:'', tapaId:''},
-  {name:'Pulso 250ml', price:120, manageStock:true, active:true, receta:true, letra:'P', pos:true, envaseId:'envase_pulso', tapaId:'tapa_pulso_litro'},
-  {name:'Media 375ml', price:150, manageStock:true, active:true, receta:true, letra:'M', pos:true, envaseId:'envase_media', tapaId:'tapa_djeba_media'},
-  {name:'Djeba 750ml', price:300, manageStock:true, active:true, receta:true, letra:'D', pos:true, envaseId:'envase_djeba', tapaId:'tapa_djeba_media'},
-  {name:'Litro 1000ml', price:330, manageStock:true, active:true, receta:true, letra:'L', pos:true, envaseId:'envase_litro', tapaId:'tapa_pulso_litro'},
-  {name:'Galón 3750 ml', price:DEFAULT_GALON_PRICE_POS, manageStock:true, active:true, receta:true, letra:'G', pos:true, envaseId:'envase_galon', tapaId:'tapa_galon'},
+  {name:'Vaso', price:100, manageStock:true, active:true, capacityMl:null},
+  {name:'Pulso 250ml', price:120, manageStock:true, active:true},
+  {name:'Media 375ml', price:150, manageStock:true, active:true},
+  {name:'Djeba 750ml', price:300, manageStock:true, active:true},
+  {name:'Litro 1000ml', price:330, manageStock:true, active:true},
+  {name:'Galón 3750 ml', price:DEFAULT_GALON_PRICE_POS, manageStock:true, active:true},
 ];
-const CATALOG_DELETED_KEYS_POS = {
-  products:'a33_catalog_deleted_products_v1',
-  banks:'a33_catalog_deleted_banks_v1'
-};
 const DEFAULT_EVENTS = [{name:'General'}];
-
-function readCatalogDeletedKeysPOS(kind){
-  const storageKey = CATALOG_DELETED_KEYS_POS[kind];
-  if (!storageKey) return new Set();
-  try{
-    const raw = localStorage.getItem(storageKey);
-    const arr = JSON.parse(raw || '[]');
-    return new Set((Array.isArray(arr) ? arr : []).map(v => String(v || '').trim()).filter(Boolean));
-  }catch(_){ return new Set(); }
-}
-
-function writeCatalogDeletedKeysPOS(kind, keys){
-  const storageKey = CATALOG_DELETED_KEYS_POS[kind];
-  if (!storageKey) return false;
-  try{
-    const arr = Array.from(keys || []).map(v => String(v || '').trim()).filter(Boolean).sort();
-    localStorage.setItem(storageKey, JSON.stringify(arr));
-    return true;
-  }catch(_){ return false; }
-}
-
-function clearCatalogDeletedPOS(kind){
-  const storageKey = CATALOG_DELETED_KEYS_POS[kind];
-  if (!storageKey) return;
-  try{ localStorage.removeItem(storageKey); }catch(_){ }
-}
-
-function catalogDeletedKeyPOS(kind, row){
-  const r = row && typeof row === 'object' ? row : {};
-  if (kind === 'banks') return `${normBankName(r.name || '')}::${normalizeBankTypePOS(r.type || r.bankType || 'transferencia')}`;
-  return normKeyPOS(r.name || r.nombre || '');
-}
-
-function rememberCatalogDeletedPOS(kind, row){
-  const keys = readCatalogDeletedKeysPOS(kind);
-  const main = catalogDeletedKeyPOS(kind, row);
-  if (main) keys.add(main);
-  if (kind === 'products' && mapProductNameToFinishedIdPOS(row && row.name) === 'galon') keys.add(normKeyPOS('Galón 3750 ml'));
-  writeCatalogDeletedKeysPOS(kind, keys);
-}
-
-function wasCatalogSeedDeletedPOS(kind, row){
-  const key = catalogDeletedKeyPOS(kind, row);
-  return !!(key && readCatalogDeletedKeysPOS(kind).has(key));
-}
 
 function isValidCatalogPricePOS(value){
   const n = Number(value);
   return Number.isFinite(n) && n > 0;
 }
 
-function hasOwnPOS(obj, key){
-  return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
-}
-
-function boolCatalogFlagPOS(value, fallback){
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value === 1;
-  const raw = String(value ?? '').trim().toLowerCase();
-  if (['true','1','si','sí','yes','y','on'].includes(raw)) return true;
-  if (['false','0','no','n','off'].includes(raw)) return false;
-  return !!fallback;
-}
-
-function productActiveForSalePOS(product){
-  const p = product && typeof product === 'object' ? product : {};
-  if (hasOwnPOS(p, 'active')) return boolCatalogFlagPOS(p.active, true);
-  if (hasOwnPOS(p, 'activo')) return boolCatalogFlagPOS(p.activo, true);
-  if (hasOwnPOS(p, 'isActive')) return boolCatalogFlagPOS(p.isActive, true);
-  if (hasOwnPOS(p, 'enabled')) return boolCatalogFlagPOS(p.enabled, true);
-  return true;
-}
-
-function hasExplicitActiveFlagPOS(product){
-  const p = product && typeof product === 'object' ? product : {};
-  return ['active','activo','isActive','enabled'].some((key) => hasOwnPOS(p, key));
-}
-
-function hasExplicitManageStockFlagPOS(product){
-  const p = product && typeof product === 'object' ? product : {};
-  return ['manageStock','manejarInventario','managesStock','stockManaged','controlStock','inventoryManaged'].some((key) => hasOwnPOS(p, key));
-}
-
-function productManageStockForSalePOS(product, fallback=true){
-  const p = product && typeof product === 'object' ? product : {};
-  const keys = ['manageStock','manejarInventario','managesStock','stockManaged','controlStock','inventoryManaged'];
-  for (const key of keys){
-    if (hasOwnPOS(p, key)) return boolCatalogFlagPOS(p[key], fallback);
-  }
-  return !!fallback;
-}
-
-function productRecipeEnabledForProductionPOS(product){
-  const p = product && typeof product === 'object' ? product : {};
-  const keys = ['receta','Receta','recipe','hasRecipe'];
-  for (const key of keys){
-    if (hasOwnPOS(p, key)) return boolCatalogFlagPOS(p[key], false);
-  }
-  // Compatibilidad: productos legacy sin campo Receta conservan candado por presentación.
-  return !!presKeyFromProductNamePOS(p.name || p.nombre || p.productName || '');
-}
-
-function legacyGallonVendibleNamePOS(name){
-  const n = normName(name);
-  return !!((n.includes('galon') || n.includes('galón')) && (n.includes('3750') || n.includes('3800') || n === 'galon' || n === 'galón'));
-}
-
-function legacyVendibleDefaultPOS(product){
-  const name = String((product && (product.name || product.nombre)) || '').trim();
-  if (!name) return false;
-  const n = normName(name);
-  const nk = normKeyPOS(name);
-  const known = new Set([
-    normKeyPOS('Vaso'),
-    normKeyPOS('Pulso 250ml'), normKeyPOS('Pulso 250 ml'),
-    normKeyPOS('Media 375ml'), normKeyPOS('Media 375 ml'),
-    normKeyPOS('Djeba 750ml'), normKeyPOS('Djeba 750 ml'),
-    normKeyPOS('Litro 1000ml'), normKeyPOS('Litro 1000 ml'),
-    normKeyPOS('Galón 3750 ml'), normKeyPOS('Galón 3750ml'),
-    normKeyPOS('Galón 3800 ml'), normKeyPOS('Galón 3800ml')
-  ]);
-  if (known.has(nk)) return true;
-  if (n === 'vaso') return true;
-  if (n.includes('pulso') && n.includes('250')) return true;
-  if (n.includes('media') && n.includes('375')) return true;
-  if (n.includes('djeba') && n.includes('750')) return true;
-  if (n.includes('litro') && n.includes('1000')) return true;
-  if (legacyGallonVendibleNamePOS(name)) return true;
-  return false;
-}
-
-function hasExplicitPosFlagPOS(product){
-  const p = product && typeof product === 'object' ? product : {};
-  return ['pos','POS','posEnabled','showInPOS','visiblePOS','vendible','sellable','saleEnabled']
-    .some((key) => hasOwnPOS(p, key));
-}
-
-function productPosEnabledForSalePOS(product){
-  const p = product && typeof product === 'object' ? product : {};
-  const keys = ['pos','POS','posEnabled','showInPOS','visiblePOS','vendible','sellable','saleEnabled'];
-  for (const key of keys){
-    if (hasOwnPOS(p, key)) return boolCatalogFlagPOS(p[key], false);
-  }
-  // Default seguro para productos antiguos: solo presentaciones A33 conocidas y Vaso.
-  return legacyVendibleDefaultPOS(p);
-}
-
-function productSellableInPOS(product){
-  return !!(product && productActiveForSalePOS(product) && productPosEnabledForSalePOS(product));
-}
-
-
-// POS Etapa 2/6: snapshots históricos por venta.
-// La venta se guarda con ID estable + copia congelada del nombre/precio/datos básicos.
-// Así, si Catálogos cambia mañana, el historial no se disfraza de otra cosa. Elegante y sin magia negra.
-function catalogProductStableIdPOS(product){
-  if (!product || typeof product !== 'object') return null;
-  const raw = product.id ?? product.productId ?? product.productoId ?? null;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-function catalogProductSnapshotNamePOS(product){
-  if (!product || typeof product !== 'object') return '';
-  return String(product.name || product.nombre || product.productName || '').trim();
-}
-
-function catalogProductSnapshotPricePOS(product, selectedUnitPrice){
-  const selected = Number(selectedUnitPrice);
-  if (Number.isFinite(selected) && selected >= 0) return round2(selected);
-  const catalog = Number(product && (product.price ?? product.precio ?? product.unitPrice));
-  return Number.isFinite(catalog) && catalog >= 0 ? round2(catalog) : 0;
-}
-
-function buildSaleProductSnapshotPOS(product, selectedUnitPrice){
-  const productId = catalogProductStableIdPOS(product);
-  const productName = catalogProductSnapshotNamePOS(product);
-  const unitPrice = catalogProductSnapshotPricePOS(product, selectedUnitPrice);
-  const unitCost = getProductStoredUnitCostPOS(product);
-  const capacityMl = Number(product && (product.capacityMl ?? product.ml ?? product.contenidoMl));
-  const productSnapshot = {
-    kind: 'product',
-    id: productId,
-    productId,
-    name: productName,
-    productName,
-    price: unitPrice,
-    unitPrice,
-    catalogPrice: catalogProductSnapshotPricePOS(product, product && product.price),
-    unitCost,
-    costPerUnit: unitCost,
-    costoUnitario: unitCost,
-    manageStock: product ? productManageStockForSalePOS(product, true) : null,
-    active: product ? productActiveForSalePOS(product) : null,
-    pos: product ? productPosEnabledForSalePOS(product) : null,
-    receta: product ? boolCatalogFlagPOS(product.receta, false) : false,
-    letra: String((product && (product.letra ?? product.letter ?? '')) || '').trim(),
-    envaseId: String((product && (product.envaseId ?? product.bottleId ?? '')) || '').trim(),
-    tapaId: String((product && (product.tapaId ?? product.capId ?? '')) || '').trim(),
-    capacityMl: Number.isFinite(capacityMl) && capacityMl > 0 ? capacityMl : null,
-    presKey: productName ? (presKeyFromProductNamePOS(productName) || '') : '',
-    capturedAt: new Date().toISOString()
-  };
-  return {
-    productId,
-    productName,
-    productNameSnapshot: productName,
-    unitPrice,
-    unitPriceSnapshot: unitPrice,
-    productSnapshot
-  };
-}
-
-function getSaleProductNameSnapshotPOS(sale){
-  if (!sale || typeof sale !== 'object') return '';
-  return String(
-    sale.productNameSnapshot ||
-    sale.productName ||
-    sale.name ||
-    sale.producto ||
-    sale.product ||
-    ''
-  ).trim();
-}
-
-function getSaleUnitPriceSnapshotPOS(sale){
-  if (!sale || typeof sale !== 'object') return 0;
-  const candidates = [sale.unitPriceSnapshot, sale.unitPrice, sale.price, sale.precio];
-  for (const c of candidates){
-    const n = Number(c);
-    if (Number.isFinite(n) && n >= 0) return n;
-  }
-  return 0;
-}
-
-function applyProductSaleCatalogDefaultsPOS(product, seed){
-  if (!product || typeof product !== 'object' || !seed) return false;
-  let changed = false;
-  if (!hasExplicitPosFlagPOS(product) && typeof seed.pos !== 'undefined'){ product.pos = !!seed.pos; changed = true; }
-  if (typeof product.receta === 'undefined' && typeof seed.receta !== 'undefined'){ product.receta = !!seed.receta; changed = true; }
-  if (typeof product.letra === 'undefined' && typeof seed.letra !== 'undefined'){ product.letra = seed.letra || ''; changed = true; }
-  if (typeof product.envaseId === 'undefined' && typeof seed.envaseId !== 'undefined'){ product.envaseId = seed.envaseId || ''; changed = true; }
-  if (typeof product.tapaId === 'undefined' && typeof seed.tapaId !== 'undefined'){ product.tapaId = seed.tapaId || ''; changed = true; }
-  return changed;
-}
-
-async function seedMissingDefaults(force=false, options={}){
-  const authorizedRestore = force === true && !!(options && options.restoreDeleted);
-  // Defensa crítica: abrir POS nunca debe crear productos. Solo la restauración manual puede hacerlo.
-  if (!authorizedRestore) return { added:0, skipped:SEED.length };
-
+async function seedMissingDefaults(force=false){
   const list = await getAll('products');
-  const now = new Date().toISOString();
-  let added = 0;
-  let skipped = 0;
+  const keys = new Set(list.map(p=>normKeyPOS(p.name)));
 
-  for (const seed of SEED){
-    const seedKey = normKeyPOS(seed.name);
-    const existing = list.find((product) => {
-      if (!product) return false;
-      const productKey = normKeyPOS(product.name || '');
-      if (productKey === seedKey) return true;
-      return seedKey === normKeyPOS(CANON_GALON_LABEL) && (legacyGallonVendibleNamePOS(product.name || '') || (productKey.includes('galon') && productKey.includes('3720')));
-    });
-    if (existing){
-      skipped += 1;
-      continue;
-    }
-    const row = {
-      ...seed,
-      createdAt:now,
-      updatedAt:now,
-      updatedFrom:'pos_productos_restauracion_manual'
-    };
-    const id = await put('products', row);
-    list.push({ ...row, id });
-    added += 1;
+  // Alias legacy: si existe Galón 3800 (o variantes), lo tratamos como galón canónico para no duplicar.
+  if (keys.has(normKeyPOS('Galón 3800ml')) || keys.has(normKeyPOS('Galón 3800 ml'))){
+    keys.add(normKeyPOS(CANON_GALON_LABEL));
   }
 
-  return { added, skipped };
+  for (const s of SEED){
+    const k = normKeyPOS(s.name);
+    let existing = list.find(p=>normKeyPOS(p.name)===k);
+    if (!existing && k === normKeyPOS(CANON_GALON_LABEL)){
+      // Si solo existe el Galón legacy (3800 ml u otra variante), usarlo como existente y no crear duplicado.
+      existing = list.find(p => p && mapProductNameToFinishedId(p.name || '') === 'galon');
+    }
+
+    if (force || !existing){
+      if (existing){
+        let changed = false;
+        if (existing.active !== true){ existing.active = true; changed = true; }
+        if (k === normKeyPOS(CANON_GALON_LABEL) && existing.name !== s.name && !list.some(p => p && p.id !== existing.id && normKeyPOS(p.name) === k)){ existing.name = s.name; changed = true; }
+        // Catálogo global editable: un precio válido del usuario NUNCA se pisa por defaults.
+        // Excepción controlada: migrar Galón desde el viejo default C$800 al nuevo default C$900.
+        if (k === normKeyPOS(CANON_GALON_LABEL) && Number(existing.price) === LEGACY_DEFAULT_GALON_PRICE_POS){ existing.price = s.price; changed = true; }
+        else if (!isValidCatalogPricePOS(existing.price)){ existing.price = s.price; changed = true; }
+        if (typeof existing.manageStock === 'undefined'){ existing.manageStock = s.manageStock; changed = true; }
+        if (s.internalType && existing.internalType !== s.internalType){ existing.internalType = s.internalType; changed = true; }
+        if (changed) await put('products', existing);
+      } else {
+        await put('products', {...s});
+      }
+    } else {
+      // Existe: solo completar faltantes (sin pisar precios manuales válidos).
+      let changed = false;
+      if (typeof existing.active === 'undefined'){ existing.active = true; changed = true; }
+      if (k === normKeyPOS(CANON_GALON_LABEL) && existing.name !== s.name && !list.some(p => p && p.id !== existing.id && normKeyPOS(p.name) === k)){ existing.name = s.name; changed = true; }
+      if (typeof existing.manageStock === 'undefined'){ existing.manageStock = s.manageStock; changed = true; }
+      // Excepción controlada: migrar Galón desde el viejo default C$800 al nuevo default C$900.
+      if (k === normKeyPOS(CANON_GALON_LABEL) && Number(existing.price) === LEGACY_DEFAULT_GALON_PRICE_POS){ existing.price = s.price; changed = true; }
+      else if (!isValidCatalogPricePOS(existing.price)) { existing.price = s.price; changed = true; }
+      if (changed) await put('products', existing);
+    }
+  }
 }
+
 
 // UI helpers
 const $ = s => document.querySelector(s);
@@ -9667,11 +9315,11 @@ function validateSaleMinimalPOS(sale){
   if (!isReturn && total < -0.00001) return { ok:false, msg:'Venta inválida: total negativo (sin marcar como devolución).' };
   if (!isReturn && qty < 0) return { ok:false, msg:'Venta inválida: cantidad negativa (sin marcar como devolución).' };
   if (isReturn && qty > 0) return { ok:false, msg:'Venta inválida: devolución requiere cantidad negativa.' };
-  const name = getSaleProductNameSnapshotPOS(sale);
+  const name = String(sale.productName || '').trim();
   if (!name) return { ok:false, msg:'Venta inválida: nombre de producto vacío.' };
 
   // Validaciones duras (anti-NaN/negativos donde no aplica) antes de persistir
-  const unitPrice = Number(getSaleUnitPriceSnapshotPOS(sale));
+  const unitPrice = Number(sale.unitPrice);
   if (!Number.isFinite(unitPrice) || unitPrice < 0) return { ok:false, msg:'Venta inválida: precio inválido.' };
   // Compat: ventas viejas no guardaban discountPerUnit → interpretar como 0.
   const discPU = (sale.discountPerUnit == null || sale.discountPerUnit === '')
@@ -9818,121 +9466,32 @@ function lotTotalsForKeyPOS(fifo, presKey){
   return { loaded, remaining };
 }
 
-function lotesPOSContractRowsPOS(lote){
-  if (!lote || typeof lote !== 'object') return [];
-  const candidates = [];
-  if (Array.isArray(lote.disponibilidadPOS)) candidates.push(lote.disponibilidadPOS);
-  if (lote.salidaPOS && Array.isArray(lote.salidaPOS.productos)) candidates.push(lote.salidaPOS.productos);
-  if (Array.isArray(lote.productosProducidos)) candidates.push(lote.productosProducidos);
-  if (Array.isArray(lote.productosDinamicos)) candidates.push(lote.productosDinamicos);
-  if (Array.isArray(lote.productos)) candidates.push(lote.productos);
-  if (Array.isArray(lote.itemsProducidos)) candidates.push(lote.itemsProducidos);
-  for (const arr of candidates){
-    const clean = (arr || []).filter(x => x && typeof x === 'object');
-    if (clean.length) return clean;
-  }
-  return [];
-}
-
-function lotesPOSQtyFromContractRowPOS(row){
-  if (!row || typeof row !== 'object') return 0;
-  const preferred = [
-    row.cantidadDisponible,
-    row.disponible,
-    row.remaining,
-    row.cantidadRestante,
-    row.cantidadProducida,
-    row.cantidad,
-    row.unidades,
-    row.qty,
-    row.quantity
-  ];
-  for (const v of preferred){
-    if (v == null || String(v).trim() === '' || String(v).trim().toLowerCase() === 'pendiente') continue;
-    const n = Number(String(v).replace(',', '.'));
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return 0;
-}
-
-function resolveProductFromLoteContractRowPOS(row, products){
-  const list = Array.isArray(products) ? products : [];
-  const normLocal = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const rawPid = String(row && (row.productId ?? row.productoId ?? row.id) || '').trim();
-  if (rawPid){
-    const byId = list.find(p => p && String(p.id) === rawPid);
-    if (byId) return byId;
-  }
-
-  const letter = String(row && (row.Letra ?? row.letra ?? row.letter) || '').trim().toUpperCase();
-  if (letter){
-    const byLetter = list.find(p => p && String(p.letra ?? p.Letra ?? p.letter ?? '').trim().toUpperCase() === letter);
-    if (byLetter) return byLetter;
-  }
-
-  const legacyId = String(row && (row.legacyId ?? row.legacyField ?? row.field) || '').trim().toLowerCase();
-  if (legacyId){
-    const byLegacy = list.find(p => p && mapProductNameToFinishedId(p.name || p.nombre || '') === legacyId);
-    if (byLegacy) return byLegacy;
-  }
-
-  const name = String(row && (row.nombreSnapshot ?? row.nombre ?? row.name ?? row.productName) || '').trim();
-  if (name){
-    const n = normLocal(name);
-    const exact = list.find(p => p && normLocal(p.name || p.nombre || '') === n);
-    if (exact) return exact;
-    const legacyFromName = mapProductNameToFinishedId(name);
-    if (legacyFromName){
-      const byNameLegacy = list.find(p => p && mapProductNameToFinishedId(p.name || p.nombre || '') === legacyFromName);
-      if (byNameLegacy) return byNameLegacy;
-    }
-  }
-
-  return null;
-}
-
-async function guardLotAvailabilityBeforeSalePOS(eventId, productName, qty, productId, productObj){
-  const legacyKey = presKeyFromProductNamePOS(productName);
-  const recipeEnabled = productRecipeEnabledForProductionPOS(productObj || { name: productName });
-
-  // Productos vendibles sin Receta (ej. Vaso) no pasan por Lotes/FIFO.
-  // POS solo valida Activo/POS/Precio/Stock; Reempaque alimenta su stock antes de vender.
-  if (!legacyKey && !recipeEnabled){
-    return { ok:true, presKey:'', nonRecipe:true };
-  }
-
-  const key = legacyKey || lotFifoKeyFromProductPOS(productObj || null, productId, productName);
-  if (!key) return { ok:true, presKey:'' };
+async function guardLotAvailabilityBeforeSalePOS(eventId, productName, qty){
+  const presKey = presKeyFromProductNamePOS(productName);
+  if (!presKey) return { ok:true, presKey:'' };
 
   try{
     const fifo = await computeLotFifoForEvent(eventId);
     const v = validateLotFifoIntegrityPOS(fifo, eventId);
-    if (!v.ok) return { ok:false, presKey:key, msg: v.msg };
+    if (!v.ok) return { ok:false, presKey, msg: v.msg };
 
-    const totals = lotTotalsForKeyPOS(fifo, key);
-
-    // Legacy mantiene el candado histórico. Productos nuevos por PID solo se amarran a Lotes
-    // si realmente existe carga/asignación por ese PID; si no, los valida el inventario por evento.
-    const isDynamicPidKey = String(key).startsWith('PID:');
-    if (isDynamicPidKey && !(totals.loaded > 0)){
-      return { ok:true, presKey:key, dynamic:true, warn:false, remaining:0, faltan:0 };
-    }
+    const totals = lotTotalsForKeyPOS(fifo, presKey);
 
     // A) Sin lotes asignados / disponibles
     if (!(totals.loaded > 0) || !(totals.remaining > 0)){
-      return { ok:false, presKey:key, msg:'No hay lotes asignados a este evento para vender esta presentación.' };
+      return { ok:false, presKey, msg:'No hay lotes asignados a este evento para vender esta presentación.' };
     }
 
     // B) Excede remaining disponible
     if (Number(qty) > totals.remaining){
       const faltan = Math.max(0, Number(qty) - totals.remaining);
-      return { ok:true, presKey:key, warn:true, remaining: totals.remaining, faltan };
+      return { ok:true, presKey, warn:true, remaining: totals.remaining, faltan };
     }
 
-    return { ok:true, presKey:key, warn:false, remaining: totals.remaining, faltan:0 };
+    return { ok:true, presKey, warn:false, remaining: totals.remaining, faltan:0 };
   }catch(e){
     console.warn('guardLotAvailabilityBeforeSalePOS failed', e);
-    return { ok:false, presKey:key, msg:'No se pudo verificar lotes/FIFO para esta venta. Revisa tus lotes asignados e intenta de nuevo.' };
+    return { ok:false, presKey, msg:'No se pudo verificar lotes/FIFO para esta venta. Revisa tus lotes asignados e intenta de nuevo.' };
   }
 }
 function reserveSaleSeqInMemoryPOS(event, saleRecord, salesForEvent){
@@ -10111,7 +9670,12 @@ function isCourtesySalePOS(s){
 }
 
 function getSaleLineCostPOS(s){
-  return getSaleLineCostSnapshotPOS(s);
+  const lc = Number(s && s.lineCost);
+  if (Number.isFinite(lc)) return lc;
+  const cpu = Number(s && s.costPerUnit);
+  const qty = Number(s && s.qty);
+  if (Number.isFinite(cpu) && Number.isFinite(qty)) return cpu * qty;
+  return 0;
 }
 
 async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
@@ -10121,15 +9685,9 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
 
   const byPay = {};
   let grand = 0;
-  let gross = 0;
-  let discountTotal = 0;
-  let courtesyValue = 0;
   let courtesyQty = 0;
-  let returnTotal = 0;
-  let returnQty = 0;
-  let paidQty = 0;
 
-  // Costos (COGS): solo si existe snapshot/costo confiable; no se inventa por nombre fijo.
+  // Costos (COGS): solo para Arcano 33 (presentaciones) + Vaso (fraccionamiento).
   let paidCost = 0;
   let courtesyCost = 0;
 
@@ -10141,29 +9699,24 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
       .trim();
     return uiProductNamePOS(bn);
   };
-  const saleName = (sale) => baseName(getSaleProductNameSnapshotPOS(sale) || (sale && (sale.productName || sale.name || sale.producto || sale.product)) || '');
 
   const isA33CostableSale = (s) => {
-    if (!s || s.isExtra) return false;
+    if (!s) return false;
     if (s.vaso === true) return true;
-    const bn = saleName(s);
-    if (mapProductNameToPresId(bn)) return true;
-    const lineCost = getSaleLineCostSnapshotPOS(s);
-    const hasCostSnapshot = Math.abs(Number(lineCost || 0)) > 1e-9 || getSaleCostUnitSnapshotPOS(s) > 0;
-    const hasDynamicProductId = saleProductIdForInventoryPOS(s) != null;
-    return !!(hasCostSnapshot || hasDynamicProductId);
+    const bn = baseName(s.productName || s.name || '');
+    return !!mapProductNameToPresId(bn);
   };
 
   const addBreakdown = (s, isCourtesy, lineCost) => {
     const qty = Number(s.qty || 0);
-    const nm = saleName(s);
-    const key = String((s && (s.productId ?? s.productoId ?? (s.productSnapshot && (s.productSnapshot.productId ?? s.productSnapshot.id)))) || nm || 'unknown').trim();
+    const nm = baseName(s.productName || s.name || '');
+    const key = nm || String(s.productId || 'unknown');
     if (!key) return;
 
     if (!breakdownMap.has(key)) {
       breakdownMap.set(key, {
-        productId: (s.productId != null) ? s.productId : (s.productoId != null ? s.productoId : null),
-        productName: nm || getSaleProductNameSnapshotPOS(s) || String(s.productName || ''),
+        productId: (s.productId != null) ? s.productId : null,
+        productName: nm || String(s.productName || ''),
         qtyPaid: 0,
         qtyCourtesy: 0,
         totalCostPaid: 0,
@@ -10182,8 +9735,8 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
       b.totalCostPaid += Number(lineCost || 0);
     }
 
-    // UnitCost (auditoría): preferimos snapshot económico guardado en la venta.
-    let unitCost = getSaleCostUnitSnapshotPOS(s);
+    // UnitCost (auditoría): preferimos costPerUnit guardado en la venta.
+    let unitCost = Number(s.costPerUnit || 0);
     if (!(unitCost > 0) && qty) {
       unitCost = Math.abs(Number(lineCost || 0) / Number(qty || 1));
     }
@@ -10198,19 +9751,11 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
     const courtesy = isCourtesySalePOS(s);
     const total = Number(s.total || 0);
     const qty = Number(s.qty || 0);
-    const absQty = Math.abs(qty || 0);
-    const unitPrice = getSaleUnitPriceSnapshotPOS(s);
-    const discountLine = getSaleDiscountTotalPOS(s) * ((s.isReturn || qty < 0) ? -1 : 1);
-    gross += round2((unitPrice || 0) * absQty * ((s.isReturn || qty < 0) ? -1 : 1));
-    discountTotal += round2(discountLine);
-    if (s.isReturn || qty < 0){ returnQty += absQty; returnTotal += Math.abs(total || 0); }
 
     // Cortesías: no generan ingresos, pero sí consumen costo.
     if (courtesy){
-      courtesyQty += absQty;
-      courtesyValue += round2((unitPrice || 0) * absQty * ((s.isReturn || qty < 0) ? -1 : 1));
+      courtesyQty += Math.abs(qty || 0);
     } else {
-      paidQty += absQty;
       const pay = normalizePaymentMethodPOS(s.payment || '') || 'otros';
       byPay[pay] = (byPay[pay] || 0) + total;
       grand += total;
@@ -10242,24 +9787,11 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
   const costoCortesiasTotal = round2(courtesyCost);
   const costoTotalSalidaInventario = round2(costoVentasTotal + costoCortesiasTotal);
 
-  const ventaBruta = round2(gross);
-  const ventaNeta = round2(grand);
-  const utilidadBruta = round2(ventaNeta - costoVentasTotal);
-  const utilidadNetaOperativa = round2(utilidadBruta - costoCortesiasTotal);
-
   return {
     dayKey: dk,
     ventasPorMetodo: byPay,
     totalGeneral: grand,
-    ventaBruta,
-    descuentosTotal: round2(discountTotal),
-    ventaNeta,
-    utilidadBruta,
-    utilidadNetaOperativa,
     cortesiaCantidad: courtesyQty,
-    cortesiaValorReferencia: round2(courtesyValue),
-    devolucionCantidad: returnQty,
-    devolucionValor: round2(returnTotal),
     // Compat legacy
     cortesiaCostoTotal: costoCortesiasTotal,
     // Nuevo esquema de costos
@@ -10267,7 +9799,7 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
     costoCortesiasTotal,
     costoTotalSalidaInventario,
     costBreakdown,
-    counts: { totalSales: filtered.length, paidQty, courtesyQty, returnQty, dynamicProducts: costBreakdown.filter(x => x && x.productId != null).length }
+    counts: { totalSales: filtered.length }
   };
 }
 
@@ -10331,13 +9863,6 @@ function validateDailyClosureBeforePersistPOS({ record, lockPatch }){
 
   const cq = Number(t.cortesiaCantidad);
   if (!Number.isFinite(cq) || cq < -0.00001) return { ok:false, msg:'Cierre inválido: cortesías inválidas.' };
-
-  const optionalNums = ['ventaBruta','descuentosTotal','ventaNeta','utilidadBruta','utilidadNetaOperativa','cortesiaValorReferencia','devolucionCantidad','devolucionValor'];
-  for (const k of optionalNums){
-    if (t[k] == null) continue;
-    const n = Number(t[k]);
-    if (!Number.isFinite(n)) return { ok:false, msg:`Cierre inválido: ${k} inválido.` };
-  }
 
   // Costos: permitir negativos si hubo devoluciones (reversos), pero jamás NaN
   const c1 = Number(t.costoVentasTotal);
@@ -10422,15 +9947,7 @@ async function closeDailyPOS({ event, dateKey, source }){
     totals: {
       ventasPorMetodo: snapshot.ventasPorMetodo,
       totalGeneral: snapshot.totalGeneral,
-      ventaBruta: snapshot.ventaBruta,
-      descuentosTotal: snapshot.descuentosTotal,
-      ventaNeta: snapshot.ventaNeta,
-      utilidadBruta: snapshot.utilidadBruta,
-      utilidadNetaOperativa: snapshot.utilidadNetaOperativa,
       cortesiaCantidad: snapshot.cortesiaCantidad,
-      cortesiaValorReferencia: snapshot.cortesiaValorReferencia,
-      devolucionCantidad: snapshot.devolucionCantidad,
-      devolucionValor: snapshot.devolucionValor,
       // Compat legacy
       cortesiaCostoTotal: snapshot.cortesiaCostoTotal,
       // Nuevo esquema de costos
@@ -10663,18 +10180,14 @@ async function normalizeVasoProductForReempaquePOS(){
     ));
     if (!vasoProducts.length) return;
 
-    let canon = vasoProducts.find(p => normKeyPOS(p.name || '') === normKeyPOS('Vaso') && productActiveForSalePOS(p))
+    let canon = vasoProducts.find(p => normKeyPOS(p.name || '') === normKeyPOS('Vaso') && p.active !== false)
       || vasoProducts.find(p => normKeyPOS(p.name || '') === normKeyPOS('Vaso'))
       || vasoProducts[0];
 
     let changed = false;
     if (canon.name !== 'Vaso'){ canon.name = 'Vaso'; changed = true; }
-    // Vaso queda como vendible normal sin Receta. Respetar Activo/POS/Inventario si el usuario ya los definió.
-    if (!hasExplicitActiveFlagPOS(canon)){ canon.active = true; changed = true; }
-    if (!hasExplicitManageStockFlagPOS(canon)){ canon.manageStock = true; changed = true; }
-    if (!hasExplicitPosFlagPOS(canon)){ canon.pos = true; changed = true; }
-    if (canon.receta !== false){ canon.receta = false; changed = true; }
-    if (String(canon.letra ?? '').trim() !== ''){ canon.letra = ''; changed = true; }
+    if (canon.active !== true){ canon.active = true; changed = true; }
+    if (canon.manageStock !== true){ canon.manageStock = true; changed = true; }
     if (!isValidCatalogPricePOS(canon.price)){ canon.price = 100; changed = true; }
     // Dejar de tratarlo como producto interno/virtual: ahora se vende como cualquier SKU normal.
     if (canon.internalType === 'cup_portion'){ try{ delete canon.internalType; changed = true; }catch(_){ canon.internalType = ''; changed = true; } }
@@ -10686,7 +10199,7 @@ async function normalizeVasoProductForReempaquePOS(){
       if (!p || p.id === canon.id) continue;
       let ch = false;
       if (p.active !== false){ p.active = false; ch = true; }
-      if (!hasExplicitManageStockFlagPOS(p)){ p.manageStock = true; ch = true; }
+      if (typeof p.manageStock === 'undefined'){ p.manageStock = true; ch = true; }
       if (ch) await put('products', p);
     }
   }catch(e){
@@ -10705,7 +10218,7 @@ async function normalizeLegacyGallonProductPOS(){
     const defaultGallon = (SEED.find(x => normKeyPOS(x.name) === canonicalKey) || {}).price || DEFAULT_GALON_PRICE_POS;
 
     // Identificar productos tipo "galón" con la misma heurística usada por inventario.
-    const galonProducts = products.filter(p => p && legacyGallonVendibleNamePOS(p.name || ''));
+    const galonProducts = products.filter(p => p && mapProductNameToFinishedId(p.name || '') === 'galon');
     if (!galonProducts.length) return;
 
     const activeValidLegacy = galonProducts.find(p =>
@@ -10738,9 +10251,6 @@ async function normalizeLegacyGallonProductPOS(){
     if (!isValidCatalogPricePOS(canon.price)){ canon.price = preservedPrice; changedCanon = true; }
     else if (Number(canon.price) !== Number(preservedPrice) && activeValidLegacy){ canon.price = preservedPrice; changedCanon = true; }
     if (typeof canon.manageStock === 'undefined'){ canon.manageStock = true; changedCanon = true; }
-    if (!hasExplicitPosFlagPOS(canon)){ canon.pos = true; changedCanon = true; }
-    if (typeof canon.receta === 'undefined'){ canon.receta = true; changedCanon = true; }
-    if (typeof canon.letra === 'undefined'){ canon.letra = 'G'; changedCanon = true; }
     if (typeof canon.active === 'undefined'){ canon.active = true; changedCanon = true; }
     if (changedCanon) await put('products', canon);
 
@@ -10763,7 +10273,25 @@ async function normalizeLegacyGallonProductPOS(){
 
 // Ensure defaults
 async function ensureDefaults(){
-  // Productos dependen exclusivamente de Catálogos. Abrir POS no crea, migra ni reescribe el catálogo.
+  let products = await getAll('products');
+  // Migración suave: Vaso pasa a producto vendible normal y Galón queda canónico.
+  await normalizeVasoProductForReempaquePOS();
+  await normalizeLegacyGallonProductPOS();
+  products = await getAll('products');
+  if (!products.length){
+    for (const p of SEED) await put('products', p);
+  } else {
+    for (const p of products){
+      let changed = false;
+      if (typeof p.active === 'undefined'){ p.active = true; changed = true; }
+      if (typeof p.manageStock === 'undefined'){ p.manageStock = true; changed = true; }
+      if (changed) await put('products', p);
+    }
+  }
+  products = await getAll('products');
+  if (products.length < 5) await seedMissingDefaults(true);
+  else await seedMissingDefaults(false);
+
   const events = await getAll('events');
   if (!events.length){
     for (const ev of DEFAULT_EVENTS) await put('events', {...ev, createdAt:new Date().toISOString()});
@@ -10858,9 +10386,7 @@ async function ensureBanksDefaults(){
     if (!banks.length){
       const now = new Date().toISOString();
       for (const name of BANKS_SEED){
-        const seed = { name, isActive: true, type: 'transferencia', commissionPct: 0, createdAt: now };
-        if (wasCatalogSeedDeletedPOS('banks', seed)) continue;
-        await put('banks', seed);
+        await put('banks', { name, isActive: true, type: 'transferencia', commissionPct: 0, createdAt: now });
       }
       banks = await getAllBanksSafe();
     }
@@ -11309,10 +10835,9 @@ function posProductCanonicalScore(product){
   const fid = (typeof mapProductNameToFinishedId === 'function') ? mapProductNameToFinishedId(name) : null;
   const nk = productEditNormKeyPOS(name);
   let score = 0;
-  if (productActiveForSalePOS(product)) score += 1000;
-  if (productPosEnabledForSalePOS(product)) score += 200;
+  if (product.active !== false) score += 1000;
   if (isValidCatalogPricePOS(product.price)) score += 100;
-  if (productManageStockForSalePOS(product, true)) score += 15;
+  if (product.manageStock !== false) score += 15;
   if (fid) score += 20;
   if (fid === 'galon'){
     if (nk === productEditNormKeyPOS(CANON_GALON_LABEL)) score += 80;
@@ -11332,7 +10857,7 @@ function posProductCanonicalScore(product){
 function posCanonicalProductsForSale(products){
   const groups = new Map();
   for (const p of (Array.isArray(products) ? products : [])){
-    if (!productSellableInPOS(p)) continue;
+    if (!p || p.active === false) continue;
     const key = posProductCanonicalGroupKey(p);
     if (!key || key === 'name:') continue;
     const cur = groups.get(key);
@@ -11341,7 +10866,7 @@ function posCanonicalProductsForSale(products){
   return Array.from(groups.values());
 }
 
-// Chips de productos (activos + POS marcado desde Catálogos)
+// Chips de productos (todos los activos)
 async function renderProductChips(){
   const chips = $('#product-chips'); if (!chips) return;
   chips.innerHTML='';
@@ -11439,7 +10964,7 @@ async function renderProductChips(){
   if (list.length===0){
     const warn = document.createElement('div');
     warn.className = 'warn';
-    warn.textContent = 'No hay productos activos con POS marcado. Revisa Gestión Operativa → Catálogos → Productos.';
+    warn.textContent = 'No hay productos activos. Actívalos en Gestión Operativa → Catálogos → Productos.';
     chips.appendChild(warn);
   }
 }
@@ -11478,11 +11003,6 @@ document.addEventListener('click', async (e)=>{
   if (delBtn){
     const id = parseInt(delBtn.dataset.id,10);
     if (!confirm('¿Eliminar este producto? Esto no borra ventas pasadas.')) return;
-    try{
-      const all = await getAll('products');
-      const product = all.find(p => p && Number(p.id) === Number(id));
-      if (product) rememberCatalogDeletedPOS('products', product);
-    }catch(_){ }
     await del('products', id);
     await renderProductos(); await refreshProductSelect(); await renderInventario();
     try{ await reempaquePopulateSelectorsPOS(); }catch(_){ }
@@ -13370,7 +12890,7 @@ async function refreshSaleStockLabel(){
   const prodId = item.id;
   const products = await getAll('products');
   const p = products.find(pp=>pp.id===prodId);
-  if (!p || !productManageStockForSalePOS(p, true)) { $('#sale-stock').textContent='—'; return; }
+  if (!p || p.manageStock===false) { $('#sale-stock').textContent='—'; return; }
   const st = await computeStock(parseInt(curId,10), prodId);
   $('#sale-stock').textContent = st;
 }
@@ -13837,8 +13357,9 @@ async function computeStock(eventId, productId){
   const salesForProduct = (Array.isArray(allSales) ? allSales : [])
     .filter(s => s && Number(s.eventId) === evId && Number(s.productId) === pid);
 
-  // Compatibilidad: event.fractionBatches solo representa Vaso ya convertido/disponible en flujos viejos.
-  // Una venta nueva de Vaso descuenta su propio productId; no descuenta Galón, líquido, envase ni tapa.
+  // Compatibilidad: ventas antiguas por el flujo legacy de vasos ya descontaban cupos
+  // dentro de event.fractionBatches. Para el Vaso vendible normal, el stock formal
+  // debe venir de Inventario/Reempaque y solo las ventas normales descuentan aquí.
   try{
     const products = await getAll('products');
     const prod = (products || []).find(p => p && Number(p.id) === pid);
@@ -13878,157 +13399,6 @@ function getProductStoredUnitCostPOS(product){
   return 0;
 }
 
-function saleCostFromFieldsPOS(obj){
-  if (!obj || typeof obj !== 'object') return 0;
-  const direct = [
-    obj.unitCost, obj.costoUnitario, obj.costoUnidad, obj.costPerUnit,
-    obj.costoUnitarioDestino, obj.costoUnitarioCalculado, obj.targetUnitCost,
-    obj.sourceUnitCost, obj.costoPromedio, obj.averageUnitCost
-  ];
-  for (const c of direct){
-    const n = saleCostFieldValuePOS(c);
-    if (n > 0) return n;
-  }
-
-  const qty = Math.abs(Number(obj.qty ?? obj.cantidad ?? obj.units ?? obj.stock ?? 0));
-  const totalCandidates = [
-    obj.costoTotal, obj.costTotal, obj.lineCost, obj.totalCost,
-    obj.costoTotalAsignado, obj.costoFinalTotal, obj.costoOrigenTotal
-  ];
-  if (qty > 0){
-    for (const total of totalCandidates){
-      const t = saleCostFieldValuePOS(total);
-      if (t > 0) return round2(t / qty);
-    }
-  }
-  return 0;
-}
-
-function getSaleCostUnitSnapshotPOS(sale){
-  if (!sale || typeof sale !== 'object') return 0;
-  const candidates = [
-    sale.costPerUnit, sale.costUnitSnapshot, sale.unitCostSnapshot, sale.costoUnitarioSnapshot,
-    sale.costoUnitario, sale.unitCost, sale.costUnit,
-    sale.productSnapshot && sale.productSnapshot.unitCost,
-    sale.productSnapshot && sale.productSnapshot.costPerUnit,
-    sale.productSnapshot && sale.productSnapshot.costoUnitario
-  ];
-  let zeroSeen = false;
-  for (const c of candidates){
-    const n = Number(c);
-    if (!Number.isFinite(n) || n < 0) continue;
-    if (Math.abs(n) > 1e-9) return round2(n);
-    zeroSeen = true;
-  }
-  return zeroSeen ? 0 : 0;
-}
-
-function getSaleLineCostSnapshotPOS(sale){
-  if (!sale || typeof sale !== 'object') return 0;
-  const candidates = [sale.lineCost, sale.costTotal, sale.costoTotal, sale.totalCost, sale.costoTotalSnapshot];
-  let zeroSeen = false;
-  for (const c of candidates){
-    const n = Number(c);
-    if (!Number.isFinite(n)) continue;
-    if (Math.abs(n) > 1e-9) return round2(n);
-    zeroSeen = true;
-  }
-  if (zeroSeen) return 0;
-  const cpu = getSaleCostUnitSnapshotPOS(sale);
-  const qty = Number(sale.qty);
-  if (Number.isFinite(cpu) && Number.isFinite(qty)) return round2(cpu * qty);
-  return 0;
-}
-
-function buildSaleEconomicSnapshotPOS({ unitPrice, qty, discount, total, unitCost, costSource, courtesy, isReturn }){
-  const q = Number(qty) || 0;
-  const absQty = Math.abs(q);
-  const price = round2(unitPrice || 0);
-  const disc = round2(discount || 0);
-  const saleTotal = round2(total || 0);
-  const costUnit = round2(unitCost || 0);
-  const costTotal = round2(costUnit * q);
-  const profit = round2(saleTotal - costTotal);
-  const source = String(costSource || '').trim();
-  const warnNoCost = !(costUnit > 0);
-
-  return {
-    subtotal: round2(price * absQty),
-    grossTotal: round2(price * absQty),
-    discountTotal: disc,
-    saleNet: saleTotal,
-    ventaNeta: saleTotal,
-    netSale: saleTotal,
-    costPerUnit: costUnit,
-    costUnitSnapshot: costUnit,
-    unitCostSnapshot: costUnit,
-    costoUnitarioSnapshot: costUnit,
-    costoUnitario: costUnit,
-    costTotal,
-    costoTotal: costTotal,
-    costoTotalSnapshot: costTotal,
-    lineCost: costTotal,
-    lineProfit: profit,
-    utility: profit,
-    utilidad: profit,
-    profit,
-    costSource: source || (warnNoCost ? 'sin_costo_confiable' : ''),
-    costSourceSnapshot: source || (warnNoCost ? 'sin_costo_confiable' : ''),
-    costWarning: warnNoCost ? 'Venta guardada sin costo unitario confiable; utilidad de esta venta queda calculada con costo 0.' : '',
-    isCourtesy: !!courtesy,
-    courtesy: !!courtesy,
-    isReturn: !!isReturn
-  };
-}
-
-async function getLotFifoUnitCostForSalePOS(eventId, productId, productName){
-  try{
-    const evId = Number(eventId);
-    const pid = Number(productId);
-    if (!Number.isFinite(evId) || evId <= 0 || !Number.isFinite(pid) || pid <= 0) return 0;
-
-    const entries = await getInventoryEntries(evId);
-    let weightedCost = 0;
-    let weightedQty = 0;
-    for (const e of (Array.isArray(entries) ? entries : [])){
-      if (!e || Number(e.productId) !== pid) continue;
-      if (e.type !== 'restock') continue;
-      const looksLot = !!(e.loteCodigo || e.loteId || e.loteCargaId || e.loteGroupKey || e.source === 'lote');
-      if (!looksLot) continue;
-      const q = Math.max(0, Number(e.qty) || 0);
-      const c = saleCostFromFieldsPOS(e);
-      if (!(q > 0) || !(c > 0)) continue;
-      weightedQty += q;
-      weightedCost += q * c;
-    }
-    if (weightedQty > 0 && weightedCost > 0) return round2(weightedCost / weightedQty);
-
-    // Segundo intento defensivo: algunos lotes guardan el costo en arcano33_lotes, no en inventory.
-    const lotes = readLotesLS_POS();
-    if (!Array.isArray(lotes) || !lotes.length) return 0;
-    const products = await getAll('products');
-    let lotWeightedCost = 0;
-    let lotWeightedQty = 0;
-    for (const l of lotes){
-      if (!l || Number(l.assignedEventId) !== evId) continue;
-      const rows = lotesPOSContractRowsPOS(l);
-      for (const row of rows){
-        const prod = resolveProductFromLoteContractRowPOS(row, products);
-        if (!prod || Number(prod.id) !== pid) continue;
-        const q = lotesPOSQtyFromContractRowPOS(row);
-        const c = saleCostFromFieldsPOS(row) || saleCostFromFieldsPOS(l);
-        if (!(q > 0) || !(c > 0)) continue;
-        lotWeightedQty += q;
-        lotWeightedCost += q * c;
-      }
-    }
-    if (lotWeightedQty > 0 && lotWeightedCost > 0) return round2(lotWeightedCost / lotWeightedQty);
-  }catch(err){
-    console.warn('No se pudo leer costo unitario FIFO/Lotes para venta', err);
-  }
-  return 0;
-}
-
 async function getReempaqueUnitCostForSalePOS(eventId, productId){
   try{
     const evId = Number(eventId);
@@ -14046,7 +13416,7 @@ async function getReempaqueUnitCostForSalePOS(eventId, productId){
       if (!isReempaqueDest) continue;
 
       const q = Math.max(0, Number(e.qty) || 0);
-      const c = saleCostFromFieldsPOS(e);
+      const c = saleCostFieldValuePOS(e.costoUnitarioDestino ?? e.targetUnitCost ?? e.unitCost ?? e.costPerUnit);
       if (!(q > 0) || !(c > 0)) continue;
       qtyTotal += q;
       qtyCost += q * c;
@@ -14060,20 +13430,16 @@ async function getReempaqueUnitCostForSalePOS(eventId, productId){
 }
 
 async function resolveSaleUnitCostPOS(eventId, productId, productName, productObj){
-  // Etapa 5/6: costo dinámico por prioridad, sin fallback accidental a Galón/Pulso.
-  const fromLotFifo = await getLotFifoUnitCostForSalePOS(eventId, productId, productName);
-  if (fromLotFifo > 0) return { unitCost: fromLotFifo, source: 'lote_fifo' };
-
   const fromReempaque = await getReempaqueUnitCostForSalePOS(eventId, productId);
   if (fromReempaque > 0) return { unitCost: fromReempaque, source: 'reempaque' };
 
   const fromProduct = getProductStoredUnitCostPOS(productObj);
-  if (fromProduct > 0) return { unitCost: fromProduct, source: 'producto_catalogo' };
+  if (fromProduct > 0) return { unitCost: fromProduct, source: 'producto' };
 
   const fromCalc = saleCostFieldValuePOS(getCostoUnitarioProducto(productName));
-  if (fromCalc > 0) return { unitCost: fromCalc, source: 'calculadora_legacy' };
+  if (fromCalc > 0) return { unitCost: fromCalc, source: 'calculadora' };
 
-  return { unitCost: 0, source: 'sin_costo_confiable' };
+  return { unitCost: 0, source: '' };
 }
 
 function reempaqueMovementErrorPOS(msg){
@@ -15130,13 +14496,6 @@ function isCupSaleRecord(sale){
   return false;
 }
 
-function isLegacyCupCostFallbackSalePOS(sale){
-  if (!isCupSaleRecord(sale)) return false;
-  // Los Vasos nuevos son productos POS normales con productId/costo propio.
-  // Solo estimamos desde Galón para registros legacy sin productId y con evidencia antigua de fraccionamiento.
-  return saleProductIdForInventoryPOS(sale) == null;
-}
-
 async function getEventByIdPOS(eventId){
   const evs = await getAll('events');
   return evs.find(e => e.id === eventId) || null;
@@ -15637,56 +14996,33 @@ async function importFromLoteToInventory(opts){
 
   const stamp = new Date().toISOString();
   const cargaId = 'lc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7);
+  const map = [
+    { field: 'pulso', name: 'Pulso 250ml' },
+    { field: 'media', name: 'Media 375ml' },
+    { field: 'djeba', name: 'Djeba 750ml' },
+    { field: 'litro', name: 'Litro 1000ml' },
+    { field: 'galon', name: 'Galón 3750 ml' }
+  ];
 
   const products = await getAll('products');
   const norm = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
   const items = [];
   let total = 0;
-
-  const contractRows = lotesPOSContractRowsPOS(loteAny);
-  if (contractRows.length){
-    // Contrato dinámico Lotes → POS: Product ID manda y evita sumar dos veces legacy + dinámico.
-    for (const row of contractRows){
-      const qty = lotesPOSQtyFromContractRowPOS(row);
-      if (!(qty > 0)) continue;
-      const prod = resolveProductFromLoteContractRowPOS(row, products);
-      if (!prod) continue;
-      const unitCost = saleCostFromFieldsPOS(row) || saleCostFromFieldsPOS(loteAny);
-      items.push({
-        productId: prod.id,
-        qty,
-        unitCost,
-        nombreSnapshot: row.nombreSnapshot || row.nombre || row.name || prod.name || '',
-        loteProductId: row.productId ?? row.productoId ?? null,
-        letra: row.Letra || row.letra || '',
-        source: 'lotes_productId'
-      });
-      total += qty;
+  for (const m of map){
+    const rawQty = (loteAny[m.field] ?? '0').toString();
+    const qty = parseInt(rawQty, 10);
+    if (!(qty > 0)) continue;
+    let prod = products.find(p => norm(p.name) === norm(m.name));
+    // Compat Galón: permitir legacy 'Galón 3750 ml' y/o cualquier nombre que mapee a 'galon'
+    if (!prod && m.field === 'galon') {
+      prod = products.find(p => norm(p.name) === norm('Galón 3750 ml')) || products.find(p => mapProductNameToFinishedId(p.name) === 'galon') || null;
     }
-  } else {
-    const map = [
-      { field: 'pulso', name: 'Pulso 250ml' },
-      { field: 'media', name: 'Media 375ml' },
-      { field: 'djeba', name: 'Djeba 750ml' },
-      { field: 'litro', name: 'Litro 1000ml' },
-      { field: 'galon', name: 'Galón 3750 ml' }
-    ];
-
-    for (const m of map){
-      const rawQty = (loteAny[m.field] ?? '0').toString();
-      const qty = parseInt(rawQty, 10);
-      if (!(qty > 0)) continue;
-      let prod = products.find(p => norm(p.name) === norm(m.name));
-      // Compat Galón: permitir legacy 'Galón 3750 ml' y/o cualquier nombre que mapee a 'galon'
-      if (!prod && m.field === 'galon') {
-        prod = products.find(p => norm(p.name) === norm('Galón 3750 ml')) || products.find(p => mapProductNameToFinishedId(p.name) === 'galon') || null;
-      }
-      if (!prod) continue;
-      items.push({ productId: prod.id, qty, unitCost: saleCostFromFieldsPOS(loteAny), source: 'lotes_legacy' });
-      total += qty;
-    }
+    if (!prod) continue;
+    items.push({ productId: prod.id, qty });
+    total += qty;
   }
+
   if (!items.length){
     try{ showToast('Ese lote no trae unidades para cargar (todo está en 0).', 'error', 3800); }catch(_){ }
     return { ok:false, reason:'EMPTY' };
@@ -15732,14 +15068,6 @@ async function importFromLoteToInventory(opts){
       loteCodigo: (loteAny.codigo || ''),
       loteId: (loteAny.id != null ? loteAny.id : null),
       loteCargaId: cargaId,
-      loteGroupKey: cargaId,
-      loteProductId: it.loteProductId ?? null,
-      loteLetra: it.letra || '',
-      loteNombreSnapshot: it.nombreSnapshot || '',
-      unitCost: it.unitCost > 0 ? round2(it.unitCost) : 0,
-      costPerUnit: it.unitCost > 0 ? round2(it.unitCost) : 0,
-      costoUnitario: it.unitCost > 0 ? round2(it.unitCost) : 0,
-      sourceDetail: it.source || '',
       time: stamp,
       notes: 'Reposición (lote ' + (loteAny.codigo || '') + ')'
     });
@@ -18850,7 +18178,15 @@ async function renderSummary(){
   const isCourtesySale = (s) => !!(s && (s.courtesy || s.isCourtesy));
   const normalizeCourtesyProductName = (name) => String(name || '—').replace(/\s*\(Cortesía\)\s*$/i, '').trim() || '—';
 
-  const getLineCost = (s) => getSaleLineCostSnapshotPOS(s);
+  const getLineCost = (s) => {
+    if (!s) return 0;
+    if (typeof s.lineCost === 'number' && Number.isFinite(s.lineCost)) return Number(s.lineCost || 0);
+    if (typeof s.costPerUnit === 'number' && Number.isFinite(s.costPerUnit)){
+      const qty = Number(s.qty || 0);
+      return Number(s.costPerUnit || 0) * qty;
+    }
+    return 0;
+  };
 
   const getListUnitPrice = (s) => {
     if (!s) return 0;
@@ -18956,10 +18292,10 @@ async function renderSummary(){
 
       const saleDiscount = getSummarySaleDiscountSignedTotalPOS(s);
       discountTotal += saleDiscount;
-      addSummaryDiscountAggPOS(byDiscount, getSaleProductNameSnapshotPOS(s), saleDiscount);
+      addSummaryDiscountAggPOS(byDiscount, s.productName, saleDiscount);
 
       byDay.set(s.date, (byDay.get(s.date) || 0) + total);
-      addSummaryProductAggPOS(byProd, getSaleProductNameSnapshotPOS(s), total, getSummarySaleQtyPOS(s), true);
+      addSummaryProductAggPOS(byProd, s.productName, total, getSummarySaleQtyPOS(s), true);
       const payKey = normalizePaymentMethodPOS(s.payment || 'efectivo') || 'efectivo';
       byPay.set(payKey, (byPay.get(payKey) || 0) + total);
       byEvent.set(s.eventName || 'General', (byEvent.get(s.eventName || 'General') || 0) + total);
@@ -19035,7 +18371,7 @@ async function renderSummary(){
       const eq = sign * absQty * listUnit;
       courtesyEquiv += eq;
 
-      const pname = normalizeCourtesyProductName(getSaleProductNameSnapshotPOS(s));
+      const pname = normalizeCourtesyProductName(s.productName);
       const prev = courtesyByProd.get(pname) || { qty: 0, cost: 0, equiv: 0 };
       prev.qty += absQty;
       prev.cost += lineCost;
@@ -20297,7 +19633,15 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
   const isCourtesySale = (s) => !!(s && (s.courtesy || s.isCourtesy));
   const normalizeCourtesyProductName = (name) => String(name || '—').replace(/\s*\(Cortesía\)\s*$/i, '').trim() || '—';
 
-  const getLineCost = (s) => getSaleLineCostSnapshotPOS(s);
+  const getLineCost = (s) => {
+    if (!s) return 0;
+    if (typeof s.lineCost === 'number' && Number.isFinite(s.lineCost)) return Number(s.lineCost || 0);
+    if (typeof s.costPerUnit === 'number' && Number.isFinite(s.costPerUnit)){
+      const qty = Number(s.qty || 0);
+      return Number(s.costPerUnit || 0) * qty;
+    }
+    return 0;
+  };
 
   const getListUnitPrice = (s) => {
     if (!s) return 0;
@@ -20355,9 +19699,9 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
       grand += total;
       const saleDiscount = getSummarySaleDiscountSignedTotalPOS(s);
       discountTotal += saleDiscount;
-      addSummaryDiscountAggPOS(byDiscount, getSaleProductNameSnapshotPOS(s), saleDiscount);
+      addSummaryDiscountAggPOS(byDiscount, s.productName, saleDiscount);
       byDay.set(s.date, (byDay.get(s.date) || 0) + total);
-      addSummaryProductAggPOS(byProd, getSaleProductNameSnapshotPOS(s), total, getSummarySaleQtyPOS(s), true);
+      addSummaryProductAggPOS(byProd, s.productName, total, getSummarySaleQtyPOS(s), true);
       const payKey = normalizePaymentMethodPOS(s.payment || 'efectivo') || 'efectivo';
       byPay.set(payKey, (byPay.get(payKey) || 0) + total);
       byEvent.set(s.eventName || 'General', (byEvent.get(s.eventName || 'General') || 0) + total);
@@ -20394,7 +19738,7 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
       const eq = sign * absQty * listUnit;
       courtesyEquiv += eq;
 
-      const pname = normalizeCourtesyProductName(getSaleProductNameSnapshotPOS(s));
+      const pname = normalizeCourtesyProductName(s.productName);
       const prev = courtesyByProd.get(pname) || { qty: 0, cost: 0, equiv: 0 };
       prev.qty += absQty;
       prev.cost += lineCost;
@@ -20461,9 +19805,9 @@ function buildSummarySheetsFromDataPOS(data){
   r.push(['Exportado', nowIsoPOS()]);
   r.push([]);
   r.push(['Métrica', 'Monto C$']);
-  r.push(['Venta neta', m.grand || 0]);
-  r.push(['Descuentos', m.discountTotal || 0]);
-  r.push(['Costos de ventas', m.grandCost || 0]);
+  r.push(['Total general', m.grand || 0]);
+  r.push(['Total descuento', m.discountTotal || 0]);
+  r.push(['Costo estimado', m.grandCost || 0]);
   r.push(['Utilidad bruta', m.grandProfit || 0]);
   r.push(['Cortesías (Costo real)', m.courtesyCost || 0]);
   r.push(['Utilidad después de cortesías', m.profitAfterCourtesy || 0]);
@@ -22113,7 +21457,7 @@ async function openEventView(eventId){
 
   const total = sales.reduce((a,b)=> a + (Number(b && b.total) || 0), 0);
 
-  // --- Costos (productos dinámicos: prioriza snapshot guardado; Galón solo para vasos legacy sin productId) ---
+  // --- Costos (incluye vasos usando costo del Galón / rendimiento de fraccionamiento) ---
   const fbatches = sanitizeFractionBatches(ev && ev.fractionBatches);
   const batchMap = new Map();
   for (const b of fbatches){
@@ -22175,9 +21519,9 @@ async function openEventView(eventId){
     const isCourtesy = !!(s.courtesy || s.isCourtesy);
 
     if (isCupSaleRecord(s)){
-      // Preferir snapshot. Solo registros legacy sin productId pueden estimarse desde Galón/yield.
-      const stored = getSaleLineCostSnapshotPOS(s);
-      const estimated = isLegacyCupCostFallbackSalePOS(s) ? estimateCupCostSigned(s) : 0;
+      // Preferir lineCost si ya existe, si no, estimar por galón/yield.
+      const stored = Number(s.lineCost || 0);
+      const estimated = estimateCupCostSigned(s);
       const lineCost = (Math.abs(stored) > 1e-9) ? stored : estimated;
 
       costoProductos += lineCost;
@@ -22188,7 +21532,7 @@ async function openEventView(eventId){
       }
     } else {
       const storedLineCost = getSaleLineCostPOS(s);
-      const fallbackUnitCost = getCostoUnitarioProducto(getSaleProductNameSnapshotPOS(s));
+      const fallbackUnitCost = getCostoUnitarioProducto(s.productName);
       const lineCost = (Math.abs(storedLineCost) > 1e-9)
         ? storedLineCost
         : ((fallbackUnitCost > 0 && qtyParaCosto !== 0) ? (fallbackUnitCost * qtyParaCosto) : 0);
@@ -22217,15 +21561,14 @@ async function openEventView(eventId){
     return m; 
   },{});
 
-  const hayCostoCortesiasVasos = Math.abs(Number(costoCortesiasVasos || 0)) > 1e-9 || canEstimateCupCost;
-  const costoCortesiasTotalKnown = costoCortesiasPres + (hayCostoCortesiasVasos ? costoCortesiasVasos : 0);
+  const costoCortesiasTotalKnown = costoCortesiasPres + (canEstimateCupCost ? costoCortesiasVasos : 0);
 
   $('#ev-totals').innerHTML = `<div><b>Total vendido (pagado):</b> C$ ${fmt(total)}</div>
   <div><b>Cortesías presentaciones:</b> ${Math.round(cortesiasPresU)} unid.</div>
   <div><b>Cortesías vasos:</b> ${Math.round(cortesiasVasosU)} vasos</div>
   <div><b>Costo cortesías presentaciones:</b> C$ ${fmt(costoCortesiasPres)}</div>
-  <div><b>Costo cortesías vasos:</b> ${hayCostoCortesiasVasos ? ('C$ ' + fmt(costoCortesiasVasos)) : 'N/D'}</div>
-  <div><b>Costo cortesías total:</b> ${hayCostoCortesiasVasos ? ('C$ ' + fmt(costoCortesiasTotalKnown)) : ('C$ ' + fmt(costoCortesiasPres) + ' + N/D')}</div>
+  <div><b>Costo cortesías vasos:</b> ${canEstimateCupCost ? ('C$ ' + fmt(costoCortesiasVasos)) : 'N/D'}</div>
+  <div><b>Costo cortesías total:</b> ${canEstimateCupCost ? ('C$ ' + fmt(costoCortesiasTotalKnown)) : ('C$ ' + fmt(costoCortesiasPres) + ' + N/D')}</div>
   <div><b>Costo estimado de producto:</b> C$ ${fmt(costoProductos)}</div>
   <div><b>Utilidad bruta aprox.:</b> C$ ${fmt(utilidadBruta)}</div>
   <div><b>Efectivo:</b> C$ ${fmt(byPay.efectivo||0)}</div>
@@ -22255,7 +21598,7 @@ async function openEventView(eventId){
   const byProd = Array.from((()=>{
     const m = new Map();
     for (const s of sales){
-      const k = (s && getSaleProductNameSnapshotPOS(s)) ? uiProductNamePOS(getSaleProductNameSnapshotPOS(s)) : '—';
+      const k = (s && s.productName) ? uiProductNamePOS(s.productName) : '—';
       const prev = m.get(k) || { amount: 0, qty: 0 };
       prev.amount += (Number(s && s.total) || 0);
       prev.qty += (Number(s && s.qty) || 0);
@@ -22287,7 +21630,7 @@ async function openEventView(eventId){
   // Más reciente primero
   sales.sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a))).forEach(s=>{
     const payLabel = getSalePaymentLabelPOS(s, bankMap);
-    const tr=document.createElement('tr'); tr.innerHTML = `<td>${getSaleSeqDisplayPOS(s)}</td><td>${s.date}</td><td>${getSaleTimeTextPOS(s)}</td><td>${escapeHtml(uiProductNamePOS(getSaleProductNameSnapshotPOS(s)))}</td><td>${s.qty}</td><td>${fmt(getSaleUnitPriceSnapshotPOS(s))}</td><td>${fmt(getSaleDiscountTotalPOS(s))}</td><td>${fmt(s.total)}</td><td>${payLabel}</td><td>${s.courtesy?'✓':''}</td><td>${s.isReturn?'✓':''}</td><td>${escapeHtml(getSaleCustomerSnapshotNamePOS(s))}</td><td>${s.courtesyTo||''}</td><td>${s.notes||''}</td>`;
+    const tr=document.createElement('tr'); tr.innerHTML = `<td>${getSaleSeqDisplayPOS(s)}</td><td>${s.date}</td><td>${getSaleTimeTextPOS(s)}</td><td>${escapeHtml(uiProductNamePOS(s.productName))}</td><td>${s.qty}</td><td>${fmt(s.unitPrice)}</td><td>${fmt(getSaleDiscountTotalPOS(s))}</td><td>${fmt(s.total)}</td><td>${payLabel}</td><td>${s.courtesy?'✓':''}</td><td>${s.isReturn?'✓':''}</td><td>${escapeHtml(getSaleCustomerSnapshotNamePOS(s))}</td><td>${s.courtesyTo||''}</td><td>${s.notes||''}</td>`;
     tb.appendChild(tr);
   });
 
@@ -22307,7 +21650,7 @@ async function exportEventSalesCSV(eventId){
   const ordered = [...sales].sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a)));
   for (const s of ordered){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
-    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
+    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = (ev?ev.name:'evento').replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
@@ -22318,9 +21661,9 @@ function buildCorteSummaryRows(eName, sales){
     const absQty = Math.abs(s.qty||0);
     const absTotal = Math.abs(s.total||0);
     const disc = getSaleDiscountTotalPOS(s);
-    bruto += (s.courtesy ? (getSaleUnitPriceSnapshotPOS(s)*absQty) : (absTotal + disc));
+    bruto += (s.courtesy ? (s.unitPrice*absQty) : (absTotal + disc));
     descuentos += disc * (s.isReturn?-1:1);
-    if (s.courtesy){ cortesiasU += absQty; cortesiasVal += (getSaleUnitPriceSnapshotPOS(s)*absQty); }
+    if (s.courtesy){ cortesiasU += absQty; cortesiasVal += (s.unitPrice*absQty); }
     if (s.isReturn){ devolU += absQty; devolVal += absTotal; }
     const pay = normalizePaymentMethodPOS(s.payment || '');
     if (pay === 'efectivo') efectivo += s.total;
@@ -22388,7 +21731,7 @@ async function generateCorteCSV(eventId){
   for (const s of sales){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
     const tp = getSaleCashTenderPartsPOS(s);
-    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
+    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(s.productName), s.qty, s.unitPrice, getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = ev.name.replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`corte_${safeName}.xlsx`, 'Corte', rows);
@@ -22471,16 +21814,16 @@ async function exportEventExcel(eventId){
   ventasRows.push(['N°','id','fecha','hora','producto','cantidad','PU_C$','descuento_C$','total_C$','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
   for (const s of sales){
     const qty = Number(s.qty || 0);
-    const costUnit = getSaleCostUnitSnapshotPOS(s);
-    const costTotal = getSaleLineCostSnapshotPOS(s);
+    const costUnit = Number.isFinite(Number(s.costPerUnit)) ? Number(s.costPerUnit) : 0;
+    const costTotal = Number.isFinite(Number(s.lineCost)) ? Number(s.lineCost) : (costUnit * qty);
     ventasRows.push([
       getSaleSeqDisplayPOS(s),
       s.id,
       s.date || '',
       getSaleTimeTextPOS(s) || '',
-      getSaleProductNameSnapshotPOS(s) || '',
+      s.productName || '',
       qty || 0,
-      getSaleUnitPriceSnapshotPOS(s) || 0,
+      s.unitPrice || 0,
       getSaleDiscountTotalPOS(s) || 0,
       s.total || 0,
       costUnit || 0,
@@ -22593,16 +21936,9 @@ async function deleteEvent(eventId){
 
 // Botón Restaurar productos base (A33)
 async function restoreSeed(){
-  const ok = confirm('¿Restaurar los productos base A33 que no existan?\n\nLa acción es manual, evita duplicados y no sobrescribe productos personalizados.');
-  if (!ok) return;
-  try{
-    const result = await seedMissingDefaults(true, { restoreDeleted:true });
-    await renderProductos(); await refreshProductSelect(); await renderInventario();
-    toast(Number(result && result.added) > 0 ? 'Productos base restaurados' : 'No había productos base pendientes');
-  }catch(error){
-    console.error('No se pudieron restaurar productos base', error);
-    showToast('No se pudo guardar el producto.', 'error', 5500);
-  }
+  await seedMissingDefaults(true);
+  await renderProductos(); await refreshProductSelect(); await renderInventario();
+  toast('Productos base restaurados');
 }
 
 // Init & bindings
@@ -22986,7 +22322,7 @@ async function init(){
 
     // FIFO (Etapa 2): re-sincronizar snapshot por evento/lote
     try{
-      if (last && presKeyFromProductNamePOS(getSaleProductNameSnapshotPOS(last))) {
+      if (last && presKeyFromProductNamePOS(last.productName)) {
         queueLotsUsageSyncPOS(last.eventId).then(res=>{
           if (res && res.ok===false){
             showToast('FIFO/Lotes: no se pudo actualizar el uso de lotes para este evento. Revisa asignación de lotes.', 'error', 7000);
@@ -23057,7 +22393,7 @@ async function init(){
 
       // FIFO (Etapa 2): re-sincronizar snapshot por evento/lote
       try{
-        if (saleToDelete && presKeyFromProductNamePOS(getSaleProductNameSnapshotPOS(saleToDelete))) {
+        if (saleToDelete && presKeyFromProductNamePOS(saleToDelete.productName)) {
           queueLotsUsageSyncPOS(saleToDelete.eventId).then(res=>{
             if (res && res.ok===false){
               showToast('FIFO/Lotes: no se pudo actualizar el uso de lotes para este evento. Revisa asignación de lotes.', 'error', 7000);
@@ -23083,7 +22419,7 @@ async function init(){
   try{ setupProductEditModalPOS(); }catch(_){ }
   const legacyAddProdBtn = document.getElementById('btn-add-prod');
   if (legacyAddProdBtn){
-    legacyAddProdBtn.onclick = async()=>{ const name = $('#new-name').value.trim(); const price = parseFloat($('#new-price').value||'0'); if (!name || !(price>0)) return alert('Nombre y precio'); try{ await put('products', {name, price, manageStock:true, active:true, pos:false, receta:false, letra:'', capacityMl:0, capacidadMl:0, unitCost:0, costoUnitario:0, costPerUnit:0, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()}); $('#new-name').value=''; $('#new-price').value=''; await renderProductos(); await refreshProductSelect(); await renderInventario(); try{ await reempaquePopulateSelectorsPOS(); }catch(_){ } toast('Producto agregado'); }catch(err){ alert('No se pudo agregar. ¿Nombre duplicado?'); } };
+    legacyAddProdBtn.onclick = async()=>{ const name = $('#new-name').value.trim(); const price = parseFloat($('#new-price').value||'0'); if (!name || !(price>0)) return alert('Nombre y precio'); try{ await put('products', {name, price, manageStock:true, active:true, capacityMl:0, capacidadMl:0, unitCost:0, costoUnitario:0, costPerUnit:0, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()}); $('#new-name').value=''; $('#new-price').value=''; await renderProductos(); await refreshProductSelect(); await renderInventario(); try{ await reempaquePopulateSelectorsPOS(); }catch(_){ } toast('Producto agregado'); }catch(err){ alert('No se pudo agregar. ¿Nombre duplicado?'); } };
   }
   const legacyRestoreSeedBtn = document.getElementById('btn-restore-seed');
   if (legacyRestoreSeedBtn) legacyRestoreSeedBtn.onclick = restoreSeed;
@@ -23320,7 +22656,7 @@ async function addSale(){
   const qtyRaw = parseNumPOS($('#sale-qty').value, 0);
   const qty = Math.abs(qtyRaw);
   const priceRaw = parseNumPOS($('#sale-price').value, 0);
-  const price = round2(priceRaw);
+  const price = priceRaw;
   const discStr = ($('#sale-discount') ? $('#sale-discount').value : '');
   const discTrim = String(discStr ?? '').trim();
   const discParsed = parseNumPOS(discStr, 0);
@@ -23384,27 +22720,12 @@ async function addSale(){
   if (!(await guardSellDayOpenOrToastPOS(event, date))) return;
 
   const products = await getAll('products');
-  const prod = products.find(p => String(p && p.id) === String(productId));
-  if (!prod){
-    alert('Producto no encontrado. Actualiza el selector de POS y vuelve a intentar.');
-    await refreshProductSelect({ keepSelection:false });
-    return;
-  }
-  if (!productSellableInPOS(prod)){
-    alert('Este producto ya no está activo o no está marcado para POS en Catálogos. No se guardó la venta.');
-    await refreshProductSelect({ keepSelection:false });
-    return;
-  }
-  const productSnap = buildSaleProductSnapshotPOS(prod, price);
-  if (!productSnap.productId || !productSnap.productName){
-    alert('Producto inválido: falta ID estable o nombre. Revisa Catálogos.');
-    return;
-  }
-  const productName = productSnap.productName;
+  const prod = products.find(p=>p.id===productId);
+  const productName = prod ? prod.name : 'N/D';
 
   // Etapa 4: Presentaciones con lote → no vender sin lotes asignados/disponibles
   if (!isReturn){
-    const lotGuard = await guardLotAvailabilityBeforeSalePOS(curId, productName, qty, productSnap.productId, prod);
+    const lotGuard = await guardLotAvailabilityBeforeSalePOS(curId, productName, qty);
     if (lotGuard && lotGuard.presKey){
       if (!lotGuard.ok){
         alert(lotGuard.msg || 'No hay lotes asignados a este evento para vender esta presentación.');
@@ -23429,7 +22750,7 @@ async function addSale(){
     }
   }
 
-  if (prod && productManageStockForSalePOS(prod, true) && !isReturn){
+  if (prod && prod.manageStock!==false && !isReturn){
     const st = await computeStock(curId, productId);
     if (st < qty){
       const go = confirm(`Stock insuficiente de ${productName}: disponible ${st}, intentas vender ${qty}. ¿Continuar de todos modos?`);
@@ -23445,18 +22766,10 @@ async function addSale(){
   const finalQty = isReturn ? -qty : qty;
   if (isReturn) total = -total;
 
-  const costInfo = await resolveSaleUnitCostPOS(curId, productSnap.productId, productName, prod);
+  const costInfo = await resolveSaleUnitCostPOS(curId, productId, productName, prod);
   const unitCost = Number(costInfo.unitCost || 0);
-  const economicSnapshot = buildSaleEconomicSnapshotPOS({
-    unitPrice: price,
-    qty: finalQty,
-    discount,
-    total,
-    unitCost,
-    costSource: costInfo.source || '',
-    courtesy,
-    isReturn
-  });
+  const lineCost = unitCost * finalQty;
+  const lineProfit = total - lineCost;
 
   const tenderCheck = validateSaleCashTenderPOS({ payment, total, courtesy, isReturn });
   if (!tenderCheck.ok){
@@ -23476,12 +22789,9 @@ async function addSale(){
     createdAt: Date.now(),
     eventId:curId,
     eventName,
-    productId: productSnap.productId,
-    productName: productSnap.productName,
-    productNameSnapshot: productSnap.productNameSnapshot,
-    unitPrice: productSnap.unitPrice,
-    unitPriceSnapshot: productSnap.unitPriceSnapshot,
-    productSnapshot: productSnap.productSnapshot,
+    productId,
+    productName,
+    unitPrice:price,
     qty:finalQty,
     discount,
     discountPerUnit: discountPerUnitEff,
@@ -23498,21 +22808,10 @@ async function addSale(){
     courtesyTo,
     total,
     notes,
-    ...economicSnapshot,
-    economicSnapshot: {
-      productId: productSnap.productId,
-      productName: productSnap.productNameSnapshot,
-      unitPriceSnapshot: productSnap.unitPriceSnapshot,
-      qty: finalQty,
-      subtotal: economicSnapshot.subtotal,
-      discountTotal: economicSnapshot.discountTotal,
-      ventaNeta: economicSnapshot.ventaNeta,
-      costPerUnit: economicSnapshot.costPerUnit,
-      costTotal: economicSnapshot.costTotal,
-      utilidad: economicSnapshot.utilidad,
-      costSource: economicSnapshot.costSourceSnapshot,
-      capturedAt: new Date().toISOString()
-    }
+    costPerUnit:unitCost,
+    costSource: costInfo.source || '',
+    lineCost,
+    lineProfit
   };
   applySaleCashTenderToRecordPOS(saleRecord, tenderCheck.tender);
 
@@ -23559,7 +22858,7 @@ async function addSale(){
 
   // Ajustar inventario central de producto terminado (post-commit)
   try{
-    applyFinishedFromSalePOS(saleRecord, +1);
+    applyFinishedFromSalePOS({ productName, qty: finalQty }, +1);
   }catch(e){
     console.error('Inventario central: no se pudo registrar salida (venta ya guardada)', e);
     posBlockingAlert('Venta guardada, pero no se pudo actualizar Inventario central (storage lleno o bloqueado). Libera espacio y recarga.');
@@ -23594,7 +22893,6 @@ async function addSale(){
 
   await renderDay(); await renderSummary(); await refreshSaleStockLabel(); await renderInventario();
   toast('Venta agregada');
-  try{ if (saleRecord.costWarning) showToast(saleRecord.costWarning, 'error', 6500); }catch(_){ }
 
 
   // Etapa 2D: limpieza de UID pendiente (venta completada)
@@ -23732,16 +23030,8 @@ async function addExtraSale(extraId){
   const time = now.toTimeString().slice(0,5);
 
   const costPerUnit = Number(extra.unitCost)||0;
-  const economicSnapshot = buildSaleEconomicSnapshotPOS({
-    unitPrice,
-    qty: finalQty,
-    discount,
-    total,
-    unitCost: costPerUnit,
-    costSource: costPerUnit > 0 ? 'extra_catalogo' : 'sin_costo_confiable',
-    courtesy,
-    isReturn
-  });
+  const lineCost = costPerUnit * finalQty;
+  const lineProfit = total - lineCost;
 
   const tenderCheck = validateSaleCashTenderPOS({ payment, total, courtesy, isReturn });
   if (!tenderCheck.ok){
@@ -23760,20 +23050,10 @@ async function addExtraSale(extraId){
     time,
     productId: null,
     productName: extra.name,
-    productNameSnapshot: extra.name,
     isExtra: true,
     extraId: extra.id,
-    extraSnapshot: {
-      kind: 'extra',
-      extraId: extra.id,
-      name: extra.name,
-      unitPrice,
-      unitCost: costPerUnit,
-      capturedAt: new Date().toISOString()
-    },
     qty: finalQty,
     unitPrice,
-    unitPriceSnapshot: unitPrice,
     discount,
     discountPerUnit,
     total,
@@ -23790,22 +23070,9 @@ async function addExtraSale(extraId){
     notes,
     isReturn,
     createdAt: Date.now(),
-    ...economicSnapshot,
-    economicSnapshot: {
-      kind: 'extra',
-      extraId: extra.id,
-      productName: extra.name,
-      unitPriceSnapshot: unitPrice,
-      qty: finalQty,
-      subtotal: economicSnapshot.subtotal,
-      discountTotal: economicSnapshot.discountTotal,
-      ventaNeta: economicSnapshot.ventaNeta,
-      costPerUnit: economicSnapshot.costPerUnit,
-      costTotal: economicSnapshot.costTotal,
-      utilidad: economicSnapshot.utilidad,
-      costSource: economicSnapshot.costSourceSnapshot,
-      capturedAt: new Date().toISOString()
-    }
+    costPerUnit,
+    lineCost,
+    lineProfit
   };
   applySaleCashTenderToRecordPOS(saleRecord, tenderCheck.tender);
 
@@ -23883,7 +23150,6 @@ async function addExtraSale(extraId){
   await refreshProductSelect({ keepSelection:true });
 
   toast(courtesy ? 'Cortesía de Extra registrada' : 'Venta de Extra registrada');
-  try{ if (saleRecord.costWarning) showToast(saleRecord.costWarning, 'error', 6500); }catch(_){ }
 
 
   // Etapa 2D: limpieza de UID pendiente (venta completada)
