@@ -11,9 +11,9 @@
 <script src="/assets/js/a33-theme.js?v=4.20.84&r=7"></script>
 <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=7" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=10" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.84&r=7" />
+  <link rel="stylesheet" href="style.css?v=4.20.84&r=10" />
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=7" />
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=7" />
 </head>
@@ -96,6 +96,14 @@
           </div>
         </div>
 
+        <div class="dynamic-products-section" id="dynamic-products-section" aria-label="Productos dinámicos adicionales">
+          <div class="dynamic-products-head">
+            <h3>Productos dinámicos adicionales</h3>
+            <p id="dynamic-products-status">Leyendo productos con Receta y Letra…</p>
+          </div>
+          <div class="dynamic-products-grid" id="dynamic-products-grid"></div>
+        </div>
+
         <div class="field">
           <label for="notas">Notas</label>
           <textarea id="notas" name="notas" rows="3" placeholder="Observaciones del lote, ajustes en la receta, destino, etc."></textarea>
@@ -124,10 +132,18 @@
         <div class="list-meta" id="list-meta" aria-live="polite"></div>
       </div>
 
-      <!-- Etapa 2: Barra de Totales (RESTANTE) por presentación (P/M/D/L/G) -->
-      <div class="totals-bar" id="totals-bar" aria-label="Totales restantes (P/M/D/L/G)">
+      <div class="catalog-products-bar" id="lote-products-catalog-bar" aria-label="Productos producibles desde Catálogos">
+        <div class="totals-label">Producibles</div>
+        <div class="catalog-products-content">
+          <div class="catalog-products-chips" id="lote-products-catalog-chips" role="group" aria-label="Productos con Receta y Letra"></div>
+          <div class="catalog-products-status" id="lote-products-catalog-status" aria-live="polite">Leyendo productos…</div>
+        </div>
+      </div>
+
+      <!-- Etapa 1 Parte 3: Barra dinámica de Totales por Letra -->
+      <div class="totals-bar" id="totals-bar" aria-label="Totales restantes por Letra">
         <div class="totals-label">Totales</div>
-        <div class="totals-chips" role="group" aria-label="Totales por presentación">
+        <div class="totals-chips" role="group" aria-label="Totales por Letra">
           <div class="totals-chip" aria-label="Total Pulso">
             <div class="totals-chip-key">P</div>
             <div class="totals-chip-val" data-total-key="P">0</div>
@@ -191,7 +207,7 @@
         <button type="button" class="btn secondary icon modal__close" id="history-close-btn" aria-label="Cerrar">✕</button>
       </div>
       <div class="modal__body">
-        <input type="text" id="history-search" placeholder="Buscar por código de lote…" autocomplete="off" inputmode="search" />
+        <input type="text" id="history-search" placeholder="Buscar por código, producto o evento…" autocomplete="off" inputmode="search" />
         <div class="modal__meta" id="history-meta"></div>
         <div class="history-list" id="history-list"></div>
       </div>
@@ -205,10 +221,10 @@
   <script src="./vendor/xlsx.full.min.js?v=4.20.84&r=7"></script>
   <script src="/assets/js/a33-release.js?v=4.20.84&r=44"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.84&r=7"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.84&r=8"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.84&r=7"></script>
 
-  <script src="script.js?v=4.20.84&r=7"></script>
+  <script src="script.js?v=4.20.84&r=14"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=7"></script>
 </body>
 </html>

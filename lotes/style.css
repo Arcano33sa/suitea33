@@ -350,9 +350,10 @@ textarea {
 }
 
 /* ================================
-   Etapa 2: Barra de Totales (RESTANTE)
+   Parte 3 Etapa 1: Productos producibles + Totales dinámicos por Letra
    ================================ */
 
+.catalog-products-bar,
 .totals-bar{
   display: flex;
   align-items: center;
@@ -364,6 +365,65 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(4, 4, 4, 0.65);
   margin-bottom: 0.55rem;
+}
+
+.catalog-products-bar{
+  align-items: flex-start;
+  border-color: rgba(221, 191, 100, 0.18);
+  background: linear-gradient(135deg, rgba(221, 191, 100, 0.07), rgba(4, 4, 4, 0.62));
+}
+
+.catalog-products-content{
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-end;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.catalog-products-chips{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
+.catalog-product-chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 0.16rem 0.48rem;
+  border-radius: 999px;
+  border: 1px solid rgba(221, 191, 100, 0.48);
+  background: rgba(255,255,255,0.035);
+  color: rgba(255, 245, 220, 0.95);
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.catalog-product-chip strong{
+  color: var(--color-accent-soft);
+  letter-spacing: 0.07em;
+}
+
+.catalog-product-chip span{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-products-status{
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  text-align: right;
+}
+
+.catalog-products-bar.is-warn{
+  border-color: rgba(255, 170, 70, 0.35);
 }
 
 .totals-label{
@@ -383,9 +443,9 @@ textarea {
 }
 
 .totals-chip{
-  width: 44px;
+  width: auto;
   min-width: 44px;
-  padding: 0.22rem 0.15rem;
+  padding: 0.22rem 0.35rem;
   border-radius: 12px;
   border: 1px solid rgba(221, 191, 100, 0.55);
   background: rgba(255, 255, 255, 0.03);
@@ -522,6 +582,16 @@ tr:nth-child(even) td {
   color: var(--color-text-muted);
   background: rgba(255, 255, 255, 0.05);
 }
+.chip--product-dynamic{
+  border-color: rgba(221, 191, 100, 0.35);
+  color: rgba(255, 245, 220, 0.94);
+  background: rgba(221, 191, 100, 0.07);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chip--event{
   border-color: rgba(221, 191, 100, 0.45);
   color: var(--color-text-muted);
@@ -891,5 +961,104 @@ tr:nth-child(even) td {
   .logo {
     width: 48px;
     height: 48px;
+  }
+}
+
+
+@media (max-width: 520px){
+  .catalog-products-bar,
+  .totals-bar{
+    align-items: stretch;
+  }
+
+  .catalog-products-content,
+  .catalog-products-chips,
+  .totals-chips{
+    justify-content: flex-start;
+    align-items: flex-start;
+    margin-left: 0;
+  }
+
+  .catalog-products-status{
+    text-align: left;
+  }
+}
+
+
+/* Etapa 2/4 Lotes: productos dinámicos adicionales */
+.dynamic-products-section {
+  margin: 0.85rem 0 0.95rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(219, 191, 100, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.dynamic-products-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.dynamic-products-head h3 {
+  margin: 0;
+}
+
+.dynamic-products-head p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+.dynamic-products-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem 0.75rem;
+}
+
+.dynamic-product-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.dynamic-product-field label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dynamic-product-field label strong {
+  color: var(--color-accent-soft);
+  letter-spacing: 0.05em;
+}
+
+.dynamic-product-input {
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .dynamic-products-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dynamic-products-head p {
+    text-align: left;
+  }
+
+  .dynamic-products-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .dynamic-products-grid {
+    grid-template-columns: 1fr;
   }
 }

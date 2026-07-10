@@ -19901,23 +19901,49 @@ function finPosAutoResolveProductAccount(data, productName, kind) {
   const key = finPosProductKeyFromName(productName);
   const spec = key ? FIN_POS_PRODUCT_ACCOUNT_MAP[key] : null;
   const candidates = spec && Array.isArray(spec[kind]) ? spec[kind] : [];
+
+  // Productos dinámicos: si no reconocemos presentación legacy, NO caen a Galón por fallback.
+  // Se usan cuentas genéricas/posteables por tipo; así Catrina, Vaso u otros productos futuros
+  // conservan su nombre snapshot sin mapearse como 1421/5211 salvo que el catálogo realmente coincida.
   if (kind === 'inventory') {
+    const genericCandidates = key ? ['1421', '1441', '1411', '1501', '1500'] : ['1501', '1500'];
+    const genericGroups = key
+      ? [['sangria'], ['producto', 'terminado'], ['vasos'], ['inventario']]
+      : [['producto', 'terminado'], ['inventario', 'producto'], ['inventario']];
     return finPosAutoResolvePostableAccount(data, {
-      candidateCodes: [...candidates, '1421', '1441', '1411'],
+      candidateCodes: [...candidates, ...genericCandidates],
       tipo: 'activo',
-      nameGroups: [['sangria'], ['producto', 'terminado'], ['vasos'], ['inventario']]
+      nameGroups: genericGroups,
+      predicate: key ? null : ((raw, view) => {
+        const code = finNormalizeAccountCode(finGetAccountCode(view));
+        if (['1421','1422','1423','1424','1425','1441'].includes(code)) return false;
+        const nm = normText([finGetAccountName(view), raw && raw.nombre, raw && raw.name].filter(Boolean).join(' '));
+        if (['galon','litro','djeba','media','pulso','vaso'].some(w => nm.includes(w))) return false;
+        return nm.includes('inventar') || nm.includes('producto terminado') || nm.includes('stock');
+      })
     });
   }
   if (kind === 'cogs') {
+    const genericCandidates = key ? ['5211', '5131', '5111', '5101', '5100'] : ['5101', '5100', '5111'];
+    const genericGroups = key
+      ? [['costo', 'vendido'], ['costo', 'vasos'], ['costo']]
+      : [['costo', 'ventas'], ['costo', 'vendido'], ['costo']];
     return finPosAutoResolvePostableAccount(data, {
-      candidateCodes: [...candidates, '5211', '5131', '5111'],
+      candidateCodes: [...candidates, ...genericCandidates],
       tipo: 'costo',
-      nameGroups: [['costo', 'vendido'], ['costo', 'vasos'], ['costo']]
+      nameGroups: genericGroups,
+      predicate: key ? null : ((raw, view) => {
+        const code = finNormalizeAccountCode(finGetAccountCode(view));
+        if (['5211','5212','5213','5214','5215','5131'].includes(code)) return false;
+        const nm = normText([finGetAccountName(view), raw && raw.nombre, raw && raw.name].filter(Boolean).join(' '));
+        if (['galon','litro','djeba','media','pulso','vaso'].some(w => nm.includes(w))) return false;
+        return nm.includes('costo');
+      })
     });
   }
   if (kind === 'income') {
     return finPosAutoResolvePostableAccount(data, {
-      candidateCodes: [...candidates, '4211', '4111'],
+      candidateCodes: [...candidates, '4211', '4111', '4101', '4100'],
       tipo: 'ingreso',
       nameGroups: [['ventas', 'pos'], ['ventas']]
     });
@@ -20350,7 +20376,23 @@ async function createPosDailyCloseEntry(closure, data) {
       fxRateUsed: petty.fxRateUsed || null,
       hasUsd: !!petty.hasUsd
     } : null,
-    posSnapshot: { key: closure.key || null, createdAt: closure.createdAt || null, meta: closure.meta || null, totals: { totalGeneral, totalMismatch } },
+    posSnapshot: {
+      key: closure.key || null,
+      createdAt: closure.createdAt || null,
+      meta: closure.meta || null,
+      totals: {
+        totalGeneral,
+        totalMismatch,
+        ventaBruta: n2(closure?.totals?.ventaBruta),
+        descuentosTotal: n2(closure?.totals?.descuentosTotal),
+        ventaNeta: n2(closure?.totals?.ventaNeta ?? closure?.totals?.totalGeneral),
+        utilidadBruta: n2(closure?.totals?.utilidadBruta),
+        utilidadNetaOperativa: n2(closure?.totals?.utilidadNetaOperativa),
+        cortesiaValorReferencia: n2(closure?.totals?.cortesiaValorReferencia),
+        devolucionCantidad: Number(closure?.totals?.devolucionCantidad || 0) || 0,
+        devolucionValor: n2(closure?.totals?.devolucionValor)
+      }
+    },
     importedAt: Date.now()
   };
 

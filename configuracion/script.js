@@ -2,11 +2,12 @@
   'use strict';
 
   const BACKUP_APP_NAME = 'Suite A33';
-  const SUITE_LS_PREFIXES = ['arcano33_', 'a33_', 'suite_a33_'];
+  const SUITE_LS_PREFIXES = ['arcano33_', 'a33_', 'suite_a33_', 'a33.'];
 
   function isSuiteLocalStorageKey(key){
     if (!key) return false;
-    return SUITE_LS_PREFIXES.some((p) => key.startsWith(p));
+    const s = String(key || '').toLowerCase();
+    return SUITE_LS_PREFIXES.some((p) => s.startsWith(String(p || '').toLowerCase()));
   }
 
   function isSuiteDbName(name){
@@ -984,6 +985,996 @@
     return `suitea33-backup-${stamp}.json`;
   }
 
+  function buildCustomBackupFilename(){
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    return `suitea33-backup-personalizado-${stamp}.json`;
+  }
+
+  const CUSTOM_EXPORT_MODULES = [
+    {
+      id: 'configuracion',
+      label: 'Configuración',
+      parts: [
+        { id: 'identidad', label: 'Identidad', keyNeedles: ['suite_a33_identity'] },
+        { id: 'apariencia', label: 'Apariencia', keyNeedles: ['suite_a33_appearance'] },
+        { id: 'moneda', label: 'Moneda', keyNeedles: ['suite_a33_currency'] },
+        { id: 'reportes', label: 'Reportes', keyNeedles: ['suite_a33_reports'] },
+        { id: 'pwa', label: 'PWA / preferencias', keyNeedles: ['suite_a33_pwa', 'a33_build', 'a33_version'] },
+        { id: 'general', label: 'Configuración general', keyNeedles: ['suite_a33_firebase', 'suite_a33_user', 'suite_a33_module', 'suite_a33_config'] }
+      ]
+    },
+    {
+      id: 'catalogos',
+      label: 'Catálogos',
+      parts: [
+        { id: 'productos', label: 'Productos', stores: [{ db: 'a33-pos', store: 'products' }], keyNeedles: ['a33_catalog_deleted_products'] },
+        { id: 'envases', label: 'Envases / Botellas', keyNeedles: ['a33_catalog_envases', 'a33_catalog_deleted_envases'] },
+        { id: 'tapas', label: 'Tapas / Corchos', keyNeedles: ['a33_catalog_tapas', 'a33_catalog_deleted_tapas'] },
+        { id: 'extras', label: 'Extras', stores: [{ db: 'a33-pos', store: 'extras' }], keyNeedles: ['a33_catalog_deleted_extras'] },
+        { id: 'bancos', label: 'Bancos', stores: [{ db: 'a33-pos', store: 'banks' }], keyNeedles: ['bank', 'banco', 'a33_catalog_deleted_banks'] },
+        { id: 'clientes', label: 'Clientes', keyNeedles: ['a33_pos_customers', 'a33_catalog_deleted_customers'], stores: [{ db: 'a33-pos', store: 'customers' }] }
+      ]
+    },
+    {
+      id: 'inventario',
+      label: 'Inventario / Producción',
+      parts: [
+        { id: 'productoTerminado', label: 'Producto terminado', keyNeedles: ['arcano33_inventario'] },
+        { id: 'envasesDisponibles', label: 'Envases / Botellas disponibles', keyNeedles: ['arcano33_inventario'] },
+        { id: 'tapasDisponibles', label: 'Tapas / Corchos disponibles', keyNeedles: ['arcano33_inventario'] },
+        { id: 'movimientosInventario', label: 'Movimientos de inventario', keyNeedles: ['arcano33_inventario'] },
+        { id: 'recetas', label: 'Recetas', keyNeedles: ['arcano33_recetas_v1'] },
+        { id: 'calculadoraProduccion', label: 'Calculadora de Producción', keyNeedles: ['arcano33_lote_actual', 'arcano33_fecha_produccion', 'arcano33_notas_lote', 'arcano33_calc_', 'a33_calc_hebrew'] },
+        { id: 'calculadoraTemporal', label: 'Calculadora Temporal', keyNeedles: ['arcano33_temporal_', 'a33_calc_temporal_hebrew'] }
+      ]
+    },
+    {
+      id: 'lotes',
+      label: 'Lotes',
+      parts: [
+        { id: 'lotes', label: 'Lotes', keyNeedles: ['arcano33_lotes'] },
+        { id: 'productosPorLote', label: 'Productos producidos por lote', keyNeedles: ['arcano33_lotes'] },
+        { id: 'compatibilidadHistorica', label: 'Compatibilidad histórica P/M/D/L/G', keyNeedles: ['arcano33_lotes', 'arcano33_calc_ultimo_consecutivo', 'arcano33_calc_consecutivo_actual'] }
+      ]
+    },
+    {
+      id: 'pos',
+      label: 'POS',
+      parts: [
+        { id: 'ventas', label: 'Ventas', stores: [{ db: 'a33-pos', store: 'sales' }], keyNeedles: ['a33_pos_pending_sale'] },
+        { id: 'eventos', label: 'Eventos', stores: [{ db: 'a33-pos', store: 'events' }], keyNeedles: ['selectedsummaryeventid'] },
+        { id: 'inventarioPos', label: 'Inventario POS', stores: [{ db: 'a33-pos', store: 'inventory' }] },
+        { id: 'cierresDiarios', label: 'Cierres diarios', stores: [{ db: 'a33-pos', store: 'dailyClosures' }, { db: 'a33-pos', store: 'dayLocks' }] },
+        { id: 'cajaEfectivoPos', label: 'Caja / Efectivo POS', stores: [{ db: 'a33-pos', store: 'cashV2' }, { db: 'a33-pos', store: 'cashv2hist' }, { db: 'a33-pos', store: 'cashv2snap' }], keyNeedles: ['a33.ef2'] },
+        { id: 'reempaques', label: 'Reempaques', stores: [{ db: 'a33-pos', store: 'reempaques' }] },
+        { id: 'historicosResumenes', label: 'Históricos / resúmenes', stores: [{ db: 'a33-pos', store: 'summaryArchives' }, { db: 'a33-pos', store: 'posRemindersIndex' }], keyNeedles: ['pos_summary'] }
+      ]
+    },
+    {
+      id: 'finanzas',
+      label: 'Finanzas',
+      parts: [
+        { id: 'recibos', label: 'Recibos', stores: [{ db: 'finanzasDB', store: 'receipts' }] },
+        { id: 'importacionesPos', label: 'Importaciones POS', stores: [{ db: 'finanzasDB', store: 'posDailyCloseImports' }] },
+        { id: 'tableroOperativo', label: 'Tablero / datos operativos', keyNeedles: ['finanzas_tablero', 'finance_dashboard', 'cat_usage_cache'] },
+        { id: 'bancosCuentas', label: 'Bancos / cuentas financieras', stores: [{ db: 'finanzasDB', store: 'accounts' }], keyNeedles: ['finanzas_bancos', 'cuentas_financieras'] },
+        { id: 'configuracionFinanciera', label: 'Configuración financiera', stores: [{ db: 'finanzasDB', store: 'settings' }], keyNeedles: ['finanzas_config', 'suite_a33_currency'] },
+        { id: 'movimientosFinancieros', label: 'Movimientos financieros existentes', stores: [{ db: 'finanzasDB', store: 'journalEntries' }, { db: 'finanzasDB', store: 'journalLines' }] }
+      ]
+    },
+    {
+      id: 'agenda',
+      label: 'Agenda / Pedidos',
+      parts: [
+        { id: 'agenda', label: 'Agenda', keyNeedles: ['agenda', 'a33_agenda', 'suite_a33_agenda'] },
+        { id: 'pedidos', label: 'Pedidos', keyNeedles: ['pedido', 'pedidos', 'arcano33_pedidos'] }
+      ]
+    }
+  ];
+
+  const CUSTOM_POS_EVENTS_EMPTY_NOTICE = 'Seleccionaste eventos. Si querés respaldar también sus ventas/cierres, marcá esas opciones en POS.';
+  const CUSTOM_POS_EVENT_STATE = {
+    selectedIds: [],
+    appliedAt: '',
+    eventsCache: []
+  };
+
+  function normalizeSelectionPartIds(selection, moduleId){
+    const parts = selection && Array.isArray(selection[moduleId]) ? selection[moduleId] : [];
+    return parts.map((id) => String(id || '')).filter(Boolean);
+  }
+
+  function selectionHasPart(selection, moduleId, partId){
+    return normalizeSelectionPartIds(selection, moduleId).includes(String(partId || ''));
+  }
+
+  function selectionHasAny(selection, moduleId, partIds){
+    const set = new Set(normalizeSelectionPartIds(selection, moduleId));
+    return (Array.isArray(partIds) ? partIds : []).some((id) => set.has(String(id || '')));
+  }
+
+  function getCustomDependencyWarnings(selection){
+    const warnings = [];
+    const hasProducts = selectionHasPart(selection, 'catalogos', 'productos');
+    const hasPosVentas = selectionHasPart(selection, 'pos', 'ventas');
+    const hasPosEventos = selectionHasPart(selection, 'pos', 'eventos');
+    const hasPosCierres = selectionHasPart(selection, 'pos', 'cierresDiarios');
+    const hasLotes = selectionHasAny(selection, 'lotes', ['lotes', 'productosPorLote', 'compatibilidadHistorica']);
+    const hasProduccion = selectionHasAny(selection, 'inventario', ['recetas', 'calculadoraProduccion', 'calculadoraTemporal']);
+    const hasInventarioBase = selectionHasAny(selection, 'inventario', ['productoTerminado', 'envasesDisponibles', 'tapasDisponibles', 'movimientosInventario']);
+    const hasCatalogEnvasesTapas = selectionHasAny(selection, 'catalogos', ['envases', 'tapas']);
+
+    if (hasPosVentas && !hasProducts){
+      warnings.push('Ventas POS puede necesitar Productos como referencia histórica. Si el otro navegador no tiene ese catálogo, conviene incluir Catálogos → Productos.');
+    }
+    if (hasPosEventos && !hasPosVentas){
+      warnings.push('Eventos POS sin Ventas respaldará el evento base; las ventas del evento no viajarán si no marcás POS → Ventas.');
+    }
+    if (hasPosEventos && !hasPosCierres){
+      warnings.push('Eventos POS sin Cierres diarios no incluirá los cierres asociados a esos eventos.');
+    }
+    if (hasLotes && !hasProducts){
+      warnings.push('Lotes puede depender de Productos/productId y Letra. Para máxima compatibilidad, incluí Catálogos → Productos.');
+    }
+    if (hasProduccion && !hasInventarioBase){
+      warnings.push('Producción/Calculadoras sin Inventario trasladará recetas o cálculos, pero no las existencias disponibles de producto terminado, envases o tapas.');
+    }
+    if (hasCatalogEnvasesTapas && !hasProducts){
+      warnings.push('Envases/Tapas viajan como catálogo, pero los productos dinámicos que los usan no se incluyen salvo que marques Catálogos → Productos.');
+    }
+    return Array.from(new Set(warnings));
+  }
+
+  function dependencyWarningsHtml(warnings){
+    const list = (Array.isArray(warnings) ? warnings : []).filter(Boolean);
+    if (!list.length) return '';
+    return `
+      <div class="cfg-backup-dependency-box" role="note">
+        <strong>Avisos de dependencias</strong>
+        <ul>${list.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul>
+      </div>
+    `;
+  }
+
+  function customPosEventId(ev){
+    if (!ev || typeof ev !== 'object') return '';
+    const raw = ev.id ?? ev.eventId ?? ev.uid ?? ev.uuid ?? ev.key ?? '';
+    return String(raw ?? '').trim();
+  }
+
+  function customPosEventName(ev){
+    const raw = ev?.name ?? ev?.eventName ?? ev?.nombre ?? ev?.title ?? ev?.titulo ?? '';
+    return String(raw || 'Evento sin nombre').trim() || 'Evento sin nombre';
+  }
+
+  function customPosEventDateRaw(ev){
+    return ev?.date ?? ev?.fecha ?? ev?.createdAt ?? ev?.created_at ?? ev?.startAt ?? ev?.openedAt ?? ev?.closedAt ?? '';
+  }
+
+  function customPosEventDateLabel(ev){
+    const raw = customPosEventDateRaw(ev);
+    if (!raw) return '';
+    if (typeof raw === 'number' && Number.isFinite(raw)){
+      try{ return new Date(raw).toLocaleDateString(); }catch(_){ return String(raw); }
+    }
+    const str = String(raw || '').trim();
+    if (!str) return '';
+    const t = Date.parse(str);
+    if (!Number.isNaN(t)){
+      try{ return new Date(t).toLocaleDateString(); }catch(_){ }
+    }
+    return str;
+  }
+
+  function customPosEventSortKey(ev){
+    const raw = customPosEventDateRaw(ev);
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    const t = Date.parse(String(raw || ''));
+    if (!Number.isNaN(t)) return t;
+    const n = Number(customPosEventId(ev));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function customPosEventStatusLabel(ev){
+    const explicit = ev?.status ?? ev?.estado ?? ev?.state ?? '';
+    if (explicit) return String(explicit).trim();
+    if (ev?.closedAt || ev?.closed_at || ev?.cerradoAt) return 'Cerrado';
+    return 'Abierto';
+  }
+
+  function customPosEventTotalLabel(ev){
+    const candidates = ['total', 'totalSales', 'salesTotal', 'ventasTotal', 'saleTotal', 'grandTotal', 'netTotal'];
+    for (const k of candidates){
+      const n = Number(ev && ev[k]);
+      if (Number.isFinite(n) && n !== 0){
+        try{ return `C$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }catch(_){ return `C$${n.toFixed(2)}`; }
+      }
+    }
+    const saleSeq = Number(ev?.saleSeq);
+    if (Number.isFinite(saleSeq) && saleSeq > 0) return `${saleSeq} venta(s)`;
+    return '';
+  }
+
+  function customPosEventSearchText(ev){
+    return [
+      customPosEventName(ev),
+      customPosEventDateLabel(ev),
+      customPosEventStatusLabel(ev),
+      customPosEventTotalLabel(ev),
+      customPosEventId(ev)
+    ].join(' ').toLowerCase();
+  }
+
+  function customPosEventSelectionSet(){
+    return new Set((CUSTOM_POS_EVENT_STATE.selectedIds || []).map((id) => String(id)));
+  }
+
+  function customPosEventSelectionCount(){
+    return customPosEventSelectionSet().size;
+  }
+
+  function customPosEventSelectionLabel(){
+    const count = customPosEventSelectionCount();
+    return count ? `${count} evento(s)` : 'Sin selección';
+  }
+
+  function isCustomPosEventosChecked(){
+    const el = document.querySelector('[data-custom-export-part="pos:eventos"]');
+    return !!(el && el.checked);
+  }
+
+  function isCustomPosTodoChecked(){
+    const mod = getCustomModuleById('pos');
+    const selected = collectCustomSelectionFromDom();
+    const posPartIds = Array.isArray(selected.pos) ? selected.pos : [];
+    const allPartIds = (mod?.parts || []).map((part) => part.id);
+    return allPartIds.length > 0 && allPartIds.every((id) => posPartIds.includes(id));
+  }
+
+  function getCustomPosDependencyNotice(selection){
+    const pos = Array.isArray(selection?.pos) ? selection.pos : [];
+    if (!pos.includes('eventos')) return '';
+    if (pos.includes('ventas') && pos.includes('cierresDiarios')) return '';
+    return CUSTOM_POS_EVENTS_EMPTY_NOTICE;
+  }
+
+  function customPosEventsNeedsManualSelection(selection){
+    const pos = Array.isArray(selection?.pos) ? selection.pos : [];
+    if (!pos.includes('eventos')) return false;
+    const mod = getCustomModuleById('pos');
+    const allPartIds = (mod?.parts || []).map((part) => part.id);
+    const allSelected = allPartIds.length > 0 && allPartIds.every((id) => pos.includes(id));
+    return !allSelected;
+  }
+
+  function updateCustomPosEventSelectionUi(){
+    const btn = document.getElementById('cfg-pos-events-select-btn');
+    const countEl = document.getElementById('cfg-pos-events-select-count');
+    const note = document.getElementById('cfg-pos-events-select-note');
+    if (!btn && !countEl && !note) return;
+    const checked = isCustomPosEventosChecked();
+    const todoPos = checked && isCustomPosTodoChecked();
+    const selection = collectCustomSelectionFromDom();
+    if (btn){
+      btn.style.display = checked ? 'inline-flex' : 'none';
+      btn.disabled = todoPos;
+      btn.setAttribute('aria-disabled', todoPos ? 'true' : 'false');
+    }
+    if (countEl){
+      countEl.textContent = todoPos ? 'Todo POS: todos los eventos' : customPosEventSelectionLabel();
+    }
+    if (note){
+      if (!checked){
+        note.textContent = '';
+        note.style.display = 'none';
+        note.classList.remove('is-warn');
+      } else if (todoPos){
+        note.textContent = 'Todo POS marcado: se incluirán todos los eventos sin selección manual.';
+        note.style.display = 'block';
+        note.classList.remove('is-warn');
+      } else {
+        const count = customPosEventSelectionCount();
+        const dep = getCustomPosDependencyNotice(selection);
+        note.textContent = count ? `${customPosEventSelectionLabel()} aplicado(s). ${dep}` : 'Abrí Seleccionar eventos y marcá al menos un evento.';
+        note.style.display = 'block';
+        note.classList.toggle('is-warn', count <= 0);
+      }
+    }
+  }
+
+  async function getCustomPosEventsForSelection(){
+    try{
+      const snap = await snapshotDatabase('a33-pos');
+      const records = snap?.stores?.events?.records || [];
+      const events = (Array.isArray(records) ? records : [])
+        .filter((ev) => customPosEventId(ev))
+        .map((ev) => cloneJsonSafe(ev));
+      events.sort((a, b) => {
+        const da = customPosEventSortKey(a);
+        const db = customPosEventSortKey(b);
+        if (db !== da) return db - da;
+        return customPosEventName(a).localeCompare(customPosEventName(b));
+      });
+      CUSTOM_POS_EVENT_STATE.eventsCache = events;
+      return events;
+    }catch(_){
+      CUSTOM_POS_EVENT_STATE.eventsCache = [];
+      return [];
+    }
+  }
+
+  function ensureCustomPosEventsModal(){
+    let overlay = document.getElementById('cfg-pos-events-modal');
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'cfg-pos-events-modal';
+    overlay.className = 'modal-overlay cfg-pos-events-modal-overlay';
+    overlay.style.display = 'none';
+    overlay.innerHTML = `
+      <div aria-labelledby="cfg-pos-events-modal-title" aria-modal="true" class="modal-card cfg-pos-events-modal-card" role="dialog">
+        <h2 class="modal-title" id="cfg-pos-events-modal-title">Seleccionar eventos POS</h2>
+        <div class="modal-body" id="cfg-pos-events-modal-body"></div>
+        <div class="modal-actions">
+          <button class="cfg-btn cfg-btn-ghost cfg-btn-modal" id="cfg-pos-events-modal-cancel" type="button">Cancelar</button>
+          <button class="cfg-btn cfg-btn-primary cfg-btn-modal" id="cfg-pos-events-modal-apply" type="button">Aplicar selección</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function buildCustomPosEventsRowsHtml(events, selectedSet){
+    if (!events.length){
+      return '<div class="muted cfg-pos-events-empty">No hay eventos POS detectados en este navegador.</div>';
+    }
+    return events.map((ev) => {
+      const id = customPosEventId(ev);
+      const date = customPosEventDateLabel(ev);
+      const status = customPosEventStatusLabel(ev);
+      const total = customPosEventTotalLabel(ev);
+      const meta = [date, status, total].filter(Boolean).join(' · ');
+      const search = customPosEventSearchText(ev);
+      return `
+        <label class="cfg-pos-event-row" data-pos-event-row="${escapeHtml(id)}" data-pos-event-search="${escapeHtml(search)}">
+          <input type="checkbox" data-pos-event-choice="${escapeHtml(id)}" ${selectedSet.has(id) ? 'checked' : ''} />
+          <span class="cfg-pos-event-row-main">
+            <strong>${escapeHtml(customPosEventName(ev))}</strong>
+            <small>${escapeHtml(meta || 'Sin fecha/estado adicional')}</small>
+          </span>
+        </label>
+      `;
+    }).join('');
+  }
+
+  function updateCustomPosEventsModalCount(){
+    const countEl = document.getElementById('cfg-pos-events-modal-count');
+    if (!countEl) return;
+    const boxes = Array.from(document.querySelectorAll('[data-pos-event-choice]'));
+    const checked = boxes.filter((box) => box.checked).length;
+    countEl.textContent = `${checked} seleccionado(s)`;
+  }
+
+  function filterCustomPosEventsModalRows(){
+    const q = String(document.getElementById('cfg-pos-events-search')?.value || '').trim().toLowerCase();
+    document.querySelectorAll('[data-pos-event-row]').forEach((row) => {
+      const hay = String(row.getAttribute('data-pos-event-search') || '').toLowerCase();
+      row.style.display = (!q || hay.includes(q)) ? '' : 'none';
+    });
+  }
+
+  async function openCustomPosEventsModal(){
+    const trigger = document.getElementById('cfg-pos-events-select-btn');
+    if (trigger){
+      trigger.disabled = true;
+      trigger.classList.add('is-loading');
+    }
+    let events = [];
+    try{ events = await getCustomPosEventsForSelection(); }catch(_){ events = []; }
+    if (trigger){
+      trigger.disabled = false;
+      trigger.classList.remove('is-loading');
+    }
+
+    const overlay = ensureCustomPosEventsModal();
+    const body = document.getElementById('cfg-pos-events-modal-body');
+    const selectedSet = customPosEventSelectionSet();
+    if (body){
+      body.innerHTML = `
+        <div class="cfg-pos-events-picker">
+          <p class="cfg-custom-export-copy">Marcá únicamente los eventos POS que querés incluir en este respaldo parcial.</p>
+          <div class="cfg-pos-events-tools">
+            <input id="cfg-pos-events-search" class="cfg-pos-events-search" type="search" placeholder="Buscar evento" autocomplete="off" />
+            <span class="cfg-custom-export-status" id="cfg-pos-events-modal-count">${selectedSet.size} seleccionado(s)</span>
+          </div>
+          <div class="cfg-pos-events-bulk-actions">
+            <button type="button" class="cfg-btn cfg-btn-ghost cfg-btn-small" id="cfg-pos-events-select-all">Seleccionar todos</button>
+            <button type="button" class="cfg-btn cfg-btn-ghost cfg-btn-small" id="cfg-pos-events-clear-all">Desmarcar todos</button>
+          </div>
+          <div class="cfg-pos-events-list" role="list">${buildCustomPosEventsRowsHtml(events, selectedSet)}</div>
+          <div class="small-note">Cancelar cierra esta ventana sin aplicar cambios.</div>
+        </div>
+      `;
+    }
+
+    const close = () => { overlay.style.display = 'none'; };
+    const cancel = document.getElementById('cfg-pos-events-modal-cancel');
+    const apply = document.getElementById('cfg-pos-events-modal-apply');
+    const search = document.getElementById('cfg-pos-events-search');
+    const selectAll = document.getElementById('cfg-pos-events-select-all');
+    const clearAll = document.getElementById('cfg-pos-events-clear-all');
+
+    if (cancel) cancel.onclick = close;
+    if (search) search.oninput = filterCustomPosEventsModalRows;
+    document.querySelectorAll('[data-pos-event-choice]').forEach((box) => {
+      box.addEventListener('change', updateCustomPosEventsModalCount);
+    });
+    if (selectAll){
+      selectAll.onclick = () => {
+        document.querySelectorAll('[data-pos-event-choice]').forEach((box) => { box.checked = true; });
+        updateCustomPosEventsModalCount();
+      };
+    }
+    if (clearAll){
+      clearAll.onclick = () => {
+        document.querySelectorAll('[data-pos-event-choice]').forEach((box) => { box.checked = false; });
+        updateCustomPosEventsModalCount();
+      };
+    }
+    if (apply){
+      apply.onclick = () => {
+        const ids = Array.from(document.querySelectorAll('[data-pos-event-choice]'))
+          .filter((box) => box.checked)
+          .map((box) => String(box.getAttribute('data-pos-event-choice') || '').trim())
+          .filter(Boolean);
+        CUSTOM_POS_EVENT_STATE.selectedIds = Array.from(new Set(ids));
+        CUSTOM_POS_EVENT_STATE.appliedAt = new Date().toISOString();
+        close();
+        updateCustomExportStatus();
+        updateCustomPosEventSelectionUi();
+      };
+    }
+    updateCustomPosEventsModalCount();
+    overlay.style.display = 'flex';
+    try{ if (search) search.focus(); }catch(_){ }
+  }
+
+  function getCustomModuleById(moduleId){
+    return CUSTOM_EXPORT_MODULES.find((m) => m.id === moduleId) || null;
+  }
+
+  function getCustomPartById(moduleId, partId){
+    const mod = getCustomModuleById(moduleId);
+    if (!mod) return null;
+    return (mod.parts || []).find((p) => p.id === partId) || null;
+  }
+
+  function normalizeNeedle(str){
+    return String(str || '').trim().toLowerCase();
+  }
+
+  function keyMatchesNeedles(key, needles){
+    const s = normalizeNeedle(key);
+    const arr = Array.isArray(needles) ? needles : [];
+    return arr.some((needle) => {
+      const n = normalizeNeedle(needle);
+      return n && s.includes(n);
+    });
+  }
+
+  function cloneJsonSafe(value){
+    if (value == null) return value;
+    try{ return JSON.parse(JSON.stringify(value)); }catch(_){ return value; }
+  }
+
+  function ensureCustomDb(outData, outSchemas, outVersions, sourceMeta, dbName){
+    if (!dbName) return false;
+    const sourceDbs = outData.__sourceIndexedDB || {};
+    if (!sourceDbs[dbName]) return false;
+    if (!outData.indexedDB[dbName]) outData.indexedDB[dbName] = {};
+    if (!outSchemas[dbName]) outSchemas[dbName] = {};
+    if (sourceMeta.dbVersions && Object.prototype.hasOwnProperty.call(sourceMeta.dbVersions, dbName)){
+      outVersions[dbName] = sourceMeta.dbVersions[dbName];
+    }
+    return true;
+  }
+
+  function addCustomStore(outData, outSchemas, outVersions, sourceMeta, dbName, storeName){
+    if (!dbName || !storeName) return false;
+    const sourceIndexed = outData.__sourceIndexedDB || {};
+    const sourceStores = sourceIndexed[dbName];
+    if (!sourceStores || !Object.prototype.hasOwnProperty.call(sourceStores, storeName)) return false;
+    if (!ensureCustomDb(outData, outSchemas, outVersions, sourceMeta, dbName)) return false;
+    outData.indexedDB[dbName][storeName] = cloneJsonSafe(sourceStores[storeName]);
+    const sourceSchemas = sourceMeta.dbSchemas || {};
+    if (sourceSchemas[dbName] && Object.prototype.hasOwnProperty.call(sourceSchemas[dbName], storeName)){
+      outSchemas[dbName][storeName] = cloneJsonSafe(sourceSchemas[dbName][storeName]);
+    }
+    return true;
+  }
+
+  function addCustomKey(outLocalStorage, sourceLocalStorage, key){
+    if (!key || !Object.prototype.hasOwnProperty.call(sourceLocalStorage, key)) return false;
+    outLocalStorage[key] = sourceLocalStorage[key];
+    return true;
+  }
+
+  function collectCustomSelectionFromDom(){
+    const selected = {};
+    CUSTOM_EXPORT_MODULES.forEach((mod) => {
+      const partIds = [];
+      (mod.parts || []).forEach((part) => {
+        const el = document.querySelector(`[data-custom-export-part="${mod.id}:${part.id}"]`);
+        if (el && el.checked) partIds.push(part.id);
+      });
+      if (partIds.length) selected[mod.id] = partIds;
+    });
+    return selected;
+  }
+
+  function countCustomSelection(selection){
+    return Object.values(selection || {}).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0);
+  }
+
+  function describeCustomSelection(selection){
+    const modulesIncluded = [];
+    const moduleIdsIncluded = [];
+    const submodulesIncluded = {};
+    const submoduleLabelsIncluded = {};
+    const partialModules = [];
+    const moduleSelection = {};
+
+    for (const [moduleId, partIdsRaw] of Object.entries(selection || {})){
+      const mod = getCustomModuleById(moduleId);
+      if (!mod) continue;
+      const partIds = (Array.isArray(partIdsRaw) ? partIdsRaw : []).filter((partId) => getCustomPartById(moduleId, partId));
+      if (!partIds.length) continue;
+      const allPartIds = (mod.parts || []).map((p) => p.id);
+      const allSelected = allPartIds.length > 0 && allPartIds.every((id) => partIds.includes(id));
+      modulesIncluded.push(mod.label);
+      moduleIdsIncluded.push(mod.id);
+      submodulesIncluded[mod.id] = partIds.slice();
+      submoduleLabelsIncluded[mod.id] = partIds.map((id) => getCustomPartById(moduleId, id)?.label || id);
+      if (!allSelected) partialModules.push(mod.label);
+      moduleSelection[mod.id] = {
+        label: mod.label,
+        mode: allSelected ? 'full' : 'partial',
+        selectedSubmodules: partIds.slice(),
+        selectedSubmoduleLabels: submoduleLabelsIncluded[mod.id].slice()
+      };
+    }
+
+    return { modulesIncluded, moduleIdsIncluded, submodulesIncluded, submoduleLabelsIncluded, partialModules, moduleSelection };
+  }
+
+  function getCustomExportVersionLabel(){
+    try{
+      if (window.A33_RELEASE && window.A33_RELEASE.label) return String(window.A33_RELEASE.label);
+      if (window.A33_BUILD_TAG) return String(window.A33_BUILD_TAG);
+      if (window.A33_VERSION) return String(window.A33_VERSION);
+    }catch(_){ }
+    return '';
+  }
+
+  function buildCustomExportModalHtml(){
+    const modulesHtml = CUSTOM_EXPORT_MODULES.map((mod) => {
+      const partsHtml = (mod.parts || []).map((part) => {
+        const partLabel = `
+          <label class="cfg-custom-export-part">
+            <input type="checkbox" data-custom-export-part="${escapeHtml(mod.id)}:${escapeHtml(part.id)}" />
+            <span>${escapeHtml(part.label)}</span>
+          </label>
+        `;
+        if (mod.id === 'pos' && part.id === 'eventos'){
+          return `
+            <div class="cfg-custom-export-part-wrap cfg-custom-export-part-wrap--events">
+              ${partLabel}
+              <button type="button" class="cfg-btn cfg-btn-ghost cfg-pos-events-select-btn" id="cfg-pos-events-select-btn" style="display:none;">
+                Seleccionar eventos
+                <span id="cfg-pos-events-select-count">${escapeHtml(customPosEventSelectionLabel())}</span>
+              </button>
+              <div class="cfg-pos-events-select-note" id="cfg-pos-events-select-note" style="display:none;"></div>
+            </div>
+          `;
+        }
+        return partLabel;
+      }).join('');
+      return `
+        <section class="cfg-custom-export-module" data-custom-export-module-card="${escapeHtml(mod.id)}">
+          <div class="cfg-custom-export-module-head">
+            <label class="cfg-custom-export-main">
+              <input type="checkbox" data-custom-export-module="${escapeHtml(mod.id)}" />
+              <span>${escapeHtml(mod.label)}</span>
+            </label>
+            <button type="button" class="cfg-custom-export-toggle" data-custom-export-toggle="${escapeHtml(mod.id)}" aria-expanded="true">Ocultar</button>
+          </div>
+          <div class="cfg-custom-export-parts" data-custom-export-parts="${escapeHtml(mod.id)}">
+            ${partsHtml}
+          </div>
+        </section>
+      `;
+    }).join('');
+
+    return `
+      <div class="cfg-custom-export">
+        <p class="cfg-custom-export-copy">Elegí módulos completos o partes específicas. Esta salida queda marcada como respaldo parcial para no confundirse con la caja fuerte completa.</p>
+        <div id="cfg-custom-export-status" class="cfg-custom-export-status" role="status" aria-live="polite">Sin selección todavía.</div>
+        <div id="cfg-custom-export-dependencies" class="cfg-custom-export-dependencies" aria-live="polite"></div>
+        <div class="cfg-custom-export-list">${modulesHtml}</div>
+        <div class="small-note">La importación inteligente reconoce respaldos completos y parciales.</div>
+      </div>
+    `;
+  }
+
+  function updateCustomExportModuleState(moduleId){
+    const mod = getCustomModuleById(moduleId);
+    if (!mod) return;
+    const moduleBox = document.querySelector(`[data-custom-export-module="${moduleId}"]`);
+    const partBoxes = Array.from(document.querySelectorAll(`[data-custom-export-part^="${moduleId}:"]`));
+    const checked = partBoxes.filter((box) => box.checked).length;
+    if (moduleBox){
+      moduleBox.checked = partBoxes.length > 0 && checked === partBoxes.length;
+      moduleBox.indeterminate = checked > 0 && checked < partBoxes.length;
+    }
+    const card = document.querySelector(`[data-custom-export-module-card="${moduleId}"]`);
+    if (card){
+      card.setAttribute('data-custom-state', checked === 0 ? 'empty' : (checked === partBoxes.length ? 'full' : 'partial'));
+    }
+  }
+
+  function updateCustomExportStatus(){
+    CUSTOM_EXPORT_MODULES.forEach((mod) => updateCustomExportModuleState(mod.id));
+    const status = document.getElementById('cfg-custom-export-status');
+    const depBox = document.getElementById('cfg-custom-export-dependencies');
+    if (!status) return;
+    const selection = collectCustomSelectionFromDom();
+    const count = countCustomSelection(selection);
+    if (!count){
+      status.textContent = 'Sin selección todavía.';
+      status.classList.remove('is-warn');
+      if (depBox) depBox.innerHTML = '';
+      updateCustomPosEventSelectionUi();
+      return;
+    }
+    const desc = describeCustomSelection(selection);
+    const dependencyWarnings = getCustomDependencyWarnings(selection);
+    const partial = desc.partialModules.length ? ` · Parciales: ${desc.partialModules.join(', ')}` : '';
+    const dep = dependencyWarnings.length ? ` · ${dependencyWarnings.length} aviso(s) de dependencias.` : '';
+    status.textContent = `${desc.modulesIncluded.length} módulo(s), ${count} submódulo(s) seleccionado(s)${partial}${dep}.`;
+    status.classList.remove('is-warn');
+    if (depBox) depBox.innerHTML = dependencyWarningsHtml(dependencyWarnings);
+    updateCustomPosEventSelectionUi();
+  }
+
+  function setCustomExportWarning(message){
+    const status = document.getElementById('cfg-custom-export-status');
+    if (!status) return;
+    status.textContent = message || 'Seleccioná al menos una opción.';
+    status.classList.add('is-warn');
+  }
+
+  function bindCustomExportModalControls(){
+    CUSTOM_EXPORT_MODULES.forEach((mod) => {
+      const moduleBox = document.querySelector(`[data-custom-export-module="${mod.id}"]`);
+      if (moduleBox){
+        moduleBox.addEventListener('change', () => {
+          const boxes = document.querySelectorAll(`[data-custom-export-part^="${mod.id}:"]`);
+          boxes.forEach((box) => { box.checked = moduleBox.checked; });
+          updateCustomExportStatus();
+        });
+      }
+      document.querySelectorAll(`[data-custom-export-part^="${mod.id}:"]`).forEach((box) => {
+        box.addEventListener('change', updateCustomExportStatus);
+      });
+      const toggle = document.querySelector(`[data-custom-export-toggle="${mod.id}"]`);
+      const parts = document.querySelector(`[data-custom-export-parts="${mod.id}"]`);
+      if (toggle && parts){
+        toggle.addEventListener('click', () => {
+          const collapsed = parts.hasAttribute('hidden');
+          if (collapsed){
+            parts.removeAttribute('hidden');
+            toggle.textContent = 'Ocultar';
+            toggle.setAttribute('aria-expanded', 'true');
+          } else {
+            parts.setAttribute('hidden', '');
+            toggle.textContent = 'Ver';
+            toggle.setAttribute('aria-expanded', 'false');
+          }
+        });
+      }
+    });
+    const posEventBtn = document.getElementById('cfg-pos-events-select-btn');
+    if (posEventBtn){
+      posEventBtn.addEventListener('click', openCustomPosEventsModal);
+    }
+    updateCustomExportStatus();
+    updateCustomPosEventSelectionUi();
+  }
+
+  function addCustomFilteredStore(outData, outSchemas, outVersions, sourceMeta, dbName, storeName, filterFn){
+    if (!dbName || !storeName || typeof filterFn !== 'function') return 0;
+    const sourceIndexed = outData.__sourceIndexedDB || {};
+    const sourceStores = sourceIndexed[dbName];
+    const records = sourceStores && sourceStores[storeName];
+    if (!Array.isArray(records)) return 0;
+    if (!ensureCustomDb(outData, outSchemas, outVersions, sourceMeta, dbName)) return 0;
+    const filtered = records.filter(filterFn).map((record) => cloneJsonSafe(record));
+    outData.indexedDB[dbName][storeName] = filtered;
+    const sourceSchemas = sourceMeta.dbSchemas || {};
+    if (sourceSchemas[dbName] && Object.prototype.hasOwnProperty.call(sourceSchemas[dbName], storeName)){
+      outSchemas[dbName][storeName] = cloneJsonSafe(sourceSchemas[dbName][storeName]);
+    }
+    return filtered.length;
+  }
+
+  function addCustomPosSelectedEventsToPayload(outData, outSchemas, outVersions, sourceMeta, selectedIds){
+    const selected = new Set((Array.isArray(selectedIds) ? selectedIds : []).map((id) => String(id)));
+    if (!selected.size) return 0;
+    return addCustomFilteredStore(outData, outSchemas, outVersions, sourceMeta, 'a33-pos', 'events', (ev) => selected.has(customPosEventId(ev)));
+  }
+
+  function addCustomPartToPayload(part, outData, outSchemas, outVersions, sourceMeta, sourceLocalStorage){
+    let added = 0;
+    (Array.isArray(part.keyNeedles) ? part.keyNeedles : []).forEach((needle) => {
+      Object.keys(sourceLocalStorage || {}).forEach((key) => {
+        if (keyMatchesNeedles(key, [needle])){
+          if (addCustomKey(outData.localStorage, sourceLocalStorage, key)) added++;
+        }
+      });
+    });
+    (Array.isArray(part.stores) ? part.stores : []).forEach((item) => {
+      if (item && addCustomStore(outData, outSchemas, outVersions, sourceMeta, item.db, item.store)) added++;
+    });
+    return added;
+  }
+
+  function getCustomBackupOptionsForSelection(selection){
+    const desc = describeCustomSelection(selection);
+    const posParts = Array.isArray(selection?.pos) ? selection.pos : [];
+    const posSelection = desc.moduleSelection?.pos || null;
+    let eventsMode = 'none';
+    if (posParts.includes('eventos')){
+      eventsMode = posSelection && posSelection.mode === 'full' ? 'all' : 'selected';
+    }
+    const selectedIds = Array.from(customPosEventSelectionSet());
+    return {
+      pos: {
+        included: !!posSelection,
+        mode: posSelection?.mode || 'none',
+        eventsIncluded: posParts.includes('eventos'),
+        eventsMode,
+        selectedEventIds: eventsMode === 'selected' ? selectedIds : [],
+        selectedEventsCount: eventsMode === 'selected' ? selectedIds.length : 0,
+        dependencyNotice: getCustomPosDependencyNotice(selection)
+      }
+    };
+  }
+
+  function buildCustomPosMetadata(selection, customOptions, sourceIndexedDB, outData){
+    const posParts = Array.isArray(selection?.pos) ? selection.pos : [];
+    const sourceEvents = sourceIndexedDB?.['a33-pos']?.events || [];
+    const exportedEvents = outData?.indexedDB?.['a33-pos']?.events || [];
+    const eventIdsIncluded = (Array.isArray(exportedEvents) ? exportedEvents : [])
+      .map((ev) => customPosEventId(ev))
+      .filter(Boolean);
+    const eventNamesIncluded = (Array.isArray(exportedEvents) ? exportedEvents : [])
+      .map((ev) => customPosEventName(ev))
+      .filter(Boolean);
+    const eventsMode = customOptions?.pos?.eventsMode || 'none';
+    return {
+      included: !!posParts.length,
+      mode: customOptions?.pos?.mode || 'none',
+      selectedSubmodules: posParts.slice(),
+      eventsIncluded: posParts.includes('eventos'),
+      eventsMode,
+      includedAllEvents: eventsMode === 'all',
+      selectedEventsCount: eventIdsIncluded.length,
+      availableEventsCount: Array.isArray(sourceEvents) ? sourceEvents.length : 0,
+      eventIdsIncluded,
+      eventLabelsIncluded: eventNamesIncluded,
+      requestedEventIds: eventsMode === 'selected' ? (customOptions?.pos?.selectedEventIds || []).slice() : [],
+      dependencyNotice: customOptions?.pos?.dependencyNotice || ''
+    };
+  }
+
+  async function buildCustomBackup(selection, customOptions){
+    const desc = describeCustomSelection(selection);
+    const options = customOptions || getCustomBackupOptionsForSelection(selection);
+    const full = await buildFullBackup();
+    const sourceBackup = full.backup || {};
+    const sourceMeta = sourceBackup.meta || {};
+    const sourceData = sourceBackup.data || {};
+    const sourceIndexedDB = sourceData.indexedDB || {};
+    const sourceLocalStorage = sourceData.localStorage || {};
+    const outSchemas = {};
+    const outVersions = {};
+    const outData = { indexedDB: {}, localStorage: {}, __sourceIndexedDB: sourceIndexedDB };
+    const includedDataMap = {};
+
+    for (const [moduleId, partIds] of Object.entries(selection || {})){
+      const mod = getCustomModuleById(moduleId);
+      if (!mod) continue;
+      includedDataMap[moduleId] = {};
+      (Array.isArray(partIds) ? partIds : []).forEach((partId) => {
+        const part = getCustomPartById(moduleId, partId);
+        if (!part) return;
+        if (moduleId === 'pos' && partId === 'eventos' && options?.pos?.eventsMode === 'selected'){
+          includedDataMap[moduleId][partId] = addCustomPosSelectedEventsToPayload(outData, outSchemas, outVersions, sourceMeta, options.pos.selectedEventIds);
+          return;
+        }
+        includedDataMap[moduleId][partId] = addCustomPartToPayload(part, outData, outSchemas, outVersions, sourceMeta, sourceLocalStorage);
+      });
+    }
+
+    delete outData.__sourceIndexedDB;
+
+    const exportedAt = new Date().toISOString();
+    const baseMeta = (window.A33ExportCurrency && typeof window.A33ExportCurrency.decorateJsonMeta === 'function')
+      ? window.A33ExportCurrency.decorateJsonMeta({
+          appName: BACKUP_APP_NAME,
+          app: BACKUP_APP_NAME,
+          exportedAt,
+          dbVersions: outVersions,
+          dbSchemas: outSchemas
+        })
+      : {
+          appName: BACKUP_APP_NAME,
+          app: BACKUP_APP_NAME,
+          exportedAt,
+          dbVersions: outVersions,
+          dbSchemas: outSchemas
+        };
+
+    const posMetadata = buildCustomPosMetadata(selection, options, sourceIndexedDB, outData);
+    const dependencyWarnings = getCustomDependencyWarnings(selection);
+
+    const backup = {
+      meta: {
+        ...baseMeta,
+        app: BACKUP_APP_NAME,
+        backupType: 'partial',
+        exportMode: 'custom',
+        exportedAt,
+        fechaHoraExportacion: exportedAt,
+        version: getCustomExportVersionLabel(),
+        modulesIncluded: desc.modulesIncluded,
+        moduleIdsIncluded: desc.moduleIdsIncluded,
+        submodulesIncluded: desc.submodulesIncluded,
+        submoduleLabelsIncluded: desc.submoduleLabelsIncluded,
+        partialModules: desc.partialModules,
+        moduleSelection: desc.moduleSelection,
+        includedDataMap,
+        pos: posMetadata,
+        posIncludedMode: posMetadata.mode,
+        eventsMode: posMetadata.eventsMode,
+        eventIdsIncluded: posMetadata.eventIdsIncluded,
+        eventsIncluded: posMetadata.eventLabelsIncluded,
+        selectedEventsCount: posMetadata.selectedEventsCount,
+        dependencyWarnings,
+        dependencyWarningsCount: dependencyWarnings.length,
+        origin: 'exportador_personalizado_a33'
+      },
+      data: {
+        indexedDB: outData.indexedDB,
+        localStorage: outData.localStorage
+      }
+    };
+
+    const jsonString = JSON.stringify(backup, null, 2);
+    const estimatedBytes = new Blob([jsonString]).size;
+    const dbSnapshots = Object.entries(outData.indexedDB).map(([dbName, stores]) => ({
+      name: dbName,
+      version: outVersions[dbName] || '',
+      stores: Object.entries(stores || {}).reduce((acc, [storeName, records]) => {
+        const arr = Array.isArray(records) ? records : [];
+        acc[storeName] = { count: arr.length, schema: (outSchemas[dbName] || {})[storeName] || {}, records: arr };
+        return acc;
+      }, {})
+    }));
+    const lsKeys = Object.keys(outData.localStorage || {}).sort();
+
+    return { backup, jsonString, estimatedBytes, dbSnapshots, lsKeys, selectionDescription: desc };
+  }
+
+  function buildCustomSummaryHtml(result){
+    const desc = result?.selectionDescription || {};
+    const moduleLines = (desc.modulesIncluded || []).length
+      ? `<ul>${(desc.modulesIncluded || []).map((label) => `<li>${escapeHtml(label)}</li>`).join('')}</ul>`
+      : '<div class="muted">Sin módulos.</div>';
+    const submoduleLines = Object.entries(desc.submoduleLabelsIncluded || {}).map(([moduleId, labels]) => {
+      const mod = getCustomModuleById(moduleId);
+      return `<details open><summary>${escapeHtml(mod?.label || moduleId)}</summary><ul>${(labels || []).map((label) => `<li>${escapeHtml(label)}</li>`).join('')}</ul></details>`;
+    }).join('');
+
+    const backupSummary = buildSummaryHtmlFromSnapshot({
+      dbSnapshots: result.dbSnapshots || [],
+      lsKeys: result.lsKeys || [],
+      exportedAt: result.backup?.meta?.exportedAt,
+      estimatedBytes: result.estimatedBytes || 0,
+      warnings: [],
+      appName: result.backup?.meta?.appName || BACKUP_APP_NAME
+    }).replace(
+      'Nota: este respaldo es local (no sincroniza). Al importar, se reemplaza TODO lo de este navegador.',
+      'Nota: este respaldo personalizado es parcial y puede importarse sin borrar datos no incluidos.'
+    );
+
+    return `
+      <div class="cfg-custom-export-summary">
+        <div class="badge-ok">✅ Respaldo personalizado preparado como parcial.</div>
+        <div class="small-note"><b>Tipo:</b> respaldo parcial. La importación inteligente fusionará por ID y no borrará datos no incluidos.</div>
+        ${result.backup?.meta?.pos?.dependencyNotice ? `<div class="badge-warn">⚠️ ${escapeHtml(result.backup.meta.pos.dependencyNotice)}</div>` : ''}
+        ${dependencyWarningsHtml(result.backup?.meta?.dependencyWarnings || [])}
+        <hr>
+        <div><b>Módulos incluidos</b></div>
+        ${moduleLines}
+        <hr>
+        <div><b>Submódulos incluidos</b></div>
+        ${submoduleLines || '<div class="muted">Sin submódulos.</div>'}
+        <hr>
+        ${backupSummary}
+        <div class="small-note">Este archivo incluye <b>backupType: partial</b> y <b>exportMode: custom</b>.</div>
+      </div>
+    `;
+  }
+
+  async function handleCustomExport(){
+    showModal({
+      title: 'Exportar JSON personalizado',
+      bodyHtml: buildCustomExportModalHtml(),
+      primaryText: 'Exportar',
+      onPrimary: async () => {
+        const selection = collectCustomSelectionFromDom();
+        if (countCustomSelection(selection) <= 0){
+          setCustomExportWarning('Seleccioná al menos un módulo o submódulo para exportar.');
+          return;
+        }
+
+        const customOptions = getCustomBackupOptionsForSelection(selection);
+        if (customPosEventsNeedsManualSelection(selection) && customOptions.pos.selectedEventsCount <= 0){
+          setCustomExportWarning('Seleccionaste Eventos POS. Abrí “Seleccionar eventos” y marcá al menos un evento.');
+          updateCustomPosEventSelectionUi();
+          return;
+        }
+
+        showModal({
+          title: 'Exportar JSON personalizado',
+          bodyHtml: '<div class="muted">Preparando respaldo parcial...</div>',
+          disableCancel: true,
+          disablePrimary: true
+        });
+
+        try{
+          const result = await buildCustomBackup(selection, customOptions);
+          showModal({
+            title: 'Resumen del respaldo personalizado',
+            bodyHtml: buildCustomSummaryHtml(result),
+            primaryText: 'Descargar personalizado',
+            onPrimary: async () => {
+              downloadTextFile(buildCustomBackupFilename(), result.jsonString);
+              hideModal();
+              showToast('Respaldo personalizado descargado.');
+            },
+            cancelText: 'Cancelar',
+            onCancel: hideModal
+          });
+        }catch(e){
+          showModal({
+            title: 'Error',
+            bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(e?.message || e)}</div>`,
+            primaryText: 'Cerrar',
+            onPrimary: hideModal,
+            disableCancel: true
+          });
+        }
+      },
+      cancelText: 'Cancelar',
+      onCancel: hideModal
+    });
+    bindCustomExportModalControls();
+  }
+
   async function buildFullBackup(){
     const all = await safeListIndexedDBDatabases();
     const suiteDbList = (Array.isArray(all) ? all : []).filter((d) => d && d.name && isSuiteDbName(d.name));
@@ -1018,12 +2009,16 @@
       meta: (window.A33ExportCurrency && typeof window.A33ExportCurrency.decorateJsonMeta === 'function')
         ? window.A33ExportCurrency.decorateJsonMeta({
           appName: BACKUP_APP_NAME,
+          backupType: 'full',
+          exportMode: 'full',
           exportedAt: new Date().toISOString(),
           dbVersions: cleanIndexed.versions,
           dbSchemas: cleanIndexed.schemas
         })
         : {
           appName: BACKUP_APP_NAME,
+          backupType: 'full',
+          exportMode: 'full',
           exportedAt: new Date().toISOString(),
           dbVersions: cleanIndexed.versions,
           dbSchemas: cleanIndexed.schemas
@@ -1046,14 +2041,28 @@
     };
   }
 
+  function getBackupImportKind(obj){
+    const meta = (obj && obj.meta && typeof obj.meta === 'object') ? obj.meta : {};
+    const backupType = String(meta.backupType || '').trim().toLowerCase();
+    const exportMode = String(meta.exportMode || '').trim().toLowerCase();
+    const partial = backupType === 'partial' || exportMode === 'custom';
+    return {
+      type: partial ? 'partial' : 'full',
+      backupType: backupType || (partial ? 'partial' : 'full'),
+      exportMode: exportMode || (partial ? 'custom' : 'full'),
+      legacy: !backupType && !exportMode
+    };
+  }
+
   function validateBackupStructure(obj){
     if (!obj || typeof obj !== 'object') return { ok: false, reason: 'Archivo inválido (no es un objeto JSON).' };
     if (!obj.meta || typeof obj.meta !== 'object') return { ok: false, reason: 'Falta meta.' };
     if (!obj.data || typeof obj.data !== 'object') return { ok: false, reason: 'Falta data.' };
-    if (obj.meta.appName !== BACKUP_APP_NAME) return { ok: false, reason: `appName inválido: se esperaba "${BACKUP_APP_NAME}".` };
+    const appName = obj.meta.appName || obj.meta.app || '';
+    if (appName !== BACKUP_APP_NAME) return { ok: false, reason: `appName inválido: se esperaba "${BACKUP_APP_NAME}".` };
     if (!obj.data.indexedDB || typeof obj.data.indexedDB !== 'object') return { ok: false, reason: 'Falta data.indexedDB.' };
     if (!obj.data.localStorage || typeof obj.data.localStorage !== 'object') return { ok: false, reason: 'Falta data.localStorage.' };
-    return { ok: true };
+    return { ok: true, kind: getBackupImportKind(obj) };
   }
 
   function summarizeBackupObject(obj){
@@ -1089,8 +2098,121 @@
       lsKeys,
       estimatedBytes,
       exportedAt: obj?.meta?.exportedAt,
-      appName: obj?.meta?.appName
+      appName: obj?.meta?.appName || obj?.meta?.app
     };
+  }
+
+  function labelListHtml(items, emptyText){
+    const arr = (Array.isArray(items) ? items : []).filter(Boolean);
+    if (!arr.length) return `<div class="muted">${escapeHtml(emptyText || 'Sin datos.')}</div>`;
+    return `<ul>${arr.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`;
+  }
+
+  function getPartialModulesIncluded(meta){
+    if (Array.isArray(meta?.modulesIncluded) && meta.modulesIncluded.length) return meta.modulesIncluded.slice();
+    const ids = Array.isArray(meta?.moduleIdsIncluded) ? meta.moduleIdsIncluded : Object.keys(meta?.moduleSelection || {});
+    return ids.map((id) => getCustomModuleById(id)?.label || id).filter(Boolean);
+  }
+
+  function getPartialModuleIdsIncluded(meta){
+    if (Array.isArray(meta?.moduleIdsIncluded) && meta.moduleIdsIncluded.length) return meta.moduleIdsIncluded.map(String);
+    return Object.keys(meta?.moduleSelection || {});
+  }
+
+  function getPartialSubmoduleLabels(meta){
+    if (meta?.submoduleLabelsIncluded && typeof meta.submoduleLabelsIncluded === 'object') return meta.submoduleLabelsIncluded;
+    const out = {};
+    const sub = meta?.submodulesIncluded && typeof meta.submodulesIncluded === 'object' ? meta.submodulesIncluded : {};
+    for (const [moduleId, ids] of Object.entries(sub)){
+      out[moduleId] = (Array.isArray(ids) ? ids : []).map((id) => getCustomPartById(moduleId, id)?.label || id);
+    }
+    return out;
+  }
+
+  function buildPartialImportSummaryHtml(obj, sum, warnings){
+    const meta = obj?.meta || {};
+    const includedModuleIds = getPartialModuleIdsIncluded(meta);
+    const includedModules = getPartialModulesIncluded(meta);
+    const includedSet = new Set(includedModuleIds.map(String));
+    const notIncluded = CUSTOM_EXPORT_MODULES
+      .filter((mod) => !includedSet.has(mod.id))
+      .map((mod) => mod.label);
+    const submoduleLabels = getPartialSubmoduleLabels(meta);
+    const submoduleHtml = Object.entries(submoduleLabels || {}).map(([moduleId, labels]) => {
+      const mod = getCustomModuleById(moduleId);
+      return `<details open><summary>${escapeHtml(mod?.label || moduleId)}</summary>${labelListHtml(labels, 'Sin submódulos.')}</details>`;
+    }).join('');
+
+    const eventIds = Array.isArray(meta?.eventIdsIncluded) ? meta.eventIdsIncluded : (Array.isArray(meta?.pos?.eventIdsIncluded) ? meta.pos.eventIdsIncluded : []);
+    const eventLabels = Array.isArray(meta?.eventsIncluded) ? meta.eventsIncluded : (Array.isArray(meta?.pos?.eventLabelsIncluded) ? meta.pos.eventLabelsIncluded : []);
+    const eventMode = meta?.eventsMode || meta?.pos?.eventsMode || '';
+    const eventHtml = (eventIds.length || eventLabels.length || eventMode)
+      ? `
+        <hr>
+        <div><b>Eventos POS incluidos</b></div>
+        <div class="kv">
+          <div class="k">Modo eventos</div><div class="v">${escapeHtml(eventMode || 'No especificado')}</div>
+          <div class="k">Cantidad</div><div class="v">${escapeHtml(String(eventIds.length || eventLabels.length || 0))}</div>
+        </div>
+        ${labelListHtml(eventLabels.length ? eventLabels : eventIds, 'Sin eventos listados.')}
+      `
+      : '';
+
+    const backupSummary = buildSummaryHtmlFromSnapshot({
+      dbSnapshots: sum.dbSnapshots || [],
+      lsKeys: sum.lsKeys || [],
+      exportedAt: sum.exportedAt,
+      estimatedBytes: sum.estimatedBytes,
+      warnings,
+      appName: sum.appName
+    }).replace(
+      'Nota: este respaldo es local (no sincroniza). Al importar, se reemplaza TODO lo de este navegador.',
+      'Nota: este respaldo parcial se fusiona por ID y conserva los datos no incluidos.'
+    );
+
+    return `
+      <div class="cfg-custom-export-summary">
+        <div class="badge-warn">⚠️ Este respaldo es parcial. Solo se importarán las secciones incluidas. Los datos no incluidos se conservarán.</div>
+        <div class="small-note"><b>Modo de importación:</b> fusión por ID. No se limpia localStorage completo ni IndexedDB completo.</div>
+        ${dependencyWarningsHtml(meta.dependencyWarnings || [])}
+        <div class="kv">
+          <div class="k">Tipo</div><div class="v">Parcial</div>
+          <div class="k">Modo</div><div class="v">${escapeHtml(meta.exportMode || 'custom')}</div>
+          <div class="k">Fecha</div><div class="v">${escapeHtml(sum.exportedAt ? new Date(sum.exportedAt).toLocaleString() : '')}</div>
+        </div>
+        <hr>
+        <div><b>Módulos incluidos</b></div>
+        ${labelListHtml(includedModules, 'Sin módulos declarados.')}
+        <hr>
+        <div><b>Submódulos incluidos</b></div>
+        ${submoduleHtml || '<div class="muted">Sin submódulos declarados.</div>'}
+        ${eventHtml}
+        <hr>
+        <div><b>Módulos no incluidos</b></div>
+        ${labelListHtml(notIncluded, 'Ninguno.')}
+        <hr>
+        ${backupSummary}
+      </div>
+    `;
+  }
+
+  function buildImportSummaryHtml(obj, sum, warnings){
+    const kind = getBackupImportKind(obj);
+    if (kind.type === 'partial') return buildPartialImportSummaryHtml(obj, sum, warnings);
+    const legacyLabel = kind.legacy ? '<div class="small-note">Respaldo completo legacy: no trae backupType, se trata como completo.</div>' : '';
+    return buildSummaryHtmlFromSnapshot({
+      dbSnapshots: sum.dbSnapshots,
+      lsKeys: sum.lsKeys,
+      exportedAt: sum.exportedAt,
+      estimatedBytes: sum.estimatedBytes,
+      warnings,
+      appName: sum.appName
+    }) + `
+      ${legacyLabel}
+      <hr>
+      <div class="badge-warn">⚠️ Esto reemplazará todos los datos actuales de Suite A33 en este navegador.</div>
+      <div class="small-note"><b>Tipo:</b> respaldo completo. <b>Qué se importará:</b> bases IndexedDB y keys localStorage incluidas en el archivo. <b>Qué no se tocará:</b> datos ajenos a Suite A33 y llaves retiradas de acceso/login.</div>
+    `;
   }
 
   async function buildDbVersionWarnings(backupObj){
@@ -1199,7 +2321,367 @@
     try{ db.close(); }catch(_){ }
   }
 
-  async function performImport(obj){
+  function normalizeRecordToken(value){
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function firstPresentValue(rec, keys){
+    for (const k of keys){
+      const v = rec?.[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v);
+    }
+    return '';
+  }
+
+  function getStableRecordId(rec, schema, contextName){
+    if (!rec || typeof rec !== 'object') return '';
+    const kp = schema && schema.keyPath;
+    if (Array.isArray(kp)){
+      const vals = kp.map((k) => rec?.[k]);
+      if (vals.every((v) => v !== undefined && v !== null && String(v).trim() !== '')) return vals.map(String).join('::');
+    } else if (typeof kp === 'string' && kp){
+      const v = rec?.[kp];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v);
+    }
+
+    const directId = firstPresentValue(rec, [
+      'id','_id','uuid','uid','key','code','codigo','sku',
+      'productId','productoId','itemId','variantId',
+      'eventId','eventoId','saleId','ventaId','transactionId','movementId','movimientoId',
+      'receiptId','reciboId','closureId','cierreId','dailyClosureId','closeId','lockId',
+      'lotId','loteId','batchId','batchCode','lotCode','codigoLote',
+      'supplierId','proveedorId','providerId','vendorId',
+      'customerId','clienteId','clientId','bankId','bancoId','accountId','cuentaId',
+      'envaseId','bottleId','tapaId','capId','extraId','invoiceId','facturaId','orderId','pedidoId'
+    ]);
+    if (directId) return directId;
+
+    const ctx = String(contextName || '').toLowerCase();
+    const name = firstPresentValue(rec, ['name','nombre','label','titulo','title','displayName','commercialName','razonSocial']);
+    const email = firstPresentValue(rec, ['email','correo']);
+    const phone = firstPresentValue(rec, ['phone','telefono','tel','whatsapp']);
+    const number = firstPresentValue(rec, ['number','numero','factura','invoice','reference','referencia','oc','ordenCompra']);
+    const date = firstPresentValue(rec, ['date','fecha','createdAt','updatedAt','fechaHora','closedAt','exportedAt']);
+
+    if (/products|productos|inventory|inventario|extras|banks|bancos|customers|clientes|suppliers|proveedores|envases|tapas|caps|bottles/.test(ctx)){
+      const composite = [name, email || phone || number].filter(Boolean).map(normalizeRecordToken).join('::');
+      if (composite) return `${ctx || 'catalog'}::${composite}`;
+    }
+
+    if (/events|eventos/.test(ctx) && (name || date)){
+      return `eventos::${normalizeRecordToken(date)}::${normalizeRecordToken(name)}`;
+    }
+
+    if (/lotes|lots|batch/.test(ctx) && (number || date || name)){
+      return `lotes::${normalizeRecordToken(number || name)}::${normalizeRecordToken(date)}`;
+    }
+
+    if (/receipts|recibos|closures|cierres|sales|ventas/.test(ctx) && (number || date || name)){
+      return `${ctx || 'mov'}::${normalizeRecordToken(number || name)}::${normalizeRecordToken(date)}`;
+    }
+
+    return '';
+  }
+
+  function hasStoreKeyPathValue(rec, keyPath){
+    if (!keyPath) return false;
+    if (Array.isArray(keyPath)) return keyPath.every((k) => rec && rec[k] !== undefined && rec[k] !== null && String(rec[k]).trim() !== '');
+    if (typeof keyPath === 'string') return rec && rec[keyPath] !== undefined && rec[keyPath] !== null && String(rec[keyPath]).trim() !== '';
+    return false;
+  }
+
+  async function openDBForPartialMerge(dbName, dbPayload, dbVersions, dbSchemas){
+    const schemaByStore = dbSchemas?.[dbName] || {};
+    const requestedVersion = Number(dbVersions?.[dbName] || 1) || 1;
+    const incomingStores = Object.keys((dbPayload && typeof dbPayload === 'object') ? dbPayload : {});
+    const schemaAvailable = schemaByStore && typeof schemaByStore === 'object' && Object.keys(schemaByStore).length > 0;
+
+    try{
+      const current = await openExistingDB(dbName);
+      const missing = incomingStores.filter((storeName) => !current.objectStoreNames.contains(storeName));
+      if (!missing.length || !schemaAvailable){
+        return current;
+      }
+      const nextVersion = Math.max(Number(current.version || 1) + 1, requestedVersion);
+      try{ current.close(); }catch(_){ }
+      return await openDBForRestore(dbName, nextVersion, schemaByStore);
+    }catch(_){
+      if (schemaAvailable) return await openDBForRestore(dbName, requestedVersion, schemaByStore);
+      throw new Error(`No se pudo abrir ${dbName} para fusión parcial: falta esquema de respaldo.`);
+    }
+  }
+
+  async function readStoreStableKeyMap(db, storeName, schema){
+    const map = new Map();
+    if (!db || !db.objectStoreNames.contains(storeName)) return map;
+    try{
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      await new Promise((resolve, reject) => {
+        const req = store.openCursor();
+        req.onerror = () => reject(req.error || new Error('No se pudo leer índice de duplicados.'));
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (!cursor){ resolve(); return; }
+          const id = getStableRecordId(cursor.value, schema, storeName);
+          if (id && !map.has(id)) map.set(id, cursor.key);
+          cursor.continue();
+        };
+      });
+      await txDone(tx);
+    }catch(_){ }
+    return map;
+  }
+
+  async function mergeDatabase(dbName, dbPayload, dbVersions, dbSchemas){
+    const payload = (dbPayload && typeof dbPayload === 'object') ? dbPayload : {};
+    const db = await openDBForPartialMerge(dbName, payload, dbVersions, dbSchemas);
+    const schemaByStore = dbSchemas?.[dbName] || {};
+    const stats = { stores: 0, records: 0, skipped: 0 };
+
+    for (const [storeName, records] of Object.entries(payload)){
+      if (!db.objectStoreNames.contains(storeName)) continue;
+      const arr = Array.isArray(records) ? records : [];
+      if (!arr.length) continue;
+      const schema = schemaByStore?.[storeName] || {};
+      let stableKeyMap = new Map();
+      let usesKeyPath = true;
+      try{
+        const probeTx = db.transaction(storeName, 'readonly');
+        usesKeyPath = !!probeTx.objectStore(storeName).keyPath;
+        try{ probeTx.abort(); }catch(_){ }
+      }catch(_){ usesKeyPath = true; }
+      if (!usesKeyPath) stableKeyMap = await readStoreStableKeyMap(db, storeName, schema);
+
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const runtimeKeyPath = store.keyPath;
+      stats.stores++;
+
+      for (const rec of arr){
+        if (!rec || typeof rec !== 'object') { stats.skipped++; continue; }
+        try{
+          if (runtimeKeyPath){
+            if (!hasStoreKeyPathValue(rec, runtimeKeyPath)) { stats.skipped++; continue; }
+            store.put(cloneJsonSafe(rec));
+            stats.records++;
+          } else {
+            const id = getStableRecordId(rec, schema, storeName);
+            if (!id) { stats.skipped++; continue; }
+            const existingKey = stableKeyMap.has(id) ? stableKeyMap.get(id) : id;
+            store.put(cloneJsonSafe(rec), existingKey);
+            stableKeyMap.set(id, existingKey);
+            stats.records++;
+          }
+        }catch(_){
+          stats.skipped++;
+        }
+      }
+      await txDone(tx);
+    }
+
+    try{ db.close(); }catch(_){ }
+    return stats;
+  }
+
+  function tryParseJsonValue(value){
+    if (typeof value !== 'string') return { ok: true, value };
+    const s = String(value || '').trim();
+    if (!s || !/^[\[{]/.test(s)) return { ok: false, value };
+    try{ return { ok: true, value: JSON.parse(s) }; }catch(_){ return { ok: false, value }; }
+  }
+
+  function stableJson(value){
+    try{ return JSON.stringify(value); }catch(_){ return String(value); }
+  }
+
+  function mergeArrayById(current, incoming, contextName){
+    const cur = Array.isArray(current) ? current.slice() : [];
+    const inc = Array.isArray(incoming) ? incoming : [];
+    const index = new Map();
+    cur.forEach((item, i) => {
+      const id = getStableRecordId(item, {}, contextName);
+      if (id) index.set(id, i);
+    });
+    const fingerprints = new Set(cur.map((item) => stableJson(item)));
+    for (const item of inc){
+      const id = getStableRecordId(item, {}, contextName);
+      if (id && index.has(id)){
+        cur[index.get(id)] = item;
+        fingerprints.add(stableJson(item));
+      } else if (id){
+        index.set(id, cur.length);
+        cur.push(item);
+        fingerprints.add(stableJson(item));
+      } else {
+        const fp = stableJson(item);
+        if (!fingerprints.has(fp)){
+          cur.push(item);
+          fingerprints.add(fp);
+        }
+      }
+    }
+    return cur;
+  }
+
+  function mergeJsonValue(current, incoming, contextName){
+    if (Array.isArray(current) && Array.isArray(incoming)) return mergeArrayById(current, incoming, contextName);
+    if (current && incoming && typeof current === 'object' && typeof incoming === 'object' && !Array.isArray(current) && !Array.isArray(incoming)){
+      const out = { ...current };
+      for (const [k, v] of Object.entries(incoming)){
+        if (Array.isArray(out[k]) && Array.isArray(v)) out[k] = mergeArrayById(out[k], v, `${contextName || ''}.${k}`);
+        else if (out[k] && v && typeof out[k] === 'object' && typeof v === 'object' && !Array.isArray(out[k]) && !Array.isArray(v)) out[k] = mergeJsonValue(out[k], v, `${contextName || ''}.${k}`);
+        else out[k] = v;
+      }
+      return out;
+    }
+    return incoming;
+  }
+
+  function mergeLocalStorageValue(key, incomingRaw){
+    const currentRaw = window.A33Storage.getItem(key);
+    const cur = tryParseJsonValue(currentRaw);
+    const inc = tryParseJsonValue(String(incomingRaw ?? ''));
+    if (cur.ok && inc.ok && cur.value !== undefined && inc.value !== undefined){
+      const merged = mergeJsonValue(cur.value, inc.value, key);
+      try{ window.A33Storage.setItem(key, JSON.stringify(merged)); return true; }catch(_){ }
+    }
+    try{ window.A33Storage.setItem(key, String(incomingRaw ?? '')); return true; }catch(_){ return false; }
+  }
+
+  function dateCandidateToIso(value){
+    if (value === undefined || value === null || value === '') return '';
+    let raw = value;
+    if (typeof raw === 'number'){
+      if (raw > 0 && raw < 10000000000) raw *= 1000;
+    }
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString();
+  }
+
+  function scanLatestDate(value, label, depth, best){
+    if (depth > 5 || value === undefined || value === null) return best;
+    if (Array.isArray(value)){
+      value.forEach((item) => { best = scanLatestDate(item, label, depth + 1, best); });
+      return best;
+    }
+    if (typeof value !== 'object') return best;
+    for (const [k, v] of Object.entries(value)){
+      const key = String(k || '').toLowerCase();
+      if (/fecha|date|createdat|updatedat|closedat|timestamp|exportedat|importedat|operacion/.test(key)){
+        const iso = dateCandidateToIso(v);
+        if (iso && (!best.at || new Date(iso).getTime() > new Date(best.at).getTime())){
+          best = { at: iso, label };
+        }
+      }
+      if (v && typeof v === 'object') best = scanLatestDate(v, label, depth + 1, best);
+    }
+    return best;
+  }
+
+  function inferLastOperationFromBackup(obj){
+    let best = { at: '', label: '' };
+    const indexed = obj?.data?.indexedDB || {};
+    for (const [dbName, stores] of Object.entries(indexed || {})){
+      for (const [storeName, records] of Object.entries(stores || {})){
+        best = scanLatestDate(records, `${dbName}/${storeName}`, 0, best);
+      }
+    }
+    const local = obj?.data?.localStorage || {};
+    for (const [key, raw] of Object.entries(local || {})){
+      const parsed = tryParseJsonValue(raw);
+      if (parsed.ok) best = scanLatestDate(parsed.value, `localStorage/${key}`, 0, best);
+    }
+    return best;
+  }
+
+  function getBackupModulesForLog(meta, kind){
+    if ((kind?.type || getBackupImportKind({ meta }).type) === 'full') return ['Completo'];
+    return getPartialModulesIncluded(meta);
+  }
+
+  function readBackupImportLog(){
+    try{
+      const raw = window.A33Storage.getItem('suite_a33_backup_import_log_v1');
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    }catch(_){ return []; }
+  }
+
+  function formatBackupLogDate(value){
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('es-NI', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });
+  }
+
+  function renderBackupImportLog(){
+    const box = document.getElementById('cfg-backup-import-log');
+    if (!box) return;
+    const list = readBackupImportLog().slice(0, 12);
+    if (!list.length){
+      box.innerHTML = '<div class="cfg-backup-import-empty">Sin JSON importados registrados todavía.</div>';
+      return;
+    }
+    const rows = list.map((item) => {
+      const type = String(item.backupType || '').toLowerCase() === 'partial' ? 'Parcial' : 'Completo';
+      const modules = Array.isArray(item.modulesIncluded) && item.modulesIncluded.length ? item.modulesIncluded.join(', ') : '—';
+      const lastOp = item.lastOperationAt ? `${formatBackupLogDate(item.lastOperationAt)}${item.lastOperationLabel ? ' · ' + item.lastOperationLabel : ''}` : '—';
+      return `
+        <tr>
+          <td>${escapeHtml(item.fileName || 'JSON importado')}</td>
+          <td>${escapeHtml(formatBackupLogDate(item.importedAt))}</td>
+          <td>${escapeHtml(type)}</td>
+          <td>${escapeHtml(modules)}</td>
+          <td>${escapeHtml(lastOp)}</td>
+        </tr>
+      `;
+    }).join('');
+    box.innerHTML = `
+      <div class="cfg-backup-import-table-wrap" tabindex="0" aria-label="Historial de JSON importados">
+        <table class="cfg-backup-import-table">
+          <thead><tr><th>Archivo</th><th>Importado</th><th>Tipo</th><th>Módulos</th><th>Última operación</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function registerBackupImport(fileName, obj, kind, result){
+    const at = new Date().toISOString();
+    const meta = obj?.meta || {};
+    const latest = inferLastOperationFromBackup(obj);
+    const entry = {
+      fileName: String(fileName || ''),
+      importedAt: at,
+      backupType: kind?.type || getBackupImportKind(obj).type,
+      exportMode: meta.exportMode || kind?.exportMode || '',
+      exportedAt: meta.exportedAt || '',
+      modulesIncluded: getBackupModulesForLog(meta, kind),
+      lastOperationAt: latest.at || meta.fechaHoraExportacion || meta.exportedAt || '',
+      lastOperationLabel: latest.label || '',
+      result: result || {}
+    };
+    try{ window.A33Storage.setItem('suite_a33_backup_last_import_at', at); }catch(_){ }
+    try{ window.A33Storage.setItem('suite_a33_backup_last_import_file', entry.fileName); }catch(_){ }
+    try{
+      const raw = window.A33Storage.getItem('suite_a33_backup_import_log_v1');
+      let list = [];
+      try{ list = raw ? JSON.parse(raw) : []; }catch(_){ list = []; }
+      if (!Array.isArray(list)) list = [];
+      list.unshift(entry);
+      window.A33Storage.setItem('suite_a33_backup_import_log_v1', JSON.stringify(list.slice(0, 20)));
+    }catch(_){ }
+    try{ renderBackupImportLog(); }catch(_){ }
+  }
+
+  async function performFullImport(obj){
     const cleanObj = sanitizeBackupObject(obj);
     const dbPayload = cleanObj?.data?.indexedDB || {};
     const dbVersions = cleanObj?.meta?.dbVersions || {};
@@ -1248,7 +2730,35 @@
       try{ window.A33Storage.setItem(k, String(v ?? '')); }catch(_){ }
     }
 
-    return true;
+    return { type: 'full', indexedDB: fileSuite.length, localStorage: Object.keys(incoming || {}).length };
+  }
+
+  async function performPartialImport(obj){
+    const cleanObj = sanitizeBackupObject(obj);
+    const dbPayload = cleanObj?.data?.indexedDB || {};
+    const dbVersions = cleanObj?.meta?.dbVersions || {};
+    const dbSchemas = cleanObj?.meta?.dbSchemas || {};
+    const fileSuite = Object.keys(dbPayload || {}).filter((dbName) => isSuiteDbName(dbName) && !isRetiredGateDbName(dbName));
+    const result = { type: 'partial', indexedDB: {}, localStorageKeys: 0 };
+
+    for (const dbName of fileSuite){
+      result.indexedDB[dbName] = await mergeDatabase(dbName, dbPayload[dbName], dbVersions, dbSchemas);
+    }
+
+    const incoming = sanitizeSuiteLocalStorageMap(cleanObj?.data?.localStorage || {});
+    for (const [k, v] of Object.entries(incoming)){
+      if (!isSuiteLocalStorageKey(k)) continue;
+      if (isRetiredGateStorageKey(k)) continue;
+      if (mergeLocalStorageValue(k, v)) result.localStorageKeys++;
+    }
+
+    return result;
+  }
+
+  async function performImport(obj){
+    const kind = getBackupImportKind(obj);
+    if (kind.type === 'partial') return performPartialImport(obj);
+    return performFullImport(obj);
   }
 
   async function handleExport(){
@@ -1335,40 +2845,43 @@
 
       const v = validateBackupStructure(obj);
       if (!v.ok) throw new Error(v.reason);
+      const kind = v.kind || getBackupImportKind(obj);
 
       const sum = summarizeBackupObject(obj);
       const warnings = await buildDbVersionWarnings(obj);
-      const summaryHtml = buildSummaryHtmlFromSnapshot({
-        dbSnapshots: sum.dbSnapshots,
-        lsKeys: sum.lsKeys,
-        exportedAt: sum.exportedAt,
-        estimatedBytes: sum.estimatedBytes,
-        warnings,
-        appName: sum.appName
-      }) + `
-        <hr>
-        <div class="badge-warn">⚠️ Esto reemplazará todos los datos actuales de este navegador.</div>
-      `;
+      const summaryHtml = buildImportSummaryHtml(obj, sum, warnings);
+      const partial = kind.type === 'partial';
+      const primaryText = partial ? 'Importar parcial' : 'Importar y reemplazar';
+      const confirmText = partial
+        ? 'Este respaldo es parcial. Solo se importarán las secciones incluidas y los datos no incluidos se conservarán. ¿Importar parcial?'
+        : 'Esto reemplazará TODOS los datos actuales de la Suite A33 en este navegador. ¿Importar y reemplazar?';
+      const workingText = partial
+        ? 'Fusionando respaldo parcial por ID... No cierres esta pestaña.'
+        : 'Aplicando respaldo completo... No cierres esta pestaña.';
 
       showModal({
-        title: 'Resumen del archivo',
+        title: partial ? 'Resumen del respaldo parcial' : 'Resumen del archivo',
         bodyHtml: summaryHtml,
-        primaryText: 'Importar y reemplazar',
+        primaryText,
         onPrimary: async () => {
-          if (!confirm('Esto reemplazará TODOS los datos actuales de la Suite A33 en este navegador. ¿Importar y reemplazar?')) return;
+          if (!confirm(confirmText)) return;
 
           showModal({
             title: 'Importando...',
-            bodyHtml: '<div class="muted">Aplicando respaldo... No cierres esta pestaña.</div>',
+            bodyHtml: `<div class="muted">${escapeHtml(workingText)}</div>`,
             disableCancel: true,
             disablePrimary: true
           });
 
           try{
-            await performImport(obj);
+            const result = await performImport(obj);
+            registerBackupImport(file.name, obj, kind, result);
+            const okText = partial
+              ? '<div>✅ Respaldo parcial importado correctamente.</div><div class="small-note">Los datos no incluidos se conservaron. Recomendado: recargar para que todos los módulos lean los cambios.</div>'
+              : '<div>✅ Respaldo completo importado correctamente.</div><div class="small-note">Recomendado: recargar para que todos los módulos lean los nuevos datos.</div>';
             showModal({
               title: 'Importación exitosa',
-              bodyHtml: '<div>✅ Respaldo importado correctamente.</div><div class="small-note">Recomendado: recargar para que todos los módulos lean los nuevos datos.</div>',
+              bodyHtml: okText,
               primaryText: 'Recargar ahora',
               onPrimary: () => location.reload(),
               cancelText: 'Más tarde',
@@ -1397,7 +2910,6 @@
       });
     }
   }
-
 
 
   const USER_ROLE_META = {
@@ -4736,8 +6248,10 @@
     initFirebaseSettingsSection();
     initUsersSection();
     initFirebaseStatus();
+    renderBackupImportLog();
 
     const exportBtn = document.getElementById('cfg-export-backup');
+    const customExportBtn = document.getElementById('cfg-export-custom-backup');
     const importBtn = document.getElementById('cfg-import-backup');
     const fileInput = document.getElementById('backup-file-input');
 
@@ -4746,6 +6260,15 @@
         handleExport().catch((err) => {
           console.error(err);
           showToast('No se pudo generar el respaldo.');
+        });
+      });
+    }
+
+    if (customExportBtn){
+      customExportBtn.addEventListener('click', () => {
+        handleCustomExport().catch((err) => {
+          console.error(err);
+          showToast('No se pudo generar el respaldo personalizado.');
         });
       });
     }

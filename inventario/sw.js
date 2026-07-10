@@ -10,23 +10,23 @@ const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A
   : '4.20.84';
 const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null))
   ? String(self.A33_RELEASE.rev)
-  : '10';
+  : '12';
 
 const MODULE = 'inventario';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.84&r=8',
+  './index.html?v=4.20.84&r=11',
   './style.css?v=4.20.84&r=8',
-  './script.js?v=4.20.84&r=8',
-  './manifest.webmanifest?v=4.20.84&r=8',
+  './script.js?v=4.20.84&r=12',
+  './manifest.webmanifest?v=4.20.84&r=9',
   './offline.html',
   './images/logo.png',
   '/assets/js/a33-release.js?v=4.20.84&r=44',
 
   '/assets/js/a33-input-ux.js?v=4.20.84&r=8',
-  '/assets/js/a33-storage.js?v=4.20.84&r=8',
+  '/assets/js/a33-storage.js?v=4.20.84&r=9',
   '/assets/js/a33-currency.js?v=4.20.84&r=14',
   '/assets/js/a33-presentations.js?v=4.20.84&r=8',
   '/assets/css/a33-header.css?v=4.20.84&r=8',
@@ -96,7 +96,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.84&r=8')) ||
+      (await cache.match('./index.html?v=4.20.84&r=11')) ||
       (await cache.match('./index.html')) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||
