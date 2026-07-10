@@ -518,7 +518,7 @@
         </table>
       </div>
       <button id="btn-guardar-receta" class="btn-secondary">Guardar receta temporal en este navegador</button>
-      <p class="hint">Se guarda solo dentro de la Calculadora Temporal en este navegador. No comparte recetas con la Calculadora oficial.</p>
+      <p class="hint">La lista se alimenta desde Catálogos/Producción. Lo que guardes aquí queda solo en Temporal y no mueve inventario.</p>
     </div>
     </div>
 
@@ -532,7 +532,8 @@
           <thead>
             <tr>
               <th>Presentación</th>
-              <th>Unidades a producir</th>
+              <th>Envase / tapa</th>
+              <th>Unidades a simular</th>
             </tr>
           </thead>
           <tbody>
@@ -585,17 +586,425 @@
 
 
   <script src="/assets/js/a33-storage.js?v=4.20.84&r=7"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=7"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=8"></script>
 
   <script>
     const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
-    const PRESENTACIONES = [
-      { id: "pulso",  nombre: "Pulso 250 ml",  volumenMl: 250 },
-      { id: "media",  nombre: "Media 375 ml",  volumenMl: 375 },
-      { id: "djeba",  nombre: "Djeba 750 ml",  volumenMl: 750 },
-      { id: "litro",  nombre: "Litro 1000 ml", volumenMl: 1000 },
-      { id: "galon",  nombre: "Galón 3750 ml", volumenMl: 3750 }
+    const A33_PRODUCTOS_DB_NAME = "a33-pos";
+    const A33_PRODUCTOS_STORE = "products";
+    const A33_ENVASES_CATALOG_KEY = "a33_catalog_envases_v1";
+    const A33_TAPAS_CATALOG_KEY = "a33_catalog_tapas_v1";
+    const A33_PRODUCCION_RECETAS_KEY = "arcano33_recetas_v1";
+    const A33_LEGACY_PRESENTATION_META = {
+      pulso: { id: "pulso", nombre: "Pulso 250 ml", volumenMl: 250, letra: "P" },
+      media: { id: "media", nombre: "Media 375 ml", volumenMl: 375, letra: "M" },
+      djeba: { id: "djeba", nombre: "Djeba 750 ml", volumenMl: 750, letra: "D" },
+      litro: { id: "litro", nombre: "Litro 1000 ml", volumenMl: 1000, letra: "L" },
+      galon: { id: "galon", nombre: "Galón 3720 ml", volumenMl: 3720, letra: "G" }
+    };
+    const A33_ENVASES_CATALOG_FALLBACK = [
+      { id: "envase_pulso", name: "Botella Pulso", capacityMl: 250, active: true },
+      { id: "envase_media", name: "Botella Media", capacityMl: 375, active: true },
+      { id: "envase_djeba", name: "Botella Djeba", capacityMl: 750, active: true },
+      { id: "envase_litro", name: "Botella Litro", capacityMl: 1000, active: true },
+      { id: "envase_galon", name: "Botella Galón", capacityMl: 3720, active: true },
+      { id: "envase_catrina", name: "Botella Catrina", capacityMl: null, active: true },
+      { id: "envase_catrina_jr", name: "Botella Catrina Jr.", capacityMl: null, active: true }
     ];
+    const A33_TAPAS_CATALOG_FALLBACK = [
+      { id: "tapa_galon", name: "Tapa Galón", active: true },
+      { id: "tapa_pulso_litro", name: "Tapa Pulso/Litro", active: true },
+      { id: "tapa_djeba_media", name: "Tapa Djeba/Media", active: true },
+      { id: "corcho_catrina", name: "Corcho Catrina", active: true }
+    ];
+    const A33_TAPA_LEGACY_BY_PRESENTACION = {
+      galon: "Tapa Galón",
+      pulso: "Tapa Pulso/Litro",
+      litro: "Tapa Pulso/Litro",
+      djeba: "Tapa Djeba/Media",
+      media: "Tapa Djeba/Media"
+    };
+    let PRESENTACIONES = Object.keys(A33_LEGACY_PRESENTATION_META).map((id) => {
+      const p = A33_LEGACY_PRESENTATION_META[id];
+      return {
+        id: p.id,
+        productId: p.id,
+        nombre: p.nombre,
+        receta: true,
+        letra: p.letra,
+        envaseId: "",
+        tapaId: "",
+        capacidadMl: p.volumenMl,
+        volumenMl: p.volumenMl,
+        costoReferencial: null,
+        activo: true,
+        legacy: true
+      };
+    });
+
+    function a33HasOwn(obj, key) {
+      return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
+    }
+
+    function a33Bool(value, fallback) {
+      if (typeof value === "boolean") return value;
+      if (typeof value === "number") return value === 1;
+      const raw = String(value ?? "").trim().toLowerCase();
+      if (["true", "1", "si", "sí", "yes", "y"].includes(raw)) return true;
+      if (["false", "0", "no", "n"].includes(raw)) return false;
+      return !!fallback;
+    }
+
+    function a33NormName(value) {
+      return String(value || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    }
+
+    function a33NormKey(value) {
+      return a33NormName(value).replace(/\s+/g, "");
+    }
+
+    function a33LegacyPresentationIdFromName(name) {
+      const n = a33NormName(name);
+      if (!n) return null;
+      if (n.includes("vaso")) return null;
+      if (n.includes("pulso")) return "pulso";
+      if (n.includes("media")) return "media";
+      if (n.includes("djeba")) return "djeba";
+      if (n.includes("litro")) return "litro";
+      if (n.includes("galon") || n.includes("gal")) return "galon";
+      return null;
+    }
+
+    function a33NormalizeLetter(value) {
+      return String(value || "").trim().toUpperCase().replace(/\s+/g, "").slice(0, 4);
+    }
+
+    function a33ProductoActivo(product) {
+      const p = product && typeof product === "object" ? product : {};
+      if (a33HasOwn(p, "active")) return a33Bool(p.active, true);
+      if (a33HasOwn(p, "activo")) return a33Bool(p.activo, true);
+      if (a33HasOwn(p, "isActive")) return a33Bool(p.isActive, true);
+      return true;
+    }
+
+    function a33ProductoConReceta(product) {
+      const p = product && typeof product === "object" ? product : {};
+      if (a33HasOwn(p, "receta")) return a33Bool(p.receta, false);
+      if (a33HasOwn(p, "Receta")) return a33Bool(p.Receta, false);
+      if (a33HasOwn(p, "recipe")) return a33Bool(p.recipe, false);
+      if (a33HasOwn(p, "hasRecipe")) return a33Bool(p.hasRecipe, false);
+      // Compatibilidad defensiva: datos antiguos sin campo Receta conservan las presentaciones A33 fijas.
+      return !!a33LegacyPresentationIdFromName(p.name || p.nombre || "");
+    }
+
+    function a33ProductoEnvaseId(product) {
+      const p = product && typeof product === "object" ? product : {};
+      return String(p.envaseId ?? p.bottleId ?? p.packagingEnvaseId ?? "").trim();
+    }
+
+    function a33ProductoTapaId(product) {
+      const p = product && typeof product === "object" ? product : {};
+      return String(p.tapaId ?? p.capId ?? p.corkId ?? p.packagingTapaId ?? "").trim();
+    }
+
+    function a33ReadJsonLocal(key, fallback) {
+      try {
+        if (window.A33Storage && typeof A33Storage.getJSON === "function") {
+          const val = A33Storage.getJSON(key, fallback, "local");
+          return val == null ? fallback : val;
+        }
+      } catch (e) {}
+      try {
+        const raw = window.localStorage ? localStorage.getItem(key) : null;
+        return raw ? JSON.parse(raw) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    function a33ReadEnvasesCatalog() {
+      const raw = a33ReadJsonLocal(A33_ENVASES_CATALOG_KEY, []);
+      return Array.isArray(raw) && raw.length ? raw : A33_ENVASES_CATALOG_FALLBACK;
+    }
+
+    function a33ReadTapasCatalog() {
+      const raw = a33ReadJsonLocal(A33_TAPAS_CATALOG_KEY, []);
+      return Array.isArray(raw) && raw.length ? raw : A33_TAPAS_CATALOG_FALLBACK;
+    }
+
+    function a33CatalogFindById(list, id) {
+      const key = String(id || "").trim();
+      if (!key) return null;
+      return (Array.isArray(list) ? list : []).find((x) => x && String(x.id || "").trim() === key) || null;
+    }
+
+    function a33CatalogNameById(list, id, fallback) {
+      const row = a33CatalogFindById(list, id);
+      const name = row && String(row.name || row.nombre || "").trim();
+      return name || fallback || String(id || "").trim();
+    }
+
+    function a33EnvaseDisplayName(product, envases) {
+      const p = product && typeof product === "object" ? product : {};
+      const envaseId = String(p.envaseId || "").trim();
+      if (envaseId) return a33CatalogNameById(envases, envaseId, envaseId);
+      const legacy = A33_LEGACY_PRESENTATION_META[String(p.id || "")];
+      return legacy ? ("Botella " + legacy.nombre.replace(/\s*\d+\s*ml/i, "").trim()) : "Sin envase";
+    }
+
+    function a33TapaDisplayName(product, tapas) {
+      const p = product && typeof product === "object" ? product : {};
+      const tapaId = String(p.tapaId || "").trim();
+      if (tapaId) return a33CatalogNameById(tapas, tapaId, tapaId);
+      return A33_TAPA_LEGACY_BY_PRESENTACION[String(p.id || "")] || "Sin tapa";
+    }
+
+    function a33PackagingSummary(product) {
+      const envases = a33ReadEnvasesCatalog();
+      const tapas = a33ReadTapasCatalog();
+      return a33EnvaseDisplayName(product, envases) + " / " + a33TapaDisplayName(product, tapas) + " · solo referencia";
+    }
+
+    function a33HasStorageValue(key) {
+      try {
+        if (window.A33Storage && typeof A33Storage.getRaw === "function") return A33Storage.getRaw(key, null) != null;
+      } catch (e) {}
+      try { return !!(window.localStorage && localStorage.getItem(key) != null); } catch (e) { return false; }
+    }
+
+    function a33ReadSharedPayload(key, fallback) {
+      try {
+        if (window.A33Storage && typeof A33Storage.sharedGet === "function") {
+          const val = A33Storage.sharedGet(key, fallback);
+          return val == null ? fallback : val;
+        }
+        if (window.A33Storage && typeof A33Storage.sharedRead === "function") {
+          const rr = A33Storage.sharedRead(key, fallback);
+          const val = rr && Object.prototype.hasOwnProperty.call(rr, "data") ? rr.data : rr;
+          return val == null ? fallback : val;
+        }
+        if (window.A33Storage && typeof A33Storage.getJSON === "function") {
+          const val = A33Storage.getJSON(key, fallback, "local");
+          return val == null ? fallback : val;
+        }
+      } catch (e) {}
+      try {
+        const raw = window.localStorage ? localStorage.getItem(key) : null;
+        return raw ? JSON.parse(raw) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    function a33RecipeValueFromPayload(payload, productId, ingredient) {
+      const recs = payload && payload.recetas ? payload.recetas : payload;
+      const rec = recs && recs[productId] && typeof recs[productId] === "object" ? recs[productId] : null;
+      if (!rec || !Object.prototype.hasOwnProperty.call(rec, ingredient)) return undefined;
+      const val = rec[ingredient];
+      return (val === null || val === undefined || val === "") ? undefined : val;
+    }
+
+    function a33CostValueFromPayload(payload, productId) {
+      const costos = payload && payload.costosPresentacion && typeof payload.costosPresentacion === "object" ? payload.costosPresentacion : null;
+      const info = costos && costos[productId] && typeof costos[productId] === "object" ? costos[productId] : null;
+      if (!info) return undefined;
+      const val = info.costoUnidad ?? info.costoUnitario ?? info.costoReferencial;
+      return (val === null || val === undefined || val === "") ? undefined : val;
+    }
+
+    function a33BuildTemporalRecipeSeed(produccionPayload, temporalPayload) {
+      if (!produccionPayload && !temporalPayload && !PRESENTACIONES.some((p) => p.costoReferencial != null)) return null;
+      const recetas = {};
+      const costosPresentacion = {};
+      PRESENTACIONES.forEach((p) => {
+        recetas[p.id] = {};
+        INGREDIENTES.forEach((ing) => {
+          const prodVal = a33RecipeValueFromPayload(produccionPayload, p.id, ing);
+          const tempVal = a33RecipeValueFromPayload(temporalPayload, p.id, ing);
+          const chosen = tempVal !== undefined ? tempVal : prodVal;
+          if (chosen !== undefined) recetas[p.id][ing] = chosen;
+        });
+        const info = a33SerializePresentacionProducto(p);
+        const prodCost = a33CostValueFromPayload(produccionPayload, p.id);
+        const tempCost = a33CostValueFromPayload(temporalPayload, p.id);
+        const fallbackCost = p.costoReferencial != null ? p.costoReferencial : undefined;
+        const chosenCost = tempCost !== undefined ? tempCost : (prodCost !== undefined ? prodCost : fallbackCost);
+        if (chosenCost !== undefined) info.costoUnidad = chosenCost;
+        costosPresentacion[p.id] = info;
+      });
+      return {
+        version: 4,
+        source: "temporal_seed_produccion_catalogos",
+        recetas,
+        costosPresentacion,
+        productos: PRESENTACIONES.map(a33SerializePresentacionProducto)
+      };
+    }
+
+    function a33NumberOrNull(value) {
+      const n = Number(String(value ?? "").replace(",", "."));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }
+
+    function a33CapacityFromName(name) {
+      const s = String(name || "").toLowerCase();
+      const m = s.match(/(\d+(?:[\.,]\d+)?)\s*(ml|mililitros?|l|lt|litros?)/i);
+      if (!m) return null;
+      const n = a33NumberOrNull(m[1]);
+      if (!n) return null;
+      const unit = String(m[2] || "").toLowerCase();
+      return unit.startsWith("l") && n < 100 ? Math.round(n * 1000) : Math.round(n);
+    }
+
+    function a33CapacityFromEnvase(envases, envaseId) {
+      const id = String(envaseId || "").trim();
+      if (!id) return null;
+      const row = (Array.isArray(envases) ? envases : []).find((x) => x && String(x.id || "").trim() === id);
+      if (!row) return null;
+      return a33NumberOrNull(row.capacityMl ?? row.capacidadMl ?? row.capacity ?? row.ml ?? row.volumenMl);
+    }
+
+    function a33ProductCapacityMl(product, legacyMeta, envases) {
+      const p = product && typeof product === "object" ? product : {};
+      return a33NumberOrNull(p.capacityMl ?? p.capacidadMl ?? p.capacity ?? p.capacidad ?? p.volumenMl ?? p.ml)
+        || a33CapacityFromEnvase(envases, a33ProductoEnvaseId(p))
+        || a33CapacityFromName(p.name || p.nombre || "")
+        || (legacyMeta ? legacyMeta.volumenMl : null)
+        || 0;
+    }
+
+    function a33SafePresentationId(product, legacyId) {
+      if (legacyId) return legacyId;
+      const raw = (product && (product.id ?? product.productId ?? product.codigo ?? product.name ?? product.nombre)) || "producto";
+      const safe = String(raw).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      return "prod_" + (safe || "nuevo").slice(0, 48);
+    }
+
+    function a33ProductCost(product) {
+      const p = product && typeof product === "object" ? product : {};
+      return a33NumberOrNull(p.unitCost ?? p.costoUnitario ?? p.cost ?? p.costo ?? p.referenceCost ?? p.costoReferencial);
+    }
+
+    function a33ProductoToPresentacion(product, envases) {
+      const p = product && typeof product === "object" ? product : {};
+      const name = String(p.name || p.nombre || "").trim();
+      if (!name || a33NormName(name).includes("vaso") || !a33ProductoActivo(p) || !a33ProductoConReceta(p)) return null;
+      const legacyId = a33LegacyPresentationIdFromName(name);
+      const legacyMeta = legacyId ? A33_LEGACY_PRESENTATION_META[legacyId] : null;
+      const id = a33SafePresentationId(p, legacyId);
+      const capacidadMl = a33ProductCapacityMl(p, legacyMeta, envases);
+      return {
+        id,
+        productId: p.id ?? p.productId ?? id,
+        nombre: name || (legacyMeta ? legacyMeta.nombre : "Producto"),
+        receta: true,
+        letra: a33NormalizeLetter(p.letra ?? p.letter ?? p.productionLetter ?? (legacyMeta ? legacyMeta.letra : "")),
+        envaseId: a33ProductoEnvaseId(p),
+        tapaId: a33ProductoTapaId(p),
+        capacidadMl,
+        volumenMl: capacidadMl || (legacyMeta ? legacyMeta.volumenMl : 0),
+        costoReferencial: a33ProductCost(p),
+        activo: true,
+        legacy: !!legacyId
+      };
+    }
+
+    function a33SortPresentaciones(a, b) {
+      const order = { pulso: 1, media: 2, djeba: 3, litro: 4, galon: 5 };
+      const oa = order[a && a.id] || 99;
+      const ob = order[b && b.id] || 99;
+      if (oa !== ob) return oa - ob;
+      return String((a && a.nombre) || "").localeCompare(String((b && b.nombre) || ""), "es-NI", { sensitivity: "base" });
+    }
+
+    function a33SerializePresentacionProducto(p) {
+      return {
+        productId: p.productId,
+        id: p.id,
+        nombre: p.nombre,
+        receta: !!p.receta,
+        letra: p.letra || "",
+        envaseId: p.envaseId || "",
+        tapaId: p.tapaId || "",
+        capacidadMl: Number(p.capacidadMl || p.volumenMl || 0) || 0,
+        costoReferencial: p.costoReferencial == null ? null : p.costoReferencial,
+        activo: p.activo !== false,
+        legacy: !!p.legacy
+      };
+    }
+
+    function a33EsPresentacionLegacyOperativa(id) {
+      return !!A33_LEGACY_PRESENTATION_META[String(id || "")];
+    }
+
+    async function a33ReadCatalogProducts() {
+      if (!window.indexedDB) return null;
+      return new Promise((resolve) => {
+        let done = false;
+        const finish = (value) => {
+          if (done) return;
+          done = true;
+          resolve(value);
+        };
+        try {
+          const req = indexedDB.open(A33_PRODUCTOS_DB_NAME);
+          req.onerror = () => finish(null);
+          req.onblocked = () => finish(null);
+          req.onsuccess = () => {
+            const db = req.result;
+            try {
+              if (!db || !db.objectStoreNames || !db.objectStoreNames.contains(A33_PRODUCTOS_STORE)) {
+                try { if (db) db.close(); } catch (e) {}
+                finish([]);
+                return;
+              }
+              const tx = db.transaction(A33_PRODUCTOS_STORE, "readonly");
+              const getReq = tx.objectStore(A33_PRODUCTOS_STORE).getAll();
+              getReq.onsuccess = () => {
+                const rows = Array.isArray(getReq.result) ? getReq.result : [];
+                try { db.close(); } catch (e) {}
+                finish(rows);
+              };
+              getReq.onerror = () => {
+                try { db.close(); } catch (e) {}
+                finish(null);
+              };
+            } catch (e) {
+              try { if (db) db.close(); } catch (e2) {}
+              finish(null);
+            }
+          };
+        } catch (e) {
+          finish(null);
+        }
+      });
+    }
+
+    async function cargarPresentacionesDinamicasDesdeCatalogos() {
+      try {
+        const productos = await a33ReadCatalogProducts();
+        if (!Array.isArray(productos) || productos.length === 0) return;
+        const envases = a33ReadEnvasesCatalog();
+        const map = new Map();
+        productos.forEach((producto) => {
+          const item = a33ProductoToPresentacion(producto, envases);
+          if (!item) return;
+          const prev = map.get(item.id);
+          if (!prev) {
+            map.set(item.id, item);
+            return;
+          }
+          // Si hay duplicados legacy por nombre, conservar el que tenga más metadatos completos.
+          const prevScore = (prev.envaseId ? 2 : 0) + (prev.tapaId ? 2 : 0) + (prev.letra ? 1 : 0) + (prev.costoReferencial ? 1 : 0);
+          const nextScore = (item.envaseId ? 2 : 0) + (item.tapaId ? 2 : 0) + (item.letra ? 1 : 0) + (item.costoReferencial ? 1 : 0);
+          if (nextScore >= prevScore) map.set(item.id, item);
+        });
+        PRESENTACIONES = Array.from(map.values()).sort(a33SortPresentaciones);
+      } catch (e) {
+        console.warn("No se pudieron leer productos dinámicos con Receta; se conserva lista fija.", e);
+      }
+    }
+
     const STORAGE_RECETAS_KEY = "arcano33_temporal_recetas_v1";
     const STORAGE_REGISTROS_KEY = "arcano33_temporal_registros_v2";
     const STORAGE_WORKSPACE_KEY = "arcano33_temporal_workspace_v2";
@@ -809,11 +1218,11 @@
           if (typeof val === 'number') recetas[p.id][ing] = val;
         });
         const costoUnit = getNumberValue('costo-unit-' + p.id, { emptyAsNull: true });
-        const info = { id: p.id, nombre: p.nombre };
+        const info = a33SerializePresentacionProducto(p);
         if (typeof costoUnit === 'number') info.costoUnidad = costoUnit;
         costosPresentacion[p.id] = info;
       });
-      return { version: 2, recetas, costosPresentacion };
+      return { version: 3, recetas, costosPresentacion, productos: PRESENTACIONES.map(a33SerializePresentacionProducto) };
     }
 
     function aplicarPayloadRecetasEnUI(payload) {
@@ -859,7 +1268,20 @@
         totalesIngredientes: Object.assign({ vino: 0, vodka: 0, jugo: 0, sirope: 0, agua: 0 }, (datos && datos.totalesIngredientes) || {}),
         totalVolumenFinalMl: safeNumber(datos && datos.totalVolumenFinalMl),
         unidadesPorPresentacion: Array.isArray(datos && datos.unidadesPorPresentacion)
-          ? datos.unidadesPorPresentacion.map(item => ({ id: item.id, nombre: item.nombre, unidades: normQtyInt(item.unidades) })).filter(item => item.unidades > 0)
+          ? datos.unidadesPorPresentacion.map(item => ({
+              id: item.id,
+              productId: item.productId,
+              nombre: item.nombre,
+              unidades: normQtyInt(item.unidades),
+              letra: item.letra || '',
+              envaseId: item.envaseId || '',
+              tapaId: item.tapaId || '',
+              capacidadMl: Number(item.capacidadMl || 0) || 0,
+              receta: item.receta !== false,
+              legacy: !!item.legacy,
+              costoUnitario: item.costoUnitario != null && Number.isFinite(Number(item.costoUnitario)) ? Number(item.costoUnitario) : undefined,
+              costoReferencial: item.costoReferencial != null && Number.isFinite(Number(item.costoReferencial)) ? Number(item.costoReferencial) : undefined
+            })).filter(item => item.unidades > 0)
           : [],
         loteNombre: String((datos && datos.loteNombre) || '').trim(),
         fechaProdStr,
@@ -1111,7 +1533,7 @@
       } else {
         resumenCostosDiv.innerHTML = "<p class='hint'>Para ver costos, llena la columna de costo unitario y el plan de producción.</p>";
       }
-      resumenVolumenDiv.innerHTML = "<div class='flex-row'><div class='badge'>Volumen final teórico: <strong>" + formatLitros(datos.totalVolumenFinalMl) + "</strong></div></div>";
+      resumenVolumenDiv.innerHTML = "<div class='flex-row'><div class='badge'>Volumen final teórico: <strong>" + formatLitros(datos.totalVolumenFinalMl) + "</strong></div><div class='badge'>Temporal: no afecta inventario</div></div>";
       resultadosDiv.style.display = 'block';
       const hintRes = document.getElementById('hint-resultados');
       if (hintRes) hintRes.style.display = 'none';
@@ -1387,7 +1809,7 @@
       }
     }
     // Etapa 3: Hebreo offline-first (Intl -> cache local -> degradación controlada + fetch opcional no bloqueante)
-    const STORAGE_HEB_CACHE_KEY = "a33_calc_hebrew_cache_v1";
+    const STORAGE_HEB_CACHE_KEY = "a33_calc_temporal_hebrew_cache_v1";
     const HEB_FETCH_TIMEOUT_MS = 2500;
     let A33HebreoFetch = { inFlight: false, iso: "", abort: null };
 
@@ -1858,6 +2280,17 @@ function a33WireNumericInput(el, mode) {
     function construirTablaRecetas() {
       const tbody = document.querySelector("#recetas-table tbody");
       tbody.innerHTML = "";
+      if (!PRESENTACIONES.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = INGREDIENTES.length + 2;
+        td.className = "hint";
+        td.style.textAlign = "left";
+        td.textContent = "No hay productos activos con Receta marcada en Catálogos.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
       PRESENTACIONES.forEach(p => {
         const tr = document.createElement("tr");
         const tdNombre = document.createElement("td");
@@ -1893,12 +2326,28 @@ function a33WireNumericInput(el, mode) {
     function construirTablaPlan() {
       const tbody = document.querySelector("#plan-table tbody");
       tbody.innerHTML = "";
+      if (!PRESENTACIONES.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 3;
+        td.className = "hint";
+        td.style.textAlign = "left";
+        td.textContent = "No hay productos producibles para planificar. Marca Receta en Catálogos → Productos.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
       PRESENTACIONES.forEach(p => {
         const tr = document.createElement("tr");
         const tdNombre = document.createElement("td");
         tdNombre.textContent = p.nombre;
         tdNombre.style.textAlign = "left";
         tr.appendChild(tdNombre);
+        const tdEmpaque = document.createElement("td");
+        tdEmpaque.className = "hint";
+        tdEmpaque.style.textAlign = "left";
+        tdEmpaque.textContent = a33PackagingSummary(p);
+        tr.appendChild(tdEmpaque);
         const tdCantidad = document.createElement("td");
         const input = document.createElement("input");
         input.type = "text";
@@ -1923,11 +2372,13 @@ function a33WireNumericInput(el, mode) {
 
     function cargarRecetas() {
       try {
-        const data = readTemporalData(STORAGE_RECETAS_KEY, null);
-        if (!data) return;
-        aplicarPayloadRecetasEnUI(data);
+        const produccionData = a33HasStorageValue(A33_PRODUCCION_RECETAS_KEY) ? a33ReadSharedPayload(A33_PRODUCCION_RECETAS_KEY, null) : null;
+        const temporalData = readTemporalData(STORAGE_RECETAS_KEY, null);
+        const seed = a33BuildTemporalRecipeSeed(produccionData, temporalData);
+        if (!seed) return;
+        aplicarPayloadRecetasEnUI(seed);
       } catch (e) {
-        console.warn("Error cargando recetas:", e);
+        console.warn("Error cargando recetas temporales/dinámicas:", e);
       }
     }
 
@@ -1965,7 +2416,22 @@ function a33WireNumericInput(el, mode) {
       PRESENTACIONES.forEach(p => {
         const unidades = normQtyInt(getNumberValue("plan-" + p.id));
         if (unidades > 0) {
-          unidadesPorPresentacion.push({ id: p.id, nombre: p.nombre, unidades });
+          const costoUnitario = getNumberValue("costo-unit-" + p.id, { emptyAsNull: true });
+          const producido = {
+            id: p.id,
+            productId: p.productId,
+            nombre: p.nombre,
+            unidades,
+            letra: p.letra || "",
+            envaseId: p.envaseId || "",
+            tapaId: p.tapaId || "",
+            capacidadMl: Number(p.capacidadMl || p.volumenMl || 0) || 0,
+            receta: !!p.receta,
+            legacy: !!p.legacy
+          };
+          if (typeof costoUnitario === "number" && Number.isFinite(costoUnitario)) producido.costoUnitario = costoUnitario;
+          else if (p.costoReferencial != null && Number.isFinite(Number(p.costoReferencial))) producido.costoReferencial = Number(p.costoReferencial);
+          unidadesPorPresentacion.push(producido);
         }
         if (unidades <= 0) return;
         INGREDIENTES.forEach(ing => {
@@ -2129,7 +2595,8 @@ function a33WireNumericInput(el, mode) {
       limpiarDespuesDeGuardarCalculoTemporal();
       alert('Cálculo temporal guardado correctamente en el historial propio de este módulo. No se creó ningún lote oficial.');
     }
-function init() {
+async function init() {
+      await cargarPresentacionesDinamicasDesdeCatalogos();
       construirTablaRecetas();
       construirTablaPlan();
       cargarRecetas();
@@ -2224,7 +2691,12 @@ function init() {
       actualizarFechaHebrea();
 }
 
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", () => {
+      init().catch((err) => {
+        console.error("No se pudo iniciar la Calculadora A33.", err);
+        try { alert("No se pudo iniciar la Calculadora. Revisa consola."); } catch (e) {}
+      });
+    });
 
     window.addEventListener("pageshow", () => {
       try { restoreTemporalWorkspace(); } catch (e) {}

@@ -1338,7 +1338,7 @@ function rebuildHorasEventOptions(filteredSales){
       { id: 'media', label: 'Media 375 ml' },
       { id: 'djeba', label: 'Djeba 750 ml' },
       { id: 'litro', label: 'Litro 1000 ml' },
-      { id: 'galon', label: 'Galón 3750 ml' }
+      { id: 'galon', label: 'Galón 3720 ml' }
     ];
 
     const today = new Date();

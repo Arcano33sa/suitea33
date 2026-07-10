@@ -56,7 +56,7 @@
 
   // Sin fallback de precios inventados: si Catálogos no tiene productos, Agenda muestra vacío.
   const PRODUCT_CATALOG_FALLBACK = Object.freeze([]);
-  const CANON_GALON_LABEL_AGD = 'Galón 3750 ml';
+  const CANON_GALON_LABEL_AGD = 'Galón 3720 ml';
   const LEGACY_GALON_PRICE_AGD = 800;
   const DEFAULT_GALON_PRICE_AGD = 900;
 

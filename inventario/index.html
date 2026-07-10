@@ -29,7 +29,7 @@
 
   <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=8" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=9" />
 
   <link rel="stylesheet" href="style.css?v=4.20.84&r=8" />
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=8" />
@@ -91,8 +91,8 @@
     </section>
 
     <section class="card table-card">
-      <h2>Inventario de botellas por presentación</h2>
-      <p class="hint">Control de unidades de botellas por presentación (vacías listas para producción).</p>
+      <h2>Envases / Botellas disponibles</h2>
+      <p class="hint">Control de unidades de envases y botellas activas desde Catálogos, listas para abastecer Producción.</p>
       <div class="table-wrapper">
         <table class="inv-table has-actions">
           <thead>
@@ -119,8 +119,8 @@
     </section>
 
     <section class="card table-card">
-      <h2>Tapas (Auto)</h2>
-      <p class="hint">Control de tapas por grupo de presentaciones. Ajusta stock y mínimo; el estado se actualiza en tiempo real.</p>
+      <h2>Tapas / Corchos disponibles</h2>
+      <p class="hint">Control de tapas y corchos activos desde Catálogos. Ajusta stock y mínimo; el estado se actualiza en tiempo real.</p>
       <div class="table-wrapper">
         <table class="inv-table has-actions">
           <thead>
@@ -133,7 +133,7 @@
             </tr>
           </thead>
           <tbody id="inv-caps-body">
-            <!-- Filas fijas (Tapas Auto) -->
+            <!-- Filas dinámicas de tapas/corchos -->
           </tbody>
         </table>
       </div>
@@ -182,8 +182,15 @@
     </section>
 
     <section class="card table-card">
-      <h2>Inventario de producto terminado</h2>
-      <p class="hint">Botellas listas de Sangría Artesanal Premium por presentación. Este inventario se actualiza automáticamente desde la Calculadora de Producción y el POS.</p>
+      <div class="table-header">
+        <div>
+          <h2>Inventario de producto terminado</h2>
+          <p class="hint">Botellas listas de Sangría Artesanal Premium por presentación. Este inventario se actualiza automáticamente desde la Calculadora de Producción y el POS.</p>
+        </div>
+        <div class="table-actions">
+          <button id="inv-finished-clear" class="btn danger btn-pill" type="button">Borrar Productos</button>
+        </div>
+      </div>
       <div class="table-wrapper">
         <table class="inv-table">
           <thead>
@@ -242,11 +249,11 @@
   <script src="/assets/js/a33-release.js?v=4.20.84&r=44"></script>
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.84&r=8"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.84&r=9"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.84&r=14"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.84&r=8"></script>
 
-  <script src="script.js?v=4.20.84&r=8"></script>
+  <script src="script.js?v=4.20.84&r=13"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=8"></script>
 </body>
 </html>

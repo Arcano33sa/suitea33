@@ -66,7 +66,7 @@ const INV_BOTTLES_META = [
   { id:'media', name:'Media 375 ml' },
   { id:'djeba', name:'Djeba 750 ml' },
   { id:'litro', name:'Litro 1000 ml' },
-  { id:'galon', name:'Galón 3750 ml' },
+  { id:'galon', name:'Galón 3720 ml' },
 ];
 
 function invNum(x){

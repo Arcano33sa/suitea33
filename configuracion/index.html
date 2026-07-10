@@ -8,7 +8,7 @@
 <meta content="Módulo Configuración de Suite A33. Organiza PWA, Identidad, Apariencia, Reportes, Moneda, Firebase, Seguridad y Respaldo en un solo lugar." name="description"/>
 <meta content="#7b1818" name="theme-color"/>
 
-<script src="/assets/js/a33-theme.js?v=4.20.84&r=7"></script>
+<script src="/assets/js/a33-theme.js?v=4.20.84&r=8"></script>
 <link href="../icon-a33-192.png" rel="icon" sizes="192x192" type="image/png"/>
 <link href="../icon-a33-192.png" rel="apple-touch-icon"/>
 <script>
@@ -32,9 +32,9 @@
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<link href="../assets/css/a33-header.css?v=4.20.84&amp;r=7" rel="stylesheet"/>
-<link href="style.css?v=4.20.84&amp;r=20" rel="stylesheet"/>
-<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=7" />
+<link href="../assets/css/a33-header.css?v=4.20.84&amp;r=8" rel="stylesheet"/>
+<link href="style.css?v=4.20.84&amp;r=23" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=8" />
 </head>
 <body>
 <header class="a33-header" role="banner">
@@ -1083,24 +1083,30 @@
 </div>
 <span class="cfg-badge">JSON local</span>
 </div>
-<p class="cfg-copy">Exporta o importa un respaldo completo de la Suite A33 sin alterar nombres de claves, payload ni compatibilidad previa. La lógica sigue siendo la misma; ahora solo vive en el lugar correcto.</p>
+<p class="cfg-copy">Exporta o importa respaldos completos de la Suite A33. También puedes generar e importar JSON personalizados por módulos, submódulos y eventos POS sin borrar datos no incluidos.</p>
 <div class="cfg-actions">
-<button class="cfg-btn cfg-btn-primary" id="cfg-export-backup" type="button">Exportar JSON</button>
+<button class="cfg-btn cfg-btn-primary" id="cfg-export-backup" type="button">Exportar respaldo completo</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-export-custom-backup" type="button">Exportar respaldo personalizado</button>
 <button class="cfg-btn cfg-btn-ghost" id="cfg-import-backup" type="button">Importar JSON</button>
 </div>
 <div class="cfg-note-grid">
 <div class="cfg-note-card">
 <strong>Qué hace</strong>
-<p>Exporta un archivo con localStorage e IndexedDB de la Suite detectados en este navegador.</p>
+<p>Exporta un archivo completo o personalizado con localStorage e IndexedDB de la Suite detectados en este navegador.</p>
 </div>
 <div class="cfg-note-card">
 <strong>Qué no cambia</strong>
-<p>No toca el formato del JSON ni renombra claves históricas del respaldo.</p>
+<p>El respaldo completo conserva su formato histórico; el personalizado se identifica como parcial.</p>
 </div>
 <div class="cfg-note-card">
 <strong>Cuidado</strong>
-<p>Al importar, se reemplazan los datos actuales de este navegador. Mejor exportar antes; drama evitado.</p>
+<p>Al importar un respaldo completo se reemplaza todo; al importar uno parcial se fusionan solo las secciones incluidas. Mejor exportar antes; drama evitado.</p>
 </div>
+</div>
+<div class="cfg-backup-import-log-card">
+<strong>JSON importados</strong>
+<p>Registro compacto de los últimos respaldos importados en este navegador.</p>
+<div id="cfg-backup-import-log" class="cfg-backup-import-log"></div>
 </div>
 </article>
 <aside aria-labelledby="cfg-backup-side-title" class="cfg-card cfg-panel cfg-side-panel">
@@ -1113,8 +1119,9 @@
 </div>
 <ul class="cfg-list">
 <li>Exporta respaldo JSON completo.</li>
-<li>Importa respaldo JSON desde este navegador.</li>
-<li>Mantiene el formato histórico del archivo.</li>
+<li>Exporta JSON personalizado por módulos y submódulos.</li>
+<li>Importa respaldos completos o parciales desde este navegador.</li>
+<li>Mantiene el formato histórico del archivo completo.</li>
 <li>Conserva lectura clara en desktop e iPad.</li>
 </ul>
 </aside>
@@ -1135,7 +1142,7 @@
 </div>
 <input accept="application/json" id="backup-file-input" style="display:none;" type="file"/>
 <div aria-live="polite" class="a33-toast" id="a33-toast"></div>
-<script src="../assets/js/a33-release.js?v=4.20.84&amp;r=20"></script>
+<script src="../assets/js/a33-release.js?v=4.20.84&amp;r=22"></script>
 <script src="../assets/js/a33-storage.js?v=4.20.84&amp;r=7"></script>
 <script src="../assets/js/a33-currency.js?v=4.20.84&amp;r=14"></script>
 <script src="../assets/js/a33-export-currency.js?v=4.20.84&amp;r=2"></script>
@@ -1145,6 +1152,6 @@
 <script src="../assets/js/a33-firebase-auth.js?v=4.20.84&amp;r=15"></script>
 <script src="../assets/js/a33-firebase-access.js?v=4.20.84&amp;r=15"></script>
 <script src="../assets/js/a33-module-access.js?v=4.20.84&amp;r=15"></script>
-<script src="script.js?v=4.20.84&amp;r=21"></script>
+<script src="script.js?v=4.20.84&amp;r=28"></script>
 </body>
 </html>

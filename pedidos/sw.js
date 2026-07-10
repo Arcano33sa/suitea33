@@ -9,19 +9,19 @@ const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
   : '4.20.84';
 const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null))
-  ? String(self.A33_RELEASE.rev)
-  : '14';
+  ? '18'
+  : '18';
 
 const MODULE = 'pedidos';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.84&r=9',
-  './style.css?v=4.20.84&r=7',
-  './script.js?v=4.20.84&r=10',
+  './index.html?v=4.20.84&r=12',
+  './style.css?v=4.20.84&r=8',
+  './script.js?v=4.20.84&r=14',
   './vendor/xlsx.full.min.js?v=4.20.84&r=7',
-  './manifest.webmanifest?v=4.20.84&r=7',
+  './manifest.webmanifest?v=4.20.84&r=8',
   './offline.html',
   './images/logo.png',
   '/assets/js/a33-release.js?v=4.20.84&r=44',
@@ -95,7 +95,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.84&r=9')) ||
+      (await cache.match('./index.html?v=4.20.84&r=12')) ||
       (await cache.match('./index.html')) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||

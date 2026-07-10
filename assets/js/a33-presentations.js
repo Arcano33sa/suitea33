@@ -1,5 +1,5 @@
 // A33 Presentations helper (suite-wide)
-// Canonicaliza nombres/IDs de presentaciones para compatibilidad legacy (Galón 3800 -> 3750)
+// Canonicaliza nombres/IDs de presentaciones para compatibilidad legacy (Galón 3750/3800 -> 3720)
 (function(){
   'use strict';
 
@@ -33,7 +33,7 @@
     if (id === 'media') return 'Media 375 ml';
     if (id === 'djeba') return 'Djeba 750 ml';
     if (id === 'litro') return 'Litro 1000 ml';
-    if (id === 'galon') return 'Galón 3750 ml';
+    if (id === 'galon') return 'Galón 3720 ml';
     return String(id || '');
   }
 
@@ -46,9 +46,9 @@
   function canonicalizeText(text){
     let s = String(text || '');
     // Reemplazos específicos del galón (no tocar números sueltos)
-    s = s.replace(/Gal[oó]n\s*3800\s*ml/gi, 'Galón 3750 ml');
-    s = s.replace(/Gal[oó]n\s*3800ml/gi, 'Galón 3750 ml');
-    s = s.replace(/Gal[oó]n\s*3750ml/gi, 'Galón 3750 ml');
+    s = s.replace(/Gal[oó]n\s*3800\s*ml/gi, 'Galón 3720 ml');
+    s = s.replace(/Gal[oó]n\s*3800ml/gi, 'Galón 3720 ml');
+    s = s.replace(/Gal[oó]n\s*3750\s*ml/gi, 'Galón 3720 ml');
     // Normalizar doble espacios
     s = s.replace(/\s{2,}/g, ' ');
     return s;
@@ -61,6 +61,6 @@
     labelFromId,
     canonicalizeProductName,
     canonicalizeText,
-    GALON_ML: 3750
+    GALON_ML: 3720
   };
 })();
