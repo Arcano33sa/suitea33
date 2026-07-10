@@ -136,7 +136,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.84&r=23').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.84&r=24').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -163,7 +163,7 @@
     if (n.includes('media')) return 'media';
     if (n.includes('djeba')) return 'djeba';
     if (n.includes('litro')) return 'litro';
-    if (n.includes('galon') || n.includes('galón') || n.includes('gal')) return 'galon';
+    if (n.includes('galon') || /(^|\s)gal($|\s)/.test(n)) return 'galon';
     return null;
   }
 
@@ -1126,21 +1126,49 @@
     if (!db) await openDB();
     if (!db.objectStoreNames.contains(store)) return [];
     return new Promise((resolve, reject)=>{
+      let result = [];
+      let settled = false;
       const tx = db.transaction(store, 'readonly');
       const req = tx.objectStore(store).getAll();
-      req.onsuccess = ()=>resolve(req.result || []);
-      req.onerror = ()=>reject(req.error);
+      const fail = (error)=>{
+        if (settled) return;
+        settled = true;
+        reject(error || req.error || tx.error || new Error('No se pudo cargar el catálogo.'));
+      };
+      req.onsuccess = ()=>{ result = Array.isArray(req.result) ? req.result : []; };
+      req.onerror = ()=>fail(req.error);
+      tx.oncomplete = ()=>{
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      tx.onerror = ()=>fail(tx.error);
+      tx.onabort = ()=>fail(tx.error || new Error('La lectura del catálogo fue cancelada.'));
     });
   }
 
   async function put(store, value){
     if (!db) await openDB();
+    if (!db.objectStoreNames.contains(store)) throw new Error(`No existe el almacén ${store}.`);
     return new Promise((resolve, reject)=>{
+      let result;
+      let settled = false;
       const tx = db.transaction(store, 'readwrite');
       const req = tx.objectStore(store).put(value);
-      req.onsuccess = ()=>resolve(req.result);
-      req.onerror = ()=>reject(req.error || tx.error);
-      tx.onerror = ()=>reject(tx.error || req.error);
+      const fail = (error)=>{
+        if (settled) return;
+        settled = true;
+        reject(error || req.error || tx.error || new Error('No se pudo guardar el registro.'));
+      };
+      req.onsuccess = ()=>{ result = req.result; };
+      req.onerror = ()=>fail(req.error);
+      tx.oncomplete = ()=>{
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      tx.onerror = ()=>fail(tx.error);
+      tx.onabort = ()=>fail(tx.error || new Error('La escritura del catálogo fue cancelada.'));
     });
   }
 
@@ -1148,11 +1176,22 @@
     if (!db) await openDB();
     if (!db.objectStoreNames.contains(store)) return false;
     return new Promise((resolve, reject)=>{
+      let settled = false;
       const tx = db.transaction(store, 'readwrite');
       const req = tx.objectStore(store).delete(key);
-      req.onsuccess = ()=>resolve(true);
-      req.onerror = ()=>reject(req.error || tx.error);
-      tx.onerror = ()=>reject(tx.error || req.error);
+      const fail = (error)=>{
+        if (settled) return;
+        settled = true;
+        reject(error || req.error || tx.error || new Error('No se pudo borrar el registro.'));
+      };
+      req.onerror = ()=>fail(req.error);
+      tx.oncomplete = ()=>{
+        if (settled) return;
+        settled = true;
+        resolve(true);
+      };
+      tx.onerror = ()=>fail(tx.error);
+      tx.onabort = ()=>fail(tx.error || new Error('El borrado del catálogo fue cancelado.'));
     });
   }
 
@@ -1527,45 +1566,38 @@
   }
 
   async function seedMissingDefaults(force){
-    if (force) clearCatalogDeleted('products');
-    const deletedSeedKeys = readCatalogDeletedKeys('products');
+    // Defensa crítica: los productos base solo pueden restaurarse por una acción explícita del usuario.
+    if (force !== true) return { added:0, skipped:SEED.length };
+
     const list = await getAll('products');
-    const keys = new Set((list || []).map(p => normKey(p && p.name)));
-    if (
-      keys.has(normKey('Galón 3750ml')) || keys.has(normKey('Galón 3750 ml')) ||
-      keys.has(normKey('Galón 3800ml')) || keys.has(normKey('Galón 3800 ml'))
-    ) keys.add(normKey(CANON_GALON_LABEL));
+    const now = new Date().toISOString();
+    let added = 0;
+    let skipped = 0;
 
     for (const seed of SEED){
-      const k = normKey(seed.name);
-      let existing = (list || []).find(p => normKey(p && p.name) === k);
-      if (!existing && k === normKey(CANON_GALON_LABEL)){
-        existing = (list || []).find(p => p && mapProductNameToFinishedId(p.name || '') === 'galon');
-      }
+      const seedKey = normKey(seed.name);
+      const seedGroup = mapProductNameToFinishedId(seed.name || '');
+      const existing = (list || []).find((product) => {
+        if (!product) return false;
+        if (normKey(product.name || '') === seedKey) return true;
+        const existingGroup = mapProductNameToFinishedId(product.name || '');
+        return !!(seedGroup && existingGroup && seedGroup === existingGroup);
+      });
       if (existing){
-        let changed = false;
-        if (force && existing.active !== true){ existing.active = true; changed = true; }
-        if (typeof existing.active === 'undefined'){ existing.active = true; changed = true; }
-        if (typeof existing.manageStock === 'undefined'){ existing.manageStock = seed.manageStock; changed = true; }
-        if (!hasOwn(existing, 'receta')){ existing.receta = !!seed.receta; changed = true; }
-        if (!hasOwn(existing, 'pos')){ existing.pos = !!seed.pos; changed = true; }
-        if (!productEnvaseId(existing) && seed.envaseId){ existing.envaseId = seed.envaseId; changed = true; }
-        if (!productTapaId(existing) && seed.tapaId){ existing.tapaId = seed.tapaId; changed = true; }
-        if (!productLetter(existing) && seed.letra){ existing.letra = seed.letra; changed = true; }
-        else {
-          const normalizedLetter = productLetter(existing);
-          if (existing.letra !== normalizedLetter){ existing.letra = normalizedLetter; changed = true; }
-        }
-        // Cierre Parte 1: no cambiar automáticamente nombres ni precios existentes.
-        if (!isValidPrice(existing.price)){ existing.price = seed.price; changed = true; }
-        if (!existing.updatedAt && changed) existing.updatedAt = new Date().toISOString();
-        if (changed) await put('products', existing);
-      } else {
-        if (!force && deletedSeedKeys.has(k)) continue;
-        const now = new Date().toISOString();
-        await put('products', { ...seed, createdAt:now, updatedAt:now, updatedFrom:'catalogos_productos_seed' });
+        skipped += 1;
+        continue;
       }
+      await put('products', {
+        ...seed,
+        createdAt:now,
+        updatedAt:now,
+        updatedFrom:'catalogos_productos_restauracion_manual'
+      });
+      list.push({ ...seed });
+      added += 1;
     }
+
+    return { added, skipped };
   }
 
   async function normalizeLegacyGallon(){
@@ -1647,7 +1679,7 @@
       if (!wrap) return;
       wrap.innerHTML = '';
       if (!list.length){
-        setStatus('No hay productos. Usa “Restaurar base A33” para crear los productos iniciales.', 'warn');
+        setStatus('Catálogo vacío. Agrega productos manualmente o usa “Restaurar base A33” de forma explícita. No se crearán productos automáticamente.', 'ok');
         return;
       }
       const incompleteCount = (list || []).filter(p => productProductionIssues(p, envases, tapas, duplicateLetters).length > 0).length;
@@ -1751,7 +1783,7 @@
     const isNew = !currentId;
     const dup = (all || []).find(p => {
       if (!p) return false;
-      if (currentId && Number(p.id) === Number(currentId)) return false;
+      if (currentId != null && String(p.id) === String(currentId)) return false;
       if (normKey(p.name || '') === newKey) return true;
       const g = mapProductNameToFinishedId(p.name || '');
       // Producto nuevo: no crear otro Pulso/Media/Djeba/Litro/Galón aunque el viejo esté inactivo.
@@ -1806,10 +1838,12 @@
       const pos = byId('cat-new-pos'); if (pos) pos.checked = true;
       populateProductPackagingSelects('cat-new', '', '');
       await renderProducts();
-      toast('Producto agregado');
+      setStatus('Guardado correcto.', 'ok');
+      toast('Guardado correcto');
     }catch(err){
       console.error(err);
-      alert('No se pudo agregar el producto. Revisa si el nombre ya existe.');
+      setStatus('No se pudo guardar el producto.', 'warn');
+      alert('No se pudo guardar el producto. Revisa si el nombre ya existe o si el almacenamiento está disponible.');
     }
   }
 
@@ -1824,9 +1858,9 @@
 
   async function openProductModal(id){
     const all = await getAll('products');
-    const product = (all || []).find(p => Number(p && p.id) === Number(id));
+    const product = findCatalogById(all || [], id);
     if (!product){ toast('Producto no encontrado'); return; }
-    currentEditId = Number(product.id);
+    currentEditId = product.id;
     const current = byId('cat-product-current');
     if (current) current.textContent = 'Producto actual: ' + (product.name || '—');
     const fields = {
@@ -1860,9 +1894,9 @@
   }
 
   async function saveProduct(){
-    if (!currentEditId){ setEditMsg('Producto inválido.', 'warn'); return; }
+    if (currentEditId == null || String(currentEditId).trim() === ''){ setEditMsg('Producto inválido.', 'warn'); return; }
     const all = await getAll('products');
-    const product = (all || []).find(p => Number(p && p.id) === Number(currentEditId));
+    const product = findCatalogById(all || [], currentEditId);
     if (!product){ setEditMsg('El producto ya no existe.', 'warn'); return; }
     const data = readProductForm('cat-edit');
     if (!data.ok){ setEditMsg(data.msg, 'warn'); return; }
@@ -1910,12 +1944,12 @@
     try{
       await put('products', product);
       closeProductModal();
-      await normalizeLegacyGallon();
       await renderProducts();
-      toast('Producto guardado');
+      setStatus('Guardado correcto.', 'ok');
+      toast('Guardado correcto');
     }catch(err){
       console.error(err);
-      setEditMsg('No se pudo guardar. Revisa si el nombre ya existe.', 'warn');
+      setEditMsg('No se pudo guardar el producto. Revisa si el nombre ya existe o si el almacenamiento está disponible.', 'warn');
     }
   }
 
@@ -3923,15 +3957,23 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
       });
     });
     byId('cat-add-product')?.addEventListener('click', ()=>addProduct().catch(err=>{ console.error(err); alert('No se pudo agregar el producto.'); }));
-    byId('cat-refresh-products')?.addEventListener('click', ()=>initProducts({ skipSeed:true }).catch(err=>{ console.error(err); setStatus('No se pudo actualizar.', 'warn'); }));
+    byId('cat-refresh-products')?.addEventListener('click', ()=>initProducts().catch(err=>{ console.error(err); setStatus('No se pudo actualizar.', 'warn'); }));
     byId('cat-restore-seed')?.addEventListener('click', async ()=>{
-      await seedMissingDefaults(true);
-      await normalizeLegacyGallon();
-      await normalizeProductDynamicFields();
-      await normalizeProductPackagingFields();
-      refreshProductPackagingSelects();
-      await renderProducts();
-      toast('Productos base restaurados');
+      const ok = confirm('¿Restaurar los productos base A33 que no existan?\n\nEsta acción es manual, evita duplicados y no sobrescribe productos personalizados.');
+      if (!ok) return;
+      setStatus('Restaurando productos base…');
+      try{
+        const result = await seedMissingDefaults(true);
+        refreshProductPackagingSelects();
+        await renderProducts();
+        const added = Number(result && result.added) || 0;
+        setStatus(added ? `Guardado correcto. ${added} producto(s) base restaurado(s).` : 'No había productos base pendientes de restaurar.', added ? 'ok' : '');
+        toast(added ? 'Productos base restaurados' : 'Sin cambios');
+      }catch(err){
+        console.error(err);
+        setStatus('No se pudo guardar el producto.', 'warn');
+        toast('No se pudo restaurar');
+      }
     });
     byId('cat-product-close')?.addEventListener('click', closeProductModal);
     byId('cat-edit-cancel')?.addEventListener('click', closeProductModal);
@@ -3949,16 +3991,13 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     }
   }
 
-  async function initProducts(options){
-    const opts = options || {};
+  async function initProducts(){
     setStatus('Cargando productos…');
     await openDB();
-    if (!opts.skipSeed) await seedMissingDefaults(false);
+    // No sembrar productos aquí. Un catálogo nuevo o vacío debe permanecer vacío.
     ensureEnvasesDefaults(false);
     ensureTapasDefaults(false);
-    await normalizeLegacyGallon();
-    await normalizeProductDynamicFields();
-    await normalizeProductPackagingFields();
+    // Catálogos es la fuente canónica: al abrir solo se lee y renderiza, sin migrar ni reescribir productos.
     refreshProductPackagingSelects();
     await renderProducts();
   }

@@ -6,14 +6,14 @@ try { importScripts('/assets/js/a33-release.js?v=4.20.84&r=47'); } catch (e) {}
 const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.84';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '19';
 const MODULE = 'catalogos';
-const MODULE_REV = '23';
+const MODULE_REV = '24';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_REV}`;
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.84&r=23',
+  './index.html?v=4.20.84&r=24',
   './style.css?v=4.20.84&r=19',
-  './script.js?v=4.20.84&r=23',
+  './script.js?v=4.20.84&r=24',
   './manifest.webmanifest?v=4.20.84&r=8',
   './offline.html',
   '../icon-a33-192.png',
@@ -79,7 +79,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.84&r=23')) ||
+      (await cache.match('./index.html?v=4.20.84&r=24')) ||
       (await cache.match('./index.html', { ignoreSearch:true })) ||
       (await cache.match('./offline.html')) ||
       new Response('Offline', { status:503, headers:{ 'Content-Type':'text/plain; charset=utf-8' } })

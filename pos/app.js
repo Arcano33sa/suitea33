@@ -5727,7 +5727,32 @@ async function deleteFinanzasEntriesForSalePOS(saleId) {
 function tx(name, mode='readonly'){ return db.transaction(name, mode).objectStore(name); }
 function getAll(name){ return new Promise((res,rej)=>{ const r=tx(name).getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); }); }
 function getOne(name, key){ return new Promise((res,rej)=>{ try{ const r=tx(name).get(key); r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error); }catch(err){ rej(err); } }); }
-function put(name, val){ return new Promise((res,rej)=>{ const r=tx(name,'readwrite').put(val); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function put(name, val){
+  return new Promise((res,rej)=>{
+    let result;
+    let settled = false;
+    try{
+      const transaction = db.transaction(name, 'readwrite');
+      const request = transaction.objectStore(name).put(val);
+      const fail = (error)=>{
+        if (settled) return;
+        settled = true;
+        rej(error || request.error || transaction.error || new Error('No se pudo guardar en ' + name));
+      };
+      request.onsuccess = ()=>{ result = request.result; };
+      request.onerror = ()=>fail(request.error);
+      transaction.oncomplete = ()=>{
+        if (settled) return;
+        settled = true;
+        res(result);
+      };
+      transaction.onerror = ()=>fail(transaction.error);
+      transaction.onabort = ()=>fail(transaction.error || new Error('Transacción abortada guardando en ' + name));
+    }catch(error){
+      if (!settled){ settled = true; rej(error); }
+    }
+  });
+}
 function clearStore(name){
   return new Promise((res,rej)=>{
     try{
@@ -9223,55 +9248,39 @@ function applyProductSaleCatalogDefaultsPOS(product, seed){
 }
 
 async function seedMissingDefaults(force=false, options={}){
-  const restoreDeleted = !!(options && options.restoreDeleted);
+  const authorizedRestore = force === true && !!(options && options.restoreDeleted);
+  // Defensa crítica: abrir POS nunca debe crear productos. Solo la restauración manual puede hacerlo.
+  if (!authorizedRestore) return { added:0, skipped:SEED.length };
+
   const list = await getAll('products');
-  const keys = new Set(list.map(p=>normKeyPOS(p.name)));
+  const now = new Date().toISOString();
+  let added = 0;
+  let skipped = 0;
 
-  // Alias legacy: si existe Galón 3800 (o variantes), lo tratamos como galón canónico para no duplicar.
-  if (keys.has(normKeyPOS('Galón 3800ml')) || keys.has(normKeyPOS('Galón 3800 ml'))){
-    keys.add(normKeyPOS(CANON_GALON_LABEL));
+  for (const seed of SEED){
+    const seedKey = normKeyPOS(seed.name);
+    const existing = list.find((product) => {
+      if (!product) return false;
+      const productKey = normKeyPOS(product.name || '');
+      if (productKey === seedKey) return true;
+      return seedKey === normKeyPOS(CANON_GALON_LABEL) && (legacyGallonVendibleNamePOS(product.name || '') || (productKey.includes('galon') && productKey.includes('3720')));
+    });
+    if (existing){
+      skipped += 1;
+      continue;
+    }
+    const row = {
+      ...seed,
+      createdAt:now,
+      updatedAt:now,
+      updatedFrom:'pos_productos_restauracion_manual'
+    };
+    const id = await put('products', row);
+    list.push({ ...row, id });
+    added += 1;
   }
 
-  for (const s of SEED){
-    const k = normKeyPOS(s.name);
-    const seedDeleted = wasCatalogSeedDeletedPOS('products', s);
-    let existing = list.find(p=>normKeyPOS(p.name)===k);
-    if (!existing && k === normKeyPOS(CANON_GALON_LABEL)){
-      // Si solo existe el Galón legacy (3800 ml u otra variante), usarlo como existente y no crear duplicado.
-      existing = list.find(p => p && legacyGallonVendibleNamePOS(p.name || ''));
-    }
-
-    if (!existing && seedDeleted && !restoreDeleted) continue;
-
-    if (force || !existing){
-      if (existing){
-        let changed = false;
-        if (existing.active !== true){ existing.active = true; changed = true; }
-        if (k === normKeyPOS(CANON_GALON_LABEL) && existing.name !== s.name && !list.some(p => p && p.id !== existing.id && normKeyPOS(p.name) === k)){ existing.name = s.name; changed = true; }
-        // Catálogo global editable: un precio válido del usuario NUNCA se pisa por defaults.
-        // Excepción controlada: migrar Galón desde el viejo default C$800 al nuevo default C$900.
-        if (k === normKeyPOS(CANON_GALON_LABEL) && Number(existing.price) === LEGACY_DEFAULT_GALON_PRICE_POS){ existing.price = s.price; changed = true; }
-        else if (!isValidCatalogPricePOS(existing.price)){ existing.price = s.price; changed = true; }
-        if (typeof existing.manageStock === 'undefined'){ existing.manageStock = s.manageStock; changed = true; }
-        if (applyProductSaleCatalogDefaultsPOS(existing, s)){ changed = true; }
-        if (s.internalType && existing.internalType !== s.internalType){ existing.internalType = s.internalType; changed = true; }
-        if (changed) await put('products', existing);
-      } else {
-        await put('products', {...s});
-      }
-    } else {
-      // Existe: solo completar faltantes (sin pisar precios manuales válidos).
-      let changed = false;
-      if (typeof existing.active === 'undefined'){ existing.active = true; changed = true; }
-      if (k === normKeyPOS(CANON_GALON_LABEL) && existing.name !== s.name && !list.some(p => p && p.id !== existing.id && normKeyPOS(p.name) === k)){ existing.name = s.name; changed = true; }
-      if (typeof existing.manageStock === 'undefined'){ existing.manageStock = s.manageStock; changed = true; }
-      if (applyProductSaleCatalogDefaultsPOS(existing, s)){ changed = true; }
-      // Excepción controlada: migrar Galón desde el viejo default C$800 al nuevo default C$900.
-      if (k === normKeyPOS(CANON_GALON_LABEL) && Number(existing.price) === LEGACY_DEFAULT_GALON_PRICE_POS){ existing.price = s.price; changed = true; }
-      else if (!isValidCatalogPricePOS(existing.price)) { existing.price = s.price; changed = true; }
-      if (changed) await put('products', existing);
-    }
-  }
+  return { added, skipped };
 }
 
 // UI helpers
@@ -10754,27 +10763,7 @@ async function normalizeLegacyGallonProductPOS(){
 
 // Ensure defaults
 async function ensureDefaults(){
-  let products = await getAll('products');
-  // Migración suave: Vaso pasa a producto vendible normal y Galón queda canónico.
-  await normalizeVasoProductForReempaquePOS();
-  await normalizeLegacyGallonProductPOS();
-  products = await getAll('products');
-  if (!products.length){
-    await seedMissingDefaults(false);
-  } else {
-    for (const p of products){
-      let changed = false;
-      if (typeof p.active === 'undefined'){ p.active = true; changed = true; }
-      if (typeof p.manageStock === 'undefined'){ p.manageStock = true; changed = true; }
-      const seed = SEED.find(s => normKeyPOS(s.name) === normKeyPOS(p.name || '') || (normKeyPOS(s.name) === normKeyPOS(CANON_GALON_LABEL) && legacyGallonVendibleNamePOS(p.name || '')));
-      if (seed && applyProductSaleCatalogDefaultsPOS(p, seed)){ changed = true; }
-      if (changed) await put('products', p);
-    }
-  }
-  products = await getAll('products');
-  if (products.length < 5) await seedMissingDefaults(true);
-  else await seedMissingDefaults(false);
-
+  // Productos dependen exclusivamente de Catálogos. Abrir POS no crea, migra ni reescribe el catálogo.
   const events = await getAll('events');
   if (!events.length){
     for (const ev of DEFAULT_EVENTS) await put('events', {...ev, createdAt:new Date().toISOString()});
@@ -22604,10 +22593,16 @@ async function deleteEvent(eventId){
 
 // Botón Restaurar productos base (A33)
 async function restoreSeed(){
-  clearCatalogDeletedPOS('products');
-  await seedMissingDefaults(true, { restoreDeleted:true });
-  await renderProductos(); await refreshProductSelect(); await renderInventario();
-  toast('Productos base restaurados');
+  const ok = confirm('¿Restaurar los productos base A33 que no existan?\n\nLa acción es manual, evita duplicados y no sobrescribe productos personalizados.');
+  if (!ok) return;
+  try{
+    const result = await seedMissingDefaults(true, { restoreDeleted:true });
+    await renderProductos(); await refreshProductSelect(); await renderInventario();
+    toast(Number(result && result.added) > 0 ? 'Productos base restaurados' : 'No había productos base pendientes');
+  }catch(error){
+    console.error('No se pudieron restaurar productos base', error);
+    showToast('No se pudo guardar el producto.', 'error', 5500);
+  }
 }
 
 // Init & bindings

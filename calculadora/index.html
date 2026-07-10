@@ -519,23 +519,12 @@
       { id: "tapa_djeba_media", name: "Tapa Djeba/Media", active: true },
       { id: "corcho_catrina", name: "Corcho Catrina", active: true }
     ];
-    let PRESENTACIONES = Object.keys(A33_LEGACY_PRESENTATION_META).map((id) => {
-      const p = A33_LEGACY_PRESENTATION_META[id];
-      return {
-        id: p.id,
-        productId: p.id,
-        nombre: p.nombre,
-        receta: true,
-        letra: p.letra,
-        envaseId: "",
-        tapaId: "",
-        capacidadMl: p.volumenMl,
-        volumenMl: p.volumenMl,
-        costoReferencial: null,
-        activo: true,
-        legacy: true
-      };
-    });
+    // La interfaz nueva nunca nace con productos heredados.
+    // A33_LEGACY_PRESENTATION_META queda solo para interpretar históricos y snapshots antiguos.
+    let PRESENTACIONES = [];
+    let A33_CATALOG_PRODUCTS_STATUS = "loading"; // loading | ready | empty | error
+    let A33_CALCULADORA_INICIADA = false;
+    let A33_CATALOG_REFRESHING = false;
 
     function a33HasOwn(obj, key) {
       return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
@@ -588,8 +577,20 @@
       if (a33HasOwn(p, "Receta")) return a33Bool(p.Receta, false);
       if (a33HasOwn(p, "recipe")) return a33Bool(p.recipe, false);
       if (a33HasOwn(p, "hasRecipe")) return a33Bool(p.hasRecipe, false);
-      // Compatibilidad defensiva: datos antiguos sin campo Receta conservan las presentaciones A33 fijas.
-      return !!a33LegacyPresentationIdFromName(p.name || p.nombre || "");
+      // Sin bandera explícita no se publica en una producción nueva.
+      return false;
+    }
+
+    function a33ProductoBorrado(product) {
+      const p = product && typeof product === "object" ? product : {};
+      const flags = ["deleted", "borrado", "eliminado", "isDeleted", "isRemoved"];
+      return flags.some((key) => a33HasOwn(p, key) && a33Bool(p[key], false));
+    }
+
+    function a33StableCatalogProductId(product) {
+      const p = product && typeof product === "object" ? product : {};
+      const raw = p.id ?? p.productId ?? p.codigo ?? p.uuid ?? p.uid;
+      return raw === null || raw === undefined ? "" : String(raw).trim();
     }
 
     function a33ProductoEnvaseId(product) {
@@ -673,7 +674,7 @@
       const envaseId = String(p.envaseId || "").trim();
       if (envaseId && A33_ENVASE_ID_TO_INVENTORY_KEY[envaseId]) return A33_ENVASE_ID_TO_INVENTORY_KEY[envaseId];
       if (envaseId) return envaseId;
-      return A33_LEGACY_PRESENTATION_META[String(p.id || "")] ? String(p.id || "") : "";
+      return A33_LEGACY_PRESENTATION_META[String(p.legacyId || p.id || "")] ? String(p.legacyId || p.id || "") : "";
     }
 
     function a33TapaInventoryKey(product) {
@@ -681,14 +682,14 @@
       const tapaId = String(p.tapaId || "").trim();
       if (tapaId && A33_TAPA_ID_TO_INVENTORY_KEY[tapaId]) return A33_TAPA_ID_TO_INVENTORY_KEY[tapaId];
       if (tapaId) return tapaId;
-      return A33_TAPA_LEGACY_BY_PRESENTACION[String(p.id || "")] || "";
+      return A33_TAPA_LEGACY_BY_PRESENTACION[String(p.legacyId || p.id || "")] || "";
     }
 
     function a33EnvaseDisplayName(product, envases) {
       const p = product && typeof product === "object" ? product : {};
       const envaseId = String(p.envaseId || "").trim();
       if (envaseId) return a33CatalogNameById(envases, envaseId, envaseId);
-      const legacy = A33_LEGACY_PRESENTATION_META[String(p.id || "")];
+      const legacy = A33_LEGACY_PRESENTATION_META[String(p.legacyId || p.id || "")];
       return legacy ? ("Botella " + legacy.nombre.replace(/\s*\d+\s*ml/i, "").trim()) : "Sin envase";
     }
 
@@ -696,7 +697,7 @@
       const p = product && typeof product === "object" ? product : {};
       const tapaId = String(p.tapaId || "").trim();
       if (tapaId) return a33CatalogNameById(tapas, tapaId, tapaId);
-      const key = A33_TAPA_LEGACY_BY_PRESENTACION[String(p.id || "")] || "";
+      const key = A33_TAPA_LEGACY_BY_PRESENTACION[String(p.legacyId || p.id || "")] || "";
       return key ? (A33_CAPS_DISPLAY_NAMES[key] || key) : "Sin tapa";
     }
 
@@ -908,11 +909,11 @@
         || 0;
     }
 
-    function a33SafePresentationId(product, legacyId) {
-      if (legacyId) return legacyId;
-      const raw = (product && (product.id ?? product.productId ?? product.codigo ?? product.name ?? product.nombre)) || "producto";
-      const safe = String(raw).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-      return "prod_" + (safe || "nuevo").slice(0, 48);
+    function a33SafePresentationId(product) {
+      const stableId = a33StableCatalogProductId(product);
+      if (!stableId) return "";
+      const safe = stableId.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      return "prod_" + (safe || "catalogo").slice(0, 64);
     }
 
     function a33ProductCost(product) {
@@ -923,15 +924,18 @@
     function a33ProductoToPresentacion(product, envases) {
       const p = product && typeof product === "object" ? product : {};
       const name = String(p.name || p.nombre || "").trim();
-      if (!name || a33NormName(name).includes("vaso") || !a33ProductoActivo(p) || !a33ProductoConReceta(p)) return null;
+      const productId = a33StableCatalogProductId(p);
+      if (!productId || !name || a33NormName(name).includes("vaso") || a33ProductoBorrado(p) || !a33ProductoActivo(p) || !a33ProductoConReceta(p)) return null;
       const legacyId = a33LegacyPresentationIdFromName(name);
       const legacyMeta = legacyId ? A33_LEGACY_PRESENTATION_META[legacyId] : null;
-      const id = a33SafePresentationId(p, legacyId);
+      const id = a33SafePresentationId(p);
+      if (!id) return null;
       const capacidadMl = a33ProductCapacityMl(p, legacyMeta, envases);
       return {
         id,
-        productId: p.id ?? p.productId ?? id,
-        nombre: name || (legacyMeta ? legacyMeta.nombre : "Producto"),
+        productId,
+        legacyId: legacyId || "",
+        nombre: name,
         receta: true,
         letra: a33NormalizeLetter(p.letra ?? p.letter ?? p.productionLetter ?? (legacyMeta ? legacyMeta.letra : "")),
         envaseId: a33ProductoEnvaseId(p),
@@ -946,8 +950,8 @@
 
     function a33SortPresentaciones(a, b) {
       const order = { pulso: 1, media: 2, djeba: 3, litro: 4, galon: 5 };
-      const oa = order[a && a.id] || 99;
-      const ob = order[b && b.id] || 99;
+      const oa = order[a && (a.legacyId || a.id)] || 99;
+      const ob = order[b && (b.legacyId || b.id)] || 99;
       if (oa !== ob) return oa - ob;
       return String((a && a.nombre) || "").localeCompare(String((b && b.nombre) || ""), "es-NI", { sensitivity: "base" });
     }
@@ -956,6 +960,7 @@
       return {
         productId: p.productId,
         id: p.id,
+        legacyId: p.legacyId || "",
         nombre: p.nombre,
         receta: !!p.receta,
         letra: p.letra || "",
@@ -968,8 +973,14 @@
       };
     }
 
-    function a33EsPresentacionLegacyOperativa(id) {
-      return !!A33_LEGACY_PRESENTATION_META[String(id || "")];
+    function a33LegacyPresentationId(value) {
+      const item = value && typeof value === "object" ? value : null;
+      const key = item ? String(item.legacyId || item.id || "") : String(value || "");
+      return A33_LEGACY_PRESENTATION_META[key] ? key : "";
+    }
+
+    function a33EsPresentacionLegacyOperativa(value) {
+      return !!a33LegacyPresentationId(value);
     }
 
     function a33ProductIdInventoryKey(item) {
@@ -1003,6 +1014,7 @@
       const letra = a33NormalizeLetter(p.letra || p.Letra || "");
       const snap = {
         productId: String(p.productId ?? p.productoId ?? p.id ?? "").trim(),
+        legacyId: a33LegacyPresentationId(p),
         nombre: String(p.nombre || p.name || p.id || "Producto").trim(),
         nombreSnapshot: String(p.nombre || p.name || p.id || "Producto").trim(),
         Letra: letra,
@@ -1030,6 +1042,7 @@
       const row = {
         id: item && item.id ? String(item.id) : snapshot.productId,
         productId: snapshot.productId,
+        legacyId: snapshot.legacyId || "",
         nombre: snapshot.nombre,
         nombreSnapshot: snapshot.nombreSnapshot || snapshot.nombre,
         unidades: snapshot.unidades,
@@ -1078,7 +1091,7 @@
       a33EnsureFinishedDynamicSections(inv);
 
       const productKey = a33ProductIdInventoryKey(item);
-      const legacyId = a33EsPresentacionLegacyOperativa(item && item.id) ? String(item.id) : "";
+      const legacyId = a33LegacyPresentationId(item);
       const snapshot = a33BuildProductionSnapshot(item, cantidad, fechaIso);
 
       if (productKey) {
@@ -1130,12 +1143,20 @@
               }
               const tx = db.transaction(A33_PRODUCTOS_STORE, "readonly");
               const getReq = tx.objectStore(A33_PRODUCTOS_STORE).getAll();
+              let rows = [];
               getReq.onsuccess = () => {
-                const rows = Array.isArray(getReq.result) ? getReq.result : [];
+                rows = Array.isArray(getReq.result) ? getReq.result : [];
+              };
+              getReq.onerror = () => finish(null);
+              tx.oncomplete = () => {
                 try { db.close(); } catch (e) {}
                 finish(rows);
               };
-              getReq.onerror = () => {
+              tx.onerror = () => {
+                try { db.close(); } catch (e) {}
+                finish(null);
+              };
+              tx.onabort = () => {
                 try { db.close(); } catch (e) {}
                 finish(null);
               };
@@ -1151,28 +1172,82 @@
     }
 
     async function cargarPresentacionesDinamicasDesdeCatalogos() {
+      PRESENTACIONES = [];
+      A33_CATALOG_PRODUCTS_STATUS = "loading";
       try {
         const productos = await a33ReadCatalogProducts();
-        if (!Array.isArray(productos) || productos.length === 0) return;
+        if (productos === null || !Array.isArray(productos)) {
+          A33_CATALOG_PRODUCTS_STATUS = "error";
+          return { ok: false, status: "error", count: 0 };
+        }
         const envases = a33ReadEnvasesCatalog();
         const map = new Map();
         productos.forEach((producto) => {
           const item = a33ProductoToPresentacion(producto, envases);
           if (!item) return;
-          const prev = map.get(item.id);
+          const key = String(item.productId || item.id);
+          const prev = map.get(key);
           if (!prev) {
-            map.set(item.id, item);
+            map.set(key, item);
             return;
           }
-          // Si hay duplicados legacy por nombre, conservar el que tenga más metadatos completos.
           const prevScore = (prev.envaseId ? 2 : 0) + (prev.tapaId ? 2 : 0) + (prev.letra ? 1 : 0) + (prev.costoReferencial ? 1 : 0);
           const nextScore = (item.envaseId ? 2 : 0) + (item.tapaId ? 2 : 0) + (item.letra ? 1 : 0) + (item.costoReferencial ? 1 : 0);
-          if (nextScore >= prevScore) map.set(item.id, item);
+          if (nextScore >= prevScore) map.set(key, item);
         });
         PRESENTACIONES = Array.from(map.values()).sort(a33SortPresentaciones);
+        A33_CATALOG_PRODUCTS_STATUS = PRESENTACIONES.length ? "ready" : "empty";
+        return { ok: true, status: A33_CATALOG_PRODUCTS_STATUS, count: PRESENTACIONES.length };
       } catch (e) {
-        console.warn("No se pudieron leer productos dinámicos con Receta; se conserva lista fija.", e);
+        PRESENTACIONES = [];
+        A33_CATALOG_PRODUCTS_STATUS = "error";
+        console.warn("No se pudieron cargar los productos desde Catálogos. La lista permanece vacía.", e);
+        return { ok: false, status: "error", count: 0 };
       }
+    }
+
+    function a33CatalogProductsMessage() {
+      return A33_CATALOG_PRODUCTS_STATUS === "error"
+        ? "No se pudieron cargar los productos desde Catálogos. La lista permanece vacía; vuelve a intentar al regresar al módulo."
+        : "No hay productos activos con Receta marcada en Catálogos.";
+    }
+
+    function a33PayloadProductKeys(payload, product) {
+      const keys = [];
+      const add = (value) => {
+        const key = value === null || value === undefined ? "" : String(value).trim();
+        if (key && !keys.includes(key)) keys.push(key);
+      };
+      const p = product && typeof product === "object" ? product : {};
+      add(p.id);
+      add(p.productId);
+      add(p.legacyId);
+      const rows = payload && Array.isArray(payload.productos) ? payload.productos : [];
+      rows.forEach((row) => {
+        if (!row || typeof row !== "object") return;
+        const sameProduct = String(row.productId ?? "").trim() && String(row.productId ?? "").trim() === String(p.productId ?? "").trim();
+        const sameStableId = String(row.id ?? "").trim() && String(row.id ?? "").trim() === String(p.id ?? "").trim();
+        if (sameProduct || sameStableId) {
+          add(row.id);
+          add(row.productId);
+          add(row.legacyId);
+        }
+      });
+      return keys;
+    }
+
+    function a33RecipeRecordFromPayload(payload, product) {
+      const recs = payload && payload.recetas ? payload.recetas : payload;
+      if (!recs || typeof recs !== "object") return null;
+      const key = a33PayloadProductKeys(payload, product).find((candidate) => recs[candidate] && typeof recs[candidate] === "object");
+      return key ? recs[key] : null;
+    }
+
+    function a33CostRecordFromPayload(payload, product) {
+      const costs = payload && payload.costosPresentacion && typeof payload.costosPresentacion === "object" ? payload.costosPresentacion : null;
+      if (!costs) return null;
+      const key = a33PayloadProductKeys(payload, product).find((candidate) => costs[candidate] && typeof costs[candidate] === "object");
+      return key ? costs[key] : null;
     }
 
     const STORAGE_RECETAS_KEY = "arcano33_recetas_v1";
@@ -2229,6 +2304,57 @@ function a33WireNumericInput(el, mode) {
   } catch (e) {}
 }
 
+    function a33CaptureProductUIState() {
+      const state = {};
+      PRESENTACIONES.forEach((p) => {
+        const key = String(p.productId || p.id || "");
+        if (!key) return;
+        const row = { recetas: {} };
+        INGREDIENTES.forEach((ing) => {
+          const input = document.getElementById("receta-" + p.id + "-" + ing);
+          if (input) row.recetas[ing] = input.value;
+        });
+        const cost = document.getElementById("costo-unit-" + p.id);
+        const plan = document.getElementById("plan-" + p.id);
+        if (cost) row.costo = cost.value;
+        if (plan) row.plan = plan.value;
+        state[key] = row;
+      });
+      return state;
+    }
+
+    function a33RestoreProductUIState(state) {
+      const source = state && typeof state === "object" ? state : {};
+      PRESENTACIONES.forEach((p) => {
+        const row = source[String(p.productId || p.id || "")];
+        if (!row) return;
+        INGREDIENTES.forEach((ing) => {
+          const input = document.getElementById("receta-" + p.id + "-" + ing);
+          if (input && Object.prototype.hasOwnProperty.call(row.recetas || {}, ing)) input.value = row.recetas[ing];
+        });
+        const cost = document.getElementById("costo-unit-" + p.id);
+        const plan = document.getElementById("plan-" + p.id);
+        if (cost && Object.prototype.hasOwnProperty.call(row, "costo")) cost.value = row.costo;
+        if (plan && Object.prototype.hasOwnProperty.call(row, "plan")) plan.value = row.plan;
+      });
+    }
+
+    async function a33RefreshCatalogProductsUI() {
+      if (!A33_CALCULADORA_INICIADA || A33_CATALOG_REFRESHING) return;
+      A33_CATALOG_REFRESHING = true;
+      const uiState = a33CaptureProductUIState();
+      try {
+        await cargarPresentacionesDinamicasDesdeCatalogos();
+        construirTablaRecetas();
+        construirTablaPlan();
+        cargarRecetas();
+        a33RestoreProductUIState(uiState);
+        if (typeof a33BindProductInputs === "function") a33BindProductInputs();
+      } finally {
+        A33_CATALOG_REFRESHING = false;
+      }
+    }
+
     function construirTablaRecetas() {
       const tbody = document.querySelector("#recetas-table tbody");
       tbody.innerHTML = "";
@@ -2238,7 +2364,7 @@ function a33WireNumericInput(el, mode) {
         td.colSpan = INGREDIENTES.length + 2;
         td.className = "hint";
         td.style.textAlign = "left";
-        td.textContent = "No hay productos activos con Receta marcada en Catálogos.";
+        td.textContent = a33CatalogProductsMessage();
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -2284,7 +2410,7 @@ function a33WireNumericInput(el, mode) {
         td.colSpan = 3;
         td.className = "hint";
         td.style.textAlign = "left";
-        td.textContent = "No hay productos producibles para planificar. Marca Receta en Catálogos → Productos.";
+        td.textContent = a33CatalogProductsMessage();
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -2371,7 +2497,7 @@ function a33WireNumericInput(el, mode) {
 
         // cargar recetas (ml)
         PRESENTACIONES.forEach(p => {
-          const rec = (recetas && recetas[p.id]) ? recetas[p.id] : null;
+          const rec = a33RecipeRecordFromPayload(data, p);
           INGREDIENTES.forEach(ing => {
             const input = document.getElementById("receta-" + p.id + "-" + ing);
             if (!input) return;
@@ -2392,7 +2518,7 @@ function a33WireNumericInput(el, mode) {
         // cargar costos por presentación si existen
         if (costosPresentacion) {
           PRESENTACIONES.forEach(p => {
-            const info = costosPresentacion[p.id];
+            const info = a33CostRecordFromPayload(data, p);
             if (!info) return;
             const inputCosto = document.getElementById("costo-unit-" + p.id);
             if (inputCosto) {
@@ -2472,6 +2598,7 @@ function a33WireNumericInput(el, mode) {
           const producido = {
             id: p.id,
             productId: p.productId,
+            legacyId: p.legacyId || "",
             nombre: p.nombre,
             unidades,
             letra: a33NormalizeLetter(p.letra || p.Letra || ""),
@@ -2796,13 +2923,8 @@ const loteInput = document.getElementById("lote");
 
       const mapUnits = { pulso: 0, media: 0, djeba: 0, litro: 0, galon: 0 };
       datos.unidadesPorPresentacion.forEach((item) => {
-        if (!item || !item.id) return;
-        mapUnits[item.id] = item.unidades;
-        if (item.id === "pulso") mapUnits.pulso = item.unidades;
-        if (item.id === "media") mapUnits.media = item.unidades;
-        if (item.id === "djeba") mapUnits.djeba = item.unidades;
-        if (item.id === "litro") mapUnits.litro = item.unidades;
-        if (item.id === "galon") mapUnits.galon = item.unidades;
+        const legacyId = a33LegacyPresentationId(item);
+        if (legacyId && Object.prototype.hasOwnProperty.call(mapUnits, legacyId)) mapUnits[legacyId] = item.unidades;
       });
 
       const fechaProdIso = datos.fechaProdStr || hoyLocalISO();
@@ -3044,6 +3166,7 @@ async function init() {
 
       actualizarTextoCaducidad();
       actualizarFechaHebrea();
+      A33_CALCULADORA_INICIADA = true;
 }
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -3057,6 +3180,9 @@ async function init() {
     // Esto garantiza que Notas se limpie cada vez que 're-entras' a Calculadora.
     window.addEventListener("pageshow", () => {
       try { resetNotasAlEntrar(); } catch (e) {}
+      a33RefreshCatalogProductsUI().catch((err) => {
+        console.warn("No se pudo refrescar la lista de productos de Catálogos.", err);
+      });
     });
   </script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=7"></script>

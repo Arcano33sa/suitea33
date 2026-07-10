@@ -13,13 +13,14 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '6'; // POS cache bump local — Cierre Parte 4 Final
 
 const MODULE = 'pos';
-const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;
+const MODULE_REV = '25';
+const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_REV}`;
 
 const PRECACHE_URLS = [
   './',
   './index.html?v=4.20.84&r=19',
   './styles.css?v=4.20.84&r=15',
-  './app.js?v=4.20.84&r=24',
+  './app.js?v=4.20.84&r=25',
   './manifest.webmanifest?v=4.20.84&r=18',
   './offline.html',
   './logo.png',
