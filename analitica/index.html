@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#7b1818" />
 
   
-<script src="/assets/js/a33-theme.js?v=4.20.84&r=7"></script>
+<script src="/assets/js/a33-theme.js?v=4.20.85&r=7"></script>
 <link rel="icon" type="image/png" sizes="192x192" href="../inventario/images/logo.png" />
   <link rel="apple-touch-icon" href="../inventario/images/logo.png" />
 
@@ -17,15 +17,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.84&r=8" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=7" />
-<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=7" />
+  <link rel="stylesheet" href="style.css?v=4.20.85&r=8" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.85&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.85&r=7" />
 </head>
 <body class="a33-analytics-page">
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Analítica</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.84">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.85">v...</div>
   </header>
   <main class="app-main analytics-main">
     <section class="card analytics-panel">
@@ -66,7 +66,7 @@
       <section class="analytics-tabs" aria-label="Pestañas de analítica">
         <button class="tab-btn active" data-tab="resumen" type="button">Resumen</button>
         <button class="tab-btn" data-tab="eventos" type="button">Eventos</button>
-        <button class="tab-btn" data-tab="presentaciones" type="button">Presentaciones</button>
+        <button class="tab-btn" data-tab="presentaciones" type="button">Productos</button>
         <button class="tab-btn" data-tab="clientes" type="button">Clientes</button>
         <button class="tab-btn" data-tab="cortesias" type="button">Cortesías</button>
         <button class="tab-btn" data-tab="avanzado" type="button">Avanzado</button>
@@ -81,9 +81,9 @@
           </article>
 
           <article class="kpi-card">
-            <p class="kpi-label">Botellas vendidas</p>
+            <p class="kpi-label">Unidades vendidas</p>
             <p class="kpi-value" id="kpi-total-botellas">0</p>
-            <p class="kpi-sub" id="kpi-detalle-botellas">Pulso 0 · Media 0 · Djeba 0 · Litro 0 · Galón 0</p>
+            <p class="kpi-sub" id="kpi-detalle-botellas">Sin productos en el periodo</p>
           </article>
 
           <article class="kpi-card">
@@ -137,17 +137,12 @@
             <div class="table-wrapper">
               <table class="inv-table analytics-table">
                 <thead>
-                  <tr>
+                  <tr id="resumen-mensual-head">
                     <th>Mes</th>
                     <th>Ventas (C$)</th>
                     <th>Costo (C$)</th>
                     <th>Utilidad (C$)</th>
                     <th>Margen %</th>
-                    <th>Pulso</th>
-                    <th>Media</th>
-                    <th>Djeba</th>
-                    <th>Litro</th>
-                    <th>Galón</th>
                     <th># Eventos</th>
                     <th>Ticket prom.</th>
                     <th>Cortesías (unid.)</th>
@@ -186,7 +181,7 @@
             <label for="orden-eventos">Ordenar por</label>
             <select id="orden-eventos">
               <option value="ventas">Ventas (C$)</option>
-              <option value="botellas">Botellas</option>
+              <option value="botellas">Unidades</option>
               <option value="ticket">Ticket promedio</option>
               <option value="utilidad">Utilidad (C$)</option>
               <option value="margen">Margen %</option>
@@ -229,7 +224,7 @@
                     <th>Costo (C$)</th>
                     <th>Utilidad (C$)</th>
                     <th>Margen %</th>
-                    <th>Botellas</th>
+                    <th>Unidades</th>
                     <th>Ticket prom.</th>
                     <th>% del total</th>
                     <th>Cortesías (unid.)</th>
@@ -253,13 +248,13 @@
       <!-- TAB PRESENTACIONES -->
       <section class="tab-content" id="tab-presentaciones">
         <p class="hint small" style="margin-bottom:0.6rem;">
-          Comparativo de rendimiento entre presentaciones de botella.
+          Comparativo dinámico por producto, conservando identidades históricas sin reactivar el catálogo.
         </p>
 
         <div class="analytics-layout">
           <section class="card chart-card">
             <div class="card-head">
-              <h3>Ventas por presentación</h3>
+              <h3>Ventas por producto</h3>
             </div>
             <div class="chart-wrap">
               <canvas id="chart-pres-ventas"></canvas>
@@ -269,7 +264,7 @@
             <hr class="chart-separator" />
 
             <div class="card-head">
-              <h3>Margen unitario por presentación</h3>
+              <h3>Margen unitario por producto</h3>
             </div>
             <div class="chart-wrap">
               <canvas id="chart-pres-margen"></canvas>
@@ -279,13 +274,13 @@
 
           <div class="card table-card">
             <div class="card-head">
-              <h3>Detalle por presentación</h3>
+              <h3>Detalle por producto</h3>
             </div>
             <div class="table-wrapper">
               <table class="inv-table analytics-table">
                 <thead>
                   <tr>
-                    <th>Presentación</th>
+                    <th>Producto</th>
                     <th>Unidades netas</th>
                     <th>Precio unitario prom. (C$)</th>
                     <th>Costo unitario estimado (C$)</th>
@@ -306,7 +301,7 @@
         </div>
 
         <div class="export-buttons">
-          <button type="button" id="btn-export-presentaciones" class="btn-secondary">Exportar Excel · Presentaciones</button>
+          <button type="button" id="btn-export-presentaciones" class="btn-secondary">Exportar Excel · Productos</button>
         </div>
       </section>
 
@@ -390,7 +385,7 @@
                     <tr>
                       <th>Fecha</th>
                       <th>Evento</th>
-                      <th>Presentación</th>
+                      <th>Producto</th>
                       <th>Total</th>
                     </tr>
                   </thead>
@@ -494,7 +489,7 @@
           <div class="card-head">
             <h3>Riesgo de agotamiento (producto terminado)</h3>
           </div>
-          <p class="hint small">Estimación basada en ventas recientes y stock actual de botellas terminadas.</p>
+          <p class="hint small">Estimación basada en ventas recientes y stock actual de productos terminados.</p>
           <div class="advanced-filters-row">
             <div class="field small">
               <label for="agotamiento-ventana">Ventana de análisis</label>
@@ -508,8 +503,8 @@
             <table class="analytics-table">
               <thead>
                 <tr>
-                  <th>Presentación</th>
-                  <th>Stock actual (botellas)</th>
+                  <th>Producto</th>
+                  <th>Stock actual (unidades)</th>
                   <th>Promedio u/día</th>
                   <th>Días estimados</th>
                   <th>Estado</th>
@@ -538,7 +533,7 @@
             <table class="analytics-table">
               <thead>
                 <tr>
-                  <th>Presentación</th>
+                  <th>Producto</th>
                   <th>Unidades/día (prom.)</th>
                   <th>Unidades proyectadas (30 días)</th>
                   <th>Ventas proyectadas (30 días)</th>
@@ -553,15 +548,15 @@
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.84&r=7"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.84&r=44"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.85&r=7"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.85&r=49"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.84&r=7"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.84&r=14"></script>
-  <script src="/assets/js/a33-export-currency.js?v=4.20.84&r=2"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=8"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.85&r=19"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.85&r=14"></script>
+  <script src="/assets/js/a33-export-currency.js?v=4.20.85&r=2"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.85&r=15"></script>
 
-  <script src="script.js?v=4.20.84&r=8"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=7"></script>
+  <script src="script.js?v=4.20.85&r=9"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.85&r=7"></script>
 </body>
 </html>

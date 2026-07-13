@@ -13,20 +13,20 @@ const ENVASES_CATALOG_KEY = "a33_catalog_envases_v1";
 const TAPAS_CATALOG_KEY = "a33_catalog_tapas_v1";
 const CATALOG_DELETED_PRODUCTS_KEY = "a33_catalog_deleted_products_v1";
 
-const LEGACY_PRESENTATIONS = [
+const HISTORICAL_LEGACY_PRESENTATIONS = [
   { legacyId: "pulso", field: "pulso", letra: "P", nombre: "Pulso 250 ml", capacidadMl: 250 },
   { legacyId: "media", field: "media", letra: "M", nombre: "Media 375 ml", capacidadMl: 375 },
   { legacyId: "djeba", field: "djeba", letra: "D", nombre: "Djeba 750 ml", capacidadMl: 750 },
   { legacyId: "litro", field: "litro", letra: "L", nombre: "Litro 1000 ml", capacidadMl: 1000 },
   { legacyId: "galon", field: "galon", letra: "G", nombre: "Galón 3720 ml", capacidadMl: 3720 },
 ];
-const LEGACY_BY_ID = Object.fromEntries(LEGACY_PRESENTATIONS.map((p) => [p.legacyId, p]));
-const LEGACY_BY_LETTER = Object.fromEntries(LEGACY_PRESENTATIONS.map((p) => [p.letra, p]));
-const LEGACY_LETTERS = new Set(LEGACY_PRESENTATIONS.map((p) => p.letra));
-const LEGACY_TOTAL_KEYS = LEGACY_PRESENTATIONS.map((p) => p.letra);
+const LEGACY_BY_ID = Object.fromEntries(HISTORICAL_LEGACY_PRESENTATIONS.map((p) => [p.legacyId, p]));
+const LEGACY_BY_LETTER = Object.fromEntries(HISTORICAL_LEGACY_PRESENTATIONS.map((p) => [p.letra, p]));
+const LEGACY_LETTERS = new Set(HISTORICAL_LEGACY_PRESENTATIONS.map((p) => p.letra));
+const LEGACY_TOTAL_KEYS = HISTORICAL_LEGACY_PRESENTATIONS.map((p) => p.letra);
 
 // Compat: se mantiene el nombre TOTAL_KEYS para no romper código viejo, pero la UI ya puede sumar claves dinámicas.
-const TOTAL_KEYS = LEGACY_TOTAL_KEYS;
+const TOTAL_KEYS = []; // Las claves operativas proceden del Catálogo actual.
 
 const LOTES_POS_CONTRACT_SCHEMA = 1;
 const LOTES_POS_CONTRACT_FIELDS = [
@@ -45,23 +45,12 @@ const LOTES_POS_CONTRACT_FIELDS = [
 
 let loteProductCatalog = {
   loaded: false,
-  status: "legacy",
-  items: LEGACY_PRESENTATIONS.map((p) => ({
-    productId: p.legacyId,
-    legacyId: p.legacyId,
-    nombre: p.nombre,
-    Letra: p.letra,
-    letra: p.letra,
-    receta: true,
-    activo: true,
-    envaseId: "",
-    tapaId: "",
-    capacidadMl: p.capacidadMl,
-    costo: null,
-    legacy: true,
-  })),
+  status: "loading",
+  items: [],
   byLetter: new Map(),
   byProductId: new Map(),
+  duplicateLetters: [],
+  error: "",
 };
 
 function normalizeTextA33(value){
@@ -266,8 +255,6 @@ function productCapacityMl(product, envases, legacyMeta){
   const p = product && typeof product === 'object' ? product : {};
   return numberOrNull(p.capacityMl ?? p.capacidadMl ?? p.capacity ?? p.capacidad ?? p.volumenMl ?? p.ml)
     || capacityFromEnvase(envases, productEnvaseId(p))
-    || capacityFromName(p.name || p.nombre || '')
-    || (legacyMeta ? legacyMeta.capacidadMl : null)
     || 0;
 }
 
@@ -285,87 +272,45 @@ function productScoreForCatalog(item){
 function productToLoteCatalogItem(product, envases){
   const p = product && typeof product === 'object' ? product : {};
   const nombre = String(p.name || p.nombre || '').trim();
-  if (isCatalogProductExactlyDeletedForLotes({ ...p, nombre })) return null;
+  const productId = window.A33Products && typeof A33Products.getProductId === 'function'
+    ? String(A33Products.getProductId(p) || '').trim()
+    : String(p.productId ?? p.id ?? p.productoId ?? '').trim();
   const letter = productLetter(p);
-  const recipe = productHasRecipe(p);
-  const active = productActive(p);
-
-  // Regla central: sin Receta y sin Letra válida, no entra a Lotes. No inventar letras por nombre.
-  if (!active || !recipe || !letter) return null;
-
-  const legacyId = legacyIdFromProductName(nombre);
-  const legacyMeta = legacyId ? LEGACY_BY_ID[legacyId] : null;
-  const rawId = p.id ?? p.productId ?? p.productoId ?? '';
-  const productId = String(rawId || (legacyId || nombre || letter)).trim();
+  if (!productId || !nombre || !productActive(p) || !productHasRecipe(p) || !letter) return null;
+  if (isCatalogProductExactlyDeletedForLotes({ ...p, nombre })) return null;
   const envaseId = productEnvaseId(p);
   const tapaId = productTapaId(p);
-  const costo = productCost(p);
-
   return {
     productId,
-    legacyId,
-    nombre: nombre || (legacyMeta ? legacyMeta.nombre : productId),
+    nombre,
+    nombreSnapshot: nombre,
     Letra: letter,
     letra: letter,
     receta: true,
     activo: true,
     envaseId,
     tapaId,
-    capacidadMl: productCapacityMl(p, envases, legacyMeta),
-    costo,
-    legacy: !!legacyId,
+    capacidadMl: productCapacityMl(p, envases, null),
+    costo: productCost(p),
+    recipeSnapshot: (p.recipeSnapshot && typeof p.recipeSnapshot === 'object') ? { ...p.recipeSnapshot } : {},
+    recetaSnapshot: (p.recipeSnapshot && typeof p.recipeSnapshot === 'object') ? { ...p.recipeSnapshot } : {},
+    recetaConfigurada: !!p.recetaConfigurada,
+    legacy: false,
     catalogSource: true,
-    fallbackLegacy: false,
+    catalogProduct: p,
   };
 }
 
 async function readCatalogProductsForLotes(){
-  if (!window.indexedDB) return null;
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (value) => {
-      if (done) return;
-      done = true;
-      resolve(value);
-    };
-    try{
-      const req = indexedDB.open(A33_PRODUCTOS_DB_NAME);
-      req.onerror = () => finish(null);
-      req.onblocked = () => finish(null);
-      req.onsuccess = () => {
-        const db = req.result;
-        try{
-          if (!db || !db.objectStoreNames || !db.objectStoreNames.contains(A33_PRODUCTOS_STORE)){
-            try{ if (db) db.close(); }catch(_){ }
-            finish([]);
-            return;
-          }
-          const tx = db.transaction(A33_PRODUCTOS_STORE, 'readonly');
-          const getReq = tx.objectStore(A33_PRODUCTOS_STORE).getAll();
-          getReq.onsuccess = () => {
-            const rows = Array.isArray(getReq.result) ? getReq.result : [];
-            try{ db.close(); }catch(_){ }
-            finish(rows);
-          };
-          getReq.onerror = () => {
-            try{ db.close(); }catch(_){ }
-            finish(null);
-          };
-        }catch(_){
-          try{ if (db) db.close(); }catch(_e){ }
-          finish(null);
-        }
-      };
-    }catch(_){ finish(null); }
-  });
+  if (!window.A33Products || typeof A33Products.getAll !== 'function') throw new Error('No está disponible el contrato central de Productos.');
+  const rows = await A33Products.getAll();
+  return Array.isArray(rows) ? rows : [];
 }
 
 function sortCatalogItemsForLotes(a,b){
-  const legacyOrder = { P:1, M:2, D:3, L:4, G:5 };
-  const oa = legacyOrder[a && a.Letra] || 99;
-  const ob = legacyOrder[b && b.Letra] || 99;
-  if (oa !== ob) return oa - ob;
-  return String((a && a.nombre) || '').localeCompare(String((b && b.nombre) || ''), 'es-NI', { sensitivity:'base' });
+  const byName = String((a && a.nombre) || '').localeCompare(String((b && b.nombre) || ''), 'es-NI', { sensitivity:'base' });
+  if (byName !== 0) return byName;
+  return normalizeProductLetter(a && (a.Letra || a.letra)).localeCompare(normalizeProductLetter(b && (b.Letra || b.letra)), 'es-NI');
 }
 
 function isRealCatalogProductItemForLotes(item){
@@ -386,109 +331,55 @@ function catalogProductOverridesLegacyLetterForLotes(item){
 
 function shouldRenderDynamicProductInputForLotes(item){
   const letter = normalizeProductLetter(item && (item.Letra || item.letra));
-  if (!letter) return false;
-  if (!LEGACY_LETTERS.has(letter)) return true;
-  // Regla madre: si Catálogos trae un producto real activo con P/M/D/L/G,
-  // ese producto manda sobre el campo legacy fijo. Esto cubre productos nuevos
-  // y también productos editados (ej. Galón 3750 ml -> Galón 3720 ml).
-  return catalogProductOverridesLegacyLetterForLotes(item);
+  return !!(letter && isRealCatalogProductItemForLotes(item) && item.activo !== false && item.receta !== false);
 }
 
 function getLegacyFallbackCatalogItemsForLotes(){
-  return LEGACY_PRESENTATIONS
-    .filter((p) => !isLegacyPresentationDeletedForLotes(p))
-    .map((p) => ({
-      productId: p.legacyId,
-      legacyId: p.legacyId,
-      nombre: p.nombre,
-      Letra: p.letra,
-      letra: p.letra,
-      receta: true,
-      activo: true,
-      envaseId: '',
-      tapaId: '',
-      capacidadMl: p.capacidadMl,
-      costo: null,
-      legacy: true,
-      catalogSource: false,
-      fallbackLegacy: true,
-    }));
+  return [];
 }
 
-function setLoteProductCatalog(items, status, allowLegacyFallback){
-  const clean = Array.isArray(items) && items.length
-    ? items.filter((item) => isRealCatalogProductItemForLotes(item) ? !isCatalogProductExactlyDeletedForLotes(item) : !isProductDeletedForLotes(item))
-    : (allowLegacyFallback === false ? [] : getLegacyFallbackCatalogItemsForLotes());
-  const byLetter = new Map();
+function setLoteProductCatalog(items, status, errorMessage){
+  const source = Array.isArray(items) ? items.filter(Boolean) : [];
   const byProductId = new Map();
-
-  for (const raw of clean){
-    if (!raw) continue;
+  const letterGroups = new Map();
+  for (const raw of source){
+    const productId = String(raw.productId || '').trim();
     const letter = normalizeProductLetter(raw.Letra || raw.letra);
-    if (!letter) continue;
-    const item = { ...raw, Letra: letter, letra: letter };
-    const prev = byLetter.get(letter);
-    if (!prev || productScoreForCatalog(item) >= productScoreForCatalog(prev)) byLetter.set(letter, item);
-    const pid = String(item.productId ?? item.id ?? '').trim();
-    if (pid) byProductId.set(pid, item);
-    if (item.legacyId) byProductId.set(String(item.legacyId), item);
+    if (!productId || !letter || byProductId.has(productId)) continue;
+    const item = { ...raw, productId, Letra:letter, letra:letter, legacy:false, catalogSource:true };
+    byProductId.set(productId, item);
+    if (!letterGroups.has(letter)) letterGroups.set(letter, []);
+    letterGroups.get(letter).push(item);
   }
-
-  // Mantener fallback P/M/D/L/G únicamente cuando Catálogos todavía no entregó esos productos y no fueron borrados.
-  for (const legacy of LEGACY_PRESENTATIONS){
-    if (isLegacyPresentationDeletedForLotes(legacy)) continue;
-    if (!byLetter.has(legacy.letra)){
-      const item = {
-        productId: legacy.legacyId,
-        legacyId: legacy.legacyId,
-        nombre: legacy.nombre,
-        Letra: legacy.letra,
-        letra: legacy.letra,
-        receta: true,
-        activo: true,
-        envaseId: '',
-        tapaId: '',
-        capacidadMl: legacy.capacidadMl,
-        costo: null,
-        legacy: true,
-        catalogSource: false,
-        fallbackLegacy: true,
-      };
-      byLetter.set(legacy.letra, item);
-      byProductId.set(legacy.legacyId, item);
-    }
-  }
-
+  const duplicateLetters = Array.from(letterGroups.entries())
+    .filter(([, group]) => group.length > 1)
+    .map(([letter, group]) => ({ letter, productIds:group.map((item) => item.productId), names:group.map((item) => item.nombre) }));
+  const duplicateSet = new Set(duplicateLetters.map((row) => row.letter));
+  const clean = Array.from(byProductId.values()).filter((item) => !duplicateSet.has(item.Letra)).sort(sortCatalogItemsForLotes);
+  const byLetter = new Map(clean.map((item) => [item.Letra, item]));
   loteProductCatalog = {
-    loaded: true,
-    status: status || 'catalog',
-    items: Array.from(byLetter.values()).sort(sortCatalogItemsForLotes),
+    loaded:true,
+    status:status || (clean.length ? 'catalog' : 'catalog-empty'),
+    items:clean,
     byLetter,
-    byProductId,
+    byProductId:new Map(clean.map((item) => [item.productId, item])),
+    duplicateLetters,
+    error:String(errorMessage || ''),
   };
 }
 
 async function refreshLoteProductCatalog(force){
   if (loteProductCatalog.loaded && !force) return loteProductCatalog;
   try{
-    const rows = await readCatalogProductsForLotes();
-    const hasDeletedMarks = readDeletedProductKeysForLotes().size > 0;
-    if (Array.isArray(rows)){
-      const envases = readEnvaseCatalog();
-      const items = [];
-      for (const p of rows){
-        const item = productToLoteCatalogItem(p, envases);
-        if (item) items.push(item);
-      }
-      const allowLegacyFallback = rows.length === 0 && !hasDeletedMarks;
-      setLoteProductCatalog(items, items.length ? 'catalog' : (allowLegacyFallback ? 'legacy' : 'catalog-empty'), allowLegacyFallback);
-    } else {
-      setLoteProductCatalog([], hasDeletedMarks ? 'catalog-empty' : 'legacy', !hasDeletedMarks);
-    }
+    if (!window.A33Production || typeof A33Production.loadFabricableProducts !== 'function') throw new Error('No está disponible el contrato central de Producción.');
+    const result = await A33Production.loadFabricableProducts();
+    if (!result.ok) throw new Error((result.errors || []).join('\n') || 'No se pudieron leer Productos y Recetas.');
+    const envases = readEnvaseCatalog();
+    const items = result.items.map((p) => productToLoteCatalogItem(p, envases)).filter(Boolean);
+    setLoteProductCatalog(items, items.length ? 'catalog' : 'catalog-empty', '');
   }catch(e){
-    console.warn('No se pudieron leer productos dinámicos para Lotes:', e);
-    const hasDeletedMarks = readDeletedProductKeysForLotes().size > 0;
-    setLoteProductCatalog([], hasDeletedMarks ? 'catalog-empty' : 'legacy', !hasDeletedMarks);
+    console.error('Error controlado al leer Productos para Lotes:', e);
+    setLoteProductCatalog([], 'error', 'No se pudieron leer los productos de Catálogos. No se mostraron productos ficticios.');
   }
   updateLoteProductCatalogUI();
   return loteProductCatalog;
@@ -510,16 +401,9 @@ function hasRealCatalogProductForLetterInLotes(letter){
 }
 
 function getLoteDisplayKeys(){
-  const keys = [];
-  const add = (k) => {
-    const key = normalizeProductLetter(k);
-    if (key && !keys.includes(key)) keys.push(key);
-  };
-  for (const item of (loteProductCatalog.items || [])) add(item.Letra || item.letra);
-  for (const k of LEGACY_TOTAL_KEYS){
-    if (!isLegacyLetterDeletedForLotes(k)) add(k);
-  }
-  return keys;
+  return (loteProductCatalog.items || [])
+    .map((item) => normalizeProductLetter(item.Letra || item.letra))
+    .filter((key, index, arr) => key && arr.indexOf(key) === index);
 }
 
 function isPlainObjectA33(value){
@@ -552,14 +436,15 @@ function addProducedItemToMap(map, item, cantidadValue, source){
   const cantidad = normalizeQtyValue(cantidadValue ?? item.cantidad ?? item.unidades ?? item.qty ?? item.quantity ?? 0);
   if (!(cantidad > 0)) return;
 
-  // La Letra guardada en el lote manda. El catálogo solo completa datos faltantes, nunca recalcula el snapshot histórico.
-  const catalogById = getCatalogProductById(item.productId ?? item.id ?? item.productoId);
-  const catalogByLetter = getCatalogProductByLetter(letter);
-  const catalog = catalogById || catalogByLetter || {};
-  const legacy = LEGACY_BY_LETTER[letter] || null;
+  // productId es la identidad. La Letra solo sirve para código/resumen y nunca
+  // reconstruye un producto histórico contra el catálogo actual.
+  const rawProductId = String(item.productId ?? item.productoId ?? item.id ?? '').trim();
+  const catalog = rawProductId ? (getCatalogProductById(rawProductId) || {}) : {};
+  const legacy = (!rawProductId || item.legacy === true || String(rawProductId).startsWith('legacy:')) ? (LEGACY_BY_LETTER[letter] || null) : null;
+  const mapKey = rawProductId || (legacy ? ('legacy:' + legacy.legacyId) : ('snapshot:' + letter));
 
-  const prev = map.get(letter) || {
-    productId: String(item.productId ?? item.productoId ?? item.id ?? catalog.productId ?? (legacy ? legacy.legacyId : '') ?? '').trim(),
+  const prev = map.get(mapKey) || {
+    productId: rawProductId || (legacy ? ('legacy:' + legacy.legacyId) : ''),
     nombre: String(item.nombreSnapshot || item.nombre || item.name || catalog.nombre || (legacy ? legacy.nombre : letter)).trim(),
     Letra: letter,
     letra: letter,
@@ -585,30 +470,29 @@ function addProducedItemToMap(map, item, cantidadValue, source){
     prev.legacyId = legacy.legacyId;
     prev.legacyField = legacy.field;
   }
-  map.set(letter, prev);
+  map.set(mapKey, prev);
 }
 
 function addMissingLegacyFieldsToMap(map, lote){
   if (!map || !isPlainObjectA33(lote)) return;
-  for (const legacy of LEGACY_PRESENTATIONS){
-    // Si la estructura dinámica ya trae P/M/D/L/G, esa fuente manda para evitar duplicar o sumar dos veces.
-    if (map.has(legacy.letra)) continue;
+  for (const legacy of HISTORICAL_LEGACY_PRESENTATIONS){
+    // Si la estructura dinámica ya contiene el snapshot histórico equivalente, no se duplica.
+    if (Array.from(map.values()).some((item) => item && item.legacy === true && normalizeProductLetter(item.Letra || item.letra) === legacy.letra)) continue;
     const qty = normalizeQtyValue(lote[legacy.field]);
     if (!(qty > 0)) continue;
-    const catalog = getCatalogProductByLetter(legacy.letra) || {};
     addProducedItemToMap(map, {
-      productId: catalog.productId || legacy.legacyId,
-      nombre: catalog.nombre || legacy.nombre,
+      productId: 'legacy:' + legacy.legacyId,
+      nombre: legacy.nombre,
       nombreSnapshot: legacy.nombre,
       Letra: legacy.letra,
       letra: legacy.letra,
-      envaseId: catalog.envaseId || '',
-      tapaId: catalog.tapaId || '',
-      capacidadMl: catalog.capacidadMl || legacy.capacidadMl,
+      envaseId: '',
+      tapaId: '',
+      capacidadMl: legacy.capacidadMl,
       legacy: true,
       legacyId: legacy.legacyId,
       legacyField: legacy.field,
-    }, qty, 'legacy');
+    }, qty, 'legacy-historico');
   }
 }
 
@@ -652,17 +536,20 @@ function getCanonicalLoteItems(lote, options){
         const letter = normalizeProductLetter(k);
         if (!letter) return;
         const n = normalizeQtyValue(rbk[k]);
-        const base = map.get(letter) || {
+        const existingEntry = Array.from(map.entries()).find(([, item]) => normalizeProductLetter(item && (item.Letra || item.letra)) === letter);
+        const current = getCatalogProductByLetter(letter);
+        const historical = LEGACY_BY_LETTER[letter] || null;
+        const base = existingEntry ? existingEntry[1] : {
           Letra: letter,
           letra: letter,
           cantidad: 0,
-          nombre: (getCatalogProductByLetter(letter)?.nombre || (LEGACY_BY_LETTER[letter]?.nombre) || letter),
-          productId: (getCatalogProductByLetter(letter)?.productId || (LEGACY_BY_LETTER[letter]?.legacyId) || letter),
-          legacy: !!LEGACY_BY_LETTER[letter],
+          nombre: (current && current.nombre) || (historical && historical.nombre) || letter,
+          productId: (current && current.productId) || (historical ? ('legacy:' + historical.legacyId) : ('snapshot:' + letter)),
+          legacy: !current && !!historical,
           fuenteLectura: 'remaining',
         };
         base.cantidad = n;
-        map.set(letter, base);
+        map.set(existingEntry ? existingEntry[0] : base.productId, base);
       });
     }
   }
@@ -768,37 +655,22 @@ function loteHasLetterQuantity(lote, letter){
 }
 
 function shouldShowLegacyLetterForRows(letter, lotes){
-  const key = normalizeProductLetter(letter);
-  if (!key) return false;
-  if (hasRealCatalogProductForLetterInLotes(key)) return true;
-  if (!isLegacyLetterDeletedForLotes(key)) return true;
-  return (Array.isArray(lotes) ? lotes : []).some((lote) => loteHasLetterQuantity(lote, key));
+  const legacy = LEGACY_BY_LETTER[normalizeProductLetter(letter)];
+  if (!legacy) return false;
+  return (Array.isArray(lotes) ? lotes : []).some((lote) => {
+    if (!lote || !Object.prototype.hasOwnProperty.call(lote, legacy.field)) return false;
+    return normalizeQtyValue(lote[legacy.field]) > 0;
+  });
 }
 
-function updateLegacyProductFieldsUI(lote){
-  const source = lote || null;
-  for (const legacy of LEGACY_PRESENTATIONS){
-    const input = $(legacy.field);
+function updateLegacyProductFieldsUI(){
+  for (const historical of HISTORICAL_LEGACY_PRESENTATIONS){
+    const input = $(historical.field);
     if (!input) continue;
+    input.value = '';
+    input.disabled = true;
     const field = input.closest ? input.closest('.field') : null;
-    const catalogProduct = getCatalogProductByLetter(legacy.letra);
-    const overriddenByCatalog = catalogProductOverridesLegacyLetterForLotes(catalogProduct);
-    const deleted = isLegacyPresentationDeletedForLotes(legacy);
-    const keepHistoricalValue = source && loteHasLetterQuantity(source, legacy.letra);
-    const hideLegacyField = overriddenByCatalog || (deleted && !keepHistoricalValue);
-
-    // Si Catálogos tiene un producto real para esta Letra, el campo dinámico es
-    // la fuente de captura. Se limpia el legacy oculto para no duplicar unidades
-    // ni dejar la G amarrada al Galón viejo.
-    if (hideLegacyField){
-      input.value = '';
-    }
-    input.dataset.loteCatalogDeleted = deleted ? '1' : '0';
-    input.dataset.loteCatalogOverride = overriddenByCatalog ? '1' : '0';
-    if (field){
-      field.style.display = hideLegacyField ? 'none' : '';
-      field.setAttribute('aria-hidden', hideLegacyField ? 'true' : 'false');
-    }
+    if (field){ field.style.display = 'none'; field.setAttribute('aria-hidden','true'); }
   }
 }
 
@@ -818,50 +690,39 @@ function updateLegacyTableColumnVisibility(visibleLotes){
 
 function legacyLettersForLoteCard(lote){
   return LEGACY_TOTAL_KEYS.filter((letter) => {
-    if (hasRealCatalogProductForLetterInLotes(letter)) return true;
-    if (!isLegacyLetterDeletedForLotes(letter)) return true;
-    return loteHasLetterQuantity(lote, letter);
+    const legacy = LEGACY_BY_LETTER[letter];
+    return !!(legacy && lote && Object.prototype.hasOwnProperty.call(lote, legacy.field) && normalizeQtyValue(lote[legacy.field]) > 0);
   });
 }
 
 function updateLoteProductCatalogUI(){
-  const bar = $("lote-products-catalog-bar");
-  const chips = $("lote-products-catalog-chips");
-  const status = $("lote-products-catalog-status");
+  const bar = $('lote-products-catalog-bar');
+  const chips = $('lote-products-catalog-chips');
+  const status = $('lote-products-catalog-status');
   if (!bar || !chips || !status) return;
-
-  const currentLote = editingId ? loadLotes().find((l) => String(l?.id) === String(editingId)) : null;
-  updateLegacyProductFieldsUI(currentLote || null);
-
-  const items = (loteProductCatalog.items || []).filter((p) => p && p.receta !== false && p.activo !== false && normalizeProductLetter(p.Letra || p.letra));
+  updateLegacyProductFieldsUI();
   chips.innerHTML = '';
-
+  const items = loteProductCatalog.items || [];
   if (!items.length){
-    status.textContent = 'Sin productos activos con Receta y Letra disponibles para Lotes.';
+    const duplicateText = loteProductCatalog.duplicateLetters && loteProductCatalog.duplicateLetters.length
+      ? ' Corrige Letras repetidas: ' + loteProductCatalog.duplicateLetters.map((row) => row.letter).join(', ') + '.'
+      : '';
+    status.textContent = loteProductCatalog.error || ('Sin productos activos con Receta y Letra disponibles para Lotes.' + duplicateText);
     bar.classList.add('is-warn');
+    renderDynamicProductInputs(null);
+    updateTotalsBarUI({});
     return;
   }
-
   bar.classList.remove('is-warn');
   for (const item of items){
     const chip = document.createElement('span');
     chip.className = 'catalog-product-chip';
-    const letter = normalizeProductLetter(item.Letra || item.letra);
-    const name = String(item.nombre || letter).trim();
-    chip.textContent = `${letter} · ${name}`;
-    chip.title = [
-      `Producto: ${name}`,
-      `Letra: ${letter}`,
-      item.envaseId ? `Envase: ${item.envaseId}` : '',
-      item.tapaId ? `Tapa: ${item.tapaId}` : '',
-      item.capacidadMl ? `Capacidad: ${item.capacidadMl} ml` : ''
-    ].filter(Boolean).join(' · ');
+    chip.textContent = `${item.Letra} · ${item.nombre}`;
+    chip.title = `Producto: ${item.nombre} · productId: ${item.productId}`;
     chips.appendChild(chip);
   }
-
-  const source = loteProductCatalog.status === 'catalog' ? 'Catálogos' : 'compatibilidad legacy';
-  status.textContent = `${items.length} producto(s) producible(s) leídos desde ${source}.`;
-
+  status.textContent = `${items.length} producto(s) fabricable(s) leídos desde Catálogos → Productos.`;
+  const currentLote = editingId ? loadLotes().find((l) => String(l?.id) === String(editingId)) : null;
   renderDynamicProductInputs(currentLote || null);
 }
 
@@ -875,7 +736,7 @@ function appendDynamicProductChips(parent, lote, includeLegacy){
     const letter = normalizeProductLetter(item.Letra || item.letra);
     const n = Number(item.cantidad);
     if (!letter || !Number.isFinite(n) || n <= 0) return false;
-    return includeLegacy ? true : !LEGACY_LETTERS.has(letter);
+    return includeLegacy ? true : item.legacy !== true;
   });
   for (const item of items){
     const letter = normalizeProductLetter(item.Letra || item.letra);
@@ -911,7 +772,7 @@ function formatLoteProductSummary(lote, options){
   const items = getCanonicalLoteItems(lote, { useRemaining }).filter((item) => {
     const letter = normalizeProductLetter(item.Letra || item.letra);
     if (!letter) return false;
-    if (!includeLegacy && LEGACY_LETTERS.has(letter)) return false;
+    if (!includeLegacy && item.legacy === true) return false;
     const n = Number(item.cantidad);
     return Number.isFinite(n) && n > 0;
   });
@@ -936,40 +797,33 @@ function getLegacyFieldByLetter(letter){
 
 function getProductSnapshotForLote(product, cantidad, fechaIso, codigoLote, source){
   const p = product && typeof product === 'object' ? product : {};
+  const productId = String(p.productId ?? p.productoId ?? p.id ?? '').trim();
   const letter = normalizeProductLetter(p.Letra || p.letra || p.letter);
   const qty = Number(cantidad);
-  if (!letter || !Number.isFinite(qty) || qty <= 0) return null;
-
-  const legacy = LEGACY_BY_LETTER[letter] || null;
-  const productId = String(p.productId ?? p.productoId ?? p.id ?? (legacy ? legacy.legacyId : '') ?? '').trim();
-  const nombre = String(p.nombre || p.nombreSnapshot || p.name || (legacy ? legacy.nombre : letter)).trim();
-  const costoUnitario = Number(p.costoUnitario ?? p.costoReferencial ?? p.costo ?? p.cost ?? NaN);
+  if (!productId || !letter || !Number.isFinite(qty) || qty <= 0) return null;
+  const nombre = String(p.nombre || p.nombreSnapshot || p.name || productId).trim();
   const item = {
-    productId: productId || letter,
+    productId,
     nombre,
-    nombreSnapshot: nombre,
-    Letra: letter,
-    letra: letter,
-    cantidad: qty,
-    unidades: qty,
-    fecha: fechaIso || '',
-    codigo: codigoLote || '',
-    lote: codigoLote || '',
-    batchCode: codigoLote || '',
-    origenProduccion: source || 'lotes-manual',
-    envaseId: String(p.envaseId || '').trim(),
-    tapaId: String(p.tapaId || '').trim(),
+    nombreSnapshot:nombre,
+    Letra:letter,
+    letra:letter,
+    cantidad:qty,
+    unidades:qty,
+    fecha:fechaIso || '',
+    codigo:codigoLote || '',
+    lote:codigoLote || '',
+    batchCode:codigoLote || '',
+    origenProduccion:source || 'lotes-manual',
+    envaseId:String(p.envaseId || '').trim(),
+    tapaId:String(p.tapaId || '').trim(),
+    recipeSnapshot:(p.recipeSnapshot && typeof p.recipeSnapshot === 'object') ? { ...p.recipeSnapshot } : {},
+    recetaSnapshot:(p.recipeSnapshot && typeof p.recipeSnapshot === 'object') ? { ...p.recipeSnapshot } : {},
+    legacy:false,
   };
-  if (legacy){
-    item.legacy = true;
-    item.legacyId = legacy.legacyId;
-    item.legacyField = legacy.field;
-  }
   if (p.capacidadMl != null) item.capacidadMl = Number(p.capacidadMl) || 0;
-  if (Number.isFinite(costoUnitario) && costoUnitario >= 0){
-    item.costoUnitario = costoUnitario;
-    item.costoTotal = +(costoUnitario * qty).toFixed(4);
-  }
+  const costoUnitario = Number(p.costoUnitario ?? p.costoReferencial ?? p.costo ?? p.cost ?? NaN);
+  if (Number.isFinite(costoUnitario) && costoUnitario >= 0){ item.costoUnitario=costoUnitario; item.costoTotal=+(costoUnitario*qty).toFixed(4); }
   return item;
 }
 
@@ -981,9 +835,11 @@ function normalizeDynamicLoteItems(rawItems){
     const letter = normalizeProductLetter(raw.Letra || raw.letra || raw.letter);
     const qty = Number(raw.cantidad ?? raw.unidades ?? raw.qty ?? 0);
     if (!letter || !Number.isFinite(qty) || qty <= 0) continue;
-    const catalog = getCatalogProductByLetter(letter) || getCatalogProductById(raw.productId ?? raw.productoId ?? raw.id) || {};
-    const legacy = LEGACY_BY_LETTER[letter] || null;
-    const productId = String(raw.productId ?? raw.productoId ?? raw.id ?? catalog.productId ?? (legacy ? legacy.legacyId : letter)).trim();
+    const rawProductId = String(raw.productId ?? raw.productoId ?? raw.id ?? '').trim();
+    const catalog = rawProductId ? (getCatalogProductById(rawProductId) || {}) : {};
+    const legacy = (!rawProductId || raw.legacy === true || rawProductId.startsWith('legacy:')) ? (LEGACY_BY_LETTER[letter] || null) : null;
+    const productId = rawProductId || (legacy ? ('legacy:' + legacy.legacyId) : '');
+    if (!productId) continue;
     const nombre = String(raw.nombreSnapshot || raw.nombre || raw.name || catalog.nombre || (legacy ? legacy.nombre : letter)).trim();
     const item = {
       ...raw,
@@ -1028,121 +884,62 @@ function buildProducedItemsFromForm(baseData){
   const fechaIso = formatDate(baseData && baseData.fecha ? baseData.fecha : ($('fecha') ? $('fecha').value : ''));
   const codigoLote = canonicalBatchCode(baseData && baseData.codigo ? baseData.codigo : ($('codigo') ? $('codigo').value : '')) || String(baseData?.codigo || '').trim();
   const items = [];
-  const editingLoteSource = editingId ? (loadLotes().find((l) => String(l?.id) === String(editingId)) || null) : null;
-  const editingCreatedByLetter = editingLoteSource ? getLoteCreatedQuantitiesByLetter(editingLoteSource) : {};
-
-  for (const legacy of LEGACY_PRESENTATIONS){
-    const catalogProduct = getCatalogProductByLetter(legacy.letra);
-    const overriddenByCatalog = catalogProductOverridesLegacyLetterForLotes(catalogProduct);
-
-    // Cuando un producto real activo de Catálogos usa una Letra legacy, esa Letra
-    // se captura en el campo dinámico. El campo legacy fijo se ignora para evitar
-    // duplicados y para no bloquear ediciones como Galón 3720 ml / G.
-    if (overriddenByCatalog) continue;
-
-    const input = $(legacy.field);
-    const parsed = parseLoteQuantityInput(input ? input.value : (baseData ? baseData[legacy.field] : 0), legacy.nombre);
-    if (!parsed.ok){ alert(parsed.message); return null; }
-    let qtyValue = parsed.value;
-    const deleted = isLegacyPresentationDeletedForLotes(legacy);
-    const historicalQty = normalizeQtyValue(editingCreatedByLetter[legacy.letra]);
-    if (deleted && editingId && historicalQty > 0 && !(qtyValue > 0)){
-      qtyValue = historicalQty;
-    }
-    if (qtyValue > 0){
-      if (deleted && !(editingId && historicalQty > 0)){
-        alert('Ese producto ya no está disponible en Catálogos.');
-        return null;
-      }
-      const catalog = getCatalogProductByLetter(legacy.letra) || (deleted ? null : legacy);
-      if (!catalog && !deleted) continue;
-      const product = { ...legacy, ...(catalog || {}), Letra: legacy.letra, letra: legacy.letra, legacy: true };
-      const item = getProductSnapshotForLote(product, qtyValue, fechaIso, codigoLote, 'lotes-manual');
-      if (item) items.push(item);
-    }
-  }
-
+  const seen = new Set();
   const dynamicInputs = Array.from(document.querySelectorAll('[data-lote-product-id][data-lote-letter]'));
   for (const input of dynamicInputs){
+    const productId = String(input.dataset.loteProductId || '').trim();
     const letter = normalizeProductLetter(input.dataset.loteLetter || '');
-    const allowLegacyLetter = input.dataset.loteAllowLegacyLetter === '1';
-    if (!letter || (LEGACY_LETTERS.has(letter) && !allowLegacyLetter)) continue;
-    const catalog = getCatalogProductByLetter(letter) || getCatalogProductById(input.dataset.loteProductId || '') || null;
-    const label = catalog ? `${catalog.nombre || letter} (${letter})` : `producto ${letter}`;
-    const parsed = parseLoteQuantityInput(input.value, label);
+    const catalog = getCatalogProductById(productId);
+    if (!catalog || catalog.productId !== productId || catalog.Letra !== letter){
+      alert('El producto seleccionado ya no coincide con Catálogos. Actualiza la vista e intenta nuevamente.');
+      return null;
+    }
+    const parsed = parseLoteQuantityInput(input.value, `${catalog.nombre} (${letter})`);
     if (!parsed.ok){ alert(parsed.message); return null; }
     if (parsed.value > 0){
-      const item = getProductSnapshotForLote(catalog || { productId: input.dataset.loteProductId || letter, nombre: label, Letra: letter, letra: letter }, parsed.value, fechaIso, codigoLote, 'lotes-manual');
-      if (item) items.push(item);
+      if (seen.has(productId)){ alert('Producto duplicado en el formulario: ' + catalog.nombre); return null; }
+      seen.add(productId);
+      const item = getProductSnapshotForLote(catalog, parsed.value, fechaIso, codigoLote, 'lotes-manual');
+      if (!item){ alert('No se pudo validar productId y Letra de ' + catalog.nombre + '.'); return null; }
+      items.push(item);
     }
   }
-
-  return normalizeDynamicLoteItems(items);
+  return items;
 }
 
 function renderDynamicProductInputs(lote){
   const grid = $('dynamic-products-grid');
   const status = $('dynamic-products-status');
   if (!grid || !status) return;
-
-  updateLegacyProductFieldsUI(lote || null);
-  const qtyMap = lote ? getProducedQuantityMap(lote, false) : new Map();
-  const byLetter = new Map();
-  const addDynamicInputItem = (item) => {
-    if (!item || item.receta === false || item.activo === false) return;
-    const letter = normalizeProductLetter(item.Letra || item.letra);
-    if (!letter || !shouldRenderDynamicProductInputForLotes({ ...item, Letra: letter, letra: letter })) return;
-    if (!byLetter.has(letter)) byLetter.set(letter, { ...item, Letra: letter, letra: letter });
-  };
-
-  (loteProductCatalog.items || []).forEach(addDynamicInputItem);
+  const items = (loteProductCatalog.items || []).slice().sort(sortCatalogItemsForLotes);
+  const qtyByProductId = new Map();
   if (lote){
-    getLoteProducedItems(lote, { useRemaining:false }).forEach(addDynamicInputItem);
+    for (const old of normalizeDynamicLoteItems(lote.productosProducidos)){
+      const pid = String(old.productId || '').trim();
+      if (pid) qtyByProductId.set(pid, normalizeQtyValue(old.cantidad ?? old.unidades));
+    }
   }
-  const items = Array.from(byLetter.values()).sort((a,b) => sortCatalogItemsForLotes(a,b));
-
   grid.innerHTML = '';
   if (!items.length){
-    status.textContent = 'Sin productos dinámicos adicionales disponibles.';
+    status.textContent = loteProductCatalog.error || 'No hay productos activos con Receta y Letra en Catálogos → Productos.';
     grid.style.display = 'none';
     return;
   }
-
   grid.style.display = '';
   const frag = document.createDocumentFragment();
   for (const item of items){
-    const wrap = document.createElement('div');
-    wrap.className = 'dynamic-product-field';
-
-    const label = document.createElement('label');
-    const inputId = `dyn-prod-${String(item.productId || item.Letra).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-    label.setAttribute('for', inputId);
-    const strong = document.createElement('strong');
-    strong.textContent = item.Letra;
-    label.appendChild(strong);
-    label.appendChild(document.createTextNode(` · ${item.nombre || item.Letra}`));
-
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.id = inputId;
-    input.min = '0';
-    input.step = '1';
-    input.inputMode = 'numeric';
-    input.className = 'a33-num dynamic-product-input';
-    input.dataset.loteProductId = String(item.productId || '');
-    input.dataset.loteLetter = item.Letra;
-    input.dataset.loteAllowLegacyLetter = LEGACY_LETTERS.has(item.Letra) ? '1' : '0';
-    input.dataset.a33Default = '0';
-    input.value = qtyMap.has(item.Letra) ? formatQtyForDisplay(qtyMap.get(item.Letra)) : '';
-    input.placeholder = '0';
-    input.title = `${item.nombre || item.Letra} · Letra ${item.Letra}`;
-
-    wrap.appendChild(label);
-    wrap.appendChild(input);
-    frag.appendChild(wrap);
+    const wrap = document.createElement('div'); wrap.className='dynamic-product-field';
+    const inputId = `dyn-prod-${String(item.productId).replace(/[^a-zA-Z0-9_-]/g,'-')}`;
+    const label = document.createElement('label'); label.setAttribute('for',inputId);
+    const strong=document.createElement('strong'); strong.textContent=item.Letra; label.appendChild(strong);
+    label.appendChild(document.createTextNode(` · ${item.nombre}`));
+    const input=document.createElement('input'); input.type='number'; input.id=inputId; input.min='0'; input.step='1'; input.inputMode='numeric';
+    input.className='a33-num dynamic-product-input'; input.dataset.loteProductId=item.productId; input.dataset.loteLetter=item.Letra; input.dataset.a33Default='0';
+    input.value=String(qtyByProductId.get(item.productId) || 0);
+    wrap.appendChild(label); wrap.appendChild(input); frag.appendChild(wrap);
   }
   grid.appendChild(frag);
-  status.textContent = `${items.length} producto(s) dinámico(s) adicional(es). Vacío o 0 no se guarda.`;
+  status.textContent = `${items.length} producto(s) disponibles desde Catálogos.`;
 }
 
 function abbrProducto(nombre) {
@@ -1289,14 +1086,11 @@ function normalizeLoteRecord(lote){
     out.caducidad = calculateCaducidad(out.fecha) || '';
   }
 
-  // Números (conservador: no inventar, solo sanear)
-  out.pulso = coerceNonNegIntString(out.pulso, '0');
-  out.media = coerceNonNegIntString(out.media, '0');
-  out.djeba = coerceNonNegIntString(out.djeba, '0');
-  out.litro = coerceNonNegIntString(out.litro, '0');
-  // tolerar 'galón' legacy
-  if (out.galon == null && out['galón'] != null) out.galon = out['galón'];
-  out.galon = coerceNonNegIntString(out.galon, '0');
+  // Compatibilidad histórica: sanear solo campos legacy que ya existían; nunca crearlos en lotes nuevos.
+  for (const historical of HISTORICAL_LEGACY_PRESENTATIONS){
+    if (Object.prototype.hasOwnProperty.call(out, historical.field)) out[historical.field] = coerceNonNegIntString(out[historical.field], '0');
+  }
+  if (!Object.prototype.hasOwnProperty.call(out, 'galon') && Object.prototype.hasOwnProperty.call(out, 'galón')) out.galon = coerceNonNegIntString(out['galón'], '0');
 
   out.volTotal = coerceFiniteNumberString(out.volTotal, out.volTotal == null ? '' : '');
   out.volVino = coerceFiniteNumberString(out.volVino, out.volVino == null ? '' : '');
@@ -1319,8 +1113,7 @@ function normalizeLoteRecord(lote){
       out.contratoLotesDinamicos = {
         schema: 1,
         fuente: 'lotes',
-        campos: ['productId','nombreSnapshot','Letra','cantidad','cantidadDisponible','loteId','loteCodigo','envaseId','tapaId','fecha','codigo','costoUnitario','costoTotal'],
-        legacyFields: ['pulso','media','djeba','litro','galon']
+        campos: ['productId','nombreSnapshot','Letra','cantidad','cantidadDisponible','loteId','loteCodigo','envaseId','tapaId','fecha','codigo','costoUnitario','costoTotal']
       };
     }
   }
@@ -1539,11 +1332,11 @@ function buildArchiveSnapshot(lote, deletedAtIso){
     semaforoAtDelete: sem,
     // "producto/presentación" => aquí guardamos presentaciones (unidades) + volTotal como resumen
     volTotal: lote?.volTotal ?? "",
-    pulso: lote?.pulso ?? "0",
-    media: lote?.media ?? "0",
-    djeba: lote?.djeba ?? "0",
-    litro: lote?.litro ?? "0",
-    galon: lote?.galon ?? "0",
+    ...(lote && Object.prototype.hasOwnProperty.call(lote,'pulso') ? { pulso:lote.pulso } : {}),
+    ...(lote && Object.prototype.hasOwnProperty.call(lote,'media') ? { media:lote.media } : {}),
+    ...(lote && Object.prototype.hasOwnProperty.call(lote,'djeba') ? { djeba:lote.djeba } : {}),
+    ...(lote && Object.prototype.hasOwnProperty.call(lote,'litro') ? { litro:lote.litro } : {}),
+    ...(lote && Object.prototype.hasOwnProperty.call(lote,'galon') ? { galon:lote.galon } : {}),
     productosProducidos: Array.isArray(lote?.productosProducidos) ? lote.productosProducidos.map((item) => ({ ...item })) : [],
     productosProducidosSchema: lote?.productosProducidosSchema || (Array.isArray(lote?.productosProducidos) ? 1 : undefined),
     contratoLotesDinamicos: lote?.contratoLotesDinamicos && typeof lote.contratoLotesDinamicos === "object"
@@ -1651,8 +1444,8 @@ function buildLetterToProductMapForLote(lote){
   for (const item of getLoteCreatedItems(lote)){
     const letter = normalizeProductLetter(item.Letra || item.letra || item.letter);
     if (!letter) continue;
-    const legacy = LEGACY_BY_LETTER[letter] || null;
-    const productId = normalizeProductIdForPOS(item.productId ?? item.productoId ?? item.id ?? (legacy ? legacy.legacyId : '') ?? letter);
+    const legacy = item && item.legacy === true ? (LEGACY_BY_LETTER[letter] || null) : null;
+    const productId = normalizeProductIdForPOS(item.productId ?? item.productoId ?? item.id ?? (legacy ? ('legacy:' + legacy.legacyId) : '') ?? letter);
     map.set(letter, {
       productId: productId || letter,
       nombreSnapshot: String(item.nombreSnapshot || item.nombre || item.name || (legacy ? legacy.nombre : letter)).trim(),
@@ -1743,8 +1536,8 @@ function buildLotePOSAvailabilityContract(lote){
 
   for (const item of items){
     const letter = normalizeProductLetter(item.Letra || item.letra || item.letter);
-    const legacy = LEGACY_BY_LETTER[letter] || null;
-    const productId = normalizeProductIdForPOS(item.productId ?? item.productoId ?? item.id ?? (legacy ? legacy.legacyId : '') ?? letter);
+    const legacy = item && item.legacy === true ? (LEGACY_BY_LETTER[letter] || null) : null;
+    const productId = normalizeProductIdForPOS(item.productId ?? item.productoId ?? item.id ?? (legacy ? ('legacy:' + legacy.legacyId) : '') ?? letter);
     if (!productId || !letter) continue;
 
     const produced = normalizeQtyValue(item.cantidad ?? item.unidades ?? item.qty ?? item.quantity ?? 0);
@@ -1813,7 +1606,6 @@ function buildLotePOSAvailabilityContract(lote){
     assignedEventId: lote?.assignedEventId != null ? String(lote.assignedEventId).trim() : '',
     assignedEventName: String(lote?.assignedEventName || '').trim(),
     campos: LOTES_POS_CONTRACT_FIELDS.slice(),
-    legacyFields: ['pulso','media','djeba','litro','galon'],
     compatibilidadLegacy: true,
     productos,
     producidosPorProductId,
@@ -1832,7 +1624,6 @@ function attachPOSAvailabilityContract(out){
     fuente: 'lotes',
     stockKey: 'productId',
     campos: LOTES_POS_CONTRACT_FIELDS.slice(),
-    legacyFields: ['pulso','media','djeba','litro','galon'],
     compatibilidadLegacy: true,
   };
   out.disponibilidadPOS = contract.productos.map((item) => ({ ...item }));
@@ -1868,7 +1659,6 @@ function buildAllLotesPOSAvailabilityContract(lotes){
     fuente: 'lotes',
     stockKey: 'productId',
     campos: LOTES_POS_CONTRACT_FIELDS.slice(),
-    legacyFields: ['pulso','media','djeba','litro','galon'],
     compatibilidadLegacy: true,
     productos: rows,
     producidosPorProductId,
@@ -1953,11 +1743,8 @@ function showLoteDetails(lote) {
 function clearForm() {
   const form = $("lote-form");
   form.reset();
-  // Restaurar valores por defecto numéricos
-  ["pulso", "media", "djeba", "litro", "galon"].forEach((id) => {
-    const el = $(id);
-    if (el) el.value = "0";
-  });
+  // Los campos históricos no forman parte del formulario operativo.
+  updateLegacyProductFieldsUI();
   const today = new Date().toISOString().slice(0, 10);
   $("fecha").value = today;
   $("caducidad").value = calculateCaducidad(today);
@@ -1965,6 +1752,28 @@ function clearForm() {
   editingCtx = null;
   renderDynamicProductInputs(null);
   $("save-btn").textContent = "Guardar lote";
+}
+
+function productionCriticalSignature(lote){
+  const p = lote && typeof lote === 'object' ? lote : {};
+  const products = normalizeDynamicLoteItems(p.productosProducidos)
+    .map((item) => ({
+      productId:String(item.productId || '').trim(),
+      cantidad:normalizeQtyValue(item.cantidad ?? item.unidades),
+      envaseId:String(item.envaseId || '').trim(),
+      tapaId:String(item.tapaId || '').trim()
+    }))
+    .sort((a,b) => a.productId.localeCompare(b.productId));
+  return JSON.stringify({
+    codigo:canonicalBatchCode(p.codigo || p.batchCode || ''),
+    fecha:formatDate(p.fecha || ''),
+    volVino:coerceFiniteNumberString(p.volVino,'0'),
+    volVodka:coerceFiniteNumberString(p.volVodka,'0'),
+    volJugo:coerceFiniteNumberString(p.volJugo,'0'),
+    volSirope:coerceFiniteNumberString(p.volSirope,'0'),
+    volAgua:coerceFiniteNumberString(p.volAgua,'0'),
+    products
+  });
 }
 
 function readFormData() {
@@ -1993,11 +1802,6 @@ function readFormData() {
     volSirope: $("volSirope").value || "",
     volAgua: $("volAgua").value || "",
 
-    pulso: $("pulso").value || "0",
-    media: $("media").value || "0",
-    djeba: $("djeba").value || "0",
-    litro: $("litro").value || "0",
-    galon: $("galon").value || "0",
 
     notas: $("notas").value.trim(),
   };
@@ -2005,13 +1809,16 @@ function readFormData() {
   const productosProducidos = buildProducedItemsFromForm(data);
   if (productosProducidos === null) return null;
   data.productosProducidos = productosProducidos;
+  if (!productosProducidos.length){
+    alert('Indica al menos un producto fabricable de Catálogos para guardar el lote.');
+    return null;
+  }
   if (productosProducidos.length){
     data.productosProducidosSchema = 1;
     data.contratoLotesDinamicos = {
       schema: 1,
       fuente: 'lotes-manual',
-      campos: ['productId','nombreSnapshot','Letra','cantidad','cantidadDisponible','loteId','loteCodigo','envaseId','tapaId','fecha','codigo','costoUnitario','costoTotal'],
-      legacyFields: ['pulso','media','djeba','litro','galon']
+      campos: ['productId','nombreSnapshot','Letra','cantidad','cantidadDisponible','loteId','loteCodigo','envaseId','tapaId','fecha','codigo','costoUnitario','costoTotal']
     };
   }
 
@@ -2045,11 +1852,6 @@ function populateForm(lote) {
   $("volSirope").value = lote.volSirope || "";
   $("volAgua").value = lote.volAgua || "";
 
-  $("pulso").value = lote.pulso ?? "0";
-  $("media").value = lote.media ?? "0";
-  $("djeba").value = lote.djeba ?? "0";
-  $("litro").value = lote.litro ?? "0";
-  $("galon").value = lote.galon ?? "0";
 
   $("notas").value = lote.notas || "";
 
@@ -2402,7 +2204,7 @@ function buildLoteCard(lote){
     }
   }
 
-  const extraItems = getLoteProducedItems(lote, { useRemaining: true }).filter((item) => item && item.letra && !LEGACY_LETTERS.has(item.letra));
+  const extraItems = getLoteProducedItems(lote, { useRemaining: true }).filter((item) => item && item.letra && item.legacy !== true);
   for (const item of extraItems) {
     const val = Number(item.cantidad ?? item.unidades);
     if (Number.isFinite(val) && val > 0) grid.appendChild(mk(item.letra, formatQtyForDisplay(val)));
@@ -2953,7 +2755,7 @@ function renderHistoryModal(){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.84&r=12")
+      .register("./sw.js?v=4.20.85&r=1")
       .catch((err) => console.error("SW error", err));
   }
 }
@@ -2970,7 +2772,7 @@ try {
   });
 } catch(_){ }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   // Inicializar fecha y caducidad
   const fechaInput = $("fecha");
   const cadInput = $("caducidad");
@@ -2983,7 +2785,7 @@ document.addEventListener("DOMContentLoaded", () => {
     cadInput.value = calculateCaducidad(fechaInput.value);
   });
 
-  $("lote-form").addEventListener("submit", (e) => {
+  $("lote-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (isSavingLote) return; // anti doble-acción
 
@@ -3000,6 +2802,71 @@ document.addEventListener("DOMContentLoaded", () => {
       const formData = readFormData();
       if (!formData) return;
 
+      // Todo lote nuevo es una producción oficial: validación completa + Inventario + lote en una operación idempotente.
+      if (!editingId){
+        if (!window.A33Production || typeof A33Production.commitOfficialProduction !== 'function'){
+          alert('No está disponible el contrato seguro de Producción.');
+          return;
+        }
+        const currentCatalog = await A33Production.loadFabricableProducts();
+        if (!currentCatalog.ok){
+          alert((currentCatalog.errors || []).join('\n') || 'No se pudieron validar los Productos de Catálogos.');
+          return;
+        }
+        if (currentCatalog.duplicateLetters && currentCatalog.duplicateLetters.length){
+          alert('Corrige Letras repetidas en Catálogos: ' + currentCatalog.duplicateLetters.map((row) => row.letter).join(', ') + '.');
+          return;
+        }
+        const byId = new Map(currentCatalog.items.map((item) => [String(item.productId), item]));
+        const officialItems = [];
+        for (const raw of formData.productosProducidos){
+          const current = byId.get(String(raw.productId || ''));
+          if (!current){
+            alert((raw.nombreSnapshot || raw.productId || 'Producto') + ': ya no está activo con Receta en Catálogos.');
+            return;
+          }
+          const recipeSnapshot = (current.recipeSnapshot && typeof current.recipeSnapshot === 'object') ? { ...current.recipeSnapshot } : {};
+          if (!window.A33Production.recipeHasAmounts(recipeSnapshot)){
+            alert(current.nombre + ': la Receta está habilitada, pero no tiene cantidades reales configuradas.');
+            return;
+          }
+          officialItems.push({ ...raw, ...current, productId:current.productId, id:current.productId, cantidad:normalizeQtyValue(raw.cantidad), unidades:normalizeQtyValue(raw.cantidad), nombre:current.nombre, nombreSnapshot:current.nombre, recipeSnapshot, recetaSnapshot:{ ...recipeSnapshot }, legacy:false });
+        }
+        const loteId = String(formData.loteId || `batch_${canonicalBatchCode(formData.codigo)}`).trim();
+        const operationId = `production:${loteId}`;
+        const officialLote = normalizeLoteRecord({
+          ...formData,
+          loteId,
+          operationId,
+          productionOperationId:operationId,
+          productosProducidos:officialItems.map((item) => getProductSnapshotForLote(item, item.cantidad, formData.fecha, formData.codigo, 'Producción')),
+          productosProducidosSchema:2,
+          origenProduccion:'Lotes',
+          contratoLotesDinamicos:{ schema:2, fuente:'lotes', identidad:'productId', campos:['productId','nombreSnapshot','Letra','cantidad','envaseId','tapaId','recipeSnapshot','operationId','fecha','codigo','costoUnitario','costoTotal'] }
+        }) || formData;
+        const result = await A33Production.commitOfficialProduction({
+          operationId,
+          lote:officialLote,
+          items:officialItems,
+          ingredientTotals:{
+            vino:Number(formData.volVino || 0),
+            vodka:Number(formData.volVodka || 0),
+            jugo:Number(formData.volJugo || 0),
+            sirope:Number(formData.volSirope || 0),
+            agua:Number(formData.volAgua || 0)
+          }
+        });
+        if (!result.ok){
+          alert((result.errors && result.errors.length ? result.errors.join('\n') : result.message) || 'No se pudo guardar la producción.');
+          return;
+        }
+        renderTable({ reset:true, forceRefresh:true });
+        clearForm();
+        savedOk = true;
+        alert(result.duplicate ? 'La producción ya existía. No se duplicaron movimientos.' : 'Producción guardada con Inventario y Lote confirmados.');
+        return;
+      }
+
       // Etapa 2: siempre re-leer la data antes de guardar (evita pisadas Calculadora/POS)
       const fresh = readLotesAndMetaFresh();
       const lotes = Array.isArray(fresh.lotes) ? fresh.lotes : [];
@@ -3009,6 +2876,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const index = lotes.findIndex((l) => String(l?.id) === String(data.id));
       const cur = index >= 0 ? lotes[index] : null;
+
+      // Una producción ya aplicada a Inventario no puede cambiar cantidades, insumos, fecha ni código desde Lotes.
+      if (cur && (cur.operationId || cur.productionOperationId) && productionCriticalSignature(cur) !== productionCriticalSignature(data)){
+        alert('Este lote ya fue aplicado a Inventario. Solo puedes editar Notas o Caducidad; las cantidades e insumos no se pueden reaplicar ni duplicar.');
+        return;
+      }
 
       // Resolver identidad estable (sin cambiar id del lote existente)
       const resolvedLoteId = (cur?.loteId || cur?.id)
@@ -3047,7 +2920,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const editableKeys = [
           'fecha','codigo','caducidad',
           'volTotal','volVino','volVodka','volJugo','volSirope','volAgua',
-          'pulso','media','djeba','litro','galon',
           'productosProducidos','productosProducidosSchema','contratoLotesDinamicos','contratoPOS','disponibilidadPOS','salidaPOS',
           'notas','batchCode','loteId'
         ];
@@ -3271,6 +3143,9 @@ ${code}`
     renderTable({ reset: true, forceRefresh: true });
   });
 
+  if (window.A33Production && typeof A33Production.recoverPendingTransactions === 'function'){
+    try{ await A33Production.recoverPendingTransactions(); }catch(e){ console.error('No se pudo recuperar una producción pendiente:', e); }
+  }
   refreshLoteProductCatalog(true)
     .then(() => renderTable({ reset: true, forceRefresh: true }))
     .catch((err) => {

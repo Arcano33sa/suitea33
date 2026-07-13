@@ -1,5 +1,5 @@
 /*
-  Suite A33 v4.20.84 — Centro de Mando (OPERATIVO v1)
+  Suite A33 v4.20.85 — Centro de Mando (OPERATIVO v1)
 
   Fuentes reales (descubiertas en /pos/app.js dentro de esta ZIP):
   - DB_NAME: 'a33-pos'
@@ -52,22 +52,54 @@ const invViewState = {
   bottlesExpanded: false,
 };
 
-// Nombres (alineados al módulo Inventario; si hay claves nuevas, se muestran por id)
+// Líquidos conservan catálogo técnico fijo; productos/envases/tapas son dinámicos.
 const INV_LIQUIDS_META = [
-  { id:'vino',   name:'Vino' },
-  { id:'vodka',  name:'Vodka' },
-  { id:'jugo',   name:'Jugo' },
-  { id:'sirope', name:'Sirope' },
-  { id:'agua',   name:'Agua pura' },
+  { id:'vino', name:'Vino' }, { id:'vodka', name:'Vodka' }, { id:'jugo', name:'Jugo' },
+  { id:'sirope', name:'Sirope' }, { id:'agua', name:'Agua pura' }
 ];
+const INV_ENVASES_KEY = 'a33_catalog_envases_v1';
+const INV_TAPAS_KEY = 'a33_catalog_tapas_v1';
+const invCatalogState = { products:[], envases:[], tapas:[] };
 
-const INV_BOTTLES_META = [
-  { id:'pulso', name:'Pulso 250 ml' },
-  { id:'media', name:'Media 375 ml' },
-  { id:'djeba', name:'Djeba 750 ml' },
-  { id:'litro', name:'Litro 1000 ml' },
-  { id:'galon', name:'Galón 3720 ml' },
-];
+function invCatalogRowActive(row){
+  if (!row || row.deleted === true || row.eliminado === true) return false;
+  const raw = row.active ?? row.activo ?? row.isActive;
+  if (raw == null) return true;
+  if (typeof raw === 'boolean') return raw;
+  if (typeof raw === 'number') return raw === 1;
+  return !['false','0','no','inactivo','inactiva'].includes(String(raw).trim().toLowerCase());
+}
+
+function invReadCatalogRows(key){
+  let raw = null;
+  try{
+    if (window.A33Storage && typeof A33Storage.getJSON === 'function') raw = A33Storage.getJSON(key, [], 'local');
+    else raw = JSON.parse(localStorage.getItem(key) || '[]');
+  }catch(_){ raw = []; }
+  const rows = Array.isArray(raw) ? raw : [];
+  const seen = new Set();
+  return rows.filter(row => {
+    if (!invCatalogRowActive(row)) return false;
+    const id = String(row.id || row.envaseId || row.tapaId || '').trim();
+    if (!id || seen.has(id)) return false;
+    seen.add(id); return true;
+  }).map(row => ({ id:String(row.id || row.envaseId || row.tapaId).trim(), name:String(row.name || row.nombre || row.label || row.id).trim() }));
+}
+
+async function refreshInventoryCatalogState(){
+  let products = [];
+  try{
+    if (window.A33Products && typeof A33Products.getActive === 'function') products = await A33Products.getActive();
+  }catch(err){ console.warn('Centro de Mando: no se pudo leer Productos activos', err); }
+  const seen = new Set();
+  invCatalogState.products = (Array.isArray(products) ? products : []).map(row => {
+    const id = String((window.A33Products && A33Products.getProductId ? A33Products.getProductId(row) : (row.productId || row.productoId)) || '').trim();
+    return { id, name:String(row.name || row.nombre || id).trim() };
+  }).filter(row => row.id && !seen.has(row.id) && seen.add(row.id));
+  invCatalogState.envases = invReadCatalogRows(INV_ENVASES_KEY);
+  invCatalogState.tapas = invReadCatalogRows(INV_TAPAS_KEY);
+  return invCatalogState;
+}
 
 function invNum(x){
   const n = parseFloat(String(x ?? '').replace(',', '.'));
@@ -115,43 +147,15 @@ function readInventorySafe(){
 // BOTELLAS: rojo <=10, amarillo 11–20, verde >20
 function computeInvRiskCountsLight(inv){
   try{
-    const out = { ok:true, invTotal:0, invRed:0, invYellow:0 };
-
-    // Líquidos
-    const srcL = (inv && inv.liquids && typeof inv.liquids === 'object') ? inv.liquids : {};
-    const keysL = new Set([...(INV_LIQUIDS_META.map(x=> x.id)), ...Object.keys(srcL || {})]);
-    for (const id of keysL){
-      const row = (srcL && srcL[id]) ? srcL[id] : {};
-      const stock = invNum(row.stock);
-      const max = invNum(row.max);
-
-      if (stock <= 0){
-        out.invRed++; out.invTotal++;
-        continue;
-      }
-      if (max > 0){
-        const ratio = stock / max;
-        if (ratio <= 0.20){ out.invRed++; out.invTotal++; }
-        else if (ratio <= 0.35){ out.invYellow++; out.invTotal++; }
-      }
-      // max=0 => unknown: no inventar
-    }
-
-    // Botellas
-    const srcB = (inv && inv.bottles && typeof inv.bottles === 'object') ? inv.bottles : {};
-    const keysB = new Set([...(INV_BOTTLES_META.map(x=> x.id)), ...Object.keys(srcB || {})]);
-    for (const id of keysB){
-      const row = (srcB && srcB[id]) ? srcB[id] : {};
-      const stock = invNum(row.stock);
-
-      if (stock <= 10){ out.invRed++; out.invTotal++; }
-      else if (stock <= 20){ out.invYellow++; out.invTotal++; }
-    }
-
-    return out;
-  }catch(_){
-    return { ok:false, invTotal:null, invRed:0, invYellow:0 };
-  }
+    const liq = computeLiquidsTraffic(inv);
+    const stock = computeBottlesTraffic(inv);
+    return {
+      ok:true,
+      invRed:(liq.redCount || 0) + (stock.redCount || 0),
+      invYellow:(liq.yellowCount || 0) + (stock.yellowCount || 0),
+      invTotal:(liq.actionableCount || 0) + (stock.actionableCount || 0)
+    };
+  }catch(_){ return { ok:false, invTotal:null, invRed:0, invYellow:0 }; }
 }
 
 function computeLiquidsTraffic(inv){
@@ -218,53 +222,34 @@ function computeLiquidsTraffic(inv){
   };
 }
 
+function invStockStatus(row){
+  const stock = invNum(row && row.stock);
+  const minimum = invNum(row && (row.min ?? row.minimo));
+  const redLimit = minimum > 0 ? minimum : 10;
+  const yellowLimit = minimum > 0 ? Math.max(minimum * 2, minimum + 1) : 20;
+  if (stock <= redLimit) return 'red';
+  if (stock <= yellowLimit) return 'yellow';
+  return 'green';
+}
+
 function computeBottlesTraffic(inv){
-  const src = (inv && inv.bottles && typeof inv.bottles === 'object') ? inv.bottles : {};
-  const keys = new Set([...(INV_BOTTLES_META.map(x=> x.id)), ...Object.keys(src || {})]);
-
-  const red = [];
-  const yellow = [];
-  const green = [];
-
-  for (const id of keys){
-    const row = (src && src[id]) ? src[id] : {};
-    const stock = invNum(row.stock);
-
-    let status = null;
-    if (stock <= 10) status = 'red';
-    else if (stock <= 20) status = 'yellow';
-    else status = 'green';
-
-    const item = {
-      id,
-      name: invNameFor(INV_BOTTLES_META, id) || String(id),
-      stock,
-      status
-    };
-
-    if (status === 'red') red.push(item);
-    else if (status === 'yellow') yellow.push(item);
-    else green.push(item);
-  }
-
-  const byName = (a,b)=> String(a.name).localeCompare(String(b.name));
-  red.sort(byName); yellow.sort(byName); green.sort(byName);
-
-  const itemsActionable = red.concat(yellow);
-  const itemsAll = red.concat(yellow, green);
-
-  return {
-    kind: 'bottles',
-    red, yellow, green,
-    redCount: red.length,
-    yellowCount: yellow.length,
-    greenCount: green.length,
-    unknownCount: 0,
-    actionableCount: itemsActionable.length,
-    totalCount: itemsAll.length,
-    itemsActionable,
-    itemsAll
+  const red=[], yellow=[], green=[];
+  const add = (kind, def, row) => {
+    const stock = invNum(row && row.stock);
+    const status = invStockStatus(row || {});
+    const item = { id:`${kind}:${def.id}`, sourceId:def.id, kind, name:`${def.name} · ${kind === 'product' ? 'Producto' : kind === 'envase' ? 'Envase' : 'Tapa'}`, stock, status, unit:'u' };
+    (status === 'red' ? red : status === 'yellow' ? yellow : green).push(item);
   };
+  const finished = inv && inv.finishedByProductId && typeof inv.finishedByProductId === 'object' ? inv.finishedByProductId : {};
+  const bottles = inv && inv.bottles && typeof inv.bottles === 'object' ? inv.bottles : {};
+  const caps = inv && inv.caps && typeof inv.caps === 'object' ? inv.caps : {};
+  for (const def of invCatalogState.products) add('product', def, finished[def.id] || {});
+  for (const def of invCatalogState.envases) add('envase', def, bottles[def.id] || {});
+  for (const def of invCatalogState.tapas) add('tapa', def, caps[def.id] || {});
+  const byName=(a,b)=>String(a.name).localeCompare(String(b.name),'es-NI',{sensitivity:'base'});
+  red.sort(byName); yellow.sort(byName); green.sort(byName);
+  const itemsActionable=red.concat(yellow), itemsAll=red.concat(yellow,green);
+  return { kind:'stock',red,yellow,green,unknown:[],redCount:red.length,yellowCount:yellow.length,greenCount:green.length,unknownCount:0,actionableCount:itemsActionable.length,totalCount:itemsAll.length,itemsActionable,itemsAll };
 }
 
 function setInvSummary(sumEl, res, expanded){
@@ -372,7 +357,7 @@ function renderInvList(listEl, res, expanded){
     const stock = document.createElement('span');
     stock.className = 'cmd-inv-stock';
 
-    if (res.kind === 'bottles'){
+    if (res.kind !== 'liquids'){
       const n = invNum((it && it.stock != null) ? it.stock : 0);
       stock.textContent = `Stock: ${n} u`;
     } else {
@@ -479,14 +464,16 @@ function renderInvRiskBlock(liquidsRes, bottlesRes){
   );
 }
 
-function refreshInvRiskBlock(){
+async function refreshInvRiskBlock(){
   if (!$('invRiskBlock')) return;
 
   // FAIL-SAFE: si inventario está incompleto/corrupto, NO romper el dock ni el CdM.
   try{
+    await refreshInventoryCatalogState();
     const inv = readInventorySafe();
     if (!inv){
-      renderInvRiskBlock(null, null);
+      const emptyInv = { liquids:{}, bottles:{}, caps:{}, finishedByProductId:{} };
+      renderInvRiskBlock(computeLiquidsTraffic(emptyInv), computeBottlesTraffic(emptyInv));
       setInvRiskUpdatedAt(new Date());
       return;
     }

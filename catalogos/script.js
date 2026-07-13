@@ -2,18 +2,12 @@
   'use strict';
 
   const DB_NAME = 'a33-pos';
-  const DB_VER = 34;
+  const DB_VER = 35;
   const DEFAULT_GALON_PRICE = 900;
   const LEGACY_GALON_PRICE = 800;
   const CANON_GALON_LABEL = 'Galón 3720 ml';
-  const SEED = [
-    { name:'Vaso', price:100, manageStock:true, active:true, capacityMl:null, receta:false, letra:'', pos:true, envaseId:'', tapaId:'' },
-    { name:'Pulso 250ml', price:120, manageStock:true, active:true, receta:true, letra:'P', pos:true, envaseId:'envase_pulso', tapaId:'tapa_pulso_litro' },
-    { name:'Media 375ml', price:150, manageStock:true, active:true, receta:true, letra:'M', pos:true, envaseId:'envase_media', tapaId:'tapa_djeba_media' },
-    { name:'Djeba 750ml', price:300, manageStock:true, active:true, receta:true, letra:'D', pos:true, envaseId:'envase_djeba', tapaId:'tapa_djeba_media' },
-    { name:'Litro 1000ml', price:330, manageStock:true, active:true, receta:true, letra:'L', pos:true, envaseId:'envase_litro', tapaId:'tapa_pulso_litro' },
-    { name:CANON_GALON_LABEL, price:DEFAULT_GALON_PRICE, manageStock:true, active:true, receta:true, letra:'G', pos:true, envaseId:'envase_galon', tapaId:'tapa_galon' }
-  ];
+  // Productos no se siembran: Catálogos → Productos es la única fuente oficial.
+
 
   let db = null;
   let currentEditId = null;
@@ -467,80 +461,39 @@
     };
   }
 
-  function costsSafeDynamicPresentationId(product){
-    const legacyId = mapProductNameToFinishedId(product && (product.name || product.nombre));
-    if (legacyId) return legacyId;
-    const raw = product && (product.id ?? product.productId ?? product.codigo ?? product.name ?? product.nombre) || 'producto';
-    const safe = String(raw)
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
-    return 'prod_' + (safe || 'nuevo').slice(0, 48);
+  function costsProductId(product){
+    const row = product && typeof product === 'object' ? product : {};
+    try{
+      if (window.A33Products && typeof window.A33Products.getProductId === 'function'){
+        return costsStringId(window.A33Products.getProductId(row));
+      }
+    }catch(_){ }
+    return costsStringId(row.productId ?? row.productoId ?? row.catalogProductId);
   }
 
-  function costsRecipeByInternalId(recipes, internalId){
-    const id = costsStringId(internalId);
-    if (!id || !costsPlainObject(recipes)) return null;
-    if (costsPlainObject(recipes[id])) return { id, recipe:recipes[id] };
-    const normalized = costsLookupKey(id);
-    const matches = Object.keys(recipes).filter(key => costsLookupKey(key) === normalized && costsPlainObject(recipes[key]));
-    return matches.length === 1 ? { id:matches[0], recipe:recipes[matches[0]] } : null;
-  }
-
-  function resolveCostsProductRecipe(product, recipeData, envases){
+  function resolveCostsProductRecipe(product, recipeData){
     const recipes = recipeData && costsPlainObject(recipeData.recipes) ? recipeData.recipes : {};
     const metadata = recipeData && Array.isArray(recipeData.metadata) ? recipeData.metadata : [];
-    const productId = costsStringId(product && (product.id ?? product.productId));
-    const productName = String(product && (product.name || product.nombre) || '').replace(/\s+/g, ' ').trim();
-    const nameKey = costsLookupKey(productName);
-    const letter = String(productLetter(product) || '').trim().toUpperCase();
-    const capacity = costsProductCapacityMl(product, envases);
-    const legacyId = mapProductNameToFinishedId(productName) || '';
-    const dynamicId = costsSafeDynamicPresentationId(product);
-    const candidates = [];
+    const productId = costsProductId(product);
+    if (!productId) return { status:'no_recipe', productId:'', reason:'missing_productId' };
 
-    const addCandidate = (internalId, score, reason) => {
-      const found = costsRecipeByInternalId(recipes, internalId);
-      if (!found) return;
-      candidates.push({ id:found.id, recipe:found.recipe, score, reason });
-    };
+    // Relación estricta: solo la clave exacta productId o metadata con el mismo productId.
+    if (costsPlainObject(recipes[productId])){
+      return { status:'ok', id:productId, recipe:recipes[productId], reason:'productId', productId };
+    }
 
+    const exactIds = [];
     metadata.forEach((meta) => {
-      const internalId = costsStringId(meta.internalId);
-      if (!internalId) return;
-      const metaProductId = costsStringId(meta.productId);
-      const metaNameKey = costsLookupKey(meta.name);
-      const metaLetter = String(meta.letter || '').trim().toUpperCase();
-      const metaCapacity = positiveNumberOrNull(meta.capacity);
-      if (productId && metaProductId && productId === metaProductId) addCandidate(internalId, 100, 'productId');
-      else if (productId && metaProductId && costsLookupKey(productId) === costsLookupKey(metaProductId)) addCandidate(internalId, 98, 'productId normalizado');
-      else if (nameKey && metaNameKey && nameKey === metaNameKey) addCandidate(internalId, 70, 'nombre');
-      else if (letter && metaLetter && letter === metaLetter && capacity > 0 && metaCapacity === capacity) addCandidate(internalId, 62, 'letra y capacidad');
-      else if (capacity > 0 && metaCapacity === capacity && nameKey && metaNameKey && (nameKey.includes(metaNameKey) || metaNameKey.includes(nameKey))) addCandidate(internalId, 58, 'capacidad y nombre');
+      if (costsStringId(meta && meta.productId) !== productId) return;
+      const internalId = costsStringId(meta && meta.internalId);
+      if (internalId && costsPlainObject(recipes[internalId])) exactIds.push(internalId);
     });
-
-    addCandidate(productId, 96, 'ID directo');
-    addCandidate(dynamicId, 92, 'ID dinámico');
-    if (legacyId) addCandidate(legacyId, 90, 'ID legacy');
-
-    if (!candidates.length){
-      const relatedMetadata = metadata.some(meta => {
-        const metaProductId = costsStringId(meta.productId);
-        return !!(productId && metaProductId && costsLookupKey(productId) === costsLookupKey(metaProductId));
-      });
-      return { status:'no_recipe', relatedMetadata, productId, dynamicId, legacyId };
+    const uniqueIds = Array.from(new Set(exactIds));
+    if (uniqueIds.length === 1){
+      return { status:'ok', id:uniqueIds[0], recipe:recipes[uniqueIds[0]], reason:'metadata_productId', productId };
     }
-
-    candidates.sort((a, b) => b.score - a.score);
-    const bestScore = candidates[0].score;
-    const bestIds = Array.from(new Set(candidates.filter(item => item.score === bestScore).map(item => item.id)));
-    if (bestIds.length !== 1){
-      return { status:'unresolved', productId, candidates:bestIds };
-    }
-    const selected = candidates.find(item => item.id === bestIds[0]);
-    return { status:'ok', id:selected.id, recipe:selected.recipe, reason:selected.reason, productId };
+    if (uniqueIds.length > 1) return { status:'unresolved', productId, candidates:uniqueIds };
+    return { status:'no_recipe', productId, reason:'no_exact_productId_recipe' };
   }
 
   function costsIngredientValueFromObject(container, aliases){
@@ -901,12 +854,20 @@
     const token = ++costsProductsRenderToken;
     try{
       await openDB();
-      const all = await getAll('products');
+      const all = (window.A33Products && typeof window.A33Products.getAll === 'function')
+        ? await window.A33Products.getAll()
+        : await getAll('products');
       if (token !== costsProductsRenderToken) return;
 
-      const products = costsProductsInOperationalOrder(all).filter((product) => {
-        if (!product || product.active === false || !productHasRecipe(product)) return false;
-        return product.id !== null && product.id !== undefined && String(product.id).trim() !== '';
+      const activeProducts = costsProductsInOperationalOrder(all).filter((product) => product && product.active !== false && product.deleted !== true && !!costsProductId(product));
+      const products = activeProducts.filter((product) => {
+        if (!product || product.active === false || product.deleted === true || !productHasRecipe(product)) return false;
+        return !!costsProductId(product);
+      });
+      const duplicateHeaderCounts = new Map();
+      products.forEach((product) => {
+        const key = costsLookupKey(costsProductHeaderName(product));
+        if (key) duplicateHeaderCounts.set(key, (duplicateHeaderCounts.get(key) || 0) + 1);
       });
       const envases = readEnvaseCatalog();
       const recipeData = readCostsRecipesPayload();
@@ -920,10 +881,14 @@
       table.dataset.productColumns = String(products.length);
 
       products.forEach((product) => {
-        const productId = String(product.id);
-        const name = costsProductHeaderName(product);
+        const productId = costsProductId(product);
+        const rawName = costsProductHeaderName(product);
+        const duplicateKey = costsLookupKey(rawName);
+        const name = (duplicateHeaderCounts.get(duplicateKey) || 0) > 1
+          ? `${rawName} · ${productId.slice(-6)}`
+          : rawName;
         const capacityMl = costsProductCapacityMl(product, envases);
-        const recipeResolution = resolveCostsProductRecipe(product, recipeData, envases);
+        const recipeResolution = resolveCostsProductRecipe(product, recipeData);
         recipeResolution.productId = productId;
         if (recipeResolution.status === 'ok') linkedCount += 1;
         else if (recipeResolution.status === 'unresolved') unresolvedCount += 1;
@@ -966,12 +931,14 @@
         });
       });
 
-      setCostsEmptyState(!products.length);
+      setCostsEmptyState(!products.length, activeProducts.length
+        ? 'No hay productos activos con Receta. Active Receta desde Catálogos → Productos.'
+        : 'No hay productos activos. Cree productos desde Catálogos → Productos.');
       renderCostsSummary(costsProductContexts, costsState);
       if (recipeData.state === 'damaged'){
         setCostsRecipeStatus(recipeData.message, 'warn');
       }else if (recipeData.state === 'empty'){
-        setCostsRecipeStatus(recipeData.message, products.length ? 'warn' : '');
+        setCostsRecipeStatus(products.length ? recipeData.message : 'No hay productos activos con Receta para mostrar.', products.length ? 'warn' : '');
       }else if (unresolvedCount){
         setCostsRecipeStatus(`${linkedCount} producto(s) conectado(s). ${unresolvedCount} producto(s) requieren revisar su relación con la receta.`, 'warn');
       }else if (missingCount){
@@ -1000,7 +967,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.84&r=23').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.85&r=1').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -1097,12 +1064,44 @@
     return String(p.tapaId ?? p.capId ?? p.corkId ?? p.packagingTapaId ?? '').trim();
   }
 
-  function buildRecipeLetterUsage(products, currentId){
+
+  function productStableId(product){
+    const p = product && typeof product === 'object' ? product : {};
+    try{
+      if (window.A33Products && typeof window.A33Products.getProductId === 'function'){
+        const id = window.A33Products.getProductId(p);
+        if (id) return String(id).trim();
+      }
+    }catch(_){ }
+    return String(p.productId ?? p.productoId ?? '').trim();
+  }
+
+  function findProductByProductId(list, productId){
+    const target = String(productId ?? '').trim();
+    if (!target) return null;
+    return (Array.isArray(list) ? list : []).find((row) => row && productStableId(row) === target) || null;
+  }
+
+  function prepareNewCatalogProduct(record, origin){
+    if (window.A33Products && typeof window.A33Products.prepareNew === 'function'){
+      return window.A33Products.prepareNew(record, { origin:origin || 'usuario' });
+    }
+    return { ...record, productId:'prd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10), origin:origin || 'usuario' };
+  }
+
+  function prepareExistingCatalogProduct(current, patch){
+    if (window.A33Products && typeof window.A33Products.prepareExisting === 'function'){
+      return window.A33Products.prepareExisting(current, patch);
+    }
+    return { ...current, ...patch, productId:productStableId(current) };
+  }
+
+  function buildRecipeLetterUsage(products, currentProductId){
     const map = new Map();
-    const cid = currentId == null ? '' : String(currentId).trim();
+    const cid = currentProductId == null ? '' : String(currentProductId).trim();
     for (const p of (Array.isArray(products) ? products : [])){
       if (!p || !productHasRecipe(p)) continue;
-      const pid = p.id == null ? '' : String(p.id).trim();
+      const pid = productStableId(p);
       if (cid && pid === cid) continue;
       const letter = productLetter(p);
       if (!letter) continue;
@@ -1112,10 +1111,10 @@
     return map;
   }
 
-  function findDuplicateRecipeLetter(products, letter, currentId){
+  function findDuplicateRecipeLetter(products, letter, currentProductId){
     const clean = normalizeProductLetter(letter);
     if (!clean) return null;
-    const usage = buildRecipeLetterUsage(products, currentId);
+    const usage = buildRecipeLetterUsage(products, currentProductId);
     const list = usage.get(clean) || [];
     return list.length ? list[0] : null;
   }
@@ -1147,7 +1146,8 @@
   function productDataContractSnapshot(product){
     const p = product && typeof product === 'object' ? product : {};
     return {
-      id: p.id,
+      productId: productStableId(p),
+      legacyId: p.id,
       nombre: p.name || p.nombre || '',
       activo: p.active !== false,
       precio: round2(p.price),
@@ -1169,56 +1169,6 @@
     return row ? String(row.name || row.nombre || '').trim() : (missingLabel || 'Eliminado');
   }
 
-  function findCatalogIdByName(list, names, activeFn){
-    const arr = Array.isArray(list) ? list : [];
-    const wanted = (Array.isArray(names) ? names : [names]).map(normalizeEnvaseTapaLookupKey).filter(Boolean);
-    for (const key of wanted){
-      const row = arr.find(x => x && (!activeFn || activeFn(x)) && normalizeEnvaseTapaLookupKey(x.name || x.nombre || '') === key);
-      if (row && row.id) return String(row.id).trim();
-    }
-    for (const key of wanted){
-      const row = arr.find(x => x && normalizeEnvaseTapaLookupKey(x.name || x.nombre || '') === key);
-      if (row && row.id) return String(row.id).trim();
-    }
-    return '';
-  }
-
-  function normalizeEnvaseTapaLookupKey(value){
-    return normName(value).replace(/[^a-z0-9]+/g, '');
-  }
-
-  function productPackagingSuggestion(product, envases, tapas){
-    const name = String((product && (product.name || product.nombre)) || '');
-    const n = normName(name);
-    const finishedId = mapProductNameToFinishedId(name);
-    const out = { envaseId:'', tapaId:'' };
-
-    if (n.includes('catrina') && (n.includes('jr') || n.includes('junior'))){
-      out.envaseId = findCatalogIdByName(envases, ['Botella Catrina Jr.', 'Botella Catrina Junior'], envaseActive);
-      out.tapaId = findCatalogIdByName(tapas, ['Corcho Catrina Jr.', 'Corcho Catrina Junior', 'Tapa Catrina Jr.', 'Tapa Catrina Junior', 'Corcho Catrina'], tapaActive);
-      return out;
-    }
-    if (n.includes('catrina')){
-      out.envaseId = findCatalogIdByName(envases, ['Botella Catrina'], envaseActive);
-      out.tapaId = findCatalogIdByName(tapas, ['Corcho Catrina', 'Tapa Catrina'], tapaActive);
-      return out;
-    }
-
-    const map = {
-      pulso: { envase:['Botella Pulso'], tapa:['Tapa Pulso/Litro'] },
-      media: { envase:['Botella Media'], tapa:['Tapa Djeba/Media'] },
-      djeba: { envase:['Botella Djeba'], tapa:['Tapa Djeba/Media'] },
-      litro: { envase:['Botella Litro'], tapa:['Tapa Pulso/Litro'] },
-      galon: { envase:['Botella Galón', 'Botella Galon'], tapa:['Tapa Galón', 'Tapa Galon'] }
-    };
-    const cfg = map[finishedId || ''];
-    if (cfg){
-      out.envaseId = findCatalogIdByName(envases, cfg.envase, envaseActive);
-      out.tapaId = findCatalogIdByName(tapas, cfg.tapa, tapaActive);
-    }
-    return out;
-  }
-
   function catalogHasId(list, id){
     const key = String(id || '').trim();
     if (!key) return false;
@@ -1227,28 +1177,17 @@
 
   function applyProductPackagingDefaults(product, envases, tapas){
     if (!product || typeof product !== 'object') return false;
-    const suggestion = productPackagingSuggestion(product, envases, tapas);
     let changed = false;
 
+    // Solo se normalizan relaciones que ya fueron configuradas explícitamente.
+    // Nunca se asigna Envase/Tapa por nombre, Letra, capacidad o presentación legacy.
     const currentEnvase = productEnvaseId(product);
     if (currentEnvase && product.envaseId !== currentEnvase){ product.envaseId = currentEnvase; changed = true; }
-    if ((!currentEnvase || !catalogHasId(envases, currentEnvase)) && suggestion.envaseId){
-      product.envaseId = suggestion.envaseId;
-      changed = true;
-    } else if (!hasOwn(product, 'envaseId')){
-      product.envaseId = '';
-      changed = true;
-    }
+    if (!hasOwn(product, 'envaseId')){ product.envaseId = ''; changed = true; }
 
     const currentTapa = productTapaId(product);
     if (currentTapa && product.tapaId !== currentTapa){ product.tapaId = currentTapa; changed = true; }
-    if ((!currentTapa || !catalogHasId(tapas, currentTapa)) && suggestion.tapaId){
-      product.tapaId = suggestion.tapaId;
-      changed = true;
-    } else if (!hasOwn(product, 'tapaId')){
-      product.tapaId = '';
-      changed = true;
-    }
+    if (!hasOwn(product, 'tapaId')){ product.tapaId = ''; changed = true; }
 
     return changed;
   }
@@ -1527,7 +1466,15 @@
         const d = event.target.result;
         if (!d.objectStoreNames.contains('products')){
           const os = d.createObjectStore('products', { keyPath:'id', autoIncrement:true });
-          try{ os.createIndex('by_name','name',{ unique:true }); }catch(_){ }
+          try{ os.createIndex('by_name','name',{ unique:false }); }catch(_){ }
+        }
+        else {
+          // productId es la identidad operativa; nombres iguales no se fusionan ni se bloquean.
+          try{
+            const productsStore = event.target.transaction.objectStore('products');
+            if (productsStore.indexNames.contains('by_name')) productsStore.deleteIndex('by_name');
+            productsStore.createIndex('by_name','name',{ unique:false });
+          }catch(_){ }
         }
         if (!d.objectStoreNames.contains('events')){
           try{
@@ -1652,6 +1599,9 @@
   }
 
   function rememberCatalogDeleted(kind, row){
+    if (kind === 'products'){
+      try{ window.A33Products?.rememberDeleted?.(row); }catch(_){ }
+    }
     const keys = readCatalogDeletedKeys(kind);
     const main = catalogDeletedKey(kind, row);
     if (main) keys.add(main);
@@ -1698,99 +1648,64 @@
     el.className = 'cat-muted cat-edit-msg' + (kind ? (' ' + kind) : '');
   }
 
-  async function seedMissingDefaults(force){
-    if (force) clearCatalogDeleted('products');
-    const deletedSeedKeys = readCatalogDeletedKeys('products');
-    const list = await getAll('products');
-    const keys = new Set((list || []).map(p => normKey(p && p.name)));
-    if (keys.has(normKey('Galón 3800ml')) || keys.has(normKey('Galón 3800 ml'))) keys.add(normKey(CANON_GALON_LABEL));
-
-    for (const seed of SEED){
-      const k = normKey(seed.name);
-      let existing = (list || []).find(p => normKey(p && p.name) === k);
-      if (!existing && k === normKey(CANON_GALON_LABEL)){
-        existing = (list || []).find(p => p && mapProductNameToFinishedId(p.name || '') === 'galon');
-      }
-      if (existing){
-        let changed = false;
-        if (force && existing.active !== true){ existing.active = true; changed = true; }
-        if (typeof existing.active === 'undefined'){ existing.active = true; changed = true; }
-        if (typeof existing.manageStock === 'undefined'){ existing.manageStock = seed.manageStock; changed = true; }
-        if (!hasOwn(existing, 'receta')){ existing.receta = !!seed.receta; changed = true; }
-        if (!hasOwn(existing, 'pos')){ existing.pos = !!seed.pos; changed = true; }
-        if (!productEnvaseId(existing) && seed.envaseId){ existing.envaseId = seed.envaseId; changed = true; }
-        if (!productTapaId(existing) && seed.tapaId){ existing.tapaId = seed.tapaId; changed = true; }
-        if (!productLetter(existing) && seed.letra){ existing.letra = seed.letra; changed = true; }
-        else {
-          const normalizedLetter = productLetter(existing);
-          if (existing.letra !== normalizedLetter){ existing.letra = normalizedLetter; changed = true; }
-        }
-        // Cierre Parte 1: no cambiar automáticamente nombres ni precios existentes.
-        if (!isValidPrice(existing.price)){ existing.price = seed.price; changed = true; }
-        if (!existing.updatedAt && changed) existing.updatedAt = new Date().toISOString();
-        if (changed) await put('products', existing);
-      } else {
-        if (!force && deletedSeedKeys.has(k)) continue;
-        const now = new Date().toISOString();
-        await put('products', { ...seed, createdAt:now, updatedAt:now, updatedFrom:'catalogos_productos_seed' });
-      }
-    }
-  }
 
   async function normalizeLegacyGallon(){
     const products = await getAll('products');
-    const galons = (products || []).filter(p => p && mapProductNameToFinishedId(p.name || '') === 'galon');
+    const galons = (products || []).filter((p) => p && mapProductNameToFinishedId(p.name || '') === 'galon');
     if (!galons.length) return;
-    let canon = canonicalProductsForSale(galons)[0] || galons[0];
-    if (!canon) return;
-    // Cierre Parte 1: conservar nombre y precio existentes si son válidos.
-    let preservedPrice = isValidPrice(canon.price) ? Number(canon.price) : DEFAULT_GALON_PRICE;
-
-    let changedCanon = false;
-    const legacyGallonNames = new Set([
+    const explicitCanonical = galons.find((p) => normKey(p.name || '') === normKey(CANON_GALON_LABEL)) || null;
+    // Con varios registros legacy no se elige por nombre/familia: evitar fusionar o renombrar productos distintos.
+    const canonicalOwner = explicitCanonical || (galons.length === 1 ? galons[0] : null);
+    const legacyNames = new Set([
       normKey('Galón 3750 ml'), normKey('Galón 3750ml'),
       normKey('Galón 3800 ml'), normKey('Galón 3800ml')
     ]);
-    if (legacyGallonNames.has(normKey(canon.name || ''))){ canon.name = CANON_GALON_LABEL; changedCanon = true; }
-    const currentCapacity = getCapacity(canon);
-    if (currentCapacity === 3750 || currentCapacity === 3800){
-      canon.capacityMl = 3720;
-      canon.capacidadMl = 3720;
-      changedCanon = true;
-    }
-    if (!isValidPrice(canon.price)){ canon.price = preservedPrice; changedCanon = true; }
-    if (typeof canon.active === 'undefined'){ canon.active = true; changedCanon = true; }
-    if (typeof canon.manageStock === 'undefined'){ canon.manageStock = true; changedCanon = true; }
-    if (changedCanon){ canon.updatedAt = new Date().toISOString(); canon.updatedFrom = 'catalogos_galon_3720'; await put('products', canon); }
 
-    for (const p of galons){
-      if (!p || p.id === canon.id) continue;
-      let ch = false;
-      if (!isValidPrice(p.price)){ p.price = preservedPrice; ch = true; }
-      if (p.active !== false){ p.active = false; ch = true; }
-      if (typeof p.manageStock === 'undefined'){ p.manageStock = true; ch = true; }
-      if (ch){ p.updatedAt = new Date().toISOString(); await put('products', p); }
+    for (const product of galons){
+      const patch = {};
+      const currentNameKey = normKey(product.name || '');
+      const canClaimCanonicalName = !canonicalOwner || productStableId(canonicalOwner) === productStableId(product);
+      if (legacyNames.has(currentNameKey) && canClaimCanonicalName) patch.name = CANON_GALON_LABEL;
+      const currentCapacity = getCapacity(product);
+      if ((currentCapacity === 3750 || currentCapacity === 3800) && canClaimCanonicalName){
+        patch.capacityMl = 3720;
+        patch.capacidadMl = 3720;
+        patch.volumeMl = 3720;
+        patch.volumenMl = 3720;
+      }
+      if (!isValidPrice(product.price)) patch.price = DEFAULT_GALON_PRICE;
+      if (typeof product.active === 'undefined') patch.active = true;
+      if (typeof product.manageStock === 'undefined') patch.manageStock = true;
+      if (!Object.keys(patch).length) continue;
+      patch.updatedAt = new Date().toISOString();
+      patch.updatedFrom = 'catalogos_galon_3720_compat';
+      await put('products', prepareExistingCatalogProduct(product, patch));
     }
   }
 
   async function productHasMovements(product){
     if (!product) return false;
-    const id = String(product.id ?? '').trim();
+    const productId = productStableId(product);
+    const legacyId = String(product.id ?? '').trim();
+    const matchesProductReference = (value) => {
+      const key = String(value ?? '').trim();
+      return !!key && ((productId && key === productId) || (legacyId && key === legacyId));
+    };
     const nk = normKey(product.name || '');
     try{
       const sales = await getAll('sales');
-      if ((sales || []).some(s => s && ((id && String(s.productId ?? '').trim() === id) || (nk && normKey(s.productName || s.name || '') === nk)))) return true;
+      if ((sales || []).some(s => s && ((matchesProductReference(s.productId ?? s.productoId)) || (nk && normKey(s.productName || s.name || '') === nk)))) return true;
     }catch(_){ }
     try{
       const inv = await getAll('inventory');
-      if ((inv || []).some(i => i && id && String(i.productId ?? '').trim() === id)) return true;
+      if ((inv || []).some(i => i && matchesProductReference(i.productId ?? i.productoId))) return true;
     }catch(_){ }
     try{
       const reps = await getAll('reempaques');
       if ((reps || []).some(r => {
         if (!r) return false;
         const vals = [r.sourceProductId, r.productoOrigenId, r.targetProductId, r.productoDestinoId, r.productId, r.productoId];
-        if (id && vals.some(v => String(v ?? '').trim() === id)) return true;
+        if (vals.some(matchesProductReference)) return true;
         const names = [r.sourceProductName, r.productoOrigenNombre, r.productoOrigen, r.targetProductName, r.productoDestinoNombre, r.productoDestino];
         return nk && names.some(v => normKey(v) === nk);
       })) return true;
@@ -1805,7 +1720,7 @@
         if (arr.some(l => {
           if (!l) return false;
           const vals = [l.productId, l.productoId, l.skuProductId, l.sourceProductId];
-          if (id && vals.some(v => String(v ?? '').trim() === id)) return true;
+          if (vals.some(matchesProductReference)) return true;
           const names = [l.productName, l.productoNombre, l.producto, l.name, l.nombre];
           return nk && names.some(v => normKey(v) === nk);
         })) return true;
@@ -1816,9 +1731,13 @@
 
   async function renderProducts(){
     try{
-      const all = await getAll('products');
-      const list = (all || []).slice().sort(sortProducts);
-      const activePosProducts = (all || []).filter(p => p && p.active !== false && productPosEnabled(p));
+      const allRaw = await getAll('products');
+      const all = (allRaw || []).filter((p) => {
+        const productId = productStableId(p);
+        try{ return !(window.A33ProductIntegrity && productId && window.A33ProductIntegrity.isTombstoned(productId)); }catch(_){ return true; }
+      });
+      const list = all.slice().sort(sortProducts);
+      const activePosProducts = all.filter(p => p && p.active !== false && productPosEnabled(p));
       const envases = ensureEnvasesDefaults(false);
       const tapas = ensureTapasDefaults(false);
       const duplicateLetters = getDuplicateRecipeLetters(all || []);
@@ -1826,7 +1745,7 @@
       if (!wrap) return;
       wrap.innerHTML = '';
       if (!list.length){
-        setStatus('No hay productos. Usa “Restaurar base A33” para crear los productos iniciales.', 'warn');
+        setStatus('No hay productos. Crea el primer producto desde Catálogos → Productos.', 'warn');
         return;
       }
       const incompleteCount = (list || []).filter(p => productProductionIssues(p, envases, tapas, duplicateLetters).length > 0).length;
@@ -1870,9 +1789,9 @@
             </div>
           </div>
           <div class="cat-product-actions">
-            <button class="cat-btn cat-btn-ok cat-edit-product" data-id="${escapeHtml(String(p.id))}" type="button">Editar</button>
-            <button class="cat-btn ${active ? 'cat-btn-warn' : 'cat-btn-secondary'} cat-toggle-product" data-id="${escapeHtml(String(p.id))}" type="button">${active ? 'Inactivar' : 'Activar'}</button>
-            <button class="cat-btn cat-btn-danger cat-delete-product" data-id="${escapeHtml(String(p.id))}" type="button">Borrar</button>
+            <button class="cat-btn cat-btn-ok cat-edit-product" data-product-id="${escapeHtml(productStableId(p))}" type="button">Editar</button>
+            <button class="cat-btn ${active ? 'cat-btn-warn' : 'cat-btn-secondary'} cat-toggle-product" data-product-id="${escapeHtml(productStableId(p))}" type="button">${active ? 'Inactivar' : 'Activar'}</button>
+            <button class="cat-btn cat-btn-danger cat-delete-product" data-product-id="${escapeHtml(productStableId(p))}" type="button">Borrar</button>
           </div>
         `;
         wrap.appendChild(card);
@@ -1924,29 +1843,9 @@
     return { ok:true, name, price:round2(price), capacity: capRaw ? qty(capacity) : 0, unitCost:round2(unitCost), active, manage, receta, letra, pos, envaseId, tapaId, incompleteProduction };
   }
 
-  async function ensureNoDuplicateName(name, currentId){
-    const all = await getAll('products');
-    const newKey = normKey(name);
-    const newGroup = mapProductNameToFinishedId(name);
-    const isNew = !currentId;
-    const dup = (all || []).find(p => {
-      if (!p) return false;
-      if (currentId && Number(p.id) === Number(currentId)) return false;
-      if (normKey(p.name || '') === newKey) return true;
-      const g = mapProductNameToFinishedId(p.name || '');
-      // Producto nuevo: no crear otro Pulso/Media/Djeba/Litro/Galón aunque el viejo esté inactivo.
-      // Edición: permitir convivir con duplicados legacy inactivos; bloquear si el duplicado equivalente está activo.
-      if (newGroup && g && newGroup === g) return isNew ? true : (p.active !== false);
-      return false;
-    });
-    return dup || null;
-  }
-
   async function addProduct(){
     const data = readProductForm('cat-new');
     if (!data.ok){ alert(data.msg); return; }
-    const dup = await ensureNoDuplicateName(data.name, null);
-    if (dup){ alert('Ya existe un producto equivalente. Edita o activa el existente para evitar duplicados.'); return; }
     const all = await getAll('products');
     const dupLetter = data.receta ? findDuplicateRecipeLetter(all || [], data.letra, null) : null;
     if (dupLetter){ alert(`La Letra ${data.letra} ya está asignada a ${dupLetter.name || 'otro producto'} con Receta. Corrige antes de guardar.`); return; }
@@ -1955,7 +1854,7 @@
       if (!ok) return;
     }
     const now = new Date().toISOString();
-    const product = {
+    const product = prepareNewCatalogProduct({
       name:data.name,
       price:data.price,
       active:data.active,
@@ -1976,9 +1875,10 @@
       createdAt:now,
       updatedAt:now,
       updatedFrom:'catalogos_productos'
-    };
+    }, 'usuario');
     try{
-      await put('products', product);
+      const legacyId = await put('products', product);
+      if (product.id == null) product.id = legacyId;
       ['name','price','capacity','unit-cost','letra'].forEach(k => { const el = byId('cat-new-' + k); if (el) el.value = ''; });
       const active = byId('cat-new-active'); if (active) active.checked = true;
       const manage = byId('cat-new-manage'); if (manage) manage.checked = true;
@@ -1989,7 +1889,7 @@
       toast('Producto agregado');
     }catch(err){
       console.error(err);
-      alert('No se pudo agregar el producto. Revisa si el nombre ya existe.');
+      alert('No se pudo agregar el producto. Revisa los datos e intenta nuevamente.');
     }
   }
 
@@ -2002,11 +1902,11 @@
     setEditMsg('');
   }
 
-  async function openProductModal(id){
+  async function openProductModal(productId){
     const all = await getAll('products');
-    const product = (all || []).find(p => Number(p && p.id) === Number(id));
+    const product = findProductByProductId(all || [], productId);
     if (!product){ toast('Producto no encontrado'); return; }
-    currentEditId = Number(product.id);
+    currentEditId = productStableId(product);
     const current = byId('cat-product-current');
     if (current) current.textContent = 'Producto actual: ' + (product.name || '—');
     const fields = {
@@ -2042,12 +1942,10 @@
   async function saveProduct(){
     if (!currentEditId){ setEditMsg('Producto inválido.', 'warn'); return; }
     const all = await getAll('products');
-    const product = (all || []).find(p => Number(p && p.id) === Number(currentEditId));
+    const product = findProductByProductId(all || [], currentEditId);
     if (!product){ setEditMsg('El producto ya no existe.', 'warn'); return; }
     const data = readProductForm('cat-edit');
     if (!data.ok){ setEditMsg(data.msg, 'warn'); return; }
-    const dup = await ensureNoDuplicateName(data.name, currentEditId);
-    if (dup){ setEditMsg('Ya existe un producto equivalente. No se duplicó nada.', 'warn'); return; }
     const dupLetter = data.receta ? findDuplicateRecipeLetter(all || [], data.letra, currentEditId) : null;
     if (dupLetter){ setEditMsg(`La Letra ${data.letra} ya está asignada a ${dupLetter.name || 'otro producto'} con Receta. Corrige antes de guardar.`, 'warn'); return; }
     const oldLetter = productLetter(product);
@@ -2068,60 +1966,64 @@
       const ok = confirm('Este producto tiene Receta, pero todavía no tiene Envase y/o Tapa. Quedará marcado como incompleto para producción futura. ¿Continuar?');
       if (!ok) return;
     }
-    product.name = data.name;
-    product.price = data.price;
-    product.active = data.active;
-    product.manageStock = data.manage;
-    product.capacityMl = data.capacity;
-    product.capacidadMl = data.capacity;
-    product.volumeMl = data.capacity;
-    product.volumenMl = data.capacity;
-    product.unitCost = data.unitCost;
-    product.costoUnitario = data.unitCost;
-    product.costPerUnit = data.unitCost;
-    product.receta = data.receta;
-    product.letra = data.letra;
-    product.pos = data.pos;
-    product.envaseId = data.envaseId;
-    product.tapaId = data.tapaId;
-    product.productionIncomplete = data.incompleteProduction;
-    product.updatedAt = new Date().toISOString();
-    product.updatedFrom = 'catalogos_productos';
+    const updatedProduct = prepareExistingCatalogProduct(product, {
+      name:data.name,
+      price:data.price,
+      active:data.active,
+      manageStock:data.manage,
+      capacityMl:data.capacity,
+      capacidadMl:data.capacity,
+      volumeMl:data.capacity,
+      volumenMl:data.capacity,
+      unitCost:data.unitCost,
+      costoUnitario:data.unitCost,
+      costPerUnit:data.unitCost,
+      receta:data.receta,
+      letra:data.letra,
+      pos:data.pos,
+      envaseId:data.envaseId,
+      tapaId:data.tapaId,
+      productionIncomplete:data.incompleteProduction,
+      updatedAt:new Date().toISOString(),
+      updatedFrom:'catalogos_productos'
+    });
     try{
-      await put('products', product);
+      await put('products', updatedProduct);
       closeProductModal();
       await normalizeLegacyGallon();
       await renderProducts();
       toast('Producto guardado');
     }catch(err){
       console.error(err);
-      setEditMsg('No se pudo guardar. Revisa si el nombre ya existe.', 'warn');
+      setEditMsg('No se pudo guardar el producto. Revisa los datos e intenta nuevamente.', 'warn');
     }
   }
 
-  async function toggleProduct(id){
+  async function toggleProduct(productId){
     const all = await getAll('products');
-    const product = findCatalogById(all || [], id);
+    const product = findProductByProductId(all || [], productId);
     if (!product) return;
-    product.active = product.active === false;
-    product.updatedAt = new Date().toISOString();
-    product.updatedFrom = 'catalogos_productos_toggle';
-    await put('products', product);
+    const updatedProduct = prepareExistingCatalogProduct(product, {
+      active:product.active === false,
+      updatedAt:new Date().toISOString(),
+      updatedFrom:'catalogos_productos_toggle'
+    });
+    await put('products', updatedProduct);
     await renderProducts();
-    toast(product.active === false ? 'Producto inactivado' : 'Producto activado');
+    toast(updatedProduct.active === false ? 'Producto inactivado' : 'Producto activado');
   }
 
-  async function deleteProductMaster(id){
+  async function deleteProductMaster(productId){
     try{
       const all = await getAll('products');
-      const product = findCatalogById(all || [], id);
+      const product = findProductByProductId(all || [], productId);
       if (!product){ toast('Producto no encontrado'); return; }
       const name = product.name || 'Producto sin nombre';
       const ok = confirm(`¿Borrar el producto "${name}"?\n\nSolo se borrará del catálogo maestro. No se borrarán ventas, inventario, lotes ni snapshots históricos.`);
       if (!ok) return;
       rememberCatalogDeleted('products', product);
       await deleteRecord('products', product.id);
-      if (currentEditId != null && String(currentEditId) === String(product.id)) closeProductModal();
+      if (currentEditId != null && String(currentEditId) === productStableId(product)) closeProductModal();
       await renderProducts();
       toast('Producto borrado');
     }catch(err){
@@ -2693,6 +2595,12 @@
     return 0;
   }
 
+  function catalogStorageKeyExists(key){
+    try{
+      return !!window.localStorage && window.localStorage.getItem(String(key || '')) !== null;
+    }catch(_){ return false; }
+  }
+
   function readEnvasesRaw(){
     try{
       if (window.A33Storage && typeof window.A33Storage.getJSON === 'function'){
@@ -2766,9 +2674,16 @@
   }
 
   function ensureEnvasesDefaults(force){
-    if (force) clearCatalogDeleted('envases');
-    const deleted = readCatalogDeletedKeys('envases');
+    const explicitRestore = force === true;
+    const existedBefore = catalogStorageKeyExists(ENVASES_CATALOG_KEY);
     const list = readEnvaseCatalog();
+
+    // Compatibilidad controlada: semilla automática solo en la primera existencia real de la clave.
+    // Una lista vacía guardada por el usuario se respeta y nunca se repuebla sola.
+    if (!explicitRestore && existedBefore) return list;
+
+    if (explicitRestore) clearCatalogDeleted('envases');
+    const deleted = readCatalogDeletedKeys('envases');
     const byName = new Map(list.map(x => [normalizeEnvaseKey(x.name), x]));
     const byId = new Set(list.map(x => String(x.id || '')));
     const now = new Date().toISOString();
@@ -2776,22 +2691,18 @@
 
     for (const seed of ENVASES_SEED){
       const key = normalizeEnvaseKey(seed.name);
-      if (!force && deleted.has(key)) continue;
+      if (!explicitRestore && deleted.has(key)) continue;
       const existing = byName.get(key);
       if (existing){
         let ch = false;
         if (!existing.id){ existing.id = seed.id; ch = true; }
         if (!existing.nombre){ existing.nombre = existing.name; ch = true; }
-        const seedCap = Number(seed.capacityMl);
-        const existingCap = envaseCapacity(existing);
-        const isCurrentGallon = String(seed.id || '') === 'envase_galon';
-        if (Number.isFinite(seedCap) && seedCap > 0 && (!existingCap || (isCurrentGallon && (existingCap === 3750 || existingCap === 3800)))){
-          existing.capacityMl = seedCap;
-          existing.capacidadMl = seedCap;
-          ch = true;
+        if (explicitRestore && existing.active !== true){ existing.active = true; ch = true; }
+        if (ch){
+          existing.updatedAt = now;
+          existing.updatedFrom = 'catalogos_envases_restauracion_explicita';
+          changed = true;
         }
-        if (force && existing.active !== true){ existing.active = true; ch = true; }
-        if (ch){ existing.updatedAt = now; existing.updatedFrom = 'catalogos_envases_seed'; changed = true; }
         continue;
       }
       let id = seed.id;
@@ -2805,15 +2716,18 @@
         capacidadMl:Number.isFinite(Number(seed.capacityMl)) && Number(seed.capacityMl) > 0 ? Number(seed.capacityMl) : null,
         note:'',
         active:seed.active !== false,
+        origin: explicitRestore ? 'restauracion_explicita' : 'semilla_inicial',
+        autoCreated:true,
         schemaVersion:ENVASES_SCHEMA_VERSION,
         createdAt:now,
         updatedAt:now,
-        updatedFrom:'catalogos_envases_seed'
+        updatedFrom: explicitRestore ? 'catalogos_envases_restauracion_explicita' : 'catalogos_envases_semilla_inicial'
       });
       changed = true;
     }
 
-    if (changed || force || !Array.isArray(readEnvasesRaw())) saveEnvaseCatalog(list);
+    // También escribe [] en el primer inicio si la semilla estuviera vacía: la clave queda marcada como inicializada.
+    if (changed || explicitRestore || !existedBefore) saveEnvaseCatalog(list);
     return list.sort(sortMasterByActiveName);
   }
 
@@ -3167,9 +3081,15 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
   }
 
   function ensureTapasDefaults(force){
-    if (force) clearCatalogDeleted('tapas');
-    const deleted = readCatalogDeletedKeys('tapas');
+    const explicitRestore = force === true;
+    const existedBefore = catalogStorageKeyExists(TAPAS_CATALOG_KEY);
     const list = readTapaCatalog();
+
+    // Igual que Envases: una clave existente, incluso con [], expresa decisión del usuario.
+    if (!explicitRestore && existedBefore) return list;
+
+    if (explicitRestore) clearCatalogDeleted('tapas');
+    const deleted = readCatalogDeletedKeys('tapas');
     const byName = new Map(list.map(x => [normalizeTapaKey(x.name), x]));
     const byId = new Set(list.map(x => String(x.id || '')));
     const now = new Date().toISOString();
@@ -3177,14 +3097,18 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
 
     for (const seed of TAPAS_SEED){
       const key = normalizeTapaKey(seed.name);
-      if (!force && deleted.has(key)) continue;
+      if (!explicitRestore && deleted.has(key)) continue;
       const existing = byName.get(key);
       if (existing){
         let ch = false;
         if (!existing.id){ existing.id = seed.id; ch = true; }
         if (!existing.nombre){ existing.nombre = existing.name; ch = true; }
-        if (force && existing.active !== true){ existing.active = true; ch = true; }
-        if (ch){ existing.updatedAt = now; existing.updatedFrom = 'catalogos_tapas_seed'; changed = true; }
+        if (explicitRestore && existing.active !== true){ existing.active = true; ch = true; }
+        if (ch){
+          existing.updatedAt = now;
+          existing.updatedFrom = 'catalogos_tapas_restauracion_explicita';
+          changed = true;
+        }
         continue;
       }
       let id = seed.id;
@@ -3197,15 +3121,17 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
         note:'',
         nota:'',
         active:seed.active !== false,
+        origin: explicitRestore ? 'restauracion_explicita' : 'semilla_inicial',
+        autoCreated:true,
         schemaVersion:TAPAS_SCHEMA_VERSION,
         createdAt:now,
         updatedAt:now,
-        updatedFrom:'catalogos_tapas_seed'
+        updatedFrom: explicitRestore ? 'catalogos_tapas_restauracion_explicita' : 'catalogos_tapas_semilla_inicial'
       });
       changed = true;
     }
 
-    if (changed || force || !Array.isArray(readTapasRaw())) saveTapaCatalog(list);
+    if (changed || explicitRestore || !existedBefore) saveTapaCatalog(list);
     return list.sort(sortMasterByActiveName);
   }
 
@@ -4078,9 +4004,9 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
         const edit = e.target.closest('.cat-edit-product');
         const toggle = e.target.closest('.cat-toggle-product');
         const del = e.target.closest('.cat-delete-product');
-        if (edit){ await openProductModal(edit.dataset.id); return; }
-        if (toggle){ await toggleProduct(toggle.dataset.id); return; }
-        if (del){ await deleteProductMaster(del.dataset.id); return; }
+        if (edit){ await openProductModal(edit.dataset.productId); return; }
+        if (toggle){ await toggleProduct(toggle.dataset.productId); return; }
+        if (del){ await deleteProductMaster(del.dataset.productId); return; }
       });
     }
     ['cat-new-letra','cat-edit-letra'].forEach((id)=>{
@@ -4106,15 +4032,6 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     });
     byId('cat-add-product')?.addEventListener('click', ()=>addProduct().catch(err=>{ console.error(err); alert('No se pudo agregar el producto.'); }));
     byId('cat-refresh-products')?.addEventListener('click', ()=>initProducts({ skipSeed:true }).catch(err=>{ console.error(err); setStatus('No se pudo actualizar.', 'warn'); }));
-    byId('cat-restore-seed')?.addEventListener('click', async ()=>{
-      await seedMissingDefaults(true);
-      await normalizeLegacyGallon();
-      await normalizeProductDynamicFields();
-      await normalizeProductPackagingFields();
-      refreshProductPackagingSelects();
-      await renderProducts();
-      toast('Productos base restaurados');
-    });
     byId('cat-product-close')?.addEventListener('click', closeProductModal);
     byId('cat-edit-cancel')?.addEventListener('click', closeProductModal);
     byId('cat-edit-save')?.addEventListener('click', ()=>saveProduct().catch(err=>{ console.error(err); setEditMsg('No se pudo guardar.', 'warn'); }));
@@ -4135,6 +4052,9 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     const opts = options || {};
     setStatus('Cargando productos…');
     await openDB();
+    if (window.A33Products && typeof window.A33Products.ensureIdentities === 'function'){
+      await window.A33Products.ensureIdentities();
+    }
     // Los productos dependen exclusivamente del catálogo real. La base A33 solo se restaura por acción explícita.
     ensureEnvasesDefaults(false);
     ensureTapasDefaults(false);
@@ -4152,7 +4072,6 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     bindEnvaseUi();
     bindTapaUi();
     bindExtraBankUi();
-    bindMasterEditModalChromeCAT();
     bindCustomerUi();
     activateTabFromUrl();
     initCosts();

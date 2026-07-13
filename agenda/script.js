@@ -6,7 +6,7 @@
     storageNamespace: 'a33_agenda_',
     storageKey: 'a33_agenda_records_v1',
     isolated: true,
-    schemaVersion: 6
+    schemaVersion: 7
   });
 
   const TYPE_LABELS = Object.freeze({
@@ -54,18 +54,12 @@
   const POS_CUSTOMER_CATALOG_KEY = 'a33_pos_customersCatalog';
   const CLIENT_SELECT_NEW_VALUE = '__new__';
 
-  // Sin fallback de precios inventados: si Catálogos no tiene productos, Agenda muestra vacío.
-  const PRODUCT_CATALOG_FALLBACK = Object.freeze([]);
-  const CANON_GALON_LABEL_AGD = 'Galón 3720 ml';
-  const LEGACY_GALON_PRICE_AGD = 800;
-  const DEFAULT_GALON_PRICE_AGD = 900;
-
   const state = {
     records: [],
     currentId: null,
     activeFilter: 'pendiente',
     productCatalog: [],
-    productCatalogSource: 'fallback',
+    productCatalogSource: 'empty',
     clientCatalog: [],
     clientCatalogSource: 'pos'
   };
@@ -181,109 +175,64 @@
       .trim();
   }
 
-  function productSortRank(name){
-    const key = normalizeProductKey(name);
-    if (key.includes('pulso')) return 0;
-    if (key.includes('media')) return 1;
-    if (key.includes('djeba')) return 2;
-    if (key.includes('litro')) return 3;
-    if (key.includes('galon')) return 4;
-    return 999;
-  }
-
-  function mapProductNameToCatalogGroupAGD(name){
-    const key = normalizeProductKey(name);
-    if (!key) return '';
-    if (key.includes('pulso')) return 'pulso';
-    if (key.includes('media')) return 'media';
-    if (key.includes('djeba')) return 'djeba';
-    if (key.includes('litro')) return 'litro';
-    if (key.includes('galon')) return 'galon';
-    return '';
-  }
-
-  function compactProductKeyAGD(value){
-    return normalizeProductKey(value).replace(/\s+/g, '');
-  }
-
-  function scoreProductCatalogItemAGD(item){
-    if (!item) return -9999;
-    const name = String(item.name || item.nombre || '');
-    const group = mapProductNameToCatalogGroupAGD(name);
-    const compact = compactProductKeyAGD(name);
-    let score = 0;
-    if (item.active !== false) score += 1000;
-    if (normalizeNumberInput(item.price) != null && Number(item.price) > 0) score += 100;
-    if (item.manageStock !== false) score += 15;
-    if (group) score += 20;
-    if (group === 'galon'){
-      if (compact === compactProductKeyAGD(CANON_GALON_LABEL_AGD)) score += 80;
-      if (normalizeProductKey(name).includes('3750')) score += 40;
-      if (Number(item.price) === LEGACY_GALON_PRICE_AGD) score -= 60;
-      if (Number(item.price) === DEFAULT_GALON_PRICE_AGD) score += 12;
-    }
+  function agendaProductId(item){
+    const source = item && typeof item === 'object' ? item : {};
     try{
-      const t = Date.parse(item.updatedAt || item.createdAt || '');
-      if (Number.isFinite(t)) score += Math.min(10, t / 1e15);
+      if (window.A33Products && typeof window.A33Products.getProductId === 'function'){
+        return String(window.A33Products.getProductId(source) || '').trim();
+      }
     }catch(_){ }
-    const id = Number(item.id);
-    if (Number.isFinite(id)) score -= Math.min(1, id / 1000000);
-    return score;
+    return String(source.productId ?? source.productoId ?? source.catalogProductId ?? '').trim();
   }
 
   function sanitizeProductCatalogItem(item){
     const source = item && typeof item === 'object' ? item : {};
-    const name = String(source.name || source.nombre || '').trim();
-    const price = normalizeNumberInput(source.price);
-    const active = source.active !== false;
-    const internalType = String(source.internalType || '').trim().toLowerCase();
-    const key = normalizeProductKey(name);
+    const productId = agendaProductId(source);
+    const name = String(source.name || source.nombre || '').replace(/\s+/g, ' ').trim();
+    const price = normalizeNumberInput(source.price ?? source.precio ?? source.unitPrice ?? source.precioVenta);
+    const active = source.active !== false && source.deleted !== true;
+    const internalId = Number(source.id);
 
-    if (!name || !active) return null;
-    if (internalType === 'cup_portion') return null;
-    if (!key || key === 'vaso') return null;
-    if (price == null || price <= 0) return null;
+    if (!productId || !name || !active) return null;
 
     return {
-      id: String(source.id != null ? source.id : key),
+      id: productId,
+      productId,
+      internalId: Number.isFinite(internalId) && internalId > 0 ? internalId : null,
       name,
-      price,
+      price: price == null ? 0 : price,
       active,
       manageStock: source.manageStock !== false,
       createdAt: source.createdAt || '',
-      updatedAt: source.updatedAt || '',
-      __score: scoreProductCatalogItemAGD(source)
+      updatedAt: source.updatedAt || ''
     };
   }
 
   function normalizeProductCatalog(list){
     const items = Array.isArray(list) ? list : [];
-    const grouped = new Map();
+    const byProductId = new Map();
 
     items.forEach(function(raw){
       const item = sanitizeProductCatalogItem(raw);
-      if (!item) return;
-      const group = mapProductNameToCatalogGroupAGD(item.name);
-      const key = group ? ('sku:' + group) : ('name:' + compactProductKeyAGD(item.name));
-      if (!key || key === 'name:') return;
-      const prev = grouped.get(key);
-      if (!prev || item.__score > prev.__score) grouped.set(key, item);
+      if (!item || byProductId.has(item.productId)) return;
+      byProductId.set(item.productId, item);
     });
 
-    return Array.from(grouped.values())
-      .sort(function(a, b){
-        const rankDiff = productSortRank(a.name) - productSortRank(b.name);
-        if (rankDiff !== 0) return rankDiff;
-        return a.name.localeCompare(b.name, 'es');
-      })
-      .map(function(item){
-        return { id:item.id, name:item.name, price:item.price };
-      });
-  }
-
-  function getFallbackProductCatalog(){
-    return PRODUCT_CATALOG_FALLBACK.map(function(item){
-      return { ...item };
+    const normalized = Array.from(byProductId.values());
+    const counts = new Map();
+    normalized.forEach(function(item){
+      const key = normalizeProductKey(item.name);
+      if (key) counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    normalized.forEach(function(item){
+      const key = normalizeProductKey(item.name);
+      item.displayName = (counts.get(key) || 0) > 1
+        ? item.name + ' · ' + item.productId.slice(-6)
+        : item.name;
+    });
+    return normalized.sort(function(a, b){
+      const byName = a.name.localeCompare(b.name, 'es', { sensitivity:'base' });
+      return byName || a.productId.localeCompare(b.productId);
     });
   }
 
@@ -328,6 +277,11 @@
   }
 
   function readProductCatalogFromPOS(){
+    try{
+      if (window.A33Products && typeof window.A33Products.getAll === 'function'){
+        return window.A33Products.getAll().then(normalizeProductCatalog);
+      }
+    }catch(_){ }
     return openPosProductDbReadOnly().then(function(db){
       return new Promise(function(resolve, reject){
         let settled = false;
@@ -960,56 +914,67 @@
     if (!option || !option.value) return null;
 
     return {
-      id: String(option.value || '').trim(),
+      id: String(option.dataset.productId || '').trim(),
       name: String(option.dataset.productName || option.textContent || '').trim(),
-      price: normalizeNumberInput(option.dataset.productPrice)
+      price: normalizeNumberInput(option.dataset.productPrice),
+      internalId: normalizeNumberInput(option.dataset.internalId),
+      historicalOnly: option.dataset.historical === '1'
     };
   }
 
   function renderPedidoProductOptions(options){
     const settings = options || {};
     const selectedId = settings.selectedId != null ? String(settings.selectedId).trim() : String(refs.pedidoProduct.value || '').trim();
-    const selectedName = String(settings.selectedName || '').trim();
+    const selectedName = String(settings.selectedName || '').replace(/\s+/g, ' ').trim();
     const selectedPrice = normalizeNumberInput(settings.selectedPrice);
+    const preserveHistorical = settings.preserveHistorical === true;
 
     refs.pedidoProduct.innerHTML = '';
 
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = state.productCatalog.length ? 'Selecciona un producto' : 'No hay productos disponibles';
+    placeholder.textContent = state.productCatalog.length
+      ? 'Selecciona un producto'
+      : 'No hay productos activos. Créelos en Catálogos → Productos';
     refs.pedidoProduct.appendChild(placeholder);
 
     let matchedValue = '';
-    const selectedNameKey = normalizeProductKey(selectedName);
+    const current = selectedId ? state.productCatalog.find(function(item){ return item.productId === selectedId; }) : null;
+    const snapshotDiffers = !!(current && preserveHistorical && selectedName && (
+      normalizeProductKey(current.name) !== normalizeProductKey(selectedName)
+      || (selectedPrice != null && Math.abs(Number(current.price || 0) - selectedPrice) > 0.000001)
+    ));
 
     state.productCatalog.forEach(function(item){
       const option = document.createElement('option');
-      option.value = String(item.id);
-      option.textContent = item.name + ' · ' + formatMoney(item.price);
+      option.value = String(item.productId);
+      option.textContent = (item.displayName || item.name) + ' · ' + formatMoney(item.price);
+      option.dataset.productId = item.productId;
+      option.dataset.internalId = item.internalId == null ? '' : String(item.internalId);
       option.dataset.productName = item.name;
       option.dataset.productPrice = formatNumberPlain(item.price);
       refs.pedidoProduct.appendChild(option);
 
-      if (!matchedValue && selectedId && option.value === selectedId) {
-        matchedValue = option.value;
-      }
-
-      if (!matchedValue && selectedNameKey && normalizeProductKey(item.name) === selectedNameKey) {
-        matchedValue = option.value;
-      }
+      if (!snapshotDiffers && !matchedValue && selectedId && option.value === selectedId) matchedValue = option.value;
     });
 
-    if (!matchedValue && selectedName) {
+    if (preserveHistorical && selectedName && (!current || snapshotDiffers)) {
       const legacyOption = document.createElement('option');
-      legacyOption.value = selectedId || ('legacy:' + selectedNameKey);
+      legacyOption.value = 'historical:' + (selectedId || normalizeProductKey(selectedName));
       legacyOption.textContent = selectedName + ' · Guardado';
+      legacyOption.dataset.productId = selectedId;
       legacyOption.dataset.productName = selectedName;
+      legacyOption.dataset.historical = '1';
       if (selectedPrice != null) legacyOption.dataset.productPrice = formatNumberPlain(selectedPrice);
       refs.pedidoProduct.appendChild(legacyOption);
       matchedValue = legacyOption.value;
     }
 
     refs.pedidoProduct.value = matchedValue || '';
+    const status = document.getElementById('agendaPedidoProductStatus');
+    if (status) status.textContent = state.productCatalog.length
+      ? state.productCatalog.length + ' producto(s) activo(s) disponible(s).'
+      : 'No hay productos activos. Cree productos desde Catálogos → Productos.';
   }
 
   function syncPedidoPriceFromSelection(){
@@ -1023,8 +988,9 @@
     const snapshot = pedido && typeof pedido === 'object' ? pedido : getEmptyPedido();
     renderPedidoProductOptions({
       selectedId: snapshot.productId,
-      selectedName: snapshot.product,
-      selectedPrice: snapshot.price
+      selectedName: snapshot.productNameSnapshot || snapshot.product,
+      selectedPrice: snapshot.priceSnapshot != null ? snapshot.priceSnapshot : snapshot.price,
+      preserveHistorical: true
     });
     refs.pedidoPrice.value = snapshot.price != null ? formatNumberPlain(snapshot.price) : '';
   }
@@ -1033,11 +999,11 @@
     refs.pedidoProduct.innerHTML = '<option value="">Cargando catálogo…</option>';
 
     return readProductCatalogFromPOS().then(function(products){
-      state.productCatalog = products.length ? products : getFallbackProductCatalog();
-      state.productCatalogSource = products.length ? 'catalogos' : 'empty';
+      state.productCatalog = Array.isArray(products) ? products : [];
+      state.productCatalogSource = state.productCatalog.length ? 'catalogos' : 'empty';
       renderPedidoProductOptions();
     }).catch(function(){
-      state.productCatalog = getFallbackProductCatalog();
+      state.productCatalog = [];
       state.productCatalogSource = 'empty';
       renderPedidoProductOptions();
     });
@@ -1048,7 +1014,11 @@
       enabled: false,
       productId: '',
       product: '',
+      productNameSnapshot: '',
       price: null,
+      priceSnapshot: null,
+      productSnapshot: null,
+      historicalOnly: false,
       quantity: null,
       total: null,
       delivery: ''
@@ -1067,14 +1037,21 @@
     const quantity = normalizeNumberInput(merged.quantity);
     const total = price != null && quantity != null ? round2(price * quantity) : null;
 
+    const productNameSnapshot = String(merged.productNameSnapshot || merged.product || '').replace(/\s+/g, ' ').trim();
+    const productId = String(merged.productId || '').trim();
+    const priceSnapshot = normalizeNumberInput(merged.priceSnapshot != null ? merged.priceSnapshot : merged.price);
     return {
       enabled: true,
-      productId: String(merged.productId || '').trim(),
-      product: String(merged.product || '').trim(),
-      price,
+      productId,
+      product: productNameSnapshot,
+      productNameSnapshot,
+      price: priceSnapshot,
+      priceSnapshot,
       quantity,
-      total,
-      delivery: normalizeDate(merged.delivery)
+      total: priceSnapshot != null && quantity != null ? round2(priceSnapshot * quantity) : total,
+      delivery: normalizeDate(merged.delivery),
+      productSnapshot: merged.productSnapshot && typeof merged.productSnapshot === 'object' ? { ...merged.productSnapshot } : null,
+      historicalOnly: merged.historicalOnly === true || (!productId && !!productNameSnapshot)
     };
   }
 
@@ -2068,14 +2045,30 @@
 
     const selectedProduct = getSelectedPedidoProductData();
 
+    const productId = selectedProduct ? selectedProduct.id : '';
+    const productNameSnapshot = selectedProduct ? selectedProduct.name : '';
+    const priceSnapshot = price;
     return {
       enabled: true,
-      productId: selectedProduct ? selectedProduct.id : '',
-      product: selectedProduct ? selectedProduct.name : '',
-      price,
+      productId,
+      product: productNameSnapshot,
+      productNameSnapshot,
+      price: priceSnapshot,
+      priceSnapshot,
       quantity,
-      total: price != null && quantity != null ? round2(price * quantity) : null,
-      delivery: normalizeDate(refs.pedidoDelivery.value)
+      total: priceSnapshot != null && quantity != null ? round2(priceSnapshot * quantity) : null,
+      delivery: normalizeDate(refs.pedidoDelivery.value),
+      historicalOnly: !!(selectedProduct && selectedProduct.historicalOnly),
+      productSnapshot: selectedProduct ? {
+        productId,
+        internalId: selectedProduct.internalId == null ? null : selectedProduct.internalId,
+        name: productNameSnapshot,
+        nombre: productNameSnapshot,
+        price: priceSnapshot,
+        precio: priceSnapshot,
+        capturedAt: new Date().toISOString(),
+        historicalOnly: !!selectedProduct.historicalOnly
+      } : null
     };
   }
 
@@ -2133,6 +2126,10 @@
 
     if (!data.pedido.product) {
       return invalidateField(refs.pedidoProduct, 'Indica el producto del pedido.');
+    }
+
+    if (!data.pedido.historicalOnly && !data.pedido.productId) {
+      return invalidateField(refs.pedidoProduct, 'Selecciona un producto activo real desde Catálogos.');
     }
 
     if (data.pedido.price == null || data.pedido.price <= 0) {

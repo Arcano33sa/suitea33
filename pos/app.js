@@ -1,13 +1,13 @@
 // --- IndexedDB helpers POS
 const DB_NAME = 'a33-pos';
-const DB_VER = 34; // Catálogos Etapa 3: Extras maestros + Bancos centralizados
+const DB_VER = 35; // Productos por productId: índice de nombre no único
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.84';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.85';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r6');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m29');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -4733,7 +4733,8 @@ function saleFingerprintPOS(sale){
     const fp = {
       eventId: Number(sale.eventId || 0) || 0,
       date: safeYMD(sale.date || ''),
-      productId: (sale.productId == null ? null : Number(sale.productId)),
+      productId: (sale.productId == null ? null : String(sale.productId)),
+      productInternalId: (sale.productInternalId == null ? null : Number(sale.productInternalId)),
       extraId: (sale.extraId == null ? null : Number(sale.extraId)),
       productName: getSaleProductNameSnapshotPOS(sale),
       qty: Number(sale.qty || 0),
@@ -4968,7 +4969,15 @@ function openDB(opts) {
       }catch(_){ }
       if (!d.objectStoreNames.contains('products')) {
         const os = d.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
-        os.createIndex('by_name', 'name', { unique: true });
+        os.createIndex('by_name', 'name', { unique: false });
+      }
+      else {
+        // productId es la identidad. El nombre puede repetirse entre productos distintos.
+        try{
+          const productsStore = e.target.transaction.objectStore('products');
+          if (productsStore.indexNames.contains('by_name')) productsStore.deleteIndex('by_name');
+          productsStore.createIndex('by_name', 'name', { unique:false });
+        }catch(_){ }
       }
       if (!d.objectStoreNames.contains('events')) {
         const os2 = d.createObjectStore('events', { keyPath: 'id', autoIncrement: true });
@@ -8570,15 +8579,7 @@ function invCentralDefaultPOS(){
   return {
     liquids: {},
     bottles: {},
-    finished: {
-      pulso: { stock: 0 },
-      media: { stock: 0 },
-      djeba: { stock: 0 },
-      litro: { stock: 0 },
-      galon: { stock: 0 },
-    },
-    // Productos nuevos: stock terminado por Product ID.
-    // Compatibilidad: los cinco legacy siguen viviendo en finished.{pulso,media,djeba,litro,galon}.
+    finished: {},
     finishedByProductId: {},
   };
 }
@@ -8588,12 +8589,6 @@ function invCentralNormalizePOS(data){
   if (!out.bottles || typeof out.bottles !== 'object') out.bottles = {};
   if (!out.finished || typeof out.finished !== 'object') out.finished = {};
   if (!out.finishedByProductId || typeof out.finishedByProductId !== 'object') out.finishedByProductId = {};
-
-  ['pulso','media','djeba','litro','galon'].forEach((id)=>{
-    if (!out.finished[id] || typeof out.finished[id] !== 'object') out.finished[id] = { stock: 0 };
-    const info = out.finished[id];
-    info.stock = invParseNumberPOS(info.stock || 0);
-  });
 
   Object.keys(out.finished || {}).forEach((id)=>{
     if (!out.finished[id] || typeof out.finished[id] !== 'object') out.finished[id] = { stock: 0 };
@@ -8656,9 +8651,9 @@ function mapProductNameToFinishedId(name){
 }
 function saleProductIdForInventoryPOS(sale){
   if (!sale || typeof sale !== 'object') return null;
-  const raw = sale.productId ?? sale.productoId ?? (sale.productSnapshot && (sale.productSnapshot.productId ?? sale.productSnapshot.id));
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  const raw = sale.productId ?? sale.productoId ?? (sale.productSnapshot && sale.productSnapshot.productId);
+  const value = String(raw == null ? '' : raw).trim();
+  return value || null;
 }
 function saleProductNameForInventoryPOS(sale){
   if (!sale || typeof sale !== 'object') return '';
@@ -8693,16 +8688,8 @@ function applyFinishedFromSalePOS(sale, direction){
     const delta = -dir * qty; // dir=+1: registrar venta/devolución; dir=-1: revertir
     const inv = invCentralLoadPOS();
 
-    // Legacy: las presentaciones históricas siguen usando finished.{pulso,media,djeba,litro,galon}.
-    if (finishedId){
-      if (!inv.finished || typeof inv.finished !== 'object') inv.finished = {};
-      if (!inv.finished[finishedId] || typeof inv.finished[finishedId] !== 'object') inv.finished[finishedId] = { stock: 0 };
-      inv.finished[finishedId].stock = invParseNumberPOS(inv.finished[finishedId].stock) + delta;
-      invCentralSavePOS(inv);
-      return;
-    }
-
-    // Productos nuevos: nunca se fuerzan a un legacy. Se descuentan por Product ID.
+    // Productos con identidad estable: siempre se descuentan por productId.
+    // Dos productos con el mismo nombre nunca comparten inventario terminado.
     if (productId){
       const key = String(productId);
       if (!inv.finishedByProductId || typeof inv.finishedByProductId !== 'object') inv.finishedByProductId = {};
@@ -8715,6 +8702,15 @@ function applyFinishedFromSalePOS(sale, direction){
       row.name = productName || row.name || ('Producto ' + productId);
       row.productName = productName || row.productName || row.name;
       row.updatedAt = new Date().toISOString();
+      invCentralSavePOS(inv);
+      return;
+    }
+
+    // Compatibilidad exclusiva para ventas históricas sin productId estable.
+    if (finishedId){
+      if (!inv.finished || typeof inv.finished !== 'object') inv.finished = {};
+      if (!inv.finished[finishedId] || typeof inv.finished[finishedId] !== 'object') inv.finished[finishedId] = { stock: 0 };
+      inv.finished[finishedId].stock = invParseNumberPOS(inv.finished[finishedId].stock) + delta;
       invCentralSavePOS(inv);
     }
   }catch(e){
@@ -8868,46 +8864,71 @@ async function renderCentralFinishedPOS(){
   if (!tbody) return;
   tbody.innerHTML = '';
   const inv = invCentralLoadPOS();
-  const defs = [
-    { id:'pulso', label:'Pulso 250 ml', legacy:true },
-    { id:'media', label:'Media 375 ml', legacy:true },
-    { id:'djeba', label:'Djeba 750 ml', legacy:true },
-    { id:'litro', label:'Litro 1000 ml', legacy:true },
-    { id:'galon', label:'Galón 3720 ml', legacy:true },
-  ];
+  const defs = [];
+  const seen = new Set();
 
   try{
     const products = await getAll('products');
-    const byId = new Map((Array.isArray(products) ? products : []).map(p => [String(p.id), p]));
-    Object.keys(inv.finishedByProductId || {}).forEach((id)=>{
-      const info = inv.finishedByProductId[id] || {};
-      const p = byId.get(String(id)) || null;
-      const label = String(
-        (p && (p.name || p.nombre)) ||
-        info.productName ||
-        info.name ||
-        ('Producto ' + id)
-      ).trim();
-      defs.push({ id:String(id), label, legacy:false });
+    (Array.isArray(products) ? products : []).forEach((product) => {
+      const productId = catalogProductStableIdPOS(product);
+      if (!productId || seen.has(productId)) return;
+      seen.add(productId);
+      const label = String(product.name || product.nombre || ('Producto ' + productId)).trim();
+      defs.push({ id:productId, label, legacy:false });
     });
-  }catch(_){
-    Object.keys(inv.finishedByProductId || {}).forEach((id)=>{
-      const info = inv.finishedByProductId[id] || {};
-      defs.push({ id:String(id), label:String(info.productName || info.name || ('Producto ' + id)), legacy:false });
+  }catch(_){ }
+
+  // Históricos borrados/inactivos: se conservan por identidad, pero nunca se convierten en Productos.
+  Object.keys(inv.finishedByProductId || {}).forEach((productId) => {
+    if (seen.has(productId)) return;
+    const info = inv.finishedByProductId[productId] || {};
+    const stock = invParseNumberPOS(info.stock);
+    if (!stock && !info.productName && !info.name) return;
+    seen.add(productId);
+    defs.push({
+      id:String(productId),
+      label:String(info.productName || info.name || ('Producto histórico ' + productId)).trim(),
+      legacy:false,
+      historical:true
     });
+  });
+
+  // Compatibilidad histórica sin productId: solo filas realmente existentes, nunca cinco defaults vacíos.
+  const legacyLabels = {
+    pulso:'Pulso 250 ml', media:'Media 375 ml', djeba:'Djeba 750 ml',
+    litro:'Litro 1000 ml', galon:'Galón 3720 ml'
+  };
+  Object.keys(inv.finished || {}).forEach((legacyId) => {
+    const info = inv.finished[legacyId] || {};
+    const stock = invParseNumberPOS(info.stock);
+    if (!stock && !info.productName && !info.name) return;
+    defs.push({
+      id:String(legacyId),
+      label:String(info.productName || info.name || legacyLabels[legacyId] || ('Histórico ' + legacyId)).trim(),
+      legacy:true,
+      historical:true
+    });
+  });
+
+  defs.sort((a,b) => String(a.label || '').localeCompare(String(b.label || ''), 'es-NI', { sensitivity:'base' }));
+  if (!defs.length){
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="2"><small class="muted">No hay Productos registrados en Catálogos.</small></td>';
+    tbody.appendChild(tr);
+    return;
   }
 
-  defs.forEach(d=>{
-    const info = d.legacy
-      ? ((inv.finished && inv.finished[d.id]) || { stock: 0 })
-      : ((inv.finishedByProductId && inv.finishedByProductId[d.id]) || { stock: 0 });
+  defs.forEach((def) => {
+    const info = def.legacy
+      ? ((inv.finished && inv.finished[def.id]) || { stock:0 })
+      : ((inv.finishedByProductId && inv.finishedByProductId[def.id]) || { stock:0 });
     const stock = invParseNumberPOS(info.stock);
+    const suffix = def.historical ? ' <small class="muted">(histórico)</small>' : '';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(d.label)}</td><td>${stock}</td>`;
+    tr.innerHTML = `<td>${escapeHtml(def.label)}${suffix}</td><td>${stock}</td>`;
     tbody.appendChild(tr);
   });
 }
-
 
 function leerCostosPresentacion() {
   try {
@@ -8962,15 +8983,8 @@ function getCostoUnitarioProducto(productName) {
 // Defaults (SKUs Arcano 33)
 const DEFAULT_GALON_PRICE_POS = 900;
 const LEGACY_DEFAULT_GALON_PRICE_POS = 800;
-const SEED = [
-  // "Vaso" ahora es producto vendible normal; su stock formal viene de Reempaque.
-  {name:'Vaso', price:100, manageStock:true, active:true, capacityMl:null, receta:false, letra:'', pos:true, envaseId:'', tapaId:''},
-  {name:'Pulso 250ml', price:120, manageStock:true, active:true, receta:true, letra:'P', pos:true, envaseId:'envase_pulso', tapaId:'tapa_pulso_litro'},
-  {name:'Media 375ml', price:150, manageStock:true, active:true, receta:true, letra:'M', pos:true, envaseId:'envase_media', tapaId:'tapa_djeba_media'},
-  {name:'Djeba 750ml', price:300, manageStock:true, active:true, receta:true, letra:'D', pos:true, envaseId:'envase_djeba', tapaId:'tapa_djeba_media'},
-  {name:'Litro 1000ml', price:330, manageStock:true, active:true, receta:true, letra:'L', pos:true, envaseId:'envase_litro', tapaId:'tapa_pulso_litro'},
-  {name:'Galón 3720 ml', price:DEFAULT_GALON_PRICE_POS, manageStock:true, active:true, receta:true, letra:'G', pos:true, envaseId:'envase_galon', tapaId:'tapa_galon'},
-];
+const SEED = Object.freeze([]); // Productos: sin semillas fuera de Catálogos → Productos.
+
 const CATALOG_DELETED_KEYS_POS = {
   products:'a33_catalog_deleted_products_v1',
   banks:'a33_catalog_deleted_banks_v1'
@@ -9074,8 +9088,8 @@ function productRecipeEnabledForProductionPOS(product){
   for (const key of keys){
     if (hasOwnPOS(p, key)) return boolCatalogFlagPOS(p[key], false);
   }
-  // Compatibilidad: productos legacy sin campo Receta conservan candado por presentación.
-  return !!presKeyFromProductNamePOS(p.name || p.nombre || p.productName || '');
+  // Fuente única: sin marca Receta explícita, el producto no hereda comportamiento por nombre.
+  return false;
 }
 
 function legacyGallonVendibleNamePOS(name){
@@ -9084,29 +9098,9 @@ function legacyGallonVendibleNamePOS(name){
 }
 
 function legacyVendibleDefaultPOS(product){
-  const name = String((product && (product.name || product.nombre)) || '').trim();
-  if (!name) return false;
-  const n = normName(name);
-  const nk = normKeyPOS(name);
-  const known = new Set([
-    normKeyPOS('Vaso'),
-    normKeyPOS('Pulso 250ml'), normKeyPOS('Pulso 250 ml'),
-    normKeyPOS('Media 375ml'), normKeyPOS('Media 375 ml'),
-    normKeyPOS('Djeba 750ml'), normKeyPOS('Djeba 750 ml'),
-    normKeyPOS('Litro 1000ml'), normKeyPOS('Litro 1000 ml'),
-    normKeyPOS('Galón 3750 ml'), normKeyPOS('Galón 3750ml'),
-    normKeyPOS('Galón 3800 ml'), normKeyPOS('Galón 3800ml')
-  ]);
-  if (known.has(nk)) return true;
-  if (n === 'vaso') return true;
-  if (n.includes('pulso') && n.includes('250')) return true;
-  if (n.includes('media') && n.includes('375')) return true;
-  if (n.includes('djeba') && n.includes('750')) return true;
-  if (n.includes('litro') && n.includes('1000')) return true;
-  if (legacyGallonVendibleNamePOS(name)) return true;
+  // Compatibilidad de firma únicamente: Catálogos debe marcar POS de forma explícita.
   return false;
 }
-
 function hasExplicitPosFlagPOS(product){
   const p = product && typeof product === 'object' ? product : {};
   return ['pos','POS','posEnabled','showInPOS','visiblePOS','vendible','sellable','saleEnabled']
@@ -9119,24 +9113,65 @@ function productPosEnabledForSalePOS(product){
   for (const key of keys){
     if (hasOwnPOS(p, key)) return boolCatalogFlagPOS(p[key], false);
   }
-  // Default seguro para productos antiguos: solo presentaciones A33 conocidas y Vaso.
-  return legacyVendibleDefaultPOS(p);
+  // Fuente única: sin marca POS explícita el producto no se publica en el selector.
+  return false;
+}
+
+function catalogProductStableIdPOS(product){
+  if (!product || typeof product !== 'object') return '';
+  try{
+    if (window.A33Products && typeof window.A33Products.getProductId === 'function'){
+      return String(window.A33Products.getProductId(product) || '').trim();
+    }
+  }catch(_){ }
+  return String(product.productId ?? product.productoId ?? product.catalogProductId ?? '').trim();
+}
+
+function catalogProductInternalIdPOS(product){
+  if (!product || typeof product !== 'object') return null;
+  const n = Number(product.id);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function findCatalogProductByStableIdPOS(products, productId){
+  const target = String(productId == null ? '' : productId).trim();
+  if (!target) return null;
+  return (Array.isArray(products) ? products : []).find((product) => catalogProductStableIdPOS(product) === target) || null;
+}
+
+function saleStableProductIdPOS(sale){
+  if (!sale || typeof sale !== 'object') return '';
+  const raw = sale.productId ?? sale.productoId ?? (sale.productSnapshot && sale.productSnapshot.productId);
+  return String(raw == null ? '' : raw).trim();
+}
+
+function saleInternalProductIdPOS(sale){
+  if (!sale || typeof sale !== 'object') return null;
+  const raw = sale.productInternalId ?? sale.catalogInternalId ?? (sale.productSnapshot && sale.productSnapshot.internalId);
+  const direct = Number(raw);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  // Compatibilidad histórica: antes productId contenía el id autoincremental numérico.
+  const legacy = Number(sale.productId);
+  return Number.isFinite(legacy) && legacy > 0 ? legacy : null;
+}
+
+function saleMatchesCatalogProductPOS(sale, product){
+  if (!sale || !product) return false;
+  const stable = catalogProductStableIdPOS(product);
+  const saleStable = saleStableProductIdPOS(sale);
+  if (stable && saleStable && stable === saleStable) return true;
+  const internalId = catalogProductInternalIdPOS(product);
+  const saleInternalId = saleInternalProductIdPOS(sale);
+  return !!(internalId && saleInternalId && internalId === saleInternalId);
 }
 
 function productSellableInPOS(product){
-  return !!(product && productActiveForSalePOS(product) && productPosEnabledForSalePOS(product));
+  return !!(product && catalogProductStableIdPOS(product) && productActiveForSalePOS(product) && productPosEnabledForSalePOS(product));
 }
 
 
-// POS Etapa 2/6: snapshots históricos por venta.
-// La venta se guarda con ID estable + copia congelada del nombre/precio/datos básicos.
-// Así, si Catálogos cambia mañana, el historial no se disfraza de otra cosa. Elegante y sin magia negra.
-function catalogProductStableIdPOS(product){
-  if (!product || typeof product !== 'object') return null;
-  const raw = product.id ?? product.productId ?? product.productoId ?? null;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
+// POS: snapshots históricos por venta.
+// La venta usa productId estable y conserva el id interno solo para compatibilidad del inventario por evento.
 
 function catalogProductSnapshotNamePOS(product){
   if (!product || typeof product !== 'object') return '';
@@ -9156,10 +9191,12 @@ function buildSaleProductSnapshotPOS(product, selectedUnitPrice){
   const unitPrice = catalogProductSnapshotPricePOS(product, selectedUnitPrice);
   const unitCost = getProductStoredUnitCostPOS(product);
   const capacityMl = Number(product && (product.capacityMl ?? product.ml ?? product.contenidoMl));
+  const productInternalId = catalogProductInternalIdPOS(product);
   const productSnapshot = {
     kind: 'product',
     id: productId,
     productId,
+    internalId: productInternalId,
     name: productName,
     productName,
     price: unitPrice,
@@ -9181,6 +9218,7 @@ function buildSaleProductSnapshotPOS(product, selectedUnitPrice){
   };
   return {
     productId,
+    productInternalId,
     productName,
     productNameSnapshot: productName,
     unitPrice,
@@ -9223,55 +9261,10 @@ function applyProductSaleCatalogDefaultsPOS(product, seed){
 }
 
 async function seedMissingDefaults(force=false, options={}){
-  const restoreDeleted = !!(options && options.restoreDeleted);
-  const list = await getAll('products');
-  const keys = new Set(list.map(p=>normKeyPOS(p.name)));
-
-  // Alias legacy: si existe Galón 3800 (o variantes), lo tratamos como galón canónico para no duplicar.
-  if (keys.has(normKeyPOS('Galón 3800ml')) || keys.has(normKeyPOS('Galón 3800 ml'))){
-    keys.add(normKeyPOS(CANON_GALON_LABEL));
-  }
-
-  for (const s of SEED){
-    const k = normKeyPOS(s.name);
-    const seedDeleted = wasCatalogSeedDeletedPOS('products', s);
-    let existing = list.find(p=>normKeyPOS(p.name)===k);
-    if (!existing && k === normKeyPOS(CANON_GALON_LABEL)){
-      // Si solo existe el Galón legacy (3800 ml u otra variante), usarlo como existente y no crear duplicado.
-      existing = list.find(p => p && legacyGallonVendibleNamePOS(p.name || ''));
-    }
-
-    if (!existing && seedDeleted && !restoreDeleted) continue;
-
-    if (force || !existing){
-      if (existing){
-        let changed = false;
-        if (existing.active !== true){ existing.active = true; changed = true; }
-        if (k === normKeyPOS(CANON_GALON_LABEL) && existing.name !== s.name && !list.some(p => p && p.id !== existing.id && normKeyPOS(p.name) === k)){ existing.name = s.name; changed = true; }
-        // Catálogo global editable: un precio válido del usuario NUNCA se pisa por defaults.
-        // Excepción controlada: migrar Galón desde el viejo default C$800 al nuevo default C$900.
-        if (k === normKeyPOS(CANON_GALON_LABEL) && Number(existing.price) === LEGACY_DEFAULT_GALON_PRICE_POS){ existing.price = s.price; changed = true; }
-        else if (!isValidCatalogPricePOS(existing.price)){ existing.price = s.price; changed = true; }
-        if (typeof existing.manageStock === 'undefined'){ existing.manageStock = s.manageStock; changed = true; }
-        if (applyProductSaleCatalogDefaultsPOS(existing, s)){ changed = true; }
-        if (s.internalType && existing.internalType !== s.internalType){ existing.internalType = s.internalType; changed = true; }
-        if (changed) await put('products', existing);
-      } else {
-        await put('products', {...s});
-      }
-    } else {
-      // Existe: solo completar faltantes (sin pisar precios manuales válidos).
-      let changed = false;
-      if (typeof existing.active === 'undefined'){ existing.active = true; changed = true; }
-      if (k === normKeyPOS(CANON_GALON_LABEL) && existing.name !== s.name && !list.some(p => p && p.id !== existing.id && normKeyPOS(p.name) === k)){ existing.name = s.name; changed = true; }
-      if (typeof existing.manageStock === 'undefined'){ existing.manageStock = s.manageStock; changed = true; }
-      if (applyProductSaleCatalogDefaultsPOS(existing, s)){ changed = true; }
-      // Excepción controlada: migrar Galón desde el viejo default C$800 al nuevo default C$900.
-      if (k === normKeyPOS(CANON_GALON_LABEL) && Number(existing.price) === LEGACY_DEFAULT_GALON_PRICE_POS){ existing.price = s.price; changed = true; }
-      else if (!isValidCatalogPricePOS(existing.price)) { existing.price = s.price; changed = true; }
-      if (changed) await put('products', existing);
-    }
-  }
+  // Etapa 2/8 — Catálogos → Productos es la única puerta de creación.
+  // Se conserva la firma por compatibilidad con HTML/código antiguo, pero POS no inserta,
+  // completa, reactiva ni restaura productos bajo ninguna condición.
+  return { ok:true, skipped:true, reason:'catalogos_productos_fuente_unica', force:!!force, options:options || {} };
 }
 
 // UI helpers
@@ -9686,13 +9679,13 @@ function validateSaleMinimalPOS(sale){
   }
 
 
-  const pid = Number(sale.productId);
+  const pid = String(sale.productId == null ? '' : sale.productId).trim();
   const isExtra = !!sale.isExtra;
   if (isExtra){
     const ex = Number(sale.extraId);
     if (!(Number.isFinite(ex) && ex > 0)) return { ok:false, msg:'Venta inválida: extra inválido.' };
   } else {
-    if (!(Number.isFinite(pid) && pid > 0)) return { ok:false, msg:'Venta inválida: producto inválido.' };
+    if (!pid) return { ok:false, msg:'Venta inválida: producto inválido.' };
   }
 
   const pay = normalizePaymentMethodPOS(sale.payment || '');
@@ -9883,16 +9876,15 @@ function resolveProductFromLoteContractRowPOS(row, products){
 }
 
 async function guardLotAvailabilityBeforeSalePOS(eventId, productName, qty, productId, productObj){
-  const legacyKey = presKeyFromProductNamePOS(productName);
   const recipeEnabled = productRecipeEnabledForProductionPOS(productObj || { name: productName });
 
   // Productos vendibles sin Receta (ej. Vaso) no pasan por Lotes/FIFO.
   // POS solo valida Activo/POS/Precio/Stock; Reempaque alimenta su stock antes de vender.
-  if (!legacyKey && !recipeEnabled){
+  if (!recipeEnabled){
     return { ok:true, presKey:'', nonRecipe:true };
   }
 
-  const key = legacyKey || lotFifoKeyFromProductPOS(productObj || null, productId, productName);
+  const key = lotFifoKeyFromProductPOS(productObj || null, productId, productName);
   if (!key) return { ok:true, presKey:'' };
 
   try{
@@ -10644,141 +10636,24 @@ async function updateSellEnabled(){
 
 // Normalizar Vaso como producto vendible normal alimentado por Inventario → Reempaque.
 async function normalizeVasoProductForReempaquePOS(){
-  try{
-    const products = await getAll('products');
-    if (!Array.isArray(products) || !products.length) return;
-
-    const vasoProducts = products.filter(p => p && (
-      normKeyPOS(p.name || '') === normKeyPOS('Vaso') ||
-      p.internalType === 'cup_portion'
-    ));
-    if (!vasoProducts.length) return;
-
-    let canon = vasoProducts.find(p => normKeyPOS(p.name || '') === normKeyPOS('Vaso') && productActiveForSalePOS(p))
-      || vasoProducts.find(p => normKeyPOS(p.name || '') === normKeyPOS('Vaso'))
-      || vasoProducts[0];
-
-    let changed = false;
-    if (canon.name !== 'Vaso'){ canon.name = 'Vaso'; changed = true; }
-    // Vaso queda como vendible normal sin Receta. Respetar Activo/POS/Inventario si el usuario ya los definió.
-    if (!hasExplicitActiveFlagPOS(canon)){ canon.active = true; changed = true; }
-    if (!hasExplicitManageStockFlagPOS(canon)){ canon.manageStock = true; changed = true; }
-    if (!hasExplicitPosFlagPOS(canon)){ canon.pos = true; changed = true; }
-    if (canon.receta !== false){ canon.receta = false; changed = true; }
-    if (String(canon.letra ?? '').trim() !== ''){ canon.letra = ''; changed = true; }
-    if (!isValidCatalogPricePOS(canon.price)){ canon.price = 100; changed = true; }
-    // Dejar de tratarlo como producto interno/virtual: ahora se vende como cualquier SKU normal.
-    if (canon.internalType === 'cup_portion'){ try{ delete canon.internalType; changed = true; }catch(_){ canon.internalType = ''; changed = true; } }
-    if (typeof canon.capacityMl === 'undefined') { canon.capacityMl = null; changed = true; }
-    if (changed) await put('products', canon);
-
-    // Duplicados legacy: no borrar ni tocar ventas antiguas; solo ocultarlos para evitar doble Vaso en venta.
-    for (const p of vasoProducts){
-      if (!p || p.id === canon.id) continue;
-      let ch = false;
-      if (p.active !== false){ p.active = false; ch = true; }
-      if (!hasExplicitManageStockFlagPOS(p)){ p.manageStock = true; ch = true; }
-      if (ch) await put('products', p);
-    }
-  }catch(e){
-    console.warn('No se pudo normalizar producto Vaso para Reempaque', e);
-  }
+  // Neutralizado: POS no renombra, reactiva, completa ni desactiva productos.
+  return { ok:true, skipped:true, reason:'catalogos_productos_fuente_unica' };
 }
 
 // Normalizar producto Galón (legacy 3750/3800 ml -> 3720 ml)
 async function normalizeLegacyGallonProductPOS(){
-  try{
-    const products = await getAll('products');
-    if (!Array.isArray(products) || !products.length) return;
-
-    const canonicalName = CANON_GALON_LABEL;
-    const canonicalKey = normKeyPOS(canonicalName);
-    const defaultGallon = (SEED.find(x => normKeyPOS(x.name) === canonicalKey) || {}).price || DEFAULT_GALON_PRICE_POS;
-
-    // Identificar productos tipo "galón" con la misma heurística usada por inventario.
-    const galonProducts = products.filter(p => p && legacyGallonVendibleNamePOS(p.name || ''));
-    if (!galonProducts.length) return;
-
-    const activeValidLegacy = galonProducts.find(p =>
-      normKeyPOS(p.name) !== canonicalKey && p.active !== false && isValidCatalogPricePOS(p.price)
-    );
-
-    // Elegir canon de forma conservadora: preferir el canónico activo; si no existe, usar un legacy activo válido.
-    let canon = galonProducts.find(p => normKeyPOS(p.name) === canonicalKey && p.active !== false)
-      || galonProducts.find(p => normKeyPOS(p.name) === canonicalKey)
-      || activeValidLegacy
-      || galonProducts.find(p => normName(p.name).includes('3750'))
-      || galonProducts[0];
-
-    // Precio a conservar: si el canon no tiene precio válido, tomar otro precio válido existente.
-    // Migración suave: el viejo default C$800 pasa a C$900; otros precios manuales se respetan.
-    let preservedPrice = isValidCatalogPricePOS(canon.price) ? Number(canon.price) : null;
-    if (Number(preservedPrice) === LEGACY_DEFAULT_GALON_PRICE_POS){ preservedPrice = Number(defaultGallon); }
-    if (activeValidLegacy && (!isValidCatalogPricePOS(canon.price) || (Number(canon.price) === Number(defaultGallon) && Number(activeValidLegacy.price) !== LEGACY_DEFAULT_GALON_PRICE_POS))){
-      preservedPrice = Number(activeValidLegacy.price);
-    }
-    if (Number(preservedPrice) === LEGACY_DEFAULT_GALON_PRICE_POS){ preservedPrice = Number(defaultGallon); }
-    if (!isValidCatalogPricePOS(preservedPrice)){
-      const anyValid = galonProducts.find(p => isValidCatalogPricePOS(p.price) && Number(p.price) !== LEGACY_DEFAULT_GALON_PRICE_POS);
-      preservedPrice = anyValid ? Number(anyValid.price) : Number(defaultGallon);
-    }
-
-    // Canon: label estándar + estructura. El precio solo se llena si faltaba/era inválido.
-    let changedCanon = false;
-    if (canon.name !== canonicalName){ canon.name = canonicalName; changedCanon = true; }
-    if (!isValidCatalogPricePOS(canon.price)){ canon.price = preservedPrice; changedCanon = true; }
-    else if (Number(canon.price) !== Number(preservedPrice) && activeValidLegacy){ canon.price = preservedPrice; changedCanon = true; }
-    if (typeof canon.manageStock === 'undefined'){ canon.manageStock = true; changedCanon = true; }
-    if (!hasExplicitPosFlagPOS(canon)){ canon.pos = true; changedCanon = true; }
-    if (typeof canon.receta === 'undefined'){ canon.receta = true; changedCanon = true; }
-    if (typeof canon.letra === 'undefined'){ canon.letra = 'G'; changedCanon = true; }
-    if (typeof canon.active === 'undefined'){ canon.active = true; changedCanon = true; }
-    if (changedCanon) await put('products', canon);
-
-    // Duplicados: mantener data (sin borrar) pero evitar duplicación en UI/ventas.
-    for (const p of galonProducts){
-      if (!p || p.id === canon.id) continue;
-      let ch = false;
-      // No pisar precios válidos de duplicados/legacy: solo completar si faltaba o era inválido.
-      if (!isValidCatalogPricePOS(p.price)){ p.price = preservedPrice; ch = true; }
-      // Ocultar de catálogo de venta; no borrar ni tocar ventas históricas.
-      if (p.active !== false){ p.active = false; ch = true; }
-      if (typeof p.manageStock === 'undefined'){ p.manageStock = true; ch = true; }
-      if (ch) await put('products', p);
-    }
-  }catch(e){
-    console.warn('No se pudo normalizar producto Galón', e);
-  }
+  // Neutralizado: cualquier normalización del catálogo corresponde a Catálogos → Productos.
+  return { ok:true, skipped:true, reason:'catalogos_productos_fuente_unica' };
 }
 
 
 // Ensure defaults
 async function ensureDefaults(){
-  let products = await getAll('products');
-  // Migración suave: Vaso pasa a producto vendible normal y Galón queda canónico.
-  await normalizeVasoProductForReempaquePOS();
-  await normalizeLegacyGallonProductPOS();
-  products = await getAll('products');
-  if (!products.length){
-    await seedMissingDefaults(false);
-  } else {
-    for (const p of products){
-      let changed = false;
-      if (typeof p.active === 'undefined'){ p.active = true; changed = true; }
-      if (typeof p.manageStock === 'undefined'){ p.manageStock = true; changed = true; }
-      const seed = SEED.find(s => normKeyPOS(s.name) === normKeyPOS(p.name || '') || (normKeyPOS(s.name) === normKeyPOS(CANON_GALON_LABEL) && legacyGallonVendibleNamePOS(p.name || '')));
-      if (seed && applyProductSaleCatalogDefaultsPOS(p, seed)){ changed = true; }
-      if (changed) await put('products', p);
-    }
-  }
-  products = await getAll('products');
-  if (products.length < 5) await seedMissingDefaults(true);
-  else await seedMissingDefaults(false);
-
+  // Productos permanece exactamente como fue definido en Catálogos/importación/sincronización.
+  // En particular, una lectura vacía continúa vacía al abrir, recargar o actualizar POS.
   const events = await getAll('events');
   if (!events.length){
     for (const ev of DEFAULT_EVENTS) await put('events', {...ev, createdAt:new Date().toISOString()});
-  } else {
   }
   const hasKey = (await getAll('meta')).some(m=>m.id==='currentEventId');
   if (!hasKey){
@@ -10786,7 +10661,7 @@ async function ensureDefaults(){
     if (evs.length) await setMeta('currentEventId', evs[0].id);
   }
 
-  // Bancos (catálogo para transferencias / tarjeta)
+  // Otros catálogos legítimos de POS conservan su inicialización independiente.
   await ensureBanksDefaults();
 }
 
@@ -11095,15 +10970,15 @@ function productEditReempaqueRecordTouchesPOS(record, product){
 
 async function productEditHasMovementsPOS(product){
   if (!product) return false;
-  const pid = String(product.id ?? '').trim();
-  const pname = productEditNormKeyPOS(product.name || product.nombre || '');
+  const pid = catalogProductStableIdPOS(product);
+  const internalId = catalogProductInternalIdPOS(product);
   try{
     const sales = await getAll('sales');
-    if ((sales || []).some(s => s && ((pid && String(s.productId ?? '').trim() === pid) || (pname && productEditNormKeyPOS(s.productName || s.name || '') === pname)))) return true;
+    if ((sales || []).some(s => saleMatchesCatalogProductPOS(s, product))) return true;
   }catch(_){ }
   try{
     const inv = await getAll('inventory');
-    if ((inv || []).some(i => i && pid && String(i.productId ?? '').trim() === pid)) return true;
+    if ((inv || []).some(i => i && ((internalId && Number(i.productId) === internalId) || (pid && String(i.productId ?? '').trim() === pid)))) return true;
   }catch(_){ }
   try{
     const reempaques = await getAll(REEMPAQUE_STORE_POS);
@@ -11121,183 +10996,61 @@ function closeProductEditModalPOS(){
 }
 
 async function openProductEditModalPOS(productId){
+  void productId;
+  toast('Los Productos se administran en Catálogos → Productos');
   const modal = document.getElementById('product-edit-modal');
-  if (!modal) return;
-  const id = Number(productId);
-  if (!Number.isFinite(id) || id <= 0){ toast('Producto inválido'); return; }
-  const products = await getAll('products');
-  const product = (products || []).find(p => Number(p && p.id) === id);
-  if (!product){ toast('Producto no existe'); return; }
-
-  modal.dataset.productId = String(product.id);
-  const current = document.getElementById('product-edit-current');
-  if (current) current.textContent = 'Producto actual: ' + String(product.name || '—');
-  const nameEl = document.getElementById('product-edit-name');
-  const priceEl = document.getElementById('product-edit-price');
-  const capEl = document.getElementById('product-edit-capacity');
-  const costEl = document.getElementById('product-edit-unit-cost');
-  const activeEl = document.getElementById('product-edit-active');
-  const manageEl = document.getElementById('product-edit-manage');
-  if (nameEl) nameEl.value = String(product.name || '');
-  if (priceEl) priceEl.value = String(productEditMoneyPOS(product.price, 0));
-  const cap = productEditGetCapacityPOS(product);
-  if (capEl) capEl.value = cap > 0 ? String(cap) : '';
-  const cost = productEditGetUnitCostPOS(product);
-  if (costEl) costEl.value = cost > 0 ? String(cost) : '';
-  if (activeEl) activeEl.checked = product.active !== false;
-  if (manageEl) manageEl.checked = product.manageStock !== false;
-  const note = document.getElementById('product-edit-history-note');
-  if (note){
-    note.style.display = 'none';
-    productEditHasMovementsPOS(product).then(has => {
-      try{ note.style.display = has ? 'block' : 'none'; }catch(_){ }
-    }).catch(()=>{});
-  }
-  productEditSetMsgPOS('');
-  openModalPOS('product-edit-modal');
-  setTimeout(()=>{ try{ nameEl?.focus({ preventScroll:true }); nameEl?.select(); }catch(_){ } }, 60);
+  if (modal) modal.style.display = 'none';
+  return { ok:false, blocked:true, reason:'catalogos_productos_fuente_unica' };
 }
 
 async function saveProductEditModalPOS(){
-  const modal = document.getElementById('product-edit-modal');
-  if (!modal) return;
-  const id = Number(modal.dataset.productId || 0);
-  const products = await getAll('products');
-  const product = (products || []).find(p => Number(p && p.id) === id);
-  if (!product){ productEditSetMsgPOS('El producto no existe. Recarga el POS e intenta de nuevo.', 'warn'); return; }
-
-  const name = String(document.getElementById('product-edit-name')?.value || '').trim();
-  const priceRaw = String(document.getElementById('product-edit-price')?.value || '').trim();
-  const capRaw = String(document.getElementById('product-edit-capacity')?.value || '').trim();
-  const costRaw = String(document.getElementById('product-edit-unit-cost')?.value || '').trim();
-
-  if (!name){ productEditSetMsgPOS('Nombre obligatorio.', 'warn'); return; }
-  const price = Number(priceRaw);
-  if (!priceRaw || !Number.isFinite(price) || price < 0){ productEditSetMsgPOS('Precio de venta inválido. Debe ser 0 o mayor.', 'warn'); return; }
-
-  const existingCapacity = productEditGetCapacityPOS(product);
-  const createdFromReempaque = String(product.createdFrom || product.origen || '').toLowerCase().includes('reempaque');
-  const capacityRequired = existingCapacity > 0 || createdFromReempaque;
-  let capacity = 0;
-  if (capRaw){
-    capacity = Number(capRaw);
-    if (!Number.isFinite(capacity) || capacity <= 0){ productEditSetMsgPOS('ml por unidad inválido. Debe ser mayor que 0.', 'warn'); return; }
-  } else if (capacityRequired){
-    productEditSetMsgPOS('ml por unidad obligatorio para este producto. Debe ser mayor que 0.', 'warn');
-    return;
-  }
-
-  let unitCost = 0;
-  if (costRaw){
-    unitCost = Number(costRaw);
-    if (!Number.isFinite(unitCost) || unitCost < 0){ productEditSetMsgPOS('Costo unitario inválido. Debe ser 0 o mayor.', 'warn'); return; }
-  }
-
-  const newKey = productEditNormKeyPOS(name);
-  const dup = (products || []).find(p => p && Number(p.id) !== id && productEditNormKeyPOS(p.name || p.nombre || '') === newKey);
-  if (dup){ productEditSetMsgPOS('Ya existe otro producto con ese nombre. No se duplicó nada.', 'warn'); return; }
-
-  const now = new Date().toISOString();
-  const next = { ...product };
-  next.name = name;
-  next.price = productEditMoneyPOS(price, 0);
-  next.capacityMl = capRaw ? productEditQtyPOS(capacity, 0) : 0;
-  next.capacidadMl = next.capacityMl;
-  next.volumeMl = next.capacityMl;
-  next.volumenMl = next.capacityMl;
-  next.unitCost = productEditMoneyPOS(unitCost, 0);
-  next.costoUnitario = next.unitCost;
-  next.costPerUnit = next.unitCost;
-  const activeEl = document.getElementById('product-edit-active');
-  const manageEl = document.getElementById('product-edit-manage');
-  if (activeEl) next.active = !!activeEl.checked;
-  if (manageEl) next.manageStock = !!manageEl.checked;
-  next.updatedAt = now;
-  next.updatedFrom = 'productos_edit_modal';
-
-  try{
-    await put('products', next);
-    closeProductEditModalPOS();
-    await renderProductos();
-    await refreshProductSelect();
-    await renderInventario();
-    try{ await reempaquePopulateSelectorsPOS(); }catch(_){ }
-    try{ await reempaqueRefreshUiPOS(); }catch(_){ }
-    toast('Producto actualizado');
-  }catch(err){
-    console.error('No se pudo guardar edición de producto', err);
-    productEditSetMsgPOS('No se pudo guardar. Revisa si el nombre ya existe o si hay datos inválidos.', 'warn');
-  }
+  productEditSetMsgPOS('Los Productos se administran únicamente en Gestión Operativa → Catálogos → Productos.', 'warn');
+  toast('Edición bloqueada: usa Catálogos → Productos');
+  return { ok:false, blocked:true, reason:'catalogos_productos_fuente_unica' };
 }
 
 function setupProductEditModalPOS(){
   const modal = document.getElementById('product-edit-modal');
   if (!modal || modal.dataset.bound === '1') return;
   modal.dataset.bound = '1';
+  const block = () => {
+    productEditSetMsgPOS('Los Productos se administran únicamente en Gestión Operativa → Catálogos → Productos.', 'warn');
+    toast('Edición bloqueada: usa Catálogos → Productos');
+  };
   const closeBtn = document.getElementById('product-edit-close');
   const cancelBtn = document.getElementById('product-edit-cancel');
   const saveBtn = document.getElementById('product-edit-save');
   if (closeBtn) closeBtn.addEventListener('click', closeProductEditModalPOS);
   if (cancelBtn) cancelBtn.addEventListener('click', closeProductEditModalPOS);
-  if (saveBtn) saveBtn.addEventListener('click', ()=> saveProductEditModalPOS().catch(err=>{
-    console.error(err);
-    productEditSetMsgPOS('No se pudo guardar el producto.', 'warn');
-  }));
+  if (saveBtn){ saveBtn.disabled = true; saveBtn.addEventListener('click', block); }
   modal.addEventListener('click', (e)=>{ if (e.target === modal) closeProductEditModalPOS(); });
   modal.addEventListener('keydown', (e)=>{
     if (e.key === 'Escape') closeProductEditModalPOS();
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
-      e.preventDefault();
-      saveProductEditModalPOS().catch(err=>console.error(err));
-    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){ e.preventDefault(); block(); }
   });
 }
 
 async function renderProductos(){
-  const list = await getAll('products');
-  const wrap = $('#productos-list');
+  // Guardia para HTML antiguo en caché: la vista legacy queda estrictamente informativa.
+  const wrap = document.getElementById('productos-list');
   if (!wrap) return;
+  const list = await getAll('products').catch(()=>[]);
   wrap.innerHTML = '';
-  if (!list.length){
-    const p = document.createElement('div'); p.className = 'warn'; p.textContent = 'No hay productos. Agrega los de Arcano 33 abajo.'; wrap.appendChild(p);
-  }
-  const rows = (Array.isArray(list) ? list : []).slice().sort((a,b)=>{
-    const aa = (a && a.active === false) ? 1 : 0;
-    const bb = (b && b.active === false) ? 1 : 0;
-    if (aa !== bb) return aa - bb;
-    return String((a && a.name) || '').localeCompare(String((b && b.name) || ''), 'es-NI', { sensitivity:'base' });
-  });
-  for (const p of rows) {
+  const notice = document.createElement('div');
+  notice.className = list.length ? 'info' : 'warn';
+  notice.textContent = list.length
+    ? 'Productos en modo lectura. Administra altas, cambios y borrados en Gestión Operativa → Catálogos → Productos.'
+    : 'No hay productos. Créelos primero en Gestión Operativa → Catálogos → Productos.';
+  wrap.appendChild(notice);
+  for (const p of (Array.isArray(list) ? list : [])){
     if (!p) continue;
     const row = document.createElement('div');
     row.className = 'card product-card-a33';
-    const name = String(p.name || 'Producto sin nombre').trim() || 'Producto sin nombre';
-    const price = productEditMoneyPOS(p.price, 0);
-    const cap = productEditGetCapacityPOS(p);
-    const cost = productEditGetUnitCostPOS(p);
-    const active = p.active === false ? 'Inactivo' : 'Activo';
-    const manage = p.manageStock === false ? 'No' : 'Sí';
-    row.innerHTML = `
-      <div class="product-main-a33">
-        <div class="product-title">${escapeHtml(name)}</div>
-        <div class="product-meta-grid">
-          <div class="product-meta-item"><small>Precio</small><b>${escapeHtml(productEditDisplayMoneyPOS(price))}</b></div>
-          <div class="product-meta-item"><small>ml/unidad</small><b>${escapeHtml(productEditDisplayMlPOS(cap))}</b></div>
-          <div class="product-meta-item"><small>Costo ref.</small><b>${escapeHtml(productEditDisplayMoneyPOS(cost))}</b></div>
-          <div class="product-meta-item"><small>Estado</small><b>${escapeHtml(active)} · Inv: ${escapeHtml(manage)}</b></div>
-        </div>
-      </div>
-      <div class="product-actions-a33">
-        <button data-id="${escapeHtml(String(p.id))}" class="btn-ok btn-pill btn-edit-product" type="button">Editar</button>
-        <button data-id="${escapeHtml(String(p.id))}" class="btn-danger btn-pill btn-del" type="button">Eliminar</button>
-      </div>
-    `;
+    const name = String(p.name || p.nombre || 'Producto sin nombre').trim() || 'Producto sin nombre';
+    const status = p.active === false ? 'Inactivo' : 'Activo';
+    row.innerHTML = `<div class="product-main-a33"><div class="product-title">${escapeHtml(name)}</div><small class="muted">${escapeHtml(status)} · Solo lectura desde POS</small></div>`;
     wrap.appendChild(row);
   }
-  await renderProductChips();
-
-  // Bancos (gestión en pestaña Productos)
-  await renderBancos();
 }
 
 // Productos internos/virtuales del POS que NO deben aparecer en selector ni inventario.
@@ -11306,50 +11059,34 @@ async function getHiddenProductIdsPOS(){
   return new Set();
 }
 
-// Catálogos Etapa 2: lectura canónica de productos para venta POS.
-// La administración se movió a Gestión Operativa → Catálogos → Productos.
-function posProductCanonicalGroupKey(product){
-  const name = String((product && (product.name || product.nombre)) || '').trim();
-  const fid = (typeof mapProductNameToFinishedId === 'function') ? mapProductNameToFinishedId(name) : null;
-  return fid ? ('sku:' + fid) : ('name:' + productEditNormKeyPOS(name));
-}
-
-function posProductCanonicalScore(product){
-  if (!product) return -9999;
-  const name = String(product.name || product.nombre || '');
-  const fid = (typeof mapProductNameToFinishedId === 'function') ? mapProductNameToFinishedId(name) : null;
-  const nk = productEditNormKeyPOS(name);
-  let score = 0;
-  if (productActiveForSalePOS(product)) score += 1000;
-  if (productPosEnabledForSalePOS(product)) score += 200;
-  if (isValidCatalogPricePOS(product.price)) score += 100;
-  if (productManageStockForSalePOS(product, true)) score += 15;
-  if (fid) score += 20;
-  if (fid === 'galon'){
-    if (nk === productEditNormKeyPOS(CANON_GALON_LABEL)) score += 80;
-    if (normName(name).includes('3750')) score += 40;
-    if (Number(product.price) === LEGACY_DEFAULT_GALON_PRICE_POS) score -= 60;
-    if (Number(product.price) === DEFAULT_GALON_PRICE_POS) score += 12;
-  }
-  try{
-    const t = Date.parse(product.updatedAt || product.createdAt || '');
-    if (Number.isFinite(t)) score += Math.min(10, t / 1e15);
-  }catch(_){ }
-  const id = Number(product.id);
-  if (Number.isFinite(id)) score -= Math.min(1, id / 1000000);
-  return score;
-}
-
+// Catálogos → Productos es la única fuente del selector POS.
+// Solo se elimina un duplicado cuando repite exactamente el mismo productId; nunca por nombre o familia.
 function posCanonicalProductsForSale(products){
-  const groups = new Map();
-  for (const p of (Array.isArray(products) ? products : [])){
-    if (!productSellableInPOS(p)) continue;
-    const key = posProductCanonicalGroupKey(p);
-    if (!key || key === 'name:') continue;
-    const cur = groups.get(key);
-    if (!cur || posProductCanonicalScore(p) > posProductCanonicalScore(cur)) groups.set(key, p);
+  const byProductId = new Map();
+  for (const product of (Array.isArray(products) ? products : [])){
+    if (!productSellableInPOS(product)) continue;
+    const productId = catalogProductStableIdPOS(product);
+    if (!productId || byProductId.has(productId)) continue;
+    byProductId.set(productId, product);
   }
-  return Array.from(groups.values());
+  return Array.from(byProductId.values());
+}
+
+function posDuplicateNameCounts(products){
+  const counts = new Map();
+  (Array.isArray(products) ? products : []).forEach((product) => {
+    const key = productEditNormKeyPOS(product && (product.name || product.nombre || ''));
+    if (key) counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return counts;
+}
+
+function posProductDisplayLabel(product, duplicateNames){
+  const name = String((product && (product.name || product.nombre)) || 'Producto').trim() || 'Producto';
+  const key = productEditNormKeyPOS(name);
+  if (!duplicateNames || (duplicateNames.get(key) || 0) < 2) return name;
+  const productId = catalogProductStableIdPOS(product);
+  return `${name} · ${productId.slice(-6)}`;
 }
 
 // Chips de productos (activos + POS marcado desde Catálogos)
@@ -11359,6 +11096,7 @@ async function renderProductChips(){
 
   const hiddenIds = await getHiddenProductIdsPOS();
   let list = posCanonicalProductsForSale((await getAll('products')).filter(p=>p && !hiddenIds.has(p.id)));
+  const duplicateNames = posDuplicateNameCounts(list);
 
   // Orden con prioridad de Arcano 33
   const priority = ['pulso','media','djeba','litro','galon','galón','galon 3750','galón 3750','galon 3800','galón 3800'];
@@ -11383,16 +11121,18 @@ async function renderProductChips(){
     const c = document.createElement('button');
     c.className = 'chip';
     c.dataset.kind = 'product';
-    c.dataset.id = p.id;
+    c.dataset.productId = catalogProductStableIdPOS(p);
+    c.dataset.internalId = String(catalogProductInternalIdPOS(p) || '');
     if (!enabled) c.classList.add('disabled');
-    c.textContent = p.name;
-    if (selected && selected.kind==='product' && p.id === selected.id) c.classList.add('active');
+    c.textContent = posProductDisplayLabel(p, duplicateNames);
+    if (selected && selected.kind==='product' && catalogProductStableIdPOS(p) === selected.productId) c.classList.add('active');
 
     c.onclick = async()=>{
       if (!isSellEnabledNowPOS()) return;
       const prev = parseSelectedSellItemValue(sel.value);
-      sel.value = String(p.id);
-      const same = prev && prev.kind==='product' && prev.id === p.id;
+      const stableId = catalogProductStableIdPOS(p);
+      sel.value = `product:${encodeURIComponent(stableId)}`;
+      const same = prev && prev.kind==='product' && prev.productId === stableId;
       if (same) { $('#sale-qty').value = Math.max(1, parseFloat($('#sale-qty').value||'1')) + 1; }
       else { $('#sale-qty').value = 1; }
       $('#sale-price').value = p.price;
@@ -11458,46 +11198,24 @@ async function renderProductChips(){
 // Delegación de eventos para Productos
 document.addEventListener('change', async (e)=>{
   if (e.target.classList.contains('p-name') || e.target.classList.contains('p-price') || e.target.classList.contains('p-manage') || e.target.classList.contains('p-active')){
-    const id = parseInt(e.target.dataset.id||'0',10);
-    if (!id) return;
-    const all = await getAll('products');
-    const cur = all.find(px=>px.id===id); if (!cur) return;
-    if (e.target.classList.contains('p-name')) cur.name = e.target.value.trim();
-    if (e.target.classList.contains('p-price')) cur.price = parseFloat(e.target.value||'0');
-    if (e.target.classList.contains('p-manage')) cur.manageStock = e.target.checked;
-    if (e.target.classList.contains('p-active')) cur.active = e.target.checked;
-    try{
-      await put('products', cur);
-      await renderProductos(); 
-      await refreshProductSelect(); 
-      await renderInventario();
-      toast('Producto actualizado');
-    }catch(err){
-      alert('No se pudo guardar el producto. ¿Nombre duplicado?');
-    }
+    e.preventDefault();
+    await renderProductos();
+    toast('Cambios bloqueados: usa Catálogos → Productos');
   }
 });
 document.addEventListener('click', async (e)=>{
   const editBtn = e.target.closest('.btn-edit-product');
   if (editBtn){
-    const id = parseInt(editBtn.dataset.id || '0', 10);
-    await openProductEditModalPOS(id);
+    e.preventDefault();
+    toast('Edición bloqueada: usa Catálogos → Productos');
     return;
   }
 
   const delBtn = e.target.closest('.btn-del');
   if (delBtn){
-    const id = parseInt(delBtn.dataset.id,10);
-    if (!confirm('¿Eliminar este producto? Esto no borra ventas pasadas.')) return;
-    try{
-      const all = await getAll('products');
-      const product = all.find(p => p && Number(p.id) === Number(id));
-      if (product) rememberCatalogDeletedPOS('products', product);
-    }catch(_){ }
-    await del('products', id);
-    await renderProductos(); await refreshProductSelect(); await renderInventario();
-    try{ await reempaquePopulateSelectorsPOS(); }catch(_){ }
-    toast('Producto eliminado');
+    e.preventDefault();
+    toast('Borrado bloqueado: usa Catálogos → Productos');
+    return;
   }
 });
 
@@ -13309,6 +13027,7 @@ async function refreshProductSelect(opts){
   const hiddenIds = await getHiddenProductIdsPOS();
   const all = await getAll('products');
   const list = posCanonicalProductsForSale(all.filter(p => p && !hiddenIds.has(p.id)));
+  const duplicateNames = posDuplicateNameCounts(list);
 
   const sel = $('#sale-product');
   if (!sel) return;
@@ -13316,12 +13035,24 @@ async function refreshProductSelect(opts){
   const prevVal = keepSelection ? String(sel.value || '').trim() : '';
   sel.innerHTML = '';
 
-  // Productos
+  // Productos reales del Catálogo
   for (const p of list) {
+    const productId = catalogProductStableIdPOS(p);
     const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = `${p.name} (C${fmt(p.price)})${p.active===false?' [inactivo]':''}`;
+    opt.value = `product:${encodeURIComponent(productId)}`;
+    opt.dataset.productId = productId;
+    opt.dataset.internalId = String(catalogProductInternalIdPOS(p) || '');
+    opt.textContent = `${posProductDisplayLabel(p, duplicateNames)} (C${fmt(p.price)})`;
     sel.appendChild(opt);
+  }
+
+  if (!list.length){
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = 'No hay productos activos habilitados para POS';
+    empty.disabled = true;
+    empty.selected = true;
+    sel.appendChild(empty);
   }
 
   // Extras del evento activo
@@ -13378,11 +13109,10 @@ async function refreshSaleStockLabel(){
     return;
   }
 
-  const prodId = item.id;
   const products = await getAll('products');
-  const p = products.find(pp=>pp.id===prodId);
+  const p = findCatalogProductByStableIdPOS(products, item.productId);
   if (!p || !productManageStockForSalePOS(p, true)) { $('#sale-stock').textContent='—'; return; }
-  const st = await computeStock(parseInt(curId,10), prodId);
+  const st = await computeStock(parseInt(curId,10), p);
   $('#sale-stock').textContent = st;
 }
 
@@ -13397,9 +13127,16 @@ function parseSelectedSellItemValue(val){
     if (!Number.isFinite(id) || id <= 0) return null;
     return { kind:'extra', id };
   }
-  const id = parseInt(v, 10);
-  if (!Number.isFinite(id) || id <= 0) return null;
-  return { kind:'product', id };
+  if (v.startsWith('product:')){
+    let productId = '';
+    try{ productId = decodeURIComponent(v.slice(8)); }catch(_){ productId = v.slice(8); }
+    productId = String(productId || '').trim();
+    return productId ? { kind:'product', productId } : null;
+  }
+  // Compatibilidad visual con HTML antiguo en caché: un valor numérico solo puede resolver un producto existente.
+  const legacyId = parseInt(v, 10);
+  if (Number.isFinite(legacyId) && legacyId > 0) return { kind:'product-legacy', internalId:legacyId };
+  return null;
 }
 
 function sanitizeExtrasPOS(raw){
@@ -13457,9 +13194,12 @@ async function setSalePriceFromSelectionPOS(){
   if (!sel) return;
   const item = parseSelectedSellItemValue(sel.value);
   if (!item) return;
-  if (item.kind === 'product'){
-    const p = (await getAll('products')).find(x => x.id === item.id);
-    if (p) $('#sale-price').value = p.price;
+  if (item.kind === 'product' || item.kind === 'product-legacy'){
+    const products = await getAll('products');
+    const p = item.kind === 'product'
+      ? findCatalogProductByStableIdPOS(products, item.productId)
+      : products.find(x => Number(x && x.id) === Number(item.internalId));
+    if (p && productSellableInPOS(p)) $('#sale-price').value = p.price;
     return;
   }
   const ev = await getActiveEventPOS();
@@ -13477,7 +13217,7 @@ function updateChipsActiveFromSelectionPOS(){
     let isActive = false;
     if (item){
       if (item.kind === 'product' && kind === 'product'){
-        isActive = (parseInt(btn.dataset.id || '0', 10) === item.id);
+        isActive = (String(btn.dataset.productId || '') === item.productId);
       }
       if (item.kind === 'extra' && kind === 'extra'){
         isActive = (parseInt(btn.dataset.extraId || '0', 10) === item.id);
@@ -13836,25 +13576,35 @@ async function addRestock(eventId, productId, qty, extra){
 }
 
 async function addAdjust(eventId, productId, qty, notes){ if (!qty) throw new Error('Ajuste no puede ser 0'); await put('inventory', {eventId, productId, type:'adjust', qty, notes: notes||'Ajuste', time:new Date().toISOString()}); }
-async function computeStock(eventId, productId){
+async function computeStock(eventId, productRef){
   const evId = Number(eventId);
-  const pid = Number(productId);
+  const products = await getAll('products');
+  let product = null;
+  if (productRef && typeof productRef === 'object') product = productRef;
+  else {
+    const raw = String(productRef == null ? '' : productRef).trim();
+    product = findCatalogProductByStableIdPOS(products, raw)
+      || (Number.isFinite(Number(raw)) ? (products || []).find(p => Number(p && p.id) === Number(raw)) : null);
+  }
+  if (!product) return 0;
+
+  const internalId = catalogProductInternalIdPOS(product);
+  const stableId = catalogProductStableIdPOS(product);
+  if (!internalId || !stableId) return 0;
+
   const inv = await getInventoryEntries(evId);
   const ledger = (Array.isArray(inv) ? inv : [])
-    .filter(i => i && Number(i.productId) === pid)
+    .filter(i => i && (Number(i.productId) === internalId || String(i.productId || '').trim() === stableId))
     .reduce((a,b)=> a + (Number(b && b.qty) || 0), 0);
 
   const allSales = await getAll('sales');
   const salesForProduct = (Array.isArray(allSales) ? allSales : [])
-    .filter(s => s && Number(s.eventId) === evId && Number(s.productId) === pid);
+    .filter(s => s && Number(s.eventId) === evId && saleMatchesCatalogProductPOS(s, product));
 
   // Compatibilidad: event.fractionBatches solo representa Vaso ya convertido/disponible en flujos viejos.
-  // Una venta nueva de Vaso descuenta su propio productId; no descuenta Galón, líquido, envase ni tapa.
-  try{
-    const products = await getAll('products');
-    const prod = (products || []).find(p => p && Number(p.id) === pid);
-    const isVaso = !!(prod && normName(prod.name || '') === 'vaso');
-    if (isVaso){
+  const isVaso = normName(product.name || product.nombre || '') === 'vaso';
+  if (isVaso){
+    try{
       const ev = await getEventByIdPOS(evId).catch(()=>null);
       const legacyBatches = sanitizeFractionBatches(ev && ev.fractionBatches);
       const legacyRemaining = legacyBatches.reduce((a,b)=> a + safeInt(b && b.cupsRemaining, 0), 0);
@@ -13863,8 +13613,8 @@ async function computeStock(eventId, productId){
         .reduce((a,b)=> a + (Number(b && b.qty) || 0), 0);
       const vasoOut = ledger + legacyRemaining - normalSold;
       return Number.isFinite(vasoOut) ? vasoOut : 0;
-    }
-  }catch(_){ }
+    }catch(_){ }
+  }
 
   const sold = salesForProduct.reduce((a,b)=> a + (Number(b && b.qty) || 0), 0);
   const out = ledger - sold;
@@ -14606,12 +14356,19 @@ async function reempaqueApplyMovementPOS(input={}){
 // =========================================================
 
 function lotFifoKeyFromProductPOS(product, productId, fallbackName){
-  // Clave por presentación: preferimos P/M/D/L/G; fallback: PID:<id>
-  const name = (product && product.name) ? product.name : (fallbackName || '');
-  const k = presKeyFromProductNamePOS(name || '');
-  if (k) return k;
-  const pid = Number(productId);
-  if (Number.isFinite(pid) && pid > 0) return 'PID:' + pid;
+  // Identidad FIFO: productId estable manda. El nombre solo conserva históricos sin identidad.
+  const stableFromProduct = catalogProductStableIdPOS(product);
+  const rawRef = String(productId == null ? '' : productId).trim();
+  const rawIsLegacyInternal = /^\d+$/.test(rawRef);
+  const stableId = stableFromProduct || (!rawIsLegacyInternal ? rawRef : '');
+  if (stableId) return 'PID:' + stableId;
+
+  const name = (product && (product.name || product.nombre)) ? (product.name || product.nombre) : (fallbackName || '');
+  const legacyKey = presKeyFromProductNamePOS(name || '');
+  if (legacyKey) return legacyKey;
+
+  const internalId = Number(rawRef);
+  if (Number.isFinite(internalId) && internalId > 0) return 'PID-LEGACY:' + internalId;
   return '';
 }
 
@@ -14644,6 +14401,7 @@ async function computeLotFifoForEvent(eventId){
 
   const products = await getAll('products');
   const pMap = new Map((products || []).map(p => [Number(p.id), p]));
+  const pStableMap = new Map((products || []).map(p => [catalogProductStableIdPOS(p), p]).filter(([id]) => !!id));
 
   const entries = await getInventoryEntries(evId);
   const inv = Array.isArray(entries) ? entries : [];
@@ -14659,10 +14417,11 @@ async function computeLotFifoForEvent(eventId){
 
   const soldNeedByKey = {};
   for (const s of sales){
-    const pid = Number(s.productId);
-    if (!Number.isFinite(pid) || pid <= 0) continue;
-    const prod = pMap.get(pid) || null;
-    const key = lotFifoKeyFromProductPOS(prod, pid, s.productName);
+    const stableId = saleStableProductIdPOS(s);
+    const internalId = saleInternalProductIdPOS(s);
+    const prod = (stableId && pStableMap.get(stableId)) || (internalId && pMap.get(internalId)) || null;
+    const identityRef = stableId || internalId || '';
+    const key = lotFifoKeyFromProductPOS(prod, identityRef, s.productName || s.productNameSnapshot);
     if (!key) continue;
     const q = Number(s.qty) || 0;
     if (!q) continue;
@@ -16604,13 +16363,11 @@ function reempaqueIsOpenPOS(){
 }
 
 async function reempaqueSelectableProductsPOS(){
-  let hiddenIds = new Set();
-  try{ hiddenIds = await getHiddenProductIdsPOS(); }catch(_){ hiddenIds = new Set(); }
+  // Reempaque consume productos reales y activos exactamente como existen en Catálogos.
+  // No agrupa, completa ni identifica por nombre; cada opción conserva su identidad real.
   const all = await getAll('products').catch(()=>[]);
-  const base = (Array.isArray(all) ? all : []).filter(p => p && p.id != null && !hiddenIds.has(p.id));
-  const canonical = (typeof posCanonicalProductsForSale === 'function') ? posCanonicalProductsForSale(base) : base.filter(p => p && p.active !== false);
-  return canonical
-    .filter(p => p && p.active !== false)
+  return (Array.isArray(all) ? all : [])
+    .filter(p => p && p.id != null && p.active !== false && p.deleted !== true)
     .sort((a,b)=>{
       const rank = (name)=>{
         const k = (typeof mapProductNameToFinishedId === 'function') ? mapProductNameToFinishedId(name || '') : '';
@@ -16620,7 +16377,9 @@ async function reempaqueSelectableProductsPOS(){
       const ra = rank(a && a.name);
       const rb = rank(b && b.name);
       if (ra !== rb) return ra - rb;
-      return String(a.name || '').localeCompare(String(b.name || ''), 'es-NI', { sensitivity:'base' });
+      const byName = String(a.name || '').localeCompare(String(b.name || ''), 'es-NI', { sensitivity:'base' });
+      if (byName) return byName;
+      return String(a.productId || a.id || '').localeCompare(String(b.productId || b.id || ''));
     });
 }
 
@@ -16642,83 +16401,32 @@ function reempaqueFindProductByNamePOS(products, name){
 }
 
 function reempaqueReadNewTargetPOS(){
-  const name = String(document.getElementById('rp-new-target-name')?.value || '').trim();
-  const capacityMl = reempaquePositivePOS(document.getElementById('rp-new-target-capacity')?.value || 0);
-  const price = reempaqueMoneyPOS(document.getElementById('rp-new-target-price')?.value || 0);
-  return { name, capacityMl, price };
+  // Campos legacy ignorados incluso si un HTML antiguo quedó en caché.
+  return { name:'', capacityMl:0, price:0 };
 }
 
 async function reempaqueEnsureCentralTargetProductPOS(input){
   if (!db) await openDB();
-  const name = String((input && input.name) || '').trim();
-  if (!name) return null;
+  const ref = (input && typeof input === 'object') ? input : {};
+  const internalId = String(ref.id ?? ref.legacyId ?? '').trim();
+  const productId = String(ref.productId ?? ref.productoId ?? ref.catalogProductId ?? '').trim();
+  if (!internalId && !productId) return null;
 
-  const capacityMl = reempaquePositivePOS(input && input.capacityMl);
-  const price = reempaqueMoneyPOS(input && input.price);
-  const unitCost = reempaqueMoneyPOS(input && (input.unitCost ?? input.costoUnitario ?? input.costoUnitarioDestino));
-  const createdFrom = String((input && input.createdFrom) || 'reempaque').trim() || 'reempaque';
-  const now = reempaqueNowISOPOS();
   const products = await getAll('products').catch(()=>[]);
-  let existing = reempaqueFindProductByNamePOS(products, name);
+  const existing = (Array.isArray(products) ? products : []).find((p) => {
+    if (!p || p.active === false || p.deleted === true) return false;
+    const pInternalId = String(p.id ?? '').trim();
+    const pProductId = String(p.productId ?? p.productoId ?? p.catalogProductId ?? '').trim();
+    return (!!internalId && pInternalId === internalId) || (!!productId && pProductId === productId);
+  }) || null;
 
-  if (existing){
-    let changed = false;
-    if (existing.active !== true){ existing.active = true; changed = true; }
-    if (existing.manageStock !== true){ existing.manageStock = true; changed = true; }
-    if (capacityMl > 0 && !(reempaqueCapacityMlFromProductPOS(existing) > 0)){
-      existing.capacityMl = capacityMl;
-      existing.capacidadMl = capacityMl;
-      changed = true;
-    }
-    if (price > 0 && !(Number(existing.price) > 0)){
-      existing.price = price;
-      changed = true;
-    }
-    if (unitCost > 0 && !(getProductStoredUnitCostPOS(existing) > 0)){
-      existing.unitCost = unitCost;
-      existing.costoUnitario = unitCost;
-      existing.costPerUnit = unitCost;
-      changed = true;
-    }
-    existing.updatedAt = existing.updatedAt || now;
-    if (changed){
-      existing.updatedAt = now;
-      await put('products', existing);
-    }
-    return { ...existing, __rpqCreated:false, __rpqMatchedExisting:true };
-  }
-
-  const product = {
-    name,
-    price: price > 0 ? price : 0,
-    manageStock: true,
-    active: true,
-    capacityMl: capacityMl > 0 ? capacityMl : null,
-    capacidadMl: capacityMl > 0 ? capacityMl : null,
-    unitCost: unitCost > 0 ? unitCost : 0,
-    costoUnitario: unitCost > 0 ? unitCost : 0,
-    costPerUnit: unitCost > 0 ? unitCost : 0,
-    createdFrom,
-    createdAt: now,
-    updatedAt: now
-  };
-  const newId = await put('products', product);
-  product.id = newId;
-  return { ...product, __rpqCreated:true, __rpqMatchedExisting:false };
+  return existing ? { ...existing, __rpqCreated:false, __rpqMatchedExisting:true } : null;
 }
 
 async function reempaqueRollbackCreatedTargetProductsPOS(createdTargets){
-  const list = Array.isArray(createdTargets) ? createdTargets : [];
-  for (let i = list.length - 1; i >= 0; i--){
-    const product = list[i] || {};
-    const id = product.id ?? product.productId;
-    if (id === null || typeof id === 'undefined' || id === '') continue;
-    try{
-      await del('products', id);
-    }catch(err){
-      console.warn('No se pudo revertir producto nuevo de Reempaque fallido', product && (product.name || product.nombre || id), err);
-    }
-  }
+  // Ya no existen destinos creados por Reempaque; no borrar productos desde aquí.
+  void createdTargets;
+  return { ok:true, skipped:true };
 }
 
 function reempaqueGetSourceCostInfoPOS(productLike){
@@ -16778,11 +16486,12 @@ async function reempaqueFillSelectPOS(sel, products){
   if (!sel) return;
   const prev = String(sel.value || '').trim();
   sel.innerHTML = '';
+  const list = Array.isArray(products) ? products : [];
   const ph = document.createElement('option');
   ph.value = '';
-  ph.textContent = 'Seleccionar producto';
+  ph.textContent = list.length ? 'Seleccionar producto' : 'Sin productos activos en Catálogos';
   sel.appendChild(ph);
-  for (const p of products){
+  for (const p of list){
     const opt = document.createElement('option');
     opt.value = String(p.id);
     opt.textContent = reempaqueBuildProductOptionTextPOS(p);
@@ -16813,21 +16522,9 @@ async function reempaqueGetUiStatePOS(productsArg){
   const unitCostEl = document.getElementById('rp-source-unit-cost');
   const extraCostEl = document.getElementById('rp-extra-cost');
   const source = reempaqueFindProductPOS(products, sourceEl ? sourceEl.value : '');
-  const newTarget = reempaqueReadNewTargetPOS();
-  const existingNewTarget = newTarget.name ? reempaqueFindProductByNamePOS(products, newTarget.name) : null;
   const selectedTarget = reempaqueFindProductPOS(products, targetEl ? targetEl.value : '');
-  const target = newTarget.name
-    ? (existingNewTarget || {
-        id: '__new_target__',
-        name: newTarget.name,
-        price: newTarget.price > 0 ? newTarget.price : 0,
-        capacityMl: newTarget.capacityMl > 0 ? newTarget.capacityMl : null,
-        capacidadMl: newTarget.capacityMl > 0 ? newTarget.capacityMl : null,
-        active: true,
-        manageStock: true,
-        __rpqNewTarget: true
-      })
-    : selectedTarget;
+  const target = selectedTarget;
+  const newTarget = { name:'', capacityMl:0, price:0 };
   const sourceCostInfo = reempaqueSyncSourceCostFieldPOS(source);
   const qtySource = reempaquePositivePOS(qtySourceEl ? qtySourceEl.value : 0);
   const qtyTarget = reempaquePositivePOS(qtyTargetEl ? qtyTargetEl.value : 0);
@@ -16849,7 +16546,6 @@ async function reempaqueGetUiStatePOS(productsArg){
     products, source, target, selectedTarget, newTarget, qtySource, qtyTarget, sourceCap, targetCap, suggested,
     unitCost, unitCostSource, costOriginTotal,
     extraCostInfo, costAdditionalUnit, costAdditionalTotal,
-    // Compatibilidad interna: costAdditional representa el TOTAL calculado.
     costAdditional: costAdditionalTotal,
     liquidUnitTarget, costTotal, unitTarget
   };
@@ -16963,28 +16659,28 @@ function reempaqueInputNumberInfoPOS(el){
 }
 
 function reempaqueGetMultiDestinationKindPOS(card){
-  const raw = String(card?.querySelector('.rp-multi-target-kind')?.value || 'EXISTING').toUpperCase();
-  return raw === 'NEW' ? 'NEW' : 'EXISTING';
+  // Reempaque solo admite productos existentes del catálogo.
+  const selector = card?.querySelector('.rp-multi-target-kind');
+  if (selector) selector.value = 'EXISTING';
+  return 'EXISTING';
 }
 
 function reempaqueApplyMultiDestinationKindUiPOS(card){
   if (!card) return 'EXISTING';
-  const kind = reempaqueGetMultiDestinationKindPOS(card);
-  card.classList.toggle('rp-multi-new-mode', kind === 'NEW');
-  card.classList.toggle('rp-multi-existing-mode', kind !== 'NEW');
+  const selector = card.querySelector('.rp-multi-target-kind');
+  if (selector){ selector.value = 'EXISTING'; selector.disabled = true; }
+  card.classList.remove('rp-multi-new-mode');
+  card.classList.add('rp-multi-existing-mode');
   const existingWrap = card.querySelector('.rp-multi-existing-wrap');
   const newWrap = card.querySelector('.rp-multi-new-wrap');
-  if (existingWrap) existingWrap.hidden = kind === 'NEW';
-  if (newWrap) newWrap.hidden = kind !== 'NEW';
-  return kind;
+  if (existingWrap) existingWrap.hidden = false;
+  if (newWrap) newWrap.hidden = true;
+  return 'EXISTING';
 }
 
 function reempaqueReadMultiNewTargetPOS(card){
-  if (!card) return { name:'', capacityMl:0, price:0 };
-  const name = String(card.querySelector('.rp-multi-new-target-name')?.value || '').trim();
-  const capacityMl = reempaquePositivePOS(card.querySelector('.rp-multi-new-target-capacity')?.value || 0);
-  const price = reempaqueMoneyPOS(card.querySelector('.rp-multi-new-target-price')?.value || 0);
-  return { name, capacityMl, price };
+  void card;
+  return { name:'', capacityMl:0, price:0 };
 }
 
 function reempaqueDescribeDestinationKindPOS(rawKind){
@@ -17020,29 +16716,10 @@ function reempaqueCreateMultiDestinationCardPOS(){
       <b class="rp-multi-dest-title">Destino</b>
       <button class="btn-danger btn-pill btn-pill-mini rp-multi-remove" type="button">Quitar</button>
     </div>
-    <label>Tipo de destino</label>
-    <select class="rp-multi-target-kind" aria-label="Tipo de producto destino">
-      <option value="EXISTING" selected>Producto existente</option>
-      <option value="NEW">Producto nuevo</option>
-    </select>
     <div class="rp-multi-existing-wrap">
       <label>Producto destino</label>
       <select class="rp-multi-target-product"></select>
-    </div>
-    <div class="rp-multi-new-wrap reempaque-new-target" hidden>
-      <small class="muted">Producto nuevo: quedará disponible para vender y para futuros reempaques.</small>
-      <label>Nombre nuevo producto</label>
-      <input class="rp-multi-new-target-name" type="text" placeholder="Ej: Catrinita" autocomplete="off">
-      <div class="reempaque-inline-fields">
-        <div>
-          <label>Capacidad ml</label>
-          <input class="rp-multi-new-target-capacity a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 150">
-        </div>
-        <div>
-          <label>Precio venta</label>
-          <input class="rp-multi-new-target-price a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 80">
-        </div>
-      </div>
+      <small class="muted">Solo productos activos creados previamente en Catálogos → Productos.</small>
     </div>
     <div class="reempaque-mini-grid">
       <div>
@@ -17064,7 +16741,6 @@ function reempaqueCreateMultiDestinationCardPOS(){
     <div class="reempaque-kv"><span>Costo final unitario</span><b class="rp-multi-target-unit-cost">N/D</b></div>
     <div class="reempaque-kv"><span>Costo total destino</span><b class="rp-multi-target-total-cost">N/D</b></div>
   `;
-  reempaqueApplyMultiDestinationKindUiPOS(card);
   return card;
 }
 
@@ -17305,11 +16981,8 @@ async function registrarReempaqueMultipleUiPOS(){
     const destNo = idx + 1;
     const destName = d.isNewTarget ? String(d.newTarget && d.newTarget.name || '').trim() : (d.target && d.target.name || '');
     if (d.isNewTarget){
-      if (!destName){ errors.push(`Destino ${destNo}: nombre del producto nuevo requerido.`); reempaqueSetElementInvalidPOS(d.newNameEl, true); }
-      if (d.newCapInfo.invalid || (!d.newCapInfo.empty && d.newCapInfo.value < 0)){ errors.push(`Destino ${destNo}: capacidad del producto nuevo inválida.`); reempaqueSetElementInvalidPOS(d.newCapEl, true); }
-      if (!(d.newTarget && d.newTarget.capacityMl > 0)){ errors.push(`Destino ${destNo}: capacidad ml del producto nuevo mayor que 0.`); reempaqueSetElementInvalidPOS(d.newCapEl, true); }
-      if (d.newPriceInfo.invalid || (!d.newPriceInfo.empty && d.newPriceInfo.value < 0)){ errors.push(`Destino ${destNo}: precio de venta inválido.`); reempaqueSetElementInvalidPOS(d.newPriceEl, true); }
-      if (!(d.newTarget && d.newTarget.price > 0)){ errors.push(`Destino ${destNo}: precio de venta del producto nuevo mayor que 0.`); reempaqueSetElementInvalidPOS(d.newPriceEl, true); }
+      errors.push(`Destino ${destNo}: Reempaque no puede crear productos. Créalo primero en Catálogos → Productos.`);
+      reempaqueSetElementInvalidPOS(d.newNameEl || d.selectEl, true);
     }
     if (!d.target){
       errors.push(`Destino ${destNo}: producto destino requerido.`);
@@ -17407,24 +17080,13 @@ async function registrarReempaqueMultipleUiPOS(){
     const capacidadOrigenMl = state.sourceUnitMl > 0 ? state.sourceUnitMl : (state.qtySource > 0 ? reempaqueRound4POS(state.volumeOrigin / state.qtySource) : 0);
     const destinosMovimiento = [];
     for (const d of state.destinations){
-      let targetForMovement = d.target;
-      let tipoDestino = d.isNewTarget ? 'NUEVO' : 'EXISTENTE';
-      let destinoNuevoCreado = false;
-      if (d.isNewTarget){
-        targetForMovement = await reempaqueEnsureCentralTargetProductPOS({
-          name: d.newTarget.name,
-          capacityMl: d.newTarget.capacityMl,
-          price: d.newTarget.price,
-          unitCost: d.unitCost,
-          createdFrom: 'reempaque_multiple'
-        });
-        if (!targetForMovement || targetForMovement.id == null){
-          throw new Error(`No se pudo crear el producto destino ${d.newTarget.name}.`);
-        }
-        destinoNuevoCreado = !!targetForMovement.__rpqCreated;
-        if (destinoNuevoCreado) createdTargetsForRollback.push(targetForMovement);
-        tipoDestino = destinoNuevoCreado ? 'NUEVO' : 'NUEVO_EXISTENTE';
+      if (d.isNewTarget) throw new Error('Reempaque no puede crear productos. Usa Catálogos → Productos.');
+      const targetForMovement = await reempaqueEnsureCentralTargetProductPOS(d.target);
+      if (!targetForMovement || targetForMovement.id == null){
+        throw new Error(`El producto destino ${d.target && d.target.name ? d.target.name : ''} no existe o está inactivo. Usa Catálogos → Productos.`);
       }
+      const tipoDestino = 'EXISTENTE';
+      const destinoNuevoCreado = false;
       destinosMovimiento.push({
         productoDestino: targetForMovement,
         tipoDestino,
@@ -17770,6 +17432,11 @@ async function reempaqueRefreshUiPOS(){
   if (!document.getElementById('reempaque-block')) return;
   reempaqueSetModeUiPOS(reempaqueGetModePOS());
   const products = await reempaquePopulateSelectorsPOS();
+  const registerBtn = document.getElementById('btn-register-reempaque');
+  if (registerBtn) registerBtn.disabled = products.length === 0;
+  if (!products.length){
+    reempaqueSetMsgPOS('No hay productos activos. Créelos primero en Gestión Operativa → Catálogos → Productos.', 'warn');
+  }
   await reempaqueUpdateActivePreviewPOS({ products });
   await renderReempaqueHistoryPOS(reempaqueHistoryEventIdFromUiPOS());
 }
@@ -17780,9 +17447,7 @@ function reempaqueClearValidationPOS(){
 }
 
 async function registrarReempaqueUiPOS(){
-  if (reempaqueGetModePOS() === 'MULTIPLE'){
-    return await registrarReempaqueMultipleUiPOS();
-  }
+  if (reempaqueGetModePOS() === 'MULTIPLE') return await registrarReempaqueMultipleUiPOS();
   reempaqueClearValidationPOS();
   reempaqueSetMsgPOS('', '');
 
@@ -17793,14 +17458,13 @@ async function registrarReempaqueUiPOS(){
   const errors = [];
 
   if (!eventId) errors.push('Selecciona un evento.');
-  if (!state.source) { errors.push('Producto origen requerido.'); reempaqueSetFieldInvalidPOS('rp-source-product', true); }
-  if (!(state.qtySource > 0)) { errors.push('Cantidad origen mayor que 0.'); reempaqueSetFieldInvalidPOS('rp-source-qty', true); }
-  if (!state.target) { errors.push('Producto destino requerido.'); reempaqueSetFieldInvalidPOS('rp-target-product', true); }
-  if (state.newTarget && state.newTarget.name && !(state.newTarget.capacityMl > 0)){
-    errors.push('Capacidad ml del destino nuevo mayor que 0.');
-    reempaqueSetFieldInvalidPOS('rp-new-target-capacity', true);
+  if (!state.source){ errors.push('Producto origen requerido.'); reempaqueSetFieldInvalidPOS('rp-source-product', true); }
+  if (!(state.qtySource > 0)){ errors.push('Cantidad origen mayor que 0.'); reempaqueSetFieldInvalidPOS('rp-source-qty', true); }
+  if (!state.target){
+    errors.push('Selecciona un producto destino activo. Si no existe, créalo primero en Catálogos → Productos.');
+    reempaqueSetFieldInvalidPOS('rp-target-product', true);
   }
-  if (!(state.qtyTarget > 0)) { errors.push('Cantidad creada mayor que 0.'); reempaqueSetFieldInvalidPOS('rp-target-qty', true); }
+  if (!(state.qtyTarget > 0)){ errors.push('Cantidad creada mayor que 0.'); reempaqueSetFieldInvalidPOS('rp-target-qty', true); }
   if (state.extraCostInfo && (state.extraCostInfo.invalid || (!state.extraCostInfo.empty && state.extraCostInfo.value < 0))){
     errors.push('Costo adicional unitario inválido.');
     reempaqueSetFieldInvalidPOS('rp-extra-cost', true);
@@ -17808,11 +17472,15 @@ async function registrarReempaqueUiPOS(){
   if (state.source && state.target && (String(state.source.id) === String(state.target.id) || ((typeof normKeyPOS === 'function') && normKeyPOS(state.source.name || '') === normKeyPOS(state.target.name || '')))){
     errors.push('El producto origen y destino no deberían ser el mismo.');
     reempaqueSetFieldInvalidPOS('rp-source-product', true);
-    reempaqueSetFieldInvalidPOS(state.newTarget && state.newTarget.name ? 'rp-new-target-name' : 'rp-target-product', true);
+    reempaqueSetFieldInvalidPOS('rp-target-product', true);
   }
 
-  if (errors.length){
-    reempaqueSetMsgPOS(errors[0], 'warn');
+  if (errors.length){ reempaqueSetMsgPOS(errors[0], 'warn'); return; }
+
+  const verifiedTarget = await reempaqueEnsureCentralTargetProductPOS(state.target);
+  if (!verifiedTarget){
+    reempaqueSetFieldInvalidPOS('rp-target-product', true);
+    reempaqueSetMsgPOS('El producto destino ya no existe o está inactivo. Créalo o actívalo en Catálogos → Productos.', 'warn');
     return;
   }
 
@@ -17822,21 +17490,10 @@ async function registrarReempaqueUiPOS(){
   if (btn){ btn.disabled = true; btn.textContent = 'Registrando…'; }
 
   try{
-    let targetForMovement = state.target;
-    if (state.newTarget && state.newTarget.name){
-      targetForMovement = await reempaqueEnsureCentralTargetProductPOS({
-        ...state.newTarget,
-        unitCost: state.unitTarget > 0 ? state.unitTarget : 0,
-        createdFrom: 'reempaque'
-      });
-      if (!targetForMovement || targetForMovement.id == null){
-        throw new Error('No se pudo crear el producto destino en el catálogo central.');
-      }
-    }
     const record = await reempaqueApplyMovementPOS({
       eventId,
       productoOrigen: state.source,
-      productoDestino: targetForMovement,
+      productoDestino: verifiedTarget,
       cantidadOrigen: state.qtySource,
       cantidadCreadaDestino: state.qtyTarget,
       cantidadFinalRegistrada: state.qtyTarget,
@@ -17854,18 +17511,11 @@ async function registrarReempaqueUiPOS(){
     const qtySourceEl = document.getElementById('rp-source-qty');
     const qtyTargetEl = document.getElementById('rp-target-qty');
     const extraCostEl = document.getElementById('rp-extra-cost');
-    const newTargetNameEl = document.getElementById('rp-new-target-name');
-    const newTargetCapEl = document.getElementById('rp-new-target-capacity');
-    const newTargetPriceEl = document.getElementById('rp-new-target-price');
     if (qtySourceEl) qtySourceEl.value = '';
     if (qtyTargetEl){ qtyTargetEl.value = ''; delete qtyTargetEl.dataset.rpqAuto; }
     if (extraCostEl) extraCostEl.value = '';
-    if (newTargetNameEl) newTargetNameEl.value = '';
-    if (newTargetCapEl) newTargetCapEl.value = '';
-    if (newTargetPriceEl) newTargetPriceEl.value = '';
     if (noteEl) noteEl.value = '';
     await renderInventario();
-    try{ await renderProductos(); }catch(_){ }
     try{ await refreshProductSelect({ keepSelection:true }); }catch(_){ try{ await renderProductChips(); }catch(__){ } }
     try{ await refreshSaleStockLabel(); }catch(_){ }
     reempaqueSetMsgPOS('Reempaque registrado.', 'ok');
@@ -17930,8 +17580,8 @@ async function renderInventario(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${p.name}</td>
-      <td><input type="checkbox" class="inv-active" data-id="${p.id}" ${p.active===false?'':'checked'}></td>
-      <td><input type="checkbox" class="inv-manage" data-id="${p.id}" ${p.manageStock===false?'':'checked'}></td>
+      <td><input type="checkbox" class="inv-active" data-id="${p.id}" ${p.active===false?'':'checked'} disabled title="Administra Activo en Catálogos → Productos"></td>
+      <td><input type="checkbox" class="inv-manage" data-id="${p.id}" ${p.manageStock===false?'':'checked'} disabled title="Administra Manejar inventario en Catálogos → Productos"></td>
       <td><input class="inv-inicial a33-num" data-a33-default="${init?init.qty:0}" data-id="${p.id}" type="number" inputmode="numeric" step="1" value="${init?init.qty:0}" ${disabled}></td>
       <td><input class="inv-repo" data-id="${p.id}" type="number" inputmode="numeric" step="1" placeholder="+" ${disabled}></td>
       <td><input class="inv-ajuste" data-id="${p.id}" type="number" inputmode="numeric" step="1" placeholder="+/-" ${disabled}></td>
@@ -17984,13 +17634,9 @@ document.addEventListener('click', async (e)=>{
 
 document.addEventListener('change', async (e)=>{
   if (e.target.classList.contains('inv-manage') || e.target.classList.contains('inv-active')){
-    const id = parseInt(e.target.dataset.id||'0',10);
-    const all = await getAll('products');
-    const cur = all.find(px=>px.id===id); if (!cur) return;
-    if (e.target.classList.contains('inv-manage')) cur.manageStock = e.target.checked;
-    if (e.target.classList.contains('inv-active')) cur.active = e.target.checked;
-    await put('products', cur);
-    await renderInventario(); await renderProductChips(); await refreshProductSelect();
+    e.preventDefault();
+    await renderInventario();
+    toast('Propiedad de Producto bloqueada: usa Catálogos → Productos');
   }
 });
 
@@ -22002,7 +21648,7 @@ async function generateInventoryCSV(eventId){
     const inits = inv.filter(i=>i.productId===p.id && i.type==='init').reduce((a,b)=>a+(b.qty||0),0);
     const repo = inv.filter(i=>i.productId===p.id && i.type==='restock').reduce((a,b)=>a+(b.qty||0),0);
     const adj = inv.filter(i=>i.productId===p.id && i.type==='adjust').reduce((a,b)=>a+(b.qty||0),0);
-    const sold = sales.filter(s=>s.eventId===eventId && s.productId===p.id).reduce((a,b)=>a+(b.qty||0),0);
+    const sold = sales.filter(s=>s.eventId===eventId && saleMatchesCatalogProductPOS(s, p)).reduce((a,b)=>a+(b.qty||0),0);
     const stock = inits + repo + adj - sold;
     rows.push([p.name, p.manageStock!==false?1:0, inits, repo, adj, sold, stock]);
   }
@@ -22604,10 +22250,8 @@ async function deleteEvent(eventId){
 
 // Botón Restaurar productos base (A33)
 async function restoreSeed(){
-  clearCatalogDeletedPOS('products');
-  await seedMissingDefaults(true, { restoreDeleted:true });
-  await renderProductos(); await refreshProductSelect(); await renderInventario();
-  toast('Productos base restaurados');
+  toast('Restauración bloqueada: crea Productos en Catálogos → Productos');
+  return { ok:false, blocked:true, reason:'catalogos_productos_fuente_unica' };
 }
 
 // Init & bindings
@@ -23088,10 +22732,14 @@ async function init(){
   try{ setupProductEditModalPOS(); }catch(_){ }
   const legacyAddProdBtn = document.getElementById('btn-add-prod');
   if (legacyAddProdBtn){
-    legacyAddProdBtn.onclick = async()=>{ const name = $('#new-name').value.trim(); const price = parseFloat($('#new-price').value||'0'); if (!name || !(price>0)) return alert('Nombre y precio'); try{ await put('products', {name, price, manageStock:true, active:true, pos:false, receta:false, letra:'', capacityMl:0, capacidadMl:0, unitCost:0, costoUnitario:0, costPerUnit:0, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()}); $('#new-name').value=''; $('#new-price').value=''; await renderProductos(); await refreshProductSelect(); await renderInventario(); try{ await reempaquePopulateSelectorsPOS(); }catch(_){ } toast('Producto agregado'); }catch(err){ alert('No se pudo agregar. ¿Nombre duplicado?'); } };
+    legacyAddProdBtn.onclick = ()=> toast('Creación bloqueada: usa Catálogos → Productos');
+    legacyAddProdBtn.disabled = true;
   }
   const legacyRestoreSeedBtn = document.getElementById('btn-restore-seed');
-  if (legacyRestoreSeedBtn) legacyRestoreSeedBtn.onclick = restoreSeed;
+  if (legacyRestoreSeedBtn){
+    legacyRestoreSeedBtn.onclick = restoreSeed;
+    legacyRestoreSeedBtn.disabled = true;
+  }
 
   // Bancos: compatibilidad legacy; fuente maestra en Catálogos → Bancos
   const addBankBtn = document.getElementById('btn-add-bank');
@@ -23321,7 +22969,7 @@ async function addSale(){
     await addExtraSale(parsed.id);
     return;
   }
-  const productId = (parsed && parsed.kind === 'product') ? parsed.id : parseInt(selVal||'0',10);
+  const selectedProductId = (parsed && parsed.kind === 'product') ? parsed.productId : '';
   const qtyRaw = parseNumPOS($('#sale-qty').value, 0);
   const qty = Math.abs(qtyRaw);
   const priceRaw = parseNumPOS($('#sale-price').value, 0);
@@ -23341,7 +22989,7 @@ async function addSale(){
   const customerName = (customerResolved && customerResolved.id && customerResolved.displayName) ? customerResolved.displayName : '';
   const courtesyTo = $('#sale-courtesy-to').value || '';
   const notes = $('#sale-notes').value || '';
-  if (!date || !productId || !qty) { alert('Completa fecha, producto y cantidad'); return; }
+  if (!date || !selectedProductId || !qty) { alert('Completa fecha, producto y cantidad'); return; }
 
   // Regla final: descuento por unidad NO puede superar el precio unitario (si no es cortesía)
   if (!courtesy && Number.isFinite(price) && discountPerUnit > price + 1e-9) {
@@ -23389,7 +23037,7 @@ async function addSale(){
   if (!(await guardSellDayOpenOrToastPOS(event, date))) return;
 
   const products = await getAll('products');
-  const prod = products.find(p => String(p && p.id) === String(productId));
+  const prod = findCatalogProductByStableIdPOS(products, selectedProductId);
   if (!prod){
     alert('Producto no encontrado. Actualiza el selector de POS y vuelve a intentar.');
     await refreshProductSelect({ keepSelection:false });
@@ -23435,7 +23083,7 @@ async function addSale(){
   }
 
   if (prod && productManageStockForSalePOS(prod, true) && !isReturn){
-    const st = await computeStock(curId, productId);
+    const st = await computeStock(curId, prod);
     if (st < qty){
       const go = confirm(`Stock insuficiente de ${productName}: disponible ${st}, intentas vender ${qty}. ¿Continuar de todos modos?`);
       if (!go) return;
@@ -23482,6 +23130,7 @@ async function addSale(){
     eventId:curId,
     eventName,
     productId: productSnap.productId,
+    productInternalId: productSnap.productInternalId,
     productName: productSnap.productName,
     productNameSnapshot: productSnap.productNameSnapshot,
     unitPrice: productSnap.unitPrice,

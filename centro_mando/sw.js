@@ -1,109 +1,23 @@
-/* Legacy cleanup SW — A33 Centro de Mando (compat) — Bridge SW
-   Objetivo: limpiar solo caches a33-* del Centro de Mando (sin tocar otros módulos)
-   y retirarse.
-*/
-
-// A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.84&r=44'); } catch (e) {}
-
-const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
-  ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
-  : '4.20.84';
-const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null))
-  ? String(self.A33_RELEASE.rev)
-  : '10';
-
-const MODULE = 'centro_mando';
-const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}`;
-
-const PRECACHE_URLS = [
-  './',
-  './index.html?v=4.20.84&r=7',
-  './style.css?v=4.20.84&r=7',
-  './script.js?v=4.20.84&r=7',
-  './manifest.webmanifest?v=4.20.84&r=7',
-  './offline.html',
-  './offline.html?v=4.20.84&r=7',
-  '/assets/js/a33-release.js?v=4.20.84&r=44'
-];
-
-function sameOrigin(url){
-  try{ return url.origin === self.location.origin; }catch(_){ return false; }
-}
-
+/* Suite A33 — retiro controlado del Service Worker legacy centro_mando.
+   No precachea, no toca localStorage ni IndexedDB y se desregistra al activarse. */
+const LEGACY_CACHE_MARKERS = ['centro_mando', 'centro-mando'];
 self.addEventListener('install', (event) => {
-  event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(PRECACHE_URLS.filter(Boolean));
-    try{ self.skipWaiting(); }catch(_){ }
-  })());
+  event.waitUntil(self.skipWaiting());
 });
-
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    // 1) Borrar SOLO caches a33-* del Centro de Mando (no del resto del origen).
-    try{
+    try {
       const keys = await caches.keys();
-      const victims = keys.filter(k => {
-        const s = String(k || '');
-        const low = s.toLowerCase();
-        const isA33 = low.startsWith('a33-');
-        const isCdm = low.includes('centro-mando') || low.includes('centro_mando');
-        return isA33 && isCdm && s !== CACHE_NAME;
-      });
-      await Promise.all(victims.map(k => caches.delete(k).catch(() => false)));
-    }catch(_){ }
-
-    // 2) Avisar a clientes para redirigir (si siguen abiertos)
-    try{
-      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      for (const c of clients) {
-        c.postMessage({ type: 'A33_CDM_MOVED', to: '../centro-mando/index.html', v: SW_VERSION });
-      }
-    }catch(_){ }
-
-    // 3) Tomar control un momento y retirarse
-    try{ await self.clients.claim(); }catch(_){ }
-    try{ await self.registration.unregister(); }catch(_){ }
-  })());
-});
-
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-  if (!sameOrigin(url)) return;
-
-  const isNav = event.request.mode === 'navigate' || event.request.destination === 'document';
-  if (!isNav){
-    // Assets: cache-first durante la ventana corta antes de desregistrarse
-    event.respondWith((async () => {
-      const cache = await caches.open(CACHE_NAME);
-      const cached = await cache.match(event.request);
-      if (cached) return cached;
-      try{
-        const resp = await fetch(event.request);
-        if (resp && resp.status === 200) cache.put(event.request, resp.clone()).catch(() => {});
-        return resp;
-      }catch(_){
-        return cached || new Response('', { status: 504 });
-      }
-    })());
-    return;
-  }
-
-  // Navegación: network-first con fallback sin loops
-  event.respondWith((async () => {
-    try{
-      return await fetch(event.request);
-    }catch(_){
-      const cache = await caches.open(CACHE_NAME);
-      return (
-        (await cache.match(event.request)) ||
-        (await cache.match('./index.html?v=4.20.84&r=7')) ||
-        (await cache.match('./index.html', { ignoreSearch: true })) ||
-        (await cache.match('./offline.html')) ||
-        new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
-      );
-    }
+      await Promise.all(keys.filter((key) => {
+        const value = String(key || '').toLowerCase();
+        return (value.startsWith('a33-') || value.startsWith('arcano33-')) && LEGACY_CACHE_MARKERS.some((marker) => value.includes(marker));
+      }).map((key) => caches.delete(key).catch(() => false)));
+    } catch (_) {}
+    try { await self.clients.claim(); } catch (_) {}
+    try {
+      const clients = await self.clients.matchAll({ type:'window', includeUncontrolled:true });
+      clients.forEach((client) => { try { client.postMessage({ type:'A33_LEGACY_ROUTE_RETIRED', to:'../centro-mando/index.html', version:'4.20.85' }); } catch (_) {} });
+    } catch (_) {}
+    try { await self.registration.unregister(); } catch (_) {}
   })());
 });

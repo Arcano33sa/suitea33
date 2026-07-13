@@ -663,31 +663,40 @@ function productLetterPED(product){
   return String(raw || '').trim().toUpperCase();
 }
 
+function productStableIdPED(product){
+  const p = product && typeof product === 'object' ? product : {};
+  try{
+    if (window.A33Products && typeof window.A33Products.getProductId === 'function'){
+      return String(window.A33Products.getProductId(p) || '').trim();
+    }
+  }catch(_){ }
+  return String(p.productId ?? p.productoId ?? p.catalogProductId ?? '').trim();
+}
+
 function buildProductSnapshotPED(product, fallback){
   const p = product && typeof product === 'object' ? product : {};
   const fb = fallback && typeof fallback === 'object' ? fallback : {};
-  const id = String(p.id ?? p.productId ?? p.productoId ?? fb.productId ?? fb.id ?? '').trim();
+  const productId = productStableIdPED(p) || String(fb.productId ?? '').trim();
+  const internalIdRaw = p.id ?? fb.internalId ?? fb.catalogInternalId ?? null;
+  const internalId = Number(internalIdRaw);
   const nombre = String(p.name ?? p.nombre ?? p.productName ?? p.nombreSnapshot ?? fb.productName ?? fb.nombre ?? fb.name ?? '').replace(/\s+/g, ' ').trim();
   const precioRaw = p.price ?? p.precio ?? p.unitPrice ?? p.precioVenta ?? fb.unitPriceSnapshot ?? fb.unitPrice ?? fb.precio ?? 0;
   const precio = Number(String(precioRaw ?? 0).replace(',', '.'));
   const activo = productActivePED(p);
   const letra = productLetterPED({ ...fb, ...p });
   const snap = {
-    id,
+    id: productId,
+    productId,
+    internalId: Number.isFinite(internalId) && internalId > 0 ? internalId : null,
     nombre,
+    name: nombre,
     precio: Number.isFinite(precio) && precio >= 0 ? precio : 0,
-    activo
+    price: Number.isFinite(precio) && precio >= 0 ? precio : 0,
+    activo,
+    capturedAt: new Date().toISOString()
   };
   if (letra) snap.letra = letra;
   return snap;
-}
-
-function productStableIdPED(product){
-  const p = product && typeof product === 'object' ? product : {};
-  const raw = p.id ?? p.productId ?? p.productoId ?? p.key ?? '';
-  const name = String(p.name || p.nombre || '').trim();
-  const id = String(raw || name || '').trim();
-  return id || ('producto-' + deletedCatalogProductKeyPED(name || Math.random()));
 }
 
 function domSafeProductIdPED(value){
@@ -701,9 +710,9 @@ function productToPedidoItemPED(product){
   if (!productActivePED(p)) return null;
   if (boolFromCatalogPED(p.deleted ?? p.borrado ?? p.isDeleted, false)) return null;
   if (!productPedidosEnabledPED(p)) return null;
-  if (isCatalogProductExactlyDeletedPED(p)) return null;
 
   const productId = productStableIdPED(p);
+  if (!productId) return null;
   const productKey = 'product:' + productId;
   const domId = domSafeProductIdPED(productId);
   const legacyKey = mapProductNameToPresKey(name) || '';
@@ -726,49 +735,33 @@ function productToPedidoItemPED(product){
 }
 
 function sortPedidoProductItemsPED(a, b){
-  const legacyOrder = { pulso:1, media:2, djeba:3, litro:4, galon:5 };
-  const oa = legacyOrder[a && a.legacyKey] || 99;
-  const ob = legacyOrder[b && b.legacyKey] || 99;
-  if (oa !== ob) return oa - ob;
-  return String((a && a.label) || '').localeCompare(String((b && b.label) || ''), 'es-NI', { sensitivity:'base' });
+  const byName = String((a && a.label) || '').localeCompare(String((b && b.label) || ''), 'es-NI', { sensitivity:'base' });
+  if (byName) return byName;
+  return String((a && a.productId) || '').localeCompare(String((b && b.productId) || ''));
 }
 
 async function getPedidosCatalogProductsSafe(){
   const rows = await getAllPosProductsSafe();
-  const candidates = [];
-  for (const p of (Array.isArray(rows) ? rows : [])){
-    const item = productToPedidoItemPED(p);
-    if (!item) continue;
-    item.__score = scoreCatalogProductPED(item.rawProduct);
-    candidates.push(item);
-  }
-
-  candidates.sort((a, b) => (Number(b.__score || 0) - Number(a.__score || 0)));
-
   const usedIds = new Set();
-  const usedNames = new Set();
-  const usedLetters = new Set();
   const out = [];
-
-  candidates.forEach((item) => {
-    const idKey = String(item.productId || item.key || '').trim();
-    const nameKey = compactProductKeyPED(item.label || '');
-    const letterKey = String(item.letter || '').trim().toUpperCase();
-
-    if (idKey && usedIds.has(idKey)) return;
-    if (nameKey && usedNames.has(nameKey)) return;
-    if (letterKey && usedLetters.has(letterKey)) return;
-
-    if (idKey) usedIds.add(idKey);
-    if (nameKey) usedNames.add(nameKey);
-    if (letterKey) usedLetters.add(letterKey);
+  for (const product of (Array.isArray(rows) ? rows : [])){
+    const item = productToPedidoItemPED(product);
+    if (!item || !item.productId || usedIds.has(item.productId)) continue;
+    usedIds.add(item.productId);
     out.push(item);
+  }
+  const counts = new Map();
+  out.forEach((item) => {
+    const key = compactProductKeyPED(item.label);
+    if (key) counts.set(key, (counts.get(key) || 0) + 1);
   });
-
-  return out.sort(sortPedidoProductItemsPED).map((item) => {
-    try{ delete item.__score; }catch(_){ }
-    return item;
+  out.forEach((item) => {
+    const key = compactProductKeyPED(item.label);
+    item.displayLabel = (counts.get(key) || 0) > 1
+      ? `${item.label} · ${String(item.productId).slice(-6)}`
+      : item.label;
   });
+  return out.sort(sortPedidoProductItemsPED);
 }
 
 function setPedidosProductsStatus(message, kind){
@@ -826,8 +819,10 @@ function normalizePedidoItemForStoragePED(item, fallback){
     productId,
     productKey,
     productName,
+    productNameSnapshot: productName,
     qty,
     unitPriceSnapshot,
+    priceSnapshot: unitPriceSnapshot,
     subtotal,
     productSnapshot,
 
@@ -901,7 +896,7 @@ function renderPedidosProductRows(items){
     td.textContent = 'No hay productos activos disponibles en Catálogos.';
     tr.appendChild(td);
     tbody.appendChild(tr);
-    setPedidosProductsStatus('Agregá o activá productos vendibles en Catálogos para crear pedidos.', 'warn');
+    setPedidosProductsStatus('Cree o active productos desde Catálogos → Productos para crear pedidos.', 'warn');
     return;
   }
 
@@ -918,7 +913,7 @@ function renderPedidosProductRows(items){
 
     const nameTd = document.createElement('td');
     nameTd.className = 'product-name-cell';
-    nameTd.textContent = pres.label || 'Producto';
+    nameTd.textContent = pres.displayLabel || pres.label || 'Producto';
     tr.appendChild(nameTd);
 
     const priceTd = document.createElement('td');
@@ -994,26 +989,30 @@ function getPedidoProductItemsArray(pedido){
 
 function itemMatchesPresentationPED(item, pres){
   if (!item || !pres) return false;
-  const pid = String(item.productId ?? item.productoId ?? item.id ?? '').trim();
+  const pid = String(item.productId ?? item.productoId ?? '').trim();
   const pkey = String(item.productKey ?? item.key ?? '').trim();
-  const legacy = String(item.legacyKey ?? item.legacyId ?? '').trim();
   return (!!pid && pid === String(pres.productId || '').trim())
-    || (!!pkey && pkey === pres.key)
-    || (!!legacy && !!pres.legacyKey && legacy === pres.legacyKey);
+    || (!!pkey && pkey === pres.key && pkey === ('product:' + String(pres.productId || '').trim()));
+}
+
+function itemMustRemainHistoricalPED(item, pres){
+  if (!itemMatchesPresentationPED(item, pres)) return true;
+  const savedName = getPedidoItemNamePED(item);
+  const currentName = String(pres && pres.label || '').replace(/\s+/g, ' ').trim();
+  const savedPrice = getPedidoItemUnitPricePED(item);
+  const currentPrice = Number(pres && pres.price) || 0;
+  return compactProductKeyPED(savedName) !== compactProductKeyPED(currentName)
+    || Math.abs(savedPrice - currentPrice) > 0.000001;
 }
 
 function getPedidoQuantityForPresentation(pedido, pres){
   const items = getPedidoProductItemsArray(pedido);
   for (const item of items){
-    if (!itemMatchesPresentationPED(item, pres)) continue;
+    if (!itemMatchesPresentationPED(item, pres) || itemMustRemainHistoricalPED(item, pres)) continue;
     const qty = getPedidoItemQtyPED(item);
     if (qty > 0) return qty;
   }
-  if (pres && pres.legacyKey){
-    const legacy = LEGACY_PRESENTACIONES_BY_KEY[pres.legacyKey];
-    if (legacy && pedido && pedido[legacy.qtyId] != null) return parseNumber(pedido[legacy.qtyId]);
-  }
-  if (pres && pedido && pedido[pres.qtyId] != null) return parseNumber(pedido[pres.qtyId]);
+  // Los campos legacy se muestran como históricos; jamás rellenan un producto activo por nombre/familia.
   return 0;
 }
 
@@ -1021,9 +1020,8 @@ function pushHistoricalPedidoItemPED(out, seen, item){
   const normalized = normalizePedidoItemForStoragePED(item, item && item.productSnapshot);
   const qty = getPedidoItemQtyPED(normalized);
   if (!(qty > 0)) return;
-  const idKey = String(normalized.productId || normalized.productKey || '').trim();
-  const nameKey = compactProductKeyPED(normalized.productName || normalized.nombreSnapshot || '');
-  const uniq = idKey || nameKey;
+  // Solo una identidad persistida puede deduplicar. Un nombre histórico nunca es identidad.
+  const uniq = String(normalized.productId || normalized.productKey || '').trim();
   if (uniq && seen.has(uniq)) return;
   if (uniq) seen.add(uniq);
   out.push(normalized);
@@ -1036,16 +1034,15 @@ function getHistoricalItemsForPedidoFormPED(pedido){
   for (const item of items){
     const qty = getPedidoItemQtyPED(item);
     if (!(qty > 0)) continue;
-    const matchesActive = (Array.isArray(PRESENTACIONES) ? PRESENTACIONES : []).some((pres) => itemMatchesPresentationPED(item, pres));
-    if (matchesActive) continue;
+    const active = (Array.isArray(PRESENTACIONES) ? PRESENTACIONES : []).find((pres) => itemMatchesPresentationPED(item, pres));
+    if (active && !itemMustRemainHistoricalPED(item, active)) continue;
     pushHistoricalPedidoItemPED(out, seen, item);
   }
 
   LEGACY_PRESENTACIONES.forEach((pres) => {
     const qty = parseNumber(pedido && pedido[pres.qtyId] != null ? pedido[pres.qtyId] : 0);
     if (!(qty > 0)) return;
-    const activeMatch = (Array.isArray(PRESENTACIONES) ? PRESENTACIONES : []).some((p) => p && p.legacyKey === pres.key);
-    if (activeMatch) return;
+    // Los campos legacy permanecen históricos aunque exista hoy un producto con nombre parecido.
     const unit = parseNumber((pedido && pedido[pres.legacyPrice] != null) ? pedido[pres.legacyPrice] : 0);
     pushHistoricalPedidoItemPED(out, seen, {
       productId: '',
@@ -1128,7 +1125,11 @@ function readPedidoProductsFromForm(){
   const seen = new Set();
   const deduped = [];
   items.forEach((item) => {
-    const key = String(item.productId || item.productKey || '').trim() || compactProductKeyPED(item.productName || item.nombreSnapshot || '');
+    const stable = String(item.productId || '').trim();
+    const key = stable
+      ? [stable, getPedidoItemNamePED(item), getPedidoItemUnitPricePED(item), item.source || ''].join('|')
+      : String(item.productKey || '').trim();
+    // Registros antiguos sin ID/clave se conservan uno por uno; no se fusionan por texto.
     if (key && seen.has(key)) return;
     if (key) seen.add(key);
     deduped.push(item);
@@ -1184,7 +1185,8 @@ function getPedidoDetailProductLinesPED(p, snap){
     const pid = String(item.productId || item.productoId || '').trim();
     const legacyKey = String(item.legacyKey || item.legacyId || '').trim();
     const name = getPedidoItemNamePED(item);
-    const uniq = key || (pid ? ('product:' + pid) : '') || (legacyKey ? ('legacy:' + legacyKey) : '') || compactProductKeyPED(name);
+    // Sin ID/clave, cada línea histórica permanece independiente; jamás se fusiona por nombre.
+    const uniq = key || (pid ? ('product:' + pid) : '') || (legacyKey ? ('legacy:' + legacyKey) : '');
     if (uniq && seen.has(uniq)) return;
     if (uniq) seen.add(uniq);
 
@@ -1201,6 +1203,9 @@ function getPedidoDetailProductLinesPED(p, snap){
       unit,
       subtotal: qty * unit,
       source: item.source || (legacyKey ? 'legacy' : 'snapshot'),
+      productId: pid,
+      productKey: key,
+      identityKey: pid ? ('product:' + pid) : (key || (legacyKey ? ('legacy:' + legacyKey) : '')),
       legacyKey
     });
   }
@@ -1668,37 +1673,27 @@ function openPosDB() {
   });
 }
 
-function getAllPosProductsSafe() {
+async function getAllPosProductsSafe() {
+  try{
+    if (window.A33Products && typeof window.A33Products.getAll === 'function'){
+      const rows = await window.A33Products.getAll();
+      return Array.isArray(rows) ? rows : [];
+    }
+  }catch(err){
+    console.warn('Pedidos: no se pudo leer el contrato central de Productos', err);
+    return [];
+  }
+  // Compatibilidad técnica de lectura; nunca crea ni completa Productos.
   return new Promise(async (resolve) => {
     const db = await openPosDB();
     if (!db) return resolve([]);
-    let store;
     try {
-      store = db.transaction('products', 'readonly').objectStore('products');
-    } catch (err) {
-      console.warn('Pedidos: store products no encontrada en a33-pos', err);
-      return resolve([]);
-    }
-    if (store.getAll) {
+      const store = db.transaction('products', 'readonly').objectStore('products');
       const req = store.getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => {
-        console.warn('Pedidos: no se pudieron leer products del POS', req.error);
-        resolve([]);
-      };
-    } else {
-      // Fallback (browsers antiguos): cursor
-      const out = [];
-      const req = store.openCursor();
-      req.onsuccess = (e) => {
-        const cur = e.target.result;
-        if (cur) { out.push(cur.value); cur.continue(); }
-        else resolve(out);
-      };
-      req.onerror = () => {
-        console.warn('Pedidos: no se pudieron leer products del POS', req.error);
-        resolve([]);
-      };
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => resolve([]);
+    } catch (_) {
+      resolve([]);
     }
   });
 }
@@ -2518,7 +2513,7 @@ async function exportToCSV() {
   await new Promise((r) => setTimeout(r, 0));
 
   try{
-    const headers = [
+    const baseHeaders = [
       "Fecha fabricación",
       "Fecha entrega",
       "Código",
@@ -2529,22 +2524,9 @@ async function exportToCSV() {
       "Referencia",
       "Productos detalle",
       "Total unidades",
-      "Subtotal productos",
-      "Pulso - Cantidad",
-      "Pulso - Precio",
-      "Pulso - Descuento",
-      "Media - Cantidad",
-      "Media - Precio",
-      "Media - Descuento",
-      "Djeba - Cantidad",
-      "Djeba - Precio",
-      "Djeba - Descuento",
-      "Litro - Cantidad",
-      "Litro - Precio",
-      "Litro - Descuento",
-      "Galón - Cantidad",
-      "Galón - Precio",
-      "Galón - Descuento",
+      "Subtotal productos"
+    ];
+    const tailHeaders = [
       "Subtotal presentaciones",
       "Descuento total",
       "Envío",
@@ -2554,17 +2536,58 @@ async function exportToCSV() {
       "Monto pagado",
       "Saldo pendiente",
       "Lotes relacionados",
-      "Entregado",
+      "Entregado"
     ];
 
     const numOrEmpty = (v) => (typeof v === "number" && Number.isFinite(v) ? Number(v.toFixed(2)) : "");
+    const detailsByPedido = new Map();
+    const productColumns = new Map();
 
-    const rows = pedidos.map((p) => {
-      const delivered = (p && (p.estado === 'entregado')) || !!p.entregado;
+    pedidos.forEach((p, pedidoIndex) => {
       const detail = getPedidoTotalsForDisplayPED(p);
+      detailsByPedido.set(String(p.id ?? pedidoIndex), detail);
+      detail.lines.forEach((item, lineIndex) => {
+        const productId = String(item.productId || '').trim();
+        const explicitKey = String(item.identityKey || item.productKey || '').trim();
+        // Sin productId ni clave histórica explícita, la identidad permanece aislada por pedido/línea.
+        const identityKey = productId ? ('product:' + productId) : (explicitKey || `historical-row:${p.id ?? pedidoIndex}:${lineIndex}`);
+        if (!productColumns.has(identityKey)) productColumns.set(identityKey, { key:identityKey, productId, label:String(item.label || 'Producto histórico') });
+      });
+    });
+
+    const dynamicHeaders = [];
+    productColumns.forEach((col) => {
+      const identityTag = col.productId ? col.productId : String(col.key || 'Histórico').replace(/^legacy:/, 'Histórico:');
+      const headerLabel = `${col.label} [${identityTag}]`;
+      dynamicHeaders.push(`${headerLabel} - Cantidad`, `${headerLabel} - Precio`, `${headerLabel} - Subtotal`);
+    });
+    const headers = [...baseHeaders, ...dynamicHeaders, ...tailHeaders];
+
+    const rows = pedidos.map((p, pedidoIndex) => {
+      const delivered = (p && (p.estado === 'entregado')) || !!p.entregado;
+      const detail = detailsByPedido.get(String(p.id ?? pedidoIndex)) || getPedidoTotalsForDisplayPED(p);
       const subPres = (typeof p.subtotalPresentaciones === 'number') ? p.subtotalPresentaciones
         : (typeof p.subtotal === 'number' ? p.subtotal : detail.subtotal);
       const totalUnits = detail.lines.reduce((sum, item) => sum + (Number(item.qty || 0) || 0), 0);
+      const lineByIdentity = new Map();
+      detail.lines.forEach((item, lineIndex) => {
+        const productId = String(item.productId || '').trim();
+        const explicitKey = String(item.identityKey || item.productKey || '').trim();
+        const identityKey = productId ? ('product:' + productId) : (explicitKey || `historical-row:${p.id ?? pedidoIndex}:${lineIndex}`);
+        const current = lineByIdentity.get(identityKey) || { qty:0, subtotal:0 };
+        const qty = Number(item.qty || 0) || 0;
+        const subtotal = Number(item.subtotal != null ? item.subtotal : qty * (Number(item.unit || 0) || 0)) || 0;
+        current.qty += qty;
+        current.subtotal += subtotal;
+        lineByIdentity.set(identityKey, current);
+      });
+      const dynamicValues = [];
+      productColumns.forEach((col) => {
+        const line = lineByIdentity.get(col.key);
+        if (!line){ dynamicValues.push('', '', ''); return; }
+        const unit = line.qty ? line.subtotal / line.qty : 0;
+        dynamicValues.push(line.qty, numOrEmpty(unit), numOrEmpty(line.subtotal));
+      });
       return [
         formatDate(p.fechaCreacion),
         formatDate(p.fechaEntrega),
@@ -2577,21 +2600,7 @@ async function exportToCSV() {
         buildPedidoProductsExportTextPED(p),
         totalUnits,
         numOrEmpty(getPedidoSubtotalFromLinesPED(detail.lines)),
-        p.pulsoCant ?? 0,
-        p.pulsoPrecio ?? 0,
-        p.pulsoDesc ?? 0,
-        p.mediaCant ?? 0,
-        p.mediaPrecio ?? 0,
-        p.mediaDesc ?? 0,
-        p.djebaCant ?? 0,
-        p.djebaPrecio ?? 0,
-        p.djebaDesc ?? 0,
-        p.litroCant ?? 0,
-        p.litroPrecio ?? 0,
-        p.litroDesc ?? 0,
-        p.galonCant ?? 0,
-        p.galonPrecio ?? 0,
-        p.galonDesc ?? 0,
+        ...dynamicValues,
         numOrEmpty(subPres),
         numOrEmpty(detail.descuento),
         numOrEmpty(detail.envio),
@@ -2601,7 +2610,7 @@ async function exportToCSV() {
         numOrEmpty(detail.pagoAnt),
         numOrEmpty(detail.saldo),
         (p.lotesRelacionados || "").replace(/\r?\n/g, " "),
-        delivered ? "Sí" : "No",
+        delivered ? "Sí" : "No"
       ];
     });
 
@@ -2611,6 +2620,7 @@ async function exportToCSV() {
       "Fecha fabricación",
       "Fecha entrega",
       "Producto",
+      "productId / clave histórica",
       "Cantidad",
       "Precio snapshot",
       "Subtotal",
@@ -2630,10 +2640,11 @@ async function exportToCSV() {
           formatDate(p.fechaCreacion),
           formatDate(p.fechaEntrega),
           item.label || "Producto",
+          item.productId || item.identityKey || item.productKey || item.legacyKey || 'Histórico sin productId',
           qty,
           numOrEmpty(unit),
           numOrEmpty(sub),
-          item.source === 'legacy' ? 'Histórico' : 'Snapshot'
+          item.productId ? 'Producto identificado' : 'Histórico'
         ]);
       });
     });
@@ -2644,7 +2655,7 @@ async function exportToCSV() {
     XLSX.utils.book_append_sheet(wb, ws, "Pedidos");
 
     const wsDetail = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailRows]);
-    wsDetail['!cols'] = [14, 26, 14, 14, 28, 10, 15, 14, 12].map((wch) => ({ wch }));
+    wsDetail['!cols'] = [14, 26, 14, 14, 28, 30, 10, 15, 14, 18].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsDetail, "Detalle productos");
 
     const timestamp = new Date().toISOString().slice(0, 10);
@@ -3069,7 +3080,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js?v=4.20.84&r=18').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.85&r=1').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

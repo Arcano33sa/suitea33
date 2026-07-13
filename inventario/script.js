@@ -8,63 +8,39 @@ const LIQUIDS = [
   { id: "agua",   nombre: "Agua pura" },
 ];
 
-const BOTTLES = [
-  { id: "pulso", nombre: "Pulso 250 ml" },
-  { id: "media", nombre: "Media 375 ml" },
-  { id: "djeba", nombre: "Djeba 750 ml" },
-  { id: "litro", nombre: "Litro 1000 ml" },
-  { id: "galon", nombre: "Galón 3720 ml" },
-];
-
-const FINISHED = [
-  { id: "pulso", nombre: "Pulso 250 ml (listo)" },
-  { id: "media", nombre: "Media 375 ml (lista)" },
-  { id: "djeba", nombre: "Djeba 750 ml (lista)" },
-  { id: "litro", nombre: "Litro 1000 ml (lista)" },
-  { id: "galon", nombre: "Galón 3720 ml (lista)" },
-];
-
-let INV_FINISHED_DEFS = FINISHED.slice();
-
-const CAPS_KEYS = [
-  'gallon',
-  'pulsoLitro',
-  'djebaMedia',
-  'vasos12oz',
-];
-
-const CAPS = [
-  { id: 'gallon', nombre: 'Tapa Galón' },
-  { id: 'pulsoLitro', nombre: 'Tapa Pulso/Litro' },
-  { id: 'djebaMedia', nombre: 'Tapa Djeba/Media' },
-  { id: 'vasos12oz', nombre: 'Vasos 12oz' },
-];
-
-// Catálogos dinámicos — Inventario solo lee/visualiza. Producción sigue consumiendo.
+// Catálogos dinámicos. Inventario consume identidades reales; no crea catálogos.
 const ENVASES_CATALOG_KEY = 'a33_catalog_envases_v1';
 const TAPAS_CATALOG_KEY = 'a33_catalog_tapas_v1';
 
-const ENVASE_ID_TO_INVENTORY_KEY = {
-  envase_pulso: 'pulso',
-  envase_media: 'media',
-  envase_djeba: 'djeba',
-  envase_litro: 'litro',
-  envase_galon: 'galon',
-};
+// Etiquetas únicamente para registros históricos sin catálogo. No son listas operativas.
+const LEGACY_ENVASE_LABELS = Object.freeze({
+  pulso:'Pulso 250 ml',
+  media:'Media 375 ml',
+  djeba:'Djeba 750 ml',
+  litro:'Litro 1000 ml',
+  galon:'Galón 3720 ml'
+});
+const LEGACY_TAPA_LABELS = Object.freeze({
+  gallon:'Tapa Galón',
+  pulsoLitro:'Tapa Pulso/Litro',
+  djebaMedia:'Tapa Djeba/Media',
+  vasos12oz:'Vasos 12oz'
+});
+const LEGACY_FINISHED_LABELS = Object.freeze({
+  pulso:'Pulso 250 ml',
+  media:'Media 375 ml',
+  djeba:'Djeba 750 ml',
+  litro:'Litro 1000 ml',
+  galon:'Galón 3720 ml'
+});
 
-const TAPA_ID_TO_INVENTORY_KEY = {
-  tapa_galon: 'gallon',
-  tapa_pulso_litro: 'pulsoLitro',
-  tapa_djeba_media: 'djebaMedia',
-};
-
-let INV_BOTTLE_DEFS = BOTTLES.slice();
-let INV_CAP_DEFS = CAPS.slice();
+let INV_BOTTLE_DEFS = [];
+let INV_CAP_DEFS = [];
+let INV_FINISHED_DEFS = [];
+let INV_PRODUCT_CATALOG = [];
 
 function defaultCapsSection(){
-  const out = {};
-  CAPS_KEYS.forEach((k)=>{ out[k] = { stock: 0, min: 0 }; });
-  return out;
+  return {};
 }
 
 function normalizeInvText(value){
@@ -82,307 +58,337 @@ function normalizeInvKey(value){
 function invBool(value, fallback){
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value === 1;
-  const s = String(value ?? '').trim().toLowerCase();
-  if (['true','1','si','sí','yes','y','activo','activa'].includes(s)) return true;
-  if (['false','0','no','n','inactivo','inactiva'].includes(s)) return false;
+  const text = String(value ?? '').trim().toLowerCase();
+  if (['true','1','si','sí','yes','y','activo','activa'].includes(text)) return true;
+  if (['false','0','no','n','inactivo','inactiva'].includes(text)) return false;
   return !!fallback;
 }
 
 function readJsonLocalSafe(key, fallback){
   try{
     if (window.A33Storage && typeof A33Storage.getJSON === 'function'){
-      const val = A33Storage.getJSON(key, fallback, 'local');
-      return val == null ? fallback : val;
+      const value = A33Storage.getJSON(key, fallback, 'local');
+      return value == null ? fallback : value;
     }
   }catch(_){ }
   try{
     if (!window.localStorage) return fallback;
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
+    return raw == null ? fallback : JSON.parse(raw);
   }catch(_){ return fallback; }
 }
 
-function normalizeCatalogRow(raw, kind, index){
+function normalizeCatalogRow(raw){
   const src = raw && typeof raw === 'object' ? raw : {};
-  const id = String(src.id || src.envaseId || src.tapaId || `${kind}_${index}` || '').trim();
-  const name = String(src.name || src.nombre || src.label || src.descripcion || src.description || '').trim();
-  if (!id && !name) return null;
+  const id = String(src.id || src.envaseId || src.tapaId || '').trim();
+  if (!id) return null;
+  const name = String(src.name || src.nombre || src.label || src.descripcion || src.description || id).trim();
   return {
     ...src,
-    id: id || `${kind}_${normalizeInvKey(name) || index}`,
+    id,
     name,
-    nombre: name,
-    active: invBool(src.active ?? src.activo ?? src.isActive, true),
+    nombre:name,
+    active:invBool(src.active ?? src.activo ?? src.isActive, true)
   };
 }
 
-function readCatalogRowsForInventario(key, kind){
+function readCatalogRowsForInventario(key, options){
+  const opts = options && typeof options === 'object' ? options : {};
   const raw = readJsonLocalSafe(key, []);
-  const arr = Array.isArray(raw) ? raw : [];
+  const rows = Array.isArray(raw) ? raw : [];
   const seen = new Set();
   const out = [];
-  arr.forEach((item, index) => {
-    const row = normalizeCatalogRow(item, kind, index);
-    if (!row || row.active === false) return;
-    const nameKey = normalizeInvKey(row.name || row.nombre);
-    const idKey = String(row.id || '').trim();
-    const unique = nameKey || idKey;
-    if (!unique || seen.has(unique)) return;
-    seen.add(unique);
+  rows.forEach((item) => {
+    const row = normalizeCatalogRow(item);
+    if (!row || (!opts.includeInactive && row.active === false)) return;
+    if (seen.has(row.id)) return;
+    seen.add(row.id);
     out.push(row);
   });
-  out.sort((a, b) => String(a.name || a.nombre || '').localeCompare(String(b.name || b.nombre || ''), 'es-NI', { sensitivity:'base' }));
+  out.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es-NI', { sensitivity:'base' }));
   return out;
 }
 
-function legacyBottleIdFromName(value){
-  const n = normalizeInvKey(value);
-  if (!n) return '';
-  if (['pulso','botellapulso','pulso250ml','botellapulso250ml'].includes(n)) return 'pulso';
-  if (['media','botellamedia','media375ml','botellamedia375ml'].includes(n)) return 'media';
-  if (['djeba','botelladjeba','djeba750ml','botelladjeba750ml'].includes(n)) return 'djeba';
-  if (['litro','botellalitro','litro1000ml','botellalitro1000ml'].includes(n)) return 'litro';
-  if (['galon','galón','botellagalon','botellagalón','galon3750ml','botellagalon3750ml'].includes(n)) return 'galon';
-  return '';
+function movementExistsFor(inv, tipoItem, itemId){
+  const target = String(itemId || '').trim();
+  if (!target) return false;
+  return (Array.isArray(inv && inv.movimientos) ? inv.movimientos : []).some((mov) => {
+    const id = String((mov && (mov.itemId || mov.idItem)) || '').trim();
+    const type = normalizeInvText((mov && (mov.tipoItem || mov.itemType || mov.kind)) || '');
+    return id === target && (!tipoItem || type === normalizeInvText(tipoItem));
+  });
 }
 
-function legacyCapIdFromName(value){
-  const n = normalizeInvKey(value);
-  if (!n) return '';
-  if (['tapagalon','tapagallon','galon','gallon'].includes(n)) return 'gallon';
-  if (['tapapulsolitro','pulsolitro'].includes(n)) return 'pulsoLitro';
-  if (['tapadjebamedia','djebamedia'].includes(n)) return 'djebaMedia';
-  if (['vasos12oz','vaso12oz'].includes(n)) return 'vasos12oz';
-  return '';
+function inventoryRecordHasHistory(inv, section, id, tipoItem){
+  const group = inv && inv[section] && typeof inv[section] === 'object' ? inv[section] : {};
+  const row = group[id] && typeof group[id] === 'object' ? group[id] : null;
+  if (!row) return false;
+  const stock = Number(row.stock);
+  const minimum = Number(row.min ?? row.minimo);
+  if ((Number.isFinite(stock) && stock !== 0) || (Number.isFinite(minimum) && minimum !== 0)) return true;
+  if (String(row.name || row.nombre || row.productName || row.nombreSnapshot || '').trim()) return true;
+  return movementExistsFor(inv, tipoItem, id);
 }
 
-function bottleInventoryKeyFromCatalog(row){
-  const id = String(row && row.id || '').trim();
-  if (id && ENVASE_ID_TO_INVENTORY_KEY[id]) return ENVASE_ID_TO_INVENTORY_KEY[id];
-  const legacy = legacyBottleIdFromName((row && (row.name || row.nombre)) || id);
-  return legacy || id;
-}
-
-function capInventoryKeyFromCatalog(row){
-  const id = String(row && row.id || '').trim();
-  if (id && TAPA_ID_TO_INVENTORY_KEY[id]) return TAPA_ID_TO_INVENTORY_KEY[id];
-  const legacy = legacyCapIdFromName((row && (row.name || row.nombre)) || id);
-  return legacy || id;
+function legacyInventoryName(labels, id, row, suffix){
+  const explicit = String((row && (row.name || row.nombre || row.productName || row.nombreSnapshot)) || '').trim();
+  const base = explicit || labels[id] || String(id || 'Registro');
+  return suffix ? `${base} (${suffix})` : base;
 }
 
 function buildBottleDefs(inv){
-  const defs = BOTTLES.map((x) => ({ ...x, legacy:true }));
-  const seenIds = new Set(defs.map((x) => String(x.id)));
-  const seenNames = new Set(defs.map((x) => normalizeInvKey(x.nombre)));
+  const defs = [];
+  const catalogRows = readCatalogRowsForInventario(ENVASES_CATALOG_KEY, { includeInactive:true });
+  const catalogIds = new Set(catalogRows.map((row) => row.id));
 
-  readCatalogRowsForInventario(ENVASES_CATALOG_KEY, 'envase').forEach((row) => {
-    const id = bottleInventoryKeyFromCatalog(row);
-    const name = String(row.name || row.nombre || id).trim();
-    const nameKey = normalizeInvKey(name);
-    const legacyName = legacyBottleIdFromName(name);
-    if (!id) return;
-    if (seenIds.has(id)) return;
-    if (legacyName && seenIds.has(legacyName)) return;
-    if (nameKey && seenNames.has(nameKey)) return;
+  catalogRows.forEach((row) => {
+    const active = row.active !== false;
+    const hasHistory = inventoryRecordHasHistory(inv, 'bottles', row.id, 'envase');
+    if (!active && !hasHistory) return;
     defs.push({
-      id,
-      nombre: name || id,
-      catalogId: String(row.id || '').trim(),
-      dynamic:true,
+      id:row.id,
+      catalogId:row.id,
+      nombre:active ? row.name : `${row.name} (inactivo · histórico)`,
+      active,
+      operational:active,
+      historical:!active,
       source:'catalogos-envases'
     });
-    seenIds.add(id);
-    if (nameKey) seenNames.add(nameKey);
   });
 
   Object.keys((inv && inv.bottles) || {}).forEach((id) => {
-    const key = String(id || '').trim();
-    if (!key || seenIds.has(key)) return;
-    defs.push({ id:key, nombre:key, dynamic:true, source:'inventario-existente' });
-    seenIds.add(key);
+    if (catalogIds.has(id) || !inventoryRecordHasHistory(inv, 'bottles', id, 'envase')) return;
+    const row = inv.bottles[id];
+    defs.push({
+      id,
+      nombre:legacyInventoryName(LEGACY_ENVASE_LABELS, id, row, 'legacy · histórico'),
+      active:false,
+      operational:false,
+      historical:true,
+      legacy:true,
+      source:'inventario-legacy'
+    });
   });
 
-  defs.sort((a, b) => {
-    const ax = a.dynamic ? 1 : 0;
-    const bx = b.dynamic ? 1 : 0;
-    if (ax !== bx) return ax - bx;
+  return defs.sort((a, b) => {
+    if (!!a.operational !== !!b.operational) return a.operational ? -1 : 1;
     return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es-NI', { sensitivity:'base' });
   });
-  return defs;
 }
 
 function buildCapDefs(inv){
-  const defs = CAPS.map((x) => ({ ...x, legacy:true }));
-  const seenIds = new Set(defs.map((x) => String(x.id)));
-  const seenNames = new Set(defs.map((x) => normalizeInvKey(x.nombre)));
+  const defs = [];
+  const catalogRows = readCatalogRowsForInventario(TAPAS_CATALOG_KEY, { includeInactive:true });
+  const catalogIds = new Set(catalogRows.map((row) => row.id));
 
-  readCatalogRowsForInventario(TAPAS_CATALOG_KEY, 'tapa').forEach((row) => {
-    const id = capInventoryKeyFromCatalog(row);
-    const name = String(row.name || row.nombre || id).trim();
-    const nameKey = normalizeInvKey(name);
-    const legacyName = legacyCapIdFromName(name);
-    if (!id) return;
-    if (seenIds.has(id)) return;
-    if (legacyName && seenIds.has(legacyName)) return;
-    if (nameKey && seenNames.has(nameKey)) return;
+  catalogRows.forEach((row) => {
+    const active = row.active !== false;
+    const hasHistory = inventoryRecordHasHistory(inv, 'caps', row.id, 'tapa');
+    if (!active && !hasHistory) return;
     defs.push({
-      id,
-      nombre: name || id,
-      catalogId: String(row.id || '').trim(),
-      dynamic:true,
+      id:row.id,
+      catalogId:row.id,
+      nombre:active ? row.name : `${row.name} (inactivo · histórico)`,
+      active,
+      operational:active,
+      historical:!active,
       source:'catalogos-tapas'
     });
-    seenIds.add(id);
-    if (nameKey) seenNames.add(nameKey);
   });
 
   Object.keys((inv && inv.caps) || {}).forEach((id) => {
-    const key = String(id || '').trim();
-    if (!key || seenIds.has(key)) return;
-    defs.push({ id:key, nombre:key, dynamic:true, source:'inventario-existente' });
-    seenIds.add(key);
+    if (catalogIds.has(id) || !inventoryRecordHasHistory(inv, 'caps', id, 'tapa')) return;
+    const row = inv.caps[id];
+    defs.push({
+      id,
+      nombre:legacyInventoryName(LEGACY_TAPA_LABELS, id, row, 'legacy · histórico'),
+      active:false,
+      operational:false,
+      historical:true,
+      legacy:true,
+      source:'inventario-legacy'
+    });
   });
 
-  defs.sort((a, b) => {
-    const ax = a.dynamic ? 1 : 0;
-    const bx = b.dynamic ? 1 : 0;
-    if (ax !== bx) return ax - bx;
+  return defs.sort((a, b) => {
+    if (!!a.operational !== !!b.operational) return a.operational ? -1 : 1;
     return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es-NI', { sensitivity:'base' });
   });
-  return defs;
 }
 
 function ensureDynamicCatalogInventoryInPlace(inv){
   if (!inv || typeof inv !== 'object') return inv;
   if (!inv.bottles || typeof inv.bottles !== 'object') inv.bottles = {};
-  if (!inv.caps || typeof inv.caps !== 'object') inv.caps = defaultCapsSection();
-
+  if (!inv.caps || typeof inv.caps !== 'object') inv.caps = {};
   INV_BOTTLE_DEFS = buildBottleDefs(inv);
   INV_CAP_DEFS = buildCapDefs(inv);
-
-  INV_BOTTLE_DEFS.forEach((b) => {
-    const id = String(b && b.id || '').trim();
-    if (!id) return;
-    if (!inv.bottles[id] || typeof inv.bottles[id] !== 'object') inv.bottles[id] = { stock:0 };
-    const st = toFiniteNumber(inv.bottles[id].stock);
-    inv.bottles[id].stock = Number.isFinite(st) ? Math.trunc(st) : 0;
-  });
-
-  INV_CAP_DEFS.forEach((c) => {
-    const id = String(c && c.id || '').trim();
-    if (!id) return;
-    if (!inv.caps[id] || typeof inv.caps[id] !== 'object') inv.caps[id] = { stock:0, min:0 };
-    const st = toFiniteNumber(inv.caps[id].stock);
-    const mn = toFiniteNumber(inv.caps[id].min);
-    inv.caps[id].stock = Number.isFinite(st) ? Math.trunc(st) : 0;
-    inv.caps[id].min = Number.isFinite(mn) ? Math.max(0, Math.trunc(mn)) : 0;
-  });
-
   return inv;
 }
 
-function $(id) {
-  return document.getElementById(id);
+function productIdForInventory(product){
+  try{
+    if (window.A33Products && typeof window.A33Products.getProductId === 'function'){
+      return String(window.A33Products.getProductId(product) || '').trim();
+    }
+  }catch(_){ }
+  return String((product && (product.productId ?? product.productoId)) || '').trim();
+}
+
+function productIsActiveForInventory(product){
+  return !!product && product.active !== false && product.deleted !== true;
+}
+
+function productNameForInventory(product, productId){
+  return String((product && (product.name || product.nombre)) || productId || 'Producto').trim();
+}
+
+async function refreshProductCatalogForInventory(){
+  try{
+    if (!window.A33Products || typeof window.A33Products.getAll !== 'function'){
+      INV_PRODUCT_CATALOG = [];
+      return INV_PRODUCT_CATALOG;
+    }
+    const rows = await window.A33Products.getAll();
+    const seen = new Set();
+    INV_PRODUCT_CATALOG = (Array.isArray(rows) ? rows : []).filter((product) => {
+      const productId = productIdForInventory(product);
+      if (!productId || seen.has(productId)) return false;
+      seen.add(productId);
+      return true;
+    });
+    return INV_PRODUCT_CATALOG;
+  }catch(error){
+    console.error('No se pudo leer Catálogos → Productos para Inventario.', error);
+    INV_PRODUCT_CATALOG = [];
+    return INV_PRODUCT_CATALOG;
+  }
+}
+
+function explicitLegacyFinishedKey(inv, productId){
+  const target = String(productId || '').trim();
+  const legacy = inv && inv.finished && typeof inv.finished === 'object' ? inv.finished : {};
+  if (legacy[target] && typeof legacy[target] === 'object') return target;
+  return Object.keys(legacy).find((key) => {
+    const row = legacy[key] && typeof legacy[key] === 'object' ? legacy[key] : {};
+    return String(row.productId || row.productoId || '').trim() === target;
+  }) || '';
+}
+
+function buildFinishedDefs(inv){
+  const defs = [];
+  const catalogIds = new Set();
+
+  INV_PRODUCT_CATALOG.forEach((product) => {
+    const productId = productIdForInventory(product);
+    if (!productId || catalogIds.has(productId)) return;
+    catalogIds.add(productId);
+    const active = productIsActiveForInventory(product);
+    const legacyFallbackKey = explicitLegacyFinishedKey(inv, productId);
+    const hasHistory = inventoryRecordHasHistory(inv, 'finishedByProductId', productId, 'producto')
+      || (legacyFallbackKey && inventoryRecordHasHistory(inv, 'finished', legacyFallbackKey, 'producto'));
+    if (!active && !hasHistory) return;
+    const baseName = productNameForInventory(product, productId);
+    defs.push({
+      id:productId,
+      productId,
+      nombre:active ? baseName : `${baseName} (inactivo · histórico)`,
+      active,
+      operational:active,
+      historical:!active,
+      source:'catalogos-productos',
+      stockSection:'finishedByProductId',
+      stockKey:productId,
+      legacyFallbackKey
+    });
+  });
+
+  Object.keys((inv && inv.finishedByProductId) || {}).forEach((productId) => {
+    if (catalogIds.has(productId)) return;
+    if (!inventoryRecordHasHistory(inv, 'finishedByProductId', productId, 'producto')) return;
+    const row = inv.finishedByProductId[productId];
+    defs.push({
+      id:`historical:${productId}`,
+      productId,
+      nombre:legacyInventoryName({}, productId, row, 'borrado/inactivo · histórico'),
+      active:false,
+      operational:false,
+      historical:true,
+      source:'finishedByProductId-historico',
+      stockSection:'finishedByProductId',
+      stockKey:productId
+    });
+  });
+
+  Object.keys((inv && inv.finished) || {}).forEach((legacyKey) => {
+    const row = inv.finished[legacyKey];
+    const explicitProductId = String((row && (row.productId || row.productoId)) || '').trim();
+    if ((explicitProductId && catalogIds.has(explicitProductId)) || catalogIds.has(legacyKey)) return;
+    if (!inventoryRecordHasHistory(inv, 'finished', legacyKey, 'producto')) return;
+    defs.push({
+      id:`legacy:${legacyKey}`,
+      legacyKey,
+      nombre:legacyInventoryName(LEGACY_FINISHED_LABELS, legacyKey, row, 'legacy · histórico'),
+      active:false,
+      operational:false,
+      historical:true,
+      legacy:true,
+      source:'finished-legacy',
+      stockSection:'finished',
+      stockKey:legacyKey
+    });
+  });
+
+  return defs.sort((a, b) => {
+    if (!!a.operational !== !!b.operational) return a.operational ? -1 : 1;
+    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es-NI', { sensitivity:'base' });
+  });
+}
+
+function resolveFinishedStockRecord(inv, defOrId){
+  const def = typeof defOrId === 'object'
+    ? defOrId
+    : INV_FINISHED_DEFS.find((item) => String(item.id) === String(defOrId));
+  if (!def || !inv || typeof inv !== 'object') return { section:'', key:'', item:{ stock:0 } };
+  const section = def.stockSection || 'finishedByProductId';
+  const key = String(def.stockKey || def.productId || def.id || '').trim();
+  const primary = inv[section] && typeof inv[section] === 'object' ? inv[section][key] : null;
+  if (primary && typeof primary === 'object') return { section, key, item:primary };
+  if (def.legacyFallbackKey){
+    const legacy = inv.finished && typeof inv.finished === 'object' ? inv.finished[def.legacyFallbackKey] : null;
+    if (legacy && typeof legacy === 'object') return { section:'finished', key:def.legacyFallbackKey, item:legacy };
+  }
+  return { section, key, item:{ stock:0 } };
 }
 
 function defaultInventario() {
   const inv = {
-    liquids: {},
-    bottles: {},
-    finished: {},
-    finishedByProductId: {},
-    caps: defaultCapsSection(),
-    varios: [],
-    movimientos: [],
+    liquids:{},
+    bottles:{},
+    finished:{},
+    finishedByProductId:{},
+    caps:{},
+    varios:[],
+    movimientos:[]
   };
-  LIQUIDS.forEach((l) => {
-    inv.liquids[l.id] = { stock: 0, max: 0 };
-  });
-  BOTTLES.forEach((b) => {
-    inv.bottles[b.id] = { stock: 0 };
-  });
-  FINISHED.forEach((p) => {
-    inv.finished[p.id] = { stock: 0 };
-  });
+  LIQUIDS.forEach((liquid) => { inv.liquids[liquid.id] = { stock:0, max:0 }; });
   return inv;
 }
 
 function parseNumber(value) {
-  const n = parseFloat(String(value).replace(",", "."));
+  const n = parseFloat(String(value).replace(',', '.'));
   return Number.isNaN(n) ? 0 : n;
-}
-
-function invKnownFinishedIds(){
-  return new Set(FINISHED.map((x) => String(x.id)));
-}
-
-function normalizeProductIdKey(value){
-  return String(value ?? '').trim();
-}
-
-function finishedDisplayName(id, info){
-  const base = info && typeof info === 'object' ? info : {};
-  const known = FINISHED.find((x) => String(x.id) === String(id));
-  if (known) return known.nombre;
-  const raw = String(base.nombre || base.name || base.productName || base.producto || base.label || '').trim();
-  if (raw) return /list[oa]\)/i.test(raw) ? raw : `${raw} (listo)`;
-  return `${String(id || 'Producto')} (listo)`;
-}
-
-function legacyFinishedIdFromName(value){
-  const n = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (!n) return '';
-  if (n.includes('pulso')) return 'pulso';
-  if (n.includes('media')) return 'media';
-  if (n.includes('djeba')) return 'djeba';
-  if (n.includes('litro')) return 'litro';
-  if (n.includes('galon') || n.includes('gal')) return 'galon';
-  return '';
-}
-
-function legacyFinishedIdFromInfo(id, info){
-  if (invKnownFinishedIds().has(String(id || ''))) return String(id || '');
-  const base = info && typeof info === 'object' ? info : {};
-  return legacyFinishedIdFromName(base.nombre || base.name || base.productName || base.producto || base.label || '');
-}
-
-function buildFinishedDefs(inv){
-  const defs = FINISHED.map((x) => ({ ...x }));
-  const seen = invKnownFinishedIds();
-  const addDef = (id, info) => {
-    const key = normalizeProductIdKey(id);
-    if (!key || seen.has(key)) return;
-    const legacyId = legacyFinishedIdFromInfo(key, info);
-    if (legacyId && seen.has(legacyId)) return;
-    seen.add(key);
-    defs.push({
-      id: key,
-      productId: (info && (info.productId ?? info.productoId)) ?? key,
-      nombre: finishedDisplayName(key, info),
-      dynamic: true
-    });
-  };
-
-  const finished = inv && inv.finished && typeof inv.finished === 'object' ? inv.finished : {};
-  Object.keys(finished).forEach((id) => addDef(id, finished[id]));
-
-  const byProduct = inv && inv.finishedByProductId && typeof inv.finishedByProductId === 'object' ? inv.finishedByProductId : {};
-  Object.keys(byProduct).forEach((id) => addDef(id, byProduct[id]));
-
-  defs.sort((a, b) => {
-    const ax = a.dynamic ? 1 : 0;
-    const bx = b.dynamic ? 1 : 0;
-    if (ax !== bx) return ax - bx;
-    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es-NI', { sensitivity:'base' });
-  });
-  return defs;
 }
 
 function getDefsForSection(section){
   if (section === 'liquids') return LIQUIDS;
-  if (section === 'bottles') return INV_BOTTLE_DEFS && INV_BOTTLE_DEFS.length ? INV_BOTTLE_DEFS : BOTTLES;
-  if (section === 'finished') return INV_FINISHED_DEFS && INV_FINISHED_DEFS.length ? INV_FINISHED_DEFS : FINISHED;
+  if (section === 'bottles') return INV_BOTTLE_DEFS;
+  if (section === 'caps') return INV_CAP_DEFS;
+  if (section === 'finished') return INV_FINISHED_DEFS;
   return [];
+}
+
+function $(id) {
+  return document.getElementById(id);
 }
 
 // ------------------------------
@@ -782,23 +788,13 @@ function toIntSafe(value, fallback){
 
 function normalizeCapsSectionInPlace(inv){
   if (!inv || typeof inv !== 'object') return;
-  if (!inv.caps || typeof inv.caps !== 'object') inv.caps = defaultCapsSection();
-
-  CAPS_KEYS.forEach((k)=>{
-    if (!inv.caps[k] || typeof inv.caps[k] !== 'object') inv.caps[k] = { stock: 0, min: 0 };
-  });
-
-  // Compatibilidad dinámica: conservar y sanear cualquier tapa/corcho creado por Producción desde Catálogos.
-  Object.keys(inv.caps || {}).forEach((k)=>{
-    if (!inv.caps[k] || typeof inv.caps[k] !== 'object') inv.caps[k] = { stock: 0, min: 0 };
-
-    // stock: entero (permitir negativos; no bloquear si llega negativo en el futuro)
-    const s = toFiniteNumber(inv.caps[k].stock);
-    inv.caps[k].stock = Number.isFinite(s) ? Math.trunc(s) : 0;
-
-    // min: entero >= 0
-    const mn = toFiniteNumber(inv.caps[k].min);
-    inv.caps[k].min = Number.isFinite(mn) ? Math.max(0, Math.trunc(mn)) : 0;
+  if (!inv.caps || typeof inv.caps !== 'object') inv.caps = {};
+  Object.keys(inv.caps).forEach((key) => {
+    if (!inv.caps[key] || typeof inv.caps[key] !== 'object') inv.caps[key] = { stock:0, min:0 };
+    const stock = toFiniteNumber(inv.caps[key].stock);
+    const minimum = toFiniteNumber(inv.caps[key].min);
+    inv.caps[key].stock = Number.isFinite(stock) ? Math.trunc(stock) : 0;
+    inv.caps[key].min = Number.isFinite(minimum) ? Math.max(0, Math.trunc(minimum)) : 0;
   });
 }
 
@@ -951,10 +947,8 @@ function movimientosNuevosDesdeBase(baseList, localList){
 
 function inventarioDefByKind(kind, id){
   const key = String(id || '').trim();
-  const defs = kind === 'bottle'
-    ? (INV_BOTTLE_DEFS && INV_BOTTLE_DEFS.length ? INV_BOTTLE_DEFS : BOTTLES)
-    : (kind === 'cap' ? (INV_CAP_DEFS && INV_CAP_DEFS.length ? INV_CAP_DEFS : CAPS) : []);
-  return defs.find((d)=> String((d && d.id) || '') === key) || null;
+  const defs = kind === 'bottle' ? INV_BOTTLE_DEFS : (kind === 'cap' ? INV_CAP_DEFS : []);
+  return defs.find((def) => String((def && def.id) || '') === key) || null;
 }
 
 function inventarioNombreSnapshot(kind, id){
@@ -990,62 +984,44 @@ function registrarMovimientoInventario(inv, { kind, id, tipoMovimiento, cantidad
 
 function normalizeInventarioInPlace(inv){
   if (!inv || typeof inv !== 'object') return defaultInventario();
-
   if (!inv.liquids || typeof inv.liquids !== 'object') inv.liquids = {};
   if (!inv.bottles || typeof inv.bottles !== 'object') inv.bottles = {};
   if (!inv.finished || typeof inv.finished !== 'object') inv.finished = {};
   if (!inv.finishedByProductId || typeof inv.finishedByProductId !== 'object') inv.finishedByProductId = {};
+  if (!inv.caps || typeof inv.caps !== 'object') inv.caps = {};
 
-  // Compat con data vieja: asegurar llaves conocidas y números seguros
-  LIQUIDS.forEach((l) => {
-    if (!inv.liquids[l.id] || typeof inv.liquids[l.id] !== 'object') inv.liquids[l.id] = { stock: 0, max: 0 };
-    const st = toFiniteNumber(inv.liquids[l.id].stock);
-    const mx = toFiniteNumber(inv.liquids[l.id].max);
-    inv.liquids[l.id].stock = Number.isFinite(st) ? Math.max(0, st) : 0;
-    inv.liquids[l.id].max = Number.isFinite(mx) ? Math.max(0, mx) : 0;
+  LIQUIDS.forEach((liquid) => {
+    if (!inv.liquids[liquid.id] || typeof inv.liquids[liquid.id] !== 'object') inv.liquids[liquid.id] = { stock:0, max:0 };
+    const stock = toFiniteNumber(inv.liquids[liquid.id].stock);
+    const maximum = toFiniteNumber(inv.liquids[liquid.id].max);
+    inv.liquids[liquid.id].stock = Number.isFinite(stock) ? Math.max(0, stock) : 0;
+    inv.liquids[liquid.id].max = Number.isFinite(maximum) ? Math.max(0, maximum) : 0;
   });
 
-  BOTTLES.forEach((b) => {
-    if (!inv.bottles[b.id] || typeof inv.bottles[b.id] !== 'object') inv.bottles[b.id] = { stock: 0 };
-    const st = toFiniteNumber(inv.bottles[b.id].stock);
-    // No forzar entero aquí (mantener comportamiento: valida al guardar)
-    inv.bottles[b.id].stock = Number.isFinite(st) ? st : 0;
+  Object.keys(inv.bottles).forEach((id) => {
+    if (!inv.bottles[id] || typeof inv.bottles[id] !== 'object') inv.bottles[id] = { stock:0 };
+    const stock = toFiniteNumber(inv.bottles[id].stock);
+    inv.bottles[id].stock = Number.isFinite(stock) ? stock : 0;
+  });
+  Object.keys(inv.finished).forEach((id) => {
+    if (!inv.finished[id] || typeof inv.finished[id] !== 'object') inv.finished[id] = { stock:0 };
+    const stock = toFiniteNumber(inv.finished[id].stock);
+    inv.finished[id].stock = Number.isFinite(stock) ? stock : 0;
+  });
+  Object.keys(inv.finishedByProductId).forEach((id) => {
+    if (!inv.finishedByProductId[id] || typeof inv.finishedByProductId[id] !== 'object') inv.finishedByProductId[id] = { stock:0 };
+    const stock = toFiniteNumber(inv.finishedByProductId[id].stock);
+    inv.finishedByProductId[id].stock = Number.isFinite(stock) ? stock : 0;
+    if (!inv.finishedByProductId[id].productId) inv.finishedByProductId[id].productId = String(id);
   });
 
-  FINISHED.forEach((p) => {
-    if (!inv.finished[p.id] || typeof inv.finished[p.id] !== 'object') inv.finished[p.id] = { stock: 0 };
-    const st = toFiniteNumber(inv.finished[p.id].stock);
-    inv.finished[p.id].stock = Number.isFinite(st) ? st : 0;
-  });
-
-  Object.keys(inv.finished || {}).forEach((id) => {
-    if (!inv.finished[id] || typeof inv.finished[id] !== 'object') inv.finished[id] = { stock: 0 };
-    const st = toFiniteNumber(inv.finished[id].stock);
-    inv.finished[id].stock = Number.isFinite(st) ? st : 0;
-  });
-
-  Object.keys(inv.finishedByProductId || {}).forEach((id) => {
-    if (!inv.finishedByProductId[id] || typeof inv.finishedByProductId[id] !== 'object') inv.finishedByProductId[id] = { stock: 0 };
-    const st = toFiniteNumber(inv.finishedByProductId[id].stock);
-    inv.finishedByProductId[id].stock = Number.isFinite(st) ? st : 0;
-  });
-
-  // Tapas (Auto)
   normalizeCapsSectionInPlace(inv);
-
-  // Envases/Tapas dinámicos desde Catálogos (lectura visual; no produce ni consume).
   ensureDynamicCatalogInventoryInPlace(inv);
-
-  // Inventario Varios (manual)
   if (!Array.isArray(inv.varios)) inv.varios = [];
   normalizeVariosSectionInPlace(inv);
-
-  // Historial técnico de movimientos manuales de envases/tapas.
   normalizeInventarioMovimientosInPlace(inv);
-
   return inv;
 }
-
 
 function isValidDateKey(dateKey){
   if (typeof dateKey !== 'string') return false;
@@ -1318,12 +1294,13 @@ function openCantidadModal({
 const INV_UI = {
   // suficientemente alto para mostrar todo por defecto (sin filtros)
   pageSize: 9999,
-  pages: { liquids: 1, bottles: 1, finished: 1 },
+  pages: { liquids: 1, bottles: 1, caps: 1, finished: 1 },
 };
 
 const INV_VIEW = {
   liquids: { tbodyId: "inv-liquidos-body", emptyId: "inv-liquidos-empty", moreId: "inv-liquidos-more" },
   bottles: { tbodyId: "inv-botellas-body", emptyId: "inv-botellas-empty", moreId: "inv-botellas-more" },
+  caps: { tbodyId: "inv-caps-body", emptyId: "inv-caps-empty", moreId: "inv-caps-more" },
   finished: { tbodyId: "inv-productos-body", emptyId: "inv-productos-empty", moreId: "inv-productos-more" },
 };
 
@@ -1400,12 +1377,13 @@ function applyView(section) {
 function applyAllViews() {
   applyView("liquids");
   applyView("bottles");
+  applyView("caps");
   applyView("finished");
 }
 
 function wireViewControls() {
   // Solo paginación ("Cargar más"). Sin buscador.
-  ["liquids", "bottles", "finished"].forEach((section) => {
+  ["liquids", "bottles", "caps", "finished"].forEach((section) => {
     const view = INV_VIEW[section];
     if (!view) return;
     const more = $(view.moreId);
@@ -1528,19 +1506,46 @@ function updateLiquidoRow(inv, id) {
   row.statusSpan.textContent = estado.label;
 }
 
+function pruneInventoryRowCache(section, defs) {
+  const cache = INV_ROW_CACHE[section];
+  if (!cache) return;
+  const valid = new Set((Array.isArray(defs) ? defs : []).map((def) => String(def && def.id || '')));
+  cache.forEach((row, id) => {
+    if (valid.has(String(id))) return;
+    try { if (row && row.tr) row.tr.remove(); } catch (_) {}
+    cache.delete(id);
+  });
+}
+
+function applyOperationalRowState(row, def) {
+  if (!row) return;
+  const operational = !def || def.operational !== false;
+  try { if (row.tdNombre) row.tdNombre.textContent = String((def && def.nombre) || 'Registro'); } catch (_) {}
+  try { if (row.inputStock) row.inputStock.disabled = !operational; } catch (_) {}
+  try { if (row.inputMin) row.inputMin.disabled = !operational; } catch (_) {}
+  try { if (row.btnEntrada) row.btnEntrada.disabled = !operational; } catch (_) {}
+  try { if (row.btnSalida) row.btnSalida.disabled = !operational; } catch (_) {}
+  try {
+    if (row.tr) {
+      row.tr.dataset.historical = operational ? 'false' : 'true';
+      row.tr.classList.toggle('is-historical', !operational);
+    }
+  } catch (_) {}
+}
+
 function ensureBottleRow(tbody, def) {
   const id = def.id;
   let row = INV_ROW_CACHE.bottles.get(id);
-  if (row && row.tr && row.tr.parentElement !== tbody) {
-    tbody.appendChild(row.tr);
+  if (row && row.tr && row.tr.parentElement !== tbody) tbody.appendChild(row.tr);
+  if (row) {
+    row.def = def;
+    applyOperationalRowState(row, def);
     return row;
   }
-  if (row) return row;
 
   const tr = document.createElement("tr");
   tr.dataset.section = "bottles";
   tr.dataset.rowId = id;
-	  
 
   const tdNombre = tdLabel(document.createElement("td"), "Presentación");
   tdNombre.textContent = def.nombre;
@@ -1593,11 +1598,11 @@ function ensureBottleRow(tbody, def) {
   divAcc.appendChild(btnSalida);
   tdAcciones.appendChild(divAcc);
   tr.appendChild(tdAcciones);
-
   tbody.appendChild(tr);
 
-  row = { tr, inputStock, statusSpan };
+  row = { tr, tdNombre, inputStock, statusSpan, btnEntrada, btnSalida, def };
   INV_ROW_CACHE.bottles.set(id, row);
+  applyOperationalRowState(row, def);
   return row;
 }
 
@@ -1630,11 +1635,12 @@ function calcularEstadoTapa(t) {
 function ensureCapRow(tbody, def) {
   const id = def.id;
   let row = INV_ROW_CACHE.caps.get(id);
-  if (row && row.tr && row.tr.parentElement !== tbody) {
-    tbody.appendChild(row.tr);
+  if (row && row.tr && row.tr.parentElement !== tbody) tbody.appendChild(row.tr);
+  if (row) {
+    row.def = def;
+    applyOperationalRowState(row, def);
     return row;
   }
-  if (row) return row;
 
   const tr = document.createElement("tr");
   tr.dataset.section = "caps";
@@ -1648,7 +1654,6 @@ function ensureCapRow(tbody, def) {
   const inputStock = document.createElement("input");
   inputStock.type = "number";
   inputStock.step = "1";
-  // permitir negativos (no bloquear)
   inputStock.dataset.id = id;
   inputStock.dataset.kind = "cap-stock";
   markA33Num(inputStock, { defaultValue: "0", mode: "numeric" });
@@ -1702,11 +1707,11 @@ function ensureCapRow(tbody, def) {
   divAcc.appendChild(btnSalida);
   tdAcciones.appendChild(divAcc);
   tr.appendChild(tdAcciones);
-
   tbody.appendChild(tr);
 
-  row = { tr, inputStock, inputMin, statusSpan };
+  row = { tr, tdNombre, inputStock, inputMin, statusSpan, btnEntrada, btnSalida, def };
   INV_ROW_CACHE.caps.set(id, row);
+  applyOperationalRowState(row, def);
   return row;
 }
 
@@ -1729,16 +1734,17 @@ function updateCapRow(inv, id) {
 function ensureFinishedRow(tbody, def) {
   const id = def.id;
   let row = INV_ROW_CACHE.finished.get(id);
-  if (row && row.tr && row.tr.parentElement !== tbody) {
-    tbody.appendChild(row.tr);
+  if (row && row.tr && row.tr.parentElement !== tbody) tbody.appendChild(row.tr);
+  if (row) {
+    row.def = def;
+    if (row.tdNombre) row.tdNombre.textContent = def.nombre;
+    try { row.tr.classList.toggle('is-historical', def.operational === false); } catch (_) {}
     return row;
   }
-  if (row) return row;
 
   const tr = document.createElement("tr");
   tr.dataset.section = "finished";
   tr.dataset.rowId = id;
-	  
 
   const tdNombre = tdLabel(document.createElement("td"), "Presentación");
   tdNombre.textContent = def.nombre;
@@ -1754,25 +1760,20 @@ function ensureFinishedRow(tbody, def) {
   statusSpan.textContent = "—";
   tdEstado.appendChild(statusSpan);
   tr.appendChild(tdEstado);
-
   tbody.appendChild(tr);
 
-  row = { tr, tdStock, statusSpan };
+  row = { tr, tdNombre, tdStock, statusSpan, def };
   INV_ROW_CACHE.finished.set(id, row);
+  try { row.tr.classList.toggle('is-historical', def.operational === false); } catch (_) {}
   return row;
 }
 
 function updateFinishedRow(inv, id) {
   const row = INV_ROW_CACHE.finished.get(id);
   if (!row) return;
-
-  const info = (inv && inv.finished && inv.finished[id])
-    ? inv.finished[id]
-    : ((inv && inv.finishedByProductId && inv.finishedByProductId[id]) ? inv.finishedByProductId[id] : { stock: 0 });
-  const stock = parseNumber(info.stock);
-
+  const resolved = resolveFinishedStockRecord(inv, row.def || id);
+  const stock = parseNumber(resolved && resolved.item ? resolved.item.stock : 0);
   row.tdStock.textContent = Number.isFinite(stock) ? stock.toFixed(0) : "0";
-
   const estado = calcularEstadoProductoTerminado({ stock });
   row.statusSpan.className = "status-chip " + estado.className;
   row.statusSpan.textContent = estado.label;
@@ -2051,25 +2052,7 @@ function loadInventario() {
     if (!data.bottles) data.bottles = {};
     if (!data.finished) data.finished = {};
 
-    LIQUIDS.forEach((l) => {
-      if (!data.liquids[l.id]) data.liquids[l.id] = { stock: 0, max: 0 };
-      if (typeof data.liquids[l.id].stock !== "number") data.liquids[l.id].stock = parseNumber(data.liquids[l.id].stock || 0);
-      if (typeof data.liquids[l.id].max !== "number") data.liquids[l.id].max = parseNumber(data.liquids[l.id].max || 0);
-    });
-    BOTTLES.forEach((b) => {
-      if (!data.bottles[b.id]) data.bottles[b.id] = { stock: 0 };
-      if (typeof data.bottles[b.id].stock !== "number") data.bottles[b.id].stock = parseNumber(data.bottles[b.id].stock || 0);
-    });
-    FINISHED.forEach((p) => {
-      if (!data.finished[p.id]) data.finished[p.id] = { stock: 0 };
-      if (typeof data.finished[p.id].stock !== "number") data.finished[p.id].stock = parseNumber(data.finished[p.id].stock || 0);
-    });
-
-    normalizeCapsSectionInPlace(data);
-    if (!Array.isArray(data.varios)) data.varios = [];
-    normalizeVariosSectionInPlace(data);
-    normalizeInventarioMovimientosInPlace(data);
-
+    normalizeInventarioInPlace(data);
     return data;
   } catch (e) {
     console.error("Error leyendo inventario", e);
@@ -2184,25 +2167,25 @@ function renderLiquidos(inv) {
 function renderBotellas(inv) {
   const tbody = $("inv-botellas-body");
   if (!tbody) return;
-
   ensureDynamicCatalogInventoryInPlace(inv);
-  INV_BOTTLE_DEFS.forEach((b) => {
-    ensureBottleRow(tbody, b);
-    updateBottleRow(inv, b.id);
+  pruneInventoryRowCache('bottles', INV_BOTTLE_DEFS);
+  INV_BOTTLE_DEFS.forEach((def) => {
+    ensureBottleRow(tbody, def);
+    updateBottleRow(inv, def.id);
   });
-
   applyView("bottles");
 }
 
 function renderCaps(inv) {
   const tbody = $("inv-caps-body");
   if (!tbody) return;
-
   ensureDynamicCatalogInventoryInPlace(inv);
-  INV_CAP_DEFS.forEach((c) => {
-    ensureCapRow(tbody, c);
-    updateCapRow(inv, c.id);
+  pruneInventoryRowCache('caps', INV_CAP_DEFS);
+  INV_CAP_DEFS.forEach((def) => {
+    ensureCapRow(tbody, def);
+    updateCapRow(inv, def.id);
   });
+  applyView("caps");
 }
 
 
@@ -2331,11 +2314,14 @@ function attachListeners(inv) {
       const id = target.dataset.id;
       const kind = target.dataset.kind;
 
-      if (!inv.bottles || !inv.bottles[id]) {
-        safeAlert(`Inventario inválido: no existe el ítem "${id}".`);
+      const bottleDef = INV_BOTTLE_DEFS.find((def) => String(def.id) === String(id));
+      if (!bottleDef || bottleDef.operational === false) {
+        safeAlert('El envase es histórico o ya no está activo en Catálogos.');
         updateBottleRow(inv, id);
         return;
       }
+      if (!inv.bottles || typeof inv.bottles !== 'object') inv.bottles = {};
+      if (!inv.bottles[id] || typeof inv.bottles[id] !== 'object') inv.bottles[id] = { stock:0 };
 
       if (kind === "bottle-stock") {
         const n = toNonNegativeInt(target.value);
@@ -2373,12 +2359,14 @@ function attachListeners(inv) {
       const id = target.dataset.id;
       const kind = target.dataset.kind;
 
-      normalizeCapsSectionInPlace(inv);
-      if (!inv.caps || !inv.caps[id]) {
-        safeAlert(`Inventario inválido: no existe el ítem "${id}".`);
+      const capDef = INV_CAP_DEFS.find((def) => String(def.id) === String(id));
+      if (!capDef || capDef.operational === false) {
+        safeAlert('La tapa/corcho es histórica o ya no está activa en Catálogos.');
         updateCapRow(inv, id);
         return;
       }
+      normalizeCapsSectionInPlace(inv);
+      if (!inv.caps[id] || typeof inv.caps[id] !== 'object') inv.caps[id] = { stock:0, min:0 };
 
       if (kind === "cap-stock") {
         const n = toFiniteNumber(target.value);
@@ -2617,6 +2605,12 @@ function attachListeners(inv) {
     }
 
     if (kind === "bottle") {
+      const def = INV_BOTTLE_DEFS.find((itemDef) => String(itemDef.id) === String(id));
+      if (!def || def.operational === false) {
+        safeAlert('El envase es histórico o ya no está activo en Catálogos.');
+        return;
+      }
+      if (!inv.bottles || typeof inv.bottles !== 'object') inv.bottles = {};
       const item = inv.bottles[id] || { stock: 0 };
       const before = Math.trunc(parseNumber(item.stock));
       if (action === "entrada") {
@@ -2647,6 +2641,11 @@ function attachListeners(inv) {
     }
 
     if (kind === "cap") {
+      const def = INV_CAP_DEFS.find((itemDef) => String(itemDef.id) === String(id));
+      if (!def || def.operational === false) {
+        safeAlert('La tapa/corcho es histórica o ya no está activa en Catálogos.');
+        return;
+      }
       normalizeCapsSectionInPlace(inv);
       const item = (inv.caps && inv.caps[id]) ? inv.caps[id] : { stock: 0, min: 0 };
       const before = Math.trunc(parseNumber(item.stock));
@@ -2694,22 +2693,18 @@ function buildAlertLines(inv) {
     }
   });
 
-  // Botellas/envases en alerta (<=10 unidades), incluyendo Catálogos dinámicos.
-  buildBottleDefs(inv).forEach((b) => {
-    const info = inv.bottles[b.id] || { stock: 0 };
+  // Envases activos en alerta (<=10 unidades). Los históricos se conservan, no generan alertas operativas.
+  buildBottleDefs(inv).filter((def) => def.operational !== false).forEach((def) => {
+    const info = inv.bottles[def.id] || { stock: 0 };
     const stock = parseNumber(info.stock);
-    if (stock <= 10) {
-      lines.push(`• ${b.nombre}: ${stock.toFixed(0)} botellas`);
-    }
+    if (stock <= 10) lines.push(`• ${def.nombre}: ${stock.toFixed(0)} botellas`);
   });
 
-  // Producto terminado en alerta (<=10 unidades)
-  buildFinishedDefs(inv).forEach((p) => {
-    const info = (inv.finished && inv.finished[p.id]) || (inv.finishedByProductId && inv.finishedByProductId[p.id]) || { stock: 0 };
-    const stock = parseNumber(info.stock);
-    if (stock <= 10) {
-      lines.push(`• ${p.nombre}: ${stock.toFixed(0)} botellas listas`);
-    }
+  // Productos terminados activos en alerta. finishedByProductId es la fuente moderna prioritaria.
+  buildFinishedDefs(inv).filter((def) => def.operational !== false).forEach((def) => {
+    const resolved = resolveFinishedStockRecord(inv, def);
+    const stock = parseNumber(resolved && resolved.item ? resolved.item.stock : 0);
+    if (stock <= 10) lines.push(`• ${def.nombre}: ${stock.toFixed(0)} botellas listas`);
   });
 
   return lines;
@@ -2730,11 +2725,16 @@ function calcularEstadoProductoTerminado(item) {
 function getFinishedStockRecord(inv, id){
   const key = String(id || '').trim();
   if (!key || !inv || typeof inv !== 'object') return null;
-  if (inv.finished && typeof inv.finished === 'object' && inv.finished[key] && typeof inv.finished[key] === 'object') {
-    return { section:'finished', item: inv.finished[key] };
+  const def = INV_FINISHED_DEFS.find((item) => String(item.id) === key || String(item.productId || '') === key);
+  if (def) {
+    const resolved = resolveFinishedStockRecord(inv, def);
+    if (resolved && resolved.item && Object.prototype.hasOwnProperty.call(resolved.item, 'stock')) return resolved;
   }
   if (inv.finishedByProductId && typeof inv.finishedByProductId === 'object' && inv.finishedByProductId[key] && typeof inv.finishedByProductId[key] === 'object') {
-    return { section:'finishedByProductId', item: inv.finishedByProductId[key] };
+    return { section:'finishedByProductId', key, item:inv.finishedByProductId[key] };
+  }
+  if (inv.finished && typeof inv.finished === 'object' && inv.finished[key] && typeof inv.finished[key] === 'object') {
+    return { section:'finished', key, item:inv.finished[key] };
   }
   return null;
 }
@@ -2769,7 +2769,6 @@ function registrarMovimientoProductoTerminado(inv, def, before){
 function borrarProductosTerminados(inv){
   if (!inv || typeof inv !== 'object') return 0;
   normalizeInventarioInPlace(inv);
-  const defs = buildFinishedDefs(inv);
   const touched = new Set();
   let changed = 0;
 
@@ -2792,15 +2791,8 @@ function borrarProductosTerminados(inv){
     }catch(_){ }
   };
 
-  defs.forEach((def) => {
-    const id = String((def && def.id) || '').trim();
-    if (!id) return;
-    zeroRecord('finished', id, def);
-    zeroRecord('finishedByProductId', id, def);
-  });
-
-  Object.keys((inv && inv.finished) || {}).forEach((id) => zeroRecord('finished', id, { id, nombre: finishedDisplayName(id, inv.finished[id]) }));
-  Object.keys((inv && inv.finishedByProductId) || {}).forEach((id) => zeroRecord('finishedByProductId', id, { id, nombre: finishedDisplayName(id, inv.finishedByProductId[id]) }));
+  Object.keys((inv && inv.finished) || {}).forEach((id) => zeroRecord('finished', id, { id, nombre:legacyInventoryName(LEGACY_FINISHED_LABELS, id, inv.finished[id], 'legacy') }));
+  Object.keys((inv && inv.finishedByProductId) || {}).forEach((id) => zeroRecord('finishedByProductId', id, { id, nombre:legacyInventoryName({}, id, inv.finishedByProductId[id], '') }));
 
   return changed;
 }
@@ -2808,13 +2800,12 @@ function borrarProductosTerminados(inv){
 function renderProductosTerminados(inv) {
   const tbody = $("inv-productos-body");
   if (!tbody) return;
-
   INV_FINISHED_DEFS = buildFinishedDefs(inv);
-  INV_FINISHED_DEFS.forEach((pDef) => {
-			ensureFinishedRow(tbody, pDef);
-    updateFinishedRow(inv, pDef.id);
+  pruneInventoryRowCache('finished', INV_FINISHED_DEFS);
+  INV_FINISHED_DEFS.forEach((def) => {
+    ensureFinishedRow(tbody, def);
+    updateFinishedRow(inv, def.id);
   });
-
   applyView("finished");
 }
 
@@ -2829,6 +2820,8 @@ function installSmokeHooks(inv){
       get: ()=> deepClone(inv),
       getBottleDefs: ()=> deepClone(buildBottleDefs(inv)),
       getCapDefs: ()=> deepClone(buildCapDefs(inv)),
+      getFinishedDefs: ()=> deepClone(buildFinishedDefs(inv)),
+      refreshProducts: async ()=> { await refreshProductCatalogForInventory(); return deepClone(buildFinishedDefs(inv)); },
       getCaps: ()=> deepClone((inv && inv.caps) ? inv.caps : null),
       getMovimientos: ()=> deepClone(Array.isArray(inv && inv.movimientos) ? inv.movimientos : []),
       addBottleStock: (bottleId, cantidad)=>{
@@ -2926,6 +2919,7 @@ function installSmokeHooks(inv){
           inv.liquids = fresh.liquids;
           inv.bottles = fresh.bottles;
           inv.finished = fresh.finished;
+          inv.finishedByProductId = fresh.finishedByProductId;
           inv.caps = fresh.caps;
           inv.varios = fresh.varios;
           inv.movimientos = fresh.movimientos;
@@ -2946,12 +2940,12 @@ function installSmokeHooks(inv){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.84&r=13")
+      .register("./sw.js?v=4.20.85&r=1")
       .catch((err) => console.error("SW error", err));
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   setStatus("Cargando…", "info", { sticky: true });
 
   const inv = loadInventario();
@@ -2961,23 +2955,38 @@ document.addEventListener("DOMContentLoaded", () => {
   renderBotellas(inv);
   renderCaps(inv);
   renderVarios(inv);
+  await refreshProductCatalogForInventory();
   renderProductosTerminados(inv);
   renderInventoryCurrencyReference();
 
   wireViewControls();
   attachListeners(inv);
   applyAllViews();
+
+  const refreshCatalogViews = async () => {
+    try {
+      ensureDynamicCatalogInventoryInPlace(inv);
+      renderBotellas(inv);
+      renderCaps(inv);
+      await refreshProductCatalogForInventory();
+      renderProductosTerminados(inv);
+      applyAllViews();
+    } catch (error) {
+      console.error('No se pudieron refrescar las fuentes dinámicas de Inventario.', error);
+    }
+  };
+
   try{
     window.addEventListener('storage', (ev)=>{
       if (ev && ev.key === 'suite_a33_currency_settings_v1') renderInventoryCurrencyReference();
+      if (ev && (ev.key === ENVASES_CATALOG_KEY || ev.key === TAPAS_CATALOG_KEY)) refreshCatalogViews();
     });
+    window.addEventListener('focus', refreshCatalogViews);
   }catch(_){ }
-  // Si no hubo alertas, dejar señal corta de listo
+
   const statusEl = $("inv-status");
-  if (statusEl && !statusEl.textContent) {
-    setStatus("Listo.", "ok", { timeoutMs: 900 });
-  }
+  if (statusEl && !statusEl.textContent) setStatus("Listo.", "ok", { timeoutMs: 900 });
+  else setStatus("Listo.", "ok", { timeoutMs: 900 });
 
   registerServiceWorker();
 });
-

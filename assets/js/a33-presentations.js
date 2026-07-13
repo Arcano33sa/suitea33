@@ -1,31 +1,29 @@
 // A33 Presentations helper (suite-wide)
-// Canonicaliza nombres/IDs de presentaciones para compatibilidad legacy (Galón 3750/3800 -> 3720)
+// Compatibilidad de etiquetas históricas. Nunca crea productos ni sustituye el nombre actual de Catálogos.
 (function(){
   'use strict';
 
   function norm(s){
-    return (s||'')
-      .toString()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g,'')
-      .toLowerCase()
-      .trim();
+    return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   }
 
-  // Normalizador para comparar nombres (ignora espacios)
   function normKey(s){
     return norm(s).replace(/\s+/g,'');
   }
 
+  const EXACT_LEGACY = Object.freeze({
+    'pulso250ml':'pulso',
+    'media375ml':'media',
+    'djeba750ml':'djeba',
+    'litro1000ml':'litro',
+    'galon3720ml':'galon',
+    'galon3750ml':'galon',
+    'galon3800ml':'galon'
+  });
+
   function presentationIdFromName(name){
-    const n = norm(name);
-    if (!n) return null;
-    if (n.includes('pulso')) return 'pulso';
-    if (n.includes('media')) return 'media';
-    if (n.includes('djeba')) return 'djeba';
-    if (n.includes('litro')) return 'litro';
-    if (n.includes('gal')) return 'galon';
-    return null;
+    const key = normKey(name);
+    return EXACT_LEGACY[key] || null;
   }
 
   function labelFromId(id){
@@ -38,18 +36,16 @@
   }
 
   function canonicalizeProductName(name){
-    const pid = presentationIdFromName(name);
-    if (!pid) return String(name || '');
-    return labelFromId(pid);
+    const raw = String(name || '');
+    const id = presentationIdFromName(raw);
+    // Solo corrige alias históricos exactos. Nombres libres del catálogo permanecen intactos.
+    return id ? labelFromId(id) : raw;
   }
 
   function canonicalizeText(text){
     let s = String(text || '');
-    // Reemplazos específicos del galón (no tocar números sueltos)
     s = s.replace(/Gal[oó]n\s*3800\s*ml/gi, 'Galón 3720 ml');
-    s = s.replace(/Gal[oó]n\s*3800ml/gi, 'Galón 3720 ml');
     s = s.replace(/Gal[oó]n\s*3750\s*ml/gi, 'Galón 3720 ml');
-    // Normalizar doble espacios
     s = s.replace(/\s{2,}/g, ' ');
     return s;
   }

@@ -39,6 +39,97 @@
     return String(t || '');
   }
 
+
+  // Productos: identidad operativa por productId; el nombre es solo etiqueta/snapshot.
+  function productIdOf(value){
+    try{
+      if (window.A33Products && typeof A33Products.getProductId === 'function'){
+        return String(A33Products.getProductId(value) || '').trim();
+      }
+    }catch(_){ }
+    const row = value && typeof value === 'object' ? value : {};
+    return String(row.productId ?? row.productoId ?? row.catalogProductId ?? '').trim();
+  }
+
+  function productIsActive(value){
+    return !!value && value.active !== false && value.deleted !== true;
+  }
+
+  function productNameOf(value, fallback='Producto'){
+    const row = value && typeof value === 'object' ? value : {};
+    return uiProdName(String(row.name || row.nombre || fallback || 'Producto').trim());
+  }
+
+  function catalogProductMap(){
+    const map = new Map();
+    for (const row of (Array.isArray(products) ? products : [])){
+      const productId = productIdOf(row);
+      if (productId && !map.has(productId)) map.set(productId, row);
+    }
+    return map;
+  }
+
+  function activeCatalogProducts(){
+    const seen = new Set();
+    return (Array.isArray(products) ? products : [])
+      .filter(productIsActive)
+      .filter((row) => {
+        const productId = productIdOf(row);
+        if (!productId || seen.has(productId)) return false;
+        seen.add(productId);
+        return true;
+      })
+      .sort((a,b) => productNameOf(a).localeCompare(productNameOf(b), 'es-NI', { sensitivity:'base' }));
+  }
+
+  function saleProductId(sale){
+    const row = sale && typeof sale === 'object' ? sale : {};
+    return String(row.productId ?? row.productoId ?? (row.productSnapshot && (row.productSnapshot.productId ?? row.productSnapshot.id)) ?? '').trim();
+  }
+
+  function saleProductName(sale, fallback=''){
+    const row = sale && typeof sale === 'object' ? sale : {};
+    const name = row.productNameSnapshot ?? row.nombreSnapshot ?? row.nameSnapshot ?? row.productName ?? row.producto ?? row.name ??
+      (row.productSnapshot && (row.productSnapshot.nombreSnapshot ?? row.productSnapshot.name ?? row.productSnapshot.nombre));
+    return uiProdName(String(name || fallback || '').trim());
+  }
+
+  function legacySaleProductKey(sale, index){
+    const row = sale && typeof sale === 'object' ? sale : {};
+    const explicit = String(row.legacyProductKey ?? row.productKey ?? row.presentationKey ?? row.legacyId ?? '').trim();
+    if (explicit) return 'legacy:' + explicit;
+    const snapshotName = saleProductName(row, 'Producto histórico').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const snapshotVolume = String(row.volumeSnapshot ?? row.volumenSnapshot ?? row.capacitySnapshot ?? row.capacityMl ?? row.capacidadMl ?? '').trim();
+    const snapshotLetter = String(row.letterSnapshot ?? row.letraSnapshot ?? row.letter ?? row.letra ?? '').trim().toUpperCase();
+    const identity = [snapshotName, snapshotVolume, snapshotLetter].filter(Boolean).join('|');
+    if (identity) return 'legacy:snapshot:' + identity;
+    const stable = row.uid ?? row.id ?? row.saleId ?? row.createdAt ?? [row.date,row.time,index].filter(v => v != null && v !== '').join('|');
+    return 'legacy:row:' + String(stable || ('row-' + index));
+  }
+
+  function saleProductIdentity(sale, index){
+    const productId = saleProductId(sale);
+    const current = productId ? catalogProductMap().get(productId) : null;
+    const snapshotName = saleProductName(sale, '');
+    return {
+      key: productId ? ('product:' + productId) : legacySaleProductKey(sale, index),
+      productId,
+      label: snapshotName || productNameOf(current, productId || 'Producto histórico'),
+      operational: !!(current && productIsActive(current)),
+      historicalOnly: !productId || !(current && productIsActive(current)),
+      legacy: !productId
+    };
+  }
+
+  function productCycleFor(productId){
+    const product = productId ? catalogProductMap().get(productId) : null;
+    if (!product || !productIsActive(product)) return null;
+    const min = Number(product.repurchaseMinDays ?? product.reorderMinDays ?? product.cycleMinDays);
+    const max = Number(product.repurchaseMaxDays ?? product.reorderMaxDays ?? product.cycleMaxDays);
+    if (!(Number.isFinite(max) && max > 0)) return null;
+    return { min: Number.isFinite(min) && min > 0 ? min : max, max };
+  }
+
   const RECO_CFG = {
     vipTopPct: 0.20,
     vipNoBuyDays: 21,
@@ -47,14 +138,7 @@
     upsellWindowDays: 30,
     upsellMinSmallBuys: 2,
     lowTicketThreshold: 180, // C$ (para detectar compras repetidas "bajas")
-    lowTicketMinBuys: 3,
-    cycles: {
-      pulso: { min: 7, max: 14 },
-      media: { min: 7, max: 14 },
-      djeba: { min: 14, max: 21 },
-      litro: { min: 14, max: 21 },
-      galon: { min: 21, max: 30 }
-    }
+    lowTicketMinBuys: 3
   };
 
 
@@ -293,14 +377,8 @@
     return true;
   }
 
-  function mapPresentation(productName){
-    if (!productName) return null;
-    const n = String(productName).toLowerCase();
-    if (n.includes('pulso')) return 'pulso';
-    if (n.includes('media')) return 'media';
-    if (n.includes('djeba')) return 'djeba';
-    if (n.includes('litro')) return 'litro';
-    if (n.includes('galón') || n.includes('galon')) return 'galon';
+  function mapPresentation(value, index=0){
+    if (value && typeof value === 'object') return saleProductIdentity(value, index).key;
     return null;
   }
 
@@ -362,26 +440,29 @@
     }
   }
 
-  function getUnitCostByPresId(presId){
-    if (!presId) return 0;
-    if (!costosPresentacion) return 0;
-    const info = costosPresentacion[presId];
-    if (!info) return 0;
-    const val = typeof info.costoUnidad === 'number' ? info.costoUnidad : 0;
-    return val > 0 ? val : 0;
+  function getUnitCostByPresId(productId){
+    const id = String(productId || '').trim();
+    if (!id || !costosPresentacion) return 0;
+    const info = costosPresentacion[id];
+    if (!info || typeof info !== 'object') return 0;
+    const val = Number(info.costoUnidad);
+    return Number.isFinite(val) && val > 0 ? val : 0;
   }
 
-  function getUnitCostForProductName(name){
-    const presId = mapPresentation(name);
-    if (!presId) return 0;
-    return getUnitCostByPresId(presId);
+  function getUnitCostForProductName(){
+    // No se infieren costos por nombre o capacidad.
+    return 0;
   }
 
   function getUnitCostForSale(sale){
-    if (sale && typeof sale.costPerUnit === 'number' && sale.costPerUnit >= 0) {
-      return sale.costPerUnit;
+    const row = sale && typeof sale === 'object' ? sale : {};
+    const snapshotCandidates = [row.costPerUnit, row.costUnitSnapshot, row.unitCostSnapshot, row.costoUnitarioSnapshot, row.unitCost];
+    for (const value of snapshotCandidates){
+      const n = Number(value);
+      if (Number.isFinite(n) && n >= 0) return n;
     }
-    return getUnitCostForProductName(sale && sale.productName);
+    const productId = saleProductId(row);
+    return productId ? getUnitCostByPresId(productId) : 0;
   }
 
   function computeLineMetrics(sale){
@@ -398,85 +479,65 @@
   // --- Construcción de agregados ---
 
   function buildPresentationStats(filteredSales){
-    const presAgg = {
-      pulso: { id:'pulso', label:'Pulso', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 },
-      media: { id:'media', label:'Media', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 },
-      djeba: { id:'djeba', label:'Djeba', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 },
-      litro: { id:'litro', label:'Litro', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 },
-      galon: { id:'galon', label:'Galón', unidades:0, ventas:0, costo:0, profit:0, courtesyUnits:0, courtesyValue:0, courtesyCost:0 }
-    };
-
+    const byIdentity = new Map();
     let totalVentas = 0;
     let totalUnits = 0;
 
-    for (const s of filteredSales){
-      const { finalQty, revenue, lineCost, lineProfit } = computeLineMetrics(s);
-      const presId = mapPresentation(s.productName);
-      if (!presId || !presAgg[presId]) continue;
-
-      const agg = presAgg[presId];
+    (filteredSales || []).forEach((sale, index) => {
+      const identity = saleProductIdentity(sale, index);
+      const { finalQty, revenue, lineCost, lineProfit } = computeLineMetrics(sale);
+      if (!byIdentity.has(identity.key)){
+        byIdentity.set(identity.key, {
+          id: identity.key,
+          productId: identity.productId,
+          label: identity.label,
+          operational: identity.operational,
+          historicalOnly: identity.historicalOnly,
+          legacy: identity.legacy,
+          unidades:0, ventas:0, costo:0, profit:0,
+          courtesyUnits:0, courtesyValue:0, courtesyCost:0
+        });
+      }
+      const agg = byIdentity.get(identity.key);
+      // Con productId se agrupa por identidad; nunca se fusiona por nombre.
+      if (identity.productId && !agg.productId) agg.productId = identity.productId;
       agg.unidades += finalQty;
       agg.ventas += revenue;
       agg.costo += lineCost;
       agg.profit += lineProfit;
 
-      if (s && s.courtesy){
+      if (sale && (sale.courtesy || sale.isCourtesy)){
         const absQty = Math.abs(finalQty);
-        const unitPrice = Number(s.unitPrice || 0);
-        const sign = s.isReturn ? -1 : 1;
-        const courtesyValue = sign * absQty * unitPrice;
+        const unitPrice = Number(sale.unitPrice || 0);
+        const sign = sale.isReturn ? -1 : 1;
         agg.courtesyUnits += absQty;
-        agg.courtesyValue += courtesyValue;
+        agg.courtesyValue += sign * absQty * unitPrice;
         agg.courtesyCost += lineCost;
       }
-
       totalVentas += revenue;
       totalUnits += finalQty;
-    }
+    });
 
-    const rows = [];
-    for (const key of Object.keys(presAgg)){
-      const agg = presAgg[key];
+    const rows = Array.from(byIdentity.values()).map((agg) => {
       const unidades = agg.unidades;
-      const ventas = agg.ventas;
-      const costo = agg.costo;
-      const profit = agg.profit;
-      const courtesyUnits = agg.courtesyUnits || 0;
-      const courtesyValue = agg.courtesyValue || 0;
-      const courtesyCost = agg.courtesyCost || 0;
-
-      const unitPrice = unidades ? (ventas / unidades) : 0;
-      // Si no hay unidades, tratamos de usar el costo configurado en recetas
-      const unitCost = unidades ? (costo / (unidades || 1)) : getUnitCostByPresId(agg.id);
+      const unitPrice = unidades ? (agg.ventas / unidades) : 0;
+      const unitCost = unidades ? (agg.costo / unidades) : (agg.productId ? getUnitCostByPresId(agg.productId) : 0);
       const utilUnit = unitPrice - unitCost;
-      const marginUnit = unitPrice ? (utilUnit / unitPrice * 100) : 0;
-      const ventasPerc = totalVentas ? (ventas / totalVentas * 100) : 0;
-      const cortesiasPerc = courtesyValue ? (courtesyValue / (ventas + courtesyValue) * 100) : 0;
-
-      rows.push({
-        id: agg.id,
-        label: agg.label,
-        unidades,
-        ventas,
-        costo,
-        profit,
+      return {
+        ...agg,
         unitPrice,
         unitCost,
         utilUnit,
-        marginUnit,
-        ventasPerc,
-        courtesyUnits,
-        courtesyValue,
-        courtesyCost,
-        cortesiasPerc
-      });
-    }
+        marginUnit: unitPrice ? (utilUnit / unitPrice * 100) : 0,
+        ventasPerc: totalVentas ? (agg.ventas / totalVentas * 100) : 0,
+        cortesiasPerc: agg.courtesyValue ? (agg.courtesyValue / (agg.ventas + agg.courtesyValue) * 100) : 0
+      };
+    }).sort((a,b) => {
+      if (!!a.operational !== !!b.operational) return a.operational ? -1 : 1;
+      return String(a.label).localeCompare(String(b.label), 'es-NI', { sensitivity:'base' });
+    });
 
-    return {
-      rows,
-      totalVentas,
-      totalUnits
-    };
+    return { rows, totalVentas, totalUnits };
   }
 
   function buildEventStats(filteredSales, events){
@@ -584,188 +645,130 @@
 
   function updateResumen(filteredSales, presStats, eventStats){
     const kpiTotalVentas = document.getElementById('kpi-total-ventas');
-    const kpiTotalBotellas = document.getElementById('kpi-total-botellas');
-    const kpiDetalleBotellas = document.getElementById('kpi-detalle-botellas');
+    const kpiTotalUnidades = document.getElementById('kpi-total-botellas');
+    const kpiDetalleUnidades = document.getElementById('kpi-detalle-botellas');
     const kpiEventos = document.getElementById('kpi-eventos');
     const kpiTicket = document.getElementById('kpi-ticket-promedio');
-
     const kpiTotalCosto = document.getElementById('kpi-total-costo');
     const kpiTotalUtilidad = document.getElementById('kpi-total-utilidad');
     const kpiMargenGlobal = document.getElementById('kpi-margen-global');
     const kpiCortesiasTotal = document.getElementById('kpi-cortesias-total');
     const kpiCortesiasSub = document.getElementById('kpi-cortesias-sub');
     const kpiCortesiasNivel = document.getElementById('kpi-cortesias-nivel');
-
     const tbody = document.getElementById('tbody-resumen-mensual');
-
     if (!tbody) return;
 
     const byMonth = new Map();
-    let totalVentas = 0;
-    let totalCosto = 0;
-    let totalProfit = 0;
-    let totalEventosSet = new Set();
-    let sumTicketsPagados = 0;
-    let countTicketsPagados = 0;
+    let totalVentas = 0, totalCosto = 0, totalProfit = 0;
+    const totalEventosSet = new Set();
+    let sumTicketsPagados = 0, countTicketsPagados = 0;
+    const totalProducts = new Map();
+    let courtesyUnitsAbsTotal = 0, courtesyValueTotal = 0, courtesyCostTotal = 0;
 
-    const totalPres = { pulso:0, media:0, djeba:0, litro:0, galon:0 };
-    let courtesyUnitsAbsTotal = 0;
-    let courtesyValueTotal = 0;
-    let courtesyCostTotal = 0;
+    (filteredSales || []).forEach((sale, index) => {
+      const d = parseSaleDate(sale.date);
+      if (!d) return;
+      const monthKey = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+      if (!byMonth.has(monthKey)) byMonth.set(monthKey, {
+        ventas:0, costo:0, profit:0, events:new Set(), products:new Map(),
+        courtesyUnits:0, courtesyValue:0, courtesyCost:0,
+        sumTicketsPagados:0, countTicketsPagados:0
+      });
+      const bucket = byMonth.get(monthKey);
+      const identity = saleProductIdentity(sale, index);
+      const metrics = computeLineMetrics(sale);
+      bucket.ventas += metrics.revenue;
+      bucket.costo += metrics.lineCost;
+      bucket.profit += metrics.lineProfit;
+      bucket.products.set(identity.key, (bucket.products.get(identity.key) || 0) + metrics.finalQty);
+      totalProducts.set(identity.key, (totalProducts.get(identity.key) || 0) + metrics.finalQty);
 
-    for (const s of filteredSales){
-      const d = parseSaleDate(s.date);
-      if (!d) continue;
-      const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-
-      if (!byMonth.has(key)) {
-        byMonth.set(key, {
-          ventas: 0,
-          costo: 0,
-          profit: 0,
-          events: new Set(),
-          pres: { pulso:0, media:0, djeba:0, litro:0, galon:0 },
-          courtesyUnits: 0,
-          courtesyValue: 0,
-          courtesyCost: 0,
-          sumTicketsPagados: 0,
-          countTicketsPagados: 0
-        });
-      }
-      const bucket = byMonth.get(key);
-
-      const { finalQty, revenue, lineCost, lineProfit } = computeLineMetrics(s);
-      const presId = mapPresentation(s.productName);
-
-      bucket.ventas += revenue;
-      bucket.costo += lineCost;
-      bucket.profit += lineProfit;
-
-      if (s && s.courtesy){
-        const absQty = Math.abs(finalQty);
-        const unitPrice = Number(s.unitPrice || 0);
-        const sign = s.isReturn ? -1 : 1;
-        const courtesyValue = sign * absQty * unitPrice;
+      if (sale && (sale.courtesy || sale.isCourtesy)){
+        const absQty = Math.abs(metrics.finalQty);
+        const unitPrice = Number(sale.unitPrice || 0);
+        const value = (sale.isReturn ? -1 : 1) * absQty * unitPrice;
         bucket.courtesyUnits += absQty;
-        bucket.courtesyValue += courtesyValue;
-        bucket.courtesyCost += lineCost;
-
+        bucket.courtesyValue += value;
+        bucket.courtesyCost += metrics.lineCost;
         courtesyUnitsAbsTotal += absQty;
-        courtesyValueTotal += courtesyValue;
-        courtesyCostTotal += lineCost;
+        courtesyValueTotal += value;
+        courtesyCostTotal += metrics.lineCost;
       }
-
-      totalVentas += revenue;
-      totalCosto += lineCost;
-      totalProfit += lineProfit;
-
-      if (s.eventId != null) {
-        bucket.events.add(s.eventId);
-        totalEventosSet.add(s.eventId);
-      }
-
-      if (presId && bucket.pres[presId] != null) {
-        bucket.pres[presId] += finalQty;
-        totalPres[presId] += finalQty;
-      }
-
-      if (revenue > 0) {
-        bucket.sumTicketsPagados += revenue;
+      totalVentas += metrics.revenue;
+      totalCosto += metrics.lineCost;
+      totalProfit += metrics.lineProfit;
+      if (sale.eventId != null){ bucket.events.add(sale.eventId); totalEventosSet.add(sale.eventId); }
+      if (metrics.revenue > 0){
+        bucket.sumTicketsPagados += metrics.revenue;
         bucket.countTicketsPagados += 1;
-        sumTicketsPagados += revenue;
+        sumTicketsPagados += metrics.revenue;
         countTicketsPagados += 1;
       }
-    }
+    });
 
-    // Actualizar KPIs globales (ventas / botellas / eventos / ticket)
-    const totalBotellasGlobal = Object.values(totalPres).reduce((a,b)=>a+b,0);
+    const totalUnits = Array.from(totalProducts.values()).reduce((a,b)=>a+b,0);
     if (kpiTotalVentas) kpiTotalVentas.textContent = formatCurrency(totalVentas);
-    if (kpiTotalBotellas) kpiTotalBotellas.textContent = String(totalBotellasGlobal);
+    if (kpiTotalUnidades) kpiTotalUnidades.textContent = String(totalUnits);
     if (kpiEventos) kpiEventos.textContent = String(totalEventosSet.size);
-    const ticketPromedioGlobal = countTicketsPagados ? (sumTicketsPagados / countTicketsPagados) : 0;
-    if (kpiTicket) kpiTicket.textContent = formatCurrency(ticketPromedioGlobal);
-
-    if (kpiDetalleBotellas) {
-      kpiDetalleBotellas.textContent =
-        'Pulso ' + (totalPres.pulso||0) + ' · ' +
-        'Media ' + (totalPres.media||0) + ' · ' +
-        'Djeba ' + (totalPres.djeba||0) + ' · ' +
-        'Litro ' + (totalPres.litro||0) + ' · ' +
-        'Galón ' + (totalPres.galon||0);
+    if (kpiTicket) kpiTicket.textContent = formatCurrency(countTicketsPagados ? sumTicketsPagados / countTicketsPagados : 0);
+    if (kpiDetalleUnidades){
+      const labelsByKey = new Map((presStats && presStats.rows || []).map(row => [row.id, row.label]));
+      const detail = Array.from(totalProducts.entries())
+        .filter(([,qty]) => qty !== 0)
+        .map(([key,qty]) => `${labelsByKey.get(key) || 'Producto histórico'} ${qty}`);
+      kpiDetalleUnidades.textContent = detail.length ? detail.join(' · ') : 'Sin productos en el periodo';
     }
 
-    // KPIs de rentabilidad
     if (kpiTotalCosto) kpiTotalCosto.textContent = formatCurrency(totalCosto);
     if (kpiTotalUtilidad) kpiTotalUtilidad.textContent = formatCurrency(totalProfit);
-    const margenGlobal = totalVentas ? (totalProfit / totalVentas * 100) : 0;
+    const margenGlobal = totalVentas ? totalProfit / totalVentas * 100 : 0;
     if (kpiMargenGlobal) kpiMargenGlobal.textContent = formatPercent(margenGlobal);
-
-    // KPIs de cortesías globales
-    const courtesyRatioGlobal = courtesyValueTotal ? (courtesyValueTotal / (totalVentas + courtesyValueTotal) * 100) : 0;
+    const courtesyRatioGlobal = courtesyValueTotal ? courtesyValueTotal / (totalVentas + courtesyValueTotal) * 100 : 0;
     const courtesyLevelGlobal = getCourtesyLevel(courtesyRatioGlobal);
     if (kpiCortesiasTotal) kpiCortesiasTotal.textContent = formatCurrency(courtesyValueTotal);
-    if (kpiCortesiasSub) {
-      kpiCortesiasSub.textContent =
-        'Unidades ' + courtesyUnitsAbsTotal + ' · Costo ' + formatCurrency(courtesyCostTotal);
-    }
-    if (kpiCortesiasNivel) {
-      kpiCortesiasNivel.textContent =
-        courtesyLevelGlobal.label + ' (' + formatPercent(courtesyRatioGlobal) + ')';
+    if (kpiCortesiasSub) kpiCortesiasSub.textContent = `Unidades ${courtesyUnitsAbsTotal} · Costo ${formatCurrency(courtesyCostTotal)}`;
+    if (kpiCortesiasNivel) kpiCortesiasNivel.textContent = `${courtesyLevelGlobal.label} (${formatPercent(courtesyRatioGlobal)})`;
+
+    const productColumns = (presStats && Array.isArray(presStats.rows) ? presStats.rows : []).filter(row => totalProducts.has(row.id));
+    const head = document.getElementById('resumen-mensual-head');
+    if (head){
+      head.innerHTML = [
+        '<th>Mes</th>','<th>Ventas (C$)</th>','<th>Costo (C$)</th>','<th>Utilidad (C$)</th>','<th>Margen %</th>',
+        ...productColumns.map(row => '<th>' + escapeHtml(row.label) + '</th>'),
+        '<th># Eventos</th>','<th>Ticket prom.</th>','<th>Cortesías (unid.)</th>',
+        '<th>Cortesías valor (C$)</th>','<th>Cortesías costo (C$)</th>','<th>Cortesías %</th>'
+      ].join('');
     }
 
-    // Tabla mensual
     tbody.innerHTML = '';
-    const sortedKeys = Array.from(byMonth.keys()).sort();
-
-    const labels = [];
-    const values = [];
-
-    for (const key of sortedKeys){
-      const bucket = byMonth.get(key);
-      labels.push(formatMonthKey(key));
-      values.push(bucket.ventas);
-
-      const ticketPromMes = bucket.countTicketsPagados ? (bucket.sumTicketsPagados / bucket.countTicketsPagados) : 0;
-      const margenMes = bucket.ventas ? (bucket.profit / bucket.ventas * 100) : 0;
-
+    const labels = [], values = [];
+    for (const monthKey of Array.from(byMonth.keys()).sort()){
+      const bucket = byMonth.get(monthKey);
+      labels.push(formatMonthKey(monthKey)); values.push(bucket.ventas);
+      const ticketProm = bucket.countTicketsPagados ? bucket.sumTicketsPagados / bucket.countTicketsPagados : 0;
+      const margen = bucket.ventas ? bucket.profit / bucket.ventas * 100 : 0;
+      const cortesiasPct = bucket.courtesyValue ? bucket.courtesyValue / (bucket.ventas + bucket.courtesyValue) * 100 : 0;
       const tr = document.createElement('tr');
-      const cortesiasPercMes = bucket.courtesyValue ? (bucket.courtesyValue / (bucket.ventas + bucket.courtesyValue) * 100) : 0;
       tr.innerHTML = [
-        '<td>' + formatMonthKey(key) + '</td>',
+        '<td>' + formatMonthKey(monthKey) + '</td>',
         '<td>' + formatCurrency(bucket.ventas) + '</td>',
         '<td>' + formatCurrency(bucket.costo) + '</td>',
         '<td>' + formatCurrency(bucket.profit) + '</td>',
-        '<td>' + formatPercent(margenMes) + '</td>',
-        '<td>' + (bucket.pres.pulso || 0) + '</td>',
-        '<td>' + (bucket.pres.media || 0) + '</td>',
-        '<td>' + (bucket.pres.djeba || 0) + '</td>',
-        '<td>' + (bucket.pres.litro || 0) + '</td>',
-        '<td>' + (bucket.pres.galon || 0) + '</td>',
+        '<td>' + formatPercent(margen) + '</td>',
+        ...productColumns.map(row => '<td>' + (bucket.products.get(row.id) || 0) + '</td>'),
         '<td>' + bucket.events.size + '</td>',
-        '<td>' + formatCurrency(ticketPromMes) + '</td>',
-        '<td>' + (bucket.courtesyUnits || 0) + '</td>',
-        '<td>' + formatCurrency(bucket.courtesyValue || 0) + '</td>',
-        '<td>' + formatCurrency(bucket.courtesyCost || 0) + '</td>',
-        '<td>' + formatPercent(cortesiasPercMes) + '</td>'
+        '<td>' + formatCurrency(ticketProm) + '</td>',
+        '<td>' + bucket.courtesyUnits + '</td>',
+        '<td>' + formatCurrency(bucket.courtesyValue) + '</td>',
+        '<td>' + formatCurrency(bucket.courtesyCost) + '</td>',
+        '<td>' + formatPercent(cortesiasPct) + '</td>'
       ].join('');
       tbody.appendChild(tr);
     }
+    drawBarChart('chart-mensual-ventas', labels, values, { maxBars:12 });
 
-    drawBarChart('chart-mensual-ventas', labels, values, { maxBars: 12 });
-
-    const resumenStats = {
-      totalVentas,
-      totalCosto,
-      totalProfit,
-      margenGlobal,
-      courtesyUnitsAbsTotal,
-      courtesyValueTotal,
-      courtesyCostTotal,
-      courtesyRatioGlobal
-    };
-
+    const resumenStats = { totalVentas,totalCosto,totalProfit,margenGlobal,courtesyUnitsAbsTotal,courtesyValueTotal,courtesyCostTotal,courtesyRatioGlobal };
     lastResumenStats = resumenStats;
-
     updateTopProductsKpis(presStats, resumenStats);
     updateRecomendaciones(presStats, eventStats, resumenStats);
     return resumenStats;
@@ -1039,7 +1042,7 @@
 
       const tr = document.createElement('tr');
       tr.innerHTML = [
-        '<td>' + row.label + '</td>',
+        '<td>' + escapeHtml(row.label) + '</td>',
         '<td>' + row.unidades + '</td>',
         '<td>' + formatCurrency(row.unitPrice) + '</td>',
         '<td>' + formatCurrency(row.unitCost) + '</td>',
@@ -1066,29 +1069,29 @@
   // --- Utilidades adicionales: inventario y analítica avanzada ---
 
   function loadInventarioFinished(){
-    try {
-      if (window.A33Storage && typeof A33Storage.sharedGet === 'function') {
-        const data = A33Storage.sharedGet(INVENTARIO_KEY, null, 'local');
-        if (data && data.finished && typeof data.finished === 'object') {
-          return data.finished;
-        }
-        return null;
+    let data = null;
+    try{
+      if (window.A33Storage && typeof A33Storage.sharedGet === 'function') data = A33Storage.sharedGet(INVENTARIO_KEY, null, 'local');
+      else {
+        const raw = window.A33Storage && typeof A33Storage.getItem === 'function' ? A33Storage.getItem(INVENTARIO_KEY) : localStorage.getItem(INVENTARIO_KEY);
+        data = raw ? JSON.parse(raw) : null;
       }
-    } catch (err) {
-      console.warn('Analitica: no se pudo leer inventario terminado (sharedGet)', err);
-    }
+    }catch(err){ console.warn('Analítica: no se pudo leer inventario terminado', err); }
+    return data && typeof data === 'object' ? data : null;
+  }
 
-    try {
-      const raw = A33Storage.getItem(INVENTARIO_KEY);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
-      if (data && data.finished && typeof data.finished === 'object') {
-        return data.finished;
-      }
-    } catch (err) {
-      console.warn('Analitica: no se pudo leer inventario terminado desde localStorage', err);
+  function finishedStockForProduct(inv, productId){
+    const id = String(productId || '').trim();
+    if (!id || !inv || typeof inv !== 'object') return 0;
+    const modern = inv.finishedByProductId && typeof inv.finishedByProductId === 'object' ? inv.finishedByProductId[id] : null;
+    if (modern && typeof modern === 'object') return Number(modern.stock) || 0;
+    // Compatibilidad histórica solo cuando el registro legacy declara el mismo productId.
+    const legacy = inv.finished && typeof inv.finished === 'object' ? inv.finished : {};
+    for (const key of Object.keys(legacy)){
+      const row = legacy[key];
+      if (row && typeof row === 'object' && String(row.productId || row.productoId || '').trim() === id) return Number(row.stock) || 0;
     }
-    return null;
+    return 0;
   }
 
   function setupHorasUI(){
@@ -1328,104 +1331,55 @@ function rebuildHorasEventOptions(filteredSales){
   function updateAgotamiento(){
     const tbody = document.getElementById('tbody-agotamiento');
     if (!tbody) return;
-
     const ventanaSelect = document.getElementById('agotamiento-ventana');
     const daysWindow = ventanaSelect ? (parseInt(ventanaSelect.value, 10) || 30) : 30;
-
-    const finished = loadInventarioFinished();
-    const presList = [
-      { id: 'pulso', label: 'Pulso 250 ml' },
-      { id: 'media', label: 'Media 375 ml' },
-      { id: 'djeba', label: 'Djeba 750 ml' },
-      { id: 'litro', label: 'Litro 1000 ml' },
-      { id: 'galon', label: 'Galón 3720 ml' }
-    ];
-
+    const inv = loadInventarioFinished();
+    const operationalProducts = activeCatalogProducts();
     const today = new Date();
     const from = addDays(today, -(daysWindow - 1));
-    const to = today;
+    const consumo = new Map();
 
-    const ventasWindow = (sales || []).filter(s => {
-      const d = parseSaleDate(s.date);
-      if (!d) return false;
-      if (from && d < from) return false;
-      if (to && d > to) return false;
-      return true;
+    (sales || []).forEach((sale) => {
+      const d = parseSaleDate(sale.date);
+      if (!d || d < from || d > today) return;
+      const productId = saleProductId(sale);
+      if (!productId) return;
+      const metrics = computeLineMetrics(sale);
+      consumo.set(productId, (consumo.get(productId) || 0) + metrics.finalQty);
     });
-
-    const consumoPorPres = { pulso: 0, media: 0, djeba: 0, litro: 0, galon: 0 };
-    for (const s of ventasWindow){
-      const presId = mapPresentation(s.productName);
-      if (!presId || !(presId in consumoPorPres)) continue;
-      const metrics = computeLineMetrics(s);
-      consumoPorPres[presId] += metrics.finalQty;
-    }
 
     tbody.innerHTML = '';
     const rows = [];
+    if (!operationalProducts.length){
+      tbody.innerHTML = '<tr><td colspan="5" class="hint small">No hay productos activos en Catálogos → Productos.</td></tr>';
+      lastAgotamiento = rows;
+      return;
+    }
 
-    for (const pres of presList){
-      const stockActual = finished && finished[pres.id] && typeof finished[pres.id].stock === 'number'
-        ? finished[pres.id].stock
-        : 0;
-
-      const totalUnidades = consumoPorPres[pres.id] || 0;
-      const diasVentana = daysWindow || 1;
-      const promedioDia = totalUnidades > 0 ? (totalUnidades / diasVentana) : 0;
-
-      let diasAgotar;
-      if (!stockActual || !promedioDia) {
-        diasAgotar = null;
-      } else {
-        diasAgotar = stockActual / promedioDia;
-      }
-
+    for (const product of operationalProducts){
+      const productId = productIdOf(product);
+      const label = productNameOf(product, productId);
+      const stockActual = finishedStockForProduct(inv, productId);
+      const totalUnidades = consumo.get(productId) || 0;
+      const promedioDia = totalUnidades > 0 ? totalUnidades / daysWindow : 0;
+      const diasAgotar = stockActual > 0 && promedioDia > 0 ? stockActual / promedioDia : null;
       let estado = 'sin-datos';
-      if (diasAgotar == null) {
-        if (stockActual > 0 && totalUnidades === 0) {
-          estado = 'ok';
-        } else {
-          estado = 'sin-datos';
-        }
-      } else if (diasAgotar <= 3) {
-        estado = 'critico';
-      } else if (diasAgotar <= 7) {
-        estado = 'advertencia';
-      } else {
-        estado = 'ok';
-      }
-
-      rows.push({
-        id: pres.id,
-        label: pres.label,
-        stock: stockActual,
-        promedioDia,
-        diasAgotar,
-        estado
-      });
-
-      const estadoLabel =
-        estado === 'critico' ? 'Crítico' :
-        estado === 'advertencia' ? 'Advertencia' :
-        estado === 'ok' ? 'OK' :
-        'Sin datos';
-
-      const claseEstado =
-        estado === 'critico' ? 'alert-critical' :
-        estado === 'advertencia' ? 'alert-warning' :
-        estado === 'ok' ? 'alert-ok' : 'alert-neutral';
-
+      if (diasAgotar == null) estado = stockActual > 0 && totalUnidades === 0 ? 'ok' : 'sin-datos';
+      else if (diasAgotar <= 3) estado = 'critico';
+      else if (diasAgotar <= 7) estado = 'advertencia';
+      else estado = 'ok';
+      rows.push({ id:productId, productId, label, stock:stockActual, promedioDia, diasAgotar, estado });
+      const estadoLabel = estado === 'critico' ? 'Crítico' : estado === 'advertencia' ? 'Advertencia' : estado === 'ok' ? 'OK' : 'Sin datos';
+      const claseEstado = estado === 'critico' ? 'alert-critical' : estado === 'advertencia' ? 'alert-warning' : estado === 'ok' ? 'alert-ok' : 'alert-neutral';
       const tr = document.createElement('tr');
       tr.innerHTML = [
-        '<td>' + pres.label + '</td>',
-        '<td>' + stockActual + '</td>',
+        '<td>' + escapeHtml(label) + '</td>', '<td>' + stockActual + '</td>',
         '<td>' + (promedioDia ? promedioDia.toFixed(2) : '—') + '</td>',
         '<td>' + (diasAgotar != null ? diasAgotar.toFixed(1) : '—') + '</td>',
         '<td><span class="alert-pill ' + claseEstado + '">' + estadoLabel + '</span></td>'
       ].join('');
       tbody.appendChild(tr);
     }
-
     lastAgotamiento = rows;
   }
 
@@ -1581,7 +1535,7 @@ function rebuildHorasEventOptions(filteredSales){
 
         const tr = document.createElement('tr');
         tr.innerHTML = [
-          '<td>' + row.label + '</td>',
+          '<td>' + escapeHtml(row.label) + '</td>',
           '<td>' + (unidadesDia ? unidadesDia.toFixed(2) : '—') + '</td>',
           '<td>' + (unidadesProy ? unidadesProy.toFixed(1) : '—') + '</td>',
           '<td>' + (ventasProy ? formatCurrency(ventasProy) : '—') + '</td>'
@@ -1725,7 +1679,7 @@ function rebuildHorasEventOptions(filteredSales){
     }
 
     const rows = [];
-    rows.push(['Evento', 'Estado', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Botellas', 'Ticket promedio', '% del total']);
+    rows.push(['Evento', 'Estado', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Unidades', 'Ticket promedio', '% del total']);
     const totalVentas = stats.totalVentasPeriodo || 0;
 
     for (const ev of stats.rows){
@@ -1758,13 +1712,15 @@ function rebuildHorasEventOptions(filteredSales){
     }
 
     const rows = [];
-    rows.push(['Presentación', 'Unidades netas', 'Precio unitario prom. (C$)', 'Costo unitario est. (C$)', 'Utilidad unitaria (C$)', 'Margen unitario %', 'Ventas totales (C$)', '% de ventas']);
+    rows.push(['Producto', 'productId / clave histórica', 'Estado', 'Unidades netas', 'Precio unitario prom. (C$)', 'Costo unitario est. (C$)', 'Utilidad unitaria (C$)', 'Margen unitario %', 'Ventas totales (C$)', '% de ventas']);
     const totalVentas = stats.totalVentas || 0;
 
     for (const row of stats.rows){
       const perc = totalVentas ? (row.ventas / totalVentas * 100) : 0;
       rows.push([
         row.label,
+        row.productId || row.id,
+        row.operational ? 'Operativo actual' : (row.legacy ? 'Histórico legacy' : 'Inactivo/borrado · histórico'),
         row.unidades,
         Number(row.unitPrice || 0).toFixed(2),
         Number(row.unitCost || 0).toFixed(2),
@@ -1775,7 +1731,7 @@ function rebuildHorasEventOptions(filteredSales){
       ]);
     }
 
-    downloadExcel('analitica_presentaciones.xlsx', 'Presentaciones', rows);
+    downloadExcel('analitica_productos.xlsx', 'Productos', rows);
   }
 
   // --- Gráficas simples en canvas ---
@@ -2350,16 +2306,9 @@ function rebuildHorasEventOptions(filteredSales){
     return { byId, resolveFinalId, matchNameToFinalId, getDisplayName };
   }
 
-  function classifyFormat(productName){
-    const s = String(productName || '').toLowerCase();
-    if (!s) return '';
-    if (s.includes('gal')) return 'galon';
-    if (s.includes('litro') || s.includes('1000')) return 'litro';
-    if (s.includes('djeba') || s.includes('750')) return 'djeba';
-    if (s.includes('media') || s.includes('375')) return 'media';
-    if (s.includes('pulso') || s.includes('250')) return 'pulso';
-    // vasos u otros no aplican para reglas de recompra
-    return '';
+  function classifyFormat(sale){
+    const productId = saleProductId(sale);
+    return productId && catalogProductMap().has(productId) ? productId : '';
   }
 
   function buildClientsIndex(filteredSales){
@@ -2449,13 +2398,10 @@ function rebuildHorasEventOptions(filteredSales){
           };
         }
         // upsell: compras repetidas en ventana reciente
-        const f = classifyFormat(s.productName);
+        const f = classifyFormat(s);
         const now = new Date();
         const days = dt ? daysBetween(dt, now) : 999999;
 
-        if (days <= RECO_CFG.upsellWindowDays && (f === 'pulso' || f === 'media')){
-          c.smallBuysLast30 += 1;
-        }
         if (days <= RECO_CFG.upsellWindowDays && total > 0 && total <= RECO_CFG.lowTicketThreshold){
           c.lowTicketBuysLast30 += 1;
         }
@@ -2468,13 +2414,16 @@ function rebuildHorasEventOptions(filteredSales){
       }
 
       // favoritos: neto por presentación/producto
-      const presLabel = uiProdName(s.productName || '—');
+      const presIdentity = saleProductIdentity(s, c.lines.length);
+      const presLabel = presIdentity.label;
+      const presKey = presIdentity.key;
       const qtyRaw = Number(s.qty || 0) || 0;
       const qtyAbs = Math.abs(qtyRaw);
       const sign = isReturn ? -1 : 1;
       const deltaUnits = sign * qtyAbs;
-      if (!c.pres.has(presLabel)) c.pres.set(presLabel, 0);
-      c.pres.set(presLabel, (c.pres.get(presLabel) || 0) + deltaUnits);
+      if (!c.pres.has(presKey)) c.pres.set(presKey, { label:presLabel, units:0 });
+      const favRow = c.pres.get(presKey);
+      favRow.units += deltaUnits;
 
       // historial
       c.lines.push({
@@ -2492,6 +2441,17 @@ function rebuildHorasEventOptions(filteredSales){
     const rows = Array.from(map.values());
     // Orden base por gasto neto desc
     rows.sort((a,b) => (b.totalNet || 0) - (a.totalNet || 0));
+
+    // Producto favorito moderno: identidad estable, nunca nombre/capacidad.
+    rows.forEach(c => {
+      const favorites = Array.from(c.pres.entries())
+        .filter(([key]) => String(key).startsWith('product:'))
+        .map(([key,value]) => ({ key:key.slice(8), label:(value && value.label) || key, units:Number(value && value.units || 0) || 0 }))
+        .sort((a,b) => Math.abs(b.units) - Math.abs(a.units));
+      const fav = favorites[0] || null;
+      c.favoriteFormatKey = fav ? fav.key : '';
+      c.favoriteFormatLabel = fav ? fav.label : '';
+    });
 
     // Ordenar historial desc por fecha
     rows.forEach(c => {
@@ -2674,7 +2634,7 @@ function rebuildHorasEventOptions(filteredSales){
     // Favoritos (top 5)
     if (favEl){
       const arr = Array.from(c.pres.entries())
-        .map(([k,v]) => ({ name:k, units: Number(v||0) || 0 }))
+        .map(([k,v]) => ({ name:(v && v.label) || k, units: Number(v && v.units || 0) || 0 }))
         .filter(x => x.units !== 0)
         .sort((a,b) => Math.abs(b.units) - Math.abs(a.units))
         .slice(0,5);
@@ -2851,7 +2811,7 @@ function rebuildHorasEventOptions(filteredSales){
 
       // 4) RECOMPRA POR CICLO
       const fav = c.favoriteFormatKey;
-      const cyc = (fav && RECO_CFG.cycles) ? RECO_CFG.cycles[fav] : null;
+      const cyc = fav ? productCycleFor(fav) : null;
       if (fav && cyc && c.lastByFormat && c.lastByFormat[fav] instanceof Date){
         const lastFav = c.lastByFormat[fav];
         const d = Math.max(0, daysBetween(lastFav, now));
@@ -2873,20 +2833,16 @@ function rebuildHorasEventOptions(filteredSales){
       }
 
       // 3) ESCALERA DE TAMAÑO (UPSELL lógico)
-      const smallBuys = Number(c.smallBuysLast30 || 0) || 0;
       const lowTicketBuys = Number(c.lowTicketBuysLast30 || 0) || 0;
-      const hitsSmall = smallBuys >= upsellMinSmallBuys;
+      const hitsSmall = false;
       const hitsLow = lowTicketBuys >= lowTicketMinBuys;
       if (hitsSmall || hitsLow){
-        const avgTicket = compras ? (total / compras) : 0;
-        const suggestion = (avgTicket >= 250) ? 'Litro 1000 ml' : 'Djeba 750 ml';
-        const why = hitsSmall
-          ? `En los últimos ${upsellWindowDays} días compró ${smallBuys} veces formatos pequeños.`
-          : `En los últimos ${upsellWindowDays} días repitió ${lowTicketBuys} tickets bajos (≤ ${formatCurrency(RECO_CFG.lowTicketThreshold)}).`;
+        const why = `En los últimos ${upsellWindowDays} días repitió ${lowTicketBuys} tickets bajos (≤ ${formatCurrency(RECO_CFG.lowTicketThreshold)}).`;
+        const suggestion = activeCatalogProducts().length ? 'revisar una alternativa de mayor valor dentro del catálogo activo' : 'revisar la oferta cuando existan productos activos';
         candidates.push({
           type: 'UPSELL',
           title: `Upsell: ${c.name}`,
-          reason: `${why} Sugerencia: subir a ${suggestion}.`,
+          reason: `${why} Sugerencia: ${suggestion}.`,
           actionLink,
           customerId: c.customerId || null,
           customerName: c.name,

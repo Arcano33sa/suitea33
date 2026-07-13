@@ -1,16 +1,9 @@
 {
-  "name": "Arcano 33 · Centro de Mando",
-  "short_name": "Centro",
-  "description": "Centro de mando operativo: evento enfocado + radar global.",
-  "start_url": "./index.html?v=4.20.84&r=7",
+  "name": "Suite A33 — Centro de Mando (ruta trasladada)",
+  "short_name": "Centro A33",
+  "start_url": "../centro-mando/index.html?v=4.20.85&r=10",
+  "scope": "../centro-mando/",
   "display": "standalone",
-  "background_color": "#0f0f0f",
-  "theme_color": "#0f0f0f",
-  "icons": [
-    {
-      "src": "../inventario/images/logo.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ]
+  "theme_color": "#0b0b0b",
+  "background_color": "#0b0b0b"
 }

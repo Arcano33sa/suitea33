@@ -358,6 +358,20 @@ function getAllPosSales() {
 }
 
 
+function getAllPosProductsSafe() {
+  return new Promise(async (resolve) => {
+    const db = await openPosDB();
+    if (!db) return resolve([]);
+    let store;
+    try { store = posTx('products', 'readonly'); }
+    catch (err) { console.warn('Store products no encontrada en a33-pos', err); return resolve([]); }
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => { console.warn('No se pudieron leer Productos desde Catálogos', req.error); resolve([]); };
+  });
+}
+
+
 function getAllPosEventsSafe() {
   return new Promise(async (resolve) => {
     const db = await openPosDB();
@@ -7248,25 +7262,42 @@ function calcCajaBancoUntilDate(data, corte) {
   };
 }
 
-/* ---------- Rentabilidad por presentación (lectura POS) ---------- */
+/* ---------- Rentabilidad dinámica por producto (lectura POS) ---------- */
 
-const RENTAB_PRESENTACIONES = [
-  { id: 'pulso', label: 'Pulso 250 ml' },
-  { id: 'media', label: 'Media 375 ml' },
-  { id: 'djeba', label: 'Djeba 750 ml' },
-  { id: 'litro', label: 'Litro 1000 ml' },
-  { id: 'galon', label: 'Galón 3720 ml' }
-];
+function finPosSaleProductId(sale){
+  const row = sale && typeof sale === 'object' ? sale : {};
+  return String(row.productId ?? row.productoId ?? (row.productSnapshot && (row.productSnapshot.productId ?? row.productSnapshot.id)) ?? '').trim();
+}
 
-function mapProductNameToPresIdFromPOS(name) {
-  const n = normStr(name);
-  if (!n) return null;
-  if (n.includes('pulso')) return 'pulso';
-  if (n.includes('media')) return 'media';
-  if (n.includes('djeba')) return 'djeba';
-  if (n.includes('litro')) return 'litro';
-  if (n.includes('galon') || n.includes('galón')) return 'galon';
-  return null;
+function finPosSaleProductName(sale, fallback=''){
+  const row = sale && typeof sale === 'object' ? sale : {};
+  return String(row.productNameSnapshot ?? row.nombreSnapshot ?? row.productName ?? row.producto ?? row.name ?? fallback ?? '').trim();
+}
+
+function finPosLegacyProductKey(sale, index){
+  const row = sale && typeof sale === 'object' ? sale : {};
+  const explicit = String(row.legacyProductKey ?? row.productKey ?? row.presentationKey ?? row.legacyId ?? '').trim();
+  if (explicit) return `legacy:${explicit}`;
+  const name = normText(finPosSaleProductName(row, 'Producto histórico')).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  const volume = String(row.volumeSnapshot ?? row.volumenSnapshot ?? row.capacitySnapshot ?? row.capacityMl ?? row.capacidadMl ?? '').trim();
+  const letter = String(row.letterSnapshot ?? row.letraSnapshot ?? row.letter ?? row.letra ?? '').trim().toUpperCase();
+  const identity = [name,volume,letter].filter(Boolean).join('|');
+  if (identity) return `legacy:snapshot:${identity}`;
+  const stable = row.uid ?? row.id ?? row.saleId ?? row.createdAt ?? `${row.date || ''}|${row.time || ''}|${index}`;
+  return `legacy:row:${stable || index}`;
+}
+
+function finPosSaleProductIdentity(sale, index, catalogMap){
+  const productId = finPosSaleProductId(sale);
+  const current = productId && catalogMap ? catalogMap.get(productId) : null;
+  const label = finPosSaleProductName(sale, '') || String(current && (current.name || current.nombre) || productId || 'Producto histórico');
+  return {
+    key: productId ? `product:${productId}` : finPosLegacyProductKey(sale,index),
+    productId,
+    label,
+    operational: !!(current && current.active !== false && current.deleted !== true),
+    legacy: !productId
+  };
 }
 
 function matchEventPOS(sale, eventFilter) {
@@ -7281,161 +7312,71 @@ function ensureRentabUI() {
   if (!subER) return null;
   let section = document.getElementById('rentab-presentacion');
   if (section) return section;
-
   const wrapper = document.createElement('section');
   wrapper.id = 'rentab-presentacion';
   wrapper.className = 'fin-subsection';
-
   wrapper.innerHTML = `
     <header class="fin-section-header fin-section-header--sub">
-      <h3>Rentabilidad por presentación</h3>
-      <p>
-        Usa los mismos filtros de arriba (Periodo y Evento) para ver botellas, ingresos, costo y margen
-        por Pulso, Media, Djeba, Litro y Galón.
-      </p>
+      <h3>Rentabilidad por producto</h3>
+      <p>Usa los filtros de Periodo y Evento. Agrupa por productId y conserva históricos sin reactivar Productos.</p>
     </header>
-    <div class="fin-table-wrapper">
-      <table class="fin-table">
-        <thead>
-          <tr>
-            <th>Presentación</th>
-            <th>Botellas vendidas</th>
-            <th>Ingresos</th>
-            <th>Costo de venta</th>
-            <th>Margen</th>
-            <th>% Margen</th>
-          </tr>
-        </thead>
-        <tbody id="rentab-tbody">
-          <tr>
-            <td colspan="6">Sin datos de ventas del POS para el periodo/evento seleccionado.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  `;
+    <div class="fin-table-wrapper"><table class="fin-table"><thead><tr>
+      <th>Producto</th><th>Identidad</th><th>Unidades</th><th>Ingresos</th><th>Costo de venta</th><th>Margen</th><th>% Margen</th>
+    </tr></thead><tbody id="rentab-tbody"><tr><td colspan="7">Sin datos de ventas del POS para el periodo/evento seleccionado.</td></tr></tbody></table></div>`;
   subER.appendChild(wrapper);
   return wrapper;
 }
 
-function renderRentabilidadPresentacion(/* dataFinanzas */) {
+function renderRentabilidadPresentacion() {
   (async () => {
     const section = ensureRentabUI();
     if (!section) return;
     const tbody = document.getElementById('rentab-tbody');
     if (!tbody) return;
-
-    // Determinar rango de fechas y evento usando los mismos filtros del ER
-    const modoSel = document.getElementById('er-modo');
-    const mesSel = document.getElementById('er-mes');
-    const anioSel = document.getElementById('er-anio');
-    const desdeInput = document.getElementById('er-desde');
-    const hastaInput = document.getElementById('er-hasta');
-    const eventoSel = document.getElementById('er-evento');
-
-    const modo = modoSel ? modoSel.value : 'mes';
-    let desde;
-    let hasta;
-
-    if (modo === 'mes') {
-      const mes = (mesSel && mesSel.value) ? mesSel.value : pad2(new Date().getMonth() + 1);
-      const anio = (anioSel && anioSel.value) ? anioSel.value : String(new Date().getFullYear());
-      const range = monthRange(Number(anio), Number(mes));
-      desde = range.start;
-      hasta = range.end;
+    const modoSel=document.getElementById('er-modo'), mesSel=document.getElementById('er-mes'), anioSel=document.getElementById('er-anio');
+    const desdeInput=document.getElementById('er-desde'), hastaInput=document.getElementById('er-hasta'), eventoSel=document.getElementById('er-evento');
+    const modo=modoSel ? modoSel.value : 'mes';
+    let desde, hasta;
+    if (modo === 'mes'){
+      const mes=(mesSel && mesSel.value) || pad2(new Date().getMonth()+1);
+      const anio=(anioSel && anioSel.value) || String(new Date().getFullYear());
+      const range=monthRange(Number(anio),Number(mes)); desde=range.start; hasta=range.end;
     } else {
-      desde = (desdeInput && desdeInput.value) ? desdeInput.value : todayStr();
-      hasta = (hastaInput && hastaInput.value) ? hastaInput.value : desde;
-      if (hasta < desde) {
-        const tmp = desde;
-        desde = hasta;
-        hasta = tmp;
-      }
+      desde=(desdeInput && desdeInput.value) || todayStr(); hasta=(hastaInput && hastaInput.value) || desde;
+      if (hasta < desde) [desde,hasta]=[hasta,desde];
     }
-
-    const evento = (eventoSel && eventoSel.value) ? eventoSel.value : 'ALL';
-
-    const ventas = await getAllPosSales();
-
-    if (!ventas || !ventas.length) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="6">No hay ventas registradas en el POS para calcular rentabilidad.</td>
-        </tr>
-      `;
-      return;
+    const evento=(eventoSel && eventoSel.value) || 'ALL';
+    const [ventas, catalog] = await Promise.all([getAllPosSales(), getAllPosProductsSafe()]);
+    const catalogMap = new Map();
+    for (const row of (catalog || [])){
+      const id=String(row && (row.productId ?? row.productoId) || '').trim();
+      if (id && !catalogMap.has(id)) catalogMap.set(id,row);
     }
-
-    const agg = {};
-    for (const s of ventas) {
-      const fecha = s.date || '';
-      if (fecha && desde && fecha < desde) continue;
-      if (fecha && hasta && fecha > hasta) continue;
-      if (!matchEventPOS(s, evento)) continue;
-
-      const courtesy = !!s.courtesy;
-      if (courtesy) continue; // Por ahora, cortesías fuera de la rentabilidad
-
-      const presId = mapProductNameToPresIdFromPOS(s.productName || '');
-      if (!presId) continue;
-
-      if (!agg[presId]) {
-        agg[presId] = {
-          botellas: 0,
-          ingresos: 0,
-          costo: 0
-        };
-      }
-      const group = agg[presId];
-
-      const qty = Number(s.qty || 0); // devoluciones vienen con signo negativo
-      const total = Number(s.total || 0); // devoluciones ajustan ingresos
-      const lineCost = (typeof s.lineCost === 'number')
-        ? Number(s.lineCost || 0)
-        : Number(s.costPerUnit || 0) * qty;
-
-      group.botellas += qty;
-      group.ingresos += total;
-      group.costo += lineCost;
-    }
-
-    tbody.innerHTML = '';
-
-    let tieneDatos = false;
-    for (const def of RENTAB_PRESENTACIONES) {
-      const data = agg[def.id] || { botellas: 0, ingresos: 0, costo: 0 };
-      const botellas = data.botellas;
-      const ingresos = data.ingresos;
-      const costo = data.costo;
-      const margen = ingresos - costo;
-      const margenPct = ingresos !== 0 ? (margen / ingresos) * 100 : 0;
-
-      if (botellas !== 0 || ingresos !== 0 || costo !== 0) {
-        tieneDatos = true;
-      }
-
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${def.label}</td>
-        <td class="num">${botellas.toFixed(0)}</td>
-        <td class="num">${finFormatCordobas(ingresos)}</td>
-        <td class="num">${finFormatCordobas(costo)}</td>
-        <td class="num">${finFormatCordobas(margen)}</td>
-        <td class="num">${margenPct.toFixed(1)}%</td>
-      `;
+    const agg=new Map();
+    (ventas || []).forEach((sale,index) => {
+      const fecha=sale.date || '';
+      if ((fecha && desde && fecha < desde) || (fecha && hasta && fecha > hasta) || !matchEventPOS(sale,evento) || sale.courtesy || sale.isCourtesy) return;
+      const identity=finPosSaleProductIdentity(sale,index,catalogMap);
+      if (!agg.has(identity.key)) agg.set(identity.key,{...identity,unidades:0,ingresos:0,costo:0});
+      const group=agg.get(identity.key);
+      const qtyRaw=Number(sale.qty || 0);
+      const qty=sale.isReturn ? -Math.abs(qtyRaw) : qtyRaw;
+      const total=Number(sale.total || 0);
+      const lineCost=Number.isFinite(Number(sale.lineCost)) ? Number(sale.lineCost) : Number(sale.costPerUnit || 0) * qty;
+      group.unidades += qty; group.ingresos += total; group.costo += lineCost;
+    });
+    const rows=Array.from(agg.values()).filter(r => r.unidades || r.ingresos || r.costo).sort((a,b)=>String(a.label).localeCompare(String(b.label),'es-NI',{sensitivity:'base'}));
+    if (!rows.length){ tbody.innerHTML='<tr><td colspan="7">Sin movimientos de ventas (no cortesías) para el periodo/evento seleccionado.</td></tr>'; return; }
+    tbody.innerHTML='';
+    for (const row of rows){
+      const margen=row.ingresos-row.costo, margenPct=row.ingresos ? margen/row.ingresos*100 : 0;
+      const identityLabel=row.productId ? row.productId : 'Histórico legacy';
+      const status=row.operational ? '' : (row.legacy ? ' · histórico' : ' · inactivo/borrado');
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${escapeHtml(row.label)}</td><td>${escapeHtml(identityLabel + status)}</td><td class="num">${row.unidades.toFixed(0)}</td><td class="num">${finFormatCordobas(row.ingresos)}</td><td class="num">${finFormatCordobas(row.costo)}</td><td class="num">${finFormatCordobas(margen)}</td><td class="num">${margenPct.toFixed(1)}%</td>`;
       tbody.appendChild(tr);
     }
-
-    if (!tieneDatos) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="6">Sin movimientos de ventas (no cortesías) para el periodo/evento seleccionado.</td>
-        </tr>
-      `;
-    }
-  })().catch(err => {
-    console.error('Error calculando rentabilidad por presentación', err);
-  });
+  })().catch(err => console.error('Error calculando rentabilidad por producto', err));
 }
 
 /* ---------- Comparativo de eventos (solo Finanzas) ---------- */
@@ -19878,43 +19819,51 @@ function finPosAutoResolveIncomeAccount(data) {
 }
 
 function finPosProductKeyFromName(name) {
+  // Compatibilidad exclusiva para históricos sin productId. No se infiere por capacidad.
   const n = normText(name || '');
+  if (!n) return '';
   if (n.includes('vaso')) return 'vaso';
-  if (n.includes('pulso') || n.includes('250')) return 'pulso';
-  if (n.includes('media') || n.includes('375')) return 'media';
-  if (n.includes('djeba') || n.includes('750')) return 'djeba';
-  if (n.includes('litro') || n.includes('1000')) return 'litro';
-  if (n.includes('galon') || n.includes('gallon') || n.includes('3750')) return 'galon';
+  if (n.includes('pulso')) return 'pulso';
+  if (n.includes('media')) return 'media';
+  if (n.includes('djeba')) return 'djeba';
+  if (n.includes('litro')) return 'litro';
+  if (n.includes('galon') || n.includes('gallon')) return 'galon';
   return '';
 }
 
 const FIN_POS_PRODUCT_ACCOUNT_MAP = Object.freeze({
-  galon: Object.freeze({ inventory: ['1421'], cogs: ['5211'], income: ['4111'] }),
-  litro: Object.freeze({ inventory: ['1422'], cogs: ['5212'], income: ['4112'] }),
-  djeba: Object.freeze({ inventory: ['1423'], cogs: ['5213'], income: ['4113'] }),
-  media: Object.freeze({ inventory: ['1424'], cogs: ['5214'], income: ['4114'] }),
-  pulso: Object.freeze({ inventory: ['1425'], cogs: ['5215'], income: ['4115'] }),
-  vaso: Object.freeze({ inventory: ['1441'], cogs: ['5131'], income: ['4211'] })
+  galon:Object.freeze({inventory:['1421'],cogs:['5211'],income:['4111']}),
+  litro:Object.freeze({inventory:['1422'],cogs:['5212'],income:['4112']}),
+  djeba:Object.freeze({inventory:['1423'],cogs:['5213'],income:['4113']}),
+  media:Object.freeze({inventory:['1424'],cogs:['5214'],income:['4114']}),
+  pulso:Object.freeze({inventory:['1425'],cogs:['5215'],income:['4115']}),
+  vaso:Object.freeze({inventory:['1441'],cogs:['5131'],income:['4211']})
 });
 
-function finPosAutoResolveProductAccount(data, productName, kind) {
-  const key = finPosProductKeyFromName(productName);
+function finPosProductRef(value){
+  const row=value && typeof value === 'object' ? value : {};
+  const productId=String(row.productId ?? row.productoId ?? '').trim();
+  const name=String(row.productName ?? row.name ?? row.producto ?? (typeof value === 'string' ? value : '')).trim();
+  return { productId, name, legacy:!productId };
+}
+
+function finPosAutoResolveProductAccount(data, productRef, kind) {
+  const ref = finPosProductRef(productRef);
+  const key = ref.legacy ? finPosProductKeyFromName(ref.name) : '';
   const spec = key ? FIN_POS_PRODUCT_ACCOUNT_MAP[key] : null;
   const candidates = spec && Array.isArray(spec[kind]) ? spec[kind] : [];
 
-  // Productos dinámicos: si no reconocemos presentación legacy, NO caen a Galón por fallback.
-  // Se usan cuentas genéricas/posteables por tipo; así Catrina, Vaso u otros productos futuros
-  // conservan su nombre snapshot sin mapearse como 1421/5211 salvo que el catálogo realmente coincida.
+  // Un productId moderno nunca puede caer por nombre/capacidad en cuentas legacy de presentación.
   if (kind === 'inventory') {
-    const genericCandidates = key ? ['1421', '1441', '1411', '1501', '1500'] : ['1501', '1500'];
+    const genericCandidates = key ? ['1421','1441','1411','1501','1500'] : ['1501','1500'];
     const genericGroups = key
-      ? [['sangria'], ['producto', 'terminado'], ['vasos'], ['inventario']]
-      : [['producto', 'terminado'], ['inventario', 'producto'], ['inventario']];
+      ? [['sangria'],['producto','terminado'],['vasos'],['inventario']]
+      : [['producto','terminado'],['inventario','producto'],['inventario']];
     return finPosAutoResolvePostableAccount(data, {
-      candidateCodes: [...candidates, ...genericCandidates],
-      tipo: 'activo',
-      nameGroups: genericGroups,
-      predicate: key ? null : ((raw, view) => {
+      candidateCodes:[...candidates,...genericCandidates],
+      tipo:'activo',
+      nameGroups:genericGroups,
+      predicate:key ? null : ((raw, view) => {
         const code = finNormalizeAccountCode(finGetAccountCode(view));
         if (['1421','1422','1423','1424','1425','1441'].includes(code)) return false;
         const nm = normText([finGetAccountName(view), raw && raw.nombre, raw && raw.name].filter(Boolean).join(' '));
@@ -19924,15 +19873,15 @@ function finPosAutoResolveProductAccount(data, productName, kind) {
     });
   }
   if (kind === 'cogs') {
-    const genericCandidates = key ? ['5211', '5131', '5111', '5101', '5100'] : ['5101', '5100', '5111'];
+    const genericCandidates = key ? ['5211','5131','5111','5101','5100'] : ['5101','5100','5111'];
     const genericGroups = key
-      ? [['costo', 'vendido'], ['costo', 'vasos'], ['costo']]
-      : [['costo', 'ventas'], ['costo', 'vendido'], ['costo']];
+      ? [['costo','vendido'],['costo','vasos'],['costo']]
+      : [['costo','ventas'],['costo','vendido'],['costo']];
     return finPosAutoResolvePostableAccount(data, {
-      candidateCodes: [...candidates, ...genericCandidates],
-      tipo: 'costo',
-      nameGroups: genericGroups,
-      predicate: key ? null : ((raw, view) => {
+      candidateCodes:[...candidates,...genericCandidates],
+      tipo:'costo',
+      nameGroups:genericGroups,
+      predicate:key ? null : ((raw, view) => {
         const code = finNormalizeAccountCode(finGetAccountCode(view));
         if (['5211','5212','5213','5214','5215','5131'].includes(code)) return false;
         const nm = normText([finGetAccountName(view), raw && raw.nombre, raw && raw.name].filter(Boolean).join(' '));
@@ -19943,9 +19892,9 @@ function finPosAutoResolveProductAccount(data, productName, kind) {
   }
   if (kind === 'income') {
     return finPosAutoResolvePostableAccount(data, {
-      candidateCodes: [...candidates, '4211', '4111', '4101', '4100'],
-      tipo: 'ingreso',
-      nameGroups: [['ventas', 'pos'], ['ventas']]
+      candidateCodes:[...candidates,'4211','4111','4101','4100'],
+      tipo:'ingreso',
+      nameGroups:[['ventas','pos'],['ventas']]
     });
   }
   return '';
@@ -19986,22 +19935,22 @@ function finPosAutoLine(data, accountCode, debe, haber, meta = {}) {
     currency: meta.currency || meta.originalCurrency || 'NIO',
     sourceMap: meta.sourceMap || 'POS_AUTO_POSTABLE_MAP',
     mapRole: meta.mapRole || null,
-    productNameSnapshot: meta.productNameSnapshot || null
+    productNameSnapshot: meta.productNameSnapshot || null,
+    productIdSnapshot: meta.productIdSnapshot || null
   };
 }
 
-function finPosAutoAddBalancedCostLines(lines, data, productName, amount, kind = 'paid') {
+function finPosAutoAddBalancedCostLines(lines, data, productRef, amount, kind = 'paid') {
   const value = n2(amount);
   if (!(value > 0)) return;
-  const cogsCode = kind === 'courtesy'
-    ? finPosAutoResolveCourtesyExpenseAccount(data)
-    : finPosAutoResolveProductAccount(data, productName, 'cogs');
-  const invCode = finPosAutoResolveProductAccount(data, productName, 'inventory');
+  const ref = finPosProductRef(productRef);
+  const cogsCode = kind === 'courtesy' ? finPosAutoResolveCourtesyExpenseAccount(data) : finPosAutoResolveProductAccount(data, ref, 'cogs');
+  const invCode = finPosAutoResolveProductAccount(data, ref, 'inventory');
   if (!cogsCode || !invCode) {
-    throw new Error(`Falta cuenta posteable para costo POS (${productName || 'producto'}).`);
+    throw new Error(`Falta cuenta posteable para costo POS (${ref.name || ref.productId || 'producto'}).`);
   }
-  lines.push(finPosAutoLine(data, cogsCode, value, 0, { mapRole: kind === 'courtesy' ? 'courtesy_cost' : 'cogs', productNameSnapshot: productName || null }));
-  lines.push(finPosAutoLine(data, invCode, 0, value, { mapRole: 'inventory_out', productNameSnapshot: productName || null }));
+  lines.push(finPosAutoLine(data, cogsCode, value, 0, { mapRole: kind === 'courtesy' ? 'courtesy_cost' : 'cogs', productNameSnapshot: ref.name || null, productIdSnapshot: ref.productId || null }));
+  lines.push(finPosAutoLine(data, invCode, 0, value, { mapRole: 'inventory_out', productNameSnapshot: ref.name || null, productIdSnapshot: ref.productId || null }));
 }
 
 function finPosAutoAddCostBreakdownLines(lines, data, breakdown, fallbackPaid, fallbackCourtesy) {
@@ -20013,18 +19962,18 @@ function finPosAutoAddCostBreakdownLines(lines, data, breakdown, fallbackPaid, f
     const paid = n2(row && row.totalCostPaid);
     const courtesy = n2(row && row.totalCostCourtesy);
     if (paid > 0) {
-      finPosAutoAddBalancedCostLines(lines, data, name, paid, 'paid');
+      finPosAutoAddBalancedCostLines(lines, data, { productId:row && (row.productId || row.productoId), productName:name }, paid, 'paid');
       usedPaid = n2(usedPaid + paid);
     }
     if (courtesy > 0) {
-      finPosAutoAddBalancedCostLines(lines, data, name, courtesy, 'courtesy');
+      finPosAutoAddBalancedCostLines(lines, data, { productId:row && (row.productId || row.productoId), productName:name }, courtesy, 'courtesy');
       usedCourtesy = n2(usedCourtesy + courtesy);
     }
   }
   const remPaid = n2(n2(fallbackPaid) - usedPaid);
   const remCourtesy = n2(n2(fallbackCourtesy) - usedCourtesy);
-  if (remPaid > 0.01) finPosAutoAddBalancedCostLines(lines, data, 'Sangría Artesanal Premium', remPaid, 'paid');
-  if (remCourtesy > 0.01) finPosAutoAddBalancedCostLines(lines, data, 'Sangría Artesanal Premium', remCourtesy, 'courtesy');
+  if (remPaid > 0.01) finPosAutoAddBalancedCostLines(lines, data, { productName:'Producto POS sin desglose' }, remPaid, 'paid');
+  if (remCourtesy > 0.01) finPosAutoAddBalancedCostLines(lines, data, { productName:'Producto POS sin desglose' }, remCourtesy, 'courtesy');
 }
 
 function finPosAutoBuildClosureLines(closure, data) {

@@ -869,3 +869,13 @@ html[data-theme="light"] .inv-currency-note.is-warn{
   .inv-currency-badge{ width:100%; }
   .inv-currency-grid{ grid-template-columns:1fr; }
 }
+
+
+/* Etapa 3/8 — registros legacy/inactivos: visibles como histórico, nunca operativos. */
+.inv-table tr.is-historical {
+  opacity: 0.78;
+}
+.inv-table tr.is-historical input,
+.inv-table tr.is-historical button {
+  cursor: not-allowed;
+}

@@ -29,18 +29,18 @@
 
   <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=9" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.85&r=9" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.84&r=8" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=8" />
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=8" />
-  <script src="/assets/js/a33-theme.js?v=4.20.84&r=8"></script>
+  <link rel="stylesheet" href="style.css?v=4.20.85&r=9" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.85&r=8" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.85&r=8" />
+  <script src="/assets/js/a33-theme.js?v=4.20.85&r=8"></script>
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Inventario</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.84">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.85">v...</div>
   </header>
   <main class="app-main">
 
@@ -110,7 +110,7 @@
       </div>
 
       <div class="table-footer">
-        <div id="inv-botellas-empty" class="empty-state" hidden>Sin resultados.</div>
+        <div id="inv-botellas-empty" class="empty-state" hidden>No hay Envases activos en Catálogos.</div>
         <button id="inv-botellas-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
       </div>
       <p class="legend">
@@ -138,6 +138,10 @@
         </table>
       </div>
 
+      <div class="table-footer">
+        <div id="inv-caps-empty" class="empty-state" hidden>No hay Tapas o cierres activos en Catálogos.</div>
+        <button id="inv-caps-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
+      </div>
       <p class="legend">
         Semáforo: <strong>Sin stock</strong> (stock &le; 0), <strong>Bajo</strong> (stock &le; mínimo), <strong>OK</strong>.
       </p>
@@ -185,7 +189,7 @@
       <div class="table-header">
         <div>
           <h2>Inventario de producto terminado</h2>
-          <p class="hint">Botellas listas de Sangría Artesanal Premium por presentación. Este inventario se actualiza automáticamente desde la Calculadora de Producción y el POS.</p>
+          <p class="hint">Productos terminados definidos en Catálogos. El stock moderno se identifica por productId; los registros legacy se conservan separados como históricos.</p>
         </div>
         <div class="table-actions">
           <button id="inv-finished-clear" class="btn danger btn-pill" type="button">Borrar Productos</button>
@@ -207,7 +211,7 @@
       </div>
 
       <div class="table-footer">
-        <div id="inv-productos-empty" class="empty-state" hidden>Sin resultados.</div>
+        <div id="inv-productos-empty" class="empty-state" hidden>No hay Productos activos en Catálogos ni inventario histórico para mostrar.</div>
         <button id="inv-productos-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
       </div>
       <p class="legend">
@@ -246,14 +250,14 @@
       </div>
     </div>
   </div>
-  <script src="/assets/js/a33-release.js?v=4.20.84&r=44"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.85&r=49"></script>
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.84&r=9"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.84&r=14"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=8"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.85&r=19"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.85&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.85&r=15"></script>
 
-  <script src="script.js?v=4.20.84&r=13"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=8"></script>
+  <script src="script.js?v=4.20.85&r=14"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.85&r=8"></script>
 </body>
 </html>

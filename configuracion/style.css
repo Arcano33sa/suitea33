@@ -3865,3 +3865,63 @@ html[data-theme="light"] .cfg-backup-import-log-card{
 html[data-theme="light"] .cfg-backup-import-table th{
   background:rgba(248,243,232,0.98);
 }
+
+/* Productos como fuente única — Etapa 7/8: auditoría segura */
+.cfg-product-audit-note{
+  margin-bottom:.8rem;
+  padding:.75rem .9rem;
+  border:1px solid rgba(218,177,73,.35);
+  border-radius:12px;
+  background:rgba(218,177,73,.08);
+}
+.cfg-product-audit-wrap{
+  max-width:100%;
+  overflow:auto;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:14px;
+}
+.cfg-product-audit-table{
+  width:max-content;
+  min-width:100%;
+  border-collapse:collapse;
+  font-size:.84rem;
+}
+.cfg-product-audit-table th,
+.cfg-product-audit-table td{
+  padding:.65rem .7rem;
+  border-bottom:1px solid rgba(255,255,255,.09);
+  text-align:left;
+  vertical-align:top;
+  white-space:nowrap;
+}
+.cfg-product-audit-table th{
+  position:sticky;
+  top:0;
+  z-index:1;
+  background:var(--cfg-panel, #17171c);
+}
+.cfg-product-audit-table small{
+  display:block;
+  margin-top:.2rem;
+  opacity:.72;
+  max-width:240px;
+  overflow-wrap:anywhere;
+  white-space:normal;
+}
+.cfg-product-audit-actions{
+  display:flex;
+  gap:.35rem;
+}
+.cfg-btn-danger{
+  border-color:rgba(220,73,73,.58)!important;
+  background:rgba(220,73,73,.12)!important;
+}
+.cfg-product-audit-detail .kv{
+  grid-template-columns:minmax(150px, .7fr) minmax(220px, 1.3fr);
+}
+html[data-theme="light"] .cfg-product-audit-wrap{
+  border-color:rgba(42,34,25,.16);
+}
+html[data-theme="light"] .cfg-product-audit-table th{
+  background:#f4ead8;
+}

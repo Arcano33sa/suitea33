@@ -1,5 +1,5 @@
 /*
-  Suite A33 — A33CloudSync (Etapa 6/6)
+  Suite A33 — A33CloudSync (Etapa 7/8)
   Motor híbrido local-first + sincronización manual inicial.
   Alcance real: Configuración segura + Catálogos maestros.
   No sincroniza POS, ventas, eventos, Caja Chica, Finanzas, cierres, saldos ni históricos.
@@ -9,10 +9,10 @@
 
   const QUEUE_KEY = 'suite_a33_sync_queue_v1';
   const STATE_KEY = 'suite_a33_sync_state_v1';
-  const ENGINE_VERSION = 2;
-  const SCHEMA_VERSION = 1;
+  const ENGINE_VERSION = 3;
+  const SCHEMA_VERSION = 2;
   const CATALOG_DB_NAME = 'a33-pos';
-  const CATALOG_DB_VERSION = 34;
+  const CATALOG_DB_VERSION = 35;
   const TECHNICAL_COLLECTION = '_meta/syncEngineTests';
   const READY_MESSAGE = 'Sincronización manual lista para Configuración y Catálogos. La Suite sigue local-first.';
   const SYNC_SCOPE_MESSAGE = 'Alcance: Configuración + Catálogos. POS, ventas, Finanzas y Caja Chica permanecen locales.';
@@ -709,7 +709,7 @@
           try{
             if (!d.objectStoreNames.contains('products')){
               const p = d.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
-              try{ p.createIndex('by_name', 'name', { unique: true }); }catch(_){ }
+              try{ p.createIndex('by_name', 'name', { unique: false }); }catch(_){ }
             }
             if (!d.objectStoreNames.contains('extras')){
               const e = d.createObjectStore('extras', { keyPath: 'id', autoIncrement: true });
@@ -755,7 +755,7 @@
     return new Promise(function(resolve, reject){
       const tx = db.transaction(storeName, 'readwrite');
       const req = tx.objectStore(storeName).put(value);
-      req.onsuccess = function(){ resolve(true); };
+      req.onsuccess = function(){ resolve(req.result); };
       req.onerror = function(){ reject(req.error || tx.error); };
       tx.onerror = function(){ reject(tx.error || req.error); };
     });
@@ -769,21 +769,24 @@
 
   function normKey(value){ return normName(value).replace(/\s+/g, ''); }
 
-  function productGroup(name){
-    const n = normName(name);
-    if (n.includes('pulso')) return 'pulso';
-    if (n.includes('media')) return 'media';
-    if (n.includes('djeba')) return 'djeba';
-    if (n.includes('litro')) return 'litro';
-    if (n.includes('galon') || n.includes('galón') || n.includes('gal')) return 'galon';
-    if (n.includes('vaso')) return 'vaso';
-    return '';
+  function syncProductId(record){
+    const row = record && typeof record === 'object' ? record : {};
+    const direct = clean(row.productId || row.productoId || row.catalogProductId, 160);
+    if (direct) return direct;
+    const legacyId = clean(row.id, 120);
+    return legacyId ? ('prd_legacy_' + legacyId.toLowerCase().replace(/[^a-z0-9_-]+/g, '_')) : '';
+  }
+
+  function ensureSyncProductIdentity(record){
+    const row = record && typeof record === 'object' ? clone(record) || {} : {};
+    if (!clean(row.productId, 160)) row.productId = syncProductId(row);
+    if (Object.prototype.hasOwnProperty.call(row, 'productoId')) delete row.productoId;
+    return row;
   }
 
   function duplicateProductKey(record){
-    const name = record && (record.name || record.nombre || record.productName || record.descripcion);
-    const group = productGroup(name);
-    return group ? 'sku:' + group : 'name:' + normKey(name);
+    const productId = syncProductId(record);
+    return productId ? ('productId:' + productId) : '';
   }
 
   function duplicateExtraKey(record){
@@ -813,16 +816,6 @@
     if (activeValue(record, spec)) score += 1000;
     if (record && record.id != null) score += 50;
     if (record && clean(record.updatedAt, 80)) score += Math.min(10, parseTime(record.updatedAt) / 1e15);
-    if (spec && spec.id === 'productos'){
-      const group = productGroup(record && (record.name || record.nombre));
-      const price = Number(record && record.price);
-      if (Number.isFinite(price) && price > 0) score += 80;
-      if (group === 'galon'){
-        const name = normName(record && (record.name || record.nombre));
-        if (name.includes('3750')) score += 40;
-        if (price === 900) score += 12;
-      }
-    }
     return score;
   }
 
@@ -843,31 +836,67 @@
     }).filter(function(row){ return row && typeof row === 'object'; });
   }
 
-  function catalogRecordKey(record){
+  function catalogIdentity(record, spec){
+    if (spec && spec.id === 'productos') return syncProductId(record);
     const id = record && record.id;
-    if (id == null || id === '') return '';
-    if (typeof id === 'number' || /^\d+$/.test(String(id))) return 'id_' + String(id);
-    return firebaseKey(id, 'record');
+    return id == null ? '' : String(id);
+  }
+
+  function catalogRecordKey(record, spec){
+    const identity = catalogIdentity(record, spec);
+    if (!identity) return '';
+    if (!(spec && spec.id === 'productos') && (/^\d+$/.test(identity))) return 'id_' + identity;
+    return firebaseKey(identity, 'record');
+  }
+
+  function withCatalogSyncMeta(record, settings, spec){
+    const row = record && typeof record === 'object' ? record : {};
+    const hadLegacyId = row.id != null && row.id !== '';
+    const out = withSyncMeta(row, catalogIdentity(row, spec), settings, 'catalogos/' + (spec && spec.id || 'catalogo'));
+    if (spec && spec.id === 'productos' && !hadLegacyId) delete out.id;
+    return out;
   }
 
   function catalogMap(records, settings, spec){
     const out = {};
     (Array.isArray(records) ? records : []).forEach(function(record){
       if (!record || typeof record !== 'object') return;
-      const key = catalogRecordKey(record);
-      if (!key) return;
-      out[key] = withSyncMeta(record, record.id, settings, 'catalogos/' + (spec && spec.id || 'catalogo'));
+      const normalized = spec && spec.id === 'productos' ? ensureSyncProductIdentity(record) : record;
+      const identity = catalogIdentity(normalized, spec);
+      const key = catalogRecordKey(normalized, spec);
+      if (!key || !identity) return;
+      out[key] = withCatalogSyncMeta(normalized, settings, spec);
     });
     return out;
   }
 
-  function localMapById(records){
+  function localMapById(records, spec){
     const map = new Map();
     (records || []).forEach(function(record){
-      if (!record || record.id == null || record.id === '') return;
-      map.set(String(record.id), record);
+      if (!record) return;
+      const identity = catalogIdentity(record, spec);
+      if (!identity) return;
+      map.set(String(identity), record);
     });
     return map;
+  }
+
+  function prepareRemoteCatalogRecord(remote, spec, localRecords){
+    if (!(spec && spec.id === 'productos')) return remote;
+    const row = ensureSyncProductIdentity(remote);
+    const productId = syncProductId(row);
+    const local = (localRecords || []).find(function(item){ return syncProductId(item) === productId; });
+    if (local && local.id != null){
+      row.id = local.id;
+      return row;
+    }
+    if (!clean(row.origin, 60)) row.origin = 'sincronizacion';
+    const legacyId = row.id;
+    const idCollision = legacyId != null && (localRecords || []).some(function(item){
+      return item && String(item.id) === String(legacyId) && syncProductId(item) !== productId;
+    });
+    if (idCollision) delete row.id;
+    return row;
   }
 
   function buildDuplicateMap(records, spec){
@@ -882,12 +911,111 @@
     return map;
   }
 
+
+  function readProductTombstones(){
+    try{
+      if (g.A33ProductIntegrity && typeof g.A33ProductIntegrity.readTombstones === 'function'){
+        return g.A33ProductIntegrity.readTombstones();
+      }
+      if (g.A33Products && typeof g.A33Products.readDeletedMarkers === 'function'){
+        return g.A33Products.readDeletedMarkers();
+      }
+    }catch(_){ }
+    return [];
+  }
+
+  function isProductTombstoned(productId){
+    const target = clean(productId, 160);
+    if (!target) return false;
+    try{
+      if (g.A33ProductIntegrity && typeof g.A33ProductIntegrity.isTombstoned === 'function'){
+        return g.A33ProductIntegrity.isTombstoned(target);
+      }
+      if (g.A33Products && typeof g.A33Products.isDeletedProductId === 'function'){
+        return g.A33Products.isDeletedProductId(target);
+      }
+    }catch(_){ }
+    return readProductTombstones().some(function(row){ return clean(row && row.productId, 160) === target; });
+  }
+
+  function productsClearlyDistinct(a, b){
+    try{
+      return !!(g.A33ProductIntegrity && typeof g.A33ProductIntegrity.clearlyDistinct === 'function' && g.A33ProductIntegrity.clearlyDistinct(a, b));
+    }catch(_){ return false; }
+  }
+
+  async function syncProductTombstones(db, settings, summary){
+    const path = getWorkspacePath(settings) + '/catalogos/productos_tombstones';
+    const ref = db.ref(path);
+    const local = readProductTombstones();
+    const snapshot = await ref.once('value');
+    const remote = normalizeRemoteCollection(snapshot && typeof snapshot.val === 'function' ? snapshot.val() : null);
+    let merged = [];
+    try{
+      if (g.A33ProductIntegrity && typeof g.A33ProductIntegrity.mergeTombstones === 'function'){
+        merged = g.A33ProductIntegrity.mergeTombstones(local, remote);
+        g.A33ProductIntegrity.writeTombstones(merged);
+        if (typeof g.A33ProductIntegrity.applyTombstonesToCatalog === 'function'){
+          const applied = await g.A33ProductIntegrity.applyTombstonesToCatalog({ source:'sincronizacion_nube' });
+          if (applied && applied.removed) summary.details.push('Productos: ' + applied.removed + ' registro(s) local(es) retirado(s) por tombstone.');
+        }
+      } else {
+        const map = new Map();
+        local.concat(remote).forEach(function(row){
+          const id = clean(row && row.productId, 160);
+          if (id) map.set(id, row);
+        });
+        merged = Array.from(map.values());
+      }
+    }catch(_){ merged = local.slice(); }
+    const payload = {};
+    merged.forEach(function(row){
+      const productId = clean(row && row.productId, 160);
+      if (!productId) return;
+      payload[firebaseKey(productId, 'product')] = Object.assign({}, clone(row) || {}, {
+        productId,
+        syncedAt: nowIso(),
+        deviceId: getDeviceId(settings),
+        schemaVersion: SCHEMA_VERSION
+      });
+    });
+    await ref.set(payload);
+    if (merged.length){
+      const localIds = new Set(local.map(function(row){ return clean(row && row.productId, 160); }));
+      const remoteIds = new Set(remote.map(function(row){ return clean(row && row.productId, 160); }));
+      const uploaded = merged.filter(function(row){ return !remoteIds.has(clean(row && row.productId, 160)); }).length;
+      const downloaded = merged.filter(function(row){ return !localIds.has(clean(row && row.productId, 160)); }).length;
+      summary.uploaded += uploaded;
+      summary.downloaded += downloaded;
+      summary.details.push('Productos borrados: tombstones sincronizados (' + merged.length + ').');
+    }
+    return merged;
+  }
+
   async function syncCatalogCollection(db, settings, spec, summary){
     const ref = db.ref(getWorkspacePath(settings) + '/' + spec.path);
+    if (spec && spec.id === 'productos' && g.A33Products && typeof g.A33Products.ensureIdentities === 'function'){
+      await g.A33Products.ensureIdentities();
+    }
     let localRecords = await getAllStore(spec.store);
+    if (spec && spec.id === 'productos'){
+      localRecords = localRecords.map(ensureSyncProductIdentity).filter(function(row){ return !isProductTombstoned(syncProductId(row)); });
+    }
     localRecords = Array.isArray(localRecords) ? localRecords : [];
     const snapshot = await ref.once('value');
-    const remoteRecords = normalizeRemoteCollection(snapshot && typeof snapshot.val === 'function' ? snapshot.val() : null).filter(function(row){ return row && row.deleted !== true; });
+    let remoteRecords = normalizeRemoteCollection(snapshot && typeof snapshot.val === 'function' ? snapshot.val() : null).filter(function(row){ return row && row.deleted !== true; });
+    if (spec && spec.id === 'productos'){
+      remoteRecords = remoteRecords.map(ensureSyncProductIdentity);
+      const blockedRemote = remoteRecords.filter(function(row){ return isProductTombstoned(syncProductId(row)); });
+      for (const stale of blockedRemote){
+        const staleKey = catalogRecordKey(stale, spec);
+        if (staleKey){
+          try{ await ref.child(staleKey).remove(); }catch(_){ }
+        }
+      }
+      if (blockedRemote.length) summary.details.push('Productos: ' + blockedRemote.length + ' remoto(s) bloqueado(s) por tombstone.');
+      remoteRecords = remoteRecords.filter(function(row){ return !isProductTombstoned(syncProductId(row)); });
+    }
 
     if (localRecords.length && !remoteRecords.length){
       await ref.set(catalogMap(localRecords, settings, spec));
@@ -899,7 +1027,11 @@
 
     if (!localRecords.length && remoteRecords.length){
       for (const remote of remoteRecords){
-        await putStore(spec.store, withSyncMeta(remote, remote.id, settings, 'catalogos/' + spec.id));
+        const prepared = prepareRemoteCatalogRecord(remote, spec, localRecords);
+        const identity = catalogIdentity(prepared, spec);
+        const insertedKey = await putStore(spec.store, withCatalogSyncMeta(prepared, settings, spec));
+        if (prepared.id == null && insertedKey != null) prepared.id = insertedKey;
+        localRecords.push(prepared);
         summary.downloaded += 1;
         summary.catalogDownloaded += 1;
       }
@@ -912,8 +1044,8 @@
       return;
     }
 
-    const localById = localMapById(localRecords);
-    const remoteById = localMapById(remoteRecords);
+    const localById = localMapById(localRecords, spec);
+    const remoteById = localMapById(remoteRecords, spec);
     const duplicateMap = buildDuplicateMap(localRecords, spec);
     const allIds = new Set();
     localById.forEach(function(_, id){ allIds.add(id); });
@@ -922,11 +1054,11 @@
     for (const id of Array.from(allIds)){
       const local = localById.get(id);
       const remote = remoteById.get(id);
-      const key = local ? catalogRecordKey(local) : catalogRecordKey(remote);
+      const key = local ? catalogRecordKey(local, spec) : catalogRecordKey(remote, spec);
       const child = ref.child(key || firebaseKey(id, 'record'));
 
       if (local && !remote){
-        await child.set(withSyncMeta(local, local.id, settings, 'catalogos/' + spec.id));
+        await child.set(withCatalogSyncMeta(local, settings, spec));
         summary.uploaded += 1;
         summary.catalogUploaded += 1;
         continue;
@@ -935,19 +1067,27 @@
       if (!local && remote){
         const dupKey = spec.duplicateKey(remote);
         const dup = duplicateMap.get(dupKey);
-        if (dup && String(dup.id) !== String(remote.id)){
-          addWarning(summary, spec.label + ': duplicado por nombre/canon detectado (' + clean(remote.name || remote.nombre || remote.id, 80) + '). No se insertó duplicado local.');
+        if (dup && catalogIdentity(dup, spec) !== catalogIdentity(remote, spec)){
+          addWarning(summary, spec.label + ': identidad duplicada detectada (' + clean(catalogIdentity(remote, spec), 80) + '). No se insertó duplicado local.');
           continue;
         }
-        await putStore(spec.store, withSyncMeta(remote, remote.id, settings, 'catalogos/' + spec.id));
+        const prepared = prepareRemoteCatalogRecord(remote, spec, localRecords);
+        const insertedKey = await putStore(spec.store, withCatalogSyncMeta(prepared, settings, spec));
+        if (prepared.id == null && insertedKey != null) prepared.id = insertedKey;
+        localRecords.push(prepared);
         summary.downloaded += 1;
         summary.catalogDownloaded += 1;
         continue;
       }
 
       if (!local || !remote) continue;
-      const localClean = withSyncMeta(local, local.id, settings, 'catalogos/' + spec.id);
-      const remoteClean = withSyncMeta(remote, remote.id, settings, 'catalogos/' + spec.id);
+      const localClean = withCatalogSyncMeta(local, settings, spec);
+      const remoteClean = withCatalogSyncMeta(remote, settings, spec);
+
+      if (spec && spec.id === 'productos' && productsClearlyDistinct(localClean, remoteClean)){
+        addWarning(summary, spec.label + ': conflicto seguro de productId ' + clean(id, 80) + '. Los productos son claramente distintos; no se sobrescribió ningún lado.');
+        continue;
+      }
 
       if (stableJson(stripMeta(localClean)) === stableJson(stripMeta(remoteClean))){
         summary.skipped += 1;
@@ -962,11 +1102,12 @@
       } else if (cmp === -1){
         const dupKey = spec.duplicateKey(remoteClean);
         const dup = duplicateMap.get(dupKey);
-        if (dup && String(dup.id) !== String(remoteClean.id)){
-          addWarning(summary, spec.label + ': remoto más reciente duplica nombre/canon. Se conservó local sin borrar.');
+        if (dup && catalogIdentity(dup, spec) !== catalogIdentity(remoteClean, spec)){
+          addWarning(summary, spec.label + ': remoto más reciente duplica identidad. Se conservó local sin borrar.');
           continue;
         }
-        await putStore(spec.store, remoteClean);
+        const prepared = prepareRemoteCatalogRecord(remoteClean, spec, localRecords);
+        await putStore(spec.store, prepared);
         summary.downloaded += 1;
         summary.catalogDownloaded += 1;
       } else {
@@ -1054,6 +1195,7 @@
       await syncConfigDoc(db, settings, 'moneda', 'configuracion/moneda', summary);
       await syncConfigDoc(db, settings, 'pwa', 'configuracion/pwa', summary);
 
+      await syncProductTombstones(db, settings, summary);
       for (const spec of CATALOG_SPECS){
         await syncCatalogCollection(db, settings, spec, summary);
       }

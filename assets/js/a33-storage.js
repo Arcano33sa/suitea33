@@ -41,19 +41,18 @@
     ['suite_a33_last_url_v1'].join('')
   ]);
   const ACTIVE_A33_SW_PATHS = [
+    '/catalogos/sw.js',
     '/pos/sw.js',
     '/inventario/sw.js',
     '/lotes/sw.js',
-    '/pedidos/sw.js',
-    '/centro_mando/sw.js'
+    '/pedidos/sw.js'
   ];
   const ACTIVE_A33_CACHE_HINTS = [
+    '-catalogos-',
     '-pos-',
     '-inventario-',
     '-lotes-',
-    '-pedidos-',
-    '-centro_mando-',
-    '-centro-mando-'
+    '-pedidos-'
   ];
 
   function hasSuitePrefix(key){
@@ -391,11 +390,6 @@
   // ------------------------------
   // Shared key contracts
   // ------------------------------
-  const INV_LIQUID_IDS = ['vino','vodka','jugo','sirope','agua'];
-  const INV_BOTTLE_IDS = ['pulso','media','djeba','litro','galon'];
-  const INV_FINISHED_IDS = ['pulso','media','djeba','litro','galon'];
-  const INV_CAPS_IDS = ['gallon','pulsoLitro','djebaMedia'];
-
   function stableItemId(prefix, key, src){
     try{
       const s = src && (src.itemId || src.sku || src.id);
@@ -406,106 +400,58 @@
     return String(prefix || '') + k;
   }
 
+  function normalizeInventorySection(rawSection, sectionName, options){
+    const input = isPlainObject(rawSection) ? rawSection : {};
+    const out = {};
+    const opts = isPlainObject(options) ? options : {};
+    for (const key of Object.keys(input)){
+      const src = isPlainObject(input[key]) ? input[key] : {};
+      const item = { ...src };
+      if (opts.identityPrefix){
+        item.itemId = stableItemId(opts.identityPrefix, key, src);
+        item.sku = (src.sku != null && String(src.sku).trim())
+          ? String(src.sku).trim()
+          : item.itemId;
+      }
+      item.stock = opts.integer
+        ? coerceInt(src.stock, 0, 'arcano33_inventario.' + sectionName + '.' + key + '.stock')
+        : coerceNumber(src.stock, 0, 'arcano33_inventario.' + sectionName + '.' + key + '.stock');
+      if (opts.hasMax){
+        item.max = coerceNumber(src.max, 0, 'arcano33_inventario.' + sectionName + '.' + key + '.max');
+      }
+      if (opts.hasMin){
+        item.min = Math.max(0, coerceInt(src.min, 0, 'arcano33_inventario.' + sectionName + '.' + key + '.min'));
+      }
+      out[key] = item;
+    }
+    return out;
+  }
+
   function normalizeInventario(raw){
     const d = isPlainObject(raw) ? raw : {};
-    const liquidsIn = isPlainObject(d.liquids) ? d.liquids : {};
-    const bottlesIn = isPlainObject(d.bottles) ? d.bottles : {};
-    const finishedIn = isPlainObject(d.finished) ? d.finished : {};
-    const finishedByProductIn = isPlainObject(d.finishedByProductId) ? d.finishedByProductId : {};
-    const capsIn = isPlainObject(d.caps) ? d.caps : {};
-    const movimientosIn = Array.isArray(d.movimientos) ? d.movimientos : [];
-
-    const liquids = {};
-    const bottles = {};
-    const finished = {};
+    const liquids = normalizeInventorySection(d.liquids, 'liquids', { identityPrefix:'liq:', hasMax:true });
+    const bottles = normalizeInventorySection(d.bottles, 'bottles', { identityPrefix:'bot:' });
+    const finished = normalizeInventorySection(d.finished, 'finished', { identityPrefix:'fin:' });
+    const caps = normalizeInventorySection(d.caps, 'caps', { integer:true, hasMin:true });
     const finishedByProductId = {};
-    const caps = {};
-
-    // Known IDs (defaults)
-    for (const id of INV_LIQUID_IDS){
-      const src = isPlainObject(liquidsIn[id]) ? liquidsIn[id] : {};
-      liquids[id] = {
-        ...src,
-        itemId: stableItemId('liq:', id, src),
-        sku: (src.sku != null && String(src.sku).trim()) ? String(src.sku).trim() : stableItemId('liq:', id, src),
-        stock: coerceNumber(src.stock, 0, 'arcano33_inventario.liquids.' + id + '.stock'),
-        max:   coerceNumber(src.max,   0, 'arcano33_inventario.liquids.' + id + '.max'),
-      };
-    }
-    for (const id of INV_BOTTLE_IDS){
-      const src = isPlainObject(bottlesIn[id]) ? bottlesIn[id] : {};
-      bottles[id] = {
-        ...src,
-        itemId: stableItemId('bot:', id, src),
-        sku: (src.sku != null && String(src.sku).trim()) ? String(src.sku).trim() : stableItemId('bot:', id, src),
-        stock: coerceNumber(src.stock, 0, 'arcano33_inventario.bottles.' + id + '.stock'),
-      };
-    }
-    for (const id of INV_FINISHED_IDS){
-      const src = isPlainObject(finishedIn[id]) ? finishedIn[id] : {};
-      finished[id] = {
-        ...src,
-        itemId: stableItemId('fin:', id, src),
-        sku: (src.sku != null && String(src.sku).trim()) ? String(src.sku).trim() : stableItemId('fin:', id, src),
-        stock: coerceNumber(src.stock, 0, 'arcano33_inventario.finished.' + id + '.stock'),
-      };
-    }
-    // Tapas (Auto): entero (stock puede ir negativo), min >= 0
-    for (const id of INV_CAPS_IDS){
-      const src = isPlainObject(capsIn[id]) ? capsIn[id] : {};
-      caps[id] = {
-        ...src,
-        stock: coerceInt(src.stock, 0, 'arcano33_inventario.caps.' + id + '.stock'),
-        min: Math.max(0, coerceInt(src.min, 0, 'arcano33_inventario.caps.' + id + '.min')),
-      };
+    const finishedByProductIn = isPlainObject(d.finishedByProductId) ? d.finishedByProductId : {};
+    const movimientosIn = Array.isArray(d.movimientos) ? d.movimientos : [];
+    const productionOperationsIn = isPlainObject(d.productionOperations) ? d.productionOperations : {};
+    const productionOperations = {};
+    for (const operationId of Object.keys(productionOperationsIn)){
+      const src = isPlainObject(productionOperationsIn[operationId]) ? productionOperationsIn[operationId] : {};
+      const id = String(src.operationId || operationId || '').trim();
+      if (!id) continue;
+      productionOperations[id] = { ...src, operationId:id };
     }
 
-    // Unknown IDs (tolerancia)
-    for (const k of Object.keys(liquidsIn)){
-      if (liquids[k]) continue;
-      const src = isPlainObject(liquidsIn[k]) ? liquidsIn[k] : {};
-      liquids[k] = {
-        ...src,
-        itemId: stableItemId('liq:', k, src),
-        sku: (src.sku != null && String(src.sku).trim()) ? String(src.sku).trim() : stableItemId('liq:', k, src),
-        stock: coerceNumber(src.stock, 0, 'arcano33_inventario.liquids.' + k + '.stock'),
-        max:   coerceNumber(src.max,   0, 'arcano33_inventario.liquids.' + k + '.max'),
-      };
-    }
-    for (const k of Object.keys(bottlesIn)){
-      if (bottles[k]) continue;
-      const src = isPlainObject(bottlesIn[k]) ? bottlesIn[k] : {};
-      bottles[k] = {
-        ...src,
-        itemId: stableItemId('bot:', k, src),
-        sku: (src.sku != null && String(src.sku).trim()) ? String(src.sku).trim() : stableItemId('bot:', k, src),
-        stock: coerceNumber(src.stock, 0, 'arcano33_inventario.bottles.' + k + '.stock'),
-      };
-    }
-    for (const k of Object.keys(finishedIn)){
-      if (finished[k]) continue;
-      const src = isPlainObject(finishedIn[k]) ? finishedIn[k] : {};
-      finished[k] = {
-        ...src,
-        itemId: stableItemId('fin:', k, src),
-        sku: (src.sku != null && String(src.sku).trim()) ? String(src.sku).trim() : stableItemId('fin:', k, src),
-        stock: coerceNumber(src.stock, 0, 'arcano33_inventario.finished.' + k + '.stock'),
-      };
-    }
-    for (const k of Object.keys(capsIn)){
-      if (caps[k]) continue;
-      const src = isPlainObject(capsIn[k]) ? capsIn[k] : {};
-      caps[k] = {
-        ...src,
-        stock: coerceInt(src.stock, 0, 'arcano33_inventario.caps.' + k + '.stock'),
-        min: Math.max(0, coerceInt(src.min, 0, 'arcano33_inventario.caps.' + k + '.min')),
-      };
-    }
-
-    // Producto terminado dinámico por productId (compat Parte 2 Calculadoras → Parte 3 Lotes)
-    for (const k of Object.keys(finishedByProductIn)){
-      const src = isPlainObject(finishedByProductIn[k]) ? finishedByProductIn[k] : {};
-      const productId = (src.productId != null && String(src.productId).trim()) ? String(src.productId).trim() : String(k).trim();
+    // Fuente moderna: solo normaliza registros que ya existen. Nunca inventa productos.
+    for (const key of Object.keys(finishedByProductIn)){
+      const src = isPlainObject(finishedByProductIn[key]) ? finishedByProductIn[key] : {};
+      const productId = (src.productId != null && String(src.productId).trim())
+        ? String(src.productId).trim()
+        : String(key).trim();
+      if (!productId) continue;
       finishedByProductId[productId] = {
         ...src,
         productId,
@@ -513,7 +459,17 @@
       };
     }
 
-    return { ...d, liquids, bottles, finished, finishedByProductId, caps, movimientos: movimientosIn.slice() };
+    return {
+      ...d,
+      liquids,
+      bottles,
+      finished,
+      finishedByProductId,
+      caps,
+      varios: Array.isArray(d.varios) ? d.varios.slice() : [],
+      movimientos: movimientosIn.slice(),
+      productionOperations
+    };
   }
 
   function mergeInventarioMovimientosStorage(curList, nextList){
@@ -550,6 +506,7 @@
     out.finished = mergeSection(a.finished, b.finished);
     out.finishedByProductId = mergeSection(a.finishedByProductId, b.finishedByProductId);
     out.caps = mergeSection(a.caps, b.caps);
+    out.productionOperations = mergeSection(a.productionOperations, b.productionOperations);
     // Varios (manual): si next trae array, se respeta; si no, preservar el actual
     if (Array.isArray(b.varios)) out.varios = b.varios.slice();
     // Movimientos: append por id para no perder trazabilidad si otro módulo guardó en paralelo.
@@ -557,59 +514,46 @@
     return out;
   }
 
-  const RECETA_PRESENT_IDS = ['pulso','media','djeba','litro','galon'];
   const RECETA_ING_IDS = ['vino','vodka','jugo','sirope','agua'];
 
   function normalizeRecetas(raw){
     const d = isPlainObject(raw) ? raw : {};
     const recetas = isPlainObject(d.recetas) ? d.recetas : (isPlainObject(raw) ? raw : {});
-    const costos = isPlainObject(d.costosPresentacion) ? d.costosPresentacion : null;
-
+    const costos = isPlainObject(d.costosPresentacion) ? d.costosPresentacion : {};
     const outRecetas = {};
-    for (const pid of RECETA_PRESENT_IDS){
-      const r0 = isPlainObject(recetas[pid]) ? recetas[pid] : {};
-      const r = {};
-      for (const ing of RECETA_ING_IDS){
-        r[ing] = coerceNumber(r0[ing], 0, 'arcano33_recetas_v1.recetas.' + pid + '.' + ing);
-      }
-      outRecetas[pid] = { ...r0, ...r };
-    }
 
-    // Tolerancia: mantener recetas adicionales desconocidas
-    for (const k of Object.keys(recetas)){
-      if (outRecetas[k]) continue;
-      const r0 = isPlainObject(recetas[k]) ? recetas[k] : null;
-      if (!r0) continue;
-      const r = { ...r0 };
-      for (const ing of Object.keys(r0)){
-        if (isLikelyDateKey(ing)) auditDateMaybe('arcano33_recetas_v1.recetas.' + k + '.' + ing, r0[ing]);
+    // Normaliza únicamente recetas existentes. No crea Pulso/Media/Djeba/Litro/Galón.
+    for (const productId of Object.keys(recetas)){
+      const source = isPlainObject(recetas[productId]) ? recetas[productId] : null;
+      if (!source) continue;
+      const normalized = { ...source };
+      for (const ingredient of Object.keys(source)){
+        if (RECETA_ING_IDS.includes(ingredient)){
+          normalized[ingredient] = coerceNumber(source[ingredient], 0, 'arcano33_recetas_v1.recetas.' + productId + '.' + ingredient);
+        } else if (isLikelyDateKey(ingredient)){
+          auditDateMaybe('arcano33_recetas_v1.recetas.' + productId + '.' + ingredient, source[ingredient]);
+        }
       }
-      outRecetas[k] = r;
+      outRecetas[productId] = normalized;
     }
 
     const outCostos = {};
-    if (costos && isPlainObject(costos)){
-      for (const pid of Object.keys(costos)){
-        const c0 = isPlainObject(costos[pid]) ? costos[pid] : {};
-        outCostos[pid] = {
-          ...c0,
-          id: (c0.id != null) ? String(c0.id) : pid,
-          nombre: (c0.nombre != null) ? String(c0.nombre) : pid,
-          costoUnidad: coerceNumber(c0.costoUnidad, 0, 'arcano33_recetas_v1.costos.' + pid + '.costoUnidad')
-        };
-      }
-    } else {
-      // Defaults mínimos (sin forzar escritura)
-      for (const pid of RECETA_PRESENT_IDS){
-        outCostos[pid] = { id: pid, nombre: pid, costoUnidad: 0 };
-      }
+    for (const productId of Object.keys(costos)){
+      const source = isPlainObject(costos[productId]) ? costos[productId] : {};
+      outCostos[productId] = {
+        ...source,
+        id: (source.id != null) ? String(source.id) : productId,
+        nombre: (source.nombre != null) ? String(source.nombre) : productId,
+        costoUnidad: coerceNumber(source.costoUnidad, 0, 'arcano33_recetas_v1.costos.' + productId + '.costoUnidad')
+      };
     }
 
-    const out = { ...d };
-    out.version = coerceInt(d.version, 1);
-    out.recetas = outRecetas;
-    out.costosPresentacion = outCostos;
-    return out;
+    return {
+      ...d,
+      version: coerceInt(d.version, 1),
+      recetas: outRecetas,
+      costosPresentacion: outCostos
+    };
   }
 
   function mergeRecetas(cur, next){
@@ -862,6 +806,333 @@
     const list = Array.isArray(prefixes) && prefixes.length ? prefixes : DEFAULT_PREFIXES;
     return list.some(p => key.startsWith(p));
   }
+
+
+  // ------------------------------
+  // Contrato central de Productos
+  // Fuente oficial: IndexedDB a33-pos / products
+  // ------------------------------
+  const PRODUCTS_DB_NAME = 'a33-pos';
+  const PRODUCTS_STORE_NAME = 'products';
+  const PRODUCTS_DELETED_IDS_KEY = 'a33_catalog_deleted_product_ids_v2';
+  const PRODUCT_ORIGINS = new Set(['usuario', 'importacion', 'sincronizacion', 'migracion_controlada']);
+  let productsDb = null;
+
+  function productString(value){
+    return String(value == null ? '' : value).trim();
+  }
+
+  function productClone(value){
+    try{ return JSON.parse(JSON.stringify(value)); }
+    catch(_){ return isPlainObject(value) ? { ...value } : value; }
+  }
+
+  function productIdFromRecord(record){
+    const row = isPlainObject(record) ? record : {};
+    return productString(row.productId ?? row.productoId ?? row.catalogProductId ?? '');
+  }
+
+  function legacyProductKey(record){
+    const row = isPlainObject(record) ? record : {};
+    return productString(row.id ?? row.legacyId ?? '');
+  }
+
+  function sanitizeProductIdPart(value){
+    const raw = productString(value).toLowerCase();
+    const safe = raw.replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+    return safe || 'record';
+  }
+
+  function generateProductId(prefix){
+    const head = sanitizeProductIdPart(prefix || 'prd');
+    try{
+      if (window.crypto && typeof window.crypto.randomUUID === 'function'){
+        return head + '_' + window.crypto.randomUUID().replace(/-/g, '');
+      }
+    }catch(_){ }
+    const random = Math.random().toString(36).slice(2, 12);
+    return head + '_' + Date.now().toString(36) + '_' + random;
+  }
+
+  function legacyStableProductId(record){
+    const legacyId = legacyProductKey(record);
+    return legacyId ? ('prd_legacy_' + sanitizeProductIdPart(legacyId)) : '';
+  }
+
+  function ensureProductIdValue(record, options){
+    const row = isPlainObject(record) ? record : {};
+    const existing = productIdFromRecord(row);
+    if (existing) return existing;
+    const opts = isPlainObject(options) ? options : {};
+    if (opts.forExisting !== false){
+      const legacy = legacyStableProductId(row);
+      if (legacy) return legacy;
+    }
+    return generateProductId('prd');
+  }
+
+  function normalizeProductOrigin(value){
+    const origin = productString(value).toLowerCase();
+    return PRODUCT_ORIGINS.has(origin) ? origin : '';
+  }
+
+  function normalizeProductRecord(record, options){
+    const src = isPlainObject(record) ? record : {};
+    const opts = isPlainObject(options) ? options : {};
+    const out = productClone(src) || {};
+    const productId = ensureProductIdValue(src, { forExisting: opts.forExisting !== false });
+    out.productId = productId;
+    if (Object.prototype.hasOwnProperty.call(out, 'productoId')) delete out.productoId;
+    if (out.envaseId != null) out.envaseId = productString(out.envaseId);
+    if (out.tapaId != null) out.tapaId = productString(out.tapaId);
+    if (out.letra != null) out.letra = productString(out.letra).toUpperCase();
+    if (out.Letra != null && out.letra == null) out.letra = productString(out.Letra).toUpperCase();
+    if (out.active == null) out.active = true;
+    if (opts.origin){
+      const origin = normalizeProductOrigin(opts.origin);
+      if (origin) out.origin = origin;
+    } else if (out.origin != null){
+      const existingOrigin = normalizeProductOrigin(out.origin);
+      if (existingOrigin) out.origin = existingOrigin;
+      else delete out.origin;
+    }
+    return out;
+  }
+
+  function prepareNewProduct(record, options){
+    const opts = isPlainObject(options) ? options : {};
+    const out = normalizeProductRecord(record, { forExisting:false, origin:opts.origin || 'usuario' });
+    out.productId = generateProductId('prd');
+    if (!out.createdAt) out.createdAt = nowIso();
+    if (!out.updatedAt) out.updatedAt = out.createdAt;
+    return out;
+  }
+
+  function prepareExistingProduct(current, patch, options){
+    const base = isPlainObject(current) ? current : {};
+    const changes = isPlainObject(patch) ? patch : {};
+    const opts = isPlainObject(options) ? options : {};
+    const currentProductId = ensureProductIdValue(base, { forExisting:true });
+    const merged = { ...productClone(base), ...productClone(changes) };
+    merged.productId = currentProductId;
+    if (base.id != null) merged.id = base.id;
+    if (base.origin != null && !opts.origin) merged.origin = base.origin;
+    return normalizeProductRecord(merged, { forExisting:true, origin:opts.origin || '' });
+  }
+
+  function openProductsDb(){
+    if (productsDb) return Promise.resolve(productsDb);
+    return new Promise((resolve, reject) => {
+      try{
+        if (!window.indexedDB) throw new Error('indexeddb_unavailable');
+        const req = window.indexedDB.open(PRODUCTS_DB_NAME);
+        req.onupgradeneeded = (event) => {
+          const d = event.target.result;
+          if (!d.objectStoreNames.contains(PRODUCTS_STORE_NAME)){
+            const store = d.createObjectStore(PRODUCTS_STORE_NAME, { keyPath:'id', autoIncrement:true });
+            try{ store.createIndex('by_name', 'name', { unique:false }); }catch(_){ }
+          }
+        };
+        req.onsuccess = () => {
+          productsDb = req.result;
+          try{ productsDb.onversionchange = () => { try{ productsDb.close(); }catch(_){ } productsDb = null; }; }catch(_){ }
+          resolve(productsDb);
+        };
+        req.onerror = () => reject(req.error || new Error('products_db_open_failed'));
+        req.onblocked = () => reject(new Error('products_db_blocked'));
+      }catch(error){ reject(error); }
+    });
+  }
+
+  async function getAllProductsRaw(){
+    const d = await openProductsDb();
+    if (!d.objectStoreNames.contains(PRODUCTS_STORE_NAME)) return [];
+    return new Promise((resolve, reject) => {
+      const tx = d.transaction(PRODUCTS_STORE_NAME, 'readonly');
+      const req = tx.objectStore(PRODUCTS_STORE_NAME).getAll();
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => reject(req.error || tx.error);
+      tx.onerror = () => reject(tx.error || req.error);
+    });
+  }
+
+  async function putProductRaw(record){
+    const d = await openProductsDb();
+    return new Promise((resolve, reject) => {
+      const tx = d.transaction(PRODUCTS_STORE_NAME, 'readwrite');
+      const req = tx.objectStore(PRODUCTS_STORE_NAME).put(record);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || tx.error);
+      tx.onerror = () => reject(tx.error || req.error);
+    });
+  }
+
+  async function ensureProductIdentities(){
+    const rows = await getAllProductsRaw();
+    const used = new Set();
+    let updated = 0;
+    const normalized = [];
+    for (const row of rows){
+      if (!isPlainObject(row)) continue;
+      let productId = productIdFromRecord(row) || legacyStableProductId(row) || generateProductId('prd_migrated');
+      if (used.has(productId)) productId = generateProductId('prd_rekey');
+      used.add(productId);
+      const next = normalizeProductRecord(row, { forExisting:true });
+      next.productId = productId;
+      const changed = productIdFromRecord(row) !== productId
+        || productString(row.envaseId) !== productString(next.envaseId)
+        || productString(row.tapaId) !== productString(next.tapaId);
+      if (changed){
+        next.identityUpdatedAt = nowIso();
+        await putProductRaw(next);
+        updated += 1;
+      }
+      normalized.push(next);
+    }
+    return { products: normalized, updated };
+  }
+
+  async function getAllProducts(){
+    const result = await ensureProductIdentities();
+    const deletedIds = new Set(readDeletedProductMarkers().map((row) => productString(row.productId)).filter(Boolean));
+    return result.products.filter((row) => !deletedIds.has(productIdFromRecord(row))).map(productClone);
+  }
+
+  function isProductActive(product){
+    return !!product && product.active !== false && product.deleted !== true;
+  }
+
+  function hasProductRecipe(product){
+    const row = isPlainObject(product) ? product : {};
+    if (Object.prototype.hasOwnProperty.call(row, 'receta')) return row.receta === true || row.receta === 1 || String(row.receta).toLowerCase() === 'true';
+    if (Object.prototype.hasOwnProperty.call(row, 'hasRecipe')) return row.hasRecipe === true || row.hasRecipe === 1 || String(row.hasRecipe).toLowerCase() === 'true';
+    if (Object.prototype.hasOwnProperty.call(row, 'recipe')) return row.recipe === true || isPlainObject(row.recipe);
+    return false;
+  }
+
+  function isProductForPos(product){
+    const row = isPlainObject(product) ? product : {};
+    const keys = ['pos', 'POS', 'posEnabled', 'showInPOS', 'visiblePOS', 'vendible', 'sellable', 'saleEnabled'];
+    for (const key of keys){
+      if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+      const value = row[key];
+      return value === true || value === 1 || String(value).toLowerCase() === 'true';
+    }
+    return false;
+  }
+
+  async function getProductByProductId(productId){
+    const target = productString(productId);
+    if (!target) return null;
+    const rows = await getAllProducts();
+    return rows.find((row) => productIdFromRecord(row) === target) || null;
+  }
+
+  async function productIdExists(productId){
+    return !!(await getProductByProductId(productId));
+  }
+
+  function historicalSnapshot(source, product){
+    const src = isPlainObject(source) ? source : {};
+    const real = isPlainObject(product) ? product : {};
+    const pid = productIdFromRecord(real) || productIdFromRecord(src);
+    const name = productString(src.nombreSnapshot ?? src.productNameSnapshot ?? src.nameSnapshot ?? src.nombre ?? src.productName ?? src.name ?? real.name ?? real.nombre);
+    const letter = productString(src.letraSnapshot ?? src.LetraSnapshot ?? src.letra ?? src.Letra ?? real.letra ?? real.Letra).toUpperCase();
+    const volumeRaw = src.volumenSnapshot ?? src.volumeSnapshot ?? src.capacitySnapshot ?? src.capacityMl ?? src.capacidadMl ?? real.capacityMl ?? real.capacidadMl ?? null;
+    const priceRaw = src.precioSnapshot ?? src.priceSnapshot ?? src.price ?? real.price ?? null;
+    const volume = Number(volumeRaw);
+    const price = Number(priceRaw);
+    return {
+      productId: pid || '',
+      nombreSnapshot: name,
+      letraSnapshot: letter,
+      volumenSnapshot: Number.isFinite(volume) ? volume : null,
+      precioSnapshot: Number.isFinite(price) ? price : null,
+      historicalOnly: true,
+      legacyReference: !pid
+    };
+  }
+
+  function isHistoricalProductSnapshot(value){
+    return isPlainObject(value) && value.historicalOnly === true;
+  }
+
+  function isRealProductReference(value){
+    return isPlainObject(value) && !!productIdFromRecord(value) && value.historicalOnly !== true && value.legacyReference !== true;
+  }
+
+  function isLegacyProductReference(value){
+    const row = isPlainObject(value) ? value : {};
+    return !productIdFromRecord(row) && !!productString(row.name ?? row.nombre ?? row.productName ?? row.Letra ?? row.letra ?? row.capacityMl ?? row.capacidadMl);
+  }
+
+  function readDeletedProductMarkers(){
+    try{
+      if (window.A33ProductIntegrity && typeof window.A33ProductIntegrity.readTombstones === 'function'){
+        return window.A33ProductIntegrity.readTombstones();
+      }
+    }catch(_){ }
+    try{
+      const raw = window.localStorage.getItem(PRODUCTS_DELETED_IDS_KEY);
+      const parsed = JSON.parse(raw || '[]');
+      return Array.isArray(parsed) ? parsed.filter((row) => isPlainObject(row) && productString(row.productId)) : [];
+    }catch(_){ return []; }
+  }
+
+  function rememberDeletedProduct(record){
+    const productId = productIdFromRecord(record);
+    if (!productId) return false;
+    try{
+      if (window.A33ProductIntegrity && typeof window.A33ProductIntegrity.rememberDeleted === 'function'){
+        return window.A33ProductIntegrity.rememberDeleted(record, { origin:'catalogos_productos' });
+      }
+    }catch(_){ }
+    const list = readDeletedProductMarkers();
+    const previous = list.find((row) => productString(row.productId) === productId);
+    const filtered = list.filter((row) => productString(row.productId) !== productId);
+    filtered.push({
+      productId,
+      legacyId: legacyProductKey(record),
+      nombreSnapshot: productString(record && (record.name ?? record.nombre)),
+      deletedAt: nowIso(),
+      origin:'catalogos_productos',
+      rev: Math.max(1, Number(previous && previous.rev || 0) + 1)
+    });
+    try{
+      window.localStorage.setItem(PRODUCTS_DELETED_IDS_KEY, JSON.stringify(filtered));
+      return true;
+    }catch(_){ return false; }
+  }
+
+  function isDeletedProductId(productId){
+    const target = productString(productId);
+    return !!target && readDeletedProductMarkers().some((row) => productString(row.productId) === target);
+  }
+
+  const A33Products = {
+    dbName: PRODUCTS_DB_NAME,
+    storeName: PRODUCTS_STORE_NAME,
+    deletedIdsKey: PRODUCTS_DELETED_IDS_KEY,
+    getProductId: productIdFromRecord,
+    generateProductId,
+    normalizeRecord: normalizeProductRecord,
+    prepareNew: prepareNewProduct,
+    prepareExisting: prepareExistingProduct,
+    ensureIdentities: ensureProductIdentities,
+    getAll: getAllProducts,
+    async getActive(){ return (await getAllProducts()).filter(isProductActive); },
+    async getActiveWithRecipe(){ return (await getAllProducts()).filter((row) => isProductActive(row) && hasProductRecipe(row)); },
+    async getActiveForPOS(){ return (await getAllProducts()).filter((row) => isProductActive(row) && isProductForPos(row)); },
+    getByProductId: getProductByProductId,
+    exists: productIdExists,
+    isRealProduct: isRealProductReference,
+    isHistoricalSnapshot: isHistoricalProductSnapshot,
+    isLegacyReference: isLegacyProductReference,
+    historicalSnapshot,
+    rememberDeleted: rememberDeletedProduct,
+    isDeletedProductId,
+    readDeletedMarkers: readDeletedProductMarkers
+  };
 
   const A33Storage = {
     prefixes: DEFAULT_PREFIXES.slice(),
@@ -1138,4 +1409,5 @@
 
   // Global
   window.A33Storage = A33Storage;
+  window.A33Products = A33Products;
 })();

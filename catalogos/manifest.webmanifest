@@ -1,7 +1,7 @@
 {
   "name": "Suite A33 · Catálogos",
   "short_name": "A33 Catálogos",
-  "start_url": "./index.html?v=4.20.84&r=23",
+  "start_url": "./index.html?v=4.20.85&r=23",
   "scope": "./",
   "display": "standalone",
   "background_color": "#060606",

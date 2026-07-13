@@ -262,19 +262,11 @@
   };
 
   const PWA_SUITE_SCOPE_HINTS = [
+    '/catalogos/',
     '/pos/',
     '/inventario/',
     '/lotes/',
-    '/pedidos/',
-    '/centro_mando/',
-    '/centro-mando/',
-    '/finanzas/',
-    '/calculadora/',
-    '/calculadora_a33/',
-    '/calculadora_temporal/',
-    '/agenda/',
-    '/analitica/',
-    '/configuracion/'
+    '/pedidos/'
   ];
 
   const pwaRuntime = {
@@ -956,7 +948,7 @@
         <div><b>localStorage (Suite)</b></div>
         ${lsDetails}
 
-        <div class="small-note">Nota: este respaldo es local (no sincroniza). Al importar, se reemplaza TODO lo de este navegador.</div>
+        <div class="small-note">Nota: al importar se reemplazan o fusionan únicamente los bloques incluidos; los bloques ausentes se conservan.</div>
       </div>
     `;
   }
@@ -1065,7 +1057,7 @@
       id: 'catalogos',
       label: 'Catálogos',
       parts: [
-        { id: 'productos', label: 'Productos', stores: [{ db: 'a33-pos', store: 'products' }], keyNeedles: ['a33_catalog_deleted_products'] },
+        { id: 'productos', label: 'Productos', stores: [{ db: 'a33-pos', store: 'products' }], keyNeedles: ['a33_catalog_deleted_products', 'a33_catalog_deleted_product_ids_v2', 'a33_product_integrity_log_v1', 'a33_product_quarantine_v1'] },
         { id: 'costos', label: 'Costos', keyNeedles: [COSTS_BACKUP_KEY] },
         { id: 'envases', label: 'Envases / Botellas', keyNeedles: ['a33_catalog_envases', 'a33_catalog_deleted_envases'] },
         { id: 'tapas', label: 'Tapas / Corchos', keyNeedles: ['a33_catalog_tapas', 'a33_catalog_deleted_tapas'] },
@@ -1615,6 +1607,58 @@
     return '';
   }
 
+
+  const BACKUP_BLOCK_IDS = ['Productos','Envases','Tapas','Inventario','Recetas','Ventas','Lotes','Pedidos','Agenda','Históricos'];
+
+  function countBackupRecords(value){
+    if (Array.isArray(value)) return value.length;
+    if (!value || typeof value !== 'object') return value == null || value === '' ? 0 : 1;
+    return Object.keys(value).length;
+  }
+
+  function parseBackupLocalValue(value){
+    if (typeof value !== 'string') return value;
+    try{ return JSON.parse(value); }catch(_){ return value; }
+  }
+
+  function countLocalKeysByNeedles(localStorageMap, needles){
+    const map = localStorageMap && typeof localStorageMap === 'object' ? localStorageMap : {};
+    return Object.entries(map).reduce((total, [key, value]) => {
+      if (!keyMatchesNeedles(key, needles)) return total;
+      return total + Math.max(1, countBackupRecords(parseBackupLocalValue(value)));
+    }, 0);
+  }
+
+  function buildBackupBlockManifest(indexedDBMap, localStorageMap, selection, backupType){
+    const indexed = indexedDBMap && typeof indexedDBMap === 'object' ? indexedDBMap : {};
+    const local = localStorageMap && typeof localStorageMap === 'object' ? localStorageMap : {};
+    const pos = indexed['a33-pos'] || {};
+    const isPartial = String(backupType || '').toLowerCase() === 'partial';
+    const selected = selection || {};
+    const selectedAny = (moduleId, partIds) => selectionHasAny(selected, moduleId, partIds);
+    const selectedOne = (moduleId, partId) => selectionHasPart(selected, moduleId, partId);
+    const defs = {
+      Productos:{ included:!isPartial || selectedOne('catalogos','productos'), count:countBackupRecords(pos.products || []) },
+      Envases:{ included:!isPartial || selectedOne('catalogos','envases'), count:countLocalKeysByNeedles(local, ['a33_catalog_envases']) },
+      Tapas:{ included:!isPartial || selectedOne('catalogos','tapas'), count:countLocalKeysByNeedles(local, ['a33_catalog_tapas']) },
+      Inventario:{ included:!isPartial || selectedAny('inventario',['productoTerminado','envasesDisponibles','tapasDisponibles','movimientosInventario']) || selectedOne('pos','inventarioPos'), count:countLocalKeysByNeedles(local, ['arcano33_inventario']) + countBackupRecords(pos.inventory || []) },
+      Recetas:{ included:!isPartial || selectedOne('inventario','recetas'), count:countLocalKeysByNeedles(local, ['arcano33_recetas_v1']) },
+      Ventas:{ included:!isPartial || selectedOne('pos','ventas'), count:countBackupRecords(pos.sales || []) },
+      Lotes:{ included:!isPartial || selectedAny('lotes',['lotes','productosPorLote','compatibilidadHistorica']), count:countLocalKeysByNeedles(local, ['arcano33_lotes','a33_lotes','suitea33_lotes']) },
+      Pedidos:{ included:!isPartial || selectedOne('agenda','pedidos'), count:countLocalKeysByNeedles(local, ['pedido','pedidos','arcano33_pedidos']) },
+      Agenda:{ included:!isPartial || selectedOne('agenda','agenda'), count:countLocalKeysByNeedles(local, ['agenda','a33_agenda','suite_a33_agenda']) },
+      Históricos:{ included:!isPartial || selectedOne('pos','historicosResumenes') || selectedOne('lotes','compatibilidadHistorica'), count:countBackupRecords(pos.summaryArchives || []) + countBackupRecords(pos.posRemindersIndex || []) + countLocalKeysByNeedles(local, ['histor','summary']) }
+    };
+    const manifest = {};
+    BACKUP_BLOCK_IDS.forEach((id) => { manifest[id] = { included:!!defs[id].included, records:Number(defs[id].count || 0) }; });
+    return {
+      manifest,
+      included:BACKUP_BLOCK_IDS.filter((id) => manifest[id].included),
+      notIncluded:BACKUP_BLOCK_IDS.filter((id) => !manifest[id].included),
+      recordCounts:BACKUP_BLOCK_IDS.reduce((acc,id) => { acc[id] = manifest[id].records; return acc; }, {})
+    };
+  }
+
   function buildCustomExportModalHtml(){
     const modulesHtml = CUSTOM_EXPORT_MODULES.map((mod) => {
       const partsHtml = (mod.parts || []).map((part) => {
@@ -1893,12 +1937,14 @@
       includedDataMap.catalogos.costos = Math.max(1, Number(includedDataMap.catalogos.costos) || 0);
     }
 
+    const blockInfo = buildBackupBlockManifest(outData.indexedDB, outData.localStorage, selection, 'partial');
     const backup = {
       meta: {
         ...baseMeta,
         app: BACKUP_APP_NAME,
         backupType: 'partial',
         exportMode: 'custom',
+        schemaVersion: 7,
         exportedAt,
         fechaHoraExportacion: exportedAt,
         version: getCustomExportVersionLabel(),
@@ -1917,6 +1963,10 @@
         selectedEventsCount: posMetadata.selectedEventsCount,
         dependencyWarnings,
         dependencyWarningsCount: dependencyWarnings.length,
+        blockManifest:blockInfo.manifest,
+        blocksIncluded:blockInfo.included,
+        blocksNotIncluded:blockInfo.notIncluded,
+        recordCounts:blockInfo.recordCounts,
         ...(costsIncluded ? { costs:{ included:true, schemaVersion:COSTS_BACKUP_SCHEMA_VERSION, storageKey:COSTS_BACKUP_KEY } } : {}),
         origin: 'exportador_personalizado_a33'
       },
@@ -1960,7 +2010,7 @@
       warnings: [],
       appName: result.backup?.meta?.appName || BACKUP_APP_NAME
     }).replace(
-      'Nota: este respaldo es local (no sincroniza). Al importar, se reemplaza TODO lo de este navegador.',
+      'Nota: al importar se reemplazan o fusionan únicamente los bloques incluidos; los bloques ausentes se conservan.',
       'Nota: este respaldo personalizado es parcial y puede importarse sin borrar datos no incluidos.'
     );
 
@@ -2092,9 +2142,17 @@
           dbSchemas: cleanIndexed.schemas
         };
 
+    const blockInfo = buildBackupBlockManifest(cleanIndexed.data, fullLocalStorage, {}, 'full');
     const backup = {
       meta: {
         ...baseFullMeta,
+        schemaVersion:7,
+        version:getCustomExportVersionLabel(),
+        fechaHoraExportacion:baseFullMeta.exportedAt,
+        blockManifest:blockInfo.manifest,
+        blocksIncluded:blockInfo.included,
+        blocksNotIncluded:blockInfo.notIncluded,
+        recordCounts:blockInfo.recordCounts,
         ...(costsBlock.present && costsBlock.ok ? { costs:{ included:true, schemaVersion:costsBlock.version || COSTS_BACKUP_SCHEMA_VERSION, storageKey:COSTS_BACKUP_KEY } } : {})
       },
       data: {
@@ -2242,7 +2300,7 @@
       warnings,
       appName: sum.appName
     }).replace(
-      'Nota: este respaldo es local (no sincroniza). Al importar, se reemplaza TODO lo de este navegador.',
+      'Nota: al importar se reemplazan o fusionan únicamente los bloques incluidos; los bloques ausentes se conservan.',
       'Nota: este respaldo parcial se fusiona por ID y conserva los datos no incluidos.'
     );
 
@@ -2255,7 +2313,13 @@
           <div class="k">Tipo</div><div class="v">Parcial</div>
           <div class="k">Modo</div><div class="v">${escapeHtml(meta.exportMode || 'custom')}</div>
           <div class="k">Fecha</div><div class="v">${escapeHtml(sum.exportedAt ? new Date(sum.exportedAt).toLocaleString() : '')}</div>
+          <div class="k">Versión</div><div class="v">${escapeHtml(meta.version || meta.schemaVersion || 'Legacy')}</div>
         </div>
+        <hr>
+        <div><b>Bloques incluidos</b></div>
+        ${labelListHtml(meta.blocksIncluded || [], 'No declarados en este JSON antiguo.')}
+        <div><b>Bloques no incluidos</b></div>
+        ${labelListHtml(meta.blocksNotIncluded || [], 'No declarados o ninguno.')}
         <hr>
         <div><b>Módulos incluidos</b></div>
         ${labelListHtml(includedModules, 'Sin módulos declarados.')}
@@ -2286,7 +2350,7 @@
     }) + `
       ${legacyLabel}
       <hr>
-      <div class="badge-warn">⚠️ Esto reemplazará todos los datos actuales de Suite A33 en este navegador.</div>
+      <div class="badge-warn">⚠️ Esto reemplazará únicamente los bloques incluidos en este respaldo de Suite A33.</div>
       <div class="small-note"><b>Tipo:</b> respaldo completo. <b>Qué se importará:</b> bases IndexedDB y keys localStorage incluidas en el archivo. <b>Qué no se tocará:</b> datos ajenos a Suite A33 y llaves retiradas de acceso/login.</div>
     `;
   }
@@ -2313,15 +2377,6 @@
 
   function getSuiteLocalStorageKeysInThisBrowser(){
     return window.A33Storage.keys({ scope: 'local' }).filter((k) => k && isSuiteLocalStorageKey(k));
-  }
-
-  function deleteDatabase(dbName){
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.deleteDatabase(dbName);
-      req.onsuccess = () => resolve(true);
-      req.onerror = () => reject(req.error || new Error(`No se pudo borrar la DB: ${dbName}`));
-      req.onblocked = () => reject(new Error(`Bloqueado: cierra otras pestañas de la Suite y reintenta (DB: ${dbName}).`));
-    });
   }
 
   function openDBForRestore(dbName, version, schemaByStore){
@@ -2367,14 +2422,50 @@
     });
   }
 
+  function normalizeImportedProductRecord(record, origin){
+    const row = cloneJsonSafe(record) || {};
+    try{
+      if (window.A33Products && typeof window.A33Products.normalizeRecord === 'function'){
+        return window.A33Products.normalizeRecord(row, { forExisting:true, origin:origin || '' });
+      }
+    }catch(_){ }
+    if (!String(row.productId || '').trim()){
+      const legacy = String(row.id ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_');
+      row.productId = legacy ? ('prd_legacy_' + legacy) : ('prd_import_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10));
+    }
+    if (origin && !row.origin) row.origin = origin;
+    return row;
+  }
+
+  async function readProductIdentityState(db){
+    const state = { byProductId:new Map(), byLegacyId:new Map() };
+    if (!db || !db.objectStoreNames.contains('products')) return state;
+    try{
+      const tx = db.transaction('products', 'readonly');
+      const store = tx.objectStore('products');
+      await new Promise((resolve, reject) => {
+        const req = store.openCursor();
+        req.onerror = () => reject(req.error || new Error('No se pudo leer Productos.'));
+        req.onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor){ resolve(); return; }
+          const row = normalizeImportedProductRecord(cursor.value, '');
+          const productId = String(row.productId || '').trim();
+          if (productId && !state.byProductId.has(productId)) state.byProductId.set(productId, { key:cursor.key, row });
+          state.byLegacyId.set(String(cursor.key), productId);
+          cursor.continue();
+        };
+      });
+      await txDone(tx);
+    }catch(_){ }
+    return state;
+  }
+
   async function restoreDatabase(dbName, dbPayload, dbVersions, dbSchemas){
     const schemaByStore = dbSchemas?.[dbName] || {};
     const version = dbVersions?.[dbName] || 1;
 
-    const schemaAvailable = schemaByStore && typeof schemaByStore === 'object' && Object.keys(schemaByStore).length > 0;
-    const db = schemaAvailable
-      ? await openDBForRestore(dbName, version, schemaByStore)
-      : await openExistingDB(dbName);
+    const db = await openDBForPartialMerge(dbName, dbPayload, dbVersions, dbSchemas);
 
     const stores = dbPayload && typeof dbPayload === 'object'
       ? Object.entries(dbPayload)
@@ -2389,7 +2480,12 @@
 
       try{ store.clear(); }catch(_){ }
       for (const rec of arr){
-        try{ store.put(rec); }catch(_){ }
+        try{
+          const row = (dbName === 'a33-pos' && storeName === 'products')
+            ? normalizeImportedProductRecord(rec, '')
+            : rec;
+          store.put(row);
+        }catch(_){ }
       }
       await txDone(tx);
     }
@@ -2533,6 +2629,12 @@
         try{ probeTx.abort(); }catch(_){ }
       }catch(_){ usesKeyPath = true; }
       if (!usesKeyPath) stableKeyMap = await readStoreStableKeyMap(db, storeName, schema);
+      const productIdentityState = (dbName === 'a33-pos' && storeName === 'products')
+        ? await readProductIdentityState(db)
+        : null;
+      const reservedProductIds = productIdentityState
+        ? new Set(productIdentityState.byProductId.keys())
+        : null;
 
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
@@ -2542,15 +2644,42 @@
       for (const rec of arr){
         if (!rec || typeof rec !== 'object') { stats.skipped++; continue; }
         try{
+          let incoming = cloneJsonSafe(rec);
+          if (productIdentityState){
+            incoming = normalizeImportedProductRecord(incoming, '');
+            const productId = String(incoming.productId || '').trim();
+            const existing = productIdentityState.byProductId.get(productId);
+            if (existing){
+              incoming.id = existing.key;
+            } else {
+              if (reservedProductIds.has(productId)) { stats.skipped++; continue; }
+              reservedProductIds.add(productId);
+              if (!incoming.origin) incoming.origin = 'importacion';
+              if (incoming.id != null){
+                const legacyOwner = productIdentityState.byLegacyId.get(String(incoming.id));
+                if (legacyOwner && legacyOwner !== productId) delete incoming.id;
+              }
+            }
+          }
           if (runtimeKeyPath){
-            if (!hasStoreKeyPathValue(rec, runtimeKeyPath)) { stats.skipped++; continue; }
-            store.put(cloneJsonSafe(rec));
+            if (!hasStoreKeyPathValue(incoming, runtimeKeyPath)) {
+              if (!(productIdentityState && store.autoIncrement)) { stats.skipped++; continue; }
+            }
+            const req = store.put(incoming);
+            if (productIdentityState){
+              const productId = String(incoming.productId || '').trim();
+              req.onsuccess = () => {
+                const key = req.result;
+                productIdentityState.byProductId.set(productId, { key, row:incoming });
+                productIdentityState.byLegacyId.set(String(key), productId);
+              };
+            }
             stats.records++;
           } else {
-            const id = getStableRecordId(rec, schema, storeName);
+            const id = getStableRecordId(incoming, schema, storeName);
             if (!id) { stats.skipped++; continue; }
             const existingKey = stableKeyMap.has(id) ? stableKeyMap.get(id) : id;
-            store.put(cloneJsonSafe(rec), existingKey);
+            store.put(incoming, existingKey);
             stableKeyMap.set(id, existingKey);
             stats.records++;
           }
@@ -2620,6 +2749,14 @@
   }
 
   function mergeLocalStorageValue(key, incomingRaw){
+    if (String(key || '') === 'a33_catalog_deleted_product_ids_v2' && window.A33ProductIntegrity){
+      const current = window.A33ProductIntegrity.readTombstones();
+      let incoming = [];
+      try{ incoming = typeof incomingRaw === 'string' ? JSON.parse(incomingRaw || '[]') : incomingRaw; }catch(_){ incoming = []; }
+      const merged = window.A33ProductIntegrity.mergeTombstones(current, Array.isArray(incoming) ? incoming : []);
+      window.A33ProductIntegrity.writeTombstones(merged);
+      return true;
+    }
     const currentRaw = window.A33Storage.getItem(key);
     const cur = tryParseJsonValue(currentRaw);
     const inc = tryParseJsonValue(String(incomingRaw ?? ''));
@@ -2757,62 +2894,88 @@
     try{ renderBackupImportLog(); }catch(_){ }
   }
 
+  async function prepareBackupProductsForImport(obj){
+    const cleanObj = sanitizeBackupObject(obj);
+    const posDb = cleanObj?.data?.indexedDB?.['a33-pos'];
+    const hasProductsBlock = !!(posDb && Object.prototype.hasOwnProperty.call(posDb, 'products'));
+    if (!hasProductsBlock) return { backup:cleanObj, hasProductsBlock:false, conflicts:[], blocked:[], assigned:[] };
+    const incoming = Array.isArray(posDb.products) ? posDb.products : [];
+    const current = (window.A33ProductIntegrity && typeof window.A33ProductIntegrity.getAllProductsRaw === 'function')
+      ? await window.A33ProductIntegrity.getAllProductsRaw()
+      : [];
+    const normalized = window.A33ProductIntegrity
+      ? window.A33ProductIntegrity.normalizeIncomingProducts(incoming, current)
+      : { records:incoming, idMap:{}, conflicts:[], blocked:[], assigned:[] };
+
+    let incomingTombstones = [];
+    const tombRaw = cleanObj?.data?.localStorage?.['a33_catalog_deleted_product_ids_v2'];
+    try{ incomingTombstones = typeof tombRaw === 'string' ? JSON.parse(tombRaw || '[]') : (Array.isArray(tombRaw) ? tombRaw : []); }catch(_){ incomingTombstones = []; }
+    const allTombstones = window.A33ProductIntegrity
+      ? window.A33ProductIntegrity.mergeTombstones(window.A33ProductIntegrity.readTombstones(), incomingTombstones)
+      : incomingTombstones;
+    const blockedIds = new Set(allTombstones.map((row) => String(row && row.productId || '').trim()).filter(Boolean));
+    const blockedByImportedTombstone = normalized.records.filter((row) => blockedIds.has(String(row.productId || '').trim()));
+    normalized.records = normalized.records.filter((row) => !blockedIds.has(String(row.productId || '').trim()));
+    normalized.blocked = normalized.blocked.concat(blockedByImportedTombstone.map((row) => ({ productId:row.productId, name:row.name || row.nombre || '', source:'tombstone_json' })));
+
+    const remapped = window.A33ProductIntegrity
+      ? window.A33ProductIntegrity.remapProductReferences(cleanObj, normalized.idMap)
+      : cleanObj;
+    const remappedProducts = window.A33ProductIntegrity
+      ? normalized.records.map((row) => window.A33ProductIntegrity.remapProductReferences(row, normalized.idMap))
+      : normalized.records;
+    remapped.data.indexedDB['a33-pos'].products = remappedProducts;
+    remapped.meta = remapped.meta || {};
+    remapped.meta.productIdentityImport = {
+      productsBlockIncluded:true,
+      assignedProductIds:normalized.assigned.length,
+      blockedByTombstone:normalized.blocked.length,
+      conflicts:normalized.conflicts.length,
+      strategy:'productId'
+    };
+    return { backup:remapped, hasProductsBlock:true, ...normalized };
+  }
+
+  function productConflictMessage(conflicts){
+    const list = (Array.isArray(conflicts) ? conflicts : []).slice(0, 8);
+    const detail = list.map((item) => {
+      const currentName = item?.current?.name || item?.current?.nombre || 'Producto actual';
+      const incomingName = item?.incoming?.name || item?.incoming?.nombre || 'Producto importado';
+      return `${item.productId}: “${currentName}” ↔ “${incomingName}”`;
+    }).join(' · ');
+    return `Conflicto de productId detectado. La importación fue detenida sin modificar datos. ${detail}`;
+  }
+
   async function performFullImport(obj){
     const cleanObj = sanitizeBackupObject(obj);
     const incomingLocalStorage = cleanObj?.data?.localStorage || {};
-    const incomingCosts = parseCostsBackupBlock(incomingLocalStorage);
-    const preservedCostsRaw = incomingCosts.present ? null : window.A33Storage.getItem(COSTS_BACKUP_KEY);
     const dbPayload = cleanObj?.data?.indexedDB || {};
     const dbVersions = cleanObj?.meta?.dbVersions || {};
     const dbSchemas = cleanObj?.meta?.dbSchemas || {};
-
     const fileSuite = Object.keys(dbPayload || {}).filter((dbName) => isSuiteDbName(dbName) && !isRetiredGateDbName(dbName));
 
-    const schemaSupported = new Set(
-      fileSuite.filter((dbName) => {
-        const sch = dbSchemas?.[dbName];
-        return sch && typeof sch === 'object' && Object.keys(sch).length > 0;
-      })
-    );
-
-    const current = await safeListIndexedDBDatabases();
-    const currentSuite = (Array.isArray(current) ? current : [])
-      .filter((d) => d?.name && isSuiteDbName(d.name))
-      .map((d) => d.name);
-
-    const toDelete = Array.from(new Set([...currentSuite, ...fileSuite]))
-      .filter((dbName) => schemaSupported.has(dbName));
-
-    for (const dbName of toDelete){
-      try{
-        await deleteDatabase(dbName);
-      }catch(e){
-        if (String(e?.message || '').toLowerCase().includes('bloqueado')){
-          throw e;
-        }
-      }
-    }
-
+    // Reemplazo por bloques presentes: un JSON sin Productos jamás vacía ni reconstruye Productos.
     for (const dbName of fileSuite){
       await restoreDatabase(dbName, dbPayload[dbName], dbVersions, dbSchemas);
     }
 
-    const currentLsKeys = getSuiteLocalStorageKeysInThisBrowser();
-    for (const k of currentLsKeys){
-      try{ window.A33Storage.removeItem(k); }catch(_){ }
-    }
-
-    const incoming = sanitizeSuiteLocalStorageMap(cleanObj?.data?.localStorage || {});
+    const incoming = sanitizeSuiteLocalStorageMap(incomingLocalStorage);
     for (const [k, v] of Object.entries(incoming)){
-      if (!isSuiteLocalStorageKey(k)) continue;
-      if (isRetiredGateStorageKey(k)) continue;
-      try{ window.A33Storage.setItem(k, String(v ?? '')); }catch(_){ }
+      if (!isSuiteLocalStorageKey(k) || isRetiredGateStorageKey(k)) continue;
+      if (k === 'a33_catalog_deleted_product_ids_v2') mergeLocalStorageValue(k, v);
+      else window.A33Storage.setItem(k, String(v ?? ''));
     }
-    if (!incomingCosts.present && preservedCostsRaw !== null && preservedCostsRaw !== undefined){
-      try{ window.A33Storage.setItem(COSTS_BACKUP_KEY, String(preservedCostsRaw)); }catch(_){ }
+    if (window.A33ProductIntegrity && typeof window.A33ProductIntegrity.applyTombstonesToCatalog === 'function'){
+      await window.A33ProductIntegrity.applyTombstonesToCatalog({ source:'importacion_completa' });
     }
 
-    return { type: 'full', indexedDB: fileSuite.length, localStorage: Object.keys(incoming || {}).length, costsPreserved:!incomingCosts.present && preservedCostsRaw !== null };
+    return {
+      type:'full',
+      indexedDB:fileSuite.length,
+      localStorage:Object.keys(incoming || {}).length,
+      scopedReplacement:true,
+      productsIncluded:!!(dbPayload?.['a33-pos'] && Object.prototype.hasOwnProperty.call(dbPayload['a33-pos'], 'products'))
+    };
   }
 
   async function performPartialImport(obj){
@@ -2833,14 +2996,31 @@
       if (isRetiredGateStorageKey(k)) continue;
       if (mergeLocalStorageValue(k, v)) result.localStorageKeys++;
     }
+    if (window.A33ProductIntegrity && typeof window.A33ProductIntegrity.applyTombstonesToCatalog === 'function'){
+      result.tombstonesApplied = await window.A33ProductIntegrity.applyTombstonesToCatalog({ source:'importacion_parcial' });
+    }
 
     return result;
   }
 
   async function performImport(obj){
-    const kind = getBackupImportKind(obj);
-    if (kind.type === 'partial') return performPartialImport(obj);
-    return performFullImport(obj);
+    const prepared = await prepareBackupProductsForImport(obj);
+    if (prepared.conflicts && prepared.conflicts.length){
+      const error = new Error(productConflictMessage(prepared.conflicts));
+      error.code = 'A33_PRODUCT_ID_CONFLICT';
+      error.conflicts = prepared.conflicts;
+      throw error;
+    }
+    const cleanObj = prepared.backup;
+    const kind = getBackupImportKind(cleanObj);
+    const result = kind.type === 'partial' ? await performPartialImport(cleanObj) : await performFullImport(cleanObj);
+    result.productIdentity = {
+      productsBlockIncluded:prepared.hasProductsBlock,
+      assignedProductIds:(prepared.assigned || []).length,
+      blockedByTombstone:(prepared.blocked || []).length,
+      conflicts:0
+    };
+    return result;
   }
 
   async function handleExport(){
@@ -2936,10 +3116,10 @@
       const primaryText = partial ? 'Importar parcial' : 'Importar y reemplazar';
       const confirmText = partial
         ? 'Este respaldo es parcial. Solo se importarán las secciones incluidas y los datos no incluidos se conservarán. ¿Importar parcial?'
-        : 'Esto reemplazará TODOS los datos actuales de la Suite A33 en este navegador. ¿Importar y reemplazar?';
+        : 'Esto reemplazará los bloques incluidos en el respaldo completo. Los bloques ausentes se conservarán. ¿Importar y reemplazar?';
       const workingText = partial
         ? 'Fusionando respaldo parcial por ID... No cierres esta pestaña.'
-        : 'Aplicando respaldo completo... No cierres esta pestaña.';
+        : 'Aplicando reemplazo controlado por bloques... No cierres esta pestaña.';
 
       showModal({
         title: partial ? 'Resumen del respaldo parcial' : 'Resumen del archivo',
@@ -2960,7 +3140,7 @@
             registerBackupImport(file.name, obj, kind, result);
             const okText = partial
               ? '<div>✅ Respaldo parcial importado correctamente.</div><div class="small-note">Los datos no incluidos se conservaron. Recomendado: recargar para que todos los módulos lean los cambios.</div>'
-              : '<div>✅ Respaldo completo importado correctamente.</div><div class="small-note">Recomendado: recargar para que todos los módulos lean los nuevos datos.</div>';
+              : '<div>✅ Respaldo completo importado correctamente por bloques.</div><div class="small-note">Los bloques ausentes se conservaron. Recomendado: recargar para que todos los módulos lean los nuevos datos.</div>';
             showModal({
               title: 'Importación exitosa',
               bodyHtml: okText,
@@ -2990,6 +3170,130 @@
         onPrimary: hideModal,
         disableCancel: true
       });
+    }
+  }
+
+
+  function formatAuditDate(value){
+    if (!value) return '—';
+    try{ return new Date(value).toLocaleString('es-NI'); }catch(_){ return String(value); }
+  }
+
+  function buildProductAuditHtml(rows){
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length){
+      return '<div class="badge-ok">✅ No hay productos en el catálogo. La auditoría no creó ni sembró ninguno.</div>';
+    }
+    const body = list.map((row) => `
+      <tr>
+        <td><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.productId)}</small></td>
+        <td>${escapeHtml(row.state)}</td>
+        <td>${escapeHtml(row.classification)}<small>Confianza: ${escapeHtml(row.confidence)}</small></td>
+        <td>${escapeHtml(row.origin)}<small>${escapeHtml(row.seedIndicator)}</small></td>
+        <td>${row.recipe ? 'Sí' : 'No'} / ${row.cost ? 'Sí' : 'No'}</td>
+        <td>${escapeHtml(row.envaseId || '—')}<small>Tapa: ${escapeHtml(row.tapaId || '—')}</small></td>
+        <td>${Number(row.stock || 0)}</td>
+        <td>${Number(row.relations.sales || 0)} / ${Number(row.relations.lots || 0)} / ${Number(row.relations.orders || 0)} / ${Number(row.relations.agenda || 0)}</td>
+        <td class="cfg-product-audit-actions">
+          <button type="button" class="cfg-btn cfg-btn-ghost" data-audit-detail="${escapeHtml(row.productId)}">Detalle</button>
+          <button type="button" class="cfg-btn cfg-btn-ghost" data-audit-inactivate="${escapeHtml(row.productId)}">Inactivar</button>
+          <button type="button" class="cfg-btn cfg-btn-danger" data-audit-delete="${escapeHtml(row.productId)}">Eliminar</button>
+        </td>
+      </tr>
+    `).join('');
+    return `
+      <div class="cfg-product-audit-note">La auditoría es informativa. No borra ni modifica nada hasta que presiones una acción explícita.</div>
+      <div class="cfg-product-audit-wrap" tabindex="0">
+        <table class="cfg-product-audit-table">
+          <thead><tr><th>Producto</th><th>Estado</th><th>Clasificación</th><th>Origen</th><th>Receta/Costos</th><th>Envase/Tapa</th><th>Stock</th><th>Ventas/Lotes/Pedidos/Agenda</th><th>Acciones</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function buildProductAuditDetail(row){
+    const r = row || {};
+    return `
+      <div class="cfg-product-audit-detail">
+        <div class="kv">
+          <div class="k">productId</div><div class="v">${escapeHtml(r.productId || '—')}</div>
+          <div class="k">Nombre</div><div class="v">${escapeHtml(r.name || '—')}</div>
+          <div class="k">Estado</div><div class="v">${escapeHtml(r.state || '—')}</div>
+          <div class="k">Clasificación</div><div class="v">${escapeHtml(r.classification || '—')}</div>
+          <div class="k">Confianza</div><div class="v">${escapeHtml(r.confidence || '—')}</div>
+          <div class="k">Origen</div><div class="v">${escapeHtml(r.origin || '—')}</div>
+          <div class="k">Creado</div><div class="v">${escapeHtml(formatAuditDate(r.createdAt))}</div>
+          <div class="k">Modificado</div><div class="v">${escapeHtml(formatAuditDate(r.updatedAt))}</div>
+          <div class="k">Receta</div><div class="v">${r.recipe ? 'Sí' : 'No'}</div>
+          <div class="k">Costos</div><div class="v">${r.cost ? 'Sí' : 'No'}</div>
+          <div class="k">Envase</div><div class="v">${escapeHtml(r.envaseId || '—')}</div>
+          <div class="k">Tapa</div><div class="v">${escapeHtml(r.tapaId || '—')}</div>
+          <div class="k">Stock</div><div class="v">${Number(r.stock || 0)}</div>
+          <div class="k">Ventas relacionadas</div><div class="v">${Number(r.relations?.sales || 0)}</div>
+          <div class="k">Lotes relacionados</div><div class="v">${Number(r.relations?.lots || 0)}</div>
+          <div class="k">Pedidos relacionados</div><div class="v">${Number(r.relations?.orders || 0)}</div>
+          <div class="k">Agenda relacionada</div><div class="v">${Number(r.relations?.agenda || 0)}</div>
+          <div class="k">Indicador de semilla</div><div class="v">${escapeHtml(r.seedIndicator || '—')}</div>
+          <div class="k">Tombstone</div><div class="v">${r.tombstoned ? 'Sí' : 'No'}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function handleProductAudit(){
+    if (!window.A33ProductIntegrity || typeof window.A33ProductIntegrity.auditProducts !== 'function'){
+      showToast('La herramienta de integridad no está disponible.');
+      return;
+    }
+    showModal({ title:'Auditoría segura de Productos', bodyHtml:'<div class="muted">Revisando relaciones sin modificar datos...</div>', disableCancel:true, disablePrimary:true });
+    try{
+      const rows = await window.A33ProductIntegrity.auditProducts();
+      showModal({
+        title:'Auditoría segura de Productos',
+        bodyHtml:buildProductAuditHtml(rows),
+        primaryText:'Cerrar',
+        onPrimary:hideModal,
+        disableCancel:true
+      });
+      const body = document.getElementById('backup-modal-body');
+      body?.querySelectorAll('[data-audit-detail]').forEach((button) => {
+        button.onclick = () => {
+          const row = rows.find((item) => item.productId === button.dataset.auditDetail);
+          showModal({ title:'Detalle de relaciones', bodyHtml:buildProductAuditDetail(row), primaryText:'Volver a auditoría', onPrimary:handleProductAudit, cancelText:'Cerrar', onCancel:hideModal });
+        };
+      });
+      body?.querySelectorAll('[data-audit-inactivate]').forEach((button) => {
+        button.onclick = async () => {
+          const row = rows.find((item) => item.productId === button.dataset.auditInactivate);
+          if (!row || !confirm(`¿Inactivar y poner en cuarentena “${row.name}”?
+
+No se borrarán ventas, lotes, pedidos, agenda ni históricos.`)) return;
+          await window.A33ProductIntegrity.setInactive(row.productId, { quarantine:true, reason:'Auditoría controlada desde Configuración' });
+          showToast('Producto inactivado y puesto en cuarentena.');
+          await handleProductAudit();
+        };
+      });
+      body?.querySelectorAll('[data-audit-delete]').forEach((button) => {
+        button.onclick = async () => {
+          const row = rows.find((item) => item.productId === button.dataset.auditDelete);
+          if (!row) return;
+          const ok = confirm(`Eliminar “${row.name}” del catálogo maestro creará un tombstone por productId.
+
+Los históricos se conservarán. ¿Continuar?`);
+          if (!ok) return;
+          const typed = prompt(`Confirmación final: escribe ELIMINAR para borrar ${row.productId}`);
+          if (String(typed || '').trim().toUpperCase() !== 'ELIMINAR'){
+            showToast('Eliminación cancelada.');
+            return;
+          }
+          await window.A33ProductIntegrity.deleteProduct(row.productId, { origin:'auditoria_configuracion', confirmed:true });
+          showToast('Producto eliminado con tombstone; históricos conservados.');
+          await handleProductAudit();
+        };
+      });
+    }catch(error){
+      showModal({ title:'Auditoría no disponible', bodyHtml:`<div class="badge-warn">⚠️ ${escapeHtml(error?.message || error)}</div>`, primaryText:'Cerrar', onPrimary:hideModal, disableCancel:true });
     }
   }
 
@@ -6335,6 +6639,7 @@
     const exportBtn = document.getElementById('cfg-export-backup');
     const customExportBtn = document.getElementById('cfg-export-custom-backup');
     const importBtn = document.getElementById('cfg-import-backup');
+    const auditBtn = document.getElementById('cfg-audit-products');
     const fileInput = document.getElementById('backup-file-input');
 
     if (exportBtn){
@@ -6355,6 +6660,9 @@
       });
     }
 
+    if (auditBtn){
+      auditBtn.addEventListener('click', () => { handleProductAudit().catch((error) => { console.error(error); showToast('No se pudo completar la auditoría.'); }); });
+    }
     if (importBtn && fileInput){
       importBtn.addEventListener('click', () => {
         fileInput.value = '';

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=18">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.85&r=18">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -30,17 +30,17 @@
     }
   })();
 </script>
-<link rel="stylesheet" href="styles.css?v=4.20.84&r=14">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=13" />
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=13" />
-  <script src="/assets/js/a33-theme.js?v=4.20.84&r=13"></script>
+<link rel="stylesheet" href="styles.css?v=4.20.85&r=14">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.85&r=13" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.85&r=13" />
+  <script src="/assets/js/a33-theme.js?v=4.20.85&r=13"></script>
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">POS · Eventos</div>
     <div class="a33-right">
-      <div class="a33-version" id="a33-version-text" data-a33-version="1" data-a33-fallback="v4.20.84">v...</div>
+      <div class="a33-version" id="a33-version-text" data-a33-version="1" data-a33-fallback="v4.20.85">v...</div>
     </div>
   </header>
 <div id="offlineBar" class="offline">Trabajando sin conexión</div>
@@ -406,20 +406,8 @@
             <div class="reempaque-title">Destino</div>
             <label>Producto destino</label>
             <select id="rp-target-product"></select>
-            <div class="reempaque-new-target">
-              <small class="muted">Destino nuevo opcional: se guardará como producto central vendible.</small>
-              <label>Nuevo destino</label>
-              <input id="rp-new-target-name" type="text" placeholder="Ej: Catrina" autocomplete="off">
-              <div class="reempaque-inline-fields">
-                <div>
-                  <label>Capacidad ml</label>
-                  <input id="rp-new-target-capacity" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 475">
-                </div>
-                <div>
-                  <label>Precio venta</label>
-                  <input id="rp-new-target-price" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Opcional">
-                </div>
-              </div>
+            <div class="info" style="margin-top:10px">
+              <small>Reempaque solo usa productos activos existentes. Si falta el destino, créalo primero en Gestión Operativa → Catálogos → Productos.</small>
             </div>
             <label>Cantidad creada</label>
             <input id="rp-target-qty" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 10">
@@ -1697,22 +1685,22 @@
   <button data-tab="checklist">Checklist</button>
 </nav>
 
-<script src="./vendor/xlsx.full.min.js?v=4.20.84&r=13"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.84&r=48"></script>
+<script src="./vendor/xlsx.full.min.js?v=4.20.85&r=13"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.85&r=49"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.84&r=13"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.84&r=14"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=14"></script>
-<script src="/assets/js/a33-build.js?v=4.20.84&r=14"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.85&r=19"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.85&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.85&r=15"></script>
+<script src="/assets/js/a33-build.js?v=4.20.85&r=14"></script>
 <script>
   (function(){
     try{
       const relObj = (window.A33_RELEASE || {});
-      const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.84';
-      const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '2'; // POS cache bump local — Tablero operativo Etapa 2
+      const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.85';
+      const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev).toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m29').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1721,7 +1709,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev)).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m29')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1729,11 +1717,11 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.84&r=25"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.84&r=13"></script>
+<script src="app.js?v=4.20.85&r=27"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.85&r=13"></script>
 <script>
   (function(){
-    const BUILD = (window.A33_VERSION || '4.20.84').toString();
+    const BUILD = (window.A33_VERSION || '4.20.85').toString();
     const REV = (window.A33_ASSET_REV || '8').toString();
     const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV);
     if (!('serviceWorker' in navigator)) return;

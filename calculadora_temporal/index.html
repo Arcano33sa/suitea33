@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=7" />
-  <script src="/assets/js/a33-theme.js?v=4.20.84&r=7"></script>
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.85&r=7" />
+  <script src="/assets/js/a33-theme.js?v=4.20.85&r=7"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -121,7 +121,7 @@
       background: #272727;
       /* Nota:
          Estas tablas viven dentro de contenedores con max-height + overflow.
-         En iPad/iOS, un `top` grande en headers sticky puede tapar filas (ej. Pulso/Media).
+         En iPad/iOS, un `top` grande en headers sticky puede tapar filas de productos.
          Aquí el sticky es relativo al scroll del contenedor, así que `top: 0` es lo correcto. */
       position: sticky;
       top: 0;
@@ -443,14 +443,14 @@
     }
 
   </style>
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=7" />
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.85&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.85&r=7" />
 </head>
 <body class="calc-body calc-temporal-body">
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Calculadora Temporal</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.84">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.85">v...</div>
   </header>
 
   <div class="app-container">
@@ -581,12 +581,13 @@
       </div>
     </div>
   </div>
-  <script src="/assets/js/a33-release.js?v=4.20.84&r=44"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.85&r=49"></script>
 
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.84&r=7"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=8"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.85&r=19"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.85&r=15"></script>
+  <script src="/assets/js/a33-production.js?v=4.20.85&r=1"></script>
 
   <script>
     const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
@@ -595,52 +596,14 @@
     const A33_ENVASES_CATALOG_KEY = "a33_catalog_envases_v1";
     const A33_TAPAS_CATALOG_KEY = "a33_catalog_tapas_v1";
     const A33_PRODUCCION_RECETAS_KEY = "arcano33_recetas_v1";
-    const A33_LEGACY_PRESENTATION_META = {
-      pulso: { id: "pulso", nombre: "Pulso 250 ml", volumenMl: 250, letra: "P" },
-      media: { id: "media", nombre: "Media 375 ml", volumenMl: 375, letra: "M" },
-      djeba: { id: "djeba", nombre: "Djeba 750 ml", volumenMl: 750, letra: "D" },
-      litro: { id: "litro", nombre: "Litro 1000 ml", volumenMl: 1000, letra: "L" },
-      galon: { id: "galon", nombre: "Galón 3720 ml", volumenMl: 3720, letra: "G" }
-    };
-    const A33_ENVASES_CATALOG_FALLBACK = [
-      { id: "envase_pulso", name: "Botella Pulso", capacityMl: 250, active: true },
-      { id: "envase_media", name: "Botella Media", capacityMl: 375, active: true },
-      { id: "envase_djeba", name: "Botella Djeba", capacityMl: 750, active: true },
-      { id: "envase_litro", name: "Botella Litro", capacityMl: 1000, active: true },
-      { id: "envase_galon", name: "Botella Galón", capacityMl: 3720, active: true },
-      { id: "envase_catrina", name: "Botella Catrina", capacityMl: null, active: true },
-      { id: "envase_catrina_jr", name: "Botella Catrina Jr.", capacityMl: null, active: true }
-    ];
-    const A33_TAPAS_CATALOG_FALLBACK = [
-      { id: "tapa_galon", name: "Tapa Galón", active: true },
-      { id: "tapa_pulso_litro", name: "Tapa Pulso/Litro", active: true },
-      { id: "tapa_djeba_media", name: "Tapa Djeba/Media", active: true },
-      { id: "corcho_catrina", name: "Corcho Catrina", active: true }
-    ];
-    const A33_TAPA_LEGACY_BY_PRESENTACION = {
-      galon: "Tapa Galón",
-      pulso: "Tapa Pulso/Litro",
-      litro: "Tapa Pulso/Litro",
-      djeba: "Tapa Djeba/Media",
-      media: "Tapa Djeba/Media"
-    };
-    let PRESENTACIONES = Object.keys(A33_LEGACY_PRESENTATION_META).map((id) => {
-      const p = A33_LEGACY_PRESENTATION_META[id];
-      return {
-        id: p.id,
-        productId: p.id,
-        nombre: p.nombre,
-        receta: true,
-        letra: p.letra,
-        envaseId: "",
-        tapaId: "",
-        capacidadMl: p.volumenMl,
-        volumenMl: p.volumenMl,
-        costoReferencial: null,
-        activo: true,
-        legacy: true
-      };
-    });
+    // Productos fabricables: únicamente Catálogos → Productos con productId, activos y Receta explícita.
+    // No existe lista fija ni fallback legacy operativo en la Calculadora Temporal.
+    const A33_LEGACY_PRESENTATION_META = Object.freeze({});
+    const A33_ENVASES_CATALOG_FALLBACK = Object.freeze([]);
+    const A33_TAPAS_CATALOG_FALLBACK = Object.freeze([]);
+    const A33_TAPA_LEGACY_BY_PRESENTACION = Object.freeze({});
+    let PRESENTACIONES = [];
+    let A33ProductosEstado = { status: "loading", message: "Cargando productos desde Catálogos…" };
 
     function a33HasOwn(obj, key) {
       return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
@@ -663,15 +626,7 @@
       return a33NormName(value).replace(/\s+/g, "");
     }
 
-    function a33LegacyPresentationIdFromName(name) {
-      const n = a33NormName(name);
-      if (!n) return null;
-      if (n.includes("vaso")) return null;
-      if (n.includes("pulso")) return "pulso";
-      if (n.includes("media")) return "media";
-      if (n.includes("djeba")) return "djeba";
-      if (n.includes("litro")) return "litro";
-      if (n.includes("galon") || n.includes("gal")) return "galon";
+    function a33LegacyPresentationIdFromName() {
       return null;
     }
 
@@ -688,13 +643,13 @@
     }
 
     function a33ProductoConReceta(product) {
+      if (window.A33Production && typeof A33Production.productHasExplicitRecipe === "function") return A33Production.productHasExplicitRecipe(product);
       const p = product && typeof product === "object" ? product : {};
       if (a33HasOwn(p, "receta")) return a33Bool(p.receta, false);
       if (a33HasOwn(p, "Receta")) return a33Bool(p.Receta, false);
       if (a33HasOwn(p, "recipe")) return a33Bool(p.recipe, false);
       if (a33HasOwn(p, "hasRecipe")) return a33Bool(p.hasRecipe, false);
-      // Compatibilidad defensiva: datos antiguos sin campo Receta conservan las presentaciones A33 fijas.
-      return !!a33LegacyPresentationIdFromName(p.name || p.nombre || "");
+      return false;
     }
 
     function a33ProductoEnvaseId(product) {
@@ -724,12 +679,12 @@
 
     function a33ReadEnvasesCatalog() {
       const raw = a33ReadJsonLocal(A33_ENVASES_CATALOG_KEY, []);
-      return Array.isArray(raw) && raw.length ? raw : A33_ENVASES_CATALOG_FALLBACK;
+      return Array.isArray(raw) ? raw : [];
     }
 
     function a33ReadTapasCatalog() {
       const raw = a33ReadJsonLocal(A33_TAPAS_CATALOG_KEY, []);
-      return Array.isArray(raw) && raw.length ? raw : A33_TAPAS_CATALOG_FALLBACK;
+      return Array.isArray(raw) ? raw : [];
     }
 
     function a33CatalogFindById(list, id) {
@@ -748,7 +703,7 @@
       const p = product && typeof product === "object" ? product : {};
       const envaseId = String(p.envaseId || "").trim();
       if (envaseId) return a33CatalogNameById(envases, envaseId, envaseId);
-      const legacy = A33_LEGACY_PRESENTATION_META[String(p.id || "")];
+      const legacy = null;
       return legacy ? ("Botella " + legacy.nombre.replace(/\s*\d+\s*ml/i, "").trim()) : "Sin envase";
     }
 
@@ -868,16 +823,13 @@
       const p = product && typeof product === "object" ? product : {};
       return a33NumberOrNull(p.capacityMl ?? p.capacidadMl ?? p.capacity ?? p.capacidad ?? p.volumenMl ?? p.ml)
         || a33CapacityFromEnvase(envases, a33ProductoEnvaseId(p))
-        || a33CapacityFromName(p.name || p.nombre || "")
-        || (legacyMeta ? legacyMeta.volumenMl : null)
         || 0;
     }
 
-    function a33SafePresentationId(product, legacyId) {
-      if (legacyId) return legacyId;
-      const raw = (product && (product.id ?? product.productId ?? product.codigo ?? product.name ?? product.nombre)) || "producto";
-      const safe = String(raw).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-      return "prod_" + (safe || "nuevo").slice(0, 48);
+    function a33SafePresentationId(product) {
+      if (window.A33Production && typeof A33Production.productIdOf === "function") return String(A33Production.productIdOf(product) || "").trim();
+      const p = product && typeof product === "object" ? product : {};
+      return String(p.productId ?? p.id ?? p.productoId ?? "").trim();
     }
 
     function a33ProductCost(product) {
@@ -888,33 +840,28 @@
     function a33ProductoToPresentacion(product, envases) {
       const p = product && typeof product === "object" ? product : {};
       const name = String(p.name || p.nombre || "").trim();
-      if (!name || a33NormName(name).includes("vaso") || !a33ProductoActivo(p) || !a33ProductoConReceta(p)) return null;
-      const legacyId = a33LegacyPresentationIdFromName(name);
-      const legacyMeta = legacyId ? A33_LEGACY_PRESENTATION_META[legacyId] : null;
-      const id = a33SafePresentationId(p, legacyId);
-      const capacidadMl = a33ProductCapacityMl(p, legacyMeta, envases);
+      const productId = a33SafePresentationId(p);
+      if (!productId || !name || !a33ProductoActivo(p) || !a33ProductoConReceta(p)) return null;
+      const capacidadMl = a33ProductCapacityMl(p, null, envases);
       return {
-        id,
-        productId: p.id ?? p.productId ?? id,
-        nombre: name || (legacyMeta ? legacyMeta.nombre : "Producto"),
+        id: productId,
+        productId,
+        nombre: name,
         receta: true,
-        letra: a33NormalizeLetter(p.letra ?? p.letter ?? p.productionLetter ?? (legacyMeta ? legacyMeta.letra : "")),
+        letra: a33NormalizeLetter(p.letra ?? p.Letra ?? p.letter ?? p.productionLetter ?? ""),
         envaseId: a33ProductoEnvaseId(p),
         tapaId: a33ProductoTapaId(p),
         capacidadMl,
-        volumenMl: capacidadMl || (legacyMeta ? legacyMeta.volumenMl : 0),
+        volumenMl: capacidadMl,
         costoReferencial: a33ProductCost(p),
         activo: true,
-        legacy: !!legacyId
+        legacy: false,
+        catalogProduct: p
       };
     }
 
     function a33SortPresentaciones(a, b) {
-      const order = { pulso: 1, media: 2, djeba: 3, litro: 4, galon: 5 };
-      const oa = order[a && a.id] || 99;
-      const ob = order[b && b.id] || 99;
-      if (oa !== ob) return oa - ob;
-      return String((a && a.nombre) || "").localeCompare(String((b && b.nombre) || ""), "es-NI", { sensitivity: "base" });
+      return String((a && a.nombre) || "").localeCompare(String((b && b.nombre) || ""), "es-NI", { sensitivity: "base", numeric: true });
     }
 
     function a33SerializePresentacionProducto(p) {
@@ -933,75 +880,38 @@
       };
     }
 
-    function a33EsPresentacionLegacyOperativa(id) {
-      return !!A33_LEGACY_PRESENTATION_META[String(id || "")];
+    function a33EsPresentacionLegacyOperativa() {
+      return false;
     }
 
     async function a33ReadCatalogProducts() {
-      if (!window.indexedDB) return null;
-      return new Promise((resolve) => {
-        let done = false;
-        const finish = (value) => {
-          if (done) return;
-          done = true;
-          resolve(value);
-        };
-        try {
-          const req = indexedDB.open(A33_PRODUCTOS_DB_NAME);
-          req.onerror = () => finish(null);
-          req.onblocked = () => finish(null);
-          req.onsuccess = () => {
-            const db = req.result;
-            try {
-              if (!db || !db.objectStoreNames || !db.objectStoreNames.contains(A33_PRODUCTOS_STORE)) {
-                try { if (db) db.close(); } catch (e) {}
-                finish([]);
-                return;
-              }
-              const tx = db.transaction(A33_PRODUCTOS_STORE, "readonly");
-              const getReq = tx.objectStore(A33_PRODUCTOS_STORE).getAll();
-              getReq.onsuccess = () => {
-                const rows = Array.isArray(getReq.result) ? getReq.result : [];
-                try { db.close(); } catch (e) {}
-                finish(rows);
-              };
-              getReq.onerror = () => {
-                try { db.close(); } catch (e) {}
-                finish(null);
-              };
-            } catch (e) {
-              try { if (db) db.close(); } catch (e2) {}
-              finish(null);
-            }
-          };
-        } catch (e) {
-          finish(null);
-        }
-      });
+      if (!window.A33Production || typeof A33Production.loadFabricableProducts !== "function") return null;
+      const result = await A33Production.loadFabricableProducts();
+      if (!result.ok) return null;
+      return result.items.map((item) => item.catalogProduct || item);
     }
 
     async function cargarPresentacionesDinamicasDesdeCatalogos() {
+      PRESENTACIONES = [];
+      A33ProductosEstado = { status: "loading", message: "Cargando productos desde Catálogos…" };
       try {
-        const productos = await a33ReadCatalogProducts();
-        if (!Array.isArray(productos) || productos.length === 0) return;
-        const envases = a33ReadEnvasesCatalog();
-        const map = new Map();
-        productos.forEach((producto) => {
-          const item = a33ProductoToPresentacion(producto, envases);
-          if (!item) return;
-          const prev = map.get(item.id);
-          if (!prev) {
-            map.set(item.id, item);
-            return;
-          }
-          // Si hay duplicados legacy por nombre, conservar el que tenga más metadatos completos.
-          const prevScore = (prev.envaseId ? 2 : 0) + (prev.tapaId ? 2 : 0) + (prev.letra ? 1 : 0) + (prev.costoReferencial ? 1 : 0);
-          const nextScore = (item.envaseId ? 2 : 0) + (item.tapaId ? 2 : 0) + (item.letra ? 1 : 0) + (item.costoReferencial ? 1 : 0);
-          if (nextScore >= prevScore) map.set(item.id, item);
-        });
-        PRESENTACIONES = Array.from(map.values()).sort(a33SortPresentaciones);
+        if (!window.A33Production || typeof A33Production.loadFabricableProducts !== "function") throw new Error("No está disponible el contrato central de Productos.");
+        const result = await A33Production.loadFabricableProducts();
+        if (!result.ok) {
+          A33ProductosEstado = { status: "error", message: (result.errors || []).join(" ") || "No se pudieron leer los productos de Catálogos." };
+          return;
+        }
+        PRESENTACIONES = result.items.map((item) => ({ ...item, id: item.productId, productId: item.productId, legacy: false })).sort(a33SortPresentaciones);
+        A33ProductosEstado = {
+          status: PRESENTACIONES.length ? "ready" : "empty",
+          message: result.duplicateLetters && result.duplicateLetters.length
+            ? "Hay Letras repetidas en Catálogos. Corrígelas antes de usar Lotes oficiales."
+            : (PRESENTACIONES.length ? "" : "No hay productos activos con Receta en Catálogos → Productos.")
+        };
       } catch (e) {
-        console.warn("No se pudieron leer productos dinámicos con Receta; se conserva lista fija.", e);
+        PRESENTACIONES = [];
+        A33ProductosEstado = { status: "error", message: "No se pudieron leer los productos de Catálogos. No se mostraron productos ficticios." };
+        console.error("Error controlado al cargar Productos en Calculadora Temporal:", e);
       }
     }
 
@@ -1344,14 +1254,10 @@
         const cad = calcularCaducidad(fechaProduccion);
         return cad ? cad.toISOString().slice(0, 10) : '';
       })();
-      const plan = {
-        pulso: normQtyInt(item.pulso),
-        media: normQtyInt(item.media),
-        djeba: normQtyInt(item.djeba),
-        litro: normQtyInt(item.litro),
-        galon: normQtyInt(item.galon)
-      };
-      const unidadesPorPresentacion = PRESENTACIONES.map(p => ({ id: p.id, nombre: p.nombre, unidades: plan[p.id] || 0 })).filter(x => x.unidades > 0);
+      // Los registros temporales antiguos conservan sus volúmenes y notas, pero sus
+      // campos fijos no se convierten en productos operativos ni alimentan el formulario.
+      const plan = {};
+      const unidadesPorPresentacion = [];
       return {
         id: String(item.id || item.loteId || ('temporal_' + codigo)).trim(),
         codigo,
@@ -2286,7 +2192,7 @@ function a33WireNumericInput(el, mode) {
         td.colSpan = INGREDIENTES.length + 2;
         td.className = "hint";
         td.style.textAlign = "left";
-        td.textContent = "No hay productos activos con Receta marcada en Catálogos.";
+        td.textContent = A33ProductosEstado.message || "No hay productos activos con Receta marcada en Catálogos.";
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -2332,7 +2238,7 @@ function a33WireNumericInput(el, mode) {
         td.colSpan = 3;
         td.className = "hint";
         td.style.textAlign = "left";
-        td.textContent = "No hay productos producibles para planificar. Marca Receta en Catálogos → Productos.";
+        td.textContent = A33ProductosEstado.message || "No hay productos producibles para planificar. Marca Receta en Catálogos → Productos.";
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -2703,6 +2609,6 @@ async function init() {
       try { renderTemporalHistory(); } catch (e) {}
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=7"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.85&r=7"></script>
 </body>
 </html>

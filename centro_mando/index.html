@@ -1,86 +1,42 @@
 <!doctype html>
-<!-- Legacy redirect — no usar para desarrollo -->
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b0b0b" />
-  <meta http-equiv="refresh" content="4;url=../centro-mando/index.html" />
-  <title>Centro de Mando — Actualizando…</title>
-  <script src="/assets/js/a33-theme.js?v=4.20.84&r=7"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.84&r=44"></script>
-
-  <script src="/assets/js/a33-storage.js?v=4.20.84&r=7"></script>
-  <style>
-    :root{color-scheme:dark}
-    body{margin:0;background:#0b0b0b;color:#f2f2f2;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
-    .card{width:min(560px,100%);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-    h1{font-size:18px;margin:0 0 8px}
-    p{margin:0 0 10px;line-height:1.35;color:#cfcfcf;font-size:14px}
-    .status{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#caa85c;font-size:12px;white-space:pre-wrap}
-    .hint{opacity:.85;margin-top:10px;font-size:12px}
-    a{color:#caa85c}
-  </style>
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=7" />
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Actualizando Centro de Mando…</h1>
-      <p>Estamos moviendo el módulo a su ruta canónica para evitar versiones “zombie” por caché.</p>
-      <div id="status" class="status">Iniciando…</div>
-      <p class="hint">Si no te redirige, abrí <a id="cm-canonical-link" href="../centro-mando/index.html">Centro de Mando</a>.</p>
-    </div>
-  </div>
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="refresh" content="1;url=../centro-mando/index.html">
+  <title>Centro de Mando — Ruta actualizada</title>
   <script>
-    (async () => {
-      const statusEl = document.getElementById('status');
-      const set = (m) => { try { statusEl.textContent = m; } catch(e) {} };
-
-      const suffix = `${location.search || ""}${location.hash || ""}`;
-      const target = `../centro-mando/index.html${suffix}`;
-      const canonicalLink = document.getElementById("cm-canonical-link");
-      if (canonicalLink) canonicalLink.setAttribute("href", target);
-
-      // 1) Intentar desregistrar SW bajo este scope (centro_mando)
+    (async function(){
+      'use strict';
+      var target = '../centro-mando/index.html' + (location.search || '') + (location.hash || '');
       try {
-        if ('serviceWorker' in navigator) {
-          set("Desregistrando Service Workers…");
-          const regs = await navigator.serviceWorker.getRegistrations();
-          const scopeNeedle = "centro_mando";
-          await Promise.all(regs
-            .filter(r => (r && r.scope && String(r.scope).toLowerCase().includes(scopeNeedle)))
-            .map(r => r.unregister().catch(() => false))
-          );
+        if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+          var regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all((regs || []).filter(function(reg){
+            try {
+              var scope = String(reg.scope || '').toLowerCase();
+              var worker = reg.active || reg.waiting || reg.installing;
+              var script = String(worker && worker.scriptURL || '').toLowerCase();
+              return scope.indexOf('/centro_mando/') >= 0 || script.indexOf('/centro_mando/sw.js') >= 0;
+            } catch (_) { return false; }
+          }).map(function(reg){ return reg.unregister().catch(function(){ return false; }); }));
         }
-      } catch (e) {}
-
-      // 2) Intentar limpiar caches relacionadas (sin asumir nombres exactos)
+      } catch (_) {}
       try {
         if (window.caches && caches.keys) {
-          set("Limpiando cachés relacionadas…");
-          const keys = await caches.keys();
-          const kill = keys.filter(k => {
-            const s = String(k).toLowerCase();
-            return s.startsWith("a33-") && (s.includes("centro-mando") || s.includes("centro_mando"));
-          });
-          await Promise.all(kill.map(k => caches.delete(k).catch(() => false)));
+          var keys = await caches.keys();
+          await Promise.all((keys || []).filter(function(key){
+            var k = String(key || '').toLowerCase();
+            return (k.indexOf('centro_mando') >= 0 || k.indexOf('centro-mando') >= 0) && (k.indexOf('a33-') === 0 || k.indexOf('arcano33-') === 0);
+          }).map(function(key){ return caches.delete(key).catch(function(){ return false; }); }));
         }
-      } catch (e) {}
-
-      // 3) Redirigir al canónico
-      set("Redirigiendo…");
-      try { location.replace(target); } catch (e) { location.href = target; }
-
-      // Fallback por si algo raro ocurre
-      setTimeout(() => {
-        try {
-          if (String(location.pathname).toLowerCase().includes("centro_mando")) location.href = target;
-        } catch (e) {}
-      }, 900);
+      } catch (_) {}
+      try { location.replace(target); } catch (_) { location.href = target; }
     })();
   </script>
+</head>
+<body>
+  <p>Abriendo la ruta oficial… <a href="../centro-mando/index.html">Centro de Mando</a></p>
 </body>
 </html>

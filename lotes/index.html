@@ -8,20 +8,20 @@
   <meta name="theme-color" content="#7b1818" />
 
   
-<script src="/assets/js/a33-theme.js?v=4.20.84&r=7"></script>
+<script src="/assets/js/a33-theme.js?v=4.20.85&r=7"></script>
 <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
   <link rel="apple-touch-icon" href="images/logo.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=10" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.85&r=11" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.84&r=10" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=7" />
-<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=7" />
+  <link rel="stylesheet" href="style.css?v=4.20.85&r=10" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.85&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.85&r=7" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Control de Lotes</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.84">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.85">v...</div>
   </header>
   <main class="app-main">
     <section class="card form-card">
@@ -72,33 +72,10 @@
           </div>
         </div>
 
-        <h3>Presentaciones (unidades)</h3>
-        <div class="form-grid">
-          <div class="field">
-            <label for="pulso">Pulso 250 ml</label>
-            <input type="number" id="pulso" name="pulso" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label for="media">Media 375 ml</label>
-            <input type="number" id="media" name="media" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label for="djeba">Djeba 750 ml</label>
-            <input type="number" id="djeba" name="djeba" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label for="litro">Litro 1000 ml</label>
-            <input type="number" id="litro" name="litro" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label for="galon">Galón 3720 ml</label>
-            <input type="number" id="galon" name="galon" min="0" step="1" value="0" class="a33-num" data-a33-default="0" inputmode="numeric">
-          </div>
-        </div>
-
-        <div class="dynamic-products-section" id="dynamic-products-section" aria-label="Productos dinámicos adicionales">
+        <h3>Productos fabricados</h3>
+        <div class="dynamic-products-section" id="dynamic-products-section" aria-label="Productos desde Catálogos">
           <div class="dynamic-products-head">
-            <h3>Productos dinámicos adicionales</h3>
+            <h3>Productos desde Catálogos</h3>
             <p id="dynamic-products-status">Leyendo productos con Receta y Letra…</p>
           </div>
           <div class="dynamic-products-grid" id="dynamic-products-grid"></div>
@@ -144,26 +121,6 @@
       <div class="totals-bar" id="totals-bar" aria-label="Totales restantes por Letra">
         <div class="totals-label">Totales</div>
         <div class="totals-chips" role="group" aria-label="Totales por Letra">
-          <div class="totals-chip" aria-label="Total Pulso">
-            <div class="totals-chip-key">P</div>
-            <div class="totals-chip-val" data-total-key="P">0</div>
-          </div>
-          <div class="totals-chip" aria-label="Total Media">
-            <div class="totals-chip-key">M</div>
-            <div class="totals-chip-val" data-total-key="M">0</div>
-          </div>
-          <div class="totals-chip" aria-label="Total Djeba">
-            <div class="totals-chip-key">D</div>
-            <div class="totals-chip-val" data-total-key="D">0</div>
-          </div>
-          <div class="totals-chip" aria-label="Total Litro">
-            <div class="totals-chip-key">L</div>
-            <div class="totals-chip-val" data-total-key="L">0</div>
-          </div>
-          <div class="totals-chip" aria-label="Total Galón">
-            <div class="totals-chip-key">G</div>
-            <div class="totals-chip-val" data-total-key="G">0</div>
-          </div>
         </div>
       </div>
 
@@ -174,11 +131,11 @@
               <th>Fecha</th>
               <th>Código</th>
               <th title="VOL. TOTAL (ML)">Vol. ML</th>
-              <th class="col-producto-abbr" title="Pulso 250 ml">P</th>
-              <th class="col-producto-abbr" title="Media 375 ml">M</th>
-              <th class="col-producto-abbr" title="Djeba 750 ml">D</th>
-              <th class="col-producto-abbr" title="Litro 1000 ml">L</th>
-              <th class="col-producto-abbr" title="Galón 3720 ml">G</th>
+              <th class="col-producto-abbr" title="Histórico: Pulso 250 ml" style="display:none" aria-hidden="true">P</th>
+              <th class="col-producto-abbr" title="Histórico: Media 375 ml" style="display:none" aria-hidden="true">M</th>
+              <th class="col-producto-abbr" title="Histórico: Djeba 750 ml" style="display:none" aria-hidden="true">D</th>
+              <th class="col-producto-abbr" title="Histórico: Litro 1000 ml" style="display:none" aria-hidden="true">L</th>
+              <th class="col-producto-abbr" title="Histórico: Galón 3720 ml" style="display:none" aria-hidden="true">G</th>
               <th>Caducidad</th>
               <th>Acciones</th>
             </tr>
@@ -218,13 +175,14 @@
     <p>Arcano 33 · Control interno de producción</p>
   </footer>
 
-  <script src="./vendor/xlsx.full.min.js?v=4.20.84&r=7"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.84&r=44"></script>
+  <script src="./vendor/xlsx.full.min.js?v=4.20.85&r=7"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.85&r=49"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.84&r=8"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=8"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.85&r=19"></script>
+  <script src="/assets/js/a33-production.js?v=4.20.85&r=1"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.85&r=15"></script>
 
-  <script src="script.js?v=4.20.84&r=15"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=7"></script>
+  <script src="script.js?v=4.20.85&r=16"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.85&r=7"></script>
 </body>
 </html>

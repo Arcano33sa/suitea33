@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.84&r=7" />
-  <script src="/assets/js/a33-theme.js?v=4.20.84&r=7"></script>
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.85&r=7" />
+  <script src="/assets/js/a33-theme.js?v=4.20.85&r=7"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -121,7 +121,7 @@
       background: #272727;
       /* Nota:
          Estas tablas viven dentro de contenedores con max-height + overflow.
-         En iPad/iOS, un `top` grande en headers sticky puede tapar filas (ej. Pulso/Media).
+         En iPad/iOS, un `top` grande en headers sticky puede tapar filas de productos.
          Aquí el sticky es relativo al scroll del contenedor, así que `top: 0` es lo correcto. */
       position: sticky;
       top: 0;
@@ -354,14 +354,14 @@
     .a33-btn-primary-pill:hover { filter: brightness(1.05); }
 
   </style>
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.84&r=7" />
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.84&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.85&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.85&r=7" />
 </head>
 <body class="calc-body calc-main-body">
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Calculadora</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.84">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.85">v...</div>
   </header>
 
   <div class="app-container">
@@ -483,13 +483,14 @@
       </div>
     </div>
   </div>
-  <script src="/assets/js/a33-release.js?v=4.20.84&r=44"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.85&r=49"></script>
 
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.84&r=15"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.84&r=14"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.84&r=8"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.85&r=19"></script>
+  <script src="/assets/js/a33-production.js?v=4.20.85&r=1"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.85&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.85&r=15"></script>
 
   <script>
     const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
@@ -497,45 +498,13 @@
     const A33_PRODUCTOS_STORE = "products";
     const A33_ENVASES_CATALOG_KEY = "a33_catalog_envases_v1";
     const A33_TAPAS_CATALOG_KEY = "a33_catalog_tapas_v1";
-    const A33_LEGACY_PRESENTATION_META = {
-      pulso: { id: "pulso", nombre: "Pulso 250 ml", volumenMl: 250, letra: "P" },
-      media: { id: "media", nombre: "Media 375 ml", volumenMl: 375, letra: "M" },
-      djeba: { id: "djeba", nombre: "Djeba 750 ml", volumenMl: 750, letra: "D" },
-      litro: { id: "litro", nombre: "Litro 1000 ml", volumenMl: 1000, letra: "L" },
-      galon: { id: "galon", nombre: "Galón 3720 ml", volumenMl: 3720, letra: "G" }
-    };
-    const A33_ENVASES_CATALOG_FALLBACK = [
-      { id: "envase_pulso", name: "Botella Pulso", capacityMl: 250, active: true },
-      { id: "envase_media", name: "Botella Media", capacityMl: 375, active: true },
-      { id: "envase_djeba", name: "Botella Djeba", capacityMl: 750, active: true },
-      { id: "envase_litro", name: "Botella Litro", capacityMl: 1000, active: true },
-      { id: "envase_galon", name: "Botella Galón", capacityMl: 3720, active: true },
-      { id: "envase_catrina", name: "Botella Catrina", capacityMl: null, active: true },
-      { id: "envase_catrina_jr", name: "Botella Catrina Jr.", capacityMl: null, active: true }
-    ];
-    const A33_TAPAS_CATALOG_FALLBACK = [
-      { id: "tapa_galon", name: "Tapa Galón", active: true },
-      { id: "tapa_pulso_litro", name: "Tapa Pulso/Litro", active: true },
-      { id: "tapa_djeba_media", name: "Tapa Djeba/Media", active: true },
-      { id: "corcho_catrina", name: "Corcho Catrina", active: true }
-    ];
-    let PRESENTACIONES = Object.keys(A33_LEGACY_PRESENTATION_META).map((id) => {
-      const p = A33_LEGACY_PRESENTATION_META[id];
-      return {
-        id: p.id,
-        productId: p.id,
-        nombre: p.nombre,
-        receta: true,
-        letra: p.letra,
-        envaseId: "",
-        tapaId: "",
-        capacidadMl: p.volumenMl,
-        volumenMl: p.volumenMl,
-        costoReferencial: null,
-        activo: true,
-        legacy: true
-      };
-    });
+    // Etapa 4/8: no existe ninguna presentación operativa fija.
+    // Los símbolos legacy se conservan únicamente dentro de Lotes para lectura histórica.
+    const A33_LEGACY_PRESENTATION_META = Object.freeze({});
+    const A33_ENVASES_CATALOG_FALLBACK = Object.freeze([]);
+    const A33_TAPAS_CATALOG_FALLBACK = Object.freeze([]);
+    let PRESENTACIONES = [];
+    let A33ProductosEstado = { status: "loading", message: "Leyendo Catálogos → Productos…", duplicateLetters: [] };
 
     function a33HasOwn(obj, key) {
       return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
@@ -558,15 +527,7 @@
       return a33NormName(value).replace(/\s+/g, "");
     }
 
-    function a33LegacyPresentationIdFromName(name) {
-      const n = a33NormName(name);
-      if (!n) return null;
-      if (n.includes("vaso")) return null;
-      if (n.includes("pulso")) return "pulso";
-      if (n.includes("media")) return "media";
-      if (n.includes("djeba")) return "djeba";
-      if (n.includes("litro")) return "litro";
-      if (n.includes("galon") || n.includes("gal")) return "galon";
+    function a33LegacyPresentationIdFromName() {
       return null;
     }
 
@@ -584,12 +545,11 @@
 
     function a33ProductoConReceta(product) {
       const p = product && typeof product === "object" ? product : {};
-      if (a33HasOwn(p, "receta")) return a33Bool(p.receta, false);
-      if (a33HasOwn(p, "Receta")) return a33Bool(p.Receta, false);
-      if (a33HasOwn(p, "recipe")) return a33Bool(p.recipe, false);
-      if (a33HasOwn(p, "hasRecipe")) return a33Bool(p.hasRecipe, false);
-      // Compatibilidad defensiva: datos antiguos sin campo Receta conservan las presentaciones A33 fijas.
-      return !!a33LegacyPresentationIdFromName(p.name || p.nombre || "");
+      if (window.A33Production && typeof A33Production.productHasExplicitRecipe === "function") return A33Production.productHasExplicitRecipe(p);
+      if (a33HasOwn(p, "receta")) return p.receta === true || p.receta === 1 || String(p.receta).toLowerCase() === "true";
+      if (a33HasOwn(p, "hasRecipe")) return p.hasRecipe === true || p.hasRecipe === 1 || String(p.hasRecipe).toLowerCase() === "true";
+      if (a33HasOwn(p, "recipe")) return p.recipe === true || (p.recipe && typeof p.recipe === "object");
+      return false;
     }
 
     function a33ProductoEnvaseId(product) {
@@ -619,12 +579,12 @@
 
     function a33ReadEnvasesCatalog() {
       const raw = a33ReadJsonLocal(A33_ENVASES_CATALOG_KEY, []);
-      return Array.isArray(raw) && raw.length ? raw : A33_ENVASES_CATALOG_FALLBACK;
+      return Array.isArray(raw) ? raw : [];
     }
 
     function a33ReadTapasCatalog() {
       const raw = a33ReadJsonLocal(A33_TAPAS_CATALOG_KEY, []);
-      return Array.isArray(raw) && raw.length ? raw : A33_TAPAS_CATALOG_FALLBACK;
+      return Array.isArray(raw) ? raw : [];
     }
 
     function a33CatalogFindById(list, id) {
@@ -639,65 +599,22 @@
       return name || fallback || String(id || "").trim();
     }
 
-    const A33_ENVASE_ID_TO_INVENTORY_KEY = {
-      envase_pulso: "pulso",
-      envase_media: "media",
-      envase_djeba: "djeba",
-      envase_litro: "litro",
-      envase_galon: "galon"
-    };
-
-    const A33_TAPA_ID_TO_INVENTORY_KEY = {
-      tapa_galon: "gallon",
-      tapa_pulso_litro: "pulsoLitro",
-      tapa_djeba_media: "djebaMedia"
-    };
-
-    const A33_TAPA_LEGACY_BY_PRESENTACION = {
-      galon: "gallon",
-      pulso: "pulsoLitro",
-      litro: "pulsoLitro",
-      djeba: "djebaMedia",
-      media: "djebaMedia"
-    };
-
-    const A33_CAPS_DISPLAY_NAMES = {
-      gallon: "Tapa Galón",
-      pulsoLitro: "Tapa Pulso/Litro",
-      djebaMedia: "Tapa Djeba/Media",
-      vasos12oz: "Vasos 12oz"
-    };
-
     function a33EnvaseInventoryKey(product) {
-      const p = product && typeof product === "object" ? product : {};
-      const envaseId = String(p.envaseId || "").trim();
-      if (envaseId && A33_ENVASE_ID_TO_INVENTORY_KEY[envaseId]) return A33_ENVASE_ID_TO_INVENTORY_KEY[envaseId];
-      if (envaseId) return envaseId;
-      return A33_LEGACY_PRESENTATION_META[String(p.id || "")] ? String(p.id || "") : "";
+      return String((product && product.envaseId) || "").trim();
     }
 
     function a33TapaInventoryKey(product) {
-      const p = product && typeof product === "object" ? product : {};
-      const tapaId = String(p.tapaId || "").trim();
-      if (tapaId && A33_TAPA_ID_TO_INVENTORY_KEY[tapaId]) return A33_TAPA_ID_TO_INVENTORY_KEY[tapaId];
-      if (tapaId) return tapaId;
-      return A33_TAPA_LEGACY_BY_PRESENTACION[String(p.id || "")] || "";
+      return String((product && product.tapaId) || "").trim();
     }
 
     function a33EnvaseDisplayName(product, envases) {
-      const p = product && typeof product === "object" ? product : {};
-      const envaseId = String(p.envaseId || "").trim();
-      if (envaseId) return a33CatalogNameById(envases, envaseId, envaseId);
-      const legacy = A33_LEGACY_PRESENTATION_META[String(p.id || "")];
-      return legacy ? ("Botella " + legacy.nombre.replace(/\s*\d+\s*ml/i, "").trim()) : "Sin envase";
+      const envaseId = String((product && product.envaseId) || "").trim();
+      return envaseId ? a33CatalogNameById(envases, envaseId, envaseId) : "Sin envase";
     }
 
     function a33TapaDisplayName(product, tapas) {
-      const p = product && typeof product === "object" ? product : {};
-      const tapaId = String(p.tapaId || "").trim();
-      if (tapaId) return a33CatalogNameById(tapas, tapaId, tapaId);
-      const key = A33_TAPA_LEGACY_BY_PRESENTACION[String(p.id || "")] || "";
-      return key ? (A33_CAPS_DISPLAY_NAMES[key] || key) : "Sin tapa";
+      const tapaId = String((product && product.tapaId) || "").trim();
+      return tapaId ? a33CatalogNameById(tapas, tapaId, tapaId) : "Sin tapa o corcho";
     }
 
     function a33PackagingSummary(product) {
@@ -712,170 +629,15 @@
       return missing.length ? base + " · " + missing.join(" y ") : base;
     }
 
-    function a33ValidatePackagingBeforeSave(items) {
-      const missing = [];
-      (Array.isArray(items) ? items : []).forEach((item) => {
-        if (!item || Number(item.unidades || 0) <= 0) return;
-        const envaseKey = a33EnvaseInventoryKey(item);
-        const tapaKey = a33TapaInventoryKey(item);
-        const letra = a33NormalizeLetter(item.letra || item.Letra || "");
-        const problems = [];
-        if (!letra) problems.push("Letra");
-        if (!envaseKey) problems.push("envase");
-        if (!tapaKey) problems.push("tapa");
-        if (problems.length) missing.push("• " + (item.nombre || item.id || "Producto") + ": falta " + problems.join(", "));
-      });
-      if (!missing.length) return { ok: true, message: "" };
-      return {
-        ok: false,
-        message: "No se guardó la producción porque hay productos con Receta incompletos para Lotes/Inventario.\n\n" + missing.join("\n") + "\n\nCompleta Letra, Envase y Tapa en Catálogos → Productos. Así evitamos lotes sin identidad y descuentos falsos."
-      };
-    }
-
-    function a33InventoryNameForBottleKey(key, envases) {
-      const legacy = A33_LEGACY_PRESENTATION_META[String(key || "")];
-      if (legacy) return legacy.nombre;
-      return a33CatalogNameById(envases, key, key);
-    }
-
-    function a33InventoryNameForCapKey(key, tapas) {
-      if (A33_CAPS_DISPLAY_NAMES[key]) return A33_CAPS_DISPLAY_NAMES[key];
-      return a33CatalogNameById(tapas, key, key);
-    }
-
-    function a33ResolveProducedItems(datos, mapUnits) {
-      if (datos && Array.isArray(datos.unidadesPorPresentacion) && datos.unidadesPorPresentacion.length) {
-        return datos.unidadesPorPresentacion.filter((item) => normQtyInt(item && item.unidades) > 0);
-      }
-      const sourceUnits = mapUnits || {};
-      return PRESENTACIONES.map((p) => ({ ...p, unidades: normQtyInt(sourceUnits[p.id]) }))
-        .filter((x) => normQtyInt(x.unidades) > 0);
-    }
-
-    function a33BuildPackagingConsumptionPlan(items) {
-      const envasesCatalog = a33ReadEnvasesCatalog();
-      const tapasCatalog = a33ReadTapasCatalog();
-      const plan = { bottles: {}, caps: {}, lines: [] };
-      (Array.isArray(items) ? items : []).forEach((item) => {
-        const qty = normQtyInt(item && item.unidades);
-        if (qty <= 0) return;
-        const productName = String((item && (item.nombre || item.name || item.id)) || "Producto").trim();
-        const bottleKey = a33EnvaseInventoryKey(item);
-        const capKey = a33TapaInventoryKey(item);
-
-        if (bottleKey) {
-          if (!plan.bottles[bottleKey]) {
-            plan.bottles[bottleKey] = {
-              key: bottleKey,
-              required: 0,
-              nombre: a33InventoryNameForBottleKey(bottleKey, envasesCatalog),
-              products: []
-            };
-          }
-          plan.bottles[bottleKey].required += qty;
-          plan.bottles[bottleKey].products.push(productName + " × " + qty);
-        }
-
-        if (capKey) {
-          if (!plan.caps[capKey]) {
-            plan.caps[capKey] = {
-              key: capKey,
-              required: 0,
-              nombre: a33InventoryNameForCapKey(capKey, tapasCatalog),
-              products: []
-            };
-          }
-          plan.caps[capKey].required += qty;
-          plan.caps[capKey].products.push(productName + " × " + qty);
-        }
-      });
-      return plan;
-    }
-
-    function a33GetStockFromSection(section, key, fallbackShape) {
-      if (!section || typeof section !== "object") return { entry: fallbackShape || { stock: 0 }, stock: 0 };
-      const entry = section[key] && typeof section[key] === "object" ? section[key] : (fallbackShape || { stock: 0 });
-      return { entry, stock: invParseNumber(entry.stock) };
-    }
-
-    function a33ValidateInventoryForPackaging(inv, items) {
-      const problems = [];
-      const plan = a33BuildPackagingConsumptionPlan(items);
-      const stockInv = inv && typeof inv === "object" ? inv : invDefault();
-      if (!stockInv.bottles || typeof stockInv.bottles !== "object") stockInv.bottles = {};
-      if (!stockInv.caps || typeof stockInv.caps !== "object") stockInv.caps = {};
-
-      Object.keys(plan.bottles).forEach((key) => {
-        const row = plan.bottles[key];
-        const current = a33GetStockFromSection(stockInv.bottles, key, { stock: 0 }).stock;
-        const required = Math.trunc(invParseNumber(row.required));
-        if (current - required < 0) {
-          problems.push("• " + row.nombre + ": disponible " + Math.trunc(current) + ", requiere " + required + " (faltan " + Math.max(0, required - Math.trunc(current)) + ")");
-        }
-      });
-
-      Object.keys(plan.caps).forEach((key) => {
-        const row = plan.caps[key];
-        const current = a33GetStockFromSection(stockInv.caps, key, { stock: 0, min: 0 }).stock;
-        const required = Math.trunc(invParseNumber(row.required));
-        if (current - required < 0) {
-          problems.push("• " + row.nombre + ": disponible " + Math.trunc(current) + ", requiere " + required + " (faltan " + Math.max(0, required - Math.trunc(current)) + ")");
-        }
-      });
-
-      if (!problems.length) return { ok: true, message: "", plan };
-      return {
-        ok: false,
-        message: "No se guardó la producción porque el inventario de envases/tapas es insuficiente.\n\n" + problems.join("\n") + "\n\nCarga o ajusta existencias en Inventario antes de guardar producción.",
-        plan
-      };
-    }
-
-    function a33LoadInventoryForValidation() {
-      try {
-        if (window.A33Storage && typeof A33Storage.sharedGet === "function") {
-          const data = A33Storage.sharedGet(STORAGE_KEY_INVENTARIO, invDefault());
-          return data && typeof data === "object" ? data : invDefault();
-        }
-      } catch (e) {}
-      return invLoad();
-    }
-
-    function a33RegistrarMovimientoInventarioProduccion(inv, opts) {
-      if (!inv || typeof inv !== "object") return null;
-      if (!Array.isArray(inv.movimientos)) inv.movimientos = [];
-      const o = opts && typeof opts === "object" ? opts : {};
-      const itemId = String(o.id || "").trim();
-      if (!itemId) return null;
-      const kind = String(o.kind || "").trim();
-      const tipoItem = kind === "bottle" ? "envase" : (kind === "cap" ? "tapa" : String(o.tipoItem || "item"));
-      const qty = Math.max(0, Math.trunc(invParseNumber(o.cantidad)));
-      const before = Math.trunc(invParseNumber(o.stockAnterior));
-      const after = Math.trunc(invParseNumber(o.stockNuevo));
-      const producto = String(o.producto || "").trim();
-      const loteCode = normalizarCodigoLote(o.lote || "");
-      const notaParts = ["Consumo automático por Calculadora de Producción"];
-      if (producto) notaParts.push("Producto: " + producto);
-      if (loteCode) notaParts.push("Lote: " + loteCode);
-      const mov = {
-        id: "mov_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
-        tipoItem,
-        itemId,
-        nombreSnapshot: String(o.nombreSnapshot || itemId).trim(),
-        cantidad: qty,
-        delta: Number.isFinite(+o.delta) ? Math.trunc(+o.delta) : (after - before),
-        tipoMovimiento: "consumo_produccion",
-        fecha: (new Date()).toISOString(),
-        fechaProduccion: String(o.fechaProduccion || "").trim(),
-        origen: "calculadora-produccion",
-        nota: notaParts.join(" · "),
-        stockAnterior: before,
-        stockNuevo: after
-      };
-      inv.movimientos.push(mov);
-      return mov;
-    }
-
+    
+    
+    
+    
+    
+    
+    
+    
+    
     function a33NumberOrNull(value) {
       const n = Number(String(value ?? "").replace(",", "."));
       return Number.isFinite(n) && n > 0 ? n : null;
@@ -903,16 +665,12 @@
       const p = product && typeof product === "object" ? product : {};
       return a33NumberOrNull(p.capacityMl ?? p.capacidadMl ?? p.capacity ?? p.capacidad ?? p.volumenMl ?? p.ml)
         || a33CapacityFromEnvase(envases, a33ProductoEnvaseId(p))
-        || a33CapacityFromName(p.name || p.nombre || "")
-        || (legacyMeta ? legacyMeta.volumenMl : null)
         || 0;
     }
 
-    function a33SafePresentationId(product, legacyId) {
-      if (legacyId) return legacyId;
-      const raw = (product && (product.id ?? product.productId ?? product.codigo ?? product.name ?? product.nombre)) || "producto";
-      const safe = String(raw).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-      return "prod_" + (safe || "nuevo").slice(0, 48);
+    function a33SafePresentationId(product) {
+      if (window.A33Production && typeof A33Production.productIdOf === "function") return String(A33Production.productIdOf(product) || "").trim();
+      return String((product && (product.productId || product.productoId)) || "").trim();
     }
 
     function a33ProductCost(product) {
@@ -922,33 +680,28 @@
 
     function a33ProductoToPresentacion(product, envases) {
       const p = product && typeof product === "object" ? product : {};
+      if (!a33ProductoActivo(p) || !a33ProductoConReceta(p)) return null;
+      const productId = a33SafePresentationId(p);
       const name = String(p.name || p.nombre || "").trim();
-      if (!name || a33NormName(name).includes("vaso") || !a33ProductoActivo(p) || !a33ProductoConReceta(p)) return null;
-      const legacyId = a33LegacyPresentationIdFromName(name);
-      const legacyMeta = legacyId ? A33_LEGACY_PRESENTATION_META[legacyId] : null;
-      const id = a33SafePresentationId(p, legacyId);
-      const capacidadMl = a33ProductCapacityMl(p, legacyMeta, envases);
+      if (!productId || !name) return null;
+      const capacidadMl = a33ProductCapacityMl(p, null, envases);
       return {
-        id,
-        productId: p.id ?? p.productId ?? id,
-        nombre: name || (legacyMeta ? legacyMeta.nombre : "Producto"),
+        id: productId,
+        productId,
+        nombre: name,
         receta: true,
-        letra: a33NormalizeLetter(p.letra ?? p.letter ?? p.productionLetter ?? (legacyMeta ? legacyMeta.letra : "")),
+        letra: a33NormalizeLetter(p.letra ?? p.Letra ?? p.letter ?? p.productionLetter ?? ""),
         envaseId: a33ProductoEnvaseId(p),
         tapaId: a33ProductoTapaId(p),
         capacidadMl,
-        volumenMl: capacidadMl || (legacyMeta ? legacyMeta.volumenMl : 0),
+        volumenMl: capacidadMl,
         costoReferencial: a33ProductCost(p),
         activo: true,
-        legacy: !!legacyId
+        legacy: false
       };
     }
 
     function a33SortPresentaciones(a, b) {
-      const order = { pulso: 1, media: 2, djeba: 3, litro: 4, galon: 5 };
-      const oa = order[a && a.id] || 99;
-      const ob = order[b && b.id] || 99;
-      if (oa !== ob) return oa - ob;
       return String((a && a.nombre) || "").localeCompare(String((b && b.nombre) || ""), "es-NI", { sensitivity: "base" });
     }
 
@@ -968,35 +721,9 @@
       };
     }
 
-    function a33EsPresentacionLegacyOperativa(id) {
-      return !!A33_LEGACY_PRESENTATION_META[String(id || "")];
-    }
-
-    function a33ProductIdInventoryKey(item) {
-      const p = item && typeof item === "object" ? item : {};
-      const raw = p.productId ?? p.productoId ?? p.id;
-      const key = String(raw ?? "").trim();
-      return key || String(p.id || "").trim();
-    }
-
-    function a33NormalizeFinishedStockEntry(entry, snapshot) {
-      const base = entry && typeof entry === "object" ? entry : {};
-      const out = { ...base };
-      out.stock = invParseNumber(out.stock || 0);
-      if (snapshot && typeof snapshot === "object") {
-        if (snapshot.productId != null) out.productId = snapshot.productId;
-        if (snapshot.nombre) out.nombre = snapshot.nombre;
-        if (snapshot.Letra) out.Letra = snapshot.Letra;
-        if (snapshot.letra) out.letra = snapshot.letra;
-        if (snapshot.envaseId) out.envaseId = snapshot.envaseId;
-        if (snapshot.tapaId) out.tapaId = snapshot.tapaId;
-        if (snapshot.fecha) out.ultimaProduccion = snapshot.fecha;
-        if (snapshot.costoUnitario != null) out.costoUnitario = snapshot.costoUnitario;
-        if (snapshot.costoReferencial != null) out.costoReferencial = snapshot.costoReferencial;
-      }
-      return out;
-    }
-
+    
+    
+    
     function a33BuildProductionSnapshot(item, cantidad, fechaIso) {
       const p = item && typeof item === "object" ? item : {};
       const qty = normQtyInt(cantidad);
@@ -1011,6 +738,8 @@
         unidades: qty,
         envaseId: String(p.envaseId || "").trim(),
         tapaId: String(p.tapaId || "").trim(),
+        recipeSnapshot: (p.recipeSnapshot && typeof p.recipeSnapshot === "object") ? { ...p.recipeSnapshot } : {},
+        recetaSnapshot: (p.recipeSnapshot && typeof p.recipeSnapshot === "object") ? { ...p.recipeSnapshot } : {},
         fecha: fechaIso || hoyLocalISO()
       };
       const costoUnitario = (p.costoUnitario != null && Number.isFinite(Number(p.costoUnitario)))
@@ -1038,6 +767,8 @@
         Letra: snapshot.Letra,
         envaseId: snapshot.envaseId,
         tapaId: snapshot.tapaId,
+        recipeSnapshot: { ...snapshot.recipeSnapshot },
+        recetaSnapshot: { ...snapshot.recipeSnapshot },
         fecha: snapshot.fecha,
         codigo: code,
         lote: code,
@@ -1051,127 +782,38 @@
       return row;
     }
 
-    function a33EnsureFinishedDynamicSections(inv) {
-      const out = inv && typeof inv === "object" ? inv : invDefault();
-      if (!out.finished || typeof out.finished !== "object") out.finished = {};
-      if (!out.finishedByProductId || typeof out.finishedByProductId !== "object") out.finishedByProductId = {};
-
-      Object.keys(A33_LEGACY_PRESENTATION_META).forEach((id) => {
-        if (!out.finished[id] || typeof out.finished[id] !== "object") out.finished[id] = { stock: 0 };
-        out.finished[id].stock = invParseNumber(out.finished[id].stock || 0);
-      });
-
-      Object.keys(out.finished).forEach((id) => {
-        if (!out.finished[id] || typeof out.finished[id] !== "object") out.finished[id] = { stock: 0 };
-        out.finished[id].stock = invParseNumber(out.finished[id].stock || 0);
-      });
-
-      Object.keys(out.finishedByProductId).forEach((id) => {
-        out.finishedByProductId[id] = a33NormalizeFinishedStockEntry(out.finishedByProductId[id]);
-      });
-      return out;
-    }
-
-    function a33AddFinishedProductStock(inv, item, qty, fechaIso) {
-      const cantidad = normQtyInt(qty);
-      if (!inv || cantidad <= 0) return null;
-      a33EnsureFinishedDynamicSections(inv);
-
-      const productKey = a33ProductIdInventoryKey(item);
-      const legacyId = a33EsPresentacionLegacyOperativa(item && item.id) ? String(item.id) : "";
-      const snapshot = a33BuildProductionSnapshot(item, cantidad, fechaIso);
-
-      if (productKey) {
-        const current = a33NormalizeFinishedStockEntry(inv.finishedByProductId[productKey], snapshot);
-        current.stock = invParseNumber(current.stock || 0) + cantidad;
-        current.lastSnapshot = snapshot;
-        inv.finishedByProductId[productKey] = current;
-      }
-
-      if (legacyId) {
-        if (!inv.finished[legacyId] || typeof inv.finished[legacyId] !== "object") inv.finished[legacyId] = { stock: 0 };
-        inv.finished[legacyId].stock = invParseNumber(inv.finished[legacyId].stock || 0) + cantidad;
-        inv.finished[legacyId].productId = snapshot.productId;
-        inv.finished[legacyId].nombre = snapshot.nombre || A33_LEGACY_PRESENTATION_META[legacyId].nombre;
-        inv.finished[legacyId].letra = snapshot.letra || A33_LEGACY_PRESENTATION_META[legacyId].letra;
-        inv.finished[legacyId].ultimaProduccion = snapshot.fecha;
-        if (snapshot.costoUnitario != null) inv.finished[legacyId].costoUnitario = snapshot.costoUnitario;
-        else if (snapshot.costoReferencial != null) inv.finished[legacyId].costoReferencial = snapshot.costoReferencial;
-      } else if (productKey) {
-        const current = a33NormalizeFinishedStockEntry(inv.finished[productKey], snapshot);
-        current.stock = invParseNumber(current.stock || 0) + cantidad;
-        current.lastSnapshot = snapshot;
-        inv.finished[productKey] = current;
-      }
-
-      return { productKey, legacyId, snapshot, cantidad };
-    }
-
+    
+    
     async function a33ReadCatalogProducts() {
-      if (!window.indexedDB) return null;
-      return new Promise((resolve) => {
-        let done = false;
-        const finish = (value) => {
-          if (done) return;
-          done = true;
-          resolve(value);
-        };
-        try {
-          const req = indexedDB.open(A33_PRODUCTOS_DB_NAME);
-          req.onerror = () => finish(null);
-          req.onblocked = () => finish(null);
-          req.onsuccess = () => {
-            const db = req.result;
-            try {
-              if (!db || !db.objectStoreNames || !db.objectStoreNames.contains(A33_PRODUCTOS_STORE)) {
-                try { if (db) db.close(); } catch (e) {}
-                finish([]);
-                return;
-              }
-              const tx = db.transaction(A33_PRODUCTOS_STORE, "readonly");
-              const getReq = tx.objectStore(A33_PRODUCTOS_STORE).getAll();
-              getReq.onsuccess = () => {
-                const rows = Array.isArray(getReq.result) ? getReq.result : [];
-                try { db.close(); } catch (e) {}
-                finish(rows);
-              };
-              getReq.onerror = () => {
-                try { db.close(); } catch (e) {}
-                finish(null);
-              };
-            } catch (e) {
-              try { if (db) db.close(); } catch (e2) {}
-              finish(null);
-            }
-          };
-        } catch (e) {
-          finish(null);
-        }
-      });
+      if (!window.A33Production || typeof A33Production.loadFabricableProducts !== "function") return null;
+      const result = await A33Production.loadFabricableProducts();
+      return result.ok ? result.items.map((item) => item.catalogProduct || item) : null;
     }
 
     async function cargarPresentacionesDinamicasDesdeCatalogos() {
+      PRESENTACIONES = [];
+      A33ProductosEstado = { status: "loading", message: "Leyendo Catálogos → Productos…", duplicateLetters: [] };
       try {
-        const productos = await a33ReadCatalogProducts();
-        if (!Array.isArray(productos) || productos.length === 0) return;
-        const envases = a33ReadEnvasesCatalog();
-        const map = new Map();
-        productos.forEach((producto) => {
-          const item = a33ProductoToPresentacion(producto, envases);
-          if (!item) return;
-          const prev = map.get(item.id);
-          if (!prev) {
-            map.set(item.id, item);
-            return;
-          }
-          // Si hay duplicados legacy por nombre, conservar el que tenga más metadatos completos.
-          const prevScore = (prev.envaseId ? 2 : 0) + (prev.tapaId ? 2 : 0) + (prev.letra ? 1 : 0) + (prev.costoReferencial ? 1 : 0);
-          const nextScore = (item.envaseId ? 2 : 0) + (item.tapaId ? 2 : 0) + (item.letra ? 1 : 0) + (item.costoReferencial ? 1 : 0);
-          if (nextScore >= prevScore) map.set(item.id, item);
-        });
-        PRESENTACIONES = Array.from(map.values()).sort(a33SortPresentaciones);
+        if (!window.A33Production || typeof A33Production.loadFabricableProducts !== "function") throw new Error("No está disponible el contrato central de Producción.");
+        const result = await A33Production.loadFabricableProducts();
+        if (!result.ok) {
+          A33ProductosEstado = { status: "read-error", message: (result.errors || []).join(" ") || "No se pudieron leer los Productos.", duplicateLetters: [] };
+          PRESENTACIONES = [];
+          return;
+        }
+        PRESENTACIONES = result.items.map((item) => ({ ...item, id: item.productId, legacy: false })).sort(a33SortPresentaciones);
+        const duplicateLetters = Array.isArray(result.duplicateLetters) ? result.duplicateLetters : [];
+        A33ProductosEstado = {
+          status: result.status,
+          duplicateLetters,
+          message: duplicateLetters.length
+            ? "Hay Letras repetidas en Catálogos. Podrás calcular, pero el guardado oficial quedará bloqueado hasta corregirlas."
+            : (PRESENTACIONES.length ? "" : "No hay productos activos con Receta en Catálogos → Productos.")
+        };
       } catch (e) {
-        console.warn("No se pudieron leer productos dinámicos con Receta; se conserva lista fija.", e);
+        PRESENTACIONES = [];
+        A33ProductosEstado = { status: "read-error", message: (e && e.message) || "No se pudieron leer los Productos.", duplicateLetters: [] };
+        console.error("No se pudieron leer productos dinámicos con Receta:", e);
       }
     }
 
@@ -1179,7 +821,6 @@
     const STORAGE_LOTE_KEY = "arcano33_lote_actual";
     const STORAGE_FECHA_PROD_KEY = "arcano33_fecha_produccion";
     const STORAGE_NOTAS_KEY = "arcano33_notas_lote";
-    const STORAGE_KEY_INVENTARIO = "arcano33_inventario";
 
     // Etapa 2: Código de lote AUTO (editable) con X=eco + fecha hebrea
     const STORAGE_LOTE_CODE_MODE_KEY = "arcano33_calc_codigo_mode"; // AUTO | MANUAL
@@ -1323,289 +964,12 @@
     }
 
 
-    function invParseNumber(value) {
-      const n = parseFloat(String(value).replace(",", "."));
-      return Number.isNaN(n) ? 0 : n;
-    }
-
-    function invDefault() {
-      return {
-        liquids: {
-          vino:   { stock: 0, max: 0 },
-          vodka:  { stock: 0, max: 0 },
-          jugo:   { stock: 0, max: 0 },
-          sirope: { stock: 0, max: 0 },
-          agua:   { stock: 0, max: 0 }
-        },
-        bottles: {
-          pulso: { stock: 0 },
-          media: { stock: 0 },
-          djeba: { stock: 0 },
-          litro: { stock: 0 },
-          galon: { stock: 0 }
-        },
-        finished: {
-          pulso: { stock: 0 },
-          media: { stock: 0 },
-          djeba: { stock: 0 },
-          litro: { stock: 0 },
-          galon: { stock: 0 }
-        },
-        finishedByProductId: {},
-        // Tapas (Auto) — Etapa 2/3
-        caps: {
-          gallon: { stock: 0, min: 0 },
-          pulsoLitro: { stock: 0, min: 0 },
-          djebaMedia: { stock: 0, min: 0 }
-        }
-      };
-    }
-
-    function invLoad() {
-      try {
-        // Contrato compartido (anti-pisadas + data vieja segura)
-        if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
-          const data = A33Storage.sharedGet(STORAGE_KEY_INVENTARIO, invDefault());
-          if (data && typeof data === 'object') return a33EnsureFinishedDynamicSections(data);
-          return a33EnsureFinishedDynamicSections(invDefault());
-        }
-
-        // Fallback legacy
-        const raw = A33Storage.getItem(STORAGE_KEY_INVENTARIO);
-        let data = raw ? JSON.parse(raw) : null;
-        if (!data || typeof data !== "object") data = invDefault();
-        if (!data.liquids) data.liquids = {};
-        if (!data.bottles) data.bottles = {};
-        if (!data.finished) data.finished = {};
-        if (!data.finishedByProductId || typeof data.finishedByProductId !== 'object') data.finishedByProductId = {};
-        if (!data.caps || typeof data.caps !== 'object') data.caps = {};
-        const d = invDefault();
-        Object.keys(d.liquids).forEach((k) => {
-          if (!data.liquids[k]) data.liquids[k] = { stock: 0, max: 0 };
-          data.liquids[k].stock = invParseNumber(data.liquids[k].stock || 0);
-          data.liquids[k].max = invParseNumber(data.liquids[k].max || 0);
-        });
-        Object.keys(d.bottles).forEach((k) => {
-          if (!data.bottles[k]) data.bottles[k] = { stock: 0 };
-          data.bottles[k].stock = invParseNumber(data.bottles[k].stock || 0);
-        });
-        Object.keys(d.finished || {}).forEach((k) => {
-          if (!data.finished[k]) data.finished[k] = { stock: 0 };
-          data.finished[k].stock = invParseNumber(data.finished[k].stock || 0);
-        });
-        a33EnsureFinishedDynamicSections(data);
-
-        // Tapas (Auto): compatibilidad y números seguros
-        Object.keys(d.caps || {}).forEach((k) => {
-          if (!data.caps[k] || typeof data.caps[k] !== 'object') data.caps[k] = { stock: 0, min: 0 };
-          data.caps[k].stock = Math.trunc(invParseNumber(data.caps[k].stock || 0));
-          data.caps[k].min = Math.max(0, Math.trunc(invParseNumber(data.caps[k].min || 0)));
-        });
-        return data;
-      } catch (e) {
-        console.warn("No se pudo leer inventario, usando valores por defecto.", e);
-        return invDefault();
-      }
-    }
-
-    function invSave(inv) {
-      try {
-        if (window.A33Storage && typeof A33Storage.sharedSet === 'function'){
-          const r = A33Storage.sharedSet(STORAGE_KEY_INVENTARIO, inv, { source: 'calculadora' });
-          if (r && r.ok === false && r.message){
-            try{ alert(r.message); }catch(_){ }
-          }
-          return;
-        }
-        A33Storage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(inv));
-      } catch (e) {
-        console.warn("No se pudo guardar el inventario.", e);
-      }
-    }
-
-    function invBuildAlertLines(inv) {
-      const lines = [];
-      // Líquidos por debajo de 20 %
-      Object.entries(inv.liquids || {}).forEach(([id, info]) => {
-        const stock = invParseNumber(info.stock);
-        const max = invParseNumber(info.max);
-        if (max > 0) {
-          const pct = (stock / max) * 100;
-          if (pct <= 20) {
-            let nombre = id;
-            if (id === "vino") nombre = "Vino";
-            if (id === "vodka") nombre = "Vodka";
-            if (id === "jugo") nombre = "Jugo";
-            if (id === "sirope") nombre = "Sirope";
-            if (id === "agua") nombre = "Agua pura";
-            lines.push("• " + nombre + ": " + stock.toFixed(0) + " ml (" + pct.toFixed(1) + "% restante)");
-          }
-        }
-      });
-      // Botellas con 10 o menos unidades
-      Object.entries(inv.bottles || {}).forEach(([id, info]) => {
-        const stock = invParseNumber(info.stock);
-        if (stock <= 10) {
-          let nombre = id;
-          if (id === "pulso") nombre = "Pulso 250 ml";
-          if (id === "media") nombre = "Media 375 ml";
-          if (id === "djeba") nombre = "Djeba 750 ml";
-          if (id === "litro") nombre = "Litro 1000 ml";
-          if (id === "galon") nombre = "Galón 3720 ml";
-          lines.push("• " + nombre + ": " + stock.toFixed(0) + " botellas");
-        }
-      });
-      // Producto terminado con 10 o menos unidades
-      Object.entries(inv.finished || {}).forEach(([id, info]) => {
-        const stock = invParseNumber(info && info.stock);
-        if (stock <= 10) {
-          let nombre = (info && (info.nombre || info.name)) || id;
-          if (id === "pulso") nombre = "Pulso 250 ml listo";
-          if (id === "media") nombre = "Media 375 ml lista";
-          if (id === "djeba") nombre = "Djeba 750 ml lista";
-          if (id === "litro") nombre = "Litro 1000 ml listo";
-          if (id === "galon") nombre = "Galón 3720 ml listo";
-          lines.push("• " + nombre + ": " + stock.toFixed(0) + " botellas listas");
-        }
-      });
-      return lines;
-    }
-
-    function aplicarConsumoInventarioDesdeLote(datos, mapUnits, codigoLoteOperacion) {
-      if (!datos || !datos.totalesIngredientes) return true;
-
-      // Leer con meta (anti-pisadas)
-      let invInfo = null;
-      let inv = null;
-      try {
-        if (window.A33Storage && typeof A33Storage.sharedRead === 'function') {
-          invInfo = A33Storage.sharedRead(STORAGE_KEY_INVENTARIO, invDefault());
-          inv = (invInfo && invInfo.data && typeof invInfo.data === "object") ? invInfo.data : invDefault();
-        } else {
-          inv = invLoad();
-        }
-      } catch (e) {
-        inv = invDefault();
-      }
-
-      if (!inv.liquids || typeof inv.liquids !== "object") inv.liquids = {};
-      if (!inv.bottles || typeof inv.bottles !== "object") inv.bottles = {};
-      if (!inv.finished || typeof inv.finished !== "object") inv.finished = {};
-      if (!inv.finishedByProductId || typeof inv.finishedByProductId !== "object") inv.finishedByProductId = {};
-      if (!inv.caps || typeof inv.caps !== "object") inv.caps = {};
-      a33EnsureFinishedDynamicSections(inv);
-
-      // Restar líquidos: se conserva intacta la lógica existente.
-      ["vino","vodka","jugo","sirope","agua"].forEach((ing) => {
-        const uso = typeof datos.totalesIngredientes[ing] === "number" ? datos.totalesIngredientes[ing] : 0;
-        if (!inv.liquids[ing]) {
-          inv.liquids[ing] = { stock: 0, max: 0 };
-        }
-        inv.liquids[ing].stock = invParseNumber(inv.liquids[ing].stock) - uso;
-      });
-
-      // Tapas legacy: compatibilidad y números seguros.
-      ["gallon", "pulsoLitro", "djebaMedia"].forEach((k) => {
-        if (!inv.caps[k] || typeof inv.caps[k] !== 'object') inv.caps[k] = { stock: 0, min: 0 };
-        inv.caps[k].stock = Math.trunc(invParseNumber(inv.caps[k].stock));
-        inv.caps[k].min = Math.max(0, Math.trunc(invParseNumber(inv.caps[k].min)));
-      });
-
-      const producedItems = a33ResolveProducedItems(datos, mapUnits);
-      const stockCheck = a33ValidateInventoryForPackaging(inv, producedItems);
-      if (!stockCheck.ok) {
-        throw new Error(stockCheck.message || "Inventario insuficiente de envases/tapas.");
-      }
-
-      const envasesCatalog = a33ReadEnvasesCatalog();
-      const tapasCatalog = a33ReadTapasCatalog();
-      const packagingLog = [];
-      const codigoLote = normalizarCodigoLote(codigoLoteOperacion || (datos && (datos.codigoLote || datos.loteNombre)) || "");
-      const fechaProduccion = (datos && datos.fechaProdStr) || hoyLocalISO();
-
-      producedItems.forEach((item) => {
-        const qty = normQtyInt(item && item.unidades);
-        if (qty <= 0) return;
-
-        const bottleKey = a33EnvaseInventoryKey(item);
-        const capKey = a33TapaInventoryKey(item);
-        const productName = String((item && (item.nombre || item.name || item.id)) || "Producto").trim();
-
-        if (bottleKey) {
-          if (!inv.bottles[bottleKey] || typeof inv.bottles[bottleKey] !== "object") {
-            inv.bottles[bottleKey] = { stock: 0 };
-          }
-          const before = Math.trunc(invParseNumber(inv.bottles[bottleKey].stock));
-          const after = before - qty;
-          if (after < 0) throw new Error("Inventario insuficiente de " + a33InventoryNameForBottleKey(bottleKey, envasesCatalog) + ".");
-          inv.bottles[bottleKey].stock = after;
-          const bottleName = a33InventoryNameForBottleKey(bottleKey, envasesCatalog);
-          a33RegistrarMovimientoInventarioProduccion(inv, {
-            kind: "bottle",
-            id: bottleKey,
-            nombreSnapshot: bottleName,
-            producto: productName,
-            lote: codigoLote,
-            fechaProduccion,
-            cantidad: qty,
-            delta: -qty,
-            stockAnterior: before,
-            stockNuevo: after
-          });
-          packagingLog.push("Envase: " + productName + " × " + qty + " → " + bottleName);
-        }
-
-        if (capKey) {
-          if (!inv.caps[capKey] || typeof inv.caps[capKey] !== "object") {
-            inv.caps[capKey] = { stock: 0, min: 0 };
-          }
-          const before = Math.trunc(invParseNumber(inv.caps[capKey].stock));
-          const after = before - qty;
-          if (after < 0) throw new Error("Inventario insuficiente de " + a33InventoryNameForCapKey(capKey, tapasCatalog) + ".");
-          inv.caps[capKey].stock = after;
-          if (!Number.isFinite(invParseNumber(inv.caps[capKey].min))) inv.caps[capKey].min = 0;
-          const capName = a33InventoryNameForCapKey(capKey, tapasCatalog);
-          a33RegistrarMovimientoInventarioProduccion(inv, {
-            kind: "cap",
-            id: capKey,
-            nombreSnapshot: capName,
-            producto: productName,
-            lote: codigoLote,
-            fechaProduccion,
-            cantidad: qty,
-            delta: -qty,
-            stockAnterior: before,
-            stockNuevo: after
-          });
-          packagingLog.push("Tapa: " + productName + " × " + qty + " → " + capName);
-        }
-
-        const finishedApplied = a33AddFinishedProductStock(inv, item, qty, fechaProduccion);
-        if (finishedApplied) {
-          packagingLog.push("Producto terminado: " + productName + " × " + qty + " → productId " + (finishedApplied.productKey || "—"));
-        }
-      });
-
-      if (packagingLog.length) {
-        console.info('[A33][CALC][EMPAQUE] consumo aplicado:', packagingLog.join(' | '));
-      }
-
-      // Guardado conservador: bloquear si cambió entre lectura y escritura
-      if (window.A33Storage && typeof A33Storage.sharedSet === 'function' && invInfo && invInfo.meta && typeof invInfo.meta.rev === "number") {
-        const r = A33Storage.sharedSet(STORAGE_KEY_INVENTARIO, inv, { source: 'calculadora', baseRev: invInfo.meta.rev, conflictPolicy: 'block' });
-        if (r && r.ok === false) throw new Error(r.message || "Conflicto detectado: Inventario cambió en otro módulo/pestaña.");
-      } else {
-        invSave(inv);
-      }
-
-      const lines = invBuildAlertLines(inv);
-      if (lines.length > 0) {
-        alert("Alerta de inventario (después de registrar el lote):\n\n" + lines.join("\n"));
-      }
-
-      return true;
-    }
-
+    
+    
+    
+    
+    
+    
 
 
     function getNumberValue(id, opts) {
@@ -2238,7 +1602,7 @@ function a33WireNumericInput(el, mode) {
         td.colSpan = INGREDIENTES.length + 2;
         td.className = "hint";
         td.style.textAlign = "left";
-        td.textContent = "No hay productos activos con Receta marcada en Catálogos.";
+        td.textContent = A33ProductosEstado.message || "No hay productos activos con Receta en Catálogos → Productos.";
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -2284,7 +1648,7 @@ function a33WireNumericInput(el, mode) {
         td.colSpan = 3;
         td.className = "hint";
         td.style.textAlign = "left";
-        td.textContent = "No hay productos producibles para planificar. Marca Receta en Catálogos → Productos.";
+        td.textContent = A33ProductosEstado.message || "No hay productos fabricables disponibles.";
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -2469,6 +1833,12 @@ function a33WireNumericInput(el, mode) {
         const unidades = normQtyInt(getNumberValue("plan-" + p.id));
         if (unidades > 0) {
           const costoUnitario = getNumberValue("costo-unit-" + p.id, { emptyAsNull: true });
+          const recipeSnapshot = {};
+          INGREDIENTES.forEach(ing => {
+            const mlPorUnidad = getNumberValue("receta-" + p.id + "-" + ing);
+            recipeSnapshot[ing] = mlPorUnidad;
+            totalesIngredientes[ing] += unidades * mlPorUnidad;
+          });
           const producido = {
             id: p.id,
             productId: p.productId,
@@ -2479,6 +1849,8 @@ function a33WireNumericInput(el, mode) {
             tapaId: p.tapaId || "",
             capacidadMl: Number(p.capacidadMl || p.volumenMl || 0) || 0,
             receta: !!p.receta,
+            recipeSnapshot,
+            recetaSnapshot: { ...recipeSnapshot },
             legacy: !!p.legacy
           };
           if (typeof costoUnitario === "number" && Number.isFinite(costoUnitario)) producido.costoUnitario = costoUnitario;
@@ -2486,10 +1858,6 @@ function a33WireNumericInput(el, mode) {
           unidadesPorPresentacion.push(producido);
         }
         if (unidades <= 0) return;
-        INGREDIENTES.forEach(ing => {
-          const mlPorUnidad = getNumberValue("receta-" + p.id + "-" + ing);
-          totalesIngredientes[ing] += unidades * mlPorUnidad;
-        });
         totalVolumenFinalMl += unidades * p.volumenMl;
       });
       const loteNombre = (document.getElementById("lote").value || "").trim();
@@ -2675,314 +2043,119 @@ function a33WireNumericInput(el, mode) {
     }
 
     async function guardarCalculoComoLote() {
-      const datos = calcularDatosLote();
-
-      // Bloqueante: solo se permite guardar si hubo cálculo previo
+      const btn = document.getElementById("btn-guardar-lote");
+      if (btn && btn.dataset.saving === "1") return;
       if (!A33HasCalculoPrevio) {
-        alert("Primero calcula totales de materia prima antes de guardar el lote.");
+        alert("Primero usa CALCULAR para confirmar los totales antes de guardar.");
         return;
       }
-
-      // Plan vacío: confirmación (comportamiento existente)
+      const datos = calcularDatosLote();
       if (!datos.unidadesPorPresentacion.length) {
-        if (!confirm("No hay unidades indicadas en el plan de producción. ¿Guardar de todas formas?")) {
-          return;
-        }
-      }
-
-      const packagingCheck = a33ValidatePackagingBeforeSave(datos.unidadesPorPresentacion);
-      if (!packagingCheck.ok) {
-        alert(packagingCheck.message);
+        alert("No se puede guardar una producción vacía.");
         return;
       }
-
-      const inventoryPreflight = a33ValidateInventoryForPackaging(a33LoadInventoryForValidation(), datos.unidadesPorPresentacion);
-      if (!inventoryPreflight.ok) {
-        alert(inventoryPreflight.message);
+      if (!window.A33Production || typeof A33Production.commitOfficialProduction !== "function") {
+        alert("No está disponible el contrato seguro de Producción.");
         return;
       }
-
-      let lotes = [];
+      if (btn) { btn.dataset.saving = "1"; btn.disabled = true; }
       try {
-        if (window.A33Storage && typeof A33Storage.sharedRead === 'function'){
-          const rr = A33Storage.sharedRead("arcano33_lotes", []);
-          lotes = Array.isArray(rr && rr.data) ? rr.data : [];
-        } else {
-          const raw = A33Storage.getItem("arcano33_lotes");
-          if (raw) lotes = JSON.parse(raw) || [];
-          if (!Array.isArray(lotes)) lotes = [];
-        }
-      } catch (e) {
-        lotes = [];
-      }
-
-const loteInput = document.getElementById("lote");
-      const rawCodigo = loteInput ? loteInput.value : "";
-      let v = validarCodigoLoteFuerte(rawCodigo);
-      if (!v.ok) {
-        alert(v.msg || "Código inválido.");
-        return;
-      }
-
-      // Normalizamos a MAYÚSCULAS (evita "duplicados" por casing)
-      if (loteInput) {
-        A33SuppressCodigoInput = true;
-        loteInput.value = v.code;
-        setTimeout(() => { A33SuppressCodigoInput = false; }, 0);
-      }
-
-      let codigoFinal = v.code;
-      let seqFinal = v.seq;
-
-      // Duplicado/colisión: si ya se usó entre preview y guardar, ofrecer aplicar el siguiente disponible (1 toque)
-      const checkDuplicado = () => {
-        const last = obtenerUltimoConsecutivoNumerico();
-        const suggestedUpper = normalizarCodigoLote(A33SuggestedCode || "");
-        const isSuggested = (normalizarCodigoLote(codigoFinal) === suggestedUpper);
-
-        const yaExiste = existeCodigoEnLotes(lotes, codigoFinal);
-        const quedoAtras = (typeof seqFinal === "number" && seqFinal <= last && isSuggested);
-        return { yaExiste, quedoAtras };
-      };
-
-      let dup = checkDuplicado();
-      if (dup.yaExiste || dup.quedoAtras) {
-        const nextCode = proponerSiguienteCodigoDisponible(codigoFinal, lotes);
-        const aplicar = await A33ModalDuplicadoCodigo(nextCode);
-        if (!aplicar) return;
-
-        // Aplicar
-        codigoFinal = nextCode;
-        v = validarCodigoLoteFuerte(codigoFinal);
-        if (!v.ok) {
-          alert("No se pudo asignar un código libre. Reintentá.");
+        const catalog = await A33Production.loadFabricableProducts();
+        if (!catalog.ok) {
+          alert((catalog.errors || []).join("\n") || "No se pudieron validar los Productos.");
           return;
         }
-        seqFinal = v.seq;
+        const byId = new Map(catalog.items.map((item) => [String(item.productId), item]));
+        const items = [];
+        const validation = [];
+        for (const raw of datos.unidadesPorPresentacion) {
+          const productId = String(raw.productId || "").trim();
+          const current = byId.get(productId);
+          if (!current) { validation.push((raw.nombre || productId || "Producto") + ": ya no está activo con Receta en Catálogos."); continue; }
+          const recipeSnapshot = {};
+          INGREDIENTES.forEach((ing) => {
+            const value = getNumberValue("receta-" + productId + "-" + ing, { emptyAsNull:true });
+            recipeSnapshot[ing] = (typeof value === "number" && Number.isFinite(value) && value > 0) ? value : 0;
+          });
+          if (!INGREDIENTES.some((ing) => recipeSnapshot[ing] > 0)) {
+            validation.push(current.nombre + ": la Receta está habilitada, pero no tiene cantidades reales configuradas.");
+            continue;
+          }
+          items.push({ ...raw, ...current, productId, id:productId, cantidad:raw.unidades, unidades:raw.unidades, nombre:current.nombre, nombreSnapshot:current.nombre, recipeSnapshot, recetaSnapshot:{ ...recipeSnapshot }, legacy:false });
+        }
+        if (catalog.duplicateLetters && catalog.duplicateLetters.length) {
+          validation.push("Corrige Letras repetidas en Catálogos: " + catalog.duplicateLetters.map((row) => row.letter).join(", ") + ".");
+        }
+        if (validation.length) { alert(validation.join("\n")); return; }
 
-        if (loteInput) setCodigoLoteValue(codigoFinal);
+        const codigoFinal = normalizarCodigoLote((document.getElementById("lote") || {}).value || "");
+        if (!codigoFinal) { alert("El código de lote es obligatorio."); return; }
+        const seqFinal = parseSeqFromCode(codigoFinal);
+        const lastNow = obtenerUltimoConsecutivoNumerico();
+        const suggestedNow = normalizarCodigoLote(A33SuggestedCode || "");
+        const isSuggestedNow = codigoFinal === suggestedNow;
+        if (A33CodigoLoteMode === "MANUAL" && !isSuggestedNow && typeof seqFinal === "number" && seqFinal <= lastNow) {
+          alert("Código no permitido: va hacia atrás o reutiliza el consecutivo.");
+          return;
+        }
+
+        const fechaProdIso = datos.fechaProdStr || hoyLocalISO();
+        let caducidadIso = fechaProdIso;
+        try { const cad = calcularCaducidad(fechaProdIso); if (cad) caducidadIso = cad.toISOString().slice(0, 10); } catch (_) { }
+        const stableId = "batch_" + codigoFinal;
+        const operationId = "production:" + stableId;
+        const notasTrim = String(datos.notas || "").trim();
+        const nuevoLote = {
+          loteId: stableId, id: stableId, batchCode: codigoFinal, operationId, productionOperationId:operationId,
+          fecha: fechaProdIso, codigo: codigoFinal, caducidad: caducidadIso,
+          volTotal: Math.round(datos.totalVolumenFinalMl || 0).toString(),
+          volVino: Math.round(datos.totalesIngredientes.vino || 0).toString(),
+          volVodka: Math.round(datos.totalesIngredientes.vodka || 0).toString(),
+          volJugo: Math.round(datos.totalesIngredientes.jugo || 0).toString(),
+          volSirope: Math.round(datos.totalesIngredientes.sirope || 0).toString(),
+          volAgua: Math.round(datos.totalesIngredientes.agua || 0).toString(),
+          productosProducidos: items.map((item) => a33BuildLoteDynamicOutputItem(item, item.unidades, fechaProdIso, codigoFinal)),
+          productosProducidosSchema: 2,
+          contratoLotesDinamicos: { schema:2, fuente:"calculadora-produccion", identidad:"productId", campos:["productId","nombreSnapshot","Letra","cantidad","envaseId","tapaId","recipeSnapshot","operationId","fecha","codigo","costoUnitario","costoTotal"] },
+          origenProduccion: "Calculadora de Producción",
+          ...(notasTrim ? { notas:notasTrim } : {}),
+          createdAt: new Date().toISOString()
+        };
+
+        const result = await A33Production.commitOfficialProduction({
+          operationId, lote:nuevoLote, items, ingredientTotals:datos.totalesIngredientes
+        });
+        if (!result.ok) {
+          const text = result.errors && result.errors.length ? result.errors.join("\n") : result.message;
+          alert(text || "No se pudo guardar la producción.");
+          setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
+          return;
+        }
+
+        setPillEstadoCodigo("OK");
+        if (!result.duplicate) {
+          try {
+            const seq4 = commitConsecutivoDespuesDeGuardar(codigoFinal, seqFinal);
+            if (/^\d{4}$/.test(String(seq4 || ""))) A33AutoSeq = seq4;
+          } catch (_) { }
+        }
+        alert(result.duplicate
+          ? "La producción ya estaba guardada. No se duplicaron Lote ni Inventario."
+          : "Producción guardada: lote e Inventario confirmados sin duplicados.");
+        A33HasCalculoPrevio = false;
         A33CodigoLoteMode = "AUTO";
-        A33AutoSeq = pad4(extraerSeqDeCodigo(codigoFinal) || 0).slice(-4);
-        A33SuggestedCode = codigoFinal;
-        setPillEstadoCodigo("SUGERIDO");
-        try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
-
-        // Reintentar una sola vez (sin otro modal) con datos frescos
-        try {
-          const raw2 = A33Storage.getItem("arcano33_lotes");
-          lotes = raw2 ? (JSON.parse(raw2) || []) : [];
-          if (!Array.isArray(lotes)) lotes = [];
-        } catch (e) {
-          lotes = [];
-        }
-
-        dup = checkDuplicado();
-        if (dup.yaExiste || dup.quedoAtras) {
-          alert("No se pudo asignar un código libre. Reintentá.");
-          return;
-        }
+        try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (_) { }
+        A33AutoSeq = "";
+        recalcularCodigoLoteAuto({ consumeNewSeq:false });
+        guardarMetaLote();
+      } finally {
+        if (btn) { btn.dataset.saving = "0"; btn.disabled = false; }
       }
-
-      // Regla del consecutivo si el usuario editó el código:
-      // - hacia atrás / reutilización => bloquear
-      const lastNow = obtenerUltimoConsecutivoNumerico();
-      const suggestedNow = normalizarCodigoLote(A33SuggestedCode || "");
-      const isSuggestedNow = (normalizarCodigoLote(codigoFinal) === suggestedNow);
-
-      if (A33CodigoLoteMode === "MANUAL" && !isSuggestedNow && typeof seqFinal === "number" && seqFinal <= lastNow) {
-        alert("Código no permitido: va hacia atrás o implica reutilización del consecutivo. Usa el sugerido o uno más adelante.");
-        return;
-      }
-
-      const mapUnits = { pulso: 0, media: 0, djeba: 0, litro: 0, galon: 0 };
-      datos.unidadesPorPresentacion.forEach((item) => {
-        if (!item || !item.id) return;
-        mapUnits[item.id] = item.unidades;
-        if (item.id === "pulso") mapUnits.pulso = item.unidades;
-        if (item.id === "media") mapUnits.media = item.unidades;
-        if (item.id === "djeba") mapUnits.djeba = item.unidades;
-        if (item.id === "litro") mapUnits.litro = item.unidades;
-        if (item.id === "galon") mapUnits.galon = item.unidades;
-      });
-
-      const fechaProdIso = datos.fechaProdStr || hoyLocalISO();
-      let caducidadIso = "";
-      try {
-        const cad = calcularCaducidad(fechaProdIso);
-        if (cad) caducidadIso = cad.toISOString().slice(0, 10);
-      } catch (e) {
-        caducidadIso = "";
-      }
-
-      // Releer lotes justo antes de persistir (anti-pisadas)
-      let lotesInfo = { data: lotes, meta: { rev: null } };
-      try {
-        if (window.A33Storage && typeof A33Storage.sharedRead === 'function'){
-          lotesInfo = A33Storage.sharedRead("arcano33_lotes", []);
-        } else {
-          const raw = A33Storage.getItem("arcano33_lotes");
-          lotesInfo = { data: raw ? (JSON.parse(raw) || []) : [], meta: { rev: null } };
-        }
-      } catch (e) {
-        lotesInfo = { data: [], meta: { rev: null } };
-      }
-
-      let lotesActual = Array.isArray(lotesInfo.data) ? lotesInfo.data : [];
-      const baseRevLotes = (lotesInfo.meta && typeof lotesInfo.meta.rev === "number") ? lotesInfo.meta.rev : null;
-
-      const batchCode = normalizarCodigoLote(codigoFinal);
-      const stableId = "batch_" + batchCode;
-      const notasTrim = String(datos.notas || "").trim();
-
-      const nuevoLote = {
-        // Identidad estable (compat Lotes): batch_{BATCHCODE}
-        loteId: stableId,
-        batchCode: batchCode,
-        id: stableId,
-
-        fecha: fechaProdIso,
-        codigo: batchCode,
-        caducidad: caducidadIso || fechaProdIso,
-        volTotal: Math.round(datos.totalVolumenFinalMl || 0).toString(),
-        volVino: Math.round(datos.totalesIngredientes.vino || 0).toString(),
-        volVodka: Math.round(datos.totalesIngredientes.vodka || 0).toString(),
-        volJugo: Math.round(datos.totalesIngredientes.jugo || 0).toString(),
-        volSirope: Math.round(datos.totalesIngredientes.sirope || 0).toString(),
-        volAgua: Math.round(datos.totalesIngredientes.agua || 0).toString(),
-        pulso: (mapUnits.pulso || 0).toString(),
-        media: (mapUnits.media || 0).toString(),
-        djeba: (mapUnits.djeba || 0).toString(),
-        litro: (mapUnits.litro || 0).toString(),
-        galon: (mapUnits.galon || 0).toString(),
-        productosProducidos: datos.unidadesPorPresentacion.map((item) => a33BuildLoteDynamicOutputItem(item, item.unidades, fechaProdIso, batchCode)),
-        productosProducidosSchema: 1,
-        contratoLotesDinamicos: {
-          schema: 1,
-          fuente: "calculadora-produccion",
-          campos: ["productId", "nombreSnapshot", "Letra", "cantidad", "envaseId", "tapaId", "fecha", "codigo", "costoUnitario", "costoTotal"],
-          legacyFields: ["pulso", "media", "djeba", "litro", "galon"]
-        },
-        // Notas: no pisar notas existentes si aquí vienen vacías
-        ...(notasTrim ? { notas: notasTrim } : {}),
-        createdAt: new Date().toISOString()
-      };
-
-      const isBlank = (v) => v == null || String(v).trim() === "";
-      const codeCanon = (l) => normalizarCodigoLote(l && (l.codigo || l.batchCode || l.code || l.lote || ""));
-      const loteSig = (l) => {
-        const x = l || {};
-        const pick = (k) => (x[k] == null ? "" : String(x[k]).trim());
-        return [
-          codeCanon(x),
-          pick("fecha"),
-          pick("caducidad"),
-          pick("volTotal"),
-          pick("volVino"),
-          pick("volVodka"),
-          pick("volJugo"),
-          pick("volSirope"),
-          pick("volAgua"),
-          pick("pulso"),
-          pick("media"),
-          pick("djeba"),
-          pick("litro"),
-          pick("galon"),
-          JSON.stringify(Array.isArray(x.productosProducidos) ? x.productosProducidos : []),
-        ].join("|");
-      };
-
-      // Insert/update por identidad (batchCode) con dedupe conservador
-      const matchIdx = [];
-      for (let i = 0; i < lotesActual.length; i++) {
-        if (codeCanon(lotesActual[i]) === batchCode) matchIdx.push(i);
-      }
-
-      if (matchIdx.length > 0) {
-        // Idempotencia: solo "update" si es el mismo lote (misma firma). Si difiere, bloquear.
-        const sig0 = loteSig(lotesActual[matchIdx[0]]);
-        const sigN = loteSig(nuevoLote);
-        const allSame = matchIdx.every((i) => loteSig(lotesActual[i]) === sig0);
-
-        if (!allSame) {
-          alert("Conflicto detectado: hay múltiples registros con el mismo código de lote. No se guardó para evitar corromper data. Revisá Control de Lotes.");
-          setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
-          return;
-        }
-        if (sig0 !== sigN) {
-          alert("Conflicto detectado: ya existe un lote con ese código y datos distintos. No se sobrescribió.");
-          setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
-          return;
-        }
-
-        // Merge conservador: preservar campos extra (eventUsage/status/etc.) y notas/createdAt previos
-        const existing = lotesActual[matchIdx[0]] || {};
-        const merged = { ...existing, ...nuevoLote };
-
-        if (!isBlank(existing.id)) merged.id = existing.id;
-        if (!isBlank(existing.loteId)) merged.loteId = existing.loteId;
-        if (!isBlank(existing.batchCode)) merged.batchCode = existing.batchCode;
-
-        if (!isBlank(existing.createdAt)) merged.createdAt = existing.createdAt;
-        if (!isBlank(existing.notas) && isBlank(notasTrim)) merged.notas = existing.notas;
-
-        lotesActual[matchIdx[0]] = merged;
-
-        // Remover duplicados idénticos extra (si existían)
-        for (let j = matchIdx.length - 1; j >= 1; j--) {
-          lotesActual.splice(matchIdx[j], 1);
-        }
-      } else {
-        lotesActual.push(nuevoLote);
-      }
-
-      // Persistencia segura: bloquear si la data cambió entre lectura y escritura
-      try {
-        if (window.A33Storage && typeof A33Storage.sharedSet === 'function' && typeof A33Storage.sharedRead === 'function') {
-          const r = A33Storage.sharedSet("arcano33_lotes", lotesActual, { source: 'calculadora', baseRev: baseRevLotes, conflictPolicy: 'block' });
-          if (r && r.ok === false) throw new Error(r.message || "No se pudo guardar el lote.");
-        } else {
-          A33Storage.setItem("arcano33_lotes", JSON.stringify(lotesActual));
-        }
-      } catch (e) {
-        alert((e && e.message) ? e.message : "No se pudo guardar el lote en el navegador.");
-        setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
-        return;
-      }
-
-      // Señal UI: OK (guardado confirmado)
-      setPillEstadoCodigo("OK");
-
-      // Side-effects SOLO después de guardar OK
-      let seq4 = "";
-      try {
-        seq4 = commitConsecutivoDespuesDeGuardar(codigoFinal, seqFinal);
-        if (/^\d{4}$/.test(String(seq4 || ""))) A33AutoSeq = seq4;
-      } catch (e) {}
-
-      let invOk = true;
-      try {
-        aplicarConsumoInventarioDesdeLote(datos, mapUnits, batchCode);
-      } catch (e) {
-        invOk = false;
-        console.warn('No se pudo aplicar consumo a Inventario desde Calculadora:', e);
-      }
-
-      alert(invOk
-        ? "Lote guardado en el Control de Lotes interno."
-        : "Lote guardado, pero no se pudo aplicar consumo a Inventario. Revisá Inventario.");
-
-      // Evitar doble-guardado accidental del mismo cálculo
-      A33HasCalculoPrevio = false;
-
-      // Preparar siguiente sugerido (preview) sin colisiones
-      A33CodigoLoteMode = "AUTO";
-      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
-      setPillEstadoCodigo("SUGERIDO");
-      A33AutoSeq = "";
-      recalcularCodigoLoteAuto({ consumeNewSeq: false });
-      guardarMetaLote();
     }
 async function init() {
+      if (window.A33Production && typeof A33Production.recoverPendingTransactions === "function") {
+        try { await A33Production.recoverPendingTransactions(); } catch (e) { console.warn("No se pudo recuperar una producción pendiente.", e); }
+      }
       await cargarPresentacionesDinamicasDesdeCatalogos();
       construirTablaRecetas();
       construirTablaPlan();
@@ -3059,6 +2232,6 @@ async function init() {
       try { resetNotasAlEntrar(); } catch (e) {}
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.84&r=7"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.85&r=7"></script>
 </body>
 </html>
