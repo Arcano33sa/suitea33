@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.85&r=7" />
-  <script src="/assets/js/a33-theme.js?v=4.20.85&r=7"></script>
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.87&r=9" />
+  <script src="/assets/js/a33-theme.js?v=4.20.87&r=7"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -354,14 +354,14 @@
     .a33-btn-primary-pill:hover { filter: brightness(1.05); }
 
   </style>
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.85&r=7" />
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.85&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.87&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.87&r=7" />
 </head>
 <body class="calc-body calc-main-body">
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Calculadora</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.85">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.87">v...</div>
   </header>
 
   <div class="app-container">
@@ -464,8 +464,8 @@
       <div class="results-title" style="margin-top:0.8rem;">Resumen de volumen final</div>
       <div id="resumen-volumen"></div>
 
-      <button id="btn-guardar-lote" class="btn-secondary">Guardar cálculo como lote</button>
-      <p class="hint">Guardará este cálculo en el Control de Lotes interno.</p>
+      <button id="btn-guardar-lote" class="btn-secondary">CONFIRMAR PRODUCCIÓN Y CREAR LOTE</button>
+      <p class="hint">Confirmará Inventario: descontará materias primas, envases y tapas/corchos; aumentará producto terminado y creará el lote.</p>
       <button id="btn-exportar" class="btn-secondary">Exportar información del lote (TXT)</button>
       <p class="hint">Se descargará un archivo .txt con el resumen del lote.</p>
     </div>
@@ -483,14 +483,14 @@
       </div>
     </div>
   </div>
-  <script src="/assets/js/a33-release.js?v=4.20.85&r=49"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.87&r=50"></script>
 
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.85&r=19"></script>
-  <script src="/assets/js/a33-production.js?v=4.20.85&r=1"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.85&r=14"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.85&r=15"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.87&r=20"></script>
+  <script src="/assets/js/a33-production.js?v=4.20.87&r=3"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.87&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.87&r=15"></script>
 
   <script>
     const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
@@ -831,6 +831,7 @@
     let A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
     let A33SuppressCodigoInput = false;
     let A33HasCalculoPrevio = false;
+    let A33LastCalculationSignature = "";
     let A33SuggestedCode = "";
 
 
@@ -1876,6 +1877,25 @@ function a33WireNumericInput(el, mode) {
         notas
       };
     }
+    function a33CalculationSignature(datos) {
+      const d = datos && typeof datos === "object" ? datos : {};
+      const rows = Array.isArray(d.unidadesPorPresentacion) ? d.unidadesPorPresentacion : [];
+      return JSON.stringify(rows.map((row) => ({
+        productId: String(row.productId || row.id || "").trim(),
+        unidades: Number(row.unidades || row.cantidad || 0),
+        receta: INGREDIENTES.map((ing) => Number((row.recipeSnapshot || row.recetaSnapshot || {})[ing] || 0))
+      })).sort((a, b) => a.productId.localeCompare(b.productId)));
+    }
+
+    function setProductionButtonBusy(btn, busy) {
+      if (!btn) return;
+      if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = btn.textContent || "CONFIRMAR PRODUCCIÓN Y CREAR LOTE";
+      btn.dataset.saving = busy ? "1" : "0";
+      btn.disabled = !!busy;
+      btn.setAttribute("aria-busy", busy ? "true" : "false");
+      btn.textContent = busy ? "PROCESANDO PRODUCCIÓN…" : btn.dataset.defaultLabel;
+    }
+
     function calcularTotales() {
       const datos = calcularDatosLote();
       const resultadosDiv = document.getElementById("resultados");
@@ -1974,6 +1994,7 @@ function a33WireNumericInput(el, mode) {
       resumenVolumenDiv.innerHTML = htmlResumen;
 
       A33HasCalculoPrevio = true;
+      A33LastCalculationSignature = a33CalculationSignature(datos);
       resultadosDiv.style.display = "block";
       const hintRes = document.getElementById("hint-resultados");
       if (hintRes) hintRes.style.display = "none";
@@ -2040,6 +2061,7 @@ function a33WireNumericInput(el, mode) {
       const hintRes = document.getElementById("hint-resultados");
       if (hintRes) hintRes.style.display = "block";
       A33HasCalculoPrevio = false;
+      A33LastCalculationSignature = "";
     }
 
     async function guardarCalculoComoLote() {
@@ -2049,44 +2071,74 @@ function a33WireNumericInput(el, mode) {
         alert("Primero usa CALCULAR para confirmar los totales antes de guardar.");
         return;
       }
-      const datos = calcularDatosLote();
+      let datos = null;
+      try {
+        datos = calcularDatosLote();
+      } catch (error) {
+        alert("No se puede confirmar la producción porque no fue posible validar el cálculo. Detalle: " + (error && error.message ? error.message : "Error interno no identificado."));
+        return;
+      }
       if (!datos.unidadesPorPresentacion.length) {
         alert("No se puede guardar una producción vacía.");
+        return;
+      }
+      if (!A33LastCalculationSignature || a33CalculationSignature(datos) !== A33LastCalculationSignature) {
+        A33HasCalculoPrevio = false;
+        alert("El cálculo cambió después de usar CALCULAR. Vuelve a calcular antes de confirmar la producción.");
         return;
       }
       if (!window.A33Production || typeof A33Production.commitOfficialProduction !== "function") {
         alert("No está disponible el contrato seguro de Producción.");
         return;
       }
-      if (btn) { btn.dataset.saving = "1"; btn.disabled = true; }
+      setProductionButtonBusy(btn, true);
       try {
         const catalog = await A33Production.loadFabricableProducts();
         if (!catalog.ok) {
-          alert((catalog.errors || []).join("\n") || "No se pudieron validar los Productos.");
+          alert("No se puede confirmar la producción porque no fue posible validar Catálogos → Productos.\n\n" + ((catalog.errors || []).join("\n") || "No se pudieron leer los Productos."));
           return;
         }
         const byId = new Map(catalog.items.map((item) => [String(item.productId), item]));
+        const allById = new Map((Array.isArray(catalog.allProducts) ? catalog.allProducts : []).map((item) => [String((window.A33Products && A33Products.getProductId) ? A33Products.getProductId(item) : (item.productId || item.productoId || "")), item]));
         const items = [];
         const validation = [];
         for (const raw of datos.unidadesPorPresentacion) {
           const productId = String(raw.productId || "").trim();
+          const rawName = String(raw.nombre || raw.nombreSnapshot || productId || "Producto").trim();
+          if (!productId) {
+            validation.push("El producto ‘" + rawName + "’ no tiene productId válido. Corrígelo en Catálogos → Productos.");
+            continue;
+          }
           const current = byId.get(productId);
-          if (!current) { validation.push((raw.nombre || productId || "Producto") + ": ya no está activo con Receta en Catálogos."); continue; }
+          if (!current) {
+            const source = allById.get(productId);
+            const sourceName = String((source && (source.name || source.nombre)) || rawName || productId).trim();
+            const sourceActive = !source || (source.deleted !== true && source.active !== false && source.activo !== false && source.isActive !== false);
+            const hasRecipe = !!(source && (source.receta === true || source.receta === 1 || String(source.receta).toLowerCase() === "true" || source.hasRecipe === true || source.hasRecipe === 1 || String(source.hasRecipe).toLowerCase() === "true" || source.recipe === true || (source.recipe && typeof source.recipe === "object")));
+            if (source && !sourceActive) {
+              validation.push("El producto seleccionado ‘" + sourceName + "’ está inactivo. Reactívalo en Catálogos → Productos para realizar una nueva producción.");
+            } else if (source && !hasRecipe) {
+              validation.push("El producto ‘" + sourceName + "’ no tiene Receta activa. Actívala en Catálogos → Productos.");
+            } else {
+              validation.push("El producto ‘" + sourceName + "’ ya no existe como producto fabricable en Catálogos → Productos.");
+            }
+            continue;
+          }
           const recipeSnapshot = {};
           INGREDIENTES.forEach((ing) => {
             const value = getNumberValue("receta-" + productId + "-" + ing, { emptyAsNull:true });
             recipeSnapshot[ing] = (typeof value === "number" && Number.isFinite(value) && value > 0) ? value : 0;
           });
           if (!INGREDIENTES.some((ing) => recipeSnapshot[ing] > 0)) {
-            validation.push(current.nombre + ": la Receta está habilitada, pero no tiene cantidades reales configuradas.");
+            validation.push("El producto ‘" + current.nombre + "’ tiene Receta activa, pero no tiene cantidades reales configuradas. Corrígela en Calculadora de Producción.");
             continue;
           }
           items.push({ ...raw, ...current, productId, id:productId, cantidad:raw.unidades, unidades:raw.unidades, nombre:current.nombre, nombreSnapshot:current.nombre, recipeSnapshot, recetaSnapshot:{ ...recipeSnapshot }, legacy:false });
         }
         if (catalog.duplicateLetters && catalog.duplicateLetters.length) {
-          validation.push("Corrige Letras repetidas en Catálogos: " + catalog.duplicateLetters.map((row) => row.letter).join(", ") + ".");
+          validation.push("Hay Letras de producción repetidas (" + catalog.duplicateLetters.map((row) => row.letter).join(", ") + "). Corrígelas en Catálogos → Productos.");
         }
-        if (validation.length) { alert(validation.join("\n")); return; }
+        if (validation.length) { alert("No se puede confirmar la producción:\n\n" + validation.map((text) => "• " + text).join("\n")); return; }
 
         const codigoFinal = normalizarCodigoLote((document.getElementById("lote") || {}).value || "");
         if (!codigoFinal) { alert("El código de lote es obligatorio."); return; }
@@ -2126,8 +2178,8 @@ function a33WireNumericInput(el, mode) {
           operationId, lote:nuevoLote, items, ingredientTotals:datos.totalesIngredientes
         });
         if (!result.ok) {
-          const text = result.errors && result.errors.length ? result.errors.join("\n") : result.message;
-          alert(text || "No se pudo guardar la producción.");
+          const text = result.message || (result.errors && result.errors.length ? result.errors.join("\n") : "");
+          alert(text || "No se pudo confirmar la producción. No se aplicaron cambios.");
           setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
           return;
         }
@@ -2142,17 +2194,29 @@ function a33WireNumericInput(el, mode) {
         alert(result.duplicate
           ? "La producción ya estaba guardada. No se duplicaron Lote ni Inventario."
           : "Producción guardada: lote e Inventario confirmados sin duplicados.");
-        A33HasCalculoPrevio = false;
+        limpiarCantidades();
+        const notasInput = document.getElementById("notas");
+        if (notasInput) notasInput.value = "";
         A33CodigoLoteMode = "AUTO";
         try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (_) { }
         A33AutoSeq = "";
         recalcularCodigoLoteAuto({ consumeNewSeq:false });
         guardarMetaLote();
+      } catch (error) {
+        console.error("No se pudo confirmar la producción y crear el lote.", error);
+        alert("No se pudo confirmar la producción. Detalle: " + (error && error.message ? error.message : "Error interno no identificado."));
+        setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
       } finally {
-        if (btn) { btn.dataset.saving = "0"; btn.disabled = false; }
+        setProductionButtonBusy(btn, false);
       }
     }
-async function init() {
+function registerCalculadoraServiceWorker() {
+      if (!("serviceWorker" in navigator)) return;
+      navigator.serviceWorker.register("./sw.js?v=4.20.87&r=1")
+        .catch((error) => console.error("SW Calculadora error", error));
+    }
+
+    async function init() {
       if (window.A33Production && typeof A33Production.recoverPendingTransactions === "function") {
         try { await A33Production.recoverPendingTransactions(); } catch (e) { console.warn("No se pudo recuperar una producción pendiente.", e); }
       }
@@ -2166,7 +2230,10 @@ async function init() {
       document.getElementById("btn-calcular").addEventListener("click", calcularTotales);
       document.getElementById("btn-limpiar").addEventListener("click", limpiarCantidades);
       const btnGuardarLote = document.getElementById("btn-guardar-lote");
-      if (btnGuardarLote) btnGuardarLote.addEventListener("click", guardarCalculoComoLote);
+      if (btnGuardarLote && btnGuardarLote.dataset.productionBound !== "1") {
+        btnGuardarLote.dataset.productionBound = "1";
+        btnGuardarLote.addEventListener("click", guardarCalculoComoLote);
+      }
       document.getElementById("btn-exportar").addEventListener("click", exportarLote);
       const loteInput = document.getElementById("lote");
       const fechaProdInput = document.getElementById("fecha-produccion");
@@ -2217,6 +2284,7 @@ async function init() {
 
       actualizarTextoCaducidad();
       actualizarFechaHebrea();
+      registerCalculadoraServiceWorker();
 }
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -2232,6 +2300,6 @@ async function init() {
       try { resetNotasAlEntrar(); } catch (e) {}
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.85&r=7"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.87&r=7"></script>
 </body>
 </html>

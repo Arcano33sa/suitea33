@@ -6,11 +6,11 @@
 (function(global){
   'use strict';
 
-  const VERSION = '4.20.85';
+  const VERSION = '4.20.87';
   const REV = '1'; // subir cuando haya que forzar limpiar caches sin cambiar VERSION
 
   const MODULE_REVISIONS = Object.freeze({
-    catalogos:'30', inventario:'16', lotes:'17', pedidos:'17', pos:'29'
+    calculadora:'1', catalogos:'31', inventario:'17', lotes:'18', pedidos:'18', pos:'30'
   });
 
   function cacheName(module){
@@ -25,6 +25,7 @@
   try{ global.A33_CACHE_NAME = cacheName; }catch(_){ }
 
   // Conveniencia: nombres por modulo (solo lectura)
+  try{ global.A33_CALCULADORA_CACHE_NAME = cacheName('calculadora'); }catch(_){ }
   try{ global.A33_CATALOGOS_CACHE_NAME = cacheName('catalogos'); }catch(_){ }
   try{ global.A33_POS_CACHE_NAME = cacheName('pos'); }catch(_){ }
   try{ global.A33_LOTES_CACHE_NAME = cacheName('lotes'); }catch(_){ }

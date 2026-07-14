@@ -41,6 +41,7 @@
     ['suite_a33_last_url_v1'].join('')
   ]);
   const ACTIVE_A33_SW_PATHS = [
+    '/calculadora/sw.js',
     '/catalogos/sw.js',
     '/pos/sw.js',
     '/inventario/sw.js',
@@ -48,6 +49,7 @@
     '/pedidos/sw.js'
   ];
   const ACTIVE_A33_CACHE_HINTS = [
+    '-calculadora-',
     '-catalogos-',
     '-pos-',
     '-inventario-',
@@ -1283,6 +1285,52 @@
     sharedGetMeta(key, scope='local'){
       if (this._sharedState && this._sharedState[key]) return this._sharedState[key];
       try{ return readMeta(key, scope); }catch(_){ return { rev:0, updatedAt:null, writer:'' }; }
+    },
+
+    sharedReplaceExact(key, next, { scope='local', source='', baseRev=null } = {}){
+      const contract = SHARED_CONTRACTS[key];
+      const curMeta = readMeta(key, scope);
+      const expectedBase = (typeof baseRev === 'number') ? baseRev : curMeta.rev;
+      if (typeof expectedBase === 'number' && expectedBase !== curMeta.rev){
+        const current = contract ? this.sharedRead(key, null, scope).data : this.getJSON(key, null, scope);
+        return { ok:false, data:current, meta:curMeta, conflict:true, message:'Conflicto detectado: los datos cambiaron antes de completar la operación.' };
+      }
+
+      let normalized = next;
+      if (contract){
+        if (!validateExpected(normalized, contract.expected)){
+          const current = this.sharedRead(key, null, scope).data;
+          return { ok:false, data:current, meta:curMeta, conflict:false, message:'Formato inválido para guardar.' };
+        }
+        if (typeof contract.normalize === 'function'){
+          try{ normalized = contract.normalize(normalized); }
+          catch(err){
+            logOnce('replace-norm:' + key, 'Error normalizando reemplazo exacto en', key, err);
+            const current = this.sharedRead(key, null, scope).data;
+            return { ok:false, data:current, meta:curMeta, conflict:false, message:'No se pudo normalizar la información para guardarla.' };
+          }
+        }
+      }
+
+      const metaNow = readMeta(key, scope);
+      if (metaNow.rev !== curMeta.rev){
+        const current = contract ? this.sharedRead(key, null, scope).data : this.getJSON(key, null, scope);
+        return { ok:false, data:current, meta:metaNow, conflict:true, message:'Conflicto detectado: los datos cambiaron durante la operación.' };
+      }
+
+      let ok = false;
+      try{ ok = this.setItem(key, JSON.stringify(normalized ?? null), scope); }
+      catch(_){ ok = false; }
+      if (!ok){
+        const current = contract ? this.sharedRead(key, null, scope).data : this.getJSON(key, null, scope);
+        return { ok:false, data:current, meta:metaNow, conflict:false, message:'No se pudo guardar (storage error).' };
+      }
+
+      const nextRev = coerceInt(metaNow.rev, 0) + 1;
+      const metaWritten = writeMeta(key, { rev:nextRev, updatedAt:nowIso(), writer:source || '' }, scope);
+      try{ this._sharedState[key] = { rev:metaWritten.rev, updatedAt:metaWritten.updatedAt, writer:metaWritten.writer, readAt:Date.now() }; }
+      catch(_){ }
+      return { ok:true, data:normalized, meta:metaWritten, conflict:false, message:'' };
     },
 
     sharedSet(key, next, { scope='local', source='', baseRev=null, conflictPolicy='merge' } = {}){

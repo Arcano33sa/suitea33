@@ -967,7 +967,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.85&r=1').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.87&r=1').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });

@@ -3,17 +3,17 @@
 */
 
 // A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.85&r=49'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.87&r=50'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
-  : '4.20.85';
+  : '4.20.87';
 const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null))
   ? String(self.A33_RELEASE.rev)
   : '1';
 
 const MODULE = 'lotes';
-const MODULE_CACHE_REV = '17';
+const MODULE_CACHE_REV = '18';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -25,21 +25,21 @@ function isLegacySuiteCache(name){
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.85&r=16',
-  './style.css?v=4.20.85&r=10',
-  './script.js?v=4.20.85&r=16',
-  './manifest.webmanifest?v=4.20.85&r=11',
+  './index.html?v=4.20.87&r=16',
+  './style.css?v=4.20.87&r=10',
+  './script.js?v=4.20.87&r=16',
+  './manifest.webmanifest?v=4.20.87&r=11',
   './offline.html',
   './images/logo.png',
-  '/assets/js/a33-release.js?v=4.20.85&r=49',
+  '/assets/js/a33-release.js?v=4.20.87&r=50',
 
-  '/assets/js/a33-input-ux.js?v=4.20.85&r=7',
-  '/assets/js/a33-storage.js?v=4.20.85&r=19',
-  '/assets/js/a33-production.js?v=4.20.85&r=1',
-  '/assets/css/a33-header.css?v=4.20.85&r=7',
-  '/assets/js/a33-theme.js?v=4.20.85&r=7',
-  '/assets/css/a33-theme.css?v=4.20.85&r=7',
-  './vendor/xlsx.full.min.js?v=4.20.85&r=7'
+  '/assets/js/a33-input-ux.js?v=4.20.87&r=7',
+  '/assets/js/a33-storage.js?v=4.20.87&r=20',
+  '/assets/js/a33-production.js?v=4.20.87&r=3',
+  '/assets/css/a33-header.css?v=4.20.87&r=7',
+  '/assets/js/a33-theme.js?v=4.20.87&r=7',
+  '/assets/css/a33-theme.css?v=4.20.87&r=7',
+  './vendor/xlsx.full.min.js?v=4.20.87&r=7'
 ];
 
 function sameOrigin(url){
@@ -103,7 +103,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.85&r=16')) ||
+      (await cache.match('./index.html?v=4.20.87&r=16')) ||
       (await cache.match('./index.html')) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||
