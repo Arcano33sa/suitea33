@@ -2940,7 +2940,7 @@ function installSmokeHooks(inv){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.87&r=1")
+      .register("./sw.js?v=4.20.88&r=1")
       .catch((err) => console.error("SW error", err));
   }
 }

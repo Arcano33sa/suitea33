@@ -3,11 +3,11 @@
 */
 
 // A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.87&r=50'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.88&r=50'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
-  : '4.20.87';
+  : '4.20.88';
 const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null))
   ? String(self.A33_RELEASE.rev)
   : '1';
@@ -25,21 +25,21 @@ function isLegacySuiteCache(name){
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.87&r=13',
-  './style.css?v=4.20.87&r=9',
-  './script.js?v=4.20.87&r=14',
-  './manifest.webmanifest?v=4.20.87&r=9',
+  './index.html?v=4.20.88&r=13',
+  './style.css?v=4.20.88&r=9',
+  './script.js?v=4.20.88&r=14',
+  './manifest.webmanifest?v=4.20.88&r=9',
   './offline.html',
   './images/logo.png',
-  '/assets/js/a33-release.js?v=4.20.87&r=50',
+  '/assets/js/a33-release.js?v=4.20.88&r=50',
 
-  '/assets/js/a33-input-ux.js?v=4.20.87&r=8',
-  '/assets/js/a33-storage.js?v=4.20.87&r=20',
-  '/assets/js/a33-currency.js?v=4.20.87&r=14',
-  '/assets/js/a33-presentations.js?v=4.20.87&r=15',
-  '/assets/css/a33-header.css?v=4.20.87&r=8',
-  '/assets/css/a33-theme.css?v=4.20.87&r=8',
-  '/assets/js/a33-theme.js?v=4.20.87&r=8'
+  '/assets/js/a33-input-ux.js?v=4.20.88&r=8',
+  '/assets/js/a33-storage.js?v=4.20.88&r=20',
+  '/assets/js/a33-currency.js?v=4.20.88&r=14',
+  '/assets/js/a33-presentations.js?v=4.20.88&r=15',
+  '/assets/css/a33-header.css?v=4.20.88&r=8',
+  '/assets/css/a33-theme.css?v=4.20.88&r=8',
+  '/assets/js/a33-theme.js?v=4.20.88&r=8'
 ];
 
 function sameOrigin(url){
@@ -104,7 +104,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.87&r=13')) ||
+      (await cache.match('./index.html?v=4.20.88&r=13')) ||
       (await cache.match('./index.html')) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||
