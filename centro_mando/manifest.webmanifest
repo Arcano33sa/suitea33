@@ -1,7 +1,7 @@
 {
   "name": "Suite A33 — Centro de Mando (ruta trasladada)",
   "short_name": "Centro A33",
-  "start_url": "../centro-mando/index.html?v=4.20.88&r=10",
+  "start_url": "../centro-mando/index.html?v=4.20.89&r=10",
   "scope": "../centro-mando/",
   "display": "standalone",
   "theme_color": "#0b0b0b",

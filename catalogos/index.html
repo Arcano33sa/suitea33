@@ -6,10 +6,10 @@
   <title>Suite A33 · Catálogos</title>
   <meta name="description" content="Catálogos operativos de Suite A33: productos, costos, envases, tapas, extras, bancos, clientes y datos maestros." />
   <meta name="theme-color" content="#7b1818" />
-  <script src="/assets/js/a33-theme.js?v=4.20.88&r=11"></script>
+  <script src="/assets/js/a33-theme.js?v=4.20.89&r=11"></script>
   <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
   <link rel="apple-touch-icon" href="../icon-a33-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.88&r=10" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.89&r=11" />
   <script>
     (function(){
       try{
@@ -28,15 +28,15 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.88&r=11" />
-  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.88&r=11" />
-  <link rel="stylesheet" href="style.css?v=4.20.88&r=19" />
+  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.89&r=11" />
+  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.89&r=11" />
+  <link rel="stylesheet" href="style.css?v=4.20.89&r=20" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Ir al Menú principal">⌂ Menú principal</a>
     <div class="a33-title">Catálogos</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.88">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.89">v...</div>
   </header>
 
   <main class="cat-main" role="main">
@@ -531,7 +531,7 @@
               </label>
             </div>
             <div id="cat-customers-status" class="cat-status" role="status" aria-live="polite">Cargando clientes…</div>
-            <div id="cat-customers-list" class="cat-products-list"></div>
+            <div id="cat-customers-list" class="cat-customers-list"></div>
           </article>
 
           <article class="cat-product-form-card">
@@ -778,12 +778,33 @@
   </div>
 
 
+  <div id="cat-customer-view-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel cat-customer-view-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-customer-view-title">
+      <button id="cat-customer-view-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Cliente maestro</p>
+      <h2 id="cat-customer-view-title">Detalle del cliente</h2>
+      <div id="cat-view-customer-merged" class="cat-warn" hidden></div>
+      <dl class="cat-customer-view-grid">
+        <div><dt>Nombre</dt><dd id="cat-view-customer-name">—</dd></div>
+        <div><dt>Estado</dt><dd id="cat-view-customer-status">—</dd></div>
+        <div><dt>Celular</dt><dd id="cat-view-customer-cell">—</dd></div>
+        <div><dt>Última compra</dt><dd id="cat-view-customer-last-purchase">Sin compras</dd></div>
+        <div><dt>Correo</dt><dd id="cat-view-customer-email">—</dd></div>
+        <div><dt>Dirección</dt><dd id="cat-view-customer-address">—</dd></div>
+        <div class="cat-customer-view-wide"><dt>Notas</dt><dd id="cat-view-customer-notes">—</dd></div>
+      </dl>
+      <div class="cat-modal-actions">
+        <button id="cat-customer-view-ok" class="cat-btn cat-btn-secondary" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="cat-toast" class="cat-toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
 
-  <script src="/assets/js/a33-release.js?v=4.20.88&r=50"></script>
-  <script src="/assets/js/a33-storage.js?v=4.20.88&r=20"></script>
-  <script src="/assets/js/a33-product-integrity.js?v=4.20.88&r=1"></script>
-  <script src="script.js?v=4.20.88&r=28"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.88&r=11"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.89&r=51"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.89&r=20"></script>
+  <script src="/assets/js/a33-product-integrity.js?v=4.20.89&r=1"></script>
+  <script src="script.js?v=4.20.89&r=29"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.89&r=11"></script>
 </body>
 </html>

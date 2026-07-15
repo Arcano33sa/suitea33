@@ -6,7 +6,7 @@
 (function(global){
   'use strict';
 
-  const VERSION = '4.20.88';
+  const VERSION = '4.20.89';
   const REV = '1'; // subir cuando haya que forzar limpiar caches sin cambiar VERSION
 
   const MODULE_REVISIONS = Object.freeze({
