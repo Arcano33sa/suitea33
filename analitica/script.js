@@ -455,14 +455,21 @@
   }
 
   function getUnitCostForSale(sale){
-    const row = sale && typeof sale === 'object' ? sale : {};
-    const snapshotCandidates = [row.costPerUnit, row.costUnitSnapshot, row.unitCostSnapshot, row.costoUnitarioSnapshot, row.unitCost];
-    for (const value of snapshotCandidates){
-      const n = Number(value);
-      if (Number.isFinite(n) && n >= 0) return n;
-    }
-    const productId = saleProductId(row);
-    return productId ? getUnitCostByPresId(productId) : 0;
+    try{
+      if (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveUnitCost === 'function'){
+        return Number(globalThis.A33SaleCost.resolveUnitCost(sale)) || 0;
+      }
+    }catch(_){ }
+    return 0;
+  }
+
+  function getCourtesyValueForSale(sale){
+    try{
+      if (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveCourtesyValue === 'function'){
+        return Number(globalThis.A33SaleCost.resolveCourtesyValue(sale)) || 0;
+      }
+    }catch(_){ }
+    return 0;
   }
 
   function computeLineMetrics(sale){
@@ -471,7 +478,12 @@
     const finalQty = sale && sale.isReturn ? -qty : qty;
     const revenue = Number(sale && sale.total) || 0;
     const unitCost = getUnitCostForSale(sale);
-    const lineCost = unitCost * finalQty;
+    let lineCost = 0;
+    try{
+      lineCost = (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveLineCost === 'function')
+        ? Number(globalThis.A33SaleCost.resolveLineCost(sale)) || 0
+        : unitCost * finalQty;
+    }catch(_){ lineCost = unitCost * finalQty; }
     const lineProfit = revenue - lineCost;
     return { unitCost, finalQty, revenue, lineCost, lineProfit };
   }
@@ -494,7 +506,7 @@
           operational: identity.operational,
           historicalOnly: identity.historicalOnly,
           legacy: identity.legacy,
-          unidades:0, ventas:0, costo:0, profit:0,
+          unidades:0, paidUnits:0, ventas:0, costo:0, profit:0,
           courtesyUnits:0, courtesyValue:0, courtesyCost:0
         });
       }
@@ -502,16 +514,15 @@
       // Con productId se agrupa por identidad; nunca se fusiona por nombre.
       if (identity.productId && !agg.productId) agg.productId = identity.productId;
       agg.unidades += finalQty;
+      if (!(sale && (sale.courtesy || sale.isCourtesy))) agg.paidUnits += finalQty;
       agg.ventas += revenue;
       agg.costo += lineCost;
       agg.profit += lineProfit;
 
       if (sale && (sale.courtesy || sale.isCourtesy)){
         const absQty = Math.abs(finalQty);
-        const unitPrice = Number(sale.unitPrice || 0);
-        const sign = sale.isReturn ? -1 : 1;
         agg.courtesyUnits += absQty;
-        agg.courtesyValue += sign * absQty * unitPrice;
+        agg.courtesyValue += getCourtesyValueForSale(sale);
         agg.courtesyCost += lineCost;
       }
       totalVentas += revenue;
@@ -520,8 +531,8 @@
 
     const rows = Array.from(byIdentity.values()).map((agg) => {
       const unidades = agg.unidades;
-      const unitPrice = unidades ? (agg.ventas / unidades) : 0;
-      const unitCost = unidades ? (agg.costo / unidades) : (agg.productId ? getUnitCostByPresId(agg.productId) : 0);
+      const unitPrice = agg.paidUnits ? (agg.ventas / agg.paidUnits) : 0;
+      const unitCost = unidades ? (agg.costo / unidades) : 0;
       const utilUnit = unitPrice - unitCost;
       return {
         ...agg,
@@ -573,11 +584,9 @@
       bucket.botellas += finalQty;
       totalVentasPeriodo += revenue;
 
-      if (s && s.courtesy){
+      if (s && (s.courtesy || s.isCourtesy)){
         const absQty = Math.abs(finalQty);
-        const unitPrice = Number(s.unitPrice || 0);
-        const sign = s.isReturn ? -1 : 1;
-        const courtesyValue = sign * absQty * unitPrice;
+        const courtesyValue = getCourtesyValueForSale(s);
         bucket.courtesyUnits += absQty;
         bucket.courtesyValue += courtesyValue;
         bucket.courtesyCost += lineCost;
@@ -685,8 +694,7 @@
 
       if (sale && (sale.courtesy || sale.isCourtesy)){
         const absQty = Math.abs(metrics.finalQty);
-        const unitPrice = Number(sale.unitPrice || 0);
-        const value = (sale.isReturn ? -1 : 1) * absQty * unitPrice;
+        const value = getCourtesyValueForSale(sale);
         bucket.courtesyUnits += absQty;
         bucket.courtesyValue += value;
         bucket.courtesyCost += metrics.lineCost;
@@ -1233,7 +1241,7 @@ function rebuildHorasEventOptions(filteredSales){
     if (!tbody || !selEvent) return;
 
     const salesList = Array.isArray(lastFilteredSales) ? lastFilteredSales : [];
-    const cortesias = salesList.filter(s => s && s.courtesy);
+    const cortesias = salesList.filter(s => s && (s.courtesy || s.isCourtesy));
 
     // Construir opciones de eventos disponibles para cortesías
     const map = new Map();
@@ -1623,6 +1631,7 @@ function rebuildHorasEventOptions(filteredSales){
     let totalVentas = 0;
     let totalCosto = 0;
     let totalProfit = 0;
+    let courtesyUnits = 0, courtesyValue = 0, courtesyCost = 0;
     const byMonth = new Map();
 
     for (const s of filtered){
@@ -1630,13 +1639,23 @@ function rebuildHorasEventOptions(filteredSales){
       if (!d) continue;
       const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
       if (!byMonth.has(key)){
-        byMonth.set(key, { ventas: 0, costo: 0, profit: 0 });
+        byMonth.set(key, { ventas: 0, costo: 0, profit: 0, courtesyUnits: 0, courtesyValue: 0, courtesyCost: 0 });
       }
       const bucket = byMonth.get(key);
       const metrics = computeLineMetrics(s);
       bucket.ventas += metrics.revenue;
       bucket.costo += metrics.lineCost;
       bucket.profit += metrics.lineProfit;
+      if (s && (s.courtesy || s.isCourtesy)){
+        const q = Math.abs(metrics.finalQty);
+        const value = getCourtesyValueForSale(s);
+        bucket.courtesyUnits += q;
+        bucket.courtesyValue += value;
+        bucket.courtesyCost += metrics.lineCost;
+        courtesyUnits += q;
+        courtesyValue += value;
+        courtesyCost += metrics.lineCost;
+      }
 
       totalVentas += metrics.revenue;
       totalCosto += metrics.lineCost;
@@ -1651,9 +1670,12 @@ function rebuildHorasEventOptions(filteredSales){
     rows.push(['KPI', 'Costo total', totalCosto.toFixed(2)]);
     rows.push(['KPI', 'Utilidad total', totalProfit.toFixed(2)]);
     rows.push(['KPI', 'Margen global (%)', margenGlobal.toFixed(2)]);
+    rows.push(['KPI', 'Cortesías unidades', courtesyUnits]);
+    rows.push(['KPI', 'Cortesías valor comercial', courtesyValue.toFixed(2)]);
+    rows.push(['KPI', 'Cortesías costo real', courtesyCost.toFixed(2)]);
 
     rows.push([]);
-    rows.push(['Mes', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %']);
+    rows.push(['Mes', 'Ventas (C$)', 'Costo total (C$)', 'Utilidad (C$)', 'Margen %', 'Cortesías unid.', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
 
     const keys = Array.from(byMonth.keys()).sort();
     for (const key of keys){
@@ -1664,7 +1686,10 @@ function rebuildHorasEventOptions(filteredSales){
         bucket.ventas.toFixed(2),
         bucket.costo.toFixed(2),
         bucket.profit.toFixed(2),
-        margen.toFixed(2)
+        margen.toFixed(2),
+        bucket.courtesyUnits,
+        bucket.courtesyValue.toFixed(2),
+        bucket.courtesyCost.toFixed(2)
       ]);
     }
 
@@ -1679,7 +1704,7 @@ function rebuildHorasEventOptions(filteredSales){
     }
 
     const rows = [];
-    rows.push(['Evento', 'Estado', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Unidades', 'Ticket promedio', '% del total']);
+    rows.push(['Evento', 'Estado', 'Ventas (C$)', 'Costo total (C$)', 'Utilidad (C$)', 'Margen %', 'Unidades', 'Ticket promedio', '% del total', 'Cortesías unid.', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
     const totalVentas = stats.totalVentasPeriodo || 0;
 
     for (const ev of stats.rows){
@@ -1697,7 +1722,10 @@ function rebuildHorasEventOptions(filteredSales){
         margen.toFixed(2),
         ev.botellas || 0,
         ticketProm.toFixed(2),
-        perc.toFixed(2)
+        perc.toFixed(2),
+        ev.courtesyUnits || 0,
+        Number(ev.courtesyValue || 0).toFixed(2),
+        Number(ev.courtesyCost || 0).toFixed(2)
       ]);
     }
 
@@ -1712,7 +1740,7 @@ function rebuildHorasEventOptions(filteredSales){
     }
 
     const rows = [];
-    rows.push(['Producto', 'productId / clave histórica', 'Estado', 'Unidades netas', 'Precio unitario prom. (C$)', 'Costo unitario est. (C$)', 'Utilidad unitaria (C$)', 'Margen unitario %', 'Ventas totales (C$)', '% de ventas']);
+    rows.push(['Producto', 'productId / clave histórica', 'Estado', 'Unidades netas', 'Unidades pagadas', 'Precio unitario prom. pagado (C$)', 'Costo unitario snapshot (C$)', 'Utilidad unitaria (C$)', 'Margen unitario %', 'Ventas totales (C$)', '% de ventas', 'Cortesías unid.', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
     const totalVentas = stats.totalVentas || 0;
 
     for (const row of stats.rows){
@@ -1722,12 +1750,16 @@ function rebuildHorasEventOptions(filteredSales){
         row.productId || row.id,
         row.operational ? 'Operativo actual' : (row.legacy ? 'Histórico legacy' : 'Inactivo/borrado · histórico'),
         row.unidades,
+        row.paidUnits || 0,
         Number(row.unitPrice || 0).toFixed(2),
         Number(row.unitCost || 0).toFixed(2),
         Number(row.utilUnit || 0).toFixed(2),
         Number(row.marginUnit || 0).toFixed(2),
         Number(row.ventas || 0).toFixed(2),
-        perc.toFixed(2)
+        perc.toFixed(2),
+        row.courtesyUnits || 0,
+        Number(row.courtesyValue || 0).toFixed(2),
+        Number(row.courtesyCost || 0).toFixed(2)
       ]);
     }
 

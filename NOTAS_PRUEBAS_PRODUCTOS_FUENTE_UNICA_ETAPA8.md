@@ -2,7 +2,7 @@
 
 ## Hardening final aplicado
 
-- Versión global coordinada: `4.20.85 r1`.
+- Versión global coordinada: `4.20.87 r1`.
 - Referencias compartidas unificadas para A33 Release, Storage, Presentations y Cloud Sync.
 - Revisiones funcionales coordinadas para Catálogos, Inventario, Lotes, Pedidos y POS.
 - Service Workers activos y precachés alineados por módulo.

@@ -4,10 +4,10 @@ const DB_VER = 35; // Productos por productId: índice de nombre no único
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.89';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.87';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m29');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m30');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -9139,6 +9139,141 @@ function findCatalogProductByStableIdPOS(products, productId){
   return (Array.isArray(products) ? products : []).find((product) => catalogProductStableIdPOS(product) === target) || null;
 }
 
+
+function buildCatalogProductIdentityIndexPOS(products){
+  const list = (Array.isArray(products) ? products : []).filter(p => p && typeof p === 'object');
+  const byStableId = new Map();
+  const byInternalId = new Map();
+  const byLetter = new Map();
+  const byName = new Map();
+
+  for (const product of list){
+    const stableId = catalogProductStableIdPOS(product);
+    const internalId = catalogProductInternalIdPOS(product);
+    const letter = String(product.letra ?? product.Letra ?? product.letter ?? '').trim().toUpperCase();
+    const name = String(product.name || product.nombre || product.productName || '').trim();
+    if (stableId && !byStableId.has(stableId)) byStableId.set(stableId, product);
+    if (internalId && !byInternalId.has(internalId)) byInternalId.set(internalId, product);
+    if (letter && !byLetter.has(letter)) byLetter.set(letter, product);
+    if (name){
+      const key = normName(name);
+      if (key && !byName.has(key)) byName.set(key, product);
+    }
+  }
+
+  return { list, byStableId, byInternalId, byLetter, byName };
+}
+
+function resolveCatalogProductIdentityPOS(reference, productsOrIndex){
+  const index = productsOrIndex && productsOrIndex.byStableId instanceof Map
+    ? productsOrIndex
+    : buildCatalogProductIdentityIndexPOS(productsOrIndex);
+  const ref = reference && typeof reference === 'object' ? reference : null;
+  const primitive = ref ? '' : String(reference == null ? '' : reference).trim();
+  const stableRefs = [];
+  const internalRefs = [];
+  const letters = [];
+  const names = [];
+
+  const addStable = (value) => {
+    const raw = String(value == null ? '' : value).trim();
+    if (raw && !stableRefs.includes(raw)) stableRefs.push(raw);
+  };
+  const addInternal = (value) => {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0 && !internalRefs.includes(n)) internalRefs.push(n);
+  };
+  const addLetter = (value) => {
+    const raw = String(value == null ? '' : value).trim().toUpperCase();
+    if (raw && !letters.includes(raw)) letters.push(raw);
+  };
+  const addName = (value) => {
+    const raw = String(value == null ? '' : value).trim();
+    const key = raw ? normName(raw) : '';
+    if (key && !names.includes(key)) names.push(key);
+  };
+
+  if (primitive){
+    addStable(primitive);
+    addInternal(primitive);
+  }
+
+  const collect = (value, allowGenericId=true) => {
+    if (!value || typeof value !== 'object') return;
+    const addProductRef = (candidate) => { addStable(candidate); addInternal(candidate); };
+    addProductRef(catalogProductStableIdPOS(value));
+    addProductRef(value.productId);
+    addProductRef(value.productoId);
+    addProductRef(value.catalogProductId);
+    addProductRef(value.skuProductId);
+    addProductRef(value.idProducto);
+    addInternal(value.productInternalId);
+    addInternal(value.catalogInternalId);
+    addInternal(value.internalId);
+    addInternal(value.legacyId);
+    if (allowGenericId){
+      const rawId = String(value.id == null ? '' : value.id).trim();
+      if (/^\d+$/.test(rawId)) addInternal(rawId);
+      else addStable(rawId);
+    }
+    addLetter(value.letra ?? value.Letra ?? value.letter);
+    addName(value.productName ?? value.productNameSnapshot ?? value.nombreSnapshot ?? value.name ?? value.nombre ?? value.label);
+  };
+
+  if (ref){
+    collect(ref, true);
+    collect(ref.productSnapshot, false);
+    collect(ref.product, true);
+    collect(ref.producto, true);
+    collect(ref.targetProduct, true);
+    collect(ref.sourceProduct, true);
+  }
+
+  let product = null;
+  let matchedBy = '';
+  for (const key of stableRefs){
+    product = index.byStableId.get(key) || null;
+    if (product){ matchedBy = 'productId'; break; }
+  }
+  if (!product){
+    for (const key of internalRefs){
+      product = index.byInternalId.get(key) || null;
+      if (product){ matchedBy = 'internalId'; break; }
+    }
+  }
+  if (!product){
+    for (const key of letters){
+      product = index.byLetter.get(key) || null;
+      if (product){ matchedBy = 'letra'; break; }
+    }
+  }
+  if (!product){
+    for (const key of names){
+      product = index.byName.get(key) || null;
+      if (product){ matchedBy = 'nombre_legacy'; break; }
+    }
+  }
+  if (!product) return null;
+
+  return {
+    product,
+    stableId: catalogProductStableIdPOS(product),
+    internalId: catalogProductInternalIdPOS(product),
+    letter: String(product.letra ?? product.Letra ?? product.letter ?? '').trim().toUpperCase(),
+    name: String(product.name || product.nombre || product.productName || '').trim(),
+    matchedBy
+  };
+}
+
+function catalogProductIdentityMatchesRefPOS(identity, value){
+  if (!identity) return false;
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return false;
+  if (identity.stableId && raw === identity.stableId) return true;
+  const n = Number(raw);
+  return !!(identity.internalId && Number.isFinite(n) && n === identity.internalId);
+}
+
 function saleStableProductIdPOS(sale){
   if (!sale || typeof sale !== 'object') return '';
   const raw = sale.productId ?? sale.productoId ?? (sale.productSnapshot && sale.productSnapshot.productId);
@@ -9839,39 +9974,19 @@ function lotesPOSQtyFromContractRowPOS(row){
   return 0;
 }
 
-function resolveProductFromLoteContractRowPOS(row, products){
-  const list = Array.isArray(products) ? products : [];
-  const normLocal = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const rawPid = String(row && (row.productId ?? row.productoId ?? row.id) || '').trim();
-  if (rawPid){
-    const byId = list.find(p => p && String(p.id) === rawPid);
-    if (byId) return byId;
-  }
+function resolveProductFromLoteContractRowPOS(row, productsOrIndex){
+  const identity = resolveCatalogProductIdentityPOS(row, productsOrIndex);
+  if (identity && identity.product) return identity.product;
 
-  const letter = String(row && (row.Letra ?? row.letra ?? row.letter) || '').trim().toUpperCase();
-  if (letter){
-    const byLetter = list.find(p => p && String(p.letra ?? p.Letra ?? p.letter ?? '').trim().toUpperCase() === letter);
-    if (byLetter) return byLetter;
-  }
-
+  // Compatibilidad histórica final: campos legacy de presentación, solo si no existe identidad confiable.
+  const list = productsOrIndex && productsOrIndex.list
+    ? productsOrIndex.list
+    : (Array.isArray(productsOrIndex) ? productsOrIndex : []);
   const legacyId = String(row && (row.legacyId ?? row.legacyField ?? row.field) || '').trim().toLowerCase();
   if (legacyId){
     const byLegacy = list.find(p => p && mapProductNameToFinishedId(p.name || p.nombre || '') === legacyId);
     if (byLegacy) return byLegacy;
   }
-
-  const name = String(row && (row.nombreSnapshot ?? row.nombre ?? row.name ?? row.productName) || '').trim();
-  if (name){
-    const n = normLocal(name);
-    const exact = list.find(p => p && normLocal(p.name || p.nombre || '') === n);
-    if (exact) return exact;
-    const legacyFromName = mapProductNameToFinishedId(name);
-    if (legacyFromName){
-      const byNameLegacy = list.find(p => p && mapProductNameToFinishedId(p.name || p.nombre || '') === legacyFromName);
-      if (byNameLegacy) return byNameLegacy;
-    }
-  }
-
   return null;
 }
 
@@ -10183,16 +10298,17 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
     const qty = Number(s.qty || 0);
     const absQty = Math.abs(qty || 0);
     const unitPrice = getSaleUnitPriceSnapshotPOS(s);
-    const discountLine = getSaleDiscountTotalPOS(s) * ((s.isReturn || qty < 0) ? -1 : 1);
-    gross += round2((unitPrice || 0) * absQty * ((s.isReturn || qty < 0) ? -1 : 1));
-    discountTotal += round2(discountLine);
+    const saleSign = (s.isReturn || qty < 0) ? -1 : 1;
+    const discountLine = getSaleDiscountTotalPOS(s) * saleSign;
     if (s.isReturn || qty < 0){ returnQty += absQty; returnTotal += Math.abs(total || 0); }
 
-    // Cortesías: no generan ingresos, pero sí consumen costo.
+    // Cortesías: ingreso real cero; valor comercial únicamente informativo.
     if (courtesy){
       courtesyQty += absQty;
-      courtesyValue += round2((unitPrice || 0) * absQty * ((s.isReturn || qty < 0) ? -1 : 1));
+      courtesyValue += round2((unitPrice || 0) * absQty * saleSign);
     } else {
+      gross += round2((unitPrice || 0) * absQty * saleSign);
+      discountTotal += round2(discountLine);
       paidQty += absQty;
       const pay = normalizePaymentMethodPOS(s.payment || '') || 'otros';
       byPay[pay] = (byPay[pay] || 0) + total;
@@ -13667,6 +13783,11 @@ function saleCostFromFieldsPOS(obj){
 
 function getSaleCostUnitSnapshotPOS(sale){
   if (!sale || typeof sale !== 'object') return 0;
+  try{
+    if (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveUnitCost === 'function'){
+      return round2(globalThis.A33SaleCost.resolveUnitCost(sale));
+    }
+  }catch(_){ }
   const candidates = [
     sale.costPerUnit, sale.costUnitSnapshot, sale.unitCostSnapshot, sale.costoUnitarioSnapshot,
     sale.costoUnitario, sale.unitCost, sale.costUnit,
@@ -13674,30 +13795,28 @@ function getSaleCostUnitSnapshotPOS(sale){
     sale.productSnapshot && sale.productSnapshot.costPerUnit,
     sale.productSnapshot && sale.productSnapshot.costoUnitario
   ];
-  let zeroSeen = false;
   for (const c of candidates){
     const n = Number(c);
-    if (!Number.isFinite(n) || n < 0) continue;
-    if (Math.abs(n) > 1e-9) return round2(n);
-    zeroSeen = true;
+    if (Number.isFinite(n) && Math.abs(n) > 1e-9) return Math.abs(round2(n));
   }
-  return zeroSeen ? 0 : 0;
+  return 0;
 }
 
 function getSaleLineCostSnapshotPOS(sale){
   if (!sale || typeof sale !== 'object') return 0;
-  const candidates = [sale.lineCost, sale.costTotal, sale.costoTotal, sale.totalCost, sale.costoTotalSnapshot];
-  let zeroSeen = false;
-  for (const c of candidates){
+  try{
+    if (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveLineCost === 'function'){
+      return round2(globalThis.A33SaleCost.resolveLineCost(sale));
+    }
+  }catch(_){ }
+  const direct = [sale.lineCost, sale.costTotal, sale.costoTotal, sale.totalCost, sale.costoTotalSnapshot];
+  for (const c of direct){
     const n = Number(c);
-    if (!Number.isFinite(n)) continue;
-    if (Math.abs(n) > 1e-9) return round2(n);
-    zeroSeen = true;
+    if (Number.isFinite(n) && Math.abs(n) > 1e-9) return round2(n);
   }
-  if (zeroSeen) return 0;
   const cpu = getSaleCostUnitSnapshotPOS(sale);
   const qty = Number(sale.qty);
-  if (Number.isFinite(cpu) && Number.isFinite(qty)) return round2(cpu * qty);
+  if (Math.abs(cpu) > 1e-9 && Number.isFinite(qty)) return round2(cpu * qty);
   return 0;
 }
 
@@ -13742,17 +13861,25 @@ function buildSaleEconomicSnapshotPOS({ unitPrice, qty, discount, total, unitCos
   };
 }
 
-async function getLotFifoUnitCostForSalePOS(eventId, productId, productName){
+async function getLotFifoUnitCostForSalePOS(eventId, productRef, productName, identityIndex){
   try{
     const evId = Number(eventId);
-    const pid = Number(productId);
-    if (!Number.isFinite(evId) || evId <= 0 || !Number.isFinite(pid) || pid <= 0) return 0;
+    if (!Number.isFinite(evId) || evId <= 0) return 0;
+
+    const index = identityIndex && identityIndex.byStableId instanceof Map
+      ? identityIndex
+      : buildCatalogProductIdentityIndexPOS(await getAll('products'));
+    const identity = productRef && productRef.product && productRef.stableId !== undefined
+      ? productRef
+      : (resolveCatalogProductIdentityPOS(productRef, index)
+        || resolveCatalogProductIdentityPOS({ productId:productRef, productName }, index));
+    if (!identity || (!identity.internalId && !identity.stableId)) return 0;
 
     const entries = await getInventoryEntries(evId);
     let weightedCost = 0;
     let weightedQty = 0;
     for (const e of (Array.isArray(entries) ? entries : [])){
-      if (!e || Number(e.productId) !== pid) continue;
+      if (!e || !catalogProductIdentityMatchesRefPOS(identity, e.productId ?? e.productInternalId)) continue;
       if (e.type !== 'restock') continue;
       const looksLot = !!(e.loteCodigo || e.loteId || e.loteCargaId || e.loteGroupKey || e.source === 'lote');
       if (!looksLot) continue;
@@ -13767,15 +13894,14 @@ async function getLotFifoUnitCostForSalePOS(eventId, productId, productName){
     // Segundo intento defensivo: algunos lotes guardan el costo en arcano33_lotes, no en inventory.
     const lotes = readLotesLS_POS();
     if (!Array.isArray(lotes) || !lotes.length) return 0;
-    const products = await getAll('products');
     let lotWeightedCost = 0;
     let lotWeightedQty = 0;
     for (const l of lotes){
       if (!l || Number(l.assignedEventId) !== evId) continue;
       const rows = lotesPOSContractRowsPOS(l);
       for (const row of rows){
-        const prod = resolveProductFromLoteContractRowPOS(row, products);
-        if (!prod || Number(prod.id) !== pid) continue;
+        const rowIdentity = resolveCatalogProductIdentityPOS(row, index);
+        if (!rowIdentity || rowIdentity.product !== identity.product) continue;
         const q = lotesPOSQtyFromContractRowPOS(row);
         const c = saleCostFromFieldsPOS(row) || saleCostFromFieldsPOS(l);
         if (!(q > 0) || !(c > 0)) continue;
@@ -13790,17 +13916,24 @@ async function getLotFifoUnitCostForSalePOS(eventId, productId, productName){
   return 0;
 }
 
-async function getReempaqueUnitCostForSalePOS(eventId, productId){
+async function getReempaqueUnitCostForSalePOS(eventId, productRef, identityIndex){
   try{
     const evId = Number(eventId);
-    const pid = Number(productId);
-    if (!Number.isFinite(evId) || evId <= 0 || !Number.isFinite(pid) || pid <= 0) return 0;
+    if (!Number.isFinite(evId) || evId <= 0) return 0;
+    const index = identityIndex && identityIndex.byStableId instanceof Map
+      ? identityIndex
+      : buildCatalogProductIdentityIndexPOS(await getAll('products'));
+    const identity = productRef && productRef.product && productRef.stableId !== undefined
+      ? productRef
+      : resolveCatalogProductIdentityPOS(productRef, index);
+    if (!identity || (!identity.internalId && !identity.stableId)) return 0;
+
     const entries = await getInventoryEntries(evId);
     let qtyCost = 0;
     let qtyTotal = 0;
 
     for (const e of (entries || [])){
-      if (!e || Number(e.productId) !== pid) continue;
+      if (!e || !catalogProductIdentityMatchesRefPOS(identity, e.productId ?? e.productInternalId)) continue;
       const isReempaqueDest =
         e.reempaqueRole === 'destino' &&
         (e.source === 'reempaque' || e.sourceType === 'REEMPAQUE' || e.reempaqueId);
@@ -13814,24 +13947,61 @@ async function getReempaqueUnitCostForSalePOS(eventId, productId){
     }
 
     if (qtyTotal > 0 && qtyCost > 0) return round2(qtyCost / qtyTotal);
+
+    // Fallback compatible: leer el snapshot del registro de Reempaque si el movimiento de inventario legacy no guardó costo.
+    const records = await getAll(REEMPAQUE_STORE_POS).catch(()=>[]);
+    for (const record of (Array.isArray(records) ? records : [])){
+      if (!record || Number(record.eventId ?? record.eventoId) !== evId) continue;
+      const destinos = Array.isArray(record.destinos) && record.destinos.length ? record.destinos : [record];
+      for (const d of destinos){
+        const targetRef = {
+          productId: d.targetProductId ?? d.productoDestinoId ?? d.productId ?? record.targetProductId ?? record.productoDestinoId,
+          productInternalId: d.targetProductInternalId ?? d.internalId,
+          targetProduct: d.targetProduct ?? record.targetProduct,
+          productName: d.targetProductName ?? d.productoDestinoNombre ?? d.productoDestino ?? record.targetProductName ?? record.productoDestinoNombre
+        };
+        const targetIdentity = resolveCatalogProductIdentityPOS(targetRef, index);
+        if (!targetIdentity || targetIdentity.product !== identity.product) continue;
+        const q = Math.max(0, Number(d.cantidadFinalRegistrada ?? d.cantidadCreadaDestino ?? d.cantidadDestino ?? d.targetQty ?? d.qty ?? d.cantidad ?? record.cantidadFinalRegistrada ?? record.cantidadCreadaDestino) || 0);
+        const c = saleCostFromFieldsPOS(d) || saleCostFromFieldsPOS(record);
+        if (!(q > 0) || !(c > 0)) continue;
+        qtyTotal += q;
+        qtyCost += q * c;
+      }
+    }
+    if (qtyTotal > 0 && qtyCost > 0) return round2(qtyCost / qtyTotal);
   }catch(err){
     console.warn('No se pudo leer costo unitario desde Reempaque para venta', err);
   }
   return 0;
 }
 
-async function resolveSaleUnitCostPOS(eventId, productId, productName, productObj){
-  // Etapa 5/6: costo dinámico por prioridad, sin fallback accidental a Galón/Pulso.
-  const fromLotFifo = await getLotFifoUnitCostForSalePOS(eventId, productId, productName);
+async function resolveSaleUnitCostPOS(eventId, productRef, productName, productObj, operationSnapshot, productCatalog){
+  // Snapshot ya congelado manda cuando esta resolución se reutiliza sobre una operación existente.
+  const snapshotCost = getSaleCostUnitSnapshotPOS(operationSnapshot);
+  if (snapshotCost > 0){
+    const snapshotSource = String(operationSnapshot && (operationSnapshot.costSourceSnapshot || operationSnapshot.costSource) || '').trim();
+    return { unitCost:snapshotCost, source:snapshotSource || 'snapshot_operacion' };
+  }
+
+  const products = Array.isArray(productCatalog) ? productCatalog : await getAll('products').catch(()=>[]);
+  const identityIndex = buildCatalogProductIdentityIndexPOS(products);
+  const identity = resolveCatalogProductIdentityPOS(productObj, identityIndex)
+    || resolveCatalogProductIdentityPOS(productRef, identityIndex)
+    || resolveCatalogProductIdentityPOS({ productId:productRef, productName }, identityIndex);
+
+  const fromLotFifo = await getLotFifoUnitCostForSalePOS(eventId, identity || productRef, productName, identityIndex);
   if (fromLotFifo > 0) return { unitCost: fromLotFifo, source: 'lote_fifo' };
 
-  const fromReempaque = await getReempaqueUnitCostForSalePOS(eventId, productId);
+  const fromReempaque = await getReempaqueUnitCostForSalePOS(eventId, identity || productRef, identityIndex);
   if (fromReempaque > 0) return { unitCost: fromReempaque, source: 'reempaque' };
 
-  const fromProduct = getProductStoredUnitCostPOS(productObj);
+  const resolvedProduct = identity && identity.product ? identity.product : productObj;
+  const fromProduct = getProductStoredUnitCostPOS(resolvedProduct);
   if (fromProduct > 0) return { unitCost: fromProduct, source: 'producto_catalogo' };
 
-  const fromCalc = saleCostFieldValuePOS(getCostoUnitarioProducto(productName));
+  const resolvedName = (identity && identity.name) || productName || (resolvedProduct && (resolvedProduct.name || resolvedProduct.nombre)) || '';
+  const fromCalc = saleCostFieldValuePOS(getCostoUnitarioProducto(resolvedName));
   if (fromCalc > 0) return { unitCost: fromCalc, source: 'calculadora_legacy' };
 
   return { unitCost: 0, source: 'sin_costo_confiable' };
@@ -21819,6 +21989,7 @@ async function openEventView(eventId){
   // Stats cortesías (para mostrar en VER)
   let cortesiasPresU = 0;
   let cortesiasVasosU = 0;
+  let valorComercialCortesias = 0;
   let costoCortesiasPres = 0;
   let costoCortesiasVasos = 0;
 
@@ -21830,12 +22001,14 @@ async function openEventView(eventId){
     const qtyParaCosto = isReturn ? -absQty : absQty;
 
     const isCourtesy = !!(s.courtesy || s.isCourtesy);
+    if (isCourtesy){
+      const sign = isReturn ? -1 : 1;
+      valorComercialCortesias += round2(getSaleUnitPriceSnapshotPOS(s) * absQty * sign);
+    }
 
     if (isCupSaleRecord(s)){
-      // Preferir snapshot. Solo registros legacy sin productId pueden estimarse desde Galón/yield.
-      const stored = getSaleLineCostSnapshotPOS(s);
-      const estimated = isLegacyCupCostFallbackSalePOS(s) ? estimateCupCostSigned(s) : 0;
-      const lineCost = (Math.abs(stored) > 1e-9) ? stored : estimated;
+      // Históricos: usar únicamente el snapshot congelado; nunca reconstruir desde inventario actual.
+      const lineCost = getSaleLineCostSnapshotPOS(s);
 
       costoProductos += lineCost;
 
@@ -21844,11 +22017,8 @@ async function openEventView(eventId){
         costoCortesiasVasos += lineCost;
       }
     } else {
-      const storedLineCost = getSaleLineCostPOS(s);
-      const fallbackUnitCost = getCostoUnitarioProducto(getSaleProductNameSnapshotPOS(s));
-      const lineCost = (Math.abs(storedLineCost) > 1e-9)
-        ? storedLineCost
-        : ((fallbackUnitCost > 0 && qtyParaCosto !== 0) ? (fallbackUnitCost * qtyParaCosto) : 0);
+      // Históricos: usar únicamente el snapshot congelado; ausencia real de costo = cero.
+      const lineCost = getSaleLineCostPOS(s);
 
       if (Math.abs(lineCost) > 1e-9) {
         costoProductos += lineCost;
@@ -21874,15 +22044,15 @@ async function openEventView(eventId){
     return m; 
   },{});
 
-  const hayCostoCortesiasVasos = Math.abs(Number(costoCortesiasVasos || 0)) > 1e-9 || canEstimateCupCost;
-  const costoCortesiasTotalKnown = costoCortesiasPres + (hayCostoCortesiasVasos ? costoCortesiasVasos : 0);
+  const costoCortesiasTotalKnown = round2(costoCortesiasPres + costoCortesiasVasos);
 
   $('#ev-totals').innerHTML = `<div><b>Total vendido (pagado):</b> C$ ${fmt(total)}</div>
   <div><b>Cortesías presentaciones:</b> ${Math.round(cortesiasPresU)} unid.</div>
   <div><b>Cortesías vasos:</b> ${Math.round(cortesiasVasosU)} vasos</div>
+  <div><b>Valor comercial de cortesías:</b> C$ ${fmt(valorComercialCortesias)}</div>
   <div><b>Costo cortesías presentaciones:</b> C$ ${fmt(costoCortesiasPres)}</div>
-  <div><b>Costo cortesías vasos:</b> ${hayCostoCortesiasVasos ? ('C$ ' + fmt(costoCortesiasVasos)) : 'N/D'}</div>
-  <div><b>Costo cortesías total:</b> ${hayCostoCortesiasVasos ? ('C$ ' + fmt(costoCortesiasTotalKnown)) : ('C$ ' + fmt(costoCortesiasPres) + ' + N/D')}</div>
+  <div><b>Costo cortesías vasos:</b> C$ ${fmt(costoCortesiasVasos)}</div>
+  <div><b>Costo cortesías total:</b> C$ ${fmt(costoCortesiasTotalKnown)}</div>
   <div><b>Costo estimado de producto:</b> C$ ${fmt(costoProductos)}</div>
   <div><b>Utilidad bruta aprox.:</b> C$ ${fmt(utilidadBruta)}</div>
   <div><b>Efectivo:</b> C$ ${fmt(byPay.efectivo||0)}</div>
@@ -21960,34 +22130,52 @@ async function exportEventSalesCSV(eventId){
   const bankMap = new Map();
   for (const b of banks){ if (b && b.id != null) bankMap.set(Number(b.id), b.name || ''); }
 
-  const rows = [['N°','id','fecha','hora','producto','cant','PU','desc_C$','total','pago','banco','cortesia','devolucion','cortesia_a','notas','cliente']];
+  const rows = [['N°','id','fecha','hora','producto','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','banco','cortesia','devolucion','cortesia_a','notas','cliente']];
   const ordered = [...sales].sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a)));
   for (const s of ordered){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
-    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
+    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = (ev?ev.name:'evento').replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
 }
 function buildCorteSummaryRows(eName, sales){
-  let efectivo=0, trans=0, tarjeta=0, credito=0, descuentos=0, cortesiasU=0, cortesiasVal=0, devolU=0, devolVal=0, bruto=0;
+  let efectivo=0, trans=0, tarjeta=0, credito=0, descuentos=0;
+  let cortesiasU=0, cortesiasVal=0, costoCortesias=0, costoVentas=0;
+  let devolU=0, devolVal=0, bruto=0, ventaNeta=0;
   for (const s of sales){
-    const absQty = Math.abs(s.qty||0);
-    const absTotal = Math.abs(s.total||0);
+    if (!s) continue;
+    const qtyRaw = Number(s.qty || 0);
+    const absQty = Math.abs(qtyRaw);
+    const absTotal = Math.abs(Number(s.total || 0));
+    const sign = (s.isReturn || qtyRaw < 0 || Number(s.total || 0) < 0) ? -1 : 1;
     const disc = getSaleDiscountTotalPOS(s);
-    bruto += (s.courtesy ? (getSaleUnitPriceSnapshotPOS(s)*absQty) : (absTotal + disc));
-    descuentos += disc * (s.isReturn?-1:1);
-    if (s.courtesy){ cortesiasU += absQty; cortesiasVal += (getSaleUnitPriceSnapshotPOS(s)*absQty); }
-    if (s.isReturn){ devolU += absQty; devolVal += absTotal; }
+    const courtesy = !!(s.courtesy || s.isCourtesy);
+    const commercialValue = round2(getSaleUnitPriceSnapshotPOS(s) * absQty * sign);
+    const lineCost = getSaleLineCostSnapshotPOS(s);
+
+    if (courtesy){
+      cortesiasU += absQty;
+      cortesiasVal += commercialValue;
+      costoCortesias += lineCost;
+    } else {
+      bruto += round2((absTotal + disc) * sign);
+      descuentos += round2(disc * sign);
+      ventaNeta += Number(s.total || 0);
+      costoVentas += lineCost;
+    }
+    if (s.isReturn || qtyRaw < 0){ devolU += absQty; devolVal += absTotal; }
     const pay = normalizePaymentMethodPOS(s.payment || '');
-    if (pay === 'efectivo') efectivo += s.total;
-    else if (pay === 'transferencia') trans += s.total;
-    else if (pay === 'tarjeta') tarjeta += s.total;
-    else if (pay === 'credito'){ credito += s.total; }
+    if (pay === 'efectivo') efectivo += Number(s.total || 0);
+    else if (pay === 'transferencia') trans += Number(s.total || 0);
+    else if (pay === 'tarjeta') tarjeta += Number(s.total || 0);
+    else if (pay === 'credito') credito += Number(s.total || 0);
   }
   const cobrado = efectivo + trans + tarjeta;
-  const neto = cobrado;
-  return {efectivo, trans, tarjeta, credito, descuentos, cortesiasU, cortesiasVal, devolU, devolVal, bruto, cobrado, neto};
+  const costoTotal = round2(costoVentas + costoCortesias);
+  const utilidad = round2(ventaNeta - costoTotal);
+  const margen = ventaNeta ? round2((utilidad / ventaNeta) * 100) : 0;
+  return {efectivo, trans, tarjeta, credito, descuentos, cortesiasU, cortesiasVal, costoCortesias, costoVentas, costoTotal, utilidad, margen, devolU, devolVal, bruto, cobrado, neto:cobrado, ventaNeta};
 }
 async function generateCorteCSV(eventId){
   const events = await getAll('events');
@@ -22034,18 +22222,24 @@ async function generateCorteCSV(eventId){
   rows.push(['Descuentos aplicados (C$)', sum.descuentos.toFixed(2)]);
   rows.push(['Cortesías (unid.)', sum.cortesiasU]);
   rows.push(['Cortesías valor ref. (C$)', sum.cortesiasVal.toFixed(2)]);
+  rows.push(['Cortesías costo real (C$)', sum.costoCortesias.toFixed(2)]);
   rows.push(['Devoluciones (unid.)', sum.devolU]);
   rows.push(['Devoluciones (C$)', sum.devolVal.toFixed(2)]);
   rows.push([]);
-  rows.push(['Ventas brutas ref. (aprox.)', sum.bruto.toFixed(2)]);
-  rows.push(['Neto cobrado', sum.neto.toFixed(2)]);
+  rows.push(['Venta bruta pagada (C$)', sum.bruto.toFixed(2)]);
+  rows.push(['Venta neta pagada (C$)', sum.ventaNeta.toFixed(2)]);
+  rows.push(['Costo de ventas (C$)', sum.costoVentas.toFixed(2)]);
+  rows.push(['Costo total salida inventario (C$)', sum.costoTotal.toFixed(2)]);
+  rows.push(['Utilidad después de cortesías (C$)', sum.utilidad.toFixed(2)]);
+  rows.push(['Margen (%)', sum.margen.toFixed(2)]);
+  rows.push(['Neto cobrado (sin crédito)', sum.neto.toFixed(2)]);
   rows.push([]);
   rows.push(['Detalle de ventas']);
-  rows.push(['id','fecha','hora','producto','cant','PU','desc_C$','total','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
+  rows.push(['id','fecha','hora','producto','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
   for (const s of sales){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
     const tp = getSaleCashTenderPartsPOS(s);
-    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
+    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = ev.name.replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`corte_${safeName}.xlsx`, 'Corte', rows);
@@ -22092,9 +22286,19 @@ async function exportEventExcel(eventId){
   resumenRows.push(['Cerrado', ev.closedAt ? new Date(ev.closedAt).toLocaleString() : '']);
   resumenRows.push([]);
 
-  const totalVentas = sales.reduce((acc,s)=>acc + (s.total || 0), 0);
+  const eventSummary = buildCorteSummaryRows(ev.name, sales);
+  const totalVentas = eventSummary.ventaNeta;
   resumenRows.push(['Resumen de ventas']);
-  resumenRows.push(['Total vendido C$', totalVentas]);
+  resumenRows.push(['Venta bruta pagada C$', eventSummary.bruto]);
+  resumenRows.push(['Descuentos C$', eventSummary.descuentos]);
+  resumenRows.push(['Venta neta pagada C$', totalVentas]);
+  resumenRows.push(['Cortesías unidades', eventSummary.cortesiasU]);
+  resumenRows.push(['Cortesías valor comercial C$', eventSummary.cortesiasVal]);
+  resumenRows.push(['Cortesías costo real C$', eventSummary.costoCortesias]);
+  resumenRows.push(['Costo de ventas C$', eventSummary.costoVentas]);
+  resumenRows.push(['Costo total C$', eventSummary.costoTotal]);
+  resumenRows.push(['Utilidad después de cortesías C$', eventSummary.utilidad]);
+  resumenRows.push(['Margen %', eventSummary.margen]);
 
   const byPay = sales.reduce((m,s)=>{
     const pay = normalizePaymentMethodPOS(s.payment || '') || 'desconocido';
@@ -23098,7 +23302,7 @@ async function addSale(){
   const finalQty = isReturn ? -qty : qty;
   if (isReturn) total = -total;
 
-  const costInfo = await resolveSaleUnitCostPOS(curId, productSnap.productId, productName, prod);
+  const costInfo = await resolveSaleUnitCostPOS(curId, productSnap.productId, productName, prod, null, products);
   const unitCost = Number(costInfo.unitCost || 0);
   const economicSnapshot = buildSaleEconomicSnapshotPOS({
     unitPrice: price,

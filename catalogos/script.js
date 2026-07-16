@@ -16,12 +16,6 @@
   let currentEnvaseEditId = null;
   let currentTapaEditId = null;
   let currentCustomerEditId = null;
-  let currentCustomerViewId = null;
-  let customerRenderTokenCAT = 0;
-  let customerSearchTimerCAT = null;
-  let customerLastPurchaseLoadPromiseCAT = null;
-  let customerLastPurchaseCacheCAT = { loaded:false, loadedAt:0, byId:new Map(), sourceSales:0, sourceArchives:0 };
-  const customerExpandedGroupsCAT = new Set();
 
   const COSTS_STORAGE_KEY = 'a33_catalogos_costos_v1';
   const COSTS_RECIPES_STORAGE_KEY = 'arcano33_recetas_v1';
@@ -973,7 +967,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.89&r=2').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.87&r=1').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -3725,265 +3719,15 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     }) || null;
   }
 
-  function customerGroupLetterCAT(value){
-    let s = sanitizeCustomerName(value || '');
-    try{ if (s.normalize) s = s.normalize('NFD'); }catch(_){ }
-    s = s.replace(/[\u0300-\u036f]/g, '').trim();
-    const first = s ? s.charAt(0).toUpperCase() : '#';
-    return /^[A-Z0-9]$/.test(first) ? first : '#';
-  }
-
-  function sortCustomerGroupLettersCAT(a, b){
-    if (a === '#') return 1;
-    if (b === '#') return -1;
-    const ad = /^\d$/.test(a);
-    const bd = /^\d$/.test(b);
-    if (ad !== bd) return ad ? 1 : -1;
-    return String(a).localeCompare(String(b), 'es-NI', { sensitivity:'base', numeric:true });
-  }
-
-  function saleDateKeyCAT(sale){
-    if (!sale || typeof sale !== 'object') return '';
-    const direct = String(sale.date || sale.fecha || sale.saleDate || sale.fechaVenta || '').trim();
-    const match = direct.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
-    const candidates = [sale.createdAt, sale.timestamp, sale.ts, sale.created_at, sale.updatedAt];
-    for (const raw of candidates){
-      if (raw == null || raw === '') continue;
-      let d = null;
-      if (typeof raw === 'number' && Number.isFinite(raw)) d = new Date(raw);
-      else {
-        const parsed = Date.parse(String(raw));
-        if (Number.isFinite(parsed)) d = new Date(parsed);
-      }
-      if (!d || Number.isNaN(d.getTime())) continue;
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
-    }
-    return '';
-  }
-
-  function formatDateKeyCAT(dateKey){
-    const match = String(dateKey || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    return match ? `${match[3]}/${match[2]}/${match[1]}` : 'Sin compras';
-  }
-
-  function saleCustomerNameCAT(sale){
-    if (!sale || typeof sale !== 'object') return '';
-    return sanitizeCustomerName(sale.customerName || sale.customer || sale.clienteNombre || sale.nombreCliente || sale.cliente || sale.clientName || '');
-  }
-
-  function saleCustomerIdCAT(sale){
-    if (!sale || typeof sale !== 'object') return '';
-    const raw = sale.customerId ?? sale.clienteId ?? sale.clientId ?? null;
-    return raw == null ? '' : String(raw).trim();
-  }
-
-  function isPurchaseSaleCAT(sale){
-    if (!sale || typeof sale !== 'object') return false;
-    if (sale.deletedAt || sale.isDeleted || sale.cancelled || sale.canceled || sale.anulado || sale.voided) return false;
-    if (sale.isReturn || sale.devolucion || sale.courtesy || sale.isCourtesy) return false;
-    const qty = Number(sale.qty ?? sale.quantity ?? sale.cantidad ?? 1);
-    if (Number.isFinite(qty) && qty <= 0) return false;
-    const total = Number(sale.total ?? sale.netTotal ?? sale.totalVenta ?? 0);
-    if (Number.isFinite(total) && total <= 0) return false;
-    return !!saleDateKeyCAT(sale);
-  }
-
-  function addResolverTargetCAT(map, key, id){
-    const cleanKey = String(key || '').trim();
-    const cleanId = String(id || '').trim();
-    if (!cleanKey || !cleanId) return;
-    if (!map.has(cleanKey)) map.set(cleanKey, new Set());
-    map.get(cleanKey).add(cleanId);
-  }
-
-  function buildCustomerPurchaseResolverCAT(customers){
-    const idTargets = new Map();
-    const nameTargets = new Map();
-    const byId = new Map();
-    for (const c of (Array.isArray(customers) ? customers : [])){
-      if (!c || c.id == null) continue;
-      byId.set(String(c.id), c);
-    }
-    for (const c of (Array.isArray(customers) ? customers : [])){
-      if (!c || c.id == null) continue;
-      const ownId = String(c.id);
-      const finalId = c.mergedIntoId && byId.has(String(c.mergedIntoId)) ? String(c.mergedIntoId) : ownId;
-      addResolverTargetCAT(idTargets, ownId, ownId);
-      if (finalId !== ownId) addResolverTargetCAT(idTargets, ownId, finalId);
-      const names = [c.name, c.nombre];
-      if (Array.isArray(c.aliases)) names.push(...c.aliases);
-      if (Array.isArray(c.nameHistory)){
-        c.nameHistory.forEach(h => {
-          if (!h) return;
-          names.push(h.from, h.to);
-        });
-      }
-      for (const name of names){
-        const key = normalizeCustomerKeyCAT(name);
-        if (!key) continue;
-        // Sin customerId, un nombre solo se resuelve si es inequívoco.
-        // En clientes fusionados, el nombre histórico apunta al destino final.
-        addResolverTargetCAT(nameTargets, key, finalId);
-      }
-    }
-    return { idTargets, nameTargets };
-  }
-
-  function archivedSalesFromSnapshotCAT(archive){
-    const rows = [];
-    if (!archive || typeof archive !== 'object') return rows;
-    const snap = archive.snapshot && typeof archive.snapshot === 'object' ? archive.snapshot : archive;
-    const directArrays = [snap.sales, snap.ventas, snap.salesDetail, snap.ventasDetalle, archive.sales, archive.ventas];
-    for (const arr of directArrays){
-      if (Array.isArray(arr)) rows.push(...arr.filter(Boolean));
-    }
-    const sheets = Array.isArray(snap.sheets) ? snap.sheets : [];
-    for (const sheet of sheets){
-      const name = normalizeCustomerKeyCAT(sheet && sheet.name || '').replace(/\s+/g, '');
-      if (!/(ventasdetalle|ventadetalle|salesdetail|ventas|sales)/.test(name)) continue;
-      const data = sheet && Array.isArray(sheet.rows) ? sheet.rows : [];
-      if (data.length < 2 || !Array.isArray(data[0])) continue;
-      const header = data[0].map(v => normalizeCustomerKeyCAT(v).replace(/[^a-z0-9]/g, ''));
-      const findIndex = (aliases) => header.findIndex(h => aliases.includes(h));
-      const dateIdx = findIndex(['fecha','date','fechaventa','saledate']);
-      const customerIdx = findIndex(['cliente','customer','customername','nombrecliente','clientename']);
-      const customerIdIdx = findIndex(['customerid','clienteid','clientid']);
-      const returnIdx = findIndex(['devolucion','isreturn','return']);
-      const qtyIdx = findIndex(['cantidad','qty','quantity']);
-      if (dateIdx < 0 || (customerIdx < 0 && customerIdIdx < 0)) continue;
-      for (const row of data.slice(1)){
-        if (!Array.isArray(row)) continue;
-        rows.push({
-          date: row[dateIdx] || '',
-          customerName: customerIdx >= 0 ? row[customerIdx] : '',
-          customerId: customerIdIdx >= 0 ? row[customerIdIdx] : null,
-          isReturn: returnIdx >= 0 ? !!Number(row[returnIdx]) : false,
-          qty: qtyIdx >= 0 ? row[qtyIdx] : 1,
-          archivedSnapshot: true
-        });
-      }
-    }
-    return rows;
-  }
-
-  function updateLastPurchaseForTargetCAT(byId, targetId, dateKey){
-    const id = String(targetId || '').trim();
-    if (!id || !dateKey) return;
-    const current = String(byId.get(id) || '');
-    if (!current || dateKey > current) byId.set(id, dateKey);
-  }
-
-  async function loadCustomerLastPurchaseIndexCAT(customers, options){
-    const opts = options || {};
-    if (!opts.force && customerLastPurchaseCacheCAT.loaded) return customerLastPurchaseCacheCAT;
-    if (!opts.force && customerLastPurchaseLoadPromiseCAT) return customerLastPurchaseLoadPromiseCAT;
-
-    const task = (async()=>{
-      await openDB();
-      const [sales, archives] = await Promise.all([
-        getAll('sales').catch(()=>[]),
-        getAll('summaryArchives').catch(()=>[])
-      ]);
-      const resolver = buildCustomerPurchaseResolverCAT(customers);
-      const byId = new Map();
-      const allSales = Array.isArray(sales) ? sales.slice() : [];
-      for (const archive of (Array.isArray(archives) ? archives : [])){
-        allSales.push(...archivedSalesFromSnapshotCAT(archive));
-      }
-      for (const sale of allSales){
-        if (!isPurchaseSaleCAT(sale)) continue;
-        const dateKey = saleDateKeyCAT(sale);
-        const sid = saleCustomerIdCAT(sale);
-        let targets = sid ? resolver.idTargets.get(sid) : null;
-        if (!targets || !targets.size){
-          const nameKey = normalizeCustomerKeyCAT(saleCustomerNameCAT(sale));
-          targets = nameKey ? resolver.nameTargets.get(nameKey) : null;
-          if (targets && targets.size !== 1) targets = null;
-        }
-        if (!targets || !targets.size) continue;
-        targets.forEach(id => updateLastPurchaseForTargetCAT(byId, id, dateKey));
-      }
-      customerLastPurchaseCacheCAT = {
-        loaded:true,
-        loadedAt:Date.now(),
-        byId,
-        sourceSales:Array.isArray(sales) ? sales.length : 0,
-        sourceArchives:Array.isArray(archives) ? archives.length : 0
-      };
-      return customerLastPurchaseCacheCAT;
-    })();
-
-    customerLastPurchaseLoadPromiseCAT = task;
-    try{ return await task; }
-    finally{ if (customerLastPurchaseLoadPromiseCAT === task) customerLastPurchaseLoadPromiseCAT = null; }
-  }
-
-  function invalidateCustomerLastPurchaseCAT(){
-    customerLastPurchaseCacheCAT = { loaded:false, loadedAt:0, byId:new Map(), sourceSales:0, sourceArchives:0 };
-  }
-
-  function lastPurchaseForCustomerCAT(customer){
-    const id = customer && customer.id != null ? String(customer.id) : '';
-    const key = id && customerLastPurchaseCacheCAT.byId ? customerLastPurchaseCacheCAT.byId.get(id) : '';
-    return formatDateKeyCAT(key || '');
-  }
-
-  function setCustomerViewValueCAT(id, value){
-    const el = byId(id);
-    if (el) el.textContent = value == null || value === '' ? '—' : String(value);
-  }
-
-  function openCustomerViewCAT(id){
-    const cid = id != null ? String(id).trim() : '';
-    const row = readCustomerCatalogCAT().find(c => c && String(c.id) === cid);
-    if (!row){ toast('Cliente no encontrado'); return; }
-    currentCustomerViewId = cid;
-    setCustomerViewValueCAT('cat-view-customer-name', row.name || row.nombre || 'Cliente sin nombre');
-    setCustomerViewValueCAT('cat-view-customer-status', customerActiveCAT(row) ? 'Activo' : 'Inactivo');
-    setCustomerViewValueCAT('cat-view-customer-cell', getCustomerCellularCAT(row) || '—');
-    setCustomerViewValueCAT('cat-view-customer-email', row.correo || row.email || '—');
-    setCustomerViewValueCAT('cat-view-customer-address', row.direccion || row.address || '—');
-    setCustomerViewValueCAT('cat-view-customer-last-purchase', lastPurchaseForCustomerCAT(row));
-    setCustomerViewValueCAT('cat-view-customer-notes', row.notas || row.notes || '—');
-    const merged = byId('cat-view-customer-merged');
-    if (merged){
-      merged.hidden = !row.mergedIntoId;
-      merged.textContent = row.mergedIntoId ? `Cliente fusionado con ID ${String(row.mergedIntoId)}.` : '';
-    }
-    const modal = byId('cat-customer-view-modal');
-    if (!modal) return;
-    modal.classList.add('show');
-    modal.setAttribute('aria-hidden', 'false');
-    try{ document.body.classList.add('cat-modal-open'); }catch(_){ }
-  }
-
-  function closeCustomerViewCAT(){
-    const modal = byId('cat-customer-view-modal');
-    if (!modal) return;
-    modal.classList.remove('show');
-    modal.setAttribute('aria-hidden', 'true');
-    currentCustomerViewId = null;
+  async function renderCustomers(){
     try{
-      if (!byId('cat-customer-modal')?.classList.contains('show')) document.body.classList.remove('cat-modal-open');
-    }catch(_){ }
-  }
-
-  async function renderCustomers(options){
-    const opts = options || {};
-    const renderToken = ++customerRenderTokenCAT;
-    try{
-      const all = readCustomerCatalogCAT();
-      await loadCustomerLastPurchaseIndexCAT(all, { force:!!opts.forceLastPurchase });
-      if (renderToken !== customerRenderTokenCAT) return;
+      let list = readCustomerCatalogCAT();
       const q = normalizeCustomerKeyCAT(byId('cat-customer-search')?.value || '');
-      const list = q ? all.filter(c => customerSearchTextCAT(c).includes(q)) : all;
+      if (q) list = list.filter(c => customerSearchTextCAT(c).includes(q));
       const wrap = byId('cat-customers-list');
       if (!wrap) return;
       wrap.innerHTML = '';
+      const all = readCustomerCatalogCAT();
       const counts = getCustomerCountsCAT(all);
       const shown = list.length;
       const status = counts.total
@@ -3997,80 +3741,35 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
         wrap.appendChild(empty);
         return;
       }
-
-      const groups = new Map();
-      for (const customer of list){
-        const letter = customerGroupLetterCAT(customer && customer.name);
-        if (!groups.has(letter)) groups.set(letter, []);
-        groups.get(letter).push(customer);
-      }
-      const letters = Array.from(groups.keys()).sort(sortCustomerGroupLettersCAT);
-      for (const letter of letters){
-        const customers = groups.get(letter).slice().sort((a,b)=>
-          normalizeCustomerKeyCAT(a && a.name).localeCompare(normalizeCustomerKeyCAT(b && b.name), 'es-NI', { sensitivity:'base', numeric:true })
-        );
-        const details = document.createElement('details');
-        details.className = 'cat-customer-group';
-        details.dataset.customerGroup = letter;
-        details.open = q ? true : customerExpandedGroupsCAT.has(letter);
-        details.addEventListener('toggle', ()=>{
-          if (normalizeCustomerKeyCAT(byId('cat-customer-search')?.value || '')) return;
-          if (details.open) customerExpandedGroupsCAT.add(letter);
-          else customerExpandedGroupsCAT.delete(letter);
-        });
-
-        const summary = document.createElement('summary');
-        summary.className = 'cat-customer-group-summary';
-        summary.innerHTML = `
-          <span class="cat-customer-group-letter">${escapeHtml(letter)}</span>
-          <strong>${customers.length} cliente${customers.length === 1 ? '' : 's'}</strong>
-          <span class="cat-customer-group-chevron" aria-hidden="true">⌄</span>
+      for (const c of list){
+        const active = customerActiveCAT(c);
+        const isMerged = !!(c && c.mergedIntoId);
+        const card = document.createElement('div');
+        card.className = 'cat-product-card' + (active ? '' : ' is-inactive');
+        const celular = getCustomerCellularCAT(c) || '—';
+        const email = c.correo || c.email || '—';
+        const address = c.direccion || c.address || '—';
+        card.innerHTML = `
+          <div class="cat-product-main">
+            <div class="cat-product-title-row">
+              <strong>${escapeHtml(c.name || 'Cliente sin nombre')}</strong>
+              <span class="cat-pill ${active ? 'ok' : 'muted'}">${active ? 'Activo' : 'Inactivo'}</span>
+              <span class="cat-pill gold">Maestro</span>
+              ${isMerged ? '<span class="cat-pill muted">Fusionado</span>' : ''}
+            </div>
+            <div class="cat-product-meta">
+              <div><small>Celular</small><b>${escapeHtml(celular)}</b></div>
+              <div><small>Correo</small><b>${escapeHtml(email)}</b></div>
+              <div><small>Dirección</small><b>${escapeHtml(address)}</b></div>
+            </div>
+          </div>
+          <div class="cat-product-actions">
+            <button class="cat-btn cat-btn-ok cat-edit-customer" data-id="${escapeHtml(String(c.id))}" type="button" ${isMerged ? 'disabled' : ''}>Editar</button>
+            <button class="cat-btn ${active ? 'cat-btn-warn' : 'cat-btn-secondary'} cat-toggle-customer" data-id="${escapeHtml(String(c.id))}" type="button" ${isMerged ? 'disabled' : ''}>${active ? 'Inactivar' : 'Activar'}</button>
+            <button class="cat-btn cat-btn-danger cat-delete-customer" data-id="${escapeHtml(String(c.id))}" type="button">Borrar</button>
+          </div>
         `;
-        details.appendChild(summary);
-
-        const scroll = document.createElement('div');
-        scroll.className = 'cat-customer-table-scroll';
-        scroll.setAttribute('tabindex', '0');
-        scroll.setAttribute('aria-label', `Clientes con letra ${letter}`);
-        const table = document.createElement('table');
-        table.className = 'cat-customer-table';
-        table.innerHTML = `
-          <thead><tr>
-            <th scope="col">Nombre</th>
-            <th scope="col">Estado</th>
-            <th scope="col">Celular</th>
-            <th scope="col">Última compra</th>
-            <th scope="col" class="cat-customer-actions-head">Acciones</th>
-          </tr></thead>
-          <tbody></tbody>
-        `;
-        const tbody = table.querySelector('tbody');
-        for (const c of customers){
-          const active = customerActiveCAT(c);
-          const isMerged = !!(c && c.mergedIntoId);
-          const tr = document.createElement('tr');
-          tr.className = active ? '' : 'is-inactive';
-          tr.dataset.customerId = String(c.id || '');
-          const nameBadges = isMerged ? '<span class="cat-mini-badge">Fusionado</span>' : '';
-          tr.innerHTML = `
-            <td class="cat-customer-name-cell"><span>${escapeHtml(c.name || 'Cliente sin nombre')}</span>${nameBadges}</td>
-            <td><span class="cat-pill ${active ? 'ok' : 'muted'}">${active ? 'Activo' : 'Inactivo'}</span></td>
-            <td>${escapeHtml(getCustomerCellularCAT(c) || '—')}</td>
-            <td class="cat-customer-date-cell">${escapeHtml(lastPurchaseForCustomerCAT(c))}</td>
-            <td class="cat-customer-actions-cell">
-              <div class="cat-icon-actions">
-                <button class="cat-icon-btn cat-view-customer" data-id="${escapeHtml(String(c.id))}" type="button" title="Ver" aria-label="Ver ${escapeHtml(c.name || 'cliente')}">◉</button>
-                <button class="cat-icon-btn cat-icon-edit cat-edit-customer" data-id="${escapeHtml(String(c.id))}" type="button" title="Editar" aria-label="Editar ${escapeHtml(c.name || 'cliente')}" ${isMerged ? 'disabled' : ''}>✎</button>
-                <button class="cat-icon-btn ${active ? 'cat-icon-warn' : 'cat-icon-ok'} cat-toggle-customer" data-id="${escapeHtml(String(c.id))}" type="button" title="${active ? 'Inactivar' : 'Activar'}" aria-label="${active ? 'Inactivar' : 'Activar'} ${escapeHtml(c.name || 'cliente')}" ${isMerged ? 'disabled' : ''}>⏻</button>
-                <button class="cat-icon-btn cat-icon-danger cat-delete-customer" data-id="${escapeHtml(String(c.id))}" type="button" title="Borrar" aria-label="Borrar ${escapeHtml(c.name || 'cliente')}">⌫</button>
-              </div>
-            </td>
-          `;
-          tbody.appendChild(tr);
-        }
-        scroll.appendChild(table);
-        details.appendChild(scroll);
-        wrap.appendChild(details);
+        wrap.appendChild(card);
       }
     }catch(err){
       console.error(err);
@@ -4087,14 +3786,12 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
 
     const now = Date.now();
     let row = null;
-    let previousName = '';
     const isEdit = !!currentCustomerEditId;
     if (isEdit){
       row = list.find(c => c && String(c.id) === String(currentCustomerEditId));
       if (!row){ setCurrentCustomerMsgCAT('El cliente ya no existe. Actualiza e intenta de nuevo.', 'warn'); resetCustomerFormCAT(); await renderCustomers(); return; }
       if (row.mergedIntoId){ setCurrentCustomerMsgCAT('Este cliente está fusionado. Administra el destino final.', 'warn'); return; }
       const oldName = sanitizeCustomerName(row.name || '');
-      previousName = oldName;
       if (oldName && normalizeCustomerKeyCAT(oldName) !== data.normalizedName){
         if (!Array.isArray(row.nameHistory)) row.nameHistory = [];
         row.nameHistory.push({ from:oldName, to:data.name, at:now, reason:'catalogos_clientes' });
@@ -4134,12 +3831,9 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
 
     const ok = saveCustomerCatalogCAT(list);
     if (!ok){ setCurrentCustomerMsgCAT('No se pudo guardar. Revisa almacenamiento local.', 'warn'); return; }
-    customerExpandedGroupsCAT.add(customerGroupLetterCAT(data.name));
-    const nameChanged = !isEdit || normalizeCustomerKeyCAT(previousName) !== data.normalizedName;
-    if (nameChanged) invalidateCustomerLastPurchaseCAT();
     resetCustomerFormCAT();
     if (isEdit) closeCustomerModalCAT();
-    await renderCustomers({ forceLastPurchase:nameChanged });
+    await renderCustomers();
     toast(isEdit ? 'Cliente guardado' : 'Cliente agregado');
   }
 
@@ -4224,11 +3918,9 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     const list = byId('cat-customers-list');
     if (list){
       list.addEventListener('click', async (e)=>{
-        const view = e.target.closest('.cat-view-customer');
         const edit = e.target.closest('.cat-edit-customer');
         const toggle = e.target.closest('.cat-toggle-customer');
         const del = e.target.closest('.cat-delete-customer');
-        if (view){ openCustomerViewCAT(view.dataset.id); return; }
         if (edit && !edit.disabled){ editCustomerMaster(edit.dataset.id); return; }
         if (toggle && !toggle.disabled){ await toggleCustomerMaster(toggle.dataset.id); return; }
         if (del){ await deleteCustomerMaster(del.dataset.id); return; }
@@ -4245,34 +3937,17 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     document.addEventListener('keydown', (e)=>{
       if (e && e.key === 'Escape'){
         const modal = byId('cat-customer-modal');
-        const viewModal = byId('cat-customer-view-modal');
-        if (viewModal && viewModal.classList.contains('show')) closeCustomerViewCAT();
-        else if (modal && modal.classList.contains('show')) closeCustomerModalCAT();
+        if (modal && modal.classList.contains('show')) closeCustomerModalCAT();
       }
     });
-    byId('cat-customer-view-close')?.addEventListener('click', closeCustomerViewCAT);
-    byId('cat-customer-view-ok')?.addEventListener('click', closeCustomerViewCAT);
-    const customerViewModal = byId('cat-customer-view-modal');
-    if (customerViewModal){
-      customerViewModal.addEventListener('click', (e)=>{ if (e.target === customerViewModal) closeCustomerViewCAT(); });
-    }
-    byId('cat-refresh-customers')?.addEventListener('click', async ()=>{
-      resetCustomerFormCAT();
-      invalidateCustomerLastPurchaseCAT();
-      await renderCustomers({ forceLastPurchase:true });
-      toast('Clientes actualizados');
-    });
-    byId('cat-customer-search')?.addEventListener('input', ()=>{
-      clearTimeout(customerSearchTimerCAT);
-      customerSearchTimerCAT = setTimeout(()=>renderCustomers().catch(err=>console.error(err)), 80);
-    });
+    byId('cat-refresh-customers')?.addEventListener('click', async ()=>{ resetCustomerFormCAT(); await renderCustomers(); toast('Clientes actualizados'); });
+    byId('cat-customer-search')?.addEventListener('input', ()=>renderCustomers().catch(err=>console.error(err)));
   }
 
   async function initCustomers(){
     const list = readCustomerCatalogCAT();
     // Migración local suave: si venía como strings u objetos incompletos, queda objeto estable para POS.
     saveCustomerCatalogCAT(list);
-    await loadCustomerLastPurchaseIndexCAT(list, { force:true });
     await renderCustomers();
   }
 
@@ -4413,11 +4088,6 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
       if ([COSTS_RECIPES_STORAGE_KEY, COSTS_STORAGE_KEY, ENVASES_CATALOG_KEY].includes(key)){
         if (key === COSTS_STORAGE_KEY) renderCostsState(readCostsState());
         scheduleCostsProductsRefresh();
-      }
-      if (key === 'a33_pos_consol_sales_rev_map_v1'){
-        invalidateCustomerLastPurchaseCAT();
-        const panel = byId('panel-clientes');
-        if (panel && !panel.hidden) renderCustomers({ forceLastPurchase:true }).catch(()=>{});
       }
     });
     window.addEventListener('focus', () => {
