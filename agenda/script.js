@@ -2297,12 +2297,32 @@
     };
   }
 
+  function getRequestedRecordId(){
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      return String(params.get('record') || '').trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function openRequestedRecord(){
+    const requestedId = getRequestedRecordId();
+    if (!requestedId) return false;
+    const record = state.records.find(function(item){ return item.id === requestedId; });
+    if (!record) return false;
+    state.activeFilter = record.status === 'pendiente' ? 'pendiente' : 'todos';
+    fillForm(record, { focus: false });
+    return true;
+  }
+
   function bootstrap(){
     setRefs();
     loadRecords();
     loadClientCatalog();
     bindEvents();
     resetForm({ focus: false });
+    openRequestedRecord();
     renderList();
     loadProductCatalog().finally(function(){
       const current = getCurrentRecord();

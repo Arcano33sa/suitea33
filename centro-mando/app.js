@@ -1,5 +1,5 @@
 /*
-  Suite A33 v4.20.91 — Centro de Mando (OPERATIVO v1)
+  Suite A33 v4.20.93 — Centro de Mando (OPERATIVO v1)
 
   Fuentes reales (descubiertas en /pos/app.js dentro de esta ZIP):
   - DB_NAME: 'a33-pos'
@@ -4772,6 +4772,7 @@ function clearMetricsToDash(){
 }
 
 function renderAlerts(alerts){
+  alerts = Array.isArray(alerts) ? alerts.filter((item)=> String(item && item.key || '') !== 'checklist-incomplete') : alerts;
   const wrap = $('alerts');
   const list = $('alertList');
   if (!wrap || !list) return;
@@ -5861,6 +5862,397 @@ async function syncAlerts(){
 
 
 
+
+// --- Agenda · pendientes (solo lectura; fuente única: a33_agenda_records_v1)
+const AGENDA_STORAGE_KEY = 'a33_agenda_records_v1';
+const AGENDA_ROUTE = '../agenda/index.html';
+const AGENDA_STATUS_LABELS = Object.freeze({ pendiente:'Pendiente', hecho:'Hecho', cancelado:'Cancelado' });
+const AGENDA_TYPE_LABELS = Object.freeze({ reunion:'Reunión', tarea:'Tarea' });
+const AGENDA_PRIORITY_LABELS = Object.freeze({ alta:'Alta', media:'Media', baja:'Baja' });
+const agendaViewState = {
+  signature: '',
+  refreshTimer: null,
+  listenersBound: false
+};
+
+function agendaSafeParse(raw){
+  try{ return JSON.parse(String(raw || '')); }catch(_){ return null; }
+}
+
+function agendaNormalizeDate(value){
+  const raw = String(value || '').trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
+}
+
+function agendaNormalizeTime(value){
+  const raw = String(value || '').trim().slice(0, 5);
+  return /^\d{2}:\d{2}$/.test(raw) ? raw : '';
+}
+
+function agendaNormalizeStatus(value){
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'en_curso') return 'pendiente';
+  if (raw === 'cerrado') return 'hecho';
+  return AGENDA_STATUS_LABELS[raw] ? raw : 'pendiente';
+}
+
+function agendaNormalizeType(value){
+  const raw = String(value || '').trim().toLowerCase();
+  return AGENDA_TYPE_LABELS[raw] ? raw : 'tarea';
+}
+
+function agendaNormalizePriority(value){
+  const raw = String(value || '').trim().toLowerCase();
+  return AGENDA_PRIORITY_LABELS[raw] ? raw : 'media';
+}
+
+function agendaTodayIso(){
+  const now = new Date();
+  return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+}
+
+function agendaFormatDate(value){
+  const iso = agendaNormalizeDate(value);
+  if (!iso) return '—';
+  const parts = iso.split('-');
+  return parts[2] + '/' + parts[1] + '/' + parts[0];
+}
+
+function agendaFormatDateTime(date, time){
+  const dateText = agendaFormatDate(date);
+  const timeText = agendaNormalizeTime(time);
+  return timeText ? dateText + ' ' + timeText : dateText;
+}
+
+function agendaTruncate(value, max){
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  const limit = Math.max(24, Number(max) || 120);
+  return clean.length > limit ? clean.slice(0, limit - 1).trimEnd() + '…' : clean;
+}
+
+function agendaTimestamp(value){
+  const stamp = Date.parse(String(value || ''));
+  return Number.isFinite(stamp) ? stamp : 0;
+}
+
+function agendaReadRaw(){
+  try{
+    // Agenda usa localStorage como fuente oficial; A33Storage puede envolver la misma lectura.
+    if (window.A33Storage && typeof window.A33Storage.getItem === 'function') {
+      const wrapped = window.A33Storage.getItem(AGENDA_STORAGE_KEY);
+      if (wrapped != null) return String(wrapped);
+    }
+  }catch(_){ }
+  try{ return String(localStorage.getItem(AGENDA_STORAGE_KEY) || ''); }catch(_){ return ''; }
+}
+
+function agendaNormalizeRecord(input, index){
+  const source = input && typeof input === 'object' ? input : {};
+  const pedidoSource = source.pedido && typeof source.pedido === 'object' ? source.pedido : {};
+  const pedidoEnabled = pedidoSource.enabled === true;
+  const id = String(source.id || '').trim();
+  const fallbackKey = [
+    source.subject, source.type, source.client, source.date, source.time, source.createdAt, index
+  ].map((v)=>String(v || '')).join('|');
+  return {
+    id: id || ('agenda-readonly-' + index + '-' + fallbackKey.length),
+    sourceId: id,
+    subject: String(source.subject || '').trim(),
+    type: agendaNormalizeType(source.type),
+    client: String(source.client || '').replace(/\s+/g, ' ').trim(),
+    date: agendaNormalizeDate(source.date),
+    time: agendaNormalizeTime(source.time),
+    status: agendaNormalizeStatus(source.status),
+    priority: agendaNormalizePriority(source.priority),
+    notes: String(source.notes || '').trim(),
+    createdAt: String(source.createdAt || ''),
+    updatedAt: String(source.updatedAt || source.createdAt || ''),
+    pedido: {
+      enabled: pedidoEnabled,
+      product: String(pedidoSource.productNameSnapshot || pedidoSource.product || '').replace(/\s+/g, ' ').trim(),
+      quantity: pedidoSource.quantity == null || pedidoSource.quantity === '' ? null : Number(pedidoSource.quantity),
+      delivery: agendaNormalizeDate(pedidoSource.delivery),
+      total: pedidoSource.total == null || pedidoSource.total === '' ? null : Number(pedidoSource.total)
+    }
+  };
+}
+
+function agendaExtractRecords(raw){
+  const parsed = raw ? agendaSafeParse(raw) : null;
+  const source = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.records) ? parsed.records : []);
+  const byKey = new Map();
+  source.forEach((item, index)=>{
+    const record = agendaNormalizeRecord(item, index);
+    const key = record.sourceId || [record.subject, record.type, record.client, record.date, record.time, record.createdAt].join('|');
+    const current = byKey.get(key);
+    if (!current || agendaTimestamp(record.updatedAt) >= agendaTimestamp(current.updatedAt)) byKey.set(key, record);
+  });
+  return Array.from(byKey.values());
+}
+
+function agendaPriorityRank(value){
+  return value === 'alta' ? 0 : (value === 'media' ? 1 : 2);
+}
+
+function agendaDueStamp(record){
+  if (!record || !record.date) return Number.MAX_SAFE_INTEGER;
+  const time = record.time || '23:59';
+  const stamp = Date.parse(record.date + 'T' + time + ':00');
+  return Number.isFinite(stamp) ? stamp : Number.MAX_SAFE_INTEGER;
+}
+
+function agendaClassify(records){
+  const today = agendaTodayIso();
+  const groups = { overdue:[], today:[], upcoming:[], undated:[] };
+  (Array.isArray(records) ? records : []).forEach((record)=>{
+    if (!record || record.status !== 'pendiente') return;
+    if (!record.date) groups.undated.push(record);
+    else if (record.date < today) groups.overdue.push(record);
+    else if (record.date === today) groups.today.push(record);
+    else groups.upcoming.push(record);
+  });
+
+  const byDate = (a, b)=>{
+    const due = agendaDueStamp(a) - agendaDueStamp(b);
+    if (due !== 0) return due;
+    const priority = agendaPriorityRank(a.priority) - agendaPriorityRank(b.priority);
+    if (priority !== 0) return priority;
+    return agendaTimestamp(b.updatedAt) - agendaTimestamp(a.updatedAt);
+  };
+  groups.overdue.sort(byDate);
+  groups.today.sort(byDate);
+  groups.upcoming.sort(byDate);
+  groups.undated.sort((a,b)=>{
+    const priority = agendaPriorityRank(a.priority) - agendaPriorityRank(b.priority);
+    return priority !== 0 ? priority : agendaTimestamp(b.updatedAt) - agendaTimestamp(a.updatedAt);
+  });
+  return groups;
+}
+
+function agendaTemporalMeta(groupKey){
+  const map = {
+    overdue: { label:'Vencido', title:'Vencidos', className:'is-overdue' },
+    today: { label:'Hoy', title:'Para hoy', className:'is-today' },
+    upcoming: { label:'Próximo', title:'Próximos', className:'is-upcoming' },
+    undated: { label:'Sin fecha', title:'Sin fecha', className:'is-undated' }
+  };
+  return map[groupKey] || map.undated;
+}
+
+function agendaDeliveryMeta(record){
+  const delivery = record && record.pedido && record.pedido.enabled ? agendaNormalizeDate(record.pedido.delivery) : '';
+  if (!delivery) return { text:'—', className:'', note:'' };
+  const today = agendaTodayIso();
+  if (delivery < today) return { text:agendaFormatDate(delivery), className:'is-overdue', note:'Entrega vencida' };
+  if (delivery === today) return { text:agendaFormatDate(delivery), className:'is-today', note:'Entrega hoy' };
+  return { text:agendaFormatDate(delivery), className:'', note:'' };
+}
+
+function agendaBuildDetail(record){
+  const lines = [];
+  lines.push(record.subject || '(Sin título)');
+  if (record.notes) lines.push(agendaTruncate(record.notes, 110));
+  if (record.pedido && record.pedido.enabled){
+    const product = record.pedido.product || 'Producto';
+    const quantity = Number.isFinite(record.pedido.quantity) ? (' × ' + record.pedido.quantity) : '';
+    lines.push('Pedido: ' + product + quantity);
+  }
+  return lines;
+}
+
+function agendaCreateCell(label, className){
+  const cell = document.createElement('div');
+  cell.className = 'cmd-agenda-cell' + (className ? ' ' + className : '');
+  cell.setAttribute('data-label', label);
+  return cell;
+}
+
+function agendaNavigate(recordId){
+  let target = AGENDA_ROUTE;
+  const id = String(recordId || '').trim();
+  if (id) target += '?record=' + encodeURIComponent(id);
+  try{ window.location.href = target; }catch(_){ }
+}
+
+function agendaCreateRow(record, groupKey){
+  const temporal = agendaTemporalMeta(groupKey);
+  const delivery = agendaDeliveryMeta(record);
+  const row = document.createElement('article');
+  row.className = 'cmd-agenda-row';
+  row.setAttribute('data-record-id', record.sourceId || record.id);
+
+  const statusCell = agendaCreateCell('Estado', 'cmd-agenda-temporal');
+  const statusPill = document.createElement('span');
+  statusPill.className = 'cmd-agenda-status ' + temporal.className;
+  statusPill.textContent = temporal.label;
+  statusCell.appendChild(statusPill);
+
+  const typeCell = agendaCreateCell('Tipo', 'cmd-agenda-type');
+  const typeMain = document.createElement('span');
+  typeMain.textContent = AGENDA_TYPE_LABELS[record.type] || 'Tarea';
+  typeCell.appendChild(typeMain);
+  if (record.pedido && record.pedido.enabled){
+    const pedidoTag = document.createElement('span');
+    pedidoTag.className = 'cmd-agenda-pedido-tag';
+    pedidoTag.textContent = 'Pedido';
+    typeCell.appendChild(pedidoTag);
+  }
+
+  const dateCell = agendaCreateCell('Fecha y hora', 'cmd-agenda-nowrap');
+  dateCell.textContent = record.date ? agendaFormatDateTime(record.date, record.time) : '—';
+
+  const clientCell = agendaCreateCell('Cliente', 'cmd-agenda-client');
+  clientCell.textContent = record.client || '—';
+
+  const detailCell = agendaCreateCell('Detalle', 'cmd-agenda-detail');
+  agendaBuildDetail(record).forEach((line, index)=>{
+    const span = document.createElement(index === 0 ? 'strong' : 'span');
+    span.textContent = line;
+    detailCell.appendChild(span);
+  });
+
+  const deliveryCell = agendaCreateCell('Entrega', 'cmd-agenda-delivery cmd-agenda-nowrap ' + delivery.className);
+  const deliveryText = document.createElement('span');
+  deliveryText.textContent = delivery.text;
+  deliveryCell.appendChild(deliveryText);
+  if (delivery.note){
+    const deliveryNote = document.createElement('small');
+    deliveryNote.textContent = delivery.note;
+    deliveryCell.appendChild(deliveryNote);
+  }
+
+  const priorityCell = agendaCreateCell('Prioridad', 'cmd-agenda-priority');
+  const priorityPill = document.createElement('span');
+  priorityPill.className = 'cmd-agenda-priority-pill is-' + record.priority;
+  priorityPill.textContent = AGENDA_PRIORITY_LABELS[record.priority] || 'Media';
+  priorityCell.appendChild(priorityPill);
+
+  const actionCell = agendaCreateCell('Acción', 'cmd-agenda-action');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'cmd-mini-btn cmd-agenda-open';
+  button.textContent = 'Ver en Agenda';
+  button.addEventListener('click', ()=>agendaNavigate(record.sourceId));
+  actionCell.appendChild(button);
+
+  row.append(statusCell, typeCell, dateCell, clientCell, detailCell, deliveryCell, priorityCell, actionCell);
+  return row;
+}
+
+function agendaCreateGroup(groupKey, records){
+  const temporal = agendaTemporalMeta(groupKey);
+  const section = document.createElement('section');
+  section.className = 'cmd-agenda-group ' + temporal.className;
+  section.setAttribute('aria-label', temporal.title);
+
+  const heading = document.createElement('div');
+  heading.className = 'cmd-agenda-group-head';
+  const title = document.createElement('h3');
+  title.textContent = temporal.title;
+  const count = document.createElement('span');
+  count.textContent = records.length + ' registro' + (records.length === 1 ? '' : 's');
+  heading.append(title, count);
+
+  const table = document.createElement('div');
+  table.className = 'cmd-agenda-table';
+  table.setAttribute('role', 'table');
+  table.setAttribute('aria-label', temporal.title + ' de Agenda');
+
+  const header = document.createElement('div');
+  header.className = 'cmd-agenda-row is-head';
+  ['Estado','Tipo','Fecha y hora','Cliente','Detalle','Entrega','Prioridad','Acción'].forEach((label)=>{
+    const cell = document.createElement('div');
+    cell.className = 'cmd-agenda-cell';
+    cell.setAttribute('role', 'columnheader');
+    cell.textContent = label;
+    header.appendChild(cell);
+  });
+  table.appendChild(header);
+  records.forEach((record)=>table.appendChild(agendaCreateRow(record, groupKey)));
+  section.append(heading, table);
+  return section;
+}
+
+function renderAgendaPending(force){
+  const block = $('agendaPendingBlock');
+  const groupsEl = $('agendaPendingGroups');
+  const emptyEl = $('agendaPendingEmpty');
+  if (!block || !groupsEl || !emptyEl) return;
+
+  const raw = agendaReadRaw();
+  const signature = raw ? String(raw.length) + ':' + String(raw.slice(-96)) : 'empty';
+  if (!force && agendaViewState.signature === signature) return;
+  agendaViewState.signature = signature;
+
+  const records = agendaExtractRecords(raw);
+  const groups = agendaClassify(records);
+  const counts = {
+    overdue:groups.overdue.length,
+    today:groups.today.length,
+    upcoming:groups.upcoming.length,
+    undated:groups.undated.length
+  };
+  const total = counts.overdue + counts.today + counts.upcoming + counts.undated;
+
+  setText('agendaCountOverdue', counts.overdue);
+  setText('agendaCountToday', counts.today);
+  setText('agendaCountUpcoming', counts.upcoming);
+  setText('agendaCountUndated', counts.undated);
+
+  const summary = $('agendaPendingSummary');
+  if (summary){
+    Array.from(summary.children || []).forEach((chip)=>{
+      const countNode = chip.querySelector && chip.querySelector('b');
+      const n = countNode ? Number(countNode.textContent || 0) : 0;
+      chip.hidden = total > 0 && n === 0;
+    });
+  }
+
+  groupsEl.innerHTML = '';
+  emptyEl.hidden = total !== 0;
+  groupsEl.hidden = total === 0;
+  if (total){
+    ['overdue','today','upcoming','undated'].forEach((key)=>{
+      if (groups[key].length) groupsEl.appendChild(agendaCreateGroup(key, groups[key]));
+    });
+  }
+
+  try{
+    window.__A33_CMD_AGENDA_PENDING = {
+      sourceKey: AGENDA_STORAGE_KEY,
+      total,
+      counts,
+      ids: records.filter((record)=>record.status === 'pendiente').map((record)=>record.sourceId || record.id)
+    };
+  }catch(_){ }
+}
+
+function scheduleAgendaPendingRefresh(reason){
+  try{ clearTimeout(agendaViewState.refreshTimer); }catch(_){ }
+  agendaViewState.refreshTimer = setTimeout(()=>{
+    agendaViewState.refreshTimer = null;
+    renderAgendaPending(true);
+  }, reason === 'storage' ? 40 : 90);
+}
+
+function bindAgendaPendingRefresh(){
+  if (agendaViewState.listenersBound) return;
+  agendaViewState.listenersBound = true;
+
+  window.addEventListener('focus', ()=>scheduleAgendaPendingRefresh('focus'));
+  window.addEventListener('pageshow', ()=>scheduleAgendaPendingRefresh('pageshow'));
+  window.addEventListener('storage', (event)=>{
+    if (!event || event.key === AGENDA_STORAGE_KEY || event.key == null) scheduleAgendaPendingRefresh('storage');
+  });
+  document.addEventListener('visibilitychange', ()=>{
+    if (document.visibilityState === 'visible') scheduleAgendaPendingRefresh('visibilitychange');
+  });
+
+  ['a33:data-updated','a33:storage-changed','a33:json-imported','a33:sync-complete','a33:cloud-sync-complete'].forEach((eventName)=>{
+    window.addEventListener(eventName, ()=>scheduleAgendaPendingRefresh(eventName));
+  });
+}
+
 // --- Navigation
 function navigateToPedidos(){
   try{
@@ -6828,6 +7220,15 @@ async function init(){
   // Header: hoy
   setText('cmdToday', state.today);
 
+  // Agenda: lectura inmediata e independiente del IndexedDB del POS.
+  renderAgendaPending(true);
+  bindAgendaPendingRefresh();
+
+  const openAgendaBtn = $('btnOpenAgenda');
+  if (openAgendaBtn) openAgendaBtn.addEventListener('click', ()=>agendaNavigate(''));
+  const goAgendaBtn = $('btnGoAgenda');
+  if (goAgendaBtn) goAgendaBtn.addEventListener('click', ()=>agendaNavigate(''));
+
   // Recomendaciones (cache desde Analítica)
   renderRecos();
 
@@ -6880,8 +7281,6 @@ async function init(){
   bind('btnGoSell', 'vender');
   bind('btnGoCaja', 'efectivo');
   bind('btnGoResumen', 'resumen');
-  bind('btnGoChecklist', 'checklist');
-  bind('btnOpenChecklist', 'checklist');
 
   // Recordatorios: CTA + toggle (solo lectura)
   const goRem = $('btnGoPosReminders');

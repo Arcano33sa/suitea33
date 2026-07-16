@@ -4,10 +4,10 @@ const DB_VER = 35; // Productos por productId: índice de nombre no único
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.91';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.93';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m29');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m31');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -11574,6 +11574,9 @@ function setTab(name){
   // Compatibilidad: si llega "vender" por URL/hash/estado viejo, mapear a "venta".
   try{
     if (name === 'vender') name = 'venta';
+    // Compatibilidad legacy: Checklist ya no tiene interfaz en POS.
+    // Cualquier ruta/estado antiguo vuelve de forma segura a Vender.
+    if (name === 'checklist') name = 'venta';
   }catch(_){ }
 
   // Checklist: antes de salir, intentar persistir texto pendiente (best-effort)
@@ -11633,7 +11636,6 @@ const tabs = $$('.tab');
   if (name==='inventario') renderInventario();
   if (name==='efectivo') renderEfectivoTab().catch(err=>console.error(err));
   if (name==='calculadora') onOpenPosCalculatorTab().catch(err=>console.error(err));
-  if (name==='checklist') renderChecklistTab().catch(err=>console.error(err));
   if (name==='venta') {
     syncExchangeRateInputs().catch(err=>console.error(err));
     try{ setupSaleCashTenderUIOnce(); refreshSaleCashTenderUiPOS({ forceFx:true }); }catch(_){ }
@@ -11643,41 +11645,31 @@ const tabs = $$('.tab');
 // --- Deep-link mínimo (Centro de Mando -> POS)
 function getTabFromUrlPOS(){
   try{
-    const allowed = new Set(['venta','inventario','eventos','efectivo','resumen','extras','calculadora','checklist']);
-    // Querystring
-    const qs = new URLSearchParams(window.location.search || '');
-    const qTab = (qs.get('tab') || '').trim();
-    if (qTab){
-      const qt = (qTab === 'vender') ? 'venta' : (qTab === 'productos' ? 'extras' : qTab);
-      if (allowed.has(qt)) return qt;
-    }
+    const allowed = new Set(['venta','inventario','eventos','efectivo','resumen','extras','calculadora']);
+    const normalizeLegacyTab = (raw)=>{
+      const value = String(raw || '').trim();
+      if (!value) return null;
+      if (value === 'vender') return 'venta';
+      if (value === 'productos') return 'extras';
+      // Checklist fue retirado visualmente: rutas viejas nunca dejan pantalla vacía.
+      if (value === 'checklist' || value === 'checklist-reminders' || value === 'checklist-reminders-card' || value.startsWith('checklist-reminders')) return 'venta';
+      return allowed.has(value) ? value : null;
+    };
 
-    // Hash: #tab=venta o #venta (compat: #tab=vender / #vender)
+    const qs = new URLSearchParams(window.location.search || '');
+    const fromQuery = normalizeLegacyTab(qs.get('tab'));
+    if (fromQuery) return fromQuery;
+
     const h = (window.location.hash || '').replace(/^#/, '').trim();
     if (!h) return null;
-    // Alias: CdM → Recordatorios (abre Checklist)
-    if (h === 'checklist-reminders' || h === 'checklist-reminders-card') return 'checklist';
-    if (h.startsWith('checklist-reminders')) return 'checklist';
-    if (h.startsWith('tab=')){
-      const ht = h.slice(4).trim();
-      const htab = (ht === 'vender') ? 'venta' : (ht === 'productos' ? 'extras' : ht);
-      if (allowed.has(htab)) return htab;
-    }
-    const hh = (h === 'vender') ? 'venta' : (h === 'productos' ? 'extras' : h);
-    if (allowed.has(hh)) return hh;
+    const fromHash = normalizeLegacyTab(h.startsWith('tab=') ? h.slice(4) : h);
+    if (fromHash) return fromHash;
   }catch(_){ }
   return null;
 }
 
 function getDeepScrollTargetFromUrlPOS(){
-  try{
-    const h = (window.location.hash || '').replace(/^#/, '').trim();
-    if (!h) return null;
-    // CdM: #checklist-reminders -> scroll a la card real
-    if (h === 'checklist-reminders' || h === 'checklist-reminders-card' || h.startsWith('checklist-reminders')){
-      return 'checklist-reminders-card';
-    }
-  }catch(_){ }
+  // Compatibilidad: los deep-links antiguos de Checklist se redirigen a Vender.
   return null;
 }
 
@@ -22534,12 +22526,7 @@ async function init(){
   try{
     const deepTab = getTabFromUrlPOS();
     if (deepTab) setTab(deepTab);
-    // Deep-link extra: #checklist-reminders -> checklist + scroll a la card
-    const scrollTarget = getDeepScrollTargetFromUrlPOS();
-    if (scrollTarget){
-      setTab('checklist');
-      scheduleScrollToIdPOS(scrollTarget);
-    }
+    // Las rutas antiguas de Checklist ya son normalizadas por getTabFromUrlPOS().
   }catch(_){ }
 
   // Vender tab
@@ -22750,7 +22737,6 @@ async function init(){
     }catch(e){}
     try{ await renderSummaryDailyCloseCardPOS(); }catch(e){}
     try{ await refreshSaleStockLabel(); }catch(e){}
-    try{ if (window.__A33_ACTIVE_TAB === 'checklist') await renderChecklistTab(); }catch(e){}
     try{ if (window.__A33_ACTIVE_TAB === 'efectivo') await renderEfectivoTab(); }catch(e){}
   });
   const btnGoCaja = document.getElementById('btn-go-caja');

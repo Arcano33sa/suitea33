@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.91&r=18">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.93&r=19">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -30,17 +30,17 @@
     }
   })();
 </script>
-<link rel="stylesheet" href="styles.css?v=4.20.91&r=14">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.91&r=13" />
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.91&r=13" />
-  <script src="/assets/js/a33-theme.js?v=4.20.91&r=13"></script>
+<link rel="stylesheet" href="styles.css?v=4.20.93&r=16">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.93&r=13" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.93&r=13" />
+  <script src="/assets/js/a33-theme.js?v=4.20.93&r=13"></script>
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">POS · Eventos</div>
     <div class="a33-right">
-      <div class="a33-version" id="a33-version-text" data-a33-version="1" data-a33-fallback="v4.20.91">v...</div>
+      <div class="a33-version" id="a33-version-text" data-a33-version="1" data-a33-fallback="v4.20.93">v...</div>
     </div>
   </header>
 <div id="offlineBar" class="offline">Trabajando sin conexión</div>
@@ -1230,98 +1230,7 @@
     </div>
   </section>
 
-  <section id="tab-checklist" class="tab card" style="display:none">
-    <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2 style="margin:0;">Checklist</h2>
-        <div class="muted" style="margin-top:6px;">Tres fases: Pre-evento, Evento y Cierre. Editable por evento; checks + notas por día.</div>
-      </div>
-      <div class="row" style="margin:0; gap:8px; align-items:flex-end;">
-        <div>
-          <label for="checklist-event">Evento</label>
-          <select id="checklist-event"></select>
-        </div>
-        <button id="checklist-go-events" class="btn-pill" type="button" title="Ir a Eventos">Eventos</button>
-      </div>
-    </div>
-
-    <div id="checklist-empty" class="warn" style="display:none"></div>
-
-    <div class="checklist-grid" id="checklist-grid" style="display:none">
-      <div class="card inner">
-        <div class="chk-head">
-          <h3>PRE-EVENTO</h3>
-          <button id="chk-add-pre" type="button" class="btn-mini chk-add" data-section="pre">+ Agregar ítem</button>
-        </div>
-        <div class="chk-list" id="chk-pre"></div>
-      </div>
-
-      <div class="card inner">
-        <div class="chk-head">
-          <h3>EVENTO</h3>
-          <button id="chk-add-evento" type="button" class="btn-mini chk-add" data-section="evento">+ Agregar ítem</button>
-        </div>
-        <div class="chk-list" id="chk-evento"></div>
-      </div>
-
-      <div class="card inner">
-        <div class="chk-head">
-          <h3>CIERRE</h3>
-          <button id="chk-add-cierre" type="button" class="btn-mini chk-add" data-section="cierre">+ Agregar ítem</button>
-        </div>
-        <div class="chk-list" id="chk-cierre"></div>
-      </div>
-    </div>
-
-    <div class="card inner" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">
-        <div style="flex:1; min-width:240px">
-          <label for="checklist-notes">Notas del día</label>
-          <textarea id="checklist-notes" rows="3" placeholder="Ej: llevar hielo extra, cables, cambio..."></textarea>
-        </div>
-        <div style="min-width:220px">
-          <label>&nbsp;</label>
-          <button id="checklist-reset-day" type="button" class="btn-warn btn-pill">Reiniciar checks del día</button>
-          <div class="info"><small>Solo desmarca. No borra ítems.</small></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card inner" id="checklist-reminders-card" style="margin-top:12px">
-      <div class="rem-head">
-        <div>
-          <h3 style="margin:0">RECORDATORIOS</h3>
-          <div class="muted" style="margin-top:6px">Pendientes: <b><span id="checklist-reminder-count">0</span></b></div>
-        </div>
-        <div class="rem-head-meta muted" style="margin-left:auto">Hoy + Próximos 6 días</div>
-      </div>
-
-      <div class="rem-add" role="group" aria-label="Agregar recordatorio">
-        <input id="checklist-reminder-text" class="rem-text" placeholder="Ej: llevar hielo, cables, cambio…">
-        <input id="checklist-reminder-date" class="rem-date" type="date" title="Fecha (obligatoria)">
-        <input id="checklist-reminder-due" class="rem-due" type="time" title="Hora (opcional)">
-        <select id="checklist-reminder-priority" class="rem-priority" title="Prioridad (opcional)">
-          <option value="">Prioridad</option>
-          <option value="high">Alta</option>
-          <option value="med">Media</option>
-          <option value="low">Baja</option>
-        </select>
-        <button id="checklist-reminder-add" class="btn-ok btn-pill btn-pill-mini" type="button">Agregar</button>
-      </div>
-
-      <div id="checklist-reminder-list" class="rem-list" aria-label="Pendientes"></div>
-
-      <div class="rem-done">
-        <button id="checklist-reminder-done-toggle" class="btn-mini btn-pill btn-pill-mini" type="button" aria-expanded="false">Completados (0) ▾</button>
-        <div id="checklist-reminder-done-wrap" class="rem-done-wrap" style="display:none">
-          <div id="checklist-reminder-done-list" class="rem-list rem-list-done" aria-label="Completados"></div>
-          <div class="actions end" style="margin-top:8px">
-            <button id="checklist-reminder-clear-done" class="btn-warn btn-pill btn-pill-mini" type="button">Limpiar completados</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <!-- Checklist POS retirado de la interfaz. Datos y compatibilidad legacy se conservan internamente. -->
 
 </div>
 
@@ -1682,25 +1591,24 @@
 <button data-tab="resumen">Resumen</button>
   <button data-tab="extras">Extras</button>
   <button data-tab="calculadora">Calculadora</button>
-  <button data-tab="checklist">Checklist</button>
 </nav>
 
-<script src="./vendor/xlsx.full.min.js?v=4.20.91&r=13"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.91&r=51"></script>
+<script src="./vendor/xlsx.full.min.js?v=4.20.93&r=13"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.93&r=52"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.91&r=20"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.91&r=14"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.91&r=15"></script>
-<script src="/assets/js/a33-build.js?v=4.20.91&r=14"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.93&r=20"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.93&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.93&r=15"></script>
+<script src="/assets/js/a33-build.js?v=4.20.93&r=14"></script>
 <script>
   (function(){
     try{
       const relObj = (window.A33_RELEASE || {});
-      const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.91';
+      const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.93';
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m29').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m31').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1709,7 +1617,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m29')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m31')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1717,11 +1625,11 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.91&r=27"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.91&r=13"></script>
+<script src="app.js?v=4.20.93&r=28"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.93&r=13"></script>
 <script>
   (function(){
-    const BUILD = (window.A33_VERSION || '4.20.91').toString();
+    const BUILD = (window.A33_VERSION || '4.20.93').toString();
     const REV = (window.A33_ASSET_REV || '8').toString();
     const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV);
     if (!('serviceWorker' in navigator)) return;

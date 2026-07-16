@@ -247,7 +247,7 @@ tfoot td{font-weight:700}
 
   /* Grid */
   display:grid;
-  grid-template-columns:repeat(8, minmax(0,1fr));
+  grid-template-columns:repeat(7, minmax(0,1fr));
   gap:6px;
   padding:9px;
   touch-action: manipulation;
@@ -288,7 +288,7 @@ tfoot td{font-weight:700}
   background:var(--tab-gold);
 }
 
-/* Si el ancho es insuficiente: 2 filas 4 + 3 (sin overflow-x) */
+/* Si el ancho es insuficiente: 2 filas 4 + 3, ambas completas (sin overflow-x) */
 @media (max-width: 620px){
   .tabbar{
     grid-template-columns:repeat(12, minmax(0,1fr));
@@ -296,10 +296,14 @@ tfoot td{font-weight:700}
     border-radius:20px;
   }
   .tabbar button{
-    grid-column: span 3; /* 4 botones (12/3) */
+    grid-column: span 3; /* Primera fila: 4 botones */
     font-size:10.5px;
     border-radius:14px;
-  }.tabbar button.active::after{width:16px}
+  }
+  .tabbar button:nth-child(n+5){
+    grid-column: span 4; /* Segunda fila: 3 botones sin hueco */
+  }
+  .tabbar button.active::after{width:16px}
 }
 
 /* Espaciador para que el contenido no quede debajo de la barra */

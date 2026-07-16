@@ -8,10 +8,10 @@
   <meta name="theme-color" content="#7b1818" />
 
   
-<script src="/assets/js/a33-theme.js?v=4.20.91&r=7"></script>
-<link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.91&r=7" />
-  <link rel="stylesheet" href="style.css?v=4.20.91&r=7" />
-<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.91&r=7" />
+<script src="/assets/js/a33-theme.js?v=4.20.93&r=7"></script>
+<link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.93&r=7" />
+  <link rel="stylesheet" href="style.css?v=4.20.93&r=8" />
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.93&r=7" />
 </head>
 <body>
   <!-- HEADER PREMIUM -->
@@ -20,7 +20,7 @@
     <div class="a33-title">Centro de Mando</div>
     <div class="a33-version">
       <span class="cmd-today-label">Hoy: <b id="cmdToday">—</b></span>
-      <span class="cmd-version" data-a33-version="1" data-a33-fallback="v4.20.91">v...</span>
+      <span class="cmd-version" data-a33-version="1" data-a33-fallback="v4.20.93">v...</span>
     </div>
   </header>
 
@@ -52,6 +52,27 @@
       <div class="cmd-global-list" id="globalActivesList"></div>
     </section>
 
+
+    <!-- AGENDA · PENDIENTES (solo lectura; fuente única: Agenda) -->
+    <section class="cmd-card cmd-agenda" id="agendaPendingBlock" aria-label="Pendientes de Agenda">
+      <div class="cmd-section-head cmd-agenda-head">
+        <div>
+          <div class="cmd-section-title">AGENDA · PENDIENTES</div>
+          <div class="cmd-muted">Vista operativa de solo lectura. Los cambios se realizan dentro de Agenda.</div>
+        </div>
+        <button class="cmd-pill cmd-pill-btn" id="btnOpenAgenda" type="button">Abrir Agenda</button>
+      </div>
+
+      <div class="cmd-agenda-summary" id="agendaPendingSummary" aria-label="Resumen de pendientes">
+        <span class="cmd-agenda-count is-overdue">Vencidos: <b id="agendaCountOverdue">0</b></span>
+        <span class="cmd-agenda-count is-today">Hoy: <b id="agendaCountToday">0</b></span>
+        <span class="cmd-agenda-count is-upcoming">Próximos: <b id="agendaCountUpcoming">0</b></span>
+        <span class="cmd-agenda-count is-undated">Sin fecha: <b id="agendaCountUndated">0</b></span>
+      </div>
+
+      <div class="cmd-agenda-empty" id="agendaPendingEmpty" hidden>No hay pendientes en Agenda.</div>
+      <div class="cmd-agenda-groups" id="agendaPendingGroups"></div>
+    </section>
 
     <!-- RECOMENDACIONES HOY (desde Analítica: cache a33_analytics_recos_v1) -->
     <section class="cmd-recos" id="recosBlock" aria-label="Recomendaciones hoy">
@@ -156,7 +177,7 @@
         <button class="cmd-btn cmd-btn-primary" id="btnGoSell" type="button">Ir a POS (Vender)</button>
         <button class="cmd-btn" id="btnGoCaja" type="button">Ir a Efectivo</button>
         <button class="cmd-btn" id="btnGoResumen" type="button">Ir a Resumen</button>
-        <button class="cmd-btn" id="btnGoChecklist" type="button">Abrir Checklist</button>
+        <button class="cmd-btn" id="btnGoAgenda" type="button">Abrir Agenda</button>
       </div>
       <div class="cmd-muted cmd-quick-note" id="navNote">—</div>
     </section>
@@ -325,12 +346,12 @@
     </div>
   </div>
   <!-- Arranque libre -->
-  <script src="/assets/js/a33-release.js?v=4.20.91&r=51"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.93&r=52"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.91&r=20"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.91&r=15"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.93&r=20"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.93&r=15"></script>
 
-  <script src="app.js?v=4.20.91&r=9"></script>
+  <script src="app.js?v=4.20.93&r=10"></script>
   <!-- Sync report modal -->
   <div class="cmd-modal" id="syncReport" hidden>
     <div class="cmd-modal-overlay" data-close="1"></div>
