@@ -1,7 +1,7 @@
 /* Suite A33 — Service Worker (Calculadora de Producción) */
-try { importScripts('/assets/js/a33-release.js?v=4.20.91&r=51'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.92&r=52'); } catch (e) {}
 
-const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.91';
+const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.92';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
 const MODULE = 'calculadora';
 const MODULE_CACHE_REV = '2';
@@ -9,19 +9,19 @@ const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.91&r=12',
-  './manifest.webmanifest?v=4.20.91&r=10',
+  './index.html?v=4.20.92&r=12',
+  './manifest.webmanifest?v=4.20.92&r=10',
   './logo-icon-192.png',
   './logo-icon-512.png',
-  '/assets/js/a33-release.js?v=4.20.91&r=51',
-  '/assets/js/a33-storage.js?v=4.20.91&r=20',
-  '/assets/js/a33-production.js?v=4.20.91&r=4',
-  '/assets/js/a33-currency.js?v=4.20.91&r=14',
-  '/assets/js/a33-presentations.js?v=4.20.91&r=15',
-  '/assets/js/a33-input-ux.js?v=4.20.91&r=7',
-  '/assets/js/a33-theme.js?v=4.20.91&r=7',
-  '/assets/css/a33-header.css?v=4.20.91&r=7',
-  '/assets/css/a33-theme.css?v=4.20.91&r=7'
+  '/assets/js/a33-release.js?v=4.20.92&r=52',
+  '/assets/js/a33-storage.js?v=4.20.92&r=20',
+  '/assets/js/a33-production.js?v=4.20.92&r=4',
+  '/assets/js/a33-currency.js?v=4.20.92&r=14',
+  '/assets/js/a33-presentations.js?v=4.20.92&r=15',
+  '/assets/js/a33-input-ux.js?v=4.20.92&r=7',
+  '/assets/js/a33-theme.js?v=4.20.92&r=7',
+  '/assets/css/a33-header.css?v=4.20.92&r=7',
+  '/assets/css/a33-theme.css?v=4.20.92&r=7'
 ];
 
 function sameOrigin(url){ try { return url.origin === self.location.origin; } catch (_) { return false; } }
@@ -40,7 +40,9 @@ self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(PRECACHE_URLS);
-    await self.skipWaiting();
+    // En actualizaciones, permanecer en waiting hasta que Configuración → PWA confirme la aplicación.
+    // En la primera instalación, activar inmediatamente porque no existe un SW anterior.
+    try{ if (!self.registration.active) await self.skipWaiting(); }catch(_){ }
   })());
 });
 
@@ -71,7 +73,7 @@ self.addEventListener('fetch', (event) => {
       return response;
     } catch (_) {
       return (await cache.match(event.request))
-        || (isNavigation ? (await cache.match('./index.html?v=4.20.91&r=12')) || (await cache.match('./')) : null)
+        || (isNavigation ? (await cache.match('./index.html?v=4.20.92&r=12')) || (await cache.match('./')) : null)
         || new Response('Offline', { status:503, headers:{'Content-Type':'text/plain; charset=utf-8'} });
     }
   })());
