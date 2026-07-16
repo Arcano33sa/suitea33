@@ -4,10 +4,10 @@ const DB_VER = 35; // Productos por productId: índice de nombre no único
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.87';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.91';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m30');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m29');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -6156,25 +6156,17 @@ function reempaqueValidateMultipleRecordPOS(record){
 
 function reempaqueNormalizeProductRefPOS(ref, products){
   const list = Array.isArray(products) ? products : [];
-  let found = null;
-  const refId = reempaqueProductIdFromRefPOS(ref);
+  const identity = resolveCatalogProductIdentityPOS(ref, list, { allowLegacy:true });
   const refName = reempaqueProductNameFromRefPOS(ref);
-
-  if (refId !== null){
-    found = list.find(p => p && String(p.id) === String(refId)) || null;
-  }
-  if (!found && refName){
-    const refKey = (typeof normName === 'function') ? normName(refName) : refName.toLowerCase().trim();
-    found = list.find(p => p && (((typeof normName === 'function') ? normName(p.name || p.nombre || '') : String(p.name || p.nombre || '').toLowerCase().trim()) === refKey)) || null;
-  }
-
-  const base = found || ((ref && typeof ref === 'object') ? ref : {});
+  const base = identity.ok ? identity.product : ((ref && typeof ref === 'object') ? ref : {});
   const name = String((base && (base.name || base.nombre || base.productName || base.label)) || refName || '').trim();
-  const id = (base && (base.id ?? base.productId ?? base.productoId)) ?? refId;
+  const id = identity.ok ? identity.internalId : reempaqueProductIdFromRefPOS(ref);
   const capacityMl = reempaqueCapacityMlFromProductPOS(base && (base.name || base.nombre || base.productName) ? base : { name });
 
   return {
     id: (id === null || typeof id === 'undefined' || id === '') ? null : id,
+    productId: identity.ok ? identity.stableId : '',
+    internalId: identity.ok ? identity.internalId : null,
     name,
     capacityMl: capacityMl > 0 ? capacityMl : null,
     raw: base || null
@@ -9133,145 +9125,186 @@ function catalogProductInternalIdPOS(product){
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function findCatalogProductByStableIdPOS(products, productId){
-  const target = String(productId == null ? '' : productId).trim();
-  if (!target) return null;
-  return (Array.isArray(products) ? products : []).find((product) => catalogProductStableIdPOS(product) === target) || null;
+// Resolución centralizada de identidad de Producto.
+// Catálogos → Productos sigue siendo la única fuente oficial. Esta capa únicamente
+// traduce referencias estables/legacy para consumidores que todavía usan el id interno.
+function productIdentityNormPOS(value){
+  return String(value == null ? '' : value).trim();
 }
 
+function productIdentityNameKeyPOS(value){
+  return productIdentityNormPOS(value)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/\s+/g, ' ');
+}
 
-function buildCatalogProductIdentityIndexPOS(products){
-  const list = (Array.isArray(products) ? products : []).filter(p => p && typeof p === 'object');
+function buildProductIdentityIndexPOS(products){
+  const list = Array.isArray(products) ? products.filter(Boolean) : [];
   const byStableId = new Map();
   const byInternalId = new Map();
   const byLetter = new Map();
   const byName = new Map();
 
+  const addUnique = (map, key, product) => {
+    if (!key) return;
+    if (!map.has(key)) map.set(key, product);
+    else if (map.get(key) !== product) map.set(key, null); // fallback ambiguo: no resolver
+  };
+
   for (const product of list){
     const stableId = catalogProductStableIdPOS(product);
     const internalId = catalogProductInternalIdPOS(product);
-    const letter = String(product.letra ?? product.Letra ?? product.letter ?? '').trim().toUpperCase();
-    const name = String(product.name || product.nombre || product.productName || '').trim();
-    if (stableId && !byStableId.has(stableId)) byStableId.set(stableId, product);
-    if (internalId && !byInternalId.has(internalId)) byInternalId.set(internalId, product);
-    if (letter && !byLetter.has(letter)) byLetter.set(letter, product);
-    if (name){
-      const key = normName(name);
-      if (key && !byName.has(key)) byName.set(key, product);
-    }
+    const letter = productIdentityNormPOS(product.letra ?? product.Letra ?? product.letter).toUpperCase();
+    const nameKey = productIdentityNameKeyPOS(product.name ?? product.nombre ?? product.productName);
+    if (stableId) byStableId.set(stableId, product);
+    if (internalId) byInternalId.set(String(internalId), product);
+    addUnique(byLetter, letter, product);
+    addUnique(byName, nameKey, product);
   }
 
-  return { list, byStableId, byInternalId, byLetter, byName };
+  return { __a33ProductIdentityIndex:true, list, byStableId, byInternalId, byLetter, byName };
 }
 
-function resolveCatalogProductIdentityPOS(reference, productsOrIndex){
-  const index = productsOrIndex && productsOrIndex.byStableId instanceof Map
-    ? productsOrIndex
-    : buildCatalogProductIdentityIndexPOS(productsOrIndex);
-  const ref = reference && typeof reference === 'object' ? reference : null;
-  const primitive = ref ? '' : String(reference == null ? '' : reference).trim();
-  const stableRefs = [];
-  const internalRefs = [];
+function collectProductIdentityCandidatesPOS(ref){
+  const stableIds = [];
+  const internalIds = [];
   const letters = [];
   const names = [];
-
-  const addStable = (value) => {
-    const raw = String(value == null ? '' : value).trim();
-    if (raw && !stableRefs.includes(raw)) stableRefs.push(raw);
+  const seen = new Set();
+  const push = (arr, value) => {
+    const raw = productIdentityNormPOS(value);
+    if (raw && !arr.includes(raw)) arr.push(raw);
   };
-  const addInternal = (value) => {
+  const pushInternal = (value) => {
     const n = Number(value);
-    if (Number.isFinite(n) && n > 0 && !internalRefs.includes(n)) internalRefs.push(n);
-  };
-  const addLetter = (value) => {
-    const raw = String(value == null ? '' : value).trim().toUpperCase();
-    if (raw && !letters.includes(raw)) letters.push(raw);
-  };
-  const addName = (value) => {
-    const raw = String(value == null ? '' : value).trim();
-    const key = raw ? normName(raw) : '';
-    if (key && !names.includes(key)) names.push(key);
-  };
-
-  if (primitive){
-    addStable(primitive);
-    addInternal(primitive);
-  }
-
-  const collect = (value, allowGenericId=true) => {
-    if (!value || typeof value !== 'object') return;
-    const addProductRef = (candidate) => { addStable(candidate); addInternal(candidate); };
-    addProductRef(catalogProductStableIdPOS(value));
-    addProductRef(value.productId);
-    addProductRef(value.productoId);
-    addProductRef(value.catalogProductId);
-    addProductRef(value.skuProductId);
-    addProductRef(value.idProducto);
-    addInternal(value.productInternalId);
-    addInternal(value.catalogInternalId);
-    addInternal(value.internalId);
-    addInternal(value.legacyId);
-    if (allowGenericId){
-      const rawId = String(value.id == null ? '' : value.id).trim();
-      if (/^\d+$/.test(rawId)) addInternal(rawId);
-      else addStable(rawId);
+    if (Number.isFinite(n) && n > 0){
+      const raw = String(n);
+      if (!internalIds.includes(raw)) internalIds.push(raw);
     }
-    addLetter(value.letra ?? value.Letra ?? value.letter);
-    addName(value.productName ?? value.productNameSnapshot ?? value.nombreSnapshot ?? value.name ?? value.nombre ?? value.label);
   };
 
-  if (ref){
-    collect(ref, true);
-    collect(ref.productSnapshot, false);
-    collect(ref.product, true);
-    collect(ref.producto, true);
-    collect(ref.targetProduct, true);
-    collect(ref.sourceProduct, true);
-  }
+  const visit = (value, depth=0) => {
+    if (value == null || depth > 2) return;
+    if (typeof value !== 'object'){
+      push(stableIds, value);
+      pushInternal(value);
+      return;
+    }
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    const stableFields = [
+      value.productId, value.productoId, value.catalogProductId, value.idProducto,
+      value.stableProductId, value.productStableId
+    ];
+    stableFields.forEach((candidate) => {
+      push(stableIds, candidate);
+      pushInternal(candidate); // productId legacy puede ser el id autoincremental
+    });
+
+    [
+      value.productInternalId, value.catalogInternalId, value.internalId,
+      value.legacyProductId, value.idInternoProducto, value.id
+    ].forEach(pushInternal);
+
+    push(letters, value.letra ?? value.Letra ?? value.letter ?? value.productLetter);
+    push(names, value.productNameSnapshot ?? value.nombreSnapshot ?? value.productName ?? value.name ?? value.nombre);
+
+    [
+      value.productSnapshot, value.product, value.catalogProduct,
+      value.targetProduct, value.sourceProduct,
+      value.productoDestinoRef, value.productoOrigenRef
+    ].forEach((nested) => visit(nested, depth + 1));
+  };
+
+  visit(ref);
+  return { stableIds, internalIds, letters, names };
+}
+
+function resolveCatalogProductIdentityPOS(ref, productsOrIndex, options={}){
+  const index = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+    ? productsOrIndex
+    : buildProductIdentityIndexPOS(productsOrIndex);
+  const candidates = collectProductIdentityCandidatesPOS(ref);
 
   let product = null;
   let matchedBy = '';
-  for (const key of stableRefs){
-    product = index.byStableId.get(key) || null;
+  for (const stableId of candidates.stableIds){
+    product = index.byStableId.get(stableId) || null;
     if (product){ matchedBy = 'productId'; break; }
   }
   if (!product){
-    for (const key of internalRefs){
-      product = index.byInternalId.get(key) || null;
+    for (const internalId of candidates.internalIds){
+      product = index.byInternalId.get(internalId) || null;
       if (product){ matchedBy = 'internalId'; break; }
     }
   }
-  if (!product){
-    for (const key of letters){
-      product = index.byLetter.get(key) || null;
-      if (product){ matchedBy = 'letra'; break; }
+
+  const allowLegacy = options.allowLegacy !== false;
+  if (!product && allowLegacy){
+    for (const letterRaw of candidates.letters){
+      const letter = productIdentityNormPOS(letterRaw).toUpperCase();
+      const found = index.byLetter.get(letter);
+      if (found){ product = found; matchedBy = 'letter_legacy'; break; }
     }
   }
-  if (!product){
-    for (const key of names){
-      product = index.byName.get(key) || null;
-      if (product){ matchedBy = 'nombre_legacy'; break; }
+  if (!product && allowLegacy){
+    for (const nameRaw of candidates.names){
+      const nameKey = productIdentityNameKeyPOS(nameRaw);
+      const found = index.byName.get(nameKey);
+      if (found){ product = found; matchedBy = 'name_legacy'; break; }
     }
   }
-  if (!product) return null;
+
+  if (!product){
+    return {
+      ok:false, product:null, stableId:'', internalId:null, name:'', letter:'',
+      matchedBy:'unresolved', index
+    };
+  }
 
   return {
+    ok:true,
     product,
-    stableId: catalogProductStableIdPOS(product),
-    internalId: catalogProductInternalIdPOS(product),
-    letter: String(product.letra ?? product.Letra ?? product.letter ?? '').trim().toUpperCase(),
-    name: String(product.name || product.nombre || product.productName || '').trim(),
-    matchedBy
+    stableId:catalogProductStableIdPOS(product),
+    internalId:catalogProductInternalIdPOS(product),
+    name:catalogProductSnapshotNamePOS(product),
+    letter:productIdentityNormPOS(product.letra ?? product.Letra ?? product.letter).toUpperCase(),
+    matchedBy,
+    index
   };
 }
 
-function catalogProductIdentityMatchesRefPOS(identity, value){
-  if (!identity) return false;
-  const raw = String(value == null ? '' : value).trim();
-  if (!raw) return false;
-  if (identity.stableId && raw === identity.stableId) return true;
-  const n = Number(raw);
-  return !!(identity.internalId && Number.isFinite(n) && n === identity.internalId);
+function productIdentityMatchesRefPOS(identity, ref){
+  if (!identity || !identity.ok || ref == null) return false;
+  if (typeof ref !== 'object'){
+    const raw = productIdentityNormPOS(ref);
+    if (identity.stableId && raw === String(identity.stableId)) return true;
+    const n = Number(ref);
+    return !!(identity.internalId && Number.isFinite(n) && n === Number(identity.internalId));
+  }
+
+  const stableRefs = [
+    ref.productId, ref.productoId, ref.catalogProductId, ref.idProducto,
+    ref.stableProductId, ref.productStableId,
+    ref.productSnapshot && ref.productSnapshot.productId
+  ].map(productIdentityNormPOS).filter(Boolean);
+  if (identity.stableId && stableRefs.includes(String(identity.stableId))) return true;
+
+  const internalRefs = [
+    ref.productInternalId, ref.catalogInternalId, ref.internalId, ref.idInternoProducto,
+    ref.productSnapshot && ref.productSnapshot.internalId
+  ];
+  // En inventory/reempaque legacy, productId puede contener el id interno numérico.
+  const legacyProductId = Number(ref.productId ?? ref.productoId);
+  if (Number.isFinite(legacyProductId) && legacyProductId > 0) internalRefs.push(legacyProductId);
+  return !!(identity.internalId && internalRefs.some((value) => Number(value) === Number(identity.internalId)));
+}
+
+function findCatalogProductByStableIdPOS(products, productId){
+  const target = String(productId == null ? '' : productId).trim();
+  if (!target) return null;
+  return (Array.isArray(products) ? products : []).find((product) => catalogProductStableIdPOS(product) === target) || null;
 }
 
 function saleStableProductIdPOS(sale){
@@ -9974,14 +10007,12 @@ function lotesPOSQtyFromContractRowPOS(row){
   return 0;
 }
 
-function resolveProductFromLoteContractRowPOS(row, productsOrIndex){
-  const identity = resolveCatalogProductIdentityPOS(row, productsOrIndex);
-  if (identity && identity.product) return identity.product;
+function resolveProductFromLoteContractRowPOS(row, products){
+  const list = Array.isArray(products) ? products : [];
+  const identity = resolveCatalogProductIdentityPOS(row, list, { allowLegacy:true });
+  if (identity.ok) return identity.product;
 
-  // Compatibilidad histórica final: campos legacy de presentación, solo si no existe identidad confiable.
-  const list = productsOrIndex && productsOrIndex.list
-    ? productsOrIndex.list
-    : (Array.isArray(productsOrIndex) ? productsOrIndex : []);
+  // Compatibilidad muy antigua: legacyField representa P/M/D/L/G, no una identidad oficial.
   const legacyId = String(row && (row.legacyId ?? row.legacyField ?? row.field) || '').trim().toLowerCase();
   if (legacyId){
     const byLegacy = list.find(p => p && mapProductNameToFinishedId(p.name || p.nombre || '') === legacyId);
@@ -10242,14 +10273,16 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
   const saleName = (sale) => baseName(getSaleProductNameSnapshotPOS(sale) || (sale && (sale.productName || sale.name || sale.producto || sale.product)) || '');
 
   const isA33CostableSale = (s) => {
-    if (!s || s.isExtra) return false;
+    if (!s) return false;
+    const lineCost = getSaleLineCostSnapshotPOS(s);
+    const hasCostSnapshot = Math.abs(Number(lineCost || 0)) > 1e-9 || getSaleCostUnitSnapshotPOS(s) > 0;
+    if (hasCostSnapshot) return true;
+    if (s.isExtra) return false;
     if (s.vaso === true) return true;
     const bn = saleName(s);
     if (mapProductNameToPresId(bn)) return true;
-    const lineCost = getSaleLineCostSnapshotPOS(s);
-    const hasCostSnapshot = Math.abs(Number(lineCost || 0)) > 1e-9 || getSaleCostUnitSnapshotPOS(s) > 0;
     const hasDynamicProductId = saleProductIdForInventoryPOS(s) != null;
-    return !!(hasCostSnapshot || hasDynamicProductId);
+    return !!hasDynamicProductId;
   };
 
   const addBreakdown = (s, isCourtesy, lineCost) => {
@@ -10298,16 +10331,16 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
     const qty = Number(s.qty || 0);
     const absQty = Math.abs(qty || 0);
     const unitPrice = getSaleUnitPriceSnapshotPOS(s);
-    const saleSign = (s.isReturn || qty < 0) ? -1 : 1;
-    const discountLine = getSaleDiscountTotalPOS(s) * saleSign;
+    const sign = (s.isReturn || qty < 0) ? -1 : 1;
+    const discountLine = getSaleDiscountTotalPOS(s) * sign;
     if (s.isReturn || qty < 0){ returnQty += absQty; returnTotal += Math.abs(total || 0); }
 
-    // Cortesías: ingreso real cero; valor comercial únicamente informativo.
+    // Cortesías: valor comercial informativo, ingreso real cero y costo real separado.
     if (courtesy){
       courtesyQty += absQty;
-      courtesyValue += round2((unitPrice || 0) * absQty * saleSign);
+      courtesyValue += round2((unitPrice || 0) * absQty * sign);
     } else {
-      gross += round2((unitPrice || 0) * absQty * saleSign);
+      gross += round2((unitPrice || 0) * absQty * sign);
       discountTotal += round2(discountLine);
       paidQty += absQty;
       const pay = normalizePaymentMethodPOS(s.payment || '') || 'otros';
@@ -13781,43 +13814,76 @@ function saleCostFromFieldsPOS(obj){
   return 0;
 }
 
-function getSaleCostUnitSnapshotPOS(sale){
-  if (!sale || typeof sale !== 'object') return 0;
-  try{
-    if (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveUnitCost === 'function'){
-      return round2(globalThis.A33SaleCost.resolveUnitCost(sale));
-    }
-  }catch(_){ }
-  const candidates = [
-    sale.costPerUnit, sale.costUnitSnapshot, sale.unitCostSnapshot, sale.costoUnitarioSnapshot,
-    sale.costoUnitario, sale.unitCost, sale.costUnit,
-    sale.productSnapshot && sale.productSnapshot.unitCost,
-    sale.productSnapshot && sale.productSnapshot.costPerUnit,
-    sale.productSnapshot && sale.productSnapshot.costoUnitario
+function resolveSaleCostSnapshotPOS(sale){
+  if (!sale || typeof sale !== 'object') return { unitCost: 0, lineCost: 0, source: 'sin_costo' };
+
+  const qtyRaw = Number(sale.qty ?? sale.cantidad ?? sale.units ?? 0);
+  const qtyAbs = Number.isFinite(qtyRaw) ? Math.abs(qtyRaw) : 0;
+  const isReturn = !!(sale.isReturn || sale.returned || qtyRaw < 0);
+  const sign = isReturn ? -1 : 1;
+
+  const normalizeLine = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || Math.abs(n) <= 1e-9) return null;
+    return round2(sign * Math.abs(n));
+  };
+  const normalizeUnit = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 1e-9) return null;
+    return round2(Math.abs(n));
+  };
+
+  // Prioridad contractual: lineCost -> costTotal -> equivalentes legacy -> costo unitario × cantidad.
+  const totalGroups = [
+    ['lineCost', sale.lineCost],
+    ['costTotal', sale.costTotal],
+    ['costoTotal', sale.costoTotal],
+    ['totalCost', sale.totalCost],
+    ['costoTotalSnapshot', sale.costoTotalSnapshot],
+    ['lineCostSnapshot', sale.lineCostSnapshot],
+    ['costTotalSnapshot', sale.costTotalSnapshot],
+    ['costoLinea', sale.costoLinea],
+    ['costoTotalLinea', sale.costoTotalLinea],
+    ['costoRealTotal', sale.costoRealTotal]
   ];
-  for (const c of candidates){
-    const n = Number(c);
-    if (Number.isFinite(n) && Math.abs(n) > 1e-9) return Math.abs(round2(n));
+
+  for (const [source, value] of totalGroups){
+    const lineCost = normalizeLine(value);
+    if (lineCost == null) continue;
+    const unitCost = qtyAbs > 0 ? round2(Math.abs(lineCost) / qtyAbs) : 0;
+    return { unitCost, lineCost, source };
   }
-  return 0;
+
+  const unitGroups = [
+    ['costPerUnit', sale.costPerUnit],
+    ['costUnitSnapshot', sale.costUnitSnapshot],
+    ['unitCostSnapshot', sale.unitCostSnapshot],
+    ['costoUnitarioSnapshot', sale.costoUnitarioSnapshot],
+    ['costoUnitario', sale.costoUnitario],
+    ['unitCost', sale.unitCost],
+    ['costUnit', sale.costUnit],
+    ['cost', sale.cost],
+    ['productSnapshot.unitCost', sale.productSnapshot && sale.productSnapshot.unitCost],
+    ['productSnapshot.costPerUnit', sale.productSnapshot && sale.productSnapshot.costPerUnit],
+    ['productSnapshot.costoUnitario', sale.productSnapshot && sale.productSnapshot.costoUnitario]
+  ];
+
+  for (const [source, value] of unitGroups){
+    const unitCost = normalizeUnit(value);
+    if (unitCost == null) continue;
+    const lineCost = qtyAbs > 0 ? round2(sign * unitCost * qtyAbs) : 0;
+    return { unitCost, lineCost, source };
+  }
+
+  return { unitCost: 0, lineCost: 0, source: 'sin_costo' };
+}
+
+function getSaleCostUnitSnapshotPOS(sale){
+  return resolveSaleCostSnapshotPOS(sale).unitCost;
 }
 
 function getSaleLineCostSnapshotPOS(sale){
-  if (!sale || typeof sale !== 'object') return 0;
-  try{
-    if (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveLineCost === 'function'){
-      return round2(globalThis.A33SaleCost.resolveLineCost(sale));
-    }
-  }catch(_){ }
-  const direct = [sale.lineCost, sale.costTotal, sale.costoTotal, sale.totalCost, sale.costoTotalSnapshot];
-  for (const c of direct){
-    const n = Number(c);
-    if (Number.isFinite(n) && Math.abs(n) > 1e-9) return round2(n);
-  }
-  const cpu = getSaleCostUnitSnapshotPOS(sale);
-  const qty = Number(sale.qty);
-  if (Math.abs(cpu) > 1e-9 && Number.isFinite(qty)) return round2(cpu * qty);
-  return 0;
+  return resolveSaleCostSnapshotPOS(sale).lineCost;
 }
 
 function buildSaleEconomicSnapshotPOS({ unitPrice, qty, discount, total, unitCost, costSource, courtesy, isReturn }){
@@ -13861,25 +13927,25 @@ function buildSaleEconomicSnapshotPOS({ unitPrice, qty, discount, total, unitCos
   };
 }
 
-async function getLotFifoUnitCostForSalePOS(eventId, productRef, productName, identityIndex){
+async function getLotFifoUnitCostForSalePOS(eventId, productRef, productName, productsOrIndex){
   try{
     const evId = Number(eventId);
     if (!Number.isFinite(evId) || evId <= 0) return 0;
 
-    const index = identityIndex && identityIndex.byStableId instanceof Map
-      ? identityIndex
-      : buildCatalogProductIdentityIndexPOS(await getAll('products'));
-    const identity = productRef && productRef.product && productRef.stableId !== undefined
-      ? productRef
-      : (resolveCatalogProductIdentityPOS(productRef, index)
-        || resolveCatalogProductIdentityPOS({ productId:productRef, productName }, index));
-    if (!identity || (!identity.internalId && !identity.stableId)) return 0;
+    const products = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+      ? productsOrIndex.list
+      : (Array.isArray(productsOrIndex) ? productsOrIndex : await getAll('products'));
+    const index = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+      ? productsOrIndex
+      : buildProductIdentityIndexPOS(products);
+    const identity = resolveCatalogProductIdentityPOS(productRef, index, { allowLegacy:true });
+    if (!identity.ok || (!identity.internalId && !identity.stableId)) return 0;
 
     const entries = await getInventoryEntries(evId);
     let weightedCost = 0;
     let weightedQty = 0;
     for (const e of (Array.isArray(entries) ? entries : [])){
-      if (!e || !catalogProductIdentityMatchesRefPOS(identity, e.productId ?? e.productInternalId)) continue;
+      if (!e || !productIdentityMatchesRefPOS(identity, e)) continue;
       if (e.type !== 'restock') continue;
       const looksLot = !!(e.loteCodigo || e.loteId || e.loteCargaId || e.loteGroupKey || e.source === 'lote');
       if (!looksLot) continue;
@@ -13891,7 +13957,7 @@ async function getLotFifoUnitCostForSalePOS(eventId, productRef, productName, id
     }
     if (weightedQty > 0 && weightedCost > 0) return round2(weightedCost / weightedQty);
 
-    // Segundo intento defensivo: algunos lotes guardan el costo en arcano33_lotes, no en inventory.
+    // Segundo intento defensivo: lotes aún no materializados con costo en inventory.
     const lotes = readLotesLS_POS();
     if (!Array.isArray(lotes) || !lotes.length) return 0;
     let lotWeightedCost = 0;
@@ -13900,8 +13966,8 @@ async function getLotFifoUnitCostForSalePOS(eventId, productRef, productName, id
       if (!l || Number(l.assignedEventId) !== evId) continue;
       const rows = lotesPOSContractRowsPOS(l);
       for (const row of rows){
-        const rowIdentity = resolveCatalogProductIdentityPOS(row, index);
-        if (!rowIdentity || rowIdentity.product !== identity.product) continue;
+        const rowIdentity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
+        if (!rowIdentity.ok || rowIdentity.product !== identity.product) continue;
         const q = lotesPOSQtyFromContractRowPOS(row);
         const c = saleCostFromFieldsPOS(row) || saleCostFromFieldsPOS(l);
         if (!(q > 0) || !(c > 0)) continue;
@@ -13916,24 +13982,25 @@ async function getLotFifoUnitCostForSalePOS(eventId, productRef, productName, id
   return 0;
 }
 
-async function getReempaqueUnitCostForSalePOS(eventId, productRef, identityIndex){
+async function getReempaqueUnitCostForSalePOS(eventId, productRef, productsOrIndex){
   try{
     const evId = Number(eventId);
     if (!Number.isFinite(evId) || evId <= 0) return 0;
-    const index = identityIndex && identityIndex.byStableId instanceof Map
-      ? identityIndex
-      : buildCatalogProductIdentityIndexPOS(await getAll('products'));
-    const identity = productRef && productRef.product && productRef.stableId !== undefined
-      ? productRef
-      : resolveCatalogProductIdentityPOS(productRef, index);
-    if (!identity || (!identity.internalId && !identity.stableId)) return 0;
+
+    const products = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+      ? productsOrIndex.list
+      : (Array.isArray(productsOrIndex) ? productsOrIndex : await getAll('products'));
+    const index = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+      ? productsOrIndex
+      : buildProductIdentityIndexPOS(products);
+    const identity = resolveCatalogProductIdentityPOS(productRef, index, { allowLegacy:true });
+    if (!identity.ok || (!identity.internalId && !identity.stableId)) return 0;
 
     const entries = await getInventoryEntries(evId);
     let qtyCost = 0;
     let qtyTotal = 0;
-
     for (const e of (entries || [])){
-      if (!e || !catalogProductIdentityMatchesRefPOS(identity, e.productId ?? e.productInternalId)) continue;
+      if (!e || !productIdentityMatchesRefPOS(identity, e)) continue;
       const isReempaqueDest =
         e.reempaqueRole === 'destino' &&
         (e.source === 'reempaque' || e.sourceType === 'REEMPAQUE' || e.reempaqueId);
@@ -13945,63 +14012,67 @@ async function getReempaqueUnitCostForSalePOS(eventId, productRef, identityIndex
       qtyTotal += q;
       qtyCost += q * c;
     }
-
     if (qtyTotal > 0 && qtyCost > 0) return round2(qtyCost / qtyTotal);
 
-    // Fallback compatible: leer el snapshot del registro de Reempaque si el movimiento de inventario legacy no guardó costo.
+    // Compatibilidad defensiva: registros de Reempaque anteriores que conservan el costo
+    // en su propio store, aunque la fila de inventario no tenga snapshot completo.
     const records = await getAll(REEMPAQUE_STORE_POS).catch(()=>[]);
+    let recordQty = 0;
+    let recordCost = 0;
     for (const record of (Array.isArray(records) ? records : [])){
       if (!record || Number(record.eventId ?? record.eventoId) !== evId) continue;
-      const destinos = Array.isArray(record.destinos) && record.destinos.length ? record.destinos : [record];
-      for (const d of destinos){
-        const targetRef = {
-          productId: d.targetProductId ?? d.productoDestinoId ?? d.productId ?? record.targetProductId ?? record.productoDestinoId,
-          productInternalId: d.targetProductInternalId ?? d.internalId,
-          targetProduct: d.targetProduct ?? record.targetProduct,
-          productName: d.targetProductName ?? d.productoDestinoNombre ?? d.productoDestino ?? record.targetProductName ?? record.productoDestinoNombre
-        };
-        const targetIdentity = resolveCatalogProductIdentityPOS(targetRef, index);
-        if (!targetIdentity || targetIdentity.product !== identity.product) continue;
-        const q = Math.max(0, Number(d.cantidadFinalRegistrada ?? d.cantidadCreadaDestino ?? d.cantidadDestino ?? d.targetQty ?? d.qty ?? d.cantidad ?? record.cantidadFinalRegistrada ?? record.cantidadCreadaDestino) || 0);
-        const c = saleCostFromFieldsPOS(d) || saleCostFromFieldsPOS(record);
-        if (!(q > 0) || !(c > 0)) continue;
-        qtyTotal += q;
-        qtyCost += q * c;
+      const destinos = Array.isArray(record.destinos) ? record.destinos : [];
+      if (destinos.length){
+        for (const d of destinos){
+          const dIdentity = resolveCatalogProductIdentityPOS(d, index, { allowLegacy:true });
+          if (!dIdentity.ok || dIdentity.product !== identity.product) continue;
+          const q = Math.max(0, Number(d.cantidadCreada ?? d.cantidadCreadaDestino ?? d.cantidadDestino ?? d.targetQty ?? d.qty ?? d.cantidad) || 0);
+          const c = saleCostFromFieldsPOS(d);
+          if (!(q > 0) || !(c > 0)) continue;
+          recordQty += q;
+          recordCost += q * c;
+        }
+        continue;
       }
+      const targetRef = {
+        productId: record.targetProductId ?? record.productoDestinoId,
+        productInternalId: record.targetProductId ?? record.productoDestinoId,
+        productName: record.targetProductName ?? record.productoDestinoNombre ?? record.productoDestino,
+        product: record.targetProduct
+      };
+      const targetIdentity = resolveCatalogProductIdentityPOS(targetRef, index, { allowLegacy:true });
+      if (!targetIdentity.ok || targetIdentity.product !== identity.product) continue;
+      const q = Math.max(0, Number(record.cantidadFinalRegistrada ?? record.cantidadCreadaDestino ?? record.cantidadDestino ?? record.targetQty) || 0);
+      const c = saleCostFromFieldsPOS(record);
+      if (!(q > 0) || !(c > 0)) continue;
+      recordQty += q;
+      recordCost += q * c;
     }
-    if (qtyTotal > 0 && qtyCost > 0) return round2(qtyCost / qtyTotal);
+    if (recordQty > 0 && recordCost > 0) return round2(recordCost / recordQty);
   }catch(err){
     console.warn('No se pudo leer costo unitario desde Reempaque para venta', err);
   }
   return 0;
 }
 
-async function resolveSaleUnitCostPOS(eventId, productRef, productName, productObj, operationSnapshot, productCatalog){
-  // Snapshot ya congelado manda cuando esta resolución se reutiliza sobre una operación existente.
-  const snapshotCost = getSaleCostUnitSnapshotPOS(operationSnapshot);
-  if (snapshotCost > 0){
-    const snapshotSource = String(operationSnapshot && (operationSnapshot.costSourceSnapshot || operationSnapshot.costSource) || '').trim();
-    return { unitCost:snapshotCost, source:snapshotSource || 'snapshot_operacion' };
-  }
+async function resolveSaleUnitCostPOS(eventId, productRef, productName, productObj, products){
+  // Costo dinámico por prioridad. La identidad se resuelve una sola vez y se adapta
+  // al productId estable o al id interno que espera cada fuente existente.
+  const list = Array.isArray(products) ? products : await getAll('products').catch(()=>[]);
+  const index = buildProductIdentityIndexPOS(list);
+  const identity = resolveCatalogProductIdentityPOS(productObj || productRef, index, { allowLegacy:true });
+  if (!identity.ok) return { unitCost:0, source:'sin_costo_confiable' };
 
-  const products = Array.isArray(productCatalog) ? productCatalog : await getAll('products').catch(()=>[]);
-  const identityIndex = buildCatalogProductIdentityIndexPOS(products);
-  const identity = resolveCatalogProductIdentityPOS(productObj, identityIndex)
-    || resolveCatalogProductIdentityPOS(productRef, identityIndex)
-    || resolveCatalogProductIdentityPOS({ productId:productRef, productName }, identityIndex);
-
-  const fromLotFifo = await getLotFifoUnitCostForSalePOS(eventId, identity || productRef, productName, identityIndex);
+  const fromLotFifo = await getLotFifoUnitCostForSalePOS(eventId, identity.product, productName, index);
   if (fromLotFifo > 0) return { unitCost: fromLotFifo, source: 'lote_fifo' };
 
-  const fromReempaque = await getReempaqueUnitCostForSalePOS(eventId, identity || productRef, identityIndex);
+  const fromReempaque = await getReempaqueUnitCostForSalePOS(eventId, identity.product, index);
   if (fromReempaque > 0) return { unitCost: fromReempaque, source: 'reempaque' };
 
-  const resolvedProduct = identity && identity.product ? identity.product : productObj;
-  const fromProduct = getProductStoredUnitCostPOS(resolvedProduct);
+  const fromProduct = getProductStoredUnitCostPOS(identity.product);
   if (fromProduct > 0) return { unitCost: fromProduct, source: 'producto_catalogo' };
 
-  const resolvedName = (identity && identity.name) || productName || (resolvedProduct && (resolvedProduct.name || resolvedProduct.nombre)) || '';
-  const fromCalc = saleCostFieldValuePOS(getCostoUnitarioProducto(resolvedName));
+  const fromCalc = saleCostFieldValuePOS(getCostoUnitarioProducto(productName || identity.name));
   if (fromCalc > 0) return { unitCost: fromCalc, source: 'calculadora_legacy' };
 
   return { unitCost: 0, source: 'sin_costo_confiable' };
@@ -14018,9 +14089,8 @@ function reempaqueInventoryQtyPOS(value){
 }
 
 function reempaqueFindProductByIdPOS(products, productId){
-  const sid = String(productId ?? '').trim();
-  if (!sid) return null;
-  return (Array.isArray(products) ? products : []).find(p => p && String(p.id) === sid) || null;
+  const identity = resolveCatalogProductIdentityPOS(productId, products, { allowLegacy:false });
+  return identity.ok ? identity.product : null;
 }
 
 function reempaqueMovementNotePOS(kind, srcName, dstName, note){
@@ -18802,12 +18872,7 @@ async function renderSummary(){
 
       // Costo y utilidad aproximada (ventas reales)
       const lineCost = getLineCost(s);
-      let lineProfit = 0;
-      if (typeof s.lineProfit === 'number' && Number.isFinite(s.lineProfit)) {
-        lineProfit = Number(s.lineProfit || 0);
-      } else {
-        lineProfit = total - lineCost;
-      }
+      const lineProfit = total - lineCost;
       grandCost += lineCost;
       grandProfit += lineProfit;
 
@@ -21940,56 +22005,13 @@ async function openEventView(eventId){
 
   const total = sales.reduce((a,b)=> a + (Number(b && b.total) || 0), 0);
 
-  // --- Costos (productos dinámicos: prioriza snapshot guardado; Galón solo para vasos legacy sin productId) ---
-  const fbatches = sanitizeFractionBatches(ev && ev.fractionBatches);
-  const batchMap = new Map();
-  for (const b of fbatches){
-    if (b && b.batchId) batchMap.set(String(b.batchId), b);
-  }
-
-  const costPerGallon = getCostoUnitarioProducto('Galón');
-  const canEstimateCupCost = costPerGallon > 0;
-
-  function estimateCupCostSigned(s){
-    const qRaw = Number(s && s.qty) || 0;
-    const absQ = Math.abs(qRaw);
-    const sign = (s && (s.isReturn || qRaw < 0)) ? -1 : 1;
-    if (!(absQ > 0)) return 0;
-    if (!canEstimateCupCost) return 0;
-
-    const breakdown = Array.isArray(s && s.fifoBreakdown) ? s.fifoBreakdown : [];
-    if (breakdown.length){
-      let costAbs = 0;
-      for (const it of breakdown){
-        if (!it) continue;
-        const take = Math.abs(Number(it.cupsTaken || 0));
-        if (!(take > 0)) continue;
-
-        let y = 0;
-        const b = it.batchId ? batchMap.get(String(it.batchId)) : null;
-        if (b && b.yieldCupsPerGallon) y = safeInt(b.yieldCupsPerGallon, 0);
-        if (!(y > 0)){
-          const mlpc = Number(it.mlPerCup || (b && b.mlPerCup) || 0);
-          if (mlpc > 0) y = Math.round(ML_PER_GALON / mlpc);
-        }
-        if (!(y > 0)) y = 22;
-
-        costAbs += take * (costPerGallon / Math.max(1, y));
-      }
-      return sign * costAbs;
-    }
-
-    // Sin breakdown (caso raro): usamos el último rendimiento conocido o default 22
-    const yFallback = safeInt((fbatches.length ? fbatches[fbatches.length-1].yieldCupsPerGallon : 22), 22);
-    return sign * absQ * (costPerGallon / Math.max(1, (yFallback > 0 ? yFallback : 22)));
-  }
-
+  // --- Costos: únicamente snapshots congelados en cada operación. ---
+  let costoVentasPagadas = 0;
   let costoProductos = 0;
 
   // Stats cortesías (para mostrar en VER)
   let cortesiasPresU = 0;
   let cortesiasVasosU = 0;
-  let valorComercialCortesias = 0;
   let costoCortesiasPres = 0;
   let costoCortesiasVasos = 0;
 
@@ -21997,42 +22019,21 @@ async function openEventView(eventId){
     if (!s) continue;
     const qRaw = Number(s.qty || 0);
     const absQty = Math.abs(qRaw);
-    const isReturn = !!s.isReturn || qRaw < 0;
-    const qtyParaCosto = isReturn ? -absQty : absQty;
-
     const isCourtesy = !!(s.courtesy || s.isCourtesy);
-    if (isCourtesy){
-      const sign = isReturn ? -1 : 1;
-      valorComercialCortesias += round2(getSaleUnitPriceSnapshotPOS(s) * absQty * sign);
+    const lineCost = getSaleLineCostSnapshotPOS(s);
+
+    costoProductos += lineCost;
+    if (!isCourtesy) {
+      costoVentasPagadas += lineCost;
+      continue;
     }
 
-    if (isCupSaleRecord(s)){
-      // Históricos: usar únicamente el snapshot congelado; nunca reconstruir desde inventario actual.
-      const lineCost = getSaleLineCostSnapshotPOS(s);
-
-      costoProductos += lineCost;
-
-      if (isCourtesy){
-        cortesiasVasosU += absQty;
-        costoCortesiasVasos += lineCost;
-      }
+    if (isCupSaleRecord(s)) {
+      cortesiasVasosU += absQty;
+      costoCortesiasVasos += lineCost;
     } else {
-      // Históricos: usar únicamente el snapshot congelado; ausencia real de costo = cero.
-      const lineCost = getSaleLineCostPOS(s);
-
-      if (Math.abs(lineCost) > 1e-9) {
-        costoProductos += lineCost;
-
-        if (isCourtesy){
-          cortesiasPresU += absQty;
-          costoCortesiasPres += lineCost;
-        }
-      } else {
-        // Sin costo conocido: igual contar cortesías en unidades
-        if (isCourtesy){
-          cortesiasPresU += absQty;
-        }
-      }
+      cortesiasPresU += absQty;
+      costoCortesiasPres += lineCost;
     }
   }
 
@@ -22044,17 +22045,17 @@ async function openEventView(eventId){
     return m; 
   },{});
 
-  const costoCortesiasTotalKnown = round2(costoCortesiasPres + costoCortesiasVasos);
+  const costoCortesiasTotalKnown = costoCortesiasPres + costoCortesiasVasos;
 
   $('#ev-totals').innerHTML = `<div><b>Total vendido (pagado):</b> C$ ${fmt(total)}</div>
   <div><b>Cortesías presentaciones:</b> ${Math.round(cortesiasPresU)} unid.</div>
   <div><b>Cortesías vasos:</b> ${Math.round(cortesiasVasosU)} vasos</div>
-  <div><b>Valor comercial de cortesías:</b> C$ ${fmt(valorComercialCortesias)}</div>
   <div><b>Costo cortesías presentaciones:</b> C$ ${fmt(costoCortesiasPres)}</div>
   <div><b>Costo cortesías vasos:</b> C$ ${fmt(costoCortesiasVasos)}</div>
   <div><b>Costo cortesías total:</b> C$ ${fmt(costoCortesiasTotalKnown)}</div>
-  <div><b>Costo estimado de producto:</b> C$ ${fmt(costoProductos)}</div>
-  <div><b>Utilidad bruta aprox.:</b> C$ ${fmt(utilidadBruta)}</div>
+  <div><b>Costos de ventas:</b> C$ ${fmt(costoVentasPagadas)}</div>
+  <div><b>Costos totales:</b> C$ ${fmt(costoProductos)}</div>
+  <div><b>Utilidad después de cortesías:</b> C$ ${fmt(utilidadBruta)}</div>
   <div><b>Efectivo:</b> C$ ${fmt(byPay.efectivo||0)}</div>
   <div><b>Transferencia:</b> C$ ${fmt(byPay.transferencia||0)}</div>
   <div><b>Tarjeta:</b> C$ ${fmt(byPay.tarjeta||0)}</div>
@@ -22140,42 +22141,44 @@ async function exportEventSalesCSV(eventId){
   downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
 }
 function buildCorteSummaryRows(eName, sales){
-  let efectivo=0, trans=0, tarjeta=0, credito=0, descuentos=0;
-  let cortesiasU=0, cortesiasVal=0, costoCortesias=0, costoVentas=0;
-  let devolU=0, devolVal=0, bruto=0, ventaNeta=0;
-  for (const s of sales){
+  let efectivo=0, trans=0, tarjeta=0, credito=0, descuentos=0, cortesiasU=0, cortesiasVal=0, devolU=0, devolVal=0, bruto=0;
+  let costoVentas=0, costoCortesias=0, ventaNeta=0;
+  for (const s of (sales || [])){
     if (!s) continue;
     const qtyRaw = Number(s.qty || 0);
     const absQty = Math.abs(qtyRaw);
     const absTotal = Math.abs(Number(s.total || 0));
-    const sign = (s.isReturn || qtyRaw < 0 || Number(s.total || 0) < 0) ? -1 : 1;
-    const disc = getSaleDiscountTotalPOS(s);
+    const sign = (s.isReturn || qtyRaw < 0) ? -1 : 1;
     const courtesy = !!(s.courtesy || s.isCourtesy);
-    const commercialValue = round2(getSaleUnitPriceSnapshotPOS(s) * absQty * sign);
+    const disc = getSaleDiscountTotalPOS(s);
+    const valueRef = getSaleUnitPriceSnapshotPOS(s) * absQty * sign;
     const lineCost = getSaleLineCostSnapshotPOS(s);
 
+    bruto += courtesy ? 0 : ((absTotal + disc) * sign);
+    descuentos += disc * sign;
     if (courtesy){
       cortesiasU += absQty;
-      cortesiasVal += commercialValue;
+      cortesiasVal += valueRef;
       costoCortesias += lineCost;
     } else {
-      bruto += round2((absTotal + disc) * sign);
-      descuentos += round2(disc * sign);
       ventaNeta += Number(s.total || 0);
       costoVentas += lineCost;
     }
     if (s.isReturn || qtyRaw < 0){ devolU += absQty; devolVal += absTotal; }
+
     const pay = normalizePaymentMethodPOS(s.payment || '');
+    if (courtesy) continue;
     if (pay === 'efectivo') efectivo += Number(s.total || 0);
     else if (pay === 'transferencia') trans += Number(s.total || 0);
     else if (pay === 'tarjeta') tarjeta += Number(s.total || 0);
-    else if (pay === 'credito') credito += Number(s.total || 0);
+    else if (pay === 'credito'){ credito += Number(s.total || 0); }
   }
   const cobrado = efectivo + trans + tarjeta;
-  const costoTotal = round2(costoVentas + costoCortesias);
-  const utilidad = round2(ventaNeta - costoTotal);
-  const margen = ventaNeta ? round2((utilidad / ventaNeta) * 100) : 0;
-  return {efectivo, trans, tarjeta, credito, descuentos, cortesiasU, cortesiasVal, costoCortesias, costoVentas, costoTotal, utilidad, margen, devolU, devolVal, bruto, cobrado, neto:cobrado, ventaNeta};
+  const costoTotal = costoVentas + costoCortesias;
+  const utilidadBruta = ventaNeta - costoVentas;
+  const utilidadDespuesCortesias = utilidadBruta - costoCortesias;
+  const neto = cobrado;
+  return {efectivo, trans, tarjeta, credito, descuentos, cortesiasU, cortesiasVal, devolU, devolVal, bruto, cobrado, neto, ventaNeta, costoVentas, costoCortesias, costoTotal, utilidadBruta, utilidadDespuesCortesias};
 }
 async function generateCorteCSV(eventId){
   const events = await getAll('events');
@@ -22222,17 +22225,16 @@ async function generateCorteCSV(eventId){
   rows.push(['Descuentos aplicados (C$)', sum.descuentos.toFixed(2)]);
   rows.push(['Cortesías (unid.)', sum.cortesiasU]);
   rows.push(['Cortesías valor ref. (C$)', sum.cortesiasVal.toFixed(2)]);
-  rows.push(['Cortesías costo real (C$)', sum.costoCortesias.toFixed(2)]);
+  rows.push(['Costo real de cortesías (C$)', sum.costoCortesias.toFixed(2)]);
+  rows.push(['Costos de ventas (C$)', sum.costoVentas.toFixed(2)]);
+  rows.push(['Costos totales (C$)', sum.costoTotal.toFixed(2)]);
+  rows.push(['Utilidad bruta (C$)', sum.utilidadBruta.toFixed(2)]);
+  rows.push(['Utilidad después de cortesías (C$)', sum.utilidadDespuesCortesias.toFixed(2)]);
   rows.push(['Devoluciones (unid.)', sum.devolU]);
   rows.push(['Devoluciones (C$)', sum.devolVal.toFixed(2)]);
   rows.push([]);
-  rows.push(['Venta bruta pagada (C$)', sum.bruto.toFixed(2)]);
-  rows.push(['Venta neta pagada (C$)', sum.ventaNeta.toFixed(2)]);
-  rows.push(['Costo de ventas (C$)', sum.costoVentas.toFixed(2)]);
-  rows.push(['Costo total salida inventario (C$)', sum.costoTotal.toFixed(2)]);
-  rows.push(['Utilidad después de cortesías (C$)', sum.utilidad.toFixed(2)]);
-  rows.push(['Margen (%)', sum.margen.toFixed(2)]);
-  rows.push(['Neto cobrado (sin crédito)', sum.neto.toFixed(2)]);
+  rows.push(['Ventas brutas ref. (aprox.)', sum.bruto.toFixed(2)]);
+  rows.push(['Neto cobrado', sum.neto.toFixed(2)]);
   rows.push([]);
   rows.push(['Detalle de ventas']);
   rows.push(['id','fecha','hora','producto','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
@@ -22289,16 +22291,15 @@ async function exportEventExcel(eventId){
   const eventSummary = buildCorteSummaryRows(ev.name, sales);
   const totalVentas = eventSummary.ventaNeta;
   resumenRows.push(['Resumen de ventas']);
-  resumenRows.push(['Venta bruta pagada C$', eventSummary.bruto]);
+  resumenRows.push(['Venta neta C$', totalVentas]);
   resumenRows.push(['Descuentos C$', eventSummary.descuentos]);
-  resumenRows.push(['Venta neta pagada C$', totalVentas]);
-  resumenRows.push(['Cortesías unidades', eventSummary.cortesiasU]);
+  resumenRows.push(['Cortesías (unid.)', eventSummary.cortesiasU]);
   resumenRows.push(['Cortesías valor comercial C$', eventSummary.cortesiasVal]);
-  resumenRows.push(['Cortesías costo real C$', eventSummary.costoCortesias]);
-  resumenRows.push(['Costo de ventas C$', eventSummary.costoVentas]);
-  resumenRows.push(['Costo total C$', eventSummary.costoTotal]);
-  resumenRows.push(['Utilidad después de cortesías C$', eventSummary.utilidad]);
-  resumenRows.push(['Margen %', eventSummary.margen]);
+  resumenRows.push(['Costo real de cortesías C$', eventSummary.costoCortesias]);
+  resumenRows.push(['Costos de ventas C$', eventSummary.costoVentas]);
+  resumenRows.push(['Costos totales C$', eventSummary.costoTotal]);
+  resumenRows.push(['Utilidad bruta C$', eventSummary.utilidadBruta]);
+  resumenRows.push(['Utilidad después de cortesías C$', eventSummary.utilidadDespuesCortesias]);
 
   const byPay = sales.reduce((m,s)=>{
     const pay = normalizePaymentMethodPOS(s.payment || '') || 'desconocido';
@@ -23302,7 +23303,7 @@ async function addSale(){
   const finalQty = isReturn ? -qty : qty;
   if (isReturn) total = -total;
 
-  const costInfo = await resolveSaleUnitCostPOS(curId, productSnap.productId, productName, prod, null, products);
+  const costInfo = await resolveSaleUnitCostPOS(curId, productSnap.productId, productName, prod, products);
   const unitCost = Number(costInfo.unitCost || 0);
   const economicSnapshot = buildSaleEconomicSnapshotPOS({
     unitPrice: price,

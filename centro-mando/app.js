@@ -1,5 +1,5 @@
 /*
-  Suite A33 v4.20.87 — Centro de Mando (OPERATIVO v1)
+  Suite A33 v4.20.91 — Centro de Mando (OPERATIVO v1)
 
   Fuentes reales (descubiertas en /pos/app.js dentro de esta ZIP):
   - DB_NAME: 'a33-pos'
@@ -2753,14 +2753,12 @@ async function __cmdRefreshGlobalVentasTodayForCard(eventId){
     if (!ev) return;
 
     const v = await __cmdVentasHoyMetric(ev, dk);
-    const cm = await __cmdCourtesyTodayMetrics(ev, dk);
 
     const snaps = __cmdEnsureMap('__globalSnapshots');
     const cur = (snaps && typeof snaps.get === 'function') ? (snaps.get(id) || null) : null;
-    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, cortesiasHoy:null, hasChecklistItems:false };
+    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, hasChecklistItems:false };
     next.dayKey = dk;
     next.ventasHoy = (typeof v === 'number' && isFinite(v)) ? v : null;
-    next.cortesiasHoy = cm || null;
     try{ snaps.set(id, next); }catch(_){ }
 
     try{ __cmdUpdateGlobalCardUI(id, next, ev); }catch(_){ }
@@ -2804,7 +2802,7 @@ async function __cmdRefreshGlobalTopProductsForCard(eventId){
 
     const snaps = __cmdEnsureMap('__globalSnapshots');
     const cur = (snaps && typeof snaps.get === 'function') ? (snaps.get(id) || null) : null;
-    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, checklistDayKeySource:'', alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, cortesiasHoy:null, topProducts:null, hasChecklistItems:false };
+    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, checklistDayKeySource:'', alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, topProducts:null, hasChecklistItems:false };
     next.dayKey = dk;
     if (top === null){
       next.topProducts = null;
@@ -2850,7 +2848,7 @@ async function __cmdRefreshGlobalAlertasRecosForCard(eventId){
 
     const snaps = __cmdEnsureMap('__globalSnapshots');
     const cur = (snaps && typeof snaps.get === 'function') ? (snaps.get(id) || null) : null;
-    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, checklistDayKeySource:'', alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, cortesiasHoy:null, topProducts:null, hasChecklistItems:false };
+    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, checklistDayKeySource:'', alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, topProducts:null, hasChecklistItems:false };
     next.dayKey = dk;
 
     // Estado cashV2 + FX (evento) — con cache interno
@@ -3561,9 +3559,6 @@ async function __cmdEnsureSalesTodayAgg(dayKey, opts){
 
       const totals = new Map();
       const counts = new Map();
-      const courtesyQty = new Map();
-      const courtesyValue = new Map();
-      const courtesyCost = new Map();
       const sumHash = new Map();
 
       // Lite rows (solo lo necesario) para Top productos (se calcula bajo demanda al expandir).
@@ -3576,27 +3571,16 @@ async function __cmdEnsureSalesTodayAgg(dayKey, opts){
         if (!r) continue;
         const eid = Number(r.eventId);
         if (!eid || !Number.isFinite(eid)) continue;
+        if (__cmdIsCourtesySale(r)) continue;
 
-        const isCourtesy = !!(r && (r.courtesy || r.isCourtesy));
-        const qRaw = Number(r && r.qty || 0);
-        const qAbs = Math.abs(qRaw);
-        const sign = (r && (r.isReturn || qRaw < 0)) ? -1 : 1;
+        // Guardar mínimo para Top (solo ventas pagadas; sin tocar performance si no se usa).
+        try{ rowsLite.push({ eventId: eid, productName: (r && r.productName != null) ? r.productName : (r && r.product != null ? r.product : ''), qty: (r && r.qty != null) ? r.qty : 0 }); }catch(_){ }
 
-        // Top productos representa ventas pagadas; las cortesías quedan como métrica separada.
-        if (!isCourtesy){
-          try{ rowsLite.push({ eventId: eid, productName: (r && r.productName != null) ? r.productName : (r && r.product != null ? r.product : ''), qty: (r && r.qty != null) ? r.qty : 0 }); }catch(_){ }
-          const t = __cmdRound2(Number(r.total) || 0) || 0;
-          const prevT = totals.get(eid) || 0;
-          totals.set(eid, __cmdRound2(prevT + t) || 0);
-          counts.set(eid, (counts.get(eid) || 0) + 1);
-        } else {
-          courtesyQty.set(eid, (courtesyQty.get(eid) || 0) + qAbs);
-          const unit = Number(r.unitPrice ?? r.price ?? 0) || 0;
-          courtesyValue.set(eid, __cmdRound2((courtesyValue.get(eid) || 0) + (sign * qAbs * unit)) || 0);
-          let lc = 0;
-          try{ lc = (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveLineCost === 'function') ? Number(globalThis.A33SaleCost.resolveLineCost(r)) || 0 : 0; }catch(_){ lc = 0; }
-          courtesyCost.set(eid, __cmdRound2((courtesyCost.get(eid) || 0) + lc) || 0);
-        }
+        const t = __cmdRound2(Number(r.total) || 0) || 0;
+        const prevT = totals.get(eid) || 0;
+        totals.set(eid, __cmdRound2(prevT + t) || 0);
+
+        counts.set(eid, (counts.get(eid) || 0) + 1);
 
         const h = __cmdSaleRowHashLite(r);
         sumHash.set(eid, ((sumHash.get(eid) || 0) + (h >>> 0)) >>> 0);
@@ -3606,12 +3590,9 @@ async function __cmdEnsureSalesTodayAgg(dayKey, opts){
       }
 
       const stamps = new Map();
-      const eventIds = new Set([...sumHash.keys(), ...counts.keys(), ...courtesyQty.keys()]);
-      for (const eid of eventIds){
-        const c = counts.get(eid) || 0;
-        const cq = courtesyQty.get(eid) || 0;
+      for (const [eid, c] of counts.entries()){
         const h = (sumHash.get(eid) || 0) >>> 0;
-        stamps.set(eid, `c${c}|q${cq}|h${h.toString(36)}`);
+        stamps.set(eid, `c${c}|h${h.toString(36)}`);
       }
 
       const out = {
@@ -3621,9 +3602,6 @@ async function __cmdEnsureSalesTodayAgg(dayKey, opts){
         dayStamp: `c${dayCount}|h${(dayHash>>>0).toString(36)}`,
         totals,
         stamps,
-        courtesyQty,
-        courtesyValue,
-        courtesyCost,
         rowsLite,
         // Top productos se construye LAZY bajo demanda (al expandir).
         topStamp: '',
@@ -3705,25 +3683,6 @@ async function __cmdVentasHoyMetric(ev, dayKey){
   }catch(_){
     return null;
   }
-}
-
-async function __cmdCourtesyTodayMetrics(ev, dayKey){
-  try{
-    const dk = __cmdSafeYMD(dayKey);
-    const eid = Number(ev && ev.id);
-    if (!dk || !eid || !Number.isFinite(eid)) return null;
-    const agg = await __cmdEnsureSalesTodayAgg(dk);
-    if (agg && agg.ok){
-      const getMap = (name) => (agg[name] && typeof agg[name].get === 'function') ? agg[name] : null;
-      return {
-        qty: (getMap('courtesyQty') && getMap('courtesyQty').get(eid)) || 0,
-        value: (getMap('courtesyValue') && getMap('courtesyValue').get(eid)) || 0,
-        cost: (getMap('courtesyCost') && getMap('courtesyCost').get(eid)) || 0
-      };
-    }
-    const r = await computeSalesToday(eid, dk);
-    return r && r.ok ? { qty:r.courtesyQty||0, value:r.courtesyValue||0, cost:r.courtesyCost||0 } : null;
-  }catch(_){ return null; }
 }
 
 // --- GLOBAL: Top productos por evento (LAZY + cache por sello) — Etapa 4/5
@@ -3861,7 +3820,6 @@ async function __cmdBuildGlobalSnapshot(ev, todayDayKey){
       alertas: { pendingCount: null },
       efectivo: { enabled: null },
       ventasHoy: null,
-      cortesiasHoy: null,
       topProducts: null,
       hasChecklistItems: false
     };
@@ -3880,7 +3838,6 @@ async function __cmdBuildGlobalSnapshot(ev, todayDayKey){
     const lastDyn = Number(hit.dynT || 0) || 0;
     if (!lastDyn || (now - lastDyn) > 5500){
       try{ hit.snap.ventasHoy = await __cmdVentasHoyMetric(ev, dkToday); }catch(_){ }
-      try{ hit.snap.cortesiasHoy = await __cmdCourtesyTodayMetrics(ev, dkToday); }catch(_){ }
       // Top productos: SOLO si la tarjeta está expandida (perf + regla del prompt).
       try{
         const ex = !!(state.globalExpanded instanceof Set && state.globalExpanded.has(Number(eid)));
@@ -3928,7 +3885,6 @@ async function __cmdBuildGlobalSnapshot(ev, todayDayKey){
       alertas: { pendingCount: null },
       efectivo: { enabled: null },
       ventasHoy: null,
-      cortesiasHoy: null,
       topProducts: null,
       hasChecklistItems: false
     };
@@ -3939,7 +3895,6 @@ async function __cmdBuildGlobalSnapshot(ev, todayDayKey){
 
     // Ventas hoy (C$) — por día actual (no por chkDayKey)
     try{ snap.ventasHoy = await __cmdVentasHoyMetric(ev, dkToday); }catch(_){ snap.ventasHoy = null; }
-    try{ snap.cortesiasHoy = await __cmdCourtesyTodayMetrics(ev, dkToday); }catch(_){ snap.cortesiasHoy = null; }
 
     // Efectivo (ON/OFF + métricas si ON)
     let prevCashMeta = null;
@@ -4005,7 +3960,7 @@ function __cmdPrimeGlobalSnapshots(items){
           try{ out.set(Number(cur.id), snap); }catch(_){ }
           try{ __cmdUpdateGlobalCardUI(Number(cur.id), snap, cur); }catch(_){ }
         }catch(_){
-          const fallback = { eventId: Number(cur && cur.id) || null, dayKey: dk, checklistDayKey: dk, alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, cortesiasHoy:null, hasChecklistItems:false };
+          const fallback = { eventId: Number(cur && cur.id) || null, dayKey: dk, checklistDayKey: dk, alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, hasChecklistItems:false };
           try{ out.set(Number(cur && cur.id), fallback); }catch(_){ }
           try{ __cmdUpdateGlobalCardUI(Number(cur && cur.id), fallback, cur); }catch(_){ }
         }
@@ -4353,11 +4308,7 @@ function __cmdUpdateGlobalCardUI(eventId, snap, ev){
     // Ventas hoy: si existe, mostrar; si no, placeholder
     const ventasTxt = (snap && typeof snap.ventasHoy === 'number' && isFinite(snap.ventasHoy)) ? fmtMoneyNIO(snap.ventasHoy) : '—';
     const dkHint = __cmdSafeYMD(snap && snap.dayKey) || '';
-    const cm = snap && snap.cortesiasHoy;
-    const cortesiasHint = cm && (Number(cm.qty||0) || Number(cm.cost||0) || Number(cm.value||0))
-      ? `Cortesías: ${Number(cm.qty||0)} unid. · valor ${fmtMoneyNIO(Number(cm.value||0))} · costo ${fmtMoneyNIO(Number(cm.cost||0))}`
-      : 'Sin cortesías';
-    setSec('ventas', ventasTxt, (ventasTxt === '—') ? 'No disponible' : cortesiasHint, dkHint ? `Hoy: ${dkHint}` : 'Hoy');
+    setSec('ventas', ventasTxt, (ventasTxt === '—') ? 'No disponible' : (dkHint ? `Hoy: ${dkHint}` : 'Hoy'), null);
 
     // Top productos (Etapa 4): mostrar SOLO si hay dato (se calcula al expandir; cache por sello).
     {
@@ -5338,26 +5289,14 @@ async function computeSalesToday(eventId, dayKey){
   if (!Array.isArray(rows)) return { ok:false, total:null, count:null, top:null, reason:'No disponible' };
   if (rows.length > SAFE_SCAN_LIMIT) return { ok:false, total:null, count:null, top:null, reason:'No disponible' };
 
-  const filtered = rows.filter(r => r && Number(r.eventId) === Number(eventId));
+  const filtered = rows.filter(r => r && Number(r.eventId) === Number(eventId) && !__cmdIsCourtesySale(r));
   let total = 0;
-  let count = 0;
-  let courtesyQty = 0, courtesyValue = 0, courtesyCost = 0;
   const topMap = new Map();
   for (const s of filtered){
-    const isCourtesy = !!(s && (s.courtesy || s.isCourtesy));
-    const q = Number(s.qty || 0);
-    const absQ = Math.abs(q);
-    const sign = (s && (s.isReturn || q < 0)) ? -1 : 1;
-    if (isCourtesy){
-      courtesyQty += absQ;
-      courtesyValue += sign * absQ * (Number(s.unitPrice ?? s.price ?? 0) || 0);
-      try{ courtesyCost += (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveLineCost === 'function') ? Number(globalThis.A33SaleCost.resolveLineCost(s)) || 0 : 0; }catch(_){ }
-      continue;
-    }
     total += Number(s.total || 0);
-    count += 1;
     const name = uiProdNameCMD(s.productName) || 'N/D';
-    // para Top: contar solo ventas pagadas (qty > 0)
+    const q = Number(s.qty || 0);
+    // para Top: contar solo ventas (qty > 0)
     if (q > 0){
       topMap.set(name, (topMap.get(name) || 0) + q);
     }
@@ -5367,7 +5306,7 @@ async function computeSalesToday(eventId, dayKey){
     .sort((a,b)=> (b.qty - a.qty))
     .slice(0,3);
 
-  return { ok:true, total, count, top, courtesyQty, courtesyValue, courtesyCost, reason:'' };
+  return { ok:true, total, count: filtered.length, top, reason:'' };
 }
 
 
@@ -6510,8 +6449,7 @@ if (cv2.ok && cv2.enabled === false){
   const sales = await computeSalesToday(Number(ev.id), dk);
   if (sales.ok){
     setText('salesToday', fmtMoneyNIO(sales.total));
-    const courtesySub = Number(sales.courtesyQty||0) ? ` · Cortesías: ${sales.courtesyQty} unid. / costo ${fmtMoneyNIO(sales.courtesyCost||0)}` : '';
-    setText('salesTodaySub', (typeof sales.count === 'number') ? (`Registros pagados: ${sales.count}${courtesySub}`) : '—');
+    setText('salesTodaySub', (typeof sales.count === 'number') ? (`Registros: ${sales.count}`) : '—');
     setText('salesTodayHint', dk);
     // Top
     if (Array.isArray(sales.top) && sales.top.length){

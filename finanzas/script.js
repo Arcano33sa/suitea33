@@ -9338,11 +9338,30 @@ function finDashboardSaleDiscount(sale) {
 
 function finDashboardSaleLineCost(sale) {
   if (!sale || typeof sale !== 'object') return 0;
-  try {
-    if (globalThis.A33SaleCost && typeof globalThis.A33SaleCost.resolveLineCost === 'function') {
-      return Math.abs(n2(globalThis.A33SaleCost.resolveLineCost(sale)));
-    }
-  } catch (_) { }
+  const qtyRaw = Number(sale.qty ?? sale.cantidad ?? 0);
+  const qty = Number.isFinite(qtyRaw) ? Math.abs(qtyRaw) : 0;
+  const sign = (sale.isReturn || sale.returned || qtyRaw < 0) ? -1 : 1;
+  const totals = [
+    sale.lineCost, sale.costTotal, sale.costoTotal, sale.totalCost,
+    sale.costoTotalSnapshot, sale.lineCostSnapshot, sale.costTotalSnapshot,
+    sale.costoLinea, sale.costoTotalLinea, sale.costoRealTotal
+  ];
+  for (const value of totals) {
+    const n = Number(value);
+    if (Number.isFinite(n) && Math.abs(n) > 1e-9) return n2(sign * Math.abs(n));
+  }
+  const units = [
+    sale.costPerUnit, sale.costUnitSnapshot, sale.unitCostSnapshot,
+    sale.costoUnitarioSnapshot, sale.costoUnitario, sale.unitCost,
+    sale.costUnit, sale.cost,
+    sale.productSnapshot && sale.productSnapshot.unitCost,
+    sale.productSnapshot && sale.productSnapshot.costPerUnit,
+    sale.productSnapshot && sale.productSnapshot.costoUnitario
+  ];
+  for (const value of units) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 1e-9) return n2(sign * Math.abs(n) * qty);
+  }
   return 0;
 }
 
@@ -9396,11 +9415,11 @@ function finDashboardApplyPosSale(totals, sale) {
   const sign = finDashboardSaleSign(sale);
   const gross = finDashboardSaleGrossReference(sale) * sign;
   const discount = finDashboardSaleDiscount(sale) * sign;
-  const lineCost = finDashboardSaleLineCost(sale) * sign;
   const courtesy = !!(sale && (sale.courtesy || sale.isCourtesy));
+  const courtesyValue = courtesy ? gross : 0;
+  const lineCost = finDashboardSaleLineCost(sale);
   if (courtesy) {
-    // Valor comercial informativo: nunca entra en Venta Total ni Venta Neta.
-    totals.cortesias = n2(totals.cortesias + gross);
+    totals.cortesias = n2(totals.cortesias + courtesyValue);
     totals.costoCortesias = n2(totals.costoCortesias + lineCost);
   } else {
     totals.ventaTotal = n2(totals.ventaTotal + gross);
@@ -9438,11 +9457,12 @@ function finDashboardClosureLatestByEventDay(closures) {
 function finDashboardApplyPosClosureFallback(totals, closure) {
   const t = (closure && closure.totals && typeof closure.totals === 'object') ? closure.totals : {};
   const net = n2(t.ventaNeta ?? t.totalGeneral ?? 0);
-  // Compatibilidad defensiva: ventaBruta legacy podía incluir valor comercial de cortesías.
-  const gross = n2(net + n2(t.descuentosTotal || 0));
+  const discounts = n2(t.descuentosTotal || 0);
+  const courtesyValue = n2(t.cortesiaValorReferencia || 0);
+  const gross = n2(net + discounts);
   totals.ventaTotal = n2(totals.ventaTotal + gross);
-  totals.descuentos = n2(totals.descuentos + n2(t.descuentosTotal || 0));
-  totals.cortesias = n2(totals.cortesias + n2(t.cortesiaValorReferencia || 0));
+  totals.descuentos = n2(totals.descuentos + discounts);
+  totals.cortesias = n2(totals.cortesias + courtesyValue);
   totals.costosVentas = n2(totals.costosVentas + n2(t.costoVentasTotal || 0));
   totals.costoCortesias = n2(totals.costoCortesias + n2(t.costoCortesiasTotal ?? t.cortesiaCostoTotal ?? 0));
   totals.eventKeys.add(finDashboardEventKey(closure));
@@ -9564,8 +9584,8 @@ function calcTableroClasificadoForFilter(data, filtros) {
   totals.costoCortesias = finDashboardSafeMoney(totals.costoCortesias);
   totals.costosTotales = finDashboardSafeMoney(totals.costosVentas + totals.costoCortesias);
   totals.ventaNeta = finDashboardSafeMoney(totals.ventaTotal - totals.descuentos);
-  totals.utilidadBruta = finDashboardSafeMoney(totals.ventaNeta - totals.costosTotales);
-  totals.utilidadNeta = finDashboardSafeMoney(totals.utilidadBruta + totals.ingresosAdicionales - totals.gastos);
+  totals.utilidadBruta = finDashboardSafeMoney(totals.ventaNeta - totals.costosVentas);
+  totals.utilidadNeta = finDashboardSafeMoney(totals.utilidadBruta - totals.costoCortesias + totals.ingresosAdicionales - totals.gastos);
   totals.flujoCaja = finDashboardSafeMoney(totals.entradasRealesDinero - totals.salidasRealesDinero);
   totals.numeroEventos = eventFilter && eventFilter !== 'ALL' && eventFilter !== 'GLOBAL'
     ? (totals.eventKeys.size ? 1 : 0)
@@ -9639,7 +9659,7 @@ function renderTableroChart(result) {
   const rows = [
     ['Venta Total', n0(result && result.ventaTotal), gold],
     ['Venta Neta', n0(result && result.ventaNeta), '#9f8b4a'],
-    ['Costos', n0(result && result.costosTotales), red],
+    ['Costos totales', n0(result && result.costosTotales), red],
     ['Gastos', n0(result && result.gastos), '#8b1f26'],
     ['Utilidad neta', n0(result && result.utilidadNeta), (n0(result && result.utilidadNeta) >= 0 ? gold : red)]
   ];
@@ -9837,7 +9857,8 @@ function renderTablero(data) {
   finSetText('tab-cortesias', finFormatCordobas(result.cortesias));
   finSetText('tab-cortesias-costo', `Costo real: ${finFormatCordobas(result.costoCortesias)}`);
   finSetText('tab-venta-neta', finFormatCordobas(result.ventaNeta));
-  finSetText('tab-costos', finFormatCordobas(result.costosTotales));
+  finSetText('tab-costos', finFormatCordobas(result.costosVentas));
+  finSetText('tab-costos-total', `Total con cortesías: ${finFormatCordobas(result.costosTotales)}`);
   finSetText('tab-utilidad-bruta', finFormatCordobas(result.utilidadBruta));
   finSetText('tab-ingresos-adicionales', finFormatCordobas(result.ingresosAdicionales));
   finSetText('tab-gastos', finFormatCordobas(result.gastos));

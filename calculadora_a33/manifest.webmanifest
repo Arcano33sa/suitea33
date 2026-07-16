@@ -1,7 +1,7 @@
 {
   "name": "Suite A33 — Calculadora (ruta trasladada)",
   "short_name": "Calculadora A33",
-  "start_url": "../calculadora/index.html?v=4.20.87&r=10",
+  "start_url": "../calculadora/index.html?v=4.20.91&r=10",
   "scope": "../calculadora/",
   "display": "standalone",
   "theme_color": "#111111",
