@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.93&r=10" />
-  <script src="/assets/js/a33-theme.js?v=4.20.93&r=7"></script>
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.94&r=11" />
+  <script src="/assets/js/a33-theme.js?v=4.20.94&r=7"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -353,15 +353,298 @@
     }
     .a33-btn-primary-pill:hover { filter: brightness(1.05); }
 
+    /* Checklist Etapa 1: acciones compactas + vista operativa */
+    .a33-production-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.55rem;
+      margin-top: 1rem;
+    }
+    .a33-production-actions .a33-production-action {
+      width: 100%;
+      min-width: 0;
+      min-height: 48px;
+      margin: 0;
+      padding: 0.65rem 0.45rem;
+      border: none;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #7b1818, #ddbf64);
+      color: #111;
+      font-size: 0.86rem;
+      font-weight: 700;
+      line-height: 1.1;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-production-actions .a33-production-action:hover { filter: brightness(1.05); }
+    .a33-production-actions .a33-production-action:active { transform: translateY(1px); }
+    .a33-production-actions .a33-production-action:disabled {
+      opacity: 0.62;
+      cursor: wait;
+      transform: none;
+    }
+
+    .a33-checklist-view[hidden] { display: none !important; }
+    .a33-checklist-view {
+      position: fixed;
+      inset: 0;
+      z-index: 10020;
+      padding: max(0.7rem, env(safe-area-inset-top)) max(0.7rem, env(safe-area-inset-right)) max(0.7rem, env(safe-area-inset-bottom)) max(0.7rem, env(safe-area-inset-left));
+      background: rgba(0,0,0,0.78);
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      overflow: hidden;
+    }
+    body.a33-checklist-open { overflow: hidden; }
+    .a33-checklist-shell {
+      width: min(100%, 1000px);
+      max-height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid var(--a33-border, rgba(221,191,100,0.24));
+      border-radius: 16px;
+      background: var(--a33-surface-3, #1b1b1b);
+      color: var(--a33-text, #f5f5f5);
+      box-shadow: var(--a33-shadow, 0 18px 42px rgba(0,0,0,0.45));
+      padding: 0.9rem;
+    }
+    .a33-checklist-header {
+      position: sticky;
+      top: -0.9rem;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin: -0.9rem -0.9rem 0.85rem;
+      padding: 0.85rem 0.9rem;
+      background: var(--a33-surface-3, #1b1b1b);
+      border-bottom: 1px solid var(--a33-border-soft, #333);
+    }
+    .a33-checklist-header h2 { margin: 0; font-size: 1.18rem; }
+    .a33-checklist-close {
+      min-height: 44px;
+      padding: 0.45rem 0.9rem;
+      border-radius: 999px;
+      border: 1px solid var(--a33-border, #444);
+      background: var(--a33-surface-2, #222);
+      color: var(--a33-text, #eee);
+      font-weight: 700;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-checklist-block {
+      margin-top: 0.8rem;
+      padding: 0.8rem;
+      border: 1px solid var(--a33-border-soft, #333);
+      border-radius: 13px;
+      background: var(--a33-surface-2, #161616);
+      overflow: hidden;
+    }
+    .a33-checklist-block h3 { margin: 0 0 0.55rem; font-size: 1rem; }
+    .a33-checklist-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+      border-radius: 10px;
+    }
+    .a33-checklist-table {
+      width: 100%;
+      min-width: 560px;
+      margin-top: 0;
+      table-layout: auto;
+    }
+    .a33-checklist-table th,
+    .a33-checklist-table td {
+      vertical-align: middle;
+    }
+    .a33-checklist-table td:nth-child(2) { text-align: left; }
+    .a33-checklist-value { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .a33-checklist-use {
+      min-width: 76px;
+      min-height: 42px;
+      margin: 0;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid rgba(221,191,100,0.48);
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(123,24,24,0.95), rgba(221,191,100,0.95));
+      color: #111;
+      font-weight: 800;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-checklist-empty {
+      margin: 0;
+      padding: 0.7rem;
+      border-radius: 10px;
+      background: rgba(221,191,100,0.08);
+      border: 1px dashed rgba(221,191,100,0.30);
+      color: var(--a33-muted, #bbb);
+      font-size: 0.86rem;
+      text-align: center;
+    }
+    .a33-checklist-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 0 0 0.65rem;
+    }
+    .a33-checklist-check-cell { width: 92px; }
+    .a33-checklist-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      min-width: 48px;
+      height: 48px;
+      margin: 0 auto;
+      border-radius: 12px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-checklist-toggle input {
+      width: 30px;
+      height: 30px;
+      margin: 0;
+      accent-color: #ddbf64;
+      cursor: pointer;
+    }
+    .a33-checklist-item-row { transition: opacity 0.16s ease, background 0.16s ease; }
+    .a33-checklist-item-row.is-complete {
+      background: rgba(159,224,179,0.12);
+      opacity: 0.7;
+    }
+    .a33-checklist-item-row.is-complete .a33-checklist-product {
+      text-decoration: line-through;
+      text-decoration-thickness: 2px;
+    }
+    .a33-checklist-item-row.is-complete .a33-checklist-product::after {
+      content: " ✓";
+      color: var(--a33-success, #9fe0b3);
+      font-weight: 800;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .a33-checklist-history-row.is-active {
+      background: rgba(221,191,100,0.12);
+      box-shadow: inset 3px 0 0 rgba(221,191,100,0.75);
+    }
+    .a33-checklist-status {
+      min-height: 1.25rem;
+      margin-top: 0.55rem;
+      color: var(--a33-muted, #bbb);
+      font-size: 0.8rem;
+      line-height: 1.25;
+      text-align: center;
+    }
+    .a33-checklist-status[data-tone="success"] { color: var(--a33-success, #9fe0b3); }
+    .a33-checklist-status[data-tone="error"] { color: #ff9b9b; }
+    .a33-checklist-status[data-tone="saving"] { color: #ddbf64; }
+    @media (max-width: 760px) {
+      .a33-checklist-view,
+      .a33-checklist-shell,
+      .a33-checklist-block,
+      .a33-checklist-table-wrap { min-width: 0; max-width: 100%; }
+      .a33-checklist-table-wrap { overflow-x: visible; }
+      .a33-checklist-table {
+        display: block;
+        width: 100%;
+        min-width: 0;
+      }
+      .a33-checklist-table thead { display: none; }
+      .a33-checklist-table tbody { display: grid; gap: 0.55rem; }
+      .a33-checklist-table tr {
+        display: grid;
+        width: 100%;
+        border: 1px solid var(--a33-border-soft, #333);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.018);
+        overflow: hidden;
+      }
+      .a33-checklist-table td {
+        min-width: 0;
+        border: 0;
+        border-bottom: 1px solid var(--a33-border-soft, #333);
+      }
+      .a33-checklist-table td:last-child { border-bottom: 0; }
+      .a33-checklist-table td[data-label]::before {
+        content: attr(data-label);
+        color: var(--a33-muted, #aaa);
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .a33-checklist-history-table tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .a33-checklist-history-table td {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.2rem;
+        padding: 0.58rem 0.62rem;
+      }
+      .a33-checklist-history-table td:nth-child(3),
+      .a33-checklist-history-table td:nth-child(4) { border-bottom: 0; }
+      .a33-checklist-history-table td:nth-child(4) { align-items: stretch; }
+      .a33-checklist-history-table .a33-checklist-use { width: 100%; min-width: 0; }
+      .a33-checklist-items-table tr {
+        grid-template-columns: 70px minmax(0, 1fr);
+        grid-template-areas: "check product" "check volume";
+      }
+      .a33-checklist-items-table td { padding: 0.58rem 0.62rem; }
+      .a33-checklist-items-table .a33-checklist-check-cell {
+        grid-area: check;
+        width: auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-right: 1px solid var(--a33-border-soft, #333);
+        border-bottom: 0;
+        padding: 0.35rem;
+      }
+      .a33-checklist-items-table .a33-checklist-product {
+        grid-area: product;
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        text-align: left;
+      }
+      .a33-checklist-items-table .a33-checklist-value {
+        grid-area: volume;
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        text-align: left;
+        white-space: normal;
+        border-bottom: 0;
+      }
+    }
+    @media (max-width: 560px) {
+      .a33-production-actions { gap: 0.35rem; }
+      .a33-production-actions .a33-production-action {
+        min-height: 46px;
+        padding-inline: 0.25rem;
+        font-size: 0.78rem;
+      }
+      .a33-checklist-shell { padding: 0.65rem; border-radius: 12px; }
+      .a33-checklist-header { margin: -0.65rem -0.65rem 0.65rem; padding: 0.7rem 0.65rem; top: -0.65rem; }
+      .a33-checklist-block { padding: 0.6rem; }
+      .a33-checklist-history-table tr { grid-template-columns: 1fr; }
+      .a33-checklist-history-table td:nth-child(3) { border-bottom: 1px solid var(--a33-border-soft, #333); }
+    }
+
   </style>
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.93&r=7" />
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.93&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.94&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.94&r=7" />
 </head>
 <body class="calc-body calc-main-body">
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Calculadora</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.93">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.94">v...</div>
   </header>
 
   <div class="app-container">
@@ -451,7 +734,11 @@
       </div>
     </div>
 
-    <button id="btn-calcular" class="btn-main">Calcular totales de materia prima</button>
+    <div class="a33-production-actions" aria-label="Acciones de producción">
+      <button id="btn-calcular" class="a33-production-action" type="button">Calcular</button>
+      <button id="btn-guardar-lote" class="a33-production-action" type="button">Guardar Lote</button>
+      <button id="btn-checklist" class="a33-production-action" type="button">Checklist</button>
+    </div>
     <p id="hint-resultados" class="hint">Resultados: calcula para ver el resumen (materia prima, caducidad y costos).</p>
 
     <div id="resultados" class="results" style="display:none;">
@@ -464,8 +751,7 @@
       <div class="results-title" style="margin-top:0.8rem;">Resumen de volumen final</div>
       <div id="resumen-volumen"></div>
 
-      <button id="btn-guardar-lote" class="btn-secondary">CONFIRMAR PRODUCCIÓN Y CREAR LOTE</button>
-      <p class="hint">Confirmará Inventario: descontará materias primas, envases y tapas/corchos; aumentará producto terminado y creará el lote.</p>
+      <p class="hint">Guardar Lote confirmará Inventario: descontará materias primas, envases y tapas/corchos; aumentará producto terminado y creará el lote.</p>
       <button id="btn-exportar" class="btn-secondary">Exportar información del lote (TXT)</button>
       <p class="hint">Se descargará un archivo .txt con el resumen del lote.</p>
     </div>
@@ -483,14 +769,38 @@
       </div>
     </div>
   </div>
-  <script src="/assets/js/a33-release.js?v=4.20.93&r=52"></script>
+
+  <section id="a33-checklist-view" class="a33-checklist-view" hidden aria-hidden="true" aria-labelledby="a33-checklist-title">
+    <div class="a33-checklist-shell" role="dialog" aria-modal="true">
+      <div class="a33-checklist-header">
+        <h2 id="a33-checklist-title">Checklist</h2>
+        <button id="btn-cerrar-checklist" class="a33-checklist-close" type="button">Volver</button>
+      </div>
+
+      <div class="a33-checklist-block">
+        <h3>Histórico</h3>
+        <div id="a33-checklist-historico"></div>
+      </div>
+
+      <div class="a33-checklist-block">
+        <h3>Checklist</h3>
+        <div id="a33-checklist-seleccion"></div>
+        <div id="a33-checklist-contenido">
+          <p class="a33-checklist-empty">Selecciona Usar en un lote para cargar sus ingredientes.</p>
+        </div>
+        <div id="a33-checklist-estado" class="a33-checklist-status" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <script src="/assets/js/a33-release.js?v=4.20.94&r=53"></script>
 
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.93&r=20"></script>
-  <script src="/assets/js/a33-production.js?v=4.20.93&r=4"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.93&r=14"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.93&r=15"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.94&r=20"></script>
+  <script src="/assets/js/a33-production.js?v=4.20.94&r=4"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.94&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.94&r=15"></script>
 
   <script>
     const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
@@ -2175,6 +2485,11 @@ function a33WireNumericInput(el, mode) {
           productosProducidosSchema: 2,
           contratoLotesDinamicos: { schema:2, fuente:"calculadora-produccion", identidad:"productId", campos:["productId","nombreSnapshot","Letra","cantidad","envaseId","tapaId","recipeSnapshot","operationId","fecha","codigo","costoUnitario","costoTotal"] },
           origenProduccion: "Calculadora de Producción",
+          checklistProduccion: {
+            schema: 1,
+            items: { vino:false, vodka:false, jugo:false, sirope:false, agua:false },
+            updatedAt: null
+          },
           ...(notasTrim ? { notas:notasTrim } : {}),
           createdAt: new Date().toISOString()
         };
@@ -2199,6 +2514,7 @@ function a33WireNumericInput(el, mode) {
         alert(result.duplicate
           ? "La producción ya estaba guardada. No se duplicaron Lote ni Inventario."
           : "Producción guardada: lote e Inventario confirmados sin duplicados.");
+        a33RefreshChecklistAfterLotSave(result.lote || nuevoLote);
         limpiarCantidades();
         const notasInput = document.getElementById("notas");
         if (notasInput) notasInput.value = "";
@@ -2215,9 +2531,401 @@ function a33WireNumericInput(el, mode) {
         setProductionButtonBusy(btn, false);
       }
     }
+    const A33_CHECKLIST_STORAGE_KEY = "arcano33_lotes";
+    const A33_CHECKLIST_SCHEMA = 1;
+    const A33_CHECKLIST_INGREDIENTS = [
+      { key:"vino", label:"Vino", direct:["volVino"] },
+      { key:"vodka", label:"Vodka", direct:["volVodka"] },
+      { key:"jugo", label:"Jugo", direct:["volJugo"] },
+      { key:"sirope", label:"Sirope", direct:["volSirope"] },
+      { key:"agua", label:"Agua pura", direct:["volAgua"] }
+    ];
+    let A33ChecklistLots = [];
+    let A33ChecklistSelectedIndex = -1;
+    let A33ChecklistSelectedIdentity = "";
+
+    function a33ChecklistNumber(value) {
+      if (value == null || value === "") return 0;
+      const n = Number(String(value).replace(/,/g, "").trim());
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+
+    function a33ChecklistLotIdentity(lote) {
+      return String((lote && (lote.loteId || lote.id || lote.operationId || lote.productionOperationId || lote.codigo || lote.batchCode || lote.code || lote.lote)) || "").trim();
+    }
+
+    function a33ChecklistLotTimestamp(lote) {
+      const values = [lote && lote.createdAt, lote && lote.updatedAt, lote && lote.fecha, lote && lote.fechaProd, lote && lote.fechaProduccion];
+      for (const value of values) {
+        if (!value) continue;
+        const time = new Date(String(value).length === 10 ? String(value) + "T00:00:00" : value).getTime();
+        if (Number.isFinite(time)) return time;
+      }
+      return 0;
+    }
+
+    function a33ChecklistDateText(lote) {
+      const raw = lote && (lote.fecha || lote.fechaProd || lote.fechaProduccion || lote.createdAt);
+      if (!raw) return "—";
+      const d = new Date(String(raw).length === 10 ? String(raw) + "T00:00:00" : raw);
+      if (!Number.isFinite(d.getTime())) return String(raw);
+      return formatearFechaBonita(d);
+    }
+
+    function a33ChecklistLotCode(lote) {
+      return String((lote && (lote.codigo || lote.batchCode || lote.code || lote.lote)) || "Sin código").trim() || "Sin código";
+    }
+
+    function a33ChecklistProducts(lote) {
+      const rows = lote && Array.isArray(lote.productosProducidos) ? lote.productosProducidos : [];
+      return rows.filter((row) => row && typeof row === "object");
+    }
+
+    function a33ChecklistEmptyState() {
+      const state = {};
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => { state[item.key] = false; });
+      return state;
+    }
+
+    function a33ChecklistState(lote) {
+      const state = a33ChecklistEmptyState();
+      const raw = lote && lote.checklistProduccion && typeof lote.checklistProduccion === "object" ? lote.checklistProduccion : null;
+      const items = raw && raw.items && typeof raw.items === "object"
+        ? raw.items
+        : (raw && raw.estado && typeof raw.estado === "object" ? raw.estado : {});
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => { state[item.key] = items[item.key] === true; });
+      return state;
+    }
+
+    function a33ChecklistPayload(state, updatedAt) {
+      const normalized = a33ChecklistEmptyState();
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => { normalized[item.key] = !!(state && state[item.key]); });
+      return { schema:A33_CHECKLIST_SCHEMA, items:normalized, updatedAt:updatedAt || new Date().toISOString() };
+    }
+
+    function a33ChecklistFindIndex(list, identity) {
+      const target = String(identity || "").trim();
+      if (!target) return -1;
+      return (Array.isArray(list) ? list : []).findIndex((lote) => a33ChecklistLotIdentity(lote) === target);
+    }
+
+    function a33SetChecklistStatus(message, tone) {
+      const el = document.getElementById("a33-checklist-estado");
+      if (!el) return;
+      el.textContent = String(message || "");
+      if (tone) el.dataset.tone = tone;
+      else el.removeAttribute("data-tone");
+    }
+
+    function a33ChecklistIngredients(lote) {
+      const totals = {};
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => { totals[item.key] = 0; });
+      const aggregate = (lote && (lote.ingredientTotals || lote.totalesIngredientes || lote.ingredientesTotales)) || {};
+
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => {
+        let value = 0;
+        for (const field of item.direct) {
+          value = a33ChecklistNumber(lote && lote[field]);
+          if (value > 0) break;
+        }
+        if (!(value > 0)) value = a33ChecklistNumber(aggregate && aggregate[item.key]);
+        totals[item.key] = value;
+      });
+
+      const hasDirect = A33_CHECKLIST_INGREDIENTS.some((item) => totals[item.key] > 0);
+      if (!hasDirect) {
+        a33ChecklistProducts(lote).forEach((row) => {
+          const qty = a33ChecklistNumber(row.cantidad != null ? row.cantidad : row.unidades);
+          const recipe = row.recipeSnapshot || row.recetaSnapshot || (row.snapshotProduccion && (row.snapshotProduccion.recipeSnapshot || row.snapshotProduccion.recetaSnapshot)) || {};
+          if (!(qty > 0) || !recipe || typeof recipe !== "object") return;
+          A33_CHECKLIST_INGREDIENTS.forEach((item) => {
+            totals[item.key] += a33ChecklistNumber(recipe[item.key]) * qty;
+          });
+        });
+      }
+
+      return A33_CHECKLIST_INGREDIENTS
+        .map((item) => ({ key:item.key, label:item.label, volume:totals[item.key] }))
+        .filter((item) => item.volume > 0);
+    }
+
+    function a33ChecklistLotVolumeMl(lote) {
+      const direct = [lote && lote.volTotal, lote && lote.totalVolumenFinalMl, lote && lote.volumenTotalMl, lote && lote.volumenMl];
+      for (const value of direct) {
+        const n = a33ChecklistNumber(value);
+        if (n > 0) return n;
+      }
+
+      let productsTotal = 0;
+      a33ChecklistProducts(lote).forEach((row) => {
+        const qty = a33ChecklistNumber(row.cantidad != null ? row.cantidad : row.unidades);
+        const unitVolume = a33ChecklistNumber(row.volumenMl || row.volumeMl || (row.snapshotProduccion && row.snapshotProduccion.volumenMl));
+        if (qty > 0 && unitVolume > 0) productsTotal += qty * unitVolume;
+      });
+      if (productsTotal > 0) return productsTotal;
+
+      return a33ChecklistIngredients(lote).reduce((sum, item) => sum + item.volume, 0);
+    }
+
+    function a33ChecklistVolumeText(lote) {
+      const ml = a33ChecklistLotVolumeMl(lote);
+      return ml > 0 ? formatLitros(ml) : "—";
+    }
+
+    function a33ReadChecklistLots() {
+      try {
+        const lots = (window.A33Storage && typeof A33Storage.sharedGet === "function")
+          ? A33Storage.sharedGet(A33_CHECKLIST_STORAGE_KEY, [])
+          : (() => {
+              const raw = window.localStorage ? window.localStorage.getItem(A33_CHECKLIST_STORAGE_KEY) : "";
+              return raw ? JSON.parse(raw) : [];
+            })();
+        return (Array.isArray(lots) ? lots : [])
+          .filter((lote) => lote && typeof lote === "object")
+          .slice()
+          .sort((a, b) => a33ChecklistLotTimestamp(b) - a33ChecklistLotTimestamp(a));
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function a33WriteChecklistState(identity, state) {
+      const target = String(identity || "").trim();
+      if (!target) return { ok:false, message:"No se pudo identificar el lote." };
+      const payload = a33ChecklistPayload(state);
+
+      if (window.A33Storage && typeof A33Storage.sharedRead === "function" && typeof A33Storage.sharedReplaceExact === "function") {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const read = A33Storage.sharedRead(A33_CHECKLIST_STORAGE_KEY, []);
+          const list = Array.isArray(read.data) ? read.data.slice() : [];
+          const index = a33ChecklistFindIndex(list, target);
+          if (index < 0) return { ok:false, message:"El lote ya no está disponible." };
+          const nextLot = { ...list[index], checklistProduccion:payload };
+          list[index] = nextLot;
+          const write = A33Storage.sharedReplaceExact(A33_CHECKLIST_STORAGE_KEY, list, {
+            source:"calculadora-checklist",
+            baseRev:read.meta && typeof read.meta.rev === "number" ? read.meta.rev : null
+          });
+          if (write && write.ok !== false) {
+            const savedList = Array.isArray(write.data) ? write.data : list;
+            const savedIndex = a33ChecklistFindIndex(savedList, target);
+            return { ok:true, lote:savedIndex >= 0 ? savedList[savedIndex] : nextLot };
+          }
+          if (!(write && write.conflict)) return { ok:false, message:(write && write.message) || "No se pudo guardar el checklist." };
+        }
+        return { ok:false, message:"Los lotes cambiaron durante el guardado. Inténtalo nuevamente." };
+      }
+
+      try {
+        const raw = window.localStorage ? window.localStorage.getItem(A33_CHECKLIST_STORAGE_KEY) : "";
+        const list = raw ? JSON.parse(raw) : [];
+        const index = a33ChecklistFindIndex(list, target);
+        if (index < 0) return { ok:false, message:"El lote ya no está disponible." };
+        const nextLot = { ...list[index], checklistProduccion:payload };
+        list[index] = nextLot;
+        window.localStorage.setItem(A33_CHECKLIST_STORAGE_KEY, JSON.stringify(list));
+        return { ok:true, lote:nextLot };
+      } catch (_) {
+        return { ok:false, message:"No se pudo guardar el checklist en este dispositivo." };
+      }
+    }
+
+    function a33PersistChecklistChange(key, checked) {
+      const lote = A33ChecklistLots[A33ChecklistSelectedIndex];
+      const identity = a33ChecklistLotIdentity(lote);
+      if (!lote || !identity) return false;
+      const previous = a33ChecklistState(lote);
+      const next = { ...previous, [key]:!!checked };
+      a33SetChecklistStatus("Guardando checklist…", "saving");
+      const result = a33WriteChecklistState(identity, next);
+      if (!result.ok) {
+        a33SetChecklistStatus(result.message || "No se pudo guardar el checklist.", "error");
+        a33RenderSelectedChecklist(A33ChecklistSelectedIndex, { keepStatus:true });
+        return false;
+      }
+      const savedLot = result.lote || { ...lote, checklistProduccion:a33ChecklistPayload(next) };
+      A33ChecklistLots[A33ChecklistSelectedIndex] = savedLot;
+      a33SetChecklistStatus("Checklist guardado para este lote.", "success");
+      return true;
+    }
+
+    function a33RenderChecklistHistory(options) {
+      const opts = options && typeof options === "object" ? options : {};
+      const host = document.getElementById("a33-checklist-historico");
+      if (!host) return;
+      const preserveIdentity = opts.preserveSelection ? A33ChecklistSelectedIdentity : "";
+      A33ChecklistLots = a33ReadChecklistLots();
+      A33ChecklistSelectedIndex = -1;
+      A33ChecklistSelectedIdentity = "";
+      host.innerHTML = "";
+
+      const selected = document.getElementById("a33-checklist-seleccion");
+      const content = document.getElementById("a33-checklist-contenido");
+      if (selected) selected.innerHTML = "";
+      if (content) content.innerHTML = '<p class="a33-checklist-empty">Selecciona Usar en un lote para cargar sus ingredientes.</p>';
+      a33SetChecklistStatus("", "");
+
+      if (!A33ChecklistLots.length) {
+        host.innerHTML = '<p class="a33-checklist-empty">Aún no hay lotes disponibles para preparar.</p>';
+        if (content) content.innerHTML = '<p class="a33-checklist-empty">Aún no hay lotes disponibles para preparar.</p>';
+        return;
+      }
+
+      const wrap = document.createElement("div");
+      wrap.className = "a33-checklist-table-wrap";
+      const table = document.createElement("table");
+      table.className = "a33-checklist-table a33-checklist-history-table";
+      table.innerHTML = "<thead><tr><th>Fecha</th><th>Lote</th><th>Volumen</th><th>Acción</th></tr></thead>";
+      const tbody = document.createElement("tbody");
+
+      A33ChecklistLots.forEach((lote) => {
+        const identity = a33ChecklistLotIdentity(lote);
+        const tr = document.createElement("tr");
+        tr.className = "a33-checklist-history-row";
+        tr.dataset.checklistIdentity = identity;
+        const dateTd = document.createElement("td");
+        dateTd.className = "a33-checklist-value";
+        dateTd.dataset.label = "Fecha";
+        dateTd.textContent = a33ChecklistDateText(lote);
+        const lotTd = document.createElement("td");
+        lotTd.dataset.label = "Lote";
+        lotTd.textContent = a33ChecklistLotCode(lote);
+        const volumeTd = document.createElement("td");
+        volumeTd.className = "a33-checklist-value";
+        volumeTd.dataset.label = "Volumen";
+        volumeTd.textContent = a33ChecklistVolumeText(lote);
+        const actionTd = document.createElement("td");
+        actionTd.dataset.label = "Acción";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "a33-checklist-use";
+        button.textContent = "Usar";
+        button.dataset.checklistIdentity = identity;
+        button.setAttribute("aria-label", "Usar lote " + a33ChecklistLotCode(lote));
+        actionTd.appendChild(button);
+        tr.append(dateTd, lotTd, volumeTd, actionTd);
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      host.appendChild(wrap);
+
+      if (preserveIdentity) {
+        const preservedIndex = a33ChecklistFindIndex(A33ChecklistLots, preserveIdentity);
+        if (preservedIndex >= 0) a33RenderSelectedChecklist(preservedIndex);
+      }
+    }
+
+    function a33RenderSelectedChecklist(index, options) {
+      const opts = options && typeof options === "object" ? options : {};
+      const lote = A33ChecklistLots[index];
+      const selected = document.getElementById("a33-checklist-seleccion");
+      const content = document.getElementById("a33-checklist-contenido");
+      if (!lote || !selected || !content) return;
+      A33ChecklistSelectedIndex = index;
+      A33ChecklistSelectedIdentity = a33ChecklistLotIdentity(lote);
+      const ingredients = a33ChecklistIngredients(lote);
+      const state = a33ChecklistState(lote);
+
+      document.querySelectorAll(".a33-checklist-history-row").forEach((row) => {
+        row.classList.toggle("is-active", row.dataset.checklistIdentity === A33ChecklistSelectedIdentity);
+      });
+
+      selected.innerHTML = "";
+      const meta = document.createElement("div");
+      meta.className = "a33-checklist-meta";
+      [
+        "Lote: " + a33ChecklistLotCode(lote),
+        "Fecha: " + a33ChecklistDateText(lote),
+        "Volumen: " + a33ChecklistVolumeText(lote)
+      ].forEach((value) => {
+        const badge = document.createElement("div");
+        badge.className = "badge";
+        badge.textContent = value;
+        meta.appendChild(badge);
+      });
+      selected.appendChild(meta);
+      content.innerHTML = "";
+
+      if (!ingredients.length) {
+        content.innerHTML = '<p class="a33-checklist-empty">Este lote guardado no contiene detalle de ingredientes disponible para el Checklist.</p>';
+        if (!opts.keepStatus) a33SetChecklistStatus("", "");
+        return;
+      }
+
+      const wrap = document.createElement("div");
+      wrap.className = "a33-checklist-table-wrap";
+      const table = document.createElement("table");
+      table.className = "a33-checklist-table a33-checklist-items-table";
+      table.innerHTML = "<thead><tr><th>Checklist</th><th>Producto</th><th>Volumen</th></tr></thead>";
+      const tbody = document.createElement("tbody");
+
+      ingredients.forEach((ingredient) => {
+        const tr = document.createElement("tr");
+        tr.className = "a33-checklist-item-row";
+        tr.classList.toggle("is-complete", !!state[ingredient.key]);
+        const checkTd = document.createElement("td");
+        checkTd.className = "a33-checklist-check-cell";
+        checkTd.dataset.label = "Checklist";
+        const label = document.createElement("label");
+        label.className = "a33-checklist-toggle";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = !!state[ingredient.key];
+        checkbox.dataset.checklistKey = ingredient.key;
+        checkbox.dataset.checklistLabel = ingredient.label;
+        checkbox.setAttribute("aria-label", (checkbox.checked ? "Desmarcar " : "Marcar ") + ingredient.label + (checkbox.checked ? " como pendiente" : " como completado"));
+        label.appendChild(checkbox);
+        checkTd.appendChild(label);
+        const productTd = document.createElement("td");
+        productTd.className = "a33-checklist-product";
+        productTd.dataset.label = "Producto";
+        productTd.textContent = ingredient.label;
+        const volumeTd = document.createElement("td");
+        volumeTd.className = "a33-checklist-value";
+        volumeTd.dataset.label = "Volumen";
+        volumeTd.textContent = formatMl(ingredient.volume) + " (" + formatLitros(ingredient.volume) + ")";
+        tr.append(checkTd, productTd, volumeTd);
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      content.appendChild(wrap);
+      if (!opts.keepStatus) a33SetChecklistStatus("Estado recuperado para este lote.", "success");
+      const firstCheckbox = content.querySelector('input[type="checkbox"]');
+      if (firstCheckbox) firstCheckbox.focus({ preventScroll:true });
+    }
+
+    function a33RefreshChecklistAfterLotSave() {
+      a33RenderChecklistHistory({ preserveSelection:true });
+    }
+
+    function a33OpenChecklist() {
+      const view = document.getElementById("a33-checklist-view");
+      if (!view) return;
+      a33RenderChecklistHistory({ preserveSelection:false });
+      view.hidden = false;
+      view.setAttribute("aria-hidden", "false");
+      document.body.classList.add("a33-checklist-open");
+      const close = document.getElementById("btn-cerrar-checklist");
+      if (close) close.focus({ preventScroll:true });
+    }
+
+    function a33CloseChecklist() {
+      const view = document.getElementById("a33-checklist-view");
+      if (!view) return;
+      view.hidden = true;
+      view.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("a33-checklist-open");
+      const trigger = document.getElementById("btn-checklist");
+      if (trigger) trigger.focus({ preventScroll:true });
+    }
+
 function registerCalculadoraServiceWorker() {
       if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./sw.js?v=4.20.93&r=2")
+      navigator.serviceWorker.register("./sw.js?v=4.20.94&r=4")
         .catch((error) => console.error("SW Calculadora error", error));
     }
 
@@ -2234,6 +2942,40 @@ function registerCalculadoraServiceWorker() {
       document.getElementById("btn-guardar-receta").addEventListener("click", guardarRecetas);
       document.getElementById("btn-calcular").addEventListener("click", calcularTotales);
       document.getElementById("btn-limpiar").addEventListener("click", limpiarCantidades);
+      const btnChecklist = document.getElementById("btn-checklist");
+      const btnCerrarChecklist = document.getElementById("btn-cerrar-checklist");
+      const checklistHistorico = document.getElementById("a33-checklist-historico");
+      const checklistContenido = document.getElementById("a33-checklist-contenido");
+      if (btnChecklist) btnChecklist.addEventListener("click", a33OpenChecklist);
+      if (btnCerrarChecklist) btnCerrarChecklist.addEventListener("click", a33CloseChecklist);
+      if (checklistHistorico) {
+        checklistHistorico.addEventListener("click", (event) => {
+          const button = event.target && event.target.closest ? event.target.closest("[data-checklist-identity]") : null;
+          if (!button) return;
+          const index = a33ChecklistFindIndex(A33ChecklistLots, button.dataset.checklistIdentity);
+          if (index >= 0) a33RenderSelectedChecklist(index);
+        });
+      }
+      if (checklistContenido) {
+        checklistContenido.addEventListener("change", (event) => {
+          const checkbox = event.target;
+          if (!checkbox || checkbox.type !== "checkbox" || !checkbox.dataset.checklistKey) return;
+          const row = checkbox.closest(".a33-checklist-item-row");
+          const saved = a33PersistChecklistChange(checkbox.dataset.checklistKey, checkbox.checked);
+          if (!saved) return;
+          if (row) row.classList.toggle("is-complete", checkbox.checked);
+          checkbox.setAttribute("aria-label", (checkbox.checked ? "Desmarcar " : "Marcar ") + (checkbox.dataset.checklistLabel || "producto") + (checkbox.checked ? " como pendiente" : " como completado"));
+        });
+      }
+      window.addEventListener("storage", (event) => {
+        if (!event || event.key !== A33_CHECKLIST_STORAGE_KEY) return;
+        const view = document.getElementById("a33-checklist-view");
+        if (view && !view.hidden) a33RenderChecklistHistory({ preserveSelection:true });
+      });
+      document.addEventListener("keydown", (event) => {
+        const view = document.getElementById("a33-checklist-view");
+        if (event.key === "Escape" && view && !view.hidden) a33CloseChecklist();
+      });
       const btnGuardarLote = document.getElementById("btn-guardar-lote");
       if (btnGuardarLote && btnGuardarLote.dataset.productionBound !== "1") {
         btnGuardarLote.dataset.productionBound = "1";
@@ -2305,6 +3047,6 @@ function registerCalculadoraServiceWorker() {
       try { resetNotasAlEntrar(); } catch (e) {}
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.93&r=7"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.94&r=7"></script>
 </body>
 </html>

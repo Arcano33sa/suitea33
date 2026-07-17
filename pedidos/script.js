@@ -3080,7 +3080,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js?v=4.20.93&r=1').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.94&r=1').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

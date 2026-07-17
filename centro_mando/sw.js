@@ -16,7 +16,7 @@ self.addEventListener('activate', (event) => {
     try { await self.clients.claim(); } catch (_) {}
     try {
       const clients = await self.clients.matchAll({ type:'window', includeUncontrolled:true });
-      clients.forEach((client) => { try { client.postMessage({ type:'A33_LEGACY_ROUTE_RETIRED', to:'../centro-mando/index.html', version:'4.20.93' }); } catch (_) {} });
+      clients.forEach((client) => { try { client.postMessage({ type:'A33_LEGACY_ROUTE_RETIRED', to:'../centro-mando/index.html', version:'4.20.94' }); } catch (_) {} });
     } catch (_) {}
     try { await self.registration.unregister(); } catch (_) {}
   })());
