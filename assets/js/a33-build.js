@@ -6,11 +6,11 @@
 (function(global){
   'use strict';
 
-  const VERSION = '4.20.94';
+  const VERSION = '4.20.95';
   const REV = '1'; // subir cuando haya que forzar limpiar caches sin cambiar VERSION
 
   const MODULE_REVISIONS = Object.freeze({
-    calculadora:'4', catalogos:'31', inventario:'17', lotes:'18', pedidos:'18', pos:'31'
+    calculadora:'7', catalogos:'33', inventario:'18', lotes:'21', pedidos:'19', pos:'34'
   });
 
   function cacheName(module){

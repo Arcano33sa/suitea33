@@ -952,24 +952,131 @@ function $(id) {
   return document.getElementById(id);
 }
 
+function parseBatchCode(value){
+  const raw = String(value == null ? '' : value).trim().replace(/\s+/g, '');
+  if (!raw) return null;
+  try {
+    if (window.A33LotCode && typeof window.A33LotCode.validate === 'function') {
+      const parsed = window.A33LotCode.validate(raw);
+      if (parsed && parsed.ok) return parsed;
+    }
+  } catch (_) { }
+  return null;
+}
+
 function canonicalBatchCode(value){
-  return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return '';
+  try{
+    if (window.A33LotCode && typeof window.A33LotCode.display === 'function') return window.A33LotCode.display(raw);
+  }catch(_){ }
+  const parsed = parseBatchCode(raw);
+  return parsed && parsed.format === 'new' && parsed.code ? parsed.code : raw;
+}
+
+function batchCodeIdentityKey(value){
+  try{
+    if (window.A33LotCode && typeof window.A33LotCode.identityKey === 'function') return window.A33LotCode.identityKey(value);
+  }catch(_){ }
+  const canonical = canonicalBatchCode(value);
+  return canonical ? canonical.replace(/\s+/g, '').toLowerCase() : '';
+}
+
+function batchCodeSearchTerms(value){
+  try{
+    if (window.A33LotCode && typeof window.A33LotCode.searchTerms === 'function') return window.A33LotCode.searchTerms(value);
+  }catch(_){ }
+  return [canonicalBatchCode(value), batchCodeIdentityKey(value)].filter(Boolean);
+}
+
+function batchCodeExcelText(value){
+  const literal = String(value == null ? '' : value);
+  try{
+    if (window.A33LotCode && typeof window.A33LotCode.excelTextCell === 'function') return window.A33LotCode.excelTextCell(literal);
+  }catch(_){ }
+  return { t:'s', v:literal, z:'@' };
+}
+
+function batchCodeMetadata(value){
+  const parsed = parseBatchCode(value);
+  if (!parsed) return null;
+  return {
+    schema: 1,
+    format: parsed.format || '',
+    formatVersion: parsed.formatVersion || '',
+    code: parsed.code,
+    consecutiveNumber: Number.isInteger(parsed.consecutiveNumber) ? parsed.consecutiveNumber : null,
+    hebrewMonthCode: parsed.monthCode || '',
+    hebrewYear: Number.isInteger(parsed.hebrewYear) ? parsed.hebrewYear : null,
+    historical: parsed.format === 'historical'
+  };
+}
+
+function lotCodeConsecutiveNumber(loteOrCode){
+  const obj = loteOrCode && typeof loteOrCode === 'object' ? loteOrCode : null;
+  const stored = obj && (obj.codigoLoteData?.consecutiveNumber ?? obj.lotCodeMeta?.consecutiveNumber ?? obj.consecutivoNumerico);
+  const storedNumber = Number(stored);
+  if (Number.isInteger(storedNumber) && storedNumber >= 0) return storedNumber;
+  const parsed = parseBatchCode(obj ? (obj.codigo || obj.batchCode || obj.code || '') : loteOrCode);
+  return parsed && Number.isInteger(parsed.consecutiveNumber) ? parsed.consecutiveNumber : null;
 }
 
 function deriveStableLoteId(lote){
   const obj = lote && typeof lote === 'object' ? lote : {};
+  const existing = String(obj.loteId || obj.id || obj.operationId || obj.productionOperationId || '').trim();
+  if (existing) return existing;
   const batch = canonicalBatchCode(obj.batchCode || obj.codigo || obj.code || '');
-  if (batch) return `batch_${batch}`;
-  const id = String(obj.loteId || obj.id || '').trim();
-  return id || `lote_${Date.now()}`;
+  return batch ? `batch_${batch}` : `lote_${Date.now()}`;
 }
 
 function backfillLoteIdentityInPlace(lote){
   if (!lote || typeof lote !== 'object') return lote;
-  const batch = canonicalBatchCode(lote.batchCode || lote.codigo || lote.code || '');
-  if (batch && !lote.batchCode) lote.batchCode = batch;
-  if (!lote.loteId) lote.loteId = batch ? `batch_${batch}` : deriveStableLoteId(lote);
+  const rawCode = lote.codigo || lote.batchCode || lote.code || '';
+  const batch = canonicalBatchCode(rawCode);
+  const parsed = parseBatchCode(rawCode);
+  if (batch) {
+    lote.batchCode = batch;
+    if (!lote.codigo || (parsed && parsed.format === 'new')) lote.codigo = batch;
+  }
+  if (parsed && !lote.codigoLoteData) lote.codigoLoteData = batchCodeMetadata(batch);
+  if (!lote.loteId) lote.loteId = deriveStableLoteId(lote);
+  if (!lote.id) lote.id = lote.loteId;
   return lote;
+}
+
+function loteRecordIdentityCandidates(lote){
+  const obj = lote && typeof lote === 'object' ? lote : {};
+  const batch = canonicalBatchCode(obj.codigo || obj.batchCode || obj.code || '');
+  return Array.from(new Set([
+    obj.loteId,
+    obj.id,
+    obj.operationId,
+    obj.productionOperationId,
+    obj.batchId,
+    batch,
+    batch ? `batch_${batch}` : ''
+  ].map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function stableLoteRecordId(lote){
+  return loteRecordIdentityCandidates(lote)[0] || deriveStableLoteId(lote);
+}
+
+function compareLotesNewestFirst(a, b){
+  const ta = getCreatedTimestamp(a);
+  const tb = getCreatedTimestamp(b);
+  if (ta !== tb) return tb - ta;
+  const fa = toTimestamp(a?.fecha);
+  const fb = toTimestamp(b?.fecha);
+  if (Number.isFinite(fa) && Number.isFinite(fb) && fa !== fb) return fb - fa;
+  const ca = lotCodeConsecutiveNumber(a);
+  const cb = lotCodeConsecutiveNumber(b);
+  if (Number.isInteger(ca) && Number.isInteger(cb) && ca !== cb) return cb - ca;
+  return canonicalBatchCode(b?.codigo || b?.batchCode || '').localeCompare(
+    canonicalBatchCode(a?.codigo || a?.batchCode || ''),
+    'es',
+    { numeric:true, sensitivity:'base' }
+  );
 }
 
 // ================================
@@ -1323,9 +1430,11 @@ function buildArchiveSnapshot(lote, deletedAtIso){
     : (lote?.contratoPOS && typeof lote.contratoPOS === 'object' ? { ...lote.contratoPOS } : undefined);
 
   return {
-    archiveId: `arch_${Date.now()}_${String(lote?.id || '')}`,
+    archiveId: `arch_${Date.now()}_${stableLoteRecordId(lote)}`,
     originalId: lote?.id,
-    codigo: (lote?.codigo || "").toString(),
+    loteId: lote?.loteId || lote?.id || '',
+    codigo: canonicalBatchCode(lote?.codigo || lote?.batchCode || ''),
+    batchCode: canonicalBatchCode(lote?.batchCode || lote?.codigo || ''),
     createdAt,
     deletedAt,
     statusAtDelete: st,
@@ -1786,13 +1895,15 @@ function readFormData() {
     return null;
   }
 
+  const codeMeta = batchCodeMetadata(batchCode);
   const data = {
     id: editingId || `lote_${Date.now()}`,
-    // Identidad estable (nuevo) + canónico para dedupe
+    // Identidad estable (nuevo) + código canónico sin destruir las x minúsculas.
     loteId: editingId ? undefined : (batchCode ? `batch_${batchCode}` : undefined),
     batchCode: batchCode || undefined,
+    codigoLoteData: codeMeta || undefined,
     fecha: formatDate(fecha),
-    codigo,
+    codigo: batchCode || codigo,
     caducidad: $("caducidad").value || calculateCaducidad(fecha),
 
     volTotal: $("volTotal").value || "",
@@ -2037,7 +2148,7 @@ function buildLoteRow(lote){
   viewBtn.setAttribute("aria-label", "Ver");
   viewBtn.className = "btn icon";
   viewBtn.dataset.action = 'view';
-  viewBtn.dataset.id = String(lote.id);
+  viewBtn.dataset.id = stableLoteRecordId(lote);
 
   const editBtn = document.createElement("button");
   editBtn.type = "button";
@@ -2046,7 +2157,7 @@ function buildLoteRow(lote){
   editBtn.setAttribute("aria-label", "Editar");
   editBtn.className = "btn secondary icon";
   editBtn.dataset.action = 'edit';
-  editBtn.dataset.id = String(lote.id);
+  editBtn.dataset.id = stableLoteRecordId(lote);
 
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
@@ -2055,7 +2166,7 @@ function buildLoteRow(lote){
   deleteBtn.setAttribute("aria-label", "Borrar");
   deleteBtn.className = "btn danger icon";
   deleteBtn.dataset.action = 'delete';
-  deleteBtn.dataset.id = String(lote.id);
+  deleteBtn.dataset.id = stableLoteRecordId(lote);
 
   actionsWrap.appendChild(viewBtn);
   actionsWrap.appendChild(editBtn);
@@ -2243,7 +2354,7 @@ function buildLoteCard(lote){
     b.setAttribute('aria-label', title);
     b.className = cls;
     b.dataset.action = action;
-    b.dataset.id = String(lote.id);
+    b.dataset.id = stableLoteRecordId(lote);
     return b;
   };
 
@@ -2272,32 +2383,28 @@ function refreshListCacheIfNeeded(force){
 
   const lotes = Array.isArray(fresh.lotes) ? fresh.lotes : [];
 
-  const sorted = [...lotes].sort((a, b) => {
-    const ta = getCreatedTimestamp(a);
-    const tb = getCreatedTimestamp(b);
-    if (ta !== tb) return tb - ta;
-
-    const fa = toTimestamp(a?.fecha);
-    const fb = toTimestamp(b?.fecha);
-    if (Number.isFinite(fa) && Number.isFinite(fb) && fa !== fb) return fb - fa;
-    return (a.codigo || "").localeCompare(b.codigo || "");
-  });
+  const sorted = [...lotes].sort(compareLotesNewestFirst);
 
   listView.metaRev = rev;
   listView.allSorted = sorted;
-  listView.byId = new Map(sorted.map((l) => [String(l?.id), l]));
+  listView.byId = new Map();
+  sorted.forEach((lote) => {
+    loteRecordIdentityCandidates(lote).forEach((identity) => listView.byId.set(identity, lote));
+  });
 
   // Índice de búsqueda simple (lowercase) para filtrar rápido
   const idx = new Map();
   for (const l of sorted){
-    const id = String(l?.id ?? '');
+    const id = stableLoteRecordId(l);
     const dynamicSearch = getLoteProducedItems(l, { useRemaining: false })
       .map((item) => `${item.letra || ''} ${item.nombre || ''} ${item.productId || ''}`.trim())
       .filter(Boolean)
       .join(' ');
+    const visibleCode = canonicalBatchCode(l?.codigo || l?.batchCode || l?.code || '');
     const s = [
-      l?.codigo, l?.batchCode, l?.fecha, l?.caducidad,
-      l?.assignedEventName, l?.status, l?.loteType, l?.parentLotId,
+      ...batchCodeSearchTerms(visibleCode), visibleCode, batchCodeIdentityKey(visibleCode), l?.codigo, l?.batchCode,
+      l?.loteId, l?.id, l?.operationId, l?.productionOperationId,
+      l?.fecha, l?.caducidad, l?.assignedEventName, l?.status, l?.loteType, l?.parentLotId,
       dynamicSearch
     ].filter(Boolean).join(' ').toLowerCase();
     idx.set(id, s);
@@ -2312,7 +2419,7 @@ function applyListFilter(){
   } else {
     const out = [];
     for (const l of listView.allSorted){
-      const id = String(l?.id ?? '');
+      const id = stableLoteRecordId(l);
       const s = listView.searchIndex.get(id) || '';
       if (s.includes(q)) out.push(l);
     }
@@ -2496,22 +2603,13 @@ function exportToCSV() {
       "Evento",
     ];
 
-    const sorted = [...lotes].sort((a, b) => {
-      const ta = getCreatedTimestamp(a);
-      const tb = getCreatedTimestamp(b);
-      if (ta !== tb) return tb - ta;
-
-      const fa = toTimestamp(a?.fecha);
-      const fb = toTimestamp(b?.fecha);
-      if (Number.isFinite(fa) && Number.isFinite(fb) && fa !== fb) return fb - fa;
-      return (a.codigo || "").localeCompare(b.codigo || "");
-    });
+    const sorted = [...lotes].sort(compareLotesNewestFirst);
 
     const rows = sorted.map((l) => {
       const createdByLetter = getLoteCreatedQuantitiesByLetter(l);
       return [
         formatDate(l.fecha),
-        l.codigo || "",
+        batchCodeExcelText(l.codigo || l.batchCode || ""),
         l.volTotal || "",
         l.volVino || "",
         l.volVodka || "",
@@ -2534,6 +2632,7 @@ function exportToCSV() {
 
     const aoa = [headers, ...rows];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = headers.map((_, index) => ({ wch: index === 1 ? 24 : (index === 13 || index === 14 ? 34 : 18) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Lotes");
 
@@ -2661,7 +2760,7 @@ function renderHistoryModal(){
   const sorted = [...all].sort((a,b) => archiveSortTs(b) - archiveSortTs(a));
   const filtered = q ? sorted.filter((r) => {
     const haystack = [
-      r.codigo, r.batchCode, r.fecha, r.caducidad, r.assignedEventName,
+      ...batchCodeSearchTerms(r.codigo || r.batchCode || ''), r.codigo, r.batchCode, r.fecha, r.caducidad, r.assignedEventName,
       r.statusAtDelete, r.semaforoAtDelete,
       formatLoteProductSummary(r, { includeLegacy: true, useRemaining: false })
     ].filter(Boolean).join(' ').toLowerCase();
@@ -2755,7 +2854,7 @@ function renderHistoryModal(){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.94&r=1")
+      .register("./sw.js?v=4.20.95&r=1")
       .catch((err) => console.error("SW error", err));
   }
 }
@@ -2842,7 +2941,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           productosProducidos:officialItems.map((item) => getProductSnapshotForLote(item, item.cantidad, formData.fecha, formData.codigo, 'Producción')),
           productosProducidosSchema:2,
           origenProduccion:'Lotes',
-          contratoLotesDinamicos:{ schema:2, fuente:'lotes', identidad:'productId', campos:['productId','nombreSnapshot','Letra','cantidad','envaseId','tapaId','recipeSnapshot','operationId','fecha','codigo','costoUnitario','costoTotal'] }
+          contratoLotesDinamicos:{ schema:2, fuente:'lotes', identidad:'productId', campos:['productId','nombreSnapshot','Letra','cantidad','envaseId','tapaId','recipeSnapshot','operationId','loteId','loteCodigo','fecha','codigo','costoUnitario','costoTotal'] }
         }) || formData;
         const result = await A33Production.commitOfficialProduction({
           operationId,
@@ -2889,6 +2988,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         : String(data.loteId || data.id || deriveStableLoteId(data));
       data.loteId = resolvedLoteId;
       data.batchCode = canonicalBatchCode(data.codigo) || data.batchCode || undefined;
+      data.codigo = data.batchCode || data.codigo;
+      data.codigoLoteData = batchCodeMetadata(data.batchCode) || data.codigoLoteData || undefined;
 
       // Conflicto obvio: el mismo lote fue modificado en otro módulo/pestaña
       if (index >= 0 && editingCtx && String(editingCtx.id) === String(data.id)) {
@@ -2900,12 +3001,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       // Dedupe conservador (NO sobreescribir silenciosamente)
-      const newId = String(data.loteId || data.id || "");
-      const newBC = String(data.batchCode || "");
+      const newId = stableLoteRecordId(data);
+      const newBC = batchCodeIdentityKey(data.batchCode || data.codigo || '');
       const dup = lotes.find((l, i) => {
         if (index >= 0 && i === index) return false;
-        const lid = String(l?.loteId || l?.id || "");
-        const bc = String(l?.batchCode || canonicalBatchCode(l?.codigo) || "");
+        const lid = stableLoteRecordId(l);
+        const bc = batchCodeIdentityKey(l?.batchCode || l?.codigo || l?.code || '');
         return (newId && lid && lid === newId) || (newBC && bc && bc === newBC);
       });
       if (dup) {
@@ -2921,7 +3022,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           'fecha','codigo','caducidad',
           'volTotal','volVino','volVodka','volJugo','volSirope','volAgua',
           'productosProducidos','productosProducidosSchema','contratoLotesDinamicos','contratoPOS','disponibilidadPOS','salidaPOS',
-          'notas','batchCode','loteId'
+          'notas','batchCode','loteId','codigoLoteData'
         ];
         for (const k of editableKeys) {
           if (data[k] !== undefined) merged[k] = data[k];

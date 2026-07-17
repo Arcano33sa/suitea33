@@ -27,6 +27,16 @@
 
   function isObject(value) { return !!value && typeof value === 'object' && !Array.isArray(value); }
   function str(value) { return String(value == null ? '' : value).trim(); }
+  function canonicalLotCode(value) {
+    const raw = str(value).replace(/\s+/g, '');
+    if (!raw) return '';
+    try {
+      const parsed = g.A33LotCode && typeof g.A33LotCode.validate === 'function' ? g.A33LotCode.validate(raw) : null;
+      return parsed && parsed.ok ? parsed.code : raw;
+    } catch (_) {
+      return raw;
+    }
+  }
   function upper(value) { return str(value).toUpperCase().replace(/\s+/g, '').slice(0, 4); }
   function number(value) {
     const n = Number(String(value == null ? 0 : value).replace(',', '.'));
@@ -106,7 +116,9 @@
 
   function productCost(product) {
     const p = isObject(product) ? product : {};
-    const n = number(p.unitCost ?? p.costoUnitario ?? p.costPerUnit ?? p.cost ?? p.costo ?? p.referenceCost ?? p.costoReferencial);
+    const raw = p.unitCost ?? p.costoUnitario ?? p.costPerUnit ?? p.cost ?? p.costo ?? p.referenceCost ?? p.costoReferencial;
+    if (raw == null || str(raw) === '') return null;
+    const n = number(raw);
     return n >= 0 && Number.isFinite(n) ? n : null;
   }
 
@@ -504,7 +516,21 @@
       } else if (!tapas.has(tapaId) || !catalogRowActive(tapas.get(tapaId))) {
         configurationErrors.push('El producto ' + quotedProduct(name) + ' tiene una Tapa o Corcho inexistente o inactivo. Corrige la asignación en Catálogos → Productos.');
       }
-      byProductId.set(productId, { ...raw, productId, cantidad: amount, unidades: amount, nombre: name, nombreSnapshot: name, letra: letter, Letra: letter, envaseId, tapaId });
+      const costoUnitario = productCost(raw);
+      byProductId.set(productId, {
+        ...raw,
+        productId,
+        cantidad: amount,
+        unidades: amount,
+        nombre: name,
+        nombreSnapshot: name,
+        letra: letter,
+        Letra: letter,
+        envaseId,
+        tapaId,
+        costoUnitario,
+        costoTotal: costoUnitario == null ? null : Number((costoUnitario * amount).toFixed(4))
+      });
     }
     duplicateLetterMap.forEach((ids, letter) => {
       if (ids.length > 1) configurationErrors.push('La Letra de producción ' + letter + ' está repetida. Corrígela en Catálogos → Productos.');
@@ -569,7 +595,7 @@
     const after = ensureInventoryShape(inv);
     const timestamp = nowIso();
     const loteId = str(lote && (lote.loteId || lote.id));
-    const loteCode = str(lote && (lote.codigo || lote.batchCode));
+    const loteCode = canonicalLotCode(lote && (lote.codigo || lote.batchCode || lote.lotCode));
     const appendMovement = (movement) => {
       const id = movementId(operationId, movement.tipoItem, movement.itemId, movement.productId);
       if (after.movimientos.some((m) => str(m && m.id) === id)) return;
@@ -639,11 +665,23 @@
         tapaId: item.tapaId,
         stock: finishedAfter,
         ultimaProduccion: str(lote && lote.fecha),
+        ultimaFechaProduccion: str(lote && lote.fecha),
+        ultimoLoteId: loteId,
+        ultimoCodigoLote: loteCode,
+        ultimoCostoUnitario: item.costoUnitario,
+        ultimoCostoTotal: item.costoTotal,
         lastOperationId: operationId
       };
       appendMovement({
         tipoItem: 'producto_terminado', itemId: item.productId, productId: item.productId,
-        nombreSnapshot: item.nombreSnapshot, cantidad: item.cantidad, delta: item.cantidad,
+        nombreSnapshot: item.nombreSnapshot,
+        Letra: item.Letra,
+        letra: item.letra,
+        envaseId: item.envaseId,
+        tapaId: item.tapaId,
+        costoUnitario: item.costoUnitario,
+        costoTotal: item.costoTotal,
+        cantidad: item.cantidad, delta: item.cantidad,
         stockAnterior: finishedBefore, stockNuevo: finishedAfter, tipoMovimiento: 'alta_produccion'
       });
     });
@@ -661,7 +699,9 @@
         cantidad: item.cantidad,
         envaseId: item.envaseId,
         tapaId: item.tapaId,
-        Letra: item.Letra
+        Letra: item.Letra,
+        costoUnitario: item.costoUnitario,
+        costoTotal: item.costoTotal
       }))
     };
 
@@ -809,7 +849,7 @@
     const requestedItems = Array.isArray(opts.items) ? opts.items : [];
     if (!operationId || !lote) return { ok:false, diagnosticCode:'operation-validation', message:'Falta el identificador estable de la operación o el lote.' };
     const loteId = str(lote.loteId || lote.id);
-    const loteCode = str(lote.codigo || lote.batchCode || lote.lotCode);
+    const loteCode = canonicalLotCode(lote.codigo || lote.batchCode || lote.lotCode);
     if (!loteId || !loteCode) return { ok:false, diagnosticCode:'lot-validation', message:'El lote no tiene loteId o código estable.' };
     if (!requestedItems.length) return { ok:false, diagnosticCode:'empty-production', message:'No se puede guardar una producción vacía.' };
     if (activeLocks.has(operationId)) return { ok:false, duplicate:true, diagnosticCode:'operation-busy', message:'La producción ya se está guardando.' };
@@ -948,6 +988,10 @@
           productId,
           operationId,
           productionOperationId:operationId,
+          loteId,
+          loteCodigo:loteCode,
+          codigo:loteCode,
+          batchCode:loteCode,
           nombre:current.nombre,
           nombreSnapshot:current.nombre,
           Letra:current.Letra,
@@ -956,6 +1000,8 @@
           unidades:qty(row && (row.cantidad ?? row.unidades)) || current.cantidad,
           envaseId:current.envaseId,
           tapaId:current.tapaId,
+          costoUnitario:productCost(current),
+          costoTotal:productCost(current) == null ? null : Number((productCost(current) * (qty(row && (row.cantidad ?? row.unidades)) || current.cantidad)).toFixed(4)),
           recipeSnapshot:clone(current.recipeSnapshot),
           recetaSnapshot:clone(current.recipeSnapshot),
           legacy:false

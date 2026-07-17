@@ -520,6 +520,63 @@
     return Number.isFinite(unit) ? sign * Math.abs(unit) * qtyAbs : 0;
   }
 
+  function analyticsLotDisplay(value){
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw) return '';
+    try{
+      if (window.A33LotCode && typeof window.A33LotCode.display === 'function') return window.A33LotCode.display(raw);
+    }catch(_){ }
+    return raw;
+  }
+
+  function analyticsLotKey(value){
+    try{
+      if (window.A33LotCode && typeof window.A33LotCode.identityKey === 'function') return window.A33LotCode.identityKey(value);
+    }catch(_){ }
+    return analyticsLotDisplay(value).replace(/\s+/g, '').toLowerCase();
+  }
+
+  function saleLotCodesAnalytics(sale){
+    const row = sale && typeof sale === 'object' ? sale : {};
+    const allocations = row.loteAllocations || row.lotAllocations || (row.lotTrace && row.lotTrace.allocations);
+    const values = [];
+    if (Array.isArray(allocations)){
+      allocations.forEach((item) => values.push(item && (item.loteCodigo ?? item.codigoLote ?? item.lotCode ?? item.batchCode)));
+    }
+    values.push(row.loteCodigo ?? row.codigoLote ?? row.lotCode ?? row.batchCode ?? (row.economicSnapshot && row.economicSnapshot.loteCodigo));
+    const out = [];
+    const seen = new Set();
+    values.forEach((value) => {
+      const literal = analyticsLotDisplay(value);
+      const key = analyticsLotKey(literal);
+      if (!literal || !key || seen.has(key)) return;
+      seen.add(key);
+      out.push(literal);
+    });
+    return out;
+  }
+
+  function mergeLotCodesAnalytics(target, values){
+    const out = Array.isArray(target) ? target : [];
+    const seen = new Set(out.map(analyticsLotKey));
+    (Array.isArray(values) ? values : []).forEach((value) => {
+      const literal = analyticsLotDisplay(value);
+      const key = analyticsLotKey(literal);
+      if (!literal || !key || seen.has(key)) return;
+      seen.add(key);
+      out.push(literal);
+    });
+    return out;
+  }
+
+  function analyticsLotExcelCell(values){
+    const literal = Array.isArray(values) ? values.join(' + ') : String(values == null ? '' : values);
+    try{
+      if (window.A33LotCode && typeof window.A33LotCode.excelTextCell === 'function') return window.A33LotCode.excelTextCell(literal);
+    }catch(_){ }
+    return { t:'s', v:literal, z:'@' };
+  }
+
   function computeLineMetrics(sale){
     const qtyRaw = Number(sale && (sale.qty ?? sale.cantidad)) || 0;
     const qty = Math.abs(qtyRaw);
@@ -553,7 +610,7 @@
           historicalOnly: identity.historicalOnly,
           legacy: identity.legacy,
           unidades:0, ventas:0, costo:0, profit:0,
-          courtesyUnits:0, courtesyValue:0, courtesyCost:0
+          courtesyUnits:0, courtesyValue:0, courtesyCost:0, lotCodes:[]
         });
       }
       const agg = byIdentity.get(identity.key);
@@ -563,6 +620,7 @@
       agg.ventas += revenue;
       agg.costo += lineCost;
       agg.profit += lineProfit;
+      mergeLotCodesAnalytics(agg.lotCodes, saleLotCodesAnalytics(sale));
 
       if (sale && (sale.courtesy || sale.isCourtesy)){
         const absQty = Math.abs(finalQty);
@@ -619,7 +677,8 @@
           courtesyValue: 0,
           courtesyCost: 0,
           closedAt: null,
-          eventNameFull: null
+          eventNameFull: null,
+          lotCodes: []
         });
       }
       const bucket = byEvent.get(eventId);
@@ -627,6 +686,7 @@
       bucket.costo += lineCost;
       bucket.profit += lineProfit;
       bucket.botellas += finalQty;
+      mergeLotCodesAnalytics(bucket.lotCodes, saleLotCodesAnalytics(s));
       totalVentasPeriodo += revenue;
 
       if (s && (s.courtesy || s.isCourtesy)){
@@ -709,6 +769,7 @@
     const kpiCortesiasTotal = document.getElementById('kpi-cortesias-total');
     const kpiCortesiasSub = document.getElementById('kpi-cortesias-sub');
     const kpiCortesiasNivel = document.getElementById('kpi-cortesias-nivel');
+    const lotSummary = document.getElementById('analytics-lot-summary');
     const tbody = document.getElementById('tbody-resumen-mensual');
     if (!tbody) return;
 
@@ -718,6 +779,13 @@
     let sumTicketsPagados = 0, countTicketsPagados = 0;
     const totalProducts = new Map();
     let courtesyUnitsAbsTotal = 0, courtesyValueTotal = 0, courtesyCostTotal = 0;
+    const periodLotCodes = [];
+    (filteredSales || []).forEach((sale) => mergeLotCodesAnalytics(periodLotCodes, saleLotCodesAnalytics(sale)));
+    if (lotSummary){
+      lotSummary.innerHTML = periodLotCodes.length
+        ? periodLotCodes.map((code) => '<span class="analytics-lot-chip">' + escapeHtml(code) + '</span>').join('')
+        : '<span class="hint small">Sin códigos de lote en el período.</span>';
+    }
 
     (filteredSales || []).forEach((sale, index) => {
       const d = parseSaleDate(sale.date);
@@ -1030,6 +1098,7 @@
       const lvl = getCourtesyLevel(cortesiasPerc);
       tr.innerHTML = [
         '<td>' + escapeHtml(nombre) + '</td>',
+        '<td class="analytics-lot-code">' + escapeHtml((ev.lotCodes || []).join(' + ') || '—') + '</td>',
         '<td>' + estado + '</td>',
         '<td>' + formatCurrency(ev.ventas) + '</td>',
         '<td>' + formatCurrency(ev.costo) + '</td>',
@@ -1096,6 +1165,7 @@
       const tr = document.createElement('tr');
       tr.innerHTML = [
         '<td>' + escapeHtml(row.label) + '</td>',
+        '<td class="analytics-lot-code">' + escapeHtml((row.lotCodes || []).join(' + ') || '—') + '</td>',
         '<td>' + row.unidades + '</td>',
         '<td>' + formatCurrency(row.unitPrice) + '</td>',
         '<td>' + formatCurrency(row.unitCost) + '</td>',
@@ -1650,6 +1720,8 @@ function rebuildHorasEventOptions(filteredSales){
       return;
     }
     const ws = XLSX.utils.aoa_to_sheet(rows);
+    const header = Array.isArray(rows[0]) ? rows[0] : [];
+    ws['!cols'] = header.map((h) => ({ wch: /lote/i.test(String(h == null ? '' : h)) ? 25 : 17 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Hoja1');
     try{
@@ -1719,6 +1791,9 @@ function rebuildHorasEventOptions(filteredSales){
     rows.push(['KPI', 'Cortesías (unid.)', totalCourtesyUnits]);
     rows.push(['KPI', 'Cortesías valor comercial', totalCourtesyValue.toFixed(2)]);
     rows.push(['KPI', 'Costo real de cortesías', totalCourtesyCost.toFixed(2)]);
+    const exportLotCodes = [];
+    filtered.forEach((sale) => mergeLotCodesAnalytics(exportLotCodes, saleLotCodesAnalytics(sale)));
+    rows.push(['KPI', 'Códigos de lote', analyticsLotExcelCell(exportLotCodes)]);
 
     rows.push([]);
     rows.push(['Mes', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
@@ -1750,7 +1825,7 @@ function rebuildHorasEventOptions(filteredSales){
     }
 
     const rows = [];
-    rows.push(['Evento', 'Estado', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Unidades', 'Ticket promedio', '% del total', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
+    rows.push(['Evento', 'Código de lote', 'Estado', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Unidades', 'Ticket promedio', '% del total', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
     const totalVentas = stats.totalVentasPeriodo || 0;
 
     for (const ev of stats.rows){
@@ -1761,6 +1836,7 @@ function rebuildHorasEventOptions(filteredSales){
       const margen = ev.margin || 0;
       rows.push([
         nombre,
+        analyticsLotExcelCell(ev.lotCodes || []),
         estado,
         (ev.ventas || 0).toFixed(2),
         (ev.costo || 0).toFixed(2),
@@ -1786,13 +1862,14 @@ function rebuildHorasEventOptions(filteredSales){
     }
 
     const rows = [];
-    rows.push(['Producto', 'productId / clave histórica', 'Estado', 'Unidades netas', 'Precio unitario prom. (C$)', 'Costo unitario snapshot (C$)', 'Utilidad unitaria (C$)', 'Margen unitario %', 'Ventas totales (C$)', '% de ventas', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
+    rows.push(['Producto', 'Código de lote', 'productId / clave histórica', 'Estado', 'Unidades netas', 'Precio unitario prom. (C$)', 'Costo unitario snapshot (C$)', 'Utilidad unitaria (C$)', 'Margen unitario %', 'Ventas totales (C$)', '% de ventas', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
     const totalVentas = stats.totalVentas || 0;
 
     for (const row of stats.rows){
       const perc = totalVentas ? (row.ventas / totalVentas * 100) : 0;
       rows.push([
         row.label,
+        analyticsLotExcelCell(row.lotCodes || []),
         row.productId || row.id,
         row.operational ? 'Operativo actual' : (row.legacy ? 'Histórico legacy' : 'Inactivo/borrado · histórico'),
         row.unidades,

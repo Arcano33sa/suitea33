@@ -1,8 +1,8 @@
 /*
   Suite A33 — A33CloudSync (Etapa 7/8)
   Motor híbrido local-first + sincronización manual inicial.
-  Alcance real: Configuración segura + Catálogos maestros.
-  No sincroniza POS, ventas, eventos, Caja Chica, Finanzas, cierres, saldos ni históricos.
+  Alcance real: Configuración segura + Catálogos maestros + Lotes de producción.
+  No sincroniza ventas, eventos, Caja Chica, Finanzas, cierres ni saldos.
 */
 (function(g){
   'use strict';
@@ -14,8 +14,10 @@
   const CATALOG_DB_NAME = 'a33-pos';
   const CATALOG_DB_VERSION = 35;
   const TECHNICAL_COLLECTION = '_meta/syncEngineTests';
-  const READY_MESSAGE = 'Sincronización manual lista para Configuración y Catálogos. La Suite sigue local-first.';
-  const SYNC_SCOPE_MESSAGE = 'Alcance: Configuración + Catálogos. POS, ventas, Finanzas y Caja Chica permanecen locales.';
+  const LOTES_KEY = 'arcano33_lotes';
+  const LOTES_PATH = 'lotes';
+  const READY_MESSAGE = 'Sincronización manual lista para Configuración, Catálogos y Lotes. La Suite sigue local-first.';
+  const SYNC_SCOPE_MESSAGE = 'Alcance: Configuración + Catálogos + Lotes. Ventas, Finanzas y Caja Chica permanecen locales.';
 
   const CONFIG_KEYS = {
     identity: 'suite_a33_identity_v1',
@@ -445,6 +447,8 @@
       configDownloaded: 0,
       catalogUploaded: 0,
       catalogDownloaded: 0,
+      lotsUploaded: 0,
+      lotsDownloaded: 0,
       warnings: [],
       details: []
     };
@@ -1116,6 +1120,175 @@
     }
   }
 
+  function lotCodeLiteral(record){
+    const row = record && typeof record === 'object' ? record : {};
+    const value = row.codigo != null ? row.codigo
+      : (row.codigoLote != null ? row.codigoLote
+        : (row.loteCodigo != null ? row.loteCodigo
+          : (row.batchCode != null ? row.batchCode : (row.lotCode != null ? row.lotCode : row.code))));
+    return String(value == null ? '' : value).trim();
+  }
+
+  function lotCodeIdentity(value){
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw) return '';
+    try{
+      if (g.A33LotCode && typeof g.A33LotCode.identityKey === 'function') return g.A33LotCode.identityKey(raw);
+      if (g.A33LotCode && typeof g.A33LotCode.recognize === 'function'){
+        const parsed = g.A33LotCode.recognize(raw);
+        if (parsed && parsed.ok) return String(parsed.code || raw).replace(/\s+/g, '').toLowerCase();
+      }
+    }catch(_){ }
+    return raw.replace(/\s+/g, '').toLowerCase();
+  }
+
+  function lotInternalIdentity(record){
+    const row = record && typeof record === 'object' ? record : {};
+    const candidates = [row.loteId, row.id, row.operationId, row.productionOperationId, row.batchId];
+    for (const value of candidates){
+      const cleanValue = clean(value, 180);
+      if (cleanValue) return cleanValue;
+    }
+    return '';
+  }
+
+  function lotIdentity(record){
+    const internal = lotInternalIdentity(record);
+    if (internal) return 'id:' + internal;
+    const codeKey = lotCodeIdentity(lotCodeLiteral(record));
+    return codeKey ? 'code:' + codeKey : '';
+  }
+
+  function lotRecordKey(record){
+    const identity = lotIdentity(record);
+    return identity ? firebaseKey('lot_' + identity, 'lot') : '';
+  }
+
+  function withLotSyncMeta(record, settings){
+    const now = nowIso();
+    const src = record && typeof record === 'object' ? clone(record) || {} : {};
+    const deviceId = getDeviceId(settings);
+    const updatedAt = clean(src.updatedAt, 80) || clean(src.fechaActualizacion, 80) || clean(src.savedAt, 80) || now;
+    src.createdAt = clean(src.createdAt, 80) || clean(src.fechaCreacion, 80) || updatedAt;
+    src.updatedAt = updatedAt;
+    src.deviceId = clean(src.deviceId, 120) || deviceId;
+    src.rev = clean(src.rev, 180) || makeRev(Object.assign({ id: lotIdentity(src) || 'lot' }, src), deviceId);
+    src.deleted = src.deleted === true;
+    src.schemaVersion = Math.max(1, parseInt(src.schemaVersion || SCHEMA_VERSION, 10) || SCHEMA_VERSION);
+    src._syncKind = 'lotes';
+    return src;
+  }
+
+  function normalizeRemoteLots(value){
+    if (!value || typeof value !== 'object') return [];
+    if (Array.isArray(value)) return value.filter(Boolean).map(function(row){ return clone(row) || {}; });
+    return Object.keys(value).map(function(key){
+      const row = value[key] && typeof value[key] === 'object' ? clone(value[key]) || {} : {};
+      row._firebaseKey = key;
+      return row;
+    }).filter(function(row){ return row && typeof row === 'object' && row.deleted !== true; });
+  }
+
+  function lotComparable(record){
+    const cleanRecord = stripMeta(record || {});
+    try{ delete cleanRecord._firebaseKey; }catch(_){ }
+    return cleanRecord;
+  }
+
+  function buildLotMap(records, summary, side){
+    const map = new Map();
+    (Array.isArray(records) ? records : []).forEach(function(record){
+      if (!record || typeof record !== 'object' || record.deleted === true) return;
+      const identity = lotIdentity(record);
+      if (!identity) return;
+      if (map.has(identity)){
+        addWarning(summary, 'Lotes: duplicado ' + (side || '') + ' detectado para ' + clean(lotCodeLiteral(record) || identity, 100) + '. Se conservó un solo registro por identidad.');
+        return;
+      }
+      map.set(identity, record);
+    });
+    return map;
+  }
+
+  async function syncLots(db, settings, summary){
+    const ref = db.ref(getWorkspacePath(settings) + '/' + LOTES_PATH);
+    let localRecords = readJson(LOTES_KEY, []);
+    localRecords = Array.isArray(localRecords) ? localRecords.filter(function(row){ return row && typeof row === 'object' && row.deleted !== true; }) : [];
+    const snapshot = await ref.once('value');
+    const remoteRecords = normalizeRemoteLots(snapshot && typeof snapshot.val === 'function' ? snapshot.val() : null);
+    const localMap = buildLotMap(localRecords, summary, 'local');
+    const remoteMap = buildLotMap(remoteRecords, summary, 'remoto');
+    let localChanged = localMap.size !== localRecords.length;
+    if (localChanged) localRecords = Array.from(localMap.values());
+
+    if (localMap.size && !remoteMap.size){
+      const payload = {};
+      localMap.forEach(function(record){
+        const key = lotRecordKey(record);
+        if (key) payload[key] = withLotSyncMeta(record, settings);
+      });
+      await ref.set(payload);
+      if (localChanged) writeJson(LOTES_KEY, localRecords);
+      summary.uploaded += localMap.size;
+      summary.lotsUploaded += localMap.size;
+      summary.details.push('Lotes: subida inicial local (' + localMap.size + ').');
+      return;
+    }
+
+    const allIds = new Set(Array.from(localMap.keys()).concat(Array.from(remoteMap.keys())));
+    for (const identity of allIds){
+      const local = localMap.get(identity);
+      const remote = remoteMap.get(identity);
+      const remoteKey = remote && remote._firebaseKey ? remote._firebaseKey : '';
+      const child = ref.child(remoteKey || lotRecordKey(local || remote));
+
+      if (local && !remote){
+        await child.set(withLotSyncMeta(local, settings));
+        summary.uploaded += 1;
+        summary.lotsUploaded += 1;
+        continue;
+      }
+      if (!local && remote){
+        const cleanRemote = clone(remote) || {};
+        delete cleanRemote._firebaseKey;
+        localRecords.push(cleanRemote);
+        localMap.set(identity, cleanRemote);
+        localChanged = true;
+        summary.downloaded += 1;
+        summary.lotsDownloaded += 1;
+        continue;
+      }
+      if (!local || !remote) continue;
+      if (stableJson(lotComparable(local)) === stableJson(lotComparable(remote))){
+        summary.skipped += 1;
+        continue;
+      }
+      const cmp = compareUpdatedAt(local, remote);
+      if (cmp === -1){
+        const cleanRemote = clone(remote) || {};
+        delete cleanRemote._firebaseKey;
+        const index = localRecords.indexOf(local);
+        if (index >= 0) localRecords[index] = cleanRemote;
+        localMap.set(identity, cleanRemote);
+        localChanged = true;
+        summary.downloaded += 1;
+        summary.lotsDownloaded += 1;
+      } else if (cmp === 1){
+        await child.set(withLotSyncMeta(local, settings));
+        summary.uploaded += 1;
+        summary.lotsUploaded += 1;
+      } else {
+        // Sin fechas comparables se protege el registro local y no se crea otro documento.
+        await child.set(withLotSyncMeta(local, settings));
+        summary.uploaded += 1;
+        summary.lotsUploaded += 1;
+        addWarning(summary, 'Lotes: conflicto sin fecha para ' + clean(lotCodeLiteral(local) || identity, 100) + '. Se conservó el registro local sin duplicar.');
+      }
+    }
+
+    if (localChanged && !writeJson(LOTES_KEY, localRecords)) addError(summary, 'No se pudieron guardar los Lotes descargados en el almacenamiento local.');
+  }
+
   function buildNonSensitiveFirebaseMeta(settings){
     const data = settings && typeof settings === 'object' ? settings : readSettings() || {};
     return {
@@ -1142,8 +1315,8 @@
       engineVersion: ENGINE_VERSION,
       schemaVersion: SCHEMA_VERSION,
       localFirst: true,
-      scope: ['configuracion', 'catalogos'],
-      excluded: ['pos', 'ventas', 'eventos', 'caja_chica', 'cierres', 'finanzas', 'asientos', 'recibos', 'inventario_evento', 'reempaques_historicos', 'pedidos_historicos', 'saldos'],
+      scope: ['configuracion', 'catalogos', 'lotes'],
+      excluded: ['ventas', 'eventos', 'caja_chica', 'cierres', 'finanzas', 'asientos', 'recibos', 'inventario_evento', 'reempaques_historicos', 'pedidos_historicos', 'saldos'],
       summary: clone(summary),
       firebase: buildNonSensitiveFirebaseMeta(settings),
       appVersion: clean((g.A33_RELEASE && g.A33_RELEASE.label) || g.A33_BUILD_TAG || 'Suite A33', 80)
@@ -1168,7 +1341,7 @@
 
   function mapError(error){
     const raw = clean((error && (error.code || error.message)) || error || 'sync_error', 420).toLowerCase();
-    if (raw.includes('permission')) return 'Firebase respondió, pero las reglas no permiten sincronizar Configuración/Catálogos.';
+    if (raw.includes('permission')) return 'Firebase respondió, pero las reglas no permiten sincronizar Configuración/Catálogos/Lotes.';
     if (raw.includes('indexeddb_blocked')) return 'IndexedDB está bloqueado por otra pestaña. Cerrá otras pestañas de Suite A33 e intentá de nuevo.';
     if (raw.includes('indexeddb') || raw.includes('database')) return 'No se pudo leer/escribir la base local de Catálogos.';
     if (raw.includes('network') || raw.includes('failed to fetch') || raw.includes('offline') || raw.includes('load')) return 'Sin conexión o Firebase no respondió. Se conservan datos locales y pendientes.';
@@ -1184,7 +1357,7 @@
     if (!validation.ok){
       return { ok: false, status: validation.status, message: validation.message, summary, at: startedAt };
     }
-    saveState({ status: 'syncing', label: 'Sincronizando', message: 'Sincronizando Configuración y Catálogos…', lastError: '', lastSummary: summary });
+    saveState({ status: 'syncing', label: 'Sincronizando', message: 'Sincronizando Configuración, Catálogos y Lotes…', lastError: '', lastSummary: summary });
     try{
       const settings = validation.settings;
       const db = await g.A33Firebase.getRealtimeDatabase(settings);
@@ -1200,6 +1373,7 @@
         await syncCatalogCollection(db, settings, spec, summary);
       }
 
+      await syncLots(db, settings, summary);
       await writeSyncMeta(db, settings, summary);
 
       const currentSettings = readSettings();
@@ -1259,6 +1433,8 @@
     queueKey: QUEUE_KEY,
     stateKey: STATE_KEY,
     technicalCollection: TECHNICAL_COLLECTION,
+    lotesKey: LOTES_KEY,
+    lotesPath: LOTES_PATH,
     readyMessage: READY_MESSAGE,
     scopeMessage: SYNC_SCOPE_MESSAGE,
     readSettings,
@@ -1278,6 +1454,9 @@
     getStatus,
     refreshStatus,
     syncNow,
-    retryPending
+    retryPending,
+    lotCodeLiteral,
+    lotIdentity,
+    syncLots
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

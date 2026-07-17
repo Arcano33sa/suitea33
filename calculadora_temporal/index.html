@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.94&r=7" />
-  <script src="/assets/js/a33-theme.js?v=4.20.94&r=7"></script>
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.95&r=8" />
+  <script src="/assets/js/a33-theme.js?v=4.20.95&r=7"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -264,6 +264,20 @@
       white-space: nowrap;
       flex: 0 0 auto;
     }
+
+    /* Código de lote completo y adaptable: sin scroll horizontal general. */
+    .inline-input-btn input#lote {
+      flex: 1 1 15rem;
+      min-width: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.86rem;
+    }
+    @media (max-width: 560px) {
+      .inline-input-btn input#lote { flex-basis: 100%; }
+      .inline-input-btn .a33-pill-code,
+      .inline-input-btn .btn-pill { min-height: 42px; }
+    }
     .btn-pill:hover {
       background: #2c2c2c;
     }
@@ -443,14 +457,14 @@
     }
 
   </style>
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.94&r=7" />
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.94&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.95&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.95&r=7" />
 </head>
 <body class="calc-body calc-temporal-body">
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Calculadora Temporal</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.94">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.95">v...</div>
   </header>
 
   <div class="app-container">
@@ -473,7 +487,7 @@
         <div>
           <label for="lote">Código temporal interno</label>
           <div class="inline-input-btn">
-            <input type="text" id="lote" placeholder="Ej: A330XX119TEV5786" autocomplete="off" aria-describedby="hint-codigo-temporal" />
+            <input type="text" id="lote" placeholder="Ej: A33KIS5786-0xx1" autocomplete="off" aria-describedby="hint-codigo-temporal" />
             <span id="pill-codigo-estado" class="a33-pill-code a33-pill-sugerido">SUGERIDO</span>
             <button type="button" id="btn-regenerar-codigo" class="btn-pill">Regenerar</button>
           </div>
@@ -581,13 +595,14 @@
       </div>
     </div>
   </div>
-  <script src="/assets/js/a33-release.js?v=4.20.94&r=53"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.95&r=54"></script>
 
 
 
-  <script src="/assets/js/a33-storage.js?v=4.20.94&r=20"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.94&r=15"></script>
-  <script src="/assets/js/a33-production.js?v=4.20.94&r=3"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.95&r=20"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.95&r=15"></script>
+  <script src="/assets/js/a33-production.js?v=4.20.95&r=3"></script>
+  <script src="/assets/js/a33-lot-code.js?v=4.20.95&r=6"></script>
 
   <script>
     const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
@@ -923,7 +938,7 @@
     const STORAGE_NOTAS_KEY = "arcano33_temporal_notas";
     const LEGACY_STORAGE_REGISTROS_KEY = "arcano33_temporal_lotes_v1";
 
-    // Etapa 2: Código de lote AUTO (editable) con X=eco + fecha hebrea
+    // Código de lote oficial: mes/año hebreo + consecutivo comprimido central
     const STORAGE_LOTE_CODE_MODE_KEY = "arcano33_temporal_codigo_mode"; // AUTO | MANUAL
     const STORAGE_LOTE_SEQ_LAST_KEY = "arcano33_temporal_ultimo_consecutivo"; // 4 dígitos (último usado)
     const STORAGE_LOTE_SEQ_CURRENT_KEY = "arcano33_temporal_consecutivo_actual"; // 4 dígitos (auto en curso)
@@ -946,6 +961,9 @@
       if (s === "OK") {
         el.textContent = "OK";
         el.classList.add("a33-pill-ok");
+      } else if (s === "HISTORICO" || s === "HISTÓRICO") {
+        el.textContent = "HISTÓRICO";
+        el.classList.add("a33-pill-editado");
       } else if (s === "EDITADO") {
         el.textContent = "EDITADO";
         el.classList.add("a33-pill-editado");
@@ -962,24 +980,28 @@
 
     function validarCodigoLoteFuerte(raw) {
       const code = normalizarCodigoLote(raw);
-      // A33 + 4 (0-9/X) + DD + MMM + YYYY
-      if (!/^A33[0-9X]{4}\d{2}[A-Z]{3}\d{4}$/.test(code)) {
+      const api = window.A33LotCode;
+      if (!api || typeof api.validate !== "function") {
+        return { ok:false, code, seq:null, format:"unknown", msg:"No está disponible el generador oficial del Código de lote. Recarga la app antes de guardar." };
+      }
+      const parsed = api.validate(code);
+      if (!parsed || !parsed.ok) {
         return {
-          ok: false,
+          ok:false,
           code,
-          seq: null,
-          msg: "Código inválido. Formato: A33 + 4 (0-9/X) + DD + MES(3 letras) + AAAA(4). Ej: A330XX119TEV5786. Ojo: día siempre 2 dígitos (03, 09)."
+          seq:null,
+          format:"unknown",
+          msg:"Código inválido. Usa el formato nuevo A33MESAAAA-CONSECUTIVO (ej. A33KIS5786-0xx1). Los códigos históricos siguen siendo reconocidos solo para consulta."
         };
       }
-      const dd = parseInt(code.slice(7, 9), 10);
-      if (!(dd >= 1 && dd <= 31)) {
-        return { ok: false, code, seq: null, msg: "Código inválido: el día debe ser 01–31 (2 dígitos)." };
-      }
-      const seq = extraerSeqDeCodigo(code);
-      if (!(typeof seq === "number" && seq > 0)) {
-        return { ok: false, code, seq: null, msg: "Código inválido: el consecutivo (los 4 después de A33) debe iniciar con número y usar X solo como eco." };
-      }
-      return { ok: true, code, seq, msg: "" };
+      return {
+        ok:true,
+        code:parsed.code,
+        seq:parsed.consecutiveNumber,
+        format:parsed.format,
+        parsed,
+        msg:""
+      };
     }
 
     function existeCodigoEnLotes(lotes, codeUpper) {
@@ -988,7 +1010,6 @@
     }
 
     function proponerSiguienteCodigoDisponible(baseCode, lotes) {
-      const v = validarCodigoLoteFuerte(baseCode);
       const used = new Set();
       (Array.isArray(lotes) ? lotes : []).forEach(l => {
         const c = normalizarCodigoLote(l && (l.codigo || l.code || l.lote || ""));
@@ -996,15 +1017,20 @@
         if (typeof n === "number" && n > 0) used.add(n);
       });
       const last = obtenerUltimoConsecutivoNumerico();
+      const base = validarCodigoLoteFuerte(baseCode);
       let start = last + 1;
-      if (v.ok && typeof v.seq === "number") start = Math.max(last + 1, v.seq + 1);
+      if (base.ok && typeof base.seq === "number") start = Math.max(start, base.seq + 1);
       const next = buscarSiguienteDisponible(start, used);
-      const seq4 = pad4(next).slice(-4);
-      const mask = ecoMaskX(seq4);
-      const dd2 = v.ok ? v.code.slice(7, 9) : pad2(new Date().getDate());
-      const hm3 = v.ok ? v.code.slice(9, 12) : (A33Hebreo.hm3 || "TEV");
-      const hy4 = v.ok ? v.code.slice(12, 16) : (A33Hebreo.hy4 || String(new Date().getFullYear()).slice(-4));
-      return "A33" + mask + dd2 + hm3 + hy4;
+      const fechaProdIso = ((document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || hoyLocalISO()).trim();
+      const api = window.A33LotCode;
+      if (!api || typeof api.generate !== "function") return "";
+      const generated = api.generate({
+        productionDate: fechaProdIso,
+        hebrewMonth: A33Hebreo && A33Hebreo.hm ? A33Hebreo.hm : undefined,
+        hebrewYear: A33Hebreo && A33Hebreo.hy ? A33Hebreo.hy : undefined,
+        consecutiveNumber: next
+      });
+      return generated && generated.ok ? generated.code : "";
     }
 
     function A33ModalDuplicadoCodigo(nextCode) {
@@ -1506,10 +1532,10 @@
       if (fechaProdInput) fechaProdInput.value = workspace.fechaProduccion || hoyLocalISO();
       if (notasInput) notasInput.value = workspace.notas || '';
       aplicarPlanTemporal(workspace.plan || {});
-      A33CodigoLoteMode = workspace.codigoMode === 'MANUAL' ? 'MANUAL' : 'AUTO';
+      A33CodigoLoteMode = workspace.codigoMode === 'HISTORICAL' ? 'HISTORICAL' : (workspace.codigoMode === 'MANUAL' ? 'MANUAL' : 'AUTO');
       A33AutoSeq = /^\d{4}$/.test(String(workspace.autoSeq || '')) ? String(workspace.autoSeq) : '';
       A33SuggestedCode = String(workspace.suggestedCode || workspace.codigo || '');
-      setPillEstadoCodigo(A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO');
+      setPillEstadoCodigo(A33CodigoLoteMode === 'HISTORICAL' ? 'HISTORICO' : (A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO'));
       actualizarTextoCaducidad();
       actualizarFechaHebrea();
       if (workspace.result) {
@@ -1579,39 +1605,35 @@
       const registros = readTemporalRecordsWithMeta().data || [];
       const reg = registros.find(item => item.id === id);
       if (!reg) {
-        fijarHistorialTemporalActivo('');
-        alert('No se encontró ese cálculo temporal.');
+        fijarHistorialTemporalActivo("");
+        alert("No se encontró ese cálculo temporal.");
         return;
       }
       if (reg.recipeSnapshot) aplicarPayloadRecetasEnUI(reg.recipeSnapshot);
       aplicarPlanTemporal(reg.plan || {});
-      const fechaProdInput = document.getElementById('fecha-produccion');
-      const notasInput = document.getElementById('notas');
-      if (fechaProdInput) fechaProdInput.value = reg.fechaProduccion || hoyLocalISO();
-      if (notasInput) notasInput.value = reg.notas || '';
+      const fechaProdInput = document.getElementById("fecha-produccion");
+      const notasInput = document.getElementById("notas");
 
-      // Cargar desde historial debe servir como base de una NUEVA corrida temporal,
-      // no como reutilización del código histórico guardado.
-      A33CodigoLoteMode = 'AUTO';
-      A33AutoSeq = '';
-      A33SuggestedCode = '';
-      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, 'AUTO'); } catch (e) {}
-      setCodigoLoteValue('');
-      setPillEstadoCodigo('SUGERIDO');
+      // El histórico conserva su Código original, pero nunca arrastra una fecha antigua
+      // sobre la fecha activa de trabajo ni toca el consecutivo vigente.
+      if (fechaProdInput) fechaProdInput.value = hoyLocalISO();
+      if (notasInput) notasInput.value = reg.notas || "";
+      A33CodigoLoteMode = "HISTORICAL";
+      A33AutoSeq = "";
+      A33SuggestedCode = "";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "HISTORICAL"); } catch (e) {}
+      setCodigoLoteValue(reg.codigo || "");
+      setPillEstadoCodigo("HISTORICO");
       actualizarTextoCaducidad();
       actualizarFechaHebrea();
-      recalcularCodigoLoteAuto({ forceNewPreview: true });
 
-      const codigoActual = ((document.getElementById('lote') && document.getElementById('lote').value) || '').trim();
+      const fechaTrabajo = (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : hoyLocalISO();
+      const cadTrabajo = calcularCaducidad(fechaTrabajo);
       const datosCargados = serializarDatosCalculo(Object.assign({}, reg.resultados || {}, {
-        loteNombre: codigoActual,
-        fechaProdStr: (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : (reg.fechaProduccion || hoyLocalISO()),
-        fechaCadStr: (() => {
-          const fechaBase = (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : (reg.fechaProduccion || hoyLocalISO());
-          const cad = calcularCaducidad(fechaBase);
-          return cad ? cad.toISOString().slice(0, 10) : String((reg.resultados && reg.resultados.fechaCadStr) || reg.fechaCaducidad || '');
-        })(),
-        notas: (notasInput && notasInput.value) ? notasInput.value : (reg.notas || '')
+        loteNombre: reg.codigo || "",
+        fechaProdStr: fechaTrabajo,
+        fechaCadStr: cadTrabajo ? cadTrabajo.toISOString().slice(0, 10) : "",
+        notas: (notasInput && notasInput.value) ? notasInput.value : (reg.notas || "")
       }));
       renderResultadosDesdeDatos(datosCargados);
     }
@@ -1935,16 +1957,6 @@
       return String(n).padStart(4, "0");
     }
 
-    function ecoMaskX(seq4) {
-      const s = String(seq4 || "");
-      if (!/^\d{4}$/.test(s)) return s;
-      let out = s[0];
-      for (let i = 1; i < s.length; i++) {
-        // comparar contra el dígito REAL anterior (eco)
-        out += (s[i] === s[i - 1]) ? "X" : s[i];
-      }
-      return out;
-    }
 
     function sanitizeMonth3(name) {
       const letters = String(name || "").toUpperCase().replace(/[^A-Z]/g, "");
@@ -1953,27 +1965,15 @@
 
     // Nota: obtenerHebreaDesdeFechaISO se reemplazó por la estrategia Etapa 3 (local + cache + degradación + fetch no bloqueante).
 
-    function ecoUnmaskX(mask4) {
-      const s = String(mask4 || "");
-      if (!/^[0-9X]{4}$/.test(s)) return null;
-      if (!/^\d/.test(s)) return null;
-      let out = s[0];
-      for (let i = 1; i < 4; i++) {
-        const ch = s[i];
-        out += (ch === "X") ? out[i - 1] : ch;
-      }
-      if (!/^\d{4}$/.test(out)) return null;
-      return out;
-    }
 
     function extraerSeqDeCodigo(code) {
-      const s = String(code || "").trim();
-      if (!s.startsWith("A33") || s.length < 7) return null;
-      const mask = s.slice(3, 7);
-      const un = ecoUnmaskX(mask);
-      if (!un) return null;
-      const n = parseInt(un, 10);
-      return Number.isFinite(n) ? n : null;
+      const api = window.A33LotCode;
+      if (api && typeof api.validate === "function") {
+        const parsed = api.validate(code);
+        if (parsed && parsed.ok && typeof parsed.consecutiveNumber === "number") return parsed.consecutiveNumber;
+      }
+      // Sin el recurso central no se interpreta por posiciones rígidas ni se altera el consecutivo.
+      return null;
     }
 
     function leerUltimoConsecutivoKey() {
@@ -2083,42 +2083,44 @@
       setPillEstadoCodigo("EDITADO");
     }
 async function recalcularCodigoLoteAuto(opts) {
-      // PREVIEW: generar/actualizar el código sin comprometer consecutivo.
-      // Nota: por compatibilidad puede venir opts.consumeNewSeq, pero se ignora (NO se avanza por recalcular).
+      // PREVIEW: actualiza el código sin comprometer ni persistir avance del consecutivo.
       const force = !!(opts && (opts.force || opts.forceNewPreview));
-
       if (force || !/^\d{4}$/.test(String(A33AutoSeq || ""))) {
-        // El preview siempre parte del último comprometido + 1 (o el siguiente libre), pero NO lo guarda como consecutivo.
-        A33AutoSeq = sugerirSeq4({ advance: false });
+        A33AutoSeq = sugerirSeq4({ advance:false });
       }
 
       A33CodigoLoteMode = "AUTO";
       try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
 
       const fechaProdIso = ((document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || hoyLocalISO()).trim();
-      const dt = parseISODateLocal(fechaProdIso) || new Date();
-
-      const heb = await actualizarFechaHebrea(); // Etapa 3: resuelve rápido (sin bloquear por red)
-      const heb2 = (heb && heb.hd && heb.hm3 && heb.hy4) ? heb : (leerHebreoCache(fechaProdIso) || null);
-
-      // Día SIEMPRE desde la misma fuente hebrea (si existe). Fallback controlado: gregoriano.
-      const dia2 = pad2((heb2 && heb2.hd) ? heb2.hd : dt.getDate());
-      const hm3 = (heb2 && heb2.hm3) ? heb2.hm3 : "OFF";
-      const hy4 = (heb2 && heb2.hy4) ? heb2.hy4 : String(dt.getFullYear()).slice(-4);
-
-      const consecMask = ecoMaskX(A33AutoSeq);
-      const code = "A33" + consecMask + dia2 + hm3 + hy4;
-
-      if (!/^A33[A-Z0-9X]{4}\d{2}[A-Z]{3}\d{4}$/.test(code)) {
-        console.warn("Código de lote generado inválido:", code);
+      const heb = await actualizarFechaHebrea();
+      const heb2 = (heb && heb.hm && heb.hy) ? heb : (leerHebreoCache(fechaProdIso) || null);
+      const api = window.A33LotCode;
+      if (!api || typeof api.generate !== "function") {
+        setCodigoLoteValue("");
+        A33SuggestedCode = "";
+        console.error("No está disponible A33LotCode para generar el Código de lote.");
         return;
       }
 
+      const generated = api.generate({
+        productionDate: fechaProdIso,
+        hebrewMonth: heb2 && heb2.hm ? heb2.hm : undefined,
+        hebrewYear: heb2 && heb2.hy ? heb2.hy : undefined,
+        consecutiveNumber: Number(A33AutoSeq)
+      });
+      if (!generated || !generated.ok) {
+        setCodigoLoteValue("");
+        A33SuggestedCode = "";
+        setPillEstadoCodigo("SUGERIDO");
+        console.warn("No se pudo resolver mes/año hebreo para el Código de lote:", generated && generated.error);
+        return;
+      }
+
+      const code = generated.code;
       setCodigoLoteValue(code);
       setPillEstadoCodigo("SUGERIDO");
       A33SuggestedCode = code;
-
-      // Persistimos el valor actual del input (compatibilidad), pero NO el consecutivo.
       try { A33Storage.setItem(STORAGE_LOTE_KEY, code); } catch (e) {}
       try { persistTemporalWorkspace(readTemporalData(STORAGE_WORKSPACE_KEY, null)?.result || null); } catch (e) {}
     }
@@ -2408,44 +2410,19 @@ function a33WireNumericInput(el, mode) {
         return;
       }
 
-      if (loteInput) setCodigoLoteValue(v.code);
+      if (v.format !== 'new') {
+        alert('Este Código de lote pertenece al histórico y no se puede reutilizar. Pulsa REGENERAR para crear un registro nuevo con el formato oficial A33MESAAAA-CONSECUTIVO.');
+        return;
+      }
 
       let codigoFinal = v.code;
       let seqFinal = v.seq;
+      if (loteInput) setCodigoLoteValue(codigoFinal);
 
-      const checkDuplicado = () => {
-        const last = obtenerUltimoConsecutivoNumerico();
-        const suggestedUpper = normalizarCodigoLote(A33SuggestedCode || '');
-        const isSuggested = (normalizarCodigoLote(codigoFinal) === suggestedUpper);
-        const yaExiste = registros.some(reg => normalizarCodigoLote(reg && reg.codigo) === normalizarCodigoLote(codigoFinal));
-        const quedoAtras = (typeof seqFinal === 'number' && seqFinal <= last && isSuggested);
-        return { yaExiste, quedoAtras };
-      };
-
-      let dup = checkDuplicado();
-      if (dup.yaExiste || dup.quedoAtras) {
-        const nextCode = proponerSiguienteCodigoDisponible(codigoFinal, registros);
-        const aplicar = await A33ModalDuplicadoCodigo(nextCode);
-        if (!aplicar) return;
-        codigoFinal = nextCode;
-        v = validarCodigoLoteFuerte(codigoFinal);
-        if (!v.ok) {
-          alert('No se pudo asignar un código libre. Reintentá.');
-          return;
-        }
-        seqFinal = v.seq;
-        if (loteInput) setCodigoLoteValue(codigoFinal);
-        A33CodigoLoteMode = 'AUTO';
-        A33AutoSeq = pad4(extraerSeqDeCodigo(codigoFinal) || 0).slice(-4);
-        A33SuggestedCode = codigoFinal;
-        setPillEstadoCodigo('SUGERIDO');
-        try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, 'AUTO'); } catch (e) {}
-        registros = readTemporalRecordsWithMeta().data || [];
-        dup = checkDuplicado();
-        if (dup.yaExiste || dup.quedoAtras) {
-          alert('No se pudo asignar un código libre. Reintentá.');
-          return;
-        }
+      const yaExiste = registros.some(reg => normalizarCodigoLote(reg && reg.codigo) === normalizarCodigoLote(codigoFinal));
+      if (yaExiste) {
+        alert('Ya existe un registro temporal con ese Código de lote. No se sobrescribió ni se duplicó. Pulsa REGENERAR para obtener el siguiente consecutivo disponible.');
+        return;
       }
 
       const lastNow = obtenerUltimoConsecutivoNumerico();
@@ -2475,7 +2452,7 @@ function a33WireNumericInput(el, mode) {
       const idx = registros.findIndex(item => item.id === registro.id || normalizarCodigoLote(item.codigo) === normalizarCodigoLote(registro.codigo));
       if (idx >= 0) {
         alert('Ese código ya existe dentro del historial temporal. Usa el siguiente sugerido o elimina el registro anterior si ya no lo necesitas.');
-        setPillEstadoCodigo(A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO');
+        setPillEstadoCodigo(A33CodigoLoteMode === 'HISTORICAL' ? 'HISTORICO' : (A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO'));
         return;
       }
       registros.unshift(registro);
@@ -2485,7 +2462,7 @@ function a33WireNumericInput(el, mode) {
         writeTemporalData(STORAGE_REGISTROS_KEY, registros, { baseRev: baseRevRegistros, conflictPolicy: 'block' });
       } catch (e) {
         alert((e && e.message) ? e.message : 'No se pudo guardar el cálculo temporal en el navegador.');
-        setPillEstadoCodigo(A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO');
+        setPillEstadoCodigo(A33CodigoLoteMode === 'HISTORICAL' ? 'HISTORICO' : (A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO'));
         return;
       }
 
@@ -2501,7 +2478,15 @@ function a33WireNumericInput(el, mode) {
       limpiarDespuesDeGuardarCalculoTemporal();
       alert('Cálculo temporal guardado correctamente en el historial propio de este módulo. No se creó ningún lote oficial.');
     }
-async function init() {
+
+    function registerTemporalServiceWorker() {
+      if (!("serviceWorker" in navigator)) return;
+      navigator.serviceWorker.register("./sw.js?v=4.20.95&r=1")
+        .catch((error) => console.error("SW Calculadora Temporal error", error));
+    }
+
+    async function init() {
+      registerTemporalServiceWorker();
       await cargarPresentacionesDinamicasDesdeCatalogos();
       construirTablaRecetas();
       construirTablaPlan();
@@ -2609,6 +2594,6 @@ async function init() {
       try { renderTemporalHistory(); } catch (e) {}
     });
   </script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.94&r=7"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.95&r=7"></script>
 </body>
 </html>

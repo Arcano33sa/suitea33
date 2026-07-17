@@ -1828,3 +1828,11 @@ button.cmd-pill{ cursor: pointer; }
     min-height: 42px;
   }
 }
+
+
+.cmd-gsec[data-sec="lote"] .cmd-gsec-v{
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  font-variant-numeric:tabular-nums;
+}

@@ -4,7 +4,7 @@ const DB_VER = 35; // Productos por productId: índice de nombre no único
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.94';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.95';
 
 
 const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m31');
@@ -6054,6 +6054,7 @@ async function reempaquePrepareMultiplePayloadPOS(input={}){
     sourceProductName: src.name,
     productoOrigenId: src.id,
     productoOrigenNombre: src.name,
+    ...reempaqueRecordLotFieldsPOS(input.loteOrigen || input.sourceLot || input),
     cantidadOrigen,
     capacidadOrigenMl: capacidadOrigenMl > 0 ? capacidadOrigenMl : null,
     capacidadVolumenOrigen: capacidadOrigenMl > 0 ? capacidadOrigenMl : null,
@@ -6272,6 +6273,7 @@ async function reempaqueCreateBaseRecordPOS(input={}){
     sourceProductName: src.name,
     productoOrigenId: src.id,
     productoOrigenNombre: src.name,
+    ...reempaqueRecordLotFieldsPOS(input.loteOrigen || input.sourceLot || input),
     cantidadOrigen,
     capacidadOrigenMl: src.capacityMl,
     capacidadVolumenOrigen: src.capacityMl,
@@ -14047,13 +14049,16 @@ async function getReempaqueUnitCostForSalePOS(eventId, productRef, productsOrInd
   return 0;
 }
 
-async function resolveSaleUnitCostPOS(eventId, productRef, productName, productObj, products){
+async function resolveSaleUnitCostPOS(eventId, productRef, productName, productObj, products, lotAllocations){
   // Costo dinámico por prioridad. La identidad se resuelve una sola vez y se adapta
   // al productId estable o al id interno que espera cada fuente existente.
   const list = Array.isArray(products) ? products : await getAll('products').catch(()=>[]);
   const index = buildProductIdentityIndexPOS(list);
   const identity = resolveCatalogProductIdentityPOS(productObj || productRef, index, { allowLegacy:true });
   if (!identity.ok) return { unitCost:0, source:'sin_costo_confiable' };
+
+  const fromExactLot = await getExactLotUnitCostPOS(eventId, identity.product, lotAllocations, index);
+  if (fromExactLot > 0) return { unitCost: fromExactLot, source: 'lote_exacto' };
 
   const fromLotFifo = await getLotFifoUnitCostForSalePOS(eventId, identity.product, productName, index);
   if (fromLotFifo > 0) return { unitCost: fromLotFifo, source: 'lote_fifo' };
@@ -14219,6 +14224,7 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
     throw reempaqueMovementErrorPOS('El producto origen no existe en el catálogo.');
   }
 
+  const sourceLotTrace = reempaqueNormalizeLotTracePOS(input.loteOrigen || input.sourceLot || base.loteOrigen || base.sourceLot || base);
   const qtySource = reempaqueInventoryQtyPOS(base.cantidadOrigen ?? base.sourceQty ?? base.qtyOrigen);
   if (!(qtySource > 0)){
     throw reempaqueMovementErrorPOS('Cantidad origen mayor que 0.');
@@ -14228,6 +14234,11 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
   if ((stockSource + 0.0001) < qtySource){
     throw reempaqueMovementErrorPOS('No hay inventario suficiente del producto origen.');
   }
+  const selectedLotCheck = await reempaqueValidateSelectedLotPOS(eventId, sourceProduct, qtySource, sourceLotTrace, products);
+  if (!selectedLotCheck.ok) throw reempaqueMovementErrorPOS(selectedLotCheck.msg);
+  const selectedLotTrace = selectedLotCheck.trace;
+  const inventoryLotFields = reempaqueInventoryLotFieldsPOS(selectedLotTrace);
+  const recordLotFields = reempaqueRecordLotFieldsPOS(selectedLotTrace);
 
   const now = reempaqueNowISOPOS();
   const srcName = String(sourceProduct.name || base.sourceProductName || base.productoOrigen || 'Origen').trim();
@@ -14270,6 +14281,7 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
     targetNames.push(dstName);
     targetRows.push({
       eventId,
+      ...inventoryLotFields,
       source: 'reempaque',
       sourceType: 'REEMPAQUE',
       reempaqueId: base.id,
@@ -14310,6 +14322,7 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
 
   const record = {
     ...base,
+    ...recordLotFields,
     eventId,
     eventoId: eventId,
     sourceProductId: sourceId,
@@ -14354,6 +14367,7 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
 
   const sourceRow = {
     eventId,
+    ...inventoryLotFields,
     source: 'reempaque',
     sourceType: 'REEMPAQUE',
     reempaqueId: record.id,
@@ -14384,7 +14398,9 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
     targetProductNames: targetNames
   };
 
-  return await reempaqueCommitMultipleInventoryMovementPOS(record, sourceRow, targetRows);
+  const saved = await reempaqueCommitMultipleInventoryMovementPOS(record, sourceRow, targetRows);
+  try{ await queueLotsUsageSyncPOS(eventId); }catch(_){ }
+  return saved;
 }
 
 async function reempaqueApplyMovementPOS(input={}){
@@ -14425,6 +14441,7 @@ async function reempaqueApplyMovementPOS(input={}){
     throw reempaqueMovementErrorPOS('El producto destino no existe en el catálogo.');
   }
 
+  const sourceLotTrace = reempaqueNormalizeLotTracePOS(input.loteOrigen || input.sourceLot || base.loteOrigen || base.sourceLot || base);
   const qtySource = reempaqueInventoryQtyPOS(base.cantidadOrigen ?? base.sourceQty ?? base.qtyOrigen);
   const qtyTarget = reempaqueInventoryQtyPOS(base.cantidadFinalRegistrada ?? base.cantidadCreadaDestino ?? base.cantidadDestino ?? base.targetQty);
   if (!(qtySource > 0)){
@@ -14438,6 +14455,11 @@ async function reempaqueApplyMovementPOS(input={}){
   if ((stockSource + 0.0001) < qtySource){
     throw reempaqueMovementErrorPOS('No hay inventario suficiente del producto origen.');
   }
+  const selectedLotCheck = await reempaqueValidateSelectedLotPOS(eventId, sourceProduct, qtySource, sourceLotTrace, products);
+  if (!selectedLotCheck.ok) throw reempaqueMovementErrorPOS(selectedLotCheck.msg);
+  const selectedLotTrace = selectedLotCheck.trace;
+  const inventoryLotFields = reempaqueInventoryLotFieldsPOS(selectedLotTrace);
+  const recordLotFields = reempaqueRecordLotFieldsPOS(selectedLotTrace);
 
   const now = reempaqueNowISOPOS();
   const srcName = String(sourceProduct.name || base.sourceProductName || base.productoOrigen || 'Origen').trim();
@@ -14470,6 +14492,7 @@ async function reempaqueApplyMovementPOS(input={}){
 
   const record = {
     ...base,
+    ...recordLotFields,
     eventId,
     eventoId: eventId,
     sourceProductId: sourceId,
@@ -14526,6 +14549,7 @@ async function reempaqueApplyMovementPOS(input={}){
 
   const common = {
     eventId,
+    ...inventoryLotFields,
     source: 'reempaque',
     sourceType: 'REEMPAQUE',
     reempaqueId: record.id,
@@ -14577,7 +14601,9 @@ async function reempaqueApplyMovementPOS(input={}){
     sourceProductName: srcName
   };
 
-  return await reempaqueCommitInventoryMovementPOS(record, sourceRow, targetRow);
+  const saved = await reempaqueCommitInventoryMovementPOS(record, sourceRow, targetRow);
+  try{ await queueLotsUsageSyncPOS(eventId); }catch(_){ }
+  return saved;
 }
 
 // =========================================================
@@ -14834,6 +14860,7 @@ async function computeLotFifoForEvent(eventId){
       loteId: (g.loteId != null ? g.loteId : null),
       loteCodigo: (g.loteCodigo || ''),
       loteCargaId: (g.loteCargaId || null),
+      loteGroupKey: String(g.groupKey || ''),
       loadedAt: (g.time || ''),
       soldByKey: {},
       remainingByKey: {},
@@ -14938,7 +14965,203 @@ const __A33_LOTS_USAGE_SYNC = { inFlight: new Map() };
 
 function isPlainObjPOS(o){ return !!o && typeof o === 'object' && !Array.isArray(o); }
 function safeNumPOS(v){ const n = Number(v); return Number.isFinite(n) ? n : 0; }
-function normLotCodePOS(v){ return String(v || '').trim().toLowerCase(); }
+function lotCodeDisplayPOS(value){
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return '';
+  try{
+    const api = (typeof window !== 'undefined' && window.A33LotCode) ? window.A33LotCode : null;
+    const recognized = api && typeof api.recognize === 'function' ? api.recognize(raw) : null;
+    // Solo el formato oficial nuevo se canoniza. Históricos/AV se conservan tal como fueron guardados.
+    if (recognized && recognized.ok && recognized.format === 'new'){
+      return String(recognized.code || raw).replace(/X/g, 'x');
+    }
+  }catch(_){ }
+  return raw;
+}
+
+function lotCodeExcelCellPOS(value){
+  const literal = String(value == null ? '' : value);
+  try{
+    const api = (typeof window !== 'undefined' && window.A33LotCode) ? window.A33LotCode : null;
+    if (api && typeof api.excelTextCell === 'function') return api.excelTextCell(literal);
+  }catch(_){ }
+  return { t:'s', v:literal, z:'@' };
+}
+
+function lotCodeKeyPOS(value){
+  return lotCodeDisplayPOS(value).replace(/\s+/g, '').toLowerCase();
+}
+
+function normLotCodePOS(v){ return lotCodeKeyPOS(v); }
+
+function saleLotAllocationsPOS(sale){
+  const raw = sale && (sale.loteAllocations || sale.lotAllocations || (sale.lotTrace && sale.lotTrace.allocations));
+  return Array.isArray(raw) ? raw.filter(Boolean) : [];
+}
+
+function getSaleLotCodePOS(sale){
+  if (!sale) return '';
+  const allocations = saleLotAllocationsPOS(sale);
+  const codes = [];
+  for (const a of allocations){
+    const code = lotCodeDisplayPOS(a && (a.loteCodigo ?? a.lotCode ?? a.batchCode));
+    if (code && !codes.some(x => lotCodeKeyPOS(x) === lotCodeKeyPOS(code))) codes.push(code);
+  }
+  if (codes.length) return codes.join(' + ');
+  const direct = sale.loteCodigo ?? sale.lotCode ?? sale.batchCode ?? sale.codigoLote ?? '';
+  return String(direct || '').trim() ? lotCodeDisplayPOS(direct) : '';
+}
+
+function lotTraceFromFifoPOS(lotKey, lot, remaining, fifoKey){
+  const code = lotCodeDisplayPOS(lot && lot.loteCodigo);
+  return {
+    lotKey: String(lotKey || ''),
+    loteId: lot && lot.loteId != null ? lot.loteId : null,
+    loteCodigo: code,
+    lotCode: code,
+    batchCode: code,
+    loteCargaId: lot && lot.loteCargaId != null ? String(lot.loteCargaId) : null,
+    loteGroupKey: lot && lot.loteGroupKey != null ? String(lot.loteGroupKey) : '',
+    fifoKey: String(fifoKey || ''),
+    remaining: Math.max(0, Number(remaining) || 0),
+    loadedAt: String((lot && lot.loadedAt) || '')
+  };
+}
+
+function lotTraceMatchesPOS(a, b){
+  if (!a || !b) return false;
+  const pairs = [
+    ['loteCargaId','loteCargaId'],
+    ['loteGroupKey','loteGroupKey'],
+    ['loteId','loteId'],
+    ['loteCodigo','loteCodigo']
+  ];
+  for (const [ka,kb] of pairs){
+    const av = a[ka];
+    const bv = b[kb];
+    if (av == null || bv == null || String(av).trim() === '' || String(bv).trim() === '') continue;
+    if (ka === 'loteCodigo') return lotCodeKeyPOS(av) === lotCodeKeyPOS(bv);
+    return String(av) === String(bv);
+  }
+  return false;
+}
+
+async function getAvailableLotsForProductPOS(eventId, productRef, productName, productsOrIndex){
+  const evId = Number(eventId);
+  if (!Number.isFinite(evId) || evId <= 0) return [];
+  const products = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+    ? productsOrIndex.list
+    : (Array.isArray(productsOrIndex) ? productsOrIndex : await getAll('products').catch(()=>[]));
+  const index = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+    ? productsOrIndex
+    : buildProductIdentityIndexPOS(products);
+  const identity = resolveCatalogProductIdentityPOS(productRef, index, { allowLegacy:true });
+  if (!identity.ok) return [];
+  const fifoKey = lotFifoKeyFromProductPOS(identity.product, identity.stableId || identity.internalId || productRef, productName || identity.name);
+  if (!fifoKey) return [];
+  const fifo = await computeLotFifoForEvent(evId);
+  const order = Array.isArray(fifo && fifo.lotOrder) ? fifo.lotOrder : Object.keys((fifo && fifo.lots) || {});
+  const out = [];
+  for (const lotKey of order){
+    const lot = fifo && fifo.lots ? fifo.lots[lotKey] : null;
+    if (!lot) continue;
+    const remaining = Math.max(0, Number(lot.remainingByKey && lot.remainingByKey[fifoKey]) || 0);
+    if (!(remaining > 0)) continue;
+    const trace = lotTraceFromFifoPOS(lotKey, lot, remaining, fifoKey);
+    trace.unitCost = await getExactLotUnitCostPOS(evId, identity.product, [trace], index);
+    out.push(trace);
+  }
+  return out;
+}
+
+async function resolveSaleLotAllocationPOS(eventId, productRef, productName, qty, productsOrIndex){
+  let need = Math.max(0, Number(qty) || 0);
+  const available = await getAvailableLotsForProductPOS(eventId, productRef, productName, productsOrIndex);
+  const allocations = [];
+  for (const lot of available){
+    if (!(need > 0)) break;
+    const take = Math.min(need, Math.max(0, Number(lot.remaining) || 0));
+    if (!(take > 0)) continue;
+    allocations.push({ ...lot, qty: take, cantidad: take });
+    need -= take;
+  }
+  return { allocations, unassignedQty: Math.max(0, need), available };
+}
+
+function inventoryEntryMatchesLotPOS(entry, trace){
+  if (!entry || !trace) return false;
+  return lotTraceMatchesPOS({
+    loteCargaId: entry.loteCargaId,
+    loteGroupKey: entry.loteGroupKey,
+    loteId: entry.loteId,
+    loteCodigo: entry.loteCodigo ?? entry.lotCode ?? entry.batchCode
+  }, trace);
+}
+
+async function getExactLotUnitCostPOS(eventId, productRef, allocations, productsOrIndex){
+  const list = Array.isArray(allocations) ? allocations.filter(Boolean) : [];
+  if (!list.length) return 0;
+  const products = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+    ? productsOrIndex.list
+    : (Array.isArray(productsOrIndex) ? productsOrIndex : await getAll('products').catch(()=>[]));
+  const index = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+    ? productsOrIndex
+    : buildProductIdentityIndexPOS(products);
+  const identity = resolveCatalogProductIdentityPOS(productRef, index, { allowLegacy:true });
+  if (!identity.ok) return 0;
+  const entries = await getInventoryEntries(Number(eventId));
+  let finalQty = 0;
+  let finalCost = 0;
+  for (const allocation of list){
+    const rows = (entries || []).filter(e => {
+      if (!e || !productIdentityMatchesRefPOS(identity, e)) return false;
+      if (!inventoryEntryMatchesLotPOS(e, allocation)) return false;
+      const q = Number(e.qty) || 0;
+      return q > 0 && (e.type === 'restock' || e.type === 'adjust');
+    });
+    let sourceQty = 0;
+    let sourceCost = 0;
+    for (const row of rows){
+      const q = Math.max(0, Number(row.qty) || 0);
+      const c = saleCostFromFieldsPOS(row);
+      if (!(q > 0) || !(c > 0)) continue;
+      sourceQty += q;
+      sourceCost += q * c;
+    }
+    const unit = sourceQty > 0 && sourceCost > 0 ? sourceCost / sourceQty : Math.max(0, Number(allocation.unitCost) || 0);
+    const allocatedQty = Math.max(0, Number(allocation.qty ?? allocation.cantidad ?? 1) || 0);
+    if (!(unit > 0) || !(allocatedQty > 0)) continue;
+    finalQty += allocatedQty;
+    finalCost += allocatedQty * unit;
+  }
+  return finalQty > 0 && finalCost > 0 ? round2(finalCost / finalQty) : 0;
+}
+
+async function resolveReturnLotAllocationPOS(eventId, productStableId, qty){
+  try{
+    const rows = (await getAll('sales')).filter(s => s && Number(s.eventId) === Number(eventId) && !s.isReturn && saleStableProductIdPOS(s) === String(productStableId || ''));
+    rows.sort((a,b)=> saleSortKeyPOS(b) - saleSortKeyPOS(a));
+    const source = rows.find(s => saleLotAllocationsPOS(s).length) || null;
+    if (!source) return { allocations:[], unassignedQty:Math.max(0, Number(qty)||0), available:[] };
+    let need = Math.max(0, Number(qty) || 0);
+    const allocations = [];
+    for (const item of saleLotAllocationsPOS(source)){
+      if (!(need > 0)) break;
+      const priorQty = Math.max(0, Number(item.qty ?? item.cantidad) || 0);
+      const take = Math.min(need, priorQty || need);
+      allocations.push({ ...item, qty:take, cantidad:take, returnedFromSaleId: source.id || null });
+      need -= take;
+    }
+    return { allocations, unassignedQty:Math.max(0, need), available:allocations };
+  }catch(_){
+    return { allocations:[], unassignedQty:Math.max(0, Number(qty)||0), available:[] };
+  }
+}
+
+function saleTouchesLotsPOS(sale){
+  return !!(sale && (saleLotAllocationsPOS(sale).length || getSaleLotCodePOS(sale) || presKeyFromProductNamePOS(getSaleProductNameSnapshotPOS(sale))));
+}
+
 
 function cloneNumMapPOS(obj){
   const out = {};
@@ -16742,7 +16965,125 @@ async function reempaquePopulateSelectorsPOS(){
   for (const sel of multiSelects){
     await reempaqueFillSelectPOS(sel, products);
   }
+  await reempaquePopulateSourceLotsPOS(products);
   return products;
+}
+
+
+function reempaqueSelectedSourceLotPOS(){
+  const sel = document.getElementById('rp-source-lot');
+  const list = (typeof window !== 'undefined' && Array.isArray(window.__A33_REEMPAQUE_SOURCE_LOTS)) ? window.__A33_REEMPAQUE_SOURCE_LOTS : [];
+  const key = sel ? String(sel.value || '') : '';
+  return list.find(x => x && String(x.lotKey || '') === key) || null;
+}
+
+async function reempaquePopulateSourceLotsPOS(productsArg, preferred){
+  const sel = document.getElementById('rp-source-lot');
+  const meta = document.getElementById('rp-source-lot-meta');
+  if (!sel) return { lots:[], selected:null, required:false };
+  const products = Array.isArray(productsArg) ? productsArg : await reempaqueSelectableProductsPOS();
+  const evEl = document.getElementById('inv-event');
+  const sourceEl = document.getElementById('rp-source-product');
+  const eventId = preferred && preferred.eventId != null ? Number(preferred.eventId) : Number(evEl && evEl.value);
+  const source = preferred && preferred.source ? preferred.source : reempaqueFindProductPOS(products, sourceEl ? sourceEl.value : '');
+  const previous = String(sel.value || '');
+  let lots = [];
+  if (Number.isFinite(eventId) && eventId > 0 && source){
+    try{ lots = await getAvailableLotsForProductPOS(eventId, source, source.name || '', products); }catch(_){ lots = []; }
+  }
+  try{ if (typeof window !== 'undefined') window.__A33_REEMPAQUE_SOURCE_LOTS = lots; }catch(_){ }
+  sel.innerHTML = '';
+  if (lots.length){
+    const ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = 'Seleccionar lote origen';
+    sel.appendChild(ph);
+    for (const lot of lots){
+      const opt = document.createElement('option');
+      opt.value = String(lot.lotKey || '');
+      const code = lotCodeDisplayPOS(lot.loteCodigo) || 'Lote sin código';
+      const costTxt = Number(lot.unitCost) > 0 ? ` · ${reempaqueFmtMoneyPOS(lot.unitCost)} c/u` : '';
+      opt.textContent = `${code} · disponible ${reempaqueFmtQtyPOS(lot.remaining)}${costTxt}`;
+      sel.appendChild(opt);
+    }
+    sel.disabled = false;
+    if (previous && lots.some(x => String(x.lotKey || '') === previous)) sel.value = previous;
+    else if (lots.length === 1) sel.value = String(lots[0].lotKey || '');
+    if (meta) meta.textContent = 'El código se conserva completo; las x minúsculas no se transforman.';
+  }else{
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = source && eventId ? 'Inventario general / histórico sin lote disponible' : 'Selecciona evento y producto';
+    sel.appendChild(opt);
+    sel.disabled = true;
+    if (meta) meta.textContent = source && eventId
+      ? 'No hay lote disponible para esta presentación; se mantiene compatibilidad con inventario histórico.'
+      : 'Selecciona evento y producto para resolver el lote.';
+  }
+  const selected = reempaqueSelectedSourceLotPOS();
+  return { lots, selected, required:lots.length > 0, eventId, source };
+}
+
+function reempaqueNormalizeLotTracePOS(input){
+  const raw = input && typeof input === 'object' ? input : {};
+  const code = lotCodeDisplayPOS(raw.loteCodigo ?? raw.lotCode ?? raw.batchCode ?? raw.codigo ?? raw.codigoLote ?? '');
+  return {
+    lotKey: String(raw.lotKey ?? raw.key ?? ''),
+    loteId: raw.loteId ?? raw.lotId ?? null,
+    loteCodigo: code,
+    lotCode: code,
+    batchCode: code,
+    loteCargaId: raw.loteCargaId != null ? String(raw.loteCargaId) : (raw.loadId != null ? String(raw.loadId) : null),
+    loteGroupKey: String(raw.loteGroupKey ?? raw.groupKey ?? ''),
+    remaining: Math.max(0, Number(raw.remaining) || 0),
+    unitCost: Math.max(0, Number(raw.unitCost) || 0)
+  };
+}
+
+function reempaqueRecordLotFieldsPOS(trace){
+  const t = reempaqueNormalizeLotTracePOS(trace);
+  if (!t.loteId && !t.loteCodigo && !t.loteCargaId && !t.loteGroupKey) return {};
+  return {
+    loteOrigen: t,
+    sourceLot: t,
+    loteOrigenId: t.loteId,
+    sourceLotId: t.loteId,
+    loteOrigenCodigo: t.loteCodigo,
+    sourceLotCode: t.loteCodigo,
+    productionLotId: t.loteId,
+    productionLotCode: t.loteCodigo,
+    loteCargaIdOrigen: t.loteCargaId,
+    loteGroupKeyOrigen: t.loteGroupKey
+  };
+}
+
+function reempaqueInventoryLotFieldsPOS(trace){
+  const t = reempaqueNormalizeLotTracePOS(trace);
+  if (!t.loteId && !t.loteCodigo && !t.loteCargaId && !t.loteGroupKey) return {};
+  return {
+    loteId: t.loteId,
+    loteCodigo: t.loteCodigo,
+    lotCode: t.loteCodigo,
+    batchCode: t.loteCodigo,
+    loteCargaId: t.loteCargaId,
+    loteGroupKey: t.loteGroupKey,
+    loteOrigenId: t.loteId,
+    loteOrigenCodigo: t.loteCodigo,
+    productionLotId: t.loteId,
+    productionLotCode: t.loteCodigo
+  };
+}
+
+async function reempaqueValidateSelectedLotPOS(eventId, source, qty, trace, products){
+  const t = reempaqueNormalizeLotTracePOS(trace);
+  if (!t.loteId && !t.loteCodigo && !t.loteCargaId && !t.loteGroupKey) return { ok:true, historical:true, trace:t };
+  const available = await getAvailableLotsForProductPOS(eventId, source, source && source.name, products);
+  const current = available.find(x => lotTraceMatchesPOS(x, t));
+  if (!current) return { ok:false, msg:'El lote origen ya no está disponible para este producto.', trace:t };
+  if ((Number(current.remaining) + 0.0001) < Number(qty || 0)){
+    return { ok:false, msg:`El lote ${lotCodeDisplayPOS(current.loteCodigo) || 'seleccionado'} solo tiene ${reempaqueFmtQtyPOS(current.remaining)} disponibles.`, trace:current };
+  }
+  return { ok:true, trace:current };
 }
 
 async function reempaqueGetUiStatePOS(productsArg){
@@ -16754,10 +17095,19 @@ async function reempaqueGetUiStatePOS(productsArg){
   const unitCostEl = document.getElementById('rp-source-unit-cost');
   const extraCostEl = document.getElementById('rp-extra-cost');
   const source = reempaqueFindProductPOS(products, sourceEl ? sourceEl.value : '');
+  const evEl = document.getElementById('inv-event');
+  const eventId = evEl && evEl.value ? parseInt(evEl.value, 10) : 0;
+  const lotState = await reempaquePopulateSourceLotsPOS(products, { eventId, source });
+  const sourceLot = lotState.selected;
   const selectedTarget = reempaqueFindProductPOS(products, targetEl ? targetEl.value : '');
   const target = selectedTarget;
   const newTarget = { name:'', capacityMl:0, price:0 };
+  const exactLotCostInfo = sourceLot && Number(sourceLot.unitCost) > 0 ? { value:Number(sourceLot.unitCost), source:'lote_exacto' } : null;
   const sourceCostInfo = reempaqueSyncSourceCostFieldPOS(source);
+  if (exactLotCostInfo && unitCostEl && unitCostEl.dataset.rpqAutoCost !== '0'){
+    unitCostEl.value = reempaqueFmtQtyPOS(exactLotCostInfo.value);
+    unitCostEl.dataset.rpqAutoCost = '1';
+  }
   const qtySource = reempaquePositivePOS(qtySourceEl ? qtySourceEl.value : 0);
   const qtyTarget = reempaquePositivePOS(qtyTargetEl ? qtyTargetEl.value : 0);
   const sourceCap = source ? reempaqueCapacityMlFromProductPOS(source) : 0;
@@ -16765,8 +17115,8 @@ async function reempaqueGetUiStatePOS(productsArg){
   const suggested = reempaqueComputeSuggestedQtyByVolumePOS(qtySource, sourceCap, targetCap);
   const fieldUnitCost = reempaqueMoneyPOS(unitCostEl ? unitCostEl.value : 0);
   const fieldIsManual = !!(unitCostEl && unitCostEl.dataset.rpqAutoCost === '0' && fieldUnitCost > 0);
-  const unitCost = fieldUnitCost > 0 ? fieldUnitCost : reempaqueMoneyPOS(sourceCostInfo.value);
-  const unitCostSource = fieldIsManual ? 'manual' : (sourceCostInfo.source || (unitCost > 0 ? 'manual' : ''));
+  const unitCost = fieldUnitCost > 0 ? fieldUnitCost : reempaqueMoneyPOS((exactLotCostInfo || sourceCostInfo).value);
+  const unitCostSource = fieldIsManual ? 'manual' : ((exactLotCostInfo && exactLotCostInfo.source) || sourceCostInfo.source || (unitCost > 0 ? 'manual' : ''));
   const extraCostInfo = reempaqueInputNumberInfoPOS(extraCostEl);
   const costAdditionalUnit = extraCostInfo.value > 0 ? round2(extraCostInfo.value) : 0;
   const costAdditionalTotal = (qtyTarget > 0 && costAdditionalUnit > 0) ? round2(qtyTarget * costAdditionalUnit) : 0;
@@ -16774,8 +17124,11 @@ async function reempaqueGetUiStatePOS(productsArg){
   const liquidUnitTarget = (costOriginTotal > 0 && qtyTarget > 0) ? round2(costOriginTotal / qtyTarget) : 0;
   const costTotal = (costOriginTotal > 0 || costAdditionalTotal > 0) ? round2(costOriginTotal + costAdditionalTotal) : 0;
   const unitTarget = (costTotal > 0 && qtyTarget > 0) ? round2(costTotal / qtyTarget) : 0;
+  let stockSource = null;
+  if (sourceLot) stockSource = Number(sourceLot.remaining);
+  else if (eventId && source && source.id != null){ try{ stockSource = reempaqueInventoryQtyPOS(await computeStock(eventId, source.id)); }catch(_){ stockSource = null; } }
   return {
-    products, source, target, selectedTarget, newTarget, qtySource, qtyTarget, sourceCap, targetCap, suggested,
+    products, eventId, source, sourceLot, lotState, stockSource, target, selectedTarget, newTarget, qtySource, qtyTarget, sourceCap, targetCap, suggested,
     unitCost, unitCostSource, costOriginTotal,
     extraCostInfo, costAdditionalUnit, costAdditionalTotal,
     costAdditional: costAdditionalTotal,
@@ -17092,9 +17445,16 @@ async function reempaqueGetMultipleUiStatePOS(productsArg){
   const evEl = document.getElementById('inv-event');
   const eventId = evEl && evEl.value ? parseInt(evEl.value, 10) : 0;
   const source = reempaqueFindProductPOS(products, sourceEl ? sourceEl.value : '');
+  const lotState = await reempaquePopulateSourceLotsPOS(products, { eventId, source });
+  const sourceLot = lotState.selected;
   reempaqueSyncSourceCostFieldPOS(source);
   reempaqueSyncSourceVolumeFieldPOS(source);
+  const exactLotCostInfo = sourceLot && Number(sourceLot.unitCost) > 0 ? { value:Number(sourceLot.unitCost), source:'lote_exacto' } : null;
   const sourceCostInfo = source ? reempaqueGetSourceCostInfoPOS(source) : { value:0, source:'' };
+  if (exactLotCostInfo && unitCostEl && unitCostEl.dataset.rpqAutoCost !== '0'){
+    unitCostEl.value = reempaqueFmtQtyPOS(exactLotCostInfo.value);
+    unitCostEl.dataset.rpqAutoCost = '1';
+  }
   const qtySourceInfo = reempaqueInputNumberInfoPOS(qtySourceEl);
   const unitCostInfo = reempaqueInputNumberInfoPOS(unitCostEl);
   const volumeManualInfo = reempaqueInputNumberInfoPOS(volumeManualEl);
@@ -17102,8 +17462,8 @@ async function reempaqueGetMultipleUiStatePOS(productsArg){
   const sourceUnitMl = source ? reempaqueCapacityMlFromProductPOS(source) : 0;
   const autoVolumeOrigin = reempaqueTotalVolumePOS(qtySource, sourceUnitMl);
   const volumeOrigin = volumeManualInfo.value > 0 ? reempaqueRound4POS(volumeManualInfo.value) : autoVolumeOrigin;
-  const unitCost = unitCostInfo.value > 0 ? unitCostInfo.value : reempaqueMoneyPOS(sourceCostInfo.value);
-  const unitCostSource = (unitCostEl && unitCostEl.dataset.rpqAutoCost === '0') ? 'manual' : (sourceCostInfo.source || (unitCost > 0 ? 'manual' : ''));
+  const unitCost = unitCostInfo.value > 0 ? unitCostInfo.value : reempaqueMoneyPOS((exactLotCostInfo || sourceCostInfo).value);
+  const unitCostSource = (unitCostEl && unitCostEl.dataset.rpqAutoCost === '0') ? 'manual' : ((exactLotCostInfo && exactLotCostInfo.source) || sourceCostInfo.source || (unitCost > 0 ? 'manual' : ''));
   const costOriginTotal = (unitCost > 0 && qtySource > 0) ? round2(unitCost * qtySource) : 0;
   const costPerMl = reempaqueCostPerMlPOS(costOriginTotal, volumeOrigin);
   const destinations = reempaqueReadMultiDestinationRowsPOS(products, costPerMl);
@@ -17113,12 +17473,12 @@ async function reempaqueGetMultipleUiStatePOS(productsArg){
   const costDistributed = round2(destinations.reduce((a,d)=>a + reempaqueMoneyPOS(d.totalCost), 0));
   const volumeLeft = reempaqueRound4POS(volumeOrigin - volumeDistributed);
   const costLeft = round2(costOriginTotal - liquidCostDistributed);
-  let stockSource = null;
-  if (eventId && source && source.id != null){
+  let stockSource = sourceLot ? Number(sourceLot.remaining) : null;
+  if (stockSource === null && eventId && source && source.id != null){
     try{ stockSource = reempaqueInventoryQtyPOS(await computeStock(eventId, source.id)); }catch(_){ stockSource = null; }
   }
   return {
-    products, eventId, source, sourceEl, qtySourceEl, unitCostEl, volumeManualEl,
+    products, eventId, source, sourceLot, lotState, sourceEl, qtySourceEl, unitCostEl, volumeManualEl,
     qtySourceInfo, unitCostInfo, volumeManualInfo,
     qtySource, sourceUnitMl, autoVolumeOrigin, volumeOrigin, unitCost, unitCostSource,
     costOriginTotal, costPerMl, destinations, volumeDistributed, liquidCostDistributed, additionalCostTotal, costDistributed, volumeLeft, costLeft, stockSource
@@ -17182,7 +17542,7 @@ async function reempaqueUpdateActivePreviewPOS(opts){
 }
 
 function reempaqueClearMultiValidationPOS(){
-  ['rp-source-product','rp-source-qty','rp-source-unit-cost','rp-source-total-ml-manual'].forEach(id=>reempaqueSetFieldInvalidPOS(id, false));
+  ['rp-source-product','rp-source-lot','rp-source-qty','rp-source-unit-cost','rp-source-total-ml-manual'].forEach(id=>reempaqueSetFieldInvalidPOS(id, false));
   document.querySelectorAll('#rp-multi-destinations .a33-invalid').forEach(el=>el.classList.remove('a33-invalid'));
 }
 
@@ -17199,6 +17559,8 @@ async function registrarReempaqueMultipleUiPOS(){
   if (!state.source){ errors.push('Producto origen requerido.'); reempaqueSetFieldInvalidPOS('rp-source-product', true); }
   if (state.qtySourceInfo.invalid){ errors.push('Cantidad origen inválida.'); reempaqueSetFieldInvalidPOS('rp-source-qty', true); }
   if (!(state.qtySource > 0)){ errors.push('Cantidad origen mayor que 0.'); reempaqueSetFieldInvalidPOS('rp-source-qty', true); }
+  if (state.lotState && state.lotState.required && !state.sourceLot){ errors.push('Selecciona el lote origen.'); reempaqueSetFieldInvalidPOS('rp-source-lot', true); }
+  if (state.sourceLot && (Number(state.sourceLot.remaining) + 0.0001) < state.qtySource){ errors.push('El lote origen no tiene existencia suficiente.'); reempaqueSetFieldInvalidPOS('rp-source-lot', true); reempaqueSetFieldInvalidPOS('rp-source-qty', true); }
   if (state.unitCostInfo.invalid || (!state.unitCostInfo.empty && state.unitCostInfo.value < 0)){ errors.push('Costo unitario origen inválido.'); reempaqueSetFieldInvalidPOS('rp-source-unit-cost', true); }
   if (!(state.costOriginTotal > 0)){ errors.push('Costo total origen requerido para distribuir costos.'); reempaqueSetFieldInvalidPOS('rp-source-unit-cost', true); }
   if (state.volumeManualInfo.invalid || (!state.volumeManualInfo.empty && state.volumeManualInfo.value < 0)){ errors.push('Volumen total origen inválido.'); reempaqueSetFieldInvalidPOS('rp-source-total-ml-manual', true); }
@@ -17282,6 +17644,7 @@ async function registrarReempaqueMultipleUiPOS(){
     const previewRecord = await reempaquePrepareMultiplePayloadPOS({
       eventId: state.eventId,
       productoOrigen: state.source,
+      loteOrigen: state.sourceLot,
       cantidadOrigen: state.qtySource,
       capacidadOrigenMl: capacidadOrigenMlPreview,
       volumenTotalOrigenMl: state.volumeOrigin,
@@ -17536,6 +17899,7 @@ function reempaqueHistoryRecordPartsPOS(r){
     costoPorMl: reempaquePositivePOS(r.costoPorMl),
     costoUnitarioDestino: destinos.length === 1 ? reempaqueMoneyPOS(destinos[0].unitCost) : 0,
     nota: String(r.nota || r.note || '').trim(),
+    loteOrigenCodigo: lotCodeDisplayPOS(r.loteOrigenCodigo || r.sourceLotCode || r.productionLotCode || (r.loteOrigen && r.loteOrigen.loteCodigo) || (r.sourceLot && r.sourceLot.loteCodigo)),
     multiple: isMulti,
     mermaMl,
     mermaCosto
@@ -17580,6 +17944,7 @@ async function renderReempaqueHistoryPOS(eventId){
           <span><strong>Fecha/hora:</strong> ${escapeHtml(p.fecha)}</span>
           <span><strong>Tipo:</strong> ${escapeHtml(modeLabel)}</span>
           <span><strong>Origen:</strong> ${escapeHtml(p.origen)}</span>
+          <span><strong>Lote origen:</strong> ${escapeHtml(p.loteOrigenCodigo || '—')}</span>
           <span><strong>Cantidad origen:</strong> ${escapeHtml(reempaqueFmtQtyPOS(p.qtyOrigen))}</span>
           <span><strong>Volumen origen:</strong> ${escapeHtml(reempaqueFmtMlPOS(p.volumenOrigen))}</span>
           <span><strong>Costo origen:</strong> ${escapeHtml(reempaqueFmtMoneyPOS(p.costoOrigen))}</span>
@@ -17601,6 +17966,7 @@ async function reempaqueBuildExportRowsPOS(eventId){
     'Modo',
     'ID Reempaque',
     'Producto origen',
+    'Código de lote origen',
     'Cantidad origen',
     'ml origen/unidad',
     'Volumen origen total ml',
@@ -17634,6 +18000,7 @@ async function reempaqueBuildExportRowsPOS(eventId){
         p.multiple ? 'Múltiple' : 'Simple',
         p.id || '',
         p.origen,
+        lotCodeExcelCellPOS(p.loteOrigenCodigo || ''),
         p.qtyOrigen || 0,
         p.capacidadOrigen || '',
         p.volumenOrigen || '',
@@ -17674,7 +18041,7 @@ async function reempaqueRefreshUiPOS(){
 }
 
 function reempaqueClearValidationPOS(){
-  ['rp-source-product','rp-source-qty','rp-source-unit-cost','rp-source-total-ml-manual','rp-target-product','rp-target-qty','rp-extra-cost','rp-new-target-name','rp-new-target-capacity','rp-new-target-price'].forEach(id=>reempaqueSetFieldInvalidPOS(id, false));
+  ['rp-source-product','rp-source-lot','rp-source-qty','rp-source-unit-cost','rp-source-total-ml-manual','rp-target-product','rp-target-qty','rp-extra-cost','rp-new-target-name','rp-new-target-capacity','rp-new-target-price'].forEach(id=>reempaqueSetFieldInvalidPOS(id, false));
   try{ reempaqueClearMultiValidationPOS(); }catch(_){ }
 }
 
@@ -17692,6 +18059,8 @@ async function registrarReempaqueUiPOS(){
   if (!eventId) errors.push('Selecciona un evento.');
   if (!state.source){ errors.push('Producto origen requerido.'); reempaqueSetFieldInvalidPOS('rp-source-product', true); }
   if (!(state.qtySource > 0)){ errors.push('Cantidad origen mayor que 0.'); reempaqueSetFieldInvalidPOS('rp-source-qty', true); }
+  if (state.lotState && state.lotState.required && !state.sourceLot){ errors.push('Selecciona el lote origen.'); reempaqueSetFieldInvalidPOS('rp-source-lot', true); }
+  if (state.sourceLot && (Number(state.sourceLot.remaining) + 0.0001) < state.qtySource){ errors.push('El lote origen no tiene existencia suficiente.'); reempaqueSetFieldInvalidPOS('rp-source-lot', true); reempaqueSetFieldInvalidPOS('rp-source-qty', true); }
   if (!state.target){
     errors.push('Selecciona un producto destino activo. Si no existe, créalo primero en Catálogos → Productos.');
     reempaqueSetFieldInvalidPOS('rp-target-product', true);
@@ -17725,6 +18094,7 @@ async function registrarReempaqueUiPOS(){
     const record = await reempaqueApplyMovementPOS({
       eventId,
       productoOrigen: state.source,
+      loteOrigen: state.sourceLot,
       productoDestino: verifiedTarget,
       cantidadOrigen: state.qtySource,
       cantidadCreadaDestino: state.qtyTarget,
@@ -17905,11 +18275,11 @@ document.addEventListener('change', async (e)=>{
     reempaqueClearValidationPOS();
     reempaqueSetMsgPOS('', '');
   }
-  if (t.id === 'rp-source-product' || t.id === 'rp-target-product'){
+  if (t.id === 'rp-source-product' || t.id === 'rp-target-product' || t.id === 'rp-source-lot'){
     const qtyTargetEl = document.getElementById('rp-target-qty');
     const unitCostEl = document.getElementById('rp-source-unit-cost');
     if (qtyTargetEl) qtyTargetEl.dataset.rpqAuto = '1';
-    if (unitCostEl && t.id === 'rp-source-product') unitCostEl.dataset.rpqAutoCost = '1';
+    if (unitCostEl && (t.id === 'rp-source-product' || t.id === 'rp-source-lot')) unitCostEl.dataset.rpqAutoCost = '1';
     await reempaqueUpdateActivePreviewPOS();
     reempaqueClearValidationPOS();
     reempaqueSetMsgPOS('', '');
@@ -18001,7 +18371,7 @@ async function renderDay(){
       const seqTxt = getSaleSeqDisplayPOS(s);
       const timeTxt = getSaleTimeTextPOS(s);
       tr.innerHTML = `<td>${seqTxt ? ('#' + seqTxt + ' · ') : ''}${timeTxt}</td>
-        <td>${escapeHtml(uiProductNamePOS(s.productName))}</td>
+        <td>${escapeHtml(uiProductNamePOS(s.productName))}${getSaleLotCodePOS(s) ? `<div class="muted"><small>Lote: ${escapeHtml(getSaleLotCodePOS(s))}</small></div>` : ''}</td>
         <td>${s.qty}</td>
         <td>${fmt(s.unitPrice)}</td>
         <td>${fmt(getSaleDiscountTotalPOS(s))}</td>
@@ -21857,6 +22227,8 @@ function downloadExcel(filename, sheetName, rows){
     return;
   }
   const ws = XLSX.utils.aoa_to_sheet(rows);
+  const header = Array.isArray(rows && rows[0]) ? rows[0] : [];
+  ws['!cols'] = header.map((value) => ({ wch: /lote/i.test(String(value == null ? '' : value)) ? 25 : 16 }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Hoja1');
   XLSX.writeFile(wb, filename);
@@ -21885,7 +22257,9 @@ async function generateInventoryCSV(eventId){
 
   const rpRows = await reempaqueBuildExportRowsPOS(eventId);
   if (rpRows.length > 1){
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rpRows), 'Reempaque');
+    const wsReempaque = XLSX.utils.aoa_to_sheet(rpRows);
+    wsReempaque['!cols'] = rpRows[0].map((h) => ({ wch: /lote/i.test(String(h || '')) ? 25 : 18 }));
+    XLSX.utils.book_append_sheet(wb, wsReempaque, 'Reempaque');
   }
 
   XLSX.writeFile(wb, 'inventario_evento.xlsx');
@@ -22107,7 +22481,7 @@ async function openEventView(eventId){
   // Más reciente primero
   sales.sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a))).forEach(s=>{
     const payLabel = getSalePaymentLabelPOS(s, bankMap);
-    const tr=document.createElement('tr'); tr.innerHTML = `<td>${getSaleSeqDisplayPOS(s)}</td><td>${s.date}</td><td>${getSaleTimeTextPOS(s)}</td><td>${escapeHtml(uiProductNamePOS(getSaleProductNameSnapshotPOS(s)))}</td><td>${s.qty}</td><td>${fmt(getSaleUnitPriceSnapshotPOS(s))}</td><td>${fmt(getSaleDiscountTotalPOS(s))}</td><td>${fmt(s.total)}</td><td>${payLabel}</td><td>${s.courtesy?'✓':''}</td><td>${s.isReturn?'✓':''}</td><td>${escapeHtml(getSaleCustomerSnapshotNamePOS(s))}</td><td>${s.courtesyTo||''}</td><td>${s.notes||''}</td>`;
+    const tr=document.createElement('tr'); tr.innerHTML = `<td>${getSaleSeqDisplayPOS(s)}</td><td>${s.date}</td><td>${getSaleTimeTextPOS(s)}</td><td>${escapeHtml(uiProductNamePOS(getSaleProductNameSnapshotPOS(s)))}${getSaleLotCodePOS(s) ? `<div class="muted"><small>Lote: ${escapeHtml(getSaleLotCodePOS(s))}</small></div>` : ''}</td><td>${s.qty}</td><td>${fmt(getSaleUnitPriceSnapshotPOS(s))}</td><td>${fmt(getSaleDiscountTotalPOS(s))}</td><td>${fmt(s.total)}</td><td>${payLabel}</td><td>${s.courtesy?'✓':''}</td><td>${s.isReturn?'✓':''}</td><td>${escapeHtml(getSaleCustomerSnapshotNamePOS(s))}</td><td>${s.courtesyTo||''}</td><td>${s.notes||''}</td>`;
     tb.appendChild(tr);
   });
 
@@ -22123,11 +22497,11 @@ async function exportEventSalesCSV(eventId){
   const bankMap = new Map();
   for (const b of banks){ if (b && b.id != null) bankMap.set(Number(b.id), b.name || ''); }
 
-  const rows = [['N°','id','fecha','hora','producto','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','banco','cortesia','devolucion','cortesia_a','notas','cliente']];
+  const rows = [['N°','id','fecha','hora','producto','codigo_lote','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','banco','cortesia','devolucion','cortesia_a','notas','cliente']];
   const ordered = [...sales].sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a)));
   for (const s of ordered){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
-    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
+    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), lotCodeExcelCellPOS(getSaleLotCodePOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = (ev?ev.name:'evento').replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
@@ -22229,11 +22603,11 @@ async function generateCorteCSV(eventId){
   rows.push(['Neto cobrado', sum.neto.toFixed(2)]);
   rows.push([]);
   rows.push(['Detalle de ventas']);
-  rows.push(['id','fecha','hora','producto','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
+  rows.push(['id','fecha','hora','producto','codigo_lote','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
   for (const s of sales){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
     const tp = getSaleCashTenderPartsPOS(s);
-    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
+    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), lotCodeExcelCellPOS(getSaleLotCodePOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = ev.name.replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`corte_${safeName}.xlsx`, 'Corte', rows);
@@ -22292,6 +22666,12 @@ async function exportEventExcel(eventId){
   resumenRows.push(['Costos totales C$', eventSummary.costoTotal]);
   resumenRows.push(['Utilidad bruta C$', eventSummary.utilidadBruta]);
   resumenRows.push(['Utilidad después de cortesías C$', eventSummary.utilidadDespuesCortesias]);
+  const eventLotCodes = [];
+  for (const sale of sales){
+    const code = getSaleLotCodePOS(sale);
+    if (code && !eventLotCodes.some((item) => lotCodeKeyPOS(item) === lotCodeKeyPOS(code))) eventLotCodes.push(code);
+  }
+  resumenRows.push(['Códigos de lote', lotCodeExcelCellPOS(eventLotCodes.join(' + '))]);
 
   const byPay = sales.reduce((m,s)=>{
     const pay = normalizePaymentMethodPOS(s.payment || '') || 'desconocido';
@@ -22322,7 +22702,7 @@ async function exportEventExcel(eventId){
 
   // --- Hoja 3 opcional: Ventas_Detalle ---
   const ventasRows = [];
-  ventasRows.push(['N°','id','fecha','hora','producto','cantidad','PU_C$','descuento_C$','total_C$','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
+  ventasRows.push(['N°','id','fecha','hora','producto','codigo_lote','cantidad','PU_C$','descuento_C$','total_C$','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
   for (const s of sales){
     const qty = Number(s.qty || 0);
     const costUnit = getSaleCostUnitSnapshotPOS(s);
@@ -22333,6 +22713,7 @@ async function exportEventExcel(eventId){
       s.date || '',
       getSaleTimeTextPOS(s) || '',
       getSaleProductNameSnapshotPOS(s) || '',
+      lotCodeExcelCellPOS(getSaleLotCodePOS(s)),
       qty || 0,
       getSaleUnitPriceSnapshotPOS(s) || 0,
       getSaleDiscountTotalPOS(s) || 0,
@@ -22353,11 +22734,14 @@ async function exportEventExcel(eventId){
     ]);
   }
   const wsVentas = XLSX.utils.aoa_to_sheet(ventasRows);
+  wsVentas['!cols'] = ventasRows[0].map((h) => ({ wch: /lote/i.test(String(h || '')) ? 25 : 16 }));
   XLSX.utils.book_append_sheet(wb, wsVentas, 'Ventas_Detalle');
 
   const rpRows = await reempaqueBuildExportRowsPOS(eventId);
   if (rpRows.length > 1){
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rpRows), 'Reempaque');
+    const wsReempaque = XLSX.utils.aoa_to_sheet(rpRows);
+    wsReempaque['!cols'] = rpRows[0].map((h) => ({ wch: /lote/i.test(String(h || '')) ? 25 : 18 }));
+    XLSX.utils.book_append_sheet(wb, wsReempaque, 'Reempaque');
   }
 
   const safeName = (ev.name || 'evento').replace(/[^a-z0-9_\- ]/gi,'_');
@@ -22826,7 +23210,7 @@ async function init(){
 
     // FIFO (Etapa 2): re-sincronizar snapshot por evento/lote
     try{
-      if (last && presKeyFromProductNamePOS(getSaleProductNameSnapshotPOS(last))) {
+      if (last && saleTouchesLotsPOS(last)) {
         queueLotsUsageSyncPOS(last.eventId).then(res=>{
           if (res && res.ok===false){
             showToast('FIFO/Lotes: no se pudo actualizar el uso de lotes para este evento. Revisa asignación de lotes.', 'error', 7000);
@@ -22897,7 +23281,7 @@ async function init(){
 
       // FIFO (Etapa 2): re-sincronizar snapshot por evento/lote
       try{
-        if (saleToDelete && presKeyFromProductNamePOS(getSaleProductNameSnapshotPOS(saleToDelete))) {
+        if (saleToDelete && saleTouchesLotsPOS(saleToDelete)) {
           queueLotsUsageSyncPOS(saleToDelete.eventId).then(res=>{
             if (res && res.ok===false){
               showToast('FIFO/Lotes: no se pudo actualizar el uso de lotes para este evento. Revisa asignación de lotes.', 'error', 7000);
@@ -23289,7 +23673,12 @@ async function addSale(){
   const finalQty = isReturn ? -qty : qty;
   if (isReturn) total = -total;
 
-  const costInfo = await resolveSaleUnitCostPOS(curId, productSnap.productId, productName, prod, products);
+  const lotResolution = isReturn
+    ? await resolveReturnLotAllocationPOS(curId, productSnap.productId, qty)
+    : await resolveSaleLotAllocationPOS(curId, productSnap.productId, productName, qty, products);
+  const lotAllocations = Array.isArray(lotResolution && lotResolution.allocations) ? lotResolution.allocations : [];
+  const primaryLot = lotAllocations[0] || null;
+  const costInfo = await resolveSaleUnitCostPOS(curId, productSnap.productId, productName, prod, products, lotAllocations);
   const unitCost = Number(costInfo.unitCost || 0);
   const economicSnapshot = buildSaleEconomicSnapshotPOS({
     unitPrice: price,
@@ -23343,6 +23732,21 @@ async function addSale(){
     courtesyTo,
     total,
     notes,
+    loteId: primaryLot ? primaryLot.loteId : null,
+    loteCodigo: primaryLot ? lotCodeDisplayPOS(primaryLot.loteCodigo) : '',
+    lotCode: primaryLot ? lotCodeDisplayPOS(primaryLot.loteCodigo) : '',
+    batchCode: primaryLot ? lotCodeDisplayPOS(primaryLot.loteCodigo) : '',
+    loteCargaId: primaryLot ? primaryLot.loteCargaId : null,
+    loteGroupKey: primaryLot ? primaryLot.loteGroupKey : '',
+    loteAllocations: lotAllocations,
+    lotAllocations: lotAllocations,
+    lotTrace: {
+      loteId: primaryLot ? primaryLot.loteId : null,
+      loteCodigo: primaryLot ? lotCodeDisplayPOS(primaryLot.loteCodigo) : '',
+      loteCargaId: primaryLot ? primaryLot.loteCargaId : null,
+      loteGroupKey: primaryLot ? primaryLot.loteGroupKey : '',
+      allocations: lotAllocations
+    },
     ...economicSnapshot,
     economicSnapshot: {
       productId: productSnap.productId,
@@ -23356,6 +23760,9 @@ async function addSale(){
       costTotal: economicSnapshot.costTotal,
       utilidad: economicSnapshot.utilidad,
       costSource: economicSnapshot.costSourceSnapshot,
+      loteCodigo: primaryLot ? lotCodeDisplayPOS(primaryLot.loteCodigo) : '',
+      loteId: primaryLot ? primaryLot.loteId : null,
+      loteAllocations: lotAllocations,
       capturedAt: new Date().toISOString()
     }
   };
@@ -23447,7 +23854,7 @@ async function addSale(){
 
   // FIFO (Etapa 2): persistir snapshot por evento/lote (solo si aplica a presentaciones)
   try{
-    if (presKeyFromProductNamePOS(productName)) {
+    if (saleTouchesLotsPOS(saleRecord)) {
       queueLotsUsageSyncPOS(curId).then(res=>{
         if (res && res.ok===false){
           showToast('FIFO/Lotes: no se pudo actualizar el uso de lotes para este evento. Revisa asignación de lotes.', 'error', 7000);

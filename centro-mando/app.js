@@ -1,5 +1,5 @@
 /*
-  Suite A33 v4.20.94 — Centro de Mando (OPERATIVO v1)
+  Suite A33 v4.20.95 — Centro de Mando (OPERATIVO v1)
 
   Fuentes reales (descubiertas en /pos/app.js dentro de esta ZIP):
   - DB_NAME: 'a33-pos'
@@ -2756,7 +2756,7 @@ async function __cmdRefreshGlobalVentasTodayForCard(eventId){
 
     const snaps = __cmdEnsureMap('__globalSnapshots');
     const cur = (snaps && typeof snaps.get === 'function') ? (snaps.get(id) || null) : null;
-    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, hasChecklistItems:false };
+    const next = (cur && __cmdIsObj(cur)) ? cur : { eventId: id, dayKey: dk, checklistDayKey: dk, alertas:{pendingCount:null}, efectivo:{enabled:null}, ventasHoy:null, latestLot:null, hasChecklistItems:false };
     next.dayKey = dk;
     next.ventasHoy = (typeof v === 'number' && isFinite(v)) ? v : null;
     try{ snaps.set(id, next); }catch(_){ }
@@ -3795,6 +3795,33 @@ async function __cmdTopProductsMetric(ev, dayKey){
   }
 }
 
+function __cmdLatestLotForEvent(ev){
+  try{
+    const rows = safeLSGetJSON('arcano33_lotes', []);
+    if (!Array.isArray(rows)) return null;
+    const eventId = ev && ev.id != null ? String(ev.id) : '';
+    const eventName = safeStr(ev && ev.name).toLowerCase();
+    const matches = rows.filter((row) => {
+      if (!row || typeof row !== 'object') return false;
+      const rid = row.assignedEventId ?? row.eventId ?? row.eventoId ?? row.posEventId;
+      const rname = safeStr(row.assignedEventName ?? row.eventName ?? row.evento).toLowerCase();
+      return (eventId && rid != null && String(rid) === eventId) || (eventName && rname === eventName);
+    });
+    if (!matches.length) return null;
+    matches.sort((a,b) => {
+      const ta = Date.parse(a.updatedAt || a.savedAt || a.createdAt || a.fecha || '') || 0;
+      const tb = Date.parse(b.updatedAt || b.savedAt || b.createdAt || b.fecha || '') || 0;
+      return tb - ta;
+    });
+    const row = matches[0];
+    const raw = String(row.codigo ?? row.codigoLote ?? row.loteCodigo ?? row.batchCode ?? row.lotCode ?? '').trim();
+    if (!raw) return null;
+    let code = raw;
+    try{ if (window.A33LotCode && typeof window.A33LotCode.display === 'function') code = window.A33LotCode.display(raw); }catch(_){ }
+    return { code, date: safeStr(row.fecha || row.productionDate || row.createdAt), id: safeStr(row.loteId || row.id || row.operationId) };
+  }catch(_){ return null; }
+}
+
 async function __cmdBuildGlobalSnapshot(ev, todayDayKey){
   const eid = Number(ev && ev.id);
   const dkToday = __cmdSafeYMD(todayDayKey) || __cmdSafeYMD(state.today) || todayYMD();
@@ -3821,6 +3848,7 @@ async function __cmdBuildGlobalSnapshot(ev, todayDayKey){
       efectivo: { enabled: null },
       ventasHoy: null,
       topProducts: null,
+      latestLot: null,
       hasChecklistItems: false
     };
   }
@@ -3828,7 +3856,9 @@ async function __cmdBuildGlobalSnapshot(ev, todayDayKey){
   // Sello de ventas HOY (por evento) para invalidar cache aunque el conteo no cambie.
   let salesSeal = '';
   try{ salesSeal = await __cmdSalesSealForEventDay(eid, dkToday); }catch(_){ salesSeal = ''; }
-  const key = `snap|${eid||0}|${dkToday}|${chkDayKey}|${chkTs}|${chkSig}|s${salesSeal||''}`;
+  const latestLot = __cmdLatestLotForEvent(ev);
+  const lotSeal = latestLot && latestLot.code ? String(latestLot.code) : '';
+  const key = `snap|${eid||0}|${dkToday}|${chkDayKey}|${chkTs}|${chkSig}|s${salesSeal||''}|l${lotSeal}`;
 
   const hit = cache.get(key);
   if (hit && hit.snap){
@@ -3886,6 +3916,7 @@ async function __cmdBuildGlobalSnapshot(ev, todayDayKey){
       efectivo: { enabled: null },
       ventasHoy: null,
       topProducts: null,
+      latestLot: latestLot,
       hasChecklistItems: false
     };
 
@@ -4310,6 +4341,9 @@ function __cmdUpdateGlobalCardUI(eventId, snap, ev){
     const dkHint = __cmdSafeYMD(snap && snap.dayKey) || '';
     setSec('ventas', ventasTxt, (ventasTxt === '—') ? 'No disponible' : (dkHint ? `Hoy: ${dkHint}` : 'Hoy'), null);
 
+    const lotInfo = snap && snap.latestLot ? snap.latestLot : null;
+    setSec('lote', lotInfo && lotInfo.code ? lotInfo.code : '—', lotInfo && lotInfo.date ? ('Producción: ' + lotInfo.date) : 'Sin lote asignado', null);
+
     // Top productos (Etapa 4): mostrar SOLO si hay dato (se calcula al expandir; cache por sello).
     {
       let topV = '—';
@@ -4710,6 +4744,7 @@ function renderGlobalActivesView(){
 
       // Orden acordado (debajo del bloque existente de Efectivo): Ventas / Top / Alertas / Recos
       sections.appendChild(mkSec('ventas', 'Ventas hoy', '—', 'No disponible', null));
+      sections.appendChild(mkSec('lote', 'Último lote', '—', 'Sin lote asignado', null));
       sections.appendChild(mkSec('top', 'Top productos', '—', 'Sin datos', null));
       sections.appendChild(mkSec('alertas', 'Alertas accionables', '—', 'No disponible', null));
       sections.appendChild(mkSec('recos', 'Recomendaciones', '—', 'Sin datos', null));

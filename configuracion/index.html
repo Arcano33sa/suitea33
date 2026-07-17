@@ -8,7 +8,7 @@
 <meta content="Módulo Configuración de Suite A33. Organiza PWA, Identidad, Apariencia, Reportes, Moneda, Firebase, Seguridad y Respaldo en un solo lugar." name="description"/>
 <meta content="#7b1818" name="theme-color"/>
 
-<script src="/assets/js/a33-theme.js?v=4.20.94&r=8"></script>
+<script src="/assets/js/a33-theme.js?v=4.20.95&r=8"></script>
 <link href="../icon-a33-192.png" rel="icon" sizes="192x192" type="image/png"/>
 <link href="../icon-a33-192.png" rel="apple-touch-icon"/>
 <script>
@@ -32,15 +32,15 @@
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<link href="../assets/css/a33-header.css?v=4.20.94&amp;r=8" rel="stylesheet"/>
-<link href="style.css?v=4.20.94&amp;r=24" rel="stylesheet"/>
-<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.94&r=8" />
+<link href="../assets/css/a33-header.css?v=4.20.95&amp;r=8" rel="stylesheet"/>
+<link href="style.css?v=4.20.95&amp;r=24" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.95&r=8" />
 </head>
 <body>
 <header class="a33-header" role="banner">
 <a aria-label="Ir al Menú principal" class="a33-btn-menu" href="../index.html">⌂ Menú principal</a>
 <div class="a33-title">Configuración</div>
-<div class="a33-version" data-a33-fallback="v4.20.94" data-a33-version="1">v...</div>
+<div class="a33-version" data-a33-fallback="v4.20.95" data-a33-version="1">v...</div>
 </header>
 <main class="cfg-main" role="main">
 <section aria-label="Apartados de Configuración" class="cfg-shell cfg-card">
@@ -708,7 +708,7 @@
 </div>
 <span class="cfg-badge cfg-badge--soft" id="cfg-firebase-save-state">Base local</span>
 </div>
-<p class="cfg-copy">Sincronización híbrida local-first con Firebase Realtime Database. En esta etapa se sincronizan manualmente Configuración y Catálogos; POS, ventas, Finanzas y Caja Chica siguen locales.</p>
+<p class="cfg-copy">Sincronización híbrida local-first con Firebase Realtime Database. Se sincronizan manualmente Configuración, Catálogos y Lotes; ventas, Finanzas y Caja Chica siguen locales.</p>
 <div class="cfg-firebase-hero" aria-label="Estado funcional de Firebase">
 <div>
 <span class="cfg-report-mini-label">Modo híbrido local-first</span>
@@ -849,14 +849,14 @@
 <div class="cfg-firebase-status-item"><span>Pendientes locales</span><strong id="cfg-firebase-pending-count">0</strong><small id="cfg-firebase-pending-detail">syncQueue local creada; alcance Configuración/Catálogos.</small></div>
 <div class="cfg-firebase-status-item"><span>Última sincronización</span><strong id="cfg-firebase-sync-last-sync">Sin registros</strong><small>Sincronización manual de bajo riesgo.</small></div>
 <div class="cfg-firebase-status-item"><span>Último error</span><strong id="cfg-firebase-sync-last-error">Sin errores</strong><small>Errores controlados del motor híbrido.</small></div>
-<div class="cfg-firebase-status-item cfg-firebase-status-item--wide"><span>Ruta de sincronización</span><strong id="cfg-firebase-test-path">workspaces/arcano33/_meta/sync</strong><small>Rutas permitidas: Configuración y Catálogos. No toca POS, Finanzas ni Caja Chica.</small></div>
+<div class="cfg-firebase-status-item cfg-firebase-status-item--wide"><span>Ruta de sincronización</span><strong id="cfg-firebase-test-path">workspaces/arcano33/_meta/sync</strong><small>Rutas permitidas: Configuración, Catálogos y Lotes. No toca ventas, Finanzas ni Caja Chica.</small></div>
 </div>
 <div class="cfg-actions cfg-firebase-actions">
 <button class="cfg-btn cfg-btn-primary" id="cfg-firebase-test-connection" type="button">Probar conexión</button>
 <button class="cfg-btn cfg-btn-primary" id="cfg-firebase-sync-now" type="button">Sincronizar datos ahora</button>
 <button class="cfg-btn cfg-btn-ghost" id="cfg-firebase-view-sync-status" type="button">Ver estado de sincronización</button>
 <button class="cfg-btn cfg-btn-ghost" id="cfg-firebase-retry-pending" type="button">Reintentar pendientes</button>
-<p class="cfg-action-inline-note" id="cfg-firebase-sync-note">Probar conexión usa ruta técnica. Sincronizar datos ahora sube/baja solo Configuración y Catálogos.</p>
+<p class="cfg-action-inline-note" id="cfg-firebase-sync-note">Probar conexión usa ruta técnica. Sincronizar datos ahora sube/baja Configuración, Catálogos y Lotes.</p>
 </div>
 </section>
 <section class="cfg-firebase-card cfg-firebase-card--wide cfg-firebase-passphrase-admin" aria-labelledby="cfg-firebase-passphrase-admin-title">
@@ -903,7 +903,7 @@
 <li>Guarda enabled, configured, mode, workspace, dispositivo y credenciales web.</li>
 <li>Usa workspaceId arcano33, mode hybrid, environment production y enabled false por defecto.</li>
 <li>Permite Probar conexión técnica y Sincronizar datos ahora con resumen de subidos, descargados, conflictos y errores.</li>
-<li>Sincroniza manualmente Configuración y Catálogos como datos de bajo riesgo.</li>
+<li>Sincroniza manualmente Configuración, Catálogos y Lotes con identidad estable.</li>
 <li>No pide ni guarda llaves privadas, Admin SDK JSON ni secretos de servidor.</li>
 <li>Respeta Oscuro, Claro y Automático/Sistema.</li>
 </ul>
@@ -1143,17 +1143,18 @@
 </div>
 <input accept="application/json" id="backup-file-input" style="display:none;" type="file"/>
 <div aria-live="polite" class="a33-toast" id="a33-toast"></div>
-<script src="../assets/js/a33-release.js?v=4.20.94&amp;r=50"></script>
-<script src="../assets/js/a33-storage.js?v=4.20.94&amp;r=20"></script>
-<script src="../assets/js/a33-product-integrity.js?v=4.20.94&amp;r=1"></script>
-<script src="../assets/js/a33-currency.js?v=4.20.94&amp;r=14"></script>
-<script src="../assets/js/a33-export-currency.js?v=4.20.94&amp;r=2"></script>
-<script src="../assets/js/a33-firebase-config.js?v=4.20.94&amp;r=18"></script>
-<script src="../assets/js/a33-firebase-core.js?v=4.20.94&amp;r=18"></script>
-<script src="../assets/js/a33-cloud-sync.js?v=4.20.94&amp;r=5"></script>
-<script src="../assets/js/a33-firebase-auth.js?v=4.20.94&amp;r=15"></script>
-<script src="../assets/js/a33-firebase-access.js?v=4.20.94&amp;r=15"></script>
-<script src="../assets/js/a33-module-access.js?v=4.20.94&amp;r=15"></script>
-<script src="script.js?v=4.20.94&amp;r=30"></script>
+<script src="../assets/js/a33-release.js?v=4.20.95&amp;r=50"></script>
+<script src="../assets/js/a33-storage.js?v=4.20.95&amp;r=20"></script>
+<script src="../assets/js/a33-product-integrity.js?v=4.20.95&amp;r=1"></script>
+<script src="../assets/js/a33-currency.js?v=4.20.95&amp;r=14"></script>
+<script src="../assets/js/a33-export-currency.js?v=4.20.95&amp;r=2"></script>
+<script src="../assets/js/a33-lot-code.js?v=4.20.95&amp;r=6"></script>
+<script src="../assets/js/a33-firebase-config.js?v=4.20.95&amp;r=18"></script>
+<script src="../assets/js/a33-firebase-core.js?v=4.20.95&amp;r=18"></script>
+<script src="../assets/js/a33-cloud-sync.js?v=4.20.95&amp;r=6"></script>
+<script src="../assets/js/a33-firebase-auth.js?v=4.20.95&amp;r=15"></script>
+<script src="../assets/js/a33-firebase-access.js?v=4.20.95&amp;r=15"></script>
+<script src="../assets/js/a33-module-access.js?v=4.20.95&amp;r=15"></script>
+<script src="script.js?v=4.20.95&amp;r=31"></script>
 </body>
 </html>

@@ -3,17 +3,17 @@
 */
 
 // A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.94&r=53'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.95&r=54'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
-  : '4.20.94';
+  : '4.20.95';
 const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null))
   ? String(self.A33_RELEASE.rev)
   : '1';
 
 const MODULE = 'inventario';
-const MODULE_CACHE_REV = '17';
+const MODULE_CACHE_REV = '18';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -25,21 +25,21 @@ function isLegacySuiteCache(name){
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.94&r=13',
-  './style.css?v=4.20.94&r=9',
-  './script.js?v=4.20.94&r=14',
-  './manifest.webmanifest?v=4.20.94&r=9',
+  './index.html?v=4.20.95&r=13',
+  './style.css?v=4.20.95&r=9',
+  './script.js?v=4.20.95&r=14',
+  './manifest.webmanifest?v=4.20.95&r=9',
   './offline.html',
   './images/logo.png',
-  '/assets/js/a33-release.js?v=4.20.94&r=53',
+  '/assets/js/a33-release.js?v=4.20.95&r=54',
 
-  '/assets/js/a33-input-ux.js?v=4.20.94&r=8',
-  '/assets/js/a33-storage.js?v=4.20.94&r=20',
-  '/assets/js/a33-currency.js?v=4.20.94&r=14',
-  '/assets/js/a33-presentations.js?v=4.20.94&r=15',
-  '/assets/css/a33-header.css?v=4.20.94&r=8',
-  '/assets/css/a33-theme.css?v=4.20.94&r=8',
-  '/assets/js/a33-theme.js?v=4.20.94&r=8'
+  '/assets/js/a33-input-ux.js?v=4.20.95&r=8',
+  '/assets/js/a33-storage.js?v=4.20.95&r=20',
+  '/assets/js/a33-currency.js?v=4.20.95&r=14',
+  '/assets/js/a33-presentations.js?v=4.20.95&r=15',
+  '/assets/css/a33-header.css?v=4.20.95&r=8',
+  '/assets/css/a33-theme.css?v=4.20.95&r=8',
+  '/assets/js/a33-theme.js?v=4.20.95&r=8'
 ];
 
 function sameOrigin(url){
@@ -104,7 +104,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.94&r=13')) ||
+      (await cache.match('./index.html?v=4.20.95&r=13')) ||
       (await cache.match('./index.html')) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||

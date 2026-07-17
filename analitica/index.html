@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#7b1818" />
 
   
-<script src="/assets/js/a33-theme.js?v=4.20.94&r=7"></script>
+<script src="/assets/js/a33-theme.js?v=4.20.95&r=7"></script>
 <link rel="icon" type="image/png" sizes="192x192" href="../inventario/images/logo.png" />
   <link rel="apple-touch-icon" href="../inventario/images/logo.png" />
 
@@ -17,15 +17,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.94&r=8" />
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.94&r=7" />
-<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.94&r=7" />
+  <link rel="stylesheet" href="style.css?v=4.20.95&r=9" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.95&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.95&r=7" />
 </head>
 <body class="a33-analytics-page">
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Analítica</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.94">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.95">v...</div>
   </header>
   <main class="app-main analytics-main">
     <section class="card analytics-panel">
@@ -118,6 +118,11 @@
             <p class="kpi-sub" id="kpi-cortesias-nivel">🟢 Bajo (0.0%)</p>
           </article>
         </div>
+
+        <section class="card analytics-lot-summary-card" aria-labelledby="analytics-lot-summary-title">
+          <div class="card-head"><h3 id="analytics-lot-summary-title">Códigos de lote del período</h3></div>
+          <div id="analytics-lot-summary" class="analytics-lot-summary"><span class="hint small">Sin códigos de lote en el período.</span></div>
+        </section>
 
         <div class="analytics-layout">
           <section class="card chart-card">
@@ -219,6 +224,7 @@
                 <thead>
                   <tr>
                     <th>Evento</th>
+                    <th>Código de lote</th>
                     <th>Estado</th>
                     <th>Ventas (C$)</th>
                     <th>Costo (C$)</th>
@@ -281,6 +287,7 @@
                 <thead>
                   <tr>
                     <th>Producto</th>
+                    <th>Código de lote</th>
                     <th>Unidades netas</th>
                     <th>Precio unitario prom. (C$)</th>
                     <th>Costo unitario snapshot (C$)</th>
@@ -548,15 +555,16 @@
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.94&r=7"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.94&r=53"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.95&r=7"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.95&r=54"></script>
 
-  <script src="/assets/js/a33-storage.js?v=4.20.94&r=20"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.94&r=14"></script>
-  <script src="/assets/js/a33-export-currency.js?v=4.20.94&r=2"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.94&r=15"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.95&r=20"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.95&r=14"></script>
+  <script src="/assets/js/a33-export-currency.js?v=4.20.95&r=2"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.95&r=15"></script>
+  <script src="/assets/js/a33-lot-code.js?v=4.20.95&r=6"></script>
 
-  <script src="script.js?v=4.20.94&r=9"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.94&r=7"></script>
+  <script src="script.js?v=4.20.95&r=10"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.95&r=7"></script>
 </body>
 </html>

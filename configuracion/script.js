@@ -1945,6 +1945,7 @@
         backupType: 'partial',
         exportMode: 'custom',
         schemaVersion: 7,
+        lotCodeContract: { preserveLiteral:true, accepts:['historical','A33_HEBREW_MONTH_YEAR_COMPRESSED_V1'], compressedMarker:'x', numericConsecutiveSeparate:true },
         exportedAt,
         fechaHoraExportacion: exportedAt,
         version: getCustomExportVersionLabel(),
@@ -2147,6 +2148,7 @@
       meta: {
         ...baseFullMeta,
         schemaVersion:7,
+        lotCodeContract: { preserveLiteral:true, accepts:['historical','A33_HEBREW_MONTH_YEAR_COMPRESSED_V1'], compressedMarker:'x', numericConsecutiveSeparate:true },
         version:getCustomExportVersionLabel(),
         fechaHoraExportacion:baseFullMeta.exportedAt,
         blockManifest:blockInfo.manifest,
@@ -2196,7 +2198,9 @@
     if (!obj.data.localStorage || typeof obj.data.localStorage !== 'object') return { ok: false, reason: 'Falta data.localStorage.' };
     const costsValidation = parseCostsBackupBlock(obj.data.localStorage);
     if (!costsValidation.ok) return { ok:false, reason:costsValidation.reason || 'Bloque Costos inválido.' };
-    return { ok: true, kind: getBackupImportKind(obj), costs:costsValidation };
+    // El código de lote es dato literal: la validación estructural nunca lo recalcula
+    // ni rechaza AV, formatos históricos o la marca comprimida x/X.
+    return { ok: true, kind: getBackupImportKind(obj), costs:costsValidation, lotCodeLiteral:true };
   }
 
   function summarizeBackupObject(obj){
@@ -2510,8 +2514,33 @@
     return '';
   }
 
+  function backupLotCodeLiteral(rec){
+    if (!rec || typeof rec !== 'object') return '';
+    return firstPresentValue(rec, ['codigoLote','loteCodigo','batchCode','lotCode','codigo','code']);
+  }
+
+  function backupLotIdentityKey(value){
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    try{
+      if (window.A33LotCode && typeof window.A33LotCode.identityKey === 'function') return window.A33LotCode.identityKey(raw);
+      if (window.A33LotCode && typeof window.A33LotCode.recognize === 'function'){
+        const parsed = window.A33LotCode.recognize(raw);
+        if (parsed && parsed.ok) return String(parsed.code || raw).replace(/\s+/g, '').toLowerCase();
+      }
+    }catch(_){ }
+    return raw.replace(/\s+/g, '').toLowerCase();
+  }
+
   function getStableRecordId(rec, schema, contextName){
     if (!rec || typeof rec !== 'object') return '';
+    const lotContext = /lotes|lots|batch/i.test(String(contextName || '')) || !!backupLotCodeLiteral(rec);
+    if (lotContext){
+      const internalLotId = firstPresentValue(rec, ['loteId','lotId','batchId','operationId','productionOperationId','id','_id','uuid','uid']);
+      if (internalLotId) return `lote-id::${internalLotId}`;
+      const lotCodeKey = backupLotIdentityKey(backupLotCodeLiteral(rec));
+      if (lotCodeKey) return `lote-code::${lotCodeKey}`;
+    }
     const kp = schema && schema.keyPath;
     if (Array.isArray(kp)){
       const vals = kp.map((k) => rec?.[k]);
@@ -5346,7 +5375,7 @@ Los históricos se conservarán. ¿Continuar?`);
     return {
       status,
       label,
-      message: configured ? 'Motor listo para sincronización manual de Configuración y Catálogos. La Suite sigue local-first.' : 'Firebase debe estar activo y configurado para sincronizar manualmente.',
+      message: configured ? 'Motor listo para sincronización manual de Configuración, Catálogos y Lotes. La Suite sigue local-first.' : 'Firebase debe estar activo y configurado para sincronizar manualmente.',
       pendingCount: Number(data.pendingLocalCount || 0) || 0,
       syncedCount: 0,
       errorCount: 0,
@@ -5693,7 +5722,7 @@ Los históricos se conservarán. ¿Continuar?`);
     try{
       if (btn) btn.disabled = true;
       setFirebaseBadge('Probando motor', 'local');
-      if (note) note.textContent = 'Sincronizando Configuración y Catálogos. POS, ventas, Finanzas y Caja Chica no se tocan.';
+      if (note) note.textContent = 'Sincronizando Configuración, Catálogos y Lotes. Ventas, Finanzas y Caja Chica no se tocan.';
       const result = await window.A33CloudSync.syncNow();
       const fresh = normalizeFirebaseSettings(readFirebaseSettings());
       renderFirebaseSettings(fresh);

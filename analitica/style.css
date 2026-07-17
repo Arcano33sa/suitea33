@@ -1001,3 +1001,18 @@ textarea{
     padding: 0.4rem 0.62rem;
   }
 }
+
+
+/* Código de lote: texto literal completo, sin scroll horizontal general. */
+.analytics-lot-code{
+  min-width:12rem;
+  max-width:22rem;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  font-variant-numeric:tabular-nums;
+}
+
+.analytics-lot-summary-card{margin-top:.85rem;}
+.analytics-lot-summary{display:flex;flex-wrap:wrap;gap:.45rem;min-width:0;}
+.analytics-lot-chip{display:inline-flex;max-width:100%;padding:.34rem .58rem;border:1px solid var(--border,rgba(255,255,255,.14));border-radius:999px;white-space:normal;overflow-wrap:anywhere;word-break:break-word;font-variant-numeric:tabular-nums;}

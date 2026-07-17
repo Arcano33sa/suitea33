@@ -525,12 +525,16 @@ tr:nth-child(even) td {
 
 /* Chips de estado (DISPONIBLE / EN EVENTO / CERRADO) */
 .lote-codecell{
+  min-width: 12rem;
+  max-width: 22rem;
   white-space: normal;
 }
 .lote-code-text{
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
 }
 .lote-status-line{
   margin-top: 4px;
