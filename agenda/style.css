@@ -886,3 +886,376 @@ code{
     grid-template-columns:1fr;
   }
 }
+
+/* Agenda Etapa 1/3 · portada interna y navegación por tipo */
+.agenda-view[hidden],
+.agenda-client-field[hidden],
+.agenda-pedido-toggle-wrap[hidden],
+.agenda-meeting-only[hidden]{
+  display:none !important;
+}
+
+.agenda-home-view,
+.agenda-operational-view,
+.agenda-purchases-view{
+  width:100%;
+}
+
+.agenda-home-hero{
+  padding:28px;
+  margin-bottom:18px;
+}
+
+.agenda-home-hero h1,
+.agenda-placeholder-card h1{
+  position:relative;
+  z-index:1;
+  margin:8px 0 10px;
+  font-family:"Cinzel", ui-serif, Georgia, serif;
+  font-size:clamp(1.8rem, 3vw, 2.5rem);
+  letter-spacing:0.04em;
+}
+
+.agenda-home-hero p,
+.agenda-placeholder-card p{
+  position:relative;
+  z-index:1;
+  max-width:760px;
+  margin:0;
+  color:var(--agenda-muted);
+  line-height:1.65;
+}
+
+.agenda-entry-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:18px;
+}
+
+.agenda-entry-card{
+  position:relative;
+  min-width:0;
+  min-height:210px;
+  padding:24px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:22px;
+  overflow:hidden;
+  border:1px solid var(--agenda-border);
+  border-radius:var(--agenda-radius);
+  background:
+    linear-gradient(145deg, rgba(221,191,100,0.08), transparent 42%),
+    linear-gradient(180deg, rgba(20,20,20,0.98), rgba(9,9,9,0.99));
+  color:var(--agenda-text);
+  box-shadow:var(--agenda-shadow);
+  text-align:left;
+  cursor:pointer;
+  touch-action:manipulation;
+  transition:transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.agenda-entry-card::after{
+  content:"";
+  position:absolute;
+  width:150px;
+  height:150px;
+  right:-62px;
+  bottom:-72px;
+  border-radius:50%;
+  background:rgba(123,24,24,0.2);
+  pointer-events:none;
+}
+
+.agenda-entry-card:hover,
+.agenda-entry-card:focus-visible{
+  transform:translateY(-3px);
+  border-color:rgba(221,191,100,0.58);
+  box-shadow:0 22px 48px rgba(0,0,0,0.44), 0 0 0 3px rgba(221,191,100,0.08);
+  outline:none;
+}
+
+.agenda-entry-card:active{
+  transform:translateY(-1px);
+}
+
+.agenda-entry-icon{
+  position:relative;
+  z-index:1;
+  width:58px;
+  height:58px;
+  display:grid;
+  place-items:center;
+  border-radius:18px;
+  border:1px solid rgba(221,191,100,0.3);
+  background:rgba(123,24,24,0.2);
+  font-size:29px;
+}
+
+.agenda-entry-copy{
+  position:relative;
+  z-index:1;
+  display:grid;
+  gap:10px;
+}
+
+.agenda-entry-copy strong{
+  font-family:"Cinzel", ui-serif, Georgia, serif;
+  font-size:1.28rem;
+  letter-spacing:0.04em;
+}
+
+.agenda-entry-copy small{
+  color:var(--agenda-muted);
+  font-size:0.95rem;
+  line-height:1.55;
+}
+
+.agenda-entry-arrow{
+  position:absolute;
+  z-index:1;
+  right:22px;
+  top:22px;
+  color:var(--agenda-gold);
+  font-size:1.35rem;
+  font-weight:700;
+}
+
+.agenda-internal-nav{
+  display:flex;
+  align-items:center;
+  margin-bottom:12px;
+}
+
+.agenda-back-btn{
+  min-height:40px;
+  padding:9px 15px;
+  border-radius:999px;
+  border:1px solid rgba(221,191,100,0.34);
+  background:linear-gradient(180deg, rgba(26,26,26,0.98), rgba(12,12,12,0.98));
+  color:var(--agenda-text);
+  font-weight:700;
+  cursor:pointer;
+  touch-action:manipulation;
+  transition:border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.agenda-back-btn:hover,
+.agenda-back-btn:focus-visible{
+  border-color:rgba(221,191,100,0.7);
+  transform:translateY(-1px);
+  box-shadow:0 0 0 3px rgba(221,191,100,0.08);
+  outline:none;
+}
+
+.agenda-placeholder-card{
+  min-height:420px;
+  padding:34px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+}
+
+.agenda-placeholder-icon{
+  position:relative;
+  z-index:1;
+  width:72px;
+  height:72px;
+  display:grid;
+  place-items:center;
+  margin-bottom:18px;
+  border-radius:22px;
+  border:1px solid rgba(221,191,100,0.32);
+  background:rgba(123,24,24,0.22);
+  font-size:34px;
+}
+
+.agenda-placeholder-status{
+  position:relative;
+  z-index:1;
+  margin-top:22px;
+  padding:11px 14px;
+  border-radius:999px;
+  border:1px solid rgba(221,191,100,0.24);
+  background:rgba(255,255,255,0.04);
+  color:var(--agenda-gold);
+  font-size:0.88rem;
+  font-weight:700;
+}
+
+.agenda-type-group--hidden{
+  display:none !important;
+}
+
+@media (max-width: 820px){
+  .agenda-entry-grid{
+    grid-template-columns:1fr;
+  }
+
+  .agenda-entry-card{
+    min-height:168px;
+  }
+}
+
+@media (max-width: 740px){
+  .agenda-home-hero,
+  .agenda-placeholder-card{
+    padding:20px;
+  }
+
+  .agenda-entry-card{
+    min-height:154px;
+    padding:20px;
+    gap:16px;
+  }
+
+  .agenda-entry-icon{
+    width:52px;
+    height:52px;
+    font-size:26px;
+  }
+
+  .agenda-placeholder-card{
+    min-height:360px;
+  }
+}
+
+/* Agenda Etapa 3/3 · Compras, Presupuesto y Calendario */
+.purchase-hero{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(390px,0.9fr);
+  gap:20px;
+  align-items:stretch;
+  padding:24px;
+  margin-bottom:18px;
+}
+.purchase-hero > *{ position:relative; z-index:1; }
+.purchase-hero h1{
+  margin:8px 0 10px;
+  font-family:"Cinzel",ui-serif,Georgia,serif;
+  font-size:clamp(1.8rem,3vw,2.5rem);
+  letter-spacing:.04em;
+}
+.purchase-hero p{ margin:0; color:var(--agenda-muted); line-height:1.65; }
+.purchase-budget{
+  padding:16px;
+  border-radius:20px;
+  border:1px solid rgba(221,191,100,.24);
+  background:linear-gradient(180deg,rgba(123,24,24,.18),rgba(255,255,255,.025));
+}
+.purchase-budget-title{
+  margin-bottom:12px;
+  color:var(--agenda-gold);
+  font-family:"Cinzel",ui-serif,Georgia,serif;
+  font-weight:700;
+  letter-spacing:.05em;
+}
+.purchase-budget-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.purchase-budget-grid > div{
+  min-width:0;
+  padding:13px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  border-radius:16px;
+  background:rgba(0,0,0,.24);
+  border:1px solid rgba(221,191,100,.12);
+}
+.purchase-budget-grid span{
+  color:var(--agenda-muted);
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.purchase-budget-grid strong{
+  font-size:1.06rem;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.purchase-workspace{
+  display:grid;
+  grid-template-columns:minmax(330px,5fr) minmax(0,7fr);
+  gap:18px;
+  align-items:start;
+  margin-bottom:18px;
+}
+.purchase-form-panel,
+.purchase-list-panel{ min-width:0; }
+.purchase-materials-empty{
+  position:relative;
+  z-index:1;
+  margin-bottom:16px;
+  padding:16px;
+  display:grid;
+  gap:8px;
+  border-radius:18px;
+  border:1px dashed rgba(221,191,100,.28);
+  background:rgba(123,24,24,.12);
+}
+.purchase-materials-empty[hidden]{ display:none!important; }
+.purchase-materials-empty span{ color:var(--agenda-muted); line-height:1.5; }
+.purchase-materials-empty .agenda-btn{ width:max-content; max-width:100%; text-decoration:none; }
+.purchase-toolbar{ margin-bottom:14px; }
+.purchase-list{ max-height:920px; overflow-y:auto; padding-right:3px; overscroll-behavior:contain; }
+.purchase-record-details{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px 14px;
+  margin:12px 0;
+  color:var(--agenda-muted);
+  font-size:13px;
+  line-height:1.5;
+}
+.purchase-record-details span,
+.purchase-record-details b,
+.purchase-money-chip{ white-space:nowrap; }
+.purchase-record-details .agenda-record-preview{
+  grid-column:1/-1;
+  margin:4px 0 0;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.purchase-money-chip{
+  background:rgba(116,214,157,.12);
+  color:#d5ffe5;
+}
+.purchase-calendar-panel{ margin-bottom:4px; }
+.purchase-calendar-actions{
+  position:relative;
+  z-index:1;
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) auto auto;
+  gap:12px;
+  align-items:end;
+}
+.purchase-calendar-actions .agenda-btn{ white-space:nowrap; }
+.purchase-calendar-actions button:disabled,
+.purchase-form-panel button:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+  transform:none;
+}
+
+@media (max-width:980px){
+  .purchase-hero,
+  .purchase-workspace{ grid-template-columns:1fr; }
+  .purchase-list{ max-height:none; overflow:visible; }
+}
+@media (max-width:740px){
+  .purchase-hero{ padding:18px; }
+  .purchase-budget-grid,
+  .purchase-record-details,
+  .purchase-calendar-actions{ grid-template-columns:1fr; }
+  .purchase-calendar-actions .agenda-btn{ width:100%; }
+  .purchase-record-details span{ white-space:normal; }
+}
+@media (min-width:741px) and (max-width:1180px) and (orientation:portrait){
+  .purchase-workspace{ grid-template-columns:1fr; }
+}

@@ -4,18 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Arcano 33 · Agenda</title>
-  <meta name="description" content="Agenda de Suite A33 cerrada como módulo operativo: Pendientes primero, filtros por estado, cliente compartido con Catálogos/POS, pedido opcional con producto, precio y total automático, y UX pulida para desktop, iPad y PWA." />
+  <meta name="description" content="Agenda de Suite A33 con portada interna para Reunión, Tarea y Compras, navegación separada y compatibilidad con registros históricos." />
   <meta name="theme-color" content="#7b1818" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.95&r=1" />
 
-  
-<script src="/assets/js/a33-theme.js?v=4.20.95&r=7"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
+  <script src="/assets/js/a33-theme.js?v=4.20.95&r=7"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.95&r=7" />
-  <link rel="stylesheet" href="style.css?v=4.20.95&r=7" />
-<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.95&r=7" />
+  <link rel="stylesheet" href="style.css?v=4.20.95&r=9" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.95&r=7" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -25,223 +27,430 @@
   </header>
 
   <main class="agenda-main" role="main">
-    <section class="agenda-hero agenda-card" aria-labelledby="agenda-title">
-      <div class="agenda-hero-copy">
+    <section class="agenda-view agenda-home-view" id="agendaHomeView" aria-labelledby="agenda-home-title">
+      <article class="agenda-card agenda-home-hero">
         <span class="agenda-kicker">Núcleo A33</span>
-        <h1 id="agenda-title">Agenda</h1>
-      </div>
-      <div class="agenda-hero-side">
-        <div class="agenda-mini-stat">
-          <span class="agenda-mini-label">Estado</span>
-          <strong id="agendaModeLabel">Lista vacía</strong>
-        </div>
-        <div class="agenda-mini-stat">
-          <span class="agenda-mini-label">Registros</span>
-          <strong id="agendaCountLabel">0</strong>
-        </div>
-        <div class="agenda-mini-stat">
-          <span class="agenda-mini-label">Último movimiento</span>
-          <strong id="agendaLastUpdate">—</strong>
-        </div>
+        <h1 id="agenda-home-title">Agenda</h1>
+        <p>Selecciona el espacio de trabajo. Cada sección conserva su propio flujo y sus propios registros.</p>
+      </article>
+
+      <div class="agenda-entry-grid" aria-label="Secciones de Agenda">
+        <button class="agenda-entry-card" type="button" data-agenda-section="reunion" aria-label="Abrir Reunión">
+          <span class="agenda-entry-icon" aria-hidden="true">🤝</span>
+          <span class="agenda-entry-copy">
+            <strong>Reunión</strong>
+            <small>Organiza reuniones, clientes, horarios y modalidades.</small>
+          </span>
+          <span class="agenda-entry-arrow" aria-hidden="true">→</span>
+        </button>
+
+        <button class="agenda-entry-card" type="button" data-agenda-section="tarea" aria-label="Abrir Tarea">
+          <span class="agenda-entry-icon" aria-hidden="true">✅</span>
+          <span class="agenda-entry-copy">
+            <strong>Tarea</strong>
+            <small>Registra actividades, pendientes, fechas y prioridades.</small>
+          </span>
+          <span class="agenda-entry-arrow" aria-hidden="true">→</span>
+        </button>
+
+        <button class="agenda-entry-card" type="button" data-agenda-section="compra" aria-label="Abrir Compras">
+          <span class="agenda-entry-icon" aria-hidden="true">🛒</span>
+          <span class="agenda-entry-copy">
+            <strong>Compras</strong>
+            <small>Planifica los materiales y artículos que necesitas adquirir.</small>
+          </span>
+          <span class="agenda-entry-arrow" aria-hidden="true">→</span>
+        </button>
       </div>
     </section>
 
-    <section class="agenda-workspace" aria-label="Área operativa de Agenda">
-      <article class="agenda-card agenda-panel agenda-form-panel">
-        <div class="agenda-panel-head">
-          <div>
-            <p class="agenda-eyebrow">Flujo operativo real</p>
-            <h2 id="agendaFormTitle">Nueva Reunión</h2>
+    <section class="agenda-view agenda-operational-view" id="agendaOperationalView" hidden aria-labelledby="agenda-title">
+      <div class="agenda-internal-nav">
+        <button class="agenda-back-btn" type="button" data-agenda-back>← Agenda</button>
+      </div>
+
+      <section class="agenda-hero agenda-card" aria-labelledby="agenda-title">
+        <div class="agenda-hero-copy">
+          <span class="agenda-kicker" id="agendaSectionKicker">Agenda operativa</span>
+          <h1 id="agenda-title">Reunión</h1>
+          <p class="agenda-lead" id="agendaSectionLead">Organiza reuniones, clientes, horarios y modalidades.</p>
+        </div>
+        <div class="agenda-hero-side">
+          <div class="agenda-mini-stat">
+            <span class="agenda-mini-label">Estado</span>
+            <strong id="agendaModeLabel">Lista vacía</strong>
+          </div>
+          <div class="agenda-mini-stat">
+            <span class="agenda-mini-label">Registros</span>
+            <strong id="agendaCountLabel">0</strong>
+          </div>
+          <div class="agenda-mini-stat">
+            <span class="agenda-mini-label">Último movimiento</span>
+            <strong id="agendaLastUpdate">—</strong>
           </div>
         </div>
+      </section>
 
-        <form id="agendaForm" class="agenda-form" novalidate>
-          <fieldset class="agenda-type-group" aria-labelledby="agendaTypeLegend">
-            <legend id="agendaTypeLegend">Tipo</legend>
-            <label class="agenda-type-option">
-              <input type="radio" name="type" value="reunion" checked />
-              <span>Reunión</span>
-            </label>
-            <label class="agenda-type-option">
-              <input type="radio" name="type" value="tarea" />
-              <span>Tarea</span>
-            </label>
-          </fieldset>
+      <section class="agenda-workspace" aria-label="Área operativa de Agenda">
+        <article class="agenda-card agenda-panel agenda-form-panel">
+          <div class="agenda-panel-head">
+            <div>
+              <p class="agenda-eyebrow" id="agendaFormEyebrow">Flujo de Reunión</p>
+              <h2 id="agendaFormTitle">Nueva Reunión</h2>
+            </div>
+          </div>
 
-          <div class="agenda-form-grid">
-            <label class="agenda-field agenda-field--full">
-              <span>Asunto</span>
-              <input id="agendaSubject" name="subject" type="text" maxlength="120" placeholder="Ej. Seguimiento con cliente / Preparar materiales para evento" autocomplete="off" required />
-            </label>
+          <form id="agendaForm" class="agenda-form" novalidate>
+            <fieldset class="agenda-type-group agenda-type-group--hidden" aria-hidden="true" hidden>
+              <legend>Tipo interno</legend>
+              <label class="agenda-type-option">
+                <input type="radio" name="type" value="reunion" checked />
+                <span>Reunión</span>
+              </label>
+              <label class="agenda-type-option">
+                <input type="radio" name="type" value="tarea" />
+                <span>Tarea</span>
+              </label>
+            </fieldset>
 
-            <label class="agenda-field agenda-field--full agenda-client-field">
-              <span>Cliente</span>
-              <select id="agendaClientSelect" name="clientSelect" required>
-                <option value="">Cargando clientes…</option>
-              </select>
-              <div class="agenda-client-new" id="agendaClientNewWrap" hidden>
-                <input id="agendaClientNew" name="clientNew" type="text" maxlength="120" placeholder="Escribe el nombre del cliente nuevo" autocomplete="off" />
-                <small class="agenda-field-note">Al guardar el ítem, este cliente también se agregará al Catálogos → Clientes.</small>
+            <div class="agenda-form-grid">
+              <label class="agenda-field agenda-field--full">
+                <span id="agendaSubjectLabel">Asunto</span>
+                <input id="agendaSubject" name="subject" type="text" maxlength="120" placeholder="Ej. Seguimiento con cliente / Reunión de propuesta" autocomplete="off" required />
+              </label>
+
+              <label class="agenda-field agenda-field--full agenda-client-field" id="agendaClientField">
+                <span>Cliente</span>
+                <select id="agendaClientSelect" name="clientSelect" required>
+                  <option value="">Cargando clientes…</option>
+                </select>
+                <div class="agenda-client-new" id="agendaClientNewWrap" hidden>
+                  <input id="agendaClientNew" name="clientNew" type="text" maxlength="120" placeholder="Escribe el nombre del cliente nuevo" autocomplete="off" />
+                  <small class="agenda-field-note">Al guardar la reunión, este cliente también se agregará a Catálogos → Clientes.</small>
+                </div>
+                <input id="agendaClient" name="client" type="hidden" required />
+                <small class="agenda-field-note" id="agendaClientNote">Selecciona un cliente existente o agrega uno nuevo sin salir de Agenda.</small>
+              </label>
+
+              <label class="agenda-field agenda-field--full agenda-meeting-only" id="agendaMeetingModalityField">
+                <span>Modalidad</span>
+                <select id="agendaModality" name="modality">
+                  <option value="presencial">Presencial</option>
+                  <option value="llamada">Llamada</option>
+                  <option value="videollamada">Videollamada</option>
+                </select>
+              </label>
+
+              <label class="agenda-field">
+                <span>Fecha</span>
+                <input id="agendaDate" name="date" type="date" required />
+              </label>
+
+              <label class="agenda-field">
+                <span>Hora</span>
+                <input id="agendaTime" name="time" type="time" />
+              </label>
+
+              <label class="agenda-field">
+                <span>Estado</span>
+                <select id="agendaStatus" name="status">
+                  <option value="pendiente">Pendiente</option>
+                  <option value="hecho">Hecho</option>
+                  <option value="cancelado">Cancelado</option>
+                </select>
+              </label>
+
+              <label class="agenda-field">
+                <span>Prioridad</span>
+                <select id="agendaPriority" name="priority">
+                  <option value="baja">Baja</option>
+                  <option value="media" selected>Media</option>
+                  <option value="alta">Alta</option>
+                </select>
+              </label>
+
+              <div class="agenda-pedido-toggle-wrap agenda-field--full" id="agendaPedidoToggleWrap">
+                <button type="button" class="agenda-toggle-card" id="agendaPedidoToggle" aria-pressed="false" aria-controls="agendaPedidoPanel">
+                  <span class="agenda-toggle-copy">
+                    <strong>Agregar Pedido</strong>
+                    <small>Actívalo solo cuando esta reunión realmente necesite un pedido relacionado.</small>
+                  </span>
+                  <span class="agenda-toggle-pill" id="agendaPedidoTogglePill">Apagado</span>
+                </button>
               </div>
-              <input id="agendaClient" name="client" type="hidden" required />
-              <small class="agenda-field-note" id="agendaClientNote">Campo único para Reunión, Tarea y Pedido. Selecciona uno existente o agrega uno nuevo sin salir de Agenda.</small>
-            </label>
 
-            <label class="agenda-field agenda-field--full agenda-meeting-only" id="agendaMeetingModalityField">
-              <span>Modalidad</span>
-              <select id="agendaModality" name="modality">
-                <option value="presencial">Presencial</option>
-                <option value="llamada">Llamada</option>
-                <option value="videollamada">Videollamada</option>
-              </select>
-              <small class="agenda-field-note">Aplica a Reunión. En Tarea desaparece para no meter ruido.</small>
-            </label>
+              <section class="agenda-pedido-panel agenda-field--full" id="agendaPedidoPanel" hidden aria-label="Bloque opcional de pedido">
+                <div class="agenda-pedido-head">
+                  <div>
+                    <span class="agenda-eyebrow">Pedido relacionado</span>
+                    <h3>Detalle rápido del pedido</h3>
+                  </div>
+                  <span class="agenda-badge agenda-badge--soft" id="agendaPedidoBadge">Activo</span>
+                </div>
 
-            <label class="agenda-field">
-              <span>Fecha</span>
-              <input id="agendaDate" name="date" type="date" required />
-            </label>
+                <div class="agenda-form-grid agenda-form-grid--pedido">
+                  <label class="agenda-field">
+                    <span>Producto</span>
+                    <select id="agendaPedidoProduct" name="pedidoProduct">
+                      <option value="">Cargando catálogo…</option>
+                    </select>
+                    <small class="agenda-field-note">Productos activos desde Catálogos → Productos. El precio se completa solo.</small>
+                    <small class="agenda-field-note" id="agendaPedidoProductStatus" aria-live="polite"></small>
+                  </label>
 
-            <label class="agenda-field">
-              <span>Hora</span>
-              <input id="agendaTime" name="time" type="time" />
-            </label>
+                  <label class="agenda-field">
+                    <span>Entrega</span>
+                    <input id="agendaPedidoDelivery" name="pedidoDelivery" type="date" />
+                  </label>
 
-            <label class="agenda-field">
-              <span>Estado</span>
-              <select id="agendaStatus" name="status">
-                <option value="pendiente">Pendiente</option>
-                <option value="hecho">Hecho</option>
-                <option value="cancelado">Cancelado</option>
-              </select>
-            </label>
+                  <label class="agenda-field">
+                    <span>Precio</span>
+                    <input id="agendaPedidoPrice" name="pedidoPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" readonly />
+                    <small class="agenda-field-note">Se toma del catálogo del producto seleccionado.</small>
+                  </label>
 
-            <label class="agenda-field">
-              <span>Prioridad</span>
-              <select id="agendaPriority" name="priority">
-                <option value="baja">Baja</option>
-                <option value="media" selected>Media</option>
-                <option value="alta">Alta</option>
-              </select>
-            </label>
+                  <label class="agenda-field">
+                    <span>Cantidad</span>
+                    <input id="agendaPedidoQuantity" name="pedidoQuantity" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" />
+                  </label>
 
-            <div class="agenda-pedido-toggle-wrap agenda-field--full">
-              <button type="button" class="agenda-toggle-card" id="agendaPedidoToggle" aria-pressed="false" aria-controls="agendaPedidoPanel">
-                <span class="agenda-toggle-copy">
-                  <strong>Agregar Pedido</strong>
-                  <small>Actívalo solo cuando este ítem realmente necesite bloque de pedido.</small>
-                </span>
-                <span class="agenda-toggle-pill" id="agendaPedidoTogglePill">Apagado</span>
-              </button>
+                  <label class="agenda-field agenda-field--full">
+                    <span>Total</span>
+                    <input id="agendaPedidoTotal" name="pedidoTotal" type="text" readonly placeholder="Se calcula automáticamente" />
+                  </label>
+                </div>
+              </section>
+
+              <label class="agenda-field agenda-field--full">
+                <span>Notas</span>
+                <textarea id="agendaNotes" name="notes" rows="5" maxlength="1200" placeholder="Notas breves de la reunión."></textarea>
+              </label>
             </div>
 
-            <section class="agenda-pedido-panel agenda-field--full" id="agendaPedidoPanel" hidden aria-label="Bloque opcional de pedido">
-              <div class="agenda-pedido-head">
-                <div>
-                  <span class="agenda-eyebrow">Pedido opcional</span>
-                  <h3>Detalle rápido del pedido</h3>
-                </div>
-                <span class="agenda-badge agenda-badge--soft" id="agendaPedidoBadge">Activo</span>
-              </div>
+            <div class="agenda-form-meta" id="agendaFormMeta" aria-live="polite">
+              <span><strong>ID:</strong> <span id="agendaMetaId">Nuevo</span></span>
+              <span><strong>Creado:</strong> <span id="agendaMetaCreated">—</span></span>
+              <span><strong>Actualizado:</strong> <span id="agendaMetaUpdated">—</span></span>
+            </div>
 
-              <div class="agenda-form-grid agenda-form-grid--pedido">
-                <label class="agenda-field">
-                  <span>Producto</span>
-                  <select id="agendaPedidoProduct" name="pedidoProduct">
-                    <option value="">Cargando catálogo…</option>
-                  </select>
-                  <small class="agenda-field-note">Productos activos desde Catálogos → Productos. El precio se completa solo.</small>
-                  <small class="agenda-field-note" id="agendaPedidoProductStatus" aria-live="polite"></small>
-                </label>
+            <div class="agenda-form-actions">
+              <button class="agenda-btn agenda-btn--ghost" type="button" id="agendaNewBtn">Nuevo</button>
+              <button class="agenda-btn agenda-btn--danger" type="button" id="agendaDeleteBtn" hidden>Eliminar</button>
+              <button class="agenda-btn agenda-btn--primary" type="submit" id="agendaSaveBtn">Guardar Reunión</button>
+            </div>
+            <p class="agenda-helper" id="agendaFormHelper">Reunión conserva Cliente, Modalidad y Pedido relacionado cuando corresponda.</p>
+          </form>
+        </article>
 
-                <label class="agenda-field">
-                  <span>Entrega</span>
-                  <input id="agendaPedidoDelivery" name="pedidoDelivery" type="date" />
-                </label>
-
-                <label class="agenda-field">
-                  <span>Precio</span>
-                  <input id="agendaPedidoPrice" name="pedidoPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" readonly />
-                  <small class="agenda-field-note">Se toma del catálogo del producto seleccionado.</small>
-                </label>
-
-                <label class="agenda-field">
-                  <span>Cantidad</span>
-                  <input id="agendaPedidoQuantity" name="pedidoQuantity" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" />
-                </label>
-
-                <label class="agenda-field agenda-field--full">
-                  <span>Total</span>
-                  <input id="agendaPedidoTotal" name="pedidoTotal" type="text" readonly placeholder="Se calcula automáticamente" />
-                  <small class="agenda-field-note">Cliente reutiliza el campo único del ítem. Aquí no se duplica nada.</small>
-                </label>
-              </div>
-            </section>
-
-            <label class="agenda-field agenda-field--full">
-              <span>Notas simples</span>
-              <textarea id="agendaNotes" name="notes" rows="5" maxlength="1200" placeholder="Notas breves del ítem. Pedido sigue siendo opcional."></textarea>
-            </label>
+        <article class="agenda-card agenda-panel agenda-list-panel">
+          <div class="agenda-panel-head">
+            <div>
+              <p class="agenda-eyebrow">Vista operativa</p>
+              <h2 id="agendaListTitle">Reuniones</h2>
+            </div>
+            <span class="agenda-badge agenda-badge--soft" id="agendaListBadge">0 elementos</span>
           </div>
 
-          <div class="agenda-form-meta" id="agendaFormMeta" aria-live="polite">
-            <span><strong>ID:</strong> <span id="agendaMetaId">Nuevo</span></span>
-            <span><strong>Creado:</strong> <span id="agendaMetaCreated">—</span></span>
-            <span><strong>Actualizado:</strong> <span id="agendaMetaUpdated">—</span></span>
+          <div class="agenda-toolbar">
+            <div class="agenda-toolbar-copy">
+              <strong id="agendaToolbarTitle">Pendientes primero</strong>
+              <span id="agendaToolbarText">Mostrando únicamente reuniones pendientes.</span>
+            </div>
+            <div class="agenda-toolbar-filters" id="agendaFilters" role="tablist" aria-label="Filtrar por estado">
+              <button type="button" class="agenda-filter-chip is-active" data-filter="pendiente" role="tab" aria-selected="true">Pendientes</button>
+              <button type="button" class="agenda-filter-chip" data-filter="hecho" role="tab" aria-selected="false">Hechos</button>
+              <button type="button" class="agenda-filter-chip" data-filter="cancelado" role="tab" aria-selected="false">Cancelados</button>
+              <button type="button" class="agenda-filter-chip" data-filter="todos" role="tab" aria-selected="false">Todos</button>
+            </div>
           </div>
 
-          <div class="agenda-form-actions">
-            <button class="agenda-btn agenda-btn--ghost" type="button" id="agendaNewBtn">Nuevo</button>
-            <button class="agenda-btn agenda-btn--danger" type="button" id="agendaDeleteBtn" hidden>Eliminar</button>
-            <button class="agenda-btn agenda-btn--primary" type="submit" id="agendaSaveBtn">Guardar ítem</button>
+          <div class="agenda-pending-pulse" id="agendaPendingPulse" aria-live="polite">
+            <span class="agenda-pulse-chip agenda-pulse-chip--primary" id="agendaPendingPulseTotal">Sin pendientes</span>
+            <span class="agenda-pulse-chip" id="agendaPendingPulseOverdue">Atrasados: 0</span>
+            <span class="agenda-pulse-chip" id="agendaPendingPulseToday">Hoy: 0</span>
+            <span class="agenda-pulse-chip" id="agendaPendingPulseUpcoming">Próximos: 0</span>
           </div>
-          <p class="agenda-helper">Reunión y Tarea siguen limpias. Pendientes abre primero, Cliente usa Catálogos → Clientes y Pedido mantiene producto, precio y total automáticos sin meter ruido.</p>
-        </form>
-      </article>
 
-      <article class="agenda-card agenda-panel agenda-list-panel">
-        <div class="agenda-panel-head">
-          <div>
-            <p class="agenda-eyebrow">Vista operativa</p>
-            <h2>Agenda del día a día</h2>
+          <div id="agendaEmptyState" class="agenda-empty" hidden>
+            <div class="agenda-empty-icon" aria-hidden="true">🗂️</div>
+            <h3 id="agendaEmptyTitle">Aún no hay registros</h3>
+            <p id="agendaEmptyText">Guarda el primero para empezar.</p>
           </div>
-          <span class="agenda-badge agenda-badge--soft" id="agendaListBadge">0 elementos</span>
-        </div>
 
-        <div class="agenda-toolbar">
-          <div class="agenda-toolbar-copy">
-            <strong id="agendaToolbarTitle">Pendientes primero</strong>
-            <span id="agendaToolbarText">La entrada al módulo arranca con foco en lo pendiente, sin esconder Hechos ni Cancelados.</span>
-          </div>
-          <div class="agenda-toolbar-filters" id="agendaFilters" role="tablist" aria-label="Filtrar por estado">
-            <button type="button" class="agenda-filter-chip is-active" data-filter="pendiente" role="tab" aria-selected="true">Pendientes</button>
-            <button type="button" class="agenda-filter-chip" data-filter="hecho" role="tab" aria-selected="false">Hechos</button>
-            <button type="button" class="agenda-filter-chip" data-filter="cancelado" role="tab" aria-selected="false">Cancelados</button>
-            <button type="button" class="agenda-filter-chip" data-filter="todos" role="tab" aria-selected="false">Todos</button>
-          </div>
-        </div>
-
-        <div class="agenda-pending-pulse" id="agendaPendingPulse" aria-live="polite">
-          <span class="agenda-pulse-chip agenda-pulse-chip--primary" id="agendaPendingPulseTotal">Sin pendientes</span>
-          <span class="agenda-pulse-chip" id="agendaPendingPulseOverdue">Atrasados: 0</span>
-          <span class="agenda-pulse-chip" id="agendaPendingPulseToday">Hoy: 0</span>
-          <span class="agenda-pulse-chip" id="agendaPendingPulseUpcoming">Próximos: 0</span>
-        </div>
-
-        <div id="agendaEmptyState" class="agenda-empty" hidden>
-          <div class="agenda-empty-icon" aria-hidden="true">🗂️</div>
-          <h3 id="agendaEmptyTitle">Aún no hay ítems</h3>
-          <p id="agendaEmptyText">La Agenda ya tiene flujo real. Falta que guardes el primero para verla trabajar.</p>
-        </div>
-
-        <div id="agendaList" class="agenda-list-stack" aria-live="polite"></div>
-      </article>
+          <div id="agendaList" class="agenda-list-stack" aria-live="polite"></div>
+        </article>
+      </section>
     </section>
 
+    <section class="agenda-view agenda-purchases-view" id="agendaPurchasesView" hidden aria-labelledby="agenda-purchases-title">
+      <div class="agenda-internal-nav">
+        <button class="agenda-back-btn" type="button" data-agenda-back>← Agenda</button>
+      </div>
+
+      <section class="agenda-card purchase-hero" aria-labelledby="agenda-purchases-title">
+        <div>
+          <span class="agenda-kicker">Planificación de abastecimiento</span>
+          <h1 id="agenda-purchases-title">Compras</h1>
+          <p>Selecciona artículos activos de Catálogos → Materia Prima, calcula el presupuesto y exporta las compras pendientes al Calendario.</p>
+        </div>
+        <div class="purchase-budget" aria-label="Presupuesto">
+          <div class="purchase-budget-title">Presupuesto</div>
+          <div class="purchase-budget-grid">
+            <div><span>Presupuesto pendiente</span><strong id="purchasePendingBudget">C$0.00</strong></div>
+            <div><span>Total comprado</span><strong id="purchaseBoughtTotal">C$0.00</strong></div>
+            <div><span>Compras pendientes</span><strong id="purchasePendingCount">0</strong></div>
+            <div><span>Compras realizadas</span><strong id="purchaseDoneCount">0</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="purchase-workspace" aria-label="Área de Compras">
+        <article class="agenda-card agenda-panel purchase-form-panel">
+          <div class="agenda-panel-head">
+            <div>
+              <p class="agenda-eyebrow">Compra planificada</p>
+              <h2 id="purchaseFormTitle">Nueva Compra</h2>
+            </div>
+            <span class="agenda-badge agenda-badge--soft" id="purchaseFormBadge">Nuevo</span>
+          </div>
+
+          <div id="purchaseMaterialsEmpty" class="purchase-materials-empty" hidden>
+            <strong>No hay artículos activos en Materia Prima.</strong>
+            <span>Primero agrega y activa artículos en Catálogos → Materia Prima.</span>
+            <a href="../catalogos/index.html#materia-prima" class="agenda-btn agenda-btn--ghost">Abrir Catálogos</a>
+          </div>
+
+          <form id="purchaseForm" class="agenda-form" novalidate>
+            <div class="agenda-form-grid">
+              <label class="agenda-field agenda-field--full">
+                <span>Artículo</span>
+                <select id="purchaseMaterial" required>
+                  <option value="">Cargando Materia Prima…</option>
+                </select>
+                <small class="agenda-field-note" id="purchaseMaterialHelp">Solo se muestran artículos activos de Catálogos → Materia Prima.</small>
+              </label>
+
+              <label class="agenda-field">
+                <span>Categoría</span>
+                <input id="purchaseCategory" type="text" readonly placeholder="Automática" />
+              </label>
+              <label class="agenda-field">
+                <span>Unidad</span>
+                <input id="purchaseUnit" type="text" readonly placeholder="Automática" />
+              </label>
+              <label class="agenda-field">
+                <span>Precio unitario</span>
+                <input id="purchasePrice" type="text" readonly placeholder="C$0.00" />
+              </label>
+              <label class="agenda-field">
+                <span>Cantidad a comprar</span>
+                <input id="purchaseQuantity" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Ej. 2" autocomplete="off" required />
+              </label>
+              <label class="agenda-field agenda-field--full">
+                <span>Subtotal</span>
+                <input id="purchaseSubtotal" type="text" readonly placeholder="Se calcula automáticamente" />
+              </label>
+              <label class="agenda-field">
+                <span>Fecha necesaria</span>
+                <input id="purchaseDate" type="date" required />
+                <small class="agenda-field-note">Fecha prevista para realizar la compra.</small>
+              </label>
+              <label class="agenda-field">
+                <span>Prioridad</span>
+                <select id="purchasePriority">
+                  <option value="baja">Baja</option>
+                  <option value="media" selected>Media</option>
+                  <option value="alta">Alta</option>
+                </select>
+              </label>
+              <label class="agenda-field">
+                <span>Estado</span>
+                <select id="purchaseStatus">
+                  <option value="pendiente">Pendiente</option>
+                  <option value="hecho">Hecho</option>
+                  <option value="cancelado">Cancelado</option>
+                </select>
+              </label>
+              <label class="agenda-field agenda-field--full">
+                <span>Notas</span>
+                <textarea id="purchaseNotes" rows="4" maxlength="1200" placeholder="Notas opcionales de esta compra."></textarea>
+              </label>
+            </div>
+
+            <div class="agenda-form-meta">
+              <span><strong>ID:</strong> <span id="purchaseMetaId">Nuevo</span></span>
+              <span><strong>Creado:</strong> <span id="purchaseMetaCreated">—</span></span>
+              <span><strong>Actualizado:</strong> <span id="purchaseMetaUpdated">—</span></span>
+            </div>
+
+            <div class="agenda-form-actions">
+              <button class="agenda-btn agenda-btn--ghost" type="button" id="purchaseNewBtn">Nuevo</button>
+              <button class="agenda-btn agenda-btn--danger" type="button" id="purchaseDeleteBtn" hidden>Eliminar</button>
+              <button class="agenda-btn agenda-btn--primary" type="submit" id="purchaseSaveBtn">Guardar Compra</button>
+            </div>
+            <p class="agenda-helper" id="purchaseFormStatus" aria-live="polite">El artículo, categoría, unidad y precio se guardan como fotografía histórica.</p>
+          </form>
+        </article>
+
+        <article class="agenda-card agenda-panel purchase-list-panel">
+          <div class="agenda-panel-head">
+            <div>
+              <p class="agenda-eyebrow">Listado e histórico</p>
+              <h2>Compras registradas</h2>
+            </div>
+            <span class="agenda-badge agenda-badge--soft" id="purchaseListBadge">0 elementos</span>
+          </div>
+
+          <div class="agenda-toolbar purchase-toolbar">
+            <div class="agenda-toolbar-copy">
+              <strong id="purchaseToolbarTitle">Pendientes primero</strong>
+              <span id="purchaseToolbarText">Mostrando únicamente compras pendientes.</span>
+            </div>
+            <div class="agenda-toolbar-filters" role="tablist" aria-label="Filtrar compras por estado">
+              <button type="button" class="agenda-filter-chip is-active" data-purchase-filter="pendiente" aria-selected="true">Pendientes</button>
+              <button type="button" class="agenda-filter-chip" data-purchase-filter="hecho" aria-selected="false">Hechos</button>
+              <button type="button" class="agenda-filter-chip" data-purchase-filter="cancelado" aria-selected="false">Cancelados</button>
+              <button type="button" class="agenda-filter-chip" data-purchase-filter="todos" aria-selected="false">Todos</button>
+            </div>
+          </div>
+
+          <div id="purchaseEmptyState" class="agenda-empty">
+            <div class="agenda-empty-icon" aria-hidden="true">🛒</div>
+            <h3 id="purchaseEmptyTitle">Aún no hay compras</h3>
+            <p id="purchaseEmptyText">Guarda la primera compra planificada para empezar.</p>
+          </div>
+          <div id="purchaseList" class="agenda-list-stack purchase-list" aria-live="polite"></div>
+        </article>
+      </section>
+
+      <section class="agenda-card agenda-panel purchase-calendar-panel" aria-labelledby="purchase-calendar-title">
+        <div class="agenda-panel-head">
+          <div>
+            <p class="agenda-eyebrow">Calendario .ics</p>
+            <h2 id="purchase-calendar-title">Exportar compras pendientes</h2>
+          </div>
+          <span class="agenda-badge agenda-badge--soft" id="purchaseCalendarBadge">0 fechas</span>
+        </div>
+        <p class="agenda-helper">Se genera un evento por cada Fecha necesaria. Hechos y Cancelados quedan fuera.</p>
+        <div class="purchase-calendar-actions">
+          <label class="agenda-field">
+            <span>Fecha necesaria</span>
+            <select id="purchaseCalendarDate">
+              <option value="">No hay fechas pendientes</option>
+            </select>
+          </label>
+          <button type="button" class="agenda-btn agenda-btn--ghost" id="purchaseExportDateBtn">Exportar por fecha</button>
+          <button type="button" class="agenda-btn agenda-btn--primary" id="purchaseExportAllBtn">Exportar todas</button>
+        </div>
+        <p class="agenda-helper" id="purchaseCalendarStatus" aria-live="polite">Compatible con Calendario de Apple, Google Calendar, iPhone, iPad y Mac.</p>
+      </section>
+    </section>
   </main>
 
   <script src="/assets/js/a33-release.js?v=4.20.95&r=54"></script>
   <script src="/assets/js/a33-storage.js?v=4.20.95&r=20"></script>
-  <script src="script.js?v=4.20.95&r=13"></script>
+  <script src="../assets/js/a33-materials.js?v=4.20.95&r=2"></script>
+  <script src="script.js?v=4.20.95&r=15"></script>
+  <script src="purchases.js?v=4.20.95&r=1"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@
   const ENGINE_VERSION = 3;
   const SCHEMA_VERSION = 2;
   const CATALOG_DB_NAME = 'a33-pos';
-  const CATALOG_DB_VERSION = 35;
+  const CATALOG_DB_VERSION = 37;
   const TECHNICAL_COLLECTION = '_meta/syncEngineTests';
   const LOTES_KEY = 'arcano33_lotes';
   const LOTES_PATH = 'lotes';
@@ -32,6 +32,7 @@
   const META_KEYS = new Set(['id', 'createdAt', 'updatedAt', 'deviceId', 'rev', 'deleted', 'schemaVersion', '_syncKind']);
   const CATALOG_SPECS = [
     { id: 'productos', store: 'products', path: 'catalogos/productos', label: 'Productos', duplicateKey: duplicateProductKey },
+    { id: 'materiaPrima', store: 'rawMaterials', path: 'catalogos/materia_prima', label: 'Materia Prima', duplicateKey: duplicateRawMaterialKey },
     { id: 'extras', store: 'extras', path: 'catalogos/extras', label: 'Extras', duplicateKey: duplicateExtraKey },
     { id: 'bancos', store: 'banks', path: 'catalogos/bancos', label: 'Bancos', duplicateKey: duplicateBankKey }
   ];
@@ -702,39 +703,83 @@
     }
   }
 
+  function applyCloudCatalogSchema(database, transaction){
+    const ensureIndex = function(store, name, keyPath, options){
+      try{ if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options || { unique:false }); }catch(_){ }
+    };
+    let store = null;
+    if (!database.objectStoreNames.contains('products')) store = database.createObjectStore('products', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('products'); }catch(_){ store = null; } }
+    if (store) ensureIndex(store, 'by_name', 'name', { unique:false });
+
+    if (!database.objectStoreNames.contains('rawMaterials')) store = database.createObjectStore('rawMaterials', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('rawMaterials'); }catch(_){ store = null; } }
+    if (store){
+      ensureIndex(store, 'by_name_normalized', 'nameNormalized', { unique:false });
+      ensureIndex(store, 'by_active', 'active', { unique:false });
+      ensureIndex(store, 'by_updated_at', 'updatedAt', { unique:false });
+    }
+
+    if (!database.objectStoreNames.contains('extras')) store = database.createObjectStore('extras', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('extras'); }catch(_){ store = null; } }
+    if (store){
+      ensureIndex(store, 'by_name', 'name', { unique:false });
+      ensureIndex(store, 'by_active', 'active', { unique:false });
+    }
+
+    if (!database.objectStoreNames.contains('banks')) store = database.createObjectStore('banks', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('banks'); }catch(_){ store = null; } }
+    if (store){
+      ensureIndex(store, 'by_name', 'name', { unique:false });
+      ensureIndex(store, 'by_active', 'isActive', { unique:false });
+      ensureIndex(store, 'by_type', 'type', { unique:false });
+    }
+  }
+
+  function cloudCatalogSchemaNeedsUpgrade(database){
+    const required = ['products','rawMaterials','extras','banks'];
+    if (required.some(function(name){ return !database.objectStoreNames.contains(name); })) return true;
+    try{
+      const tx = database.transaction('rawMaterials', 'readonly');
+      const indexes = tx.objectStore('rawMaterials').indexNames;
+      return !indexes.contains('by_name_normalized') || !indexes.contains('by_active') || !indexes.contains('by_updated_at');
+    }catch(_){ return true; }
+  }
+
+  function adoptCloudCatalogDb(database, resolve){
+    catalogDb = database;
+    try{ catalogDb.onversionchange = function(){ try{ catalogDb.close(); }catch(_){ } catalogDb = null; }; }catch(_){ }
+    resolve(catalogDb);
+  }
+
   function openCatalogDb(){
     if (catalogDb) return Promise.resolve(catalogDb);
     return new Promise(function(resolve, reject){
       try{
         if (!g.indexedDB) throw new Error('indexeddb_unavailable');
-        const req = g.indexedDB.open(CATALOG_DB_NAME, CATALOG_DB_VERSION);
-        req.onupgradeneeded = function(event){
-          const d = event.target.result;
-          try{
-            if (!d.objectStoreNames.contains('products')){
-              const p = d.createObjectStore('products', { keyPath: 'id', autoIncrement: true });
-              try{ p.createIndex('by_name', 'name', { unique: false }); }catch(_){ }
-            }
-            if (!d.objectStoreNames.contains('extras')){
-              const e = d.createObjectStore('extras', { keyPath: 'id', autoIncrement: true });
-              try{ e.createIndex('by_name', 'name', { unique: false }); }catch(_){ }
-              try{ e.createIndex('by_active', 'active', { unique: false }); }catch(_){ }
-            }
-            if (!d.objectStoreNames.contains('banks')){
-              const b = d.createObjectStore('banks', { keyPath: 'id', autoIncrement: true });
-              try{ b.createIndex('by_name', 'name', { unique: false }); }catch(_){ }
-              try{ b.createIndex('by_active', 'isActive', { unique: false }); }catch(_){ }
-              try{ b.createIndex('by_type', 'type', { unique: false }); }catch(_){ }
-            }
-          }catch(_){ }
+        const fail = function(error){ reject(error || new Error('indexeddb_open_failed')); };
+        const first = g.indexedDB.open(CATALOG_DB_NAME);
+        first.onupgradeneeded = function(event){ applyCloudCatalogSchema(event.target.result, event.target.transaction); };
+        first.onsuccess = function(){
+          const current = first.result;
+          if (!cloudCatalogSchemaNeedsUpgrade(current)){
+            adoptCloudCatalogDb(current, resolve);
+            return;
+          }
+          const nextVersion = Number(current.version || 1) + 1;
+          try{ current.close(); }catch(_){ }
+          if (nextVersion > CATALOG_DB_VERSION){
+            fail(new Error('catalog_schema_requires_suite_update'));
+            return;
+          }
+          const upgrade = g.indexedDB.open(CATALOG_DB_NAME, nextVersion);
+          upgrade.onupgradeneeded = function(event){ applyCloudCatalogSchema(event.target.result, event.target.transaction); };
+          upgrade.onsuccess = function(){ adoptCloudCatalogDb(upgrade.result, resolve); };
+          upgrade.onerror = function(){ fail(upgrade.error); };
+          upgrade.onblocked = function(){ fail(new Error('indexeddb_blocked')); };
         };
-        req.onsuccess = function(){
-          catalogDb = req.result;
-          try{ catalogDb.onversionchange = function(){ try{ catalogDb.close(); }catch(_){ } catalogDb = null; }; }catch(_){ }
-          resolve(catalogDb);
-        };
-        req.onerror = function(){ reject(req.error || new Error('indexeddb_open_failed')); };
-        req.onblocked = function(){ reject(new Error('indexeddb_blocked')); };
+        first.onerror = function(){ fail(first.error); };
+        first.onblocked = function(){ fail(new Error('indexeddb_blocked')); };
       }catch(error){
         reject(error);
       }
@@ -793,6 +838,11 @@
     return productId ? ('productId:' + productId) : '';
   }
 
+  function duplicateRawMaterialKey(record){
+    const name = record && (record.name || record.nombre || record.materialName);
+    return 'raw-material:' + normKey(name);
+  }
+
   function duplicateExtraKey(record){
     const name = record && (record.name || record.nombre || record.extraName);
     return 'extra:' + normKey(name);
@@ -842,6 +892,10 @@
 
   function catalogIdentity(record, spec){
     if (spec && spec.id === 'productos') return syncProductId(record);
+    if (spec && spec.id === 'materiaPrima'){
+      const materialId = clean(record && (record.materialId || record.rawMaterialId), 160);
+      if (materialId) return materialId;
+    }
     const id = record && record.id;
     return id == null ? '' : String(id);
   }
@@ -886,6 +940,22 @@
   }
 
   function prepareRemoteCatalogRecord(remote, spec, localRecords){
+    if (spec && spec.id === 'materiaPrima'){
+      const row = clone(remote) || {};
+      const materialId = clean(row.materialId || row.rawMaterialId, 160);
+      if (materialId) row.materialId = materialId;
+      const local = materialId ? (localRecords || []).find(function(item){ return clean(item && item.materialId, 160) === materialId; }) : null;
+      if (local && local.id != null){
+        row.id = local.id;
+        return row;
+      }
+      const legacyId = row.id;
+      const idCollision = legacyId != null && (localRecords || []).some(function(item){
+        return item && String(item.id) === String(legacyId) && clean(item.materialId, 160) !== materialId;
+      });
+      if (idCollision) delete row.id;
+      return row;
+    }
     if (!(spec && spec.id === 'productos')) return remote;
     const row = ensureSyncProductIdentity(remote);
     const productId = syncProductId(row);

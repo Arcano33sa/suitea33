@@ -1,6 +1,6 @@
 // --- IndexedDB helpers POS
 const DB_NAME = 'a33-pos';
-const DB_VER = 35; // Productos por productId: índice de nombre no único
+const DB_VER = 37; // Materia Prima + cierre de esquema compartido a33-pos
 let db;
 
 // --- Build / version (fuente unica de verdad)
@@ -5024,6 +5024,17 @@ function openDB(opts) {
       } else {
         try { e.target.transaction.objectStore('banks').createIndex('by_name', 'name'); } catch {}
         try { e.target.transaction.objectStore('banks').createIndex('by_active', 'isActive'); } catch {}
+      }
+
+      if (!d.objectStoreNames.contains('rawMaterials')) {
+        const rm = d.createObjectStore('rawMaterials', { keyPath:'id', autoIncrement:true });
+        try { rm.createIndex('by_name_normalized', 'nameNormalized', { unique:false }); } catch {}
+        try { rm.createIndex('by_active', 'active', { unique:false }); } catch {}
+        try { rm.createIndex('by_updated_at', 'updatedAt', { unique:false }); } catch {}
+      } else {
+        try { e.target.transaction.objectStore('rawMaterials').createIndex('by_name_normalized', 'nameNormalized', { unique:false }); } catch {}
+        try { e.target.transaction.objectStore('rawMaterials').createIndex('by_active', 'active', { unique:false }); } catch {}
+        try { e.target.transaction.objectStore('rawMaterials').createIndex('by_updated_at', 'updatedAt', { unique:false }); } catch {}
       }
 
       if (!d.objectStoreNames.contains('extras')) {

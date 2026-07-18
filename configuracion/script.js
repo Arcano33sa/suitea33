@@ -1059,6 +1059,7 @@
       parts: [
         { id: 'productos', label: 'Productos', stores: [{ db: 'a33-pos', store: 'products' }], keyNeedles: ['a33_catalog_deleted_products', 'a33_catalog_deleted_product_ids_v2', 'a33_product_integrity_log_v1', 'a33_product_quarantine_v1'] },
         { id: 'costos', label: 'Costos', keyNeedles: [COSTS_BACKUP_KEY] },
+        { id: 'materiaPrima', label: 'Materia Prima', stores: [{ db: 'a33-pos', store: 'rawMaterials' }] },
         { id: 'envases', label: 'Envases / Botellas', keyNeedles: ['a33_catalog_envases', 'a33_catalog_deleted_envases'] },
         { id: 'tapas', label: 'Tapas / Corchos', keyNeedles: ['a33_catalog_tapas', 'a33_catalog_deleted_tapas'] },
         { id: 'extras', label: 'Extras', stores: [{ db: 'a33-pos', store: 'extras' }], keyNeedles: ['a33_catalog_deleted_extras'] },
@@ -1115,9 +1116,9 @@
     },
     {
       id: 'agenda',
-      label: 'Agenda / Pedidos',
+      label: 'Agenda / Compras / Pedidos',
       parts: [
-        { id: 'agenda', label: 'Agenda', keyNeedles: ['agenda', 'a33_agenda', 'suite_a33_agenda'] },
+        { id: 'agenda', label: 'Agenda (Reuniones, Tareas y Compras)', keyNeedles: ['agenda', 'a33_agenda', 'suite_a33_agenda'] },
         { id: 'pedidos', label: 'Pedidos', keyNeedles: ['pedido', 'pedidos', 'arcano33_pedidos'] }
       ]
     }
@@ -1154,6 +1155,8 @@
     const hasProduccion = selectionHasAny(selection, 'inventario', ['recetas', 'calculadoraProduccion', 'calculadoraTemporal']);
     const hasInventarioBase = selectionHasAny(selection, 'inventario', ['productoTerminado', 'envasesDisponibles', 'tapasDisponibles', 'movimientosInventario']);
     const hasCatalogEnvasesTapas = selectionHasAny(selection, 'catalogos', ['envases', 'tapas']);
+    const hasAgenda = selectionHasPart(selection, 'agendaPedidos', 'agenda');
+    const hasMateriaPrima = selectionHasPart(selection, 'catalogos', 'materiaPrima');
 
     if (hasPosVentas && !hasProducts){
       warnings.push('Ventas POS puede necesitar Productos como referencia histórica. Si el otro navegador no tiene ese catálogo, conviene incluir Catálogos → Productos.');
@@ -1172,6 +1175,9 @@
     }
     if (hasCatalogEnvasesTapas && !hasProducts){
       warnings.push('Envases/Tapas viajan como catálogo, pero los productos dinámicos que los usan no se incluyen salvo que marques Catálogos → Productos.');
+    }
+    if (hasAgenda && !hasMateriaPrima){
+      warnings.push('Agenda incluye Compras con su precio histórico, pero para crear compras nuevas en el otro dispositivo conviene incluir Catálogos → Materia Prima.');
     }
     return Array.from(new Set(warnings));
   }
@@ -2975,6 +2981,24 @@
     return `Conflicto de productId detectado. La importación fue detenida sin modificar datos. ${detail}`;
   }
 
+  async function resetLegacyRawMaterialsWhenMissing(dbPayload){
+    const posPayload = dbPayload && typeof dbPayload === 'object' ? dbPayload['a33-pos'] : null;
+    if (posPayload && typeof posPayload === 'object' && Object.prototype.hasOwnProperty.call(posPayload, 'rawMaterials')) return false;
+    let db = null;
+    try{
+      db = await openExistingDB('a33-pos');
+      if (!db.objectStoreNames.contains('rawMaterials')) return false;
+      const tx = db.transaction('rawMaterials', 'readwrite');
+      tx.objectStore('rawMaterials').clear();
+      await txDone(tx);
+      return true;
+    }catch(_){
+      return false;
+    }finally{
+      try{ db?.close(); }catch(_){ }
+    }
+  }
+
   async function performFullImport(obj){
     const cleanObj = sanitizeBackupObject(obj);
     const incomingLocalStorage = cleanObj?.data?.localStorage || {};
@@ -2987,6 +3011,9 @@
     for (const dbName of fileSuite){
       await restoreDatabase(dbName, dbPayload[dbName], dbVersions, dbSchemas);
     }
+    // Compatibilidad con respaldos anteriores a Materia Prima: el nuevo catálogo
+    // queda en su estado inicial vacío, sin inventar ni precargar artículos.
+    const rawMaterialsDefaulted = await resetLegacyRawMaterialsWhenMissing(dbPayload);
 
     const incoming = sanitizeSuiteLocalStorageMap(incomingLocalStorage);
     for (const [k, v] of Object.entries(incoming)){
@@ -3003,6 +3030,7 @@
       indexedDB:fileSuite.length,
       localStorage:Object.keys(incoming || {}).length,
       scopedReplacement:true,
+      rawMaterialsDefaulted,
       productsIncluded:!!(dbPayload?.['a33-pos'] && Object.prototype.hasOwnProperty.call(dbPayload['a33-pos'], 'products'))
     };
   }

@@ -6,12 +6,37 @@
     storageNamespace: 'a33_agenda_',
     storageKey: 'a33_agenda_records_v1',
     isolated: true,
-    schemaVersion: 7
+    schemaVersion: 9
   });
 
   const TYPE_LABELS = Object.freeze({
     reunion: 'Reunión',
-    tarea: 'Tarea'
+    tarea: 'Tarea',
+    compra: 'Compra'
+  });
+
+  const SECTION_COPY = Object.freeze({
+    reunion: {
+      title: 'Reunión',
+      plural: 'Reuniones',
+      lead: 'Organiza reuniones, clientes, horarios y modalidades.',
+      eyebrow: 'Flujo de Reunión',
+      subjectLabel: 'Asunto',
+      helper: 'Reunión conserva Cliente, Modalidad y Pedido relacionado cuando corresponda.'
+    },
+    tarea: {
+      title: 'Tarea',
+      plural: 'Tareas',
+      lead: 'Registra actividades, pendientes, fechas y prioridades.',
+      eyebrow: 'Flujo de Tarea',
+      subjectLabel: 'Título o descripción',
+      helper: 'Tarea funciona de forma independiente, sin Cliente y sin bloque Pedido.'
+    },
+    compra: {
+      title: 'Compras',
+      plural: 'Compras',
+      lead: 'Planifica los materiales y artículos que necesitas adquirir.'
+    }
   });
 
   const STATUS_LABELS = Object.freeze({
@@ -57,6 +82,7 @@
   const state = {
     records: [],
     currentId: null,
+    activeSection: 'home',
     activeFilter: 'pendiente',
     productCatalog: [],
     productCatalogSource: 'empty',
@@ -116,6 +142,14 @@
   function normalizeType(value){
     const raw = String(value || '').trim().toLowerCase();
     return TYPE_LABELS[raw] ? raw : 'tarea';
+  }
+
+  function getActiveRecordType(){
+    return state.activeSection === 'tarea' ? 'tarea' : 'reunion';
+  }
+
+  function isOperationalSection(value){
+    return value === 'reunion' || value === 'tarea';
   }
 
   function normalizePriority(value){
@@ -1055,6 +1089,38 @@
     };
   }
 
+  function normalizePurchase(value, recordSource){
+    const source = value && typeof value === 'object' ? value : {};
+    const record = recordSource && typeof recordSource === 'object' ? recordSource : {};
+    const snapshot = source.snapshot && typeof source.snapshot === 'object' ? source.snapshot : {};
+    const materialId = String(source.materialId || snapshot.materialId || '').trim();
+    const name = String(source.name || source.materialName || snapshot.name || record.subject || '').replace(/\s+/g, ' ').trim();
+    const category = String(source.category || snapshot.category || '').replace(/\s+/g, ' ').trim();
+    const unitRaw = String(source.unit || snapshot.unit || '').trim();
+    const unit = ['Unidad','Cajas','Litros','Galones'].includes(unitRaw) ? unitRaw : '';
+    const priceUsed = normalizeNumberInput(source.priceUsed != null ? source.priceUsed : (source.price != null ? source.price : snapshot.priceUsed));
+    const quantity = normalizeNumberInput(source.quantity);
+    const subtotalRaw = normalizeNumberInput(source.subtotal);
+    const subtotal = priceUsed != null && quantity != null ? round2(priceUsed * quantity) : (subtotalRaw == null ? 0 : subtotalRaw);
+    return {
+      materialId,
+      name,
+      category,
+      unit,
+      priceUsed: priceUsed == null ? 0 : priceUsed,
+      quantity,
+      subtotal,
+      snapshot: {
+        materialId,
+        name,
+        category,
+        unit,
+        priceUsed: priceUsed == null ? 0 : priceUsed,
+        capturedAt: String(snapshot.capturedAt || source.capturedAt || record.createdAt || '').trim()
+      }
+    };
+  }
+
   function normalizeRecord(input){
     const source = input && typeof input === 'object' ? input : {};
     const type = normalizeType(source.type);
@@ -1076,7 +1142,8 @@
       notes: String(source.notes || '').trim(),
       createdAt,
       updatedAt,
-      pedido: normalizePedido(source.pedido)
+      pedido: normalizePedido(source.pedido),
+      purchase: type === 'compra' ? normalizePurchase(source.purchase || source.compra, source) : normalizePurchase(null, {})
     };
   }
 
@@ -1159,7 +1226,9 @@
   }
 
   function getCounts(){
+    const activeType = getActiveRecordType();
     return state.records.reduce(function(acc, record){
+      if (record.type !== activeType) return acc;
       acc.total += 1;
       acc[record.status] += 1;
       return acc;
@@ -1172,7 +1241,10 @@
   }
 
   function getVisibleRecords(){
-    const records = state.records.slice();
+    const activeType = getActiveRecordType();
+    const records = state.records.filter(function(record){
+      return record.type === activeType;
+    });
 
     if (state.activeFilter === 'todos') {
       return records.sort(compareAllRecords);
@@ -1202,8 +1274,9 @@
   }
 
   function getPendingPulseCounts(){
+    const activeType = getActiveRecordType();
     return state.records.reduce(function(acc, record){
-      if (normalizeStatus(record.status) !== 'pendiente') return acc;
+      if (record.type !== activeType || normalizeStatus(record.status) !== 'pendiente') return acc;
       acc.total += 1;
       const timing = getPendingTiming(record);
       if (timing === 'atrasado') acc.atrasado += 1;
@@ -1333,7 +1406,7 @@
   function buildAgendaCalendarDescription(record){
     const lines = [];
     lines.push('Tipo: ' + TYPE_LABELS[record.type]);
-    if (record.client) lines.push('Cliente: ' + record.client);
+    if (record.type === 'reunion' && record.client) lines.push('Cliente: ' + record.client);
     lines.push('Estado: ' + STATUS_LABELS[record.status]);
     if (record.type === 'reunion') {
       lines.push('Modalidad: ' + MODALITY_LABELS[normalizeModality(record.modality)]);
@@ -1342,7 +1415,7 @@
     if (record.time) lines.push('Hora: ' + formatTime(record.time, record.time));
     if (record.notes) lines.push('Notas: ' + record.notes.replace(/\r?\n/g, ' '));
 
-    if (record.pedido && record.pedido.enabled) {
+    if (record.type === 'reunion' && record.pedido && record.pedido.enabled) {
       lines.push('');
       lines.push('Pedido activo: Sí');
       if (record.pedido.product) lines.push('Producto: ' + record.pedido.product);
@@ -1458,6 +1531,18 @@
   }
 
   function setRefs(){
+    refs.homeView = document.getElementById('agendaHomeView');
+    refs.operationalView = document.getElementById('agendaOperationalView');
+    refs.purchasesView = document.getElementById('agendaPurchasesView');
+    refs.entryButtons = Array.from(document.querySelectorAll('[data-agenda-section]'));
+    refs.backButtons = Array.from(document.querySelectorAll('[data-agenda-back]'));
+    refs.sectionKicker = document.getElementById('agendaSectionKicker');
+    refs.sectionTitle = document.getElementById('agenda-title');
+    refs.sectionLead = document.getElementById('agendaSectionLead');
+    refs.formEyebrow = document.getElementById('agendaFormEyebrow');
+    refs.subjectLabel = document.getElementById('agendaSubjectLabel');
+    refs.formHelper = document.getElementById('agendaFormHelper');
+    refs.listTitle = document.getElementById('agendaListTitle');
     refs.form = document.getElementById('agendaForm');
     refs.formTitle = document.getElementById('agendaFormTitle');
     refs.subject = document.getElementById('agendaSubject');
@@ -1466,6 +1551,7 @@
     refs.clientNewWrap = document.getElementById('agendaClientNewWrap');
     refs.clientNew = document.getElementById('agendaClientNew');
     refs.clientNote = document.getElementById('agendaClientNote');
+    refs.clientField = document.getElementById('agendaClientField');
     refs.meetingModalityField = document.getElementById('agendaMeetingModalityField');
     refs.modality = document.getElementById('agendaModality');
     refs.date = document.getElementById('agendaDate');
@@ -1474,6 +1560,7 @@
     refs.priority = document.getElementById('agendaPriority');
     refs.notes = document.getElementById('agendaNotes');
     refs.typeInputs = Array.from(document.querySelectorAll('input[name="type"]'));
+    refs.pedidoToggleWrap = document.getElementById('agendaPedidoToggleWrap');
     refs.pedidoToggle = document.getElementById('agendaPedidoToggle');
     refs.pedidoTogglePill = document.getElementById('agendaPedidoTogglePill');
     refs.pedidoPanel = document.getElementById('agendaPedidoPanel');
@@ -1505,6 +1592,67 @@
     refs.pendingPulseOverdue = document.getElementById('agendaPendingPulseOverdue');
     refs.pendingPulseToday = document.getElementById('agendaPendingPulseToday');
     refs.pendingPulseUpcoming = document.getElementById('agendaPendingPulseUpcoming');
+  }
+
+  function setAgendaView(target){
+    if (refs.homeView) refs.homeView.hidden = target !== 'home';
+    if (refs.operationalView) refs.operationalView.hidden = target !== 'operational';
+    if (refs.purchasesView) refs.purchasesView.hidden = target !== 'compra';
+  }
+
+  function updateSectionCopy(){
+    const type = getActiveRecordType();
+    const copy = SECTION_COPY[type] || SECTION_COPY.reunion;
+    if (refs.sectionKicker) refs.sectionKicker.textContent = 'Agenda operativa';
+    if (refs.sectionTitle) refs.sectionTitle.textContent = copy.title;
+    if (refs.sectionLead) refs.sectionLead.textContent = copy.lead;
+    if (refs.formEyebrow) refs.formEyebrow.textContent = copy.eyebrow;
+    if (refs.subjectLabel) refs.subjectLabel.textContent = copy.subjectLabel;
+    if (refs.formHelper) refs.formHelper.textContent = copy.helper;
+    if (refs.listTitle) refs.listTitle.textContent = copy.plural;
+  }
+
+  function openAgendaHome(options){
+    const settings = options || {};
+    state.activeSection = 'home';
+    state.currentId = null;
+    setAgendaView('home');
+    if (settings.focus !== false && refs.entryButtons && refs.entryButtons[0]) {
+      refs.entryButtons[0].focus();
+    }
+  }
+
+  function openAgendaSection(section, options){
+    const settings = options || {};
+    const target = normalizeType(section);
+
+    if (target === 'compra') {
+      loadRecords();
+      state.activeSection = 'compra';
+      state.currentId = null;
+      setAgendaView('compra');
+      try{
+        if (window.A33AgendaPurchases && typeof window.A33AgendaPurchases.open === 'function') {
+          window.A33AgendaPurchases.open(settings.recordId || '');
+        }
+      }catch(_){ }
+      return;
+    }
+
+    loadRecords();
+    state.activeSection = isOperationalSection(target) ? target : 'reunion';
+    state.activeFilter = settings.keepFilter === true ? state.activeFilter : 'pendiente';
+    setAgendaView('operational');
+    setTypeValue(state.activeSection);
+    updateSectionCopy();
+
+    if (settings.reset !== false) {
+      resetForm({ focus: settings.focus === true, type: state.activeSection });
+      renderList();
+    } else {
+      applyTypeUI();
+      renderList();
+    }
   }
 
   function clearFieldError(input){
@@ -1577,6 +1725,9 @@
     const total = counts.total;
     const visible = getVisibleRecords().length;
     const current = getCurrentRecord();
+    const type = getActiveRecordType();
+    const copy = SECTION_COPY[type] || SECTION_COPY.reunion;
+    const singularLower = copy.title.toLowerCase();
 
     refs.countLabel.textContent = String(total);
 
@@ -1584,7 +1735,8 @@
       refs.listBadge.textContent = '0 elementos';
       refs.modeLabel.textContent = EMPTY_MODE;
       refs.toolbarTitle.textContent = 'Pendientes primero';
-      refs.toolbarText.textContent = 'La Agenda ya está cerrada a nivel operativo. Solo falta que guardes el primer registro.';
+      refs.toolbarText.textContent = 'Aún no hay registros guardados en esta sección.';
+      refs.saveBtn.textContent = 'Guardar ' + copy.title;
       return;
     }
 
@@ -1595,10 +1747,10 @@
     }
 
     if (current) {
-      refs.modeLabel.textContent = 'Editando ' + TYPE_LABELS[current.type].toLowerCase();
-      refs.saveBtn.textContent = 'Actualizar ítem';
+      refs.modeLabel.textContent = 'Editando ' + singularLower;
+      refs.saveBtn.textContent = 'Actualizar ' + copy.title;
     } else {
-      refs.saveBtn.textContent = 'Guardar ítem';
+      refs.saveBtn.textContent = 'Guardar ' + copy.title;
       if (state.activeFilter === 'pendiente') refs.modeLabel.textContent = counts.pendiente ? 'Pendientes primero' : 'Sin pendientes';
       if (state.activeFilter === 'hecho') refs.modeLabel.textContent = 'Vista: Hechos';
       if (state.activeFilter === 'cancelado') refs.modeLabel.textContent = 'Vista: Cancelados';
@@ -1608,33 +1760,37 @@
     if (state.activeFilter === 'pendiente') {
       refs.toolbarTitle.textContent = counts.pendiente ? 'Pendientes al frente' : 'No hay pendientes';
       refs.toolbarText.textContent = counts.pendiente
-        ? 'Mostrando ' + counts.pendiente + ' pendiente' + (counts.pendiente === 1 ? '' : 's') + ' con foco operativo. Hechos y Cancelados siguen a un toque.'
-        : 'Tienes registros guardados, pero ninguno quedó en Pendiente. Puedes revisar Hechos, Cancelados o Todos.';
+        ? 'Mostrando ' + counts.pendiente + ' registro' + (counts.pendiente === 1 ? '' : 's') + ' pendiente' + (counts.pendiente === 1 ? '' : 's') + ', sin mezclar otros tipos de Agenda.'
+        : 'Esta sección tiene registros, pero ninguno quedó en Pendiente.';
       return;
     }
 
     if (state.activeFilter === 'hecho') {
       refs.toolbarTitle.textContent = 'Trabajo cerrado';
       refs.toolbarText.textContent = visible
-        ? 'Aquí ves lo terminado. Pendientes y Cancelados siguen disponibles en los filtros rápidos.'
-        : 'No hay registros marcados como Hecho todavía.';
+        ? 'Aquí ves únicamente registros terminados de esta sección.'
+        : 'No hay registros marcados como Hecho en esta sección.';
       return;
     }
 
     if (state.activeFilter === 'cancelado') {
       refs.toolbarTitle.textContent = 'Cancelados visibles';
       refs.toolbarText.textContent = visible
-        ? 'Nada queda escondido: los cancelados también se pueden revisar y reabrir.'
-        : 'No hay registros cancelados por ahora.';
+        ? 'Los registros cancelados de esta sección siguen disponibles para revisión.'
+        : 'No hay registros cancelados en esta sección.';
       return;
     }
 
     refs.toolbarTitle.textContent = 'Visión completa';
-    refs.toolbarText.textContent = 'Todos los estados juntos, pero con Pendientes primero para no perder el pulso operativo ni mezclar ruido con urgencia.';
+    refs.toolbarText.textContent = 'Todos los estados de esta sección, sin mezclar registros de otras áreas.';
   }
 
   function setLastUpdateLabel(){
-    refs.lastUpdate.textContent = state.records.length ? formatDateTime(state.records[0].updatedAt) : '—';
+    const activeType = getActiveRecordType();
+    const latest = state.records
+      .filter(function(record){ return record.type === activeType; })
+      .sort(function(a, b){ return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(); })[0];
+    refs.lastUpdate.textContent = latest ? formatDateTime(latest.updatedAt) : '—';
   }
 
   function scrollActiveRecordIntoView(){
@@ -1707,27 +1863,38 @@
     const type = getTypeValue();
     const isReunion = type === 'reunion';
 
+    if (refs.clientField) refs.clientField.hidden = !isReunion;
+    refs.clientSelect.disabled = !isReunion;
+    refs.clientSelect.required = isReunion;
+    refs.client.required = isReunion;
+    if (!isReunion) setClientCreationMode(false);
+
     refs.meetingModalityField.hidden = !isReunion;
     refs.modality.disabled = !isReunion;
     refs.modality.required = isReunion;
 
+    if (refs.pedidoToggleWrap) refs.pedidoToggleWrap.hidden = !isReunion;
+    if (!isReunion) setPedidoEnabled(false, { preserveValues: true });
+
     refs.subject.placeholder = isReunion
       ? 'Ej. Seguimiento con cliente / Reunión de propuesta'
-      : 'Ej. Preparar materiales / Confirmar entrega / Llamar al cliente';
+      : 'Ej. Preparar materiales / Confirmar entrega / Revisar pendientes';
 
     refs.notes.placeholder = isReunion
-      ? 'Notas breves de la reunión. Pedido sigue siendo opcional.'
-      : 'Notas simples de la tarea. Sin ruido extra cuando Pedido está apagado.';
+      ? 'Notas breves de la reunión.'
+      : 'Notas simples de la tarea.';
 
+    updateSectionCopy();
     syncFormTitle();
   }
 
   function resetForm(options){
     const settings = options || {};
     const shouldFocus = settings.focus !== false;
+    const formType = isOperationalSection(settings.type) ? settings.type : getActiveRecordType();
     state.currentId = null;
     refs.form.reset();
-    setTypeValue('reunion');
+    setTypeValue(formType);
     refs.modality.value = 'presencial';
     refs.status.value = 'pendiente';
     refs.priority.value = 'media';
@@ -1746,26 +1913,38 @@
     applyTypeUI();
     syncPedidoTotal();
     setModeLabels();
-    if (shouldFocus) refs.subject.focus();
+    if (shouldFocus && !refs.operationalView.hidden) refs.subject.focus();
   }
 
   function fillForm(record, options){
     const settings = options || {};
     state.currentId = record.id;
+    setTypeValue(record.type);
     refs.subject.value = record.subject;
-    applyClientSnapshot(record);
-    refs.modality.value = record.modality || 'presencial';
+
+    if (record.type === 'reunion') {
+      applyClientSnapshot(record);
+    } else {
+      applyClientSnapshot(null);
+    }
+
+    refs.modality.value = record.type === 'reunion' ? (record.modality || 'presencial') : 'presencial';
     refs.date.value = record.date;
     refs.time.value = record.time;
     refs.status.value = record.status;
     refs.priority.value = record.priority;
     refs.notes.value = record.notes;
-    setTypeValue(record.type);
-    setPedidoEnabled(Boolean(record.pedido && record.pedido.enabled), { preserveValues: true });
-    applyPedidoSnapshot(record.pedido);
-    refs.pedidoDelivery.value = record.pedido && record.pedido.delivery ? record.pedido.delivery : '';
-    refs.pedidoQuantity.value = record.pedido && record.pedido.quantity != null ? formatNumberPlain(record.pedido.quantity) : '';
-    syncPedidoTotal();
+
+    if (record.type === 'reunion') {
+      setPedidoEnabled(Boolean(record.pedido && record.pedido.enabled), { preserveValues: true });
+      applyPedidoSnapshot(record.pedido);
+      refs.pedidoDelivery.value = record.pedido && record.pedido.delivery ? record.pedido.delivery : '';
+      refs.pedidoQuantity.value = record.pedido && record.pedido.quantity != null ? formatNumberPlain(record.pedido.quantity) : '';
+      syncPedidoTotal();
+    } else {
+      setPedidoEnabled(false);
+    }
+
     refs.deleteBtn.hidden = false;
     clearFieldError(refs.subject);
     clearFieldError(refs.clientSelect);
@@ -1793,7 +1972,7 @@
   }
 
   function recordToPreview(record){
-    if (record.pedido && record.pedido.enabled) {
+    if (record.type === 'reunion' && record.pedido && record.pedido.enabled) {
       const pedidoText = pedidoSummary(record);
       if (record.notes) {
         return truncateText(pedidoText + ' ' + record.notes, 180);
@@ -1807,7 +1986,7 @@
       return 'Cliente: ' + (record.client || '—') + ' · Modalidad: ' + MODALITY_LABELS[normalizeModality(record.modality)];
     }
 
-    return 'Tarea del cliente ' + (record.client || '—') + ' para ' + buildDatePillText(record) + '.';
+    return 'Tarea programada para ' + buildDatePillText(record) + '.';
   }
 
   function createChip(className, text){
@@ -1882,9 +2061,12 @@
       createChip('agenda-chip agenda-chip--type', TYPE_LABELS[record.type]),
       createChip('agenda-status agenda-status--' + record.status, STATUS_LABELS[record.status]),
       createChip('agenda-chip agenda-chip--priority agenda-chip--priority-' + record.priority, PRIORITY_LABELS[record.priority]),
-      createChip('agenda-date-pill', buildDatePillText(record)),
-      createChip('agenda-chip agenda-chip--client', 'Cliente: ' + (record.client || '—'))
+      createChip('agenda-date-pill', buildDatePillText(record))
     ];
+
+    if (record.type === 'reunion') {
+      metaItems.push(createChip('agenda-chip agenda-chip--client', 'Cliente: ' + (record.client || '—')));
+    }
 
     const pendingTiming = getPendingTiming(record);
     if (pendingTiming === 'atrasado') {
@@ -1899,7 +2081,7 @@
       metaItems.splice(1, 0, createChip('agenda-chip', MODALITY_LABELS[normalizeModality(record.modality)]));
     }
 
-    if (record.pedido && record.pedido.enabled) {
+    if (record.type === 'reunion' && record.pedido && record.pedido.enabled) {
       metaItems.push(createChip('agenda-chip agenda-chip--pedido', 'Pedido: ' + (record.pedido.product || 'Activo')));
       if (record.pedido.total != null) {
         metaItems.push(createChip('agenda-chip agenda-chip--pedido-total', formatMoney(record.pedido.total)));
@@ -1984,32 +2166,33 @@
 
   function updateEmptyState(visibleCount){
     const counts = getCounts();
+    const copy = SECTION_COPY[getActiveRecordType()] || SECTION_COPY.reunion;
 
     if (!counts.total) {
-      refs.emptyTitle.textContent = 'Aún no hay ítems';
-      refs.emptyText.textContent = 'La Agenda ya tiene flujo real. Falta que guardes el primero para verla trabajar.';
+      refs.emptyTitle.textContent = 'Aún no hay ' + copy.plural.toLowerCase();
+      refs.emptyText.textContent = 'Guarda el primer registro para empezar a trabajar esta sección.';
       return;
     }
 
     if (state.activeFilter === 'pendiente') {
       refs.emptyTitle.textContent = 'No hay pendientes';
-      refs.emptyText.textContent = 'Ya existen registros guardados, pero ninguno está en Pendiente. Puedes revisar Hechos, Cancelados o Todos.';
+      refs.emptyText.textContent = 'Hay registros guardados en esta sección, pero ninguno está Pendiente.';
       return;
     }
 
     if (state.activeFilter === 'hecho') {
       refs.emptyTitle.textContent = 'Todavía no hay hechos';
-      refs.emptyText.textContent = 'Aún no has cerrado ningún registro como Hecho. Puedes volver a Pendientes o revisar Todo.';
+      refs.emptyText.textContent = 'Aún no has marcado ningún registro de esta sección como Hecho.';
       return;
     }
 
     if (state.activeFilter === 'cancelado') {
       refs.emptyTitle.textContent = 'Todavía no hay cancelados';
-      refs.emptyText.textContent = 'No hay registros cancelados por ahora. Buena señal, por cierto.';
+      refs.emptyText.textContent = 'No hay registros cancelados en esta sección.';
       return;
     }
 
-    refs.emptyTitle.textContent = visibleCount ? 'Agenda cargada' : 'Nada por mostrar';
+    refs.emptyTitle.textContent = visibleCount ? 'Sección cargada' : 'Nada por mostrar';
     refs.emptyText.textContent = visibleCount ? 'Todo está visible en esta vista.' : 'No se encontraron registros en la vista actual.';
   }
 
@@ -2074,18 +2257,19 @@
 
   function collectFormData(){
     const type = getTypeValue();
+    const isReunion = type === 'reunion';
     return {
       subject: refs.subject.value.trim(),
       type,
-      client: sanitizeCustomerDisplay(refs.client.value),
-      clientId: getClientIdHint(),
-      modality: type === 'reunion' ? normalizeModality(refs.modality.value) : '',
+      client: isReunion ? sanitizeCustomerDisplay(refs.client.value) : '',
+      clientId: isReunion ? getClientIdHint() : '',
+      modality: isReunion ? normalizeModality(refs.modality.value) : '',
       date: normalizeDate(refs.date.value),
       time: normalizeTime(refs.time.value),
       status: normalizeStatus(refs.status.value),
       priority: normalizePriority(refs.priority.value),
       notes: refs.notes.value.trim(),
-      pedido: collectPedidoData()
+      pedido: isReunion ? collectPedidoData() : getEmptyPedido()
     };
   }
 
@@ -2105,7 +2289,7 @@
       return invalidateField(refs.subject, 'Escribe el asunto del ítem.');
     }
 
-    if (!data.client) {
+    if (data.type === 'reunion' && !data.client) {
       if (refs.clientSelect && refs.clientSelect.value === CLIENT_SELECT_NEW_VALUE) {
         return invalidateField(refs.clientNew, 'Escribe el nombre del cliente nuevo.');
       }
@@ -2120,7 +2304,7 @@
       return invalidateField(refs.modality, 'Selecciona la modalidad de la reunión.');
     }
 
-    if (!data.pedido || !data.pedido.enabled) {
+    if (data.type !== 'reunion' || !data.pedido || !data.pedido.enabled) {
       return true;
     }
 
@@ -2152,9 +2336,17 @@
     const existing = getCurrentRecord();
 
     if (existing) {
+      const updateData = data.type === 'tarea'
+        ? {
+            ...data,
+            client: existing.client || '',
+            clientId: existing.clientId || '',
+            pedido: existing.pedido || getEmptyPedido()
+          }
+        : data;
       const updated = normalizeRecord({
         ...existing,
-        ...data,
+        ...updateData,
         updatedAt: now
       });
 
@@ -2211,33 +2403,52 @@
   }
 
   function bindEvents(){
+    refs.entryButtons.forEach(function(button){
+      button.addEventListener('click', function(){
+        openAgendaSection(button.getAttribute('data-agenda-section'), { focus: false });
+      });
+    });
+
+    refs.backButtons.forEach(function(button){
+      button.addEventListener('click', function(){
+        openAgendaHome();
+      });
+    });
+
     refs.form.addEventListener('submit', function(event){
       event.preventDefault();
 
-      const clientSelection = finalizeClientSelection();
-      if (!clientSelection.ok) {
-        if (clientSelection.reason === 'missing_new') {
-          invalidateField(refs.clientNew, 'Escribe el nombre del cliente nuevo.');
+      const type = getTypeValue();
+      let clientSelection = { ok: true, id: '', displayName: '' };
+
+      if (type === 'reunion') {
+        clientSelection = finalizeClientSelection();
+        if (!clientSelection.ok) {
+          if (clientSelection.reason === 'missing_new') {
+            invalidateField(refs.clientNew, 'Escribe el nombre del cliente nuevo.');
+            return;
+          }
+          if (clientSelection.reason === 'save_failed') {
+            invalidateField(refs.clientNew, 'No se pudo guardar el cliente nuevo en el catálogo compartido.');
+            return;
+          }
+          invalidateField(refs.clientSelect, 'Selecciona un cliente o crea uno nuevo.');
           return;
         }
-        if (clientSelection.reason === 'save_failed') {
-          invalidateField(refs.clientNew, 'No se pudo guardar el cliente nuevo en el catálogo compartido.');
-          return;
-        }
-        invalidateField(refs.clientSelect, 'Selecciona un cliente o crea uno nuevo.');
-        return;
       }
 
       const data = collectFormData();
-      data.client = clientSelection.displayName;
-      data.clientId = clientSelection.id;
+      if (type === 'reunion') {
+        data.client = clientSelection.displayName;
+        data.clientId = clientSelection.id;
+      }
 
       if (!validateForm(data)) return;
       upsertRecord(data);
     });
 
     refs.newBtn.addEventListener('click', function(){
-      resetForm();
+      resetForm({ type: getActiveRecordType() });
     });
 
     refs.deleteBtn.addEventListener('click', function(){
@@ -2264,6 +2475,7 @@
     });
 
     refs.pedidoToggle.addEventListener('click', function(){
+      if (getTypeValue() !== 'reunion') return;
       setPedidoEnabled(!isPedidoEnabled());
     });
 
@@ -2279,6 +2491,11 @@
         setFilter(button.getAttribute('data-filter'));
       });
     });
+
+    window.addEventListener('a33:agenda-records-changed', function(){
+      loadRecords();
+      if (isOperationalSection(state.activeSection)) renderList();
+    });
   }
 
   function markReady(){
@@ -2288,6 +2505,7 @@
       getState: function(){
         return {
           currentId: state.currentId,
+          activeSection: state.activeSection,
           activeFilter: state.activeFilter,
           clientCatalogSource: state.clientCatalogSource,
           records: state.records.slice()
@@ -2311,8 +2529,16 @@
     if (!requestedId) return false;
     const record = state.records.find(function(item){ return item.id === requestedId; });
     if (!record) return false;
+
+    if (record.type === 'compra') {
+      openAgendaSection('compra', { focus: false, recordId: record.id });
+      return true;
+    }
+
+    openAgendaSection(record.type, { focus: false, reset: true });
     state.activeFilter = record.status === 'pendiente' ? 'pendiente' : 'todos';
     fillForm(record, { focus: false });
+    renderList();
     return true;
   }
 
@@ -2321,12 +2547,13 @@
     loadRecords();
     loadClientCatalog();
     bindEvents();
-    resetForm({ focus: false });
-    openRequestedRecord();
-    renderList();
+
+    const openedRequested = openRequestedRecord();
+    if (!openedRequested) openAgendaHome({ focus: false });
+
     loadProductCatalog().finally(function(){
       const current = getCurrentRecord();
-      if (current && current.pedido && current.pedido.enabled) {
+      if (current && current.type === 'reunion' && current.pedido && current.pedido.enabled) {
         applyPedidoSnapshot(current.pedido);
         syncPedidoTotal();
       }

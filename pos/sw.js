@@ -13,7 +13,7 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '1'; // POS cache bump local — Cierre Parte 4 Final
 
 const MODULE = 'pos';
-const MODULE_CACHE_REV = '34';
+const MODULE_CACHE_REV = '36';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -27,7 +27,7 @@ const PRECACHE_URLS = [
   './',
   './index.html?v=4.20.95&r=23',
   './styles.css?v=4.20.95&r=16',
-  './app.js?v=4.20.95&r=30',
+  './app.js?v=4.20.95&r=32',
   './manifest.webmanifest?v=4.20.95&r=19',
   './offline.html',
   './logo.png',
@@ -108,7 +108,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.95&r=22')) ||
+      (await cache.match('./index.html?v=4.20.95&r=23')) ||
       (await cache.match('./index.html', { ignoreSearch: true })) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||

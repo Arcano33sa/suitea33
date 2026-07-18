@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Suite A33 · Catálogos</title>
-  <meta name="description" content="Catálogos operativos de Suite A33: productos, costos, envases, tapas, extras, bancos, clientes y datos maestros." />
+  <meta name="description" content="Catálogos operativos de Suite A33: productos, costos, materia prima, envases, tapas, extras, bancos, clientes y datos maestros." />
   <meta name="theme-color" content="#7b1818" />
   <script src="/assets/js/a33-theme.js?v=4.20.95&r=11"></script>
   <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
@@ -30,7 +30,7 @@
   </script>
   <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.95&r=11" />
   <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.95&r=11" />
-  <link rel="stylesheet" href="style.css?v=4.20.95&r=20" />
+  <link rel="stylesheet" href="style.css?v=4.20.95&r=21" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -44,11 +44,11 @@
       <div class="cat-hero-content">
         <p class="cat-eyebrow">Gestión Operativa</p>
         <h1 id="cat-title">Catálogos</h1>
-        <p class="cat-lead">Administración maestra de Productos, Costos, Envases, Tapas, Extras, Bancos y Clientes para consumo seguro de la Suite.</p>
+        <p class="cat-lead">Administración maestra de Productos, Costos, Materia Prima, Envases, Tapas, Extras, Bancos y Clientes para consumo seguro de la Suite.</p>
       </div>
       <div class="cat-hero-badge" aria-label="Estado de implementación">
         <span>Datos maestros</span>
-        <strong>Productos · Costos · Envases · Tapas · Extras · Bancos · Clientes</strong>
+        <strong>Productos · Costos · Materia Prima · Envases · Tapas · Extras · Bancos · Clientes</strong>
       </div>
     </section>
 
@@ -66,6 +66,13 @@
           <span>
             <strong>Costos</strong>
             <small>Precios y contenido base</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-materia-prima" type="button" role="tab" aria-selected="false" aria-controls="panel-materia-prima" data-target="materia-prima">
+          <span class="cat-tab-icon">🧺</span>
+          <span>
+            <strong>Materia Prima</strong>
+            <small>Artículos, unidades y precios</small>
           </span>
         </button>
         <button class="cat-tab" id="tab-envases" type="button" role="tab" aria-selected="false" aria-controls="panel-envases" data-target="envases">
@@ -272,6 +279,87 @@
               </table>
             </div>
             <p id="cat-costs-empty" class="cat-costs-empty" role="status" aria-live="polite" hidden>No hay productos activos con Receta disponibles para calcular.</p>
+          </article>
+        </section>
+
+
+        <section class="cat-panel" id="panel-materia-prima" role="tabpanel" aria-labelledby="tab-materia-prima" data-panel="materia-prima" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Fuente oficial para Compras</p>
+              <h2>Materia Prima</h2>
+              <p>Administra manualmente los artículos, unidades y precios de referencia que utilizará Agenda → Compras. El catálogo inicia vacío y no crea registros desde otros módulos.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Solo los artículos activos estarán disponibles para nuevas Compras.</li>
+              <li>Los cambios aplican hacia adelante; las compras guardarán su propia fotografía.</li>
+              <li>No modifica Inventario, Producción, Finanzas, POS ni costos de recetas.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools cat-raw-material-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Artículos de Materia Prima</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-raw-materials" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+              </div>
+            </div>
+            <div id="cat-raw-materials-status" class="cat-status" role="status" aria-live="polite">Cargando Materia Prima…</div>
+            <div class="cat-raw-material-table-scroll" tabindex="0" aria-label="Listado de Materia Prima">
+              <table class="cat-raw-material-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Nombre</th>
+                    <th scope="col">Categoría</th>
+                    <th scope="col">Unidad</th>
+                    <th scope="col">Precio</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Última actualización</th>
+                    <th scope="col" class="cat-raw-material-actions-head">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="cat-raw-materials-body"></tbody>
+              </table>
+            </div>
+            <p id="cat-raw-materials-empty" class="cat-costs-empty" role="status" aria-live="polite" hidden>Materia Prima está vacía. Agrega el primer artículo manualmente.</p>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Nuevo artículo</p>
+              <h2>Agregar Materia Prima</h2>
+            </div>
+            <div class="cat-product-form cat-raw-material-form">
+              <label>Nombre
+                <input id="cat-raw-material-name" autocomplete="off" maxlength="120" placeholder="Ej: Jugo de naranja">
+              </label>
+              <label>Categoría
+                <input id="cat-raw-material-category" autocomplete="off" maxlength="80" placeholder="Ej: Materia prima">
+              </label>
+              <label>Unidad de compra
+                <select id="cat-raw-material-unit">
+                  <option value="">Seleccionar</option>
+                  <option value="Unidad">Unidad</option>
+                  <option value="Cajas">Cajas</option>
+                  <option value="Litros">Litros</option>
+                  <option value="Galones">Galones</option>
+                </select>
+              </label>
+              <label>Precio de referencia (C$)
+                <input id="cat-raw-material-price" class="a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+              </label>
+              <label class="cat-flag"><input id="cat-raw-material-active" type="checkbox" checked> Activo</label>
+              <label class="cat-field-full">Observación
+                <textarea id="cat-raw-material-note" rows="3" maxlength="300" placeholder="Opcional"></textarea>
+              </label>
+            </div>
+            <small id="cat-raw-material-msg" class="cat-muted cat-edit-msg"></small>
+            <div class="cat-actions-end">
+              <button id="cat-save-raw-material" class="cat-btn cat-btn-ok" type="button">+ Agregar artículo</button>
+            </div>
           </article>
         </section>
 
@@ -569,6 +657,46 @@
   </main>
 
 
+
+  <div id="cat-raw-material-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-raw-material-modal-title">
+      <button id="cat-raw-material-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Materia Prima</p>
+      <h2 id="cat-raw-material-modal-title">Editar artículo</h2>
+      <p id="cat-raw-material-current" class="cat-muted">Artículo actual: —</p>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Las compras guardadas conservarán el nombre, categoría, unidad y precio utilizados.</div>
+      <div class="cat-product-form cat-product-form-modal cat-raw-material-form">
+        <label>Nombre
+          <input id="cat-edit-raw-material-name" autocomplete="off" maxlength="120" placeholder="Nombre">
+        </label>
+        <label>Categoría
+          <input id="cat-edit-raw-material-category" autocomplete="off" maxlength="80" placeholder="Categoría">
+        </label>
+        <label>Unidad de compra
+          <select id="cat-edit-raw-material-unit">
+            <option value="">Seleccionar</option>
+            <option value="Unidad">Unidad</option>
+            <option value="Cajas">Cajas</option>
+            <option value="Litros">Litros</option>
+            <option value="Galones">Galones</option>
+          </select>
+        </label>
+        <label>Precio de referencia (C$)
+          <input id="cat-edit-raw-material-price" class="a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </label>
+        <label class="cat-flag"><input id="cat-edit-raw-material-active" type="checkbox"> Activo</label>
+        <label class="cat-field-full">Observación
+          <textarea id="cat-edit-raw-material-note" rows="3" maxlength="300" placeholder="Opcional"></textarea>
+        </label>
+      </div>
+      <small id="cat-edit-raw-material-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-raw-material-save" class="cat-btn cat-btn-ok" type="button">Guardar cambios</button>
+        <button id="cat-edit-raw-material-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="cat-product-modal" class="cat-modal" aria-hidden="true">
     <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-product-modal-title">
       <button id="cat-product-close" class="cat-modal-close" type="button">Cerrar</button>
@@ -804,7 +932,8 @@
   <script src="/assets/js/a33-release.js?v=4.20.95&r=54"></script>
   <script src="/assets/js/a33-storage.js?v=4.20.95&r=20"></script>
   <script src="/assets/js/a33-product-integrity.js?v=4.20.95&r=1"></script>
-  <script src="script.js?v=4.20.95&r=29"></script>
+  <script src="/assets/js/a33-materials.js?v=4.20.95&r=2"></script>
+  <script src="script.js?v=4.20.95&r=31"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.95&r=11"></script>
 </body>
 </html>

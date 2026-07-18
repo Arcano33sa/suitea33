@@ -2,7 +2,7 @@
   'use strict';
 
   const DB_NAME = 'a33-pos';
-  const DB_VER = 35;
+  const DB_VER = 37;
   const DEFAULT_GALON_PRICE = 900;
   const LEGACY_GALON_PRICE = 800;
   const CANON_GALON_LABEL = 'Galón 3720 ml';
@@ -17,6 +17,9 @@
   let currentTapaEditId = null;
   let currentCustomerEditId = null;
   let currentCustomerViewId = null;
+  let currentRawMaterialEditId = null;
+  let rawMaterialCreateBusy = false;
+  let rawMaterialEditBusy = false;
   let customerRenderTokenCAT = 0;
   let customerSearchTimerCAT = null;
   let customerLastPurchaseLoadPromiseCAT = null;
@@ -27,7 +30,7 @@
   const COSTS_RECIPES_STORAGE_KEY = 'arcano33_recetas_v1';
   const COSTS_SCHEMA_VERSION = 2;
   const CATALOG_ACTIVE_TAB_KEY = 'a33_catalogos_active_tab_v1';
-  const CATALOG_ALLOWED_TABS = new Set(['productos','costos','envases','tapas','extras','bancos','clientes']);
+  const CATALOG_ALLOWED_TABS = new Set(['productos','costos','materia-prima','envases','tapas','extras','bancos','clientes']);
   const COST_LIQUIDS = [
     { key:'vino', label:'Vino' },
     { key:'vodka', label:'Vodka' },
@@ -973,7 +976,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.95&r=2').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.95&r=4').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -1464,83 +1467,108 @@
     return String((a && a.name) || '').localeCompare(String((b && b.name) || ''), 'es-NI', { sensitivity:'base' });
   }
 
+  function applyCatalogSchema(database, transaction){
+    const ensureIndex = (store, name, keyPath, options)=>{
+      try{ if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options || { unique:false }); }catch(_){ }
+    };
+    let store = null;
+    if (!database.objectStoreNames.contains('products')) store = database.createObjectStore('products', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('products'); }catch(_){ store = null; } }
+    if (store) ensureIndex(store, 'by_name', 'name', { unique:false });
+
+    if (!database.objectStoreNames.contains('events')) store = database.createObjectStore('events', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('events'); }catch(_){ store = null; } }
+    if (store) ensureIndex(store, 'by_name', 'name', { unique:true });
+
+    if (!database.objectStoreNames.contains('sales')) store = database.createObjectStore('sales', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('sales'); }catch(_){ store = null; } }
+    if (store){
+      ensureIndex(store, 'by_date', 'date', { unique:false });
+      ensureIndex(store, 'by_event', 'eventId', { unique:false });
+      ensureIndex(store, 'by_uid', 'uid', { unique:true });
+    }
+
+    if (!database.objectStoreNames.contains('inventory')) store = database.createObjectStore('inventory', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('inventory'); }catch(_){ store = null; } }
+    if (store) ensureIndex(store, 'by_event', 'eventId', { unique:false });
+
+    if (!database.objectStoreNames.contains('reempaques')) store = database.createObjectStore('reempaques', { keyPath:'id' });
+    else { try{ store = transaction.objectStore('reempaques'); }catch(_){ store = null; } }
+    if (store){
+      ensureIndex(store, 'by_event', 'eventId', { unique:false });
+      ensureIndex(store, 'by_createdAt', 'createdAt', { unique:false });
+      ensureIndex(store, 'by_event_createdAt', ['eventId','createdAt'], { unique:false });
+      ensureIndex(store, 'by_estado', 'estado', { unique:false });
+    }
+
+    if (!database.objectStoreNames.contains('rawMaterials')) store = database.createObjectStore('rawMaterials', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('rawMaterials'); }catch(_){ store = null; } }
+    if (store){
+      ensureIndex(store, 'by_name_normalized', 'nameNormalized', { unique:false });
+      ensureIndex(store, 'by_active', 'active', { unique:false });
+      ensureIndex(store, 'by_updated_at', 'updatedAt', { unique:false });
+    }
+
+    if (!database.objectStoreNames.contains('extras')) store = database.createObjectStore('extras', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('extras'); }catch(_){ store = null; } }
+    if (store){
+      ensureIndex(store, 'by_name', 'name', { unique:false });
+      ensureIndex(store, 'by_active', 'active', { unique:false });
+    }
+
+    if (!database.objectStoreNames.contains('banks')) store = database.createObjectStore('banks', { keyPath:'id', autoIncrement:true });
+    else { try{ store = transaction.objectStore('banks'); }catch(_){ store = null; } }
+    if (store){
+      ensureIndex(store, 'by_name', 'name', { unique:false });
+      ensureIndex(store, 'by_active', 'isActive', { unique:false });
+      ensureIndex(store, 'by_type', 'type', { unique:false });
+    }
+
+    if (!database.objectStoreNames.contains('meta')) database.createObjectStore('meta', { keyPath:'id' });
+  }
+
+  function catalogSchemaNeedsUpgrade(connection){
+    const required = ['products','events','sales','inventory','reempaques','rawMaterials','extras','banks','meta'];
+    if (required.some((name)=>!connection.objectStoreNames.contains(name))) return true;
+    try{
+      const tx = connection.transaction('rawMaterials', 'readonly');
+      const indexes = tx.objectStore('rawMaterials').indexNames;
+      return !indexes.contains('by_name_normalized') || !indexes.contains('by_active') || !indexes.contains('by_updated_at');
+    }catch(_){ return true; }
+  }
+
+  function adoptCatalogDb(connection, resolve){
+    db = connection;
+    try{ db.onversionchange = ()=>{ try{ db.close(); }catch(_){ } db = null; }; }catch(_){ }
+    resolve(db);
+  }
+
   function openDB(){
     if (db) return Promise.resolve(db);
     return new Promise((resolve, reject)=>{
-      const req = indexedDB.open(DB_NAME, DB_VER);
-      req.onupgradeneeded = (event)=>{
-        const d = event.target.result;
-        if (!d.objectStoreNames.contains('products')){
-          const os = d.createObjectStore('products', { keyPath:'id', autoIncrement:true });
-          try{ os.createIndex('by_name','name',{ unique:false }); }catch(_){ }
+      const fail = (error)=>reject(error || new Error('No se pudo abrir IndexedDB'));
+      const first = indexedDB.open(DB_NAME);
+      first.onupgradeneeded = (event)=>applyCatalogSchema(event.target.result, event.target.transaction);
+      first.onsuccess = ()=>{
+        const current = first.result;
+        if (!catalogSchemaNeedsUpgrade(current)){
+          adoptCatalogDb(current, resolve);
+          return;
         }
-        else {
-          // productId es la identidad operativa; nombres iguales no se fusionan ni se bloquean.
-          try{
-            const productsStore = event.target.transaction.objectStore('products');
-            if (productsStore.indexNames.contains('by_name')) productsStore.deleteIndex('by_name');
-            productsStore.createIndex('by_name','name',{ unique:false });
-          }catch(_){ }
+        const nextVersion = Number(current.version || 1) + 1;
+        try{ current.close(); }catch(_){ }
+        if (nextVersion > DB_VER){
+          fail(new Error('El esquema de Catálogos requiere una actualización de Suite A33.'));
+          return;
         }
-        if (!d.objectStoreNames.contains('events')){
-          try{
-            const ev = d.createObjectStore('events', { keyPath:'id', autoIncrement:true });
-            ev.createIndex('by_name','name',{ unique:true });
-          }catch(_){ }
-        }
-        if (!d.objectStoreNames.contains('sales')){
-          try{
-            const sales = d.createObjectStore('sales', { keyPath:'id', autoIncrement:true });
-            sales.createIndex('by_date','date',{ unique:false });
-            sales.createIndex('by_event','eventId',{ unique:false });
-          }catch(_){ }
-        }
-        if (!d.objectStoreNames.contains('inventory')){
-          try{
-            const inv = d.createObjectStore('inventory', { keyPath:'id', autoIncrement:true });
-            inv.createIndex('by_event','eventId',{ unique:false });
-          }catch(_){ }
-        }
-        if (!d.objectStoreNames.contains('reempaques')){
-          try{
-            const rp = d.createObjectStore('reempaques', { keyPath:'id' });
-            rp.createIndex('by_event','eventId',{ unique:false });
-            rp.createIndex('by_createdAt','createdAt',{ unique:false });
-          }catch(_){ }
-        }
-        if (!d.objectStoreNames.contains('extras')){
-          try{
-            const ex = d.createObjectStore('extras', { keyPath:'id', autoIncrement:true });
-            ex.createIndex('by_name','name',{ unique:false });
-            ex.createIndex('by_active','active',{ unique:false });
-          }catch(_){ }
-        } else {
-          try{ event.target.transaction.objectStore('extras').createIndex('by_name','name',{ unique:false }); }catch(_){ }
-          try{ event.target.transaction.objectStore('extras').createIndex('by_active','active',{ unique:false }); }catch(_){ }
-        }
-        if (!d.objectStoreNames.contains('banks')){
-          try{
-            const b = d.createObjectStore('banks', { keyPath:'id', autoIncrement:true });
-            b.createIndex('by_name','name',{ unique:false });
-            b.createIndex('by_active','isActive',{ unique:false });
-            b.createIndex('by_type','type',{ unique:false });
-          }catch(_){ }
-        } else {
-          try{ event.target.transaction.objectStore('banks').createIndex('by_name','name',{ unique:false }); }catch(_){ }
-          try{ event.target.transaction.objectStore('banks').createIndex('by_active','isActive',{ unique:false }); }catch(_){ }
-          try{ event.target.transaction.objectStore('banks').createIndex('by_type','type',{ unique:false }); }catch(_){ }
-        }
-        if (!d.objectStoreNames.contains('meta')){
-          try{ d.createObjectStore('meta', { keyPath:'id' }); }catch(_){ }
-        }
+        const upgrade = indexedDB.open(DB_NAME, nextVersion);
+        upgrade.onupgradeneeded = (event)=>applyCatalogSchema(event.target.result, event.target.transaction);
+        upgrade.onsuccess = ()=>adoptCatalogDb(upgrade.result, resolve);
+        upgrade.onerror = ()=>fail(upgrade.error);
+        upgrade.onblocked = ()=>fail(new Error('IndexedDB bloqueado por otra pestaña. Cierra otras pestañas de Suite A33 e intenta de nuevo.'));
       };
-      req.onsuccess = ()=>{
-        db = req.result;
-        try{ db.onversionchange = ()=>{ try{ db.close(); }catch(_){ } db = null; }; }catch(_){ }
-        resolve(db);
-      };
-      req.onerror = ()=>reject(req.error || new Error('No se pudo abrir IndexedDB'));
-      req.onblocked = ()=>reject(new Error('IndexedDB bloqueado por otra pestaña. Cierra otras pestañas de Suite A33 e intenta de nuevo.'));
+      first.onerror = ()=>fail(first.error);
+      first.onblocked = ()=>fail(new Error('IndexedDB bloqueado por otra pestaña. Cierra otras pestañas de Suite A33 e intenta de nuevo.'));
     });
   }
 
@@ -4277,6 +4305,279 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
 
+  const RAW_MATERIAL_STORE = 'rawMaterials';
+  const RAW_MATERIAL_UNITS = new Set(['Unidad', 'Cajas', 'Litros', 'Galones']);
+
+  function rawMaterialId(){
+    const stamp = Date.now().toString(36);
+    let random = '';
+    try{
+      if (window.crypto && typeof window.crypto.getRandomValues === 'function'){
+        const values = new Uint32Array(2);
+        window.crypto.getRandomValues(values);
+        random = Array.from(values).map((n)=>n.toString(36)).join('');
+      }
+    }catch(_){ }
+    if (!random) random = Math.random().toString(36).slice(2, 12);
+    return ('mp_' + stamp + '_' + random).slice(0, 120);
+  }
+
+  function rawMaterialNameNormalized(value){
+    return normName(value).replace(/\s+/g, ' ').trim();
+  }
+
+  function rawMaterialHasMeaningfulName(value){
+    const text = String(value || '').trim();
+    if (!text) return false;
+    try{ return /[\p{L}\p{N}]/u.test(text); }catch(_){ return /[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ]/.test(text); }
+  }
+
+  function rawMaterialPrice(value){
+    const raw = String(value == null ? '' : value).trim();
+    if (raw === '') return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.round((n + Number.EPSILON) * 100) / 100;
+  }
+
+  function rawMaterialDateTime(value){
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return '—';
+    const pad = (n)=>String(n).padStart(2, '0');
+    return `${pad(date.getDate())}/${pad(date.getMonth()+1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function rawMaterialSort(a, b){
+    const aa = a && a.active === false ? 1 : 0;
+    const bb = b && b.active === false ? 1 : 0;
+    if (aa !== bb) return aa - bb;
+    return String((a && a.name) || '').localeCompare(String((b && b.name) || ''), 'es-NI', { sensitivity:'base' });
+  }
+
+  function setRawMaterialMsg(message, kind, edit){
+    const el = byId(edit ? 'cat-edit-raw-material-msg' : 'cat-raw-material-msg');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'cat-muted cat-edit-msg' + (kind ? (' ' + kind) : '');
+  }
+
+  function readRawMaterialForm(edit){
+    const prefix = edit ? 'cat-edit-raw-material-' : 'cat-raw-material-';
+    const name = String(byId(prefix + 'name')?.value || '').trim().replace(/\s+/g, ' ');
+    const category = String(byId(prefix + 'category')?.value || '').trim().replace(/\s+/g, ' ');
+    const unit = String(byId(prefix + 'unit')?.value || '').trim();
+    const price = rawMaterialPrice(byId(prefix + 'price')?.value);
+    const note = String(byId(prefix + 'note')?.value || '').trim().slice(0, 300);
+    const active = !!byId(prefix + 'active')?.checked;
+    if (!rawMaterialHasMeaningfulName(name)) return { ok:false, message:'Escribe un nombre válido con letras o números.' };
+    if (!category || !rawMaterialHasMeaningfulName(category)) return { ok:false, message:'Escribe una categoría válida.' };
+    if (!RAW_MATERIAL_UNITS.has(unit)) return { ok:false, message:'Selecciona una unidad válida: Unidad, Cajas, Litros o Galones.' };
+    if (price == null) return { ok:false, message:'Escribe un precio válido mayor o igual a cero.' };
+    return { ok:true, data:{ name, nameNormalized:rawMaterialNameNormalized(name), category, unit, price, note, active } };
+  }
+
+  function setRawMaterialButtonBusy(button, busy, busyText, normalText){
+    if (!button) return;
+    button.disabled = !!busy;
+    button.setAttribute('aria-busy', busy ? 'true' : 'false');
+    button.textContent = busy ? busyText : normalText;
+  }
+
+  async function rawMaterialDuplicate(nameNormalized, excludeId){
+    const rows = await getAll(RAW_MATERIAL_STORE);
+    return (rows || []).find((row)=>{
+      if (!row) return false;
+      if (excludeId != null && String(row.id) === String(excludeId)) return false;
+      return rawMaterialNameNormalized(row.nameNormalized || row.name) === nameNormalized;
+    }) || null;
+  }
+
+  function resetRawMaterialForm(){
+    ['name','category','unit','price','note'].forEach((key)=>{
+      const el = byId('cat-raw-material-' + key);
+      if (el) el.value = '';
+    });
+    const active = byId('cat-raw-material-active');
+    if (active) active.checked = true;
+    setRawMaterialMsg('');
+  }
+
+  async function renderRawMaterials(){
+    const body = byId('cat-raw-materials-body');
+    const empty = byId('cat-raw-materials-empty');
+    if (!body) return;
+    const rows = (await getAll(RAW_MATERIAL_STORE)).slice().sort(rawMaterialSort);
+    body.innerHTML = '';
+    if (empty) empty.hidden = rows.length > 0;
+    if (!rows.length){
+      setStatusById('cat-raw-materials-status', 'Materia Prima inicia vacía. Agrega los artículos manualmente.', 'warn');
+      return;
+    }
+    const activeCount = rows.filter((row)=>row && row.active !== false).length;
+    setStatusById('cat-raw-materials-status', `${rows.length} artículo(s) · ${activeCount} activo(s) disponibles para nuevas Compras.`, 'ok');
+    rows.forEach((row)=>{
+      const tr = document.createElement('tr');
+      if (row.active === false) tr.classList.add('is-inactive');
+      const state = row.active === false ? 'Inactivo' : 'Activo';
+      const toggleTitle = row.active === false ? 'Activar artículo' : 'Inactivar artículo';
+      tr.innerHTML = `
+        <td class="cat-raw-material-name" title="${escapeHtml(row.name || '')}">${escapeHtml(row.name || '—')}</td>
+        <td>${escapeHtml(row.category || '—')}</td>
+        <td>${escapeHtml(row.unit || '—')}</td>
+        <td class="cat-raw-material-price">${displayMoney(row.price)}</td>
+        <td><span class="cat-raw-material-state${row.active === false ? ' is-inactive' : ''}">${state}</span></td>
+        <td class="cat-raw-material-date">${escapeHtml(rawMaterialDateTime(row.updatedAt))}</td>
+        <td class="cat-raw-material-actions">
+          <span class="cat-icon-actions">
+            <button class="cat-icon-btn cat-icon-edit cat-edit-raw-material" type="button" data-id="${escapeHtml(String(row.id))}" title="Editar" aria-label="Editar ${escapeHtml(row.name || 'artículo')}">✎</button>
+            <button class="cat-icon-btn ${row.active === false ? 'cat-icon-ok' : 'cat-icon-warn'} cat-toggle-raw-material" type="button" data-id="${escapeHtml(String(row.id))}" title="${toggleTitle}" aria-label="${toggleTitle}: ${escapeHtml(row.name || 'artículo')}">${row.active === false ? '✓' : '⏸'}</button>
+          </span>
+        </td>`;
+      body.appendChild(tr);
+    });
+  }
+
+  async function createRawMaterial(){
+    if (rawMaterialCreateBusy) return;
+    rawMaterialCreateBusy = true;
+    const button = byId('cat-save-raw-material');
+    setRawMaterialButtonBusy(button, true, 'Guardando…', '+ Agregar artículo');
+    try{
+      const parsed = readRawMaterialForm(false);
+      if (!parsed.ok){ setRawMaterialMsg(parsed.message, 'warn'); return; }
+      const duplicate = await rawMaterialDuplicate(parsed.data.nameNormalized, null);
+      if (duplicate){ setRawMaterialMsg(`Ya existe un artículo llamado “${duplicate.name}”. Edita el registro existente.`, 'warn'); return; }
+      const now = new Date().toISOString();
+      await put(RAW_MATERIAL_STORE, {
+        materialId: rawMaterialId(),
+        ...parsed.data,
+        createdAt: now,
+        updatedAt: now,
+        schemaVersion: 1,
+        updatedFrom: 'catalogos_materia_prima'
+      });
+      resetRawMaterialForm();
+      await renderRawMaterials();
+      toast('Artículo agregado');
+    }catch(err){
+      console.error(err);
+      setRawMaterialMsg('No se pudo guardar el artículo. Revisa los datos e intenta nuevamente.', 'warn');
+    }finally{
+      rawMaterialCreateBusy = false;
+      setRawMaterialButtonBusy(button, false, 'Guardando…', '+ Agregar artículo');
+    }
+  }
+
+  function closeRawMaterialModal(){
+    const modal = byId('cat-raw-material-modal');
+    if (modal){
+      modal.classList.remove('show');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    document.body.classList.remove('cat-modal-open');
+    currentRawMaterialEditId = null;
+    setRawMaterialMsg('', '', true);
+  }
+
+  async function openRawMaterialModal(id){
+    const rows = await getAll(RAW_MATERIAL_STORE);
+    const row = (rows || []).find((item)=>item && String(item.id) === String(id));
+    if (!row){ toast('Artículo no encontrado'); return; }
+    currentRawMaterialEditId = row.id;
+    const current = byId('cat-raw-material-current');
+    if (current) current.textContent = 'Artículo actual: ' + (row.name || '—');
+    const values = {
+      'cat-edit-raw-material-name': row.name || '',
+      'cat-edit-raw-material-category': row.category || '',
+      'cat-edit-raw-material-unit': row.unit || '',
+      'cat-edit-raw-material-price': Number.isFinite(Number(row.price)) ? String(row.price) : '',
+      'cat-edit-raw-material-note': row.note || ''
+    };
+    Object.entries(values).forEach(([key, value])=>{ const el = byId(key); if (el) el.value = value; });
+    const active = byId('cat-edit-raw-material-active');
+    if (active) active.checked = row.active !== false;
+    setRawMaterialMsg('', '', true);
+    const modal = byId('cat-raw-material-modal');
+    if (modal){
+      modal.classList.add('show');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('cat-modal-open');
+    }
+    setTimeout(()=>{ try{ byId('cat-edit-raw-material-name')?.focus({ preventScroll:true }); byId('cat-edit-raw-material-name')?.select(); }catch(_){ } }, 50);
+  }
+
+  async function saveRawMaterialEdit(){
+    if (rawMaterialEditBusy || currentRawMaterialEditId == null) return;
+    rawMaterialEditBusy = true;
+    const button = byId('cat-edit-raw-material-save');
+    setRawMaterialButtonBusy(button, true, 'Guardando…', 'Guardar cambios');
+    try{
+      const parsed = readRawMaterialForm(true);
+      if (!parsed.ok){ setRawMaterialMsg(parsed.message, 'warn', true); return; }
+      const duplicate = await rawMaterialDuplicate(parsed.data.nameNormalized, currentRawMaterialEditId);
+      if (duplicate){ setRawMaterialMsg(`Ya existe un artículo llamado “${duplicate.name}”.`, 'warn', true); return; }
+      const rows = await getAll(RAW_MATERIAL_STORE);
+      const row = (rows || []).find((item)=>item && String(item.id) === String(currentRawMaterialEditId));
+      if (!row){ setRawMaterialMsg('El artículo ya no existe.', 'warn', true); return; }
+      await put(RAW_MATERIAL_STORE, {
+        ...row,
+        ...parsed.data,
+        updatedAt: new Date().toISOString(),
+        schemaVersion: 1,
+        updatedFrom: 'catalogos_materia_prima_edicion'
+      });
+      closeRawMaterialModal();
+      await renderRawMaterials();
+      toast('Artículo actualizado');
+    }catch(err){
+      console.error(err);
+      setRawMaterialMsg('No se pudieron guardar los cambios.', 'warn', true);
+    }finally{
+      rawMaterialEditBusy = false;
+      setRawMaterialButtonBusy(button, false, 'Guardando…', 'Guardar cambios');
+    }
+  }
+
+  async function toggleRawMaterial(id){
+    const rows = await getAll(RAW_MATERIAL_STORE);
+    const row = (rows || []).find((item)=>item && String(item.id) === String(id));
+    if (!row){ toast('Artículo no encontrado'); return; }
+    await put(RAW_MATERIAL_STORE, {
+      ...row,
+      active: row.active === false,
+      updatedAt: new Date().toISOString(),
+      schemaVersion: 1,
+      updatedFrom: 'catalogos_materia_prima_estado'
+    });
+    await renderRawMaterials();
+    toast(row.active === false ? 'Artículo activado' : 'Artículo inactivado');
+  }
+
+  function bindRawMaterialUi(){
+    byId('cat-save-raw-material')?.addEventListener('click', ()=>createRawMaterial().catch((err)=>{ console.error(err); setRawMaterialMsg('No se pudo guardar el artículo.', 'warn'); }));
+    byId('cat-refresh-raw-materials')?.addEventListener('click', ()=>renderRawMaterials().then(()=>toast('Materia Prima actualizada')).catch((err)=>{ console.error(err); setStatusById('cat-raw-materials-status', 'No se pudo actualizar Materia Prima.', 'warn'); }));
+    byId('cat-raw-materials-body')?.addEventListener('click', (event)=>{
+      const edit = event.target.closest('.cat-edit-raw-material');
+      const toggle = event.target.closest('.cat-toggle-raw-material');
+      if (edit){ openRawMaterialModal(edit.dataset.id).catch((err)=>console.error(err)); return; }
+      if (toggle){ toggle.disabled = true; toggleRawMaterial(toggle.dataset.id).catch((err)=>{ console.error(err); toast('No se pudo cambiar el estado'); }).finally(()=>{ toggle.disabled = false; }); }
+    });
+    byId('cat-edit-raw-material-save')?.addEventListener('click', ()=>saveRawMaterialEdit().catch((err)=>{ console.error(err); setRawMaterialMsg('No se pudieron guardar los cambios.', 'warn', true); }));
+    byId('cat-edit-raw-material-cancel')?.addEventListener('click', closeRawMaterialModal);
+    byId('cat-raw-material-close')?.addEventListener('click', closeRawMaterialModal);
+    const modal = byId('cat-raw-material-modal');
+    modal?.addEventListener('click', (event)=>{ if (event.target === modal) closeRawMaterialModal(); });
+    document.addEventListener('keydown', (event)=>{
+      if (event && event.key === 'Escape' && modal && modal.classList.contains('show')) closeRawMaterialModal();
+    });
+  }
+
+  async function initRawMaterials(){
+    await openDB();
+    await renderRawMaterials();
+  }
+
+
 
 
 
@@ -4396,6 +4697,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     bindCostsUi();
     bindEnvaseUi();
     bindTapaUi();
+    bindRawMaterialUi();
     bindExtraBankUi();
     bindCustomerUi();
     activateTabFromUrl();
@@ -4435,6 +4737,10 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     initTapas().catch(err=>{
       console.error(err);
       setStatusById('cat-tapas-status', 'No se pudo abrir Catálogos → Tapas.', 'warn');
+    });
+    initRawMaterials().catch(err=>{
+      console.error(err);
+      setStatusById('cat-raw-materials-status', 'No se pudo abrir Catálogos → Materia Prima.', 'warn');
     });
     initMasterCatalogs().catch(err=>{
       console.error(err);

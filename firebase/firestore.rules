@@ -34,6 +34,90 @@ service cloud.firestore {
         && inviteDoc(code).data.role == role;
     }
 
+    function validRawMaterialUnit(unit) {
+      return unit == 'Unidad'
+        || unit == 'Cajas'
+        || unit == 'Litros'
+        || unit == 'Galones';
+    }
+
+    function validRawMaterialPayload(workspaceId, materialId) {
+      return request.resource.data.materialId == materialId
+        && request.resource.data.workspaceId == workspaceId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.category is string
+        && request.resource.data.category.size() >= 1
+        && request.resource.data.category.size() <= 80
+        && validRawMaterialUnit(request.resource.data.unit)
+        && (request.resource.data.price is int || request.resource.data.price is float)
+        && request.resource.data.price >= 0
+        && request.resource.data.active is bool
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 300
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string;
+    }
+
+    function validAgendaType(type) {
+      return type == 'reunion' || type == 'tarea' || type == 'compra';
+    }
+
+    function validAgendaStatus(status) {
+      return status == 'pendiente' || status == 'hecho' || status == 'cancelado';
+    }
+
+    function validAgendaPriority(priority) {
+      return priority == 'baja' || priority == 'media' || priority == 'alta';
+    }
+
+    function validAgendaNumber(value) {
+      return value == null || value is int || value is float;
+    }
+
+    function validAgendaPurchase(purchase) {
+      return purchase is map
+        && purchase.materialId is string
+        && purchase.materialId.size() >= 1
+        && purchase.materialId.size() <= 160
+        && purchase.name is string
+        && purchase.name.size() >= 1
+        && purchase.name.size() <= 120
+        && purchase.category is string
+        && purchase.category.size() <= 80
+        && validRawMaterialUnit(purchase.unit)
+        && validAgendaNumber(purchase.priceUsed)
+        && purchase.priceUsed >= 0
+        && validAgendaNumber(purchase.quantity)
+        && purchase.quantity > 0
+        && validAgendaNumber(purchase.subtotal)
+        && purchase.subtotal >= 0;
+    }
+
+    function validAgendaRecord(workspaceId, recordId) {
+      return request.resource.data.id == recordId
+        && request.resource.data.workspaceId == workspaceId
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() >= 1
+        && request.resource.data.subject.size() <= 120
+        && validAgendaType(request.resource.data.type)
+        && request.resource.data.client is string
+        && request.resource.data.client.size() <= 120
+        && (request.resource.data.type != 'reunion' || request.resource.data.client.size() >= 1)
+        && request.resource.data.date is string
+        && request.resource.data.date.size() == 10
+        && request.resource.data.status is string
+        && validAgendaStatus(request.resource.data.status)
+        && request.resource.data.priority is string
+        && validAgendaPriority(request.resource.data.priority)
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() <= 1200
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && (request.resource.data.type != 'compra' || validAgendaPurchase(request.resource.data.purchase));
+    }
+
     match /users/{uid} {
       allow get, create, update: if signedIn() && request.auth.uid == uid;
       allow list, delete: if false;
@@ -48,6 +132,20 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
       allow update: if signedIn() && isAdminOfWorkspace(workspaceId);
       allow delete: if false;
+
+      match /rawMaterials/{materialId} {
+        allow get, list: if signedIn() && isMemberOfWorkspace(workspaceId);
+        allow create, update: if signedIn() && isAdminOfWorkspace(workspaceId)
+          && validRawMaterialPayload(workspaceId, materialId);
+        allow delete: if signedIn() && isAdminOfWorkspace(workspaceId);
+      }
+
+      match /agendaRecords/{recordId} {
+        allow get, list: if signedIn() && isMemberOfWorkspace(workspaceId);
+        allow create, update: if signedIn() && isMemberOfWorkspace(workspaceId)
+          && validAgendaRecord(workspaceId, recordId);
+        allow delete: if signedIn() && isMemberOfWorkspace(workspaceId);
+      }
 
       match /members/{uid} {
         allow get, list: if signedIn() && isMemberOfWorkspace(workspaceId);

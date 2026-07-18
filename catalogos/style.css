@@ -820,3 +820,66 @@ html[data-theme="light"] .cat-customer-view-grid > div{background:rgba(255,255,2
   .cat-customer-table{min-width:660px;}
 }
 @media(prefers-reduced-motion:reduce){.cat-customer-group-chevron{transition:none;}}
+
+
+/* Materia Prima — fuente oficial de artículos y precios para Agenda → Compras */
+.cat-raw-material-tools{min-width:0;overflow:hidden;}
+.cat-raw-material-table-scroll{
+  width:100%;
+  max-width:100%;
+  overflow-x:auto;
+  overscroll-behavior-inline:contain;
+  -webkit-overflow-scrolling:touch;
+  border:1px solid rgba(221,191,100,0.18);
+  border-radius:16px;
+  background:rgba(0,0,0,0.12);
+}
+.cat-raw-material-table-scroll:focus-visible{box-shadow:inset 0 0 0 2px rgba(221,191,100,0.42);outline:none;}
+.cat-raw-material-table{width:100%;min-width:860px;border-collapse:separate;border-spacing:0;table-layout:auto;}
+.cat-raw-material-table th,
+.cat-raw-material-table td{
+  padding:10px 12px;
+  border-bottom:1px solid rgba(221,191,100,0.12);
+  text-align:left;
+  vertical-align:middle;
+  white-space:nowrap;
+}
+.cat-raw-material-table th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  color:var(--cat-muted);
+  font-size:.76rem;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  background:#111;
+}
+html[data-theme="light"] .cat-raw-material-table-scroll{background:rgba(255,255,255,0.34);}
+html[data-theme="light"] .cat-raw-material-table th{background:#f5e8d2;}
+.cat-raw-material-table tbody tr:last-child td{border-bottom:0;}
+.cat-raw-material-table tbody tr:hover td{background:rgba(221,191,100,0.055);}
+.cat-raw-material-table tbody tr.is-inactive{opacity:.66;}
+.cat-raw-material-name{font-weight:850;max-width:260px;overflow:hidden;text-overflow:ellipsis;}
+.cat-raw-material-price{font-variant-numeric:tabular-nums;font-weight:850;}
+.cat-raw-material-date{font-variant-numeric:tabular-nums;}
+.cat-raw-material-actions-head,.cat-raw-material-actions{text-align:right !important;}
+.cat-raw-material-state{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:74px;
+  padding:4px 9px;
+  border-radius:999px;
+  border:1px solid rgba(86,190,116,0.34);
+  color:#bff6c9;
+  font-size:.76rem;
+  font-weight:850;
+}
+.cat-raw-material-state.is-inactive{border-color:rgba(213,126,75,0.36);color:#ffd0a8;}
+html[data-theme="light"] .cat-raw-material-state{color:#17612c;}
+html[data-theme="light"] .cat-raw-material-state.is-inactive{color:#8a401d;}
+.cat-raw-material-actions .cat-icon-actions{white-space:nowrap;}
+@media(max-width:760px){
+  .cat-raw-material-table{min-width:790px;}
+  .cat-raw-material-form{grid-template-columns:1fr;}
+}

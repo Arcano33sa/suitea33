@@ -57,7 +57,8 @@ service cloud.firestore {
 
     function validAgendaType(type) {
       return type == 'reunion'
-        || type == 'tarea';
+        || type == 'tarea'
+        || type == 'compra';
     }
 
     function validAgendaStatus(status) {
@@ -77,6 +78,36 @@ service cloud.firestore {
         || modality == 'presencial'
         || modality == 'llamada'
         || modality == 'videollamada';
+    }
+
+    function validRawMaterialUnit(unit) {
+      return unit == 'Unidad'
+        || unit == 'Cajas'
+        || unit == 'Litros'
+        || unit == 'Galones';
+    }
+
+    function validRawMaterialNumber(value) {
+      return value is int || value is float;
+    }
+
+    function validRawMaterialPayload(workspaceId, materialId) {
+      return request.resource.data.materialId == materialId
+        && request.resource.data.workspaceId == workspaceId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.category is string
+        && request.resource.data.category.size() >= 1
+        && request.resource.data.category.size() <= 80
+        && validRawMaterialUnit(request.resource.data.unit)
+        && validRawMaterialNumber(request.resource.data.price)
+        && request.resource.data.price >= 0
+        && request.resource.data.active is bool
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 300
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string;
     }
 
     function validAgendaNumber(value) {
@@ -108,6 +139,25 @@ service cloud.firestore {
             && pedido.total > 0));
     }
 
+    function validAgendaPurchase(purchase) {
+      return purchase is map
+        && purchase.materialId is string
+        && purchase.materialId.size() >= 1
+        && purchase.materialId.size() <= 160
+        && purchase.name is string
+        && purchase.name.size() >= 1
+        && purchase.name.size() <= 120
+        && purchase.category is string
+        && purchase.category.size() <= 80
+        && validRawMaterialUnit(purchase.unit)
+        && validAgendaNumber(purchase.priceUsed)
+        && purchase.priceUsed >= 0
+        && validAgendaNumber(purchase.quantity)
+        && purchase.quantity > 0
+        && validAgendaNumber(purchase.subtotal)
+        && purchase.subtotal >= 0;
+    }
+
     function validAgendaPayload(workspaceId, recordId) {
       return request.resource.data.id == recordId
         && request.resource.data.workspaceId == workspaceId
@@ -116,8 +166,8 @@ service cloud.firestore {
         && request.resource.data.subject.size() <= 120
         && validAgendaType(request.resource.data.type)
         && request.resource.data.client is string
-        && request.resource.data.client.size() >= 1
         && request.resource.data.client.size() <= 120
+        && (request.resource.data.type != 'reunion' || request.resource.data.client.size() >= 1)
         && request.resource.data.clientId is string
         && request.resource.data.clientId.size() <= 120
         && validAgendaModality(request.resource.data.modality)
@@ -145,7 +195,8 @@ service cloud.firestore {
         && request.resource.data.createdBy.size() <= 128
         && request.resource.data.updatedBy is string
         && request.resource.data.updatedBy.size() <= 128
-        && validAgendaPedido(request.resource.data.pedido);
+        && validAgendaPedido(request.resource.data.pedido)
+        && (request.resource.data.type != 'compra' || validAgendaPurchase(request.resource.data.purchase));
     }
 
     function validMemberPayload(workspaceId, uid) {
@@ -170,6 +221,12 @@ service cloud.firestore {
         allow get: if requesterAdmin(workspaceId) || (sameUser(uid) && workspaceId == tokenWorkspace());
         allow list: if requesterAdmin(workspaceId);
         allow create, update: if requesterAdmin(workspaceId) && validMemberPayload(workspaceId, uid);
+        allow delete: if requesterAdmin(workspaceId);
+      }
+
+      match /rawMaterials/{materialId} {
+        allow get, list: if requesterActiveMember(workspaceId);
+        allow create, update: if requesterAdmin(workspaceId) && validRawMaterialPayload(workspaceId, materialId);
         allow delete: if requesterAdmin(workspaceId);
       }
 
