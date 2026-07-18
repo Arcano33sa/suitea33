@@ -95,6 +95,45 @@ service cloud.firestore {
         && purchase.subtotal >= 0;
     }
 
+    function validAgendaPurchaseItem(item) {
+      return item is map
+        && item.materialId is string
+        && item.materialId.size() <= 160
+        && item.name is string
+        && item.name.size() >= 1
+        && item.name.size() <= 120
+        && item.category is string
+        && item.category.size() <= 80
+        && validRawMaterialUnit(item.unit)
+        && validAgendaNumber(item.priceUsed)
+        && item.priceUsed >= 0
+        && validAgendaNumber(item.quantity)
+        && item.quantity > 0
+        && validAgendaNumber(item.subtotal)
+        && item.subtotal >= 0;
+    }
+
+    function validAgendaPurchaseGroup(group) {
+      return group is map
+        && group.version is int
+        && group.version >= 1
+        && group.itemCount is int
+        && group.itemCount >= 1
+        && group.itemCount <= 100
+        && validAgendaNumber(group.totalGeneral)
+        && group.totalGeneral >= 0
+        && group.items is list
+        && group.items.size() == group.itemCount
+        && group.items.size() >= 1
+        && group.items.size() <= 100
+        && validAgendaPurchaseItem(group.items[0]);
+    }
+
+    function validAgendaPurchaseDocument(data) {
+      return ('purchaseGroup' in data && validAgendaPurchaseGroup(data.purchaseGroup))
+        || ('purchase' in data && validAgendaPurchase(data.purchase));
+    }
+
     function validAgendaRecord(workspaceId, recordId) {
       return request.resource.data.id == recordId
         && request.resource.data.workspaceId == workspaceId
@@ -115,7 +154,7 @@ service cloud.firestore {
         && request.resource.data.notes.size() <= 1200
         && request.resource.data.createdAt is string
         && request.resource.data.updatedAt is string
-        && (request.resource.data.type != 'compra' || validAgendaPurchase(request.resource.data.purchase));
+        && (request.resource.data.type != 'compra' || validAgendaPurchaseDocument(request.resource.data));
     }
 
     match /users/{uid} {

@@ -21,7 +21,7 @@ check('10 validación artículo',()=>includes('agenda/purchases.js',['function v
 check('11 decimales e enteros',()=>includes('agenda/purchases.js',["INTEGER_UNITS = new Set(['Unidad','Cajas'])","INTEGER_UNITS.has(snapshot.unit)","'0.01'"]));
 check('12 doble toque',()=>includes('agenda/purchases.js',['state.saving','state.adding','if (state.saving) return false','if (state.adding) return false']));
 check('13 fotografía histórica',()=>includes('agenda/purchases.js',['priceUsed: validated.snapshot.priceUsed','capturedAt: now','existing.priceUsed']));
-check('14 repetidos se fusionan',()=>includes('agenda/purchases.js',['state.draftItems.find(function(item){ return item.materialId === validated.snapshot.materialId; })','existing.quantity = round2','existing.subtotal = round2']));
+check('14 repetidos se fusionan',()=>includes('agenda/purchases.js',['const incomingIdentity = itemIdentity(validated.snapshot)','existing.quantity = round2','existing.subtotal = round2']));
 check('15 edición temporal',()=>includes('agenda/purchases.js',['function startDraftEdit','function saveDraftEdit','Editar cantidad de ','item.subtotal = round2(item.priceUsed * quantity)']));
 check('16 quitar temporal',()=>includes('agenda/purchases.js',['function removeDraftItem',"'Quitar ' + item.name"]));
 check('17 último sin agregar',()=>includes('agenda/purchases.js',['function pendingArticleInputs','pendingArticleInputs() && !addDraftItem','Completa correctamente el último artículo']));
@@ -35,8 +35,8 @@ check('24 calendario compatible',()=>includes('agenda/purchases.js',['record.pur
 check('25 responsive',()=>includes('agenda/style.css',['.purchase-status-add-row','.purchase-draft-row','@media (max-width:740px)','@media (max-width:420px)']));
 check('26 táctil',()=>includes('agenda/style.css',['touch-action:manipulation','min-height:48px']));
 check('27 sin dependencia nueva',()=>{ const h=read('agenda/index.html'); assert.ok(!h.includes('node_modules')); assert.ok(!h.includes('cdn.jsdelivr.net')); });
-check('28 PWA cache actualizado',()=>includes('agenda/sw.js',['agenda-r${REV}-m2','./purchases.js?v=4.20.95&r=2','./style.css?v=4.20.95&r=10','./script.js?v=4.20.95&r=16']));
-check('29 versiones HTML coherentes',()=>includes('agenda/index.html',['style.css?v=4.20.95&r=10','script.js?v=4.20.95&r=16','purchases.js?v=4.20.95&r=2']));
+check('28 PWA cache actualizado',()=>includes('agenda/sw.js',['agenda-r${REV}-m4','./purchases.js?v=4.20.95&r=4','./style.css?v=4.20.95&r=11','./script.js?v=4.20.95&r=16']));
+check('29 versiones HTML coherentes',()=>includes('agenda/index.html',['style.css?v=4.20.95&r=11','script.js?v=4.20.95&r=16','purchases.js?v=4.20.95&r=4']));
 check('30 no toca inventario/finanzas/POS',()=>{ const s=read('agenda/purchases.js'); ['inventario','finanzas','pos/','caja','bancos'].forEach(term=>assert.ok(!s.toLowerCase().includes('localstorage.setitem(\''+term),term)); });
 
 for (const rel of ['agenda/purchases.js','agenda/script.js']){

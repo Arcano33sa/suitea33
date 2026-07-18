@@ -28,6 +28,19 @@
     return String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max || 500);
   }
   function safeParse(raw){ try{ return JSON.parse(String(raw || '')); }catch(_){ return null; } }
+  function stableHash(value){
+    const text = String(value == null ? '' : value);
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+  function safeEpoch(value){
+    const stamp = new Date(String(value || '')).getTime();
+    return Number.isFinite(stamp) ? stamp : 0;
+  }
   function round2(value){ return Math.round((Number(value) + Number.EPSILON) * 100) / 100; }
   function numberOrNull(value){
     if (value === '' || value == null) return null;
@@ -186,6 +199,21 @@
     };
   }
 
+  function purchaseFingerprint(record, items){
+    const source = record && typeof record === 'object' ? record : {};
+    const rows = Array.isArray(items) ? items : extractGroupItems(source);
+    return [
+      normalizeDate(source.date || source.neededDate || source.fechaNecesaria),
+      normalizeStatus(source.status),
+      normalizePriority(source.priority),
+      clean(source.notes,1200),
+      rows.map(function(item){
+        return [clean(item.materialId,160),clean(item.name,120),clean(item.category,80),normalizeUnit(item.unit),Number(item.priceUsed || 0),Number(item.quantity || 0),Number(item.subtotal || 0)].join('|');
+      }).join('||'),
+      clean(source.createdAt,80)
+    ].join('::');
+  }
+
   function normalizePurchaseRecord(source){
     const record = source && typeof source === 'object' ? source : {};
     const items = extractGroupItems(record);
@@ -194,9 +222,10 @@
     const updatedAt = clean(record.updatedAt || record.createdAt, 80) || createdAt;
     const purchase = aggregatePurchase(items, { ...record, createdAt:createdAt });
     const subject = items.length === 1 ? items[0].name : (items.length ? ('Compra agrupada · ' + items.length + ' artículos') : clean(record.subject,120));
+    const stableId = clean(record.id, 180) || ('agd_legacy_' + stableHash(purchaseFingerprint(record,items)));
     return {
       ...record,
-      id: clean(record.id, 180) || createId('agd'),
+      id: stableId,
       subject,
       type: 'compra',
       client: '',
@@ -221,6 +250,89 @@
         items: items.map(cloneItem)
       }
     };
+  }
+
+  function jsonSafeClone(value){
+    try{ return JSON.parse(JSON.stringify(value)); }catch(_){ return null; }
+  }
+
+  function emptyPedidoForPurchase(){
+    return {
+      enabled:false,
+      productId:'',
+      product:'',
+      productNameSnapshot:'',
+      price:null,
+      priceSnapshot:null,
+      quantity:null,
+      total:null,
+      delivery:'',
+      productSnapshot:null,
+      historicalOnly:false
+    };
+  }
+
+  function serializePurchaseRecordForFirebase(source, context){
+    const record = normalizePurchaseRecord(source);
+    const options = context && typeof context === 'object' ? context : {};
+    const workspaceId = clean(options.workspaceId || record.workspaceId || 'default',120) || 'default';
+    const createdAt = clean(record.createdAt,80) || new Date().toISOString();
+    const updatedAt = clean(record.updatedAt || record.createdAt,80) || createdAt;
+    const items = record.purchaseGroup.items.map(function(item){
+      const normalized = cloneItem(item);
+      return {
+        draftId:clean(normalized.draftId,180),
+        materialId:clean(normalized.materialId,160),
+        name:clean(normalized.name,120),
+        category:clean(normalized.category,80),
+        unit:normalizeUnit(normalized.unit),
+        priceUsed:Number(normalized.priceUsed || 0),
+        quantity:Number(normalized.quantity || 0),
+        subtotal:Number(normalized.subtotal || 0),
+        snapshot:{
+          materialId:clean(normalized.snapshot && normalized.snapshot.materialId,160),
+          name:clean(normalized.snapshot && normalized.snapshot.name,120),
+          category:clean(normalized.snapshot && normalized.snapshot.category,80),
+          unit:normalizeUnit(normalized.snapshot && normalized.snapshot.unit),
+          priceUsed:Number(normalized.snapshot && normalized.snapshot.priceUsed || 0),
+          capturedAt:clean(normalized.snapshot && normalized.snapshot.capturedAt,80)
+        }
+      };
+    });
+    const safe = {
+      id:record.id,
+      workspaceId,
+      subject:clean(record.subject,120),
+      type:'compra',
+      client:'',
+      clientId:'',
+      modality:'',
+      date:record.date,
+      time:'',
+      status:record.status,
+      priority:record.priority,
+      notes:clean(record.notes,1200),
+      createdAt,
+      updatedAt,
+      createdAtMs:safeEpoch(createdAt),
+      updatedAtMs:safeEpoch(updatedAt),
+      createdBy:clean(options.createdBy || record.createdBy,120),
+      updatedBy:clean(options.updatedBy || record.updatedBy,120),
+      schemaVersion:SCHEMA_VERSION,
+      pedido:emptyPedidoForPurchase(),
+      purchase:aggregatePurchase(items,{createdAt:createdAt}),
+      purchaseGroup:{
+        version:GROUP_VERSION,
+        itemCount:items.length,
+        totalGeneral:groupTotal(items),
+        items
+      }
+    };
+    return jsonSafeClone(safe);
+  }
+
+  function deserializePurchaseRecordFromFirebase(source){
+    return normalizePurchaseRecord(jsonSafeClone(source) || source || {});
   }
 
   function readStore(){
@@ -1071,22 +1183,28 @@
   }
   function calendarDescription(date, records){
     const unique = [];
-    (records || []).forEach(function(item){ if (!unique.some(function(x){ return x.id === item.id; })) unique.push(item); });
+    (records || []).forEach(function(item){
+      const normalized = normalizePurchaseRecord(item);
+      if (normalized.status !== 'pendiente' || normalized.date !== date) return;
+      if (!unique.some(function(x){ return x.id === normalized.id; })) unique.push(normalized);
+    });
     const lines = ['Compras Arcano 33', 'Fecha: ' + formatDate(date), ''];
-    unique.forEach(function(record){
+    unique.forEach(function(record,index){
+      lines.push('Compra ' + (index + 1) + ':');
       const items = record.purchaseGroup && Array.isArray(record.purchaseGroup.items) ? record.purchaseGroup.items : [record.purchase];
       items.forEach(function(item){
         lines.push('- ' + item.name + ': ' + formatNumber(item.quantity) + ' ' + item.unit + ' × ' + formatMoney(item.priceUsed) + ' = ' + formatMoney(item.subtotal));
       });
-      if (record.notes) lines.push('  Nota: ' + clean(record.notes,260));
+      if (record.notes) lines.push('Notas: ' + clean(record.notes,500));
+      if (index < unique.length - 1) lines.push('');
     });
     const total = unique.reduce(function(sum,item){ return sum + purchaseTotal(item); },0);
     lines.push('', 'Presupuesto estimado: ' + formatMoney(total));
     return lines.join('\n');
   }
   function buildEvent(date, records){
-    const stableIds = (records || []).map(function(item){ return item.id; }).sort().join('-');
-    const uid = 'a33-compras-' + icsDate(date) + '-' + stableIds.length + '@arcano33';
+    const stableIds = (records || []).map(function(item){ return clean(item && item.id,180); }).filter(Boolean).sort().join('|');
+    const uid = 'a33-compras-' + icsDate(date) + '-' + stableHash(date + '|' + stableIds) + '@arcano33';
     const lines = [
       'BEGIN:VEVENT',
       'UID:' + icsEscape(uid),
@@ -1189,7 +1307,7 @@
       render();
     });
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=4.20.95&r=3').catch(function(error){
+      navigator.serviceWorker.register('./sw.js?v=4.20.95&r=4').catch(function(error){
         console.warn('Agenda SW no disponible', error);
       });
     }
@@ -1211,7 +1329,12 @@
           purchases:currentPurchases()
         };
       },
-      normalizePurchaseRecord: normalizePurchaseRecord
+      normalizePurchaseRecord: normalizePurchaseRecord,
+      serializeForFirebase: serializePurchaseRecordForFirebase,
+      deserializeFromFirebase: deserializePurchaseRecordFromFirebase,
+      firebaseCollection: 'agendaRecords',
+      storageKey: STORAGE_KEY,
+      schemaVersion: SCHEMA_VERSION
     });
   }
 

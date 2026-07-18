@@ -5,6 +5,252 @@
   const SUITE_LS_PREFIXES = ['arcano33_', 'a33_', 'suite_a33_', 'a33.'];
   const COSTS_BACKUP_KEY = 'a33_catalogos_costos_v1';
   const COSTS_BACKUP_SCHEMA_VERSION = 2;
+  const AGENDA_BACKUP_KEY = 'a33_agenda_records_v1';
+  const AGENDA_BACKUP_SCHEMA_VERSION = 9;
+  const AGENDA_PURCHASE_GROUP_VERSION = 1;
+  const AGENDA_UNITS = new Set(['Unidad','Cajas','Litros','Galones']);
+
+  function agendaClean(value, max){
+    return String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g,'').replace(/\s+/g,' ').trim().slice(0,max || 500);
+  }
+
+  function agendaRound2(value){
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.round((number + Number.EPSILON) * 100) / 100 : 0;
+  }
+
+  function agendaNumber(value, fallback){
+    if (value === '' || value == null) return fallback == null ? null : fallback;
+    const parsed = Number(String(value).trim().replace(',','.'));
+    return Number.isFinite(parsed) ? agendaRound2(parsed) : (fallback == null ? null : fallback);
+  }
+
+  function agendaDate(value){
+    const raw = agendaClean(value,10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
+  }
+
+  function agendaStatus(value){
+    const raw = agendaClean(value,20).toLowerCase();
+    return ['pendiente','hecho','cancelado'].includes(raw) ? raw : 'pendiente';
+  }
+
+  function agendaPriority(value){
+    const raw = agendaClean(value,20).toLowerCase();
+    return ['baja','media','alta'].includes(raw) ? raw : 'media';
+  }
+
+  function agendaUnit(value){
+    const raw = agendaClean(value,24);
+    return AGENDA_UNITS.has(raw) ? raw : '';
+  }
+
+  function agendaHash(value){
+    const text = String(value == null ? '' : value);
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1){
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash,16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function agendaSafeObject(value){
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  }
+
+  function agendaClone(value){
+    try{ return JSON.parse(JSON.stringify(value)); }catch(_){ return value; }
+  }
+
+  function agendaNormalizePurchaseItem(source, record, index){
+    const raw = agendaSafeObject(source);
+    const parent = agendaSafeObject(record);
+    const snapshot = agendaSafeObject(raw.snapshot);
+    const materialId = agendaClean(raw.materialId || snapshot.materialId || raw.id || parent.materialId,160);
+    const name = agendaClean(raw.name || raw.materialName || snapshot.name || parent.materialName || parent.subject,120);
+    const category = agendaClean(raw.category || snapshot.category || parent.category,80);
+    const unit = agendaUnit(raw.unit || snapshot.unit || parent.unit);
+    const priceUsed = agendaNumber(raw.priceUsed ?? raw.price ?? snapshot.priceUsed ?? parent.priceUsed ?? parent.price,0);
+    const quantity = agendaNumber(raw.quantity ?? parent.quantity,null);
+    const storedSubtotal = agendaNumber(raw.subtotal ?? parent.subtotal,null);
+    const subtotal = storedSubtotal == null && quantity != null ? agendaRound2(priceUsed * quantity) : agendaRound2(storedSubtotal || 0);
+    const capturedAt = agendaClean(snapshot.capturedAt || raw.capturedAt || parent.createdAt || '',80);
+    const identity = [materialId,name,category,unit,priceUsed,quantity,subtotal,index || 0].join('|');
+    return {
+      draftId:agendaClean(raw.draftId || raw.lineId,180) || ('itm_legacy_' + agendaHash(identity)),
+      materialId,
+      name,
+      category,
+      unit,
+      priceUsed,
+      quantity,
+      subtotal,
+      snapshot:{ materialId,name,category,unit,priceUsed,capturedAt }
+    };
+  }
+
+  function agendaExtractPurchaseItems(record){
+    const source = agendaSafeObject(record);
+    const group = agendaSafeObject(source.purchaseGroup);
+    const purchase = agendaSafeObject(source.purchase);
+    let candidates = null;
+    if (Array.isArray(group.items)) candidates = group.items;
+    else if (Array.isArray(source.purchaseItems)) candidates = source.purchaseItems;
+    else if (Array.isArray(purchase.items)) candidates = purchase.items;
+    else {
+      const legacy = Object.keys(purchase).length ? purchase : (Object.keys(agendaSafeObject(source.compra)).length ? source.compra : source);
+      candidates = [legacy];
+    }
+    return candidates.map((item,index) => agendaNormalizePurchaseItem(item,source,index)).filter((item) => {
+      return !!item.name && !!item.unit && item.quantity != null && item.quantity > 0 && Number.isFinite(item.priceUsed) && item.priceUsed >= 0 && Number.isFinite(item.subtotal) && item.subtotal >= 0;
+    });
+  }
+
+  function agendaPurchaseFingerprint(record, items){
+    const source = agendaSafeObject(record);
+    return [
+      agendaDate(source.date || source.neededDate || source.fechaNecesaria),
+      agendaStatus(source.status),
+      agendaPriority(source.priority),
+      agendaClean(source.notes,1200),
+      (items || []).map((item) => [item.materialId,item.name,item.category,item.unit,item.priceUsed,item.quantity,item.subtotal].join('|')).join('||'),
+      agendaClean(source.createdAt,80)
+    ].join('::');
+  }
+
+  function agendaAggregatePurchase(items, createdAt){
+    const rows = Array.isArray(items) ? items : [];
+    if (rows.length === 1) return agendaClone(rows[0]);
+    const total = agendaRound2(rows.reduce((sum,item) => sum + Number(item.subtotal || 0),0));
+    const name = rows.length ? `Compra agrupada (${rows.length} artículos)` : 'Compra';
+    return {
+      materialId:'', name, category:'Varios', unit:'Unidad', priceUsed:total, quantity:rows.length ? 1 : null, subtotal:total,
+      snapshot:{ materialId:'',name,category:'Varios',unit:'Unidad',priceUsed:total,capturedAt:createdAt || '' }
+    };
+  }
+
+  function agendaNormalizeRecord(source){
+    const record = agendaSafeObject(source);
+    if (agendaClean(record.type,20).toLowerCase() !== 'compra') return agendaClone(record);
+    const items = agendaExtractPurchaseItems(record);
+    if (!items.length) throw new Error('Compra de Agenda sin artículos válidos.');
+    const createdAt = agendaClean(record.createdAt,80) || new Date(0).toISOString();
+    const updatedAt = agendaClean(record.updatedAt || record.createdAt,80) || createdAt;
+    const totalGeneral = agendaRound2(items.reduce((sum,item) => sum + Number(item.subtotal || 0),0));
+    const id = agendaClean(record.id,180) || ('agd_legacy_' + agendaHash(agendaPurchaseFingerprint(record,items)));
+    return {
+      ...agendaClone(record),
+      id,
+      subject:items.length === 1 ? items[0].name : `Compra agrupada · ${items.length} artículos`,
+      type:'compra',
+      client:'',
+      clientId:'',
+      modality:'',
+      date:agendaDate(record.date || record.neededDate || record.fechaNecesaria),
+      time:'',
+      status:agendaStatus(record.status),
+      priority:agendaPriority(record.priority),
+      notes:agendaClean(record.notes,1200),
+      createdAt,
+      updatedAt,
+      purchase:agendaAggregatePurchase(items,createdAt),
+      purchaseGroup:{ version:AGENDA_PURCHASE_GROUP_VERSION,itemCount:items.length,totalGeneral,items }
+    };
+  }
+
+  function agendaNormalizePayloadValue(value){
+    const parsed = typeof value === 'string' ? JSON.parse(value) : agendaClone(value);
+    const records = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.records) ? parsed.records : null);
+    if (!records) throw new Error('El bloque Agenda no contiene una lista de registros válida.');
+    const normalized = records.map((record) => agendaNormalizeRecord(record));
+    const deduped = [];
+    const positions = new Map();
+    normalized.forEach((record) => {
+      const key = agendaRecordMergeKey(record);
+      if (!positions.has(key)){
+        positions.set(key,deduped.length);
+        deduped.push(record);
+        return;
+      }
+      const position = positions.get(key);
+      if (agendaRecordTimestamp(record) >= agendaRecordTimestamp(deduped[position])) deduped[position] = record;
+    });
+    return {
+      schemaVersion:AGENDA_BACKUP_SCHEMA_VERSION,
+      updatedAt:agendaClean(parsed && parsed.updatedAt,80) || new Date().toISOString(),
+      records:deduped
+    };
+  }
+
+  function parseAgendaBackupBlock(localStorageMap){
+    const map = localStorageMap && typeof localStorageMap === 'object' ? localStorageMap : {};
+    if (!Object.prototype.hasOwnProperty.call(map,AGENDA_BACKUP_KEY)) return { ok:true,present:false,value:null,summary:null };
+    try{
+      const value = agendaNormalizePayloadValue(map[AGENDA_BACKUP_KEY]);
+      return { ok:true,present:true,value,summary:agendaBackupSummaryFromValue(value) };
+    }catch(error){
+      return { ok:false,present:true,reason:`Bloque Agenda inválido: ${error?.message || error}` };
+    }
+  }
+
+  function agendaBackupSummaryFromValue(value){
+    const records = value && Array.isArray(value.records) ? value.records : [];
+    const purchases = records.filter((record) => agendaClean(record?.type,20).toLowerCase() === 'compra');
+    return {
+      schemaVersion:Number(value?.schemaVersion) || AGENDA_BACKUP_SCHEMA_VERSION,
+      records:records.length,
+      meetings:records.filter((record) => agendaClean(record?.type,20).toLowerCase() === 'reunion').length,
+      tasks:records.filter((record) => agendaClean(record?.type,20).toLowerCase() === 'tarea').length,
+      purchases:purchases.length,
+      groupedPurchases:purchases.filter((record) => Number(record?.purchaseGroup?.itemCount || 0) > 1).length,
+      purchaseItems:purchases.reduce((sum,record) => sum + Number(record?.purchaseGroup?.itemCount || 0),0),
+      pending:purchases.filter((record) => record.status === 'pendiente').length,
+      done:purchases.filter((record) => record.status === 'hecho').length,
+      cancelled:purchases.filter((record) => record.status === 'cancelado').length
+    };
+  }
+
+  function agendaBackupSummary(localStorageMap){
+    const parsed = parseAgendaBackupBlock(localStorageMap);
+    return parsed.ok && parsed.present ? { included:true,storageKey:AGENDA_BACKUP_KEY,...parsed.summary } : { included:false,storageKey:AGENDA_BACKUP_KEY };
+  }
+
+  function agendaRecordMergeKey(record){
+    const source = agendaSafeObject(record);
+    const id = agendaClean(source.id,180);
+    if (id) return `id:${id}`;
+    if (agendaClean(source.type,20).toLowerCase() === 'compra') return `purchase:${agendaHash(agendaPurchaseFingerprint(source,agendaExtractPurchaseItems(source)))}`;
+    return `legacy:${agendaHash(JSON.stringify(source))}`;
+  }
+
+  function agendaRecordTimestamp(record){
+    const value = new Date(agendaClean(record?.updatedAt || record?.createdAt,80)).getTime();
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function mergeAgendaBackupValues(currentRaw, incomingRaw){
+    const current = agendaNormalizePayloadValue(currentRaw || { records:[] });
+    const incoming = agendaNormalizePayloadValue(incomingRaw || { records:[] });
+    const merged = current.records.slice();
+    const index = new Map();
+    merged.forEach((record,position) => index.set(agendaRecordMergeKey(record),position));
+    incoming.records.forEach((record) => {
+      const key = agendaRecordMergeKey(record);
+      if (index.has(key)){
+        const position = index.get(key);
+        if (agendaRecordTimestamp(record) >= agendaRecordTimestamp(merged[position])) merged[position] = record;
+      } else {
+        index.set(key,merged.length);
+        merged.push(record);
+      }
+    });
+    return {
+      schemaVersion:AGENDA_BACKUP_SCHEMA_VERSION,
+      updatedAt:new Date().toISOString(),
+      records:merged
+    };
+  }
 
   function isSuiteLocalStorageKey(key){
     if (!key) return false;
@@ -109,7 +355,12 @@
     for (const [k, v] of Object.entries(src)){
       if (!isSuiteLocalStorageKey(k)) continue;
       if (isRetiredGateStorageKey(k)) continue;
-      out[k] = v;
+      if (k === AGENDA_BACKUP_KEY){
+        const agenda = parseAgendaBackupBlock({ [AGENDA_BACKUP_KEY]:v });
+        out[k] = agenda.ok && agenda.present ? JSON.stringify(agenda.value) : v;
+      } else {
+        out[k] = v;
+      }
     }
     return out;
   }
@@ -895,7 +1146,7 @@
     return { data: out, keys, count: keys.length };
   }
 
-  function buildSummaryHtmlFromSnapshot({ dbSnapshots, lsKeys, exportedAt, estimatedBytes, warnings, appName }){
+  function buildSummaryHtmlFromSnapshot({ dbSnapshots, lsKeys, exportedAt, estimatedBytes, warnings, appName, agenda }){
     const totalDbRecords = dbSnapshots.reduce((acc, d) => {
       const stores = Object.values(d.stores || {});
       return acc + stores.reduce((a, s) => a + (Number(s.count) || 0), 0);
@@ -925,6 +1176,17 @@
       : `<div class="muted">0 keys</div>`;
 
     const exportedAtPretty = exportedAt ? new Date(exportedAt).toLocaleString() : '';
+    const agendaHtml = agenda && agenda.included ? `
+      <hr>
+      <div><b>Agenda</b></div>
+      <div class="kv">
+        <div class="k">Registros</div><div class="v">${escapeHtml(String(agenda.records || 0))}</div>
+        <div class="k">Reuniones</div><div class="v">${escapeHtml(String(agenda.meetings || 0))}</div>
+        <div class="k">Tareas</div><div class="v">${escapeHtml(String(agenda.tasks || 0))}</div>
+        <div class="k">Compras</div><div class="v">${escapeHtml(String(agenda.purchases || 0))}</div>
+        <div class="k">Artículos de compras</div><div class="v">${escapeHtml(String(agenda.purchaseItems || 0))}</div>
+      </div>
+    ` : '';
 
     return `
       <div>
@@ -947,6 +1209,7 @@
 
         <div><b>localStorage (Suite)</b></div>
         ${lsDetails}
+        ${agendaHtml}
 
         <div class="small-note">Nota: al importar se reemplazan o fusionan únicamente los bloques incluidos; los bloques ausentes se conservan.</div>
       </div>
@@ -1975,6 +2238,7 @@
         blocksNotIncluded:blockInfo.notIncluded,
         recordCounts:blockInfo.recordCounts,
         ...(costsIncluded ? { costs:{ included:true, schemaVersion:COSTS_BACKUP_SCHEMA_VERSION, storageKey:COSTS_BACKUP_KEY } } : {}),
+        agenda:agendaBackupSummary(outData.localStorage),
         origin: 'exportador_personalizado_a33'
       },
       data: {
@@ -2015,7 +2279,8 @@
       exportedAt: result.backup?.meta?.exportedAt,
       estimatedBytes: result.estimatedBytes || 0,
       warnings: [],
-      appName: result.backup?.meta?.appName || BACKUP_APP_NAME
+      appName: result.backup?.meta?.appName || BACKUP_APP_NAME,
+      agenda:result.backup?.meta?.agenda
     }).replace(
       'Nota: al importar se reemplazan o fusionan únicamente los bloques incluidos; los bloques ausentes se conservan.',
       'Nota: este respaldo personalizado es parcial y puede importarse sin borrar datos no incluidos.'
@@ -2161,7 +2426,8 @@
         blocksIncluded:blockInfo.included,
         blocksNotIncluded:blockInfo.notIncluded,
         recordCounts:blockInfo.recordCounts,
-        ...(costsBlock.present && costsBlock.ok ? { costs:{ included:true, schemaVersion:costsBlock.version || COSTS_BACKUP_SCHEMA_VERSION, storageKey:COSTS_BACKUP_KEY } } : {})
+        ...(costsBlock.present && costsBlock.ok ? { costs:{ included:true, schemaVersion:costsBlock.version || COSTS_BACKUP_SCHEMA_VERSION, storageKey:COSTS_BACKUP_KEY } } : {}),
+        agenda:agendaBackupSummary(fullLocalStorage)
       },
       data: {
         indexedDB: cleanIndexed.data,
@@ -2204,9 +2470,11 @@
     if (!obj.data.localStorage || typeof obj.data.localStorage !== 'object') return { ok: false, reason: 'Falta data.localStorage.' };
     const costsValidation = parseCostsBackupBlock(obj.data.localStorage);
     if (!costsValidation.ok) return { ok:false, reason:costsValidation.reason || 'Bloque Costos inválido.' };
+    const agendaValidation = parseAgendaBackupBlock(obj.data.localStorage);
+    if (!agendaValidation.ok) return { ok:false, reason:agendaValidation.reason || 'Bloque Agenda inválido.' };
     // El código de lote es dato literal: la validación estructural nunca lo recalcula
     // ni rechaza AV, formatos históricos o la marca comprimida x/X.
-    return { ok: true, kind: getBackupImportKind(obj), costs:costsValidation, lotCodeLiteral:true };
+    return { ok: true, kind: getBackupImportKind(obj), costs:costsValidation, agenda:agendaValidation, lotCodeLiteral:true };
   }
 
   function summarizeBackupObject(obj){
@@ -2242,7 +2510,8 @@
       lsKeys,
       estimatedBytes,
       exportedAt: obj?.meta?.exportedAt,
-      appName: obj?.meta?.appName || obj?.meta?.app
+      appName: obj?.meta?.appName || obj?.meta?.app,
+      agenda:agendaBackupSummary(cleanObj?.data?.localStorage || {})
     };
   }
 
@@ -2308,7 +2577,8 @@
       exportedAt: sum.exportedAt,
       estimatedBytes: sum.estimatedBytes,
       warnings,
-      appName: sum.appName
+      appName: sum.appName,
+      agenda:sum.agenda
     }).replace(
       'Nota: al importar se reemplazan o fusionan únicamente los bloques incluidos; los bloques ausentes se conservan.',
       'Nota: este respaldo parcial se fusiona por ID y conserva los datos no incluidos.'
@@ -2356,7 +2626,8 @@
       exportedAt: sum.exportedAt,
       estimatedBytes: sum.estimatedBytes,
       warnings,
-      appName: sum.appName
+      appName: sum.appName,
+      agenda:sum.agenda
     }) + `
       ${legacyLabel}
       <hr>
@@ -2784,6 +3055,17 @@
   }
 
   function mergeLocalStorageValue(key, incomingRaw){
+    if (String(key || '') === AGENDA_BACKUP_KEY){
+      try{
+        const currentRaw = window.A33Storage.getItem(key) || JSON.stringify({ schemaVersion:AGENDA_BACKUP_SCHEMA_VERSION,records:[] });
+        const merged = mergeAgendaBackupValues(currentRaw,incomingRaw);
+        window.A33Storage.setItem(key,JSON.stringify(merged));
+        return true;
+      }catch(error){
+        console.warn('Agenda no pudo fusionarse durante la importación.',error);
+        return false;
+      }
+    }
     if (String(key || '') === 'a33_catalog_deleted_product_ids_v2' && window.A33ProductIntegrity){
       const current = window.A33ProductIntegrity.readTombstones();
       let incoming = [];
@@ -3019,7 +3301,10 @@
     for (const [k, v] of Object.entries(incoming)){
       if (!isSuiteLocalStorageKey(k) || isRetiredGateStorageKey(k)) continue;
       if (k === 'a33_catalog_deleted_product_ids_v2') mergeLocalStorageValue(k, v);
-      else window.A33Storage.setItem(k, String(v ?? ''));
+      else if (k === AGENDA_BACKUP_KEY){
+        const normalizedAgenda = agendaNormalizePayloadValue(v);
+        window.A33Storage.setItem(k,JSON.stringify(normalizedAgenda));
+      } else window.A33Storage.setItem(k, String(v ?? ''));
     }
     if (window.A33ProductIntegrity && typeof window.A33ProductIntegrity.applyTombstonesToCatalog === 'function'){
       await window.A33ProductIntegrity.applyTombstonesToCatalog({ source:'importacion_completa' });
@@ -3115,7 +3400,8 @@
         exportedAt: backup?.meta?.exportedAt,
         estimatedBytes,
         warnings: [],
-        appName: backup?.meta?.appName
+        appName: backup?.meta?.appName,
+        agenda:backup?.meta?.agenda
       });
 
       showModal({
@@ -6679,6 +6965,15 @@ Los históricos se conservarán. ¿Continuar?`);
       engine: window.A33Currency || null
     });
   }
+
+  window.A33AgendaBackupContract = Object.freeze({
+    storageKey:AGENDA_BACKUP_KEY,
+    schemaVersion:AGENDA_BACKUP_SCHEMA_VERSION,
+    normalizeRaw:function(raw){ return agendaNormalizePayloadValue(raw); },
+    validateMap:function(map){ return parseAgendaBackupBlock(map); },
+    mergeRaw:function(currentRaw,incomingRaw){ return mergeAgendaBackupValues(currentRaw,incomingRaw); },
+    summarizeMap:function(map){ return agendaBackupSummary(map); }
+  });
 
   document.addEventListener('DOMContentLoaded', () => {
     initConfigTabs();
