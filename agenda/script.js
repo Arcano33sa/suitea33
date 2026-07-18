@@ -1121,6 +1121,34 @@
     };
   }
 
+  function normalizePurchaseGroup(value, purchaseValue, recordSource){
+    const source = value && typeof value === 'object' ? value : {};
+    const record = recordSource && typeof recordSource === 'object' ? recordSource : {};
+    const rawItems = Array.isArray(source.items) ? source.items : [];
+    const items = rawItems.map(function(item){
+      const normalized = normalizePurchase(item, record);
+      return {
+        draftId: String(item && (item.draftId || item.lineId) || '').trim(),
+        ...normalized
+      };
+    }).filter(function(item){
+      return item.materialId && item.name && item.unit && item.quantity != null && item.quantity > 0;
+    });
+    if (!items.length) {
+      const legacy = normalizePurchase(purchaseValue, record);
+      if (legacy.materialId && legacy.name && legacy.unit && legacy.quantity != null && legacy.quantity > 0) {
+        items.push({ draftId:'', ...legacy });
+      }
+    }
+    const totalGeneral = round2(items.reduce(function(sum,item){ return sum + Number(item.subtotal || 0); },0));
+    return {
+      version: Number(source.version) || 1,
+      itemCount: items.length,
+      totalGeneral,
+      items
+    };
+  }
+
   function normalizeRecord(input){
     const source = input && typeof input === 'object' ? input : {};
     const type = normalizeType(source.type);
@@ -1143,7 +1171,10 @@
       createdAt,
       updatedAt,
       pedido: normalizePedido(source.pedido),
-      purchase: type === 'compra' ? normalizePurchase(source.purchase || source.compra, source) : normalizePurchase(null, {})
+      purchase: type === 'compra' ? normalizePurchase(source.purchase || source.compra, source) : normalizePurchase(null, {}),
+      purchaseGroup: type === 'compra'
+        ? normalizePurchaseGroup(source.purchaseGroup, source.purchase || source.compra, source)
+        : { version:1, itemCount:0, totalGeneral:0, items:[] }
     };
   }
 

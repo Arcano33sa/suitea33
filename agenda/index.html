@@ -16,7 +16,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.95&r=7" />
-  <link rel="stylesheet" href="style.css?v=4.20.95&r=9" />
+  <link rel="stylesheet" href="style.css?v=4.20.95&r=11" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.95&r=7" />
 </head>
 <body>
@@ -363,19 +363,40 @@
                   <option value="alta">Alta</option>
                 </select>
               </label>
-              <label class="agenda-field">
-                <span>Estado</span>
-                <select id="purchaseStatus">
-                  <option value="pendiente">Pendiente</option>
-                  <option value="hecho">Hecho</option>
-                  <option value="cancelado">Cancelado</option>
-                </select>
-              </label>
+              <div class="purchase-status-add-row agenda-field--full">
+                <label class="agenda-field">
+                  <span>Estado</span>
+                  <select id="purchaseStatus">
+                    <option value="pendiente">Pendiente</option>
+                    <option value="hecho">Hecho</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </label>
+                <button class="agenda-btn agenda-btn--add" type="button" id="purchaseAddBtn" title="Agregar el artículo a la compra" aria-label="Agregar el artículo a la compra">Agregar</button>
+              </div>
               <label class="agenda-field agenda-field--full">
                 <span>Notas</span>
                 <textarea id="purchaseNotes" rows="4" maxlength="1200" placeholder="Notas opcionales de esta compra."></textarea>
               </label>
             </div>
+
+            <section class="purchase-draft-panel" id="purchaseDraftPanel" aria-labelledby="purchaseDraftTitle">
+              <div class="purchase-draft-head">
+                <div>
+                  <p class="agenda-eyebrow">Preparación temporal</p>
+                  <h3 id="purchaseDraftTitle">Artículos agregados</h3>
+                </div>
+                <span class="agenda-badge agenda-badge--soft" id="purchaseDraftCount">0 artículos</span>
+              </div>
+              <div class="purchase-draft-empty" id="purchaseDraftEmpty">
+                Agrega uno o varios artículos antes de guardar la compra.
+              </div>
+              <div class="purchase-draft-list" id="purchaseDraftList" aria-live="polite"></div>
+              <div class="purchase-draft-total">
+                <span>Total de la compra planificada:</span>
+                <strong id="purchaseDraftTotal">C$0.00</strong>
+              </div>
+            </section>
 
             <div class="agenda-form-meta">
               <span><strong>ID:</strong> <span id="purchaseMetaId">Nuevo</span></span>
@@ -386,7 +407,7 @@
             <div class="agenda-form-actions">
               <button class="agenda-btn agenda-btn--ghost" type="button" id="purchaseNewBtn">Nuevo</button>
               <button class="agenda-btn agenda-btn--danger" type="button" id="purchaseDeleteBtn" hidden>Eliminar</button>
-              <button class="agenda-btn agenda-btn--primary" type="submit" id="purchaseSaveBtn">Guardar Compra</button>
+              <button class="agenda-btn agenda-btn--primary" type="submit" id="purchaseSaveBtn">Guardar compra</button>
             </div>
             <p class="agenda-helper" id="purchaseFormStatus" aria-live="polite">El artículo, categoría, unidad y precio se guardan como fotografía histórica.</p>
           </form>
@@ -450,7 +471,7 @@
   <script src="/assets/js/a33-release.js?v=4.20.95&r=54"></script>
   <script src="/assets/js/a33-storage.js?v=4.20.95&r=20"></script>
   <script src="../assets/js/a33-materials.js?v=4.20.95&r=2"></script>
-  <script src="script.js?v=4.20.95&r=15"></script>
-  <script src="purchases.js?v=4.20.95&r=1"></script>
+  <script src="script.js?v=4.20.95&r=16"></script>
+  <script src="purchases.js?v=4.20.95&r=3"></script>
 </body>
 </html>

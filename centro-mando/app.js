@@ -5981,6 +5981,51 @@ function agendaReadRaw(){
   try{ return String(localStorage.getItem(AGENDA_STORAGE_KEY) || ''); }catch(_){ return ''; }
 }
 
+function agendaMoney(value){
+  const n = Number(value || 0);
+  try{
+    return new Intl.NumberFormat('es-NI',{style:'currency',currency:'NIO',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number.isFinite(n) ? n : 0);
+  }catch(_){ return 'C$' + (Number.isFinite(n) ? n : 0).toFixed(2); }
+}
+
+function agendaNormalizePurchaseItem(input, source){
+  const row = input && typeof input === 'object' ? input : {};
+  const snapshot = row.snapshot && typeof row.snapshot === 'object' ? row.snapshot : {};
+  const owner = source && typeof source === 'object' ? source : {};
+  const price = row.priceUsed == null ? (row.price == null ? snapshot.priceUsed : row.price) : row.priceUsed;
+  const quantity = row.quantity == null || row.quantity === '' ? null : Number(row.quantity);
+  const priceUsed = price == null || price === '' ? null : Number(price);
+  const computed = Number.isFinite(priceUsed) && Number.isFinite(quantity) ? Math.round((priceUsed * quantity + Number.EPSILON) * 100) / 100 : null;
+  const storedSubtotal = row.subtotal == null || row.subtotal === '' ? null : Number(row.subtotal);
+  return {
+    materialId:String(row.materialId || snapshot.materialId || '').trim(),
+    name:String(row.name || row.materialName || snapshot.name || owner.subject || '').replace(/\s+/g,' ').trim(),
+    category:String(row.category || snapshot.category || '').replace(/\s+/g,' ').trim(),
+    unit:String(row.unit || snapshot.unit || '').trim(),
+    priceUsed:Number.isFinite(priceUsed) ? priceUsed : 0,
+    quantity:Number.isFinite(quantity) ? quantity : null,
+    subtotal:computed != null ? computed : (Number.isFinite(storedSubtotal) ? storedSubtotal : 0)
+  };
+}
+
+function agendaValidPurchaseItem(item){
+  return !!(item && item.name && item.unit && Number(item.quantity) > 0 && Number.isFinite(Number(item.priceUsed)));
+}
+
+function agendaPurchaseItems(source){
+  const record = source && typeof source === 'object' ? source : {};
+  const group = record.purchaseGroup && typeof record.purchaseGroup === 'object' ? record.purchaseGroup : {};
+  let candidates = Array.isArray(group.items) ? group.items : [];
+  if (!candidates.length && Array.isArray(record.purchaseItems)) candidates = record.purchaseItems;
+  if (!candidates.length && record.purchase && Array.isArray(record.purchase.items)) candidates = record.purchase.items;
+  let items = candidates.map((item)=>agendaNormalizePurchaseItem(item,record)).filter(agendaValidPurchaseItem);
+  if (!items.length){
+    const legacy = agendaNormalizePurchaseItem(record.purchase || record.compra || {},record);
+    if (agendaValidPurchaseItem(legacy)) items = [legacy];
+  }
+  return items;
+}
+
 function agendaNormalizeRecord(input, index){
   const source = input && typeof input === 'object' ? input : {};
   const pedidoSource = source.pedido && typeof source.pedido === 'object' ? source.pedido : {};
@@ -5989,14 +6034,17 @@ function agendaNormalizeRecord(input, index){
   const fallbackKey = [
     source.subject, source.type, source.client, source.date, source.time, source.createdAt, index
   ].map((v)=>String(v || '')).join('|');
+  const type = agendaNormalizeType(source.type);
+  const purchaseItems = type === 'compra' ? agendaPurchaseItems(source) : [];
+  const purchaseTotal = Math.round((purchaseItems.reduce((sum,item)=>sum + Number(item.subtotal || 0),0) + Number.EPSILON) * 100) / 100;
   return {
     id: id || ('agenda-readonly-' + index + '-' + fallbackKey.length),
     sourceId: id,
     subject: String(source.subject || '').trim(),
-    type: agendaNormalizeType(source.type),
-    client: String(source.client || '').replace(/\s+/g, ' ').trim(),
-    date: agendaNormalizeDate(source.date),
-    time: agendaNormalizeTime(source.time),
+    type,
+    client: type === 'compra' ? '' : String(source.client || '').replace(/\s+/g, ' ').trim(),
+    date: agendaNormalizeDate(source.date || source.neededDate || source.fechaNecesaria),
+    time: type === 'compra' ? '' : agendaNormalizeTime(source.time),
     status: agendaNormalizeStatus(source.status),
     priority: agendaNormalizePriority(source.priority),
     notes: String(source.notes || '').trim(),
@@ -6009,14 +6057,11 @@ function agendaNormalizeRecord(input, index){
       delivery: agendaNormalizeDate(pedidoSource.delivery),
       total: pedidoSource.total == null || pedidoSource.total === '' ? null : Number(pedidoSource.total)
     },
-    purchase: {
-      materialId: String(source.purchase?.materialId || source.purchase?.snapshot?.materialId || '').trim(),
-      name: String(source.purchase?.name || source.purchase?.snapshot?.name || source.subject || '').replace(/\s+/g, ' ').trim(),
-      category: String(source.purchase?.category || source.purchase?.snapshot?.category || '').replace(/\s+/g, ' ').trim(),
-      unit: String(source.purchase?.unit || source.purchase?.snapshot?.unit || '').trim(),
-      priceUsed: source.purchase?.priceUsed == null ? null : Number(source.purchase.priceUsed),
-      quantity: source.purchase?.quantity == null ? null : Number(source.purchase.quantity),
-      subtotal: source.purchase?.subtotal == null ? null : Number(source.purchase.subtotal)
+    purchase: purchaseItems[0] || { materialId:'',name:'',category:'',unit:'',priceUsed:null,quantity:null,subtotal:null },
+    purchaseGroup: {
+      itemCount:purchaseItems.length,
+      totalGeneral:purchaseTotal,
+      items:purchaseItems
     }
   };
 }
@@ -6100,17 +6145,17 @@ function agendaBuildDetail(record){
   if (record.notes) lines.push(agendaTruncate(record.notes, 110));
   if (record.type === 'reunion' && record.pedido && record.pedido.enabled){
     const product = record.pedido.product || 'Producto';
-    const quantity = Number.isFinite(record.pedido.quantity) ? (' × ' + record.pedido.quantity) : '';
+    const quantity = Number.isFinite(record.pedido.quantity) ? ' × ' + record.pedido.quantity : '';
     lines.push('Pedido: ' + product + quantity);
   }
-  if (record.type === 'compra' && record.purchase){
-    const quantity = Number.isFinite(record.purchase.quantity) ? record.purchase.quantity : '—';
-    const unit = record.purchase.unit || '';
-    const subtotal = Number.isFinite(record.purchase.subtotal)
-      ? new Intl.NumberFormat('es-NI',{style:'currency',currency:'NIO',minimumFractionDigits:2,maximumFractionDigits:2}).format(record.purchase.subtotal)
-      : '—';
-    lines[0] = record.purchase.name || record.subject || '(Compra)';
-    lines.push(quantity + ' ' + unit + ' · ' + subtotal);
+  if (record.type === 'compra'){
+    const group = record.purchaseGroup || { itemCount:0,totalGeneral:0,items:[] };
+    const count = Number(group.itemCount || 0);
+    lines[0] = 'Compra del ' + agendaFormatDate(record.date);
+    lines.push(count + ' artículo' + (count === 1 ? '' : 's') + ' · ' + agendaMoney(group.totalGeneral));
+    const names = (group.items || []).slice(0,3).map((item)=>item.name).filter(Boolean).join(', ');
+    if (names) lines.push(agendaTruncate(names + (count > 3 ? '…' : ''), 110));
+    if (record.notes) lines.push(agendaTruncate(record.notes, 110));
   }
   return lines;
 }
@@ -6138,9 +6183,18 @@ function agendaCreateRow(record, groupKey){
 
   const statusCell = agendaCreateCell('Estado', 'cmd-agenda-temporal');
   const statusPill = document.createElement('span');
-  statusPill.className = 'cmd-agenda-status ' + temporal.className;
-  statusPill.textContent = temporal.label;
-  statusCell.appendChild(statusPill);
+  if (record.type === 'compra') {
+    statusPill.className = 'cmd-agenda-status is-pending';
+    statusPill.textContent = AGENDA_STATUS_LABELS[record.status] || 'Pendiente';
+    const timingPill = document.createElement('small');
+    timingPill.className = 'cmd-agenda-timing ' + temporal.className;
+    timingPill.textContent = temporal.label;
+    statusCell.append(statusPill, timingPill);
+  } else {
+    statusPill.className = 'cmd-agenda-status ' + temporal.className;
+    statusPill.textContent = temporal.label;
+    statusCell.appendChild(statusPill);
+  }
 
   const typeCell = agendaCreateCell('Tipo', 'cmd-agenda-type');
   const typeMain = document.createElement('span');
@@ -6160,7 +6214,9 @@ function agendaCreateRow(record, groupKey){
   if (record.type === 'reunion') {
     clientCell.textContent = 'Cliente: ' + (record.client || '—');
   } else if (record.type === 'compra') {
-    clientCell.textContent = 'Compra planificada';
+    const group = record.purchaseGroup || { itemCount:0,totalGeneral:0 };
+    clientCell.textContent = String(group.itemCount || 0) + ' artículo' + (Number(group.itemCount || 0) === 1 ? '' : 's') + ' · ' + agendaMoney(group.totalGeneral);
+    clientCell.classList.add('cmd-agenda-purchase-summary');
   } else {
     clientCell.textContent = 'Tarea independiente';
   }
@@ -6172,7 +6228,7 @@ function agendaCreateRow(record, groupKey){
     detailCell.appendChild(span);
   });
 
-  const deliveryCell = agendaCreateCell('Entrega', 'cmd-agenda-delivery cmd-agenda-nowrap ' + delivery.className);
+  const deliveryCell = agendaCreateCell(record.type === 'compra' ? 'Fecha necesaria' : 'Entrega', 'cmd-agenda-delivery cmd-agenda-nowrap ' + delivery.className);
   const deliveryText = document.createElement('span');
   deliveryText.textContent = delivery.text;
   deliveryCell.appendChild(deliveryText);
@@ -6200,6 +6256,36 @@ function agendaCreateRow(record, groupKey){
   return row;
 }
 
+function agendaCreateTypeBlock(type, records, groupKey){
+  const wrap = document.createElement('div');
+  wrap.className = 'cmd-agenda-type-block is-' + type;
+  const subhead = document.createElement('div');
+  subhead.className = 'cmd-agenda-type-head';
+  const title = document.createElement('strong');
+  title.textContent = AGENDA_TYPE_LABELS[type] || 'Agenda';
+  const count = document.createElement('span');
+  count.textContent = records.length + ' registro' + (records.length === 1 ? '' : 's');
+  subhead.append(title,count);
+
+  const table = document.createElement('div');
+  table.className = 'cmd-agenda-table';
+  table.setAttribute('role','table');
+  table.setAttribute('aria-label',(AGENDA_TYPE_LABELS[type] || 'Agenda') + ' · ' + agendaTemporalMeta(groupKey).title);
+  const header = document.createElement('div');
+  header.className = 'cmd-agenda-row is-head';
+  ['Estado','Tipo','Fecha y hora','Contexto','Detalle','Entrega','Prioridad','Acción'].forEach((label)=>{
+    const cell = document.createElement('div');
+    cell.className = 'cmd-agenda-cell';
+    cell.setAttribute('role','columnheader');
+    cell.textContent = label;
+    header.appendChild(cell);
+  });
+  table.appendChild(header);
+  records.forEach((record)=>table.appendChild(agendaCreateRow(record,groupKey)));
+  wrap.append(subhead,table);
+  return wrap;
+}
+
 function agendaCreateGroup(groupKey, records){
   const temporal = agendaTemporalMeta(groupKey);
   const section = document.createElement('section');
@@ -6214,23 +6300,13 @@ function agendaCreateGroup(groupKey, records){
   count.textContent = records.length + ' registro' + (records.length === 1 ? '' : 's');
   heading.append(title, count);
 
-  const table = document.createElement('div');
-  table.className = 'cmd-agenda-table';
-  table.setAttribute('role', 'table');
-  table.setAttribute('aria-label', temporal.title + ' de Agenda');
-
-  const header = document.createElement('div');
-  header.className = 'cmd-agenda-row is-head';
-  ['Estado','Tipo','Fecha y hora','Contexto','Detalle','Entrega','Prioridad','Acción'].forEach((label)=>{
-    const cell = document.createElement('div');
-    cell.className = 'cmd-agenda-cell';
-    cell.setAttribute('role', 'columnheader');
-    cell.textContent = label;
-    header.appendChild(cell);
+  const body = document.createElement('div');
+  body.className = 'cmd-agenda-separated-types';
+  ['reunion','tarea','compra'].forEach((type)=>{
+    const subset = records.filter((record)=>record.type === type);
+    if (subset.length) body.appendChild(agendaCreateTypeBlock(type,subset,groupKey));
   });
-  table.appendChild(header);
-  records.forEach((record)=>table.appendChild(agendaCreateRow(record, groupKey)));
-  section.append(heading, table);
+  section.append(heading, body);
   return section;
 }
 

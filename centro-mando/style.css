@@ -1836,3 +1836,66 @@ button.cmd-pill{ cursor: pointer; }
   word-break:break-word;
   font-variant-numeric:tabular-nums;
 }
+
+
+/* Centro de Mando · Agenda Compras agrupadas · Etapa 2/3 */
+.cmd-agenda-separated-types{
+  display:grid;
+  gap:14px;
+}
+.cmd-agenda-type-block{
+  min-width:0;
+  padding:10px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.018);
+}
+.cmd-agenda-type-block.is-compra{
+  border-color:rgba(221,191,100,.24);
+  background:rgba(123,24,24,.07);
+}
+.cmd-agenda-type-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin:0 2px 8px;
+}
+.cmd-agenda-type-head strong{
+  font-size:12px;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+.cmd-agenda-type-head span{
+  color:var(--muted);
+  font-size:11px;
+  white-space:nowrap;
+}
+.cmd-agenda-temporal{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:4px;
+}
+.cmd-agenda-status.is-pending{
+  color:#f4dd96;
+  border-color:rgba(221,191,100,.35);
+  background:rgba(221,191,100,.08);
+}
+.cmd-agenda-timing{
+  font-size:10px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.cmd-agenda-timing.is-overdue{ color:#d83232; }
+.cmd-agenda-timing.is-today{ color:#9b6a00; }
+.cmd-agenda-timing.is-upcoming{ color:#315f9d; }
+.cmd-agenda-timing.is-undated{ color:var(--muted); }
+.cmd-agenda-purchase-summary{
+  font-weight:700;
+  white-space:nowrap;
+}
+@media (max-width:760px){
+  .cmd-agenda-type-block{ padding:8px; }
+  .cmd-agenda-type-head{ align-items:flex-start; }
+}

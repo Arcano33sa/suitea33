@@ -2,13 +2,13 @@
 try { importScripts('/assets/js/a33-release.js?v=4.20.95&r=54'); } catch (_) {}
 const VERSION = self.A33_RELEASE && self.A33_RELEASE.suiteVersion ? String(self.A33_RELEASE.suiteVersion) : '4.20.95';
 const REV = self.A33_RELEASE && self.A33_RELEASE.rev != null ? String(self.A33_RELEASE.rev) : '1';
-const CACHE = `a33-v${VERSION}-agenda-r${REV}-m1`;
+const CACHE = `a33-v${VERSION}-agenda-r${REV}-m3`;
 const PRECACHE = [
   './',
-  './index.html?v=4.20.95&r=1',
-  './style.css?v=4.20.95&r=9',
-  './script.js?v=4.20.95&r=15',
-  './purchases.js?v=4.20.95&r=1',
+  './index.html?v=4.20.95&r=3',
+  './style.css?v=4.20.95&r=11',
+  './script.js?v=4.20.95&r=16',
+  './purchases.js?v=4.20.95&r=3',
   './manifest.webmanifest?v=4.20.95&r=1',
   './offline.html',
   '../icon-a33-192.png',
@@ -35,7 +35,7 @@ self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).then(response => {
       const clone = response.clone(); caches.open(CACHE).then(cache => cache.put(event.request, clone)).catch(()=>{}); return response;
-    }).catch(() => caches.match(event.request).then(hit => hit || caches.match('./index.html?v=4.20.95&r=1')).then(hit => hit || caches.match('./offline.html'))));
+    }).catch(() => caches.match(event.request).then(hit => hit || caches.match('./index.html?v=4.20.95&r=3')).then(hit => hit || caches.match('./offline.html'))));
     return;
   }
   event.respondWith(caches.match(event.request).then(hit => hit || fetch(event.request).then(response => {

@@ -1259,3 +1259,317 @@ code{
 @media (min-width:741px) and (max-width:1180px) and (orientation:portrait){
   .purchase-workspace{ grid-template-columns:1fr; }
 }
+
+/* Agenda · Compras agrupadas · Etapa 1/3 */
+.purchase-status-add-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:end;
+}
+.purchase-status-add-row .agenda-field{ min-width:0; }
+.agenda-btn--add{
+  min-width:112px;
+  min-height:48px;
+  padding-inline:18px;
+  border-color:rgba(221,191,100,.48);
+  background:linear-gradient(180deg,rgba(123,24,24,.92),rgba(75,12,12,.96));
+  color:#fff7e8;
+  box-shadow:0 10px 24px rgba(0,0,0,.24);
+  white-space:nowrap;
+}
+.agenda-btn--add:hover,
+.agenda-btn--add:focus-visible{
+  border-color:rgba(221,191,100,.82);
+  box-shadow:0 0 0 4px rgba(221,191,100,.09),0 12px 28px rgba(0,0,0,.3);
+  outline:none;
+}
+.purchase-draft-panel{
+  margin-top:16px;
+  padding:15px;
+  border-radius:20px;
+  border:1px solid rgba(221,191,100,.18);
+  background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.16));
+  overflow:hidden;
+}
+.purchase-draft-panel.has-items{
+  border-color:rgba(221,191,100,.3);
+  background:linear-gradient(180deg,rgba(123,24,24,.1),rgba(0,0,0,.18));
+}
+.purchase-draft-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.purchase-draft-head h3{
+  margin:4px 0 0;
+  font-family:"Cinzel",ui-serif,Georgia,serif;
+  font-size:1rem;
+  letter-spacing:.04em;
+}
+.purchase-draft-empty{
+  padding:13px;
+  border-radius:14px;
+  border:1px dashed rgba(221,191,100,.2);
+  color:var(--agenda-muted);
+  font-size:13px;
+  line-height:1.5;
+  text-align:center;
+}
+.purchase-draft-empty[hidden]{ display:none!important; }
+.purchase-draft-list{
+  display:grid;
+  gap:9px;
+}
+.purchase-draft-row{
+  min-width:0;
+  display:grid;
+  grid-template-columns:minmax(0,1.35fr) minmax(78px,.65fr) minmax(105px,.85fr) auto;
+  grid-template-areas:
+    "name quantity price actions"
+    "unit unit subtotal actions";
+  gap:7px 10px;
+  align-items:center;
+  padding:11px;
+  border-radius:15px;
+  border:1px solid rgba(221,191,100,.13);
+  background:rgba(0,0,0,.22);
+}
+.purchase-draft-row.is-editing{
+  border-color:rgba(221,191,100,.42);
+  box-shadow:0 0 0 3px rgba(221,191,100,.06);
+}
+.purchase-draft-name{
+  grid-area:name;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.purchase-draft-name strong,
+.purchase-draft-name small{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.purchase-draft-name strong{ font-size:13px; }
+.purchase-draft-name small{ color:var(--agenda-muted); font-size:11px; }
+.purchase-draft-cell{
+  min-width:0;
+  color:var(--agenda-text);
+  font-size:12px;
+  white-space:nowrap;
+}
+.purchase-draft-cell::before{
+  content:attr(data-label) ": ";
+  color:var(--agenda-muted);
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.purchase-draft-quantity{ grid-area:quantity; }
+.purchase-draft-unit{ grid-area:unit; }
+.purchase-draft-price{ grid-area:price; }
+.purchase-draft-subtotal{ grid-area:subtotal; }
+.purchase-draft-money{ font-weight:700; }
+.purchase-draft-quantity input{
+  width:100%;
+  min-width:0;
+  padding:8px 9px;
+  border-radius:11px;
+  border:1px solid rgba(221,191,100,.34);
+  background:rgba(255,255,255,.06);
+  color:var(--agenda-text);
+  outline:none;
+}
+.purchase-draft-quantity input:focus{
+  border-color:rgba(221,191,100,.68);
+  box-shadow:0 0 0 3px rgba(221,191,100,.08);
+}
+.purchase-draft-actions{
+  grid-area:actions;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
+}
+.purchase-draft-action{
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  padding:0;
+  border-radius:11px;
+  border:1px solid rgba(221,191,100,.22);
+  background:rgba(255,255,255,.045);
+  color:var(--agenda-text);
+  font-weight:800;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+.purchase-draft-action:hover,
+.purchase-draft-action:focus-visible{
+  border-color:rgba(221,191,100,.62);
+  outline:none;
+}
+.purchase-draft-action--save{ color:#d5ffe5; background:rgba(50,130,86,.2); }
+.purchase-draft-action--danger{ color:#ffd6d6; background:rgba(142,38,38,.2); }
+.purchase-draft-total{
+  margin-top:12px;
+  padding-top:12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border-top:1px solid rgba(221,191,100,.16);
+}
+.purchase-draft-total span{
+  color:var(--agenda-muted);
+  font-size:12px;
+  font-weight:700;
+}
+.purchase-draft-total strong{
+  white-space:nowrap;
+  color:#d5ffe5;
+  font-size:1.05rem;
+}
+
+@media (max-width:740px){
+  .purchase-status-add-row{ grid-template-columns:1fr auto; }
+  .agenda-btn--add{ min-width:98px; padding-inline:14px; }
+  .purchase-draft-head{ align-items:center; }
+  .purchase-draft-row{
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:
+      "name actions"
+      "quantity quantity"
+      "unit unit"
+      "price price"
+      "subtotal subtotal";
+  }
+  .purchase-draft-cell{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .purchase-draft-actions{ align-self:start; }
+  .purchase-draft-total{ align-items:flex-end; flex-direction:column; }
+}
+
+@media (max-width:420px){
+  .purchase-status-add-row{ grid-template-columns:1fr; }
+  .agenda-btn--add{ width:100%; }
+}
+
+
+/* Agenda · Compras agrupadas · Etapa 2/3 */
+.purchase-record{
+  cursor:pointer;
+}
+.purchase-record.is-expanded{
+  border-color:rgba(221,191,100,.46);
+  box-shadow:0 0 0 3px rgba(221,191,100,.055),var(--agenda-shadow);
+}
+.purchase-full-detail[hidden]{ display:none!important; }
+.purchase-full-detail{
+  margin:14px 0;
+  padding:14px;
+  border-radius:18px;
+  border:1px solid rgba(221,191,100,.2);
+  background:rgba(0,0,0,.2);
+}
+.purchase-full-detail-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-bottom:10px;
+  color:var(--agenda-muted);
+  font-size:12px;
+}
+.purchase-full-detail-head strong{
+  color:var(--agenda-gold);
+  font-family:"Cinzel",ui-serif,Georgia,serif;
+  font-size:.95rem;
+}
+.purchase-full-detail-head span{ white-space:nowrap; }
+.purchase-detail-list{
+  display:grid;
+  gap:8px;
+}
+.purchase-detail-row{
+  min-width:0;
+  display:grid;
+  grid-template-columns:minmax(0,1.45fr) minmax(125px,.72fr) minmax(135px,.8fr) minmax(135px,.8fr);
+  gap:10px;
+  align-items:center;
+  padding:11px 12px;
+  border-radius:14px;
+  border:1px solid rgba(221,191,100,.12);
+  background:rgba(255,255,255,.025);
+}
+.purchase-detail-name{
+  min-width:0;
+  display:grid;
+  gap:3px;
+}
+.purchase-detail-name strong,
+.purchase-detail-name small{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.purchase-detail-name small{ color:var(--agenda-muted); font-size:11px; }
+.purchase-detail-cell{
+  min-width:0;
+  color:var(--agenda-text);
+  font-size:12px;
+}
+.purchase-detail-cell::before{
+  display:block;
+  content:attr(data-label);
+  margin-bottom:3px;
+  color:var(--agenda-muted);
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+.purchase-detail-nowrap{ white-space:nowrap; }
+.purchase-detail-subtotal{ font-weight:800; color:#d5ffe5; }
+.purchase-detail-notes{
+  margin-top:10px;
+  padding:11px 12px;
+  border-radius:14px;
+  background:rgba(123,24,24,.1);
+}
+.purchase-detail-notes strong{ color:var(--agenda-gold); font-size:12px; }
+.purchase-detail-notes p{
+  margin:5px 0 0;
+  color:var(--agenda-muted);
+  line-height:1.55;
+  overflow-wrap:anywhere;
+}
+@media (max-width:980px){
+  .purchase-detail-row{
+    grid-template-columns:minmax(0,1fr) repeat(3,minmax(110px,.45fr));
+  }
+}
+@media (max-width:740px){
+  .purchase-full-detail-head{ align-items:flex-start; flex-direction:column; }
+  .purchase-detail-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .purchase-detail-name{ grid-column:1/-1; }
+  .purchase-detail-name strong,
+  .purchase-detail-name small{ white-space:normal; overflow-wrap:anywhere; }
+  .purchase-detail-nowrap{ white-space:nowrap; }
+}
+@media (max-width:420px){
+  .purchase-detail-row{ grid-template-columns:1fr; }
+  .purchase-detail-name{ grid-column:auto; }
+}
