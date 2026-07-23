@@ -13,7 +13,7 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '1';
 
 const MODULE = 'lotes';
-const MODULE_CACHE_REV = '21';
+const MODULE_CACHE_REV = '24';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -25,9 +25,9 @@ function isLegacySuiteCache(name){
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.95&r=17',
-  './style.css?v=4.20.95&r=10',
-  './script.js?v=4.20.95&r=18',
+  './index.html?v=4.20.95&r=19',
+  './style.css?v=4.20.95&r=11',
+  './script.js?v=4.20.95&r=21',
   './manifest.webmanifest?v=4.20.95&r=11',
   './offline.html',
   './images/logo.png',
@@ -104,7 +104,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.95&r=17')) ||
+      (await cache.match('./index.html?v=4.20.95&r=19')) ||
       (await cache.match('./index.html')) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||

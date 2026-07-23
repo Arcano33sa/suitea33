@@ -24,7 +24,8 @@ function functionBody(source, name, nextName) {
 
 assert.ok(lotesHtml.includes('/assets/js/a33-lot-code.js?v=4.20.95&r=6'), "Lotes debe cargar el generador central");
 assert.ok(lotesHtml.indexOf('a33-lot-code.js') < lotesHtml.indexOf('a33-production.js'), "Lotes debe cargar el código de lote antes de Producción");
-assert.ok(lotesSw.includes("MODULE_CACHE_REV = '21'"), "Lotes debe renovar su caché PWA");
+const lotesCacheRev = Number((lotesSw.match(/MODULE_CACHE_REV\s*=\s*'([0-9]+)'/) || [])[1]);
+assert.ok(Number.isFinite(lotesCacheRev) && lotesCacheRev >= 21, "Lotes debe conservar o renovar su caché PWA");
 assert.ok(lotesSw.includes('a33-lot-code.js?v=4.20.95&r=6'), "Lotes debe precachear el generador central");
 
 const canonical = functionBody(lotesJs, "canonicalBatchCode", "batchCodeIdentityKey");

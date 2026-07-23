@@ -13729,7 +13729,12 @@ async function addRestock(eventId, productId, qty, extra){
   await put('inventory', row);
 }
 
-async function addAdjust(eventId, productId, qty, notes){ if (!qty) throw new Error('Ajuste no puede ser 0'); await put('inventory', {eventId, productId, type:'adjust', qty, notes: notes||'Ajuste', time:new Date().toISOString()}); }
+async function addAdjust(eventId, productId, qty, notes){
+  if (!qty) throw new Error('Ajuste no puede ser 0');
+  await put('inventory', {eventId, productId, type:'adjust', qty, notes: notes||'Ajuste', time:new Date().toISOString()});
+  // Ajustes/recálculos y sus reversiones deben refrescar el disponible del lote.
+  try{ await queueLotsUsageSyncPOS(eventId); }catch(_){ }
+}
 async function computeStock(eventId, productRef){
   const evId = Number(eventId);
   const products = await getAll('products');
@@ -14671,6 +14676,23 @@ async function computeLotFifoForEvent(eventId){
   const products = await getAll('products');
   const pMap = new Map((products || []).map(p => [Number(p.id), p]));
   const pStableMap = new Map((products || []).map(p => [catalogProductStableIdPOS(p), p]).filter(([id]) => !!id));
+  const keyMeta = {};
+  const rememberKeyMeta = (key, product, rawRef, fallbackName) => {
+    const fifoKey = String(key || '').trim();
+    if (!fifoKey) return;
+    const p = product && typeof product === 'object' ? product : null;
+    const stableId = catalogProductStableIdPOS(p) || ((!/^\d+$/.test(String(rawRef || '').trim())) ? String(rawRef || '').trim() : '');
+    const internalId = catalogProductInternalIdPOS(p) || (Number.isFinite(Number(rawRef)) && Number(rawRef) > 0 ? Number(rawRef) : null);
+    const letter = productIdentityNormPOS(p && (p.letra ?? p.Letra ?? p.letter)).toUpperCase();
+    const name = catalogProductSnapshotNamePOS(p) || String(fallbackName || '').trim();
+    const prev = keyMeta[fifoKey] && typeof keyMeta[fifoKey] === 'object' ? keyMeta[fifoKey] : {};
+    keyMeta[fifoKey] = {
+      productId: stableId || prev.productId || '',
+      internalId: internalId || prev.internalId || null,
+      Letra: letter || prev.Letra || (fifoKey.length <= 4 && !fifoKey.includes(':') ? fifoKey.toUpperCase() : ''),
+      nombreSnapshot: name || prev.nombreSnapshot || '',
+    };
+  };
 
   const entries = await getInventoryEntries(evId);
   const inv = Array.isArray(entries) ? entries : [];
@@ -14692,19 +14714,19 @@ async function computeLotFifoForEvent(eventId){
     const identityRef = stableId || internalId || '';
     const key = lotFifoKeyFromProductPOS(prod, identityRef, s.productName || s.productNameSnapshot);
     if (!key) continue;
+    rememberKeyMeta(key, prod, identityRef, s.productName || s.productNameSnapshot);
     const q = Number(s.qty) || 0;
     if (!q) continue;
     soldNeedByKey[key] = (Number(soldNeedByKey[key]) || 0) + q;
   }
-  // Incluir también consumos que NO pasan por "sales" pero sí descuentan inventario del evento.
-  // Ej: fraccionamiento de galones a vasos (adjust negativo del Galón) o ajustes manuales negativos.
-  // Nota: excluimos reversos/ajustes vinculados a lotes para no doble-contar (ya afectan la carga neta del lote).
+  // Incluir también movimientos que NO pasan por "sales" pero sí consumen o restauran inventario.
+  // Negativos consumen; positivos restauran consumo previo sin exceder la carga original.
+  // Los movimientos ligados a un lote se procesan más abajo como redistribución neta del propio lote.
   for (const e of inv){
     if (!e || e.type !== 'adjust') continue;
     const qtyAdj = Number(e.qty) || 0;
-    if (!(qtyAdj < 0)) continue;
+    if (!qtyAdj) continue;
 
-    // Si está ligado a un lote (reverso/corrección por lote), NO cuenta como consumo adicional:
     if (e.source === 'lote_reverso' || e.loteCargaId != null || e.loteGroupKey != null) continue;
 
     const pid = Number(e.productId);
@@ -14712,8 +14734,9 @@ async function computeLotFifoForEvent(eventId){
     const prod = pMap.get(pid) || null;
     const key = lotFifoKeyFromProductPOS(prod, pid, (prod && prod.name) ? prod.name : '');
     if (!key) continue;
+    rememberKeyMeta(key, prod, pid, (prod && prod.name) ? prod.name : '');
 
-    soldNeedByKey[key] = (Number(soldNeedByKey[key]) || 0) + Math.abs(qtyAdj);
+    soldNeedByKey[key] = (Number(soldNeedByKey[key]) || 0) - qtyAdj;
   }
 
 
@@ -14740,6 +14763,7 @@ async function computeLotFifoForEvent(eventId){
       lots: {},
       unassigned: { byKey: unassignedByKey, total: unassignedTotal },
       keys: Object.keys(unassignedByKey),
+      keyMeta,
       evidenceLotIds: [],
       evidenceLotCodes: []
     };
@@ -14827,6 +14851,7 @@ async function computeLotFifoForEvent(eventId){
       const prod = pMap.get(Number(pid)) || null;
       const key = lotFifoKeyFromProductPOS(prod, pid, (prod && prod.name) ? prod.name : '');
       if (!key) continue;
+      rememberKeyMeta(key, prod, pid, (prod && prod.name) ? prod.name : '');
       loadedByKey[key] = (Number(loadedByKey[key]) || 0) + qty;
       loadedTotal += qty;
     }
@@ -14961,6 +14986,7 @@ async function computeLotFifoForEvent(eventId){
     lotOrder,
     keys,
     unassigned: { byKey: unassignedByKey, total: unassignedTotal },
+    keyMeta,
     evidenceLotIds: Array.from(evidence.lotIds),
     evidenceLotCodes: Array.from(evidence.lotCodes)
   };
@@ -15185,17 +15211,74 @@ function cloneNumMapPOS(obj){
   return out;
 }
 
-function normalizeUsageSnapshotPOS(raw, stamp){
+function normalizeUsageSnapshotPOS(raw, stamp, rawKeyMeta){
+  const loadedByKey = cloneNumMapPOS(raw && raw.loadedByKey);
   const soldByKey = cloneNumMapPOS(raw && raw.soldByKey);
   const remainingByKey = cloneNumMapPOS(raw && raw.remainingByKey);
+  const keyMeta = isPlainObjPOS(rawKeyMeta) ? rawKeyMeta : {};
+  const loadedByProductId = {};
+  const soldByProductId = {};
+  const remainingByProductId = {};
+  const loadedByLetter = {};
+  const soldByLetter = {};
+  const remainingByLetter = {};
+  const availabilityProducts = [];
+  const allKeys = Array.from(new Set(Object.keys(loadedByKey).concat(Object.keys(soldByKey), Object.keys(remainingByKey))));
+
+  const add = (map, key, value) => {
+    const id = String(key || '').trim();
+    const qty = Math.max(0, safeNumPOS(value));
+    if (!id || !(qty >= 0)) return;
+    map[id] = (safeNumPOS(map[id]) || 0) + qty;
+  };
+
+  for (const fifoKey of allKeys){
+    const meta = isPlainObjPOS(keyMeta[fifoKey]) ? keyMeta[fifoKey] : {};
+    const parsedProductId = String(meta.productId || (String(fifoKey).startsWith('PID:') ? String(fifoKey).slice(4) : '')).trim();
+    const parsedLetter = productIdentityNormPOS(meta.Letra || meta.letra || ((String(fifoKey).length <= 4 && !String(fifoKey).includes(':')) ? fifoKey : '')).toUpperCase();
+    const loaded = Math.max(0, safeNumPOS(loadedByKey[fifoKey]));
+    const sold = Math.max(0, safeNumPOS(soldByKey[fifoKey]));
+    const remaining = Math.max(0, safeNumPOS(remainingByKey[fifoKey]));
+
+    if (parsedProductId){
+      add(loadedByProductId, parsedProductId, loaded);
+      add(soldByProductId, parsedProductId, sold);
+      add(remainingByProductId, parsedProductId, remaining);
+    }
+    if (parsedLetter){
+      add(loadedByLetter, parsedLetter, loaded);
+      add(soldByLetter, parsedLetter, sold);
+      add(remainingByLetter, parsedLetter, remaining);
+    }
+    availabilityProducts.push({
+      fifoKey,
+      productId: parsedProductId,
+      internalId: meta.internalId || null,
+      nombreSnapshot: String(meta.nombreSnapshot || '').trim(),
+      Letra: parsedLetter,
+      cantidadBase: loaded,
+      cantidadVendida: sold,
+      cantidadDisponible: remaining,
+    });
+  }
+
   let soldTotal = safeNumPOS(raw && raw.soldTotal);
   let remainingTotal = safeNumPOS(raw && raw.remainingTotal);
   if (soldTotal < 0) soldTotal = 0;
   if (remainingTotal < 0) remainingTotal = 0;
   return {
+    schema: 2,
     updatedAt: (stamp != null ? stamp : Date.now()),
+    loadedByKey,
     soldByKey,
     remainingByKey,
+    loadedByProductId,
+    soldByProductId,
+    remainingByProductId,
+    loadedByLetter,
+    soldByLetter,
+    remainingByLetter,
+    availabilityProducts,
     soldTotal,
     remainingTotal
   };
@@ -15208,6 +15291,41 @@ function upsertLotEventUsagePOS(lote, eventId, snap){
   eu[eid] = snap;
   lote.eventUsage = eu;
   return true;
+}
+
+function deriveLotAvailabilityStatePOS(lote, snap){
+  const operational = effectiveLoteStatusPOS(lote);
+  if (operational !== 'EN_EVENTO') return operational;
+
+  const rows = Array.isArray(snap && snap.availabilityProducts)
+    ? snap.availabilityProducts.filter(row => Math.max(0, safeNumPOS(row && (row.cantidadBase ?? row.cantidadProducida ?? row.loaded ?? 0))) > 0)
+    : [];
+  if (rows.length){
+    return rows.some(row => Math.max(0, safeNumPOS(row && (row.cantidadDisponible ?? row.remaining ?? 0))) > 0)
+      ? 'PARCIAL'
+      : 'VENDIDO';
+  }
+
+  const map = isPlainObjPOS(snap && snap.remainingByProductId)
+    ? snap.remainingByProductId
+    : (isPlainObjPOS(snap && snap.remainingByLetter) ? snap.remainingByLetter : (isPlainObjPOS(snap && snap.remainingByKey) ? snap.remainingByKey : null));
+  if (map && Object.keys(map).length){
+    return Object.values(map).some(value => Math.max(0, safeNumPOS(value)) > 0) ? 'PARCIAL' : 'VENDIDO';
+  }
+
+  const remainingTotal = Number(snap && snap.remainingTotal);
+  return Number.isFinite(remainingTotal) && remainingTotal <= 0 ? 'VENDIDO' : 'PARCIAL';
+}
+
+function setLotAvailabilityStatePOS(lote, snap, stamp){
+  if (!lote) return;
+  lote.availabilityState = deriveLotAvailabilityStatePOS(lote, snap);
+  try{
+    const d = new Date(stamp != null ? stamp : Date.now());
+    lote.availabilityUpdatedAt = Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+  }catch(_){
+    lote.availabilityUpdatedAt = new Date().toISOString();
+  }
 }
 
 async function syncLotsUsageForEvent(eventId){
@@ -15248,9 +15366,10 @@ async function syncLotsUsageForEvent(eventId){
   const applySnap = (lotObj, rawSnapOrNull) => {
     if (!lotObj) return;
     const snap = rawSnapOrNull
-      ? normalizeUsageSnapshotPOS(rawSnapOrNull, stamp)
-      : normalizeUsageSnapshotPOS({ soldByKey:{}, remainingByKey:{}, soldTotal:0, remainingTotal:0 }, stamp);
+      ? normalizeUsageSnapshotPOS(rawSnapOrNull, stamp, fifo && fifo.keyMeta)
+      : normalizeUsageSnapshotPOS({ loadedByKey:{}, soldByKey:{}, remainingByKey:{}, soldTotal:0, remainingTotal:0 }, stamp, fifo && fifo.keyMeta);
     if (upsertLotEventUsagePOS(lotObj, evId, snap)){
+      setLotAvailabilityStatePOS(lotObj, snap, stamp);
       updated += 1;
       if (lotObj.id != null) touched.add(String(lotObj.id));
     }
@@ -15944,6 +16063,8 @@ async function importFromLoteToInventory(opts){
       lotes[idx] = {
         ...prev,
         status: 'EN_EVENTO',
+        availabilityState: 'PARCIAL',
+        availabilityUpdatedAt: stamp,
         assignedEventId: evId,
         assignedEventName: evName || ('Evento #' + evId),
         assignedAt: stamp,
@@ -16306,6 +16427,151 @@ async function closeSobrantePanelPOS(){
   if (panel) panel.style.display = 'none';
 }
 
+
+function sobranteUsageSnapshotPOS(lote, eventId){
+  const eu = lote && lote.eventUsage && typeof lote.eventUsage === 'object' && !Array.isArray(lote.eventUsage) ? lote.eventUsage : null;
+  const snap = eu ? eu[String(eventId)] : null;
+  return snap && typeof snap === 'object' && !Array.isArray(snap) ? snap : null;
+}
+
+function sobranteQtyPOS(value){
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.round((n + Number.EPSILON) * 10000) / 10000 : 0;
+}
+
+function sobranteSnapshotQtyPOS(snapshot, productId, letter, fallback){
+  const pid = String(productId || '').trim();
+  const letKey = String(letter || '').trim().toUpperCase();
+  if (snapshot){
+    const byPid = snapshot.remainingByProductId && typeof snapshot.remainingByProductId === 'object' ? snapshot.remainingByProductId : null;
+    if (pid && byPid && Object.prototype.hasOwnProperty.call(byPid, pid)) return sobranteQtyPOS(byPid[pid]);
+    const byLetter = snapshot.remainingByLetter && typeof snapshot.remainingByLetter === 'object' ? snapshot.remainingByLetter : null;
+    if (letKey && byLetter && Object.prototype.hasOwnProperty.call(byLetter, letKey)) return sobranteQtyPOS(byLetter[letKey]);
+    const byKey = snapshot.remainingByKey && typeof snapshot.remainingByKey === 'object' ? snapshot.remainingByKey : null;
+    if (byKey){
+      if (pid && Object.prototype.hasOwnProperty.call(byKey, 'PID:' + pid)) return sobranteQtyPOS(byKey['PID:' + pid]);
+      if (letKey && Object.prototype.hasOwnProperty.call(byKey, letKey)) return sobranteQtyPOS(byKey[letKey]);
+    }
+  }
+  return sobranteQtyPOS(fallback);
+}
+
+function buildSobranteTransferItemsPOS(parent, eventId, legacyQty, products){
+  const snapshot = sobranteUsageSnapshotPOS(parent, eventId);
+  const snapshotRows = snapshot && Array.isArray(snapshot.availabilityProducts) ? snapshot.availabilityProducts : [];
+  const baseRows = snapshotRows.length ? snapshotRows : lotesPOSContractRowsPOS(parent);
+  const index = buildProductIdentityIndexPOS(products || []);
+  const legacyLetters = new Set(['P','M','D','L','G']);
+  const byIdentity = new Map();
+  const errors = [];
+
+  const addRow = (row, forcedQty, source) => {
+    if (!row || typeof row !== 'object') return;
+    const identity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
+    const productId = String((identity.ok && identity.stableId) || row.productId || row.productoId || '').trim();
+    const letter = String((identity.ok && identity.letter) || row.Letra || row.letra || '').trim().toUpperCase();
+    const name = String((identity.ok && identity.name) || row.nombreSnapshot || row.productName || row.nombre || row.name || productId || letter).trim();
+    if (!productId && !letter) return;
+    const available = sobranteSnapshotQtyPOS(snapshot, productId, letter, row.cantidadDisponible ?? row.remaining ?? row.cantidadProducida ?? row.cantidad ?? row.unidades ?? row.qty);
+    const desired = forcedQty == null ? available : sobranteQtyPOS(forcedQty);
+    if (desired > available + 0.0001){
+      errors.push(`${letter || name}: el sobrante (${desired}) supera lo disponible (${available}).`);
+      return;
+    }
+    if (!(desired > 0)) return;
+    const key = productId ? ('PID:' + productId) : ('LET:' + letter);
+    const prev = byIdentity.get(key);
+    const qty = desired + (prev ? sobranteQtyPOS(prev.cantidad) : 0);
+    const product = identity.ok ? identity.product : null;
+    byIdentity.set(key, {
+      ...(prev || {}),
+      ...(row || {}),
+      id: productId || row.id || '',
+      productId,
+      nombre: name,
+      nombreSnapshot: name,
+      Letra: letter,
+      letra: letter,
+      cantidad: qty,
+      unidades: qty,
+      cantidadProducida: qty,
+      cantidadDisponible: qty,
+      legacy: false,
+      envaseId: String((product && (product.envaseId ?? product.packageId)) || row.envaseId || '').trim(),
+      tapaId: String((product && (product.tapaId ?? product.capId)) || row.tapaId || '').trim(),
+      fuenteTransferencia: source || 'sobrante',
+    });
+  };
+
+  for (const row of baseRows){
+    const identity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
+    const letter = String((identity.ok && identity.letter) || row.Letra || row.letra || '').trim().toUpperCase();
+    const forced = legacyLetters.has(letter) ? sobranteQtyPOS(legacyQty && legacyQty[letter]) : null;
+    addRow(row, forced, legacyLetters.has(letter) ? 'sobrante_manual' : 'sobrante_automatico_dinamico');
+  }
+
+  for (const letter of legacyLetters){
+    const desired = sobranteQtyPOS(legacyQty && legacyQty[letter]);
+    if (!(desired > 0)) continue;
+    const already = Array.from(byIdentity.values()).some(row => String(row.Letra || '').toUpperCase() === letter);
+    if (already) continue;
+    const product = index.byLetter.get(letter) || null;
+    if (!product){
+      errors.push(`${letter}: no se encontró el producto correspondiente en Catálogos.`);
+      continue;
+    }
+    addRow(product, desired, 'sobrante_manual_legacy');
+  }
+
+  const items = Array.from(byIdentity.values()).filter(row => sobranteQtyPOS(row.cantidad) > 0);
+  const total = items.reduce((sum, row) => sum + sobranteQtyPOS(row.cantidad), 0);
+  return { ok: errors.length === 0 && total > 0, errors, items, total, snapshot };
+}
+
+function subtractSobranteFromParentSnapshotPOS(parent, eventId, transferItems){
+  const snap = sobranteUsageSnapshotPOS(parent, eventId);
+  if (!snap) return;
+  const next = { ...snap };
+  const maps = ['remainingByProductId','remainingByLetter','remainingByKey'];
+  for (const mapName of maps){
+    if (snap[mapName] && typeof snap[mapName] === 'object') next[mapName] = { ...snap[mapName] };
+  }
+  next.availabilityProducts = Array.isArray(snap.availabilityProducts) ? snap.availabilityProducts.map(row => ({ ...row })) : [];
+
+  for (const item of (Array.isArray(transferItems) ? transferItems : [])){
+    const qty = sobranteQtyPOS(item && (item.cantidad ?? item.unidades));
+    if (!(qty > 0)) continue;
+    const pid = String(item.productId || '').trim();
+    const letter = String(item.Letra || item.letra || '').trim().toUpperCase();
+    if (pid && next.remainingByProductId && Object.prototype.hasOwnProperty.call(next.remainingByProductId, pid)){
+      next.remainingByProductId[pid] = Math.max(0, sobranteQtyPOS(next.remainingByProductId[pid]) - qty);
+    }
+    if (letter && next.remainingByLetter && Object.prototype.hasOwnProperty.call(next.remainingByLetter, letter)){
+      next.remainingByLetter[letter] = Math.max(0, sobranteQtyPOS(next.remainingByLetter[letter]) - qty);
+    }
+    if (next.remainingByKey){
+      const candidates = [pid ? ('PID:' + pid) : '', letter].filter(Boolean);
+      for (const key of candidates){
+        if (Object.prototype.hasOwnProperty.call(next.remainingByKey, key)){
+          next.remainingByKey[key] = Math.max(0, sobranteQtyPOS(next.remainingByKey[key]) - qty);
+          break;
+        }
+      }
+    }
+    for (const row of next.availabilityProducts){
+      const samePid = pid && String(row.productId || '').trim() === pid;
+      const sameLetter = !pid && letter && String(row.Letra || row.letra || '').trim().toUpperCase() === letter;
+      if (samePid || sameLetter) row.cantidadDisponible = Math.max(0, sobranteQtyPOS(row.cantidadDisponible) - qty);
+    }
+  }
+  next.remainingTotal = Object.values(next.remainingByProductId || next.remainingByLetter || {}).reduce((sum, value) => sum + sobranteQtyPOS(value), 0);
+  next.updatedAt = Date.now();
+  next.transferenciaHijoAplicada = true;
+  const eu = parent.eventUsage && typeof parent.eventUsage === 'object' && !Array.isArray(parent.eventUsage) ? { ...parent.eventUsage } : {};
+  eu[String(eventId)] = next;
+  parent.eventUsage = eu;
+}
+
 async function createSobranteLotPOS(){
   const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
   if (!evId) return alert('Selecciona un evento');
@@ -16315,9 +16581,9 @@ async function createSobranteLotPOS(){
   if (!parentId) return alert('Selecciona un lote original');
 
   const qty = getSobranteInputsPOS();
-  const total = Number(qty.P||0)+Number(qty.M||0)+Number(qty.D||0)+Number(qty.L||0)+Number(qty.G||0);
-  if (!(total > 0)) return alert('Ingresa al menos una cantidad sobrante (> 0).');
 
+  // Recalcular primero para usar el disponible real después de ventas, reempaques y ajustes.
+  try{ await syncLotsUsageForEvent(evId); }catch(_){ }
   const allLotes = readLotesLS_POS();
   const parent = allLotes.find(l => l && String(l.id) === String(parentId));
   if (!parent){
@@ -16343,6 +16609,13 @@ async function createSobranteLotPOS(){
   const evs = await getAll('events');
   const ev = evs.find(e => e && Number(e.id) === Number(evId)) || null;
   const evName = ev ? (ev.name || '') : '';
+  const products = await getAll('products').catch(()=>[]);
+  const transfer = buildSobranteTransferItemsPOS(parent, evId, qty, products);
+  if (!transfer.ok){
+    const detail = transfer.errors && transfer.errors.length ? ('\n\n' + transfer.errors.map(text => '• ' + text).join('\n')) : '';
+    alert('No se pudo crear el lote hijo con cantidades consistentes.' + detail);
+    return;
+  }
 
   const nowIso = new Date().toISOString();
   const newId = 'lot-child-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,6);
@@ -16353,15 +16626,50 @@ async function createSobranteLotPOS(){
     id: newId,
     codigo: makeSobranteCodePOS(evName || parent.assignedEventName || ('Evento ' + evId)),
 
-    // Cantidades sobrantes (presentaciones)
+    // Cantidades sobrantes (presentaciones legacy + contrato dinámico independiente)
     pulso: String(qty.P || 0),
     media: String(qty.M || 0),
     djeba: String(qty.D || 0),
     litro: String(qty.L || 0),
     galon: String(qty.G || 0),
+    productosProducidos: transfer.items.map(item => ({
+      ...item,
+      loteId: newId,
+      loteCodigo: '',
+      fecha: nowIso.slice(0,10),
+      cantidadDisponible: sobranteQtyPOS(item.cantidad),
+    })),
+    productosProducidosSchema: 2,
+    disponibilidadPOS: transfer.items.map(item => ({
+      productId: item.productId,
+      nombreSnapshot: item.nombreSnapshot || item.nombre || '',
+      Letra: item.Letra || item.letra || '',
+      cantidadProducida: sobranteQtyPOS(item.cantidad),
+      cantidadDisponible: sobranteQtyPOS(item.cantidad),
+      cantidadDisponibleExiste: true,
+      disponibilidadFuente: 'lote_hijo',
+      loteId: newId,
+      loteCodigo: '',
+    })),
+    eventUsage: {},
+    transferenciaLote: {
+      schema: 1,
+      tipo: 'PADRE_A_HIJO',
+      parentLotId: parent.id,
+      sourceEventId: evId,
+      createdAt: nowIso,
+      productos: transfer.items.map(item => ({
+        productId: item.productId,
+        nombreSnapshot: item.nombreSnapshot || item.nombre || '',
+        Letra: item.Letra || item.letra || '',
+        cantidad: sobranteQtyPOS(item.cantidad),
+      })),
+    },
 
     // Nuevo lote DISPONIBLE
     status: 'DISPONIBLE',
+    availabilityState: 'DISPONIBLE',
+    availabilityUpdatedAt: nowIso,
     assignedEventId: null,
     assignedEventName: '',
     assignedAt: null,
@@ -16374,6 +16682,15 @@ async function createSobranteLotPOS(){
 
     createdAt: nowIso
   };
+  child.productosProducidos = child.productosProducidos.map(item => ({ ...item, loteCodigo: child.codigo, codigo: child.codigo, batchCode: child.codigo }));
+  child.disponibilidadPOS = child.disponibilidadPOS.map(item => ({ ...item, loteCodigo: child.codigo }));
+  child.salidaPOS = undefined;
+  child.contratoPOS = undefined;
+  child.assignedCargaId = null;
+  child.sobranteLotId = null;
+  child.closedAt = null;
+  child.reversedAt = null;
+  child.reversedReason = null;
 
   // Notas: dejar rastro sin romper lo existente
   try{
@@ -16382,10 +16699,24 @@ async function createSobranteLotPOS(){
     child.notas = (parent.notas ? String(parent.notas).trim() + '\n' : '') + line;
   }catch(_){ }
 
-  // Cerrar lote original (mantener Evento asignado visible)
+  // Transferencia real en el control de disponibilidad: descontar al padre antes de cerrarlo.
+  subtractSobranteFromParentSnapshotPOS(parent, evId, transfer.items);
   parent.status = 'CERRADO';
+  parent.availabilityState = 'CERRADO';
+  parent.availabilityUpdatedAt = nowIso;
   parent.closedAt = nowIso;
   parent.sobranteLotId = newId;
+  parent.transferenciaHijo = {
+    schema: 1,
+    childLotId: newId,
+    sourceEventId: evId,
+    createdAt: nowIso,
+    productos: transfer.items.map(item => ({
+      productId: item.productId,
+      Letra: item.Letra || item.letra || '',
+      cantidad: sobranteQtyPOS(item.cantidad),
+    })),
+  };
 
   // Guardar
   const next = allLotes.map(l => (l && String(l.id) === String(parent.id)) ? parent : l);
@@ -16696,6 +17027,8 @@ async function reverseAssignSelectedLotePOS(){
   lotes[idx] = {
     ...prev,
     status: 'DISPONIBLE',
+    availabilityState: 'DISPONIBLE',
+    availabilityUpdatedAt: nowIso,
     prevAssignedEventId: prev.assignedEventId,
     prevAssignedEventName: prev.assignedEventName,
     prevAssignedAt: prev.assignedAt,

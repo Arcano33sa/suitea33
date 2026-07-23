@@ -92,7 +92,8 @@ const swExpectations = {
 for (const [rel, moduleRev] of Object.entries(swExpectations)) {
   const source = read(rel);
   assert.ok(source.includes("4.20.95"), `${rel} usa versión final`);
-  assert.ok(source.includes(`MODULE_CACHE_REV = '${moduleRev}'`));
+  const actualRev = Number((source.match(/MODULE_CACHE_REV\s*=\s*'([0-9]+)'/) || [])[1]);
+  assert.ok(Number.isFinite(actualRev) && actualRev >= Number(moduleRev), `${rel} no debe retroceder su revisión de caché`);
   assert.ok(!source.includes("localStorage"));
   assert.ok(!source.includes("indexedDB"));
 }

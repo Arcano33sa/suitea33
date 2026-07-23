@@ -5,6 +5,7 @@ const ARCHIVE_KEY = "arcano33_lotes_archived"; // Histórico (Etapa 5)
 let editingId = null;
 let isSavingLote = false;
 let editingCtx = null; // { id, metaRev, metaUpdatedAt, fingerprint }
+let loteNormalizationPoolA33 = null; // Airbag: evita lecturas recursivas al normalizar contratos padre/hijo.
 
 // Lectura dinámica de productos producibles (Catálogos → Lotes)
 const A33_PRODUCTOS_DB_NAME = "a33-pos";
@@ -497,21 +498,8 @@ function addMissingLegacyFieldsToMap(map, lote){
 }
 
 function getCanonicalRemainingByKey(lote){
-  if (!isPlainObjectA33(lote)) return null;
-  const eid = (lote.assignedEventId != null) ? String(lote.assignedEventId).trim() : '';
-  const eu = isPlainObjectA33(lote.eventUsage) ? lote.eventUsage : null;
-  const snap = (eu && eid && isPlainObjectA33(eu[eid])) ? eu[eid] : null;
-  const source = snap && isPlainObjectA33(snap.remainingByKey) ? snap.remainingByKey : null;
-  if (!source) return null;
-
-  const out = {};
-  for (const key of Object.keys(source)){
-    const letter = normalizeProductLetter(key);
-    if (!letter) continue;
-    const qty = normalizeQtyValue(source[key]);
-    out[letter] = qty;
-  }
-  return Object.keys(out).length ? out : null;
+  const info = getSnapshotRemainingInfo(lote);
+  return info && info.hasLetter ? { ...info.remainingByLetter } : null;
 }
 
 function getCanonicalLoteItems(lote, options){
@@ -562,7 +550,42 @@ function getLoteProducedItems(lote, options){
   return getCanonicalLoteItems(lote, { useRemaining: opts.useRemaining !== false });
 }
 
+function isLoteChildA33(lote){
+  return !!(lote && (String(lote.parentLotId || '').trim() || String(lote.loteType || '').trim().toUpperCase() === 'SOBRANTE'));
+}
+
+function getLoteTransferProductsA33(lote){
+  if (!isPlainObjectA33(lote)) return [];
+  const candidates = [
+    lote.transferenciaLote && lote.transferenciaLote.productos,
+    lote.productosTransferidos,
+    lote.transferenciaProductos,
+  ];
+  for (const raw of candidates){
+    if (Array.isArray(raw) && raw.length) return raw;
+  }
+  return [];
+}
+
 function getLoteCreatedItems(lote){
+  // Un lote hijo controla únicamente lo que recibió. Nunca debe heredar como
+  // existencia propia todo el snapshot dinámico del padre.
+  if (isLoteChildA33(lote)){
+    const transfer = getLoteTransferProductsA33(lote);
+    if (transfer.length){
+      const map = new Map();
+      for (const item of transfer){
+        addProducedItemToMap(map, item, item?.cantidad ?? item?.unidades ?? item?.qty ?? item?.quantity, 'transferencia-padre-hijo');
+      }
+      if (map.size) return Array.from(map.values()).sort((a,b) => sortCatalogItemsForLotes(a,b));
+    }
+
+    // Compatibilidad con hijos históricos creados antes del contrato de
+    // transferencia: solo se leen las cantidades legacy guardadas en el hijo.
+    const legacyMap = new Map();
+    addMissingLegacyFieldsToMap(legacyMap, lote);
+    if (legacyMap.size) return Array.from(legacyMap.values()).sort((a,b) => sortCatalogItemsForLotes(a,b));
+  }
   return getCanonicalLoteItems(lote, { useRemaining: false });
 }
 
@@ -730,20 +753,137 @@ function formatDynamicProductSummary(lote, includeLegacy){
   return formatLoteProductSummary(lote, { includeLegacy: !!includeLegacy, useRemaining: true });
 }
 
-function appendDynamicProductChips(parent, lote, includeLegacy){
-  if (!parent) return;
-  const items = getLoteProducedItems(lote, { useRemaining:true }).filter((item) => {
+function getTransferredToChildrenA33(lote){
+  const byProductId = {};
+  const byLetter = {};
+  const addRows = (rows) => {
+    for (const row of (Array.isArray(rows) ? rows : [])){
+      const qty = normalizeQtyValue(row?.cantidad ?? row?.unidades ?? row?.qty ?? row?.quantity ?? 0);
+      if (!(qty > 0)) continue;
+      const pid = normalizeProductIdForPOS(row?.productId ?? row?.productoId ?? row?.id);
+      const letter = normalizeProductLetter(row?.Letra || row?.letra || row?.letter);
+      if (pid) byProductId[pid] = (byProductId[pid] || 0) + qty;
+      if (letter) byLetter[letter] = (byLetter[letter] || 0) + qty;
+    }
+  };
+
+  const summarized = Array.isArray(lote?.transferenciaHijo?.productos) && lote.transferenciaHijo.productos.length;
+  if (summarized){
+    addRows(lote.transferenciaHijo.productos);
+  } else {
+    // Compatibilidad con múltiples hijos o registros históricos sin resumen en el padre.
+    const parentId = String(lote?.id || '').trim();
+    const pool = Array.isArray(listView?.allSorted) && listView.allSorted.length
+      ? listView.allSorted
+      : (Array.isArray(loteNormalizationPoolA33) ? loteNormalizationPoolA33 : []);
+    if (parentId){
+      for (const child of pool){
+        if (!child || String(child.parentLotId || '').trim() !== parentId) continue;
+        addRows(getLoteTransferProductsA33(child));
+      }
+    }
+  }
+  return { byProductId, byLetter };
+}
+
+function getLoteAvailabilityIndicatorItems(lote, includeLegacy){
+  const status = effectiveLoteStatus(lote);
+  const remaining = getSnapshotRemainingInfo(lote);
+  const baseItems = getLoteCreatedItems(lote).filter((item) => {
     const letter = normalizeProductLetter(item.Letra || item.letra);
-    const n = Number(item.cantidad);
-    if (!letter || !Number.isFinite(n) || n <= 0) return false;
+    const produced = normalizeQtyValue(item.cantidad ?? item.unidades ?? item.qty ?? item.quantity ?? 0);
+    if (!letter || !(produced > 0)) return false;
     return includeLegacy ? true : item.legacy !== true;
   });
-  for (const item of items){
+
+  const merged = new Map();
+  const itemKey = (item) => {
+    const pid = normalizeProductIdForPOS(item?.productId ?? item?.productoId ?? item?.id);
+    const letter = normalizeProductLetter(item?.Letra || item?.letra || item?.letter);
+    return pid ? `PID:${pid}` : `LET:${letter}`;
+  };
+  for (const item of baseItems) merged.set(itemKey(item), { ...item });
+
+  // Reempaque puede crear una presentación distinta dentro del mismo lote.
+  // Esa presentación debe aparecer con su propia base/disponible aunque no
+  // existiera en el lote producido originalmente.
+  for (const row of (remaining.availabilityProducts || [])){
+    const letter = normalizeProductLetter(row.Letra || row.letra || row.letter);
+    const pid = normalizeProductIdForPOS(row.productId ?? row.productoId ?? row.id);
+    const produced = normalizeQtyValue(row.cantidadBase ?? row.cantidadProducida ?? row.loaded ?? row.cantidadDisponible ?? 0);
+    if (!letter || !(produced > 0)) continue;
+    const key = pid ? `PID:${pid}` : `LET:${letter}`;
+    if (!merged.has(key)){
+      merged.set(key, {
+        productId: pid,
+        nombre: String(row.nombreSnapshot || row.nombre || row.name || letter).trim(),
+        nombreSnapshot: String(row.nombreSnapshot || row.nombre || row.name || letter).trim(),
+        Letra: letter,
+        letra: letter,
+        cantidad: produced,
+        legacy: false,
+        fuenteLectura: 'eventUsage.availabilityProducts',
+      });
+    }
+  }
+
+  const transfer = getTransferredToChildrenA33(lote);
+  const transferAlreadyApplied = !!remaining.snapshot?.transferenciaHijoAplicada;
+
+  return Array.from(merged.values()).map((item) => {
     const letter = normalizeProductLetter(item.Letra || item.letra);
+    const productId = normalizeProductIdForPOS(item.productId ?? item.productoId ?? item.id);
+    const produced = normalizeQtyValue(item.cantidad ?? item.unidades ?? item.qty ?? item.quantity ?? 0);
+    let available = produced;
+    let hasExact = false;
+
+    if (remaining.hasProduct && productId && hasOwnA33(remaining.remainingByProductId, productId)){
+      available = normalizeQtyValue(remaining.remainingByProductId[productId]);
+      hasExact = true;
+    } else if (remaining.hasLetter && hasOwnA33(remaining.remainingByLetter, letter)){
+      available = normalizeQtyValue(remaining.remainingByLetter[letter]);
+      hasExact = true;
+    } else if (remaining.hasSnapshot && status === 'EN_EVENTO'){
+      // Snapshot activo + producto ausente = fue consumido o redistribuido por completo.
+      available = 0;
+    }
+
+    if (status === 'CERRADO') available = 0;
+    else if (status === 'DISPONIBLE' && !remaining.hasSnapshot) available = produced;
+
+    // Airbag para padres históricos que no guardaron el descuento en snapshot.
+    if (!transferAlreadyApplied && status !== 'CERRADO'){
+      const moved = productId && hasOwnA33(transfer.byProductId, productId)
+        ? transfer.byProductId[productId]
+        : (transfer.byLetter[letter] || 0);
+      if (moved > 0) available -= moved;
+    }
+
+    available = Math.min(produced, Math.max(0, normalizeQtyValue(available)));
+    return {
+      ...item,
+      productId,
+      letra: letter,
+      cantidadProducida: produced,
+      cantidadDisponible: available,
+      cantidadDisponibleExiste: hasExact || status === 'DISPONIBLE' || status === 'CERRADO' || remaining.hasSnapshot,
+    };
+  }).filter((item) => includeLegacy ? true : item.legacy !== true)
+    .sort((a,b) => sortCatalogItemsForLotes(a,b));
+}
+
+function appendDynamicProductChips(parent, lote, includeLegacy){
+  if (!parent) return;
+  const items = getLoteAvailabilityIndicatorItems(lote, includeLegacy);
+  for (const item of items){
+    const letter = item.letra;
+    const available = item.cantidadDisponible;
+    const produced = item.cantidadProducida;
     const chip = document.createElement('span');
-    chip.className = 'chip chip--product-dynamic';
-    chip.textContent = `${letter}: ${formatQtyForDisplay(item.cantidad)}`;
-    chip.title = String(item.nombre || letter);
+    chip.className = 'chip chip--product-dynamic' + (available === 0 ? ' is-sold-out' : '');
+    chip.textContent = `${letter}: ${formatQtyForDisplay(available)}/${formatQtyForDisplay(produced)}`;
+    chip.title = `${String(item.nombre || letter)} · Disponible ${formatQtyForDisplay(available)} de ${formatQtyForDisplay(produced)}`;
+    chip.setAttribute('aria-label', chip.title);
     parent.appendChild(chip);
   }
 }
@@ -1236,12 +1376,18 @@ function normalizeLoteRecord(lote){
 
 function normalizeLotesArray(arr){
   const safe = Array.isArray(arr) ? arr : [];
+  const previousPool = loteNormalizationPoolA33;
+  loteNormalizationPoolA33 = safe;
   const out = [];
-  for (const it of safe){
-    const n = normalizeLoteRecord(it);
-    if (n) out.push(n);
+  try{
+    for (const it of safe){
+      const n = normalizeLoteRecord(it);
+      if (n) out.push(n);
+    }
+    return out;
+  }finally{
+    loteNormalizationPoolA33 = previousPool;
   }
-  return out;
 }
 
 function readLotesAndMetaFresh(){
@@ -1273,6 +1419,8 @@ function nonEditableFingerprint(lote){
     assignedCargaId: lote.assignedCargaId || null,
     assignmentHistory: lote.assignmentHistory || null,
     eventUsage: lote.eventUsage || null,
+    availabilityState: lote.availabilityState || lote.estadoDisponibilidad || null,
+    availabilityUpdatedAt: lote.availabilityUpdatedAt || null,
     closedAt: lote.closedAt || null,
     reversedAt: lote.reversedAt || null,
     reversedReason: lote.reversedReason || null,
@@ -1439,6 +1587,7 @@ function buildArchiveSnapshot(lote, deletedAtIso){
     deletedAt,
     statusAtDelete: st,
     semaforoAtDelete: sem,
+    estadoAutomaticoAtDelete: getLoteDisplayStatus(lote),
     // "producto/presentación" => aquí guardamos presentaciones (unidades) + volTotal como resumen
     volTotal: lote?.volTotal ?? "",
     ...(lote && Object.prototype.hasOwnProperty.call(lote,'pulso') ? { pulso:lote.pulso } : {}),
@@ -1490,18 +1639,36 @@ function effectiveLoteStatus(lote){
 }
 
 // Semáforo PARCIAL / VENDIDO (solo EN EVENTO)
-// Fuente canónica: lote.eventUsage[eventId].remainingTotal
+// Fuente canónica: indicador Disponible/Producido por presentación.
+// remainingTotal queda únicamente como fallback para snapshots históricos.
 function getLoteSemaforoState(lote){
-  // Conservador: si falta data, PARCIAL.
   const eid = (lote?.assignedEventId != null) ? String(lote.assignedEventId).trim() : "";
   if (!eid) return "PARCIAL";
+
+  try{
+    const items = getLoteAvailabilityIndicatorItems(lote, true)
+      .filter((item) => normalizeQtyValue(item?.cantidadProducida ?? item?.cantidad ?? 0) > 0);
+    if (items.length){
+      const hasAvailable = items.some((item) => normalizeQtyValue(item?.cantidadDisponible ?? 0) > 0);
+      return hasAvailable ? "PARCIAL" : "VENDIDO";
+    }
+  }catch(_){ }
+
+  const explicit = String(lote?.availabilityState || lote?.estadoDisponibilidad || '').trim().toUpperCase();
+  if (explicit === 'VENDIDO' || explicit === 'PARCIAL') return explicit;
+
   const eu = (lote && typeof lote.eventUsage === 'object' && !Array.isArray(lote.eventUsage)) ? lote.eventUsage : null;
-  if (!eu) return "PARCIAL";
-  const snap = eu[eid];
+  const snap = eu ? eu[eid] : null;
   if (!snap || typeof snap !== 'object') return "PARCIAL";
   const remainingTotal = Number(snap.remainingTotal);
-  if (Number.isFinite(remainingTotal) && remainingTotal === 0) return "VENDIDO";
+  if (Number.isFinite(remainingTotal) && remainingTotal <= 0) return "VENDIDO";
   return "PARCIAL";
+}
+
+function getLoteDisplayStatus(lote){
+  const operational = effectiveLoteStatus(lote);
+  if (operational === 'EN_EVENTO' && getLoteSemaforoState(lote) === 'VENDIDO') return 'VENDIDO';
+  return operational;
 }
 
 
@@ -1572,41 +1739,111 @@ function getSnapshotRemainingInfo(lote){
   const letterMap = buildLetterToProductMapForLote(lote);
   const remainingByLetter = {};
   const remainingByProductId = {};
-  let source = '';
+  const loadedByLetter = {};
+  const loadedByProductId = {};
+  const availabilityProducts = [];
+  const sources = [];
 
-  if (snap && isPlainObjectA33(snap.remainingByKey)){
-    source = 'eventUsage.remainingByKey';
-    const byKey = normalizeNumberMapA33(snap.remainingByKey, (k) => normalizeProductLetter(k));
-    Object.keys(byKey).forEach((letter) => {
-      if (!letter) return;
-      const qty = byKey[letter];
-      remainingByLetter[letter] = (remainingByLetter[letter] || 0) + qty;
-      const mapped = letterMap.get(letter);
-      const pid = normalizeProductIdForPOS(mapped?.productId || (LEGACY_BY_LETTER[letter] ? LEGACY_BY_LETTER[letter].legacyId : '') || letter);
-      if (pid) remainingByProductId[pid] = (remainingByProductId[pid] || 0) + qty;
-    });
+  const put = (map, key, value, overwrite=false) => {
+    const id = String(key || '').trim();
+    if (!id) return;
+    const qty = normalizeQtyValue(value);
+    if (!overwrite && hasOwnA33(map, id)) return;
+    map[id] = qty;
+  };
+
+  if (snap && Array.isArray(snap.availabilityProducts)){
+    sources.push('eventUsage.availabilityProducts');
+    for (const raw of snap.availabilityProducts){
+      if (!raw || typeof raw !== 'object') continue;
+      const pid = normalizeProductIdForPOS(raw.productId ?? raw.productoId ?? raw.id);
+      const letter = normalizeProductLetter(raw.Letra || raw.letra || raw.letter);
+      const base = normalizeQtyValue(raw.cantidadBase ?? raw.cantidadProducida ?? raw.loaded ?? 0);
+      const available = normalizeQtyValue(raw.cantidadDisponible ?? raw.remaining ?? 0);
+      const row = {
+        ...raw,
+        productId: pid,
+        Letra: letter,
+        letra: letter,
+        cantidadBase: base,
+        cantidadProducida: base,
+        cantidadDisponible: available,
+      };
+      availabilityProducts.push(row);
+      if (pid){ put(loadedByProductId, pid, base); put(remainingByProductId, pid, available); }
+      if (letter){ put(loadedByLetter, letter, base); put(remainingByLetter, letter, available); }
+    }
   }
 
-  const productMapSource = snap && (isPlainObjectA33(snap.remainingByProductId) ? snap.remainingByProductId : (isPlainObjectA33(snap.remainingByProduct) ? snap.remainingByProduct : null));
-  if (productMapSource){
-    source = source || (snap.remainingByProductId ? 'eventUsage.remainingByProductId' : 'eventUsage.remainingByProduct');
-    const byProduct = normalizeNumberMapA33(productMapSource, normalizeProductIdForPOS);
-    Object.keys(byProduct).forEach((pid) => {
-      if (!pid) return;
-      remainingByProductId[pid] = (remainingByProductId[pid] || 0) + byProduct[pid];
-    });
-    for (const [letter, mapped] of letterMap.entries()){
-      const pid = normalizeProductIdForPOS(mapped?.productId);
-      if (pid && Object.prototype.hasOwnProperty.call(byProduct, pid)){
-        remainingByLetter[letter] = (remainingByLetter[letter] || 0) + byProduct[pid];
+  const explicitProduct = snap && (isPlainObjectA33(snap.remainingByProductId) ? snap.remainingByProductId : (isPlainObjectA33(snap.remainingByProduct) ? snap.remainingByProduct : null));
+  if (explicitProduct){
+    sources.push(snap.remainingByProductId ? 'eventUsage.remainingByProductId' : 'eventUsage.remainingByProduct');
+    const byProduct = normalizeNumberMapA33(explicitProduct, normalizeProductIdForPOS);
+    Object.keys(byProduct).forEach((pid) => put(remainingByProductId, pid, byProduct[pid], true));
+  }
+  if (snap && isPlainObjectA33(snap.loadedByProductId)){
+    const byProduct = normalizeNumberMapA33(snap.loadedByProductId, normalizeProductIdForPOS);
+    Object.keys(byProduct).forEach((pid) => put(loadedByProductId, pid, byProduct[pid], true));
+  }
+
+  if (snap && isPlainObjectA33(snap.remainingByLetter)){
+    sources.push('eventUsage.remainingByLetter');
+    const byLetter = normalizeNumberMapA33(snap.remainingByLetter, normalizeProductLetter);
+    Object.keys(byLetter).forEach((letter) => put(remainingByLetter, letter, byLetter[letter], true));
+  }
+  if (snap && isPlainObjectA33(snap.loadedByLetter)){
+    const byLetter = normalizeNumberMapA33(snap.loadedByLetter, normalizeProductLetter);
+    Object.keys(byLetter).forEach((letter) => put(loadedByLetter, letter, byLetter[letter], true));
+  }
+
+  if (snap && isPlainObjectA33(snap.remainingByKey)){
+    sources.push('eventUsage.remainingByKey');
+    for (const rawKey of Object.keys(snap.remainingByKey)){
+      const qty = normalizeQtyValue(snap.remainingByKey[rawKey]);
+      const key = String(rawKey || '').trim();
+      if (!key) continue;
+      if (key.startsWith('PID:')){
+        const pid = normalizeProductIdForPOS(key.slice(4));
+        if (pid) put(remainingByProductId, pid, qty);
+      } else {
+        const letter = normalizeProductLetter(key);
+        if (letter) put(remainingByLetter, letter, qty);
+      }
+    }
+  }
+  if (snap && isPlainObjectA33(snap.loadedByKey)){
+    for (const rawKey of Object.keys(snap.loadedByKey)){
+      const qty = normalizeQtyValue(snap.loadedByKey[rawKey]);
+      const key = String(rawKey || '').trim();
+      if (key.startsWith('PID:')){
+        const pid = normalizeProductIdForPOS(key.slice(4));
+        if (pid) put(loadedByProductId, pid, qty);
+      } else {
+        const letter = normalizeProductLetter(key);
+        if (letter) put(loadedByLetter, letter, qty);
       }
     }
   }
 
+  // Completar letra/productId sin sumar dos veces fuentes equivalentes.
+  for (const [letter, mapped] of letterMap.entries()){
+    const pid = normalizeProductIdForPOS(mapped?.productId);
+    if (!pid) continue;
+    if (hasOwnA33(remainingByProductId, pid) && !hasOwnA33(remainingByLetter, letter)) put(remainingByLetter, letter, remainingByProductId[pid]);
+    if (hasOwnA33(remainingByLetter, letter) && !hasOwnA33(remainingByProductId, pid)) put(remainingByProductId, pid, remainingByLetter[letter]);
+    if (hasOwnA33(loadedByProductId, pid) && !hasOwnA33(loadedByLetter, letter)) put(loadedByLetter, letter, loadedByProductId[pid]);
+    if (hasOwnA33(loadedByLetter, letter) && !hasOwnA33(loadedByProductId, pid)) put(loadedByProductId, pid, loadedByLetter[letter]);
+  }
+
   return {
-    source,
+    source: Array.from(new Set(sources)).join(' + '),
+    snapshot: snap,
+    hasSnapshot: !!snap,
     remainingByLetter,
     remainingByProductId,
+    loadedByLetter,
+    loadedByProductId,
+    availabilityProducts,
     hasLetter: Object.keys(remainingByLetter).length > 0,
     hasProduct: Object.keys(remainingByProductId).length > 0,
   };
@@ -1630,11 +1867,13 @@ function buildStoredCostSnapshotMap(lote){
 }
 
 function buildLotePOSAvailabilityContract(lote){
-  const items = getLoteCreatedItems(lote);
+  const status = effectiveLoteStatus(lote);
+  const estadoDisponibilidad = status === 'EN_EVENTO' ? getLoteSemaforoState(lote) : status;
+  const estadoVisual = status === 'EN_EVENTO' && estadoDisponibilidad === 'VENDIDO' ? 'VENDIDO' : status;
+  const items = getLoteAvailabilityIndicatorItems(lote, true);
   const loteId = stableLoteIdForPOS(lote);
   const loteCodigo = stableLoteCodeForPOS(lote);
   const fecha = normalizeDateYMD(lote?.fecha || lote?.fechaProd || lote?.createdAt) || String(lote?.fecha || '').trim();
-  const status = effectiveLoteStatus(lote);
   const remaining = getSnapshotRemainingInfo(lote);
   const storedCostMap = buildStoredCostSnapshotMap(lote);
   const productos = [];
@@ -1649,24 +1888,13 @@ function buildLotePOSAvailabilityContract(lote){
     const productId = normalizeProductIdForPOS(item.productId ?? item.productoId ?? item.id ?? (legacy ? ('legacy:' + legacy.legacyId) : '') ?? letter);
     if (!productId || !letter) continue;
 
-    const produced = normalizeQtyValue(item.cantidad ?? item.unidades ?? item.qty ?? item.quantity ?? 0);
+    const produced = normalizeQtyValue(item.cantidadProducida ?? item.cantidad ?? item.unidades ?? item.qty ?? item.quantity ?? 0);
     if (!(produced > 0)) continue;
 
-    let available = null;
-    let source = 'sin_snapshot';
-    if (remaining.hasProduct && Object.prototype.hasOwnProperty.call(remaining.remainingByProductId, productId)){
-      available = normalizeQtyValue(remaining.remainingByProductId[productId]);
-      source = remaining.source || 'eventUsage.remainingByProductId';
-    } else if (remaining.hasLetter && Object.prototype.hasOwnProperty.call(remaining.remainingByLetter, letter)){
-      available = normalizeQtyValue(remaining.remainingByLetter[letter]);
-      source = remaining.source || 'eventUsage.remainingByKey';
-    } else if (status === 'DISPONIBLE'){
-      available = produced;
-      source = 'lote.disponible';
-    } else if (status === 'CERRADO'){
-      available = 0;
-      source = 'lote.cerrado';
-    }
+    const available = Math.min(produced, Math.max(0, normalizeQtyValue(item.cantidadDisponible ?? produced)));
+    const source = status === 'CERRADO'
+      ? 'lote.cerrado'
+      : (remaining.source || (status === 'DISPONIBLE' ? 'lote.disponible' : 'sin_snapshot'));
 
     const storedCost = storedCostMap.get(`PID:${productId}`) || storedCostMap.get(`LET:${letter}`) || null;
     const costoUnitario = storedCost ? storedCost.costoUnitario : null;
@@ -1712,6 +1940,8 @@ function buildLotePOSAvailabilityContract(lote){
     batchCode: loteCodigo,
     fecha,
     status,
+    estadoDisponibilidad,
+    estadoVisual,
     assignedEventId: lote?.assignedEventId != null ? String(lote.assignedEventId).trim() : '',
     assignedEventName: String(lote?.assignedEventName || '').trim(),
     campos: LOTES_POS_CONTRACT_FIELDS.slice(),
@@ -1778,8 +2008,9 @@ function buildAllLotesPOSAvailabilityContract(lotes){
 function showLoteDetails(lote) {
   const lines = [];
   const st = effectiveLoteStatus(lote);
+  const displaySt = getLoteDisplayStatus(lote);
   lines.push(`Lote: ${lote.codigo || ""}`);
-  lines.push(`Estado: ${st}`);
+  lines.push(`Estado: ${displaySt}`);
 
   const evName = (lote.assignedEventName || "").toString().trim();
   if (evName) lines.push(`Evento asignado: ${evName}`);
@@ -1936,6 +2167,8 @@ function readFormData() {
   // Estado inicial (compatibilidad). Solo para lotes nuevos.
   if (!editingId){
     data.status = "DISPONIBLE";
+    data.availabilityState = "DISPONIBLE";
+    data.availabilityUpdatedAt = new Date().toISOString();
     data.assignedEventId = null;
     data.assignedEventName = "";
     data.assignedAt = null;
@@ -2027,19 +2260,23 @@ function buildLoteRow(lote){
       const line = document.createElement("div");
       line.className = "lote-status-line";
 
+      const displaySt = st === 'EN_EVENTO' && sem === 'VENDIDO' ? 'VENDIDO' : st;
       const stChip = document.createElement("span");
       stChip.className =
         "chip " +
-        (st === "DISPONIBLE"
+        (displaySt === "VENDIDO"
+          ? "chip--sold"
+          : displaySt === "DISPONIBLE"
           ? "chip--available"
-          : st === "EN_EVENTO"
+          : displaySt === "EN_EVENTO"
           ? "chip--in-event"
           : "chip--closed");
-      stChip.textContent = st === "EN_EVENTO" ? "EN EVENTO" : st;
+      stChip.textContent = displaySt === "EN_EVENTO" ? "EN EVENTO" : displaySt;
       line.appendChild(stChip);
 
-      // Semáforo de consumo por evento: PARCIAL / VENDIDO
-      if (st === "EN_EVENTO") {
+      // Mientras exista disponible, conservar EN EVENTO + PARCIAL.
+      // Al agotarse todo, el estado visible único pasa a VENDIDO (verde).
+      if (st === "EN_EVENTO" && sem !== "VENDIDO") {
         if (showRemainingLine) {
           const br = document.createElement("span");
           br.className = "chip-break";
@@ -2048,8 +2285,8 @@ function buildLoteRow(lote){
         }
 
         const semChip = document.createElement("span");
-        semChip.className = "chip " + (sem === "VENDIDO" ? "chip--sold" : "chip--partial");
-        semChip.textContent = sem;
+        semChip.className = "chip chip--partial";
+        semChip.textContent = "PARCIAL";
         line.appendChild(semChip);
       }
 
@@ -2212,12 +2449,13 @@ function buildLoteCard(lote){
   const line = document.createElement('div');
   line.className = 'lote-status-line';
 
+  const displaySt = st === 'EN_EVENTO' && sem === 'VENDIDO' ? 'VENDIDO' : st;
   const stChip = document.createElement('span');
-  stChip.className = 'chip ' + (st === 'DISPONIBLE' ? 'chip--available' : st === 'EN_EVENTO' ? 'chip--in-event' : 'chip--closed');
-  stChip.textContent = st === 'EN_EVENTO' ? 'EN EVENTO' : st;
+  stChip.className = 'chip ' + (displaySt === 'VENDIDO' ? 'chip--sold' : displaySt === 'DISPONIBLE' ? 'chip--available' : displaySt === 'EN_EVENTO' ? 'chip--in-event' : 'chip--closed');
+  stChip.textContent = displaySt === 'EN_EVENTO' ? 'EN EVENTO' : displaySt;
   line.appendChild(stChip);
 
-  if (st === 'EN_EVENTO'){
+  if (st === 'EN_EVENTO' && sem !== 'VENDIDO'){
     if (showRemainingLine){
       const br = document.createElement('span');
       br.className = 'chip-break';
@@ -2225,8 +2463,8 @@ function buildLoteCard(lote){
       line.appendChild(br);
     }
     const semChip = document.createElement('span');
-    semChip.className = 'chip ' + (sem === 'VENDIDO' ? 'chip--sold' : 'chip--partial');
-    semChip.textContent = sem;
+    semChip.className = 'chip chip--partial';
+    semChip.textContent = 'PARCIAL';
     line.appendChild(semChip);
   }
 
@@ -2625,7 +2863,7 @@ function exportToCSV() {
         formatPOSAvailabilitySummary(l),
         formatDate(l.caducidad),
         (l.notas || "").replace(/\r?\n/g, " "),
-        effectiveLoteStatus(l),
+        getLoteDisplayStatus(l),
         (l.assignedEventName || "").toString().trim(),
       ];
     });
@@ -2715,7 +2953,10 @@ function showArchivedDetails(arch){
   const lines = [];
   lines.push(`Código: ${(arch.codigo || '').toString()}`);
   if (arch.originalId) lines.push(`Lote ID: ${arch.originalId}`);
-  if (arch.statusAtDelete) lines.push(`Estado al borrar: ${arch.statusAtDelete}${arch.semaforoAtDelete ? ' · ' + arch.semaforoAtDelete : ''}`);
+  if (arch.statusAtDelete){
+    const archivedDisplay = String(arch.estadoAutomaticoAtDelete || ((String(arch.statusAtDelete).toUpperCase() === 'EN_EVENTO' && String(arch.semaforoAtDelete).toUpperCase() === 'VENDIDO') ? 'VENDIDO' : arch.statusAtDelete));
+    lines.push(`Estado al borrar: ${archivedDisplay}`);
+  }
   if (arch.assignedEventName) lines.push(`Evento: ${arch.assignedEventName}`);
   lines.push(`Creado: ${formatDate(arch.createdAt)}${arch.createdAt ? ' (' + formatDateTime(arch.createdAt) + ')' : ''}`);
   lines.push(`Archivado: ${formatDate(arch.deletedAt)}${arch.deletedAt ? ' (' + formatDateTime(arch.deletedAt) + ')' : ''}`);
@@ -2761,7 +3002,7 @@ function renderHistoryModal(){
   const filtered = q ? sorted.filter((r) => {
     const haystack = [
       ...batchCodeSearchTerms(r.codigo || r.batchCode || ''), r.codigo, r.batchCode, r.fecha, r.caducidad, r.assignedEventName,
-      r.statusAtDelete, r.semaforoAtDelete,
+      r.statusAtDelete, r.semaforoAtDelete, r.estadoAutomaticoAtDelete,
       formatLoteProductSummary(r, { includeLegacy: true, useRemaining: false })
     ].filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(q);
@@ -2798,13 +3039,14 @@ function renderHistoryModal(){
 
     // Estado / semáforo
     const st = (arch.statusAtDelete || '').toString().trim().toUpperCase();
-    if (st){
-      const cls = st === 'DISPONIBLE' ? 'chip--available' : st === 'EN_EVENTO' ? 'chip--in-event' : 'chip--closed';
-      meta.appendChild(makeChip(st === 'EN_EVENTO' ? 'EN EVENTO' : st, cls));
-    }
     const sem = (arch.semaforoAtDelete || '').toString().trim().toUpperCase();
-    if (sem && st === 'EN_EVENTO'){
-      meta.appendChild(makeChip(sem, sem === 'VENDIDO' ? 'chip--sold' : 'chip--partial'));
+    const displaySt = (arch.estadoAutomaticoAtDelete || ((st === 'EN_EVENTO' && sem === 'VENDIDO') ? 'VENDIDO' : st)).toString().trim().toUpperCase();
+    if (displaySt){
+      const cls = displaySt === 'VENDIDO' ? 'chip--sold' : displaySt === 'DISPONIBLE' ? 'chip--available' : displaySt === 'EN_EVENTO' ? 'chip--in-event' : 'chip--closed';
+      meta.appendChild(makeChip(displaySt === 'EN_EVENTO' ? 'EN EVENTO' : displaySt, cls));
+    }
+    if (sem === 'PARCIAL' && st === 'EN_EVENTO'){
+      meta.appendChild(makeChip('PARCIAL', 'chip--partial'));
     }
 
     // Presentaciones/productos compactos desde la lectura canónica (legacy + dinámica sin duplicar)
@@ -2854,7 +3096,7 @@ function renderHistoryModal(){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.95&r=1")
+      .register("./sw.js?v=4.20.95&r=2")
       .catch((err) => console.error("SW error", err));
   }
 }
