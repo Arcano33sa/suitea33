@@ -85,6 +85,47 @@
   function qsa(selector, root){ return Array.prototype.slice.call((root || document).querySelectorAll(selector)); }
   function byId(id){ return document.getElementById(id); }
 
+  function openModalCAT(id){
+    const modal = byId(id);
+    if (!modal) return false;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    try{ document.body.classList.add('cat-modal-open'); }catch(_){ }
+    try{
+      const panel = modal.querySelector('.cat-modal-panel');
+      if (panel) panel.scrollTop = 0;
+    }catch(_){ }
+    return true;
+  }
+
+  function closeModalCAT(id){
+    const modal = byId(id);
+    if (!modal) return false;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    try{
+      if (!qs('.cat-modal.show')) document.body.classList.remove('cat-modal-open');
+    }catch(_){ }
+    return true;
+  }
+
+  function bindDismissibleModalCAT(modalId, closeButtonIds, closeHandler){
+    const modal = byId(modalId);
+    if (!modal || typeof closeHandler !== 'function') return;
+    (closeButtonIds || []).forEach((buttonId) => {
+      byId(buttonId)?.addEventListener('click', closeHandler);
+    });
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) closeHandler();
+    });
+    modal.addEventListener('keydown', (event) => {
+      if (event && event.key === 'Escape'){
+        event.preventDefault();
+        closeHandler();
+      }
+    });
+  }
+
   function activateTab(target){
     const key = String(target || '').trim().toLowerCase();
     if (!CATALOG_ALLOWED_TABS.has(key)) return;
@@ -976,7 +1017,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.95&r=4').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.95&r=5').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -3021,6 +3062,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     }
     byId('cat-save-envase')?.addEventListener('click', ()=>saveEnvaseMaster().catch(err=>{ console.error(err); setEnvaseMsg('No se pudo guardar el envase.', 'warn'); }));
     byId('cat-edit-envase-save')?.addEventListener('click', ()=>saveEnvaseEditMaster().catch(err=>{ console.error(err); setEnvaseEditMsg('No se pudo guardar el envase.', 'warn'); }));
+    bindDismissibleModalCAT('cat-envase-modal', ['cat-envase-close','cat-edit-envase-cancel'], closeEnvaseModalCAT);
     byId('cat-cancel-envase')?.addEventListener('click', resetEnvaseForm);
     byId('cat-refresh-envases')?.addEventListener('click', async ()=>{ await renderEnvases(); toast('Envases actualizados'); });
     byId('cat-restore-envases')?.addEventListener('click', async ()=>{ ensureEnvasesDefaults(true); resetEnvaseForm(); await normalizeProductPackagingFields(); refreshProductPackagingSelects(); await renderEnvases(); await renderProducts(); toast('Envases base revisados'); });
@@ -3405,6 +3447,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     }
     byId('cat-save-tapa')?.addEventListener('click', ()=>saveTapaMaster().catch(err=>{ console.error(err); setTapaMsg('No se pudo guardar la tapa.', 'warn'); }));
     byId('cat-edit-tapa-save')?.addEventListener('click', ()=>saveTapaEditMaster().catch(err=>{ console.error(err); setTapaEditMsg('No se pudo guardar la tapa.', 'warn'); }));
+    bindDismissibleModalCAT('cat-tapa-modal', ['cat-tapa-close','cat-edit-tapa-cancel'], closeTapaModalCAT);
     byId('cat-cancel-tapa')?.addEventListener('click', resetTapaForm);
     byId('cat-refresh-tapas')?.addEventListener('click', async ()=>{ await renderTapas(); toast('Tapas actualizadas'); });
     byId('cat-restore-tapas')?.addEventListener('click', async ()=>{ ensureTapasDefaults(true); resetTapaForm(); await normalizeProductPackagingFields(); refreshProductPackagingSelects(); await renderTapas(); await renderProducts(); toast('Tapas base revisadas'); });
@@ -4606,10 +4649,12 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     }
     byId('cat-save-extra')?.addEventListener('click', ()=>saveExtraMaster().catch(err=>{ console.error(err); alert('No se pudo guardar el extra.'); }));
     byId('cat-edit-extra-save')?.addEventListener('click', ()=>saveExtraEditMaster().catch(err=>{ console.error(err); setExtraEditMsg('No se pudo guardar el extra.', 'warn'); }));
+    bindDismissibleModalCAT('cat-extra-modal', ['cat-extra-close','cat-edit-extra-cancel'], closeExtraModalCAT);
     byId('cat-cancel-extra')?.addEventListener('click', resetExtraForm);
     byId('cat-refresh-extras')?.addEventListener('click', async ()=>{ await seedExtrasFromEventSnapshots(); await renderExtras(); toast('Extras actualizados'); });
     byId('cat-save-bank')?.addEventListener('click', ()=>saveBankMaster().catch(err=>{ console.error(err); alert('No se pudo guardar el banco.'); }));
     byId('cat-edit-bank-save')?.addEventListener('click', ()=>saveBankEditMaster().catch(err=>{ console.error(err); setBankEditMsg('No se pudo guardar el banco.', 'warn'); }));
+    bindDismissibleModalCAT('cat-bank-modal', ['cat-bank-close','cat-edit-bank-cancel'], closeBankModalCAT);
     byId('cat-cancel-bank')?.addEventListener('click', resetBankForm);
     byId('cat-refresh-banks')?.addEventListener('click', async ()=>{ await renderBanks(); toast('Bancos actualizados'); });
     byId('cat-restore-banks')?.addEventListener('click', async ()=>{ await ensureBanksDefaultsCatalog(true); await renderBanks(); toast('Bancos base revisados'); });
