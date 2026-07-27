@@ -1,26 +1,26 @@
 /* Suite A33 — Service Worker (Calculadora Temporal) */
-try { importScripts('/assets/js/a33-release.js?v=4.20.95&r=54'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.96&r=54'); } catch (e) {}
 
-const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.95';
+const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.96';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
 const MODULE = 'calculadora-temporal';
 const MODULE_CACHE_REV = '1';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.95&r=8',
-  './manifest.webmanifest?v=4.20.95&r=8',
+  './index.html?v=4.20.96&r=8',
+  './manifest.webmanifest?v=4.20.96&r=8',
   './logo-icon-192.png',
   './logo-icon-512.png',
-  '/assets/js/a33-release.js?v=4.20.95&r=54',
-  '/assets/js/a33-storage.js?v=4.20.95&r=20',
-  '/assets/js/a33-lot-code.js?v=4.20.95&r=6',
-  '/assets/js/a33-currency.js?v=4.20.95&r=14',
-  '/assets/js/a33-presentations.js?v=4.20.95&r=15',
-  '/assets/js/a33-input-ux.js?v=4.20.95&r=7',
-  '/assets/js/a33-theme.js?v=4.20.95&r=7',
-  '/assets/css/a33-header.css?v=4.20.95&r=7',
-  '/assets/css/a33-theme.css?v=4.20.95&r=7'
+  '/assets/js/a33-release.js?v=4.20.96&r=54',
+  '/assets/js/a33-storage.js?v=4.20.96&r=20',
+  '/assets/js/a33-lot-code.js?v=4.20.96&r=6',
+  '/assets/js/a33-currency.js?v=4.20.96&r=14',
+  '/assets/js/a33-presentations.js?v=4.20.96&r=15',
+  '/assets/js/a33-input-ux.js?v=4.20.96&r=7',
+  '/assets/js/a33-theme.js?v=4.20.96&r=7',
+  '/assets/css/a33-header.css?v=4.20.96&r=7',
+  '/assets/css/a33-theme.css?v=4.20.96&r=7'
 ];
 function sameOrigin(url){ try { return url.origin === self.location.origin; } catch (_) { return false; } }
 function shouldCache(url){
@@ -63,7 +63,7 @@ self.addEventListener('fetch', (event) => {
       return response;
     } catch (_) {
       return (await cache.match(event.request))
-        || (isNavigation ? (await cache.match('./index.html?v=4.20.95&r=8')) || (await cache.match('./')) : null)
+        || (isNavigation ? (await cache.match('./index.html?v=4.20.96&r=8')) || (await cache.match('./')) : null)
         || new Response('Offline', { status:503, headers:{'Content-Type':'text/plain; charset=utf-8'} });
     }
   })());

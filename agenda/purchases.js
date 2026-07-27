@@ -1307,7 +1307,7 @@
       render();
     });
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=4.20.95&r=4').catch(function(error){
+      navigator.serviceWorker.register('./sw.js?v=4.20.96&r=4').catch(function(error){
         console.warn('Agenda SW no disponible', error);
       });
     }

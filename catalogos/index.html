@@ -6,10 +6,10 @@
   <title>Suite A33 · Catálogos</title>
   <meta name="description" content="Catálogos operativos de Suite A33: productos, costos, materia prima, envases, tapas, extras, bancos, clientes y datos maestros." />
   <meta name="theme-color" content="#7b1818" />
-  <script src="/assets/js/a33-theme.js?v=4.20.95&r=11"></script>
+  <script src="/assets/js/a33-theme.js?v=4.20.96&r=11"></script>
   <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
   <link rel="apple-touch-icon" href="../icon-a33-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.95&r=11" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.96&r=11" />
   <script>
     (function(){
       try{
@@ -28,70 +28,70 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.95&r=11" />
-  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.95&r=11" />
-  <link rel="stylesheet" href="style.css?v=4.20.95&r=21" />
+  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.96&r=11" />
+  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.96&r=11" />
+  <link rel="stylesheet" href="style.css?v=4.20.96&r=22" />
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Ir al Menú principal">⌂ Menú principal</a>
     <div class="a33-title">Catálogos</div>
-    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.95">v...</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.96">v...</div>
   </header>
 
   <main class="cat-main" role="main">
     <section class="cat-card cat-shell" aria-label="Apartados de Catálogos">
-      <div class="cat-tabs" role="tablist" aria-label="Secciones de Catálogos">
-        <button class="cat-tab is-active" id="tab-productos" type="button" role="tab" aria-selected="true" aria-controls="panel-productos" data-target="productos">
+      <div class="cat-tabs" aria-label="Tarjetas de Catálogos">
+        <button class="cat-tab" id="tab-productos" type="button" aria-expanded="false" aria-controls="panel-productos" data-target="productos">
           <span class="cat-tab-icon">🍷</span>
           <span>
             <strong>Productos</strong>
             <small>Presentaciones y precios base</small>
           </span>
         </button>
-        <button class="cat-tab" id="tab-costos" type="button" role="tab" aria-selected="false" aria-controls="panel-costos" data-target="costos">
+        <button class="cat-tab" id="tab-costos" type="button" aria-expanded="false" aria-controls="panel-costos" data-target="costos">
           <span class="cat-tab-icon">🧾</span>
           <span>
             <strong>Costos</strong>
             <small>Precios y contenido base</small>
           </span>
         </button>
-        <button class="cat-tab" id="tab-materia-prima" type="button" role="tab" aria-selected="false" aria-controls="panel-materia-prima" data-target="materia-prima">
+        <button class="cat-tab" id="tab-materia-prima" type="button" aria-expanded="false" aria-controls="panel-materia-prima" data-target="materia-prima">
           <span class="cat-tab-icon">🧺</span>
           <span>
             <strong>Materia Prima</strong>
             <small>Artículos, unidades y precios</small>
           </span>
         </button>
-        <button class="cat-tab" id="tab-envases" type="button" role="tab" aria-selected="false" aria-controls="panel-envases" data-target="envases">
+        <button class="cat-tab" id="tab-envases" type="button" aria-expanded="false" aria-controls="panel-envases" data-target="envases">
           <span class="cat-tab-icon">🍾</span>
           <span>
             <strong>Envases</strong>
             <small>Botellas dinámicas</small>
           </span>
         </button>
-        <button class="cat-tab" id="tab-tapas" type="button" role="tab" aria-selected="false" aria-controls="panel-tapas" data-target="tapas">
+        <button class="cat-tab" id="tab-tapas" type="button" aria-expanded="false" aria-controls="panel-tapas" data-target="tapas">
           <span class="cat-tab-icon">🟤</span>
           <span>
             <strong>Tapas</strong>
             <small>Tapas y corchos</small>
           </span>
         </button>
-        <button class="cat-tab" id="tab-extras" type="button" role="tab" aria-selected="false" aria-controls="panel-extras" data-target="extras">
+        <button class="cat-tab" id="tab-extras" type="button" aria-expanded="false" aria-controls="panel-extras" data-target="extras">
           <span class="cat-tab-icon">➕</span>
           <span>
             <strong>Extras</strong>
             <small>Complementos operativos</small>
           </span>
         </button>
-        <button class="cat-tab" id="tab-bancos" type="button" role="tab" aria-selected="false" aria-controls="panel-bancos" data-target="bancos">
+        <button class="cat-tab" id="tab-bancos" type="button" aria-expanded="false" aria-controls="panel-bancos" data-target="bancos">
           <span class="cat-tab-icon">🏦</span>
           <span>
             <strong>Bancos</strong>
             <small>Cuentas y entidades</small>
           </span>
         </button>
-        <button class="cat-tab" id="tab-clientes" type="button" role="tab" aria-selected="false" aria-controls="panel-clientes" data-target="clientes">
+        <button class="cat-tab" id="tab-clientes" type="button" aria-expanded="false" aria-controls="panel-clientes" data-target="clientes">
           <span class="cat-tab-icon">👥</span>
           <span>
             <strong>Clientes</strong>
@@ -100,8 +100,12 @@
         </button>
       </div>
 
-      <div class="cat-panels">
-        <section class="cat-panel is-active" id="panel-productos" role="tabpanel" aria-labelledby="tab-productos" data-panel="productos">
+      <div class="cat-panels" hidden aria-hidden="true">
+        <nav class="cat-section-nav" aria-label="Navegación interna de Catálogos">
+          <button class="cat-nav-chip cat-nav-chip--back" data-cat-back type="button">← Catálogos</button>
+          <a class="cat-nav-chip cat-nav-chip--home" href="../index.html" aria-label="Ir al Menú principal">⌂ Menú principal</a>
+        </nav>
+        <section class="cat-panel" id="panel-productos" role="region" aria-labelledby="tab-productos" data-panel="productos" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Productos maestros</p>
@@ -173,7 +177,7 @@
         </section>
 
 
-        <section class="cat-panel" id="panel-costos" role="tabpanel" aria-labelledby="tab-costos" data-panel="costos" hidden>
+        <section class="cat-panel" id="panel-costos" role="region" aria-labelledby="tab-costos" data-panel="costos" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Costos maestros</p>
@@ -271,7 +275,7 @@
         </section>
 
 
-        <section class="cat-panel" id="panel-materia-prima" role="tabpanel" aria-labelledby="tab-materia-prima" data-panel="materia-prima" hidden>
+        <section class="cat-panel" id="panel-materia-prima" role="region" aria-labelledby="tab-materia-prima" data-panel="materia-prima" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Fuente oficial para Compras</p>
@@ -351,7 +355,7 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-envases" role="tabpanel" aria-labelledby="tab-envases" data-panel="envases" hidden>
+        <section class="cat-panel" id="panel-envases" role="region" aria-labelledby="tab-envases" data-panel="envases" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Envases maestros</p>
@@ -405,7 +409,7 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-tapas" role="tabpanel" aria-labelledby="tab-tapas" data-panel="tapas" hidden>
+        <section class="cat-panel" id="panel-tapas" role="region" aria-labelledby="tab-tapas" data-panel="tapas" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Tapas maestras</p>
@@ -456,7 +460,7 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-extras" role="tabpanel" aria-labelledby="tab-extras" data-panel="extras" hidden>
+        <section class="cat-panel" id="panel-extras" role="region" aria-labelledby="tab-extras" data-panel="extras" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Extras maestros</p>
@@ -511,7 +515,7 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-bancos" role="tabpanel" aria-labelledby="tab-bancos" data-panel="bancos" hidden>
+        <section class="cat-panel" id="panel-bancos" role="region" aria-labelledby="tab-bancos" data-panel="bancos" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Bancos maestros</p>
@@ -577,7 +581,7 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-clientes" role="tabpanel" aria-labelledby="tab-clientes" data-panel="clientes" hidden>
+        <section class="cat-panel" id="panel-clientes" role="region" aria-labelledby="tab-clientes" data-panel="clientes" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Clientes maestros</p>
@@ -917,11 +921,11 @@
 
   <div id="cat-toast" class="cat-toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
 
-  <script src="/assets/js/a33-release.js?v=4.20.95&r=54"></script>
-  <script src="/assets/js/a33-storage.js?v=4.20.95&r=20"></script>
-  <script src="/assets/js/a33-product-integrity.js?v=4.20.95&r=1"></script>
-  <script src="/assets/js/a33-materials.js?v=4.20.95&r=2"></script>
-  <script src="script.js?v=4.20.95&r=32"></script>
-  <script src="/assets/js/a33-input-ux.js?v=4.20.95&r=11"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.96&r=54"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.96&r=20"></script>
+  <script src="/assets/js/a33-product-integrity.js?v=4.20.96&r=1"></script>
+  <script src="/assets/js/a33-materials.js?v=4.20.96&r=2"></script>
+  <script src="script.js?v=4.20.96&r=33"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.96&r=11"></script>
 </body>
 </html>

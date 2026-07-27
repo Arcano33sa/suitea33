@@ -1614,7 +1614,7 @@ function refreshAppearance(){
 function registerCentroMandoServiceWorker(){
   try{
     if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
-    const swUrl = './sw.js?v=4.20.95&r=4';
+    const swUrl = './sw.js?v=4.20.96&r=4';
     navigator.serviceWorker.register(swUrl, { scope:'./', updateViaCache:'none' })
       .then((registration)=>{
         try{ registration.update(); }catch(_){ }

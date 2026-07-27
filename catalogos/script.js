@@ -126,67 +126,369 @@
     });
   }
 
-  function activateTab(target){
-    const key = String(target || '').trim().toLowerCase();
-    if (!CATALOG_ALLOWED_TABS.has(key)) return;
-    qsa('.cat-tab').forEach((tab) => {
-      const active = tab.getAttribute('data-target') === key;
-      tab.classList.toggle('is-active', active);
-      tab.setAttribute('aria-selected', active ? 'true' : 'false');
-      tab.setAttribute('tabindex', active ? '0' : '-1');
-    });
-    qsa('.cat-panel').forEach((panel) => {
-      const active = panel.getAttribute('data-panel') === key;
-      panel.classList.toggle('is-active', active);
-      panel.hidden = !active;
-    });
-    try{ localStorage.setItem(CATALOG_ACTIVE_TAB_KEY, key); }catch(_){ }
-    if (key === 'costos' && db) scheduleCostsProductsRefresh();
+  const CATALOG_HISTORY_MARKER = 'a33-catalogos-vistas-v2';
+  const CATALOG_SECTION_LABELS = Object.freeze({
+    'productos':'Productos',
+    'costos':'Costos',
+    'materia-prima':'Materia Prima',
+    'envases':'Envases',
+    'tapas':'Tapas',
+    'extras':'Extras',
+    'bancos':'Bancos',
+    'clientes':'Clientes'
+  });
+  let catalogCurrentSection = '';
+  let catalogLastSection = '';
+  let catalogOverviewScrollY = 0;
+  let catalogNavigationBound = false;
+  let catalogModalHardeningBound = false;
+  const catalogModalFocusReturn = new WeakMap();
+
+  function normalizeCatalogSection(value){
+    const key = String(value || '').trim().toLowerCase();
+    return CATALOG_ALLOWED_TABS.has(key) ? key : '';
   }
 
-  function getInitialTabFromUrl(){
+  function getCatalogSectionFromLocation(){
     let key = '';
     try{
       key = String(new URLSearchParams(window.location.search || '').get('tab') || '').trim().toLowerCase();
     }catch(_){ key = ''; }
-    if (!key) {
-      key = String((window.location.hash || '').replace(/^#/, '')).trim().toLowerCase();
-    }
     if (!key){
-      try{ key = String(localStorage.getItem(CATALOG_ACTIVE_TAB_KEY) || '').trim().toLowerCase(); }catch(_){ key = ''; }
+      try{ key = decodeURIComponent(String(window.location.hash || '').replace(/^#/, '')).trim().toLowerCase(); }
+      catch(_){ key = String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase(); }
     }
-    return CATALOG_ALLOWED_TABS.has(key) ? key : '';
+    return normalizeCatalogSection(key);
   }
 
-  function activateTabFromUrl(){
-    const key = getInitialTabFromUrl();
-    if (key) activateTab(key);
+  function getCatalogOverviewUrl(){
+    try{
+      const url = new URL(window.location.href);
+      url.searchParams.delete('tab');
+      url.hash = '';
+      return url.pathname + url.search;
+    }catch(_){
+      return window.location.pathname || 'index.html';
+    }
   }
 
-  function bindTabs(){
-    const tabs = qsa('.cat-tab');
-    tabs.forEach((tab, index) => {
-      tab.addEventListener('click', () => {
-        const target = tab.getAttribute('data-target');
-        activateTab(target);
-        try { window.history.replaceState(null, '', '#' + target); } catch(_){ }
+  function getCatalogSectionUrl(target){
+    return getCatalogOverviewUrl() + '#' + encodeURIComponent(target);
+  }
+
+  function getCatalogHistoryState(view, section){
+    return {
+      a33Navigation: CATALOG_HISTORY_MARKER,
+      view: view === 'section' ? 'section' : 'overview',
+      section: view === 'section' ? normalizeCatalogSection(section) : ''
+    };
+  }
+
+  function setCatalogInert(element, inert){
+    if (!element) return;
+    try{ element.inert = !!inert; }catch(_){ }
+    try{
+      if (inert) element.setAttribute('inert', '');
+      else element.removeAttribute('inert');
+    }catch(_){ }
+  }
+
+  function updateCatalogContext(target){
+    const key = normalizeCatalogSection(target);
+    const label = key ? CATALOG_SECTION_LABELS[key] : '';
+    const title = qs('.a33-title');
+    const shell = qs('.cat-shell');
+    const nav = qs('.cat-section-nav');
+    try{ document.title = label ? `Suite A33 · Catálogos · ${label}` : 'Suite A33 · Catálogos'; }catch(_){ }
+    if (title) title.textContent = label ? `Catálogos · ${label}` : 'Catálogos';
+    if (shell) shell.setAttribute('aria-label', label ? `Catálogos: ${label}` : 'Apartados de Catálogos');
+    if (nav) nav.setAttribute('aria-label', label ? `Navegación de Catálogos: ${label}` : 'Navegación interna de Catálogos');
+  }
+
+  function setCatalogCardState(target){
+    qsa('.cat-tab[data-target]').forEach((card) => {
+      const active = !!target && card.getAttribute('data-target') === target;
+      card.classList.toggle('is-active', active);
+      card.setAttribute('aria-expanded', active ? 'true' : 'false');
+      if (active) card.setAttribute('aria-current', 'page');
+      else card.removeAttribute('aria-current');
+    });
+  }
+
+  function setCatalogPanelState(target){
+    qsa('.cat-panel[data-panel]').forEach((panel) => {
+      const active = !!target && panel.getAttribute('data-panel') === target;
+      panel.classList.toggle('is-active', active);
+      panel.hidden = !active;
+      panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+      setCatalogInert(panel, !active);
+    });
+  }
+
+  function focusCatalogCard(target){
+    const card = qs('.cat-tab[data-target="' + target + '"]') || qs('.cat-tab[data-target]');
+    if (!card || typeof card.focus !== 'function') return;
+    window.setTimeout(() => {
+      try{ card.focus({ preventScroll:true }); }
+      catch(_){ try{ card.focus(); }catch(__){ } }
+    }, 60);
+  }
+
+  function focusCatalogSection(target){
+    const panel = qs('.cat-panel[data-panel="' + target + '"]');
+    const focusTarget = qs('[data-cat-back]') || panel;
+    if (!focusTarget || typeof focusTarget.focus !== 'function') return;
+    window.setTimeout(() => {
+      try{ focusTarget.focus({ preventScroll:true }); }
+      catch(_){ try{ focusTarget.focus(); }catch(__){ } }
+    }, 60);
+  }
+
+  function scrollCatalogTo(y){
+    const top = Math.max(0, Number(y) || 0);
+    window.requestAnimationFrame(() => {
+      try{ window.scrollTo({ top, left:0, behavior:'auto' }); }
+      catch(_){ try{ window.scrollTo(0, top); }catch(__){ } }
+    });
+  }
+
+  function showCatalogOverview(options){
+    const opts = options || {};
+    const cardsWrap = qs('.cat-tabs');
+    const panelsWrap = qs('.cat-panels');
+    const shell = qs('.cat-shell');
+    const previous = catalogCurrentSection || catalogLastSection;
+
+    catalogCurrentSection = '';
+    if (shell) shell.classList.remove('is-section-open');
+    if (cardsWrap){
+      cardsWrap.hidden = false;
+      cardsWrap.setAttribute('aria-hidden', 'false');
+      setCatalogInert(cardsWrap, false);
+    }
+    if (panelsWrap){
+      panelsWrap.hidden = true;
+      panelsWrap.setAttribute('aria-hidden', 'true');
+      setCatalogInert(panelsWrap, true);
+    }
+    setCatalogCardState('');
+    setCatalogPanelState('');
+    updateCatalogContext('');
+    try{ document.body.classList.remove('cat-catalog-section-open'); }catch(_){ }
+
+    if (opts.historyMode === 'replace'){
+      try{
+        window.history.replaceState(getCatalogHistoryState('overview'), '', getCatalogOverviewUrl());
+      }catch(_){ }
+    }
+
+    if (opts.focus) focusCatalogCard(previous);
+    if (opts.scroll !== false) scrollCatalogTo(opts.restoreScroll === false ? 0 : catalogOverviewScrollY);
+  }
+
+  function openCatalogSection(target, options){
+    const key = normalizeCatalogSection(target);
+    if (!key) return false;
+    const opts = options || {};
+    const cardsWrap = qs('.cat-tabs');
+    const panelsWrap = qs('.cat-panels');
+    const shell = qs('.cat-shell');
+    const panel = qs('.cat-panel[data-panel="' + key + '"]');
+    if (!panel) return false;
+
+    if (!catalogCurrentSection){
+      try{ catalogOverviewScrollY = Math.max(0, window.scrollY || window.pageYOffset || 0); }catch(_){ catalogOverviewScrollY = 0; }
+    }
+
+    if (catalogCurrentSection === key){
+      if (opts.focus) focusCatalogSection(key);
+      if (opts.scroll === true) scrollCatalogTo(0);
+      return true;
+    }
+
+    catalogCurrentSection = key;
+    catalogLastSection = key;
+    if (shell) shell.classList.add('is-section-open');
+    if (cardsWrap){
+      cardsWrap.hidden = true;
+      cardsWrap.setAttribute('aria-hidden', 'true');
+      setCatalogInert(cardsWrap, true);
+    }
+    if (panelsWrap){
+      panelsWrap.hidden = false;
+      panelsWrap.setAttribute('aria-hidden', 'false');
+      setCatalogInert(panelsWrap, false);
+    }
+    setCatalogCardState(key);
+    setCatalogPanelState(key);
+    updateCatalogContext(key);
+    try{ document.body.classList.add('cat-catalog-section-open'); }catch(_){ }
+    try{ localStorage.setItem(CATALOG_ACTIVE_TAB_KEY, key); }catch(_){ }
+
+    if (key === 'costos' && db) scheduleCostsProductsRefresh();
+
+    if (opts.historyMode === 'push'){
+      const state = window.history.state || {};
+      if (!(state.a33Navigation === CATALOG_HISTORY_MARKER && state.view === 'section' && state.section === key)){
+        try{
+          window.history.pushState(getCatalogHistoryState('section', key), '', getCatalogSectionUrl(key));
+        }catch(_){ }
+      }
+    }else if (opts.historyMode === 'replace'){
+      try{
+        window.history.replaceState(getCatalogHistoryState('section', key), '', getCatalogSectionUrl(key));
+      }catch(_){ }
+    }
+
+    if (opts.focus) focusCatalogSection(key);
+    if (opts.scroll !== false) scrollCatalogTo(0);
+    return true;
+  }
+
+  function handleCatalogBack(){
+    const state = window.history.state || {};
+    if (catalogCurrentSection && state.a33Navigation === CATALOG_HISTORY_MARKER && state.view === 'section'){
+      try{
+        window.history.back();
+        return;
+      }catch(_){ }
+    }
+    showCatalogOverview({ focus:true, historyMode:'replace', restoreScroll:true });
+  }
+
+  function syncCatalogNavigationFromHistory(event){
+    const state = event && event.state ? event.state : (window.history.state || {});
+    const sectionFromLocation = getCatalogSectionFromLocation();
+    const isPopState = !!(event && event.type === 'popstate');
+    if (state.a33Navigation === CATALOG_HISTORY_MARKER){
+      if (state.view === 'section' && normalizeCatalogSection(state.section)){
+        openCatalogSection(state.section, { focus:isPopState, historyMode:'none' });
+      }else if (sectionFromLocation){
+        openCatalogSection(sectionFromLocation, { focus:isPopState, historyMode:'replace' });
+      }else{
+        showCatalogOverview({ focus:isPopState, historyMode:'none', restoreScroll:true });
+      }
+      return;
+    }
+
+    if (sectionFromLocation) openCatalogSection(sectionFromLocation, { focus:isPopState, historyMode:'none' });
+    else showCatalogOverview({ focus:isPopState, historyMode:'none', restoreScroll:true });
+  }
+
+  function bindCatalogModalHardening(){
+    if (catalogModalHardeningBound) return;
+    catalogModalHardeningBound = true;
+    const modals = qsa('.cat-modal');
+    const syncModal = (modal) => {
+      if (!modal) return;
+      const open = modal.classList.contains('show');
+      modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+      setCatalogInert(modal, !open);
+      if (open){
+        if (!catalogModalFocusReturn.has(modal)){
+          const active = document.activeElement;
+          if (active && active !== document.body && typeof active.focus === 'function') catalogModalFocusReturn.set(modal, active);
+        }
+        try{ document.body.classList.add('cat-modal-open'); }catch(_){ }
+        window.requestAnimationFrame(() => {
+          if (!modal.classList.contains('show') || modal.contains(document.activeElement)) return;
+          const first = modal.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])');
+          if (first && typeof first.focus === 'function'){
+            try{ first.focus({ preventScroll:true }); }catch(_){ try{ first.focus(); }catch(__){ } }
+          }
+        });
+      }else{
+        if (!qs('.cat-modal.show')){
+          try{ document.body.classList.remove('cat-modal-open'); }catch(_){ }
+        }
+        const returnFocus = catalogModalFocusReturn.get(modal);
+        catalogModalFocusReturn.delete(modal);
+        window.setTimeout(() => {
+          const active = document.activeElement;
+          if (returnFocus && returnFocus.isConnected && (!active || active === document.body || modal.contains(active))){
+            try{ returnFocus.focus({ preventScroll:true }); }catch(_){ try{ returnFocus.focus(); }catch(__){ } }
+          }
+        }, 0);
+      }
+    };
+    modals.forEach(syncModal);
+    try{
+      const observer = new MutationObserver((records) => {
+        records.forEach((record) => {
+          if (record && record.target && record.target.classList && record.target.classList.contains('cat-modal')) syncModal(record.target);
+        });
       });
-      tab.addEventListener('keydown', (event) => {
-        if (!event || !['ArrowRight','ArrowLeft','Home','End'].includes(event.key)) return;
+      modals.forEach((modal) => observer.observe(modal, { attributes:true, attributeFilter:['class'] }));
+    }catch(_){ }
+  }
+
+  function bindCatalogNavigation(){
+    if (catalogNavigationBound) return;
+    catalogNavigationBound = true;
+
+    const cards = qsa('.cat-tab[data-target]');
+    cards.forEach((card, index) => {
+      card.addEventListener('click', (event) => {
+        if (event && event.detail > 1) event.preventDefault();
+        openCatalogSection(card.getAttribute('data-target'), { focus:true, historyMode:'push' });
+      });
+      card.addEventListener('keydown', (event) => {
+        if (!event || !['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Home','End'].includes(event.key)) return;
         event.preventDefault();
         let nextIndex = index;
-        if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
-        if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % cards.length;
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (index - 1 + cards.length) % cards.length;
         if (event.key === 'Home') nextIndex = 0;
-        if (event.key === 'End') nextIndex = tabs.length - 1;
-        const next = tabs[nextIndex];
-        const target = next && next.getAttribute('data-target');
-        if (!target) return;
-        activateTab(target);
-        try { window.history.replaceState(null, '', '#' + target); } catch(_){ }
-        try { next.focus({ preventScroll:true }); } catch(_){ try{ next.focus(); }catch(__){ } }
+        if (event.key === 'End') nextIndex = cards.length - 1;
+        const next = cards[nextIndex];
+        if (next && typeof next.focus === 'function'){
+          try{ next.focus({ preventScroll:true }); }
+          catch(_){ next.focus(); }
+        }
       });
     });
+
+    qsa('[data-cat-back]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        if (event && event.detail > 1) event.preventDefault();
+        handleCatalogBack();
+      });
+    });
+
+    window.addEventListener('popstate', syncCatalogNavigationFromHistory);
+    window.addEventListener('hashchange', (event) => {
+      const state = window.history.state || {};
+      const section = getCatalogSectionFromLocation();
+      const stateSection = state.a33Navigation === CATALOG_HISTORY_MARKER && state.view === 'section' ? normalizeCatalogSection(state.section) : '';
+      if (section === stateSection || (!section && state.view === 'overview')) return;
+      syncCatalogNavigationFromHistory(event);
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (event && event.persisted) syncCatalogNavigationFromHistory();
+    });
+
+    const initialSection = getCatalogSectionFromLocation();
+    const state = window.history.state || {};
+
+    if (initialSection){
+      if (state.a33Navigation === CATALOG_HISTORY_MARKER && state.view === 'section' && state.section === initialSection){
+        openCatalogSection(initialSection, { focus:false, historyMode:'none' });
+      }else{
+        try{
+          window.history.replaceState(getCatalogHistoryState('overview'), '', getCatalogOverviewUrl());
+          window.history.pushState(getCatalogHistoryState('section', initialSection), '', getCatalogSectionUrl(initialSection));
+        }catch(_){ }
+        openCatalogSection(initialSection, { focus:false, historyMode:'none' });
+      }
+    }else{
+      showCatalogOverview({ focus:false, historyMode:'replace', scroll:false });
+    }
+
+    window.A33CatalogNavigation = {
+      openSection: openCatalogSection,
+      showOverview: showCatalogOverview,
+      currentSection: () => catalogCurrentSection
+    };
   }
 
 
@@ -1017,7 +1319,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.95&r=5').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.96&r=5').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -4737,7 +5039,8 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    bindTabs();
+    bindCatalogNavigation();
+    bindCatalogModalHardening();
     bindProductUi();
     bindCostsUi();
     bindEnvaseUi();
@@ -4745,9 +5048,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     bindRawMaterialUi();
     bindExtraBankUi();
     bindCustomerUi();
-    activateTabFromUrl();
     initCosts();
-    if (!qs('.cat-panel.is-active')) activateTab('productos');
     try{ if (window.A33_applyReleaseLabel) window.A33_applyReleaseLabel(); }catch(_){ }
     initProducts().catch(err=>{
       console.error(err);
@@ -4796,7 +5097,6 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
       console.error(err);
       setStatusById('cat-customers-status', 'No se pudo abrir Catálogos → Clientes.', 'warn');
     });
-    window.addEventListener('hashchange', activateTabFromUrl);
     registerServiceWorker();
   });
 })();
