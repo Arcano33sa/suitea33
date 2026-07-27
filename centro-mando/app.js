@@ -52,8 +52,10 @@ const state = {
   inventorySignals: null,
   fxSignal: null,
   summarySignals: null,
+  summaryRenderToken: 0,
   globalEventSignals: new Map(),
   globalRenderToken: 0,
+  pickerSelectionToken: 0,
   pendingUsePosId: null,
   refreshBusy: false,
   listenersBound: false
@@ -349,7 +351,8 @@ function visualName(){
 
 function renderVisualHeader(){
   const input = $('eventSearch');
-  if (input && document.activeElement !== input) input.value = visualName();
+  const list = $('eventList');
+  if (input && (document.activeElement !== input || !list || list.hidden)) input.value = visualName();
 
   setText('operationalDate', ymdToDisplay(state.today));
   setText('visualModeState', state.visualMode === MODE_GLOBAL ? 'GLOBAL' : 'EVENTO');
@@ -440,28 +443,56 @@ function hideEventList(){
   if (button) button.setAttribute('aria-expanded', 'false');
 }
 
+function closePickerAfterSelection(){
+  const input = $('eventSearch');
+  hideEventList();
+  if (input){
+    input.value = visualName();
+    try{ input.blur(); }catch(_){ }
+  }
+  try{
+    const active = document.activeElement;
+    const picker = $('eventPicker');
+    if (active && active !== document.body && picker && picker.contains(active) && typeof active.blur === 'function') active.blur();
+  }catch(_){ }
+  try{
+    requestAnimationFrame(()=>{
+      const currentInput = $('eventSearch');
+      if (!currentInput) return;
+      currentInput.value = visualName();
+      try{ currentInput.blur(); }catch(_){ }
+    });
+  }catch(_){ }
+}
+
 async function selectVisualEvent(eventId){
   const id = Number(eventId);
   if (!Number.isFinite(id) || id <= 0 || !state.eventsById.has(id)) return;
+  const selectionToken = ++state.pickerSelectionToken;
+  const changed = state.visualMode !== MODE_EVENT || Number(state.visualEventId) !== id;
   state.visualMode = MODE_EVENT;
   state.visualEventId = id;
   state.visualEvent = state.eventsById.get(id) || null;
-  persistVisualState();
-  hideEventList();
+  if (changed) persistVisualState();
+  closePickerAfterSelection();
   renderVisualHeader();
   renderEventList('');
+  if (!changed || selectionToken !== state.pickerSelectionToken) return;
   await refreshEventSummary();
 }
 
 async function selectGlobalView(){
+  const selectionToken = ++state.pickerSelectionToken;
+  const changed = state.visualMode !== MODE_GLOBAL;
   state.visualMode = MODE_GLOBAL;
   state.visualEventId = null;
   state.visualEvent = null;
-  persistVisualState();
-  hideEventList();
+  if (changed) persistVisualState();
+  closePickerAfterSelection();
   renderVisualHeader();
   renderEventList('');
   renderGlobalEvents();
+  if (!changed || selectionToken !== state.pickerSelectionToken) return;
   await refreshEventSummary();
 }
 
@@ -654,6 +685,9 @@ function clearEventSummary(reason){
 }
 
 async function refreshEventSummary(){
+  const token = ++state.summaryRenderToken;
+  const requestedMode = state.visualMode;
+  const requestedEventId = state.visualEventId == null ? null : Number(state.visualEventId);
   const events = visualScopeEvents();
   if (state.visualMode === MODE_EVENT && !state.visualEvent){
     clearEventSummary('Selecciona un evento concreto.');
@@ -665,6 +699,8 @@ async function refreshEventSummary(){
     readSalesToday(ids),
     readCashToday(events)
   ]);
+  const currentEventId = state.visualEventId == null ? null : Number(state.visualEventId);
+  if (token !== state.summaryRenderToken || requestedMode !== state.visualMode || requestedEventId !== currentEventId) return;
   state.fxSignal = fx;
   state.summarySignals = { sales, cash, eventIds:ids, mode:state.visualMode };
   setText('salesToday', sales.ok ? formatMoney(sales.total) : '—');
@@ -1564,7 +1600,7 @@ function refreshAppearance(){
 function registerCentroMandoServiceWorker(){
   try{
     if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
-    const swUrl = './sw.js?v=4.20.95&r=2';
+    const swUrl = './sw.js?v=4.20.95&r=3';
     navigator.serviceWorker.register(swUrl, { scope:'./', updateViaCache:'none' })
       .then((registration)=>{
         try{ registration.update(); }catch(_){ }

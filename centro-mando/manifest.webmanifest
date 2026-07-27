@@ -2,7 +2,7 @@
   "name": "Arcano 33 · Centro de Mando",
   "short_name": "A33 Mando",
   "description": "Resumen operativo de Suite A33 con eventos, ventas, agenda, pedidos e inventario.",
-  "start_url": "./index.html?v=4.20.95&r=19",
+  "start_url": "./index.html?v=4.20.95&r=20",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
