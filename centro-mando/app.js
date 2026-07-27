@@ -1538,6 +1538,10 @@ function bindUi(){
 
   if (!state.listenersBound){
     state.listenersBound = true;
+    window.addEventListener('focus', refreshAppearance);
+    window.addEventListener('pageshow', refreshAppearance);
+    window.addEventListener('storage', refreshAppearance);
+    window.addEventListener('a33:appearance-changed', refreshAppearance);
     window.addEventListener('focus', refreshFromSources);
     window.addEventListener('pageshow', refreshFromSources);
     window.addEventListener('storage', refreshFromSources);
@@ -1548,10 +1552,19 @@ function bindUi(){
 
 
 
+function refreshAppearance(){
+  try{
+    const theme = window.A33Theme;
+    if (!theme || typeof theme.apply !== 'function') return;
+    const preference = typeof theme.read === 'function' ? theme.read() : undefined;
+    theme.apply(preference);
+  }catch(_){ }
+}
+
 function registerCentroMandoServiceWorker(){
   try{
     if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
-    const swUrl = './sw.js?v=4.20.95&r=1';
+    const swUrl = './sw.js?v=4.20.95&r=2';
     navigator.serviceWorker.register(swUrl, { scope:'./', updateViaCache:'none' })
       .then((registration)=>{
         try{ registration.update(); }catch(_){ }
@@ -1565,6 +1578,7 @@ function registerCentroMandoServiceWorker(){
 }
 
 async function init(){
+  refreshAppearance();
   registerCentroMandoServiceWorker();
   bindUi();
   setText('cmdToday', ymdToDisplay(state.today));

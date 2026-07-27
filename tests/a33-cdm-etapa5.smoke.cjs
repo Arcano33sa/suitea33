@@ -39,14 +39,21 @@ assert(/@media \(max-width:820px\)/.test(css), 'Falta responsive iPad/tablet');
 assert(/@media \(max-width:560px\)/.test(css), 'Falta responsive móvil');
 assert(/orientation:landscape/.test(css), 'Falta hardening de orientación horizontal');
 assert(/prefers-reduced-motion/.test(css), 'Falta accesibilidad de movimiento reducido');
+assert(/:root,\s*html\[data-theme="dark"\]/.test(css), 'Tema oscuro no está definido como base segura');
+assert(/html\[data-theme="light"\]/.test(css), 'Tema claro global no está soportado');
+assert(css.includes('--cmd-card:#111111'), 'Superficie oscura principal incorrecta');
+assert(css.includes('--cmd-control:#141414'), 'Controles oscuros no definidos');
+assert(!/background:#fff;/.test(css), 'Persisten fondos blancos fijos fuera del sistema de tema');
+assert(app.includes('function refreshAppearance()'), 'Falta reaplicación robusta de Apariencia');
 
-assert(index.includes('rel="manifest" href="manifest.webmanifest?v=4.20.95&r=1"'), 'Manifest no enlazado');
-assert(index.includes('style.css?v=4.20.95&r=15'), 'Revisión CSS final incorrecta');
-assert(index.includes('app.js?v=4.20.95&r=18'), 'Revisión app final incorrecta');
+
+assert(index.includes('rel="manifest" href="manifest.webmanifest?v=4.20.95&r=2"'), 'Manifest no enlazado');
+assert(index.includes('style.css?v=4.20.95&r=16'), 'Revisión CSS final incorrecta');
+assert(index.includes('app.js?v=4.20.95&r=19'), 'Revisión app final incorrecta');
 assert(app.includes("navigator.serviceWorker.register(swUrl, { scope:'./', updateViaCache:'none' })"), 'Registro SW robusto ausente');
 assert(app.includes('window.__A33_CDM_STAGE5'), 'Diagnóstico Etapa 5 ausente');
 
-assert.strictEqual(manifest.start_url, './index.html?v=4.20.95&r=18', 'start_url PWA incorrecto');
+assert.strictEqual(manifest.start_url, './index.html?v=4.20.95&r=19', 'start_url PWA incorrecto');
 assert.strictEqual(manifest.scope, './', 'scope PWA incorrecto');
 assert.strictEqual(manifest.display, 'standalone', 'display PWA incorrecto');
 assert.strictEqual(manifest.orientation, 'any', 'PWA debe aceptar cambio de orientación');
@@ -58,9 +65,9 @@ for (const icon of manifest.icons) {
 assert(fs.existsSync(path.join(root, 'centro-mando/offline.html')), 'Fallback offline ausente');
 
 assert(sw.includes("const MODULE = 'centro-mando'"), 'SW no está acotado al módulo');
-assert(sw.includes("const MODULE_CACHE_REV = '1'"), 'Cache revision final ausente');
-assert(sw.includes("'./style.css?v=4.20.95&r=15'"), 'CSS final no precacheado');
-assert(sw.includes("'./app.js?v=4.20.95&r=18'"), 'App final no precacheada');
+assert(sw.includes("const MODULE_CACHE_REV = '2'"), 'Cache revision final ausente');
+assert(sw.includes("'./style.css?v=4.20.95&r=16'"), 'CSS final no precacheado');
+assert(sw.includes("'./app.js?v=4.20.95&r=19'"), 'App final no precacheada');
 assert(sw.includes("'./offline.html'"), 'Offline no precacheado');
 assert(sw.includes('await self.skipWaiting()'), 'SW nuevo no activa actualización');
 assert(sw.includes('await self.clients.claim()'), 'SW no reclama clientes tras actualización');
@@ -83,5 +90,6 @@ console.log('ETAPA 5 SMOKE OK');
 console.log('- Orden final y bloques full-width verificados');
 console.log('- Responsive escritorio/iPad/móvil, tactilidad y orientación verificados');
 console.log('- PWA, offline, revisión de caché y estrategia anti-fantasmas verificados');
+console.log('- Tema oscuro/claro global y superficies sin blancos fijos verificados');
 console.log('- Ruta legacy blindada para no borrar el caché oficial');
 console.log('- Contenido heredado prohibido ausente y separación POS preservada');
