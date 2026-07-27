@@ -1,6 +1,6 @@
 /* Suite A33 — retiro controlado del Service Worker legacy centro_mando.
    No precachea, no toca localStorage ni IndexedDB y se desregistra al activarse. */
-const LEGACY_CACHE_MARKERS = ['centro_mando', 'centro-mando'];
+const LEGACY_CACHE_MARKERS = ['centro_mando'];
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
 });
