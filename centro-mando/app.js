@@ -350,9 +350,8 @@ function visualName(){
 }
 
 function renderVisualHeader(){
-  const input = $('eventSearch');
-  const list = $('eventList');
-  if (input && (document.activeElement !== input || !list || list.hidden)) input.value = visualName();
+  const display = $('eventSearch');
+  if (display) display.textContent = visualName();
 
   setText('operationalDate', ymdToDisplay(state.today));
   setText('visualModeState', state.visualMode === MODE_GLOBAL ? 'GLOBAL' : 'EVENTO');
@@ -384,15 +383,11 @@ function renderVisualHeader(){
   }
 }
 
-function filterEvents(query){
-  const q = text(query).toLowerCase();
-  if (!q || q === GLOBAL_LABEL.toLowerCase()) return state.events.slice(0, 50);
-  return state.events.filter((event)=>{
-    return text(event.name).toLowerCase().includes(q) || text(event.groupName).toLowerCase().includes(q);
-  }).slice(0, 50);
+function pickerEvents(){
+  return state.events.slice();
 }
 
-function renderEventList(query){
+function renderEventList(){
   const host = $('eventList');
   if (!host) return;
   host.innerHTML = '';
@@ -405,11 +400,11 @@ function renderEventList(query){
   globalButton.addEventListener('click', ()=>selectGlobalView());
   host.appendChild(globalButton);
 
-  const rows = filterEvents(query);
+  const rows = pickerEvents();
   if (!rows.length){
     const empty = document.createElement('div');
     empty.className = 'cmd-picker-item';
-    empty.innerHTML = '<strong>Sin resultados</strong><small>Prueba con otro nombre o grupo.</small>';
+    empty.innerHTML = '<strong>Sin eventos disponibles</strong><small>No hay eventos para visualizar.</small>';
     host.appendChild(empty);
     return;
   }
@@ -432,23 +427,31 @@ function escapeHtml(value){
 function showEventList(){
   const list = $('eventList');
   const button = $('eventPickerBtn');
+  const display = $('eventSearch');
+  const picker = $('eventPicker');
   if (list) list.hidden = false;
   if (button) button.setAttribute('aria-expanded', 'true');
+  if (display) display.setAttribute('aria-expanded', 'true');
+  if (picker && picker.classList) picker.classList.add('is-open');
 }
 
 function hideEventList(){
   const list = $('eventList');
   const button = $('eventPickerBtn');
+  const display = $('eventSearch');
+  const picker = $('eventPicker');
   if (list) list.hidden = true;
   if (button) button.setAttribute('aria-expanded', 'false');
+  if (display) display.setAttribute('aria-expanded', 'false');
+  if (picker && picker.classList) picker.classList.remove('is-open');
 }
 
 function closePickerAfterSelection(){
-  const input = $('eventSearch');
+  const display = $('eventSearch');
   hideEventList();
-  if (input){
-    input.value = visualName();
-    try{ input.blur(); }catch(_){ }
+  if (display){
+    display.textContent = visualName();
+    try{ display.blur(); }catch(_){ }
   }
   try{
     const active = document.activeElement;
@@ -457,10 +460,10 @@ function closePickerAfterSelection(){
   }catch(_){ }
   try{
     requestAnimationFrame(()=>{
-      const currentInput = $('eventSearch');
-      if (!currentInput) return;
-      currentInput.value = visualName();
-      try{ currentInput.blur(); }catch(_){ }
+      const currentDisplay = $('eventSearch');
+      if (!currentDisplay) return;
+      currentDisplay.textContent = visualName();
+      try{ currentDisplay.blur(); }catch(_){ }
     });
   }catch(_){ }
 }
@@ -1534,21 +1537,32 @@ async function refreshFromSources(){
 }
 
 function bindUi(){
-  const input = $('eventSearch');
+  const display = $('eventSearch');
   const pickerButton = $('eventPickerBtn');
   const list = $('eventList');
 
-  if (input){
-    input.addEventListener('focus', ()=>{ renderEventList(''); showEventList(); try{ input.select(); }catch(_){ } });
-    input.addEventListener('input', ()=>{ renderEventList(input.value); showEventList(); });
-    input.addEventListener('keydown', (event)=>{ if (event.key === 'Escape') hideEventList(); });
-  }
-  if (pickerButton){
-    pickerButton.addEventListener('click', ()=>{
-      if (list && list.hidden){ renderEventList(''); showEventList(); try{ input.focus(); input.select(); }catch(_){ } }
-      else hideEventList();
+  const toggleEventList = ()=>{
+    if (list && list.hidden){
+      renderEventList();
+      showEventList();
+    }else{
+      hideEventList();
+    }
+  };
+
+  if (display){
+    display.addEventListener('click', toggleEventList);
+    display.addEventListener('keydown', (event)=>{
+      if (event.key === 'Escape') hideEventList();
+      if (event.key === 'ArrowDown'){
+        event.preventDefault();
+        if (list && list.hidden){ renderEventList(); showEventList(); }
+        const first = list && list.querySelector ? list.querySelector('.cmd-picker-item') : null;
+        try{ first && first.focus(); }catch(_){ }
+      }
     });
   }
+  if (pickerButton) pickerButton.addEventListener('click', toggleEventList);
   document.addEventListener('click', (event)=>{
     const picker = $('eventPicker');
     if (picker && !picker.contains(event.target)) hideEventList();
@@ -1600,7 +1614,7 @@ function refreshAppearance(){
 function registerCentroMandoServiceWorker(){
   try{
     if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
-    const swUrl = './sw.js?v=4.20.95&r=3';
+    const swUrl = './sw.js?v=4.20.95&r=4';
     navigator.serviceWorker.register(swUrl, { scope:'./', updateViaCache:'none' })
       .then((registration)=>{
         try{ registration.update(); }catch(_){ }

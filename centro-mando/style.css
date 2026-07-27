@@ -172,6 +172,17 @@ button{ -webkit-tap-highlight-color:transparent; }
   color:var(--cmd-text);
   outline:none;
 }
+.cmd-picker-display{
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+  text-align:left;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  cursor:pointer;
+  user-select:none;
+  -webkit-user-select:none;
+}
 .cmd-input:focus{ border-color:var(--cmd-gold); box-shadow:0 0 0 3px rgba(184,138,53,.14); }
 .cmd-picker-btn{
   min-height:48px;
@@ -183,12 +194,11 @@ button{ -webkit-tap-highlight-color:transparent; }
   cursor:pointer;
 }
 .cmd-picker-list{
-  position:absolute;
-  z-index:30;
-  top:calc(100% + 7px);
-  left:0;
-  right:0;
+  position:static;
+  grid-column:1 / -1;
+  width:100%;
   max-height:320px;
+  margin-top:7px;
   overflow:auto;
   border:1px solid var(--cmd-border);
   border-radius:14px;

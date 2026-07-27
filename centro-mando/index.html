@@ -9,11 +9,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="A33 Mando" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.95&r=3" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.95&r=4" />
   <link rel="apple-touch-icon" href="../icon-a33-192.png" />
   <script src="/assets/js/a33-theme.js?v=4.20.95&r=7"></script>
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.95&r=7" />
-  <link rel="stylesheet" href="style.css?v=4.20.95&r=16" />
+  <link rel="stylesheet" href="style.css?v=4.20.95&r=17" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.95&r=7" />
 </head>
 <body>
@@ -55,7 +55,7 @@
         <div class="cmd-field">
           <label class="cmd-label" for="eventSearch">Evento visualizado</label>
           <div class="cmd-picker" id="eventPicker">
-            <input id="eventSearch" class="cmd-input" autocomplete="off" placeholder="Buscar evento…" aria-controls="eventList" />
+            <button id="eventSearch" class="cmd-input cmd-picker-display" type="button" aria-controls="eventList" aria-haspopup="listbox" aria-expanded="false">—</button>
             <button class="cmd-picker-btn" id="eventPickerBtn" type="button" aria-label="Abrir lista" aria-expanded="false">▾</button>
             <div class="cmd-picker-list" id="eventList" role="listbox" aria-label="Eventos disponibles" hidden></div>
           </div>
@@ -259,6 +259,6 @@
   <script src="/assets/js/a33-release.js?v=4.20.95&r=54"></script>
   <script src="/assets/js/a33-storage.js?v=4.20.95&r=20"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.95&r=14"></script>
-  <script src="app.js?v=4.20.95&r=20"></script>
+  <script src="app.js?v=4.20.95&r=21"></script>
 </body>
 </html>
