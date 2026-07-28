@@ -1,5 +1,5 @@
 /*
-  Suite A33 · Centro de Mando · Etapa 5/5
+  Suite A33 · Centro de Mando · Etapa 3/3 · Créditos pendientes y hardening final
   Regla principal: el evento visualizado es independiente del evento activo del POS.
   Centro de Mando solo escribe currentEventId mediante la confirmación explícita de “Usar en POS”.
 */
@@ -17,6 +17,8 @@ const ORDERS_KEY = 'arcano33_pedidos';
 const AGENDA_KEY = 'a33_agenda_records_v1';
 const INVENTORY_KEY = 'arcano33_inventario';
 const CURRENCY_KEY = 'suite_a33_currency_settings_v1';
+const CREDIT_UPDATE_KEY = 'a33_pos_credit_update_pulse';
+const CREDIT_UPDATE_CHANNEL = 'a33-pos-credit-updates';
 const ENVASES_CATALOG_KEY = 'a33_catalog_envases_v1';
 const TAPAS_CATALOG_KEY = 'a33_catalog_tapas_v1';
 const MAX_SAFE_ROWS = 4000;
@@ -52,6 +54,10 @@ const state = {
   inventorySignals: null,
   fxSignal: null,
   summarySignals: null,
+  creditSignal: null,
+  creditDetailOpen: false,
+  creditChannel: null,
+  creditRefreshTimer: null,
   summaryRenderToken: 0,
   globalEventSignals: new Map(),
   globalRenderToken: 0,
@@ -556,6 +562,158 @@ function isCourtesySale(row){
   return payment.includes('cortes');
 }
 
+
+function normalizePaymentMethodCDM(value){
+  const key = text(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (key === 'credito' || key === 'credito cliente' || key === 'cliente credito' || key === 'fiado') return 'credito';
+  if (key === 'efectivo' || key === 'cash') return 'efectivo';
+  if (key === 'transferencia') return 'transferencia';
+  if (key === 'tarjeta') return 'tarjeta';
+  return key;
+}
+
+function isReversedCreditMovementCDM(movement){
+  const row = movement && typeof movement === 'object' ? movement : {};
+  const status = text(row.status ?? row.estado ?? row.movementStatus).toUpperCase();
+  return !!(row.reversedAt || row.revertedAt || row.voidedAt || row.isReversed || row.reversed || row.voided ||
+    ['REVERSED','REVERTED','VOID','ANULADO','ANULADA'].includes(status));
+}
+
+function isCollectibleCreditSaleCDM(sale){
+  const row = sale && typeof sale === 'object' ? sale : {};
+  if (!row || row.id == null) return false;
+  if (row.courtesy || row.isReturn || row.deletedAt || row.voidedAt || row.annulledAt || row.cancelledAt || row.canceledAt || row.revertedAt || row.reversedAt) return false;
+  if (row.isDeleted || row.deleted || row.isVoid || row.voided || row.isCancelled || row.cancelled || row.canceled || row.isReverted || row.reverted || row.reversed) return false;
+  const status = text(row.status ?? row.estado ?? row.saleStatus ?? row.state).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return !new Set(['ANULADA','ANULADO','VOID','VOIDED','CANCELADA','CANCELADO','CANCELLED','CANCELED','REVERTIDA','REVERTIDO','REVERSED','REVERTED','ELIMINADA','ELIMINADO','DELETED']).has(status);
+}
+
+function isCreditCollectionMovementCDM(movement){
+  const row = movement && typeof movement === 'object' ? movement : {};
+  const type = text(row.movementType ?? row.tipoMovimiento ?? row.cashMovementType).toUpperCase();
+  return type === 'CREDIT_COLLECTION' || row.creditSaleId != null || row.ventaCreditoId != null;
+}
+
+function creditPaymentIdentityCDM(record){
+  const row = record && typeof record === 'object' ? record : {};
+  const paymentId = text(row.creditPaymentId ?? row.paymentId ?? row.idPagoCredito);
+  if (paymentId) return `payment:${paymentId}`;
+  const movementId = text(row.movementId ?? row.cashMovementId ?? row.id);
+  if (movementId) return `movement:${movementId}`;
+  const saleId = text(row.creditSaleId ?? row.ventaCreditoId ?? row.saleId);
+  const ts = num(row.ts ?? row.collectionTs ?? row.createdAt);
+  const amount = Math.round(num(row.amount ?? row.monto) * 100) / 100;
+  return `fallback:${saleId}:${ts}:${amount}`;
+}
+
+function creditOriginalAmountCDM(sale){
+  const row = sale && typeof sale === 'object' ? sale : {};
+  const explicit = Number(row.creditOriginalAmount ?? row.montoCreditoOriginal);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.round(Math.abs(explicit) * 100) / 100;
+  const total = Number(row.total ?? row.amount ?? row.monto);
+  return Number.isFinite(total) ? Math.round(Math.abs(total) * 100) / 100 : 0;
+}
+
+function creditStoredPaidCDM(sale){
+  const row = sale && typeof sale === 'object' ? sale : {};
+  let paid = 0;
+  [row.creditPaidAmount, row.montoCreditoPagado, row.paidAmount, row.amountPaid].forEach((value)=>{
+    const n = Number(value);
+    if (Number.isFinite(n) && n > paid) paid = n;
+  });
+  const seen = new Set();
+  const paymentTotal = (Array.isArray(row.creditPayments) ? row.creditPayments : []).reduce((sum, payment)=>{
+    if (!payment || isReversedCreditMovementCDM(payment)) return sum;
+    const identity = creditPaymentIdentityCDM(payment);
+    if (seen.has(identity)) return sum;
+    seen.add(identity);
+    const amount = Number(payment.amount ?? payment.monto);
+    return sum + (Number.isFinite(amount) && amount > 0 ? amount : 0);
+  }, 0);
+  return Math.round(Math.max(paid, paymentTotal) * 100) / 100;
+}
+
+function creditPaidMapFromCashCDM(cashRows){
+  const totals = new Map();
+  const seen = new Set();
+  (Array.isArray(cashRows) ? cashRows : []).forEach((cashDay)=>{
+    (cashDay && Array.isArray(cashDay.movements) ? cashDay.movements : []).forEach((movement)=>{
+      if (!isCreditCollectionMovementCDM(movement) || isReversedCreditMovementCDM(movement)) return;
+      const saleId = text(movement.creditSaleId ?? movement.ventaCreditoId);
+      if (!saleId) return;
+      const identity = `${saleId}|${creditPaymentIdentityCDM(movement)}`;
+      if (seen.has(identity)) return;
+      seen.add(identity);
+      const amount = Number(movement.amount ?? movement.monto);
+      if (!Number.isFinite(amount) || amount <= 0) return;
+      totals.set(saleId, Math.round((num(totals.get(saleId)) + amount) * 100) / 100);
+    });
+  });
+  return totals;
+}
+
+function creditPaidFromCashCDM(cashRows, saleId){
+  return num(creditPaidMapFromCashCDM(cashRows).get(text(saleId)));
+}
+
+function creditProductNameCDM(sale){
+  const row = sale && typeof sale === 'object' ? sale : {};
+  const snapshot = row.productSnapshot && typeof row.productSnapshot === 'object' ? row.productSnapshot : {};
+  const direct = text(row.productNameSnapshot ?? row.productName ?? snapshot.name ?? snapshot.nombre);
+  if (direct) return direct;
+  const id = text(row.productId ?? row.productoId ?? row.catalogProductId);
+  const product = id ? state.productsById.get(id) : null;
+  return text(product && (product.name ?? product.nombre)) || 'Venta';
+}
+
+function creditSaleSnapshotCDM(sale, cashRows, paidMap){
+  const row = sale && typeof sale === 'object' ? sale : {};
+  const original = creditOriginalAmountCDM(row);
+  const paidFromCash = paidMap instanceof Map ? num(paidMap.get(text(row.id))) : creditPaidFromCashCDM(cashRows, row.id);
+  const paid = Math.round(Math.max(creditStoredPaidCDM(row), paidFromCash) * 100) / 100;
+  const balance = Math.round(Math.max(0, original - paid) * 100) / 100;
+  const eventId = Number(row.eventId ?? row.eventoId);
+  const event = state.eventsById.get(eventId);
+  const eventName = text(row.eventName ?? row.eventoNombre ?? (event && event.name)) || `Evento ${eventId || '—'}`;
+  const customer = text(row.customerName ?? row.customer ?? row.clienteNombre ?? row.cliente) || 'Cliente sin nombre';
+  const reference = row.seqId != null && row.seqId !== '' ? `Venta #${row.seqId}` : (row.id != null ? `Venta #${row.id}` : 'Venta al crédito');
+  const date = text(row.date ?? row.fecha).slice(0,10) || '—';
+  const status = balance <= 0.009 ? 'PAGADA' : (paid > 0.009 ? 'ABONADA' : 'PENDIENTE');
+  return { id:row.id, sale:row, eventId, eventName, customer, product:creditProductNameCDM(row), reference, date, original, paid, balance, status };
+}
+
+async function readPendingCreditSales(eventIds){
+  const ids = normalizeEventIds(eventIds);
+  if (!ids.length) return { ok:true, count:0, totalBalance:0, items:[] };
+  if (!state.db || !hasStore(state.db, 'sales')) return { ok:false, count:0, totalBalance:0, items:[] };
+  const [sales, cashRows] = await Promise.all([
+    idbGetAll(state.db, 'sales'),
+    hasStore(state.db, 'cashV2') ? idbGetAll(state.db, 'cashV2') : Promise.resolve([])
+  ]);
+  if (!Array.isArray(sales) || sales.length > MAX_SAFE_ROWS) return { ok:false, count:0, totalBalance:0, items:[] };
+  const idSet = new Set(ids.map(String));
+  const paidMap = creditPaidMapFromCashCDM(cashRows);
+  const unique = new Map();
+  sales.forEach((sale)=>{
+    if (!sale || !idSet.has(String(sale.eventId ?? sale.eventoId))) return;
+    if (normalizePaymentMethodCDM(sale.payment ?? sale.paymentMethod ?? sale.metodoPago) !== 'credito') return;
+    if (!isCollectibleCreditSaleCDM(sale) || !(creditOriginalAmountCDM(sale) > 0)) return;
+    const snapshot = creditSaleSnapshotCDM(sale, cashRows, paidMap);
+    if (snapshot.id == null || !(snapshot.balance > 0.009)) return;
+    const key = `${snapshot.eventId}:${String(snapshot.id)}`;
+    if (!unique.has(key)) unique.set(key, snapshot);
+  });
+  const items = Array.from(unique.values()).sort((a,b)=>{
+    const dateCmp = String(a.date).localeCompare(String(b.date));
+    if (dateCmp) return dateCmp;
+    const eventCmp = String(a.eventName).localeCompare(String(b.eventName), 'es');
+    if (eventCmp) return eventCmp;
+    return String(a.reference).localeCompare(String(b.reference), 'es', { numeric:true });
+  });
+  const totalBalance = Math.round(items.reduce((sum,item)=>sum + num(item.balance), 0) * 100) / 100;
+  return { ok:true, count:items.length, totalBalance, items };
+}
+
 function normalizeEventIds(eventIds){
   const input = Array.isArray(eventIds) ? eventIds : [eventIds];
   return Array.from(new Set(input.map((value)=>Number(value)).filter((value)=>Number.isFinite(value) && value > 0)));
@@ -677,6 +835,7 @@ function renderCurrencySummary(signal){
 
 function clearEventSummary(reason){
   state.summarySignals = null;
+  state.creditSignal = null;
   setText('salesToday', '—');
   setText('salesTodayHint', reason || 'No disponible');
   setText('salesTodayCount', '—');
@@ -698,14 +857,16 @@ async function refreshEventSummary(){
   }
   const ids = events.map((event)=>Number(event.id));
   const fx = readCurrencySignal();
-  const [sales, cash] = await Promise.all([
+  const [sales, cash, credits] = await Promise.all([
     readSalesToday(ids),
-    readCashToday(events)
+    readCashToday(events),
+    readPendingCreditSales(ids)
   ]);
   const currentEventId = state.visualEventId == null ? null : Number(state.visualEventId);
   if (token !== state.summaryRenderToken || requestedMode !== state.visualMode || requestedEventId !== currentEventId) return;
   state.fxSignal = fx;
-  state.summarySignals = { sales, cash, eventIds:ids, mode:state.visualMode };
+  state.creditSignal = credits;
+  state.summarySignals = { sales, cash, credits, eventIds:ids, mode:state.visualMode };
   setText('salesToday', sales.ok ? formatMoney(sales.total) : '—');
   setText('salesTodayHint', sales.ok ? `Excluye cortesías · ${ymdToDisplay(state.today)}` : 'No disponible');
   setText('salesTodayCount', sales.ok ? sales.count : '—');
@@ -1270,6 +1431,115 @@ function createAttentionItem(signal){
   return row;
 }
 
+
+function appendCreditFieldCDM(host, label, value, className){
+  const field = document.createElement('div');
+  field.className = 'cmd-credit-field' + (className ? ` ${className}` : '');
+  const name = document.createElement('span');
+  name.textContent = label;
+  const content = document.createElement('b');
+  content.textContent = value;
+  field.append(name, content);
+  host.appendChild(field);
+}
+
+function closeCreditDetailCDM(returnFocus){
+  state.creditDetailOpen = false;
+  renderAttention();
+  if (returnFocus){
+    try{ requestAnimationFrame(()=>document.querySelector('[data-credit-toggle="1"]')?.focus()); }catch(_){ }
+  }
+}
+
+function createCreditAttentionItem(signal){
+  const row = document.createElement('div');
+  row.className = 'cmd-attention-item is-warning cmd-credit-attention';
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'cmd-credit-toggle';
+  toggle.dataset.creditToggle = '1';
+  toggle.setAttribute('aria-expanded', state.creditDetailOpen ? 'true' : 'false');
+  toggle.setAttribute('aria-controls', 'creditPendingDetail');
+
+  const main = document.createElement('span');
+  main.className = 'cmd-attention-main';
+  const meta = document.createElement('span');
+  meta.className = 'cmd-attention-meta';
+  const level = document.createElement('span');
+  level.className = 'cmd-attention-level';
+  level.textContent = 'MEDIA';
+  meta.appendChild(level);
+  const title = document.createElement('strong');
+  title.textContent = signal.title;
+  const description = document.createElement('small');
+  description.textContent = signal.subtitle;
+  main.append(meta, title, description);
+
+  const action = document.createElement('span');
+  action.className = 'cmd-credit-action';
+  const actionText = document.createElement('span');
+  actionText.textContent = state.creditDetailOpen ? 'Ocultar detalle' : 'Ver detalle';
+  const chevron = document.createElement('span');
+  chevron.className = 'cmd-credit-chevron';
+  chevron.setAttribute('aria-hidden','true');
+  chevron.textContent = state.creditDetailOpen ? '▴' : '▾';
+  action.append(actionText, chevron);
+  toggle.append(main, action);
+  toggle.addEventListener('click', ()=>{
+    state.creditDetailOpen = !state.creditDetailOpen;
+    renderAttention();
+    try{ requestAnimationFrame(()=>document.querySelector('[data-credit-toggle="1"]')?.focus()); }catch(_){ }
+  });
+  row.appendChild(toggle);
+
+  const detail = document.createElement('div');
+  detail.className = 'cmd-credit-detail';
+  detail.id = 'creditPendingDetail';
+  detail.hidden = !state.creditDetailOpen;
+  const head = document.createElement('div');
+  head.className = 'cmd-credit-detail-head';
+  const headTitle = document.createElement('strong');
+  headTitle.textContent = 'Ventas al crédito pendientes';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'cmd-icon-btn cmd-credit-close';
+  close.textContent = 'Cerrar';
+  close.setAttribute('aria-label','Cerrar detalle de ventas al crédito pendientes');
+  close.addEventListener('click', ()=>closeCreditDetailCDM(true));
+  head.append(headTitle, close);
+  detail.appendChild(head);
+
+  const list = document.createElement('div');
+  list.className = 'cmd-credit-list';
+  (signal.items || []).forEach((item)=>{
+    const card = document.createElement('article');
+    card.className = 'cmd-credit-row';
+    const cardHead = document.createElement('div');
+    cardHead.className = 'cmd-credit-row-head';
+    const customer = document.createElement('strong');
+    customer.textContent = item.customer;
+    const status = document.createElement('span');
+    status.className = 'cmd-credit-status ' + (item.status === 'ABONADA' ? 'is-partial' : 'is-pending');
+    status.textContent = item.status === 'ABONADA' ? 'Abonada' : 'Pendiente';
+    cardHead.append(customer, status);
+    card.appendChild(cardHead);
+    const grid = document.createElement('div');
+    grid.className = 'cmd-credit-grid';
+    appendCreditFieldCDM(grid, 'Fecha de venta', ymdToDisplay(item.date));
+    appendCreditFieldCDM(grid, 'Evento', item.eventName);
+    appendCreditFieldCDM(grid, 'Producto / referencia', `${item.product} · ${item.reference}`, 'is-wide');
+    appendCreditFieldCDM(grid, 'Total original', formatMoney(item.original), 'is-money');
+    appendCreditFieldCDM(grid, 'Total cobrado', formatMoney(item.paid), 'is-money');
+    appendCreditFieldCDM(grid, 'Saldo pendiente', formatMoney(item.balance), 'is-money is-balance');
+    card.appendChild(grid);
+    list.appendChild(card);
+  });
+  detail.appendChild(list);
+  row.appendChild(detail);
+  return row;
+}
+
 function renderAttention(){
   const host = $('attentionList');
   const empty = $('attentionEmpty');
@@ -1287,9 +1557,18 @@ function renderAttention(){
   const inventory = state.inventorySignals;
   const fx = state.fxSignal || readCurrencySignal();
   const cash = state.summarySignals && state.summarySignals.cash;
+  const credits = state.creditSignal || (state.summarySignals && state.summarySignals.credits);
 
   if (!fx.hasRate) add({ key:'missing-fx', kind:'danger', title:'Falta tipo de cambio', subtitle:'Configura el T/C vigente antes de operar conversiones.', route:ROUTES.currency, actionLabel:'Configurar' });
   if (cash && cash.openCount > 0) add({ key:'cash-open', kind:'danger', title:cash.openCount === 1 ? 'Efectivo abierto pendiente de cierre' : `Efectivo abierto en ${cash.openCount} eventos`, subtitle:'Revisa y cierra el efectivo operativo cuando corresponda.', route:ROUTES.cash, actionLabel:'Ir a Efectivo' });
+  if (credits && credits.ok && credits.count > 0) add({
+    key:'credit-pending',
+    type:'credit',
+    kind:'warning',
+    title:'Ventas al crédito pendientes',
+    subtitle:`${credits.count} ${credits.count === 1 ? 'venta' : 'ventas'} · ${formatMoney(credits.totalBalance)} por cobrar`,
+    items:credits.items
+  });
   if (orders && orders.overdue > 0) add({ key:'orders-overdue', kind:'danger', title:`Pedidos vencidos: ${orders.overdue}`, subtitle:'Hay entregas pendientes con fecha anterior a hoy.', route:ROUTES.orders, actionLabel:'Ver Pedidos' });
   if (orders && orders.today > 0) add({ key:'orders-delivery-today', kind:'warning', title:`Pedidos para entregar hoy: ${orders.today}`, subtitle:'Revisa las entregas programadas para la fecha actual.', route:ROUTES.orders, actionLabel:'Ver Pedidos' });
   if (orders && orders.manufactureToday > 0) add({ key:'orders-manufacture-today', kind:'warning', title:`Pedidos para fabricar hoy: ${orders.manufactureToday}`, subtitle:'Hay pedidos pendientes cuya fabricación corresponde a hoy.', route:ROUTES.orders, actionLabel:'Ver Pedidos' });
@@ -1299,7 +1578,7 @@ function renderAttention(){
 
   setText('attentionCount', signals.length);
   empty.hidden = signals.length > 0;
-  signals.forEach((signal)=>host.appendChild(createAttentionItem(signal)));
+  signals.forEach((signal)=>host.appendChild(signal.type === 'credit' ? createCreditAttentionItem(signal) : createAttentionItem(signal)));
 }
 
 function resolveActiveEvents(){
@@ -1536,6 +1815,31 @@ async function refreshFromSources(){
   }
 }
 
+
+function handleCreditUpdateSignalCDM(){
+  refreshFromSources();
+}
+
+function bindCreditUpdateSignalsCDM(){
+  window.addEventListener('a33:credit-updated', handleCreditUpdateSignalCDM);
+  try{
+    if (typeof BroadcastChannel === 'function'){
+      state.creditChannel = new BroadcastChannel(CREDIT_UPDATE_CHANNEL);
+      state.creditChannel.addEventListener('message', (event)=>{
+        const payload = event && event.data;
+        if (!payload || payload.type === 'a33:credit-updated') handleCreditUpdateSignalCDM();
+      });
+    }
+  }catch(error){
+    console.warn('Centro de Mando: canal de créditos no disponible.', error);
+  }
+  try{
+    state.creditRefreshTimer = window.setInterval(()=>{
+      if (document.visibilityState === 'visible') refreshFromSources();
+    }, 15000);
+  }catch(_){ }
+}
+
 function bindUi(){
   const display = $('eventSearch');
   const pickerButton = $('eventPickerBtn');
@@ -1597,6 +1901,7 @@ function bindUi(){
     window.addEventListener('storage', refreshFromSources);
     document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState === 'visible') refreshFromSources(); });
     ['a33:data-updated','a33:storage-changed','a33:json-imported','a33:sync-complete','a33:cloud-sync-complete'].forEach((eventName)=>window.addEventListener(eventName, refreshFromSources));
+    bindCreditUpdateSignalsCDM();
   }
 }
 
@@ -1614,7 +1919,7 @@ function refreshAppearance(){
 function registerCentroMandoServiceWorker(){
   try{
     if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
-    const swUrl = './sw.js?v=4.20.96&r=4';
+    const swUrl = './sw.js?v=4.20.97&r=5';
     navigator.serviceWorker.register(swUrl, { scope:'./', updateViaCache:'none' })
       .then((registration)=>{
         try{ registration.update(); }catch(_){ }
@@ -1697,6 +2002,12 @@ window.__A33_CDM_STAGE4 = Object.freeze({
 window.__A33_CDM_STAGE5 = Object.freeze({
   ...window.__A33_CDM_STAGE4,
   pwaSupported:()=>typeof navigator !== 'undefined' && !!navigator.serviceWorker
+});
+window.__A33_CDM_CREDIT_STAGE3 = Object.freeze({
+  ...window.__A33_CDM_STAGE5,
+  credits:()=>state.creditSignal,
+  creditDetailOpen:()=>state.creditDetailOpen,
+  refreshCredits:refreshFromSources
 });
 
 document.addEventListener('DOMContentLoaded', init);

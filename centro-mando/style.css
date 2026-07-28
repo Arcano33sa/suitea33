@@ -26,6 +26,7 @@ html[data-theme="dark"]{
   --cmd-ok:#72c996;
   --cmd-warn:#e2b45d;
   --cmd-danger:#ff8585;
+  --cmd-info:#78aee8;
   --cmd-shadow:0 16px 38px rgba(0,0,0,.38);
   --cmd-press-shadow:0 5px 12px rgba(0,0,0,.28);
   --cmd-focus-ring:rgba(221,191,100,.34);
@@ -58,6 +59,7 @@ html[data-theme="light"]{
   --cmd-ok:#246b45;
   --cmd-warn:#9a6500;
   --cmd-danger:#a52b2b;
+  --cmd-info:#28679a;
   --cmd-shadow:0 12px 32px rgba(55,34,19,.10);
   --cmd-press-shadow:0 5px 12px rgba(66,35,20,.08);
   --cmd-focus-ring:rgba(184,138,53,.38);
@@ -293,6 +295,124 @@ button{ -webkit-tap-highlight-color:transparent; }
 }
 .cmd-attention-item.is-danger .cmd-attention-level{ background:rgba(165,43,43,.11); color:var(--cmd-danger); }
 .cmd-attention-item.is-warning .cmd-attention-level{ background:rgba(154,101,0,.12); color:var(--cmd-warn); }
+
+.cmd-credit-attention{
+  display:block;
+  padding:0;
+  overflow:hidden;
+}
+.cmd-credit-toggle{
+  width:100%;
+  min-height:64px;
+  border:0;
+  background:transparent;
+  color:inherit;
+  padding:13px 14px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:14px;
+  text-align:left;
+  cursor:pointer;
+  font:inherit;
+  touch-action:manipulation;
+}
+.cmd-credit-toggle:focus-visible{
+  outline:3px solid var(--cmd-focus-ring);
+  outline-offset:-3px;
+}
+.cmd-credit-action{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:40px;
+  padding:8px 11px;
+  border:1px solid var(--cmd-border);
+  border-radius:999px;
+  font-weight:800;
+  white-space:nowrap;
+  background:var(--cmd-surface-soft);
+}
+.cmd-credit-chevron{ font-size:1.05rem; line-height:1; }
+.cmd-credit-detail{
+  border-top:1px solid var(--cmd-border);
+  padding:14px;
+  background:var(--cmd-surface-soft);
+}
+.cmd-credit-detail[hidden]{ display:none !important; }
+.cmd-credit-detail-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.cmd-credit-close{ width:auto; min-width:72px; padding:0 12px; font-size:.84rem; }
+.cmd-credit-list{
+  display:grid;
+  gap:10px;
+  max-height:min(56vh,560px);
+  overflow:auto;
+  overscroll-behavior:contain;
+  padding-right:2px;
+}
+.cmd-credit-row{
+  min-width:0;
+  padding:12px;
+  border:1px solid var(--cmd-border);
+  border-radius:14px;
+  background:var(--cmd-card);
+}
+.cmd-credit-row-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.cmd-credit-row-head strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.cmd-credit-status{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  min-height:28px;
+  padding:4px 9px;
+  border-radius:999px;
+  font-size:.75rem;
+  font-weight:900;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+.cmd-credit-status.is-pending{ background:rgba(154,101,0,.14); color:var(--cmd-warn); }
+.cmd-credit-status.is-partial{ background:rgba(43,112,165,.14); color:var(--cmd-info); }
+.cmd-credit-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:9px 12px;
+}
+.cmd-credit-field{ min-width:0; }
+.cmd-credit-field.is-wide{ grid-column:span 2; }
+.cmd-credit-field span{
+  display:block;
+  color:var(--cmd-muted);
+  font-size:.74rem;
+  margin-bottom:3px;
+}
+.cmd-credit-field b{
+  display:block;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:.9rem;
+}
+.cmd-credit-field.is-money b{ font-variant-numeric:tabular-nums; }
+.cmd-credit-field.is-balance b{ color:var(--cmd-warn); }
 .cmd-attention-head{ align-items:center; }
 .cmd-alert-count{
   display:inline-grid;
@@ -792,6 +912,21 @@ button:focus-visible,a:focus-visible,input:focus-visible{
     max-width:520px;
     top:calc(10px + env(safe-area-inset-top));
   }
+}
+
+
+@media (max-width:720px){
+  .cmd-credit-toggle{ grid-template-columns:minmax(0,1fr); gap:10px; }
+  .cmd-credit-action{ justify-self:start; }
+  .cmd-credit-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .cmd-credit-field.is-wide{ grid-column:1 / -1; }
+}
+@media (max-width:470px){
+  .cmd-credit-detail{ padding:11px; }
+  .cmd-credit-row{ padding:10px; }
+  .cmd-credit-grid{ grid-template-columns:minmax(0,1fr); }
+  .cmd-credit-field.is-wide{ grid-column:auto; }
+  .cmd-credit-row-head{ align-items:flex-start; }
 }
 
 @media (max-width:390px){

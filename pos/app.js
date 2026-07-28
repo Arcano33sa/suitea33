@@ -4,10 +4,10 @@ const DB_VER = 37; // Materia Prima + cierre de esquema compartido a33-pos
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.96';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.97';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m31');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m40');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -668,6 +668,10 @@ function cashV2HistNormalizeMove(m){
     if (s) out.note = s;
   }catch(_){ }
   try{ if (o.id != null && String(o.id).trim() !== '') out.id = String(o.id); }catch(_){ }
+  const passthrough = ['movementType','tipoMovimiento','operationalClass','clasificacionOperativa','eventId','dayKey','creditSaleId','creditSaleUid','creditPaymentId','creditCustomer','creditReference','creditSaleDate','creditOriginalAmount','creditPaidBefore','creditPaidAfter','creditBalanceBefore','creditBalanceAfter','creditStatusAfter','clientRequestId','collectedAt','recordedAt'];
+  for (const key of passthrough){
+    try{ if (o[key] != null && String(o[key]).trim() !== '') out[key] = o[key]; }catch(_){ }
+  }
   return out;
 }
 
@@ -2267,9 +2271,9 @@ function cashV2NormAmountInt(v, opts){
   const allowNeg = !!(opts && opts.allowNegative);
   let n = Number(v);
   if (!Number.isFinite(n)) return 0;
-  n = Math.trunc(n);
+  n = round2(n);
   if (!allowNeg && n < 0) n = Math.abs(n);
-  // En ajuste se permite negativo. 0 se considera inválido para agregar movimiento.
+  // Compatibilidad histórica: conserva enteros y admite centavos para cobros parciales.
   return n;
 }
 
@@ -2339,13 +2343,537 @@ function cashV2MovementKindToUi(kind){
   return { text: (k || 'Mov'), sign: 0 };
 }
 
+
+const CASHV2_MOVEMENT_TYPE_CREDIT_COLLECTION = 'CREDIT_COLLECTION';
+const CREDIT_UPDATE_KEY_POS = 'a33_pos_credit_update_pulse';
+const CREDIT_UPDATE_CHANNEL_POS = 'a33-pos-credit-updates';
+
+function notifyCreditStateChangedPOS(detail){
+  const payload = {
+    type:'a33:credit-updated',
+    ts:Date.now(),
+    eventId:detail && detail.eventId != null ? detail.eventId : null,
+    saleId:detail && detail.saleId != null ? detail.saleId : null,
+    reason:String(detail && detail.reason || 'updated')
+  };
+  try{ window.dispatchEvent(new CustomEvent('a33:credit-updated', { detail:payload })); }catch(_){ }
+  try{ localStorage.setItem(CREDIT_UPDATE_KEY_POS, JSON.stringify(payload)); }catch(_){ }
+  try{
+    if (typeof BroadcastChannel === 'function'){
+      const channel = new BroadcastChannel(CREDIT_UPDATE_CHANNEL_POS);
+      channel.postMessage(payload);
+      channel.close();
+    }
+  }catch(_){ }
+}
+let __cashV2CreditSalesUiToken = 0;
+let __cashV2CreditSalesCache = new Map();
+const __cashV2CreditCollectionLocks = new Set();
+const __cashV2MovementSubmitLocks = new Set();
+
+function cashV2IsReversedMovement(movement){
+  const m = movement && typeof movement === 'object' ? movement : {};
+  const status = String(m.status || m.estado || m.movementStatus || '').trim().toUpperCase();
+  return !!(m.reversedAt || m.revertedAt || m.voidedAt || m.isReversed || m.reversed || m.voided ||
+    status === 'REVERSED' || status === 'REVERTED' || status === 'VOID' || status === 'ANULADO' || status === 'ANULADA');
+}
+
+function cashV2IsSaleCollectiblePOS(sale){
+  const s = sale && typeof sale === 'object' ? sale : {};
+  if (!s || s.id == null) return false;
+  if (s.courtesy || s.isReturn || s.deletedAt || s.voidedAt || s.annulledAt || s.cancelledAt || s.canceledAt || s.revertedAt || s.reversedAt) return false;
+  if (s.isDeleted || s.deleted || s.isVoid || s.voided || s.isCancelled || s.cancelled || s.canceled || s.isReverted || s.reverted || s.reversed) return false;
+  const raw = String(s.status || s.estado || s.saleStatus || s.state || '').trim().toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const blocked = new Set(['ANULADA','ANULADO','VOID','VOIDED','CANCELADA','CANCELADO','CANCELLED','CANCELED','REVERTIDA','REVERTIDO','REVERSED','REVERTED','ELIMINADA','ELIMINADO','DELETED']);
+  return !blocked.has(raw);
+}
+
+function cashV2IsCreditCollectionMovement(movement){
+  const m = movement && typeof movement === 'object' ? movement : {};
+  const t = String(m.movementType || m.tipoMovimiento || m.cashMovementType || '').trim().toUpperCase();
+  return t === CASHV2_MOVEMENT_TYPE_CREDIT_COLLECTION || m.creditSaleId != null || m.ventaCreditoId != null;
+}
+
+function cashV2CreditPaymentIdentity(record){
+  const r = record && typeof record === 'object' ? record : {};
+  const paymentId = String(r.creditPaymentId || r.paymentId || r.idPagoCredito || '').trim();
+  if (paymentId) return 'payment:' + paymentId;
+  const movementId = String(r.movementId || r.cashMovementId || r.id || '').trim();
+  if (movementId) return 'movement:' + movementId;
+  const saleId = String(r.creditSaleId ?? r.ventaCreditoId ?? r.saleId ?? '').trim();
+  const ts = Number(r.ts || r.collectionTs || r.createdAt || 0) || 0;
+  const amount = round2(Number(r.amount || r.monto || 0));
+  return `fallback:${saleId}:${ts}:${amount}`;
+}
+
+function cashV2NewRequestId(prefix){
+  return String(prefix || 'REQ') + '-' + Date.now().toString(36) + '-' + Math.random().toString(16).slice(2, 10);
+}
+
+function cashV2CreditSaleOriginalAmount(sale){
+  const s = sale && typeof sale === 'object' ? sale : {};
+  const explicit = Number(s.creditOriginalAmount ?? s.montoCreditoOriginal);
+  if (Number.isFinite(explicit) && explicit > 0) return round2(Math.abs(explicit));
+  const total = Number(s.total || 0);
+  return Number.isFinite(total) ? round2(Math.abs(total)) : 0;
+}
+
+function cashV2CreditSaleStoredPaidAmount(sale){
+  const s = sale && typeof sale === 'object' ? sale : {};
+  const candidates = [s.creditPaidAmount, s.montoCreditoPagado, s.paidAmount, s.amountPaid];
+  let paid = 0;
+  for (const value of candidates){
+    const n = Number(value);
+    if (Number.isFinite(n) && n > paid) paid = n;
+  }
+  const seen = new Set();
+  const payments = Array.isArray(s.creditPayments) ? s.creditPayments : [];
+  const paymentsTotal = payments.reduce((sum, item)=>{
+    if (!item || cashV2IsReversedMovement(item)) return sum;
+    const identity = cashV2CreditPaymentIdentity(item);
+    if (seen.has(identity)) return sum;
+    seen.add(identity);
+    const n = Number(item.amount);
+    return sum + (Number.isFinite(n) && n > 0 ? n : 0);
+  }, 0);
+  return round2(Math.max(paid, paymentsTotal));
+}
+
+function cashV2CreditPaidFromMovements(records, saleId){
+  const wanted = String(saleId == null ? '' : saleId).trim();
+  if (!wanted) return 0;
+  let paid = 0;
+  const seen = new Set();
+  for (const rec of (Array.isArray(records) ? records : [])){
+    for (const m of (rec && Array.isArray(rec.movements) ? rec.movements : [])){
+      if (!cashV2IsCreditCollectionMovement(m) || cashV2IsReversedMovement(m)) continue;
+      const linked = String(m.creditSaleId ?? m.ventaCreditoId ?? '').trim();
+      if (linked !== wanted) continue;
+      const identity = cashV2CreditPaymentIdentity(m);
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      const amount = Number(m.amount || 0);
+      if (Number.isFinite(amount) && amount > 0) paid += amount;
+    }
+  }
+  return round2(paid);
+}
+
+function cashV2CreditSaleSnapshot(sale, cashRecords){
+  const s = sale && typeof sale === 'object' ? sale : {};
+  const original = cashV2CreditSaleOriginalAmount(s);
+  const paid = round2(Math.max(
+    cashV2CreditSaleStoredPaidAmount(s),
+    cashV2CreditPaidFromMovements(cashRecords, s.id)
+  ));
+  const balance = round2(Math.max(0, original - paid));
+  const customer = String(s.customerName || s.customer || 'Cliente sin nombre').trim() || 'Cliente sin nombre';
+  const product = String(s.productNameSnapshot || s.productName || (s.productSnapshot && s.productSnapshot.name) || 'Venta').trim() || 'Venta';
+  const reference = s.seqId != null && s.seqId !== '' ? `Venta #${s.seqId}` : (s.id != null ? `Venta #${s.id}` : 'Venta al crédito');
+  const date = String(s.date || '').slice(0, 10) || '—';
+  const status = balance <= 0.009 ? 'PAGADA' : (paid > 0 ? 'ABONADA' : 'PENDIENTE');
+  return { sale:s, id:s.id, original, paid, balance, customer, product, reference, date, status, collectible:cashV2IsSaleCollectiblePOS(s) };
+}
+
+function cashV2FormatCreditSaleOption(snapshot){
+  const s = snapshot || {};
+  return `${s.customer || 'Cliente'} · ${s.date || '—'} · ${s.product || 'Venta'} · Saldo C$ ${cashV2FmtMoney(s.balance || 0)}`;
+}
+
+function cashV2SetCreditSaleDetails(snapshot){
+  const box = document.getElementById('cashv2-credit-sale-details');
+  if (!box) return;
+  if (!snapshot){
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  box.style.display = 'grid';
+  box.innerHTML = `
+    <div><span>Cliente</span><b>${escapeHtml(snapshot.customer)}</b></div>
+    <div><span>Fecha</span><b>${escapeHtml(snapshot.date)}</b></div>
+    <div><span>Referencia</span><b>${escapeHtml(snapshot.reference)} · ${escapeHtml(snapshot.product)}</b></div>
+    <div><span>Total original</span><b>C$ ${escapeHtml(cashV2FmtMoney(snapshot.original))}</b></div>
+    <div><span>Total cobrado</span><b>C$ ${escapeHtml(cashV2FmtMoney(snapshot.paid))}</b></div>
+    <div><span>Saldo pendiente</span><b>C$ ${escapeHtml(cashV2FmtMoney(snapshot.balance))}</b></div>
+    <div><span>Estado</span><b>${escapeHtml(snapshot.status === 'PAGADA' ? 'Pagada' : (snapshot.status === 'ABONADA' ? 'Abonada' : 'Pendiente'))}</b></div>`;
+}
+
+function cashV2ClearCreditSalesUI(){
+  __cashV2CreditSalesUiToken += 1;
+  __cashV2CreditSalesCache = new Map();
+  const select = document.getElementById('cashv2-credit-sale-select');
+  const empty = document.getElementById('cashv2-credit-sale-empty');
+  if (select) select.innerHTML = '<option value="">— Selecciona una venta al crédito —</option>';
+  if (empty) empty.style.display = 'none';
+  cashV2SetCreditSaleDetails(null);
+}
+
+async function cashV2RefreshCreditSalesUI(eventId, opts){
+  const token = ++__cashV2CreditSalesUiToken;
+  const select = document.getElementById('cashv2-credit-sale-select');
+  const empty = document.getElementById('cashv2-credit-sale-empty');
+  if (!select) return [];
+  const previous = opts && opts.keepSelection ? String(select.value || '') : '';
+  const eid = String(eventId || '').trim();
+  if (!eid){ cashV2ClearCreditSalesUI(); return []; }
+
+  let sales = [];
+  let cashRecords = [];
+  try{
+    [sales, cashRecords] = await Promise.all([getAll('sales'), getAll(CASH_V2_STORE)]);
+  }catch(_){ sales = []; cashRecords = []; }
+  if (token !== __cashV2CreditSalesUiToken) return [];
+
+  const pending = (Array.isArray(sales) ? sales : [])
+    .filter(s => s && String(s.eventId) === eid)
+    .filter(s => normalizePaymentMethodPOS(s.payment || '') === 'credito')
+    .filter(s => cashV2IsSaleCollectiblePOS(s) && Number(s.total || 0) > 0)
+    .map(s => cashV2CreditSaleSnapshot(s, cashRecords))
+    .filter(s => s.id != null && s.balance > 0.009)
+    .sort((a,b)=>{
+      const dateCmp = String(a.date).localeCompare(String(b.date));
+      if (dateCmp) return dateCmp;
+      return Number(a.sale.createdAt || a.id || 0) - Number(b.sale.createdAt || b.id || 0);
+    });
+
+  __cashV2CreditSalesCache = new Map(pending.map(item => [String(item.id), item]));
+  select.innerHTML = '<option value="">— Selecciona una venta al crédito —</option>' + pending.map(item =>
+    `<option value="${escapeHtml(String(item.id))}">${escapeHtml(cashV2FormatCreditSaleOption(item))}</option>`
+  ).join('');
+  if (previous && __cashV2CreditSalesCache.has(previous)) select.value = previous;
+  if (empty) empty.style.display = pending.length ? 'none' : 'block';
+  const selected = __cashV2CreditSalesCache.get(String(select.value || '')) || null;
+  cashV2SetCreditSaleDetails(selected);
+  return pending;
+}
+
+function cashV2ApplyMovementTypeFormState(){
+  const card = document.getElementById('cashv2-movements-card');
+  const kind = String(document.getElementById('cashv2-move-kind-inline')?.value || 'CASH_IN').trim().toUpperCase();
+  const wrap = document.getElementById('cashv2-credit-collection-wrap');
+  const currency = document.getElementById('cashv2-move-currency-inline');
+  const saleSelect = document.getElementById('cashv2-credit-sale-select');
+  const isCollection = kind === CASHV2_MOVEMENT_TYPE_CREDIT_COLLECTION;
+  if (wrap) wrap.style.display = isCollection ? 'block' : 'none';
+  if (currency){
+    if (isCollection) currency.value = 'NIO';
+    currency.disabled = isCollection || card?.dataset.readonly === '1';
+  }
+  if (!isCollection){
+    if (saleSelect) saleSelect.value = '';
+    cashV2SetCreditSaleDetails(null);
+  }else{
+    const eid = String(card?.dataset.eventId || '').trim();
+    if (card?.dataset.creditEventEnabled === '1') cashV2RefreshCreditSalesUI(eid, { keepSelection:true }).catch(()=>{});
+    else cashV2ClearCreditSalesUI();
+  }
+}
+
+function cashV2ApplySelectedCreditSale(){
+  const saleSelect = document.getElementById('cashv2-credit-sale-select');
+  const amount = document.getElementById('cashv2-move-amount-inline');
+  const desc = document.getElementById('cashv2-move-desc-inline');
+  const snapshot = __cashV2CreditSalesCache.get(String(saleSelect?.value || '')) || null;
+  cashV2SetCreditSaleDetails(snapshot);
+  if (!snapshot) return;
+  if (amount) amount.value = Number(snapshot.balance || 0).toFixed(2);
+  if (desc) desc.value = `Cobro de venta a crédito — ${snapshot.customer}`.slice(0, 120);
+}
+
+async function cashV2RegisterCreditCollectionAtomic({ eventId, dayKey, saleId, amount, desc, requestId }){
+  const eid = cashV2AssertEventId(eventId);
+  const dk = cashV2AssertDayKeyCanon(safeYMD(dayKey));
+  const actualDayKey = cashV2DayKeyFromTsLocal(Date.now());
+  if (dk !== actualDayKey) throw new Error('El cobro debe registrarse en la caja del día real. Cierra el día anterior y abre la caja de hoy.');
+  const amt = round2(Number(amount));
+  if (!(amt > 0)) throw new Error('El monto del cobro debe ser mayor que cero.');
+  const sidRaw = String(saleId == null ? '' : saleId).trim();
+  if (!sidRaw) throw new Error('Selecciona una venta al crédito pendiente.');
+  const sid = /^\d+$/.test(sidRaw) ? Number(sidRaw) : sidRaw;
+  const reqId = String(requestId || cashV2NewRequestId('COL')).trim();
+  const lockKey = `${eid}|${sidRaw}`;
+  if (__cashV2CreditCollectionLocks.has(lockKey)) throw new Error('Este cobro ya se está guardando.');
+  __cashV2CreditCollectionLocks.add(lockKey);
+  try{
+    if (!db) await openDB();
+    return await new Promise((resolve, reject)=>{
+      let validationError = null;
+      let result = null;
+      const transaction = db.transaction([CASH_V2_STORE, 'sales'], 'readwrite');
+      const cashStore = transaction.objectStore(CASH_V2_STORE);
+      const salesStore = transaction.objectStore('sales');
+      const key = cashV2Key(eid, dk);
+      let cashDay = null;
+      let sale = null;
+      let cashRecords = null;
+      let ready = 0;
+
+      const fail = (message)=>{
+        validationError = new Error(message);
+        try{ transaction.abort(); }catch(_){ }
+      };
+      const maybeCommit = ()=>{
+        ready += 1;
+        if (ready < 3 || validationError) return;
+        try{
+          if (!cashDay || cashV2NormStatus(cashDay.status) === 'CLOSED') return fail('El día de Efectivo está cerrado.');
+          if (!sale) return fail('La venta seleccionada ya no existe.');
+          if (String(sale.eventId) !== eid) return fail('La venta pertenece a otro evento.');
+          if (normalizePaymentMethodPOS(sale.payment || '') !== 'credito') return fail('La venta ya no está registrada al crédito.');
+          if (!cashV2IsSaleCollectiblePOS(sale)) return fail('La venta está anulada, revertida o no admite cobros.');
+
+          const allMovements = (cashRecords || []).flatMap(rec => rec && Array.isArray(rec.movements) ? rec.movements : []);
+          const duplicateRequest = allMovements.some(m => !cashV2IsReversedMovement(m) && String(m.clientRequestId || '').trim() === reqId);
+          if (duplicateRequest) return fail('Este cobro ya fue registrado.');
+
+          const snapshot = cashV2CreditSaleSnapshot(sale, cashRecords || []);
+          if (!(snapshot.balance > 0.009)) return fail('La venta ya está pagada.');
+          if (amt - snapshot.balance > 0.009) return fail(`El cobro supera el saldo pendiente de C$ ${cashV2FmtMoney(snapshot.balance)}.`);
+
+          const nowTs = Date.now();
+          const nowIso = new Date(nowTs).toISOString();
+          const paymentId = 'CP-' + nowTs.toString(36) + '-' + Math.random().toString(16).slice(2, 9);
+          const movementId = cashV2NewMovementId();
+          const paidAfter = round2(snapshot.paid + amt);
+          const balanceAfter = round2(Math.max(0, snapshot.original - paidAfter));
+          const statusAfter = balanceAfter <= 0.009 ? 'PAGADA' : 'ABONADA';
+          const description = String(desc || '').trim().slice(0, 120);
+          const paymentRecord = {
+            id: paymentId,
+            creditPaymentId: paymentId,
+            movementId,
+            clientRequestId: reqId,
+            saleId: sale.id,
+            saleUid: sale.uid || '',
+            amount: amt,
+            currency: 'NIO',
+            ts: nowTs,
+            collectedAt: nowIso,
+            date: dk,
+            dayKey: dk,
+            eventId: eid,
+            customer: snapshot.customer,
+            reference: snapshot.reference,
+            originalAmount: snapshot.original,
+            balanceBefore: snapshot.balance,
+            balanceAfter,
+            source: 'POS_EFECTIVO',
+            description
+          };
+
+          const updatedSale = {
+            ...sale,
+            creditOriginalAmount: snapshot.original,
+            creditPaidAmount: paidAfter,
+            creditBalance: balanceAfter,
+            creditStatus: statusAfter,
+            estadoCredito: statusAfter,
+            creditUpdatedAt: nowTs,
+            updatedAt: nowTs,
+            creditPayments: [...(Array.isArray(sale.creditPayments) ? sale.creditPayments : []), paymentRecord]
+          };
+
+          const movement = {
+            id: movementId,
+            clientRequestId: reqId,
+            ts: nowTs,
+            collectedAt: nowIso,
+            eventId: eid,
+            dayKey: dk,
+            kind: 'IN',
+            operationalClass: CASHV2_OPERATIONAL_CLASSES.CASH_IN,
+            clasificacionOperativa: CASHV2_OPERATIONAL_CLASSES.CASH_IN,
+            operationalClassLabel: 'Cobro',
+            operationalStage: 'pos_efectivo_etapa_2_3',
+            movementType: CASHV2_MOVEMENT_TYPE_CREDIT_COLLECTION,
+            tipoMovimiento: CASHV2_MOVEMENT_TYPE_CREDIT_COLLECTION,
+            currency: 'NIO',
+            amount: amt,
+            desc: description,
+            creditSaleId: sale.id,
+            creditSaleUid: sale.uid || '',
+            creditPaymentId: paymentId,
+            creditCustomer: snapshot.customer,
+            creditReference: snapshot.reference,
+            creditSaleDate: snapshot.date,
+            creditOriginalAmount: snapshot.original,
+            creditPaidBefore: snapshot.paid,
+            creditPaidAfter: paidAfter,
+            creditBalanceBefore: snapshot.balance,
+            creditBalanceAfter: balanceAfter,
+            creditStatusAfter: statusAfter,
+            affectsCash: true,
+            affectsIncome: false,
+            affectsUtility: false,
+            affectsInventory: false
+          };
+          const auditEntry = {
+            id: 'AUD-' + movementId,
+            ts: nowTs,
+            action: 'CREDIT_COLLECTION_RECORDED',
+            movementId,
+            creditPaymentId: paymentId,
+            creditSaleId: sale.id,
+            amount: amt,
+            balanceBefore: snapshot.balance,
+            balanceAfter,
+            reason: description || `Cobro ${snapshot.reference}`
+          };
+          const updatedCashDay = {
+            ...cashDay,
+            movements: [...(Array.isArray(cashDay.movements) ? cashDay.movements : []), movement],
+            audit: [...(Array.isArray(cashDay.audit) ? cashDay.audit : []), auditEntry],
+            meta: {
+              ...(cashDay.meta && typeof cashDay.meta === 'object' ? cashDay.meta : {}),
+              updatedAt: nowIso,
+              lastMovementId: movementId
+            }
+          };
+          salesStore.put(updatedSale);
+          cashStore.put(updatedCashDay);
+          result = { sale: updatedSale, cashDay: updatedCashDay, movement };
+        }catch(error){
+          validationError = error instanceof Error ? error : new Error(String(error));
+          try{ transaction.abort(); }catch(_){ }
+        }
+      };
+
+      const cashReq = cashStore.get(key);
+      cashReq.onsuccess = ()=>{ cashDay = cashReq.result || null; maybeCommit(); };
+      cashReq.onerror = ()=>fail('No se pudo leer Efectivo.');
+      const saleReq = salesStore.get(sid);
+      saleReq.onsuccess = ()=>{ sale = saleReq.result || null; maybeCommit(); };
+      saleReq.onerror = ()=>fail('No se pudo leer la venta.');
+      const allCashReq = cashStore.getAll();
+      allCashReq.onsuccess = ()=>{ cashRecords = allCashReq.result || []; maybeCommit(); };
+      allCashReq.onerror = ()=>fail('No se pudo verificar el historial de cobros.');
+
+      transaction.oncomplete = ()=>{
+        try{ if (result && result.sale) notifyCreditStateChangedPOS({ eventId:result.sale.eventId, saleId:result.sale.id, reason:'collection' }); }catch(_){ }
+        resolve(result);
+      };
+      transaction.onabort = ()=> reject(validationError || transaction.error || new Error('No se pudo guardar el cobro.'));
+      transaction.onerror = ()=>{};
+    });
+  }finally{
+    __cashV2CreditCollectionLocks.delete(lockKey);
+  }
+}
+
+async function cashV2RegisterManualMovementAtomic({ eventId, dayKey, operationalClass, currency, amount, desc, requestId }){
+  const eid = cashV2AssertEventId(eventId);
+  const dk = cashV2AssertDayKeyCanon(safeYMD(dayKey));
+  const actualDayKey = cashV2DayKeyFromTsLocal(Date.now());
+  if (dk !== actualDayKey) throw new Error('El movimiento debe registrarse en la caja del día real. Cierra el día anterior y abre la caja de hoy.');
+  const opClass = cashV2NormalizeOperationalClass(operationalClass, CASHV2_OPERATIONAL_CLASSES.CASH_IN);
+  if (!(opClass === CASHV2_OPERATIONAL_CLASSES.CASH_IN || opClass === CASHV2_OPERATIONAL_CLASSES.EXPENSE)) throw new Error('Tipo de movimiento inválido.');
+  const ccy = String(currency || '').trim().toUpperCase();
+  if (!(ccy === 'NIO' || ccy === 'USD')) throw new Error('Moneda inválida.');
+  const amt = round2(Math.abs(Number(amount)));
+  if (!(amt > 0)) throw new Error('El monto debe ser mayor que cero.');
+  const description = String(desc || '').trim().slice(0, 120);
+  if (!description) throw new Error('La descripción es obligatoria.');
+  const reqId = String(requestId || cashV2NewRequestId('MOV')).trim();
+  if (!db) await openDB();
+  let phys = null;
+  try{ phys = await cashV2ComputeCashSalesPhysicalPOS(eid, dk); }catch(_){ phys = null; }
+
+  return new Promise((resolve, reject)=>{
+    let validationError = null;
+    let result = null;
+    const transaction = db.transaction([CASH_V2_STORE], 'readwrite');
+    const cashStore = transaction.objectStore(CASH_V2_STORE);
+    const key = cashV2Key(eid, dk);
+    const fail = (message)=>{
+      validationError = new Error(message);
+      try{ transaction.abort(); }catch(_){ }
+    };
+    const req = cashStore.get(key);
+    req.onsuccess = ()=>{
+      try{
+        const cashDay = req.result || null;
+        if (!cashDay || cashV2NormStatus(cashDay.status) === 'CLOSED') return fail('El día de Efectivo está cerrado.');
+        const movements = Array.isArray(cashDay.movements) ? cashDay.movements : [];
+        if (movements.some(m => !cashV2IsReversedMovement(m) && String(m.clientRequestId || '').trim() === reqId)) return fail('Este movimiento ya fue registrado.');
+        const nowTs = Date.now();
+        const nowIso = new Date(nowTs).toISOString();
+        const movementId = cashV2NewMovementId();
+        const isExpense = opClass === CASHV2_OPERATIONAL_CLASSES.EXPENSE;
+        const movement = {
+          id: movementId,
+          clientRequestId: reqId,
+          ts: nowTs,
+          recordedAt: nowIso,
+          eventId: eid,
+          dayKey: dk,
+          kind: isExpense ? 'OUT' : 'IN',
+          operationalClass: opClass,
+          clasificacionOperativa: opClass,
+          operationalClassLabel: isExpense ? 'Salida' : 'Entrada',
+          operationalStage: 'pos_efectivo_etapa_2_3',
+          movementType: isExpense ? 'CASH_EXPENSE_OUT' : 'CASH_MANUAL_IN',
+          tipoMovimiento: isExpense ? 'CASH_EXPENSE_OUT' : 'CASH_MANUAL_IN',
+          currency: ccy,
+          amount: amt,
+          desc: description,
+          affectsCash: true,
+          affectsIncome: false,
+          affectsUtility: isExpense,
+          affectsInventory: false
+        };
+        const auditEntry = {
+          id: 'AUD-' + movementId,
+          ts: nowTs,
+          action: isExpense ? 'CASH_EXPENSE_RECORDED' : 'CASH_ENTRY_RECORDED',
+          movementId,
+          amount: amt,
+          currency: ccy,
+          reason: description
+        };
+        const updatedCashDay = {
+          ...cashDay,
+          cashSalesC: phys ? cashV2Round2Money(phys.NIO) : cashDay.cashSalesC,
+          cashSalesUSD: phys ? cashV2Round2Money(phys.USD) : cashDay.cashSalesUSD,
+          cashSalesGrossC: phys ? cashV2Round2Money(phys.grossNIO) : cashDay.cashSalesGrossC,
+          cashSalesChangeC: phys ? cashV2Round2Money(phys.changeNIO) : cashDay.cashSalesChangeC,
+          cashSalesPhysicalUpdatedAt: phys ? nowTs : cashDay.cashSalesPhysicalUpdatedAt,
+          movements: [...movements, movement],
+          audit: [...(Array.isArray(cashDay.audit) ? cashDay.audit : []), auditEntry],
+          meta: {
+            ...(cashDay.meta && typeof cashDay.meta === 'object' ? cashDay.meta : {}),
+            updatedAt: nowIso,
+            lastMovementId: movementId
+          }
+        };
+        cashStore.put(updatedCashDay);
+        result = { cashDay: updatedCashDay, movement };
+      }catch(error){
+        validationError = error instanceof Error ? error : new Error(String(error));
+        try{ transaction.abort(); }catch(_){ }
+      }
+    };
+    req.onerror = ()=>fail('No se pudo leer Efectivo.');
+    transaction.oncomplete = ()=>resolve(result);
+    transaction.onabort = ()=>reject(validationError || transaction.error || new Error('No se pudo guardar el movimiento.'));
+    transaction.onerror = ()=>{};
+  });
+}
+
 function cashV2NetForCurrency(movements, currency){
   const ccy = String(currency || '').trim().toUpperCase();
   let net = 0;
+  const seenCollections = new Set();
   const arr = Array.isArray(movements) ? movements : [];
   for (const m of arr){
-    if (!m || typeof m !== 'object') continue;
+    if (!m || typeof m !== 'object' || cashV2IsReversedMovement(m)) continue;
     if (String(m.currency || '').trim().toUpperCase() != ccy) continue;
+    if (cashV2IsCreditCollectionMovement(m)){
+      const identity = cashV2CreditPaymentIdentity(m);
+      if (seenCollections.has(identity)) continue;
+      seenCollections.add(identity);
+    }
     const k = String(m.kind || '').trim().toUpperCase();
     const allowNeg = (k === 'ADJUST');
     let amt = cashV2NormAmountInt(m.amount, { allowNegative: allowNeg });
@@ -2451,12 +2979,20 @@ function cashV2RenderMovementsUI(cashDay){
     if (!Number.isFinite(amt)) amt = 0;
     const ui = cashV2MovementKindToUi(k);
     const opClass = cashV2NormalizeOperationalClass(m.operationalClass || m.clasificacionOperativa || '', cashV2OperationalClassFromKind(k));
-    const opLabel = cashV2OperationalClassLabel(opClass);
+    const movementType = String(m.movementType || m.tipoMovimiento || '').trim().toUpperCase();
+    const opLabel = cashV2IsCreditCollectionMovement(m)
+      ? 'Cobro'
+      : (movementType === 'CASH_MANUAL_IN'
+          ? 'Entrada'
+          : (movementType === 'CASH_EXPENSE_OUT' ? 'Salida' : cashV2OperationalClassLabel(opClass)));
     let sign = ui.sign > 0 ? '+' : (ui.sign < 0 ? '−' : '');
     if (k === 'ADJUST') sign = (amt < 0 ? '−' : '+');
-    const amountText = `${sign} ${ccyLabel} ${cashV2FmtInt(Math.abs(amt))}`.trim();
+    const amountText = `${sign} ${ccyLabel} ${cashV2FmtMoney(Math.abs(amt))}`.trim();
 
     const desc = (m.desc != null ? String(m.desc) : (m.note != null ? String(m.note) : '')).trim();
+    const creditTrace = cashV2IsCreditCollectionMovement(m)
+      ? `<div class="cashv2-move-trace"><b>${escapeHtml(String(m.creditCustomer || 'Cliente'))}</b> · ${escapeHtml(String(m.creditReference || ('Venta #' + String(m.creditSaleId || '—'))))}<br><small>Saldo: C$ ${escapeHtml(cashV2FmtMoney(m.creditBalanceBefore || 0))} → C$ ${escapeHtml(cashV2FmtMoney(m.creditBalanceAfter || 0))}</small></div>`
+      : '';
     const descHtml = desc ? `<div class="cashv2-move-note" style="white-space:normal; overflow:visible; text-overflow:unset;">${escapeHtml(desc)}</div>` : '';
 
     return `<div class="cashv2-move-row">
@@ -2466,6 +3002,7 @@ function cashV2RenderMovementsUI(cashDay){
           <span class="cashv2-mtag">${escapeHtml(opLabel || ui.text)}</span>
           <span class="cashv2-mtag">${escapeHtml(ccyLabel)}</span>
         </div>
+        ${creditTrace}
         ${descHtml}
       </div>
       <div class="cashv2-move-amt">${escapeHtml(amountText)}</div>
@@ -2483,6 +3020,7 @@ function cashV2InitMovementsUIOnce(){
   const selCcy = document.getElementById('cashv2-move-currency-inline');
   const inpAmt = document.getElementById('cashv2-move-amount-inline');
   const inpDesc = document.getElementById('cashv2-move-desc-inline');
+  const saleSelect = document.getElementById('cashv2-credit-sale-select');
   const btnAdd = document.getElementById('cashv2-btn-add-movement');
   const elErr = document.getElementById('cashv2-move-inline-error');
   const elErrSmall = elErr ? elErr.querySelector('small') : null;
@@ -2506,14 +3044,17 @@ function cashV2InitMovementsUIOnce(){
 
   function resetForm(){
     showErr('');
-    try{ if (selKind) selKind.value = 'ADDITIONAL_INCOME'; }catch(_){ }
+    try{ if (selKind) selKind.value = 'CASH_IN'; }catch(_){ }
     try{ if (selCcy) selCcy.value = 'NIO'; }catch(_){ }
     try{ if (inpAmt) inpAmt.value = ''; }catch(_){ }
     try{ if (inpDesc) inpDesc.value = ''; }catch(_){ }
+    try{ if (saleSelect) saleSelect.value = ''; }catch(_){ }
+    cashV2SetCreditSaleDetails(null);
     try{
       const { dk } = currentCtx();
       if (inpDate && dk) inpDate.value = dk;
     }catch(_){ }
+    cashV2ApplyMovementTypeFormState();
   }
 
   async function addMovement(){
@@ -2521,89 +3062,90 @@ function cashV2InitMovementsUIOnce(){
     if (!eid || !dk){ showErr('Falta evento o día.'); return; }
     if (btnAdd && btnAdd.disabled){ return; }
 
-    const selectedRaw = selKind ? String(selKind.value || '').trim().toUpperCase() : 'ADDITIONAL_INCOME';
-    const operationalClass = cashV2NormalizeOperationalClass(selectedRaw, CASHV2_OPERATIONAL_CLASSES.ADDITIONAL_INCOME);
+    const selectedRaw = selKind ? String(selKind.value || '').trim().toUpperCase() : 'CASH_IN';
+    const isCollection = selectedRaw === CASHV2_MOVEMENT_TYPE_CREDIT_COLLECTION;
+    const operationalClass = isCollection
+      ? CASHV2_OPERATIONAL_CLASSES.CASH_IN
+      : cashV2NormalizeOperationalClass(selectedRaw, CASHV2_OPERATIONAL_CLASSES.CASH_IN);
     const kind = cashV2OperationalClassToKind(operationalClass);
-    const ccy = selCcy ? String(selCcy.value || '').trim().toUpperCase() : 'NIO';
+    const ccy = isCollection ? 'NIO' : (selCcy ? String(selCcy.value || '').trim().toUpperCase() : 'NIO');
     const desc = inpDesc ? String(inpDesc.value || '').trim() : '';
-    const allowNeg = (kind === 'ADJUST');
-    let amt = cashV2NormAmountInt(inpAmt ? inpAmt.value : 0, { allowNegative: allowNeg });
+    let amt = cashV2NormAmountInt(inpAmt ? inpAmt.value : 0, { allowNegative:false });
     if (!Number.isFinite(amt)) amt = 0;
-    if (!allowNeg) amt = Math.abs(amt);
+    amt = Math.abs(amt);
 
-    if (!(kind === 'IN' || kind === 'OUT' || kind === 'ADJUST')){
-      showErr('Clasificación inválida.');
+    if (!(kind === 'IN' || kind === 'OUT')){ showErr('Tipo de movimiento inválido.'); return; }
+    if (!(ccy === 'NIO' || ccy === 'USD')){ showErr('Moneda inválida.'); return; }
+    if (!(amt > 0)){ showErr('El monto debe ser mayor que cero.'); return; }
+    if (!desc){ showErr('La descripción es obligatoria.'); return; }
+    if (isCollection && !String(saleSelect?.value || '').trim()){
+      showErr('Selecciona una venta al crédito pendiente.');
       return;
     }
-    if (!(ccy === 'NIO' || ccy === 'USD')){
-      showErr('Moneda inválida.');
-      return;
-    }
-    if (!allowNeg){
-      if (!amt || amt <= 0){
-        showErr('Monto inválido.');
-        return;
-      }
-    }else{
-      if (amt == 0){
-        showErr('Monto inválido.');
-        return;
-      }
-    }
 
+    const submitLockKey = `${eid}|${dk}`;
+    if (__cashV2MovementSubmitLocks.has(submitLockKey)){ showErr('La operación ya se está guardando.'); return; }
+    __cashV2MovementSubmitLocks.add(submitLockKey);
+    const clientRequestId = cashV2NewRequestId(isCollection ? 'COL' : 'MOV');
+    if (btnAdd) btnAdd.disabled = true;
     try{
-      const rec = await cashV2Ensure(eid, dk);
-
-      const movement = {
-        id: cashV2NewMovementId(),
-        ts: Date.now(),
-        kind,
-        operationalClass,
-        clasificacionOperativa: operationalClass,
-        operationalClassLabel: cashV2OperationalClassLabel(operationalClass),
-        operationalStage: 'finanzas_tablero_operativo_etapa_2_5',
-        currency: ccy,
-        amount: amt,
-        desc: desc ? desc.slice(0, 120) : ''
-      };
-
-      const next = { ...rec };
-      const movs = Array.isArray(next.movements) ? next.movements.slice() : [];
-      movs.push(movement);
-      next.movements = movs;
-
-      await cashV2RefreshPhysicalSalesOnRecordPOS(next, eid, dk);
-      const saved = await cashV2Save(next);
-      if (typeof window !== 'undefined' && window.A33_DEBUG_CASHV2) console.info(`[A33][CASHv2] movement add: ${kind} ${ccy} ${amt}`);
-
-      try{ cashV2SetLastRec(saved); }catch(_){ }
-      try{ cashV2RenderMovementsUI(saved); }catch(_){ }
-      try{ cashV2UpdateCloseSummary(saved); }catch(_){ }
-      try{ cashV2UpdateCloseEligibility(saved); }catch(_){ }
+      if (isCollection){
+        const savedCollection = await cashV2RegisterCreditCollectionAtomic({
+          eventId:eid,
+          dayKey:dk,
+          saleId:saleSelect.value,
+          amount:amt,
+          desc,
+          requestId: clientRequestId
+        });
+        const saved = savedCollection && savedCollection.cashDay;
+        try{ cashV2SetLastRec(saved); }catch(_){ }
+        try{ cashV2RenderMovementsUI(saved); }catch(_){ }
+        try{ cashV2UpdateCloseSummary(saved); }catch(_){ }
+        try{ cashV2UpdateCloseEligibility(saved); }catch(_){ }
+        await cashV2RefreshCreditSalesUI(eid);
+        try{ await renderDay(); await renderSummary(); }catch(_){ }
+        try{ toast(savedCollection.sale.creditStatus === 'PAGADA' ? 'Cobro final registrado' : 'Abono registrado'); }catch(_){ }
+      }else{
+        const savedMovement = await cashV2RegisterManualMovementAtomic({
+          eventId:eid,
+          dayKey:dk,
+          operationalClass,
+          currency:ccy,
+          amount:amt,
+          desc,
+          requestId:clientRequestId
+        });
+        const saved = savedMovement && savedMovement.cashDay;
+        try{ cashV2SetLastRec(saved); }catch(_){ }
+        try{ cashV2RenderMovementsUI(saved); }catch(_){ }
+        try{ cashV2UpdateCloseSummary(saved); }catch(_){ }
+        try{ cashV2UpdateCloseEligibility(saved); }catch(_){ }
+        try{ toast(selectedRaw === 'EXPENSE' ? 'Salida registrada' : 'Entrada registrada'); }catch(_){ }
+      }
 
       resetForm();
-      try{ if (inpAmt) inpAmt.focus(); }catch(_){ }
+      try{ if (btnAdd) btnAdd.focus({ preventScroll:true }); }catch(_){ try{ if (btnAdd) btnAdd.focus(); }catch(__){ } }
     }catch(err){
       console.error('[A33][CASHv2] movement add error', err);
       const msg = (err && (err.message || err.name)) ? (err.message || err.name) : String(err);
       showErr(msg);
+    }finally{
+      __cashV2MovementSubmitLocks.delete(submitLockKey);
+      if (btnAdd) btnAdd.disabled = false;
+      try{ cashV2ApplyMovementTypeFormState(); }catch(_){ }
     }
   }
 
-  if (btnAdd){
-    btnAdd.addEventListener('click', (e)=>{ try{ if (e) e.preventDefault(); }catch(_){ } addMovement(); });
-  }
-  if (inpAmt){
-    inpAmt.addEventListener('keydown', (e)=>{ if (e && e.key === 'Enter'){ try{ e.preventDefault(); }catch(_){ } addMovement(); } });
-  }
-  if (inpDesc){
-    inpDesc.addEventListener('keydown', (e)=>{ if (e && e.key === 'Enter'){ try{ e.preventDefault(); }catch(_){ } addMovement(); } });
-  }
+  if (selKind) selKind.addEventListener('change', ()=>{ showErr(''); cashV2ApplyMovementTypeFormState(); });
+  if (saleSelect) saleSelect.addEventListener('change', ()=>{ showErr(''); cashV2ApplySelectedCreditSale(); });
+  if (btnAdd) btnAdd.addEventListener('click', (e)=>{ try{ if (e) e.preventDefault(); }catch(_){ } addMovement(); });
+  if (inpAmt) inpAmt.addEventListener('keydown', (e)=>{ if (e && e.key === 'Enter'){ try{ e.preventDefault(); }catch(_){ } addMovement(); } });
+  if (inpDesc) inpDesc.addEventListener('keydown', (e)=>{ if (e && e.key === 'Enter'){ try{ e.preventDefault(); }catch(_){ } addMovement(); } });
 
   resetForm();
   card.dataset.readyMove = '1';
 }
-
 
 
 // --- POS: Efectivo v2 — Cierre (Final + Esperado + Diferencia) — Etapa 5
@@ -2762,27 +3304,36 @@ function cashV2SumMovementsByCurrency(movements, currency){
   let inc = 0;
   let out = 0;
   let adj = 0;
+  let collections = 0;
+  const seenCollections = new Set();
 
   for (const m of arr){
-    if (!m || typeof m !== 'object') continue;
+    if (!m || typeof m !== 'object' || cashV2IsReversedMovement(m)) continue;
     if (String(m.currency || '').trim().toUpperCase() != ccy) continue;
+    if (cashV2IsCreditCollectionMovement(m)){
+      const identity = cashV2CreditPaymentIdentity(m);
+      if (seenCollections.has(identity)) continue;
+      seenCollections.add(identity);
+    }
     const k = String(m.kind || '').trim().toUpperCase();
     const allowNeg = (k === 'ADJUST');
     let amt = cashV2NormAmountInt(m.amount, { allowNegative: allowNeg });
     if (!Number.isFinite(amt)) amt = 0;
 
-    if (k === 'IN' || k === 'ADJUST_IN') inc += Math.abs(amt);
-    else if (k === 'OUT' || k === 'ADJUST_OUT') out += Math.abs(amt);
+    if (k === 'IN' || k === 'ADJUST_IN'){
+      inc += Math.abs(amt);
+      if (cashV2IsCreditCollectionMovement(m)) collections += Math.abs(amt);
+    }else if (k === 'OUT' || k === 'ADJUST_OUT') out += Math.abs(amt);
     else if (k === 'ADJUST') adj += amt;
   }
 
-  return { in: inc, out, adjust: adj };
+  return { in: inc, entries: round2(Math.max(0, inc - collections)), collections: round2(collections), out, adjust: adj };
 }
 
 function cashV2ComputeCloseNumbers(rec, opts){
   const o = {
-    NIO: { initial:0, net:0, in:0, out:0, sales:0, adjust:0, expected:0, final:0, diff:0 },
-    USD: { initial:0, net:0, in:0, out:0, sales:0, adjust:0, expected:0, final:0, diff:0 }
+    NIO: { initial:0, net:0, in:0, collections:0, out:0, sales:0, adjust:0, expected:0, final:0, diff:0 },
+    USD: { initial:0, net:0, in:0, collections:0, out:0, sales:0, adjust:0, expected:0, final:0, diff:0 }
   };
 
   const preferDom = !(opts && opts.preferDom === false);
@@ -2821,11 +3372,12 @@ function cashV2ComputeCloseNumbers(rec, opts){
   const netNio = cashV2Round2Money((sN.in - sN.out) + sN.adjust);
   const netUsd = cashV2Round2Money((sU.in - sU.out) + sU.adjust);
 
-  const eN = cashV2Round2Money(iN + sN.in - sN.out + salesC + sN.adjust);
-  const eU = cashV2Round2Money(iU + sU.in - sU.out + salesUSD + sU.adjust);
+  const eN = cashV2Round2Money(iN + sN.entries + sN.collections - sN.out + salesC + sN.adjust);
+  const eU = cashV2Round2Money(iU + sU.entries + sU.collections - sU.out + salesUSD + sU.adjust);
 
   o.NIO.initial = cashV2Round2Money(iN);
-  o.NIO.in = cashV2Round2Money(sN.in);
+  o.NIO.in = cashV2Round2Money(sN.entries);
+  o.NIO.collections = cashV2Round2Money(sN.collections);
   o.NIO.out = cashV2Round2Money(sN.out);
   o.NIO.sales = salesC;
   o.NIO.adjust = cashV2Round2Money(sN.adjust);
@@ -2835,7 +3387,8 @@ function cashV2ComputeCloseNumbers(rec, opts){
   o.NIO.diff = cashV2Round2Money(fN - eN);
 
   o.USD.initial = cashV2Round2Money(iU);
-  o.USD.in = cashV2Round2Money(sU.in);
+  o.USD.in = cashV2Round2Money(sU.entries);
+  o.USD.collections = cashV2Round2Money(sU.collections);
   o.USD.out = cashV2Round2Money(sU.out);
   o.USD.sales = salesUSD;
   o.USD.adjust = cashV2Round2Money(sU.adjust);
@@ -2856,8 +3409,8 @@ function cashV2SetDiffPill(el, diff){
 
 function cashV2ClearCloseSummary(){
   const ids = [
-    'cashv2-sum-initial-nio','cashv2-sum-in-nio','cashv2-sum-out-nio','cashv2-sum-sales-nio','cashv2-sum-adjust-nio','cashv2-sum-expected-nio','cashv2-sum-final-nio',
-    'cashv2-sum-initial-usd','cashv2-sum-in-usd','cashv2-sum-out-usd','cashv2-sum-sales-usd','cashv2-sum-adjust-usd','cashv2-sum-expected-usd','cashv2-sum-final-usd'
+    'cashv2-sum-initial-nio','cashv2-sum-in-nio','cashv2-sum-collections-nio','cashv2-sum-out-nio','cashv2-sum-sales-nio','cashv2-sum-adjust-nio','cashv2-sum-expected-nio','cashv2-sum-final-nio',
+    'cashv2-sum-initial-usd','cashv2-sum-in-usd','cashv2-sum-collections-usd','cashv2-sum-out-usd','cashv2-sum-sales-usd','cashv2-sum-adjust-usd','cashv2-sum-expected-usd','cashv2-sum-final-usd'
   ];
   ids.forEach(id=>{ try{ const el = document.getElementById(id); if (el) el.textContent = '0.00'; }catch(_){ } });
   try{ cashV2SetDiffPill(document.getElementById('cashv2-sum-diff-nio'), 0); }catch(_){ }
@@ -2871,6 +3424,7 @@ function cashV2UpdateCloseSummary(rec){
   const nums = cashV2ComputeCloseNumbers(r, { preferDom: true });
   try{ const el = document.getElementById('cashv2-sum-initial-nio'); if (el) el.textContent = cashV2FmtMoney(nums.NIO.initial); }catch(_){ }
   try{ const el = document.getElementById('cashv2-sum-in-nio'); if (el) el.textContent = cashV2FmtMoney(nums.NIO.in); }catch(_){ }
+  try{ const el = document.getElementById('cashv2-sum-collections-nio'); if (el) el.textContent = cashV2FmtMoney(nums.NIO.collections); }catch(_){ }
   try{ const el = document.getElementById('cashv2-sum-out-nio'); if (el) el.textContent = cashV2FmtMoney(nums.NIO.out); }catch(_){ }
   try{ const el = document.getElementById('cashv2-sum-sales-nio'); if (el) el.textContent = cashV2FmtMoney(nums.NIO.sales); }catch(_){ }
   try{ const el = document.getElementById('cashv2-sum-adjust-nio'); if (el) el.textContent = cashV2FmtMoney(nums.NIO.adjust); }catch(_){ }
@@ -2880,6 +3434,7 @@ function cashV2UpdateCloseSummary(rec){
 
   try{ const el = document.getElementById('cashv2-sum-initial-usd'); if (el) el.textContent = cashV2FmtMoney(nums.USD.initial); }catch(_){ }
   try{ const el = document.getElementById('cashv2-sum-in-usd'); if (el) el.textContent = cashV2FmtMoney(nums.USD.in); }catch(_){ }
+  try{ const el = document.getElementById('cashv2-sum-collections-usd'); if (el) el.textContent = cashV2FmtMoney(nums.USD.collections); }catch(_){ }
   try{ const el = document.getElementById('cashv2-sum-out-usd'); if (el) el.textContent = cashV2FmtMoney(nums.USD.out); }catch(_){ }
   try{ const el = document.getElementById('cashv2-sum-sales-usd'); if (el) el.textContent = cashV2FmtMoney(nums.USD.sales); }catch(_){ }
   try{ const el = document.getElementById('cashv2-sum-adjust-usd'); if (el) el.textContent = cashV2FmtMoney(nums.USD.adjust); }catch(_){ }
@@ -2934,10 +3489,12 @@ function cashV2SetMovementsEnabled(enabled){
   if (btnAdd) btnAdd.disabled = !en;
 
   // Etapa 2/7: bloque visible (inline)
-  ['cashv2-move-kind-inline','cashv2-move-currency-inline','cashv2-move-amount-inline','cashv2-move-desc-inline'].forEach(id=>{
+  ['cashv2-move-kind-inline','cashv2-move-currency-inline','cashv2-move-amount-inline','cashv2-move-desc-inline','cashv2-credit-sale-select'].forEach(id=>{
     const el = document.getElementById(id);
     if (el) el.disabled = !en;
   });
+
+  try{ if (en) cashV2ApplyMovementTypeFormState(); }catch(_){ }
 
   // Compat: modal (si existe en DOM)
   const btnSave = document.getElementById('cashv2-move-save');
@@ -3508,10 +4065,17 @@ function cashV2HistCurrencySym(ccy){
 function cashV2HistSumMoves(moves, wantKind){
   const k = String(wantKind || '').toUpperCase();
   let sum = 0;
+  const seenCollections = new Set();
   for (const m of (Array.isArray(moves) ? moves : [])){
     try{
+      if (cashV2IsReversedMovement(m)) continue;
       const mk = String(m && m.kind || '').toUpperCase();
       if (mk !== k) continue;
+      if (cashV2IsCreditCollectionMovement(m)){
+        const identity = cashV2CreditPaymentIdentity(m);
+        if (seenCollections.has(identity)) continue;
+        seenCollections.add(identity);
+      }
       let a = Number(m && m.amount);
       if (!Number.isFinite(a)) a = 0;
       if (k === 'IN' || k === 'OUT') a = Math.abs(a);
@@ -3554,7 +4118,17 @@ function cashV2HistBuildSummaryTable(ccy, block){
   const initial = cashV2Round2Money(b.initial && b.initial.total);
   const finalT = cashV2Round2Money(b.finalCount && b.finalCount.total);
   const moves = Array.isArray(b.movements) ? b.movements : [];
-  const entradas = cashV2HistSumMoves(moves, 'IN');
+  const totalEntradas = cashV2HistSumMoves(moves, 'IN');
+  const seenCobros = new Set();
+  const cobros = cashV2Round2Money(moves.reduce((sum, movement)=>{
+    if (!cashV2IsCreditCollectionMovement(movement) || cashV2IsReversedMovement(movement)) return sum;
+    const identity = cashV2CreditPaymentIdentity(movement);
+    if (seenCobros.has(identity)) return sum;
+    seenCobros.add(identity);
+    const amount = Number(movement && movement.amount);
+    return sum + (Number.isFinite(amount) ? Math.abs(amount) : 0);
+  }, 0));
+  const entradas = cashV2Round2Money(Math.max(0, totalEntradas - cobros));
   const salidas = cashV2HistSumMoves(moves, 'OUT');
   const ajuste = cashV2HistSumMoves(moves, 'ADJUST');
   const ventas = (ccy === 'NIO') ? cashV2Round2Money(b.cashSalesC$ || 0) : cashV2Round2Money(b.cashSalesUSD || 0);
@@ -3568,6 +4142,7 @@ function cashV2HistBuildSummaryTable(ccy, block){
       <tbody>
         <tr><td>Inicial</td><td class="sub">${escapeHtml(sym)} ${escapeHtml(cashV2FmtMoney(initial))}</td></tr>
         <tr><td>Entradas</td><td class="sub">${escapeHtml(sym)} ${escapeHtml(cashV2FmtMoney(entradas))}</td></tr>
+        <tr><td>Cobros</td><td class="sub">${escapeHtml(sym)} ${escapeHtml(cashV2FmtMoney(cobros))}</td></tr>
         <tr><td>Salidas</td><td class="sub">${escapeHtml(sym)} ${escapeHtml(cashV2FmtMoney(salidas))}</td></tr>
         <tr><td>Ventas efectivo</td><td class="sub">${(ventas == null) ? '—' : (escapeHtml(sym) + ' ' + escapeHtml(cashV2FmtMoney(ventas)))}</td></tr>
         <tr><td>Ajuste</td><td class="sub">${escapeHtml(sym)} ${escapeHtml(cashV2FmtMoney(ajuste))}</td></tr>
@@ -3627,8 +4202,17 @@ function cashV2HistRenderMovements(nioMoves, usdMoves){
 
     const sym = cashV2HistCurrencySym(ccy);
     const opClass = cashV2NormalizeOperationalClass(m.operationalClass || m.clasificacionOperativa || '', cashV2OperationalClassFromKind(kind));
-    const topTag = `<span class="cashv2-mtag"><b>${escapeHtml(cashV2OperationalClassLabel(opClass) || cashV2HistKindLabel(kind))}</b><span>${escapeHtml(sym)}</span></span>`;
+    const movementType = String(m.movementType || m.tipoMovimiento || '').trim().toUpperCase();
+    const histOpLabel = cashV2IsCreditCollectionMovement(m)
+      ? 'Cobro'
+      : (movementType === 'CASH_MANUAL_IN'
+          ? 'Entrada'
+          : (movementType === 'CASH_EXPENSE_OUT' ? 'Salida' : (cashV2OperationalClassLabel(opClass) || cashV2HistKindLabel(kind))));
+    const topTag = `<span class="cashv2-mtag"><b>${escapeHtml(histOpLabel)}</b><span>${escapeHtml(sym)}</span></span>`;
     const note = (m && m.note != null) ? String(m.note).trim() : ((m && m.desc != null) ? String(m.desc).trim() : '');
+    const trace = cashV2IsCreditCollectionMovement(m)
+      ? `<div class="cashv2-move-trace"><b>${escapeHtml(String(m.creditCustomer || 'Cliente'))}</b> · ${escapeHtml(String(m.creditReference || ('Venta #' + String(m.creditSaleId || '—'))))}<br><small>Saldo: C$ ${escapeHtml(cashV2FmtMoney(m.creditBalanceBefore || 0))} → C$ ${escapeHtml(cashV2FmtMoney(m.creditBalanceAfter || 0))}</small></div>`
+      : '';
 
     rows.push(`
       <div class="cashv2-move-row">
@@ -3637,6 +4221,7 @@ function cashV2HistRenderMovements(nioMoves, usdMoves){
             ${topTag}
             <small class="muted">${escapeHtml(ts ? fmtDateTimePOS(ts) : '—')}</small>
           </div>
+          ${trace}
           <div class="cashv2-move-note">${escapeHtml(note || '—')}</div>
         </div>
         <div class="cashv2-move-amt">${escapeHtml(sign)} ${escapeHtml(sym)} ${escapeHtml(cashV2FmtMoney(shown))}</div>
@@ -4400,6 +4985,7 @@ async function renderEfectivoTab(){
       if (mcard){ mcard.style.display = 'none'; mcard.dataset.eventId=''; mcard.dataset.dayKey=dayKey; }
     }catch(_){ }
     try{ cashV2RenderMovementsUI({movements:[]}); }catch(_){ }
+    try{ cashV2ClearCreditSalesUI(); }catch(_){ }
     // Etapa 5: sin evento => oculta Cierre
     try{
       const fcard = document.getElementById('cashv2-final-card');
@@ -4593,6 +5179,7 @@ async function renderEfectivoTab(){
         if (mcard){ mcard.style.display = 'none'; mcard.dataset.eventId=''; mcard.dataset.dayKey=dayKey; }
       }catch(_){ }
       try{ cashV2RenderMovementsUI({movements:[]}); }catch(_){ }
+      try{ cashV2ClearCreditSalesUI(); }catch(_){ }
       try{ cashV2SetMovementsEnabled(false); }catch(_){ }
 
       try{
@@ -4636,9 +5223,11 @@ async function renderEfectivoTab(){
     // Etapa 4: mostrar Movimientos
     try{
       const mcard = document.getElementById('cashv2-movements-card');
-      if (mcard){ mcard.style.display = 'block'; mcard.dataset.eventId = String(eventId); mcard.dataset.dayKey = dayKey; }
+      if (mcard){ mcard.style.display = 'block'; mcard.dataset.eventId = String(eventId); mcard.dataset.dayKey = dayKey; mcard.dataset.creditEventEnabled = isActiveEvent ? '1' : '0'; }
     }catch(_){ }
     try{ cashV2RenderMovementsUI(rec || { movements: [] }); }catch(_){ }
+    try{ if (isActiveEvent) await cashV2RefreshCreditSalesUI(eventId, { keepSelection:true }); else cashV2ClearCreditSalesUI(); }catch(_){ }
+    try{ cashV2ApplyMovementTypeFormState(); }catch(_){ }
     // Etapa 5: mostrar Cierre
     try{
       const fcard = document.getElementById('cashv2-final-card');
@@ -6506,6 +7095,15 @@ function del(name, key){
         }catch(err){ rej(err); }
       });
 
+      const idbGetAll = (storeName) => new Promise((res, rej) => {
+        try{
+          const st = tx(storeName);
+          const r = st.getAll();
+          r.onsuccess = ()=>res(r.result || []);
+          r.onerror = ()=>rej(r.error);
+        }catch(err){ rej(err); }
+      });
+
       const idbDelete = (storeName, k) => new Promise((res, rej) => {
         try{
           const t = db.transaction([storeName], 'readwrite');
@@ -6534,8 +7132,28 @@ function del(name, key){
           return resolve({ok:true, warnings: ['La venta no se encontró (posible ya estaba eliminada).']});
         }
 
-        // 2) Borrar la venta primero (objetivo principal). Si falla, no hacemos side-effects.
+        // 2) Integridad crédito/caja: una venta con cobros no puede borrarse dejando caja huérfana.
+        try{
+          if (normalizePaymentMethodPOS(sale.payment || '') === 'credito'){
+            const cashRows = await idbGetAll(CASH_V2_STORE);
+            const creditSnapshot = cashV2CreditSaleSnapshot(sale, cashRows);
+            if (creditSnapshot.paid > 0.009){
+              throw new Error('Esta venta tiene cobros vinculados. No puede eliminarse sin una reversión contable completa.');
+            }
+          }
+        }catch(err){
+          if (err && /cobros vinculados/i.test(String(err.message || err))) throw err;
+          console.warn('No se pudo verificar cobros antes de eliminar venta', err);
+          throw new Error('No se pudo verificar la integridad de cobros. La venta no fue eliminada.');
+        }
+
+        // 3) Borrar la venta primero (objetivo principal). Si falla, no hacemos side-effects.
         await idbDelete('sales', key);
+        try{
+          if (normalizePaymentMethodPOS(sale.payment || sale.paymentMethod || '') === 'credito'){
+            notifyCreditStateChangedPOS({ eventId:sale.eventId, saleId:sale.id != null ? sale.id : key, reason:'sale-deleted' });
+          }
+        }catch(_){ }
 
         // 2.1) Verificación rápida (mejor error que "parece que borró")
         try{
@@ -10115,7 +10733,14 @@ async function saveSaleAndEventAtomicPOS({ saleRecord, eventUpdated }){
 
       let saleId = null;
 
-      tr.oncomplete = ()=> ok(saleId);
+      tr.oncomplete = ()=>{
+        try{
+          if (saleRecord && normalizePaymentMethodPOS(saleRecord.payment || saleRecord.paymentMethod || '') === 'credito'){
+            notifyCreditStateChangedPOS({ eventId:saleRecord.eventId, saleId:saleRecord.id != null ? saleRecord.id : saleId, reason:'sale' });
+          }
+        }catch(_){ }
+        ok(saleId);
+      };
       tr.onabort = ()=> fail(tr.error || new Error('Transacción abortada (venta).'));
       tr.onerror = ()=> fail(tr.error || new Error('Error de transacción (venta).'));
 

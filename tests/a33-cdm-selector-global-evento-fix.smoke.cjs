@@ -22,14 +22,14 @@ assert(app.includes('summaryRenderToken'), 'Falta blindaje contra resultados as�
 assert(app.includes('pickerSelectionToken'), 'Falta blindaje contra selección duplicada');
 assert(index.includes('<button id="eventSearch"'), 'El selector todavía es un campo de escritura');
 assert(!index.includes('placeholder="Buscar evento'), 'Sigue apareciendo búsqueda obligatoria');
-assert(index.includes('app.js?v=4.20.95&r=21'), 'Cache-bust del selector no actualizado');
-assert(index.includes('style.css?v=4.20.95&r=17'), 'Cache-bust de estilos no actualizado');
-assert(index.includes('manifest.webmanifest?v=4.20.95&r=4'), 'Manifest no actualizado');
+assert(index.includes('app.js?v=4.20.97&r=22'), 'Cache-bust del selector no actualizado');
+assert(index.includes('style.css?v=4.20.97&r=18'), 'Cache-bust de estilos no actualizado');
+assert(index.includes('manifest.webmanifest?v=4.20.97&r=5'), 'Manifest no actualizado');
 assert(style.includes('position:static;') && style.includes('grid-column:1 / -1;'), 'La lista puede quedar tapada por el bloque siguiente');
-assert(sw.includes("const MODULE_CACHE_REV = '4'"), 'Service Worker no incrementó caché');
-assert(sw.includes("'./app.js?v=4.20.95&r=21'"), 'Service Worker no precachea la corrección');
-assert(sw.includes("'./style.css?v=4.20.95&r=17'"), 'Service Worker no precachea el estilo corregido');
-assert.strictEqual(manifest.start_url, './index.html?v=4.20.95&r=21', 'PWA no apunta a la revisión corregida');
+assert(sw.includes("const MODULE_CACHE_REV = '5'"), 'Service Worker no incrementó caché');
+assert(sw.includes("'./app.js?v=4.20.97&r=22'"), 'Service Worker no precachea la corrección');
+assert(sw.includes("'./style.css?v=4.20.97&r=18'"), 'Service Worker no precachea el estilo corregido');
+assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=22', 'PWA no apunta a la revisión corregida');
 
 class MockElement {
   constructor(id=''){

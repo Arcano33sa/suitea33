@@ -47,13 +47,13 @@ assert(!/background:#fff;/.test(css), 'Persisten fondos blancos fijos fuera del 
 assert(app.includes('function refreshAppearance()'), 'Falta reaplicación robusta de Apariencia');
 
 
-assert(index.includes('rel="manifest" href="manifest.webmanifest?v=4.20.95&r=4"'), 'Manifest no enlazado');
-assert(index.includes('style.css?v=4.20.95&r=17'), 'Revisión CSS final incorrecta');
-assert(index.includes('app.js?v=4.20.95&r=21'), 'Revisión app final incorrecta');
+assert(index.includes('rel="manifest" href="manifest.webmanifest?v=4.20.97&r=5"'), 'Manifest no enlazado');
+assert(index.includes('style.css?v=4.20.97&r=18'), 'Revisión CSS final incorrecta');
+assert(index.includes('app.js?v=4.20.97&r=22'), 'Revisión app final incorrecta');
 assert(app.includes("navigator.serviceWorker.register(swUrl, { scope:'./', updateViaCache:'none' })"), 'Registro SW robusto ausente');
 assert(app.includes('window.__A33_CDM_STAGE5'), 'Diagnóstico Etapa 5 ausente');
 
-assert.strictEqual(manifest.start_url, './index.html?v=4.20.95&r=21', 'start_url PWA incorrecto');
+assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=22', 'start_url PWA incorrecto');
 assert.strictEqual(manifest.scope, './', 'scope PWA incorrecto');
 assert.strictEqual(manifest.display, 'standalone', 'display PWA incorrecto');
 assert.strictEqual(manifest.orientation, 'any', 'PWA debe aceptar cambio de orientación');
@@ -65,9 +65,9 @@ for (const icon of manifest.icons) {
 assert(fs.existsSync(path.join(root, 'centro-mando/offline.html')), 'Fallback offline ausente');
 
 assert(sw.includes("const MODULE = 'centro-mando'"), 'SW no está acotado al módulo');
-assert(sw.includes("const MODULE_CACHE_REV = '4'"), 'Cache revision final ausente');
-assert(sw.includes("'./style.css?v=4.20.95&r=17'"), 'CSS final no precacheado');
-assert(sw.includes("'./app.js?v=4.20.95&r=21'"), 'App final no precacheada');
+assert(sw.includes("const MODULE_CACHE_REV = '5'"), 'Cache revision final ausente');
+assert(sw.includes("'./style.css?v=4.20.97&r=18'"), 'CSS final no precacheado');
+assert(sw.includes("'./app.js?v=4.20.97&r=22'"), 'App final no precacheada');
 assert(sw.includes("'./offline.html'"), 'Offline no precacheado');
 assert(sw.includes('await self.skipWaiting()'), 'SW nuevo no activa actualización');
 assert(sw.includes('await self.clients.claim()'), 'SW no reclama clientes tras actualización');

@@ -1688,3 +1688,47 @@ html[data-theme="light"] .reempaque-currency-note{
 html[data-theme="light"] .reempaque-currency-note.warn{
   color:#7a4b11;
 }
+
+
+/* POS Efectivo — Etapa 1/3: cobros de ventas al crédito */
+.cashv2-credit-collection{
+  border:1px solid color-mix(in srgb, var(--gold, #c9a227) 42%, transparent);
+  border-radius:12px;
+  padding:10px;
+  background:color-mix(in srgb, var(--panel, #151515) 92%, var(--gold, #c9a227) 8%);
+}
+.cashv2-credit-sale-details{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.cashv2-credit-sale-details > div{
+  min-width:0;
+  padding:8px 10px;
+  border:1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius:10px;
+}
+.cashv2-credit-sale-details span{
+  display:block;
+  font-size:11px;
+  opacity:.72;
+  margin-bottom:3px;
+}
+.cashv2-credit-sale-details b{
+  display:block;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+@media (max-width:720px){
+  .cashv2-credit-sale-details{ grid-template-columns:1fr; }
+}
+
+
+/* POS Efectivo — Etapa 2/3: trazabilidad visible de cobros */
+.cashv2-move-trace{
+  margin-top:6px;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+}
+.cashv2-move-trace b{ font-weight:800; }
+.cashv2-move-trace small{ opacity:.82; }
