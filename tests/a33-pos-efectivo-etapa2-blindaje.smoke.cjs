@@ -59,12 +59,12 @@ assert(app.includes('affectsIncome: false'), 'Entrada/Cobro puede inflar ingreso
 assert(app.includes('affectsInventory: false'), 'Cobro puede volver a descontar inventario');
 assert(app.includes('affectsUtility: isExpense'), 'Salida no afecta utilidad como gasto');
 assert(app.includes('cashV2IsReversedMovement(movement)'), 'Historial no omite reversos en cálculos');
-assert(html.includes('app.js?v=4.20.97&r=37'));
-assert(html.includes('styles.css?v=4.20.97&r=18'));
-assert(html.includes('manifest.webmanifest?v=4.20.97&r=21'));
-assert(sw.includes("const MODULE_CACHE_REV = '41'"));
-assert(sw.includes("'./app.js?v=4.20.97&r=37'"));
-assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=21');
+assert(html.includes('app.js?v=4.20.97&r=40'));
+assert(html.includes('styles.css?v=4.20.97&r=20'));
+assert(html.includes('manifest.webmanifest?v=4.20.97&r=22'));
+assert(/const MODULE_CACHE_REV = '(?:4[2-9]|[5-9]\d|\d{3,})'/.test(sw));
+assert(sw.includes("'./app.js?v=4.20.97&r=40'"));
+assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=28');
 
 function sourceRange(source, startNeedle, endNeedle){
   const start = source.indexOf(startNeedle);

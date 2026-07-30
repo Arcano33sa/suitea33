@@ -22,6 +22,8 @@
   let rawMaterialEditBusy = false;
   let customerRenderTokenCAT = 0;
   let customerSearchTimerCAT = null;
+  let customerLiveRefreshTimerCAT = null;
+  let customerInitializedCAT = false;
   let customerLastPurchaseLoadPromiseCAT = null;
   let customerLastPurchaseCacheCAT = { loaded:false, loadedAt:0, byId:new Map(), sourceSales:0, sourceArchives:0 };
   const customerExpandedGroupsCAT = new Set();
@@ -322,6 +324,7 @@
     setCatalogCardState(key);
     setCatalogPanelState(key);
     updateCatalogContext(key);
+    if (key === 'clientes') scheduleCustomerLiveRefreshCAT({ forceLastPurchase:false, delay:0 });
     try{ document.body.classList.add('cat-catalog-section-open'); }catch(_){ }
     try{ localStorage.setItem(CATALOG_ACTIVE_TAB_KEY, key); }catch(_){ }
 
@@ -1319,7 +1322,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.97&r=5').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.97&r=7').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -4345,6 +4348,23 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     }catch(_){ }
   }
 
+  function customerPanelVisibleCAT(){
+    const panel = byId('panel-clientes');
+    return !!(panel && !panel.hidden && panel.classList.contains('is-active'));
+  }
+
+  function scheduleCustomerLiveRefreshCAT(options){
+    if (!customerInitializedCAT) return;
+    const opts = options || {};
+    const delay = Number.isFinite(Number(opts.delay)) ? Math.max(0, Number(opts.delay)) : 70;
+    clearTimeout(customerLiveRefreshTimerCAT);
+    customerLiveRefreshTimerCAT = setTimeout(()=>{
+      customerLiveRefreshTimerCAT = null;
+      if (!customerPanelVisibleCAT()) return;
+      renderCustomers({ forceLastPurchase:!!opts.forceLastPurchase }).catch(err=>console.error(err));
+    }, delay);
+  }
+
   async function renderCustomers(options){
     const opts = options || {};
     const renderToken = ++customerRenderTokenCAT;
@@ -4428,7 +4448,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
           tr.innerHTML = `
             <td class="cat-customer-name-cell"><span>${escapeHtml(c.name || 'Cliente sin nombre')}</span>${nameBadges}</td>
             <td><span class="cat-pill ${active ? 'ok' : 'muted'}">${active ? 'Activo' : 'Inactivo'}</span></td>
-            <td>${escapeHtml(getCustomerCellularCAT(c) || '—')}</td>
+            <td>${escapeHtml(getCustomerCellularCAT(c) || '')}</td>
             <td class="cat-customer-date-cell">${escapeHtml(lastPurchaseForCustomerCAT(c))}</td>
             <td class="cat-customer-actions-cell">
               <div class="cat-icon-actions">
@@ -4647,6 +4667,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     saveCustomerCatalogCAT(list);
     await loadCustomerLastPurchaseIndexCAT(list, { force:true });
     await renderCustomers();
+    customerInitializedCAT = true;
   }
 
 
@@ -5062,19 +5083,26 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
         if (key === COSTS_STORAGE_KEY) renderCostsState(readCostsState());
         scheduleCostsProductsRefresh();
       }
+      if (key === CUSTOMER_CATALOG_KEY || key === CUSTOMER_DISABLED_KEY){
+        scheduleCustomerLiveRefreshCAT({ forceLastPurchase:false });
+      }
       if (key === 'a33_pos_consol_sales_rev_map_v1'){
         invalidateCustomerLastPurchaseCAT();
-        const panel = byId('panel-clientes');
-        if (panel && !panel.hidden) renderCustomers({ forceLastPurchase:true }).catch(()=>{});
+        scheduleCustomerLiveRefreshCAT({ forceLastPurchase:true });
       }
+    });
+    window.addEventListener('pageshow', () => {
+      scheduleCustomerLiveRefreshCAT({ forceLastPurchase:false });
     });
     window.addEventListener('focus', () => {
       const panel = byId('panel-costos');
       if (panel && !panel.hidden) scheduleCostsProductsRefresh();
+      scheduleCustomerLiveRefreshCAT({ forceLastPurchase:false });
     });
     document.addEventListener('visibilitychange', () => {
       const panel = byId('panel-costos');
       if (!document.hidden && panel && !panel.hidden) scheduleCostsProductsRefresh();
+      if (!document.hidden) scheduleCustomerLiveRefreshCAT({ forceLastPurchase:false });
     });
     initEnvases().catch(err=>{
       console.error(err);

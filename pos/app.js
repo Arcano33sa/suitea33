@@ -7,7 +7,7 @@ let db;
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.97';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m40');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m44');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -7306,7 +7306,11 @@ function sanitizeCustomerDisplayPOS(name){
 function sortCustomerObjectsAZ_POS(list){
   return (Array.isArray(list) ? list : [])
     .slice()
-    .sort((a,b)=> normalizeCustomerKeyPOS(a && a.name).localeCompare(normalizeCustomerKeyPOS(b && b.name)));
+    .sort((a,b)=> normalizeCustomerKeyPOS(a && a.name).localeCompare(
+      normalizeCustomerKeyPOS(b && b.name),
+      'es-NI',
+      { sensitivity:'base', numeric:true }
+    ));
 }
 
 function loadCustomerDisabledSetPOS(){
@@ -7902,6 +7906,7 @@ async function resetOperationalStateOnEventSwitchPOS(){
   }catch(_){ }
 
   // 5) Cerrar modales/paneles que podrían quedar “colgados”
+  try{ closeCustomerQuickPOS({ returnFocus:false }); }catch(_){ }
   try{ closeModalPOS('customer-picker-modal'); }catch(_){ }
   try{ closeModalPOS('customer-edit-modal'); }catch(_){ }
   try{ closeModalPOS('customer-merge-modal'); }catch(_){ }
@@ -8264,6 +8269,338 @@ function isCustomerDisabledKeyPOS(normKey){
   return set.has(normKey);
 }
 
+let customerQuickBusyPOS = false;
+let customerQuickLastFocusPOS = null;
+let customerQuickLifecyclePOS = 0;
+let customerQuickSubmitSeqPOS = 0;
+let customerQuickSubmitLockedPOS = false;
+
+function isCustomerQuickOpenPOS(){
+  const modal = document.getElementById('customer-quick-modal');
+  return !!(
+    modal &&
+    modal.style.display === 'flex' &&
+    modal.getAttribute('aria-hidden') === 'false' &&
+    !modal.hasAttribute('inert')
+  );
+}
+
+function setCustomerQuickMessagePOS(message, kind){
+  const el = document.getElementById('customer-quick-msg');
+  if (!el) return;
+  el.textContent = String(message || '');
+  el.classList.toggle('is-ok', kind === 'ok');
+}
+
+function setCustomerQuickBusyPOS(isBusy){
+  customerQuickBusyPOS = !!isBusy;
+  const createBtn = document.getElementById('customer-quick-create');
+  const cancelBtn = document.getElementById('customer-quick-cancel');
+  const modal = document.getElementById('customer-quick-modal');
+  const form = document.getElementById('customer-quick-form');
+  if (createBtn){
+    createBtn.disabled = customerQuickBusyPOS;
+    createBtn.setAttribute('aria-disabled', customerQuickBusyPOS ? 'true' : 'false');
+    createBtn.textContent = customerQuickBusyPOS ? 'Creando…' : 'Crear';
+  }
+  if (cancelBtn){
+    cancelBtn.disabled = customerQuickBusyPOS;
+    cancelBtn.setAttribute('aria-disabled', customerQuickBusyPOS ? 'true' : 'false');
+  }
+  if (modal) modal.setAttribute('aria-busy', customerQuickBusyPOS ? 'true' : 'false');
+  if (form) form.setAttribute('aria-busy', customerQuickBusyPOS ? 'true' : 'false');
+}
+
+function resetCustomerQuickFormPOS(){
+  const form = document.getElementById('customer-quick-form');
+  const name = document.getElementById('customer-quick-name');
+  const cell = document.getElementById('customer-quick-cell');
+  try{ if (form) form.reset(); }catch(_){ }
+  if (name){ name.value = ''; name.classList.remove('a33-invalid'); }
+  if (cell) cell.value = '';
+  setCustomerQuickMessagePOS('', '');
+  setCustomerQuickBusyPOS(false);
+}
+
+function getCustomerQuickFocusablePOS(){
+  const modal = document.getElementById('customer-quick-modal');
+  if (!modal || typeof modal.querySelectorAll !== 'function') return [];
+  return Array.from(modal.querySelectorAll('input, button, [tabindex]:not([tabindex="-1"])'))
+    .filter(el => el && !el.disabled && el.offsetParent !== null);
+}
+
+function closeCustomerQuickPOS({ returnFocus = true, force = false } = {}){
+  if (customerQuickBusyPOS && !force) return false;
+  const modal = document.getElementById('customer-quick-modal');
+  if (!modal) return false;
+  if (!isCustomerQuickOpenPOS() && modal.getAttribute('aria-hidden') === 'true'){
+    try{ document.body.classList.remove('customer-quick-modal-open'); }catch(_){ }
+    return false;
+  }
+
+  customerQuickLifecyclePOS += 1;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+  modal.setAttribute('inert', '');
+  try{ document.body.classList.remove('customer-quick-modal-open'); }catch(_){ }
+  resetCustomerQuickFormPOS();
+
+  if (returnFocus){
+    const target = (customerQuickLastFocusPOS && customerQuickLastFocusPOS.isConnected)
+      ? customerQuickLastFocusPOS
+      : (document.getElementById('btn-new-customer') || document.getElementById('sale-customer'));
+    setTimeout(()=>{ try{ target && target.focus({ preventScroll:true }); }catch(_){ try{ target && target.focus(); }catch(__){ } } }, 20);
+  }
+  customerQuickLastFocusPOS = null;
+  return true;
+}
+
+function openCustomerQuickPOS(){
+  const modal = document.getElementById('customer-quick-modal');
+  if (!modal || isCustomerQuickOpenPOS()) return false;
+  if (customerQuickSubmitLockedPOS) return false;
+  try{ if (isCustomerPickerOpenPOS()) closeCustomerPickerPOS(); }catch(_){ }
+  customerQuickLifecyclePOS += 1;
+  customerQuickLastFocusPOS = document.activeElement || document.getElementById('btn-new-customer');
+  resetCustomerQuickFormPOS();
+  modal.removeAttribute('inert');
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+  try{ document.body.classList.add('customer-quick-modal-open'); }catch(_){ }
+  const lifecycle = customerQuickLifecyclePOS;
+  setTimeout(()=>{
+    if (lifecycle !== customerQuickLifecyclePOS || !isCustomerQuickOpenPOS()) return;
+    try{ document.getElementById('customer-quick-name')?.focus({ preventScroll:true }); }
+    catch(_){ try{ document.getElementById('customer-quick-name')?.focus(); }catch(__){ } }
+  }, 40);
+  return true;
+}
+
+function acquireCustomerQuickSubmitLockPOS(){
+  try{
+    if (customerQuickSubmitLockedPOS || window.__A33_POS_CUSTOMER_QUICK_SUBMITTING__ === true) return false;
+    customerQuickSubmitLockedPOS = true;
+    window.__A33_POS_CUSTOMER_QUICK_SUBMITTING__ = true;
+    return true;
+  }catch(_){
+    if (customerQuickSubmitLockedPOS) return false;
+    customerQuickSubmitLockedPOS = true;
+    return true;
+  }
+}
+
+function releaseCustomerQuickSubmitLockPOS(){
+  customerQuickSubmitLockedPOS = false;
+  try{ window.__A33_POS_CUSTOMER_QUICK_SUBMITTING__ = false; }catch(_){ }
+}
+
+function findEquivalentCustomerPOS(name){
+  const clean = sanitizeCustomerDisplayPOS(name);
+  if (!clean) return null;
+  const list = loadCustomerCatalogPOS();
+  const resolver = buildCustomerResolverPOS(list);
+  const finalId = resolver.matchNameToFinalId(clean);
+  if (!finalId) return null;
+  return resolver.byId.get(String(finalId)) || null;
+}
+
+function createQuickCustomerPOS(name, cellular){
+  const cleanName = sanitizeCustomerDisplayPOS(name);
+  const cleanCell = sanitizeCustomerDisplayPOS(cellular);
+  const normalizedName = normalizeCustomerKeyPOS(cleanName);
+  if (!cleanName || !normalizedName) return { ok:false, reason:'empty' };
+
+  // Releer inmediatamente antes de guardar: evita duplicados evidentes y carreras simples.
+  const list = loadCustomerCatalogPOS();
+  const resolver = buildCustomerResolverPOS(list);
+  const existingId = resolver.matchNameToFinalId(cleanName);
+  if (existingId){
+    const existing = resolver.byId.get(String(existingId));
+    return { ok:false, reason:'exists', customer:existing || null, id:String(existingId) };
+  }
+
+  const existingIds = new Set(list.map(c => c && c.id).filter(Boolean).map(String));
+  const id = generateCustomerIdPOS(existingIds);
+  const now = Date.now();
+  const customer = {
+    id,
+    name:cleanName,
+    nombre:cleanName,
+    celular:cleanCell,
+    telefono:cleanCell,
+    whatsapp:'',
+    correo:'',
+    direccion:'',
+    notas:'',
+    isActive:true,
+    active:true,
+    createdAt:now,
+    updatedAt:null,
+    normalizedName,
+    aliases:[],
+    nameHistory:[],
+    mergedIntoId:null,
+    mergedAt:null,
+    mergeReason:'',
+    mergeHistory:[],
+    schemaVersion:1,
+    updatedFrom:'pos_cliente_rapido'
+  };
+
+  list.push(customer);
+  const sorted = sortCustomerObjectsAZ_POS(list);
+  if (!saveCustomerCatalogPOS(sorted)) return { ok:false, reason:'save' };
+  syncDisabledLegacyFromCatalogPOS(sorted);
+
+  // Confirmar persistencia real antes de cerrar el modal.
+  const persisted = loadCustomerCatalogPOS().find(c => c && String(c.id) === String(id));
+  if (!persisted) return { ok:false, reason:'verify' };
+  return { ok:true, id:String(id), customer:persisted };
+}
+
+function handleCustomerQuickSubmitPOS(event){
+  try{ event && event.preventDefault(); }catch(_){ }
+  if (customerQuickBusyPOS) return false;
+  if (!isCustomerQuickOpenPOS()) return false;
+  if (!acquireCustomerQuickSubmitLockPOS()) return false;
+
+  const lifecycleAtStart = customerQuickLifecyclePOS;
+  const submitSeq = ++customerQuickSubmitSeqPOS;
+  const nameEl = document.getElementById('customer-quick-name');
+  const cellEl = document.getElementById('customer-quick-cell');
+  const name = sanitizeCustomerDisplayPOS(nameEl ? nameEl.value : '');
+  const cellular = sanitizeCustomerDisplayPOS(cellEl ? cellEl.value : '');
+
+  if (!name){
+    releaseCustomerQuickSubmitLockPOS();
+    if (nameEl) nameEl.classList.add('a33-invalid');
+    setCustomerQuickMessagePOS('Escribe el nombre del cliente.', 'error');
+    try{ nameEl && nameEl.focus({ preventScroll:true }); }catch(_){ try{ nameEl && nameEl.focus(); }catch(__){ } }
+    return false;
+  }
+  if (nameEl) nameEl.classList.remove('a33-invalid');
+
+  setCustomerQuickBusyPOS(true);
+  setCustomerQuickMessagePOS('', '');
+
+  try{
+    const result = createQuickCustomerPOS(name, cellular);
+    if (lifecycleAtStart !== customerQuickLifecyclePOS || submitSeq !== customerQuickSubmitSeqPOS || !isCustomerQuickOpenPOS()) return false;
+
+    if (result && result.ok && result.customer){
+      refreshCustomerUI_POS();
+      setCustomerSelectionUI_POS(result.customer);
+      persistCustomerLastPOS(result.customer.name || name);
+      closeCustomerQuickPOS({ returnFocus:true, force:true });
+      showToast('Cliente creado y seleccionado.', 'ok', 2600);
+      return true;
+    }
+
+    if (result && result.reason === 'exists'){
+      const existing = result.customer;
+      if (existing && existing.isActive !== false && !existing.mergedIntoId){
+        setCustomerSelectionUI_POS(existing);
+        persistCustomerLastPOS(existing.name || name);
+        closeCustomerQuickPOS({ returnFocus:true, force:true });
+        showToast('El cliente ya existía. Se seleccionó el registro existente.', 'ok', 3400);
+        return true;
+      }
+      setCustomerQuickMessagePOS('Ese cliente ya existe, pero está inactivo. Reactívalo desde Catálogos.', 'error');
+    } else if (result && result.reason === 'save'){
+      setCustomerQuickMessagePOS('No se pudo guardar el cliente. Intenta nuevamente.', 'error');
+    } else if (result && result.reason === 'verify'){
+      setCustomerQuickMessagePOS('No se pudo confirmar el guardado del cliente.', 'error');
+    } else {
+      setCustomerQuickMessagePOS('No se pudo crear el cliente.', 'error');
+    }
+  }catch(err){
+    console.error('Cliente rápido POS: error al crear', err);
+    if (lifecycleAtStart === customerQuickLifecyclePOS && isCustomerQuickOpenPOS()){
+      setCustomerQuickMessagePOS('No se pudo crear el cliente.', 'error');
+    }
+  }finally{
+    releaseCustomerQuickSubmitLockPOS();
+    if (lifecycleAtStart === customerQuickLifecyclePOS && isCustomerQuickOpenPOS()) setCustomerQuickBusyPOS(false);
+  }
+  return false;
+}
+
+function setupCustomerQuickModalPOS(){
+  const modal = document.getElementById('customer-quick-modal');
+  if (!modal || (modal.dataset && modal.dataset.bound === '1')) return;
+  if (modal.dataset) modal.dataset.bound = '1';
+
+  const form = document.getElementById('customer-quick-form');
+  const cancelBtn = document.getElementById('customer-quick-cancel');
+  const nameEl = document.getElementById('customer-quick-name');
+
+  if (modal.getAttribute('aria-hidden') !== 'false'){
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    modal.setAttribute('inert', '');
+  }
+
+  if (form) form.addEventListener('submit', handleCustomerQuickSubmitPOS);
+  if (cancelBtn) cancelBtn.addEventListener('click', (event)=>{
+    try{ event && event.preventDefault(); }catch(_){ }
+    if (!customerQuickBusyPOS && isCustomerQuickOpenPOS()) closeCustomerQuickPOS({ returnFocus:true });
+  });
+  if (nameEl){
+    nameEl.addEventListener('input', ()=>{
+      if (sanitizeCustomerDisplayPOS(nameEl.value || '')){
+        nameEl.classList.remove('a33-invalid');
+        setCustomerQuickMessagePOS('', '');
+      }
+    });
+  }
+
+  modal.addEventListener('click', (event)=>{
+    if (event && event.target === modal && !customerQuickBusyPOS && isCustomerQuickOpenPOS()){
+      closeCustomerQuickPOS({ returnFocus:true });
+    }
+  });
+
+  modal.addEventListener('keydown', (event)=>{
+    if (!isCustomerQuickOpenPOS()) return;
+    if (event.key === 'Escape'){
+      if (!customerQuickBusyPOS){
+        event.preventDefault();
+        closeCustomerQuickPOS({ returnFocus:true });
+      }
+      return;
+    }
+    if (event.key === 'Enter' && event.repeat){
+      event.preventDefault();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = getCustomerQuickFocusablePOS();
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first){ event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last){ event.preventDefault(); first.focus(); }
+  });
+
+  try{
+    if (!window.__A33_POS_CUSTOMER_QUICK_LIFECYCLE_BOUND__){
+      window.__A33_POS_CUSTOMER_QUICK_LIFECYCLE_BOUND__ = true;
+      window.addEventListener('pagehide', ()=>{
+        if (isCustomerQuickOpenPOS()) closeCustomerQuickPOS({ returnFocus:false, force:true });
+      });
+      window.addEventListener('pageshow', ()=>{
+        const currentModal = document.getElementById('customer-quick-modal');
+        if (!currentModal) return;
+        if (currentModal.getAttribute('aria-hidden') !== 'false'){
+          currentModal.style.display = 'none';
+          currentModal.setAttribute('inert', '');
+          try{ document.body.classList.remove('customer-quick-modal-open'); }catch(_){ }
+        }
+      });
+    }
+  }catch(_){ }
+}
+
 function isCustomerPickerOpenPOS(){
   const modal = document.getElementById('customer-picker-modal');
   return !!(modal && modal.style.display === 'flex');
@@ -8589,6 +8926,7 @@ function setupCustomerPickerModalPOS(){
   // Escape
   document.addEventListener('keydown', (e)=>{
     if (e.key !== 'Escape') return;
+    if (isCustomerQuickOpenPOS() && !customerQuickBusyPOS) closeCustomerQuickPOS({ returnFocus:true });
     if (isCustomerPickerOpenPOS()) closeCustomerPickerPOS();
     if (isCustomerEditOpenPOS()) closeCustomerEditModalPOS();
     if (isCustomerMergeOpenPOS()) closeCustomerMergeModalPOS();
@@ -8807,12 +9145,14 @@ function initCustomerUXPOS(){
   const sticky = document.getElementById('sale-customer-sticky');
   const clearBtn = document.getElementById('btn-clear-customer');
   const pickBtn = document.getElementById('btn-pick-customer');
+  const newBtn = document.getElementById('btn-new-customer');
 
   if (!inp || !sticky) return;
 
-  // Etapa 2/3: POS solo selecciona clientes activos; no administra ni crea clientes.
+  // POS selecciona clientes activos y permite alta rápida sin abandonar la venta.
   try{ inp.setAttribute('readonly', 'readonly'); inp.setAttribute('aria-readonly', 'true'); }catch(_){ }
   setupCustomerPickerModalPOS();
+  setupCustomerQuickModalPOS();
   refreshCustomerUI_POS();
 
   // Estado pegajoso + último cliente: restaurar solo si todavía existe y está activo.
@@ -8871,17 +9211,35 @@ function initCustomerUXPOS(){
     });
   }
 
-  if (pickBtn){
+  if (pickBtn && (!pickBtn.dataset || pickBtn.dataset.bound !== '1')){
+    if (pickBtn.dataset) pickBtn.dataset.bound = '1';
     pickBtn.addEventListener('click', ()=> openCustomerPickerPOS());
+  }
+
+  if (newBtn && (!newBtn.dataset || newBtn.dataset.bound !== '1')){
+    if (newBtn.dataset) newBtn.dataset.bound = '1';
+    newBtn.addEventListener('click', (event)=>{
+      try{ event && event.preventDefault(); }catch(_){ }
+      openCustomerQuickPOS();
+    });
   }
 
   // Catálogos vive fuera de POS: si otra pantalla cambia clientes, POS se auto-blinda.
   try{
-    window.addEventListener('storage', (ev)=>{
-      if (!ev || ev.key === CUSTOMER_CATALOG_KEY || ev.key === CUSTOMER_DISABLED_KEY){
+    if (!window.__A33_POS_CUSTOMERS_LIVE_BOUND__){
+      window.__A33_POS_CUSTOMERS_LIVE_BOUND__ = true;
+      window.addEventListener('storage', (ev)=>{
+        if (!ev || ev.key === CUSTOMER_CATALOG_KEY || ev.key === CUSTOMER_DISABLED_KEY){
+          refreshCustomerUI_POS();
+        }
+      });
+      window.addEventListener('focus', ()=>{
         refreshCustomerUI_POS();
-      }
-    });
+      });
+      document.addEventListener('visibilitychange', ()=>{
+        if (!document.hidden) refreshCustomerUI_POS();
+      });
+    }
   }catch(_){ }
 }
 

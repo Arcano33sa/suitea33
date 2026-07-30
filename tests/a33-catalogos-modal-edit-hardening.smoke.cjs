@@ -38,12 +38,12 @@ requiredBindings.forEach((binding) => assert(source.includes(binding), `Falta bi
 assert(!html.includes('class="cat-hero cat-card"'), 'El bloque introductorio todavía existe');
 assert(!html.includes('Administración maestra de Productos'), 'El texto introductorio todavía existe');
 assert(!html.includes('Datos maestros</span>'), 'La franja Datos maestros todavía existe');
-assert(html.includes('script.js?v=4.20.95&r=32'), 'Index no apunta al script actualizado');
-assert(source.includes("serviceWorker.register('./sw.js?v=4.20.95&r=5')"), 'Registro SW no fue actualizado');
-assert(sw.includes("const MODULE_CACHE_REV = '36';"), 'Cache de Catálogos no fue incrementada');
-assert(sw.includes("'./index.html?v=4.20.95&r=30'"), 'SW no precachea el index actualizado');
-assert(sw.includes("'./script.js?v=4.20.95&r=32'"), 'SW no precachea el script actualizado');
-assert(manifest.start_url === './index.html?v=4.20.95&r=25', 'Manifest no apunta al index actualizado');
+assert(html.includes('script.js?v=4.20.97&r=35'), 'Index no apunta al script actualizado');
+assert(source.includes("serviceWorker.register('./sw.js?v=4.20.97&r=7')"), 'Registro SW no fue actualizado');
+assert(sw.includes("const MODULE_CACHE_REV = '39';"), 'Cache de Catálogos no fue incrementada');
+assert(sw.includes("'./index.html?v=4.20.97&r=32'"), 'SW no precachea el index actualizado');
+assert(sw.includes("'./script.js?v=4.20.97&r=35'"), 'SW no precachea el script actualizado');
+assert(manifest.start_url === './index.html?v=4.20.97&r=32', 'Manifest no apunta al index actualizado');
 
 class FakeClassList {
   constructor(){ this.values = new Set(); }

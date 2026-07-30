@@ -33,7 +33,7 @@ assert(css.includes('@media (max-width:470px)'), 'Falta responsive móvil del de
 assert(css.includes('white-space:nowrap'), 'Montos/valores no están blindados a una línea');
 assert(index.includes('app.js?v=4.20.97&r=22'), 'Cache-bust CDM incorrecto');
 assert(sw.includes("const MODULE_CACHE_REV = '5'"), 'Cache CDM no incrementado');
-assert(posSw.includes("const MODULE_CACHE_REV = '41'"), 'Cache POS no incrementado');
+assert(/const MODULE_CACHE_REV = '(?:4[2-9]|[5-9]\d|\d{3,})'/.test(posSw), 'Cache POS no conserva el incremento posterior');
 assert(release.includes("const suiteVersion = '4.20.97'"), 'Versión general no actualizada');
 
 class MockElement {
