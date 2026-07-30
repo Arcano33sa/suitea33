@@ -187,18 +187,26 @@ function testActualParentChildTransfer(){
   };
   const ctx = {
     console, Object, Array, String, Number, Map, Set, Math, Date,
-    buildProductIdentityIndexPOS: list => ({
-      list,
-      byLetter:new Map(list.map(p=>[String(p.Letra).toUpperCase(),p])),
-      byStable:new Map(list.map(p=>[p.productId,p]))
-    }),
-    resolveCatalogProductIdentityPOS: (row,index) => {
-      const pid=String(row.productId||row.productoId||'').trim();
-      const letter=String(row.Letra||row.letra||'').trim().toUpperCase();
-      const product=index.byStable.get(pid)||index.byLetter.get(letter)||null;
-      return product ? {ok:true,product,stableId:product.productId,letter:String(product.Letra).toUpperCase(),name:product.name} : {ok:false};
+    LEGACY_PRODUCT_LETTERS_POS:['P','M','D','L','G'],
+    normalizeLotesLetterPOS: v => String(v || '').trim().toUpperCase(),
+    catalogProductStableIdPOS: p => String((p && p.productId) || ''),
+    catalogProductInternalIdPOS: p => Number((p && p.id) || 0) || null,
+    buildProductIdentityIndexPOS: list => ({ list:Array.isArray(list) ? list : [] }),
+    resolveInventoryProductIdentityPOS: row => {
+      const pid=String((row && (row.productId || row.productoId)) || '').trim();
+      const letter=String((row && (row.Letra || row.letra)) || '').trim().toUpperCase();
+      const product=products.find(p=>p.productId===pid || String(p.Letra).toUpperCase()===letter) || null;
+      return product ? {ok:true,product,stableId:product.productId,internalId:product.id,letter:String(product.Letra).toUpperCase(),name:product.name,ambiguousLetter:false} : {ok:false,stableId:pid,internalId:null,letter,name:'',ambiguousLetter:false};
     },
-    lotesPOSContractRowsPOS: () => [],
+    inventoryIdentityKeyPOS: (identity,row) => identity && identity.stableId ? ('PID:'+identity.stableId) : ('LET:'+String((identity && identity.letter) || (row && row.Letra) || '')),
+    inventoryIdentityIdCandidatesPOS: (identity,row) => [identity && identity.stableId, identity && identity.internalId, row && row.productId].filter(v=>v!=null && String(v).trim()!=='').map(String),
+    buildSobranteInputModelPOS: (lote,eventId) => {
+      const snap=lote.eventUsage[String(eventId)];
+      return { snapshot:snap, items:snap.availabilityProducts.map(row=>{
+        const product=products.find(p=>p.productId===row.productId);
+        return { key:'PID:'+row.productId, product, productId:row.productId, internalId:product.id, letter:row.Letra, name:row.nombreSnapshot, available:Number(row.cantidadDisponible)||0, row:{...row} };
+      }) };
+    },
   };
   vm.createContext(ctx);
   for (const name of ['sobranteUsageSnapshotPOS','sobranteQtyPOS','sobranteSnapshotQtyPOS','buildSobranteTransferItemsPOS','subtractSobranteFromParentSnapshotPOS']){

@@ -9530,22 +9530,38 @@ function uiTextPOS(text){
   return String(text||'');
 }
 
-// Detectar clave de presentación (P/M/D/L/G) a partir del nombre de producto
-function presKeyFromProductNamePOS(name){
+// Compatibilidad histórica encapsulada: P/M/D/L/G no es la fuente oficial.
+const LEGACY_PRODUCT_LETTERS_POS = Object.freeze(['P','M','D','L','G']);
+const LEGACY_PRODUCT_FIELD_BY_LETTER_POS = Object.freeze({
+  P:'pulso', M:'media', D:'djeba', L:'litro', G:'galon'
+});
+const LEGACY_PRODUCT_NAME_BY_LETTER_POS = Object.freeze({
+  P:'Pulso 250ml', M:'Media 375ml', D:'Djeba 750ml', L:'Litro 1000ml', G:CANON_GALON_LABEL
+});
+function legacyProductLetterFromNamePOS(name){
   const n = normName(name);
   if (!n) return '';
-  if (n.includes('pulso') && n.includes('250')) return 'P';
-  if (n.includes('media') && n.includes('375')) return 'M';
-  if (n.includes('djeba') && n.includes('750')) return 'D';
-  if (n.includes('litro') && n.includes('1000')) return 'L';
-  if ((n.includes('galon') || n.includes('galón')) && (n.includes('3750') || n.includes('3800'))) return 'G';
-  // fallback por palabra (por si el nombre no incluye ml)
   if (n.includes('pulso')) return 'P';
   if (n.includes('media')) return 'M';
   if (n.includes('djeba')) return 'D';
   if (n.includes('litro')) return 'L';
   if (n.includes('galon') || n.includes('galón')) return 'G';
   return '';
+}
+function legacyQuantityShapePOS(source){
+  const src = source && typeof source === 'object' ? source : {};
+  const out = {};
+  for (const letter of LEGACY_PRODUCT_LETTERS_POS){
+    const field = LEGACY_PRODUCT_FIELD_BY_LETTER_POS[letter];
+    const value = src[letter] ?? src[field] ?? src[field && field.toUpperCase ? field.toUpperCase() : field] ?? 0;
+    const n = Number(String(value == null ? '' : value).replace(',', '.'));
+    out[letter] = Number.isFinite(n) && n > 0 ? Math.round((n + Number.EPSILON) * 10000) / 10000 : 0;
+  }
+  return out;
+}
+// Firma legacy compartida por FIFO/ventas; delega al único fallback histórico.
+function presKeyFromProductNamePOS(name){
+  return legacyProductLetterFromNamePOS(name);
 }
 
 const RECETAS_KEY = 'arcano33_recetas_v1';
@@ -10133,11 +10149,15 @@ function buildProductIdentityIndexPOS(products){
   const byInternalId = new Map();
   const byLetter = new Map();
   const byName = new Map();
+  const ambiguousLetters = new Set();
 
-  const addUnique = (map, key, product) => {
+  const addUnique = (map, key, product, ambiguousSet=null) => {
     if (!key) return;
     if (!map.has(key)) map.set(key, product);
-    else if (map.get(key) !== product) map.set(key, null); // fallback ambiguo: no resolver
+    else if (map.get(key) !== product){
+      map.set(key, null); // fallback ambiguo: no resolver
+      if (ambiguousSet) ambiguousSet.add(key);
+    }
   };
 
   for (const product of list){
@@ -10147,11 +10167,11 @@ function buildProductIdentityIndexPOS(products){
     const nameKey = productIdentityNameKeyPOS(product.name ?? product.nombre ?? product.productName);
     if (stableId) byStableId.set(stableId, product);
     if (internalId) byInternalId.set(String(internalId), product);
-    addUnique(byLetter, letter, product);
+    addUnique(byLetter, letter, product, ambiguousLetters);
     addUnique(byName, nameKey, product);
   }
 
-  return { __a33ProductIdentityIndex:true, list, byStableId, byInternalId, byLetter, byName };
+  return { __a33ProductIdentityIndex:true, list, byStableId, byInternalId, byLetter, byName, ambiguousLetters };
 }
 
 function collectProductIdentityCandidatesPOS(ref){
@@ -10184,7 +10204,7 @@ function collectProductIdentityCandidatesPOS(ref){
 
     const stableFields = [
       value.productId, value.productoId, value.catalogProductId, value.idProducto,
-      value.stableProductId, value.productStableId
+      value.stableProductId, value.productStableId, value.loteProductId
     ];
     stableFields.forEach((candidate) => {
       push(stableIds, candidate);
@@ -10196,8 +10216,8 @@ function collectProductIdentityCandidatesPOS(ref){
       value.legacyProductId, value.idInternoProducto, value.id
     ].forEach(pushInternal);
 
-    push(letters, value.letra ?? value.Letra ?? value.letter ?? value.productLetter);
-    push(names, value.productNameSnapshot ?? value.nombreSnapshot ?? value.productName ?? value.name ?? value.nombre);
+    push(letters, value.loteLetra ?? value.letra ?? value.Letra ?? value.letter ?? value.productLetter ?? value.productionLetter);
+    push(names, value.loteNombreSnapshot ?? value.productNameSnapshot ?? value.nombreSnapshot ?? value.productName ?? value.name ?? value.nombre);
 
     [
       value.productSnapshot, value.product, value.catalogProduct,
@@ -10896,7 +10916,7 @@ function validateLotFifoIntegrityPOS(fifo, evId){
     }
 
     const lotsMap = (fifo.lots && typeof fifo.lots === 'object') ? fifo.lots : {};
-    const keys = Array.isArray(fifo.keys) ? fifo.keys : ['P','M','D','L','G'];
+    const keys = Array.isArray(fifo.keys) ? fifo.keys : LEGACY_PRODUCT_LETTERS_POS;
 
     const chkMap = (m)=>{
       if (!m) return true;
@@ -10997,17 +11017,8 @@ function lotesPOSQtyFromContractRowPOS(row){
 }
 
 function resolveProductFromLoteContractRowPOS(row, products){
-  const list = Array.isArray(products) ? products : [];
-  const identity = resolveCatalogProductIdentityPOS(row, list, { allowLegacy:true });
-  if (identity.ok) return identity.product;
-
-  // Compatibilidad muy antigua: legacyField representa P/M/D/L/G, no una identidad oficial.
-  const legacyId = String(row && (row.legacyId ?? row.legacyField ?? row.field) || '').trim().toLowerCase();
-  if (legacyId){
-    const byLegacy = list.find(p => p && mapProductNameToFinishedId(p.name || p.nombre || '') === legacyId);
-    if (byLegacy) return byLegacy;
-  }
-  return null;
+  const identity = resolveInventoryProductIdentityPOS(row, products, { allowLegacyName:true });
+  return identity.ok ? identity.product : null;
 }
 
 async function guardLotAvailabilityBeforeSalePOS(eventId, productName, qty, productId, productObj){
@@ -12566,6 +12577,7 @@ function bindTabbarOncePOS(){
 
 
 function setTab(name){
+  const previousTabPOS = window.__A33_ACTIVE_TAB || '';
   // Canonical tab names (Etapa 12B): "venta" es la única verdad.
   // Compatibilidad: si llega "vender" por URL/hash/estado viejo, mapear a "venta".
   try{
@@ -12623,13 +12635,18 @@ const tabs = $$('.tab');
     requestAnimationFrame(()=> target.classList.remove('a33-tab-prep'));
   }
 
+  if (previousTabPOS === 'inventario' && name !== 'inventario') resetLotesEventoCollapsePOS();
   window.__A33_ACTIVE_TAB = name;
 
   // Render específico por pestaña (misma lógica de antes)
   if (name==='resumen') renderSummary();
   if (name==='extras') { renderExtrasUI().catch(err=>console.error(err)); renderBancos().catch(err=>console.error(err)); }
   if (name==='eventos') renderEventos();
-  if (name==='inventario') renderInventario();
+  if (name==='inventario') {
+    bindLotesEventoToggleOncePOS();
+    if (previousTabPOS !== 'inventario') resetLotesEventoCollapsePOS();
+    renderInventario();
+  }
   if (name==='efectivo') renderEfectivoTab().catch(err=>console.error(err));
   if (name==='calculadora') onOpenPosCalculatorTab().catch(err=>console.error(err));
   if (name==='venta') {
@@ -16977,52 +16994,49 @@ async function importFromLoteToInventory(opts){
   const cargaId = 'lc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7);
 
   const products = await getAll('products');
-  const norm = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-
+  const productIndex = buildProductIdentityIndexPOS(products || []);
   const items = [];
   let total = 0;
 
+  const appendResolvedItem = (row, qty, source) => {
+    const identity = resolveInventoryProductIdentityPOS(row, productIndex, { allowLegacyName:true });
+    const prod = identity.ok ? identity.product : null;
+    const legacyCompatible = !!(identity.letter && LEGACY_PRODUCT_LETTERS_POS.includes(normalizeLotesLetterPOS(identity.letter)));
+    if (!prod || (!productRecipeEnabledForProductionPOS(prod) && !legacyCompatible)) return false;
+    const internalId = catalogProductInternalIdPOS(prod);
+    if (!internalId) return false;
+    const unitCost = saleCostFromFieldsPOS(row) || saleCostFromFieldsPOS(loteAny);
+    items.push({
+      productId:internalId,
+      qty,
+      unitCost,
+      nombreSnapshot:uiProductNamePOS(identity.name || inventorySnapshotNamePOS(row) || catalogProductSnapshotNamePOS(prod)),
+      loteProductId:identity.stableId || (row && (row.productId ?? row.productoId ?? row.loteProductId)) || null,
+      letra:normalizeLotesLetterPOS(identity.letter),
+      source
+    });
+    total += qty;
+    return true;
+  };
+
   const contractRows = lotesPOSContractRowsPOS(loteAny);
   if (contractRows.length){
-    // Contrato dinámico Lotes → POS: Product ID manda y evita sumar dos veces legacy + dinámico.
+    // Contrato dinámico Lotes → POS: productId manda; Letra/nombre solo respaldan históricos.
     for (const row of contractRows){
       const qty = lotesPOSQtyFromContractRowPOS(row);
       if (!(qty > 0)) continue;
-      const prod = resolveProductFromLoteContractRowPOS(row, products);
-      if (!prod) continue;
-      const unitCost = saleCostFromFieldsPOS(row) || saleCostFromFieldsPOS(loteAny);
-      items.push({
-        productId: prod.id,
-        qty,
-        unitCost,
-        nombreSnapshot: row.nombreSnapshot || row.nombre || row.name || prod.name || '',
-        loteProductId: row.productId ?? row.productoId ?? null,
-        letra: row.Letra || row.letra || '',
-        source: 'lotes_productId'
-      });
-      total += qty;
+      appendResolvedItem(row, qty, 'lotes_productId');
     }
   } else {
-    const map = [
-      { field: 'pulso', name: 'Pulso 250ml' },
-      { field: 'media', name: 'Media 375ml' },
-      { field: 'djeba', name: 'Djeba 750ml' },
-      { field: 'litro', name: 'Litro 1000ml' },
-      { field: 'galon', name: 'Galón 3720 ml' }
-    ];
-
-    for (const m of map){
-      const rawQty = (loteAny[m.field] ?? '0').toString();
-      const qty = parseInt(rawQty, 10);
+    const quantities = legacyQuantityShapePOS(loteAny);
+    for (const letter of LEGACY_PRODUCT_LETTERS_POS){
+      const qty = Number(quantities[letter]) || 0;
       if (!(qty > 0)) continue;
-      let prod = products.find(p => norm(p.name) === norm(m.name));
-      // Compat Galón: permitir legacy 'Galón 3750 ml' y/o cualquier nombre que mapee a 'galon'
-      if (!prod && m.field === 'galon') {
-        prod = products.find(p => norm(p.name) === norm('Galón 3750 ml')) || products.find(p => mapProductNameToFinishedId(p.name) === 'galon') || null;
-      }
-      if (!prod) continue;
-      items.push({ productId: prod.id, qty, unitCost: saleCostFromFieldsPOS(loteAny), source: 'lotes_legacy' });
-      total += qty;
+      appendResolvedItem({
+        Letra:letter,
+        nombreSnapshot:LEGACY_PRODUCT_NAME_BY_LETTER_POS[letter],
+        legacyField:LEGACY_PRODUCT_FIELD_BY_LETTER_POS[letter]
+      }, qty, 'lotes_legacy');
     }
   }
   if (!items.length){
@@ -17097,87 +17111,439 @@ async function importFromLoteToInventory(opts){
 
 
 // Lotes cargados en este evento (solo informativo)
-async function renderLotesCargadosEvento(eventId){
-  const tbody = $('#tbl-lotes-evento tbody');
-  const badge = $('#lotes-count');
-  if (!tbody) return;
+// Catálogos → Productos es la fuente oficial; no se migra ni reescribe inventario.
 
-  tbody.innerHTML = '';
+function normalizeLotesLetterPOS(value){
+  return String(value == null ? '' : value).trim().toUpperCase().replace(/\s+/g, '').slice(0, 4);
+}
 
-  const entries = await getInventoryEntries(eventId);
-  const rows = (entries || [])
-    .filter(e => e && e.type === 'restock' && (e.loteCodigo || e.source === 'lote'))
-    .sort((a,b)=> (b.time||'').localeCompare(a.time||''));
+function inventoryStoredLetterPOS(ref){
+  const value = ref && typeof ref === 'object' ? ref : {};
+  return normalizeLotesLetterPOS(
+    value.loteLetra ?? value.Letra ?? value.letra ?? value.letter ?? value.productLetter ?? value.productionLetter ??
+    (value.productSnapshot && (value.productSnapshot.letra ?? value.productSnapshot.Letra ?? value.productSnapshot.letter))
+  );
+}
 
-  // Detectar reversos (ajustes negativos) por grupo de carga, para marcar la historia sin ocultarla
-  const revRows = (entries || [])
-    .filter(e => e && e.type === 'adjust' && e.source === 'lote_reverso');
-  const revByGroupKey = new Map();
-  for (const r of revRows){
-    const k = (r.loteGroupKey || r.loteCargaId || '')
-      ? String(r.loteGroupKey || r.loteCargaId)
-      : '';
-    if (!k) continue;
-    const t = (r.time || '').toString();
-    const prev = revByGroupKey.get(k);
-    if (!prev || t.localeCompare(prev) > 0) revByGroupKey.set(k, t);
+function inventorySnapshotNamePOS(ref){
+  const value = ref && typeof ref === 'object' ? ref : {};
+  return String(
+    value.loteNombreSnapshot ?? value.nombreSnapshot ?? value.productNameSnapshot ?? value.productName ??
+    value.nombre ?? value.name ??
+    (value.productSnapshot && (value.productSnapshot.name ?? value.productSnapshot.nombre)) ?? ''
+  ).trim();
+}
+
+// Único resolutor reutilizable para Inventario: productId → Catálogo → Letra real → snapshot → nombre legacy.
+function resolveInventoryProductIdentityPOS(ref, productsOrIndex, options={}){
+  const index = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+    ? productsOrIndex
+    : buildProductIdentityIndexPOS(productsOrIndex);
+  const savedLetter = inventoryStoredLetterPOS(ref);
+  const snapshotName = inventorySnapshotNamePOS(ref);
+  const legacyLetter = options.allowLegacyName === false ? '' : legacyProductLetterFromNamePOS(snapshotName);
+  const direct = resolveCatalogProductIdentityPOS(ref, index, { allowLegacy:false });
+
+  if (direct.ok){
+    const realLetter = normalizeLotesLetterPOS(direct.product && (direct.product.letra ?? direct.product.Letra ?? direct.product.letter));
+    const catalogLegacyLetter = options.allowLegacyName === false ? '' : legacyProductLetterFromNamePOS(catalogProductSnapshotNamePOS(direct.product));
+    const resolvedLegacyLetter = legacyLetter || catalogLegacyLetter;
+    const letter = realLetter || savedLetter || resolvedLegacyLetter;
+    return {
+      ...direct,
+      letter,
+      realLetter,
+      savedLetter,
+      legacyLetter:resolvedLegacyLetter,
+      name:uiProductNamePOS(direct.name || snapshotName),
+      ambiguousLetter:!!(letter && index.ambiguousLetters && index.ambiguousLetters.has(letter)),
+      snapshotOnly:false
+    };
   }
 
-  const prods = await getAll('products');
-  const pMap = new Map((prods||[]).map(p => [p.id, p]));
+  const fallbackLetters = [];
+  if (savedLetter) fallbackLetters.push({ letter:savedLetter, matchedBy:'letter_snapshot' });
+  if (legacyLetter && !fallbackLetters.some(item => item.letter === legacyLetter)) fallbackLetters.push({ letter:legacyLetter, matchedBy:'name_legacy' });
 
-  // Agrupar: 1 fila por cada "carga" de lote
+  for (const fallback of fallbackLetters){
+    const ambiguous = !!(index.ambiguousLetters && index.ambiguousLetters.has(fallback.letter));
+    const product = ambiguous ? null : (index.byLetter.get(fallback.letter) || null);
+    if (product){
+      return {
+        ok:true,
+        product,
+        stableId:catalogProductStableIdPOS(product),
+        internalId:catalogProductInternalIdPOS(product),
+        name:uiProductNamePOS(catalogProductSnapshotNamePOS(product) || snapshotName),
+        letter:normalizeLotesLetterPOS(product.letra ?? product.Letra ?? product.letter) || fallback.letter,
+        realLetter:normalizeLotesLetterPOS(product.letra ?? product.Letra ?? product.letter),
+        savedLetter,
+        legacyLetter,
+        matchedBy:fallback.matchedBy,
+        index,
+        ambiguousLetter:false,
+        snapshotOnly:false
+      };
+    }
+  }
+
+  // Último puente histórico: un nombre legacy puede ubicar un único Producto antiguo sin Letra.
+  // Solo se usa después de productId y Letra; nunca reescribe el registro.
+  let legacyNameProduct = null;
+  if (legacyLetter && snapshotName){
+    legacyNameProduct = index.byName.get(productIdentityNameKeyPOS(snapshotName)) || null;
+    if (!legacyNameProduct){
+      const matches = (index.list || []).filter(product => legacyProductLetterFromNamePOS(catalogProductSnapshotNamePOS(product)) === legacyLetter);
+      if (matches.length === 1) legacyNameProduct = matches[0];
+    }
+  }
+  if (legacyNameProduct){
+    const realLetter = normalizeLotesLetterPOS(legacyNameProduct.letra ?? legacyNameProduct.Letra ?? legacyNameProduct.letter);
+    return {
+      ok:true,
+      product:legacyNameProduct,
+      stableId:catalogProductStableIdPOS(legacyNameProduct),
+      internalId:catalogProductInternalIdPOS(legacyNameProduct),
+      name:uiProductNamePOS(catalogProductSnapshotNamePOS(legacyNameProduct) || snapshotName),
+      letter:realLetter || savedLetter || legacyLetter,
+      realLetter,
+      savedLetter,
+      legacyLetter,
+      matchedBy:'name_legacy_catalog',
+      index,
+      ambiguousLetter:false,
+      snapshotOnly:false
+    };
+  }
+
+  const letter = savedLetter || legacyLetter;
+  return {
+    ok:false,
+    product:null,
+    stableId:'',
+    internalId:null,
+    name:uiProductNamePOS(snapshotName),
+    letter,
+    realLetter:'',
+    savedLetter,
+    legacyLetter,
+    matchedBy:letter ? (savedLetter ? 'letter_snapshot_unresolved' : 'name_legacy_unresolved') : 'unresolved',
+    index,
+    ambiguousLetter:!!(letter && index.ambiguousLetters && index.ambiguousLetters.has(letter)),
+    snapshotOnly:!!letter
+  };
+}
+
+function inventoryIdentityKeyPOS(identity, ref){
+  const resolved = identity && typeof identity === 'object' ? identity : {};
+  const stable = String(resolved.stableId || '').trim();
+  if (stable) return 'PID:' + stable;
+  const internal = Number(resolved.internalId);
+  if (Number.isFinite(internal) && internal > 0) return 'IID:' + String(internal);
+  const raw = ref && typeof ref === 'object' ? ref : {};
+  const refId = String(raw.productId ?? raw.productoId ?? raw.catalogProductId ?? raw.loteProductId ?? '').trim();
+  if (refId) return 'REF:' + refId;
+  const letter = normalizeLotesLetterPOS(resolved.letter || inventoryStoredLetterPOS(raw));
+  if (letter && !resolved.ambiguousLetter) return 'LET:' + letter;
+  const name = productIdentityNameKeyPOS(resolved.name || inventorySnapshotNamePOS(raw));
+  return name ? ('NAME:' + name) : '';
+}
+
+function inventoryIdentityIdCandidatesPOS(identity, ref){
+  const out = [];
+  const push = (value) => {
+    const raw = String(value == null ? '' : value).trim();
+    if (raw && !out.includes(raw)) out.push(raw);
+  };
+  const resolved = identity && typeof identity === 'object' ? identity : {};
+  const raw = ref && typeof ref === 'object' ? ref : {};
+  push(resolved.stableId);
+  push(resolved.internalId);
+  push(raw.productId);
+  push(raw.productoId);
+  push(raw.catalogProductId);
+  push(raw.loteProductId);
+  push(raw.productInternalId);
+  push(raw.internalId);
+  return out;
+}
+
+let lotesEventoPendingModelPOS = null;
+let lotesEventoToggleLockUntilPOS = 0;
+
+function updateLotesEventoCountPOS(count){
+  const n = Math.max(0, Number(count) || 0);
+  const countEl = $('#lotes-count');
+  const wordEl = $('#lotes-count-word');
+  if (countEl) countEl.textContent = String(n);
+  if (wordEl) wordEl.textContent = n === 1 ? 'registro' : 'registros';
+}
+
+function setLotesEventoExpandedPOS(expanded){
+  const block = $('#lotes-evento-block');
+  const toggle = $('#lotes-evento-toggle');
+  const content = $('#lotes-evento-content');
+  if (!block || !toggle || !content) return false;
+  const next = !!expanded;
+  toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+  content.hidden = !next;
+  block.classList.toggle('is-expanded', next);
+  block.classList.toggle('is-collapsed', !next);
+  if (next && lotesEventoPendingModelPOS){
+    const pending = lotesEventoPendingModelPOS;
+    lotesEventoPendingModelPOS = null;
+    renderLotesEventoTablePOS(pending.model, pending.emptyMessage);
+  }
+  return true;
+}
+
+function resetLotesEventoCollapsePOS(){
+  lotesEventoToggleLockUntilPOS = 0;
+  return setLotesEventoExpandedPOS(false);
+}
+
+function bindLotesEventoToggleOncePOS(){
+  const toggle = $('#lotes-evento-toggle');
+  if (!toggle || toggle.dataset.bound === '1') return;
+  toggle.dataset.bound = '1';
+  toggle.addEventListener('click', (event)=>{
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (now < lotesEventoToggleLockUntilPOS){
+      try{ event.preventDefault(); }catch(_){ }
+      return;
+    }
+    lotesEventoToggleLockUntilPOS = now + 450;
+    const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+    setLotesEventoExpandedPOS(!isOpen);
+  });
+
+  const root = document && document.documentElement;
+  if (root && root.dataset && root.dataset.lotesEventoLifecycleBound !== '1'){
+    root.dataset.lotesEventoLifecycleBound = '1';
+    window.addEventListener('pagehide', ()=>{ resetLotesEventoCollapsePOS(); });
+    window.addEventListener('pageshow', ()=>{ resetLotesEventoCollapsePOS(); });
+  }
+}
+
+function lotesEntryStoredLetterPOS(entry){
+  return inventoryStoredLetterPOS(entry);
+}
+
+function lotesEntrySnapshotNamePOS(entry){
+  return inventorySnapshotNamePOS(entry);
+}
+
+function lotesLegacyLetterFromNamePOS(name){
+  return legacyProductLetterFromNamePOS(name);
+}
+
+function lotesCatalogProductKeyPOS(product){
+  const stable = catalogProductStableIdPOS(product);
+  if (stable) return 'PID:' + stable;
+  const internal = catalogProductInternalIdPOS(product);
+  return internal ? ('IID:' + internal) : '';
+}
+
+function lotesEntryReferenceKeyPOS(entry){
+  const e = entry && typeof entry === 'object' ? entry : {};
+  const candidates = [e.productId, e.productoId, e.catalogProductId, e.loteProductId, e.productInternalId, e.internalId];
+  for (const value of candidates){
+    const raw = String(value == null ? '' : value).trim();
+    if (raw) return 'REF:' + raw;
+  }
+  const name = productIdentityNameKeyPOS(lotesEntrySnapshotNamePOS(e));
+  if (name) return 'NAME:' + name;
+  const letter = lotesEntryStoredLetterPOS(e);
+  if (letter) return 'LETTER:' + letter;
+  return 'UNKNOWN';
+}
+
+function lotesHistoricalLetterSortPOS(a, b){
+  const paIndex = LEGACY_PRODUCT_LETTERS_POS.indexOf(a.label);
+  const pbIndex = LEGACY_PRODUCT_LETTERS_POS.indexOf(b.label);
+  const pa = paIndex >= 0 ? paIndex + 1 : 100;
+  const pb = pbIndex >= 0 ? pbIndex + 1 : 100;
+  if (pa !== pb) return pa - pb;
+  return String(a.label).localeCompare(String(b.label), 'es-NI', { numeric:true, sensitivity:'base' });
+}
+
+function buildLotesEventoModelPOS(entries, products){
+  const allEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  const productList = Array.isArray(products) ? products.filter(Boolean) : [];
+  const rows = allEntries
+    .filter((entry)=> entry && entry.type === 'restock' && (entry.loteCodigo || entry.source === 'lote'))
+    .sort((a,b)=> String(b.time || '').localeCompare(String(a.time || '')));
+
+  const reverseByGroup = new Map();
+  for (const entry of allEntries){
+    if (!entry || entry.type !== 'adjust' || entry.source !== 'lote_reverso') continue;
+    const key = String(entry.loteGroupKey || entry.loteCargaId || '').trim();
+    if (!key) continue;
+    const time = String(entry.time || '');
+    const previous = reverseByGroup.get(key);
+    if (!previous || time.localeCompare(previous) > 0) reverseByGroup.set(key, time);
+  }
+
+  const productIndex = buildProductIdentityIndexPOS(productList);
+  const catalogColumns = [];
+  const catalogByLetter = new Map();
+  for (const product of productList){
+    if (!productRecipeEnabledForProductionPOS(product)) continue;
+    const letter = normalizeLotesLetterPOS(product.letra ?? product.Letra ?? product.letter ?? product.productionLetter);
+    if (!letter || catalogByLetter.has(letter)) continue;
+    const name = uiProductNamePOS(product.name ?? product.nombre ?? '');
+    const def = {
+      key:'LET:' + letter,
+      label:letter,
+      title:name ? `${letter} · ${name}` : `Letra ${letter}`,
+      source:'catalog',
+      ownerKey:lotesCatalogProductKeyPOS(product)
+    };
+    catalogByLetter.set(letter, def);
+    catalogColumns.push(def);
+  }
+
+  const historicalColumns = new Map();
+  const orphanReferences = new Map();
   const groups = new Map();
-  for (const it of rows){
-    const loteCodigo = (it.loteCodigo || '').toString().trim();
-    const time = (it.time || '').toString();
-    const gKey = it.loteCargaId
-      ? String(it.loteCargaId)
-      : ((loteCodigo || '—') + '|' + (time || ''));
-    let g = groups.get(gKey);
-    if (!g){
-      g = { loteCodigo: loteCodigo || '—', time: time || '', groupKey: gKey, P:0, M:0, D:0, L:0, G:0 };
-      groups.set(gKey, g);
-    }
-    if ((g.loteCodigo === '—' || !g.loteCodigo) && loteCodigo) g.loteCodigo = loteCodigo;
-    if (!g.time && time) g.time = time;
 
-    const p = pMap.get(it.productId);
-    const key = presKeyFromProductNamePOS(p ? (p.name || '') : '');
-    const qty = Number(it.qty) || 0;
-    if (key) g[key] = (Number(g[key]) || 0) + qty;
-
-    // marcar si esta carga fue reversada (para claridad)
-    if (!g.reversedAt && revByGroupKey.has(gKey)){
-      g.reversedAt = revByGroupKey.get(gKey);
+  for (const entry of rows){
+    const lotCode = String(entry.loteCodigo || entry.loteNombre || entry.loteName || '').trim();
+    const time = String(entry.time || '');
+    const groupKey = entry.loteCargaId
+      ? String(entry.loteCargaId)
+      : ((lotCode || '—') + '|' + time);
+    let group = groups.get(groupKey);
+    if (!group){
+      group = { loteCodigo:lotCode || '—', time, groupKey, reversedAt:'', quantities:{} };
+      groups.set(groupKey, group);
     }
+    if ((!group.loteCodigo || group.loteCodigo === '—') && lotCode) group.loteCodigo = lotCode;
+    if (!group.time && time) group.time = time;
+    if (!group.reversedAt && reverseByGroup.has(groupKey)) group.reversedAt = reverseByGroup.get(groupKey);
+
+    const qty = Number(entry.qty) || 0;
+    const identityRef = (entry.loteProductId != null && String(entry.loteProductId).trim() !== '')
+      ? { ...entry, catalogProductId:entry.catalogProductId ?? entry.loteProductId }
+      : entry;
+    const identity = resolveInventoryProductIdentityPOS(identityRef, productIndex, { allowLegacyName:true });
+    let columnKey = '';
+
+    if (identity.ok){
+      const letter = normalizeLotesLetterPOS(identity.letter);
+      const legacyCompatible = !!(letter && LEGACY_PRODUCT_LETTERS_POS.includes(letter));
+      // Productos nuevos sin Receta quedan fuera; P/M/D/L/G antiguos conservan lectura histórica.
+      if (!productRecipeEnabledForProductionPOS(identity.product) && !legacyCompatible) continue;
+      const catalogDef = letter ? catalogByLetter.get(letter) : null;
+      const identityOwner = lotesCatalogProductKeyPOS(identity.product);
+      if (catalogDef && (!catalogDef.ownerKey || !identityOwner || catalogDef.ownerKey === identityOwner)){
+        columnKey = catalogDef.key;
+      } else if (letter && !identity.ambiguousLetter && !catalogByLetter.has(letter)){
+        columnKey = 'LET:' + letter;
+        if (!historicalColumns.has(letter)){
+          historicalColumns.set(letter, {
+            key:columnKey,
+            label:letter,
+            title:identity.name ? `${letter} · ${identity.name}` : `Letra histórica ${letter}`,
+            source:'historical'
+          });
+        }
+      }
+    } else {
+      const historicalLetter = normalizeLotesLetterPOS(identity.letter);
+      if (historicalLetter && !identity.ambiguousLetter){
+        const catalogDef = catalogByLetter.get(historicalLetter);
+        columnKey = catalogDef ? catalogDef.key : ('LET:' + historicalLetter);
+        if (!catalogDef && !historicalColumns.has(historicalLetter)){
+          historicalColumns.set(historicalLetter, {
+            key:columnKey,
+            label:historicalLetter,
+            title:identity.name ? `${historicalLetter} · ${identity.name}` : `Letra histórica ${historicalLetter}`,
+            source:'historical'
+          });
+        }
+      }
+    }
+
+    if (!columnKey){
+      const ref = lotesEntryReferenceKeyPOS(entry);
+      columnKey = 'ORPHAN:' + ref;
+      if (!orphanReferences.has(ref)){
+        orphanReferences.set(ref, {
+          key:columnKey,
+          ref,
+          title:'Cantidad histórica sin Producto con Receta y Letra resoluble'
+        });
+      }
+    }
+
+    group.quantities[columnKey] = (Number(group.quantities[columnKey]) || 0) + qty;
   }
 
-  const out = Array.from(groups.values()).sort((a,b)=> (b.time||'').localeCompare(a.time||''));
-  if (badge) badge.textContent = String(out.length || 0);
+  const historical = Array.from(historicalColumns.values()).sort(lotesHistoricalLetterSortPOS);
+  const orphan = Array.from(orphanReferences.values())
+    .sort((a,b)=> String(a.ref).localeCompare(String(b.ref), 'es-NI', { numeric:true, sensitivity:'base' }))
+    .map((def, index)=> ({ ...def, label:'?' + (index + 1), source:'unresolved' }));
 
-  if (!out.length){
+  return {
+    columns:catalogColumns.concat(historical, orphan),
+    rows:Array.from(groups.values()).sort((a,b)=> String(b.time || '').localeCompare(String(a.time || '')))
+  };
+}
+
+function renderLotesEventoTablePOS(model, emptyMessage){
+  const head = $('#tbl-lotes-evento-head');
+  const tbody = $('#tbl-lotes-evento tbody');
+  if (!head || !tbody) return;
+  const columns = model && Array.isArray(model.columns) ? model.columns : [];
+  const rows = model && Array.isArray(model.rows) ? model.rows : [];
+
+  head.innerHTML = `
+    <th scope="col">Código/Nombre</th>
+    <th scope="col">Fecha/Hora</th>
+    ${columns.map((column)=> `<th scope="col" title="${escapeHtml(column.title || column.label || '')}">${escapeHtml(column.label || '')}</th>`).join('')}
+  `;
+  tbody.innerHTML = '';
+  updateLotesEventoCountPOS(rows.length);
+
+  if (!rows.length){
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td colspan="7"><small class="muted">No hay lotes cargados en este evento.</small></td>';
+    tr.innerHTML = `<td colspan="${Math.max(2, 2 + columns.length)}"><small class="muted">${escapeHtml(emptyMessage || 'No hay lotes cargados en este evento.')}</small></td>`;
     tbody.appendChild(tr);
     return;
   }
 
-  for (const g of out){
-    const dt = g.time ? new Date(g.time).toLocaleString('es-NI') : '';
+  for (const row of rows){
+    const dateText = row.time ? new Date(row.time).toLocaleString('es-NI') : '';
     const tr = document.createElement('tr');
-    const codeTxt = escapeHtml((g.loteCodigo || '—').toString()) + (g.reversedAt ? ' ↩︎ REV' : '');
+    const codeText = escapeHtml(String(row.loteCodigo || '—')) + (row.reversedAt ? ' ↩︎ REV' : '');
     tr.innerHTML = `
-      <td>${codeTxt}</td>
-      <td>${escapeHtml(dt || '')}</td>
-      <td>${Number(g.P)||0}</td>
-      <td>${Number(g.M)||0}</td>
-      <td>${Number(g.D)||0}</td>
-      <td>${Number(g.L)||0}</td>
-      <td>${Number(g.G)||0}</td>
+      <td>${codeText}</td>
+      <td>${escapeHtml(dateText)}</td>
+      ${columns.map((column)=> `<td>${escapeHtml(String(Number(row.quantities[column.key]) || 0))}</td>`).join('')}
     `;
     tbody.appendChild(tr);
   }
+}
+
+async function renderLotesCargadosEvento(eventId, options={}){
+  bindLotesEventoToggleOncePOS();
+  const validEventId = Number(eventId);
+  const entries = Number.isFinite(validEventId) && validEventId > 0
+    ? await getInventoryEntries(validEventId)
+    : [];
+  const products = await getAll('products');
+  const model = buildLotesEventoModelPOS(entries, products);
+  updateLotesEventoCountPOS(model.rows.length);
+  const toggle = $('#lotes-evento-toggle');
+  const expanded = !!(toggle && toggle.getAttribute('aria-expanded') === 'true');
+  if (expanded || options.forceRender){
+    lotesEventoPendingModelPOS = null;
+    renderLotesEventoTablePOS(model, options.emptyMessage);
+  } else {
+    lotesEventoPendingModelPOS = { model, emptyMessage:options.emptyMessage || '' };
+  }
+  return model;
 }
 
 // ==============================
@@ -17258,54 +17624,151 @@ function makeSobranteCodePOS(eventName){
   return `SOBRANTE — ${base} — ${y}-${m}-${d} — ${rand}`;
 }
 
-async function getPresentationProductIdMapPOS(){
-  const prods = await getAll('products');
-  const map = { P:null, M:null, D:null, L:null, G:null };
-  for (const p of (prods || [])){
-    const n = normName(p && p.name);
-    if (!n) continue;
-    if (!map.P && n.includes('pulso')) map.P = p.id;
-    else if (!map.M && n.includes('media')) map.M = p.id;
-    else if (!map.D && n.includes('djeba')) map.D = p.id;
-    else if (!map.L && n.includes('litro')) map.L = p.id;
-    else if (!map.G && (n.includes('galon') || n.includes('galón'))) map.G = p.id;
+let sobranteInputModelPOS = { items:[] };
+let sobranteCreateBusyPOS = false;
+let reversoActionBusyPOS = false;
+
+function lotLegacyRowsPOS(lote, productIndex){
+  const source = lote && typeof lote === 'object' ? lote : {};
+  const quantities = legacyQuantityShapePOS(source);
+  const rows = [];
+  for (const letter of LEGACY_PRODUCT_LETTERS_POS){
+    const qty = sobranteQtyPOS(quantities[letter]);
+    if (!(qty > 0)) continue;
+    const product = productIndex && productIndex.byLetter ? (productIndex.byLetter.get(letter) || null) : null;
+    rows.push({
+      productId:product ? (catalogProductStableIdPOS(product) || catalogProductInternalIdPOS(product) || '') : '',
+      productInternalId:product ? catalogProductInternalIdPOS(product) : null,
+      nombreSnapshot:product ? catalogProductSnapshotNamePOS(product) : LEGACY_PRODUCT_NAME_BY_LETTER_POS[letter],
+      Letra:letter,
+      cantidadProducida:qty,
+      cantidadDisponible:qty,
+      legacyField:LEGACY_PRODUCT_FIELD_BY_LETTER_POS[letter]
+    });
   }
-  return map;
+  return rows;
 }
 
-async function prefillSobranteQtySuggestPOS(eventId){
-  const ids = await getPresentationProductIdMapPOS();
-  const out = { P:0, M:0, D:0, L:0, G:0 };
-  for (const k of Object.keys(out)){
-    const pid = ids[k];
-    if (pid == null) continue;
-    try{
-      const st = await computeStock(eventId, pid);
-      const n = Number(st || 0);
-      out[k] = n > 0 ? Math.floor(n) : 0;
-    }catch(_){ }
+function sobranteSourceRowsPOS(parent, eventId, products){
+  const snapshot = sobranteUsageSnapshotPOS(parent, eventId);
+  const productIndex = buildProductIdentityIndexPOS(products || []);
+  const snapshotRows = snapshot && Array.isArray(snapshot.availabilityProducts)
+    ? snapshot.availabilityProducts.filter(row => row && typeof row === 'object')
+    : [];
+  const contractRows = lotesPOSContractRowsPOS(parent);
+  let rows = snapshotRows.length ? snapshotRows.slice() : (contractRows.length ? contractRows.slice() : lotLegacyRowsPOS(parent, productIndex));
+
+  // Estructuras intermedias que solo guardaron mapas: crear referencias de lectura, sin migrar el lote.
+  if (!rows.length && snapshot){
+    const byPid = snapshot.remainingByProductId && typeof snapshot.remainingByProductId === 'object' ? snapshot.remainingByProductId : {};
+    const byLetter = snapshot.remainingByLetter && typeof snapshot.remainingByLetter === 'object' ? snapshot.remainingByLetter : {};
+    rows = Object.entries(byPid).map(([productId, cantidadDisponible]) => ({ productId, cantidadDisponible }));
+    const representedLetters = new Set();
+    for (const row of rows){
+      const identity = resolveInventoryProductIdentityPOS(row, productIndex, { allowLegacyName:true });
+      const letter = normalizeLotesLetterPOS(identity.letter);
+      if (letter) representedLetters.add(letter);
+    }
+    for (const [Letra, cantidadDisponible] of Object.entries(byLetter)){
+      const letter = normalizeLotesLetterPOS(Letra);
+      if (letter && !representedLetters.has(letter)) rows.push({ Letra:letter, cantidadDisponible });
+    }
   }
-  return out;
+  return { rows, snapshot, productIndex };
 }
 
-function setSobranteInputsPOS(vals){
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(Math.max(0, Number(v || 0)) | 0); };
-  set('sobrante-p', vals.P);
-  set('sobrante-m', vals.M);
-  set('sobrante-d', vals.D);
-  set('sobrante-l', vals.L);
-  set('sobrante-g', vals.G);
+function buildSobranteInputModelPOS(parent, eventId, products){
+  const source = sobranteSourceRowsPOS(parent, eventId, products);
+  const byKey = new Map();
+  for (const row of source.rows){
+    const identity = resolveInventoryProductIdentityPOS(row, source.productIndex, { allowLegacyName:true });
+    const historicalLetter = normalizeLotesLetterPOS(identity.letter);
+    const legacyCompatible = !!(historicalLetter && LEGACY_PRODUCT_LETTERS_POS.includes(historicalLetter));
+    if (identity.ok && !productRecipeEnabledForProductionPOS(identity.product) && !legacyCompatible) continue;
+    if (!identity.ok && (!historicalLetter || identity.ambiguousLetter)) continue;
+
+    const key = inventoryIdentityKeyPOS(identity, row);
+    if (!key) continue;
+    const identityIds = inventoryIdentityIdCandidatesPOS(identity, row);
+    const referenceId = String(identity.stableId || identity.internalId || row.productId || row.productoId || '').trim();
+    const available = sobranteSnapshotQtyPOS(
+      source.snapshot,
+      identityIds,
+      historicalLetter,
+      row.cantidadDisponible ?? row.remaining ?? row.cantidadRestante ?? row.cantidadProducida ?? row.cantidad ?? row.unidades ?? row.qty
+    );
+    if (!(available > 0)) continue;
+
+    const name = uiProductNamePOS(identity.name || inventorySnapshotNamePOS(row) || (historicalLetter ? `Letra ${historicalLetter}` : 'Producto histórico'));
+    const previous = byKey.get(key);
+    if (previous){
+      previous.available = source.snapshot
+        ? Math.max(sobranteQtyPOS(previous.available), available)
+        : sobranteQtyPOS(previous.available + available);
+      previous.suggested = previous.available;
+      continue;
+    }
+    byKey.set(key, {
+      key,
+      product:identity.product || null,
+      productId:referenceId,
+      internalId:identity.internalId,
+      letter:historicalLetter,
+      name,
+      available,
+      suggested:available,
+      historical:!identity.ok,
+      row:{ ...row }
+    });
+  }
+  return { items:Array.from(byKey.values()), snapshot:source.snapshot };
+}
+
+function renderSobranteInputsPOS(model){
+  const grid = document.getElementById('sobrante-grid');
+  sobranteInputModelPOS = model && Array.isArray(model.items) ? model : { items:[] };
+  if (!grid) return;
+  if (!sobranteInputModelPOS.items.length){
+    grid.innerHTML = '<small class="muted dynamic-grid-empty">No hay cantidades disponibles para crear sobrante.</small>';
+    return;
+  }
+  grid.innerHTML = sobranteInputModelPOS.items.map((item, index) => {
+    const label = item.letter || '?';
+    const title = item.name ? `${label} · ${item.name}` : label;
+    const id = `sobrante-dyn-${index}`;
+    return `<div class="sobrante-cell dynamic-product-cell" title="${escapeHtml(title)}">
+      <label for="${id}"><span class="dynamic-product-letter">${escapeHtml(label)}</span><span class="dynamic-product-name">${escapeHtml(item.name || '')}</span></label>
+      <input id="${id}" data-sobrante-key="${escapeHtml(item.key)}" type="number" inputmode="decimal" step="1" min="0" max="${escapeHtml(String(item.available))}" value="${escapeHtml(String(item.suggested))}">
+      <small class="muted">Disponible: ${escapeHtml(String(item.available))}</small>
+    </div>`;
+  }).join('');
 }
 
 function getSobranteInputsPOS(){
-  const get = (id) => {
-    const el = document.getElementById(id);
-    const n = parseInt(el && el.value ? el.value : '0', 10);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  };
-  return { P:get('sobrante-p'), M:get('sobrante-m'), D:get('sobrante-d'), L:get('sobrante-l'), G:get('sobrante-g') };
+  const byKey = {};
+  const legacy = legacyQuantityShapePOS({});
+  for (const item of (sobranteInputModelPOS.items || [])){
+    const input = Array.from(document.querySelectorAll('[data-sobrante-key]')).find(el => el && el.dataset && el.dataset.sobranteKey === item.key);
+    const qty = sobranteQtyPOS(input ? input.value : 0);
+    byKey[item.key] = qty;
+    if (item.letter && LEGACY_PRODUCT_LETTERS_POS.includes(item.letter)) legacy[item.letter] = sobranteQtyPOS(legacy[item.letter] + qty);
+  }
+  return { byKey, legacy };
 }
 
+async function refreshSobranteInputsForSelectedLotPOS(eventId){
+  const sel = document.getElementById('sobrante-lote-select');
+  const parentId = sel && sel.value ? String(sel.value) : '';
+  const parent = readLotesLS_POS().find(lote => lote && String(lote.id) === parentId) || null;
+  if (!parent){
+    renderSobranteInputsPOS({ items:[] });
+    return { items:[] };
+  }
+  const products = await getAll('products').catch(()=>[]);
+  const model = buildSobranteInputModelPOS(parent, eventId, products);
+  renderSobranteInputsPOS(model);
+  return model;
+}
 
 function updateSobranteMetaPOS(){
   const sel = document.getElementById('sobrante-lote-select');
@@ -17363,10 +17826,16 @@ async function refreshSobranteUIForEventPOS(eventId){
     sel.appendChild(opt);
   }
 
-  // meta del select + listener
+  // meta del select + render dinámico; onchange reemplaza el anterior y evita listeners duplicados.
   try{
     updateSobranteMetaPOS();
-    sel.onchange = () => { try{ updateSobranteMetaPOS(); }catch(_){ } };
+    await refreshSobranteInputsForSelectedLotPOS(eventId);
+    sel.onchange = async () => {
+      try{
+        updateSobranteMetaPOS();
+        await refreshSobranteInputsForSelectedLotPOS(eventId);
+      }catch(_){ }
+    };
   }catch(_){ }
 }
 
@@ -17378,7 +17847,6 @@ async function openSobrantePanelPOS(){
   const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
   if (!evId) return alert('Selecciona un evento');
 
-  // Validar evento (si está abierto, permitir pero advertir)
   const evs = await getAll('events');
   const ev = evs.find(e => e && Number(e.id) === Number(evId)) || null;
   if (!ev){ alert('Evento no encontrado'); return; }
@@ -17387,6 +17855,7 @@ async function openSobrantePanelPOS(){
     if (!ok) return;
   }
 
+  try{ await syncLotsUsageForEvent(evId); }catch(_){ }
   await refreshSobranteUIForEventPOS(evId);
 
   if (btn && btn.disabled){
@@ -17394,14 +17863,7 @@ async function openSobrantePanelPOS(){
     return;
   }
 
-  // Sugerir cantidades basado en stock actual del evento
-  try{
-    const suggest = await prefillSobranteQtySuggestPOS(evId);
-    setSobranteInputsPOS(suggest);
-  }catch(e){
-    setSobranteInputsPOS({P:0,M:0,D:0,L:0,G:0});
-  }
-
+  await refreshSobranteInputsForSelectedLotPOS(evId);
   panel.style.display = 'block';
 }
 
@@ -17423,95 +17885,91 @@ function sobranteQtyPOS(value){
 }
 
 function sobranteSnapshotQtyPOS(snapshot, productId, letter, fallback){
-  const pid = String(productId || '').trim();
+  const ids = (Array.isArray(productId) ? productId : [productId])
+    .map(value => String(value == null ? '' : value).trim())
+    .filter((value, index, list) => value && list.indexOf(value) === index);
   const letKey = String(letter || '').trim().toUpperCase();
   if (snapshot){
     const byPid = snapshot.remainingByProductId && typeof snapshot.remainingByProductId === 'object' ? snapshot.remainingByProductId : null;
-    if (pid && byPid && Object.prototype.hasOwnProperty.call(byPid, pid)) return sobranteQtyPOS(byPid[pid]);
+    if (byPid){
+      for (const pid of ids){
+        if (Object.prototype.hasOwnProperty.call(byPid, pid)) return sobranteQtyPOS(byPid[pid]);
+      }
+    }
     const byLetter = snapshot.remainingByLetter && typeof snapshot.remainingByLetter === 'object' ? snapshot.remainingByLetter : null;
     if (letKey && byLetter && Object.prototype.hasOwnProperty.call(byLetter, letKey)) return sobranteQtyPOS(byLetter[letKey]);
     const byKey = snapshot.remainingByKey && typeof snapshot.remainingByKey === 'object' ? snapshot.remainingByKey : null;
     if (byKey){
-      if (pid && Object.prototype.hasOwnProperty.call(byKey, 'PID:' + pid)) return sobranteQtyPOS(byKey['PID:' + pid]);
-      if (letKey && Object.prototype.hasOwnProperty.call(byKey, letKey)) return sobranteQtyPOS(byKey[letKey]);
+      const candidates = [];
+      for (const pid of ids) candidates.push('PID:' + pid, 'IID:' + pid, pid);
+      if (letKey) candidates.push('LET:' + letKey, letKey);
+      for (const key of candidates){
+        if (Object.prototype.hasOwnProperty.call(byKey, key)) return sobranteQtyPOS(byKey[key]);
+      }
     }
   }
   return sobranteQtyPOS(fallback);
 }
 
-function buildSobranteTransferItemsPOS(parent, eventId, legacyQty, products){
-  const snapshot = sobranteUsageSnapshotPOS(parent, eventId);
-  const snapshotRows = snapshot && Array.isArray(snapshot.availabilityProducts) ? snapshot.availabilityProducts : [];
-  const baseRows = snapshotRows.length ? snapshotRows : lotesPOSContractRowsPOS(parent);
-  const index = buildProductIdentityIndexPOS(products || []);
-  const legacyLetters = new Set(['P','M','D','L','G']);
-  const byIdentity = new Map();
+function buildSobranteTransferItemsPOS(parent, eventId, requested, products){
+  const model = buildSobranteInputModelPOS(parent, eventId, products || []);
+  const request = requested && typeof requested === 'object' ? requested : {};
+  const hasExplicitByKey = !!(request.byKey && typeof request.byKey === 'object');
+  const byKey = hasExplicitByKey ? request.byKey : {};
+  const legacy = request.legacy && typeof request.legacy === 'object' ? request.legacy : request;
+  const items = [];
   const errors = [];
 
-  const addRow = (row, forcedQty, source) => {
-    if (!row || typeof row !== 'object') return;
-    const identity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
-    const productId = String((identity.ok && identity.stableId) || row.productId || row.productoId || '').trim();
-    const letter = String((identity.ok && identity.letter) || row.Letra || row.letra || '').trim().toUpperCase();
-    const name = String((identity.ok && identity.name) || row.nombreSnapshot || row.productName || row.nombre || row.name || productId || letter).trim();
-    if (!productId && !letter) return;
-    const available = sobranteSnapshotQtyPOS(snapshot, productId, letter, row.cantidadDisponible ?? row.remaining ?? row.cantidadProducida ?? row.cantidad ?? row.unidades ?? row.qty);
-    const desired = forcedQty == null ? available : sobranteQtyPOS(forcedQty);
-    if (desired > available + 0.0001){
-      errors.push(`${letter || name}: el sobrante (${desired}) supera lo disponible (${available}).`);
-      return;
+  for (const item of model.items){
+    const hasKeyValue = Object.prototype.hasOwnProperty.call(byKey, item.key);
+    let desired = hasKeyValue ? sobranteQtyPOS(byKey[item.key]) : 0;
+    if (!hasKeyValue && item.letter && LEGACY_PRODUCT_LETTERS_POS.includes(item.letter)){
+      desired = sobranteQtyPOS(legacy[item.letter]);
+    } else if (!hasKeyValue && !hasExplicitByKey){
+      // Compatibilidad con llamadas anteriores: los productos dinámicos se transferían completos.
+      desired = sobranteQtyPOS(item.available);
     }
-    if (!(desired > 0)) return;
-    const key = productId ? ('PID:' + productId) : ('LET:' + letter);
-    const prev = byIdentity.get(key);
-    const qty = desired + (prev ? sobranteQtyPOS(prev.cantidad) : 0);
-    const product = identity.ok ? identity.product : null;
-    byIdentity.set(key, {
-      ...(prev || {}),
-      ...(row || {}),
-      id: productId || row.id || '',
-      productId,
-      nombre: name,
-      nombreSnapshot: name,
-      Letra: letter,
-      letra: letter,
-      cantidad: qty,
-      unidades: qty,
-      cantidadProducida: qty,
-      cantidadDisponible: qty,
-      legacy: false,
-      envaseId: String((product && (product.envaseId ?? product.packageId)) || row.envaseId || '').trim(),
-      tapaId: String((product && (product.tapaId ?? product.capId)) || row.tapaId || '').trim(),
-      fuenteTransferencia: source || 'sobrante',
-    });
-  };
-
-  for (const row of baseRows){
-    const identity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
-    const letter = String((identity.ok && identity.letter) || row.Letra || row.letra || '').trim().toUpperCase();
-    const forced = legacyLetters.has(letter) ? sobranteQtyPOS(legacyQty && legacyQty[letter]) : null;
-    addRow(row, forced, legacyLetters.has(letter) ? 'sobrante_manual' : 'sobrante_automatico_dinamico');
-  }
-
-  for (const letter of legacyLetters){
-    const desired = sobranteQtyPOS(legacyQty && legacyQty[letter]);
-    if (!(desired > 0)) continue;
-    const already = Array.from(byIdentity.values()).some(row => String(row.Letra || '').toUpperCase() === letter);
-    if (already) continue;
-    const product = index.byLetter.get(letter) || null;
-    if (!product){
-      errors.push(`${letter}: no se encontró el producto correspondiente en Catálogos.`);
+    if (desired > item.available + 0.0001){
+      errors.push(`${item.letter || item.name}: el sobrante (${desired}) supera lo disponible (${item.available}).`);
       continue;
     }
-    addRow(product, desired, 'sobrante_manual_legacy');
+    if (!(desired > 0)) continue;
+    const product = item.product;
+    const productId = String(item.productId || (product && (catalogProductStableIdPOS(product) || catalogProductInternalIdPOS(product))) || '').trim();
+    items.push({
+      ...(item.row || {}),
+      id:productId || (item.row && item.row.id) || '',
+      productId,
+      nombre:item.name,
+      nombreSnapshot:item.name,
+      Letra:item.letter,
+      letra:item.letter,
+      cantidad:desired,
+      unidades:desired,
+      cantidadProducida:desired,
+      cantidadDisponible:desired,
+      legacy:false,
+      envaseId:String((product && (product.envaseId ?? product.packageId)) || (item.row && item.row.envaseId) || '').trim(),
+      tapaId:String((product && (product.tapaId ?? product.capId)) || (item.row && item.row.tapaId) || '').trim(),
+      fuenteTransferencia:item.historical ? 'sobrante_historico' : 'sobrante_dinamico'
+    });
   }
 
-  const items = Array.from(byIdentity.values()).filter(row => sobranteQtyPOS(row.cantidad) > 0);
   const total = items.reduce((sum, row) => sum + sobranteQtyPOS(row.cantidad), 0);
-  return { ok: errors.length === 0 && total > 0, errors, items, total, snapshot };
+  return { ok:errors.length === 0 && total > 0, errors, items, total, snapshot:model.snapshot };
 }
 
-function subtractSobranteFromParentSnapshotPOS(parent, eventId, transferItems){
+function legacyQuantitiesFromTransferPOS(items){
+  const out = legacyQuantityShapePOS({});
+  for (const item of (Array.isArray(items) ? items : [])){
+    const letter = normalizeLotesLetterPOS(item && (item.Letra ?? item.letra));
+    if (!LEGACY_PRODUCT_LETTERS_POS.includes(letter)) continue;
+    out[letter] = sobranteQtyPOS(out[letter] + sobranteQtyPOS(item && (item.cantidad ?? item.unidades)));
+  }
+  return out;
+}
+
+function subtractSobranteFromParentSnapshotPOS(parent, eventId, transferItems, products){
   const snap = sobranteUsageSnapshotPOS(parent, eventId);
   if (!snap) return;
   const next = { ...snap };
@@ -17520,20 +17978,30 @@ function subtractSobranteFromParentSnapshotPOS(parent, eventId, transferItems){
     if (snap[mapName] && typeof snap[mapName] === 'object') next[mapName] = { ...snap[mapName] };
   }
   next.availabilityProducts = Array.isArray(snap.availabilityProducts) ? snap.availabilityProducts.map(row => ({ ...row })) : [];
+  const index = buildProductIdentityIndexPOS(products || []);
 
   for (const item of (Array.isArray(transferItems) ? transferItems : [])){
     const qty = sobranteQtyPOS(item && (item.cantidad ?? item.unidades));
     if (!(qty > 0)) continue;
-    const pid = String(item.productId || '').trim();
-    const letter = String(item.Letra || item.letra || '').trim().toUpperCase();
-    if (pid && next.remainingByProductId && Object.prototype.hasOwnProperty.call(next.remainingByProductId, pid)){
-      next.remainingByProductId[pid] = Math.max(0, sobranteQtyPOS(next.remainingByProductId[pid]) - qty);
+    const identity = resolveInventoryProductIdentityPOS(item, index, { allowLegacyName:true });
+    const ids = inventoryIdentityIdCandidatesPOS(identity, item);
+    const letter = normalizeLotesLetterPOS(identity.letter || (item && (item.Letra ?? item.letra)));
+
+    if (next.remainingByProductId){
+      for (const id of ids){
+        if (Object.prototype.hasOwnProperty.call(next.remainingByProductId, id)){
+          next.remainingByProductId[id] = Math.max(0, sobranteQtyPOS(next.remainingByProductId[id]) - qty);
+          break;
+        }
+      }
     }
     if (letter && next.remainingByLetter && Object.prototype.hasOwnProperty.call(next.remainingByLetter, letter)){
       next.remainingByLetter[letter] = Math.max(0, sobranteQtyPOS(next.remainingByLetter[letter]) - qty);
     }
     if (next.remainingByKey){
-      const candidates = [pid ? ('PID:' + pid) : '', letter].filter(Boolean);
+      const candidates = [];
+      ids.forEach(id => { candidates.push('PID:' + id, 'IID:' + id, id); });
+      if (letter) candidates.push('LET:' + letter, letter);
       for (const key of candidates){
         if (Object.prototype.hasOwnProperty.call(next.remainingByKey, key)){
           next.remainingByKey[key] = Math.max(0, sobranteQtyPOS(next.remainingByKey[key]) - qty);
@@ -17541,13 +18009,27 @@ function subtractSobranteFromParentSnapshotPOS(parent, eventId, transferItems){
         }
       }
     }
+
+    const itemKey = inventoryIdentityKeyPOS(identity, item);
     for (const row of next.availabilityProducts){
-      const samePid = pid && String(row.productId || '').trim() === pid;
-      const sameLetter = !pid && letter && String(row.Letra || row.letra || '').trim().toUpperCase() === letter;
-      if (samePid || sameLetter) row.cantidadDisponible = Math.max(0, sobranteQtyPOS(row.cantidadDisponible) - qty);
+      const rowIdentity = resolveInventoryProductIdentityPOS(row, index, { allowLegacyName:true });
+      const sameIdentity = itemKey && inventoryIdentityKeyPOS(rowIdentity, row) === itemKey;
+      const sameId = !sameIdentity && ids.some(id => inventoryIdentityIdCandidatesPOS(rowIdentity, row).includes(id));
+      const sameLetter = !sameIdentity && !sameId && letter && !identity.ambiguousLetter && normalizeLotesLetterPOS(rowIdentity.letter) === letter;
+      if (sameIdentity || sameId || sameLetter){
+        row.cantidadDisponible = Math.max(0, sobranteQtyPOS(row.cantidadDisponible) - qty);
+        break;
+      }
     }
   }
-  next.remainingTotal = Object.values(next.remainingByProductId || next.remainingByLetter || {}).reduce((sum, value) => sum + sobranteQtyPOS(value), 0);
+
+  if (next.availabilityProducts.length){
+    next.remainingTotal = next.availabilityProducts.reduce((sum, row) => sum + sobranteQtyPOS(row && row.cantidadDisponible), 0);
+  } else {
+    const byPid = next.remainingByProductId && Object.keys(next.remainingByProductId).length ? next.remainingByProductId : null;
+    const source = byPid || next.remainingByLetter || {};
+    next.remainingTotal = Object.values(source).reduce((sum, value) => sum + sobranteQtyPOS(value), 0);
+  }
   next.updatedAt = Date.now();
   next.transferenciaHijoAplicada = true;
   const eu = parent.eventUsage && typeof parent.eventUsage === 'object' && !Array.isArray(parent.eventUsage) ? { ...parent.eventUsage } : {};
@@ -17556,161 +18038,151 @@ function subtractSobranteFromParentSnapshotPOS(parent, eventId, transferItems){
 }
 
 async function createSobranteLotPOS(){
-  const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
-  if (!evId) return alert('Selecciona un evento');
-
-  const sel = document.getElementById('sobrante-lote-select');
-  const parentId = sel && sel.value ? sel.value : '';
-  if (!parentId) return alert('Selecciona un lote original');
-
-  const qty = getSobranteInputsPOS();
-
-  // Recalcular primero para usar el disponible real después de ventas, reempaques y ajustes.
-  try{ await syncLotsUsageForEvent(evId); }catch(_){ }
-  const allLotes = readLotesLS_POS();
-  const parent = allLotes.find(l => l && String(l.id) === String(parentId));
-  if (!parent){
-    alert('No se encontró el lote original en Control de Lotes.');
+  if (sobranteCreateBusyPOS){
+    try{ showToast('Guardado en curso…', 'info', 1500); }catch(_){ }
     return;
   }
+  sobranteCreateBusyPOS = true;
+  const createBtn = document.getElementById('btn-sobrante-create');
+  if (createBtn) createBtn.disabled = true;
 
-  const st = effectiveLoteStatusPOS(parent);
-  if (st === 'CERRADO'){
-    alert('Este lote ya está CERRADO.');
-    return;
-  }
-  if (Number(parent.assignedEventId || 0) !== Number(evId || 0)){
-    alert('Este lote no corresponde al evento seleccionado.');
-    return;
-  }
-
-  if (parent.sobranteLotId || lotHasSobranteChildPOS(allLotes, parent.id, evId)){
-    alert('Ya existe un lote sobrante creado para este lote original (doble sobrante prevenido).');
-    return;
-  }
-
-  const evs = await getAll('events');
-  const ev = evs.find(e => e && Number(e.id) === Number(evId)) || null;
-  const evName = ev ? (ev.name || '') : '';
-  const products = await getAll('products').catch(()=>[]);
-  const transfer = buildSobranteTransferItemsPOS(parent, evId, qty, products);
-  if (!transfer.ok){
-    const detail = transfer.errors && transfer.errors.length ? ('\n\n' + transfer.errors.map(text => '• ' + text).join('\n')) : '';
-    alert('No se pudo crear el lote hijo con cantidades consistentes.' + detail);
-    return;
-  }
-
-  const nowIso = new Date().toISOString();
-  const newId = 'lot-child-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,6);
-
-  const child = {
-    // Copiar lo que exista (materia prima / datos del lote) sin inventar
-    ...parent,
-    id: newId,
-    codigo: makeSobranteCodePOS(evName || parent.assignedEventName || ('Evento ' + evId)),
-
-    // Cantidades sobrantes (presentaciones legacy + contrato dinámico independiente)
-    pulso: String(qty.P || 0),
-    media: String(qty.M || 0),
-    djeba: String(qty.D || 0),
-    litro: String(qty.L || 0),
-    galon: String(qty.G || 0),
-    productosProducidos: transfer.items.map(item => ({
-      ...item,
-      loteId: newId,
-      loteCodigo: '',
-      fecha: nowIso.slice(0,10),
-      cantidadDisponible: sobranteQtyPOS(item.cantidad),
-    })),
-    productosProducidosSchema: 2,
-    disponibilidadPOS: transfer.items.map(item => ({
-      productId: item.productId,
-      nombreSnapshot: item.nombreSnapshot || item.nombre || '',
-      Letra: item.Letra || item.letra || '',
-      cantidadProducida: sobranteQtyPOS(item.cantidad),
-      cantidadDisponible: sobranteQtyPOS(item.cantidad),
-      cantidadDisponibleExiste: true,
-      disponibilidadFuente: 'lote_hijo',
-      loteId: newId,
-      loteCodigo: '',
-    })),
-    eventUsage: {},
-    transferenciaLote: {
-      schema: 1,
-      tipo: 'PADRE_A_HIJO',
-      parentLotId: parent.id,
-      sourceEventId: evId,
-      createdAt: nowIso,
-      productos: transfer.items.map(item => ({
-        productId: item.productId,
-        nombreSnapshot: item.nombreSnapshot || item.nombre || '',
-        Letra: item.Letra || item.letra || '',
-        cantidad: sobranteQtyPOS(item.cantidad),
-      })),
-    },
-
-    // Nuevo lote DISPONIBLE
-    status: 'DISPONIBLE',
-    availabilityState: 'DISPONIBLE',
-    availabilityUpdatedAt: nowIso,
-    assignedEventId: null,
-    assignedEventName: '',
-    assignedAt: null,
-
-    // Trazabilidad
-    parentLotId: parent.id,
-    sourceEventId: evId,
-    sourceEventName: evName || (parent.assignedEventName || ''),
-    loteType: 'SOBRANTE',
-
-    createdAt: nowIso
-  };
-  child.productosProducidos = child.productosProducidos.map(item => ({ ...item, loteCodigo: child.codigo, codigo: child.codigo, batchCode: child.codigo }));
-  child.disponibilidadPOS = child.disponibilidadPOS.map(item => ({ ...item, loteCodigo: child.codigo }));
-  child.salidaPOS = undefined;
-  child.contratoPOS = undefined;
-  child.assignedCargaId = null;
-  child.sobranteLotId = null;
-  child.closedAt = null;
-  child.reversedAt = null;
-  child.reversedReason = null;
-
-  // Notas: dejar rastro sin romper lo existente
   try{
-    const pcode = (parent.codigo || parent.name || parent.nombre || parent.id).toString();
-    const line = `SOBRANTE del lote ${pcode} · Evento: ${child.sourceEventName || evId} · ${nowIso}`;
-    child.notas = (parent.notas ? String(parent.notas).trim() + '\n' : '') + line;
-  }catch(_){ }
+    const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
+    if (!evId) return alert('Selecciona un evento');
 
-  // Transferencia real en el control de disponibilidad: descontar al padre antes de cerrarlo.
-  subtractSobranteFromParentSnapshotPOS(parent, evId, transfer.items);
-  parent.status = 'CERRADO';
-  parent.availabilityState = 'CERRADO';
-  parent.availabilityUpdatedAt = nowIso;
-  parent.closedAt = nowIso;
-  parent.sobranteLotId = newId;
-  parent.transferenciaHijo = {
-    schema: 1,
-    childLotId: newId,
-    sourceEventId: evId,
-    createdAt: nowIso,
-    productos: transfer.items.map(item => ({
-      productId: item.productId,
-      Letra: item.Letra || item.letra || '',
-      cantidad: sobranteQtyPOS(item.cantidad),
-    })),
-  };
+    const sel = document.getElementById('sobrante-lote-select');
+    const parentId = sel && sel.value ? sel.value : '';
+    if (!parentId) return alert('Selecciona un lote original');
+    const requested = getSobranteInputsPOS();
 
-  // Guardar
-  const next = allLotes.map(l => (l && String(l.id) === String(parent.id)) ? parent : l);
-  next.push(child);
-  writeLotesLS_POS(next);
+    try{ await syncLotsUsageForEvent(evId); }catch(_){ }
+    const allLotes = readLotesLS_POS();
+    const parent = allLotes.find(l => l && String(l.id) === String(parentId));
+    if (!parent){ alert('No se encontró el lote original en Control de Lotes.'); return; }
+    if (effectiveLoteStatusPOS(parent) === 'CERRADO'){ alert('Este lote ya está CERRADO.'); return; }
+    if (Number(parent.assignedEventId || 0) !== Number(evId || 0)){ alert('Este lote no corresponde al evento seleccionado.'); return; }
+    if (parent.sobranteLotId || lotHasSobranteChildPOS(allLotes, parent.id, evId)){
+      alert('Ya existe un lote sobrante creado para este lote original (doble sobrante prevenido).');
+      return;
+    }
 
-  await closeSobrantePanelPOS();
-  await refreshSobranteUIForEventPOS(evId);
-  toast('Lote sobrante creado y lote original cerrado');
+    const evs = await getAll('events');
+    const ev = evs.find(e => e && Number(e.id) === Number(evId)) || null;
+    const evName = ev ? (ev.name || '') : '';
+    const products = await getAll('products').catch(()=>[]);
+    const transfer = buildSobranteTransferItemsPOS(parent, evId, requested, products);
+    if (!transfer.ok){
+      const detail = transfer.errors && transfer.errors.length ? ('\n\n' + transfer.errors.map(text => '• ' + text).join('\n')) : '';
+      alert('No se pudo crear el lote hijo con cantidades consistentes.' + detail);
+      return;
+    }
+
+    const qty = legacyQuantitiesFromTransferPOS(transfer.items);
+    const nowIso = new Date().toISOString();
+    const newId = 'lot-child-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,6);
+    const child = {
+      ...parent,
+      id:newId,
+      codigo:makeSobranteCodePOS(evName || parent.assignedEventName || ('Evento ' + evId)),
+      pulso:String(qty.P || 0),
+      media:String(qty.M || 0),
+      djeba:String(qty.D || 0),
+      litro:String(qty.L || 0),
+      galon:String(qty.G || 0),
+      productosProducidos:transfer.items.map(item => ({
+        ...item,
+        loteId:newId,
+        loteCodigo:'',
+        fecha:nowIso.slice(0,10),
+        cantidadDisponible:sobranteQtyPOS(item.cantidad)
+      })),
+      productosProducidosSchema:2,
+      disponibilidadPOS:transfer.items.map(item => ({
+        productId:item.productId,
+        nombreSnapshot:item.nombreSnapshot || item.nombre || '',
+        Letra:item.Letra || item.letra || '',
+        cantidadProducida:sobranteQtyPOS(item.cantidad),
+        cantidadDisponible:sobranteQtyPOS(item.cantidad),
+        cantidadDisponibleExiste:true,
+        disponibilidadFuente:'lote_hijo',
+        loteId:newId,
+        loteCodigo:''
+      })),
+      eventUsage:{},
+      transferenciaLote:{
+        schema:1,
+        tipo:'PADRE_A_HIJO',
+        parentLotId:parent.id,
+        sourceEventId:evId,
+        createdAt:nowIso,
+        productos:transfer.items.map(item => ({
+          productId:item.productId,
+          nombreSnapshot:item.nombreSnapshot || item.nombre || '',
+          Letra:item.Letra || item.letra || '',
+          cantidad:sobranteQtyPOS(item.cantidad)
+        }))
+      },
+      status:'DISPONIBLE',
+      availabilityState:'DISPONIBLE',
+      availabilityUpdatedAt:nowIso,
+      assignedEventId:null,
+      assignedEventName:'',
+      assignedAt:null,
+      parentLotId:parent.id,
+      sourceEventId:evId,
+      sourceEventName:evName || (parent.assignedEventName || ''),
+      loteType:'SOBRANTE',
+      createdAt:nowIso
+    };
+    child.productosProducidos = child.productosProducidos.map(item => ({ ...item, loteCodigo:child.codigo, codigo:child.codigo, batchCode:child.codigo }));
+    child.disponibilidadPOS = child.disponibilidadPOS.map(item => ({ ...item, loteCodigo:child.codigo }));
+    child.salidaPOS = undefined;
+    child.contratoPOS = undefined;
+    child.assignedCargaId = null;
+    child.sobranteLotId = null;
+    child.closedAt = null;
+    child.reversedAt = null;
+    child.reversedReason = null;
+
+    try{
+      const pcode = (parent.codigo || parent.name || parent.nombre || parent.id).toString();
+      const line = `SOBRANTE del lote ${pcode} · Evento: ${child.sourceEventName || evId} · ${nowIso}`;
+      child.notas = (parent.notas ? String(parent.notas).trim() + '\n' : '') + line;
+    }catch(_){ }
+
+    subtractSobranteFromParentSnapshotPOS(parent, evId, transfer.items, products);
+    parent.status = 'CERRADO';
+    parent.availabilityState = 'CERRADO';
+    parent.availabilityUpdatedAt = nowIso;
+    parent.closedAt = nowIso;
+    parent.sobranteLotId = newId;
+    parent.transferenciaHijo = {
+      schema:1,
+      childLotId:newId,
+      sourceEventId:evId,
+      createdAt:nowIso,
+      productos:transfer.items.map(item => ({
+        productId:item.productId,
+        Letra:item.Letra || item.letra || '',
+        cantidad:sobranteQtyPOS(item.cantidad)
+      }))
+    };
+
+    const next = allLotes.map(l => (l && String(l.id) === String(parent.id)) ? parent : l);
+    next.push(child);
+    if (!writeLotesLS_POS(next)){
+      alert('No se pudo guardar el lote sobrante. No se aplicaron cambios permanentes.');
+      return;
+    }
+
+    await closeSobrantePanelPOS();
+    await refreshSobranteUIForEventPOS(evId);
+    toast('Lote sobrante creado y lote original cerrado');
+  } finally {
+    sobranteCreateBusyPOS = false;
+    if (createBtn) createBtn.disabled = false;
+  }
 }
-
 
 // ==============================
 // Reverso de asignación de lote (sin borrar historia)
@@ -17719,17 +18191,26 @@ async function createSobranteLotPOS(){
 // - Bloqueo conservador: si hay consumo/ventas de esas presentaciones (o fraccionamiento de galones), no permite reversar
 // ==============================
 
-function setReversoPreviewPOS(vals){
-  const set = (id, v)=>{ const el = document.getElementById(id); if (el) el.textContent = String(Math.max(0, Number(v||0))|0); };
-  set('reverso-p', vals.P);
-  set('reverso-m', vals.M);
-  set('reverso-d', vals.D);
-  set('reverso-l', vals.L);
-  set('reverso-g', vals.G);
+function setReversoPreviewPOS(summary){
+  const grid = document.getElementById('reverso-grid');
+  if (!grid) return;
+  const items = summary && Array.isArray(summary.items) ? summary.items : [];
+  if (!items.length){
+    grid.innerHTML = '<small class="muted dynamic-grid-empty">No hay cantidades identificables para reversar.</small>';
+    return;
+  }
+  grid.innerHTML = items.map(item => {
+    const label = item.letter || '?';
+    const title = item.name ? `${label} · ${item.name}` : label;
+    return `<div class="reverso-cell dynamic-product-cell" title="${escapeHtml(title)}">
+      <label><span class="dynamic-product-letter">${escapeHtml(label)}</span><span class="dynamic-product-name">${escapeHtml(item.name || '')}</span></label>
+      <span>${escapeHtml(String(item.qty))}</span>
+    </div>`;
+  }).join('');
 }
 
 function resetReversoPreviewPOS(){
-  setReversoPreviewPOS({P:0,M:0,D:0,L:0,G:0});
+  setReversoPreviewPOS({ items:[] });
 }
 
 async function getRestockGroupForLotePOS(eventId, lote){
@@ -17750,54 +18231,86 @@ async function getRestockGroupForLotePOS(eventId, lote){
   }
 
   if (!matches.length) return null;
-
-  // Agrupar por loteCargaId si existe; si no, fallback a código|time (lotes viejos)
   const groups = new Map();
   for (const it of matches){
     const loteCodigo = (it.loteCodigo || '').toString().trim();
     const time = (it.time || '').toString();
-    const gKey = it.loteCargaId
-      ? String(it.loteCargaId)
-      : ((loteCodigo || '—') + '|' + (time || ''));
+    const gKey = it.loteCargaId ? String(it.loteCargaId) : ((loteCodigo || '—') + '|' + (time || ''));
     let g = groups.get(gKey);
     if (!g){
-      g = { groupKey: gKey, loteCargaId: it.loteCargaId ? String(it.loteCargaId) : null, time: time || '', items: [] };
+      g = { groupKey:gKey, loteCargaId:it.loteCargaId ? String(it.loteCargaId) : null, time:time || '', items:[] };
       groups.set(gKey, g);
     }
     if (!g.time && time) g.time = time;
     g.items.push(it);
   }
-
   const list = Array.from(groups.values()).sort((a,b)=> (b.time||'').localeCompare(a.time||''));
   return list.length ? list[0] : null;
 }
 
-async function summarizeRestockGroupPOS(group){
-  const out = { P:0,M:0,D:0,L:0,G:0 };
+async function summarizeRestockGroupPOS(group, productsArg){
+  const totals = legacyQuantityShapePOS({});
   const sumsByPid = new Map();
-  if (!group || !Array.isArray(group.items)) return { totals: out, sumsByPid, hasGallon: false };
+  const metaByPid = new Map();
+  const itemsByKey = new Map();
+  const unresolved = [];
+  if (!group || !Array.isArray(group.items)) return { totals, items:[], sumsByPid, metaByPid, unresolved, hasGallon:false };
 
-  for (const it of group.items){
-    const pid = it.productId;
-    const qty = Number(it.qty) || 0;
-    if (!pid || !(qty > 0)) continue;
-    sumsByPid.set(pid, (Number(sumsByPid.get(pid))||0) + qty);
-  }
+  const products = Array.isArray(productsArg) ? productsArg : await getAll('products');
+  const index = buildProductIdentityIndexPOS(products || []);
+  for (const entry of group.items){
+    const qty = Number(entry && entry.qty) || 0;
+    if (!(qty > 0)) continue;
+    const identityRef = entry && entry.loteProductId != null && String(entry.loteProductId).trim() !== ''
+      ? { ...entry, catalogProductId:entry.catalogProductId ?? entry.loteProductId }
+      : entry;
+    const identity = resolveInventoryProductIdentityPOS(identityRef, index, { allowLegacyName:true });
+    const letter = normalizeLotesLetterPOS(identity.letter);
+    const name = uiProductNamePOS(identity.name || inventorySnapshotNamePOS(entry) || (letter ? `Letra ${letter}` : 'Producto histórico'));
+    const legacyCompatible = !!(letter && LEGACY_PRODUCT_LETTERS_POS.includes(letter));
+    const recipeEligible = !!(identity.ok && productRecipeEnabledForProductionPOS(identity.product));
+    const internalId = Number(identity.internalId);
 
-  const prods = await getAll('products');
-  const pMap = new Map((prods||[]).map(p => [p.id, p]));
-  for (const [pid, qty] of sumsByPid.entries()){
-    const p = pMap.get(pid);
-    const key = presKeyFromProductNamePOS(p ? (p.name || '') : '');
-    if (key && Object.prototype.hasOwnProperty.call(out, key)){
-      out[key] = (Number(out[key]) || 0) + (Number(qty) || 0);
+    if (!identity.ok || !Number.isFinite(internalId) || internalId <= 0 || (!recipeEligible && !legacyCompatible)){
+      const key = inventoryIdentityKeyPOS(identity, entry) || ('UNRESOLVED:' + unresolved.length);
+      const existing = itemsByKey.get(key);
+      if (existing) existing.qty += qty;
+      else itemsByKey.set(key, { key, letter:letter || '?', name, qty, unresolved:true });
+      unresolved.push({ key, letter, name, qty });
+      continue;
     }
+
+    const key = 'IID:' + String(internalId);
+    const prev = itemsByKey.get(key);
+    if (prev) prev.qty += qty;
+    else itemsByKey.set(key, {
+      key,
+      letter:letter || '?',
+      name,
+      qty,
+      productId:identity.stableId || '',
+      internalId,
+      unresolved:false
+    });
+    sumsByPid.set(internalId, (Number(sumsByPid.get(internalId)) || 0) + qty);
+    metaByPid.set(internalId, {
+      stableId:identity.stableId || '',
+      internalId,
+      letter,
+      name
+    });
+    if (legacyCompatible) totals[letter] = sobranteQtyPOS(totals[letter] + qty);
   }
-  const hasGallon = (Number(out.G) || 0) > 0;
-  return { totals: out, sumsByPid, hasGallon };
+
+  const items = Array.from(itemsByKey.values()).map(item => ({ ...item, qty:sobranteQtyPOS(item.qty) }));
+  const hasGallon = items.some(item => item.letter === 'G' || legacyProductLetterFromNamePOS(item.name) === 'G');
+  return { totals, items, sumsByPid, metaByPid, unresolved, hasGallon };
 }
 
-async function validateReverseAssignPOS(eventId, group, sumsByPid, hasGallon){
+async function validateReverseAssignPOS(eventId, group, sumsByPid, hasGallon, unresolved=[]){
+  if (Array.isArray(unresolved) && unresolved.length){
+    return { ok:false, reason:'No se puede reversar: hay cantidades históricas que no se pudieron vincular con un Producto de Catálogos.' };
+  }
   // 1) Evitar doble reverso
   const entries = await getInventoryEntries(eventId);
   const already = (entries || []).some(e => e && e.type === 'adjust' && e.source === 'lote_reverso' && (
@@ -17811,7 +18324,7 @@ async function validateReverseAssignPOS(eventId, group, sumsByPid, hasGallon){
   // 2) Bloqueo por ventas/consumo (proxy conservador)
   const sales = await getAll('sales');
   const pidSet = new Set(Array.from((sumsByPid || new Map()).keys()).map(n => Number(n)));
-  const hasSalesForThese = (sales || []).some(s => s && Number(s.eventId) === Number(eventId) && pidSet.has(Number(s.productId)));
+  const hasSalesForThese = (sales || []).some(s => s && Number(s.eventId) === Number(eventId) && pidSet.has(Number(saleInternalProductIdPOS(s))));
   if (hasSalesForThese){
     return { ok:false, reason:'No se puede reversar: ya existen ventas registradas de esas presentaciones en este evento.'};
   }
@@ -17895,10 +18408,11 @@ async function updateReversoMetaPOS(eventId){
     return;
   }
 
-  const sum = await summarizeRestockGroupPOS(group);
-  setReversoPreviewPOS(sum.totals);
+  const products = await getAll('products').catch(()=>[]);
+  const sum = await summarizeRestockGroupPOS(group, products);
+  setReversoPreviewPOS(sum);
 
-  const chk = await validateReverseAssignPOS(eventId, group, sum.sumsByPid, sum.hasGallon);
+  const chk = await validateReverseAssignPOS(eventId, group, sum.sumsByPid, sum.hasGallon, sum.unresolved);
   if (!chk.ok){
     meta.textContent = 'Bloqueado: ' + chk.reason;
   } else {
@@ -17926,117 +18440,129 @@ function closeReversoPanelPOS(){
 }
 
 async function reverseAssignSelectedLotePOS(){
-  const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
-  if (!evId) return alert('Selecciona un evento.');
-
-  const sel = document.getElementById('reverso-lote-select');
-  const meta = document.getElementById('reverso-lote-meta');
-  if (!sel) return;
-
-  const lotes = readLotesLS_POS();
-  const idx = lotes.findIndex(l => l && String(l.id) === String(sel.value));
-  if (idx < 0) return alert('No se encontró el lote seleccionado.');
-  const lote = lotes[idx];
-
-  if (effectiveLoteStatusPOS(lote) !== 'EN_EVENTO' || Number(lote.assignedEventId) !== Number(evId)){
-    alert('Este lote ya no está EN_EVENTO en el evento actual.');
-    await refreshReversoUIForEventPOS(evId);
+  if (reversoActionBusyPOS){
+    try{ showToast('Reverso en curso…', 'info', 1500); }catch(_){ }
     return;
   }
+  reversoActionBusyPOS = true;
+  const btnDo = document.getElementById('btn-reverso-do');
+  if (btnDo) btnDo.disabled = true;
 
-  const group = await getRestockGroupForLotePOS(evId, lote);
-  if (!group){
-    alert('No se encontró la carga de inventario de este lote en el evento.');
-    return;
-  }
+  try{
+    const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
+    if (!evId) return alert('Selecciona un evento.');
+    const sel = document.getElementById('reverso-lote-select');
+    const meta = document.getElementById('reverso-lote-meta');
+    if (!sel) return;
 
-  const sum = await summarizeRestockGroupPOS(group);
-  const chk = await validateReverseAssignPOS(evId, group, sum.sumsByPid, sum.hasGallon);
-  if (!chk.ok){
-    alert('Reverso bloqueado: ' + chk.reason);
-    if (meta) meta.textContent = 'Bloqueado: ' + chk.reason;
-    return;
-  }
+    const lotes = readLotesLS_POS();
+    const idx = lotes.findIndex(l => l && String(l.id) === String(sel.value));
+    if (idx < 0) return alert('No se encontró el lote seleccionado.');
+    const lote = lotes[idx];
+    if (effectiveLoteStatusPOS(lote) !== 'EN_EVENTO' || Number(lote.assignedEventId) !== Number(evId)){
+      alert('Este lote ya no está EN_EVENTO en el evento actual.');
+      await refreshReversoUIForEventPOS(evId);
+      return;
+    }
 
-  const reason = prompt(`REVERSO de asignación de lote #${lote.codigo || lote.id} — Motivo:`, '')
-  if (reason === null) return; // cancelado
-  const reasonTrim = String(reason || '').trim();
+    const group = await getRestockGroupForLotePOS(evId, lote);
+    if (!group){ alert('No se encontró la carga de inventario de este lote en el evento.'); return; }
+    const products = await getAll('products').catch(()=>[]);
+    const sum = await summarizeRestockGroupPOS(group, products);
+    const chk = await validateReverseAssignPOS(evId, group, sum.sumsByPid, sum.hasGallon, sum.unresolved);
+    if (!chk.ok){
+      alert('Reverso bloqueado: ' + chk.reason);
+      if (meta) meta.textContent = 'Bloqueado: ' + chk.reason;
+      return;
+    }
 
-  const confirmMsg = `Se creará un reverso sin borrar historia:\n\n- Se registrarán ajustes negativos equivalentes a la carga.\n- El lote volverá a DISPONIBLE y reaparecerá en “Agregar desde lote”.\n\n¿Confirmas reversar la asignación?`;
-  if (!confirm(confirmMsg)) return;
+    const reason = prompt(`REVERSO de asignación de lote #${lote.codigo || lote.id} — Motivo:`, '');
+    if (reason === null) return;
+    const reasonTrim = String(reason || '').trim();
+    const confirmMsg = `Se creará un reverso sin borrar historia:
 
-  const nowIso = new Date().toISOString();
-  const revId = 'ra-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,6);
+- Se registrarán ajustes negativos equivalentes a la carga.
+- El lote volverá a DISPONIBLE y reaparecerá en “Agregar desde lote”.
 
-  // 1) Ajustes negativos (inventory)
-  const noteBase = `REVERSO asignación lote ${lote.codigo || lote.id}` + (reasonTrim ? ` — Motivo: ${reasonTrim}` : '');
-  for (const [pid, qty] of sum.sumsByPid.entries()){
-    const n = Number(qty) || 0;
-    if (!(n > 0)) continue;
-    await put('inventory', {
-      eventId: evId,
-      productId: pid,
-      type: 'adjust',
-      qty: -n,
-      time: nowIso,
-      notes: noteBase,
-      source: 'lote_reverso',
-      reverseId: revId,
-      loteId: (lote.id != null ? lote.id : null),
-      loteCodigo: (lote.codigo || ''),
-      loteCargaId: group.loteCargaId || null,
-      loteGroupKey: group.groupKey || null,
-      reversedReason: reasonTrim
+¿Confirmas reversar la asignación?`;
+    if (!confirm(confirmMsg)) return;
+
+    const nowIso = new Date().toISOString();
+    const revId = 'ra-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,6);
+    const noteBase = `REVERSO asignación lote ${lote.codigo || lote.id}` + (reasonTrim ? ` — Motivo: ${reasonTrim}` : '');
+    for (const [pid, qty] of sum.sumsByPid.entries()){
+      const n = Number(qty) || 0;
+      if (!(n > 0)) continue;
+      const identity = sum.metaByPid.get(pid) || {};
+      await put('inventory', {
+        eventId:evId,
+        productId:pid,
+        type:'adjust',
+        qty:-n,
+        time:nowIso,
+        notes:noteBase,
+        source:'lote_reverso',
+        reverseId:revId,
+        loteId:(lote.id != null ? lote.id : null),
+        loteCodigo:(lote.codigo || ''),
+        loteCargaId:group.loteCargaId || null,
+        loteGroupKey:group.groupKey || null,
+        loteProductId:identity.stableId || null,
+        loteLetra:identity.letter || '',
+        loteNombreSnapshot:identity.name || '',
+        reversedReason:reasonTrim
+      });
+    }
+
+    const prev = { ...lote };
+    const hist = Array.isArray(prev.assignmentHistory) ? prev.assignmentHistory.slice() : [];
+    hist.push({
+      type:'REVERSE_ASSIGN',
+      at:nowIso,
+      eventId:evId,
+      eventName:(prev.assignedEventName || ''),
+      reverseId:revId,
+      loteGroupKey:group.groupKey || null,
+      loteCargaId:group.loteCargaId || null,
+      reason:reasonTrim
     });
+    const line = `REVERSO asignación · Evento: ${prev.assignedEventName || evId} · ${nowIso}` + (reasonTrim ? ` · Motivo: ${reasonTrim}` : '');
+    const nextNotas = (prev.notas ? String(prev.notas).trim() + '\n' : '') + line;
+    lotes[idx] = {
+      ...prev,
+      status:'DISPONIBLE',
+      availabilityState:'DISPONIBLE',
+      availabilityUpdatedAt:nowIso,
+      prevAssignedEventId:prev.assignedEventId,
+      prevAssignedEventName:prev.assignedEventName,
+      prevAssignedAt:prev.assignedAt,
+      assignedEventId:null,
+      assignedEventName:'',
+      assignedAt:null,
+      lastAssignedCargaId:(group.loteCargaId || prev.assignedCargaId || null),
+      assignedCargaId:null,
+      reversedAt:nowIso,
+      reversedReason:reasonTrim,
+      lastReverseId:revId,
+      assignmentHistory:hist,
+      notas:nextNotas
+    };
+    if (!writeLotesLS_POS(lotes)){
+      throw new Error('No se pudo guardar el estado del lote después del reverso.');
+    }
+
+    await closeReversoPanelPOS();
+    await renderInventario();
+    await refreshReversoUIForEventPOS(evId);
+    showToast('Asignación reversada. Lote disponible otra vez.', 'ok', 2800);
+    try{ queueLotsUsageSyncPOS(evId); }catch(_){ }
+  } catch (error){
+    console.error('reverseAssignSelectedLotePOS', error);
+    try{ showToast('No se pudo completar el reverso. Revisa la consola y vuelve a intentar.', 'error', 4200); }catch(_){ }
+  } finally {
+    reversoActionBusyPOS = false;
+    if (btnDo) btnDo.disabled = false;
   }
-
-  // 2) Devolver el lote a DISPONIBLE (sin borrar historia)
-  const prev = {...lote};
-  const hist = Array.isArray(prev.assignmentHistory) ? prev.assignmentHistory.slice() : [];
-  hist.push({
-    type: 'REVERSE_ASSIGN',
-    at: nowIso,
-    eventId: evId,
-    eventName: (prev.assignedEventName || ''),
-    reverseId: revId,
-    loteGroupKey: group.groupKey || null,
-    loteCargaId: group.loteCargaId || null,
-    reason: reasonTrim
-  });
-
-  const line = `REVERSO asignación · Evento: ${prev.assignedEventName || evId} · ${nowIso}` + (reasonTrim ? ` · Motivo: ${reasonTrim}` : '');
-  const nextNotas = (prev.notas ? String(prev.notas).trim() + '\n' : '') + line;
-
-  lotes[idx] = {
-    ...prev,
-    status: 'DISPONIBLE',
-    availabilityState: 'DISPONIBLE',
-    availabilityUpdatedAt: nowIso,
-    prevAssignedEventId: prev.assignedEventId,
-    prevAssignedEventName: prev.assignedEventName,
-    prevAssignedAt: prev.assignedAt,
-    assignedEventId: null,
-    assignedEventName: '',
-    assignedAt: null,
-    lastAssignedCargaId: (group.loteCargaId || prev.assignedCargaId || null),
-    assignedCargaId: null,
-    reversedAt: nowIso,
-    reversedReason: reasonTrim,
-    lastReverseId: revId,
-    assignmentHistory: hist,
-    notas: nextNotas
-  };
-
-  writeLotesLS_POS(lotes);
-
-  await closeReversoPanelPOS();
-  await renderInventario();
-  await refreshReversoUIForEventPOS(evId);
-  showToast('Asignación reversada. Lote disponible otra vez.', 'ok', 2800);
-
-  // FIFO (Etapa 2): snapshot por evento/lote (reverso de asignación)
-  try{ queueLotsUsageSyncPOS(evId); }catch(_){ }
-
 }
 
 
@@ -19460,6 +19986,7 @@ async function registrarReempaqueUiPOS(){
 
 // Inventario UI
 async function renderInventario(){
+  bindLotesEventoToggleOncePOS();
   const tbody = $('#tbl-inv tbody');
   if (!tbody) return;
   tbody.innerHTML='';
@@ -19475,11 +20002,8 @@ async function renderInventario(){
     // Limpia el historial de Reempaque para evitar datos viejos
     try{ await renderReempaqueHistoryPOS(null); }catch(_){ }
 
-    // Limpia el bloque informativo de lotes para evitar datos viejos
-    const ltBody = $('#tbl-lotes-evento tbody');
-    const badge = $('#lotes-count');
-    if (ltBody) ltBody.innerHTML = '<tr><td colspan="7"><small class="muted">No hay eventos.</small></td></tr>';
-    if (badge) badge.textContent = '0';
+    // Limpia el bloque informativo de lotes sin perder el encabezado dinámico.
+    try{ await renderLotesCargadosEvento(null, { emptyMessage:'No hay eventos.' }); }catch(_){ updateLotesEventoCountPOS(0); }
 
     const tr = document.createElement('tr');
     tr.innerHTML = '<td colspan="8">No hay eventos. Crea uno en la pestaña Vender.</td>';
@@ -24771,26 +25295,34 @@ async function exportEventosExcel(){
 	  if (btnFromLote) btnFromLote.addEventListener('click', openInvLoteSelectorModalPOS);
 
   // Sobrantes → Lote hijo (Control de Lotes)
+  const bindInventoryActionOnce = (el, type, handler) => {
+    if (!el || !el.dataset) return;
+    const key = 'invBound' + String(type || 'Click');
+    if (el.dataset[key] === '1') return;
+    el.dataset[key] = '1';
+    el.addEventListener(type, handler);
+  };
+
   const btnSobrante = document.getElementById('btn-create-sobrante');
-  if (btnSobrante) btnSobrante.addEventListener('click', openSobrantePanelPOS);
+  bindInventoryActionOnce(btnSobrante, 'click', openSobrantePanelPOS);
   const btnSobCancel = document.getElementById('btn-sobrante-cancel');
-  if (btnSobCancel) btnSobCancel.addEventListener('click', closeSobrantePanelPOS);
+  bindInventoryActionOnce(btnSobCancel, 'click', closeSobrantePanelPOS);
   const btnSobCreate = document.getElementById('btn-sobrante-create');
-  if (btnSobCreate) btnSobCreate.addEventListener('click', createSobranteLotPOS);
+  bindInventoryActionOnce(btnSobCreate, 'click', createSobranteLotPOS);
 
   // Reverso de asignación (airbag anti-errores)
   const btnRevOpen = document.getElementById('btn-reverse-assign');
-  if (btnRevOpen) btnRevOpen.addEventListener('click', async()=>{
+  bindInventoryActionOnce(btnRevOpen, 'click', async ()=>{
     openReversoPanelPOS();
     const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
     if (evId) await refreshReversoUIForEventPOS(evId);
   });
   const btnRevCancel = document.getElementById('btn-reverso-cancel');
-  if (btnRevCancel) btnRevCancel.addEventListener('click', closeReversoPanelPOS);
+  bindInventoryActionOnce(btnRevCancel, 'click', closeReversoPanelPOS);
   const btnRevDo = document.getElementById('btn-reverso-do');
-  if (btnRevDo) btnRevDo.addEventListener('click', reverseAssignSelectedLotePOS);
+  bindInventoryActionOnce(btnRevDo, 'click', reverseAssignSelectedLotePOS);
   const selRev = document.getElementById('reverso-lote-select');
-  if (selRev) selRev.addEventListener('change', async()=>{
+  bindInventoryActionOnce(selRev, 'change', async ()=>{
     const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
     if (evId) await updateReversoMetaPOS(evId);
   });
