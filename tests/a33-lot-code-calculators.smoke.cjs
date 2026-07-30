@@ -18,7 +18,7 @@ function functionBody(source, name, nextName) {
 }
 
 for (const [label, html] of [["Producción", production], ["Temporal", temporal]]) {
-  assert.ok(html.includes('/assets/js/a33-lot-code.js?v=4.20.95&r=6'), `${label} debe cargar el generador central`);
+  assert.ok(html.includes('/assets/js/a33-lot-code.js?v=4.20.97&r=6'), `${label} debe cargar el generador central`);
   const preview = functionBody(html, "recalcularCodigoLoteAuto", "a33WireNumericInput");
   assert.ok(preview.includes("api.generate"), `${label} debe generar mediante A33LotCode`);
   assert.ok(!preview.includes('"OFF"'), `${label} no debe usar respaldo OFF`);
@@ -50,8 +50,8 @@ assert.ok(!loadHistorical.includes("commitConsecutivoDespuesDeGuardar"), "Cargar
 assert.ok(temporal.includes("v.format !== 'new'"), "Temporal debe exigir regeneración explícita antes de guardar desde histórico");
 assert.ok(temporal.includes("No se sobrescribió ni se duplicó"), "Temporal debe bloquear colisiones sin sobrescribir");
 
-assert.ok(sw.includes("a33-lot-code.js?v=4.20.95&r=6"), "La PWA de Producción debe precachear el generador central");
-assert.ok(sw.includes("MODULE_CACHE_REV = '7'"), "La PWA debe forzar renovación de caché del módulo");
+assert.ok(sw.includes("a33-lot-code.js?v=4.20.97&r=6"), "La PWA de Producción debe precachear el generador central");
+assert.ok(sw.includes("MODULE_CACHE_REV = '10'"), "La PWA debe forzar renovación de caché del módulo");
 
 const kislev = lotCode.generate({ productionDate: "2025-12-10", consecutiveNumber: 1 });
 assert.strictEqual(kislev.code, "A33KIS5786-0xx1");

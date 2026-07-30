@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#111111" />
   <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=11" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=12" />
   <script src="/assets/js/a33-theme.js?v=4.20.97&r=7"></script>
   <style>
     * {
@@ -367,7 +367,7 @@
     }
     .a33-btn-primary-pill:hover { filter: brightness(1.05); }
 
-    /* Checklist Etapa 1: acciones compactas + vista operativa */
+    /* Checklist Etapa 3: responsive, PWA y hardening final */
     .a33-production-actions {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -416,6 +416,7 @@
       max-height: 100%;
       overflow-y: auto;
       overflow-x: hidden;
+      overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
       border: 1px solid var(--a33-border, rgba(221,191,100,0.24));
       border-radius: 16px;
@@ -475,7 +476,30 @@
     .a33-checklist-table td {
       vertical-align: middle;
     }
-    .a33-checklist-table td:nth-child(2) { text-align: left; }
+    .a33-checklist-history-table {
+      table-layout: fixed;
+    }
+    .a33-checklist-history-table th,
+    .a33-checklist-history-table td {
+      text-align: center;
+    }
+    @media (min-width: 761px) {
+      .a33-checklist-history-table th:nth-child(1),
+      .a33-checklist-history-table td:nth-child(1) { width: 23%; }
+      .a33-checklist-history-table th:nth-child(2),
+      .a33-checklist-history-table td:nth-child(2) { width: 39%; }
+      .a33-checklist-history-table th:nth-child(3),
+      .a33-checklist-history-table td:nth-child(3) { width: 21%; }
+      .a33-checklist-history-table th:nth-child(4),
+      .a33-checklist-history-table td:nth-child(4) { width: 17%; }
+    }
+    .a33-checklist-lot {
+      text-align: center;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .a33-checklist-action-cell { text-align: center; }
+    .a33-checklist-items-table td:nth-child(2) { text-align: left; }
     .a33-checklist-value { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .a33-checklist-use {
       min-width: 76px;
@@ -554,6 +578,56 @@
       line-height: 1.25;
       text-align: center;
     }
+    .a33-checklist-actions {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.55rem;
+      margin-top: 0.75rem;
+    }
+    .a33-checklist-done {
+      min-width: 132px;
+      min-height: 46px;
+      margin: 0;
+      padding: 0.55rem 1.1rem;
+      border: 1px solid rgba(221,191,100,0.62);
+      border-radius: 999px;
+      background: linear-gradient(135deg, #7b1818, #ddbf64);
+      color: #111;
+      font-weight: 900;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .a33-checklist-done:active { transform: translateY(1px); }
+    .a33-checklist-close:focus-visible,
+    .a33-checklist-use:focus-visible,
+    .a33-checklist-done:focus-visible,
+    .a33-checklist-toggle input:focus-visible {
+      outline: 3px solid var(--a33-focus, #ddbf64);
+      outline-offset: 3px;
+    }
+    .a33-checklist-done:disabled {
+      opacity: 0.62;
+      cursor: wait;
+      transform: none;
+    }
+    .a33-checklist-closed-note {
+      margin: 0 0 0.65rem;
+      padding: 0.58rem 0.7rem;
+      border: 1px solid rgba(159,224,179,0.38);
+      border-radius: 10px;
+      background: rgba(159,224,179,0.10);
+      color: var(--a33-success, #9fe0b3);
+      font-size: 0.84rem;
+      font-weight: 800;
+      text-align: center;
+    }
+    .a33-checklist-toggle input:disabled {
+      opacity: 0.82;
+      cursor: not-allowed;
+      filter: saturate(0.85);
+    }
     .a33-checklist-status[data-tone="success"] { color: var(--a33-success, #9fe0b3); }
     .a33-checklist-status[data-tone="error"] { color: #ff9b9b; }
     .a33-checklist-status[data-tone="saving"] { color: #ddbf64; }
@@ -596,13 +670,16 @@
       .a33-checklist-history-table td {
         display: flex;
         flex-direction: column;
-        align-items: flex-start;
+        align-items: center;
+        justify-content: center;
         gap: 0.2rem;
         padding: 0.58rem 0.62rem;
+        text-align: center;
       }
       .a33-checklist-history-table td:nth-child(3),
       .a33-checklist-history-table td:nth-child(4) { border-bottom: 0; }
       .a33-checklist-history-table td:nth-child(4) { align-items: stretch; }
+      .a33-checklist-history-table td:nth-child(4)::before { text-align: center; }
       .a33-checklist-history-table .a33-checklist-use { width: 100%; min-width: 0; }
       .a33-checklist-items-table tr {
         grid-template-columns: 70px minmax(0, 1fr);
@@ -635,6 +712,16 @@
         white-space: normal;
         border-bottom: 0;
       }
+    }
+    @media (max-height: 520px) and (orientation: landscape) {
+      .a33-checklist-view { padding-block: max(0.35rem, env(safe-area-inset-top)); }
+      .a33-checklist-shell { border-radius: 10px; }
+      .a33-checklist-block { margin-top: 0.55rem; padding: 0.62rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .a33-checklist-item-row { transition: none; }
+      .a33-checklist-use:active,
+      .a33-checklist-done:active { transform: none; }
     }
     @media (max-width: 560px) {
       .a33-production-actions { gap: 0.35rem; }
@@ -792,6 +879,11 @@
       </div>
 
       <div class="a33-checklist-block">
+        <h3>Pendientes</h3>
+        <div id="a33-checklist-pendientes"></div>
+      </div>
+
+      <div class="a33-checklist-block">
         <h3>Histórico</h3>
         <div id="a33-checklist-historico"></div>
       </div>
@@ -800,14 +892,14 @@
         <h3>Checklist</h3>
         <div id="a33-checklist-seleccion"></div>
         <div id="a33-checklist-contenido">
-          <p class="a33-checklist-empty">Selecciona Usar en un lote para cargar sus ingredientes.</p>
+          <p class="a33-checklist-empty">Selecciona Usar o Ver en un lote para cargar sus ingredientes.</p>
         </div>
         <div id="a33-checklist-estado" class="a33-checklist-status" role="status" aria-live="polite"></div>
       </div>
     </div>
   </section>
 
-  <script src="/assets/js/a33-release.js?v=4.20.97&r=54"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.97&r=55"></script>
 
 
 
@@ -2604,6 +2696,8 @@ function a33WireNumericInput(el, mode) {
     let A33ChecklistLots = [];
     let A33ChecklistSelectedIndex = -1;
     let A33ChecklistSelectedIdentity = "";
+    let A33ChecklistClosing = false;
+    let A33ChecklistSelecting = false;
 
     function a33ChecklistNumber(value) {
       if (value == null || value === "") return 0;
@@ -2699,21 +2793,44 @@ function a33WireNumericInput(el, mode) {
       const raw = lote && lote.checklistProduccion && typeof lote.checklistProduccion === "object" ? lote.checklistProduccion : null;
       const items = raw && raw.items && typeof raw.items === "object"
         ? raw.items
-        : (raw && raw.estado && typeof raw.estado === "object" ? raw.estado : {});
+        : (raw && raw.estado && typeof raw.estado === "object" ? raw.estado : (raw || {}));
       A33_CHECKLIST_INGREDIENTS.forEach((item) => { state[item.key] = items[item.key] === true; });
       return state;
     }
 
-    function a33ChecklistPayload(state, updatedAt, lote) {
+    function a33ChecklistIsClosed(lote) {
+      const row = lote && typeof lote === "object" ? lote : {};
+      const raw = row.checklistProduccion && typeof row.checklistProduccion === "object" ? row.checklistProduccion : {};
+      if (raw.cerrado === true || raw.closed === true || raw.hecho === true || row.checklistCerrado === true) return true;
+      const explicitStatus = String(raw.estadoCierre || raw.status || raw.estadoFinal || "").trim().toLocaleUpperCase("es-NI");
+      return ["CERRADO", "CLOSED", "HECHO", "TERMINADO", "COMPLETADO"].includes(explicitStatus);
+    }
+
+    function a33ChecklistPayload(state, updatedAt, lote, closure) {
       const normalized = a33ChecklistEmptyState();
+      const previous = lote && lote.checklistProduccion && typeof lote.checklistProduccion === "object" ? lote.checklistProduccion : {};
       A33_CHECKLIST_INGREDIENTS.forEach((item) => { normalized[item.key] = !!(state && state[item.key]); });
-      return {
+      const payload = {
+        ...previous,
         schema:A33_CHECKLIST_SCHEMA,
-        loteId:a33ChecklistLotIdentity(lote) || null,
-        loteCodigo:a33ChecklistLotCode(lote) === "Sin código" ? null : a33ChecklistLotCode(lote),
+        loteId:a33ChecklistLotIdentity(lote) || previous.loteId || null,
+        loteCodigo:a33ChecklistLotCode(lote) === "Sin código" ? (previous.loteCodigo || null) : a33ChecklistLotCode(lote),
         items:normalized,
         updatedAt:updatedAt || new Date().toISOString()
       };
+      if (closure === true || a33ChecklistIsClosed(lote)) {
+        const closedAt = previous.cerradoAt || previous.closedAt || new Date().toISOString();
+        payload.cerrado = true;
+        payload.estadoCierre = "CERRADO";
+        payload.cerradoAt = closedAt;
+      }
+      return payload;
+    }
+
+    function a33ChecklistAllComplete(lote, state) {
+      const ingredients = a33ChecklistIngredients(lote);
+      const current = state && typeof state === "object" ? state : a33ChecklistState(lote);
+      return ingredients.length > 0 && ingredients.every((ingredient) => current[ingredient.key] === true);
     }
 
     function a33ChecklistFindIndex(list, identity) {
@@ -2806,44 +2923,64 @@ function a33WireNumericInput(el, mode) {
       }
     }
 
-    function a33WriteChecklistState(identity, state) {
+    function a33WriteChecklistState(identity, state, options) {
+      const opts = options && typeof options === "object" ? options : {};
+      const closing = opts.close === true;
+      const changedKey = String(opts.changedKey || "").trim();
+      const hasChangedKey = A33_CHECKLIST_INGREDIENTS.some((item) => item.key === changedKey);
       const target = String(identity || "").trim();
       if (!target) return { ok:false, message:"No se pudo identificar el lote." };
 
-      if (window.A33Storage && typeof A33Storage.sharedRead === "function" && typeof A33Storage.sharedReplaceExact === "function") {
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          const read = A33Storage.sharedRead(A33_CHECKLIST_STORAGE_KEY, []);
-          const list = Array.isArray(read.data) ? read.data.slice() : [];
-          const index = a33ChecklistFindIndex(list, target);
-          if (index < 0) return { ok:false, message:"El lote ya no está disponible." };
-          const payload = a33ChecklistPayload(state, null, list[index]);
-          const nextLot = { ...list[index], checklistProduccion:payload };
-          list[index] = nextLot;
-          const write = A33Storage.sharedReplaceExact(A33_CHECKLIST_STORAGE_KEY, list, {
-            source:"calculadora-checklist",
-            baseRev:read.meta && typeof read.meta.rev === "number" ? read.meta.rev : null
-          });
-          if (write && write.ok !== false) {
-            const savedList = Array.isArray(write.data) ? write.data : list;
-            const savedIndex = a33ChecklistFindIndex(savedList, target);
-            return { ok:true, lote:savedIndex >= 0 ? savedList[savedIndex] : nextLot };
-          }
-          if (!(write && write.conflict)) return { ok:false, message:(write && write.message) || "No se pudo guardar el checklist." };
+      const prepareLot = (currentLot) => {
+        if (closing && a33ChecklistIsClosed(currentLot)) return { ok:true, alreadyClosed:true, lote:currentLot };
+        const currentState = a33ChecklistState(currentLot);
+        const requestedState = hasChangedKey
+          ? { ...currentState, [changedKey]:opts.changedValue === true }
+          : { ...currentState, ...(state && typeof state === "object" ? state : {}) };
+        if (closing && !a33ChecklistAllComplete(currentLot, requestedState)) {
+          return { ok:false, validation:true, message:"Marca todos los checkbox antes de pulsar Hecho." };
         }
-        return { ok:false, message:"Los lotes cambiaron durante el guardado. Inténtalo nuevamente." };
-      }
+        const payload = a33ChecklistPayload(requestedState, null, currentLot, closing);
+        return { ok:true, lote:{ ...currentLot, checklistProduccion:payload } };
+      };
 
       try {
+        if (window.A33Storage && typeof A33Storage.sharedRead === "function" && typeof A33Storage.sharedReplaceExact === "function") {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            const read = A33Storage.sharedRead(A33_CHECKLIST_STORAGE_KEY, []);
+            const list = Array.isArray(read.data) ? read.data.slice() : [];
+            const index = a33ChecklistFindIndex(list, target);
+            if (index < 0) return { ok:false, message:"El lote ya no está disponible." };
+            const prepared = prepareLot(list[index]);
+            if (!prepared.ok || prepared.alreadyClosed) return prepared;
+            const nextLot = prepared.lote;
+            list[index] = nextLot;
+            const write = A33Storage.sharedReplaceExact(A33_CHECKLIST_STORAGE_KEY, list, {
+              source:closing ? "calculadora-checklist-cierre" : "calculadora-checklist",
+              baseRev:read.meta && typeof read.meta.rev === "number" ? read.meta.rev : null
+            });
+            if (write && write.ok !== false) {
+              const savedList = Array.isArray(write.data) ? write.data : list;
+              const savedIndex = a33ChecklistFindIndex(savedList, target);
+              return { ok:true, lote:savedIndex >= 0 ? savedList[savedIndex] : nextLot };
+            }
+            if (!(write && write.conflict)) return { ok:false, message:(write && write.message) || "No se pudo guardar el checklist." };
+          }
+          return { ok:false, message:"Los lotes cambiaron durante el guardado. Inténtalo nuevamente." };
+        }
+
         const raw = window.localStorage ? window.localStorage.getItem(A33_CHECKLIST_STORAGE_KEY) : "";
         const list = raw ? JSON.parse(raw) : [];
         const index = a33ChecklistFindIndex(list, target);
         if (index < 0) return { ok:false, message:"El lote ya no está disponible." };
-        const payload = a33ChecklistPayload(state, null, list[index]);
-        const nextLot = { ...list[index], checklistProduccion:payload };
+        const prepared = prepareLot(list[index]);
+        if (!prepared.ok || prepared.alreadyClosed) return prepared;
+        const nextLot = prepared.lote;
         list[index] = nextLot;
         window.localStorage.setItem(A33_CHECKLIST_STORAGE_KEY, JSON.stringify(list));
         return { ok:true, lote:nextLot };
-      } catch (_) {
+      } catch (error) {
+        console.error("No se pudo persistir el Checklist de Producción.", error);
         return { ok:false, message:"No se pudo guardar el checklist en este dispositivo." };
       }
     }
@@ -2852,10 +2989,15 @@ function a33WireNumericInput(el, mode) {
       const lote = A33ChecklistLots[A33ChecklistSelectedIndex];
       const identity = a33ChecklistLotIdentity(lote);
       if (!lote || !identity) return false;
+      if (a33ChecklistIsClosed(lote)) {
+        a33SetChecklistStatus("Este checklist ya está cerrado y es solo de consulta.", "error");
+        a33RenderSelectedChecklist(A33ChecklistSelectedIndex, { keepStatus:true });
+        return false;
+      }
       const previous = a33ChecklistState(lote);
       const next = { ...previous, [key]:!!checked };
       a33SetChecklistStatus("Guardando checklist…", "saving");
-      const result = a33WriteChecklistState(identity, next);
+      const result = a33WriteChecklistState(identity, next, { changedKey:key, changedValue:!!checked });
       if (!result.ok) {
         a33SetChecklistStatus(result.message || "No se pudo guardar el checklist.", "error");
         a33RenderSelectedChecklist(A33ChecklistSelectedIndex, { keepStatus:true });
@@ -2867,25 +3009,72 @@ function a33WireNumericInput(el, mode) {
       return true;
     }
 
-    function a33RenderChecklistHistory(options) {
-      const opts = options && typeof options === "object" ? options : {};
-      const host = document.getElementById("a33-checklist-historico");
+    function a33CompleteSelectedChecklist(button) {
+      if (A33ChecklistClosing) return false;
+      const selectedLot = A33ChecklistLots[A33ChecklistSelectedIndex];
+      const identity = a33ChecklistLotIdentity(selectedLot);
+      if (!selectedLot || !identity) {
+        a33SetChecklistStatus("El lote seleccionado ya no está disponible.", "error");
+        return false;
+      }
+      const freshLots = a33ReadChecklistLots();
+      const freshIndex = a33ChecklistFindIndex(freshLots, identity);
+      const lote = freshIndex >= 0 ? freshLots[freshIndex] : null;
+      if (!lote) {
+        a33RenderChecklistHistory({ preserveSelection:false });
+        a33SetChecklistStatus("El lote seleccionado ya no está disponible.", "error");
+        return false;
+      }
+      if (a33ChecklistIsClosed(lote)) {
+        a33RenderChecklistHistory({ selectIdentity:identity });
+        a33SetChecklistStatus("Este checklist ya está cerrado y es solo de consulta.", "error");
+        return false;
+      }
+      A33ChecklistLots = freshLots;
+      A33ChecklistSelectedIndex = freshIndex;
+      A33ChecklistSelectedIdentity = a33ChecklistLotIdentity(lote);
+      const state = a33ChecklistState(lote);
+      if (!a33ChecklistAllComplete(lote, state)) {
+        a33SetChecklistStatus("Marca todos los checkbox antes de pulsar Hecho.", "error");
+        return false;
+      }
+
+      A33ChecklistClosing = true;
+      if (button) {
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+      }
+      a33SetChecklistStatus("Cerrando checklist…", "saving");
+      try {
+        const result = a33WriteChecklistState(identity, state, { close:true });
+        if (!result.ok) {
+          a33SetChecklistStatus(result.message || "No se pudo cerrar el checklist.", "error");
+          return false;
+        }
+        a33RenderChecklistHistory({ selectIdentity:identity });
+        a33SetChecklistStatus(result.alreadyClosed ? "Checklist ya cerrado: vista de consulta." : "Checklist cerrado correctamente.", "success");
+        return true;
+      } catch (error) {
+        console.error("No se pudo cerrar el Checklist de Producción.", error);
+        a33SetChecklistStatus("No se pudo cerrar el checklist. Inténtalo nuevamente.", "error");
+        return false;
+      } finally {
+        A33ChecklistClosing = false;
+        if (button && button.isConnected !== false) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      }
+    }
+
+    function a33RenderChecklistLotTable(host, lots, mode) {
       if (!host) return;
-      const preserveIdentity = String(opts.selectIdentity || (opts.preserveSelection ? A33ChecklistSelectedIdentity : "") || "").trim();
-      A33ChecklistLots = a33ReadChecklistLots();
-      A33ChecklistSelectedIndex = -1;
-      A33ChecklistSelectedIdentity = "";
+      const rows = Array.isArray(lots) ? lots : [];
+      const isHistory = mode === "history";
       host.innerHTML = "";
 
-      const selected = document.getElementById("a33-checklist-seleccion");
-      const content = document.getElementById("a33-checklist-contenido");
-      if (selected) selected.innerHTML = "";
-      if (content) content.innerHTML = '<p class="a33-checklist-empty">Selecciona Usar en un lote para cargar sus ingredientes.</p>';
-      a33SetChecklistStatus("", "");
-
-      if (!A33ChecklistLots.length) {
-        host.innerHTML = '<p class="a33-checklist-empty">Aún no hay lotes disponibles para preparar.</p>';
-        if (content) content.innerHTML = '<p class="a33-checklist-empty">Aún no hay lotes disponibles para preparar.</p>';
+      if (!rows.length) {
+        host.innerHTML = '<p class="a33-checklist-empty">' + (isHistory ? "Aún no hay checklist cerrados." : "No hay checklist pendientes.") + "</p>";
         return;
       }
 
@@ -2896,16 +3085,18 @@ function a33WireNumericInput(el, mode) {
       table.innerHTML = "<thead><tr><th>Fecha</th><th>Lote</th><th>Volumen</th><th>Acción</th></tr></thead>";
       const tbody = document.createElement("tbody");
 
-      A33ChecklistLots.forEach((lote) => {
+      rows.forEach((lote) => {
         const identity = a33ChecklistLotIdentity(lote);
         const tr = document.createElement("tr");
         tr.className = "a33-checklist-history-row";
         tr.dataset.checklistIdentity = identity;
+        tr.dataset.checklistMode = isHistory ? "history" : "pending";
         const dateTd = document.createElement("td");
         dateTd.className = "a33-checklist-value";
         dateTd.dataset.label = "Fecha";
         dateTd.textContent = a33ChecklistDateText(lote);
         const lotTd = document.createElement("td");
+        lotTd.className = "a33-checklist-lot";
         lotTd.dataset.label = "Lote";
         lotTd.textContent = a33ChecklistLotCode(lote);
         const volumeTd = document.createElement("td");
@@ -2913,13 +3104,16 @@ function a33WireNumericInput(el, mode) {
         volumeTd.dataset.label = "Volumen";
         volumeTd.textContent = a33ChecklistVolumeText(lote);
         const actionTd = document.createElement("td");
+        actionTd.className = "a33-checklist-action-cell";
         actionTd.dataset.label = "Acción";
         const button = document.createElement("button");
+        const actionLabel = isHistory ? "Ver" : "Usar";
         button.type = "button";
         button.className = "a33-checklist-use";
-        button.textContent = "Usar";
+        button.textContent = actionLabel;
         button.dataset.checklistIdentity = identity;
-        button.setAttribute("aria-label", "Usar lote " + a33ChecklistLotCode(lote));
+        button.dataset.checklistMode = isHistory ? "history" : "pending";
+        button.setAttribute("aria-label", actionLabel + " lote " + a33ChecklistLotCode(lote));
         actionTd.appendChild(button);
         tr.append(dateTd, lotTd, volumeTd, actionTd);
         tbody.appendChild(tr);
@@ -2928,6 +3122,32 @@ function a33WireNumericInput(el, mode) {
       table.appendChild(tbody);
       wrap.appendChild(table);
       host.appendChild(wrap);
+    }
+
+    function a33RenderChecklistHistory(options) {
+      const opts = options && typeof options === "object" ? options : {};
+      const pendingHost = document.getElementById("a33-checklist-pendientes");
+      const historyHost = document.getElementById("a33-checklist-historico");
+      if (!pendingHost || !historyHost) return;
+      const preserveIdentity = String(opts.selectIdentity || (opts.preserveSelection ? A33ChecklistSelectedIdentity : "") || "").trim();
+      A33ChecklistLots = a33ReadChecklistLots();
+      A33ChecklistSelectedIndex = -1;
+      A33ChecklistSelectedIdentity = "";
+
+      const selected = document.getElementById("a33-checklist-seleccion");
+      const content = document.getElementById("a33-checklist-contenido");
+      if (selected) selected.innerHTML = "";
+      if (content) content.innerHTML = '<p class="a33-checklist-empty">Selecciona Usar o Ver en un lote para cargar sus ingredientes.</p>';
+      a33SetChecklistStatus("", "");
+
+      const pendingLots = A33ChecklistLots.filter((lote) => !a33ChecklistIsClosed(lote));
+      const historyLots = A33ChecklistLots.filter((lote) => a33ChecklistIsClosed(lote));
+      a33RenderChecklistLotTable(pendingHost, pendingLots, "pending");
+      a33RenderChecklistLotTable(historyHost, historyLots, "history");
+
+      if (!A33ChecklistLots.length && content) {
+        content.innerHTML = '<p class="a33-checklist-empty">Aún no hay lotes disponibles para preparar.</p>';
+      }
 
       if (preserveIdentity) {
         const preservedIndex = a33ChecklistFindIndex(A33ChecklistLots, preserveIdentity);
@@ -2945,6 +3165,7 @@ function a33WireNumericInput(el, mode) {
       A33ChecklistSelectedIdentity = a33ChecklistLotIdentity(lote);
       const ingredients = a33ChecklistIngredients(lote);
       const state = a33ChecklistState(lote);
+      const isClosed = a33ChecklistIsClosed(lote);
 
       document.querySelectorAll(".a33-checklist-history-row").forEach((row) => {
         row.classList.toggle("is-active", row.dataset.checklistIdentity === A33ChecklistSelectedIdentity);
@@ -2991,9 +3212,12 @@ function a33WireNumericInput(el, mode) {
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = !!state[ingredient.key];
+        checkbox.disabled = isClosed;
         checkbox.dataset.checklistKey = ingredient.key;
         checkbox.dataset.checklistLabel = ingredient.label;
-        checkbox.setAttribute("aria-label", (checkbox.checked ? "Desmarcar " : "Marcar ") + ingredient.label + (checkbox.checked ? " como pendiente" : " como completado"));
+        checkbox.setAttribute("aria-label", isClosed
+          ? "Consultar " + ingredient.label + (checkbox.checked ? " completado" : " pendiente")
+          : (checkbox.checked ? "Desmarcar " : "Marcar ") + ingredient.label + (checkbox.checked ? " como pendiente" : " como completado"));
         label.appendChild(checkbox);
         checkTd.appendChild(label);
         const productTd = document.createElement("td");
@@ -3010,10 +3234,37 @@ function a33WireNumericInput(el, mode) {
 
       table.appendChild(tbody);
       wrap.appendChild(table);
-      content.appendChild(wrap);
-      if (!opts.keepStatus) a33SetChecklistStatus("Estado recuperado para este lote.", "success");
-      const firstCheckbox = content.querySelector('input[type="checkbox"]');
+
+      if (isClosed) {
+        const closedNote = document.createElement("div");
+        closedNote.className = "a33-checklist-closed-note";
+        closedNote.textContent = "Checklist cerrado · Solo consulta";
+        content.appendChild(closedNote);
+        content.appendChild(wrap);
+      } else {
+        content.appendChild(wrap);
+        const actions = document.createElement("div");
+        actions.className = "a33-checklist-actions";
+        const doneButton = document.createElement("button");
+        doneButton.id = "a33-checklist-hecho";
+        doneButton.type = "button";
+        doneButton.className = "a33-checklist-done";
+        doneButton.textContent = "Hecho";
+        doneButton.setAttribute("aria-label", "Cerrar checklist del lote " + a33ChecklistLotCode(lote));
+        actions.appendChild(doneButton);
+        content.appendChild(actions);
+      }
+
+      if (!opts.keepStatus) a33SetChecklistStatus(isClosed ? "Checklist cerrado: vista de consulta." : "Estado recuperado para este lote.", "success");
+      const firstCheckbox = content.querySelector('input[type="checkbox"]:not(:disabled)');
       if (firstCheckbox) firstCheckbox.focus({ preventScroll:true });
+      else {
+        const focusTarget = content.querySelector(".a33-checklist-closed-note") || selected;
+        if (focusTarget) {
+          focusTarget.tabIndex = -1;
+          focusTarget.focus({ preventScroll:true });
+        }
+      }
     }
 
     function a33RefreshChecklistAfterLotSave(savedLot) {
@@ -3024,6 +3275,11 @@ function a33WireNumericInput(el, mode) {
     function a33OpenChecklist() {
       const view = document.getElementById("a33-checklist-view");
       if (!view) return;
+      if (!view.hidden) {
+        const close = document.getElementById("btn-cerrar-checklist");
+        if (close) close.focus({ preventScroll:true });
+        return;
+      }
       a33RenderChecklistHistory({ preserveSelection:false });
       view.hidden = false;
       view.setAttribute("aria-hidden", "false");
@@ -3034,7 +3290,7 @@ function a33WireNumericInput(el, mode) {
 
     function a33CloseChecklist() {
       const view = document.getElementById("a33-checklist-view");
-      if (!view) return;
+      if (!view || view.hidden) return;
       view.hidden = true;
       view.setAttribute("aria-hidden", "true");
       document.body.classList.remove("a33-checklist-open");
@@ -3044,7 +3300,7 @@ function a33WireNumericInput(el, mode) {
 
 function registerCalculadoraServiceWorker() {
       if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./sw.js?v=4.20.97&r=7")
+      navigator.serviceWorker.register("./sw.js?v=4.20.97&r=10")
         .catch((error) => console.error("SW Calculadora error", error));
     }
 
@@ -3063,38 +3319,101 @@ function registerCalculadoraServiceWorker() {
       document.getElementById("btn-limpiar").addEventListener("click", limpiarCantidades);
       const btnChecklist = document.getElementById("btn-checklist");
       const btnCerrarChecklist = document.getElementById("btn-cerrar-checklist");
+      const checklistPendientes = document.getElementById("a33-checklist-pendientes");
       const checklistHistorico = document.getElementById("a33-checklist-historico");
       const checklistContenido = document.getElementById("a33-checklist-contenido");
-      if (btnChecklist) btnChecklist.addEventListener("click", a33OpenChecklist);
-      if (btnCerrarChecklist) btnCerrarChecklist.addEventListener("click", a33CloseChecklist);
-      if (checklistHistorico) {
-        checklistHistorico.addEventListener("click", (event) => {
-          const button = event.target && event.target.closest ? event.target.closest("[data-checklist-identity]") : null;
-          if (!button) return;
-          const index = a33ChecklistFindIndex(A33ChecklistLots, button.dataset.checklistIdentity);
-          if (index >= 0) a33RenderSelectedChecklist(index);
-        });
+      if (btnChecklist && btnChecklist.dataset.checklistBound !== "1") {
+        btnChecklist.dataset.checklistBound = "1";
+        btnChecklist.addEventListener("click", a33OpenChecklist);
       }
-      if (checklistContenido) {
+      if (btnCerrarChecklist && btnCerrarChecklist.dataset.checklistBound !== "1") {
+        btnCerrarChecklist.dataset.checklistBound = "1";
+        btnCerrarChecklist.addEventListener("click", a33CloseChecklist);
+      }
+      const handleChecklistSelection = (event) => {
+        const button = event.target && event.target.closest ? event.target.closest("button[data-checklist-identity]") : null;
+        if (!button || button.disabled || button.dataset.checklistBusy === "1" || A33ChecklistSelecting) return;
+        event.preventDefault();
+        const identity = String(button.dataset.checklistIdentity || "").trim();
+        if (!identity) return;
+        A33ChecklistSelecting = true;
+        button.dataset.checklistBusy = "1";
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        try {
+          A33ChecklistLots = a33ReadChecklistLots();
+          const index = a33ChecklistFindIndex(A33ChecklistLots, identity);
+          if (index < 0) {
+            a33RenderChecklistHistory({ preserveSelection:false });
+            a33SetChecklistStatus("El lote seleccionado ya no está disponible.", "error");
+            return;
+          }
+          const requestedHistory = button.dataset.checklistMode === "history";
+          const isClosed = a33ChecklistIsClosed(A33ChecklistLots[index]);
+          if (requestedHistory !== isClosed) {
+            a33RenderChecklistHistory({ selectIdentity:identity });
+            a33SetChecklistStatus(isClosed ? "Checklist cerrado: vista de consulta." : "Checklist pendiente listo para usar.", "success");
+            return;
+          }
+          a33RenderSelectedChecklist(index);
+        } finally {
+          A33ChecklistSelecting = false;
+          if (button && button.isConnected !== false) {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+            delete button.dataset.checklistBusy;
+          }
+        }
+      };
+      if (checklistPendientes && checklistPendientes.dataset.checklistBound !== "1") {
+        checklistPendientes.dataset.checklistBound = "1";
+        checklistPendientes.addEventListener("click", handleChecklistSelection);
+      }
+      if (checklistHistorico && checklistHistorico.dataset.checklistBound !== "1") {
+        checklistHistorico.dataset.checklistBound = "1";
+        checklistHistorico.addEventListener("click", handleChecklistSelection);
+      }
+      if (checklistContenido && checklistContenido.dataset.checklistBound !== "1") {
+        checklistContenido.dataset.checklistBound = "1";
         checklistContenido.addEventListener("change", (event) => {
           const checkbox = event.target;
           if (!checkbox || checkbox.type !== "checkbox" || !checkbox.dataset.checklistKey) return;
+          const selectedLot = A33ChecklistLots[A33ChecklistSelectedIndex];
+          if (a33ChecklistIsClosed(selectedLot)) {
+            a33SetChecklistStatus("Este checklist ya está cerrado y es solo de consulta.", "error");
+            a33RenderSelectedChecklist(A33ChecklistSelectedIndex, { keepStatus:true });
+            return;
+          }
           const row = checkbox.closest(".a33-checklist-item-row");
           const saved = a33PersistChecklistChange(checkbox.dataset.checklistKey, checkbox.checked);
           if (!saved) return;
           if (row) row.classList.toggle("is-complete", checkbox.checked);
           checkbox.setAttribute("aria-label", (checkbox.checked ? "Desmarcar " : "Marcar ") + (checkbox.dataset.checklistLabel || "producto") + (checkbox.checked ? " como pendiente" : " como completado"));
         });
+        checklistContenido.addEventListener("click", (event) => {
+          const button = event.target && event.target.closest ? event.target.closest("#a33-checklist-hecho") : null;
+          if (!button) return;
+          event.preventDefault();
+          a33CompleteSelectedChecklist(button);
+        });
       }
-      window.addEventListener("storage", (event) => {
-        if (!event || event.key !== A33_CHECKLIST_STORAGE_KEY) return;
-        const view = document.getElementById("a33-checklist-view");
-        if (view && !view.hidden) a33RenderChecklistHistory({ preserveSelection:true });
-      });
-      document.addEventListener("keydown", (event) => {
-        const view = document.getElementById("a33-checklist-view");
-        if (event.key === "Escape" && view && !view.hidden) a33CloseChecklist();
-      });
+      if (!window.__A33ChecklistStorageBound) {
+        window.__A33ChecklistStorageBound = true;
+        window.addEventListener("storage", (event) => {
+          if (!event || event.key !== A33_CHECKLIST_STORAGE_KEY) return;
+          const view = document.getElementById("a33-checklist-view");
+          if (view && !view.hidden && !A33ChecklistClosing && !A33ChecklistSelecting) {
+            a33RenderChecklistHistory({ preserveSelection:true });
+          }
+        });
+      }
+      if (!window.__A33ChecklistKeydownBound) {
+        window.__A33ChecklistKeydownBound = true;
+        document.addEventListener("keydown", (event) => {
+          const view = document.getElementById("a33-checklist-view");
+          if (event.key === "Escape" && view && !view.hidden) a33CloseChecklist();
+        });
+      }
       const btnGuardarLote = document.getElementById("btn-guardar-lote");
       if (btnGuardarLote && btnGuardarLote.dataset.productionBound !== "1") {
         btnGuardarLote.dataset.productionBound = "1";
