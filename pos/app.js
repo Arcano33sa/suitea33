@@ -7,7 +7,7 @@ let db;
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.97';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r5-m47');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r6-m48');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -17466,11 +17466,551 @@ function lotesHistoricalLetterSortPOS(a, b){
   return String(a.label).localeCompare(String(b.label), 'es-NI', { numeric:true, sensitivity:'base' });
 }
 
+
+
+// Puente de lectura legacy para “Lotes cargados”.
+// Consolida Inventario + arcano33_lotes sin escribir, migrar ni mutar las fuentes.
+function normalizeLotesReadEventIdPOS(value){
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return '';
+  if (/^[+-]?\d+(?:\.0+)?$/.test(raw)){
+    const n = Number(raw);
+    if (Number.isFinite(n)) return 'N:' + String(n);
+  }
+  return 'S:' + raw;
+}
+
+function normalizeLotesReadEventNamePOS(value){
+  return String(value == null ? '' : value)
+    .normalize('NFC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function buildLotesReadEventMatcherPOS(eventId, events){
+  const list = Array.isArray(events) ? events.filter(Boolean) : [];
+  const requestedKey = normalizeLotesReadEventIdPOS(eventId);
+  const event = list.find((item)=> normalizeLotesReadEventIdPOS(item && (item.id ?? item.eventId)) === requestedKey) || null;
+  const idKeys = new Set();
+  const nameKeys = new Set();
+  const addId = (value)=>{ const key = normalizeLotesReadEventIdPOS(value); if (key) idKeys.add(key); };
+  const addName = (value)=>{ const key = normalizeLotesReadEventNamePOS(value); if (key) nameKeys.add(key); };
+  addId(eventId);
+  if (event){
+    addId(event.id);
+    addId(event.eventId);
+    addName(event.name);
+    addName(event.nombre);
+    addName(event.title);
+    addName(event.eventName);
+  }
+  return {
+    event,
+    idKeys,
+    nameKeys,
+    primaryEventKey:Array.from(idKeys)[0] || ('NAME:' + (Array.from(nameKeys)[0] || ''))
+  };
+}
+
+function lotesReadEventRefMatchesPOS(ref, matcher){
+  const source = ref && typeof ref === 'object' ? ref : {};
+  const idValues = [
+    source.eventId, source.eventID, source.idEvento, source.eventoId,
+    source.assignedEventId, source.assignedEventoId,
+    source.prevAssignedEventId, source.targetEventId
+  ];
+  const idKeys = idValues.map(normalizeLotesReadEventIdPOS).filter(Boolean);
+  if (idKeys.length) return idKeys.some((key)=> matcher && matcher.idKeys && matcher.idKeys.has(key));
+
+  const nameValues = [
+    source.eventName, source.nombreEvento, source.eventoNombre,
+    source.assignedEventName, source.prevAssignedEventName,
+    source.targetEventName
+  ];
+  const nameKeys = nameValues.map(normalizeLotesReadEventNamePOS).filter(Boolean);
+  return nameKeys.some((key)=> matcher && matcher.nameKeys && matcher.nameKeys.has(key));
+}
+
+function lotesReadDateValuePOS(ref){
+  const source = ref && typeof ref === 'object' ? ref : {};
+  const values = [
+    source.assignedAt, source.assignmentAt, source.fechaAsignacion, source.fechaAsignada,
+    source.loadedAt, source.loadAt, source.time, source.timestamp, source.at,
+    source.movementDate, source.fechaMovimiento, source.date, source.fecha,
+    source.createdAt, source.created_at, source.updatedAt
+  ];
+  for (const value of values){
+    if (value == null) continue;
+    if (typeof value === 'object'){
+      try{
+        if (typeof value.toDate === 'function') return value.toDate().toISOString();
+        if (Number.isFinite(Number(value.seconds))) return new Date(Number(value.seconds) * 1000).toISOString();
+      }catch(_){ }
+    }
+    const raw = String(value).trim();
+    if (raw) return raw;
+  }
+  return '';
+}
+
+function lotesReadTimestampPOS(value){
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number' && Number.isFinite(value)) return value < 100000000000 ? value * 1000 : value;
+  const raw = String(value).trim();
+  if (!raw) return 0;
+  if (/^\d{10,13}$/.test(raw)){
+    const n = Number(raw);
+    return Number.isFinite(n) ? (raw.length <= 10 ? n * 1000 : n) : 0;
+  }
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function lotesReadCodePOS(ref, options={}){
+  const source = ref && typeof ref === 'object' ? ref : {};
+  const values = [
+    source.loteCodigo, source.lotCode, source.batchCode, source.codigoLote,
+    source.loteNombre, source.loteName, source.nombreLote
+  ];
+  if (options && options.allowGeneric){
+    values.push(source.codigo, source.code, source.name, source.nombre);
+  }
+  for (const value of values){
+    const raw = String(value == null ? '' : value).trim();
+    if (raw) return lotCodeDisplayPOS(raw);
+  }
+  return '';
+}
+
+function lotesReadLotIdPOS(ref){
+  const source = ref && typeof ref === 'object' ? ref : {};
+  const values = [source.loteId, source.lotId, source.batchId, source.idLote, source.id];
+  for (const value of values){
+    const raw = String(value == null ? '' : value).trim();
+    if (raw) return raw;
+  }
+  return '';
+}
+
+function lotesReadLoadIdPOS(ref){
+  const source = ref && typeof ref === 'object' ? ref : {};
+  const values = [
+    source.loteCargaId, source.loteGroupKey, source.assignedCargaId,
+    source.lastAssignedCargaId, source.loadId, source.assignmentId, source.groupKey
+  ];
+  for (const value of values){
+    const raw = String(value == null ? '' : value).trim();
+    if (raw) return raw;
+  }
+  return '';
+}
+
+function lotesReadQtyPOS(ref){
+  const source = ref && typeof ref === 'object' ? ref : {};
+  const values = [
+    source.qty, source.quantity, source.cantidad,
+    source.cantidadBase, source.loaded, source.cantidadCargada,
+    source.cantidadProducida, source.unidades,
+    source.cantidadDisponible, source.disponible, source.remaining, source.cantidadRestante
+  ];
+  for (const value of values){
+    if (value == null || String(value).trim() === '') continue;
+    const n = Number(String(value).replace(',', '.'));
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+function isLotesInventoryReadEvidencePOS(entry){
+  if (!entry || typeof entry !== 'object') return false;
+  const qty = Number(entry.qty ?? entry.quantity ?? entry.cantidad);
+  if (!(Number.isFinite(qty) && qty > 0)) return false;
+  const type = String(entry.type || entry.tipo || '').trim().toLowerCase();
+  const source = String(entry.source || entry.fuente || '').trim().toLowerCase();
+  if (source.includes('revers')) return false;
+  const hasLotRef = !!(
+    lotesReadCodePOS(entry) || lotesReadLotIdPOS({ ...entry, id:null }) || lotesReadLoadIdPOS(entry) ||
+    entry.loteProductId != null || entry.loteLetra != null || entry.loteNombreSnapshot != null
+  );
+  const notes = String(entry.notes || entry.nota || entry.observacion || '').toLowerCase();
+  const sourceLooksLot = source.includes('lote') || source.includes('lot') || source.includes('batch');
+  const notesLookLot = /(^|\W)lote(\W|$)/i.test(notes);
+  const typeAllows = !type || type === 'restock' || type === 'reposicion' || type === 'reposición' || type === 'load' || type === 'lote';
+  return typeAllows && (hasLotRef || sourceLooksLot || notesLookLot);
+}
+
+function lotesReadGroupSeedPOS(origin, matcher){
+  return {
+    origin,
+    sourceRank:origin === 'modern' ? 1 : 2,
+    eventKey:(matcher && matcher.primaryEventKey) || '',
+    loadIds:new Set(),
+    lotIds:new Set(),
+    movementIds:new Set(),
+    code:'',
+    time:'',
+    reversedAt:'',
+    items:[]
+  };
+}
+
+function lotesReadAddIdentityPOS(group, ref){
+  const loadId = lotesReadLoadIdPOS(ref);
+  const lotId = lotesReadLotIdPOS({ ...ref, id:ref && (ref.loteId ?? ref.lotId ?? ref.batchId ?? ref.idLote) });
+  const movementId = String(ref && ref.id != null ? ref.id : '').trim();
+  if (loadId) group.loadIds.add(loadId);
+  if (lotId) group.lotIds.add(lotId);
+  if (movementId) group.movementIds.add(movementId);
+  const code = lotesReadCodePOS(ref);
+  if (!group.code && code) group.code = code;
+  const time = lotesReadDateValuePOS(ref);
+  if (!group.time && time) group.time = time;
+  else if (time && lotesReadTimestampPOS(time) && lotesReadTimestampPOS(group.time) && lotesReadTimestampPOS(time) < lotesReadTimestampPOS(group.time)) group.time = time;
+}
+
+function collectModernLotesReadGroupsPOS(allInventory, matcher){
+  const groups = new Map();
+  const rows = Array.isArray(allInventory) ? allInventory.filter(Boolean) : [];
+  for (const entry of rows){
+    if (!lotesReadEventRefMatchesPOS(entry, matcher)) continue;
+    if (!isLotesInventoryReadEvidencePOS(entry)) continue;
+    const loadId = lotesReadLoadIdPOS(entry);
+    const lotId = lotesReadLotIdPOS({ ...entry, id:entry.loteId ?? entry.lotId ?? entry.batchId ?? entry.idLote });
+    const code = lotesReadCodePOS(entry);
+    const time = lotesReadDateValuePOS(entry);
+    const movementId = String(entry.id == null ? '' : entry.id).trim();
+    const rawKey = loadId
+      ? ('LOAD:' + loadId)
+      : (lotId ? ('LOT:' + lotId) : (code ? ('CODE:' + lotCodeKeyPOS(code) + '|' + (time || '')) : ('MOVE:' + movementId)));
+    let group = groups.get(rawKey);
+    if (!group){
+      group = lotesReadGroupSeedPOS('modern', matcher);
+      groups.set(rawKey, group);
+    }
+    lotesReadAddIdentityPOS(group, entry);
+    group.items.push({ ...entry, qty:lotesReadQtyPOS(entry) });
+  }
+
+  // Los reversos solo marcan visualmente el grupo; nunca se usan como cantidades cargadas.
+  for (const entry of rows){
+    if (!entry || !lotesReadEventRefMatchesPOS(entry, matcher)) continue;
+    const source = String(entry.source || '').toLowerCase();
+    const type = String(entry.type || '').toLowerCase();
+    if (!(source.includes('revers') || type.includes('reverse') || type.includes('revers'))) continue;
+    const loadId = lotesReadLoadIdPOS(entry);
+    const lotId = lotesReadLotIdPOS({ ...entry, id:entry.loteId ?? entry.lotId ?? entry.batchId ?? entry.idLote });
+    const code = lotesReadCodePOS(entry);
+    const reversedAt = lotesReadDateValuePOS(entry);
+    for (const group of groups.values()){
+      const loadMatch = loadId && group.loadIds.has(loadId);
+      const lotMatch = !loadMatch && lotId && group.lotIds.has(lotId);
+      const codeMatch = !loadMatch && !lotMatch && code && group.code && lotCodeKeyPOS(code) === lotCodeKeyPOS(group.code);
+      if (loadMatch || lotMatch || codeMatch){
+        if (!group.reversedAt || lotesReadTimestampPOS(reversedAt) > lotesReadTimestampPOS(group.reversedAt)) group.reversedAt = reversedAt;
+      }
+    }
+  }
+  return Array.from(groups.values());
+}
+
+function lotesReadHistoryTypePOS(value){
+  return String(value == null ? '' : value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function lotesReadHistoryIsReversePOS(row){
+  const type = lotesReadHistoryTypePOS(row && (row.type ?? row.action ?? row.accion ?? row.estado));
+  return type.includes('reverse') || type.includes('revers') || type.includes('unassign') || type.includes('desasign') || type.includes('devuel');
+}
+
+function lotesReadHistoryIsAssignmentPOS(row){
+  if (!row || typeof row !== 'object' || lotesReadHistoryIsReversePOS(row)) return false;
+  const type = lotesReadHistoryTypePOS(row.type ?? row.action ?? row.accion ?? row.estado);
+  if (!type) return true;
+  return type.includes('assign') || type.includes('asign') || type.includes('load') || type.includes('carg') || type.includes('evento');
+}
+
+function lotesReadSnapshotForEventPOS(lote, matcher){
+  const usage = lote && lote.eventUsage && typeof lote.eventUsage === 'object' && !Array.isArray(lote.eventUsage) ? lote.eventUsage : null;
+  if (!usage) return null;
+  for (const [key, snap] of Object.entries(usage)){
+    const eventKey = normalizeLotesReadEventIdPOS(key);
+    if (eventKey && matcher && matcher.idKeys && matcher.idKeys.has(eventKey) && snap && typeof snap === 'object') return snap;
+  }
+  return null;
+}
+
+function lotesReadRowsFromSnapshotPOS(snapshot){
+  if (!snapshot || typeof snapshot !== 'object') return [];
+  const rows = [];
+  if (Array.isArray(snapshot.availabilityProducts)){
+    for (const raw of snapshot.availabilityProducts){
+      if (!raw || typeof raw !== 'object') continue;
+      const qty = lotesReadQtyPOS({
+        cantidadBase:raw.cantidadBase,
+        loaded:raw.loaded,
+        cantidadCargada:raw.cantidadCargada,
+        cantidadProducida:raw.cantidadProducida,
+        qty:raw.qty,
+        cantidad:raw.cantidad,
+        cantidadDisponible:raw.cantidadDisponible
+      });
+      if (qty > 0) rows.push({ ...raw, qty });
+    }
+  }
+  if (rows.length) return rows;
+
+  const byProduct = snapshot.loadedByProductId && typeof snapshot.loadedByProductId === 'object' ? snapshot.loadedByProductId : {};
+  for (const [productId, qtyRaw] of Object.entries(byProduct)){
+    const qty = Number(qtyRaw) || 0;
+    if (qty > 0) rows.push({ productId, qty });
+  }
+  const representedLetters = new Set(rows.map((row)=> inventoryStoredLetterPOS(row)).filter(Boolean));
+  const byLetter = snapshot.loadedByLetter && typeof snapshot.loadedByLetter === 'object' ? snapshot.loadedByLetter : {};
+  for (const [Letra, qtyRaw] of Object.entries(byLetter)){
+    const letter = normalizeLotesLetterPOS(Letra);
+    const qty = Number(qtyRaw) || 0;
+    if (letter && qty > 0 && !representedLetters.has(letter)) rows.push({ Letra:letter, qty });
+  }
+  return rows;
+}
+
+function lotesReadRowsFromHistoricalLotPOS(lote, matcher){
+  const snapshotRows = lotesReadRowsFromSnapshotPOS(lotesReadSnapshotForEventPOS(lote, matcher));
+  if (snapshotRows.length) return snapshotRows;
+
+  const contractRows = lotesPOSContractRowsPOS(lote);
+  const contractOut = [];
+  for (const row of contractRows){
+    const qty = lotesReadQtyPOS(row);
+    if (qty > 0) contractOut.push({ ...row, qty });
+  }
+  if (contractOut.length) return contractOut;
+
+  const legacy = legacyQuantityShapePOS(lote);
+  const legacyRows = [];
+  for (const letter of LEGACY_PRODUCT_LETTERS_POS){
+    const qty = Number(legacy[letter]) || 0;
+    if (!(qty > 0)) continue;
+    legacyRows.push({
+      Letra:letter,
+      loteLetra:letter,
+      nombreSnapshot:LEGACY_PRODUCT_NAME_BY_LETTER_POS[letter],
+      loteNombreSnapshot:LEGACY_PRODUCT_NAME_BY_LETTER_POS[letter],
+      legacyField:LEGACY_PRODUCT_FIELD_BY_LETTER_POS[letter],
+      qty
+    });
+  }
+  return legacyRows;
+}
+
+function collectHistoricalLotesReadGroupsPOS(lotes, matcher){
+  const groups = [];
+  for (const lote of (Array.isArray(lotes) ? lotes : [])){
+    if (!lote || typeof lote !== 'object') continue;
+    const history = Array.isArray(lote.assignmentHistory) ? lote.assignmentHistory.filter(Boolean) : [];
+    const assignments = history.filter((row)=> lotesReadHistoryIsAssignmentPOS(row) && lotesReadEventRefMatchesPOS(row, matcher));
+    const reversals = history.filter((row)=> lotesReadHistoryIsReversePOS(row) && lotesReadEventRefMatchesPOS(row, matcher));
+    const snapshot = lotesReadSnapshotForEventPOS(lote, matcher);
+    const currentMatch = lotesReadEventRefMatchesPOS({
+      assignedEventId:lote.assignedEventId,
+      assignedEventName:lote.assignedEventName
+    }, matcher);
+
+    const evidenceRows = assignments.length
+      ? assignments
+      : ((currentMatch || snapshot) ? [{
+          eventId:lote.assignedEventId,
+          eventName:lote.assignedEventName,
+          at:lote.assignedAt ?? lote.prevAssignedAt ?? lote.createdAt,
+          loteCargaId:lote.assignedCargaId ?? lote.lastAssignedCargaId
+        }] : []);
+    if (!evidenceRows.length) continue;
+
+    const quantityRows = lotesReadRowsFromHistoricalLotPOS(lote, matcher);
+    if (!quantityRows.length) continue;
+
+    const seenEvidence = new Set();
+    for (const evidence of evidenceRows){
+      const loadId = lotesReadLoadIdPOS(evidence) || lotesReadLoadIdPOS(lote);
+      const time = lotesReadDateValuePOS(evidence) || lotesReadDateValuePOS(lote);
+      const evidenceKey = loadId ? ('LOAD:' + loadId) : ('AT:' + time);
+      if (seenEvidence.has(evidenceKey)) continue;
+      seenEvidence.add(evidenceKey);
+
+      const group = lotesReadGroupSeedPOS('historical', matcher);
+      lotesReadAddIdentityPOS(group, {
+        ...lote,
+        loteId:lote.id ?? lote.loteId,
+        loteCargaId:loadId,
+        loteCodigo:lotesReadCodePOS(lote, { allowGeneric:true }),
+        assignedAt:time
+      });
+      if (!group.code && group.lotIds.size) group.code = 'Lote #' + Array.from(group.lotIds)[0];
+      for (const row of quantityRows){
+        group.items.push({
+          ...row,
+          type:'restock',
+          source:'lote_historico_lectura',
+          qty:lotesReadQtyPOS(row),
+          loteId:Array.from(group.lotIds)[0] || null,
+          loteCodigo:group.code,
+          loteCargaId:loadId || null,
+          time:group.time
+        });
+      }
+
+      const matchingReversal = reversals
+        .filter((row)=>{
+          const reverseLoadId = lotesReadLoadIdPOS(row);
+          return !loadId || !reverseLoadId || reverseLoadId === loadId;
+        })
+        .sort((a,b)=> lotesReadTimestampPOS(lotesReadDateValuePOS(b)) - lotesReadTimestampPOS(lotesReadDateValuePOS(a)))[0];
+      if (matchingReversal) group.reversedAt = lotesReadDateValuePOS(matchingReversal);
+      else if (!currentMatch && lote.reversedAt) group.reversedAt = String(lote.reversedAt);
+      groups.push(group);
+    }
+  }
+  return groups;
+}
+
+function lotesReadSetsIntersectPOS(a, b){
+  if (!a || !b || !a.size || !b.size) return false;
+  for (const value of a){ if (b.has(value)) return true; }
+  return false;
+}
+
+function lotesReadGroupsSamePOS(a, b){
+  if (!a || !b || a.eventKey !== b.eventKey) return false;
+  if (a.loadIds.size && b.loadIds.size) return lotesReadSetsIntersectPOS(a.loadIds, b.loadIds);
+  if (a.lotIds.size && b.lotIds.size) return lotesReadSetsIntersectPOS(a.lotIds, b.lotIds);
+  const codeA = lotCodeKeyPOS(a.code || '');
+  const codeB = lotCodeKeyPOS(b.code || '');
+  if (codeA && codeB && codeA === codeB) return true;
+  const timeA = lotesReadTimestampPOS(a.time);
+  const timeB = lotesReadTimestampPOS(b.time);
+  return !!(codeA && codeB && codeA === codeB && timeA && timeB && timeA === timeB);
+}
+
+function lotesReadItemIdentityPOS(item, productIndex){
+  const identity = resolveInventoryProductIdentityPOS(item, productIndex, { allowLegacyName:true });
+  return inventoryIdentityKeyPOS(identity, item) || lotesEntryReferenceKeyPOS(item);
+}
+
+function mergeLotesReadGroupPOS(target, incoming, productIndex){
+  if (!target || !incoming) return target || incoming;
+  incoming.loadIds.forEach((value)=> target.loadIds.add(value));
+  incoming.lotIds.forEach((value)=> target.lotIds.add(value));
+  incoming.movementIds.forEach((value)=> target.movementIds.add(value));
+  if (!target.code && incoming.code) target.code = incoming.code;
+  if (!target.time && incoming.time) target.time = incoming.time;
+  if (!target.reversedAt || lotesReadTimestampPOS(incoming.reversedAt) > lotesReadTimestampPOS(target.reversedAt)) target.reversedAt = incoming.reversedAt || target.reversedAt;
+
+  const itemKeys = new Map();
+  target.items.forEach((item, index)=> itemKeys.set(lotesReadItemIdentityPOS(item, productIndex), index));
+  for (const item of incoming.items){
+    const key = lotesReadItemIdentityPOS(item, productIndex);
+    if (!itemKeys.has(key)){
+      itemKeys.set(key, target.items.length);
+      target.items.push({ ...item });
+      continue;
+    }
+    const index = itemKeys.get(key);
+    const existing = target.items[index];
+    if (!(lotesReadQtyPOS(existing) > 0) && lotesReadQtyPOS(item) > 0) target.items[index] = { ...existing, ...item };
+  }
+  return target;
+}
+
+function dedupeLotesReadGroupsPOS(groups, productIndex){
+  const ordered = (Array.isArray(groups) ? groups.filter(Boolean) : []).slice().sort((a,b)=> (a.sourceRank - b.sourceRank));
+  const out = [];
+  for (const group of ordered){
+    const found = out.find((candidate)=> lotesReadGroupsSamePOS(candidate, group));
+    if (found) mergeLotesReadGroupPOS(found, group, productIndex);
+    else out.push(group);
+  }
+  return out;
+}
+
+function flattenLotesReadGroupsPOS(groups){
+  const out = [];
+  let index = 0;
+  for (const group of (Array.isArray(groups) ? groups : [])){
+    index += 1;
+    const groupKey = Array.from(group.loadIds)[0]
+      || (Array.from(group.lotIds)[0] ? ('legacy-lot-' + Array.from(group.lotIds)[0] + '-' + index) : ('legacy-read-' + index));
+    const lotId = Array.from(group.lotIds)[0] || null;
+    const code = group.code || (lotId ? ('Lote #' + lotId) : 'Lote histórico');
+    for (const item of group.items){
+      const qty = lotesReadQtyPOS(item);
+      if (!(qty > 0)) continue;
+      out.push({
+        ...item,
+        type:'restock',
+        source:item.source || 'lote',
+        qty,
+        loteId:item.loteId ?? lotId,
+        loteCodigo:lotesReadCodePOS(item) || code,
+        loteCargaId:groupKey,
+        loteGroupKey:groupKey,
+        time:lotesReadDateValuePOS(item) || group.time,
+        _lotesReadEvidence:true,
+        _lotesReadOrigin:group.origin
+      });
+    }
+    if (group.reversedAt){
+      out.push({
+        type:'adjust',
+        source:'lote_reverso',
+        qty:0,
+        loteId:lotId,
+        loteCodigo:code,
+        loteCargaId:groupKey,
+        loteGroupKey:groupKey,
+        time:group.reversedAt,
+        _lotesReadEvidence:true,
+        _lotesReadOrigin:group.origin
+      });
+    }
+  }
+  return out;
+}
+
+async function getLotesCargadosEventoReadEntriesPOS(eventId){
+  const validKey = normalizeLotesReadEventIdPOS(eventId);
+  if (!validKey) return { entries:[], products:[], event:null, modernGroups:0, historicalGroups:0 };
+  const [allInventory, products, events] = await Promise.all([
+    getAll('inventory').catch(()=>[]),
+    getAll('products').catch(()=>[]),
+    getAll('events').catch(()=>[])
+  ]);
+  const matcher = buildLotesReadEventMatcherPOS(eventId, events);
+  const productIndex = buildProductIdentityIndexPOS(products || []);
+  const modern = collectModernLotesReadGroupsPOS(allInventory, matcher);
+  const historicalSource = readAllLotesFromSharedPOS();
+  const historical = collectHistoricalLotesReadGroupsPOS(Array.isArray(historicalSource) ? historicalSource : [], matcher);
+  const unique = dedupeLotesReadGroupsPOS(modern.concat(historical), productIndex);
+  return {
+    entries:flattenLotesReadGroupsPOS(unique),
+    products:Array.isArray(products) ? products : [],
+    event:matcher.event || null,
+    modernGroups:modern.length,
+    historicalGroups:historical.length,
+    uniqueGroups:unique.length
+  };
+}
+
 function buildLotesEventoModelPOS(entries, products){
   const allEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
   const productList = Array.isArray(products) ? products.filter(Boolean) : [];
   const rows = allEntries
-    .filter((entry)=> entry && entry.type === 'restock' && (entry.loteCodigo || entry.source === 'lote'))
+    .filter((entry)=> entry && entry.type === 'restock' && (entry._lotesReadEvidence || entry.loteCodigo || entry.source === 'lote'))
     .sort((a,b)=> String(b.time || '').localeCompare(String(a.time || '')));
 
   const reverseByGroup = new Map();
@@ -17568,10 +18108,12 @@ function buildLotesEventoModelPOS(entries, products){
       const ref = lotesEntryReferenceKeyPOS(entry);
       columnKey = 'ORPHAN:' + ref;
       if (!orphanReferences.has(ref)){
+        const orphanName = inventorySnapshotNamePOS(entry) || (identity && identity.name) || '';
         orphanReferences.set(ref, {
           key:columnKey,
           ref,
-          title:'Cantidad histórica sin Producto con Receta y Letra resoluble'
+          name:uiProductNamePOS(orphanName),
+          title:orphanName ? ('Histórico · ' + uiProductNamePOS(orphanName)) : 'Cantidad histórica sin Producto con Receta y Letra resoluble'
         });
       }
     }
@@ -17582,11 +18124,19 @@ function buildLotesEventoModelPOS(entries, products){
   const historical = Array.from(historicalColumns.values()).sort(lotesHistoricalLetterSortPOS);
   const orphan = Array.from(orphanReferences.values())
     .sort((a,b)=> String(a.ref).localeCompare(String(b.ref), 'es-NI', { numeric:true, sensitivity:'base' }))
-    .map((def, index)=> ({ ...def, label:'?' + (index + 1), source:'unresolved' }));
+    .map((def, index)=> ({
+      ...def,
+      label:String(def.name || '').trim() || ('?' + (index + 1)),
+      source:'unresolved'
+    }));
 
   return {
     columns:catalogColumns.concat(historical, orphan),
-    rows:Array.from(groups.values()).sort((a,b)=> String(b.time || '').localeCompare(String(a.time || '')))
+    rows:Array.from(groups.values()).sort((a,b)=> {
+      const byDate = lotesReadTimestampPOS(b.time) - lotesReadTimestampPOS(a.time);
+      if (byDate) return byDate;
+      return String(a.loteCodigo || '').localeCompare(String(b.loteCodigo || ''), 'es-NI', { numeric:true, sensitivity:'base' });
+    })
   };
 }
 
@@ -17614,7 +18164,11 @@ function renderLotesEventoTablePOS(model, emptyMessage){
   }
 
   for (const row of rows){
-    const dateText = row.time ? new Date(row.time).toLocaleString('es-NI') : '';
+    let dateText = '—';
+    if (row.time){
+      const parsedDate = new Date(row.time);
+      dateText = Number.isNaN(parsedDate.getTime()) ? String(row.time) : parsedDate.toLocaleString('es-NI');
+    }
     const tr = document.createElement('tr');
     const codeText = escapeHtml(String(row.loteCodigo || '—')) + (row.reversedAt ? ' ↩︎ REV' : '');
     tr.innerHTML = `
@@ -17628,12 +18182,10 @@ function renderLotesEventoTablePOS(model, emptyMessage){
 
 async function renderLotesCargadosEvento(eventId, options={}){
   bindLotesEventoToggleOncePOS();
-  const validEventId = Number(eventId);
-  const entries = Number.isFinite(validEventId) && validEventId > 0
-    ? await getInventoryEntries(validEventId)
-    : [];
-  const products = await getAll('products');
-  const model = buildLotesEventoModelPOS(entries, products);
+  const readResult = eventId != null && String(eventId).trim() !== ''
+    ? await getLotesCargadosEventoReadEntriesPOS(eventId)
+    : { entries:[], products:[] };
+  const model = buildLotesEventoModelPOS(readResult.entries, readResult.products);
   updateLotesEventoCountPOS(model.rows.length);
   const toggle = $('#lotes-evento-toggle');
   const expanded = !!(toggle && toggle.getAttribute('aria-expanded') === 'true');

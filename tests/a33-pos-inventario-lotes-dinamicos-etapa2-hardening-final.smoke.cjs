@@ -92,7 +92,7 @@ const functionNames = [
   'sobranteSnapshotQtyPOS','lotLegacyRowsPOS','sobranteSourceRowsPOS','buildSobranteInputModelPOS',
   'buildSobranteTransferItemsPOS','legacyQuantitiesFromTransferPOS','subtractSobranteFromParentSnapshotPOS',
   'lotesEntryStoredLetterPOS','lotesEntrySnapshotNamePOS','lotesCatalogProductKeyPOS',
-  'lotesEntryReferenceKeyPOS','lotesHistoricalLetterSortPOS','buildLotesEventoModelPOS',
+  'lotesEntryReferenceKeyPOS','lotesHistoricalLetterSortPOS','lotesReadTimestampPOS','buildLotesEventoModelPOS',
   'summarizeRestockGroupPOS'
 ];
 const prelude = `
@@ -247,19 +247,19 @@ check(mapOnlyModel.items.reduce((sum,item)=>sum+item.available,0) === 9, 'Mapas 
   check(dup.items.length === 2, 'Reverso perdió un producto con Letra repetida');
 
   // PWA y release.
-  check(release.includes("const rev = 5;"), 'Release general no avanzó a r4');
-  check(release.includes("const lastResort = '4.20.97 r5';"), 'Fallback de versión no avanzó');
+  check(release.includes("const rev = 6;"), 'Release general no avanzó a r4');
+  check(release.includes("const lastResort = '4.20.97 r6';"), 'Fallback de versión no avanzó');
   check(html.includes('styles.css?v=4.20.97&r=22'), 'POS no carga CSS final');
-  check(html.includes('app.js?v=4.20.97&r=43'), 'POS no carga JS final');
+  check(html.includes('app.js?v=4.20.97&r=44'), 'POS no carga JS final');
   check(html.includes('manifest.webmanifest?v=4.20.97&r=25'), 'POS no carga manifest final');
-  check(html.includes('a33-release.js?v=4.20.97&r=57'), 'POS no carga release final');
-  check(sw.includes("const MODULE_CACHE_REV = '47';"), 'Caché POS no avanzó');
-  check(sw.includes("'./index.html?v=4.20.97&r=31'"), 'SW no precachea HTML final');
+  check(html.includes('a33-release.js?v=4.20.97&r=58'), 'POS no carga release final');
+  check(sw.includes("const MODULE_CACHE_REV = '48';"), 'Caché POS no avanzó');
+  check(sw.includes("'./index.html?v=4.20.97&r=32'"), 'SW no precachea HTML final');
   check(sw.includes("'./styles.css?v=4.20.97&r=22'"), 'SW no precachea CSS final');
-  check(sw.includes("'./app.js?v=4.20.97&r=43'"), 'SW no precachea JS final');
+  check(sw.includes("'./app.js?v=4.20.97&r=44'"), 'SW no precachea JS final');
   check(sw.includes("'./manifest.webmanifest?v=4.20.97&r=25'"), 'SW no precachea manifest final');
-  check(sw.includes("'/assets/js/a33-release.js?v=4.20.97&r=57'"), 'SW no precachea release final');
-  check(manifest.start_url === './index.html?v=4.20.97&r=31', 'Manifest no abre HTML final');
+  check(sw.includes("'/assets/js/a33-release.js?v=4.20.97&r=58'"), 'SW no precachea release final');
+  check(manifest.start_url === './index.html?v=4.20.97&r=32', 'Manifest no abre HTML final');
   check(sw.includes("return p.endsWith('/index.html') || p.endsWith('/app.js') || p.endsWith('/styles.css') || p.endsWith('/manifest.webmanifest');"), 'Se perdió estrategia PWA de assets críticos');
 
   console.log('SMOKE OK — Suite A33 POS Inventario Lotes Dinámicos Etapa 2/2 Hardening Final');

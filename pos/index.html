@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="a33-pos-shell" content="lotes-dinamicos-r5-m47">
+<meta name="a33-pos-shell" content="lotes-dinamicos-r6-m48">
 <title>A33 POS</title>
 <link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=25">
 <link rel="apple-touch-icon" href="logo.png">
@@ -1634,12 +1634,12 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=4.20.97&r=13"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.97&r=57"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.97&r=58"></script>
 
 <script src="/assets/js/a33-storage.js?v=4.20.97&r=20"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.97&r=14"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.97&r=15"></script>
-<script src="/assets/js/a33-build.js?v=4.20.97&r=15"></script>
+<script src="/assets/js/a33-build.js?v=4.20.97&r=16"></script>
 <script src="/assets/js/a33-lot-code.js?v=4.20.97&r=6"></script>
 <script>
   (function(){
@@ -1649,7 +1649,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m47').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m48').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1658,7 +1658,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m47')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m48')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1666,13 +1666,13 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.97&r=43"></script>
+<script src="app.js?v=4.20.97&r=44"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.97&r=13"></script>
 <script>
   (function(){
     const BUILD = (window.A33_VERSION || '4.20.97').toString();
     const REV = (window.A33_ASSET_REV || '8').toString();
-    const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV) + '&m=47';
+    const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV) + '&m=48';
     if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.register(SW_URL, { updateViaCache: 'none' }).then((reg) => {
       try{ reg.update(); }catch(_){ }
