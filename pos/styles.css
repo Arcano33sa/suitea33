@@ -615,8 +615,8 @@ html[data-theme="light"] .customer-quick-cancel{
 .modal table{max-width:100%}
 .modal .scroll{max-height:40vh;overflow:auto;border:1px solid #2a2a2a;border-radius:10px;padding:6px}
 
-	/* Modal Inventario: Selector de lotes — layout estable (Lote 17 chars completo + Fecha fija) */
-	#inv-lote-selector-modal .scroll{overflow-x:hidden}
+	/* Modal Inventario: Selector de lotes — Contenido por Letras */
+	#inv-lote-selector-modal .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 	#inv-lote-selector-table{width:100%;table-layout:fixed}
 	#inv-lote-selector-table th,
 	#inv-lote-selector-table td{
@@ -649,11 +649,20 @@ html[data-theme="light"] .customer-quick-cancel{
 	  text-align:right;
 	}
 
-	/* Columnas flexibles */
+	/* Contenido por Letras: centrado y cada valor corto permanece unido */
 	#inv-lote-selector-table th:nth-child(3),
-	#inv-lote-selector-table td:nth-child(3){white-space:normal;word-break:break-word}
+	#inv-lote-selector-table td:nth-child(3){text-align:center;white-space:normal}
 	#inv-lote-selector-table th:nth-child(4),
 	#inv-lote-selector-table td:nth-child(4){white-space:normal;word-break:break-word}
+	#inv-lote-selector-modal .inv-lote-content-summary{
+	  display:inline;
+	  white-space:normal;
+	  word-break:keep-all;
+	  overflow-wrap:normal;
+	  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+	  font-weight:900;
+	  letter-spacing:.02em;
+	}
 
 	/* Ajuste fino: liberar espacio */
 	#inv-lote-selector-table th:nth-child(2),
@@ -663,28 +672,17 @@ html[data-theme="light"] .customer-quick-cancel{
 	#inv-lote-selector-table th:nth-child(5),
 	#inv-lote-selector-table td:nth-child(5){padding-left:6px;padding-right:6px}
 
-	/* Evitar overflow por palabras largas en Estado/Notas (sin truncar Estado) */
-	#inv-lote-selector-table th:nth-child(3),
-	#inv-lote-selector-table td:nth-child(3),
+	/* Estado puede envolver sin forzar scroll general. */
 	#inv-lote-selector-table th:nth-child(4),
 	#inv-lote-selector-table td:nth-child(4){overflow-wrap:anywhere}
 
 	/* Acción: tap target cómodo sin empujar columnas */
 	#inv-lote-selector-table td:nth-child(5) button{min-height:36px;padding-top:8px;padding-bottom:8px;touch-action:manipulation}
 
-	/* Inventario: Selector de lotes — Notas máx 2 líneas (ellipsis solo aquí) */
 	#inv-lote-selector-modal .inv-lote-toolbar input{width:100%;min-width:0}
-	#inv-lote-selector-modal .note-wrap{display:block}
-	#inv-lote-selector-modal .note-clamp{
-	  display:-webkit-box;
-	  -webkit-box-orient:vertical;
-	  -webkit-line-clamp:2;
-	  overflow:hidden;
-	  text-overflow:ellipsis;
-	}
 
-	/* Responsive: evitar scroll horizontal en pantallas angostas */
-	@media (max-width:560px){
+	/* iPad vertical y móvil: cada lote se vuelve tarjeta, sin ocultar Contenido. */
+	@media (max-width:820px){
 	  #inv-lote-selector-table thead{display:none}
 	  #inv-lote-selector-table,
 	  #inv-lote-selector-table tbody,
@@ -695,7 +693,7 @@ html[data-theme="light"] .customer-quick-cancel{
 	    padding:10px 12px;
 	    border:1px solid #2a2a2a;
 	    border-radius:12px;
-	    background:#121212;
+	    background:var(--panel);
 	  }
 	  #inv-lote-selector-table td{border:0;padding:4px 0}
 	  #inv-lote-selector-table td:nth-child(1){
@@ -713,10 +711,12 @@ html[data-theme="light"] .customer-quick-cancel{
 	    font-weight:800;
 	  }
 	  #inv-lote-selector-table td:nth-child(3)::before{
-	    content:"Notas: ";
+	    content:"Contenido: ";
 	    opacity:.75;
 	    font-weight:800;
+	    font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
 	  }
+	  #inv-lote-selector-table td:nth-child(3){text-align:left;white-space:normal}
 	  #inv-lote-selector-table td:nth-child(5){padding-top:8px;text-align:left}
 	}
 

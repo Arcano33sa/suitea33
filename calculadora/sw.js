@@ -1,5 +1,5 @@
 /* Suite A33 — Service Worker (Calculadora de Producción) */
-try { importScripts('/assets/js/a33-release.js?v=4.20.97&r=55'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.97&r=56'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.97';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
@@ -13,7 +13,7 @@ const PRECACHE_URLS = [
   './manifest.webmanifest?v=4.20.97&r=12',
   './logo-icon-192.png',
   './logo-icon-512.png',
-  '/assets/js/a33-release.js?v=4.20.97&r=55',
+  '/assets/js/a33-release.js?v=4.20.97&r=56',
   '/assets/js/a33-storage.js?v=4.20.97&r=20',
   '/assets/js/a33-production.js?v=4.20.97&r=5',
   '/assets/js/a33-lot-code.js?v=4.20.97&r=6',

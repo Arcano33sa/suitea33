@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=22">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=23">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -30,7 +30,7 @@
     }
   })();
 </script>
-<link rel="stylesheet" href="styles.css?v=4.20.97&r=20">
+<link rel="stylesheet" href="styles.css?v=4.20.97&r=21">
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.97&r=13" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.97&r=13" />
   <script src="/assets/js/a33-theme.js?v=4.20.97&r=13"></script>
@@ -1584,7 +1584,7 @@
 	
 	    
 		<div class="row inv-lote-toolbar" style="grid-template-columns:1fr auto; gap:10px; margin-top:10px; align-items:center">
-		  <input id="inv-lote-selector-search" placeholder="Buscar por código o notas…" autocomplete="off" inputmode="search">
+		  <input id="inv-lote-selector-search" placeholder="Buscar por código…" autocomplete="off" inputmode="search">
 		  <button id="inv-lote-selector-clear" class="btn-outline btn-pill btn-pill-mini" type="button">Limpiar</button>
 		</div>
 		<div id="inv-lote-selector-msg" class="muted" style="margin-top:6px"></div>
@@ -1595,7 +1595,7 @@
 	          <tr>
 	            <th>Lote</th>
 	            <th>Fecha</th>
-	            <th>Nota</th>
+	            <th>Contenido</th>
 	            <th>Estado</th>
 	            <th>Acción</th>
 	          </tr>
@@ -1634,7 +1634,7 @@
 </nav>
 
 <script src="./vendor/xlsx.full.min.js?v=4.20.97&r=13"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.97&r=55"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.97&r=56"></script>
 
 <script src="/assets/js/a33-storage.js?v=4.20.97&r=20"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.97&r=14"></script>
@@ -1649,7 +1649,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m44').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m45').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1658,7 +1658,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m44')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m45')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1666,7 +1666,7 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.97&r=40"></script>
+<script src="app.js?v=4.20.97&r=41"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.97&r=13"></script>
 <script>
   (function(){
