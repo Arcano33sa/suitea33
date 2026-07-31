@@ -129,16 +129,16 @@ check(catJs.includes("row = list.find(c => c && String(c.id) === String(currentC
 check(catJs.includes("<td>${escapeHtml(getCustomerCellularCAT(c) || '')}</td>"), 'Celular vacío rompe render');
 
 // PWA/versionado coordinado.
-check(release.includes("const suiteVersion = '4.20.99';") && release.includes('const rev = 2;'), 'Versión general no quedó en 4.20.99 r2');
-check(posHtml.includes('styles.css?v=4.20.99&r=22'), 'POS no carga CSS final');
-check(posHtml.includes('app.js?v=4.20.99&r=47'), 'POS no carga JS final');
-check(posHtml.includes('manifest.webmanifest?v=4.20.99&r=28'), 'POS no carga manifest final');
-check(posSw.includes("const MODULE_CACHE_REV = '51';"), 'POS no incrementó caché');
-check(posSw.includes("'./index.html?v=4.20.99&r=35'"), 'POS no precachea HTML final');
-check(posSw.includes("'./styles.css?v=4.20.99&r=22'"), 'POS no precachea CSS final');
-check(posSw.includes("'./app.js?v=4.20.99&r=47'"), 'POS no precachea JS final');
-check(posSw.includes("'./manifest.webmanifest?v=4.20.99&r=28'"), 'POS no precachea manifest final');
-check(posManifest.start_url === './index.html?v=4.20.99&r=35', 'POS manifest no abre HTML final');
+check(release.includes("const suiteVersion = '4.20.97';") && release.includes('const rev = 3;'), 'Versión general no quedó en 4.20.97 r3');
+check(posHtml.includes('styles.css?v=4.20.97&r=20'), 'POS no carga CSS final');
+check(posHtml.includes('app.js?v=4.20.97&r=40'), 'POS no carga JS final');
+check(posHtml.includes('manifest.webmanifest?v=4.20.97&r=22'), 'POS no carga manifest final');
+check(posSw.includes("const MODULE_CACHE_REV = '44';"), 'POS no incrementó caché');
+check(posSw.includes("'./index.html?v=4.20.97&r=28'"), 'POS no precachea HTML final');
+check(posSw.includes("'./styles.css?v=4.20.97&r=20'"), 'POS no precachea CSS final');
+check(posSw.includes("'./app.js?v=4.20.97&r=40'"), 'POS no precachea JS final');
+check(posSw.includes("'./manifest.webmanifest?v=4.20.97&r=22'"), 'POS no precachea manifest final');
+check(posManifest.start_url === './index.html?v=4.20.97&r=28', 'POS manifest no abre HTML final');
 check(catHtml.includes('style.css?v=4.20.97&r=23'), 'Catálogos no carga CSS final');
 check(catHtml.includes('script.js?v=4.20.97&r=35'), 'Catálogos no carga JS final');
 check(catHtml.includes('manifest.webmanifest?v=4.20.97&r=12'), 'Catálogos no carga manifest final');
@@ -146,7 +146,7 @@ check(catJs.includes("serviceWorker.register('./sw.js?v=4.20.97&r=7')"), 'Catál
 check(catSw.includes("const MODULE_CACHE_REV = '39';"), 'Catálogos no incrementó caché');
 check(catSw.includes("'./manifest.webmanifest?v=4.20.97&r=12'"), 'Catálogos no precachea manifest final');
 check(catManifest.start_url === './index.html?v=4.20.97&r=32', 'Catálogos manifest no abre HTML final');
-check(posSw.includes('a33-release.js?v=4.20.99&r=61') && catSw.includes('a33-release.js?v=4.20.97&r=56'), 'SW no usa sus referencias release vigentes');
+check(posSw.includes('a33-release.js?v=4.20.97&r=55') && catSw.includes('a33-release.js?v=4.20.97&r=55'), 'SW no usa release final');
 check(!posJs.includes('localStorage.clear(') && !catJs.includes('localStorage.clear('), 'Se agregó borrado global de localStorage');
 check(!posJs.includes('indexedDB.deleteDatabase(') && !catJs.includes('indexedDB.deleteDatabase('), 'Se agregó borrado de IndexedDB');
 

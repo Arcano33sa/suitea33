@@ -6,14 +6,11 @@
 (function(global){
   'use strict';
 
-  const RELEASE = (global && global.A33_RELEASE) ? global.A33_RELEASE : null;
-  const VERSION = RELEASE && RELEASE.suiteVersion ? String(RELEASE.suiteVersion) : '4.20.99';
-  const REV = RELEASE && RELEASE.rev !== undefined && RELEASE.rev !== null
-    ? String(RELEASE.rev)
-    : '2'; // fallback coordinado con A33_RELEASE
+  const VERSION = '4.20.97';
+  const REV = '2'; // subir cuando haya que forzar limpiar caches sin cambiar VERSION
 
   const MODULE_REVISIONS = Object.freeze({
-    calculadora:'10', catalogos:'34', inventario:'18', lotes:'21', pedidos:'19', pos:'51'
+    calculadora:'10', catalogos:'34', inventario:'18', lotes:'21', pedidos:'19', pos:'34'
   });
 
   function cacheName(module){
