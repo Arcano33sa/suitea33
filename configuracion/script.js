@@ -2662,6 +2662,18 @@
 
   function openDBForRestore(dbName, version, schemaByStore){
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (ok, value) => {
+        if (settled){
+          if (ok && value && typeof value.close === 'function'){
+            try{ value.close(); }catch(_){ }
+          }
+          return;
+        }
+        settled = true;
+        if (ok) resolve(value);
+        else reject(value);
+      };
       const req = indexedDB.open(dbName, Number(version) || 1);
 
       req.onupgradeneeded = (e) => {
@@ -2698,8 +2710,17 @@
         }
       };
 
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error || new Error(`No se pudo abrir la DB para restaurar: ${dbName}`));
+      req.onblocked = () => finish(false, new Error(`La base ${dbName} está bloqueada por otra pestaña o PWA abierta.`));
+      req.onsuccess = () => {
+        const opened = req.result;
+        try{
+          opened.onversionchange = () => {
+            try{ opened.close(); }catch(_){ }
+          };
+        }catch(_){ }
+        finish(true, opened);
+      };
+      req.onerror = () => finish(false, req.error || new Error(`No se pudo abrir la DB para restaurar: ${dbName}`));
     });
   }
 
@@ -2742,37 +2763,229 @@
     return state;
   }
 
-  async function restoreDatabase(dbName, dbPayload, dbVersions, dbSchemas){
+  function restoreKeyPathValue(record, keyPath){
+    if (!record || keyPath == null) return undefined;
+    if (Array.isArray(keyPath)) return keyPath.map((key) => record?.[key]);
+    return record?.[keyPath];
+  }
+
+  function restoreKeyToken(value){
+    if (value === undefined) return '';
+    try{ return JSON.stringify(value); }catch(_){ return String(value); }
+  }
+
+  function restoreFieldComparable(value){
+    if (value === undefined) return '__A33_UNDEFINED__';
+    if (value === null) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
+    if (typeof value === 'boolean') return value;
+    return String(value);
+  }
+
+  function restoreError(dbName, storeName, message, cause, recordIndex){
+    const suffix = Number.isInteger(recordIndex) ? ` (registro ${recordIndex + 1})` : '';
+    const err = new Error(`${dbName} → ${storeName}${suffix}: ${message}`);
+    err.code = 'A33_IMPORT_RESTORE_FAILED';
+    err.dbName = dbName;
+    err.storeName = storeName;
+    if (Number.isInteger(recordIndex)) err.recordIndex = recordIndex;
+    if (cause) err.cause = cause;
+    return err;
+  }
+
+  async function validateDatabaseRestoreReadback(dbName, dbPayload, dbSchemas){
+    const payload = dbPayload && typeof dbPayload === 'object' ? dbPayload : {};
     const schemaByStore = dbSchemas?.[dbName] || {};
-    const version = dbVersions?.[dbName] || 1;
+    const summary = { dbName, stores:{} };
+    let readDb = null;
+    try{
+      readDb = await openExistingDB(dbName);
+      for (const [storeName, records] of Object.entries(payload)){
+        if (!readDb.objectStoreNames.contains(storeName)){
+          throw restoreError(dbName, storeName, 'el store no existe después de restaurar');
+        }
+        const expected = Array.isArray(records) ? records : [];
+        const tx = readDb.transaction(storeName, 'readonly');
+        const done = txDone(tx);
+        const store = tx.objectStore(storeName);
+        const actual = await getAllFromStore(store);
+        await done;
 
-    const db = await openDBForPartialMerge(dbName, dbPayload, dbVersions, dbSchemas);
+        if (actual.length !== expected.length){
+          throw restoreError(dbName, storeName, `readback incompleto: esperados ${expected.length}, leídos ${actual.length}`);
+        }
 
-    const stores = dbPayload && typeof dbPayload === 'object'
-      ? Object.entries(dbPayload)
-      : [];
+        const keyPath = store.keyPath ?? schemaByStore?.[storeName]?.keyPath ?? null;
+        const actualByKey = new Map();
+        if (keyPath != null){
+          for (const row of actual){
+            const key = restoreKeyToken(restoreKeyPathValue(row, keyPath));
+            if (key) actualByKey.set(key, row);
+          }
+          expected.forEach((row, index) => {
+            const expectedKeyValue = restoreKeyPathValue(row, keyPath);
+            if (expectedKeyValue === undefined) return;
+            const token = restoreKeyToken(expectedKeyValue);
+            if (!actualByKey.has(token)){
+              throw restoreError(dbName, storeName, `falta la clave ${token} en el readback`, null, index);
+            }
+          });
+        }
 
-    for (const [storeName, records] of stores){
-      if (!db.objectStoreNames.contains(storeName)) continue;
+        if (dbName === 'a33-pos' && storeName === 'products'){
+          const actualProductIds = new Set(actual.map((row) => String(row?.productId || '').trim()).filter(Boolean));
+          expected.forEach((row, index) => {
+            const productId = String(row?.productId || '').trim();
+            if (productId && !actualProductIds.has(productId)){
+              throw restoreError(dbName, storeName, `falta productId ${productId} en el readback`, null, index);
+            }
+          });
+        }
 
-      const arr = Array.isArray(records) ? records : [];
-      const tx = db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
+        if (dbName === 'a33-pos' && storeName === 'inventory'){
+          const protectedFields = [
+            'id','eventId','productId','productoId','catalogProductId','type','qty','source',
+            'loteCodigo','loteId','loteCargaId','loteGroupKey','loteProductId','loteLetra',
+            'loteNombreSnapshot','time'
+          ];
+          const actualMap = new Map(actual.map((row) => [restoreKeyToken(row?.id), row]));
+          expected.forEach((row, index) => {
+            const actualRow = actualMap.get(restoreKeyToken(row?.id));
+            if (!actualRow) throw restoreError(dbName, storeName, `no se leyó el movimiento id ${row?.id}`, null, index);
+            for (const field of protectedFields){
+              if (!Object.prototype.hasOwnProperty.call(row || {}, field)) continue;
+              if (restoreFieldComparable(actualRow?.[field]) !== restoreFieldComparable(row?.[field])){
+                throw restoreError(dbName, storeName, `el campo ${field} cambió durante la restauración`, null, index);
+              }
+            }
+          });
+        }
 
-      try{ store.clear(); }catch(_){ }
-      for (const rec of arr){
-        try{
-          const row = (dbName === 'a33-pos' && storeName === 'products')
-            ? normalizeImportedProductRecord(rec, '')
-            : rec;
-          store.put(row);
-        }catch(_){ }
+        if (dbName === 'a33-pos' && storeName === 'meta'){
+          const expectedCurrent = expected.find((row) => String(row?.id || '') === 'currentEventId');
+          if (expectedCurrent){
+            const actualCurrent = actual.find((row) => String(row?.id || '') === 'currentEventId');
+            if (!actualCurrent || String(actualCurrent.value) !== String(expectedCurrent.value)){
+              throw restoreError(dbName, storeName, 'meta.currentEventId no coincide después del readback');
+            }
+          }
+        }
+
+        summary.stores[storeName] = { expected:expected.length, actual:actual.length };
       }
-      await txDone(tx);
+      return summary;
+    }finally{
+      try{ readDb?.close(); }catch(_){ }
+    }
+  }
+
+  function validateImportedLocalStorageReadback(incoming){
+    const checked = [];
+    for (const [key, rawExpected] of Object.entries(incoming || {})){
+      if (!isSuiteLocalStorageKey(key) || isRetiredGateStorageKey(key)) continue;
+      const actual = window.A33Storage.getItem(key);
+      if (actual == null){
+        const err = new Error(`localStorage → ${key}: la clave no existe después de importar.`);
+        err.code = 'A33_IMPORT_LOCALSTORAGE_READBACK_FAILED';
+        err.storageKey = key;
+        throw err;
+      }
+      if (key === 'a33_catalog_deleted_product_ids_v2'){
+        checked.push(key);
+        continue;
+      }
+      if (key === AGENDA_BACKUP_KEY){
+        const expectedAgenda = JSON.stringify(agendaNormalizePayloadValue(rawExpected));
+        if (String(actual) !== expectedAgenda){
+          const err = new Error(`localStorage → ${key}: el readback no coincide después de normalizar Agenda.`);
+          err.code = 'A33_IMPORT_LOCALSTORAGE_READBACK_FAILED';
+          err.storageKey = key;
+          throw err;
+        }
+        checked.push(key);
+        continue;
+      }
+      if (String(actual) !== String(rawExpected ?? '')){
+        const err = new Error(`localStorage → ${key}: el readback no coincide con el respaldo.`);
+        err.code = 'A33_IMPORT_LOCALSTORAGE_READBACK_FAILED';
+        err.storageKey = key;
+        throw err;
+      }
+      checked.push(key);
+    }
+    return { checked:checked.length, keys:checked };
+  }
+
+  async function restoreDatabase(dbName, dbPayload, dbVersions, dbSchemas){
+    const payload = dbPayload && typeof dbPayload === 'object' ? dbPayload : {};
+    const storeNames = Object.keys(payload);
+    let writeDb = null;
+    try{
+      writeDb = await openDBForPartialMerge(dbName, payload, dbVersions, dbSchemas);
+      for (const storeName of storeNames){
+        if (!writeDb.objectStoreNames.contains(storeName)){
+          throw restoreError(dbName, storeName, 'el store incluido en el respaldo no existe');
+        }
+      }
+
+      if (storeNames.length){
+        const tx = writeDb.transaction(storeNames, 'readwrite');
+        const done = txDone(tx);
+        let failure = null;
+
+        for (const storeName of storeNames){
+          const store = tx.objectStore(storeName);
+          const records = Array.isArray(payload[storeName]) ? payload[storeName] : [];
+          let clearReq;
+          try{
+            clearReq = store.clear();
+          }catch(error){
+            failure = restoreError(dbName, storeName, error?.message || 'falló la limpieza previa del store', error);
+            try{ tx.abort(); }catch(_){ }
+            break;
+          }
+          clearReq.onerror = () => {
+            if (!failure) failure = restoreError(dbName, storeName, 'falló la limpieza previa del store', clearReq.error);
+            try{ tx.abort(); }catch(_){ }
+          };
+
+          for (let index = 0; index < records.length; index += 1){
+            if (failure) break;
+            const rec = records[index];
+            const row = (dbName === 'a33-pos' && storeName === 'products')
+              ? normalizeImportedProductRecord(rec, '')
+              : rec;
+            let req;
+            try{
+              req = store.put(row);
+            }catch(error){
+              failure = restoreError(dbName, storeName, error?.message || 'falló store.put()', error, index);
+              try{ tx.abort(); }catch(_){ }
+              break;
+            }
+            req.onerror = () => {
+              if (!failure) failure = restoreError(dbName, storeName, req.error?.message || 'falló la escritura del registro', req.error, index);
+              try{ tx.abort(); }catch(_){ }
+            };
+          }
+          if (failure) break;
+        }
+
+        try{
+          await done;
+        }catch(error){
+          throw failure || restoreError(dbName, 'transacción', error?.message || 'la transacción de restauración no se completó', error);
+        }
+        if (failure) throw failure;
+      }
+    }finally{
+      try{ writeDb?.close(); }catch(_){ }
+      writeDb = null;
     }
 
-    try{ db.close(); }catch(_){ }
+    return await validateDatabaseRestoreReadback(dbName, payload, dbSchemas);
   }
+
 
   function normalizeRecordToken(value){
     return String(value ?? '')
@@ -3288,10 +3501,11 @@
     const dbVersions = cleanObj?.meta?.dbVersions || {};
     const dbSchemas = cleanObj?.meta?.dbSchemas || {};
     const fileSuite = Object.keys(dbPayload || {}).filter((dbName) => isSuiteDbName(dbName) && !isRetiredGateDbName(dbName));
+    const restoreReadback = {};
 
-    // Reemplazo por bloques presentes: un JSON sin Productos jamás vacía ni reconstruye Productos.
+    // Reemplazo por bloques presentes: cada base confirma por readback lo que realmente quedó escrito.
     for (const dbName of fileSuite){
-      await restoreDatabase(dbName, dbPayload[dbName], dbVersions, dbSchemas);
+      restoreReadback[dbName] = await restoreDatabase(dbName, dbPayload[dbName], dbVersions, dbSchemas);
     }
     // Compatibilidad con respaldos anteriores a Materia Prima: el nuevo catálogo
     // queda en su estado inicial vacío, sin inventar ni precargar artículos.
@@ -3300,14 +3514,33 @@
     const incoming = sanitizeSuiteLocalStorageMap(incomingLocalStorage);
     for (const [k, v] of Object.entries(incoming)){
       if (!isSuiteLocalStorageKey(k) || isRetiredGateStorageKey(k)) continue;
-      if (k === 'a33_catalog_deleted_product_ids_v2') mergeLocalStorageValue(k, v);
-      else if (k === AGENDA_BACKUP_KEY){
-        const normalizedAgenda = agendaNormalizePayloadValue(v);
-        window.A33Storage.setItem(k,JSON.stringify(normalizedAgenda));
-      } else window.A33Storage.setItem(k, String(v ?? ''));
+      try{
+        if (k === 'a33_catalog_deleted_product_ids_v2'){
+          if (!mergeLocalStorageValue(k, v)) throw new Error('No se pudo fusionar la clave.');
+        } else if (k === AGENDA_BACKUP_KEY){
+          const normalizedAgenda = agendaNormalizePayloadValue(v);
+          window.A33Storage.setItem(k,JSON.stringify(normalizedAgenda));
+        } else {
+          window.A33Storage.setItem(k, String(v ?? ''));
+        }
+      }catch(error){
+        const err = new Error(`localStorage → ${k}: no se pudo restaurar la clave.`);
+        err.code = 'A33_IMPORT_LOCALSTORAGE_WRITE_FAILED';
+        err.storageKey = k;
+        err.cause = error;
+        throw err;
+      }
     }
+    const localStorageReadback = validateImportedLocalStorageReadback(incoming);
+
     if (window.A33ProductIntegrity && typeof window.A33ProductIntegrity.applyTombstonesToCatalog === 'function'){
       await window.A33ProductIntegrity.applyTombstonesToCatalog({ source:'importacion_completa' });
+    }
+
+    // Confirmación final posterior a normalizaciones: cierra/reabre y vuelve a leer cada store incluido.
+    const finalReadback = {};
+    for (const dbName of fileSuite){
+      finalReadback[dbName] = await validateDatabaseRestoreReadback(dbName, dbPayload[dbName], dbSchemas);
     }
 
     return {
@@ -3315,6 +3548,7 @@
       indexedDB:fileSuite.length,
       localStorage:Object.keys(incoming || {}).length,
       scopedReplacement:true,
+      readback:{ restore:restoreReadback, final:finalReadback, localStorage:localStorageReadback },
       rawMaterialsDefaulted,
       productsIncluded:!!(dbPayload?.['a33-pos'] && Object.prototype.hasOwnProperty.call(dbPayload['a33-pos'], 'products'))
     };
