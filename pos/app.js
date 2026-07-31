@@ -7,7 +7,7 @@ let db;
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.97';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m44');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r5-m47');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -17113,6 +17113,102 @@ async function importFromLoteToInventory(opts){
 // Lotes cargados en este evento (solo informativo)
 // Catálogos → Productos es la fuente oficial; no se migra ni reescribe inventario.
 
+
+// Airbag de shell PWA: si un HTML anterior se combina con app.js nuevo,
+// reconstruye únicamente el bloque visual de Lotes cargados. No toca IndexedDB,
+// localStorage, Firebase ni registros históricos.
+function ensureLotesEventoShellPOS(){
+  const doc = (typeof document !== 'undefined') ? document : null;
+  if (!doc) return null;
+
+  let block = doc.getElementById('lotes-evento-block');
+  if (block){
+    try{ block.hidden = false; block.removeAttribute('hidden'); block.removeAttribute('aria-hidden'); }catch(_){ }
+    try{ block.style.removeProperty('display'); block.style.removeProperty('visibility'); }catch(_){ }
+    return block;
+  }
+
+  const tab = doc.getElementById('tab-inventario');
+  if (!tab) return null;
+
+  // Compatibilidad con shells previos que sí tenían tabla/paneles, pero no acordeón.
+  const legacyTable = doc.getElementById('tbl-lotes-evento');
+  if (legacyTable && tab.contains(legacyTable)){
+    let legacyContainer = legacyTable.closest('.card') || legacyTable.parentElement;
+    if (legacyContainer && legacyContainer !== tab){
+      const content = doc.createElement('div');
+      content.id = 'lotes-evento-content';
+      content.className = 'lotes-block-content';
+      content.hidden = true;
+      Array.from(legacyContainer.childNodes).forEach((node)=> content.appendChild(node));
+
+      legacyContainer.id = 'lotes-evento-block';
+      legacyContainer.classList.remove('card');
+      legacyContainer.classList.add('lotes-block', 'is-collapsed');
+      legacyContainer.hidden = false;
+      legacyContainer.removeAttribute('aria-hidden');
+      legacyContainer.style.removeProperty('display');
+      legacyContainer.style.removeProperty('visibility');
+      legacyContainer.insertAdjacentHTML('afterbegin', `
+        <button id="lotes-evento-toggle" class="lotes-block-toggle" type="button" aria-expanded="false" aria-controls="lotes-evento-content">
+          <span class="lotes-block-toggle-main">
+            <span class="lotes-block-title">Lotes cargados</span>
+            <span class="lotes-block-count" aria-live="polite"><span aria-hidden="true">·</span> <span id="lotes-count">0</span> <span id="lotes-count-word">registros</span></span>
+          </span>
+          <span class="lotes-block-chevron" aria-hidden="true">⌄</span>
+        </button>`);
+      legacyContainer.appendChild(content);
+      const headRow = legacyTable.querySelector('thead tr');
+      if (headRow && !headRow.id) headRow.id = 'tbl-lotes-evento-head';
+      return legacyContainer;
+    }
+  }
+
+  const anchor = doc.getElementById('reempaque-block') || doc.getElementById('tbl-inv')?.closest('.table-scroll') || null;
+  const wrapper = doc.createElement('div');
+  wrapper.innerHTML = `
+    <div id="lotes-evento-block" class="lotes-block is-collapsed" data-a33-shell-recovered="1">
+      <button id="lotes-evento-toggle" class="lotes-block-toggle" type="button" aria-expanded="false" aria-controls="lotes-evento-content">
+        <span class="lotes-block-toggle-main">
+          <span class="lotes-block-title">Lotes cargados</span>
+          <span class="lotes-block-count" aria-live="polite"><span aria-hidden="true">·</span> <span id="lotes-count">0</span> <span id="lotes-count-word">registros</span></span>
+        </span>
+        <span class="lotes-block-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div id="lotes-evento-content" class="lotes-block-content" hidden>
+        <div class="lotes-block-toolbar">
+          <small class="muted">Se registra cuando usas “Agregar desde lote”.</small>
+          <div class="actions end">
+            <button id="btn-reverse-assign" class="btn-outline btn-pill btn-pill-mini" type="button">Reversar asignación</button>
+            <button id="btn-create-sobrante" class="btn-outline btn-pill btn-pill-mini" type="button">Crear lote sobrante</button>
+          </div>
+        </div>
+        <div id="sobrante-panel" class="sobrante-panel" style="display:none">
+          <div class="sobrante-panel-head"><div><div class="sobrante-title">Sobrantes → Lote hijo</div><small class="muted" id="sobrante-hint">Crea un lote DISPONIBLE y cierra el lote original (trazabilidad incluida).</small></div><div class="actions end"><button id="btn-sobrante-cancel" class="btn-outline btn-pill btn-pill-mini" type="button">Cancelar</button></div></div>
+          <div class="row" style="grid-template-columns:1fr"><div><label>Lote original</label><select id="sobrante-lote-select"></select><small class="muted" id="sobrante-lote-meta"></small></div></div>
+          <div id="sobrante-grid" class="sobrante-grid dynamic-product-grid" aria-label="Cantidades sobrantes por Producto con Receta y Letra"><small class="muted dynamic-grid-empty">Selecciona un lote para ver sus productos.</small></div>
+          <div class="actions end"><button id="btn-sobrante-create" class="btn-ok btn-pill btn-pill-mini" type="button">Crear lote sobrante</button></div>
+        </div>
+        <div id="reverso-panel" class="reverso-panel" style="display:none">
+          <div class="reverso-panel-head"><div><div class="reverso-title">Reverso de asignación</div><small class="muted">Devuelve el lote a DISPONIBLE sin borrar historia. Solo se permite si es seguro.</small></div><div class="actions end"><button id="btn-reverso-cancel" class="btn-outline btn-pill btn-pill-mini" type="button">Cancelar</button></div></div>
+          <div class="row" style="grid-template-columns:1fr"><div><label>Lote asignado</label><select id="reverso-lote-select"></select><small class="muted" id="reverso-lote-meta"></small></div></div>
+          <div id="reverso-grid" class="reverso-grid dynamic-product-grid" aria-label="Resumen dinámico de unidades a reversar"><small class="muted dynamic-grid-empty">Selecciona un lote para ver sus productos.</small></div>
+          <div class="warn"><small><b>Regla:</b> si el evento ya tuvo consumo/ventas de esas presentaciones (o fraccionamiento de galones), el reverso se bloquea para evitar inconsistencias.</small></div>
+          <div class="actions end"><button id="btn-reverso-do" class="btn-danger btn-pill btn-pill-mini" type="button">Reversar asignación</button></div>
+        </div>
+        <div class="table-scroll lotes-table-scroll" tabindex="0" aria-label="Tabla de lotes cargados">
+          <table id="tbl-lotes-evento" class="compact"><thead><tr id="tbl-lotes-evento-head"><th scope="col">Código/Nombre</th><th scope="col">Fecha/Hora</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>`;
+  block = wrapper.firstElementChild;
+  if (!block) return null;
+  if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(block, anchor);
+  else tab.appendChild(block);
+  return block;
+}
+
+
 function normalizeLotesLetterPOS(value){
   return String(value == null ? '' : value).trim().toUpperCase().replace(/\s+/g, '').slice(0, 4);
 }
@@ -17272,6 +17368,7 @@ let lotesEventoPendingModelPOS = null;
 let lotesEventoToggleLockUntilPOS = 0;
 
 function updateLotesEventoCountPOS(count){
+  ensureLotesEventoShellPOS();
   const n = Math.max(0, Number(count) || 0);
   const countEl = $('#lotes-count');
   const wordEl = $('#lotes-count-word');
@@ -17280,6 +17377,7 @@ function updateLotesEventoCountPOS(count){
 }
 
 function setLotesEventoExpandedPOS(expanded){
+  ensureLotesEventoShellPOS();
   const block = $('#lotes-evento-block');
   const toggle = $('#lotes-evento-toggle');
   const content = $('#lotes-evento-content');
@@ -17303,6 +17401,7 @@ function resetLotesEventoCollapsePOS(){
 }
 
 function bindLotesEventoToggleOncePOS(){
+  ensureLotesEventoShellPOS();
   const toggle = $('#lotes-evento-toggle');
   if (!toggle || toggle.dataset.bound === '1') return;
   toggle.dataset.bound = '1';
@@ -17492,6 +17591,7 @@ function buildLotesEventoModelPOS(entries, products){
 }
 
 function renderLotesEventoTablePOS(model, emptyMessage){
+  ensureLotesEventoShellPOS();
   const head = $('#tbl-lotes-evento-head');
   const tbody = $('#tbl-lotes-evento tbody');
   if (!head || !tbody) return;
@@ -24688,6 +24788,9 @@ async function restoreSeed(){
 
 // Init & bindings
 async function init(){
+  // Airbag previo a datos: recupera el bloque si el navegador sirvió un shell HTML anterior.
+  try{ ensureLotesEventoShellPOS(); }catch(err){ console.error('[A33][POS] No se pudo recuperar el shell de Lotes cargados', err); }
+
   // Paso 1: abrir base de datos POS
   try{
     await openDB();

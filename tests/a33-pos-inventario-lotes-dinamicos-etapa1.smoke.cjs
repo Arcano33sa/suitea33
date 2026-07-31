@@ -165,6 +165,7 @@ const toggleContext = vm.createContext({
   performance:{ now:()=>now },
   window:{ addEventListener:()=>{} },
   document:{ documentElement:{ dataset:{} } },
+  ensureLotesEventoShellPOS:()=>block,
   $:(selector)=> ({ '#lotes-evento-block':block, '#lotes-evento-toggle':toggle, '#lotes-evento-content':content }[selector] || null)
 });
 vm.runInContext('let lotesEventoPendingModelPOS=null; let lotesEventoToggleLockUntilPOS=0;\n' + [
@@ -184,12 +185,12 @@ check(toggle.attrs['aria-expanded'] === 'false' && content.hidden === true, 'Toq
 
 // PWA local del POS.
 check(html.includes('styles.css?v=4.20.97&r=22'), 'POS no carga CSS nuevo');
-check(html.includes('app.js?v=4.20.97&r=42'), 'POS no carga JS nuevo');
-check(html.includes('manifest.webmanifest?v=4.20.97&r=24'), 'POS no carga manifest nuevo');
-check(sw.includes("const MODULE_CACHE_REV = '46';"), 'No se incrementó caché POS');
-check(sw.includes("'./index.html?v=4.20.97&r=30'"), 'SW no precachea HTML nuevo');
+check(html.includes('app.js?v=4.20.97&r=43'), 'POS no carga JS nuevo');
+check(html.includes('manifest.webmanifest?v=4.20.97&r=25'), 'POS no carga manifest nuevo');
+check(sw.includes("const MODULE_CACHE_REV = '47';"), 'No se incrementó caché POS');
+check(sw.includes("'./index.html?v=4.20.97&r=31'"), 'SW no precachea HTML nuevo');
 check(sw.includes("'./styles.css?v=4.20.97&r=22'"), 'SW no precachea CSS nuevo');
-check(sw.includes("'./app.js?v=4.20.97&r=42'"), 'SW no precachea JS nuevo');
-check(manifest.start_url === './index.html?v=4.20.97&r=30', 'Manifest no abre HTML nuevo');
+check(sw.includes("'./app.js?v=4.20.97&r=43'"), 'SW no precachea JS nuevo');
+check(manifest.start_url === './index.html?v=4.20.97&r=31', 'Manifest no abre HTML nuevo');
 
 console.log('SMOKE OK — Suite A33 POS Inventario Lotes Dinámicos Etapa 1/2');

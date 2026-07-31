@@ -3,7 +3,7 @@
 */
 
 // A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.97&r=56'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.97&r=57'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
@@ -13,7 +13,7 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '1'; // POS cache bump local — Cierre Parte 4 Final
 
 const MODULE = 'pos';
-const MODULE_CACHE_REV = '46';
+const MODULE_CACHE_REV = '47';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -25,14 +25,14 @@ function isLegacySuiteCache(name){
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.97&r=30',
+  './index.html?v=4.20.97&r=31',
   './styles.css?v=4.20.97&r=22',
-  './app.js?v=4.20.97&r=42',
-  './manifest.webmanifest?v=4.20.97&r=24',
+  './app.js?v=4.20.97&r=43',
+  './manifest.webmanifest?v=4.20.97&r=25',
   './offline.html',
   './logo.png',
   './vendor/xlsx.full.min.js?v=4.20.97&r=13',
-  '/assets/js/a33-release.js?v=4.20.97&r=56',
+  '/assets/js/a33-release.js?v=4.20.97&r=57',
 
   '/assets/js/a33-input-ux.js?v=4.20.97&r=13',
   '/assets/js/a33-storage.js?v=4.20.97&r=20',
@@ -51,7 +51,7 @@ function sameOrigin(url){
 function isCriticalAsset(url){
   try{
     const p = String(url.pathname || '');
-    return p.endsWith('/app.js') || p.endsWith('/styles.css') || p.endsWith('/manifest.webmanifest');
+    return p.endsWith('/index.html') || p.endsWith('/app.js') || p.endsWith('/styles.css') || p.endsWith('/manifest.webmanifest');
   }catch(_){ return false; }
 }
 
@@ -98,7 +98,7 @@ self.addEventListener('activate', (event) => {
 
 async function handleNavigate(request){
   try{
-    const resp = await fetch(request);
+    const resp = await fetch(new Request(request, { cache:'no-store' }));
     if (resp && resp.status === 200){
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, resp.clone()).catch(() => {});
@@ -107,8 +107,8 @@ async function handleNavigate(request){
   }catch(_){
     const cache = await caches.open(CACHE_NAME);
     return (
+      (await cache.match('./index.html?v=4.20.97&r=31')) ||
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.97&r=30')) ||
       (await cache.match('./index.html', { ignoreSearch: true })) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||
