@@ -2,12 +2,13 @@
 const DB_NAME = 'a33-pos';
 const DB_VER = 37; // Materia Prima + cierre de esquema compartido a33-pos
 let db;
+let posDbOpenPromise = null;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.97';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.98';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r6-m48');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m49');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -5473,10 +5474,21 @@ function openDB(opts) {
 
   const timeoutMs = Number(o.timeoutMs || o.timeout || IDB_TIMEOUT_MS);
 
-  // Reusar conexión abierta si existe
-  if (db) return Promise.resolve(db);
+  // Reusar únicamente una conexión que todavía admita transacciones.
+  if (db){
+    try{
+      const probe = db.transaction('meta', 'readonly');
+      void probe;
+      return Promise.resolve(db);
+    }catch(error){
+      try{ db.close(); }catch(_){ }
+      db = null;
+      console.warn('[POS][IDB] conexión anterior inválida; se abrirá nuevamente.', error);
+    }
+  }
+  if (posDbOpenPromise) return posDbOpenPromise;
 
-  return new Promise((resolve, reject) => {
+  posDbOpenPromise = new Promise((resolve, reject) => {
     let settled = false;
     let timer = null;
     let sawUpgradeNeeded = false;
@@ -5749,6 +5761,7 @@ function openDB(opts) {
       finish(false, e);
     };
   });
+  return posDbOpenPromise.finally(()=>{ posDbOpenPromise = null; });
 }
 
 
@@ -6334,8 +6347,91 @@ async function deleteFinanzasEntriesForSalePOS(saleId) {
 // POS → Finanzas: sección (movimientos manuales)
 // ------------------------------
 function tx(name, mode='readonly'){ return db.transaction(name, mode).objectStore(name); }
-function getAll(name){ return new Promise((res,rej)=>{ const r=tx(name).getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); }); }
-function getOne(name, key){ return new Promise((res,rej)=>{ try{ const r=tx(name).get(key); r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error); }catch(err){ rej(err); } }); }
+async function getAll(name){
+  const stores = await readPosStoresFreshPOS([name]);
+  return Array.isArray(stores[name]) ? stores[name] : [];
+}
+async function getOne(name, key){
+  return await readPosOneFreshPOS(name, key, false);
+}
+
+function posIdbRequestPromisePOS(request){
+  return new Promise((resolve, reject)=>{
+    request.onsuccess = ()=> resolve(request.result);
+    request.onerror = ()=> reject(request.error || new Error('Falló una lectura de IndexedDB.'));
+  });
+}
+
+function posIdbTransactionDonePOS(transaction){
+  return new Promise((resolve, reject)=>{
+    transaction.oncomplete = ()=> resolve(true);
+    transaction.onabort = ()=> reject(transaction.error || new Error('La lectura de IndexedDB fue abortada.'));
+    transaction.onerror = ()=> reject(transaction.error || new Error('Falló la transacción de IndexedDB.'));
+  });
+}
+
+function isRecoverablePosIdbReadErrorPOS(error){
+  const name = String(error && (error.name || error.code) || '');
+  return ['InvalidStateError','TransactionInactiveError','NotFoundError','AbortError','VersionError','IDB_ABORT'].includes(name);
+}
+
+async function readPosOneFreshPOS(storeName, key, retried){
+  try{
+    const conn = await openDB();
+    if (!conn.objectStoreNames.contains(storeName)){
+      const err = new Error('Store no disponible: ' + storeName);
+      err.name = 'NotFoundError';
+      throw err;
+    }
+    const transaction = conn.transaction(storeName, 'readonly');
+    const done = posIdbTransactionDonePOS(transaction);
+    const value = await posIdbRequestPromisePOS(transaction.objectStore(storeName).get(key));
+    await done;
+    return value ?? null;
+  }catch(error){
+    if (!retried && isRecoverablePosIdbReadErrorPOS(error)){
+      console.warn('[POS][IDB] getOne inválido; reapertura única.', error);
+      try{ db?.close(); }catch(_){ }
+      db = null;
+      posDbOpenPromise = null;
+      await openDB();
+      return readPosOneFreshPOS(storeName, key, true);
+    }
+    throw error;
+  }
+}
+
+async function readPosStoresFreshPOS(storeNames, retried){
+  const names = Array.from(new Set((Array.isArray(storeNames) ? storeNames : []).map(String).filter(Boolean)));
+  if (!names.length) return {};
+  try{
+    const conn = await openDB();
+    const missing = names.filter((name)=> !conn.objectStoreNames.contains(name));
+    if (missing.length){
+      const err = new Error('Stores no disponibles: ' + missing.join(', '));
+      err.name = 'NotFoundError';
+      throw err;
+    }
+    const transaction = conn.transaction(names, 'readonly');
+    const done = posIdbTransactionDonePOS(transaction);
+    const pairs = await Promise.all(names.map(async (name)=>{
+      const rows = await posIdbRequestPromisePOS(transaction.objectStore(name).getAll());
+      return [name, Array.isArray(rows) ? rows : []];
+    }));
+    await done;
+    return Object.fromEntries(pairs);
+  }catch(error){
+    if (!retried && isRecoverablePosIdbReadErrorPOS(error)){
+      console.warn('[POS][IDB] lectura inválida; reapertura única para lectura fresca.', error);
+      try{ db?.close(); }catch(_){ }
+      db = null;
+      posDbOpenPromise = null;
+      await openDB();
+      return readPosStoresFreshPOS(names, true);
+    }
+    throw error;
+  }
+}
 function put(name, val){ return new Promise((res,rej)=>{ const r=tx(name,'readwrite').put(val); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function clearStore(name){
   return new Promise((res,rej)=>{
@@ -16639,39 +16735,63 @@ async function revertCupConsumptionFromSalePOS(sale){
 	  return st === 'DISPONIBLE';
 	}
 
-	// Lectura FRESCA de arcano33_lotes (sin cachear en memoria)
-	function readAllLotesFromSharedPOS(){
+	// Lectura FRESCA de una fuente de lotes (sin cachear en memoria).
+	function readLotesStorageKeyPOS(storageKey){
 	  try{
-	    // 1) Directo a localStorage (más fresco posible)
 	    try{
 	      if (typeof localStorage !== 'undefined' && localStorage && typeof localStorage.getItem === 'function'){
-	        const rawLS = localStorage.getItem('arcano33_lotes');
+	        const rawLS = localStorage.getItem(storageKey);
 	        if (rawLS != null){
 	          const parsedLS = JSON.parse(rawLS);
 	          return Array.isArray(parsedLS) ? parsedLS : [];
 	        }
 	      }
-	    }catch(_){ /* fallback */ }
+	    }catch(error){
+	      console.warn(`[POS][Lotes] No se pudo leer ${storageKey} directamente.`, error);
+	    }
 
-	    // 2) Wrapper A33Storage (multi-tab)
 	    if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
-	      const arr = A33Storage.sharedGet('arcano33_lotes', [], 'local');
+	      const arr = A33Storage.sharedGet(storageKey, [], 'local');
 	      return Array.isArray(arr) ? arr : [];
 	    }
 	    if (window.A33Storage && typeof A33Storage.getJSON === 'function'){
-	      const arr = A33Storage.getJSON('arcano33_lotes', []);
+	      const arr = A33Storage.getJSON(storageKey, []);
 	      return Array.isArray(arr) ? arr : [];
 	    }
 	    if (window.A33Storage && typeof A33Storage.getItem === 'function'){
-	      const raw = A33Storage.getItem('arcano33_lotes');
+	      const raw = A33Storage.getItem(storageKey);
 	      if (!raw) return [];
 	      const parsed = JSON.parse(raw);
 	      return Array.isArray(parsed) ? parsed : [];
 	    }
 	    return [];
-	  }catch(_){
+	  }catch(error){
+	    console.error(`[POS][Lotes] Lectura inválida de ${storageKey}.`, error);
 	    return null;
 	  }
+	}
+
+	function readAllLotesFromSharedPOS(){
+	  return readLotesStorageKeyPOS('arcano33_lotes');
+	}
+
+	function readAllHistoricalLotesSourcesPOS(){
+	  const current = readLotesStorageKeyPOS('arcano33_lotes');
+	  const archived = readLotesStorageKeyPOS('arcano33_lotes_archived');
+	  if (current === null || archived === null){
+	    const error = new Error('No se pudieron leer completamente las fuentes históricas de lotes.');
+	    error.code = 'A33_LOTES_HISTORY_READ_FAILED';
+	    throw error;
+	  }
+	  const archivedNormalized = archived.map((row)=>{
+	    if (!row || typeof row !== 'object') return row;
+	    return {
+	      ...row,
+	      loteId:row.loteId ?? row.originalId ?? row.id,
+	      id:row.id ?? row.originalId ?? row.loteId
+	    };
+	  });
+	  return current.concat(archivedNormalized);
 	}
 
 	async function renderInvLoteSelectorTablePOS(evId, opts){
@@ -17365,15 +17485,30 @@ function inventoryIdentityIdCandidatesPOS(identity, ref){
 }
 
 let lotesEventoPendingModelPOS = null;
+let lotesEventoReadErrorPOS = null;
 let lotesEventoToggleLockUntilPOS = 0;
 
 function updateLotesEventoCountPOS(count){
   ensureLotesEventoShellPOS();
-  const n = Math.max(0, Number(count) || 0);
   const countEl = $('#lotes-count');
   const wordEl = $('#lotes-count-word');
+  if (count == null || !Number.isFinite(Number(count))){
+    if (countEl) countEl.textContent = '—';
+    if (wordEl) wordEl.textContent = 'sin lectura';
+    return;
+  }
+  const n = Math.max(0, Number(count) || 0);
   if (countEl) countEl.textContent = String(n);
   if (wordEl) wordEl.textContent = n === 1 ? 'registro' : 'registros';
+}
+
+function renderLotesEventoReadErrorPOS(message){
+  ensureLotesEventoShellPOS();
+  const head = $('#tbl-lotes-evento-head');
+  const tbody = $('#tbl-lotes-evento tbody');
+  if (head) head.innerHTML = '<th scope="col">Histórico de lotes</th>';
+  if (tbody) tbody.innerHTML = `<tr><td><small class="muted">${escapeHtml(message || 'No se pudo leer el historial de lotes. Volvé a entrar a Inventario para reintentar.')}</small></td></tr>`;
+  updateLotesEventoCountPOS(null);
 }
 
 function setLotesEventoExpandedPOS(expanded){
@@ -17387,7 +17522,9 @@ function setLotesEventoExpandedPOS(expanded){
   content.hidden = !next;
   block.classList.toggle('is-expanded', next);
   block.classList.toggle('is-collapsed', !next);
-  if (next && lotesEventoPendingModelPOS){
+  if (next && typeof lotesEventoReadErrorPOS !== 'undefined' && lotesEventoReadErrorPOS){
+    renderLotesEventoReadErrorPOS(lotesEventoReadErrorPOS);
+  } else if (next && lotesEventoPendingModelPOS){
     const pending = lotesEventoPendingModelPOS;
     lotesEventoPendingModelPOS = null;
     renderLotesEventoTablePOS(pending.model, pending.emptyMessage);
@@ -17983,22 +18120,24 @@ function flattenLotesReadGroupsPOS(groups){
 }
 
 async function getLotesCargadosEventoReadEntriesPOS(eventId){
-  const validKey = normalizeLotesReadEventIdPOS(eventId);
-  if (!validKey) return { entries:[], products:[], event:null, modernGroups:0, historicalGroups:0 };
-  const [allInventory, products, events] = await Promise.all([
-    getAll('inventory').catch(()=>[]),
-    getAll('products').catch(()=>[]),
-    getAll('events').catch(()=>[])
-  ]);
-  const matcher = buildLotesReadEventMatcherPOS(eventId, events);
-  const productIndex = buildProductIdentityIndexPOS(products || []);
+  const stores = await readPosStoresFreshPOS(['inventory','products','events','meta']);
+  const metaCurrent = (stores.meta || []).find((row)=> String(row && row.id || '') === 'currentEventId');
+  const resolvedEventId = normalizeLotesReadEventIdPOS(eventId) ? eventId : metaCurrent?.value;
+  const validKey = normalizeLotesReadEventIdPOS(resolvedEventId);
+  if (!validKey) return { entries:[], products:[], event:null, modernGroups:0, historicalGroups:0, uniqueGroups:0 };
+
+  const allInventory = Array.isArray(stores.inventory) ? stores.inventory : [];
+  const products = Array.isArray(stores.products) ? stores.products : [];
+  const events = Array.isArray(stores.events) ? stores.events : [];
+  const matcher = buildLotesReadEventMatcherPOS(resolvedEventId, events);
+  const productIndex = buildProductIdentityIndexPOS(products);
   const modern = collectModernLotesReadGroupsPOS(allInventory, matcher);
-  const historicalSource = readAllLotesFromSharedPOS();
-  const historical = collectHistoricalLotesReadGroupsPOS(Array.isArray(historicalSource) ? historicalSource : [], matcher);
+  const historicalSource = readAllHistoricalLotesSourcesPOS();
+  const historical = collectHistoricalLotesReadGroupsPOS(historicalSource, matcher);
   const unique = dedupeLotesReadGroupsPOS(modern.concat(historical), productIndex);
   return {
     entries:flattenLotesReadGroupsPOS(unique),
-    products:Array.isArray(products) ? products : [],
+    products,
     event:matcher.event || null,
     modernGroups:modern.length,
     historicalGroups:historical.length,
@@ -18182,20 +18321,32 @@ function renderLotesEventoTablePOS(model, emptyMessage){
 
 async function renderLotesCargadosEvento(eventId, options={}){
   bindLotesEventoToggleOncePOS();
-  const readResult = eventId != null && String(eventId).trim() !== ''
-    ? await getLotesCargadosEventoReadEntriesPOS(eventId)
-    : { entries:[], products:[] };
-  const model = buildLotesEventoModelPOS(readResult.entries, readResult.products);
-  updateLotesEventoCountPOS(model.rows.length);
-  const toggle = $('#lotes-evento-toggle');
-  const expanded = !!(toggle && toggle.getAttribute('aria-expanded') === 'true');
-  if (expanded || options.forceRender){
+  try{
+    const readResult = eventId != null && String(eventId).trim() !== ''
+      ? await getLotesCargadosEventoReadEntriesPOS(eventId)
+      : { entries:[], products:[] };
+    const model = buildLotesEventoModelPOS(readResult.entries, readResult.products);
+    lotesEventoReadErrorPOS = null;
+    updateLotesEventoCountPOS(model.rows.length);
+    const toggle = $('#lotes-evento-toggle');
+    const expanded = !!(toggle && toggle.getAttribute('aria-expanded') === 'true');
+    if (expanded || options.forceRender){
+      lotesEventoPendingModelPOS = null;
+      renderLotesEventoTablePOS(model, options.emptyMessage);
+    } else {
+      lotesEventoPendingModelPOS = { model, emptyMessage:options.emptyMessage || '' };
+    }
+    return model;
+  }catch(error){
+    console.error('[POS][Lotes cargados] No se pudo leer el histórico.', error);
     lotesEventoPendingModelPOS = null;
-    renderLotesEventoTablePOS(model, options.emptyMessage);
-  } else {
-    lotesEventoPendingModelPOS = { model, emptyMessage:options.emptyMessage || '' };
+    lotesEventoReadErrorPOS = 'No se pudo leer el historial de lotes. Volvé a entrar a Inventario para reintentar.';
+    updateLotesEventoCountPOS(null);
+    const toggle = $('#lotes-evento-toggle');
+    const expanded = !!(toggle && toggle.getAttribute('aria-expanded') === 'true');
+    if (expanded || options.forceRender) renderLotesEventoReadErrorPOS(lotesEventoReadErrorPOS);
+    return { columns:[], rows:[], readError:true, error };
   }
-  return model;
 }
 
 // ==============================
@@ -20655,7 +20806,7 @@ async function renderInventario(){
     try{ await renderReempaqueHistoryPOS(null); }catch(_){ }
 
     // Limpia el bloque informativo de lotes sin perder el encabezado dinámico.
-    try{ await renderLotesCargadosEvento(null, { emptyMessage:'No hay eventos.' }); }catch(_){ updateLotesEventoCountPOS(0); }
+    try{ await renderLotesCargadosEvento(null, { emptyMessage:'No hay eventos.' }); }catch(error){ console.error('[POS][Lotes cargados] No-event render error.', error); }
 
     const tr = document.createElement('tr');
     tr.innerHTML = '<td colspan="8">No hay eventos. Crea uno en la pestaña Vender.</td>';
