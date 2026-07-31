@@ -2,27 +2,29 @@
 
 ## Cambios aplicados
 
-- Selector actualizado a: Lote, Fecha, Contenido, Estado y Acción.
-- Nota retirada únicamente del selector de POS; el dato original permanece intacto en Lotes.
-- Resumen dinámico construido con la Letra vigente de Catálogo → Productos.
-- Selector y aplicación usan una única función para resolver cantidades realmente disponibles.
-- Cantidad disponible igual a cero o negativa ya no cae a la producción original.
-- Prevención de duplicado del mismo producto y consolidación visual por Letra.
+- Selector conservado como: Lote, Fecha, Contenido, Estado y Acción.
+- Nota retirada únicamente del selector; el dato original permanece intacto en Lotes.
+- Resolución reforzada de Productos con `productId`, `id` estable, `internalId`, `productInternalId` y `catalogInternalId`.
+- Lectura compatible con `cantidadDisponible`, `cantidadDisponibleExiste`, `cantidadProducida`, `cantidadBase` y fuentes contractuales posteriores.
+- Un cero disponible confirmado conserva autoridad y no cae a la producción original.
+- Una disponibilidad marcada como inexistente permite recuperar la cantidad producida legítima.
+- Las fuentes se recorren sin sumar dos veces el mismo producto y sin duplicar Letras.
+- Contenido visual separado del estado utilizable; la aplicación continúa protegida por el estado real del lote.
+- Selector y aplicación reutilizan la misma función de cantidades y el mismo resumen.
 - Confirmación: `Lote aplicado: “CÓDIGO” · CONTENIDO · TOTAL unidad/unidades`.
-- Responsive para desktop, iPad horizontal, iPad vertical y móvil, con desplazamiento contenido dentro del modal.
-- Release general coordinado: 4.20.97 r4. Caché POS: m45.
+- Lectura de Productos con cierre y reapertura defensiva de IndexedDB ante conexión inválida, con un solo reintento.
+- Release general coordinado: 4.20.97 r5. Caché POS: m46.
 
 ## Validación ejecutada
 
 - `node --check` sobre todos los JavaScript modificados.
-- Smoke funcional con fixtures reales de contrato Lotes → POS: 2G, 3D, Letra dinámica T, cantidades cero, negativas y fila duplicada.
-- Render real de la tabla simulado con DOM funcional: cinco columnas, Contenido visible y Nota ausente.
-- Aplicación real de la función de carga: tres movimientos legítimos, total 7, sin duplicados.
-- Segundo intento del mismo lote bloqueado sin nuevos movimientos.
+- Smoke funcional reforzado con variantes reales de identidad de Producto y contrato de Lotes.
+- Verificados: `2G 3D 2T`, total 7, Letra dinámica, cero exacto, cero placeholder, `null` sin snapshot, fuente alternativa y fila duplicada.
+- Render de cinco columnas con Contenido visible y Nota ausente.
+- Aplicación de tres movimientos legítimos, conservación de Nota y bloqueo de una segunda carga.
 - Singular y plural verificados: `1 unidad` y `7 unidades`.
-- Nota original conservada después de aplicar el lote.
-- Regresiones aprobadas: Cliente Rápido, Efectivo, contratos de disponibilidad de Lotes, código de lote y Centro de Mando.
-- PWA verificada por coherencia de release, manifest, query strings, precaché y cache name.
-- Módulos protegidos comparados byte a byte contra la base: Lotes, Inventario independiente, Finanzas y Catálogos sin cambios de lógica.
+- Reapertura defensiva de la lectura de Productos verificada con un único reintento.
+- Regresiones funcionales verificadas para Cliente Rápido, Efectivo y contratos de disponibilidad de Lotes, normalizando únicamente las aserciones antiguas de versión al release actual.
+- PWA verificada por coherencia de release, manifest, query strings, precaché y nombre de caché.
 
-La validación física en Safari/iPad o una PWA instalada requiere dispositivo real. Dentro del entorno se ejecutó smoke funcional automatizado sobre la lógica efectiva de render y carga, no una simple búsqueda de strings.
+El navegador Chromium disponible en el entorno bloquea por política organizacional los enlaces locales y `file://`; por ello no se declara una prueba física de PWA instalada. La validación ejecutada cubre la lógica efectiva de lectura, render, carga, persistencia simulada y prevención de duplicados, no una simple búsqueda de strings.

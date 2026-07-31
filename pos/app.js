@@ -10105,13 +10105,27 @@ function catalogProductStableIdPOS(product){
       return String(window.A33Products.getProductId(product) || '').trim();
     }
   }catch(_){ }
-  return String(product.productId ?? product.productoId ?? product.catalogProductId ?? '').trim();
+  const explicit = String(product.productId ?? product.productoId ?? product.catalogProductId ?? '').trim();
+  if (explicit) return explicit;
+  const rawId = String(product.id ?? '').trim();
+  return rawId && !(Number.isFinite(Number(rawId)) && Number(rawId) > 0) ? rawId : '';
 }
 
 function catalogProductInternalIdPOS(product){
   if (!product || typeof product !== 'object') return null;
-  const n = Number(product.id);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  const candidates = [
+    product.internalId,
+    product.productInternalId,
+    product.catalogInternalId,
+    product.legacyProductId,
+    product.idInternoProducto,
+    product.id
+  ];
+  for (const value of candidates){
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
 }
 
 // Resolución centralizada de identidad de Producto.
@@ -10184,7 +10198,7 @@ function collectProductIdentityCandidatesPOS(ref){
 
     const stableFields = [
       value.productId, value.productoId, value.catalogProductId, value.idProducto,
-      value.stableProductId, value.productStableId
+      value.stableProductId, value.productStableId, value.id
     ];
     stableFields.forEach((candidate) => {
       push(stableIds, candidate);
@@ -10959,48 +10973,98 @@ function lotTotalsForKeyPOS(fifo, presKey){
   return { loaded, remaining };
 }
 
-function lotesPOSContractRowsPOS(lote){
+function lotesPOSContractSourcesPOS(lote){
   if (!lote || typeof lote !== 'object') return [];
-  const candidates = [];
-  if (Array.isArray(lote.disponibilidadPOS)) candidates.push(lote.disponibilidadPOS);
-  if (lote.salidaPOS && Array.isArray(lote.salidaPOS.productos)) candidates.push(lote.salidaPOS.productos);
-  if (Array.isArray(lote.productosProducidos)) candidates.push(lote.productosProducidos);
-  if (Array.isArray(lote.productosDinamicos)) candidates.push(lote.productosDinamicos);
-  if (Array.isArray(lote.productos)) candidates.push(lote.productos);
-  if (Array.isArray(lote.itemsProducidos)) candidates.push(lote.itemsProducidos);
-  for (const arr of candidates){
-    const clean = (arr || []).filter(x => x && typeof x === 'object');
-    if (clean.length) return clean;
+  const candidates = [
+    ['disponibilidadPOS', lote.disponibilidadPOS],
+    ['salidaPOS.productos', lote.salidaPOS && lote.salidaPOS.productos],
+    ['productosProducidos', lote.productosProducidos],
+    ['productosDinamicos', lote.productosDinamicos],
+    ['productos', lote.productos],
+    ['itemsProducidos', lote.itemsProducidos]
+  ];
+  const out = [];
+  const seenArrays = new Set();
+  for (const [source, arr] of candidates){
+    if (!Array.isArray(arr) || seenArrays.has(arr)) continue;
+    seenArrays.add(arr);
+    const rows = arr.filter(x => x && typeof x === 'object');
+    if (rows.length) out.push({ source, rows });
   }
-  return [];
+  return out;
+}
+
+// Compatibilidad para consumidores existentes: conserva la primera fuente legible.
+function lotesPOSContractRowsPOS(lote){
+  const sources = lotesPOSContractSourcesPOS(lote);
+  return sources.length ? sources[0].rows : [];
+}
+
+function parseLoteContractQtyPOS(value){
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw || raw.toLowerCase() === 'pendiente') return null;
+  const n = Number(raw.replace(',', '.'));
+  return Number.isFinite(n) ? Math.max(0, n) : null;
+}
+
+function parseLoteAvailabilityFlagPOS(value){
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
+  const raw = String(value == null ? '' : value).trim().toLowerCase();
+  if (['true','1','si','sí','yes','on'].includes(raw)) return true;
+  if (['false','0','no','off'].includes(raw)) return false;
+  return null;
+}
+
+// Devuelve cantidad + nivel de autoridad. Un cero exacto bloquea cualquier caída
+// posterior a producción original; una disponibilidad marcada como inexistente
+// permite usar cantidadProducida/cantidadBase de esa misma fila o de otra fuente.
+function lotesPOSQtyInfoFromContractRowPOS(row){
+  if (!row || typeof row !== 'object') return { qty:0, exact:false, hasValue:false, field:'' };
+  const hasOwn = (key) => Object.prototype.hasOwnProperty.call(row, key);
+  const exactFlag = hasOwn('cantidadDisponibleExiste')
+    ? parseLoteAvailabilityFlagPOS(row.cantidadDisponibleExiste)
+    : null;
+  const availabilitySource = String(row.disponibilidadFuente || '').trim().toLowerCase();
+  const sourceWithoutSnapshot = availabilitySource.includes('sin_snapshot')
+    || availabilitySource.includes('pendiente')
+    || availabilitySource.includes('unknown');
+
+  if (hasOwn('cantidadDisponible')){
+    const qty = parseLoteContractQtyPOS(row.cantidadDisponible);
+    const exact = exactFlag === true || (exactFlag == null && !sourceWithoutSnapshot && qty != null);
+    if (exact){
+      return { qty:qty == null ? 0 : qty, exact:true, hasValue:true, field:'cantidadDisponible' };
+    }
+    // exactFlag=false / sin snapshot: no considerar el cero placeholder como saldo real.
+  }
+
+  for (const field of ['disponible','remaining','cantidadRestante']){
+    if (!hasOwn(field)) continue;
+    const qty = parseLoteContractQtyPOS(row[field]);
+    if (qty != null) return { qty, exact:true, hasValue:true, field };
+  }
+
+  for (const field of ['cantidadProducida','cantidadBase','loaded','cantidad','unidades','qty','quantity']){
+    if (!hasOwn(field)) continue;
+    const qty = parseLoteContractQtyPOS(row[field]);
+    if (qty != null) return { qty, exact:false, hasValue:true, field };
+  }
+
+  return { qty:0, exact:false, hasValue:false, field:'' };
 }
 
 function lotesPOSQtyFromContractRowPOS(row){
-  if (!row || typeof row !== 'object') return 0;
-  const preferred = [
-    row.cantidadDisponible,
-    row.disponible,
-    row.remaining,
-    row.cantidadRestante,
-    row.cantidadProducida,
-    row.cantidad,
-    row.unidades,
-    row.qty,
-    row.quantity
-  ];
-  for (const v of preferred){
-    if (v == null || String(v).trim() === '' || String(v).trim().toLowerCase() === 'pendiente') continue;
-    const n = Number(String(v).replace(',', '.'));
-    // La primera cantidad explícita y numérica manda, incluso cuando es 0.
-    // Así un lote agotado no cae por error a cantidadProducida/cantidad original.
-    if (Number.isFinite(n)) return n > 0 ? n : 0;
-  }
-  return 0;
+  return lotesPOSQtyInfoFromContractRowPOS(row).qty;
 }
 
-function resolveProductFromLoteContractRowPOS(row, products){
-  const list = Array.isArray(products) ? products : [];
-  const identity = resolveCatalogProductIdentityPOS(row, list, { allowLegacy:true });
+function resolveProductFromLoteContractRowPOS(row, productsOrIndex){
+  const index = productsOrIndex && productsOrIndex.__a33ProductIdentityIndex
+    ? productsOrIndex
+    : buildProductIdentityIndexPOS(productsOrIndex);
+  const list = index.list || [];
+  const identity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
   if (identity.ok) return identity.product;
 
   // Compatibilidad muy antigua: legacyField representa P/M/D/L/G, no una identidad oficial.
@@ -11012,7 +11076,6 @@ function resolveProductFromLoteContractRowPOS(row, products){
   return null;
 }
 
-
 function normalizeLoteContentLetterPOS(value){
   return productIdentityNormPOS(value).toUpperCase();
 }
@@ -11023,51 +11086,65 @@ function formatLoteContentQtyPOS(value){
   return String(Number.isInteger(n) ? n : Number(n.toFixed(3)));
 }
 
-// Fuente única para selector + aplicación: resuelve exactamente las unidades disponibles
-// que POS cargará y construye el resumen visual sin persistir texto derivado.
+// Fuente única para selector + aplicación. Consolida contratos modernos, snapshots
+// sin disponibilidad exacta y productos producidos sin duplicar ni persistir derivados.
 function buildLoteAvailableLoadPlanPOS(lote, products){
-  if (!loteIsUsablePOS(lote)) return { items:[], total:0, summary:'', parts:[] };
+  if (!lote || typeof lote !== 'object') return { items:[], total:0, summary:'', parts:[], unresolved:[] };
   const list = Array.isArray(products) ? products : [];
-  const items = [];
-  const seenProducts = new Set();
+  const index = buildProductIdentityIndexPOS(list);
+  const selectedByProduct = new Map();
+  const unresolved = [];
 
-  const appendItem = (row, prod, qty, source) => {
-    const n = Number(qty);
-    if (!prod || !Number.isFinite(n) || n <= 0) return;
+  const considerRow = (row, source) => {
+    const qtyInfo = lotesPOSQtyInfoFromContractRowPOS(row);
+    if (!qtyInfo.hasValue) return;
 
-    const identity = resolveCatalogProductIdentityPOS(prod, list, { allowLegacy:true });
-    const productInternalId = catalogProductInternalIdPOS(prod);
+    const prod = resolveProductFromLoteContractRowPOS(row, index);
+    if (!prod){
+      unresolved.push({ source, row, reason:'PRODUCT_UNRESOLVED' });
+      return;
+    }
+
+    const identity = resolveCatalogProductIdentityPOS(prod, index, { allowLegacy:true });
+    const productInternalId = identity.ok ? identity.internalId : catalogProductInternalIdPOS(prod);
     const stableId = identity.ok ? identity.stableId : catalogProductStableIdPOS(prod);
     const letter = normalizeLoteContentLetterPOS(identity.ok ? identity.letter : (prod.letra ?? prod.Letra ?? prod.letter));
-    if (!productInternalId || !letter) return;
+    if (!productInternalId || !letter){
+      unresolved.push({ source, row, reason:!productInternalId ? 'INTERNAL_ID_UNRESOLVED' : 'LETTER_UNRESOLVED' });
+      return;
+    }
 
     const productKey = stableId ? ('PID:' + stableId) : ('IID:' + productInternalId);
-    if (seenProducts.has(productKey)) return;
-    seenProducts.add(productKey);
-
-    const unitCost = saleCostFromFieldsPOS(row) || saleCostFromFieldsPOS(lote);
-    items.push({
-      productId: productInternalId,
-      qty:n,
-      unitCost,
-      nombreSnapshot: row && (row.nombreSnapshot || row.nombre || row.name) || prod.name || prod.nombre || '',
-      loteProductId: row && (row.productId ?? row.productoId) != null ? (row.productId ?? row.productoId) : null,
+    const candidate = {
+      productId:productInternalId,
+      qty:qtyInfo.qty,
+      exact:qtyInfo.exact,
+      unitCost:saleCostFromFieldsPOS(row) || saleCostFromFieldsPOS(lote),
+      nombreSnapshot:row && (row.nombreSnapshot || row.nombre || row.name) || prod.name || prod.nombre || '',
+      loteProductId:row && (row.productId ?? row.productoId) != null ? (row.productId ?? row.productoId) : null,
       letra:letter,
-      source:source || ''
-    });
+      source:source || '',
+      qtyField:qtyInfo.field
+    };
+
+    const existing = selectedByProduct.get(productKey);
+    if (!existing){
+      selectedByProduct.set(productKey, candidate);
+      return;
+    }
+    // Una disponibilidad exacta de una fuente prioritaria manda, incluso si es cero.
+    if (existing.exact) return;
+    // Una fuente posterior exacta corrige un snapshot anterior no concluyente.
+    if (candidate.exact) selectedByProduct.set(productKey, candidate);
   };
 
-  const contractRows = lotesPOSContractRowsPOS(lote);
-  if (contractRows.length){
-    for (const row of contractRows){
-      const qty = lotesPOSQtyFromContractRowPOS(row);
-      if (!(qty > 0)) continue;
-      const prod = resolveProductFromLoteContractRowPOS(row, list);
-      appendItem(row, prod, qty, 'lotes_productId');
-    }
-  } else {
-    // Compatibilidad de lectura legacy. Los nombres solo resuelven el producto;
-    // la Letra mostrada siempre sale del producto vigente en Catálogos.
+  const sources = lotesPOSContractSourcesPOS(lote);
+  for (const source of sources){
+    for (const row of source.rows) considerRow(row, source.source);
+  }
+
+  // Compatibilidad legacy solo cuando no existe ninguna identidad contractual resuelta.
+  if (!selectedByProduct.size){
     const norm = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
     const legacyRows = [
       { field:'pulso', name:'Pulso 250ml' },
@@ -11077,18 +11154,19 @@ function buildLoteAvailableLoadPlanPOS(lote, products){
       { field:'galon', name:'Galón 3720 ml' }
     ];
     for (const legacy of legacyRows){
-      const qty = Number.parseInt(String(lote && lote[legacy.field] != null ? lote[legacy.field] : '0'), 10);
-      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const qty = parseLoteContractQtyPOS(lote && lote[legacy.field]);
+      if (!(qty > 0)) continue;
       let prod = list.find(p => norm(p && (p.name || p.nombre)) === norm(legacy.name))
         || list.find(p => p && mapProductNameToFinishedId(p.name || p.nombre || '') === legacy.field)
         || null;
       if (!prod && legacy.field === 'galon'){
         prod = list.find(p => norm(p && (p.name || p.nombre)) === norm('Galón 3750 ml')) || null;
       }
-      appendItem({ legacyField:legacy.field }, prod, qty, 'lotes_legacy');
+      if (prod) considerRow({ legacyField:legacy.field, cantidad:qty }, 'lotes_legacy');
     }
   }
 
+  const items = Array.from(selectedByProduct.values()).filter(item => Number.isFinite(Number(item.qty)) && Number(item.qty) > 0);
   const byLetter = new Map();
   for (const item of items){
     const letter = normalizeLoteContentLetterPOS(item.letra);
@@ -11101,8 +11179,31 @@ function buildLoteAvailableLoadPlanPOS(lote, products){
     const formatted = formatLoteContentQtyPOS(qty);
     if (formatted) parts.push(formatted + letter);
   }
-  const total = items.reduce((sum, item) => sum + (Number.isFinite(Number(item.qty)) && Number(item.qty) > 0 ? Number(item.qty) : 0), 0);
-  return { items, total, summary:parts.join(' '), parts };
+  const total = items.reduce((sum, item) => sum + Number(item.qty), 0);
+  return { items, total, summary:parts.join(' '), parts, unresolved };
+}
+
+function isRecoverableLoteProductsReadErrorPOS(error){
+  const name = String(error && error.name || '').trim();
+  const message = String(error && error.message || '').toLowerCase();
+  return ['InvalidStateError','TransactionInactiveError','NotFoundError','AbortError'].includes(name)
+    || message.includes('database connection is closing')
+    || message.includes('transaction')
+    || message.includes('not found');
+}
+
+async function readProductsForLotePlanPOS(){
+  try{
+    const rows = await getAll('products');
+    return Array.isArray(rows) ? rows : [];
+  }catch(firstError){
+    if (!isRecoverableLoteProductsReadErrorPOS(firstError)) throw firstError;
+    try{ if (db && typeof db.close === 'function') db.close(); }catch(_){ }
+    db = null;
+    await openDB();
+    const rows = await getAll('products');
+    return Array.isArray(rows) ? rows : [];
+  }
 }
 
 async function guardLotAvailabilityBeforeSalePOS(eventId, productName, qty, productId, productObj){
@@ -16803,12 +16904,18 @@ async function revertCupConsumptionFromSalePOS(sale){
 	  }
 
 	  let products = [];
-	  try{ products = await getAll('products'); }catch(_){ products = []; }
+	  let productsReadError = null;
+	  try{
+	    products = await readProductsForLotePlanPOS();
+	  }catch(error){
+	    productsReadError = error;
+	    console.error('[POS][Agregar desde lote] No se pudieron leer Productos.', error);
+	  }
 
 
 	  // Mensajería clara
 	  if (msgEl){
-	    let msg = '';
+	    let msg = productsReadError ? 'No se pudieron leer los productos. Cierra y vuelve a abrir Inventario.' : '';
 	    if (!evId) msg = 'Selecciona un evento para poder usar un lote.';
 	    // "No hay lotes disponibles" solo aplica como estado vacío.
 	    // Si hay filas, NO se muestra este mensaje (aunque estén deshabilitadas).
@@ -17061,7 +17168,14 @@ async function importFromLoteToInventory(opts){
   const stamp = new Date().toISOString();
   const cargaId = 'lc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7);
 
-  const products = await getAll('products');
+  let products = [];
+  try{
+    products = await readProductsForLotePlanPOS();
+  }catch(error){
+    console.error('[POS][Agregar desde lote] No se pudieron leer Productos para aplicar el lote.', error);
+    try{ showToast('No se pudieron leer los productos. No se aplicó el lote.', 'error', 4200); }catch(_){ }
+    return { ok:false, reason:'PRODUCTS_READ_FAIL' };
+  }
   const loadPlan = buildLoteAvailableLoadPlanPOS(loteAny, products);
   const items = loadPlan.items;
   const total = loadPlan.total;

@@ -1,7 +1,7 @@
 /* Suite A33 — Service Worker (Catálogos)
    Cache acotada al módulo y assets compartidos.
 */
-try { importScripts('/assets/js/a33-release.js?v=4.20.97&r=56'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.97&r=57'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.97';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
@@ -25,7 +25,7 @@ const PRECACHE_URLS = [
   './offline.html',
   '../icon-a33-192.png',
   '../icon-a33-512.png',
-  '/assets/js/a33-release.js?v=4.20.97&r=56',
+  '/assets/js/a33-release.js?v=4.20.97&r=57',
   '/assets/js/a33-storage.js?v=4.20.97&r=20',
   '/assets/js/a33-product-integrity.js?v=4.20.97&r=1',
   '/assets/js/a33-materials.js?v=4.20.97&r=2',
