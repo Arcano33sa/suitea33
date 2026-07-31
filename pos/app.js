@@ -2,13 +2,12 @@
 const DB_NAME = 'a33-pos';
 const DB_VER = 37; // Materia Prima + cierre de esquema compartido a33-pos
 let db;
-let posDbOpenPromise = null;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.98';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.97';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m49');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m44');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -5474,21 +5473,10 @@ function openDB(opts) {
 
   const timeoutMs = Number(o.timeoutMs || o.timeout || IDB_TIMEOUT_MS);
 
-  // Reusar únicamente una conexión que todavía admita transacciones.
-  if (db){
-    try{
-      const probe = db.transaction('meta', 'readonly');
-      void probe;
-      return Promise.resolve(db);
-    }catch(error){
-      try{ db.close(); }catch(_){ }
-      db = null;
-      console.warn('[POS][IDB] conexión anterior inválida; se abrirá nuevamente.', error);
-    }
-  }
-  if (posDbOpenPromise) return posDbOpenPromise;
+  // Reusar conexión abierta si existe
+  if (db) return Promise.resolve(db);
 
-  posDbOpenPromise = new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     let settled = false;
     let timer = null;
     let sawUpgradeNeeded = false;
@@ -5761,7 +5749,6 @@ function openDB(opts) {
       finish(false, e);
     };
   });
-  return posDbOpenPromise.finally(()=>{ posDbOpenPromise = null; });
 }
 
 
@@ -6347,91 +6334,8 @@ async function deleteFinanzasEntriesForSalePOS(saleId) {
 // POS → Finanzas: sección (movimientos manuales)
 // ------------------------------
 function tx(name, mode='readonly'){ return db.transaction(name, mode).objectStore(name); }
-async function getAll(name){
-  const stores = await readPosStoresFreshPOS([name]);
-  return Array.isArray(stores[name]) ? stores[name] : [];
-}
-async function getOne(name, key){
-  return await readPosOneFreshPOS(name, key, false);
-}
-
-function posIdbRequestPromisePOS(request){
-  return new Promise((resolve, reject)=>{
-    request.onsuccess = ()=> resolve(request.result);
-    request.onerror = ()=> reject(request.error || new Error('Falló una lectura de IndexedDB.'));
-  });
-}
-
-function posIdbTransactionDonePOS(transaction){
-  return new Promise((resolve, reject)=>{
-    transaction.oncomplete = ()=> resolve(true);
-    transaction.onabort = ()=> reject(transaction.error || new Error('La lectura de IndexedDB fue abortada.'));
-    transaction.onerror = ()=> reject(transaction.error || new Error('Falló la transacción de IndexedDB.'));
-  });
-}
-
-function isRecoverablePosIdbReadErrorPOS(error){
-  const name = String(error && (error.name || error.code) || '');
-  return ['InvalidStateError','TransactionInactiveError','NotFoundError','AbortError','VersionError','IDB_ABORT'].includes(name);
-}
-
-async function readPosOneFreshPOS(storeName, key, retried){
-  try{
-    const conn = await openDB();
-    if (!conn.objectStoreNames.contains(storeName)){
-      const err = new Error('Store no disponible: ' + storeName);
-      err.name = 'NotFoundError';
-      throw err;
-    }
-    const transaction = conn.transaction(storeName, 'readonly');
-    const done = posIdbTransactionDonePOS(transaction);
-    const value = await posIdbRequestPromisePOS(transaction.objectStore(storeName).get(key));
-    await done;
-    return value ?? null;
-  }catch(error){
-    if (!retried && isRecoverablePosIdbReadErrorPOS(error)){
-      console.warn('[POS][IDB] getOne inválido; reapertura única.', error);
-      try{ db?.close(); }catch(_){ }
-      db = null;
-      posDbOpenPromise = null;
-      await openDB();
-      return readPosOneFreshPOS(storeName, key, true);
-    }
-    throw error;
-  }
-}
-
-async function readPosStoresFreshPOS(storeNames, retried){
-  const names = Array.from(new Set((Array.isArray(storeNames) ? storeNames : []).map(String).filter(Boolean)));
-  if (!names.length) return {};
-  try{
-    const conn = await openDB();
-    const missing = names.filter((name)=> !conn.objectStoreNames.contains(name));
-    if (missing.length){
-      const err = new Error('Stores no disponibles: ' + missing.join(', '));
-      err.name = 'NotFoundError';
-      throw err;
-    }
-    const transaction = conn.transaction(names, 'readonly');
-    const done = posIdbTransactionDonePOS(transaction);
-    const pairs = await Promise.all(names.map(async (name)=>{
-      const rows = await posIdbRequestPromisePOS(transaction.objectStore(name).getAll());
-      return [name, Array.isArray(rows) ? rows : []];
-    }));
-    await done;
-    return Object.fromEntries(pairs);
-  }catch(error){
-    if (!retried && isRecoverablePosIdbReadErrorPOS(error)){
-      console.warn('[POS][IDB] lectura inválida; reapertura única para lectura fresca.', error);
-      try{ db?.close(); }catch(_){ }
-      db = null;
-      posDbOpenPromise = null;
-      await openDB();
-      return readPosStoresFreshPOS(names, true);
-    }
-    throw error;
-  }
-}
+function getAll(name){ return new Promise((res,rej)=>{ const r=tx(name).getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); }); }
+function getOne(name, key){ return new Promise((res,rej)=>{ try{ const r=tx(name).get(key); r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error); }catch(err){ rej(err); } }); }
 function put(name, val){ return new Promise((res,rej)=>{ const r=tx(name,'readwrite').put(val); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function clearStore(name){
   return new Promise((res,rej)=>{
@@ -16735,63 +16639,39 @@ async function revertCupConsumptionFromSalePOS(sale){
 	  return st === 'DISPONIBLE';
 	}
 
-	// Lectura FRESCA de una fuente de lotes (sin cachear en memoria).
-	function readLotesStorageKeyPOS(storageKey){
+	// Lectura FRESCA de arcano33_lotes (sin cachear en memoria)
+	function readAllLotesFromSharedPOS(){
 	  try{
+	    // 1) Directo a localStorage (más fresco posible)
 	    try{
 	      if (typeof localStorage !== 'undefined' && localStorage && typeof localStorage.getItem === 'function'){
-	        const rawLS = localStorage.getItem(storageKey);
+	        const rawLS = localStorage.getItem('arcano33_lotes');
 	        if (rawLS != null){
 	          const parsedLS = JSON.parse(rawLS);
 	          return Array.isArray(parsedLS) ? parsedLS : [];
 	        }
 	      }
-	    }catch(error){
-	      console.warn(`[POS][Lotes] No se pudo leer ${storageKey} directamente.`, error);
-	    }
+	    }catch(_){ /* fallback */ }
 
+	    // 2) Wrapper A33Storage (multi-tab)
 	    if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
-	      const arr = A33Storage.sharedGet(storageKey, [], 'local');
+	      const arr = A33Storage.sharedGet('arcano33_lotes', [], 'local');
 	      return Array.isArray(arr) ? arr : [];
 	    }
 	    if (window.A33Storage && typeof A33Storage.getJSON === 'function'){
-	      const arr = A33Storage.getJSON(storageKey, []);
+	      const arr = A33Storage.getJSON('arcano33_lotes', []);
 	      return Array.isArray(arr) ? arr : [];
 	    }
 	    if (window.A33Storage && typeof A33Storage.getItem === 'function'){
-	      const raw = A33Storage.getItem(storageKey);
+	      const raw = A33Storage.getItem('arcano33_lotes');
 	      if (!raw) return [];
 	      const parsed = JSON.parse(raw);
 	      return Array.isArray(parsed) ? parsed : [];
 	    }
 	    return [];
-	  }catch(error){
-	    console.error(`[POS][Lotes] Lectura inválida de ${storageKey}.`, error);
+	  }catch(_){
 	    return null;
 	  }
-	}
-
-	function readAllLotesFromSharedPOS(){
-	  return readLotesStorageKeyPOS('arcano33_lotes');
-	}
-
-	function readAllHistoricalLotesSourcesPOS(){
-	  const current = readLotesStorageKeyPOS('arcano33_lotes');
-	  const archived = readLotesStorageKeyPOS('arcano33_lotes_archived');
-	  if (current === null || archived === null){
-	    const error = new Error('No se pudieron leer completamente las fuentes históricas de lotes.');
-	    error.code = 'A33_LOTES_HISTORY_READ_FAILED';
-	    throw error;
-	  }
-	  const archivedNormalized = archived.map((row)=>{
-	    if (!row || typeof row !== 'object') return row;
-	    return {
-	      ...row,
-	      loteId:row.loteId ?? row.originalId ?? row.id,
-	      id:row.id ?? row.originalId ?? row.loteId
-	    };
-	  });
-	  return current.concat(archivedNormalized);
 	}
 
 	async function renderInvLoteSelectorTablePOS(evId, opts){
@@ -17233,102 +17113,6 @@ async function importFromLoteToInventory(opts){
 // Lotes cargados en este evento (solo informativo)
 // Catálogos → Productos es la fuente oficial; no se migra ni reescribe inventario.
 
-
-// Airbag de shell PWA: si un HTML anterior se combina con app.js nuevo,
-// reconstruye únicamente el bloque visual de Lotes cargados. No toca IndexedDB,
-// localStorage, Firebase ni registros históricos.
-function ensureLotesEventoShellPOS(){
-  const doc = (typeof document !== 'undefined') ? document : null;
-  if (!doc) return null;
-
-  let block = doc.getElementById('lotes-evento-block');
-  if (block){
-    try{ block.hidden = false; block.removeAttribute('hidden'); block.removeAttribute('aria-hidden'); }catch(_){ }
-    try{ block.style.removeProperty('display'); block.style.removeProperty('visibility'); }catch(_){ }
-    return block;
-  }
-
-  const tab = doc.getElementById('tab-inventario');
-  if (!tab) return null;
-
-  // Compatibilidad con shells previos que sí tenían tabla/paneles, pero no acordeón.
-  const legacyTable = doc.getElementById('tbl-lotes-evento');
-  if (legacyTable && tab.contains(legacyTable)){
-    let legacyContainer = legacyTable.closest('.card') || legacyTable.parentElement;
-    if (legacyContainer && legacyContainer !== tab){
-      const content = doc.createElement('div');
-      content.id = 'lotes-evento-content';
-      content.className = 'lotes-block-content';
-      content.hidden = true;
-      Array.from(legacyContainer.childNodes).forEach((node)=> content.appendChild(node));
-
-      legacyContainer.id = 'lotes-evento-block';
-      legacyContainer.classList.remove('card');
-      legacyContainer.classList.add('lotes-block', 'is-collapsed');
-      legacyContainer.hidden = false;
-      legacyContainer.removeAttribute('aria-hidden');
-      legacyContainer.style.removeProperty('display');
-      legacyContainer.style.removeProperty('visibility');
-      legacyContainer.insertAdjacentHTML('afterbegin', `
-        <button id="lotes-evento-toggle" class="lotes-block-toggle" type="button" aria-expanded="false" aria-controls="lotes-evento-content">
-          <span class="lotes-block-toggle-main">
-            <span class="lotes-block-title">Lotes cargados</span>
-            <span class="lotes-block-count" aria-live="polite"><span aria-hidden="true">·</span> <span id="lotes-count">0</span> <span id="lotes-count-word">registros</span></span>
-          </span>
-          <span class="lotes-block-chevron" aria-hidden="true">⌄</span>
-        </button>`);
-      legacyContainer.appendChild(content);
-      const headRow = legacyTable.querySelector('thead tr');
-      if (headRow && !headRow.id) headRow.id = 'tbl-lotes-evento-head';
-      return legacyContainer;
-    }
-  }
-
-  const anchor = doc.getElementById('reempaque-block') || doc.getElementById('tbl-inv')?.closest('.table-scroll') || null;
-  const wrapper = doc.createElement('div');
-  wrapper.innerHTML = `
-    <div id="lotes-evento-block" class="lotes-block is-collapsed" data-a33-shell-recovered="1">
-      <button id="lotes-evento-toggle" class="lotes-block-toggle" type="button" aria-expanded="false" aria-controls="lotes-evento-content">
-        <span class="lotes-block-toggle-main">
-          <span class="lotes-block-title">Lotes cargados</span>
-          <span class="lotes-block-count" aria-live="polite"><span aria-hidden="true">·</span> <span id="lotes-count">0</span> <span id="lotes-count-word">registros</span></span>
-        </span>
-        <span class="lotes-block-chevron" aria-hidden="true">⌄</span>
-      </button>
-      <div id="lotes-evento-content" class="lotes-block-content" hidden>
-        <div class="lotes-block-toolbar">
-          <small class="muted">Se registra cuando usas “Agregar desde lote”.</small>
-          <div class="actions end">
-            <button id="btn-reverse-assign" class="btn-outline btn-pill btn-pill-mini" type="button">Reversar asignación</button>
-            <button id="btn-create-sobrante" class="btn-outline btn-pill btn-pill-mini" type="button">Crear lote sobrante</button>
-          </div>
-        </div>
-        <div id="sobrante-panel" class="sobrante-panel" style="display:none">
-          <div class="sobrante-panel-head"><div><div class="sobrante-title">Sobrantes → Lote hijo</div><small class="muted" id="sobrante-hint">Crea un lote DISPONIBLE y cierra el lote original (trazabilidad incluida).</small></div><div class="actions end"><button id="btn-sobrante-cancel" class="btn-outline btn-pill btn-pill-mini" type="button">Cancelar</button></div></div>
-          <div class="row" style="grid-template-columns:1fr"><div><label>Lote original</label><select id="sobrante-lote-select"></select><small class="muted" id="sobrante-lote-meta"></small></div></div>
-          <div id="sobrante-grid" class="sobrante-grid dynamic-product-grid" aria-label="Cantidades sobrantes por Producto con Receta y Letra"><small class="muted dynamic-grid-empty">Selecciona un lote para ver sus productos.</small></div>
-          <div class="actions end"><button id="btn-sobrante-create" class="btn-ok btn-pill btn-pill-mini" type="button">Crear lote sobrante</button></div>
-        </div>
-        <div id="reverso-panel" class="reverso-panel" style="display:none">
-          <div class="reverso-panel-head"><div><div class="reverso-title">Reverso de asignación</div><small class="muted">Devuelve el lote a DISPONIBLE sin borrar historia. Solo se permite si es seguro.</small></div><div class="actions end"><button id="btn-reverso-cancel" class="btn-outline btn-pill btn-pill-mini" type="button">Cancelar</button></div></div>
-          <div class="row" style="grid-template-columns:1fr"><div><label>Lote asignado</label><select id="reverso-lote-select"></select><small class="muted" id="reverso-lote-meta"></small></div></div>
-          <div id="reverso-grid" class="reverso-grid dynamic-product-grid" aria-label="Resumen dinámico de unidades a reversar"><small class="muted dynamic-grid-empty">Selecciona un lote para ver sus productos.</small></div>
-          <div class="warn"><small><b>Regla:</b> si el evento ya tuvo consumo/ventas de esas presentaciones (o fraccionamiento de galones), el reverso se bloquea para evitar inconsistencias.</small></div>
-          <div class="actions end"><button id="btn-reverso-do" class="btn-danger btn-pill btn-pill-mini" type="button">Reversar asignación</button></div>
-        </div>
-        <div class="table-scroll lotes-table-scroll" tabindex="0" aria-label="Tabla de lotes cargados">
-          <table id="tbl-lotes-evento" class="compact"><thead><tr id="tbl-lotes-evento-head"><th scope="col">Código/Nombre</th><th scope="col">Fecha/Hora</th></tr></thead><tbody></tbody></table>
-        </div>
-      </div>
-    </div>`;
-  block = wrapper.firstElementChild;
-  if (!block) return null;
-  if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(block, anchor);
-  else tab.appendChild(block);
-  return block;
-}
-
-
 function normalizeLotesLetterPOS(value){
   return String(value == null ? '' : value).trim().toUpperCase().replace(/\s+/g, '').slice(0, 4);
 }
@@ -17485,34 +17269,17 @@ function inventoryIdentityIdCandidatesPOS(identity, ref){
 }
 
 let lotesEventoPendingModelPOS = null;
-let lotesEventoReadErrorPOS = null;
 let lotesEventoToggleLockUntilPOS = 0;
 
 function updateLotesEventoCountPOS(count){
-  ensureLotesEventoShellPOS();
+  const n = Math.max(0, Number(count) || 0);
   const countEl = $('#lotes-count');
   const wordEl = $('#lotes-count-word');
-  if (count == null || !Number.isFinite(Number(count))){
-    if (countEl) countEl.textContent = '—';
-    if (wordEl) wordEl.textContent = 'sin lectura';
-    return;
-  }
-  const n = Math.max(0, Number(count) || 0);
   if (countEl) countEl.textContent = String(n);
   if (wordEl) wordEl.textContent = n === 1 ? 'registro' : 'registros';
 }
 
-function renderLotesEventoReadErrorPOS(message){
-  ensureLotesEventoShellPOS();
-  const head = $('#tbl-lotes-evento-head');
-  const tbody = $('#tbl-lotes-evento tbody');
-  if (head) head.innerHTML = '<th scope="col">Histórico de lotes</th>';
-  if (tbody) tbody.innerHTML = `<tr><td><small class="muted">${escapeHtml(message || 'No se pudo leer el historial de lotes. Volvé a entrar a Inventario para reintentar.')}</small></td></tr>`;
-  updateLotesEventoCountPOS(null);
-}
-
 function setLotesEventoExpandedPOS(expanded){
-  ensureLotesEventoShellPOS();
   const block = $('#lotes-evento-block');
   const toggle = $('#lotes-evento-toggle');
   const content = $('#lotes-evento-content');
@@ -17522,9 +17289,7 @@ function setLotesEventoExpandedPOS(expanded){
   content.hidden = !next;
   block.classList.toggle('is-expanded', next);
   block.classList.toggle('is-collapsed', !next);
-  if (next && typeof lotesEventoReadErrorPOS !== 'undefined' && lotesEventoReadErrorPOS){
-    renderLotesEventoReadErrorPOS(lotesEventoReadErrorPOS);
-  } else if (next && lotesEventoPendingModelPOS){
+  if (next && lotesEventoPendingModelPOS){
     const pending = lotesEventoPendingModelPOS;
     lotesEventoPendingModelPOS = null;
     renderLotesEventoTablePOS(pending.model, pending.emptyMessage);
@@ -17538,7 +17303,6 @@ function resetLotesEventoCollapsePOS(){
 }
 
 function bindLotesEventoToggleOncePOS(){
-  ensureLotesEventoShellPOS();
   const toggle = $('#lotes-evento-toggle');
   if (!toggle || toggle.dataset.bound === '1') return;
   toggle.dataset.bound = '1';
@@ -17603,553 +17367,11 @@ function lotesHistoricalLetterSortPOS(a, b){
   return String(a.label).localeCompare(String(b.label), 'es-NI', { numeric:true, sensitivity:'base' });
 }
 
-
-
-// Puente de lectura legacy para “Lotes cargados”.
-// Consolida Inventario + arcano33_lotes sin escribir, migrar ni mutar las fuentes.
-function normalizeLotesReadEventIdPOS(value){
-  const raw = String(value == null ? '' : value).trim();
-  if (!raw) return '';
-  if (/^[+-]?\d+(?:\.0+)?$/.test(raw)){
-    const n = Number(raw);
-    if (Number.isFinite(n)) return 'N:' + String(n);
-  }
-  return 'S:' + raw;
-}
-
-function normalizeLotesReadEventNamePOS(value){
-  return String(value == null ? '' : value)
-    .normalize('NFC')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
-}
-
-function buildLotesReadEventMatcherPOS(eventId, events){
-  const list = Array.isArray(events) ? events.filter(Boolean) : [];
-  const requestedKey = normalizeLotesReadEventIdPOS(eventId);
-  const event = list.find((item)=> normalizeLotesReadEventIdPOS(item && (item.id ?? item.eventId)) === requestedKey) || null;
-  const idKeys = new Set();
-  const nameKeys = new Set();
-  const addId = (value)=>{ const key = normalizeLotesReadEventIdPOS(value); if (key) idKeys.add(key); };
-  const addName = (value)=>{ const key = normalizeLotesReadEventNamePOS(value); if (key) nameKeys.add(key); };
-  addId(eventId);
-  if (event){
-    addId(event.id);
-    addId(event.eventId);
-    addName(event.name);
-    addName(event.nombre);
-    addName(event.title);
-    addName(event.eventName);
-  }
-  return {
-    event,
-    idKeys,
-    nameKeys,
-    primaryEventKey:Array.from(idKeys)[0] || ('NAME:' + (Array.from(nameKeys)[0] || ''))
-  };
-}
-
-function lotesReadEventRefMatchesPOS(ref, matcher){
-  const source = ref && typeof ref === 'object' ? ref : {};
-  const idValues = [
-    source.eventId, source.eventID, source.idEvento, source.eventoId,
-    source.assignedEventId, source.assignedEventoId,
-    source.prevAssignedEventId, source.targetEventId
-  ];
-  const idKeys = idValues.map(normalizeLotesReadEventIdPOS).filter(Boolean);
-  if (idKeys.length) return idKeys.some((key)=> matcher && matcher.idKeys && matcher.idKeys.has(key));
-
-  const nameValues = [
-    source.eventName, source.nombreEvento, source.eventoNombre,
-    source.assignedEventName, source.prevAssignedEventName,
-    source.targetEventName
-  ];
-  const nameKeys = nameValues.map(normalizeLotesReadEventNamePOS).filter(Boolean);
-  return nameKeys.some((key)=> matcher && matcher.nameKeys && matcher.nameKeys.has(key));
-}
-
-function lotesReadDateValuePOS(ref){
-  const source = ref && typeof ref === 'object' ? ref : {};
-  const values = [
-    source.assignedAt, source.assignmentAt, source.fechaAsignacion, source.fechaAsignada,
-    source.loadedAt, source.loadAt, source.time, source.timestamp, source.at,
-    source.movementDate, source.fechaMovimiento, source.date, source.fecha,
-    source.createdAt, source.created_at, source.updatedAt
-  ];
-  for (const value of values){
-    if (value == null) continue;
-    if (typeof value === 'object'){
-      try{
-        if (typeof value.toDate === 'function') return value.toDate().toISOString();
-        if (Number.isFinite(Number(value.seconds))) return new Date(Number(value.seconds) * 1000).toISOString();
-      }catch(_){ }
-    }
-    const raw = String(value).trim();
-    if (raw) return raw;
-  }
-  return '';
-}
-
-function lotesReadTimestampPOS(value){
-  if (value == null || value === '') return 0;
-  if (typeof value === 'number' && Number.isFinite(value)) return value < 100000000000 ? value * 1000 : value;
-  const raw = String(value).trim();
-  if (!raw) return 0;
-  if (/^\d{10,13}$/.test(raw)){
-    const n = Number(raw);
-    return Number.isFinite(n) ? (raw.length <= 10 ? n * 1000 : n) : 0;
-  }
-  const parsed = Date.parse(raw);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function lotesReadCodePOS(ref, options={}){
-  const source = ref && typeof ref === 'object' ? ref : {};
-  const values = [
-    source.loteCodigo, source.lotCode, source.batchCode, source.codigoLote,
-    source.loteNombre, source.loteName, source.nombreLote
-  ];
-  if (options && options.allowGeneric){
-    values.push(source.codigo, source.code, source.name, source.nombre);
-  }
-  for (const value of values){
-    const raw = String(value == null ? '' : value).trim();
-    if (raw) return lotCodeDisplayPOS(raw);
-  }
-  return '';
-}
-
-function lotesReadLotIdPOS(ref){
-  const source = ref && typeof ref === 'object' ? ref : {};
-  const values = [source.loteId, source.lotId, source.batchId, source.idLote, source.id];
-  for (const value of values){
-    const raw = String(value == null ? '' : value).trim();
-    if (raw) return raw;
-  }
-  return '';
-}
-
-function lotesReadLoadIdPOS(ref){
-  const source = ref && typeof ref === 'object' ? ref : {};
-  const values = [
-    source.loteCargaId, source.loteGroupKey, source.assignedCargaId,
-    source.lastAssignedCargaId, source.loadId, source.assignmentId, source.groupKey
-  ];
-  for (const value of values){
-    const raw = String(value == null ? '' : value).trim();
-    if (raw) return raw;
-  }
-  return '';
-}
-
-function lotesReadQtyPOS(ref){
-  const source = ref && typeof ref === 'object' ? ref : {};
-  const values = [
-    source.qty, source.quantity, source.cantidad,
-    source.cantidadBase, source.loaded, source.cantidadCargada,
-    source.cantidadProducida, source.unidades,
-    source.cantidadDisponible, source.disponible, source.remaining, source.cantidadRestante
-  ];
-  for (const value of values){
-    if (value == null || String(value).trim() === '') continue;
-    const n = Number(String(value).replace(',', '.'));
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return 0;
-}
-
-function isLotesInventoryReadEvidencePOS(entry){
-  if (!entry || typeof entry !== 'object') return false;
-  const qty = Number(entry.qty ?? entry.quantity ?? entry.cantidad);
-  if (!(Number.isFinite(qty) && qty > 0)) return false;
-  const type = String(entry.type || entry.tipo || '').trim().toLowerCase();
-  const source = String(entry.source || entry.fuente || '').trim().toLowerCase();
-  if (source.includes('revers')) return false;
-  const hasLotRef = !!(
-    lotesReadCodePOS(entry) || lotesReadLotIdPOS({ ...entry, id:null }) || lotesReadLoadIdPOS(entry) ||
-    entry.loteProductId != null || entry.loteLetra != null || entry.loteNombreSnapshot != null
-  );
-  const notes = String(entry.notes || entry.nota || entry.observacion || '').toLowerCase();
-  const sourceLooksLot = source.includes('lote') || source.includes('lot') || source.includes('batch');
-  const notesLookLot = /(^|\W)lote(\W|$)/i.test(notes);
-  const typeAllows = !type || type === 'restock' || type === 'reposicion' || type === 'reposición' || type === 'load' || type === 'lote';
-  return typeAllows && (hasLotRef || sourceLooksLot || notesLookLot);
-}
-
-function lotesReadGroupSeedPOS(origin, matcher){
-  return {
-    origin,
-    sourceRank:origin === 'modern' ? 1 : 2,
-    eventKey:(matcher && matcher.primaryEventKey) || '',
-    loadIds:new Set(),
-    lotIds:new Set(),
-    movementIds:new Set(),
-    code:'',
-    time:'',
-    reversedAt:'',
-    items:[]
-  };
-}
-
-function lotesReadAddIdentityPOS(group, ref){
-  const loadId = lotesReadLoadIdPOS(ref);
-  const lotId = lotesReadLotIdPOS({ ...ref, id:ref && (ref.loteId ?? ref.lotId ?? ref.batchId ?? ref.idLote) });
-  const movementId = String(ref && ref.id != null ? ref.id : '').trim();
-  if (loadId) group.loadIds.add(loadId);
-  if (lotId) group.lotIds.add(lotId);
-  if (movementId) group.movementIds.add(movementId);
-  const code = lotesReadCodePOS(ref);
-  if (!group.code && code) group.code = code;
-  const time = lotesReadDateValuePOS(ref);
-  if (!group.time && time) group.time = time;
-  else if (time && lotesReadTimestampPOS(time) && lotesReadTimestampPOS(group.time) && lotesReadTimestampPOS(time) < lotesReadTimestampPOS(group.time)) group.time = time;
-}
-
-function collectModernLotesReadGroupsPOS(allInventory, matcher){
-  const groups = new Map();
-  const rows = Array.isArray(allInventory) ? allInventory.filter(Boolean) : [];
-  for (const entry of rows){
-    if (!lotesReadEventRefMatchesPOS(entry, matcher)) continue;
-    if (!isLotesInventoryReadEvidencePOS(entry)) continue;
-    const loadId = lotesReadLoadIdPOS(entry);
-    const lotId = lotesReadLotIdPOS({ ...entry, id:entry.loteId ?? entry.lotId ?? entry.batchId ?? entry.idLote });
-    const code = lotesReadCodePOS(entry);
-    const time = lotesReadDateValuePOS(entry);
-    const movementId = String(entry.id == null ? '' : entry.id).trim();
-    const rawKey = loadId
-      ? ('LOAD:' + loadId)
-      : (lotId ? ('LOT:' + lotId) : (code ? ('CODE:' + lotCodeKeyPOS(code) + '|' + (time || '')) : ('MOVE:' + movementId)));
-    let group = groups.get(rawKey);
-    if (!group){
-      group = lotesReadGroupSeedPOS('modern', matcher);
-      groups.set(rawKey, group);
-    }
-    lotesReadAddIdentityPOS(group, entry);
-    group.items.push({ ...entry, qty:lotesReadQtyPOS(entry) });
-  }
-
-  // Los reversos solo marcan visualmente el grupo; nunca se usan como cantidades cargadas.
-  for (const entry of rows){
-    if (!entry || !lotesReadEventRefMatchesPOS(entry, matcher)) continue;
-    const source = String(entry.source || '').toLowerCase();
-    const type = String(entry.type || '').toLowerCase();
-    if (!(source.includes('revers') || type.includes('reverse') || type.includes('revers'))) continue;
-    const loadId = lotesReadLoadIdPOS(entry);
-    const lotId = lotesReadLotIdPOS({ ...entry, id:entry.loteId ?? entry.lotId ?? entry.batchId ?? entry.idLote });
-    const code = lotesReadCodePOS(entry);
-    const reversedAt = lotesReadDateValuePOS(entry);
-    for (const group of groups.values()){
-      const loadMatch = loadId && group.loadIds.has(loadId);
-      const lotMatch = !loadMatch && lotId && group.lotIds.has(lotId);
-      const codeMatch = !loadMatch && !lotMatch && code && group.code && lotCodeKeyPOS(code) === lotCodeKeyPOS(group.code);
-      if (loadMatch || lotMatch || codeMatch){
-        if (!group.reversedAt || lotesReadTimestampPOS(reversedAt) > lotesReadTimestampPOS(group.reversedAt)) group.reversedAt = reversedAt;
-      }
-    }
-  }
-  return Array.from(groups.values());
-}
-
-function lotesReadHistoryTypePOS(value){
-  return String(value == null ? '' : value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '_');
-}
-
-function lotesReadHistoryIsReversePOS(row){
-  const type = lotesReadHistoryTypePOS(row && (row.type ?? row.action ?? row.accion ?? row.estado));
-  return type.includes('reverse') || type.includes('revers') || type.includes('unassign') || type.includes('desasign') || type.includes('devuel');
-}
-
-function lotesReadHistoryIsAssignmentPOS(row){
-  if (!row || typeof row !== 'object' || lotesReadHistoryIsReversePOS(row)) return false;
-  const type = lotesReadHistoryTypePOS(row.type ?? row.action ?? row.accion ?? row.estado);
-  if (!type) return true;
-  return type.includes('assign') || type.includes('asign') || type.includes('load') || type.includes('carg') || type.includes('evento');
-}
-
-function lotesReadSnapshotForEventPOS(lote, matcher){
-  const usage = lote && lote.eventUsage && typeof lote.eventUsage === 'object' && !Array.isArray(lote.eventUsage) ? lote.eventUsage : null;
-  if (!usage) return null;
-  for (const [key, snap] of Object.entries(usage)){
-    const eventKey = normalizeLotesReadEventIdPOS(key);
-    if (eventKey && matcher && matcher.idKeys && matcher.idKeys.has(eventKey) && snap && typeof snap === 'object') return snap;
-  }
-  return null;
-}
-
-function lotesReadRowsFromSnapshotPOS(snapshot){
-  if (!snapshot || typeof snapshot !== 'object') return [];
-  const rows = [];
-  if (Array.isArray(snapshot.availabilityProducts)){
-    for (const raw of snapshot.availabilityProducts){
-      if (!raw || typeof raw !== 'object') continue;
-      const qty = lotesReadQtyPOS({
-        cantidadBase:raw.cantidadBase,
-        loaded:raw.loaded,
-        cantidadCargada:raw.cantidadCargada,
-        cantidadProducida:raw.cantidadProducida,
-        qty:raw.qty,
-        cantidad:raw.cantidad,
-        cantidadDisponible:raw.cantidadDisponible
-      });
-      if (qty > 0) rows.push({ ...raw, qty });
-    }
-  }
-  if (rows.length) return rows;
-
-  const byProduct = snapshot.loadedByProductId && typeof snapshot.loadedByProductId === 'object' ? snapshot.loadedByProductId : {};
-  for (const [productId, qtyRaw] of Object.entries(byProduct)){
-    const qty = Number(qtyRaw) || 0;
-    if (qty > 0) rows.push({ productId, qty });
-  }
-  const representedLetters = new Set(rows.map((row)=> inventoryStoredLetterPOS(row)).filter(Boolean));
-  const byLetter = snapshot.loadedByLetter && typeof snapshot.loadedByLetter === 'object' ? snapshot.loadedByLetter : {};
-  for (const [Letra, qtyRaw] of Object.entries(byLetter)){
-    const letter = normalizeLotesLetterPOS(Letra);
-    const qty = Number(qtyRaw) || 0;
-    if (letter && qty > 0 && !representedLetters.has(letter)) rows.push({ Letra:letter, qty });
-  }
-  return rows;
-}
-
-function lotesReadRowsFromHistoricalLotPOS(lote, matcher){
-  const snapshotRows = lotesReadRowsFromSnapshotPOS(lotesReadSnapshotForEventPOS(lote, matcher));
-  if (snapshotRows.length) return snapshotRows;
-
-  const contractRows = lotesPOSContractRowsPOS(lote);
-  const contractOut = [];
-  for (const row of contractRows){
-    const qty = lotesReadQtyPOS(row);
-    if (qty > 0) contractOut.push({ ...row, qty });
-  }
-  if (contractOut.length) return contractOut;
-
-  const legacy = legacyQuantityShapePOS(lote);
-  const legacyRows = [];
-  for (const letter of LEGACY_PRODUCT_LETTERS_POS){
-    const qty = Number(legacy[letter]) || 0;
-    if (!(qty > 0)) continue;
-    legacyRows.push({
-      Letra:letter,
-      loteLetra:letter,
-      nombreSnapshot:LEGACY_PRODUCT_NAME_BY_LETTER_POS[letter],
-      loteNombreSnapshot:LEGACY_PRODUCT_NAME_BY_LETTER_POS[letter],
-      legacyField:LEGACY_PRODUCT_FIELD_BY_LETTER_POS[letter],
-      qty
-    });
-  }
-  return legacyRows;
-}
-
-function collectHistoricalLotesReadGroupsPOS(lotes, matcher){
-  const groups = [];
-  for (const lote of (Array.isArray(lotes) ? lotes : [])){
-    if (!lote || typeof lote !== 'object') continue;
-    const history = Array.isArray(lote.assignmentHistory) ? lote.assignmentHistory.filter(Boolean) : [];
-    const assignments = history.filter((row)=> lotesReadHistoryIsAssignmentPOS(row) && lotesReadEventRefMatchesPOS(row, matcher));
-    const reversals = history.filter((row)=> lotesReadHistoryIsReversePOS(row) && lotesReadEventRefMatchesPOS(row, matcher));
-    const snapshot = lotesReadSnapshotForEventPOS(lote, matcher);
-    const currentMatch = lotesReadEventRefMatchesPOS({
-      assignedEventId:lote.assignedEventId,
-      assignedEventName:lote.assignedEventName
-    }, matcher);
-
-    const evidenceRows = assignments.length
-      ? assignments
-      : ((currentMatch || snapshot) ? [{
-          eventId:lote.assignedEventId,
-          eventName:lote.assignedEventName,
-          at:lote.assignedAt ?? lote.prevAssignedAt ?? lote.createdAt,
-          loteCargaId:lote.assignedCargaId ?? lote.lastAssignedCargaId
-        }] : []);
-    if (!evidenceRows.length) continue;
-
-    const quantityRows = lotesReadRowsFromHistoricalLotPOS(lote, matcher);
-    if (!quantityRows.length) continue;
-
-    const seenEvidence = new Set();
-    for (const evidence of evidenceRows){
-      const loadId = lotesReadLoadIdPOS(evidence) || lotesReadLoadIdPOS(lote);
-      const time = lotesReadDateValuePOS(evidence) || lotesReadDateValuePOS(lote);
-      const evidenceKey = loadId ? ('LOAD:' + loadId) : ('AT:' + time);
-      if (seenEvidence.has(evidenceKey)) continue;
-      seenEvidence.add(evidenceKey);
-
-      const group = lotesReadGroupSeedPOS('historical', matcher);
-      lotesReadAddIdentityPOS(group, {
-        ...lote,
-        loteId:lote.id ?? lote.loteId,
-        loteCargaId:loadId,
-        loteCodigo:lotesReadCodePOS(lote, { allowGeneric:true }),
-        assignedAt:time
-      });
-      if (!group.code && group.lotIds.size) group.code = 'Lote #' + Array.from(group.lotIds)[0];
-      for (const row of quantityRows){
-        group.items.push({
-          ...row,
-          type:'restock',
-          source:'lote_historico_lectura',
-          qty:lotesReadQtyPOS(row),
-          loteId:Array.from(group.lotIds)[0] || null,
-          loteCodigo:group.code,
-          loteCargaId:loadId || null,
-          time:group.time
-        });
-      }
-
-      const matchingReversal = reversals
-        .filter((row)=>{
-          const reverseLoadId = lotesReadLoadIdPOS(row);
-          return !loadId || !reverseLoadId || reverseLoadId === loadId;
-        })
-        .sort((a,b)=> lotesReadTimestampPOS(lotesReadDateValuePOS(b)) - lotesReadTimestampPOS(lotesReadDateValuePOS(a)))[0];
-      if (matchingReversal) group.reversedAt = lotesReadDateValuePOS(matchingReversal);
-      else if (!currentMatch && lote.reversedAt) group.reversedAt = String(lote.reversedAt);
-      groups.push(group);
-    }
-  }
-  return groups;
-}
-
-function lotesReadSetsIntersectPOS(a, b){
-  if (!a || !b || !a.size || !b.size) return false;
-  for (const value of a){ if (b.has(value)) return true; }
-  return false;
-}
-
-function lotesReadGroupsSamePOS(a, b){
-  if (!a || !b || a.eventKey !== b.eventKey) return false;
-  if (a.loadIds.size && b.loadIds.size) return lotesReadSetsIntersectPOS(a.loadIds, b.loadIds);
-  if (a.lotIds.size && b.lotIds.size) return lotesReadSetsIntersectPOS(a.lotIds, b.lotIds);
-  const codeA = lotCodeKeyPOS(a.code || '');
-  const codeB = lotCodeKeyPOS(b.code || '');
-  if (codeA && codeB && codeA === codeB) return true;
-  const timeA = lotesReadTimestampPOS(a.time);
-  const timeB = lotesReadTimestampPOS(b.time);
-  return !!(codeA && codeB && codeA === codeB && timeA && timeB && timeA === timeB);
-}
-
-function lotesReadItemIdentityPOS(item, productIndex){
-  const identity = resolveInventoryProductIdentityPOS(item, productIndex, { allowLegacyName:true });
-  return inventoryIdentityKeyPOS(identity, item) || lotesEntryReferenceKeyPOS(item);
-}
-
-function mergeLotesReadGroupPOS(target, incoming, productIndex){
-  if (!target || !incoming) return target || incoming;
-  incoming.loadIds.forEach((value)=> target.loadIds.add(value));
-  incoming.lotIds.forEach((value)=> target.lotIds.add(value));
-  incoming.movementIds.forEach((value)=> target.movementIds.add(value));
-  if (!target.code && incoming.code) target.code = incoming.code;
-  if (!target.time && incoming.time) target.time = incoming.time;
-  if (!target.reversedAt || lotesReadTimestampPOS(incoming.reversedAt) > lotesReadTimestampPOS(target.reversedAt)) target.reversedAt = incoming.reversedAt || target.reversedAt;
-
-  const itemKeys = new Map();
-  target.items.forEach((item, index)=> itemKeys.set(lotesReadItemIdentityPOS(item, productIndex), index));
-  for (const item of incoming.items){
-    const key = lotesReadItemIdentityPOS(item, productIndex);
-    if (!itemKeys.has(key)){
-      itemKeys.set(key, target.items.length);
-      target.items.push({ ...item });
-      continue;
-    }
-    const index = itemKeys.get(key);
-    const existing = target.items[index];
-    if (!(lotesReadQtyPOS(existing) > 0) && lotesReadQtyPOS(item) > 0) target.items[index] = { ...existing, ...item };
-  }
-  return target;
-}
-
-function dedupeLotesReadGroupsPOS(groups, productIndex){
-  const ordered = (Array.isArray(groups) ? groups.filter(Boolean) : []).slice().sort((a,b)=> (a.sourceRank - b.sourceRank));
-  const out = [];
-  for (const group of ordered){
-    const found = out.find((candidate)=> lotesReadGroupsSamePOS(candidate, group));
-    if (found) mergeLotesReadGroupPOS(found, group, productIndex);
-    else out.push(group);
-  }
-  return out;
-}
-
-function flattenLotesReadGroupsPOS(groups){
-  const out = [];
-  let index = 0;
-  for (const group of (Array.isArray(groups) ? groups : [])){
-    index += 1;
-    const groupKey = Array.from(group.loadIds)[0]
-      || (Array.from(group.lotIds)[0] ? ('legacy-lot-' + Array.from(group.lotIds)[0] + '-' + index) : ('legacy-read-' + index));
-    const lotId = Array.from(group.lotIds)[0] || null;
-    const code = group.code || (lotId ? ('Lote #' + lotId) : 'Lote histórico');
-    for (const item of group.items){
-      const qty = lotesReadQtyPOS(item);
-      if (!(qty > 0)) continue;
-      out.push({
-        ...item,
-        type:'restock',
-        source:item.source || 'lote',
-        qty,
-        loteId:item.loteId ?? lotId,
-        loteCodigo:lotesReadCodePOS(item) || code,
-        loteCargaId:groupKey,
-        loteGroupKey:groupKey,
-        time:lotesReadDateValuePOS(item) || group.time,
-        _lotesReadEvidence:true,
-        _lotesReadOrigin:group.origin
-      });
-    }
-    if (group.reversedAt){
-      out.push({
-        type:'adjust',
-        source:'lote_reverso',
-        qty:0,
-        loteId:lotId,
-        loteCodigo:code,
-        loteCargaId:groupKey,
-        loteGroupKey:groupKey,
-        time:group.reversedAt,
-        _lotesReadEvidence:true,
-        _lotesReadOrigin:group.origin
-      });
-    }
-  }
-  return out;
-}
-
-async function getLotesCargadosEventoReadEntriesPOS(eventId){
-  const stores = await readPosStoresFreshPOS(['inventory','products','events','meta']);
-  const metaCurrent = (stores.meta || []).find((row)=> String(row && row.id || '') === 'currentEventId');
-  const resolvedEventId = normalizeLotesReadEventIdPOS(eventId) ? eventId : metaCurrent?.value;
-  const validKey = normalizeLotesReadEventIdPOS(resolvedEventId);
-  if (!validKey) return { entries:[], products:[], event:null, modernGroups:0, historicalGroups:0, uniqueGroups:0 };
-
-  const allInventory = Array.isArray(stores.inventory) ? stores.inventory : [];
-  const products = Array.isArray(stores.products) ? stores.products : [];
-  const events = Array.isArray(stores.events) ? stores.events : [];
-  const matcher = buildLotesReadEventMatcherPOS(resolvedEventId, events);
-  const productIndex = buildProductIdentityIndexPOS(products);
-  const modern = collectModernLotesReadGroupsPOS(allInventory, matcher);
-  const historicalSource = readAllHistoricalLotesSourcesPOS();
-  const historical = collectHistoricalLotesReadGroupsPOS(historicalSource, matcher);
-  const unique = dedupeLotesReadGroupsPOS(modern.concat(historical), productIndex);
-  return {
-    entries:flattenLotesReadGroupsPOS(unique),
-    products,
-    event:matcher.event || null,
-    modernGroups:modern.length,
-    historicalGroups:historical.length,
-    uniqueGroups:unique.length
-  };
-}
-
 function buildLotesEventoModelPOS(entries, products){
   const allEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
   const productList = Array.isArray(products) ? products.filter(Boolean) : [];
   const rows = allEntries
-    .filter((entry)=> entry && entry.type === 'restock' && (entry._lotesReadEvidence || entry.loteCodigo || entry.source === 'lote'))
+    .filter((entry)=> entry && entry.type === 'restock' && (entry.loteCodigo || entry.source === 'lote'))
     .sort((a,b)=> String(b.time || '').localeCompare(String(a.time || '')));
 
   const reverseByGroup = new Map();
@@ -18247,12 +17469,10 @@ function buildLotesEventoModelPOS(entries, products){
       const ref = lotesEntryReferenceKeyPOS(entry);
       columnKey = 'ORPHAN:' + ref;
       if (!orphanReferences.has(ref)){
-        const orphanName = inventorySnapshotNamePOS(entry) || (identity && identity.name) || '';
         orphanReferences.set(ref, {
           key:columnKey,
           ref,
-          name:uiProductNamePOS(orphanName),
-          title:orphanName ? ('Histórico · ' + uiProductNamePOS(orphanName)) : 'Cantidad histórica sin Producto con Receta y Letra resoluble'
+          title:'Cantidad histórica sin Producto con Receta y Letra resoluble'
         });
       }
     }
@@ -18263,24 +17483,15 @@ function buildLotesEventoModelPOS(entries, products){
   const historical = Array.from(historicalColumns.values()).sort(lotesHistoricalLetterSortPOS);
   const orphan = Array.from(orphanReferences.values())
     .sort((a,b)=> String(a.ref).localeCompare(String(b.ref), 'es-NI', { numeric:true, sensitivity:'base' }))
-    .map((def, index)=> ({
-      ...def,
-      label:String(def.name || '').trim() || ('?' + (index + 1)),
-      source:'unresolved'
-    }));
+    .map((def, index)=> ({ ...def, label:'?' + (index + 1), source:'unresolved' }));
 
   return {
     columns:catalogColumns.concat(historical, orphan),
-    rows:Array.from(groups.values()).sort((a,b)=> {
-      const byDate = lotesReadTimestampPOS(b.time) - lotesReadTimestampPOS(a.time);
-      if (byDate) return byDate;
-      return String(a.loteCodigo || '').localeCompare(String(b.loteCodigo || ''), 'es-NI', { numeric:true, sensitivity:'base' });
-    })
+    rows:Array.from(groups.values()).sort((a,b)=> String(b.time || '').localeCompare(String(a.time || '')))
   };
 }
 
 function renderLotesEventoTablePOS(model, emptyMessage){
-  ensureLotesEventoShellPOS();
   const head = $('#tbl-lotes-evento-head');
   const tbody = $('#tbl-lotes-evento tbody');
   if (!head || !tbody) return;
@@ -18303,11 +17514,7 @@ function renderLotesEventoTablePOS(model, emptyMessage){
   }
 
   for (const row of rows){
-    let dateText = '—';
-    if (row.time){
-      const parsedDate = new Date(row.time);
-      dateText = Number.isNaN(parsedDate.getTime()) ? String(row.time) : parsedDate.toLocaleString('es-NI');
-    }
+    const dateText = row.time ? new Date(row.time).toLocaleString('es-NI') : '';
     const tr = document.createElement('tr');
     const codeText = escapeHtml(String(row.loteCodigo || '—')) + (row.reversedAt ? ' ↩︎ REV' : '');
     tr.innerHTML = `
@@ -18321,32 +17528,22 @@ function renderLotesEventoTablePOS(model, emptyMessage){
 
 async function renderLotesCargadosEvento(eventId, options={}){
   bindLotesEventoToggleOncePOS();
-  try{
-    const readResult = eventId != null && String(eventId).trim() !== ''
-      ? await getLotesCargadosEventoReadEntriesPOS(eventId)
-      : { entries:[], products:[] };
-    const model = buildLotesEventoModelPOS(readResult.entries, readResult.products);
-    lotesEventoReadErrorPOS = null;
-    updateLotesEventoCountPOS(model.rows.length);
-    const toggle = $('#lotes-evento-toggle');
-    const expanded = !!(toggle && toggle.getAttribute('aria-expanded') === 'true');
-    if (expanded || options.forceRender){
-      lotesEventoPendingModelPOS = null;
-      renderLotesEventoTablePOS(model, options.emptyMessage);
-    } else {
-      lotesEventoPendingModelPOS = { model, emptyMessage:options.emptyMessage || '' };
-    }
-    return model;
-  }catch(error){
-    console.error('[POS][Lotes cargados] No se pudo leer el histórico.', error);
+  const validEventId = Number(eventId);
+  const entries = Number.isFinite(validEventId) && validEventId > 0
+    ? await getInventoryEntries(validEventId)
+    : [];
+  const products = await getAll('products');
+  const model = buildLotesEventoModelPOS(entries, products);
+  updateLotesEventoCountPOS(model.rows.length);
+  const toggle = $('#lotes-evento-toggle');
+  const expanded = !!(toggle && toggle.getAttribute('aria-expanded') === 'true');
+  if (expanded || options.forceRender){
     lotesEventoPendingModelPOS = null;
-    lotesEventoReadErrorPOS = 'No se pudo leer el historial de lotes. Volvé a entrar a Inventario para reintentar.';
-    updateLotesEventoCountPOS(null);
-    const toggle = $('#lotes-evento-toggle');
-    const expanded = !!(toggle && toggle.getAttribute('aria-expanded') === 'true');
-    if (expanded || options.forceRender) renderLotesEventoReadErrorPOS(lotesEventoReadErrorPOS);
-    return { columns:[], rows:[], readError:true, error };
+    renderLotesEventoTablePOS(model, options.emptyMessage);
+  } else {
+    lotesEventoPendingModelPOS = { model, emptyMessage:options.emptyMessage || '' };
   }
+  return model;
 }
 
 // ==============================
@@ -20806,7 +20003,7 @@ async function renderInventario(){
     try{ await renderReempaqueHistoryPOS(null); }catch(_){ }
 
     // Limpia el bloque informativo de lotes sin perder el encabezado dinámico.
-    try{ await renderLotesCargadosEvento(null, { emptyMessage:'No hay eventos.' }); }catch(error){ console.error('[POS][Lotes cargados] No-event render error.', error); }
+    try{ await renderLotesCargadosEvento(null, { emptyMessage:'No hay eventos.' }); }catch(_){ updateLotesEventoCountPOS(0); }
 
     const tr = document.createElement('tr');
     tr.innerHTML = '<td colspan="8">No hay eventos. Crea uno en la pestaña Vender.</td>';
@@ -25491,9 +24688,6 @@ async function restoreSeed(){
 
 // Init & bindings
 async function init(){
-  // Airbag previo a datos: recupera el bloque si el navegador sirvió un shell HTML anterior.
-  try{ ensureLotesEventoShellPOS(); }catch(err){ console.error('[A33][POS] No se pudo recuperar el shell de Lotes cargados', err); }
-
   // Paso 1: abrir base de datos POS
   try{
     await openDB();
