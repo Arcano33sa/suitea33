@@ -1,0 +1,213 @@
+{
+  "url": "http://127.0.0.1:8765/pos/index.html?v=4.20.99&r=34",
+  "steps": [
+    {
+      "step": "seed",
+      "ok": true,
+      "detail": {
+        "count": 0,
+        "rows": 0
+      }
+    },
+    {
+      "step": "ui_success_transaction_readback",
+      "ok": true,
+      "detail": {
+        "inventoryCount": 2,
+        "cargaIds": [
+          "lc-ms8cbb19-y4n5s"
+        ],
+        "types": [
+          "restock",
+          "restock"
+        ],
+        "products": [
+          {
+            "productId": 1,
+            "loteProductId": "prod-p",
+            "loteLetra": "P",
+            "qty": 4,
+            "source": "lote",
+            "time": "2026-07-31T02:45:27.837Z"
+          },
+          {
+            "productId": 2,
+            "loteProductId": "prod-m",
+            "loteLetra": "M",
+            "qty": 3,
+            "source": "lote",
+            "time": "2026-07-31T02:45:27.837Z"
+          }
+        ],
+        "assignedEventId": 1,
+        "assignmentHistory": 1,
+        "modelRows": 1,
+        "countText": "1",
+        "visibleRows": 1,
+        "groupKey": "lc-ms8cbb19-y4n5s"
+      }
+    },
+    {
+      "step": "leave_and_return",
+      "ok": true
+    },
+    {
+      "step": "reload_persistence",
+      "ok": true
+    },
+    {
+      "step": "close_open_persistence",
+      "ok": true
+    },
+    {
+      "step": "offline_persistence",
+      "ok": true,
+      "detail": {
+        "online": false,
+        "count": "1"
+      }
+    },
+    {
+      "step": "controlled_write_failure_abort",
+      "ok": true,
+      "detail": {
+        "result": {
+          "ok": false,
+          "reason": "AbortError",
+          "rolledBack": true
+        },
+        "inventoryPuts": 2,
+        "beforeCount": 2,
+        "afterCount": 2,
+        "failRows": 0,
+        "assignedEventId": null,
+        "assignmentHistory": 0,
+        "status": "DISPONIBLE",
+        "beforeLoaded": 1,
+        "afterLoaded": 1,
+        "countText": "1"
+      }
+    },
+    {
+      "step": "reempaque_adjust_excluded",
+      "ok": true,
+      "detail": {
+        "rows": 1,
+        "count": "1"
+      }
+    },
+    {
+      "step": "responsive_themes_no_global_overflow",
+      "ok": true,
+      "detail": [
+        {
+          "label": "desktop",
+          "theme": "dark",
+          "viewport": 1366,
+          "rootScrollWidth": 1366,
+          "bodyScrollWidth": 1366,
+          "tableClientWidth": 1256,
+          "tableScrollWidth": 1256,
+          "count": "1"
+        },
+        {
+          "label": "desktop",
+          "theme": "light",
+          "viewport": 1366,
+          "rootScrollWidth": 1366,
+          "bodyScrollWidth": 1366,
+          "tableClientWidth": 1256,
+          "tableScrollWidth": 1256,
+          "count": "1"
+        },
+        {
+          "label": "ipad_landscape",
+          "theme": "dark",
+          "viewport": 1024,
+          "rootScrollWidth": 1024,
+          "bodyScrollWidth": 1024,
+          "tableClientWidth": 914,
+          "tableScrollWidth": 914,
+          "count": "1"
+        },
+        {
+          "label": "ipad_landscape",
+          "theme": "light",
+          "viewport": 1024,
+          "rootScrollWidth": 1024,
+          "bodyScrollWidth": 1024,
+          "tableClientWidth": 914,
+          "tableScrollWidth": 914,
+          "count": "1"
+        },
+        {
+          "label": "ipad_portrait",
+          "theme": "dark",
+          "viewport": 768,
+          "rootScrollWidth": 768,
+          "bodyScrollWidth": 768,
+          "tableClientWidth": 658,
+          "tableScrollWidth": 658,
+          "count": "1"
+        },
+        {
+          "label": "ipad_portrait",
+          "theme": "light",
+          "viewport": 768,
+          "rootScrollWidth": 768,
+          "bodyScrollWidth": 768,
+          "tableClientWidth": 658,
+          "tableScrollWidth": 658,
+          "count": "1"
+        },
+        {
+          "label": "mobile",
+          "theme": "dark",
+          "viewport": 390,
+          "rootScrollWidth": 390,
+          "bodyScrollWidth": 571,
+          "tableClientWidth": 290,
+          "tableScrollWidth": 403,
+          "count": "1"
+        },
+        {
+          "label": "mobile",
+          "theme": "light",
+          "viewport": 390,
+          "rootScrollWidth": 390,
+          "bodyScrollWidth": 571,
+          "tableClientWidth": 290,
+          "tableScrollWidth": 403,
+          "count": "1"
+        }
+      ]
+    }
+  ],
+  "console": [
+    {
+      "type": "info",
+      "text": "[POS][Lotes][WRITE] transaction.oncomplete confirmado. {loteCargaId: lc-ms8cbb19-y4n5s, movements: 2}"
+    },
+    {
+      "type": "info",
+      "text": "[POS][Lotes][READBACK] confirmado. {loteCargaId: lc-ms8cbb19-y4n5s, movements: 2}"
+    },
+    {
+      "type": "info",
+      "text": "[POS][Lotes][RENDER] lote visible y contador confirmado. {loteCargaId: lc-ms8cbb19-y4n5s, count: 1}"
+    },
+    {
+      "type": "error",
+      "text": "[POS][Lotes][LOAD] Carga fallida; se ejecutará rollback controlado. {name: AbortError, message: The transaction was aborted, so the request cannot be fulfilled., loteCargaId: lc-ms8cbe0k-f78x8, error: AbortError: The transaction was aborted, so the request cannot be fulfilled.}"
+    }
+  ],
+  "page_errors": [],
+  "important_console": [
+    "[POS][Lotes][WRITE] transaction.oncomplete confirmado. {loteCargaId: lc-ms8cbb19-y4n5s, movements: 2}",
+    "[POS][Lotes][READBACK] confirmado. {loteCargaId: lc-ms8cbb19-y4n5s, movements: 2}",
+    "[POS][Lotes][RENDER] lote visible y contador confirmado. {loteCargaId: lc-ms8cbb19-y4n5s, count: 1}",
+    "[POS][Lotes][LOAD] Carga fallida; se ejecutará rollback controlado. {name: AbortError, message: The transaction was aborted, so the request cannot be fulfilled., loteCargaId: lc-ms8cbe0k-f78x8, error: AbortError: The transaction was aborted, so the request cannot be fulfilled.}"
+  ],
+  "unexpected_page_errors": [],
+  "ok": true
+}

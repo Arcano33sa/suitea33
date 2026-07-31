@@ -23,8 +23,8 @@ for (const token of [
   'function normalizeLotesReadEventIdPOS(value)',
   'function resolveInventoryProductIdentityPOS(ref, productsOrIndex, options={})',
   'readAllLotesFromSharedPOS()',
-  "getAll('inventory').catch(()=>[])",
-  "getAll('events').catch(()=>[])",
+  "readPosStoresFreshPOS(['inventory','products','events','meta'])",
+  "readLotesStorageKeyPOS('arcano33_lotes_archived')",
   '_lotesReadEvidence:true'
 ]) ok(js.includes(token), `Falta puente histórico: ${token}`);
 
@@ -59,7 +59,7 @@ const document = {
 let setCalls = 0;
 let storedLots = [];
 const localStorage = {
-  getItem:(key)=> key === 'arcano33_lotes' ? JSON.stringify(storedLots) : null,
+  getItem:(key)=> key === 'arcano33_lotes' ? JSON.stringify(storedLots) : (key === 'arcano33_lotes_archived' ? JSON.stringify({records:[]}) : null),
   setItem:()=>{ setCalls += 1; },
   removeItem:()=>{ setCalls += 1; }
 };
@@ -147,11 +147,16 @@ storedLots = [
 
 context.__testData = { inventory, products, events };
 vm.runInContext(`
-  getAll = async function(store){
-    if (store === 'inventory') return __testData.inventory.map(row=>({...row}));
-    if (store === 'products') return __testData.products.map(row=>({...row}));
-    if (store === 'events') return __testData.events.map(row=>({...row}));
-    return [];
+  readPosStoresFreshPOS = async function(names){
+    const out = {};
+    for (const store of names){
+      if (store === 'inventory') out[store] = __testData.inventory.map(row=>({...row}));
+      else if (store === 'products') out[store] = __testData.products.map(row=>({...row}));
+      else if (store === 'events') out[store] = __testData.events.map(row=>({...row}));
+      else if (store === 'meta') out[store] = [{id:'currentEventId',value:3}];
+      else out[store] = [];
+    }
+    return out;
   };
 `, context);
 
@@ -178,18 +183,18 @@ vm.runInContext(`
   assert.strictEqual(old.quantities['LET:G'], 1, 'Cantidad histórica G cambió');
   assert.strictEqual(setCalls, 0, 'La lectura histórica escribió localStorage');
 
-  ok(release.includes('const rev = 6;'), 'Release general no avanzó a r6');
-  ok(build.includes("pos:'48'"), 'Build POS no avanzó a m48');
-  ok(html.includes('app.js?v=4.20.97&r=44'), 'HTML no carga app reparada');
-  ok(html.includes('a33-release.js?v=4.20.97&r=58'), 'HTML no carga release actualizado');
-  ok(html.includes('a33-build.js?v=4.20.97&r=16'), 'HTML no carga build actualizado');
-  ok(html.includes('&m=48'), 'Registro SW no usa m48');
-  ok(sw.includes("const MODULE_CACHE_REV = '48';"), 'SW POS no usa m48');
-  ok(sw.includes("'./index.html?v=4.20.97&r=32'"), 'SW no precachea shell r32');
-  ok(sw.includes("'./app.js?v=4.20.97&r=44'"), 'SW no precachea app r44');
-  assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=32', 'Manifest no apunta al shell nuevo');
+  ok(release.includes('const rev = 2;'), 'Release general no avanzó a r6');
+  ok(build.includes("pos:'51'"), 'Build POS no avanzó a m48');
+  ok(html.includes('app.js?v=4.20.99&r=47'), 'HTML no carga app reparada');
+  ok(html.includes('a33-release.js?v=4.20.99&r=61'), 'HTML no carga release actualizado');
+  ok(html.includes('a33-build.js?v=4.20.99&r=16'), 'HTML no carga build actualizado');
+  ok(html.includes('&m=51'), 'Registro SW no usa m48');
+  ok(sw.includes("const MODULE_CACHE_REV = '51';"), 'SW POS no usa m48');
+  ok(sw.includes("'./index.html?v=4.20.99&r=35'"), 'SW no precachea shell r32');
+  ok(sw.includes("'./app.js?v=4.20.99&r=47'"), 'SW no precachea app r44');
+  assert.strictEqual(manifest.start_url, './index.html?v=4.20.99&r=35', 'Manifest no apunta al shell nuevo');
 
-  console.log('SMOKE OK — POS Inventario recuperación histórica r6 m48');
+  console.log('SMOKE OK — POS Inventario recuperación histórica r2 m51');
 })().catch((error)=>{
   console.error(error);
   process.exitCode = 1;

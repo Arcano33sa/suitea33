@@ -2916,6 +2916,134 @@
     return { checked:checked.length, keys:checked };
   }
 
+  function isPosLotInventoryEvidenceForImport(row){
+    if (!row || typeof row !== 'object') return false;
+    const qty = Number(row.qty ?? row.quantity ?? row.cantidad);
+    if (!(Number.isFinite(qty) && qty > 0)) return false;
+    const source = String(row.source || row.fuente || '').trim().toLowerCase();
+    const type = String(row.type || row.tipo || '').trim().toLowerCase();
+    if (source.includes('reemp') || source.includes('revers')) return false;
+    const hasLot = !!(row.loteCargaId || row.loteGroupKey || row.loteId || row.loteCodigo || row.batchCode || row.lotCode);
+    const typeAllowed = !type || ['restock','reposicion','reposición','load','lote'].includes(type);
+    return typeAllowed && (hasLot || source.includes('lote') || source.includes('batch'));
+  }
+
+  function readJsonContainerForImport(value, key){
+    if (value == null || value === '') return [];
+    let parsed = value;
+    if (typeof parsed === 'string'){
+      try{ parsed = JSON.parse(parsed); }
+      catch(error){
+        const err = new Error(`localStorage → ${key}: contiene JSON inválido después de importar.`);
+        err.code = 'A33_IMPORT_POS_READBACK_FAILED';
+        err.storageKey = key;
+        err.cause = error;
+        throw err;
+      }
+    }
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === 'object') return parsed;
+    return [];
+  }
+
+  async function validatePosHistoricalImportContractReadback(cleanObj){
+    const posPayload = cleanObj?.data?.indexedDB?.['a33-pos'];
+    if (!posPayload || typeof posPayload !== 'object') return { applicable:false };
+
+    const requiredStores = ['inventory','products','events','meta'];
+    const includedStores = requiredStores.filter((name)=> Object.prototype.hasOwnProperty.call(posPayload, name));
+    const summary = { applicable:true, stores:{}, lotLoadIds:[], localStorage:{}, reempaques:null };
+    let readDb = null;
+    try{
+      readDb = await openExistingDB('a33-pos');
+      for (const storeName of includedStores){
+        if (!readDb.objectStoreNames.contains(storeName)) throw restoreError('a33-pos', storeName, 'no existe durante el readback POS final');
+        const tx = readDb.transaction(storeName, 'readonly');
+        const done = txDone(tx);
+        const rows = await getAllFromStore(tx.objectStore(storeName));
+        await done;
+        const expected = Array.isArray(posPayload[storeName]) ? posPayload[storeName] : [];
+        if (rows.length !== expected.length){
+          const err = restoreError('a33-pos', storeName, `contrato POS incompleto: esperados ${expected.length}, leídos ${rows.length}`);
+          err.code = 'A33_IMPORT_POS_READBACK_FAILED';
+          throw err;
+        }
+        summary.stores[storeName] = rows.length;
+      }
+
+      const expectedInventory = Array.isArray(posPayload.inventory) ? posPayload.inventory : [];
+      if (includedStores.includes('inventory')){
+        const tx = readDb.transaction('inventory', 'readonly');
+        const done = txDone(tx);
+        const actualInventory = await getAllFromStore(tx.objectStore('inventory'));
+        await done;
+        const expectedIds = new Set(expectedInventory.filter(isPosLotInventoryEvidenceForImport)
+          .map((row)=> String(row.loteCargaId || row.loteGroupKey || '').trim()).filter(Boolean));
+        const actualIds = new Set(actualInventory.filter(isPosLotInventoryEvidenceForImport)
+          .map((row)=> String(row.loteCargaId || row.loteGroupKey || '').trim()).filter(Boolean));
+        for (const id of expectedIds){
+          if (!actualIds.has(id)){
+            const err = new Error(`a33-pos → inventory: falta loteCargaId/loteGroupKey ${id} después del readback.`);
+            err.code = 'A33_IMPORT_POS_READBACK_FAILED';
+            err.loteCargaId = id;
+            throw err;
+          }
+        }
+        summary.lotLoadIds = Array.from(expectedIds);
+      }
+
+      if (includedStores.includes('meta')){
+        const expectedMeta = (Array.isArray(posPayload.meta) ? posPayload.meta : []).find((row)=> String(row?.id || '') === 'currentEventId');
+        if (expectedMeta){
+          const tx = readDb.transaction('meta', 'readonly');
+          const done = txDone(tx);
+          const actualMeta = await getAllFromStore(tx.objectStore('meta'));
+          await done;
+          const current = actualMeta.find((row)=> String(row?.id || '') === 'currentEventId');
+          if (!current || String(current.value) !== String(expectedMeta.value)){
+            const err = new Error('a33-pos → meta.currentEventId no coincide en el readback POS final.');
+            err.code = 'A33_IMPORT_POS_READBACK_FAILED';
+            throw err;
+          }
+          summary.currentEventId = current.value;
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(posPayload, 'reempaques')){
+        if (!readDb.objectStoreNames.contains('reempaques')) throw restoreError('a33-pos', 'reempaques', 'no existe durante el readback POS final');
+        const tx = readDb.transaction('reempaques', 'readonly');
+        const done = txDone(tx);
+        const rows = await getAllFromStore(tx.objectStore('reempaques'));
+        await done;
+        const expected = Array.isArray(posPayload.reempaques) ? posPayload.reempaques : [];
+        if (rows.length !== expected.length){
+          const err = new Error(`a33-pos → reempaques: esperados ${expected.length}, leídos ${rows.length}.`);
+          err.code = 'A33_IMPORT_POS_READBACK_FAILED';
+          throw err;
+        }
+        summary.reempaques = rows.length;
+      }
+    }finally{
+      try{ readDb?.close(); }catch(_){ }
+    }
+
+    const incomingLocalStorage = cleanObj?.data?.localStorage || {};
+    for (const key of ['arcano33_lotes','arcano33_lotes_archived']){
+      if (!Object.prototype.hasOwnProperty.call(incomingLocalStorage, key)) continue;
+      const actual = window.A33Storage.getItem(key);
+      if (actual == null){
+        const err = new Error(`localStorage → ${key}: no existe en el readback POS final.`);
+        err.code = 'A33_IMPORT_POS_READBACK_FAILED';
+        throw err;
+      }
+      const parsed = readJsonContainerForImport(actual, key);
+      summary.localStorage[key] = Array.isArray(parsed) ? parsed.length : Object.keys(parsed || {}).length;
+    }
+
+    console.info('[A33][Importación][Readback POS] Contrato confirmado.', summary);
+    return summary;
+  }
+
   async function restoreDatabase(dbName, dbPayload, dbVersions, dbSchemas){
     const payload = dbPayload && typeof dbPayload === 'object' ? dbPayload : {};
     const storeNames = Object.keys(payload);
@@ -3543,12 +3671,14 @@
       finalReadback[dbName] = await validateDatabaseRestoreReadback(dbName, dbPayload[dbName], dbSchemas);
     }
 
+    const posContractReadback = await validatePosHistoricalImportContractReadback(cleanObj);
+
     return {
       type:'full',
       indexedDB:fileSuite.length,
       localStorage:Object.keys(incoming || {}).length,
       scopedReplacement:true,
-      readback:{ restore:restoreReadback, final:finalReadback, localStorage:localStorageReadback },
+      readback:{ restore:restoreReadback, final:finalReadback, localStorage:localStorageReadback, posContract:posContractReadback },
       rawMaterialsDefaulted,
       productsIncluded:!!(dbPayload?.['a33-pos'] && Object.prototype.hasOwnProperty.call(dbPayload['a33-pos'], 'products'))
     };

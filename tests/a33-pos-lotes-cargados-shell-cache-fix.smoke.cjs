@@ -15,7 +15,7 @@ const ok = (v,m)=>assert.ok(v,m);
 ok(html.includes('meta name="a33-pos-shell" content="lotes-dinamicos-r6-m48"'), 'Falta marcador de shell POS');
 ok(html.includes('app.js?v=4.20.97&r=44'), 'HTML no carga app corregida');
 ok(html.includes('manifest.webmanifest?v=4.20.97&r=25'), 'HTML no carga manifest corregido');
-ok(html.includes('a33-release.js?v=4.20.97&r=58'), 'HTML no fuerza release actual');
+ok(html.includes('a33-release.js?v=4.20.99&r=61'), 'HTML no fuerza release actual');
 ok(html.includes('a33-build.js?v=4.20.97&r=16'), 'HTML no fuerza build actual');
 ok(html.includes("&m=48"), 'Registro SW no incluye revisión modular');
 ok(html.includes("updateViaCache: 'none'"), 'Registro SW puede reutilizar script viejo');

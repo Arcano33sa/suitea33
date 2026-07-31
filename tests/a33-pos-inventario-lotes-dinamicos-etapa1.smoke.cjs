@@ -184,13 +184,13 @@ listeners[0]({ preventDefault(){} });
 check(toggle.attrs['aria-expanded'] === 'false' && content.hidden === true, 'Toque posterior no cerró');
 
 // PWA local del POS.
-check(html.includes('styles.css?v=4.20.97&r=22'), 'POS no carga CSS nuevo');
-check(html.includes('app.js?v=4.20.97&r=44'), 'POS no carga JS nuevo');
-check(html.includes('manifest.webmanifest?v=4.20.97&r=25'), 'POS no carga manifest nuevo');
-check(sw.includes("const MODULE_CACHE_REV = '48';"), 'No se incrementó caché POS');
-check(sw.includes("'./index.html?v=4.20.97&r=32'"), 'SW no precachea HTML nuevo');
-check(sw.includes("'./styles.css?v=4.20.97&r=22'"), 'SW no precachea CSS nuevo');
-check(sw.includes("'./app.js?v=4.20.97&r=44'"), 'SW no precachea JS nuevo');
-check(manifest.start_url === './index.html?v=4.20.97&r=32', 'Manifest no abre HTML nuevo');
+check(html.includes('styles.css?v=4.20.99&r=22'), 'POS no carga CSS nuevo');
+check(html.includes('app.js?v=4.20.99&r=47'), 'POS no carga JS nuevo');
+check(html.includes('manifest.webmanifest?v=4.20.99&r=28'), 'POS no carga manifest nuevo');
+check(sw.includes("const MODULE_CACHE_REV = '51';"), 'No se incrementó caché POS');
+check(sw.includes("'./index.html?v=4.20.99&r=35'"), 'SW no precachea HTML nuevo');
+check(sw.includes("'./styles.css?v=4.20.99&r=22'"), 'SW no precachea CSS nuevo');
+check(sw.includes("'./app.js?v=4.20.99&r=47'"), 'SW no precachea JS nuevo');
+check(manifest.start_url === './index.html?v=4.20.99&r=35', 'Manifest no abre HTML nuevo');
 
 console.log('SMOKE OK — Suite A33 POS Inventario Lotes Dinámicos Etapa 1/2');

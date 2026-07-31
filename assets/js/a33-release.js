@@ -3,8 +3,8 @@
 (function (g) {
   'use strict';
 
-  const suiteVersion = '4.20.98';
-  const rev = 1;
+  const suiteVersion = '4.20.99';
+  const rev = 2;
   const revLabel = `r${rev}`;
   const label = `${suiteVersion} ${revLabel}`;
 
@@ -30,13 +30,13 @@
   // UI helper: versión visible arriba (si existe en el DOM)
   // - Lee A33_RELEASE.label
   // - Si no existe A33_RELEASE, deja el valor anterior (fallback)
-  // - Si el valor anterior es vacío/placeholder, usa '4.20.98 r1' como último recurso
+  // - Si el valor anterior es vacío/placeholder, usa '4.20.99 r2' como último recurso
   g.A33_applyReleaseLabel = function () {
     try {
       if (typeof document === 'undefined' || !document || !document.querySelectorAll) return;
 
       const fromRelease = (g.A33_RELEASE && g.A33_RELEASE.label) ? String(g.A33_RELEASE.label) : '';
-      const lastResort = '4.20.98 r1';
+      const lastResort = '4.20.99 r2';
 
       const isPlaceholder = (t) => {
         const s = (t || '').toString().trim().toLowerCase();

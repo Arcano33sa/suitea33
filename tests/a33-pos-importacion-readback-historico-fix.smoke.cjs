@@ -20,7 +20,7 @@ has(config, 'await validateDatabaseRestoreReadback(dbName, payload, dbSchemas)',
 has(config, 'A33_IMPORT_RESTORE_FAILED', 'Falta error técnico de restauración.');
 has(config, 'A33_IMPORT_LOCALSTORAGE_READBACK_FAILED', 'Falta readback de localStorage.');
 has(config, "'loteCargaId','loteGroupKey','loteProductId','loteLetra'", 'Falta protección de campos de Inventario.');
-has(config, 'readback:{ restore:restoreReadback, final:finalReadback, localStorage:localStorageReadback }', 'Falta evidencia de readback final.');
+has(config, 'readback:{ restore:restoreReadback, final:finalReadback, localStorage:localStorageReadback, posContract:posContractReadback }', 'Falta evidencia de readback final.');
 lacks(config, 'try{ store.put(row); }catch(_){ }', 'La escritura no debe silenciar errores.');
 lacks(config, 'try { store.put(row); } catch (_) {}', 'La escritura no debe silenciar errores legacy.');
 
@@ -37,12 +37,12 @@ lacks(bridge, ".catch(()=>[])", 'El puente no debe convertir errores de IndexedD
 has(bridge, "['inventory','products','events','meta']", 'Faltan stores del readback fresco.');
 has(bridge, 'dedupeLotesReadGroupsPOS(modern.concat(historical)', 'Falta deduplicación moderna/histórica.');
 
-has(release, "const suiteVersion = '4.20.98';");
-has(release, 'const rev = 1;');
-has(index, 'import-readback-historico-r1-m49');
-has(index, 'app.js?v=4.20.98&r=45');
-has(sw, "const MODULE_CACHE_REV = '49';");
+has(release, "const suiteVersion = '4.20.99';");
+has(release, 'const rev = 2;');
+has(index, 'lotes-historico-pwa-hardening-final-r2-m51');
+has(index, 'app.js?v=4.20.99&r=47');
+has(sw, "const MODULE_CACHE_REV = '51';");
 has(sw, 'a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}');
-assert.ok(String(manifest.start_url).includes('v=4.20.98') && String(manifest.start_url).includes('r=33'), 'Manifest POS no fue versionado.');
+assert.ok(String(manifest.start_url).includes('v=4.20.99') && String(manifest.start_url).includes('r=35'), 'Manifest POS no fue versionado.');
 
 console.log('OK a33-pos-importacion-readback-historico-fix.smoke');
