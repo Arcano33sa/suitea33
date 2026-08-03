@@ -771,18 +771,66 @@ html[data-theme="light"] .customer-quick-cancel{
 /* Lotes cargados en evento (POS > Inventario) */
 .lotes-block{
   margin-top:10px;
-  padding:12px;
+  padding:0;
   border-radius:12px;
-  border:1px solid #2a2a2a;
+  border:1px solid rgba(212,175,55,0.24);
   background:#121212;
+  overflow:hidden;
 }
-.lotes-block-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.lotes-block .badge{margin-left:8px}
+.lotes-block-toggle{
+  width:100%;
+  min-height:48px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:11px 13px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+.lotes-block-toggle:hover{background:rgba(212,175,55,0.06)}
+.lotes-block-toggle:focus-visible{outline:2px solid #d4af37;outline-offset:-3px}
+.lotes-block-toggle-title{font-size:1rem;font-weight:700;line-height:1.25}
+.lotes-block-chevron{flex:0 0 auto;font-size:1.25rem;line-height:1;transition:transform .18s ease}
+.lotes-block:not(.is-collapsed) .lotes-block-chevron{transform:rotate(180deg)}
+.lotes-block-content{padding:0 12px 12px}
+.lotes-block-content[hidden]{display:none!important}
+.lotes-block-actions{padding-top:2px;margin-bottom:10px}
 #tbl-lotes-evento th,#tbl-lotes-evento td{white-space:nowrap}
 #tbl-lotes-evento th:nth-child(n+3),
 #tbl-lotes-evento td:nth-child(n+3){
   text-align:center;
   font-variant-numeric:tabular-nums;
+}
+
+#tbl-lotes-evento thead .lotes-totals-row th{
+  padding-top:7px;
+  padding-bottom:7px;
+  background:linear-gradient(180deg, rgba(212,175,55,0.18), rgba(212,175,55,0.09));
+  border-bottom:1px solid rgba(212,175,55,0.34);
+  color:#f3d77b;
+  font-weight:800;
+  line-height:1.1;
+  text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+#tbl-lotes-evento thead .lotes-totals-row th[colspan="2"]{
+  text-align:left;
+  letter-spacing:.035em;
+}
+html[data-theme="light"] #tbl-lotes-evento thead .lotes-totals-row th,
+body.light #tbl-lotes-evento thead .lotes-totals-row th{
+  background:linear-gradient(180deg, rgba(178,135,16,0.18), rgba(178,135,16,0.08));
+  border-bottom-color:rgba(128,94,0,0.30);
+  color:#6b5000;
+}
+@media (max-width:700px){
+  #tbl-lotes-evento thead .lotes-totals-row th{padding-top:6px;padding-bottom:6px}
 }
 
 

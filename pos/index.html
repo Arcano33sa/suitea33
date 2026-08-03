@@ -30,7 +30,7 @@
     }
   })();
 </script>
-<link rel="stylesheet" href="styles.css?v=4.20.97&r=21">
+<link rel="stylesheet" href="styles.css?v=4.20.97&r=24">
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.97&r=13" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.97&r=13" />
   <script src="/assets/js/a33-theme.js?v=4.20.97&r=13"></script>
@@ -263,17 +263,17 @@
   <button id="btn-inv-from-lote" class="btn-ok btn-pill" type="button">Agregar desde lote</button>
 </div>
     </div>
-    <div id="lotes-evento-block" class="lotes-block">
-      <div class="lotes-block-head">
-        <div>
-          <h3 style="margin:0">Lotes cargados en este evento <span class="badge" id="lotes-count">0</span></h3>
-          <small class="muted">Se registra cuando usas “Agregar desde lote”.</small>
-        </div>
-        <div class="actions end">
+    <div id="lotes-evento-block" class="lotes-block is-collapsed">
+      <button id="btn-toggle-lotes-evento" class="lotes-block-toggle" type="button" aria-expanded="false" aria-controls="lotes-evento-content">
+        <span class="lotes-block-toggle-title">Lotes cargados · <span id="lotes-count">0 registros</span></span>
+        <span class="lotes-block-chevron" aria-hidden="true">⌄</span>
+      </button>
+
+      <div id="lotes-evento-content" class="lotes-block-content" hidden>
+        <div class="lotes-block-actions actions end">
           <button id="btn-reverse-assign" class="btn-outline btn-pill btn-pill-mini" type="button">Reversar asignación</button>
           <button id="btn-create-sobrante" class="btn-outline btn-pill btn-pill-mini" type="button">Crear lote sobrante</button>
         </div>
-      </div>
 
       <div id="sobrante-panel" class="sobrante-panel" style="display:none">
         <div class="sobrante-panel-head">
@@ -344,18 +344,14 @@
       <div class="table-scroll">
         <table id="tbl-lotes-evento" class="compact">
           <thead>
-            <tr>
-              <th>Código/Nombre</th>
-              <th>Fecha/Hora</th>
-              <th>P</th>
-              <th>M</th>
-              <th>D</th>
-              <th>L</th>
-              <th>G</th>
+            <tr id="tbl-lotes-evento-head">
+              <th>Código</th>
+              <th>Fecha</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
+      </div>
       </div>
     </div>
 
@@ -1649,7 +1645,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m45').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m49').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1658,7 +1654,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m45')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m49')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1666,7 +1662,7 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.97&r=42"></script>
+<script src="app.js?v=4.20.97&r=45"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.97&r=13"></script>
 <script>
   (function(){
