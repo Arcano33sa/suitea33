@@ -732,31 +732,51 @@ tr:nth-child(even) td {
 /* Column widths (desktop/tablet). En móvil se convierte a tarjetas. */
 .inv-varios-table th:nth-child(1),
 .inv-varios-table td:nth-child(1) {
-  width: 38%;
+  width: 34%;
   white-space: normal;
 }
 .inv-varios-table th:nth-child(2),
-.inv-varios-table td:nth-child(2) { width: 22%; }
+.inv-varios-table td:nth-child(2) { width: 30%; }
 .inv-varios-table th:nth-child(3),
-.inv-varios-table td:nth-child(3) { width: 14%; }
+.inv-varios-table td:nth-child(3) { width: 12%; }
 .inv-varios-table th:nth-child(4),
-.inv-varios-table td:nth-child(4) { width: 14%; }
+.inv-varios-table td:nth-child(4) { width: 12%; }
 .inv-varios-table th:nth-child(5),
 .inv-varios-table td:nth-child(5) { width: 12%; }
 
+/* El stock debe leerse como un control único: [−] [cantidad] [+]. */
 .varios-stock-wrap {
-  display: flex;
+  display: grid;
+  grid-template-columns: 36px minmax(64px, 1fr) 36px;
   align-items: center;
   gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
 }
 
-.varios-stock-wrap input[type="number"] {
-  max-width: 110px;
+.varios-stock-wrap input[type="number"],
+.varios-stock-wrap .varios-stock {
+  width: 100%;
+  min-width: 64px;
+  max-width: none;
+  text-align: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  padding-inline: 0.35rem;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.varios-stock-wrap input[type="number"]::-webkit-outer-spin-button,
+.varios-stock-wrap input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .varios-delta-btn {
-  min-width: 34px;
-  min-height: 34px;
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
   padding: 0;
   border-radius: 12px;
   line-height: 1;
@@ -772,10 +792,34 @@ tr:nth-child(even) td {
 }
 
 @media (max-width: 920px) {
+  .inv-varios-table th:nth-child(1),
+  .inv-varios-table td:nth-child(1) { width: 32%; }
   .inv-varios-table th:nth-child(2),
-  .inv-varios-table td:nth-child(2) { width: 26%; }
+  .inv-varios-table td:nth-child(2) { width: 32%; }
+  .inv-varios-table th:nth-child(3),
+  .inv-varios-table td:nth-child(3),
+  .inv-varios-table th:nth-child(4),
+  .inv-varios-table td:nth-child(4),
   .inv-varios-table th:nth-child(5),
-  .inv-varios-table td:nth-child(5) { width: 14%; }
+  .inv-varios-table td:nth-child(5) { width: 12%; }
+}
+
+@media (max-width: 640px) {
+  .inv-varios-table th:nth-child(n),
+  .inv-varios-table td:nth-child(n) {
+    width: 100%;
+  }
+
+  .varios-stock-wrap {
+    width: min(100%, 230px);
+    grid-template-columns: 40px minmax(82px, 1fr) 40px;
+  }
+
+  .varios-delta-btn {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+  }
 }
 
 @media (max-width: 520px) {
