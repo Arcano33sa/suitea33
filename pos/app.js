@@ -12825,7 +12825,7 @@ const tabs = $$('.tab');
   if (name==='resumen') renderSummary();
   if (name==='extras') { renderExtrasUI().catch(err=>console.error(err)); renderBancos().catch(err=>console.error(err)); }
   if (name==='eventos') renderEventos();
-  if (name==='inventario') { resetLotesCargadosClosedPOS(); renderInventario(); }
+  if (name==='inventario') { setLotesCargadosExpandedPOS(false); renderInventario(); }
   if (name==='efectivo') renderEfectivoTab().catch(err=>console.error(err));
   if (name==='calculadora') onOpenPosCalculatorTab().catch(err=>console.error(err));
   if (name==='venta') {
@@ -17252,215 +17252,229 @@ async function importFromLoteToInventory(opts){
 }
 
 
-// Lotes cargados en este evento (solo informativo)
-function setLotesCargadosOpenPOS(open){
+// Lotes cargados: histórico plegable, desacoplado de las operaciones
+function setLotesCargadosExpandedPOS(expanded){
   const block = document.getElementById('lotes-evento-block');
-  const button = document.getElementById('btn-toggle-lotes-evento');
+  const header = block ? block.querySelector('.lotes-block-head') : null;
   const content = document.getElementById('lotes-evento-content');
-  if (!block || !button || !content) return;
-  const isOpen = !!open;
-  block.classList.toggle('is-collapsed', !isOpen);
+  if (!header || !content) return;
+  const isOpen = expanded === true;
+  header.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
   content.hidden = !isOpen;
-  button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  block.classList.toggle('is-open', isOpen);
 }
 
-function resetLotesCargadosClosedPOS(){
-  setLotesCargadosOpenPOS(false);
+function toggleLotesCargadosPOS(){
+  const block = document.getElementById('lotes-evento-block');
+  const header = block ? block.querySelector('.lotes-block-head') : null;
+  if (!header) return;
+  setLotesCargadosExpandedPOS(header.getAttribute('aria-expanded') !== 'true');
 }
 
-function normalizeLoadedLotLetterPOS(value){
-  const raw = productIdentityNormPOS(value).toUpperCase();
-  return /^[A-ZÑ]$/.test(raw) ? raw : '';
-}
-
-function productActiveForLoadedLotsPOS(product){
-  if (!product || typeof product !== 'object') return false;
-  const flags = ['active','activo','enabled','isActive','visible'];
-  for (const key of flags){
-    if (hasOwnPOS(product, key)) return boolCatalogFlagPOS(product[key], true);
+function setupLotesCargadosDisclosurePOS(){
+  const block = document.getElementById('lotes-evento-block');
+  const header = block ? block.querySelector('.lotes-block-head') : null;
+  if (!block || !header || block.dataset.disclosureBound === '1'){
+    setLotesCargadosExpandedPOS(false);
+    return;
   }
-  return true;
+  block.dataset.disclosureBound = '1';
+  setLotesCargadosExpandedPOS(false);
+
+  block.addEventListener('click', (event)=>{
+    const clickedHeader = event && event.target && typeof event.target.closest === 'function'
+      ? event.target.closest('.lotes-block-head')
+      : null;
+    if (!clickedHeader || !block.contains(clickedHeader)) return;
+    toggleLotesCargadosPOS();
+  });
+
+  header.addEventListener('keydown', (event)=>{
+    if (!event || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    toggleLotesCargadosPOS();
+  });
 }
 
-function loadedLotProductKeyPOS(identity, row){
-  if (identity && identity.ok){
-    if (identity.stableId) return 'PID:' + identity.stableId;
-    if (identity.internalId) return 'IID:' + identity.internalId;
+// La tabla histórica usa únicamente la Letra guardada al momento de cargar el lote.
+// No consulta Catálogos ni deriva Letras por nombre: la fotografía original queda intacta.
+function loteHistoryLetterSnapshotPOS(entry){
+  const row = entry && typeof entry === 'object' ? entry : {};
+  const productSnapshot = row.loteProductSnapshot && typeof row.loteProductSnapshot === 'object'
+    ? row.loteProductSnapshot
+    : null;
+  const candidates = [
+    row.loteLetra,
+    row.loteLetter,
+    row.loteProductLetter,
+    row.Letra,
+    row.letra,
+    productSnapshot && (productSnapshot.Letra ?? productSnapshot.letra ?? productSnapshot.letter)
+  ];
+  for (const value of candidates){
+    const letter = normalizeLoteContentLetterPOS(value);
+    if (letter) return letter;
   }
-  const candidates = collectProductIdentityCandidatesPOS(row || {});
-  if (candidates.stableIds.length) return 'PID:' + candidates.stableIds[0];
-  if (candidates.internalIds.length) return 'IID:' + candidates.internalIds[0];
-  const letter = normalizeLoadedLotLetterPOS(row && (row.loteLetra ?? row.Letra ?? row.letra ?? row.productLetter));
-  if (letter) return 'LETTER:' + letter;
-  const name = productIdentityNameKeyPOS(row && (row.loteNombreSnapshot ?? row.productNameSnapshot ?? row.nombreSnapshot ?? row.productName ?? row.name));
-  return name ? 'NAME:' + name : '';
+  return '';
 }
 
-function loadedLotLetterFromRowPOS(row, identity){
-  const explicit = normalizeLoadedLotLetterPOS(row && (row.loteLetra ?? row.Letra ?? row.letra ?? row.productLetter));
-  if (explicit) return explicit;
-  const resolved = normalizeLoadedLotLetterPOS(identity && identity.letter);
-  if (resolved) return resolved;
-  const legacyName = row && (row.loteNombreSnapshot ?? row.productNameSnapshot ?? row.nombreSnapshot ?? row.productName ?? row.name);
-  return normalizeLoadedLotLetterPOS(presKeyFromProductNamePOS(legacyName || ''));
-}
+function buildLotesCargadosHistoryModelPOS(entries){
+  const all = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  const rows = all.filter(e => e.type === 'restock' && (e.loteCodigo || e.source === 'lote'));
 
-function buildLoadedLotsTableModelPOS(entries, products){
-  const list = Array.isArray(products) ? products.filter(Boolean) : [];
-  const index = buildProductIdentityIndexPOS(list);
-  const catalogLetters = [];
-  const historicalLetters = [];
-  const activeProductsByLetter = new Map();
-
-  const addLetter = (target, value) => {
-    const letter = normalizeLoadedLotLetterPOS(value);
-    if (letter && !target.includes(letter)) target.push(letter);
-    return letter;
-  };
-
-  for (const product of list){
-    if (!productRecipeEnabledForProductionPOS(product)) continue;
-    const letter = addLetter(catalogLetters, product.letra ?? product.Letra ?? product.letter);
-    if (!letter || !productActiveForLoadedLotsPOS(product)) continue;
-    const current = activeProductsByLetter.get(letter) || [];
-    current.push(product);
-    activeProductsByLetter.set(letter, current);
-  }
-
-  const rows = (Array.isArray(entries) ? entries : [])
-    .filter(e => e && e.type === 'restock' && (e.loteCodigo || e.source === 'lote'))
-    .slice().sort((a,b)=> String(b.time||'').localeCompare(String(a.time||'')));
-
-  const reverseByGroup = new Map();
-  for (const row of (Array.isArray(entries) ? entries : [])){
-    if (!row || row.type !== 'adjust' || row.source !== 'lote_reverso') continue;
-    const key = String(row.loteGroupKey || row.loteCargaId || '').trim();
+  // Detectar reversos solo para señal visual; no altera cantidades ni columnas históricas.
+  const revByGroupKey = new Map();
+  for (const r of all){
+    if (!r || r.type !== 'adjust' || r.source !== 'lote_reverso') continue;
+    const keyRaw = r.loteGroupKey || r.loteCargaId || '';
+    const key = keyRaw ? String(keyRaw) : '';
     if (!key) continue;
-    const time = String(row.time || '');
-    if (!reverseByGroup.has(key) || time.localeCompare(reverseByGroup.get(key)) > 0) reverseByGroup.set(key, time);
+    const time = String(r.time || '');
+    const previous = revByGroupKey.get(key);
+    if (!previous || time.localeCompare(previous) > 0) revByGroupKey.set(key, time);
   }
 
+  const letters = [];
+  const seenLetters = new Set();
   const groups = new Map();
-  for (const row of rows){
-    const code = String(row.loteCodigo || '').trim();
-    const time = String(row.time || '');
-    const groupKey = String(row.loteCargaId || row.loteGroupKey || ((code || '—') + '|' + time));
+
+  // Se recorre en el orden persistido. Una Letra nueva se agrega al final sin reordenar las existentes.
+  for (const it of rows){
+    const loteCodigo = String(it.loteCodigo || '').trim();
+    const time = String(it.time || '');
+    const groupKey = it.loteCargaId
+      ? String(it.loteCargaId)
+      : ((loteCodigo || '—') + '|' + time);
     let group = groups.get(groupKey);
     if (!group){
-      group = { groupKey, loteCodigo:code || '—', time, quantities:new Map(), productRows:new Map(), conflicts:new Set() };
+      group = {
+        loteCodigo:loteCodigo || '—',
+        time,
+        groupKey,
+        quantities:Object.create(null),
+        reversedAt:revByGroupKey.get(groupKey) || ''
+      };
       groups.set(groupKey, group);
     }
+    if ((group.loteCodigo === '—' || !group.loteCodigo) && loteCodigo) group.loteCodigo = loteCodigo;
+    if (!group.time && time) group.time = time;
+    if (!group.reversedAt && revByGroupKey.has(groupKey)) group.reversedAt = revByGroupKey.get(groupKey);
 
-    const identity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
-    const letter = loadedLotLetterFromRowPOS(row, identity);
+    const letter = loteHistoryLetterSnapshotPOS(it);
     if (!letter) continue;
-    addLetter(historicalLetters, letter);
-
-    const qty = Number(row.qty);
-    if (!Number.isFinite(qty) || qty <= 0) continue;
-    const productKey = loadedLotProductKeyPOS(identity, row) || ('LETTER:' + letter);
-    const score = (row.loteLetra ? 8 : 0) + (identity.ok ? 4 : 0) + (identity.matchedBy === 'productId' ? 2 : 0) + (identity.matchedBy === 'internalId' ? 1 : 0);
-    const existing = group.productRows.get(productKey);
-    if (existing && existing.score >= score) continue;
-    group.productRows.set(productKey, { letter, qty, score });
-  }
-
-  const conflicts = new Set();
-  for (const [letter, productsForLetter] of activeProductsByLetter.entries()){
-    const identities = new Set(productsForLetter.map(p => catalogProductStableIdPOS(p) || ('IID:' + catalogProductInternalIdPOS(p)) || productIdentityNameKeyPOS(p.name || p.nombre)));
-    if (identities.size > 1) conflicts.add(letter);
-  }
-
-  for (const group of groups.values()){
-    for (const item of group.productRows.values()){
-      if (conflicts.has(item.letter)){
-        group.conflicts.add(item.letter);
-        continue;
-      }
-      group.quantities.set(item.letter, (group.quantities.get(item.letter) || 0) + item.qty);
+    if (!seenLetters.has(letter)){
+      seenLetters.add(letter);
+      letters.push(letter);
     }
-    if (reverseByGroup.has(group.groupKey)) group.reversedAt = reverseByGroup.get(group.groupKey);
-  }
-
-  if (conflicts.size){
-    console.error('[A33][Lotes cargados] Conflicto de Letra en productos activos:', Array.from(conflicts));
+    const qty = Number(it.qty);
+    if (!Number.isFinite(qty)) continue;
+    group.quantities[letter] = (Number(group.quantities[letter]) || 0) + qty;
   }
 
   return {
-    letters: catalogLetters.concat(historicalLetters.filter(letter => !catalogLetters.includes(letter))),
-    rows:Array.from(groups.values()).sort((a,b)=> String(b.time||'').localeCompare(String(a.time||''))),
-    conflicts
+    letters,
+    groups:Array.from(groups.values()).sort((a,b)=> String(b.time || '').localeCompare(String(a.time || '')))
   };
 }
 
-function calculateLoadedLotTotalsPOS(model){
-  const letters = Array.isArray(model && model.letters) ? model.letters : [];
-  const rows = Array.isArray(model && model.rows) ? model.rows : [];
-  const totals = new Map(letters.map(letter => [letter, 0]));
-  for (const group of rows){
-    for (const letter of letters){
-      if (group && group.conflicts && group.conflicts.has(letter)) continue;
-      const qty = Number(group && group.quantities ? group.quantities.get(letter) : 0);
-      if (!Number.isFinite(qty) || qty < 0) continue;
-      totals.set(letter, (totals.get(letter) || 0) + qty);
-    }
-  }
-  return totals;
+function renderLotesCargadosHeaderPOS(table, letters){
+  const row = table ? table.querySelector('#lotes-evento-head-row') : null;
+  if (!row) return;
+  row.textContent = '';
+  const appendHeader = (label) => {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = String(label || '');
+    row.appendChild(th);
+  };
+  appendHeader('Código');
+  appendHeader('Fecha');
+  for (const letter of (Array.isArray(letters) ? letters : [])) appendHeader(letter);
 }
 
+// Los totales se calculan exclusivamente desde las filas ya renderizadas en tbody.
+// No consultan Inventario, Catálogos ni otra fuente y nunca se persisten.
+function renderLotesCargadosTotalsPOS(table, letters){
+  const totalsRow = table ? table.querySelector('#lotes-evento-totals-row') : null;
+  if (!table || !totalsRow) return;
+
+  const safeLetters = Array.isArray(letters) ? letters : [];
+  const totals = safeLetters.map(()=>0);
+  const renderedRows = table.querySelectorAll('tbody tr');
+
+  for (const renderedRow of renderedRows){
+    const cells = renderedRow && renderedRow.children ? renderedRow.children : [];
+    if (cells.length < 2 + safeLetters.length) continue;
+    for (let index = 0; index < safeLetters.length; index += 1){
+      const cell = cells[index + 2];
+      const raw = cell ? String(cell.textContent == null ? '' : cell.textContent).trim() : '';
+      const value = Number(raw);
+      if (!Number.isFinite(value) || value < 0) continue;
+      totals[index] += value;
+    }
+  }
+
+  totalsRow.textContent = '';
+  const label = document.createElement('th');
+  label.scope = 'row';
+  label.colSpan = 2;
+  label.textContent = 'TOTALES';
+  totalsRow.appendChild(label);
+
+  for (const total of totals){
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = Number.isFinite(total) && total >= 0 ? String(total) : '0';
+    totalsRow.appendChild(th);
+  }
+}
+
+// Lotes cargados en este evento (solo informativo)
 async function renderLotesCargadosEvento(eventId){
-  const table = document.getElementById('tbl-lotes-evento');
-  const theadRow = document.getElementById('tbl-lotes-evento-head');
+  const table = $('#tbl-lotes-evento');
   const tbody = table ? table.querySelector('tbody') : null;
   const badge = $('#lotes-count');
-  if (!tbody || !theadRow) return;
+  if (!table || !tbody) return;
 
-  tbody.innerHTML = '';
-  const entries = await getInventoryEntries(eventId);
-  const products = await getAll('products');
-  const model = buildLoadedLotsTableModelPOS(entries, products);
+  tbody.textContent = '';
+  const model = buildLotesCargadosHistoryModelPOS(await getInventoryEntries(eventId));
+  const letters = model.letters;
+  const out = model.groups;
+  renderLotesCargadosHeaderPOS(table, letters);
+  if (badge) badge.textContent = String(out.length || 0);
 
-  const thead = theadRow.parentElement;
-  let totalsRow = document.getElementById('tbl-lotes-evento-totals');
-  if (!totalsRow && thead){
-    totalsRow = document.createElement('tr');
-    totalsRow.id = 'tbl-lotes-evento-totals';
-    totalsRow.className = 'lotes-totals-row';
-    thead.insertBefore(totalsRow, theadRow);
-  }
-
-  const totalsByLetter = calculateLoadedLotTotalsPOS(model);
-
-  if (totalsRow){
-    totalsRow.innerHTML = '<th colspan="2" scope="row">TOTALES</th>' + model.letters.map(letter => {
-      const formatted = formatLoteContentQtyPOS(totalsByLetter.get(letter));
-      return '<th scope="col">' + (formatted || '0') + '</th>';
-    }).join('');
-  }
-  theadRow.innerHTML = '<th>Código</th><th>Fecha</th>' + model.letters.map(letter => '<th>' + escapeHtml(letter) + '</th>').join('');
-
-  const count = model.rows.length;
-  if (badge) badge.textContent = count + (count === 1 ? ' registro' : ' registros');
-
-  if (!count){
+  if (!out.length){
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td colspan="' + Math.max(2, model.letters.length + 2) + '"><small class="muted">No hay lotes cargados en este evento.</small></td>';
+    const td = document.createElement('td');
+    const small = document.createElement('small');
+    td.colSpan = Math.max(2, 2 + letters.length);
+    small.className = 'muted';
+    small.textContent = 'No hay lotes cargados en este evento.';
+    td.appendChild(small);
+    tr.appendChild(td);
     tbody.appendChild(tr);
+    renderLotesCargadosTotalsPOS(table, letters);
     return;
   }
 
-  for (const group of model.rows){
-    const date = group.time ? new Date(group.time).toLocaleDateString('es-NI') : '';
+  const appendCell = (tr, value) => {
+    const td = document.createElement('td');
+    td.textContent = String(value == null ? '' : value);
+    tr.appendChild(td);
+  };
+
+  for (const group of out){
+    const date = group.time ? new Date(group.time).toLocaleString('es-NI') : '';
     const tr = document.createElement('tr');
-    const code = escapeHtml(String(group.loteCodigo || '—'));
-    const cells = model.letters.map(letter => {
-      if (group.conflicts.has(letter)) return '<td title="Conflicto: más de un producto activo usa esta Letra">⚠</td>';
-      const formatted = formatLoteContentQtyPOS(group.quantities.get(letter));
-      return '<td>' + (formatted || '—') + '</td>';
-    }).join('');
-    tr.innerHTML = '<td>' + code + '</td><td>' + escapeHtml(date || '') + '</td>' + cells;
+    appendCell(tr, String(group.loteCodigo || '—') + (group.reversedAt ? ' ↩︎ REV' : ''));
+    appendCell(tr, date || '');
+    for (const letter of letters){
+      appendCell(tr, Number(group.quantities[letter]) || 0);
+    }
     tbody.appendChild(tr);
   }
+
+  renderLotesCargadosTotalsPOS(table, letters);
 }
 
 // ==============================
@@ -19762,7 +19776,7 @@ async function renderInventario(){
     const ltBody = $('#tbl-lotes-evento tbody');
     const badge = $('#lotes-count');
     if (ltBody) ltBody.innerHTML = '<tr><td colspan="7"><small class="muted">No hay eventos.</small></td></tr>';
-    if (badge) badge.textContent = '0 registros';
+    if (badge) badge.textContent = '0';
 
     const tr = document.createElement('tr');
     tr.innerHTML = '<td colspan="8">No hay eventos. Crea uno en la pestaña Vender.</td>';
@@ -19857,10 +19871,6 @@ document.addEventListener('change', async (e)=>{
 document.addEventListener('click', async (e)=>{
   const t = e.target;
   if (!t) return;
-  if (t.id === 'btn-toggle-lotes-evento'){
-    const expanded = t.getAttribute('aria-expanded') === 'true';
-    setLotesCargadosOpenPOS(!expanded);
-  }
   if (t.id === 'btn-toggle-reempaque'){
     reempaqueSetOpenPOS(!reempaqueIsOpenPOS());
   }
@@ -24477,6 +24487,7 @@ async function init(){
 
   // Paso 2.0: navegación por tabs (delegación, idempotente)
   await runStep('bindTabbarOncePOS', async()=>{ bindTabbarOncePOS(); });
+  await runStep('setupLotesCargadosDisclosurePOS', async()=>{ setupLotesCargadosDisclosurePOS(); });
 
   // Paso 2.1: recuperación conservadora de grupos si events quedó vacío
   await runStep('recoverGroupsIfEventsEmpty', ensureGroupsAvailableAtStartupPOS);
@@ -25047,7 +25058,7 @@ async function exportEventosExcel(){
 
   // Modal close
   document.getElementById('ev-close').onclick = ()=> showEventView(false);
-  document.getElementById('event-view').addEventListener('click', (e)=>{ if (e.target.id==='event-view') showEventView(false); });
+  document.getElementById('event-view').addEventListener('click', (e)=>{ if (e.target === e.currentTarget) showEventView(false); });
 
   // Inventario tab
   $('#inv-event').addEventListener('change', renderInventario);

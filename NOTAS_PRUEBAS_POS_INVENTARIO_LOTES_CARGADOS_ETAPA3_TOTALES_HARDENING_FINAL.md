@@ -1,18 +1,26 @@
 # Suite A33 — POS — Inventario — Lotes cargados — Etapa 3/3
 
-Fecha: 02/08/2026
+Fecha de cierre: 02/08/2026 19:22
 
 ## Cambios
-- Fila TOTALES insertada dinámicamente en THEAD antes del encabezado Código/Fecha/Letras.
-- TOTALES ocupa Código + Fecha con colspan=2.
-- Suma basada exclusivamente en el modelo normalizado ya usado para renderizar las filas.
-- Letras dinámicas e históricas conservadas en el mismo orden.
-- Valores no finitos y negativos ignorados; columnas sin cantidad muestran 0.
-- Estilo compacto premium claro/oscuro y scroll contenido en la tabla.
-- Cache POS actualizado: módulo m49, index r32, styles r24, app r45.
+- Fila superior `TOTALES` encima de `Código`, `Fecha` y las Letras dinámicas.
+- `TOTALES` combina visualmente las columnas Código + Fecha.
+- Cada total por Letra se calcula únicamente desde las celdas ya renderizadas en `tbody`.
+- Valores `null`, `undefined`, `NaN` y negativos se ignoran; una Letra sin suma muestra `0`.
+- Totales no persistidos y sin cambios en Inventario, stock, JSON, Firebase ni registros históricos.
+- Estilo compacto premium para modo oscuro y claro.
+- Scroll horizontal contenido dentro de la tabla, sin overflow general.
+- Caché PWA POS coordinada a módulo `m49`.
 
 ## Pruebas
-- node --check: pos/app.js y pos/sw.js OK.
-- Smoke de totales: G=3, D=3, C=8, L=2, T=1 OK.
-- Casos cero/null/NaN/negativo/conflicto: OK.
-- Revisión estructural: una sola función de totales, una sola fila dinámica por id, bloque continúa cerrado por defecto.
+- `node --check`: 80 archivos JS/CJS sin errores de sintaxis.
+- Smokes específicos Etapa 1, Contenido por Letras, Etapa 2 y Etapa 3: OK.
+- Cálculo validado con valores válidos, cero, negativos, `NaN`, `null` y `undefined`.
+- Volumen validado con 30 Letras y 121 filas en Chromium.
+- Apertura/cierre por clic, Enter y Espacio: OK; recarga inicia cerrado.
+- Responsive real: desktop 1440×900, iPad horizontal 1024×768, iPad vertical 768×1024 y móvil 390×844.
+- Sin scroll horizontal general; scroll interno activo con muchas Letras.
+- Modo claro y oscuro: estilos diferenciados y legibles.
+- Consola del smoke Chromium: 0 errores.
+- PWA/offline: assets de precache existentes, manifest/start_url coordinados y fallback de navegación al índice cacheado: OK.
+- Regresión amplia: 20 pruebas pasan y permanecen las mismas 15 fallas legacy existentes en la base; no se agregó ninguna falla nueva.

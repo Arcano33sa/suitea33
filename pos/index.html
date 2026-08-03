@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=23">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=25">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -263,17 +263,11 @@
   <button id="btn-inv-from-lote" class="btn-ok btn-pill" type="button">Agregar desde lote</button>
 </div>
     </div>
-    <div id="lotes-evento-block" class="lotes-block is-collapsed">
-      <button id="btn-toggle-lotes-evento" class="lotes-block-toggle" type="button" aria-expanded="false" aria-controls="lotes-evento-content">
-        <span class="lotes-block-toggle-title">Lotes cargados · <span id="lotes-count">0 registros</span></span>
-        <span class="lotes-block-chevron" aria-hidden="true">⌄</span>
-      </button>
-
-      <div id="lotes-evento-content" class="lotes-block-content" hidden>
-        <div class="lotes-block-actions actions end">
-          <button id="btn-reverse-assign" class="btn-outline btn-pill btn-pill-mini" type="button">Reversar asignación</button>
-          <button id="btn-create-sobrante" class="btn-outline btn-pill btn-pill-mini" type="button">Crear lote sobrante</button>
-        </div>
+    <div id="lotes-operativos-block" class="lotes-operativos-block">
+      <div class="actions end lotes-operativos-actions">
+        <button id="btn-reverse-assign" class="btn-outline btn-pill btn-pill-mini" type="button">Reversar asignación</button>
+        <button id="btn-create-sobrante" class="btn-outline btn-pill btn-pill-mini" type="button">Crear lote sobrante</button>
+      </div>
 
       <div id="sobrante-panel" class="sobrante-panel" style="display:none">
         <div class="sobrante-panel-head">
@@ -340,18 +334,32 @@
           <button id="btn-reverso-do" class="btn-danger btn-pill btn-pill-mini" type="button">Reversar asignación</button>
         </div>
       </div>
+    </div>
 
-      <div class="table-scroll">
-        <table id="tbl-lotes-evento" class="compact">
-          <thead>
-            <tr id="tbl-lotes-evento-head">
-              <th>Código</th>
-              <th>Fecha</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+    <div id="lotes-evento-block" class="lotes-block">
+      <div class="lotes-block-head" role="button" tabindex="0" aria-expanded="false" aria-controls="lotes-evento-content">
+        <div>
+          <h3 style="margin:0">Lotes cargados en este evento <span class="badge" id="lotes-count">0</span></h3>
+          <small class="muted">Se registra cuando usas “Agregar desde lote”.</small>
+        </div>
+        <span class="lotes-toggle-indicator" aria-hidden="true">▾</span>
       </div>
+
+      <div id="lotes-evento-content" class="lotes-evento-content" hidden>
+        <div class="table-scroll">
+          <table id="tbl-lotes-evento" class="compact">
+            <thead>
+              <tr id="lotes-evento-totals-row" class="lotes-totals-row">
+                <th scope="row" colspan="2">TOTALES</th>
+              </tr>
+              <tr id="lotes-evento-head-row">
+                <th>Código</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
 

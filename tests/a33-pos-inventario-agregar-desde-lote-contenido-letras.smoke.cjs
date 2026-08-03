@@ -252,9 +252,9 @@ vm.runInContext(fnNames.map(name=>takeFunction(app,name)).join('\n')
   assert.ok(css.includes('@media (max-width:820px)') && css.includes('content:"Contenido: ";'), 'Falta responsive iPad vertical/móvil');
   assert.ok(css.includes('.inv-lote-content-summary') && css.includes('word-break:keep-all') && css.includes('overflow-x:auto'), 'Contenido responsive puede partir valores o escapar del contenedor');
   assert.ok(release.includes('const rev = 5;'), 'Release general no fue coordinado');
-  assert.ok(sw.includes("const MODULE_CACHE_REV = '46';"), 'Caché POS no fue incrementado');
-  assert.ok(sw.includes("'./index.html?v=4.20.97&r=30'") && sw.includes("'./app.js?v=4.20.97&r=42'") && sw.includes("'./styles.css?v=4.20.97&r=21'"), 'Precache POS mezclado');
-  assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=30', 'Manifest no fue actualizado');
+  assert.ok(sw.includes("const MODULE_CACHE_REV = '49';"), 'Caché POS no fue incrementado');
+  assert.ok(sw.includes("'./index.html?v=4.20.97&r=32'") && sw.includes("'./app.js?v=4.20.97&r=45'") && sw.includes("'./styles.css?v=4.20.97&r=24'"), 'Precache POS mezclado');
+  assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=32', 'Manifest no fue actualizado');
   assert.ok(!app.includes('localStorage.clear('), 'Se agregó borrado global de localStorage');
   assert.ok(!app.includes('indexedDB.deleteDatabase('), 'Se agregó borrado de IndexedDB');
 
