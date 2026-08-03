@@ -310,6 +310,16 @@ html[data-theme="light"] .cat-pill.warn{color:#6b211a;background:rgba(123,24,24,
 html[data-theme="light"] .cat-product-form input,
 html[data-theme="light"] .cat-product-form select,
 html[data-theme="light"] .cat-product-form textarea{background:rgba(255,255,255,0.72);}
+
+.cat-physical-cup-field small{
+  color:var(--cat-muted);
+  font-size:.78rem;
+  font-weight:600;
+  line-height:1.35;
+}
+.cat-physical-cup-field select{
+  min-height:44px;
+}
 .cat-flag{display:flex !important;grid-template-columns:auto 1fr;align-items:center;gap:8px;padding:10px 0;}
 .cat-flag input,
 .cat-product-form input[type="checkbox"]{

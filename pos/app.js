@@ -7,7 +7,7 @@ let db;
 const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.97';
 
 
-const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m44');
+const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m50');
 
 // --- Util: round2 (2 decimales) — Hotfix Ventas Etapa 1/3
 // Nota: evita NaN y errores de flotante (EPSILON). Retorna Number.
@@ -5978,10 +5978,18 @@ function posFinResolveIncomeAccountPOS(accounts){
   });
 }
 
-function posFinProductKeyPOS(name){
+function posFinProductKeyPOS(productRef){
+  // Vaso moderno/legacy: clasificación por contrato/snapshot estable antes del fallback textual.
+  // Las demás presentaciones conservan el mapeo histórico por nombre para no alterar cuentas existentes.
+  if (productRef && typeof productRef === 'object'){
+    try{ if (isVasoCategorySalePOS(productRef)) return 'vaso'; }catch(_){ }
+  }
+  const isSaleRecord = !!(productRef && typeof productRef === 'object');
+  const name = isSaleRecord ? getSaleProductNameSnapshotPOS(productRef) : productRef;
   const n = posFinNormText(name);
   if (!n) return '';
-  if (n.includes('vaso')) return 'vaso';
+  // Para una venta real, "Vaso" nunca se decide solo por texto; requiere contrato/snapshot estable o marca legacy.
+  if (!isSaleRecord && n.includes('vaso')) return 'vaso';
   if (n.includes('pulso')) return 'pulso';
   if (n.includes('media')) return 'media';
   if (n.includes('djeba')) return 'djeba';
@@ -5990,8 +5998,8 @@ function posFinProductKeyPOS(name){
   return '';
 }
 
-function posFinResolveProductAccountPOS(accounts, productName, side){
-  const key = posFinProductKeyPOS(productName);
+function posFinResolveProductAccountPOS(accounts, productRef, side){
+  const key = posFinProductKeyPOS(productRef);
   const maps = {
     vaso: { cost: ['5131','5216','5101','5100'], inv: ['1441','1425','1501','1500'], wordsCost: [['vasos'], ['costo','ventas']], wordsInv: [['vasos'], ['inventario','producto']] },
     pulso: { cost: ['5215','5101','5100'], inv: ['1425','1501','1500'], wordsCost: [['costo','pulso'], ['costo','ventas']], wordsInv: [['pulso'], ['inventario','producto']] },
@@ -6039,7 +6047,7 @@ function posFinBuildSaleAutoLinesPOS(sale, accounts, amounts){
   if (isCourtesy) {
     if (amountCost > 0) {
       const courtesyCode = posFinResolveCourtesyExpenseAccountPOS(accounts);
-      const inventoryCode = posFinResolveProductAccountPOS(accounts, getSaleProductNameSnapshotPOS(sale), 'inventory');
+      const inventoryCode = posFinResolveProductAccountPOS(accounts, sale, 'inventory');
       if (!isReturn) {
         lines.push(posFinLinePOS(courtesyCode, amountCost, 0));
         lines.push(posFinLinePOS(inventoryCode, 0, amountCost));
@@ -6052,8 +6060,8 @@ function posFinBuildSaleAutoLinesPOS(sale, accounts, amounts){
   }
   const collectionCode = amount > 0 ? posFinResolveCollectionAccountPOS(sale, accounts) : null;
   const incomeCode = amount > 0 ? posFinResolveIncomeAccountPOS(accounts) : null;
-  const costCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, getSaleProductNameSnapshotPOS(sale), 'cost') : null;
-  const inventoryCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, getSaleProductNameSnapshotPOS(sale), 'inventory') : null;
+  const costCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, sale, 'cost') : null;
+  const inventoryCode = amountCost > 0 ? posFinResolveProductAccountPOS(accounts, sale, 'inventory') : null;
   if (!isReturn) {
     if (amount > 0) {
       lines.push(posFinLinePOS(collectionCode, amount, 0));
@@ -7117,6 +7125,7 @@ function del(name, key){
 
       (async ()=>{
         const warnings = [];
+        let physicalCupRestoreTicket = null;
 
         // 1) Traer la venta (fuera de cualquier tx de borrado)
         const sale = await idbGet('sales', key);
@@ -7147,15 +7156,32 @@ function del(name, key){
           throw new Error('No se pudo verificar la integridad de cobros. La venta no fue eliminada.');
         }
 
-        // 3) Borrar la venta primero (objetivo principal). Si falla, no hacemos side-effects.
-        await idbDelete('sales', key);
+        // 3) Preparar reverso durable del Vaso físico antes del borrado.
+        // Si la app se cierra después de borrar, la cola permite completar el reverso al reiniciar.
+        try{
+          const queued = enqueuePhysicalCupRestoreForSalePOS(sale, 'sale-delete');
+          if (queued && queued.ok === false){
+            throw new Error(queued.message || 'No se pudo preparar el reverso seguro del Vaso físico.');
+          }
+          physicalCupRestoreTicket = queued && queued.ticket ? queued.ticket : null;
+        }catch(error){
+          throw new Error((error && error.message) || 'No se pudo preparar el reverso seguro del Vaso físico.');
+        }
+
+        // 4) Borrar la venta primero (objetivo principal). Si falla, cancelar la cola preparada.
+        try{
+          await idbDelete('sales', key);
+        }catch(error){
+          if (physicalCupRestoreTicket) removePhysicalCupRestoreTicketPOS(physicalCupRestoreTicket);
+          throw error;
+        }
         try{
           if (normalizePaymentMethodPOS(sale.payment || sale.paymentMethod || '') === 'credito'){
             notifyCreditStateChangedPOS({ eventId:sale.eventId, saleId:sale.id != null ? sale.id : key, reason:'sale-deleted' });
           }
         }catch(_){ }
 
-        // 2.1) Verificación rápida (mejor error que "parece que borró")
+        // 4.1) Verificación rápida (mejor error que "parece que borró")
         try{
           const still = await idbGet('sales', key);
           if (still){
@@ -7166,12 +7192,25 @@ function del(name, key){
           console.warn('No se pudo verificar el borrado de la venta', verErr);
         }
 
-        // 3) Side-effects (no bloquean el borrado): revertir inventario central + borrar asientos en Finanzas
+        // 5) Side-effects (no bloquean el borrado): revertir inventario central + borrar asientos en Finanzas
         try{
           applyFinishedFromSalePOS(sale, -1);
         }catch(e){
           console.error('Error revertiendo inventario central al eliminar venta', e);
           warnings.push('No se pudo revertir inventario central (la venta sí se eliminó).');
+        }
+
+        // Restaurar Vaso físico asociado (Etapa 3/4), exactamente una vez.
+        try{
+          if (physicalCupRestoreTicket){
+            const physicalRestore = await processPhysicalCupRestoreTicketPOS(physicalCupRestoreTicket, { assumeDeleted:true });
+            if (!physicalRestore || physicalRestore.ok === false || !['restored','already_restored'].includes(String(physicalRestore.reason || ''))){
+              warnings.push('No se pudo completar el reverso del Vaso físico; quedó pendiente para reintento automático.');
+            }
+          }
+        }catch(e){
+          console.error('Error restaurando Vaso físico al eliminar venta', e);
+          warnings.push('No se pudo completar el reverso del Vaso físico; quedó pendiente para reintento automático.');
         }
 
         // Revertir consumo de vasos (FIFO) si esta venta/cortesía fue por vaso
@@ -9570,6 +9609,8 @@ function invCentralNormalizePOS(data){
   if (!out.bottles || typeof out.bottles !== 'object') out.bottles = {};
   if (!out.finished || typeof out.finished !== 'object') out.finished = {};
   if (!out.finishedByProductId || typeof out.finishedByProductId !== 'object') out.finishedByProductId = {};
+  if (!Array.isArray(out.varios)) out.varios = [];
+  if (!Array.isArray(out.movimientos)) out.movimientos = [];
 
   Object.keys(out.finished || {}).forEach((id)=>{
     if (!out.finished[id] || typeof out.finished[id] !== 'object') out.finished[id] = { stock: 0 };
@@ -9698,6 +9739,718 @@ function applyFinishedFromSalePOS(sale, direction){
     console.error('Error ajustando inventario central desde venta', e);
   }
 }
+
+
+// ------------------------------------------------------------
+// SUITE A33 — POS — VASOS — ETAPAS 2-3/4
+// Descuento y reverso idempotentes del Vaso físico asociado por ID estable.
+// - Solo ventas/cortesías confirmadas (no devoluciones ni Extras).
+// - Fuente oficial: Inventario Central -> Inventario Varios.
+// - Reempaque no llama esta lógica.
+// - El reverso exige trazabilidad moderna; nunca infiere por nombre.
+// ------------------------------------------------------------
+const POS_PHYSICAL_CUP_EFFECT_PREFIX = 'pos-vaso-fisico';
+const POS_PHYSICAL_CUP_RESTORE_QUEUE_KEY = 'a33_pos_physical_cup_restore_queue_v1';
+let __A33_PHYSICAL_CUP_RECONCILE_RUNNING_POS = false;
+let __A33_PHYSICAL_CUP_HOOKS_BOUND_POS = false;
+
+function productPhysicalCupInventoryIdPOS(product){
+  if (!product || typeof product !== 'object') return '';
+  return String(product.vasoFisicoId ?? product.physicalCupInventoryId ?? product.cupInventoryItemId ?? '').trim();
+}
+
+function salePhysicalCupInventoryIdPOS(sale){
+  if (!sale || typeof sale !== 'object') return '';
+  const snap = sale.productSnapshot && typeof sale.productSnapshot === 'object' ? sale.productSnapshot : {};
+  return String(
+    sale.physicalCupInventoryIdSnapshot ??
+    sale.vasoFisicoId ??
+    snap.vasoFisicoId ??
+    snap.physicalCupInventoryId ??
+    ''
+  ).trim();
+}
+
+function physicalCupQtyFromSalePOS(sale){
+  if (!sale || typeof sale !== 'object' || sale.isExtra || sale.isReturn) return 0;
+  const raw = Math.abs(Number(sale.qty || 0));
+  if (!(raw > 0) || !Number.isFinite(raw)) return 0;
+  const rounded = Math.round(raw);
+  return Math.abs(raw - rounded) < 1e-9 ? rounded : 0;
+}
+
+function physicalCupSaleKeyPOS(sale){
+  if (!sale || typeof sale !== 'object') return '';
+  const uid = String(sale.uid ?? '').trim();
+  if (uid) return 'uid:' + uid;
+  const id = String(sale.id ?? '').trim();
+  if (id) return 'id:' + id;
+  const createdAt = String(sale.createdAt ?? '').trim();
+  const eventId = String(sale.eventId ?? '').trim();
+  if (createdAt) return 'ts:' + createdAt + ':ev:' + eventId;
+  return '';
+}
+
+function physicalCupSourceIdPOS(sale, itemId){
+  const sid = physicalCupSaleKeyPOS(sale);
+  const iid = String(itemId || '').trim();
+  return sid && iid ? `${POS_PHYSICAL_CUP_EFFECT_PREFIX}|${iid}|${sid}` : '';
+}
+
+function physicalCupMovementIdPOS(sourceId){
+  const raw = String(sourceId || '').trim();
+  if (!raw) return '';
+  let hash = 2166136261;
+  for (let i = 0; i < raw.length; i++){
+    hash ^= raw.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `mov_pos_vaso_${(hash >>> 0).toString(36)}`;
+}
+
+function physicalCupEffectTraceFromSalePOS(sale){
+  if (!sale || typeof sale !== 'object') return null;
+  const effects = sale.invEffects && typeof sale.invEffects === 'object' ? sale.invEffects : null;
+  const trace = effects && effects.physicalCup && typeof effects.physicalCup === 'object'
+    ? effects.physicalCup
+    : null;
+  if (!trace) return null;
+  const itemId = String(trace.itemId || '').trim();
+  const movementId = String(trace.movementId || '').trim();
+  const sourceId = String(trace.sourceId || '').trim();
+  const qtyApplied = Math.abs(Number(trace.qtyApplied || trace.qty || 0));
+  if (!itemId || !movementId || !sourceId || !(qtyApplied > 0) || !Number.isFinite(qtyApplied)) return null;
+  return {
+    itemId,
+    movementId,
+    sourceId,
+    qtyApplied,
+    state: String(trace.state || 'APPLIED').trim().toUpperCase() || 'APPLIED',
+    restoredAt: trace.restoredAt || null,
+    restoreMovementId: String(trace.restoreMovementId || '').trim()
+  };
+}
+
+function saleIsInactiveForPhysicalCupPOS(sale){
+  if (!sale || typeof sale !== 'object') return true;
+  return !!(
+    sale.deletedAt || sale.voidedAt || sale.annulledAt || sale.cancelledAt || sale.canceledAt ||
+    sale.revertedAt || sale.reversedAt || sale.isDeleted || sale.deleted || sale.isVoid || sale.voided ||
+    sale.isCancelled || sale.cancelled || sale.canceled || sale.isReverted || sale.reverted || sale.reversed
+  );
+}
+
+function physicalCupRestoreMovementIdPOS(trace){
+  const movementId = String(trace && trace.movementId || '').trim();
+  return movementId ? `${movementId}_restore` : '';
+}
+
+function physicalCupRestoreSourceIdPOS(trace){
+  const sourceId = String(trace && trace.sourceId || '').trim();
+  return sourceId ? `${sourceId}|restore` : '';
+}
+
+function physicalCupRestoreMovementByIdentityPOS(inv, trace){
+  const restoreMovementId = physicalCupRestoreMovementIdPOS(trace);
+  const restoreSourceId = physicalCupRestoreSourceIdPOS(trace);
+  const rows = Array.isArray(inv && inv.movimientos) ? inv.movimientos : [];
+  return rows.find((mov) => {
+    if (!mov || typeof mov !== 'object') return false;
+    if (restoreMovementId && String(mov.id || '') === restoreMovementId) return true;
+    return !!(
+      restoreSourceId && String(mov.sourceId || '') === restoreSourceId &&
+      String(mov.restoresMovementId || '') === String(trace && trace.movementId || '')
+    );
+  }) || null;
+}
+
+function buildPhysicalCupRestoreMovementPOS({ sale, item, trace, qty, before, after }){
+  return {
+    id: physicalCupRestoreMovementIdPOS(trace),
+    tipoItem: 'varios',
+    itemId: trace.itemId,
+    nombreSnapshot: String((item && item.producto) || trace.itemId || 'Vaso físico').trim(),
+    cantidad: qty,
+    delta: qty,
+    tipoMovimiento: sale && sale.courtesy ? 'entrada_reverso_cortesia_pos' : 'entrada_reverso_venta_pos',
+    fecha: new Date().toISOString(),
+    nota: '',
+    origen: 'pos/reverso-venta-cortesia',
+    stockAnterior: before,
+    stockNuevo: after,
+    sourceId: physicalCupRestoreSourceIdPOS(trace),
+    state: 'RESTORED',
+    restoresMovementId: trace.movementId,
+    restoresSourceId: trace.sourceId
+  };
+}
+
+function ensurePhysicalCupInventoryShapePOS(inv){
+  const out = inv && typeof inv === 'object' ? inv : {};
+  if (!Array.isArray(out.varios)) out.varios = [];
+  if (!Array.isArray(out.movimientos)) out.movimientos = [];
+  return out;
+}
+
+function physicalCupMovementByIdentityPOS(inv, movementId, sourceId){
+  const rows = Array.isArray(inv && inv.movimientos) ? inv.movimientos : [];
+  return rows.find((mov) => {
+    if (!mov || typeof mov !== 'object') return false;
+    if (movementId && String(mov.id || '') === movementId){
+      return !sourceId || !mov.sourceId || String(mov.sourceId || '') === sourceId;
+    }
+    return sourceId && String(mov.sourceId || '') === sourceId && String(mov.state || mov.estado || '') === 'APPLIED';
+  }) || null;
+}
+
+function buildPhysicalCupMovementPOS({ sale, item, itemId, qty, before, after, sourceId, movementId }){
+  return {
+    id: movementId,
+    tipoItem: 'varios',
+    itemId,
+    nombreSnapshot: String((item && item.producto) || itemId || 'Vaso físico').trim(),
+    cantidad: qty,
+    delta: -qty,
+    tipoMovimiento: sale && sale.courtesy ? 'salida_cortesia_pos' : 'salida_venta_pos',
+    fecha: new Date().toISOString(),
+    nota: '',
+    origen: 'pos/venta-cortesia',
+    stockAnterior: before,
+    stockNuevo: after,
+    sourceId,
+    state: 'APPLIED'
+  };
+}
+
+function applyPhysicalCupEffectToInventoryPOS(invObj, sale){
+  const inv = ensurePhysicalCupInventoryShapePOS(invObj || {});
+  const itemId = salePhysicalCupInventoryIdPOS(sale);
+  const qty = physicalCupQtyFromSalePOS(sale);
+  if (!itemId) return { inv, ok:true, skipped:true, reason:'no_association', itemId:'', qty:0 };
+  if (!(qty > 0)) return { inv, ok:true, skipped:true, reason:'not_consumable_sale', itemId, qty:0 };
+
+  const sourceId = physicalCupSourceIdPOS(sale, itemId);
+  const movementId = physicalCupMovementIdPOS(sourceId);
+  if (!sourceId || !movementId){
+    return { inv, ok:false, skipped:true, reason:'missing_sale_identity', itemId, qty, message:'No se pudo identificar de forma estable el consumo del Vaso físico.' };
+  }
+
+  const existing = physicalCupMovementByIdentityPOS(inv, movementId, sourceId);
+  if (existing){
+    return {
+      inv, ok:true, skipped:true, reason:'already_applied', itemId,
+      qty: Math.abs(Number(existing.cantidad || qty)) || qty,
+      sourceId, movementId,
+      before:Number(existing.stockAnterior), after:Number(existing.stockNuevo)
+    };
+  }
+
+  const item = inv.varios.find((row) => row && typeof row === 'object' && String(row.id || '').trim() === itemId) || null;
+  if (!item){
+    return { inv, ok:true, skipped:true, reason:'item_missing', itemId, qty, sourceId, movementId };
+  }
+
+  const beforeRaw = Number(item.stock);
+  const before = Number.isFinite(beforeRaw) ? Math.trunc(beforeRaw) : 0;
+  const after = before - qty; // Inventario Varios permite negativos: conservar política actual.
+  item.stock = after;
+  const movement = buildPhysicalCupMovementPOS({ sale, item, itemId, qty, before, after, sourceId, movementId });
+  inv.movimientos.push(movement);
+  return { inv, ok:true, skipped:false, reason:'applied', itemId, qty, sourceId, movementId, before, after, movement };
+}
+
+function verifyPhysicalCupEffectPOS(invObj, expected){
+  const inv = ensurePhysicalCupInventoryShapePOS(invObj || {});
+  const movement = physicalCupMovementByIdentityPOS(inv, expected.movementId, expected.sourceId);
+  if (!movement) return false;
+  const item = inv.varios.find((row) => row && String(row.id || '').trim() === expected.itemId);
+  return !!item && Number.isFinite(Number(item.stock));
+}
+
+function applyPhysicalCupRestoreToInventoryPOS(invObj, sale){
+  const inv = ensurePhysicalCupInventoryShapePOS(invObj || {});
+  const trace = physicalCupEffectTraceFromSalePOS(sale);
+  if (!trace){
+    return { inv, ok:true, skipped:true, reason:'no_modern_trace' };
+  }
+
+  const alreadyRestored = physicalCupRestoreMovementByIdentityPOS(inv, trace);
+  if (alreadyRestored){
+    return {
+      inv, ok:true, skipped:true, reason:'already_restored', trace,
+      itemId:trace.itemId,
+      qty:Math.abs(Number(alreadyRestored.cantidad || trace.qtyApplied)) || trace.qtyApplied,
+      movementId:trace.movementId,
+      restoreMovementId:String(alreadyRestored.id || physicalCupRestoreMovementIdPOS(trace)),
+      restoreSourceId:String(alreadyRestored.sourceId || physicalCupRestoreSourceIdPOS(trace))
+    };
+  }
+
+  const appliedMovement = physicalCupMovementByIdentityPOS(inv, trace.movementId, trace.sourceId);
+  if (!appliedMovement){
+    return {
+      inv, ok:true, skipped:true, reason:'applied_movement_missing', trace,
+      itemId:trace.itemId, qty:trace.qtyApplied
+    };
+  }
+
+  const movementItemId = String(appliedMovement.itemId || '').trim();
+  if (!movementItemId || movementItemId !== trace.itemId){
+    return {
+      inv, ok:false, skipped:true, reason:'trace_mismatch', trace,
+      itemId:trace.itemId, qty:trace.qtyApplied,
+      message:'La trazabilidad del Vaso físico no coincide con el movimiento aplicado.'
+    };
+  }
+
+  const appliedDelta = Number(appliedMovement.delta);
+  if (!Number.isFinite(appliedDelta) || !(appliedDelta < 0)){
+    return {
+      inv, ok:false, skipped:true, reason:'invalid_applied_movement', trace,
+      itemId:trace.itemId, qty:trace.qtyApplied,
+      message:'El movimiento original no representa una salida válida de Vaso físico.'
+    };
+  }
+  const qtyFromMovement = Math.abs(appliedDelta);
+  const qty = (qtyFromMovement > 0 && Number.isFinite(qtyFromMovement)) ? qtyFromMovement : trace.qtyApplied;
+  if (!(qty > 0) || !Number.isFinite(qty)){
+    return { inv, ok:false, skipped:true, reason:'invalid_applied_qty', trace, itemId:trace.itemId, qty:0 };
+  }
+
+  const item = inv.varios.find((row) => row && typeof row === 'object' && String(row.id || '').trim() === trace.itemId) || null;
+  if (!item){
+    return {
+      inv, ok:true, skipped:true, reason:'item_missing', trace,
+      itemId:trace.itemId, qty
+    };
+  }
+
+  const beforeRaw = Number(item.stock);
+  const before = Number.isFinite(beforeRaw) ? Math.trunc(beforeRaw) : 0;
+  const after = before + qty;
+  item.stock = after;
+  const restoreMovement = buildPhysicalCupRestoreMovementPOS({ sale, item, trace, qty, before, after });
+  inv.movimientos.push(restoreMovement);
+  return {
+    inv, ok:true, skipped:false, reason:'restored', trace,
+    itemId:trace.itemId, qty,
+    movementId:trace.movementId,
+    restoreMovementId:restoreMovement.id,
+    restoreSourceId:restoreMovement.sourceId,
+    before, after, restoreMovement
+  };
+}
+
+function verifyPhysicalCupRestorePOS(invObj, expected){
+  const inv = ensurePhysicalCupInventoryShapePOS(invObj || {});
+  const trace = expected && expected.trace ? expected.trace : physicalCupEffectTraceFromSalePOS(expected && expected.sale);
+  if (!trace) return false;
+  const movement = physicalCupRestoreMovementByIdentityPOS(inv, trace);
+  if (!movement) return false;
+  const item = inv.varios.find((row) => row && String(row.id || '').trim() === trace.itemId);
+  return !!item && Number.isFinite(Number(item.stock));
+}
+
+function readPhysicalCupInventorySharedPOS(){
+  if (window.A33Storage && typeof A33Storage.sharedRead === 'function'){
+    const r = A33Storage.sharedRead(STORAGE_KEY_INVENTARIO, invCentralDefaultPOS(), 'local');
+    return {
+      data: ensurePhysicalCupInventoryShapePOS((r && r.data) ? r.data : invCentralDefaultPOS()),
+      meta: (r && r.meta && typeof r.meta === 'object') ? r.meta : {}
+    };
+  }
+  return { data: ensurePhysicalCupInventoryShapePOS(invCentralLoadPOS()), meta:{} };
+}
+
+function adjustPhysicalCupInventoryFromSalePOS(sale){
+  const itemId = salePhysicalCupInventoryIdPOS(sale);
+  const qty = physicalCupQtyFromSalePOS(sale);
+  if (!itemId) return { ok:true, skipped:true, reason:'no_association', itemId:'', qty:0 };
+  if (!(qty > 0)) return { ok:true, skipped:true, reason:'not_consumable_sale', itemId, qty:0 };
+
+  try{
+    if (window.A33Storage && typeof A33Storage.sharedRead === 'function' && typeof A33Storage.sharedSet === 'function'){
+      for (let attempt = 0; attempt < 3; attempt++){
+        const current = readPhysicalCupInventorySharedPOS();
+        const baseRev = (current.meta && typeof current.meta.rev === 'number') ? current.meta.rev : null;
+        const applied = applyPhysicalCupEffectToInventoryPOS(current.data, sale);
+        if (!applied.ok || applied.skipped) return applied;
+
+        const saved = A33Storage.sharedSet(STORAGE_KEY_INVENTARIO, applied.inv, {
+          source:'pos/vaso-fisico', baseRev, conflictPolicy:'block'
+        });
+        if (saved && saved.ok){
+          const verify = readPhysicalCupInventorySharedPOS();
+          if (verifyPhysicalCupEffectPOS(verify.data, applied)) return applied;
+          return { ...applied, ok:false, message:'No se pudo verificar el descuento del Vaso físico.' };
+        }
+        if (saved && saved.conflict) continue;
+        return { ...applied, ok:false, message:(saved && saved.message) ? saved.message : 'No se pudo guardar el descuento del Vaso físico.' };
+      }
+      return { ok:false, skipped:false, itemId, qty, message:'Conflicto al actualizar Inventario Varios. Recarga e intenta de nuevo.' };
+    }
+  }catch(error){
+    console.warn('Error actualizando Vaso físico con almacenamiento compartido', error);
+  }
+
+  try{
+    const applied = applyPhysicalCupEffectToInventoryPOS(invCentralLoadPOS(), sale);
+    if (!applied.ok || applied.skipped) return applied;
+    A33Storage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(applied.inv));
+    const verify = invCentralLoadPOS();
+    if (!verifyPhysicalCupEffectPOS(verify, applied)){
+      return { ...applied, ok:false, message:'No se pudo verificar el descuento del Vaso físico (fallback).' };
+    }
+    return { ...applied, fallback:true };
+  }catch(error){
+    console.warn('Error actualizando Vaso físico (fallback)', error);
+    return { ok:false, skipped:false, itemId, qty, message:'No se pudo actualizar el Vaso físico en Inventario Varios.' };
+  }
+}
+
+function restorePhysicalCupInventoryFromSalePOS(sale){
+  const trace = physicalCupEffectTraceFromSalePOS(sale);
+  if (!trace) return { ok:true, skipped:true, reason:'no_modern_trace' };
+
+  try{
+    if (window.A33Storage && typeof A33Storage.sharedRead === 'function' && typeof A33Storage.sharedSet === 'function'){
+      for (let attempt = 0; attempt < 3; attempt++){
+        const current = readPhysicalCupInventorySharedPOS();
+        const baseRev = (current.meta && typeof current.meta.rev === 'number') ? current.meta.rev : null;
+        const restored = applyPhysicalCupRestoreToInventoryPOS(current.data, sale);
+        if (!restored.ok || restored.skipped) return restored;
+
+        const saved = A33Storage.sharedSet(STORAGE_KEY_INVENTARIO, restored.inv, {
+          source:'pos/vaso-fisico-reverso', baseRev, conflictPolicy:'block'
+        });
+        if (saved && saved.ok){
+          const verify = readPhysicalCupInventorySharedPOS();
+          if (verifyPhysicalCupRestorePOS(verify.data, restored)) return restored;
+          return { ...restored, ok:false, message:'No se pudo verificar la restauración del Vaso físico.' };
+        }
+        if (saved && saved.conflict) continue;
+        return { ...restored, ok:false, message:(saved && saved.message) ? saved.message : 'No se pudo guardar la restauración del Vaso físico.' };
+      }
+      return { ok:false, skipped:false, trace, itemId:trace.itemId, qty:trace.qtyApplied, message:'Conflicto al restaurar Inventario Varios. Recarga e intenta de nuevo.' };
+    }
+  }catch(error){
+    console.warn('Error restaurando Vaso físico con almacenamiento compartido', error);
+  }
+
+  try{
+    const restored = applyPhysicalCupRestoreToInventoryPOS(invCentralLoadPOS(), sale);
+    if (!restored.ok || restored.skipped) return restored;
+    A33Storage.setItem(STORAGE_KEY_INVENTARIO, JSON.stringify(restored.inv));
+    const verify = invCentralLoadPOS();
+    if (!verifyPhysicalCupRestorePOS(verify, restored)){
+      return { ...restored, ok:false, message:'No se pudo verificar la restauración del Vaso físico (fallback).' };
+    }
+    return { ...restored, fallback:true };
+  }catch(error){
+    console.warn('Error restaurando Vaso físico (fallback)', error);
+    return { ok:false, skipped:false, trace, itemId:trace.itemId, qty:trace.qtyApplied, message:'No se pudo restaurar el Vaso físico en Inventario Varios.' };
+  }
+}
+
+async function persistPhysicalCupTraceOnSalePOS(sale, result){
+  if (!sale || !result || !result.ok || !result.itemId || !result.movementId) return sale;
+  try{
+    let current = null;
+    if (sale.id != null) current = await getOne('sales', sale.id);
+    if (!current && sale.uid) current = await getSaleByUidPOS(sale.uid);
+    current = current || sale;
+
+    const previous = current.invEffects && current.invEffects.physicalCup;
+    const wasRestored = previous && String(previous.state || '').toUpperCase() === 'RESTORED'
+      && String(previous.itemId || '') === String(result.itemId)
+      && String(previous.movementId || '') === String(result.movementId);
+    if (wasRestored){
+      Object.assign(sale, current);
+      return current;
+    }
+    const same = previous && previous.state === 'APPLIED'
+      && String(previous.itemId || '') === String(result.itemId)
+      && String(previous.movementId || '') === String(result.movementId)
+      && Number(previous.qtyApplied || 0) === Number(result.qty || 0);
+    if (same){
+      Object.assign(sale, current);
+      return current;
+    }
+
+    const updated = {
+      ...current,
+      invEffects: {
+        ...(current.invEffects && typeof current.invEffects === 'object' ? current.invEffects : {}),
+        physicalCup: {
+          itemId: result.itemId,
+          qtyApplied: result.qty,
+          state: 'APPLIED',
+          sourceId: result.sourceId,
+          movementId: result.movementId
+        }
+      }
+    };
+    await put('sales', updated);
+    Object.assign(sale, updated);
+    return updated;
+  }catch(error){
+    console.warn('Vaso físico descontado, pero no se pudo guardar la marca en la venta', error);
+    return sale;
+  }
+}
+
+async function persistPhysicalCupRestoreTraceOnSalePOS(sale, result){
+  if (!sale || !result || !result.ok || !result.trace) return sale;
+  try{
+    let current = null;
+    if (sale.id != null) current = await getOne('sales', sale.id);
+    if (!current && sale.uid) current = await getSaleByUidPOS(sale.uid);
+    if (!current) return sale; // Nunca recrear una venta ya borrada.
+
+    const previous = current.invEffects && current.invEffects.physicalCup;
+    const restoreMovementId = String(result.restoreMovementId || physicalCupRestoreMovementIdPOS(result.trace));
+    const updated = {
+      ...current,
+      invEffects: {
+        ...(current.invEffects && typeof current.invEffects === 'object' ? current.invEffects : {}),
+        physicalCup: {
+          ...(previous && typeof previous === 'object' ? previous : {}),
+          itemId: result.trace.itemId,
+          qtyApplied: result.trace.qtyApplied,
+          state: 'RESTORED',
+          sourceId: result.trace.sourceId,
+          movementId: result.trace.movementId,
+          qtyRestored: result.qty || result.trace.qtyApplied,
+          restoreMovementId,
+          restoredAt: (result.restoreMovement && result.restoreMovement.fecha) || new Date().toISOString()
+        }
+      }
+    };
+    await put('sales', updated);
+    Object.assign(sale, updated);
+    return updated;
+  }catch(error){
+    console.warn('Vaso físico restaurado, pero no se pudo guardar la marca en la venta', error);
+    return sale;
+  }
+}
+
+function readPhysicalCupRestoreQueuePOS(){
+  try{
+    const raw = (window.A33Storage && typeof A33Storage.getItem === 'function')
+      ? A33Storage.getItem(POS_PHYSICAL_CUP_RESTORE_QUEUE_KEY)
+      : localStorage.getItem(POS_PHYSICAL_CUP_RESTORE_QUEUE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((row)=> row && typeof row === 'object') : [];
+  }catch(error){
+    console.warn('No se pudo leer la cola de reversos de Vasos físicos', error);
+    return [];
+  }
+}
+
+function writePhysicalCupRestoreQueuePOS(rows){
+  const clean = Array.isArray(rows) ? rows.filter((row)=> row && typeof row === 'object') : [];
+  const raw = JSON.stringify(clean);
+  let ok = false;
+  try{
+    if (window.A33Storage && typeof A33Storage.setItem === 'function'){
+      ok = A33Storage.setItem(POS_PHYSICAL_CUP_RESTORE_QUEUE_KEY, raw) !== false;
+    }else{
+      localStorage.setItem(POS_PHYSICAL_CUP_RESTORE_QUEUE_KEY, raw);
+      ok = true;
+    }
+  }catch(error){
+    console.warn('No se pudo guardar la cola de reversos de Vasos físicos', error);
+    ok = false;
+  }
+  return ok;
+}
+
+function physicalCupRestoreTicketFromSalePOS(sale, reason){
+  const trace = physicalCupEffectTraceFromSalePOS(sale);
+  if (!trace || trace.state === 'RESTORED') return null;
+  const restoreMovementId = physicalCupRestoreMovementIdPOS(trace);
+  if (!restoreMovementId) return null;
+  return {
+    id: restoreMovementId,
+    reason: String(reason || 'sale-delete'),
+    createdAt: new Date().toISOString(),
+    saleRef: {
+      id: sale && sale.id != null ? sale.id : null,
+      uid: String(sale && sale.uid || '').trim(),
+      eventId: sale && sale.eventId != null ? sale.eventId : null,
+      courtesy: !!(sale && sale.courtesy)
+    },
+    trace: {
+      itemId: trace.itemId,
+      qtyApplied: trace.qtyApplied,
+      state: trace.state,
+      sourceId: trace.sourceId,
+      movementId: trace.movementId
+    }
+  };
+}
+
+function saleFromPhysicalCupRestoreTicketPOS(ticket){
+  const ref = ticket && ticket.saleRef && typeof ticket.saleRef === 'object' ? ticket.saleRef : {};
+  const trace = ticket && ticket.trace && typeof ticket.trace === 'object' ? ticket.trace : {};
+  return {
+    id: ref.id,
+    uid: ref.uid,
+    eventId: ref.eventId,
+    courtesy: !!ref.courtesy,
+    invEffects: { physicalCup: { ...trace } }
+  };
+}
+
+function enqueuePhysicalCupRestoreForSalePOS(sale, reason){
+  const ticket = physicalCupRestoreTicketFromSalePOS(sale, reason);
+  if (!ticket) return { ok:true, skipped:true, reason:'no_modern_trace', ticket:null };
+  const rows = readPhysicalCupRestoreQueuePOS();
+  const existing = rows.find((row)=> String(row && row.id || '') === ticket.id);
+  if (existing) return { ok:true, skipped:true, reason:'already_queued', ticket:existing };
+  rows.push(ticket);
+  if (!writePhysicalCupRestoreQueuePOS(rows)){
+    return { ok:false, skipped:false, reason:'queue_write_failed', ticket, message:'No se pudo preparar el reverso seguro del Vaso físico.' };
+  }
+  return { ok:true, skipped:false, reason:'queued', ticket };
+}
+
+function removePhysicalCupRestoreTicketPOS(ticketOrId){
+  const id = String((ticketOrId && ticketOrId.id) || ticketOrId || '').trim();
+  if (!id) return true;
+  const rows = readPhysicalCupRestoreQueuePOS();
+  const next = rows.filter((row)=> String(row && row.id || '') !== id);
+  if (next.length === rows.length) return true;
+  return writePhysicalCupRestoreQueuePOS(next);
+}
+
+async function resolvePhysicalCupTicketSalePOS(ticket){
+  try{
+    const ref = ticket && ticket.saleRef && typeof ticket.saleRef === 'object' ? ticket.saleRef : {};
+    let sale = null;
+    if (ref.id != null) sale = await getOne('sales', ref.id);
+    if (!sale && ref.uid) sale = await getSaleByUidPOS(ref.uid);
+    return sale || null;
+  }catch(_){
+    return null;
+  }
+}
+
+async function processPhysicalCupRestoreTicketPOS(ticket, opts){
+  if (!ticket || typeof ticket !== 'object') return { ok:true, skipped:true, reason:'invalid_ticket' };
+  const assumeDeleted = !!(opts && opts.assumeDeleted);
+  const currentSale = assumeDeleted ? null : await resolvePhysicalCupTicketSalePOS(ticket);
+  if (currentSale && !saleIsInactiveForPhysicalCupPOS(currentSale)){
+    removePhysicalCupRestoreTicketPOS(ticket);
+    return { ok:true, skipped:true, reason:'sale_still_active' };
+  }
+
+  const sale = currentSale || saleFromPhysicalCupRestoreTicketPOS(ticket);
+  const result = restorePhysicalCupInventoryFromSalePOS(sale);
+  if (result && result.ok && (result.reason === 'restored' || result.reason === 'already_restored')){
+    if (currentSale) await persistPhysicalCupRestoreTraceOnSalePOS(currentSale, result);
+    removePhysicalCupRestoreTicketPOS(ticket);
+    return result;
+  }
+  return result || { ok:false, skipped:false, reason:'unknown_restore_failure' };
+}
+
+async function processPendingPhysicalCupRestoresPOS(){
+  const rows = readPhysicalCupRestoreQueuePOS();
+  let restored = 0;
+  let already = 0;
+  let pending = 0;
+  let failed = 0;
+  for (const ticket of rows){
+    const result = await processPhysicalCupRestoreTicketPOS(ticket);
+    if (!result || result.ok === false) failed++;
+    else if (result.reason === 'restored') restored++;
+    else if (result.reason === 'already_restored' || result.reason === 'sale_still_active') already++;
+    else pending++;
+  }
+  return { ok:failed === 0, restored, already, pending, failed };
+}
+
+async function ensurePhysicalCupRestoreForInactiveSalePOS(sale){
+  const trace = physicalCupEffectTraceFromSalePOS(sale);
+  if (!trace || trace.state === 'RESTORED') return { ok:true, skipped:true, reason:'no_restore_needed' };
+  const result = restorePhysicalCupInventoryFromSalePOS(sale);
+  if (result && result.ok && (result.reason === 'restored' || result.reason === 'already_restored')){
+    await persistPhysicalCupRestoreTraceOnSalePOS(sale, result);
+  }
+  return result;
+}
+
+async function ensurePhysicalCupConsumptionForSalePOS(sale){
+  const result = adjustPhysicalCupInventoryFromSalePOS(sale);
+  if (result && result.ok && result.itemId && result.movementId){
+    await persistPhysicalCupTraceOnSalePOS(sale, result);
+  }
+  return result;
+}
+
+async function reconcilePendingPhysicalCupConsumptionsPOS(){
+  if (__A33_PHYSICAL_CUP_RECONCILE_RUNNING_POS) return { ok:true, skipped:true, reason:'already_running' };
+  __A33_PHYSICAL_CUP_RECONCILE_RUNNING_POS = true;
+  try{
+    if (!db) await openDB();
+    const sales = await getAll('sales');
+    let applied = 0;
+    let already = 0;
+    let missing = 0;
+    let restored = 0;
+    let failed = 0;
+    for (const sale of (Array.isArray(sales) ? sales : [])){
+      const trace = physicalCupEffectTraceFromSalePOS(sale);
+      if (trace && saleIsInactiveForPhysicalCupPOS(sale)){
+        const restoredResult = await ensurePhysicalCupRestoreForInactiveSalePOS(sale);
+        if (!restoredResult || restoredResult.ok === false) failed++;
+        else if (restoredResult.reason === 'restored') restored++;
+        else already++;
+        continue;
+      }
+      if (trace && trace.state === 'RESTORED') continue;
+      if (!salePhysicalCupInventoryIdPOS(sale) || !(physicalCupQtyFromSalePOS(sale) > 0)) continue;
+      const result = await ensurePhysicalCupConsumptionForSalePOS(sale);
+      if (!result || result.ok === false) failed++;
+      else if (result.reason === 'applied') applied++;
+      else if (result.reason === 'item_missing') missing++;
+      else already++;
+    }
+    return { ok:failed === 0, applied, restored, already, missing, failed };
+  }catch(error){
+    console.warn('No se pudo reconciliar consumo pendiente de Vasos físicos', error);
+    return { ok:false, error };
+  }finally{
+    __A33_PHYSICAL_CUP_RECONCILE_RUNNING_POS = false;
+  }
+}
+
+function bindPhysicalCupReconciliationHooksPOS(){
+  if (__A33_PHYSICAL_CUP_HOOKS_BOUND_POS) return;
+  __A33_PHYSICAL_CUP_HOOKS_BOUND_POS = true;
+  const run = ()=>{
+    processPendingPhysicalCupRestoresPOS()
+      .catch(()=>{})
+      .finally(()=>{ reconcilePendingPhysicalCupConsumptionsPOS().catch(()=>{}); });
+  };
+  try{ window.addEventListener('online', run); }catch(_){ }
+  try{ window.addEventListener('focus', run); }catch(_){ }
+  try{ window.addEventListener('storage', run); }catch(_){ }
+  try{ window.addEventListener('a33:cloud-sync-status', run); }catch(_){ }
+  try{ window.addEventListener('a33:firebase-status', run); }catch(_){ }
+}
+
+try{
+  window.A33_POS_PHYSICAL_CUPS = Object.freeze({
+    getItemIdFromSale: salePhysicalCupInventoryIdPOS,
+    ensureForSale: ensurePhysicalCupConsumptionForSalePOS,
+    restoreForSale: restorePhysicalCupInventoryFromSalePOS,
+    processPendingRestores: processPendingPhysicalCupRestoresPOS,
+    reconcile: reconcilePendingPhysicalCupConsumptionsPOS
+  });
+}catch(_){ }
 
 
 // ------------------------------------------------------------
@@ -10363,6 +11116,9 @@ function buildSaleProductSnapshotPOS(product, selectedUnitPrice){
   const unitCost = getProductStoredUnitCostPOS(product);
   const capacityMl = Number(product && (product.capacityMl ?? product.ml ?? product.contenidoMl));
   const productInternalId = catalogProductInternalIdPOS(product);
+  const vasoFisicoId = productPhysicalCupInventoryIdPOS(product);
+  // La asociación estable define la clase POS Vaso; nunca se infiere solo por el nombre.
+  const productClass = vasoFisicoId ? 'vaso' : '';
   const productSnapshot = {
     kind: 'product',
     id: productId,
@@ -10383,6 +11139,9 @@ function buildSaleProductSnapshotPOS(product, selectedUnitPrice){
     letra: String((product && (product.letra ?? product.letter ?? '')) || '').trim(),
     envaseId: String((product && (product.envaseId ?? product.bottleId ?? '')) || '').trim(),
     tapaId: String((product && (product.tapaId ?? product.capId ?? '')) || '').trim(),
+    vasoFisicoId,
+    productClass,
+    presentationClass: productClass,
     capacityMl: Number.isFinite(capacityMl) && capacityMl > 0 ? capacityMl : null,
     presKey: productName ? (presKeyFromProductNamePOS(productName) || '') : '',
     capturedAt: new Date().toISOString()
@@ -10394,6 +11153,9 @@ function buildSaleProductSnapshotPOS(product, selectedUnitPrice){
     productNameSnapshot: productName,
     unitPrice,
     unitPriceSnapshot: unitPrice,
+    vasoFisicoId,
+    physicalCupInventoryIdSnapshot: vasoFisicoId,
+    productClassSnapshot: productClass,
     productSnapshot
   };
 }
@@ -16657,15 +17419,45 @@ function sanitizeFractionBatches(raw){
   });
 }
 
-function isCupSaleRecord(sale){
-  if (!sale) return false;
+function saleVasoClassSnapshotPOS(sale){
+  if (!sale || typeof sale !== 'object') return '';
+  const snap = sale.productSnapshot && typeof sale.productSnapshot === 'object' ? sale.productSnapshot : {};
+  return String(
+    sale.productClassSnapshot ?? sale.presentationClassSnapshot ?? sale.productClass ?? sale.presentationClass ??
+    snap.productClass ?? snap.presentationClass ?? ''
+  ).trim().toLowerCase();
+}
+
+function isModernVasoSalePOS(sale){
+  if (!sale || typeof sale !== 'object' || sale.isExtra) return false;
+  // Identidad estable obligatoria. La clase puede venir congelada en el snapshot o del ID de Vaso físico.
+  const stableProductId = saleStableProductIdPOS(sale);
+  if (!stableProductId) return false;
+  const explicitClass = saleVasoClassSnapshotPOS(sale);
+  const physicalCupId = salePhysicalCupInventoryIdPOS(sale);
+  return explicitClass === 'vaso' || !!physicalCupId;
+}
+
+function isLegacyCupSaleRecordPOS(sale){
+  if (!sale || typeof sale !== 'object') return false;
+  // Moderno gana siempre: un mismo registro jamás activa flujo moderno y legacy a la vez.
+  if (isModernVasoSalePOS(sale)) return false;
   if (sale.vaso === true) return true;
   if (Array.isArray(sale.fifoBreakdown) && sale.fifoBreakdown.length) return true;
   return false;
 }
 
+function isVasoCategorySalePOS(sale){
+  return isModernVasoSalePOS(sale) || isLegacyCupSaleRecordPOS(sale);
+}
+
+// Alias interno conservado para rutas históricas: desde Etapa 4 significa exclusivamente legacy.
+function isCupSaleRecord(sale){
+  return isLegacyCupSaleRecordPOS(sale);
+}
+
 function isLegacyCupCostFallbackSalePOS(sale){
-  if (!isCupSaleRecord(sale)) return false;
+  if (!isLegacyCupSaleRecordPOS(sale)) return false;
   // Los Vasos nuevos son productos POS normales con productId/costo propio.
   // Solo estimamos desde Galón para registros legacy sin productId y con evidencia antigua de fraccionamiento.
   return saleProductIdForInventoryPOS(sale) == null;
@@ -24018,7 +24810,7 @@ async function openEventView(eventId){
       continue;
     }
 
-    if (isCupSaleRecord(s)) {
+    if (isVasoCategorySalePOS(s)) {
       cortesiasVasosU += absQty;
       costoCortesiasVasos += lineCost;
     } else {
@@ -24442,15 +25234,42 @@ async function deleteEvent(eventId){
   if (!ev){ alert('Evento no encontrado'); return; }
   const msg = '¿Eliminar evento "'+ev.name+'"? Se borrarán sus ventas e inventario. Esta acción NO se puede deshacer.';
   if (!confirm(msg)) return;
-  const t = db.transaction(['sales','events','inventory','meta'],'readwrite');
-  await new Promise((res)=>{ const r = t.objectStore('sales').getAll(); r.onsuccess = ()=>{ (r.result||[]).filter(s=>s.eventId===eventId).forEach(s=> t.objectStore('sales').delete(s.id)); res(); }; });
-  await new Promise((res)=>{ const r = t.objectStore('inventory').getAll(); r.onsuccess = ()=>{ (r.result||[]).filter(i=>i.eventId===eventId).forEach(i=> t.objectStore('inventory').delete(i.id)); res(); }; });
-  t.objectStore('events').delete(eventId);
-  const mreq = t.objectStore('meta').get('currentEventId');
-  mreq.onsuccess = ()=>{ const cur = mreq.result?.value; if (cur === eventId) t.objectStore('meta').put({id:'currentEventId', value:null}); };
-  await new Promise((res,rej)=>{ t.oncomplete=res; t.onerror=()=>rej(t.error); });
+  const eventSales = (await getAll('sales')).filter(s=>s && s.eventId===eventId);
+  const physicalCupTickets = [];
+  try{
+    for (const sale of eventSales){
+      const queued = enqueuePhysicalCupRestoreForSalePOS(sale, 'event-delete');
+      if (queued && queued.ok === false) throw new Error(queued.message || 'No se pudo preparar el reverso seguro del Vaso físico.');
+      if (queued && queued.ticket) physicalCupTickets.push(queued.ticket);
+    }
+  }catch(error){
+    physicalCupTickets.forEach(removePhysicalCupRestoreTicketPOS);
+    alert((error && error.message) || 'No se pudo preparar el reverso seguro de Vasos físicos. El evento no fue eliminado.');
+    return;
+  }
+
+  try{
+    const t = db.transaction(['sales','events','inventory','meta'],'readwrite');
+    await new Promise((res)=>{ const r = t.objectStore('sales').getAll(); r.onsuccess = ()=>{ (r.result||[]).filter(s=>s.eventId===eventId).forEach(s=> t.objectStore('sales').delete(s.id)); res(); }; });
+    await new Promise((res)=>{ const r = t.objectStore('inventory').getAll(); r.onsuccess = ()=>{ (r.result||[]).filter(i=>i.eventId===eventId).forEach(i=> t.objectStore('inventory').delete(i.id)); res(); }; });
+    t.objectStore('events').delete(eventId);
+    const mreq = t.objectStore('meta').get('currentEventId');
+    mreq.onsuccess = ()=>{ const cur = mreq.result?.value; if (cur === eventId) t.objectStore('meta').put({id:'currentEventId', value:null}); };
+    await new Promise((res,rej)=>{ t.oncomplete=res; t.onerror=()=>rej(t.error); t.onabort=()=>rej(t.error || new Error('Transacción abortada eliminando evento')); });
+  }catch(error){
+    physicalCupTickets.forEach(removePhysicalCupRestoreTicketPOS);
+    throw error;
+  }
+
+  let physicalCupPending = 0;
+  for (const ticket of physicalCupTickets){
+    try{
+      const result = await processPhysicalCupRestoreTicketPOS(ticket, { assumeDeleted:true });
+      if (!result || result.ok === false || !['restored','already_restored'].includes(String(result.reason || ''))) physicalCupPending++;
+    }catch(_){ physicalCupPending++; }
+  }
   await refreshEventUI(); await renderEventos(); await renderDay(); await renderSummary(); await renderInventario(); await renderProductos();
-  toast('Evento eliminado');
+  toast(physicalCupPending ? 'Evento eliminado; hay reversos de Vaso físico pendientes.' : 'Evento eliminado');
 }
 
 // Botón Restaurar productos base (A33)
@@ -24484,6 +25303,9 @@ async function init(){
 
   // Paso 2: defaults y migraciones
   await runStep('ensureDefaults', ensureDefaults);
+  await runStep('processPendingPhysicalCupRestores', processPendingPhysicalCupRestoresPOS);
+  await runStep('reconcilePhysicalCupConsumptions', reconcilePendingPhysicalCupConsumptionsPOS);
+  await runStep('bindPhysicalCupReconciliationHooks', async()=>{ bindPhysicalCupReconciliationHooksPOS(); });
 
   // Paso 2.0: navegación por tabs (delegación, idempotente)
   await runStep('bindTabbarOncePOS', async()=>{ bindTabbarOncePOS(); });
@@ -25340,6 +26162,9 @@ async function addSale(){
     productNameSnapshot: productSnap.productNameSnapshot,
     unitPrice: productSnap.unitPrice,
     unitPriceSnapshot: productSnap.unitPriceSnapshot,
+    vasoFisicoId: productSnap.vasoFisicoId,
+    physicalCupInventoryIdSnapshot: productSnap.physicalCupInventoryIdSnapshot,
+    productClassSnapshot: productSnap.productClassSnapshot,
     productSnapshot: productSnap.productSnapshot,
     qty:finalQty,
     discount,
@@ -25404,6 +26229,12 @@ async function addSale(){
     saleRecord.uid = uid;
     const existing = await getSaleByUidPOS(uid);
     if (existing){
+      try{
+        const cupResult = await ensurePhysicalCupConsumptionForSalePOS(existing);
+        if (cupResult && cupResult.ok === false){
+          posBlockingAlert('Venta ya guardada, pero no se pudo registrar el consumo del Vaso físico. Recarga el POS para reintentar la conciliación.');
+        }
+      }catch(error){ console.warn('No se pudo conciliar Vaso físico en reintento de venta', error); }
       clearPendingSaleUidPOS();
       try{ await renderDay(); await renderSummary(); }catch(_){ }
       try{ if (typeof showToast === 'function') showToast('Venta ya guardada (duplicado bloqueado).', 'error', 4500); else alert('Venta ya guardada (duplicado bloqueado).'); }catch(_){ try{ alert('Venta ya guardada (duplicado bloqueado).'); }catch(__){ } }
@@ -25440,6 +26271,19 @@ async function addSale(){
   }catch(e){
     console.error('Inventario central: no se pudo registrar salida (venta ya guardada)', e);
     posBlockingAlert('Venta guardada, pero no se pudo actualizar Inventario central (storage lleno o bloqueado). Libera espacio y recarga.');
+  }
+
+  // Descontar Vaso físico asociado únicamente después de confirmar la venta/cortesía.
+  try{
+    const cupResult = await ensurePhysicalCupConsumptionForSalePOS(saleRecord);
+    if (cupResult && cupResult.ok === false){
+      posBlockingAlert('Venta guardada, pero no se pudo registrar el consumo del Vaso físico. Recarga el POS para reintentar la conciliación.');
+    } else if (cupResult && cupResult.reason === 'item_missing'){
+      posBlockingAlert('Venta guardada. El Vaso físico asociado ya no existe en Inventario Varios, por lo que no se aplicó el descuento.');
+    }
+  }catch(error){
+    console.error('No se pudo registrar el consumo del Vaso físico', error);
+    posBlockingAlert('Venta guardada, pero falló el consumo del Vaso físico. Recarga el POS para reintentar la conciliación.');
   }
 
   // Crear/actualizar asiento contable automático en Finanzas

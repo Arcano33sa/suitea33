@@ -9,7 +9,7 @@
   <script src="/assets/js/a33-theme.js?v=4.20.97&r=11"></script>
   <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
   <link rel="apple-touch-icon" href="../icon-a33-192.png" />
-  <link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=12" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=13" />
   <script>
     (function(){
       try{
@@ -30,7 +30,7 @@
   </script>
   <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.97&r=11" />
   <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.97&r=11" />
-  <link rel="stylesheet" href="style.css?v=4.20.97&r=23" />
+  <link rel="stylesheet" href="style.css?v=4.20.97&r=24" />
 </head>
 <body>
   <header class="a33-header" role="banner">
@@ -164,6 +164,12 @@
                 <select id="cat-new-tapa">
                   <option value="">Sin tapa</option>
                 </select>
+              </label>
+              <label class="cat-physical-cup-field">Vaso físico asociado
+                <select id="cat-new-vaso-fisico">
+                  <option value="">Sin asociación</option>
+                </select>
+                <small>Opcional · usa el ID estable de Inventario Varios.</small>
               </label>
               <label class="cat-flag"><input id="cat-new-receta" type="checkbox"> Receta</label>
               <label class="cat-flag"><input id="cat-new-pos" type="checkbox" checked> POS</label>
@@ -723,6 +729,12 @@
             <option value="">Sin tapa</option>
           </select>
         </label>
+        <label class="cat-physical-cup-field">Vaso físico asociado
+          <select id="cat-edit-vaso-fisico">
+            <option value="">Sin asociación</option>
+          </select>
+          <small>Opcional · no descuenta inventario en esta etapa.</small>
+        </label>
         <label class="cat-flag"><input id="cat-edit-receta" type="checkbox"> Receta</label>
         <label class="cat-flag"><input id="cat-edit-pos" type="checkbox"> POS</label>
         <label class="cat-flag"><input id="cat-edit-active" type="checkbox"> Activo</label>
@@ -925,7 +937,7 @@
   <script src="/assets/js/a33-storage.js?v=4.20.97&r=20"></script>
   <script src="/assets/js/a33-product-integrity.js?v=4.20.97&r=1"></script>
   <script src="/assets/js/a33-materials.js?v=4.20.97&r=2"></script>
-  <script src="script.js?v=4.20.97&r=35"></script>
+  <script src="script.js?v=4.20.97&r=36"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.97&r=11"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=25">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=26">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1653,7 +1653,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m49').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m52').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1662,7 +1662,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m49')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m52')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1670,7 +1670,7 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.97&r=45"></script>
+<script src="app.js?v=4.20.97&r=48"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.97&r=13"></script>
 <script>
   (function(){

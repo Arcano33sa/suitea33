@@ -13,7 +13,7 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '1'; // POS cache bump local — Cierre Parte 4 Final
 
 const MODULE = 'pos';
-const MODULE_CACHE_REV = '49';
+const MODULE_CACHE_REV = '52';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -25,10 +25,10 @@ function isLegacySuiteCache(name){
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.97&r=32',
+  './index.html?v=4.20.97&r=33',
   './styles.css?v=4.20.97&r=24',
-  './app.js?v=4.20.97&r=45',
-  './manifest.webmanifest?v=4.20.97&r=25',
+  './app.js?v=4.20.97&r=48',
+  './manifest.webmanifest?v=4.20.97&r=26',
   './offline.html',
   './logo.png',
   './vendor/xlsx.full.min.js?v=4.20.97&r=13',
@@ -108,7 +108,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.97&r=32')) ||
+      (await cache.match('./index.html?v=4.20.97&r=33')) ||
       (await cache.match('./index.html', { ignoreSearch: true })) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||
