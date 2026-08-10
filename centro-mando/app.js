@@ -1919,7 +1919,7 @@ function refreshAppearance(){
 function registerCentroMandoServiceWorker(){
   try{
     if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
-    const swUrl = './sw.js?v=4.20.97&r=5';
+    const swUrl = './sw.js?v=4.20.98&r=5';
     navigator.serviceWorker.register(swUrl, { scope:'./', updateViaCache:'none' })
       .then((registration)=>{
         try{ registration.update(); }catch(_){ }

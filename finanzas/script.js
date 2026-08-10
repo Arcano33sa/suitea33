@@ -471,6 +471,32 @@ function getAllPosCashV2Safe() {
   });
 }
 
+
+function getAllPosReempaquesSafe() {
+  return new Promise(async (resolve) => {
+    const db = await openPosDB();
+    if (!db) {
+      resolve([]);
+      return;
+    }
+    let store;
+    try {
+      store = posTx('reempaques', 'readonly');
+    } catch (err) {
+      // Compatibilidad con instalaciones anteriores a Reempaque.
+      console.warn('Store reempaques no encontrada en a33-pos', err);
+      resolve([]);
+      return;
+    }
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => {
+      console.warn('No se pudieron leer las mermas/Reempaques del POS', req.error);
+      resolve([]);
+    };
+  });
+}
+
 async function refreshPosEventsCache() {
   // Lee a33-pos (si existe) y construye mapa + lista de eventos abiertos para el dropdown.
   try {
@@ -3374,7 +3400,7 @@ const FIN_OPERATIONAL_DASHBOARD_SOURCE_MAP = Object.freeze({
     camposClave: ['exchangeRate', 'updatedAt']
   })
 });
-const FIN_POS_OPERATIONAL_STORES = Object.freeze(['sales', 'events', 'banks', 'dailyClosures', 'cashV2']);
+const FIN_POS_OPERATIONAL_STORES = Object.freeze(['sales', 'events', 'banks', 'dailyClosures', 'cashV2', 'reempaques']);
 
 function finOperationalArray(value) {
   return Array.isArray(value) ? value : [];
@@ -3403,7 +3429,8 @@ function finBuildOperationalDashboardSourceSnapshot(data) {
       receipts: receipts.length,
       financialAccounts: financialAccounts.length,
       internalTransfers: internalTransfers.length,
-      posCashV2: finOperationalArray(safe.posCashV2).length
+      posCashV2: finOperationalArray(safe.posCashV2).length,
+      posReempaques: finOperationalArray(safe.posReempaques).length
     }),
     currentCurrency: currency ? Object.freeze({
       source: currency.source || FIN_CURRENCY_SOURCE_LABEL,
@@ -3431,6 +3458,7 @@ async function finReadPosOperationalSourcesSafe() {
     banks: [],
     dailyClosures: [],
     cashV2: [],
+    reempaques: [],
     warnings: [],
     readAtISO: new Date().toISOString()
   };
@@ -3444,6 +3472,8 @@ async function finReadPosOperationalSourcesSafe() {
   catch (err) { out.warnings.push('No se pudo leer POS.dailyClosures'); out.ok = false; }
   try { out.cashV2 = await getAllPosCashV2Safe(); }
   catch (err) { out.warnings.push('No se pudo leer POS.cashV2'); out.ok = false; }
+  try { out.reempaques = await getAllPosReempaquesSafe(); }
+  catch (err) { out.warnings.push('No se pudo leer POS.reempaques'); out.ok = false; }
   return out;
 }
 
@@ -6595,7 +6625,7 @@ async function getAllFinData() {
     finGetAll('financialAccounts').catch(() => []),
     finGetAll('internalTransfers').catch(() => []),
     finGetAll('receipts').catch(() => []),
-    finReadPosOperationalSourcesSafe().catch(() => ({ sales: [], events: [], banks: [], dailyClosures: [], cashV2: [], warnings: ['No se pudieron leer fuentes POS'] }))
+    finReadPosOperationalSourcesSafe().catch(() => ({ sales: [], events: [], banks: [], dailyClosures: [], cashV2: [], reempaques: [], warnings: ['No se pudieron leer fuentes POS'] }))
   ]);
 
   let suppliers = [];
@@ -6697,12 +6727,13 @@ async function getAllFinData() {
     financialAccounts: Array.isArray(financialAccounts) ? financialAccounts : [],
     internalTransfers: Array.isArray(internalTransfers) ? internalTransfers : [],
     receipts: Array.isArray(receipts) ? receipts : [],
-    posSources: posSources || { sales: [], events: [], banks: [], dailyClosures: [], cashV2: [], warnings: [] },
+    posSources: posSources || { sales: [], events: [], banks: [], dailyClosures: [], cashV2: [], reempaques: [], warnings: [] },
     posSales: Array.isArray(posSources && posSources.sales) ? posSources.sales : [],
     posEvents: Array.isArray(posSources && posSources.events) ? posSources.events : [],
     posBanks: Array.isArray(posSources && posSources.banks) ? posSources.banks : [],
     posDailyClosures: Array.isArray(posSources && posSources.dailyClosures) ? posSources.dailyClosures : [],
     posCashV2: Array.isArray(posSources && posSources.cashV2) ? posSources.cashV2 : [],
+    posReempaques: Array.isArray(posSources && posSources.reempaques) ? posSources.reempaques : [],
     journalIntegrity,
     inconsistentEntryIds,
     operationalDashboardSources: finBuildOperationalDashboardSourceSnapshot({
@@ -6711,7 +6742,8 @@ async function getAllFinData() {
       receipts,
       financialAccounts,
       internalTransfers,
-      posCashV2: Array.isArray(posSources && posSources.cashV2) ? posSources.cashV2 : []
+      posCashV2: Array.isArray(posSources && posSources.cashV2) ? posSources.cashV2 : [],
+      posReempaques: Array.isArray(posSources && posSources.reempaques) ? posSources.reempaques : []
     })
   };
 }
@@ -9411,6 +9443,37 @@ function finDashboardApplyMoneyMovement(totals, channel, amount) {
   else if (channel === 'cash') totals.cajaPeriodo = n2(totals.cajaPeriodo + amt);
 }
 
+function finDashboardIsCardPayment(value) {
+  const raw = normStr(value || '');
+  return raw.includes('tarjeta') || raw.includes('card');
+}
+
+function finDashboardReadSnapshotNumber(record, key) {
+  if (!record || typeof record !== 'object' || !Object.prototype.hasOwnProperty.call(record, key)) return null;
+  const raw = record[key];
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function finDashboardApplyCardCommissionSnapshot(totals, sale) {
+  if (!totals || !sale || !finDashboardIsCardPayment(sale.payment) || sale.courtesy || sale.isCourtesy) return;
+  const amount = finDashboardReadSnapshotNumber(sale, 'commissionAmountSnapshot');
+  const label = String(sale.commissionLabelSnapshot || '').trim();
+  const status = String(sale.commissionSnapshotStatus || '').trim();
+  if (amount == null || !label || status === 'no_determinada') {
+    totals.comisionTarjetaNoDeterminada = Number(totals.comisionTarjetaNoDeterminada || 0) + 1;
+    return;
+  }
+  const value = n2(amount);
+  totals.comisionesTarjeta = n2(totals.comisionesTarjeta + value);
+  if (!totals.comisionesTarjetaDetalle || typeof totals.comisionesTarjetaDetalle !== 'object') totals.comisionesTarjetaDetalle = {};
+  const cur = totals.comisionesTarjetaDetalle[label] || { label, total:0, count:0 };
+  cur.total = n2(n0(cur.total) + value);
+  cur.count = Number(cur.count || 0) + 1;
+  totals.comisionesTarjetaDetalle[label] = cur;
+}
+
 function finDashboardApplyPosSale(totals, sale) {
   const sign = finDashboardSaleSign(sale);
   const gross = finDashboardSaleGrossReference(sale) * sign;
@@ -9425,6 +9488,7 @@ function finDashboardApplyPosSale(totals, sale) {
     totals.ventaTotal = n2(totals.ventaTotal + gross);
     totals.descuentos = n2(totals.descuentos + discount);
     totals.costosVentas = n2(totals.costosVentas + lineCost);
+    finDashboardApplyCardCommissionSnapshot(totals, sale);
 
     const payment = finDashboardPaymentBucket(sale && sale.payment);
     if (payment === 'cash') {
@@ -9465,6 +9529,18 @@ function finDashboardApplyPosClosureFallback(totals, closure) {
   totals.cortesias = n2(totals.cortesias + courtesyValue);
   totals.costosVentas = n2(totals.costosVentas + n2(t.costoVentasTotal || 0));
   totals.costoCortesias = n2(totals.costoCortesias + n2(t.costoCortesiasTotal ?? t.cortesiaCostoTotal ?? 0));
+  totals.comisionesTarjeta = n2(totals.comisionesTarjeta + n2(t.comisionTarjetaTotal || 0));
+  if (Array.isArray(t.comisionesTarjeta)) {
+    for (const item of t.comisionesTarjeta) {
+      if (!item || !String(item.label || '').trim()) continue;
+      const label = String(item.label).trim();
+      const cur = totals.comisionesTarjetaDetalle[label] || { label, total:0, count:0 };
+      cur.total = n2(n0(cur.total) + n2(item.total || 0));
+      cur.count = Number(cur.count || 0) + Number(item.count || 0);
+      totals.comisionesTarjetaDetalle[label] = cur;
+    }
+  }
+  totals.comisionTarjetaNoDeterminada = Number(totals.comisionTarjetaNoDeterminada || 0) + Number(t.commissionUndeterminedCount || 0);
   totals.eventKeys.add(finDashboardEventKey(closure));
   totals.stats.closureFallback += 1;
 
@@ -9487,7 +9563,7 @@ function finDashboardFinalizeTotals(totals) {
   if (!totals || typeof totals !== 'object') return totals;
   [
     'ventaTotal', 'descuentos', 'cortesias', 'ventaNeta', 'costosVentas', 'costoCortesias', 'costosTotales',
-    'utilidadBruta', 'ingresosAdicionales', 'gastos', 'utilidadNeta',
+    'utilidadBruta', 'comisionesTarjeta', 'ingresosAdicionales', 'gastos', 'utilidadNeta',
     'flujoCaja', 'cajaPeriodo', 'bancosPeriodo', 'entradasRealesDinero',
     'salidasRealesDinero'
   ].forEach((key) => { totals[key] = finDashboardSafeMoney(totals[key]); });
@@ -9502,6 +9578,7 @@ function calcTableroClasificadoForFilter(data, filtros) {
   const eventFilter = String(filtros && filtros.evento || 'ALL').trim() || 'ALL';
   const sales = Array.isArray(safeData.posSales) ? safeData.posSales : [];
   const closures = Array.isArray(safeData.posDailyClosures) ? safeData.posDailyClosures : [];
+  const reempaques = Array.isArray(safeData.posReempaques) ? safeData.posReempaques : [];
 
   const totals = {
     stage: FIN_OPERATIONAL_DASHBOARD_STAGE,
@@ -9511,8 +9588,13 @@ function calcTableroClasificadoForFilter(data, filtros) {
     ventaNeta: 0,
     costosVentas: 0,
     costoCortesias: 0,
+    mermaFinal: 0,
+    mermaFinalMl: 0,
     costosTotales: 0,
     utilidadBruta: 0,
+    comisionesTarjeta: 0,
+    comisionesTarjetaDetalle: {},
+    comisionTarjetaNoDeterminada: 0,
     ingresosAdicionales: 0,
     gastos: 0,
     utilidadNeta: 0,
@@ -9530,6 +9612,7 @@ function calcTableroClasificadoForFilter(data, filtros) {
       posSales: 0,
       posCourtesySales: 0,
       closureFallback: 0,
+      posFinalMerma: 0,
       manualRows: 0,
       receiptRows: 0,
       posCashRows: 0
@@ -9560,6 +9643,23 @@ function calcTableroClasificadoForFilter(data, filtros) {
     finDashboardApplyPosClosureFallback(totals, closure);
   }
 
+
+  // Merma final del evento: costo económico separado. No toca ventas, Caja ni comisión.
+  for (const row of reempaques) {
+    if (!row || typeof row !== 'object') continue;
+    if (!(row.tipo === 'REEMPAQUE_MERMA_FINAL_EVENTO' || row.isFinalEventMerma === true)) continue;
+    if (row.provisionalClose === true || row.anulado === true || row.cancelled === true || String(row.estado || '').toUpperCase() === 'ANULADO') continue;
+    if (!finDashboardInRange(row, filtros || {})) continue;
+    if (!finDashboardRecordMatchesEvent(row, eventFilter)) continue;
+    const cost = Math.max(0, n0(row.costoMermaFinal ?? row.finalMermaCost ?? row.economicCost));
+    const ml = Math.max(0, n0(row.mermaFinalMl ?? row.finalMermaMl));
+    totals.mermaFinal = n2(totals.mermaFinal + cost);
+    totals.mermaFinalMl = n2(totals.mermaFinalMl + ml);
+    totals.stats.posFinalMerma += 1;
+    const key = finDashboardEventKey(row);
+    if (key && key !== 'NONE') totals.eventKeys.add(key);
+  }
+
   const month = Number(String(filtros && filtros.desde || '').slice(5, 7));
   const year = Number(String(filtros && filtros.desde || '').slice(0, 4));
   const manualTotals = finBuildOperationalManualTotals(safeData, { year, month, evento: eventFilter });
@@ -9582,10 +9682,13 @@ function calcTableroClasificadoForFilter(data, filtros) {
   totals.cortesias = finDashboardSafeMoney(totals.cortesias);
   totals.costosVentas = finDashboardSafeMoney(totals.costosVentas);
   totals.costoCortesias = finDashboardSafeMoney(totals.costoCortesias);
-  totals.costosTotales = finDashboardSafeMoney(totals.costosVentas + totals.costoCortesias);
+  totals.mermaFinal = finDashboardSafeMoney(totals.mermaFinal);
+  totals.mermaFinalMl = finDashboardSafeMoney(totals.mermaFinalMl);
+  totals.costosTotales = finDashboardSafeMoney(totals.costosVentas + totals.costoCortesias + totals.mermaFinal);
   totals.ventaNeta = finDashboardSafeMoney(totals.ventaTotal - totals.descuentos);
   totals.utilidadBruta = finDashboardSafeMoney(totals.ventaNeta - totals.costosVentas);
-  totals.utilidadNeta = finDashboardSafeMoney(totals.utilidadBruta - totals.costoCortesias + totals.ingresosAdicionales - totals.gastos);
+  totals.comisionesTarjeta = finDashboardSafeMoney(totals.comisionesTarjeta);
+  totals.utilidadNeta = finDashboardSafeMoney(totals.utilidadBruta - totals.costoCortesias - totals.comisionesTarjeta - totals.mermaFinal + totals.ingresosAdicionales - totals.gastos);
   totals.flujoCaja = finDashboardSafeMoney(totals.entradasRealesDinero - totals.salidasRealesDinero);
   totals.numeroEventos = eventFilter && eventFilter !== 'ALL' && eventFilter !== 'GLOBAL'
     ? (totals.eventKeys.size ? 1 : 0)
@@ -9608,7 +9711,7 @@ function calcTableroClasificadoForFilter(data, filtros) {
     alerts: []
   };
 
-  if (!totals.stats.posSales && !totals.stats.closureFallback && !totals.stats.manualRows) {
+  if (!totals.stats.posSales && !totals.stats.closureFallback && !totals.stats.posFinalMerma && !totals.stats.manualRows) {
     totals.alerts.push({ text: 'No hay datos operativos para el filtro seleccionado.' });
   }
   if (totals.stats.closureFallback) {
@@ -9827,6 +9930,26 @@ function finResolveDashboardEventFilter(vista, eventoSel) {
   return value || 'NONE';
 }
 
+function finRenderCardCommissionBreakdown(result) {
+  finSetText('tab-comisiones-tarjeta-total', `Comisiones Tarjeta: ${finFormatCordobas(result && result.comisionesTarjeta || 0)}`);
+  const box = document.getElementById('tab-comisiones-tarjeta-detalle');
+  if (!box) return;
+  box.innerHTML = '';
+  const detail = (result && result.comisionesTarjetaDetalle && typeof result.comisionesTarjetaDetalle === 'object') ? result.comisionesTarjetaDetalle : {};
+  const rows = Object.values(detail).filter(Boolean).sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'es-NI'));
+  for (const item of rows) {
+    const div = document.createElement('div');
+    div.textContent = `${String(item.label || '')}: ${finFormatCordobas(item.total || 0)}`;
+    box.appendChild(div);
+  }
+  const missing = Number(result && result.comisionTarjetaNoDeterminada || 0);
+  if (missing > 0) {
+    const div = document.createElement('div');
+    div.textContent = `Comisión no determinada: ${missing} venta(s)`;
+    box.appendChild(div);
+  }
+}
+
 function renderTablero(data) {
   const mesSel = $('#tab-mes');
   const anioSel = $('#tab-anio');
@@ -9858,11 +9981,13 @@ function renderTablero(data) {
   finSetText('tab-cortesias-costo', `Costo real: ${finFormatCordobas(result.costoCortesias)}`);
   finSetText('tab-venta-neta', finFormatCordobas(result.ventaNeta));
   finSetText('tab-costos', finFormatCordobas(result.costosVentas));
-  finSetText('tab-costos-total', `Total con cortesías: ${finFormatCordobas(result.costosTotales)}`);
+  finSetText('tab-merma-final', `Merma final: ${finFormatCordobas(result.mermaFinal)}`);
+  finSetText('tab-costos-total', `Total con cortesías y merma: ${finFormatCordobas(result.costosTotales)}`);
   finSetText('tab-utilidad-bruta', finFormatCordobas(result.utilidadBruta));
   finSetText('tab-ingresos-adicionales', finFormatCordobas(result.ingresosAdicionales));
   finSetText('tab-gastos', finFormatCordobas(result.gastos));
   finSetText('tab-utilidad-neta', finFormatCordobas(result.utilidadNeta));
+  finRenderCardCommissionBreakdown(result);
   finSetText('tab-margen-bruto', finDashboardFormatPct(result.margenBruto));
   finSetText('tab-margen-neto', finDashboardFormatPct(result.margenNeto));
   finSetText('tab-num-eventos', String(result.numeroEventos || 0));
@@ -19599,6 +19724,16 @@ function validatePosClosureForImport(closure) {
     if (isBadAmount(totals[ck])) return { ok: false, msg: `${closureId}: ${ck} inválido` };
   }
   if (isBadAmount(totals.cortesiaCantidad)) return { ok: false, msg: `${closureId}: cortesiaCantidad inválida` };
+  for (const key of ['comisionTarjetaTotal','utilidadAntesComision','utilidadDespuesComision']) {
+    if (totals[key] == null) continue;
+    const n = toNumberMaybe(totals[key]);
+    if (n == null || !Number.isFinite(n)) return { ok: false, msg: `${closureId}: ${key} inválido` };
+  }
+  if (Array.isArray(totals.comisionesTarjeta)) {
+    for (const item of totals.comisionesTarjeta) {
+      if (!item || !String(item.label || '').trim() || !Number.isFinite(Number(item.total))) return { ok:false, msg:`${closureId}: desglose de comisión Tarjeta inválido` };
+    }
+  }
 
   // Caja Chica (si viene)
   const petty = (totals && totals.pettyCash && typeof totals.pettyCash === 'object') ? totals.pettyCash : null;
@@ -20301,6 +20436,11 @@ async function createPosDailyCloseEntry(closure, data) {
   let costoCortesiasTotal = n2(closure?.totals?.costoCortesiasTotal);
   if (!(costoCortesiasTotal > 0) && legacyCortesiaCosto > 0) costoCortesiasTotal = legacyCortesiaCosto;
   const costoTotalSalidaInventario = n2(costoVentasTotal + costoCortesiasTotal);
+  const comisionTarjetaTotal = n2(closure?.totals?.comisionTarjetaTotal || 0);
+  const comisionesTarjeta = Array.isArray(closure?.totals?.comisionesTarjeta) ? closure.totals.comisionesTarjeta.map(item => ({ label:String(item && item.label || ''), total:n2(item && item.total || 0), count:Number(item && item.count || 0) || 0 })).filter(item => item.label) : [];
+  const commissionUndeterminedCount = Number(closure?.totals?.commissionUndeterminedCount || 0) || 0;
+  const utilidadAntesComision = n2(closure?.totals?.utilidadAntesComision ?? (n2(closure?.totals?.utilidadBruta) - costoCortesiasTotal));
+  const utilidadDespuesComision = n2(closure?.totals?.utilidadDespuesComision ?? (utilidadAntesComision - comisionTarjetaTotal));
 
   const posAuto = finPosAutoBuildClosureLines(closure, data);
   const lines = posAuto.lines;
@@ -20370,7 +20510,12 @@ async function createPosDailyCloseEntry(closure, data) {
         descuentosTotal: n2(closure?.totals?.descuentosTotal),
         ventaNeta: n2(closure?.totals?.ventaNeta ?? closure?.totals?.totalGeneral),
         utilidadBruta: n2(closure?.totals?.utilidadBruta),
-        utilidadNetaOperativa: n2(closure?.totals?.utilidadNetaOperativa),
+        comisionTarjetaTotal,
+        comisionesTarjeta,
+        commissionUndeterminedCount,
+        utilidadAntesComision,
+        utilidadDespuesComision,
+        utilidadNetaOperativa: n2(closure?.totals?.utilidadNetaOperativa ?? utilidadDespuesComision),
         cortesiaValorReferencia: n2(closure?.totals?.cortesiaValorReferencia),
         devolucionCantidad: Number(closure?.totals?.devolucionCantidad || 0) || 0,
         devolucionValor: n2(closure?.totals?.devolucionValor)

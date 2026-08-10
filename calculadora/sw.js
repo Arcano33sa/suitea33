@@ -1,7 +1,7 @@
 /* Suite A33 — Service Worker (Calculadora de Producción) */
-try { importScripts('/assets/js/a33-release.js?v=4.20.97&r=57'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=57'); } catch (e) {}
 
-const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.97';
+const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
 const MODULE = 'calculadora';
 const MODULE_CACHE_REV = '10';
@@ -9,20 +9,20 @@ const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.97&r=19',
-  './manifest.webmanifest?v=4.20.97&r=12',
+  './index.html?v=4.20.98&r=19',
+  './manifest.webmanifest?v=4.20.98&r=12',
   './logo-icon-192.png',
   './logo-icon-512.png',
-  '/assets/js/a33-release.js?v=4.20.97&r=57',
-  '/assets/js/a33-storage.js?v=4.20.97&r=20',
-  '/assets/js/a33-production.js?v=4.20.97&r=5',
-  '/assets/js/a33-lot-code.js?v=4.20.97&r=6',
-  '/assets/js/a33-currency.js?v=4.20.97&r=14',
-  '/assets/js/a33-presentations.js?v=4.20.97&r=15',
-  '/assets/js/a33-input-ux.js?v=4.20.97&r=7',
-  '/assets/js/a33-theme.js?v=4.20.97&r=7',
-  '/assets/css/a33-header.css?v=4.20.97&r=7',
-  '/assets/css/a33-theme.css?v=4.20.97&r=7'
+  '/assets/js/a33-release.js?v=4.20.98&r=57',
+  '/assets/js/a33-storage.js?v=4.20.98&r=20',
+  '/assets/js/a33-production.js?v=4.20.98&r=5',
+  '/assets/js/a33-lot-code.js?v=4.20.98&r=6',
+  '/assets/js/a33-currency.js?v=4.20.98&r=14',
+  '/assets/js/a33-presentations.js?v=4.20.98&r=15',
+  '/assets/js/a33-input-ux.js?v=4.20.98&r=7',
+  '/assets/js/a33-theme.js?v=4.20.98&r=7',
+  '/assets/css/a33-header.css?v=4.20.98&r=7',
+  '/assets/css/a33-theme.css?v=4.20.98&r=7'
 ];
 
 function sameOrigin(url){ try { return url.origin === self.location.origin; } catch (_) { return false; } }
@@ -72,7 +72,7 @@ self.addEventListener('fetch', (event) => {
       return response;
     } catch (_) {
       return (await cache.match(event.request))
-        || (isNavigation ? (await cache.match('./index.html?v=4.20.97&r=19')) || (await cache.match('./')) : null)
+        || (isNavigation ? (await cache.match('./index.html?v=4.20.98&r=19')) || (await cache.match('./')) : null)
         || new Response('Offline', { status:503, headers:{'Content-Type':'text/plain; charset=utf-8'} });
     }
   })());

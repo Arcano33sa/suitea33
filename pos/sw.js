@@ -3,17 +3,17 @@
 */
 
 // A33_RELEASE (fuente única)
-try { importScripts('/assets/js/a33-release.js?v=4.20.97&r=57'); } catch (e) {}
+try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=57'); } catch (e) {}
 
 const SW_VERSION = (self.A33_RELEASE && (self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion))
   ? String(self.A33_RELEASE.suiteVersion || self.A33_RELEASE.SuiteVersion)
-  : '4.20.97';
+  : '4.20.98';
 const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null))
   ? String(self.A33_RELEASE.rev)
   : '1'; // POS cache bump local — Cierre Parte 4 Final
 
 const MODULE = 'pos';
-const MODULE_CACHE_REV = '52';
+const MODULE_CACHE_REV = '56';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -25,23 +25,23 @@ function isLegacySuiteCache(name){
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.97&r=33',
-  './styles.css?v=4.20.97&r=24',
-  './app.js?v=4.20.97&r=48',
-  './manifest.webmanifest?v=4.20.97&r=26',
+  './index.html?v=4.20.98&r=35',
+  './styles.css?v=4.20.98&r=25',
+  './app.js?v=4.20.98&r=52',
+  './manifest.webmanifest?v=4.20.98&r=28',
   './offline.html',
   './logo.png',
-  './vendor/xlsx.full.min.js?v=4.20.97&r=13',
-  '/assets/js/a33-release.js?v=4.20.97&r=57',
+  './vendor/xlsx.full.min.js?v=4.20.98&r=13',
+  '/assets/js/a33-release.js?v=4.20.98&r=57',
 
-  '/assets/js/a33-input-ux.js?v=4.20.97&r=13',
-  '/assets/js/a33-storage.js?v=4.20.97&r=20',
-  '/assets/js/a33-currency.js?v=4.20.97&r=14',
-  '/assets/js/a33-presentations.js?v=4.20.97&r=15',
-  '/assets/js/a33-lot-code.js?v=4.20.97&r=6',
-  '/assets/css/a33-header.css?v=4.20.97&r=13',
-  '/assets/css/a33-theme.css?v=4.20.97&r=13',
-  '/assets/js/a33-theme.js?v=4.20.97&r=13'
+  '/assets/js/a33-input-ux.js?v=4.20.98&r=13',
+  '/assets/js/a33-storage.js?v=4.20.98&r=20',
+  '/assets/js/a33-currency.js?v=4.20.98&r=14',
+  '/assets/js/a33-presentations.js?v=4.20.98&r=15',
+  '/assets/js/a33-lot-code.js?v=4.20.98&r=6',
+  '/assets/css/a33-header.css?v=4.20.98&r=13',
+  '/assets/css/a33-theme.css?v=4.20.98&r=13',
+  '/assets/js/a33-theme.js?v=4.20.98&r=13'
 ];
 
 function sameOrigin(url){
@@ -108,7 +108,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.97&r=33')) ||
+      (await cache.match('./index.html?v=4.20.98&r=35')) ||
       (await cache.match('./index.html', { ignoreSearch: true })) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||

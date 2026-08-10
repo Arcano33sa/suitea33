@@ -1904,3 +1904,28 @@ html[data-theme="light"] .reempaque-currency-note.warn{
 }
 .cashv2-move-trace b{ font-weight:800; }
 .cashv2-move-trace small{ opacity:.82; }
+
+
+/* POS · Efectivo · Etapa 3/5 — Resumen superior compacto */
+.cashv2-summary-card{overflow:hidden}
+.cashv2-summary-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.cashv2-summary-note{max-width:560px;text-align:right;line-height:1.35}
+.cashv2-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px;align-items:start}
+.cashv2-summary-panel{min-width:0}
+.cashv2-summary-title{font-size:12px;margin-bottom:6px}
+.cashv2-summary-table{table-layout:auto}
+.cashv2-summary-table td:first-child{min-width:0;overflow-wrap:anywhere}
+.cashv2-summary-table td.sub{white-space:nowrap;font-variant-numeric:tabular-nums}
+.cashv2-summary-banking .cashv2-summary-table td:first-child{width:68%}
+.cashv2-commission-row td{background:rgba(212,175,55,.035)}
+.cashv2-commission-note{display:block;margin-top:7px;line-height:1.35}
+@media (max-width:1050px){
+  .cashv2-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cashv2-summary-banking{grid-column:1/-1}
+}
+@media (max-width:680px){
+  .cashv2-summary-grid{grid-template-columns:1fr}
+  .cashv2-summary-banking{grid-column:auto}
+  .cashv2-summary-note{text-align:left;max-width:none}
+  .cashv2-summary-table td{padding:7px 8px;font-size:12.5px}
+}

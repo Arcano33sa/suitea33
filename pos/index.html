@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>A33 POS</title>
-<link rel="manifest" href="manifest.webmanifest?v=4.20.97&r=26">
+<link rel="manifest" href="manifest.webmanifest?v=4.20.98&r=28">
 <link rel="apple-touch-icon" href="logo.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -30,17 +30,17 @@
     }
   })();
 </script>
-<link rel="stylesheet" href="styles.css?v=4.20.97&r=24">
-  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.97&r=13" />
-  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.97&r=13" />
-  <script src="/assets/js/a33-theme.js?v=4.20.97&r=13"></script>
+<link rel="stylesheet" href="styles.css?v=4.20.98&r=25">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=13" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=13" />
+  <script src="/assets/js/a33-theme.js?v=4.20.98&r=13"></script>
 </head>
 <body>
   <header class="a33-header" role="banner">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">POS · Eventos</div>
     <div class="a33-right">
-      <div class="a33-version" id="a33-version-text" data-a33-version="1" data-a33-fallback="v4.20.97">v...</div>
+      <div class="a33-version" id="a33-version-text" data-a33-version="1" data-a33-fallback="v4.20.98">v...</div>
     </div>
   </header>
 <div id="offlineBar" class="offline">Trabajando sin conexión</div>
@@ -418,7 +418,7 @@
               <small>Reempaque solo usa productos activos existentes. Si falta el destino, créalo primero en Gestión Operativa → Catálogos → Productos.</small>
             </div>
             <label>Cantidad creada</label>
-            <input id="rp-target-qty" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 10">
+            <input id="rp-target-qty" class="a33-num" data-a33-default="0" type="number" inputmode="numeric" min="0" step="1" placeholder="Automático" readonly>
           </div>
         </div>
 
@@ -428,6 +428,10 @@
             <div class="reempaque-kv"><span>Volumen/capacidad origen</span><b id="rp-source-capacity">—</b></div>
             <div class="reempaque-kv"><span>Volumen/capacidad destino</span><b id="rp-target-capacity">—</b></div>
             <div class="reempaque-kv"><span>Cantidad sugerida</span><b id="rp-suggested-qty">—</b></div>
+            <div class="reempaque-kv"><span>Unidades por conversión</span><b id="rp-base-units">—</b></div>
+            <div class="reempaque-kv"><span>Extra por merma acumulada</span><b id="rp-extra-units">0</b></div>
+            <div class="reempaque-kv"><span>Total creado</span><b id="rp-total-units">—</b></div>
+            <div class="reempaque-kv"><span>Merma pendiente</span><b id="rp-pending-merma">—</b></div>
           </div>
 
           <div class="reempaque-card soft">
@@ -613,6 +617,65 @@
 
       
 
+    <div id="cashv2-summary-card" class="card inner cashv2-summary-card" style="margin-top:10px; display:none" aria-live="polite">
+      <div class="cashv2-summary-head">
+        <div>
+          <h3 style="margin:0;">Resumen</h3>
+          <small class="muted">Caja física y cobros bancarios del día seleccionado.</small>
+        </div>
+        <small class="muted cashv2-summary-note">Tarjeta, Transferencia y Comisión son informativos; no alteran Caja física.</small>
+      </div>
+
+      <div class="cashv2-summary-grid">
+        <div class="cashv2-summary-panel">
+          <div class="muted cashv2-summary-title">C$ (NIO)</div>
+          <table class="cashv2-summary-table">
+            <tbody>
+              <tr><td>Saldo inicial</td><td id="cashv2-sum-initial-nio" class="sub">0.00</td></tr>
+              <tr><td>Entradas</td><td id="cashv2-sum-in-nio" class="sub">0.00</td></tr>
+              <tr><td>Cobros</td><td id="cashv2-sum-collections-nio" class="sub">0.00</td></tr>
+              <tr><td>Salidas</td><td id="cashv2-sum-out-nio" class="sub">0.00</td></tr>
+              <tr><td>Ventas en efectivo</td><td id="cashv2-sum-sales-nio" class="sub">0.00</td></tr>
+              <tr><td>Ajuste</td><td id="cashv2-sum-adjust-nio" class="sub">0.00</td></tr>
+              <tr><td>Saldo esperado</td><td id="cashv2-sum-expected-nio" class="sub">0.00</td></tr>
+              <tr><td>Saldo final contado</td><td id="cashv2-sum-final-nio" class="sub">0.00</td></tr>
+              <tr><td><b>Diferencia</b></td><td class="sub"><span id="cashv2-sum-diff-nio" class="pill">0.00</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="cashv2-summary-panel">
+          <div class="muted cashv2-summary-title">USD</div>
+          <table class="cashv2-summary-table">
+            <tbody>
+              <tr><td>Saldo inicial</td><td id="cashv2-sum-initial-usd" class="sub">0.00</td></tr>
+              <tr><td>Entradas</td><td id="cashv2-sum-in-usd" class="sub">0.00</td></tr>
+              <tr><td>Cobros</td><td id="cashv2-sum-collections-usd" class="sub">0.00</td></tr>
+              <tr><td>Salidas</td><td id="cashv2-sum-out-usd" class="sub">0.00</td></tr>
+              <tr><td>Ventas en efectivo</td><td id="cashv2-sum-sales-usd" class="sub">0.00</td></tr>
+              <tr><td>Ajuste</td><td id="cashv2-sum-adjust-usd" class="sub">0.00</td></tr>
+              <tr><td>Saldo esperado</td><td id="cashv2-sum-expected-usd" class="sub">0.00</td></tr>
+              <tr><td>Saldo final contado</td><td id="cashv2-sum-final-usd" class="sub">0.00</td></tr>
+              <tr><td><b>Diferencia</b></td><td class="sub"><span id="cashv2-sum-diff-usd" class="pill">0.00</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="cashv2-summary-panel cashv2-summary-banking">
+          <div class="muted cashv2-summary-title">Cobros bancarios · informativo</div>
+          <table class="cashv2-summary-table">
+            <tbody>
+              <tr><td>Transferencias</td><td id="cashv2-sum-transfer-nio" class="sub">C$ 0.00</td></tr>
+              <tr><td>Tarjeta</td><td id="cashv2-sum-card-nio" class="sub">C$ 0.00</td></tr>
+              <tr><td><b>Comisión bancaria total</b></td><td id="cashv2-sum-card-commission-total" class="sub">C$ 0.00</td></tr>
+            </tbody>
+            <tbody id="cashv2-sum-card-commission-lines" class="cashv2-commission-lines"></tbody>
+          </table>
+          <small id="cashv2-sum-card-commission-note" class="muted cashv2-commission-note"></small>
+        </div>
+      </div>
+    </div>
+
     <div id="cashv2-fx-card" class="card inner cashv2-fx" style="margin-top:10px; display:none">
       <div class="row" style="align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <div>
@@ -761,41 +824,6 @@
             <thead><tr><th class="denom">Denom</th><th>Cant</th><th class="sub">Sub</th></tr></thead>
             <tbody></tbody>
             <tfoot><tr><td colspan="2">Total</td><td id="cashv2-final-total-usd" class="sub">0</td></tr></tfoot>
-          </table>
-        </div>
-      </div>
-
-      <div class="row" style="gap:12px; flex-wrap:wrap; margin-top:12px;">
-        <div style="flex:1; min-width:260px;">
-          <div class="muted" style="font-size:12px; margin-bottom:6px;">Resumen C$ (NIO)</div>
-          <table class="cashv2-summary-table">
-            <tbody>
-              <tr><td>Saldo inicial</td><td id="cashv2-sum-initial-nio" class="sub">0.00</td></tr>
-              <tr><td>Entradas</td><td id="cashv2-sum-in-nio" class="sub">0.00</td></tr>
-              <tr><td>Cobros</td><td id="cashv2-sum-collections-nio" class="sub">0.00</td></tr>
-              <tr><td>Salidas</td><td id="cashv2-sum-out-nio" class="sub">0.00</td></tr>
-              <tr><td>Ventas en efectivo</td><td id="cashv2-sum-sales-nio" class="sub">0.00</td></tr>
-              <tr><td>Ajuste</td><td id="cashv2-sum-adjust-nio" class="sub">0.00</td></tr>
-              <tr><td>Saldo esperado</td><td id="cashv2-sum-expected-nio" class="sub">0.00</td></tr>
-              <tr><td>Saldo final contado</td><td id="cashv2-sum-final-nio" class="sub">0.00</td></tr>
-              <tr><td><b>Diferencia</b></td><td class="sub"><span id="cashv2-sum-diff-nio" class="pill">0.00</span></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div style="flex:1; min-width:260px;">
-          <div class="muted" style="font-size:12px; margin-bottom:6px;">Resumen USD</div>
-          <table class="cashv2-summary-table">
-            <tbody>
-              <tr><td>Saldo inicial</td><td id="cashv2-sum-initial-usd" class="sub">0.00</td></tr>
-              <tr><td>Entradas</td><td id="cashv2-sum-in-usd" class="sub">0.00</td></tr>
-              <tr><td>Cobros</td><td id="cashv2-sum-collections-usd" class="sub">0.00</td></tr>
-              <tr><td>Salidas</td><td id="cashv2-sum-out-usd" class="sub">0.00</td></tr>
-              <tr><td>Ventas en efectivo</td><td id="cashv2-sum-sales-usd" class="sub">0.00</td></tr>
-              <tr><td>Ajuste</td><td id="cashv2-sum-adjust-usd" class="sub">0.00</td></tr>
-              <tr><td>Saldo esperado</td><td id="cashv2-sum-expected-usd" class="sub">0.00</td></tr>
-              <tr><td>Saldo final contado</td><td id="cashv2-sum-final-usd" class="sub">0.00</td></tr>
-              <tr><td><b>Diferencia</b></td><td class="sub"><span id="cashv2-sum-diff-usd" class="pill">0.00</span></td></tr>
-            </tbody>
           </table>
         </div>
       </div>
@@ -963,8 +991,16 @@
           <div class="label">Cortesías (Costo real)</div>
           <div class="value">C$ <span id="grand-courtesy-cost">0</span></div>
         </div>
+        <div class="metric">
+          <div class="label">Comisiones Tarjeta</div>
+          <div class="value">C$ <span id="grand-card-commission">0</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">Merma final</div>
+          <div class="value">C$ <span id="grand-final-merma">0</span></div>
+        </div>
         <div class="metric metric-strong">
-          <div class="label">Utilidad después de cortesías</div>
+          <div class="label">Utilidad después de comisión y merma</div>
           <div class="value">C$ <span id="grand-profit-after-courtesy">0</span></div>
         </div>
       </div>
@@ -1351,7 +1387,8 @@
             <div class="consolidated-row"><span>Costo estimado</span><b>C$ <span id="summary-consolidated-arch-grandCost">0</span></b></div>
             <div class="consolidated-row"><span>Utilidad bruta</span><b>C$ <span id="summary-consolidated-arch-grandProfit">0</span></b></div>
             <div class="consolidated-row"><span>Cortesías (Costo real)</span><b>C$ <span id="summary-consolidated-arch-courtesyCost">0</span></b></div>
-            <div class="consolidated-row"><span>Utilidad después de cortesías</span><b>C$ <span id="summary-consolidated-arch-profitAfterCourtesy">0</span></b></div>
+            <div class="consolidated-row"><span>Comisiones Tarjeta</span><b>C$ <span id="summary-consolidated-arch-cardCommissionTotal">0</span></b></div>
+            <div class="consolidated-row"><span>Utilidad después de comisión</span><b>C$ <span id="summary-consolidated-arch-profitAfterCourtesy">0</span></b></div>
             <div class="consolidated-row consolidated-row-mini"><span>Cortesías (unidades)</span><b><span id="summary-consolidated-arch-courtesyQty">0</span></b></div>
             <div class="consolidated-row consolidated-row-mini"><span>Cortesías (movimientos)</span><b><span id="summary-consolidated-arch-courtesyTx">0</span></b></div>
             <div class="consolidated-row consolidated-row-mini"><span>Cortesías (equivalente ventas)</span><b>C$ <span id="summary-consolidated-arch-courtesyEquiv">0</span></b></div>
@@ -1366,7 +1403,8 @@
             <div class="consolidated-row"><span>Costo estimado</span><b>C$ <span id="summary-consolidated-live-grandCost">0</span></b></div>
             <div class="consolidated-row"><span>Utilidad bruta</span><b>C$ <span id="summary-consolidated-live-grandProfit">0</span></b></div>
             <div class="consolidated-row"><span>Cortesías (Costo real)</span><b>C$ <span id="summary-consolidated-live-courtesyCost">0</span></b></div>
-            <div class="consolidated-row"><span>Utilidad después de cortesías</span><b>C$ <span id="summary-consolidated-live-profitAfterCourtesy">0</span></b></div>
+            <div class="consolidated-row"><span>Comisiones Tarjeta</span><b>C$ <span id="summary-consolidated-live-cardCommissionTotal">0</span></b></div>
+            <div class="consolidated-row"><span>Utilidad después de comisión</span><b>C$ <span id="summary-consolidated-live-profitAfterCourtesy">0</span></b></div>
             <div class="consolidated-row consolidated-row-mini"><span>Cortesías (unidades)</span><b><span id="summary-consolidated-live-courtesyQty">0</span></b></div>
             <div class="consolidated-row consolidated-row-mini"><span>Cortesías (movimientos)</span><b><span id="summary-consolidated-live-courtesyTx">0</span></b></div>
             <div class="consolidated-row consolidated-row-mini"><span>Cortesías (equivalente ventas)</span><b>C$ <span id="summary-consolidated-live-courtesyEquiv">0</span></b></div>
@@ -1380,7 +1418,8 @@
             <div class="consolidated-row"><span>Costo estimado</span><b>C$ <span id="summary-consolidated-total-grandCost">0</span></b></div>
             <div class="consolidated-row"><span>Utilidad bruta</span><b>C$ <span id="summary-consolidated-total-grandProfit">0</span></b></div>
             <div class="consolidated-row"><span>Cortesías (Costo real)</span><b>C$ <span id="summary-consolidated-total-courtesyCost">0</span></b></div>
-            <div class="consolidated-row"><span>Utilidad después de cortesías</span><b>C$ <span id="summary-consolidated-total-profitAfterCourtesy">0</span></b></div>
+            <div class="consolidated-row"><span>Comisiones Tarjeta</span><b>C$ <span id="summary-consolidated-total-cardCommissionTotal">0</span></b></div>
+            <div class="consolidated-row"><span>Utilidad después de comisión</span><b>C$ <span id="summary-consolidated-total-profitAfterCourtesy">0</span></b></div>
             <div class="consolidated-row consolidated-row-mini"><span>Cortesías (unidades)</span><b><span id="summary-consolidated-total-courtesyQty">0</span></b></div>
             <div class="consolidated-row consolidated-row-mini"><span>Cortesías (movimientos)</span><b><span id="summary-consolidated-total-courtesyTx">0</span></b></div>
             <div class="consolidated-row consolidated-row-mini"><span>Cortesías (equivalente ventas)</span><b>C$ <span id="summary-consolidated-total-courtesyEquiv">0</span></b></div>
@@ -1637,23 +1676,23 @@
   <button data-tab="calculadora">Calculadora</button>
 </nav>
 
-<script src="./vendor/xlsx.full.min.js?v=4.20.97&r=13"></script>
-  <script src="/assets/js/a33-release.js?v=4.20.97&r=57"></script>
+<script src="./vendor/xlsx.full.min.js?v=4.20.98&r=13"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.98&r=57"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.97&r=20"></script>
-  <script src="/assets/js/a33-currency.js?v=4.20.97&r=14"></script>
-  <script src="/assets/js/a33-presentations.js?v=4.20.97&r=15"></script>
-<script src="/assets/js/a33-build.js?v=4.20.97&r=14"></script>
-<script src="/assets/js/a33-lot-code.js?v=4.20.97&r=6"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.98&r=20"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.98&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+<script src="/assets/js/a33-build.js?v=4.20.98&r=14"></script>
+<script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
 <script>
   (function(){
     try{
       const relObj = (window.A33_RELEASE || {});
-      const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.97';
+      const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.98';
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m52').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m56').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1662,7 +1701,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m52')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m56')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1670,11 +1709,11 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.97&r=48"></script>
-<script src="/assets/js/a33-input-ux.js?v=4.20.97&r=13"></script>
+<script src="app.js?v=4.20.98&r=52"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.98&r=13"></script>
 <script>
   (function(){
-    const BUILD = (window.A33_VERSION || '4.20.97').toString();
+    const BUILD = (window.A33_VERSION || '4.20.98').toString();
     const REV = (window.A33_ASSET_REV || '8').toString();
     const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV);
     if (!('serviceWorker' in navigator)) return;

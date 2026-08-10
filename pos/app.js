@@ -4,7 +4,7 @@ const DB_VER = 37; // Materia Prima + cierre de esquema compartido a33-pos
 let db;
 
 // --- Build / version (fuente unica de verdad)
-const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.97';
+const POS_BUILD = (typeof window !== 'undefined' && window.A33_VERSION) ? String(window.A33_VERSION) : '4.20.98';
 
 
 const POS_SW_CACHE = (typeof window !== 'undefined' && window.A33_POS_CACHE_NAME) ? String(window.A33_POS_CACHE_NAME) : ('a33-v' + POS_BUILD + '-pos-r1-m50');
@@ -3407,6 +3407,85 @@ function cashV2SetDiffPill(el, diff){
   el.classList.toggle('danger', n !== 0);
 }
 
+// --- POS: Efectivo — Resumen superior económico (Etapa 3/5)
+// Tarjeta/Transferencia/Comisión son SOLO informativos. No participan en cashV2ComputeCloseNumbers.
+function cashV2SetSummaryCardVisiblePOS(visible){
+  try{
+    const card = document.getElementById('cashv2-summary-card');
+    if (card) card.style.display = visible ? 'block' : 'none';
+  }catch(_){ }
+}
+
+function cashV2ClearBankingSummaryPOS(){
+  try{ const el = document.getElementById('cashv2-sum-transfer-nio'); if (el) el.textContent = 'C$ 0.00'; }catch(_){ }
+  try{ const el = document.getElementById('cashv2-sum-card-nio'); if (el) el.textContent = 'C$ 0.00'; }catch(_){ }
+  try{ const el = document.getElementById('cashv2-sum-card-commission-total'); if (el) el.textContent = 'C$ 0.00'; }catch(_){ }
+  try{ const el = document.getElementById('cashv2-sum-card-commission-lines'); if (el) el.innerHTML = ''; }catch(_){ }
+  try{ const el = document.getElementById('cashv2-sum-card-commission-note'); if (el) el.textContent = ''; }catch(_){ }
+}
+
+async function cashV2ComputeBankingSummaryPOS(eventId, dayKey){
+  const eid = String(eventId || '').trim();
+  const dk = safeYMD(dayKey);
+  let transfer = 0;
+  let card = 0;
+  let filtered = [];
+  if (!eid || !dk) return { transfer:0, card:0, commissionTotal:0, commissions:[], undeterminedCount:0 };
+
+  let sales = [];
+  try{ sales = await cashV2GetSalesByEventPOS(eid); }catch(_){ sales = []; }
+  filtered = (Array.isArray(sales) ? sales : []).filter(s => s && safeYMD(s.date || '') === dk);
+
+  for (const sale of filtered){
+    try{ if (typeof isCourtesySalePOS === 'function' && isCourtesySalePOS(sale)) continue; }catch(_){ }
+    const pay = normalizePaymentMethodPOS(sale.payment || sale.paymentMethod || '');
+    let amount = Number(sale.total || 0);
+    if (!Number.isFinite(amount)) amount = 0;
+    if (pay === 'transferencia') transfer = cashV2Round2Money(transfer + amount);
+    else if (pay === 'tarjeta') card = cashV2Round2Money(card + amount);
+  }
+
+  // Fuente única de comisión: snapshots congelados en cada venta Tarjeta.
+  const cardCommissions = collectSaleCardCommissionsPOS(filtered);
+  return {
+    transfer: cashV2Round2Money(transfer),
+    card: cashV2Round2Money(card),
+    commissionTotal: cashV2Round2Money(cardCommissions.total),
+    commissions: Array.isArray(cardCommissions.byLabel) ? cardCommissions.byLabel : [],
+    undeterminedCount: Number(cardCommissions.undeterminedCount || 0)
+  };
+}
+
+function cashV2ApplyBankingSummaryPOS(summary){
+  const s = summary && typeof summary === 'object' ? summary : {};
+  try{ const el = document.getElementById('cashv2-sum-transfer-nio'); if (el) el.textContent = 'C$ ' + cashV2FmtMoney(s.transfer || 0); }catch(_){ }
+  try{ const el = document.getElementById('cashv2-sum-card-nio'); if (el) el.textContent = 'C$ ' + cashV2FmtMoney(s.card || 0); }catch(_){ }
+  try{ const el = document.getElementById('cashv2-sum-card-commission-total'); if (el) el.textContent = 'C$ ' + cashV2FmtMoney(s.commissionTotal || 0); }catch(_){ }
+
+  try{
+    const host = document.getElementById('cashv2-sum-card-commission-lines');
+    if (host){
+      const rows = (Array.isArray(s.commissions) ? s.commissions : []).map(item=>{
+        const label = String(item && item.label || '').trim();
+        const total = cashV2Round2Money(item && item.total || 0);
+        if (!label) return '';
+        return `<tr class="cashv2-commission-row"><td>${escapeHtml(label)}</td><td class="sub">C$ ${cashV2FmtMoney(total)}</td></tr>`;
+      }).filter(Boolean);
+      host.innerHTML = rows.join('');
+    }
+  }catch(_){ }
+
+  try{
+    const note = document.getElementById('cashv2-sum-card-commission-note');
+    if (note){
+      const pending = Number(s.undeterminedCount || 0);
+      note.textContent = pending > 0
+        ? `${pending} venta${pending === 1 ? '' : 's'} Tarjeta histórica${pending === 1 ? '' : 's'} con comisión no determinada.`
+        : '';
+    }
+  }catch(_){ }
+}
+
 function cashV2ClearCloseSummary(){
   const ids = [
     'cashv2-sum-initial-nio','cashv2-sum-in-nio','cashv2-sum-collections-nio','cashv2-sum-out-nio','cashv2-sum-sales-nio','cashv2-sum-adjust-nio','cashv2-sum-expected-nio','cashv2-sum-final-nio',
@@ -4863,6 +4942,7 @@ async function renderEfectivoTab(){
   const elMultiNote = document.getElementById('cashv2-multiday-note');
   const elMultiActions = document.getElementById('cashv2-multiday-actions');
   const btnOpenFromY = document.getElementById('cashv2-btn-open-from-yesterday');
+  const summaryCard = document.getElementById('cashv2-summary-card');
 
   // Etapa 3: UI Inicio (denominaciones)
   cashV2InitInitialUIOnce();
@@ -4895,6 +4975,7 @@ async function renderEfectivoTab(){
   try{ if (elMultiNote){ elMultiNote.style.display = 'none'; const sm = elMultiNote.querySelector('small'); if (sm) sm.textContent = ''; } }catch(_){ }
   try{ if (elMultiActions){ elMultiActions.style.display = 'none'; } }catch(_){ }
   try{ if (btnOpenFromY){ btnOpenFromY.style.display = 'none'; btnOpenFromY.dataset.eventId = ''; btnOpenFromY.dataset.todayKey = ''; } }catch(_){ }
+  try{ if (summaryCard) summaryCard.style.display = 'none'; }catch(_){ }
 
   const todayKey = safeYMD(getTodayDayKey());
   let dayKey = todayKey;
@@ -4995,6 +5076,8 @@ async function renderEfectivoTab(){
     try{ cashV2ApplyFinalToDom(null); }catch(_){ }
     try{ cashV2SetLastRec(null); }catch(_){ }
     try{ cashV2ClearCloseSummary(); }catch(_){ }
+    try{ cashV2ClearBankingSummaryPOS(); }catch(_){ }
+    try{ cashV2SetSummaryCardVisiblePOS(false); }catch(_){ }
     try{ cashV2UpdateCloseEligibility(null); }catch(_){ }
     try{ cashV2ApplyCashSalesToDom(null); }catch(_){ }
     return;
@@ -5049,6 +5132,15 @@ async function renderEfectivoTab(){
     cashSalesUSD = cashV2Round2Money(phys && phys.USD);
   }catch(_){ cashSalesC = 0; cashSalesUSD = 0; }
   try{ cashV2ApplyCashSalesToDom(cashSalesC, cashSalesUSD); }catch(_){ }
+
+  // Resumen superior: los cobros bancarios son lectura económica y no alteran la Caja física.
+  try{
+    const bankSummary = await cashV2ComputeBankingSummaryPOS(eventId, dayKey);
+    cashV2ApplyBankingSummaryPOS(bankSummary);
+    cashV2SetSummaryCardVisiblePOS(true);
+  }catch(_){
+    try{ cashV2ClearBankingSummaryPOS(); cashV2SetSummaryCardVisiblePOS(true); }catch(__){ }
+  }
 
   try{
     let locked = false;
@@ -5189,6 +5281,7 @@ async function renderEfectivoTab(){
       try{ cashV2SetFinalEnabled(false); }catch(_){ }
       try{ cashV2ApplyFinalToDom(null); }catch(_){ }
       try{ cashV2ClearCloseSummary(); }catch(_){ }
+      try{ cashV2SetSummaryCardVisiblePOS(true); }catch(_){ }
       try{ cashV2SetCloseUiState({ canClose:false, reason:'Aún no has abierto el día de hoy' }); }catch(_){ }
       try{ cashV2SetLastRec(null); }catch(_){ }
 
@@ -5235,6 +5328,7 @@ async function renderEfectivoTab(){
     }catch(_){ }
     try{ cashV2SetFinalEnabled(true); }catch(_){ }
     try{ cashV2ApplyFinalToDom((rec && rec.final) ? rec.final : null); }catch(_){ }
+    try{ cashV2SetSummaryCardVisiblePOS(true); }catch(_){ }
     try{ cashV2UpdateCloseSummary(rec); }catch(_){ }
     try{ cashV2UpdateCloseEligibility(rec); }catch(_){ }
     try{
@@ -5277,6 +5371,7 @@ async function renderEfectivoTab(){
     try{ cashV2SetInitialEnabled(false); }catch(_){ }
     try{ cashV2SetFinalEnabled(false); }catch(_){ }
     try{ cashV2SetLastRec(null); }catch(_){ }
+    try{ cashV2ClearCloseSummary(); cashV2ClearBankingSummaryPOS(); cashV2SetSummaryCardVisiblePOS(false); }catch(_){ }
     console.error('Efectivo v2: no se pudo load/ensure', err);
     try{
       if (statusTag){
@@ -6366,6 +6461,13 @@ function clearStore(name){
 const REEMPAQUE_STORE_POS = 'reempaques';
 const REEMPAQUE_VISIBLE_NAME_POS = 'Reempaque';
 const REEMPAQUE_STATUS_VALID_POS = 'VALIDO';
+const REEMPAQUE_MERMA_TYPE_POS = 'REEMPAQUE_MERMA_TECNICA';
+const REEMPAQUE_MERMA_PREFIX_POS = 'rpq_merma_';
+const REEMPAQUE_MERMA_FINAL_TYPE_POS = 'REEMPAQUE_MERMA_FINAL_EVENTO';
+const REEMPAQUE_MERMA_FINAL_PREFIX_POS = 'rpq_merma_final_';
+const REEMPAQUE_SANEAMIENTO_TYPE_POS = 'REEMPAQUE_SANEAMIENTO_LEGACY';
+const REEMPAQUE_SANEAMIENTO_PREFIX_POS = 'rpq_saneamiento_legacy_';
+const REEMPAQUE_REVERSE_SOURCE_POS = 'reempaque_reverso';
 
 function reempaqueNowISOPOS(){
   try{ return new Date().toISOString(); }catch(_){ return String(Date.now()); }
@@ -6397,6 +6499,532 @@ function reempaqueRound4POS(value){
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.round((n + Number.EPSILON) * 10000) / 10000;
+}
+
+
+function reempaqueFloorUnitsPOS(value){
+  const n = reempaqueNumPOS(value, 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.max(0, Math.floor(n + 1e-9));
+}
+
+function reempaqueHashTextPOS(value){
+  const text = String(value || '');
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++){
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function reempaqueIsMermaTechnicalRecordPOS(record){
+  const r = record || {};
+  return r.tipo === REEMPAQUE_MERMA_TYPE_POS || r.isTechnicalRemainder === true || r.technicalMerma === true;
+}
+
+function reempaqueIsFinalEventMermaRecordPOS(record){
+  const r = record || {};
+  return r.tipo === REEMPAQUE_MERMA_FINAL_TYPE_POS || r.isFinalEventMerma === true;
+}
+
+function reempaqueIsLegacySanitationRecordPOS(record){
+  const r = record || {};
+  return r.tipo === REEMPAQUE_SANEAMIENTO_TYPE_POS || r.isLegacyFractionSanitation === true;
+}
+
+function reempaqueEventIdFromRecordPOS(record){
+  const r = record || {};
+  const n = Number(r.eventId ?? r.eventoId ?? r.posEventId);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+async function reempaqueLoadFinalMermaForEventPOS(eventId, options={}){
+  if (!db) await openDB();
+  const eid = Number(eventId);
+  if (!Number.isFinite(eid) || !(eid > 0)) return [];
+  const includeProvisional = options.includeProvisional === true;
+  const rows = await getAll(REEMPAQUE_STORE_POS).catch(()=>[]);
+  return (rows || []).filter((r)=>{
+    if (!reempaqueIsFinalEventMermaRecordPOS(r)) return false;
+    if (reempaqueEventIdFromRecordPOS(r) !== eid) return false;
+    if (!includeProvisional && r.provisionalClose === true) return false;
+    if (r.anulado === true || r.cancelled === true || String(r.estado || '').toUpperCase() === 'ANULADO') return false;
+    return true;
+  });
+}
+
+async function reempaqueGetFinalMermaTotalsPOS(eventId, options={}){
+  const records = await reempaqueLoadFinalMermaForEventPOS(eventId, options);
+  let ml = 0;
+  let cost = 0;
+  for (const r of records){
+    ml += Math.max(0, reempaqueNumPOS(r.mermaFinalMl ?? r.finalMermaMl ?? r.remainderMlBefore, 0));
+    cost += Math.max(0, reempaqueNumPOS(r.costoMermaFinal ?? r.finalMermaCost ?? r.remainderLiquidCostBefore, 0));
+  }
+  return { records, ml:reempaqueRound4POS(ml), cost:round2(cost) };
+}
+
+async function reempaqueGetFinalMermaForSummaryPOS(eventId, periodKey){
+  if (!db) await openDB();
+  const selected = Number(eventId);
+  const hasEvent = Number.isFinite(selected) && selected > 0;
+  const pk = String(periodKey || '').trim();
+  const rows = await getAll(REEMPAQUE_STORE_POS).catch(()=>[]);
+  let ml = 0;
+  let cost = 0;
+  const records = [];
+  for (const r of (rows || [])){
+    if (!reempaqueIsFinalEventMermaRecordPOS(r) || r.provisionalClose === true) continue;
+    if (r.anulado === true || r.cancelled === true || String(r.estado || '').toUpperCase() === 'ANULADO') continue;
+    if (hasEvent && reempaqueEventIdFromRecordPOS(r) !== selected) continue;
+    const date = String(r.date || r.fecha || r.economicDate || '').slice(0,10);
+    if (pk && (!date || !date.startsWith(pk))) continue;
+    ml += Math.max(0, reempaqueNumPOS(r.mermaFinalMl ?? r.finalMermaMl, 0));
+    cost += Math.max(0, reempaqueNumPOS(r.costoMermaFinal ?? r.finalMermaCost, 0));
+    records.push(r);
+  }
+  return { records, ml:reempaqueRound4POS(ml), cost:round2(cost) };
+}
+
+function reempaqueLotIdentityForMermaPOS(trace){
+  const t = reempaqueNormalizeLotTracePOS(trace || {});
+  const load = String(t.loteCargaId || '').trim();
+  const group = String(t.loteGroupKey || '').trim();
+  const lotId = String(t.loteId ?? '').trim();
+  const code = String(t.loteCodigo || '').trim();
+  if (load) return `LOAD:${load}`;
+  if (group) return `GROUP:${group}`;
+  if (lotId) return `LOT:${lotId}`;
+  if (code) return `CODE:${code}`;
+  return 'NOLOT';
+}
+
+function reempaqueMermaKeyPOS(eventId, trace, targetProductId){
+  return `${String(eventId ?? '')}|${reempaqueLotIdentityForMermaPOS(trace)}|${String(targetProductId ?? '')}`;
+}
+
+function reempaqueMermaIdPOS(key){
+  return REEMPAQUE_MERMA_PREFIX_POS + String(key || '');
+}
+
+function reempaqueEmptyMermaBalancePOS(eventId, trace, targetProduct, targetCapacityMl){
+  const t = reempaqueNormalizeLotTracePOS(trace || {});
+  const targetId = targetProduct && typeof targetProduct === 'object'
+    ? (targetProduct.id ?? targetProduct.productId ?? targetProduct.productoId ?? null)
+    : targetProduct;
+  const targetName = targetProduct && typeof targetProduct === 'object'
+    ? String(targetProduct.name || targetProduct.nombre || targetProduct.productName || '').trim()
+    : '';
+  const key = reempaqueMermaKeyPOS(eventId, t, targetId);
+  return {
+    id: reempaqueMermaIdPOS(key),
+    tipo: REEMPAQUE_MERMA_TYPE_POS,
+    technicalMerma: true,
+    isTechnicalRemainder: true,
+    mermaKey: key,
+    eventId,
+    eventoId: eventId,
+    loteId: t.loteId ?? null,
+    loteCodigo: t.loteCodigo || '',
+    loteCargaId: t.loteCargaId || null,
+    loteGroupKey: t.loteGroupKey || '',
+    targetProductId: targetId ?? null,
+    targetProductName: targetName,
+    targetProductNameSnapshot: targetName,
+    targetCapacityMl: reempaquePositivePOS(targetCapacityMl),
+    targetCapacityMlSnapshot: reempaquePositivePOS(targetCapacityMl),
+    remainderMl: 0,
+    remainderLiquidCost: 0,
+    estado: 'AGOTADA',
+    exists: false,
+    createdAt: null,
+    updatedAt: null
+  };
+}
+
+async function reempaqueLoadMermaBalancePOS(eventId, trace, targetProduct, targetCapacityMl){
+  if (!db) await openDB();
+  const empty = reempaqueEmptyMermaBalancePOS(eventId, trace, targetProduct, targetCapacityMl);
+  let row = null;
+  try{ row = await getOne(REEMPAQUE_STORE_POS, empty.id); }catch(_){ row = null; }
+  if (!row || !reempaqueIsMermaTechnicalRecordPOS(row) || String(row.mermaKey || '') !== empty.mermaKey) return empty;
+  return {
+    ...empty,
+    ...row,
+    exists: true,
+    remainderMl: reempaqueRound4POS(Math.max(0, reempaqueNumPOS(row.remainderMl, 0))),
+    remainderLiquidCost: reempaqueMoneyPOS(row.remainderLiquidCost),
+    targetProductName: String(row.targetProductName || row.targetProductNameSnapshot || empty.targetProductName || '').trim(),
+    targetProductNameSnapshot: String(row.targetProductNameSnapshot || row.targetProductName || empty.targetProductName || '').trim(),
+    targetCapacityMl: reempaquePositivePOS(row.targetCapacityMl || row.targetCapacityMlSnapshot || empty.targetCapacityMl),
+    targetCapacityMlSnapshot: reempaquePositivePOS(row.targetCapacityMlSnapshot || row.targetCapacityMl || empty.targetCapacityMl)
+  };
+}
+
+function reempaqueMermaSnapshotPOS(balance){
+  const b = balance || {};
+  return {
+    exists: !!b.exists,
+    id: String(b.id || ''),
+    mermaKey: String(b.mermaKey || ''),
+    remainderMl: reempaqueRound4POS(Math.max(0, reempaqueNumPOS(b.remainderMl, 0))),
+    remainderLiquidCost: reempaqueMoneyPOS(b.remainderLiquidCost),
+    estado: String(b.estado || (reempaquePositivePOS(b.remainderMl) > 0 ? 'PENDIENTE' : 'AGOTADA')),
+    updatedAt: b.updatedAt || null
+  };
+}
+
+function reempaqueBuildMermaPlanPOS({ before, sourceVolumeMl, sourceLiquidCost, targetCapacityMl }){
+  const prev = before || {};
+  const cap = reempaquePositivePOS(targetCapacityMl);
+  const sourceMl = reempaqueRound4POS(Math.max(0, reempaqueNumPOS(sourceVolumeMl, 0)));
+  const sourceCost = reempaqueMoneyPOS(sourceLiquidCost);
+  if (!(cap > 0) || !(sourceMl > 0)){
+    return {
+      baseUnits:0, extraUnits:0, totalUnits:0, baseVolumeMl:0,
+      newRemainderMl:0, newRemainderLiquidCost:0,
+      consumedRemainderMl:0, consumedRemainderLiquidCost:0,
+      pendingRemainderMl:reempaqueRound4POS(Math.max(0, reempaqueNumPOS(prev.remainderMl,0))),
+      pendingRemainderLiquidCost:reempaqueMoneyPOS(prev.remainderLiquidCost),
+      assignedLiquidCost:0, sourceVolumeMl:sourceMl, sourceLiquidCost:sourceCost, targetCapacityMl:cap
+    };
+  }
+  const prevMl = reempaqueRound4POS(Math.max(0, reempaqueNumPOS(prev.remainderMl, 0)));
+  const prevCost = reempaqueMoneyPOS(prev.remainderLiquidCost);
+  const baseUnits = reempaqueFloorUnitsPOS(sourceMl / cap);
+  const baseVolumeMl = reempaqueRound4POS(baseUnits * cap);
+  const newRemainderMl = reempaqueRound4POS(Math.max(0, sourceMl - baseVolumeMl));
+  const newRemainderLiquidCost = (sourceCost > 0 && sourceMl > 0 && newRemainderMl > 0)
+    ? round2(sourceCost * (newRemainderMl / sourceMl))
+    : 0;
+  const baseLiquidCost = round2(Math.max(0, sourceCost - newRemainderLiquidCost));
+  const combinedMl = reempaqueRound4POS(prevMl + newRemainderMl);
+  const extraUnits = reempaqueFloorUnitsPOS(combinedMl / cap);
+  const consumedRemainderMl = reempaqueRound4POS(extraUnits * cap);
+  const consumePrevMl = reempaqueRound4POS(Math.min(prevMl, consumedRemainderMl));
+  const consumeNewMl = reempaqueRound4POS(Math.max(0, consumedRemainderMl - consumePrevMl));
+  const consumedPrevCost = consumePrevMl > 0 && prevMl > 0
+    ? (Math.abs(consumePrevMl - prevMl) < 0.0001 ? prevCost : round2(prevCost * (consumePrevMl / prevMl)))
+    : 0;
+  const consumedNewCost = consumeNewMl > 0 && newRemainderMl > 0
+    ? (Math.abs(consumeNewMl - newRemainderMl) < 0.0001 ? newRemainderLiquidCost : round2(newRemainderLiquidCost * (consumeNewMl / newRemainderMl)))
+    : 0;
+  const consumedRemainderLiquidCost = round2(consumedPrevCost + consumedNewCost);
+  const assignedLiquidCost = round2(baseLiquidCost + consumedRemainderLiquidCost);
+  const pendingRemainderMl = reempaqueRound4POS(Math.max(0, combinedMl - consumedRemainderMl));
+  const pendingRemainderLiquidCost = round2(Math.max(0, prevCost + sourceCost - assignedLiquidCost));
+  return {
+    baseUnits, extraUnits, totalUnits:baseUnits + extraUnits,
+    baseVolumeMl, newRemainderMl, newRemainderLiquidCost,
+    consumedRemainderMl, consumedRemainderLiquidCost,
+    pendingRemainderMl, pendingRemainderLiquidCost,
+    assignedLiquidCost, baseLiquidCost,
+    sourceVolumeMl:sourceMl, sourceLiquidCost:sourceCost, targetCapacityMl:cap,
+    previousRemainderMl:prevMl, previousRemainderLiquidCost:prevCost
+  };
+}
+
+function reempaqueBuildMermaBalanceAfterPOS(before, plan, meta){
+  const now = reempaqueNowISOPOS();
+  const base = before || {};
+  const m = meta || {};
+  const pendingMl = reempaqueRound4POS(Math.max(0, reempaqueNumPOS(plan && plan.pendingRemainderMl, 0)));
+  return {
+    ...base,
+    id: String(base.id || reempaqueMermaIdPOS(m.mermaKey || '')),
+    tipo: REEMPAQUE_MERMA_TYPE_POS,
+    technicalMerma: true,
+    isTechnicalRemainder: true,
+    mermaKey: String(m.mermaKey || base.mermaKey || ''),
+    eventId: m.eventId ?? base.eventId ?? null,
+    eventoId: m.eventId ?? base.eventoId ?? base.eventId ?? null,
+    loteId: m.loteId ?? base.loteId ?? null,
+    loteCodigo: String(m.loteCodigo ?? base.loteCodigo ?? ''),
+    loteCargaId: m.loteCargaId ?? base.loteCargaId ?? null,
+    loteGroupKey: String(m.loteGroupKey ?? base.loteGroupKey ?? ''),
+    targetProductId: m.targetProductId ?? base.targetProductId ?? null,
+    targetProductName: String(m.targetProductName || base.targetProductName || '').trim(),
+    targetProductNameSnapshot: String(m.targetProductName || base.targetProductNameSnapshot || base.targetProductName || '').trim(),
+    targetCapacityMl: reempaquePositivePOS(m.targetCapacityMl || base.targetCapacityMl),
+    targetCapacityMlSnapshot: reempaquePositivePOS(m.targetCapacityMl || base.targetCapacityMlSnapshot || base.targetCapacityMl),
+    remainderMl: pendingMl,
+    remainderLiquidCost: reempaqueMoneyPOS(plan && plan.pendingRemainderLiquidCost),
+    estado: pendingMl > 0.0001 ? 'PENDIENTE' : 'AGOTADA',
+    exists: true,
+    createdAt: base.createdAt || now,
+    updatedAt: now
+  };
+}
+
+
+async function reempaqueEconomicDateForEventPOS(eventId, eventRecord){
+  const eid = Number(eventId);
+  try{
+    const sales = (await getAll('sales')).filter(s => s && Number(s.eventId) === eid);
+    const dates = sales.map(s => safeYMD(s.date || s.createdAt || s.time)).filter(Boolean).sort();
+    if (dates.length) return dates[dates.length - 1];
+  }catch(_){ }
+  const ev = eventRecord || null;
+  const fromEvent = safeYMD(ev && (ev.date || ev.fecha || ev.createdAt || ev.closedAt));
+  return fromEvent || safeYMD(new Date()) || new Date().toISOString().slice(0,10);
+}
+
+function reempaqueFinalMermaIdPOS(balance){
+  const b = balance || {};
+  const signature = [
+    String(b.mermaKey || b.id || ''),
+    String(b.updatedAt || ''),
+    reempaqueRound4POS(b.remainderMl),
+    reempaqueMoneyPOS(b.remainderLiquidCost)
+  ].join('|');
+  return REEMPAQUE_MERMA_FINAL_PREFIX_POS + reempaqueHashTextPOS(signature);
+}
+
+async function reempaqueFinalizeMermaForEventPOS(eventId, options={}){
+  if (!db) await openDB();
+  const eid = Number(eventId);
+  if (!Number.isFinite(eid) || !(eid > 0)) return { eventId:eid, ids:[], ml:0, cost:0, provisional:false };
+
+  const all = await getAll(REEMPAQUE_STORE_POS).catch(()=>[]);
+  const balances = (all || []).filter(r =>
+    reempaqueIsMermaTechnicalRecordPOS(r) &&
+    reempaqueEventIdFromRecordPOS(r) === eid &&
+    reempaqueNumPOS(r.remainderMl, 0) > 0.0001
+  );
+  if (!balances.length) return { eventId:eid, ids:[], ml:0, cost:0, provisional:options.provisional === true };
+
+  const events = await getAll('events').catch(()=>[]);
+  const ev = (events || []).find(e => Number(e && e.id) === eid) || null;
+  const economicDate = await reempaqueEconomicDateForEventPOS(eid, ev);
+  const now = reempaqueNowISOPOS();
+  const provisional = options.provisional === true;
+  const eventClosedAt = options.eventClosedAt || (ev && ev.closedAt) || null;
+  const finalRows = balances.map((b)=>{
+    const ml = reempaqueRound4POS(Math.max(0, reempaqueNumPOS(b.remainderMl,0)));
+    const cost = reempaqueMoneyPOS(b.remainderLiquidCost);
+    const finalId = reempaqueFinalMermaIdPOS(b);
+    const warning = String(b.costWarning || b.advertenciaCosto || '').trim();
+    const costReliable = b.costReliable !== false && !warning;
+    return {
+      id: finalId,
+      tipo: REEMPAQUE_MERMA_FINAL_TYPE_POS,
+      isFinalEventMerma: true,
+      eventId:eid,
+      eventoId:eid,
+      eventName:String((ev && ev.name) || b.eventName || b.eventNameSnapshot || '').trim(),
+      eventNameSnapshot:String((ev && ev.name) || b.eventName || b.eventNameSnapshot || '').trim(),
+      date:economicDate,
+      fecha:economicDate,
+      economicDate,
+      periodKey:String(economicDate || '').slice(0,7),
+      mermaKey:String(b.mermaKey || ''),
+      technicalBalanceId:String(b.id || ''),
+      loteId:b.loteId ?? null,
+      loteCodigo:String(b.loteCodigo || ''),
+      loteCargaId:b.loteCargaId ?? null,
+      loteGroupKey:String(b.loteGroupKey || ''),
+      targetProductId:b.targetProductId ?? null,
+      targetProductName:String(b.targetProductName || b.targetProductNameSnapshot || '').trim(),
+      targetProductNameSnapshot:String(b.targetProductNameSnapshot || b.targetProductName || '').trim(),
+      targetCapacityMl:reempaquePositivePOS(b.targetCapacityMl || b.targetCapacityMlSnapshot),
+      mermaFinalMl:ml,
+      finalMermaMl:ml,
+      costoMermaFinal:cost,
+      finalMermaCost:cost,
+      economicCost:cost,
+      costoLiquidoFinal:cost,
+      costoAdicionalUnitario:0,
+      costoAdicionalTotal:0,
+      affectsSales:false,
+      afectaVentas:false,
+      affectsCash:false,
+      afectaCaja:false,
+      afectaEfectivo:false,
+      affectsAccountingIncome:false,
+      noVenta:true,
+      noCaja:true,
+      noCortesia:true,
+      provisionalClose:provisional,
+      eventClosedAt:eventClosedAt,
+      estado:provisional ? 'PENDIENTE_CIERRE' : 'FINALIZADA',
+      motivo:String(options.reason || 'CIERRE_EVENTO'),
+      costReliable,
+      costWarning:warning,
+      advertenciaCosto:warning,
+      technicalBalanceBefore:{ ...b },
+      createdAt:now,
+      updatedAt:now
+    };
+  });
+
+  await new Promise((resolve,reject)=>{
+    try{
+      const tr = db.transaction([REEMPAQUE_STORE_POS], 'readwrite');
+      const st = tr.objectStore(REEMPAQUE_STORE_POS);
+      for (let i=0;i<balances.length;i++){
+        const b = balances[i];
+        const fr = finalRows[i];
+        const after = {
+          ...b,
+          remainderMl:0,
+          remainderLiquidCost:0,
+          estado:'AGOTADA',
+          finalizedAt:now,
+          finalMermaRecordId:fr.id,
+          provisionalClose:provisional,
+          updatedAt:now
+        };
+        try{ st.put(after); st.put(fr); }catch(err){ try{ tr.abort(); }catch(_){ } }
+      }
+      tr.oncomplete=()=>resolve(true);
+      tr.onerror=()=>reject(tr.error || new Error('No se pudo cerrar la merma recuperable.'));
+      tr.onabort=()=>reject(tr.error || new Error('Transacción abortada cerrando merma recuperable.'));
+    }catch(err){ reject(err); }
+  });
+
+  return {
+    eventId:eid,
+    ids:finalRows.map(r=>r.id),
+    ml:reempaqueRound4POS(finalRows.reduce((a,r)=>a + reempaquePositivePOS(r.mermaFinalMl),0)),
+    cost:round2(finalRows.reduce((a,r)=>a + reempaqueMoneyPOS(r.costoMermaFinal),0)),
+    provisional,
+    economicDate
+  };
+}
+
+async function reempaqueRollbackFinalMermaForEventPOS(finalization){
+  if (!db) await openDB();
+  const info = finalization || {};
+  const ids = Array.isArray(info.ids) ? info.ids.filter(Boolean) : [];
+  if (!ids.length) return true;
+  await new Promise((resolve,reject)=>{
+    try{
+      const tr = db.transaction([REEMPAQUE_STORE_POS], 'readwrite');
+      const st = tr.objectStore(REEMPAQUE_STORE_POS);
+      let pending = ids.length;
+      const done = ()=>{ pending--; };
+      for (const id of ids){
+        const req = st.get(id);
+        req.onsuccess=()=>{
+          const row=req.result;
+          if (row && reempaqueIsFinalEventMermaRecordPOS(row) && row.provisionalClose === true){
+            const before=row.technicalBalanceBefore;
+            if (before && before.id) st.put({ ...before, provisionalClose:false });
+            st.delete(id);
+          }
+          done();
+        };
+        req.onerror=()=>{ try{ tr.abort(); }catch(_){ } };
+      }
+      tr.oncomplete=()=>resolve(true);
+      tr.onerror=()=>reject(tr.error || new Error('No se pudo revertir la merma provisional.'));
+      tr.onabort=()=>reject(tr.error || new Error('Transacción abortada revirtiendo merma provisional.'));
+    }catch(err){ reject(err); }
+  });
+  return true;
+}
+
+async function reempaqueConfirmFinalMermaForEventPOS(finalization, eventClosedAt){
+  if (!db) await openDB();
+  const info = finalization || {};
+  const ids = Array.isArray(info.ids) ? info.ids.filter(Boolean) : [];
+  if (!ids.length) return true;
+  const now=reempaqueNowISOPOS();
+  await new Promise((resolve,reject)=>{
+    try{
+      const tr=db.transaction([REEMPAQUE_STORE_POS],'readwrite');
+      const st=tr.objectStore(REEMPAQUE_STORE_POS);
+      for (const id of ids){
+        const req=st.get(id);
+        req.onsuccess=()=>{
+          const row=req.result;
+          if (!row || !reempaqueIsFinalEventMermaRecordPOS(row)) return;
+          st.put({ ...row, provisionalClose:false, eventClosedAt:eventClosedAt || row.eventClosedAt || now, estado:'FINALIZADA', updatedAt:now });
+          const bid=String(row.technicalBalanceId || '');
+          if (bid){
+            const breq=st.get(bid);
+            breq.onsuccess=()=>{
+              const b=breq.result;
+              if (b && reempaqueIsMermaTechnicalRecordPOS(b)){
+                st.put({ ...b, remainderMl:0, remainderLiquidCost:0, estado:'AGOTADA', provisionalClose:false, finalizedAt:eventClosedAt || now, updatedAt:now });
+              }
+            };
+          }
+        };
+        req.onerror=()=>{ try{ tr.abort(); }catch(_){ } };
+      }
+      tr.oncomplete=()=>resolve(true);
+      tr.onerror=()=>reject(tr.error || new Error('No se pudo confirmar la merma final.'));
+      tr.onabort=()=>reject(tr.error || new Error('Transacción abortada confirmando merma final.'));
+    }catch(err){ reject(err); }
+  });
+  return true;
+}
+
+async function reempaqueReconcileProvisionalFinalMermaPOS(){
+  if (!db) await openDB();
+  const rows=await getAll(REEMPAQUE_STORE_POS).catch(()=>[]);
+  const provisional=(rows || []).filter(r=>reempaqueIsFinalEventMermaRecordPOS(r) && r.provisionalClose === true);
+  if (!provisional.length) return { confirmed:0, rolledBack:0 };
+  const events=await getAll('events').catch(()=>[]);
+  const eventMap=new Map((events || []).filter(Boolean).map(e=>[Number(e.id),e]));
+  const groups=new Map();
+  for (const r of provisional){
+    const eid=reempaqueEventIdFromRecordPOS(r);
+    if (!eid) continue;
+    if (!groups.has(eid)) groups.set(eid,[]);
+    groups.get(eid).push(r.id);
+  }
+  let confirmed=0, rolledBack=0;
+  for (const [eid,ids] of groups.entries()){
+    const ev=eventMap.get(eid);
+    const info={eventId:eid,ids};
+    if (ev && ev.closedAt){
+      await reempaqueConfirmFinalMermaForEventPOS(info, ev.closedAt);
+      confirmed += ids.length;
+    }else{
+      await reempaqueRollbackFinalMermaForEventPOS(info);
+      rolledBack += ids.length;
+    }
+  }
+  return { confirmed, rolledBack };
+}
+
+function reempaquePluralProductNamePOS(name, qty){
+  const raw = String(name || 'Producto').trim() || 'Producto';
+  if (Number(qty) === 1) return raw;
+  if (/s$/i.test(raw)) return raw;
+  if (/[aeiouáéíóú]$/i.test(raw)) return raw + 's';
+  return raw + 'es';
+}
+
+function reempaqueSuccessSummaryPOS(record){
+  const r = record || {};
+  const name = String(r.targetProductName || r.productoDestinoNombre || r.productoDestino || 'Producto').trim() || 'Producto';
+  const base = reempaqueFloorUnitsPOS(r.cantidadConversionBase ?? r.cantidadBaseConversion ?? r.cantidadFinalRegistrada ?? 0);
+  const extra = reempaqueFloorUnitsPOS(r.cantidadExtraMerma ?? 0);
+  const total = reempaqueFloorUnitsPOS(r.cantidadFinalRegistrada ?? r.cantidadCreadaDestino ?? 0);
+  const pending = reempaqueRound4POS(Math.max(0, reempaqueNumPOS(r.mermaPendienteMl ?? r.mlSobranteMerma ?? 0, 0)));
+  const parts = [`${base} ${reempaquePluralProductNamePOS(name, base)} por conversión`];
+  if (extra > 0) parts.push(`+${extra} ${reempaquePluralProductNamePOS(name, extra)} extra por merma acumulada`);
+  parts.push(`Total creado: ${total}`);
+  parts.push(`Merma pendiente: ${reempaqueFmtMlPOS(pending)}`);
+  return parts.join(' · ');
+}
+
+function reempaqueMultipleSuccessSummaryPOS(record){
+  const r = record || {};
+  const ops = Array.isArray(r.mermaOperaciones) ? r.mermaOperaciones : [];
+  const extras = ops.filter(op=>reempaqueFloorUnitsPOS(op && op.cantidadExtraMerma) > 0).map(op=>{
+    const qty = reempaqueFloorUnitsPOS(op.cantidadExtraMerma);
+    const name = String(op.targetProductName || 'Producto').trim() || 'Producto';
+    return `+${qty} ${reempaquePluralProductNamePOS(name, qty)} extra por merma acumulada`;
+  });
+  const pending = reempaqueRound4POS(Math.max(0, reempaqueNumPOS(r.mlSobranteMerma, 0)));
+  const parts = extras.length ? extras : ['Reempaque múltiple registrado'];
+  parts.push(`Merma pendiente: ${reempaqueFmtMlPOS(pending)}`);
+  return parts.join(' · ');
 }
 
 function reempaqueProductNameFromRefPOS(ref){
@@ -6587,6 +7215,8 @@ function reempaqueBuildMultipleDestinationsPOS(rawDestinos, products, costoPorMl
       productoNuevoDestino: !!(raw.destinoNuevo || raw.productoNuevoDestino || tipoDestino === 'NUEVO' || tipoDestino === 'NUEVO_EXISTENTE'),
       productoNuevoCreado: !!(raw.productoNuevoCreado || tipoDestino === 'NUEVO'),
       precioVentaDestino,
+      cantidadSolicitadaRaw: reempaquePositivePOS(raw.cantidadSolicitadaRaw ?? raw.cantidadCreada ?? raw.cantidadCreadaDestino ?? raw.cantidadDestino),
+      fraccionMermaMl: reempaquePositivePOS(raw.fraccionMermaMl),
       cantidadCreada,
       cantidadCreadaDestino: cantidadCreada,
       cantidadDestino: cantidadCreada,
@@ -7021,7 +7651,10 @@ async function reempaqueLoadForEventPOS(eventId){
   }
 
   const uniq = new Map();
-  for (const r of out){ if (r && r.id) uniq.set(String(r.id), r); }
+  for (const r of out){
+    if (!r || !r.id || reempaqueIsMermaTechnicalRecordPOS(r) || reempaqueIsFinalEventMermaRecordPOS(r) || reempaqueIsLegacySanitationRecordPOS(r)) continue;
+    uniq.set(String(r.id), r);
+  }
   return Array.from(uniq.values()).sort((a,b)=> String(b.createdAt || b.fechaHora || '').localeCompare(String(a.createdAt || a.fechaHora || '')));
 }
 
@@ -7045,6 +7678,8 @@ try{
     applyMovement: reempaqueApplyMovementPOS,
     registerMovement: reempaqueApplyMovementPOS,
     applyMultipleMovement: reempaqueApplyMultipleMovementPOS,
+    reverseMovement: reempaqueReversePOS,
+    loadMermaBalance: reempaqueLoadMermaBalancePOS,
     prepareMultiplePayload: reempaquePrepareMultiplePayloadPOS,
     validateMultipleRecord: reempaqueValidateMultipleRecordPOS,
     hasMultipleDestinations: reempaqueHasMultipleDestinationsInputPOS,
@@ -12331,7 +12966,11 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
   const ventaBruta = round2(gross);
   const ventaNeta = round2(grand);
   const utilidadBruta = round2(ventaNeta - costoVentasTotal);
-  const utilidadNetaOperativa = round2(utilidadBruta - costoCortesiasTotal);
+  const cardCommissions = collectSaleCardCommissionsPOS(filtered);
+  const comisionTarjetaTotal = round2(cardCommissions.total);
+  const utilidadAntesComision = round2(utilidadBruta - costoCortesiasTotal);
+  const utilidadDespuesComision = round2(utilidadAntesComision - comisionTarjetaTotal);
+  const utilidadNetaOperativa = utilidadDespuesComision;
 
   return {
     dayKey: dk,
@@ -12341,6 +12980,11 @@ async function computeDailySnapshotFromSalesPOS(eventId, dateKey){
     descuentosTotal: round2(discountTotal),
     ventaNeta,
     utilidadBruta,
+    comisionTarjetaTotal,
+    comisionesTarjeta: cardCommissions.byLabel,
+    commissionUndeterminedCount: cardCommissions.undeterminedCount,
+    utilidadAntesComision,
+    utilidadDespuesComision,
     utilidadNetaOperativa,
     cortesiaCantidad: courtesyQty,
     cortesiaValorReferencia: round2(courtesyValue),
@@ -12418,11 +13062,18 @@ function validateDailyClosureBeforePersistPOS({ record, lockPatch }){
   const cq = Number(t.cortesiaCantidad);
   if (!Number.isFinite(cq) || cq < -0.00001) return { ok:false, msg:'Cierre inválido: cortesías inválidas.' };
 
-  const optionalNums = ['ventaBruta','descuentosTotal','ventaNeta','utilidadBruta','utilidadNetaOperativa','cortesiaValorReferencia','devolucionCantidad','devolucionValor'];
+  const optionalNums = ['ventaBruta','descuentosTotal','ventaNeta','utilidadBruta','comisionTarjetaTotal','utilidadAntesComision','utilidadDespuesComision','utilidadNetaOperativa','cortesiaValorReferencia','devolucionCantidad','devolucionValor','commissionUndeterminedCount'];
   for (const k of optionalNums){
     if (t[k] == null) continue;
     const n = Number(t[k]);
     if (!Number.isFinite(n)) return { ok:false, msg:`Cierre inválido: ${k} inválido.` };
+  }
+
+  if (Array.isArray(t.comisionesTarjeta)){
+    for (const item of t.comisionesTarjeta){
+      if (!item || !String(item.label || '').trim()) return { ok:false, msg:'Cierre inválido: etiqueta de comisión Tarjeta inválida.' };
+      if (!Number.isFinite(Number(item.total))) return { ok:false, msg:'Cierre inválido: comisión Tarjeta inválida.' };
+    }
   }
 
   // Costos: permitir negativos si hubo devoluciones (reversos), pero jamás NaN
@@ -12512,6 +13163,11 @@ async function closeDailyPOS({ event, dateKey, source }){
       descuentosTotal: snapshot.descuentosTotal,
       ventaNeta: snapshot.ventaNeta,
       utilidadBruta: snapshot.utilidadBruta,
+      comisionTarjetaTotal: snapshot.comisionTarjetaTotal,
+      comisionesTarjeta: snapshot.comisionesTarjeta,
+      commissionUndeterminedCount: snapshot.commissionUndeterminedCount,
+      utilidadAntesComision: snapshot.utilidadAntesComision,
+      utilidadDespuesComision: snapshot.utilidadDespuesComision,
       utilidadNetaOperativa: snapshot.utilidadNetaOperativa,
       cortesiaCantidad: snapshot.cortesiaCantidad,
       cortesiaValorReferencia: snapshot.cortesiaValorReferencia,
@@ -12815,6 +13471,232 @@ function normalizeBankCommissionPOS(value){
 function getBankCommissionPctPOS(bank){
   if (!bank || typeof bank !== 'object') return 0;
   return normalizeBankCommissionPOS(bank.commissionPct ?? bank.commission ?? bank.feePct ?? 0);
+}
+
+function formatBankCommissionPctLabelPOS(value){
+  const pct = normalizeBankCommissionPOS(value);
+  return pct.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+}
+
+function buildSaleCardCommissionSnapshotPOS({ payment, bank, ventaNeta, utilidadAntesComision, courtesy }){
+  const pay = normalizePaymentMethodPOS(payment);
+  if (pay !== 'tarjeta') return null;
+
+  const bankId = Number(bank && bank.id);
+  const bankName = String((bank && bank.name) || '').trim();
+  const bankType = getBankTypePOS(bank);
+  const commissionPctSnapshot = getBankCommissionPctPOS(bank);
+  const netSale = round2(Number(ventaNeta) || 0);
+  const before = round2(Number(utilidadAntesComision) || 0);
+  const commissionAmountSnapshot = courtesy
+    ? 0
+    : round2(netSale * commissionPctSnapshot / 100);
+  const utilidadDespuesComision = round2(before - commissionAmountSnapshot);
+  const pctLabel = formatBankCommissionPctLabelPOS(commissionPctSnapshot);
+
+  return {
+    bankId: Number.isFinite(bankId) && bankId > 0 ? bankId : null,
+    bankName,
+    bankType,
+    commissionPctSnapshot,
+    commissionAmountSnapshot,
+    commissionLabelSnapshot: `Comisión ${bankName} ${pctLabel}%`,
+    utilidadAntesComision: before,
+    utilidadDespuesComision
+  };
+}
+
+function applySaleCardCommissionSnapshotPOS(economicSnapshot, cardSnapshot){
+  if (!economicSnapshot || typeof economicSnapshot !== 'object' || !cardSnapshot) return economicSnapshot;
+  Object.assign(economicSnapshot, cardSnapshot);
+  const finalUtility = round2(cardSnapshot.utilidadDespuesComision);
+  economicSnapshot.lineProfit = finalUtility;
+  economicSnapshot.utility = finalUtility;
+  economicSnapshot.utilidad = finalUtility;
+  economicSnapshot.profit = finalUtility;
+  return economicSnapshot;
+}
+
+function validateSaleCardCommissionSnapshotPOS(sale){
+  if (!sale || normalizePaymentMethodPOS(sale.payment) !== 'tarjeta') return { ok:true, msg:'' };
+
+  const bid = Number(sale.bankId);
+  if (!(Number.isFinite(bid) && bid > 0)) return { ok:false, msg:'Venta Tarjeta inválida: falta snapshot de banco.' };
+  const bankName = String(sale.bankName || '').trim();
+  if (!bankName) return { ok:false, msg:'Venta Tarjeta inválida: falta nombre snapshot del banco.' };
+  if (normalizeBankTypePOS(sale.bankType) !== 'tarjeta') return { ok:false, msg:'Venta Tarjeta inválida: tipo de banco inconsistente.' };
+
+  const pct = Number(sale.commissionPctSnapshot);
+  const amount = Number(sale.commissionAmountSnapshot);
+  const before = Number(sale.utilidadAntesComision);
+  const after = Number(sale.utilidadDespuesComision);
+  if (!Number.isFinite(pct) || pct < 0) return { ok:false, msg:'Venta Tarjeta inválida: comisión snapshot inválida.' };
+  if (!Number.isFinite(amount)) return { ok:false, msg:'Venta Tarjeta inválida: monto de comisión inválido.' };
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return { ok:false, msg:'Venta Tarjeta inválida: utilidad snapshot inválida.' };
+
+  const expectedAmount = sale.courtesy ? 0 : round2((Number(sale.total) || 0) * pct / 100);
+  const expectedBefore = round2((Number(sale.total) || 0) - (Number(getSaleLineCostSnapshotPOS(sale)) || 0));
+  const expectedAfter = round2(expectedBefore - expectedAmount);
+  if (!moneyEquals(amount, expectedAmount)) return { ok:false, msg:'Venta Tarjeta inválida: monto de comisión inconsistente.' };
+  if (!moneyEquals(before, expectedBefore)) return { ok:false, msg:'Venta Tarjeta inválida: utilidad antes de comisión inconsistente.' };
+  if (!moneyEquals(after, expectedAfter)) return { ok:false, msg:'Venta Tarjeta inválida: utilidad después de comisión inconsistente.' };
+  if (!moneyEquals(Number(sale.utilidad), expectedAfter)) return { ok:false, msg:'Venta Tarjeta inválida: utilidad económica final inconsistente.' };
+
+  const expectedLabel = `Comisión ${bankName} ${formatBankCommissionPctLabelPOS(pct)}%`;
+  if (String(sale.commissionLabelSnapshot || '') !== expectedLabel) return { ok:false, msg:'Venta Tarjeta inválida: etiqueta de comisión inconsistente.' };
+  return { ok:true, msg:'' };
+}
+
+const CARD_COMMISSION_SNAPSHOT_STATUS_DETERMINED_POS = 'determinada';
+const CARD_COMMISSION_SNAPSHOT_STATUS_UNDETERMINED_POS = 'no_determinada';
+
+function readFiniteSaleSnapshotNumberPOS(sale, key){
+  if (!sale || typeof sale !== 'object' || !Object.prototype.hasOwnProperty.call(sale, key)) return null;
+  const raw = sale[key];
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isCompleteSaleCardCommissionSnapshotPOS(sale){
+  if (!sale || normalizePaymentMethodPOS(sale.payment) !== 'tarjeta') return false;
+  return readFiniteSaleSnapshotNumberPOS(sale, 'commissionPctSnapshot') != null
+    && readFiniteSaleSnapshotNumberPOS(sale, 'commissionAmountSnapshot') != null
+    && readFiniteSaleSnapshotNumberPOS(sale, 'utilidadAntesComision') != null
+    && readFiniteSaleSnapshotNumberPOS(sale, 'utilidadDespuesComision') != null
+    && !!String(sale.commissionLabelSnapshot || '').trim();
+}
+
+function getSaleCardCommissionSnapshotAmountPOS(sale){
+  if (!sale || normalizePaymentMethodPOS(sale.payment) !== 'tarjeta' || isCourtesySalePOS(sale)) return 0;
+  const n = readFiniteSaleSnapshotNumberPOS(sale, 'commissionAmountSnapshot');
+  return n == null ? 0 : round2(n);
+}
+
+function getSaleUtilityBeforeCommissionPOS(sale){
+  const saved = readFiniteSaleSnapshotNumberPOS(sale, 'utilidadAntesComision');
+  if (saved != null) return round2(saved);
+  return round2((Number(sale && sale.total) || 0) - (Number(getSaleLineCostSnapshotPOS(sale)) || 0));
+}
+
+function getSaleUtilityAfterCommissionPOS(sale){
+  const saved = readFiniteSaleSnapshotNumberPOS(sale, 'utilidadDespuesComision');
+  if (saved != null) return round2(saved);
+  const before = getSaleUtilityBeforeCommissionPOS(sale);
+  const amount = readFiniteSaleSnapshotNumberPOS(sale, 'commissionAmountSnapshot');
+  return amount == null ? before : round2(before - amount);
+}
+
+function collectSaleCardCommissionsPOS(sales){
+  const byLabel = new Map();
+  let total = 0;
+  let undeterminedCount = 0;
+  let determinedCount = 0;
+  for (const sale of (Array.isArray(sales) ? sales : [])){
+    if (!sale || normalizePaymentMethodPOS(sale.payment) !== 'tarjeta' || isCourtesySalePOS(sale)) continue;
+    const amount = readFiniteSaleSnapshotNumberPOS(sale, 'commissionAmountSnapshot');
+    const label = String(sale.commissionLabelSnapshot || '').trim();
+    const status = String(sale.commissionSnapshotStatus || '').trim();
+    if (amount == null || !label || status === CARD_COMMISSION_SNAPSHOT_STATUS_UNDETERMINED_POS){
+      undeterminedCount += 1;
+      continue;
+    }
+    determinedCount += 1;
+    const value = round2(amount);
+    total = round2(total + value);
+    const cur = byLabel.get(label) || { label, total:0, count:0 };
+    cur.total = round2(cur.total + value);
+    cur.count += 1;
+    byLabel.set(label, cur);
+  }
+  return {
+    total: round2(total),
+    byLabel: Array.from(byLabel.values()).sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''),'es-NI')),
+    undeterminedCount,
+    determinedCount
+  };
+}
+
+function resolveLegacyCardBankPOS(sale, banks){
+  const list = (Array.isArray(banks) ? banks : []).filter(b => b && getBankTypePOS(b) === 'tarjeta');
+  const bid = Number(sale && sale.bankId);
+  if (Number.isFinite(bid) && bid > 0){
+    const exact = list.find(b => Number(b.id) === bid);
+    if (exact) return exact;
+  }
+  const name = String((sale && sale.bankName) || '').trim();
+  if (!name) return null;
+  const key = name.toLocaleLowerCase('es-NI');
+  const matches = list.filter(b => String(b.name || '').trim().toLocaleLowerCase('es-NI') === key);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function getExplicitBankCommissionPctPOS(bank){
+  if (!bank || typeof bank !== 'object') return null;
+  for (const key of ['commissionPct','commission','feePct']){
+    if (!Object.prototype.hasOwnProperty.call(bank, key)) continue;
+    const raw = bank[key];
+    if (raw == null || raw === '') continue;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) return normalizeBankCommissionPOS(n);
+  }
+  return null;
+}
+
+async function backfillLegacyCardCommissionSnapshotsPOS(){
+  const sales = await getAll('sales');
+  const banks = await getAllBanksSafe();
+  let updated = 0;
+  let undetermined = 0;
+  for (const sale of (sales || [])){
+    if (!sale || normalizePaymentMethodPOS(sale.payment) !== 'tarjeta') continue;
+    const status = String(sale.commissionSnapshotStatus || '').trim();
+    if (isCompleteSaleCardCommissionSnapshotPOS(sale)
+        || status === CARD_COMMISSION_SNAPSHOT_STATUS_DETERMINED_POS
+        || status === CARD_COMMISSION_SNAPSHOT_STATUS_UNDETERMINED_POS) continue;
+
+    const next = { ...sale };
+    const beforeExisting = readFiniteSaleSnapshotNumberPOS(sale, 'utilidadAntesComision');
+    const before = beforeExisting != null ? round2(beforeExisting) : getSaleUtilityBeforeCommissionPOS(sale);
+    const bank = resolveLegacyCardBankPOS(sale, banks);
+    const pctExisting = readFiniteSaleSnapshotNumberPOS(sale, 'commissionPctSnapshot');
+    const pctCurrent = bank ? getExplicitBankCommissionPctPOS(bank) : null;
+    const pct = pctExisting != null ? normalizeBankCommissionPOS(pctExisting) : pctCurrent;
+    const bankName = String((sale && sale.bankName) || (bank && bank.name) || '').trim();
+    const canDetermine = !!bank && pct != null && !!bankName;
+    const backfilledAt = Date.now();
+
+    if (canDetermine){
+      const amountExisting = readFiniteSaleSnapshotNumberPOS(sale, 'commissionAmountSnapshot');
+      const amount = amountExisting != null ? round2(amountExisting)
+        : (isCourtesySalePOS(sale) ? 0 : round2((Number(sale.total) || 0) * pct / 100));
+      const afterExisting = readFiniteSaleSnapshotNumberPOS(sale, 'utilidadDespuesComision');
+      const after = afterExisting != null ? round2(afterExisting) : round2(before - amount);
+      const label = String(sale.commissionLabelSnapshot || '').trim()
+        || `Comisión ${bankName} ${formatBankCommissionPctLabelPOS(pct)}%`;
+      if (pctExisting == null) next.commissionPctSnapshot = pct;
+      if (amountExisting == null) next.commissionAmountSnapshot = amount;
+      if (!String(sale.commissionLabelSnapshot || '').trim()) next.commissionLabelSnapshot = label;
+      if (beforeExisting == null) next.utilidadAntesComision = before;
+      if (afterExisting == null) next.utilidadDespuesComision = after;
+      next.commissionSnapshotStatus = CARD_COMMISSION_SNAPSHOT_STATUS_DETERMINED_POS;
+      next.commissionSnapshotOrigin = 'legacy_backfill';
+      next.commissionSnapshotBackfilledAt = backfilledAt;
+    } else {
+      if (!Object.prototype.hasOwnProperty.call(next, 'commissionPctSnapshot')) next.commissionPctSnapshot = null;
+      if (!Object.prototype.hasOwnProperty.call(next, 'commissionAmountSnapshot')) next.commissionAmountSnapshot = null;
+      if (!String(next.commissionLabelSnapshot || '').trim()) next.commissionLabelSnapshot = 'Comisión no determinada';
+      if (beforeExisting == null) next.utilidadAntesComision = before;
+      if (!Object.prototype.hasOwnProperty.call(next, 'utilidadDespuesComision')) next.utilidadDespuesComision = null;
+      next.commissionSnapshotStatus = CARD_COMMISSION_SNAPSHOT_STATUS_UNDETERMINED_POS;
+      next.commissionSnapshotOrigin = 'legacy_backfill';
+      next.commissionSnapshotBackfilledAt = backfilledAt;
+      undetermined += 1;
+    }
+    await put('sales', next);
+    updated += 1;
+  }
+  return { updated, undetermined };
 }
 
 function isBankForPaymentPOS(bank, payment){
@@ -16054,7 +16936,7 @@ function reempaqueMovementNotePOS(kind, srcName, dstName, note){
   return extra ? `${base}: ${pair}. ${extra}` : `${base}: ${pair}`;
 }
 
-function reempaqueCommitInventoryMovementPOS(record, sourceRow, targetRow){
+function reempaqueCommitInventoryMovementPOS(record, sourceRow, targetRow, mermaBalance){
   return new Promise((resolve, reject)=>{
     try{
       if (!db) throw reempaqueMovementErrorPOS('Base de datos no disponible.');
@@ -16064,9 +16946,16 @@ function reempaqueCommitInventoryMovementPOS(record, sourceRow, targetRow){
       let srcKey = null;
       let dstKey = null;
       let recordQueued = false;
+      let mermaQueued = !mermaBalance;
+
+      if (mermaBalance){
+        const m = rpStore.put({ ...mermaBalance, exists:undefined });
+        m.onerror = ()=> { try{ tr.abort(); }catch(_){ } };
+        m.onsuccess = ()=> { mermaQueued = true; queueRecordIfReady(); };
+      }
 
       function queueRecordIfReady(){
-        if (recordQueued || srcKey === null || dstKey === null) return;
+        if (recordQueued || srcKey === null || dstKey === null || !mermaQueued) return;
         recordQueued = true;
         const finalRecord = {
           ...record,
@@ -16100,8 +16989,7 @@ function reempaqueCommitInventoryMovementPOS(record, sourceRow, targetRow){
   });
 }
 
-
-function reempaqueCommitMultipleInventoryMovementPOS(record, sourceRow, targetRows){
+function reempaqueCommitMultipleInventoryMovementPOS(record, sourceRow, targetRows, mermaBalances){
   return new Promise((resolve, reject)=>{
     try{
       if (!db) throw reempaqueMovementErrorPOS('Base de datos no disponible.');
@@ -16113,10 +17001,12 @@ function reempaqueCommitMultipleInventoryMovementPOS(record, sourceRow, targetRo
       let srcKey = null;
       const targetKeys = [];
       let recordQueued = false;
+      const balances = Array.isArray(mermaBalances) ? mermaBalances.filter(Boolean) : [];
+      let pendingMermaWrites = balances.length;
 
-      function queueRecordIfReady(){
+      const queueRecordIfReady = ()=>{
         const readyTargets = targetKeys.filter(k => k !== null && typeof k !== 'undefined').length;
-        if (recordQueued || srcKey === null || readyTargets !== rows.length) return;
+        if (recordQueued || srcKey === null || readyTargets !== rows.length || pendingMermaWrites > 0) return;
         recordQueued = true;
         const finalRecord = {
           ...record,
@@ -16131,7 +17021,13 @@ function reempaqueCommitMultipleInventoryMovementPOS(record, sourceRow, targetRo
         const r = rpStore.put(finalRecord);
         r.onerror = ()=> { try{ tr.abort(); }catch(_){ } };
         r.onsuccess = ()=> { record = finalRecord; };
-      }
+      };
+
+      balances.forEach((balance)=>{
+        const m = rpStore.put({ ...balance, exists:undefined });
+        m.onerror = ()=>{ try{ tr.abort(); }catch(_){ } };
+        m.onsuccess = ()=>{ pendingMermaWrites = Math.max(0, pendingMermaWrites - 1); queueRecordIfReady(); };
+      });
 
       const srcReq = invStore.add(sourceRow);
       srcReq.onsuccess = ()=>{ srcKey = srcReq.result; queueRecordIfReady(); };
@@ -16139,15 +17035,11 @@ function reempaqueCommitMultipleInventoryMovementPOS(record, sourceRow, targetRo
 
       rows.forEach((row, idx)=>{
         const req = invStore.add(row);
-        req.onsuccess = ()=>{
-          targetKeys[idx] = req.result;
-          if (targetKeys.filter(k => k !== null && typeof k !== 'undefined').length === rows.length){
-            queueRecordIfReady();
-          }
-        };
+        req.onsuccess = ()=>{ targetKeys[idx] = req.result; queueRecordIfReady(); };
         req.onerror = ()=>{ try{ tr.abort(); }catch(_){ } };
       });
 
+      queueRecordIfReady();
       tr.oncomplete = ()=> resolve(record);
       tr.onerror = ()=> reject(tr.error || reempaqueMovementErrorPOS('No se pudo guardar el movimiento múltiple de inventario.'));
       tr.onabort = ()=> reject(tr.error || reempaqueMovementErrorPOS('No se pudo guardar el movimiento múltiple de inventario.'));
@@ -16209,6 +17101,8 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
   const targetRows = [];
   const targetIds = [];
   const targetNames = [];
+  const mermaBalances = [];
+  const mermaOperaciones = [];
   for (const d of destinos){
     const targetId = Number(d.targetProductId ?? d.productoDestinoId ?? (d.targetProduct && d.targetProduct.id));
     if (!Number.isFinite(targetId) || !(targetId > 0)){
@@ -16217,18 +17111,45 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
     if (targetId === sourceId){
       throw reempaqueMovementErrorPOS('El producto origen y destino no deberían ser el mismo.');
     }
+    if (targetIds.includes(targetId)){
+      throw reempaqueMovementErrorPOS('No repitas el mismo producto destino dentro de un Reempaque múltiple.');
+    }
     const targetProduct = reempaqueFindProductByIdPOS(products, targetId);
     if (!targetProduct){
       throw reempaqueMovementErrorPOS('Un producto destino no existe en el catálogo.');
     }
     const dstName = String(targetProduct.name || d.targetProductName || d.productoDestino || 'Destino').trim();
-    const qtyTarget = reempaqueInventoryQtyPOS(d.cantidadCreada ?? d.cantidadCreadaDestino ?? d.cantidadDestino ?? d.targetQty ?? d.qty ?? d.cantidad);
-    const unitTarget = reempaqueMoneyPOS(d.costoUnitarioCalculado ?? d.costoUnitarioDestino ?? d.targetUnitCost ?? 0);
-    const costoLiquidoUnitario = reempaqueMoneyPOS(d.costoLiquidoUnitario ?? d.costoUnitarioLiquido ?? 0);
-    const costoLiquidoTotal = reempaqueMoneyPOS(d.costoLiquidoTotal ?? d.costoLiquidoAsignado ?? (costoLiquidoUnitario > 0 && qtyTarget > 0 ? costoLiquidoUnitario * qtyTarget : 0));
+    const targetCap = reempaquePositivePOS(d.mlPorUnidad ?? d.capacidadDestinoMl ?? reempaqueCapacityMlFromProductPOS(targetProduct));
+    if (!(targetCap > 0)) throw reempaqueMovementErrorPOS(`El destino ${dstName} necesita capacidad en ml.`);
+    const rawQty = reempaquePositivePOS(d.cantidadSolicitadaRaw ?? (d.raw && d.raw.cantidadSolicitadaRaw) ?? d.cantidadCreada ?? d.cantidadCreadaDestino ?? d.cantidadDestino ?? d.targetQty ?? d.qty ?? d.cantidad);
+    const baseQty = reempaqueFloorUnitsPOS(rawQty);
+    const fractionMl = reempaqueRound4POS(Math.max(reempaquePositivePOS(d.fraccionMermaMl ?? (d.raw && d.raw.fraccionMermaMl)), (rawQty - baseQty) * targetCap));
+    const currentLiquidCostWhole = reempaqueMoneyPOS(base.costoPorMl > 0 ? (baseQty * targetCap * base.costoPorMl) : (d.costoLiquidoTotal ?? d.costoLiquidoAsignado));
+    const currentFractionCost = reempaqueMoneyPOS(base.costoPorMl > 0 ? (fractionMl * base.costoPorMl) : 0);
+    const beforeMerma = await reempaqueLoadMermaBalancePOS(eventId, selectedLotTrace, targetProduct, targetCap);
+    const fractionPlan = reempaqueBuildMermaPlanPOS({ before:beforeMerma, sourceVolumeMl:fractionMl, sourceLiquidCost:currentFractionCost, targetCapacityMl:targetCap });
+    const qtyTarget = baseQty + fractionPlan.extraUnits;
+    const extraConsumedCost = reempaqueMoneyPOS(fractionPlan.consumedRemainderLiquidCost);
+    const costoLiquidoTotal = round2(currentLiquidCostWhole + extraConsumedCost);
+    const costoLiquidoUnitario = qtyTarget > 0 ? round2(costoLiquidoTotal / qtyTarget) : 0;
     const costoAdicionalUnitario = reempaqueMoneyPOS(d.costoAdicionalUnitario ?? d.costoEmpaqueUnitario ?? 0);
-    const costoAdicionalTotal = reempaqueMoneyPOS(d.costoAdicionalTotal ?? d.costoEmpaqueTotal ?? (costoAdicionalUnitario > 0 && qtyTarget > 0 ? costoAdicionalUnitario * qtyTarget : 0));
-    const costoAsignado = reempaqueMoneyPOS(d.costoTotalAsignado ?? (unitTarget > 0 && qtyTarget > 0 ? unitTarget * qtyTarget : 0));
+    const costoAdicionalTotal = qtyTarget > 0 && costoAdicionalUnitario > 0 ? round2(costoAdicionalUnitario * qtyTarget) : 0;
+    const costoAsignado = round2(costoLiquidoTotal + costoAdicionalTotal);
+    const unitTarget = qtyTarget > 0 ? round2(costoAsignado / qtyTarget) : 0;
+    const mermaKey = beforeMerma.mermaKey || reempaqueMermaKeyPOS(eventId, selectedLotTrace, targetId);
+    const afterMerma = reempaqueBuildMermaBalanceAfterPOS(beforeMerma, fractionPlan, {
+      mermaKey, eventId, loteId:selectedLotTrace.loteId, loteCodigo:selectedLotTrace.loteCodigo, loteCargaId:selectedLotTrace.loteCargaId, loteGroupKey:selectedLotTrace.loteGroupKey,
+      targetProductId:targetId, targetProductName:dstName, targetCapacityMl:targetCap
+    });
+    mermaBalances.push(afterMerma);
+    mermaOperaciones.push({
+      mermaKey, targetProductId:targetId, targetProductName:dstName, targetCapacityMl:targetCap,
+      cantidadBaseConversion:baseQty, cantidadExtraMerma:fractionPlan.extraUnits, cantidadFinal:qtyTarget,
+      mermaNuevaMl:fractionPlan.newRemainderMl, mermaNuevaCosto:fractionPlan.newRemainderLiquidCost,
+      mermaConsumidaMl:fractionPlan.consumedRemainderMl, mermaConsumidaCosto:fractionPlan.consumedRemainderLiquidCost,
+      mermaPendienteMl:fractionPlan.pendingRemainderMl, mermaPendienteCosto:fractionPlan.pendingRemainderLiquidCost,
+      before:reempaqueMermaSnapshotPOS(beforeMerma), after:reempaqueMermaSnapshotPOS(afterMerma)
+    });
     const tipoDestinoRaw = String(d.tipoDestino ?? d.destinoTipo ?? (d.productoNuevoCreado ? 'NUEVO' : (d.destinoNuevo || d.productoNuevoDestino ? 'NUEVO' : 'EXISTENTE'))).toUpperCase();
     const tipoDestino = (tipoDestinoRaw === 'NUEVO' || tipoDestinoRaw === 'NUEVO_EXISTENTE') ? tipoDestinoRaw : 'EXISTENTE';
     if (!(qtyTarget > 0)){
@@ -16270,12 +17191,21 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
       costoEmpaqueTotal: costoAdicionalTotal,
       costoUnitarioDestino: unitTarget,
       costoTotalAsignado: costoAsignado,
-      volumenTotalDestinoMl: reempaquePositivePOS(d.volumenTotalDestinoMl),
-      mlPorUnidad: reempaquePositivePOS(d.mlPorUnidad ?? d.capacidadDestinoMl),
+      volumenTotalDestinoMl: reempaqueTotalVolumePOS(qtyTarget, targetCap),
+      mlPorUnidad: targetCap,
+      cantidadBaseConversion: baseQty,
+      cantidadExtraMerma: fractionPlan.extraUnits,
+      mermaKey,
+      mermaPendienteMl: fractionPlan.pendingRemainderMl,
       sourceProductId: sourceId,
       sourceProductName: srcName
     });
   }
+
+  const mermaNuevaTotalMl = reempaqueRound4POS(mermaOperaciones.reduce((a,x)=>a + reempaquePositivePOS(x.mermaNuevaMl),0));
+  const mermaNuevaTotalCosto = round2(mermaOperaciones.reduce((a,x)=>a + reempaqueMoneyPOS(x.mermaNuevaCosto),0));
+  const mermaNoAsignadaMl = reempaqueRound4POS(Math.max(0, reempaquePositivePOS(base.mlSobranteMerma) - mermaNuevaTotalMl));
+  const costoMermaNoAsignada = round2(Math.max(0, reempaqueMoneyPOS(base.costoSobranteMerma) - mermaNuevaTotalCosto));
 
   const record = {
     ...base,
@@ -16317,7 +17247,19 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
     })),
     targetProductIds: targetIds,
     targetProductNames: targetNames,
-    etapa: 'REEMPAQUE_MULTIPLE_BASE_INTERNA',
+    volumenTotalDestinoMl: reempaqueRound4POS(targetRows.reduce((a,row)=>a + reempaquePositivePOS(row.volumenTotalDestinoMl),0)),
+    costoLiquidoDistribuido: round2(targetRows.reduce((a,row)=>a + reempaqueMoneyPOS(row.costoLiquidoTotal),0)),
+    costoAdicionalTotal: round2(targetRows.reduce((a,row)=>a + reempaqueMoneyPOS(row.costoAdicionalTotal),0)),
+    costoAdicionalDestinos: round2(targetRows.reduce((a,row)=>a + reempaqueMoneyPOS(row.costoAdicionalTotal),0)),
+    costoTotalDistribuido: round2(targetRows.reduce((a,row)=>a + reempaqueMoneyPOS(row.costoTotalAsignado),0)),
+    costoTotalFinalDestinos: round2(targetRows.reduce((a,row)=>a + reempaqueMoneyPOS(row.costoTotalAsignado),0)),
+    mermaOperaciones,
+    cantidadExtraMerma: mermaOperaciones.reduce((a,x)=>a + reempaqueFloorUnitsPOS(x.cantidadExtraMerma),0),
+    mermaNoAsignadaMl,
+    costoMermaNoAsignada,
+    mlSobranteMerma: reempaqueRound4POS(mermaOperaciones.reduce((a,x)=>a + reempaquePositivePOS(x.mermaPendienteMl),0) + mermaNoAsignadaMl),
+    costoSobranteMerma: round2(mermaOperaciones.reduce((a,x)=>a + reempaqueMoneyPOS(x.after && x.after.remainderLiquidCost),0) + costoMermaNoAsignada),
+    etapa: 'REEMPAQUE_MULTIPLE_ENTEROS_MERMA_RECUPERABLE',
     updatedAt: now,
     createdAt: base.createdAt || now
   };
@@ -16344,18 +17286,18 @@ async function reempaqueApplyMultipleMovementPOS(input={}){
     costoOrigenTotal: base.costoOrigenTotal,
     costoTotalOrigen: base.costoTotalOrigen,
     costoPorMl: base.costoPorMl,
-    costoLiquidoDistribuido: base.costoLiquidoDistribuido,
-    costoAdicionalTotal: base.costoAdicionalTotal,
-    costoAdicionalDestinos: base.costoAdicionalDestinos,
-    costoTotalDistribuido: base.costoTotalDistribuido,
-    costoTotalFinalDestinos: base.costoTotalFinalDestinos,
-    costoSobranteMerma: base.costoSobranteMerma,
-    mlSobranteMerma: base.mlSobranteMerma,
+    costoLiquidoDistribuido: record.costoLiquidoDistribuido,
+    costoAdicionalTotal: record.costoAdicionalTotal,
+    costoAdicionalDestinos: record.costoAdicionalDestinos,
+    costoTotalDistribuido: record.costoTotalDistribuido,
+    costoTotalFinalDestinos: record.costoTotalFinalDestinos,
+    costoSobranteMerma: record.costoSobranteMerma,
+    mlSobranteMerma: record.mlSobranteMerma,
     targetProductIds: targetIds,
     targetProductNames: targetNames
   };
 
-  const saved = await reempaqueCommitMultipleInventoryMovementPOS(record, sourceRow, targetRows);
+  const saved = await reempaqueCommitMultipleInventoryMovementPOS(record, sourceRow, targetRows, mermaBalances);
   try{ await queueLotsUsageSyncPOS(eventId); }catch(_){ }
   return saved;
 }
@@ -16366,52 +17308,28 @@ async function reempaqueApplyMovementPOS(input={}){
   }
   if (!db) await openDB();
   const base = input && input.id ? { ...input } : await reempaqueCreateBaseRecordPOS(input || {});
-  const validation = reempaqueValidateRecordPOS(base);
-  if (!validation.ok){
-    throw reempaqueMovementErrorPOS('Datos incompletos para registrar Reempaque.');
-  }
 
   const eventId = Number(base.eventId ?? base.eventoId);
-  if (!Number.isFinite(eventId) || !(eventId > 0)){
-    throw reempaqueMovementErrorPOS('Selecciona un evento.');
-  }
+  if (!Number.isFinite(eventId) || !(eventId > 0)) throw reempaqueMovementErrorPOS('Selecciona un evento.');
 
   const sourceId = Number(base.sourceProductId ?? base.productoOrigenId ?? (base.sourceProduct && base.sourceProduct.id));
   const targetId = Number(base.targetProductId ?? base.productoDestinoId ?? (base.targetProduct && base.targetProduct.id));
-  if (!Number.isFinite(sourceId) || !(sourceId > 0)){
-    throw reempaqueMovementErrorPOS('El producto origen no existe en el catálogo.');
-  }
-  if (!Number.isFinite(targetId) || !(targetId > 0)){
-    throw reempaqueMovementErrorPOS('El producto destino no existe en el catálogo.');
-  }
-  if (sourceId === targetId){
-    throw reempaqueMovementErrorPOS('El producto origen y destino no deberían ser el mismo.');
-  }
+  if (!Number.isFinite(sourceId) || !(sourceId > 0)) throw reempaqueMovementErrorPOS('El producto origen no existe en el catálogo.');
+  if (!Number.isFinite(targetId) || !(targetId > 0)) throw reempaqueMovementErrorPOS('El producto destino no existe en el catálogo.');
+  if (sourceId === targetId) throw reempaqueMovementErrorPOS('El producto origen y destino no deberían ser el mismo.');
 
   const products = await getAll('products').catch(()=>[]);
   const sourceProduct = reempaqueFindProductByIdPOS(products, sourceId);
   const targetProduct = reempaqueFindProductByIdPOS(products, targetId);
-  if (!sourceProduct){
-    throw reempaqueMovementErrorPOS('El producto origen no existe en el catálogo.');
-  }
-  if (!targetProduct){
-    throw reempaqueMovementErrorPOS('El producto destino no existe en el catálogo.');
-  }
+  if (!sourceProduct) throw reempaqueMovementErrorPOS('El producto origen no existe en el catálogo.');
+  if (!targetProduct) throw reempaqueMovementErrorPOS('El producto destino no existe en el catálogo.');
 
   const sourceLotTrace = reempaqueNormalizeLotTracePOS(input.loteOrigen || input.sourceLot || base.loteOrigen || base.sourceLot || base);
   const qtySource = reempaqueInventoryQtyPOS(base.cantidadOrigen ?? base.sourceQty ?? base.qtyOrigen);
-  const qtyTarget = reempaqueInventoryQtyPOS(base.cantidadFinalRegistrada ?? base.cantidadCreadaDestino ?? base.cantidadDestino ?? base.targetQty);
-  if (!(qtySource > 0)){
-    throw reempaqueMovementErrorPOS('Cantidad origen mayor que 0.');
-  }
-  if (!(qtyTarget > 0)){
-    throw reempaqueMovementErrorPOS('Cantidad creada mayor que 0.');
-  }
+  if (!(qtySource > 0)) throw reempaqueMovementErrorPOS('Cantidad origen mayor que 0.');
 
   const stockSource = reempaqueInventoryQtyPOS(await computeStock(eventId, sourceId));
-  if ((stockSource + 0.0001) < qtySource){
-    throw reempaqueMovementErrorPOS('No hay inventario suficiente del producto origen.');
-  }
+  if ((stockSource + 0.0001) < qtySource) throw reempaqueMovementErrorPOS('No hay inventario suficiente del producto origen.');
   const selectedLotCheck = await reempaqueValidateSelectedLotPOS(eventId, sourceProduct, qtySource, sourceLotTrace, products);
   if (!selectedLotCheck.ok) throw reempaqueMovementErrorPOS(selectedLotCheck.msg);
   const selectedLotTrace = selectedLotCheck.trace;
@@ -16422,145 +17340,291 @@ async function reempaqueApplyMovementPOS(input={}){
   const srcName = String(sourceProduct.name || base.sourceProductName || base.productoOrigen || 'Origen').trim();
   const dstName = String(targetProduct.name || base.targetProductName || base.productoDestino || 'Destino').trim();
   const note = String(base.nota || base.note || '').trim();
-  const sourceCapacityMl = reempaqueCapacityMlFromProductPOS(sourceProduct) || base.capacidadOrigenMl || null;
-  const targetCapacityMl = reempaqueCapacityMlFromProductPOS(targetProduct) || base.capacidadDestinoMl || null;
+  const sourceCapacityMl = reempaquePositivePOS(reempaqueCapacityMlFromProductPOS(sourceProduct) || base.capacidadOrigenMl);
+  const targetCapacityMl = reempaquePositivePOS(reempaqueCapacityMlFromProductPOS(targetProduct) || base.capacidadDestinoMl);
+  if (!(sourceCapacityMl > 0)) throw reempaqueMovementErrorPOS('El producto origen necesita capacidad en ml para Reempaque.');
+  if (!(targetCapacityMl > 0)) throw reempaqueMovementErrorPOS('El producto destino necesita capacidad en ml para Reempaque.');
+
+  const sourceVolumeMl = reempaqueTotalVolumePOS(qtySource, sourceCapacityMl);
   const costoUnitarioOrigen = reempaqueMoneyPOS(base.costoUnitarioOrigen ?? base.costoOrigenUnitario ?? base.sourceUnitCost ?? base.unitCostOrigin ?? 0);
   const costoOrigenTotalManual = reempaqueMoneyPOS(base.costoOrigenTotal ?? base.sourceCostTotal ?? 0);
-  const costoOrigenTotal = costoOrigenTotalManual > 0
-    ? costoOrigenTotalManual
-    : ((costoUnitarioOrigen > 0 && qtySource > 0) ? round2(costoUnitarioOrigen * qtySource) : 0);
-  const costoAdicionalUnitarioInput = reempaqueMoneyPOS(base.costoAdicionalUnitario ?? base.costoEmpaqueUnitario ?? base.extraUnitCost ?? base.additionalUnitCost ?? 0);
-  const costoAdicionalTotalManual = reempaqueMoneyPOS(base.costoAdicionalTotal ?? base.costoEmpaqueTotal ?? base.extraCostTotal ?? 0);
-  const costoAdicionalTotal = (costoAdicionalUnitarioInput > 0 && qtyTarget > 0)
-    ? round2(costoAdicionalUnitarioInput * qtyTarget)
-    : costoAdicionalTotalManual;
-  const costoAdicionalUnitario = costoAdicionalUnitarioInput > 0
-    ? costoAdicionalUnitarioInput
-    : ((qtyTarget > 0 && costoAdicionalTotal > 0) ? round2(costoAdicionalTotal / qtyTarget) : 0);
-  const costoLiquidoTotal = costoOrigenTotal;
-  const costoLiquidoUnitario = (qtyTarget > 0 && costoLiquidoTotal > 0) ? round2(costoLiquidoTotal / qtyTarget) : 0;
-  const costoTotalManual = reempaqueMoneyPOS(base.costoTotalReempaque ?? base.totalCostReempaque ?? 0);
-  const costoTotalReempaque = (costoLiquidoTotal > 0 || costoAdicionalTotal > 0)
-    ? round2(costoLiquidoTotal + costoAdicionalTotal)
-    : costoTotalManual;
-  const costoUnitarioDestino = (costoTotalReempaque > 0 && qtyTarget > 0)
-    ? round2(costoTotalReempaque / qtyTarget)
-    : reempaqueMoneyPOS(base.costoUnitarioDestino ?? base.targetUnitCost ?? 0);
+  const costoOrigenTotal = costoOrigenTotalManual > 0 ? costoOrigenTotalManual : ((costoUnitarioOrigen > 0) ? round2(costoUnitarioOrigen * qtySource) : 0);
+  const costoAdicionalUnitario = reempaqueMoneyPOS(base.costoAdicionalUnitario ?? base.costoEmpaqueUnitario ?? base.extraUnitCost ?? base.additionalUnitCost ?? 0);
+
+  const beforeBalance = await reempaqueLoadMermaBalancePOS(eventId, selectedLotTrace, targetProduct, targetCapacityMl);
+  const mermaPlan = reempaqueBuildMermaPlanPOS({
+    before: beforeBalance,
+    sourceVolumeMl,
+    sourceLiquidCost: costoOrigenTotal,
+    targetCapacityMl
+  });
+  const qtyTarget = reempaqueFloorUnitsPOS(mermaPlan.totalUnits);
+  if (!(qtyTarget > 0)) throw reempaqueMovementErrorPOS('El volumen disponible todavía no alcanza para crear una unidad completa. La merma queda pendiente.');
+
+  const mermaKey = beforeBalance.mermaKey || reempaqueMermaKeyPOS(eventId, selectedLotTrace, targetId);
+  const mermaAfter = reempaqueBuildMermaBalanceAfterPOS(beforeBalance, mermaPlan, {
+    mermaKey,
+    eventId,
+    loteId:selectedLotTrace.loteId,
+    loteCodigo:selectedLotTrace.loteCodigo,
+    loteCargaId:selectedLotTrace.loteCargaId,
+    loteGroupKey:selectedLotTrace.loteGroupKey,
+    targetProductId:targetId,
+    targetProductName:dstName,
+    targetCapacityMl
+  });
+  const costoLiquidoTotal = reempaqueMoneyPOS(mermaPlan.assignedLiquidCost);
+  const costoLiquidoUnitario = qtyTarget > 0 ? round2(costoLiquidoTotal / qtyTarget) : 0;
+  const costoAdicionalTotal = costoAdicionalUnitario > 0 ? round2(costoAdicionalUnitario * qtyTarget) : 0;
+  const costoTotalReempaque = round2(costoLiquidoTotal + costoAdicionalTotal);
+  const costoUnitarioDestino = qtyTarget > 0 ? round2(costoTotalReempaque / qtyTarget) : 0;
+  const rawSuggested = sourceVolumeMl > 0 && targetCapacityMl > 0 ? reempaqueRound4POS(sourceVolumeMl / targetCapacityMl) : 0;
 
   const record = {
     ...base,
     ...recordLotFields,
-    eventId,
-    eventoId: eventId,
-    sourceProductId: sourceId,
-    productoOrigenId: sourceId,
-    sourceProductName: srcName,
-    productoOrigenNombre: srcName,
-    productoOrigen: srcName,
-    sourceProduct: { id: sourceId, name: srcName, capacityMl: sourceCapacityMl },
-    capacidadOrigenMl: sourceCapacityMl,
-    capacidadVolumenOrigen: sourceCapacityMl,
-    targetProductId: targetId,
-    productoDestinoId: targetId,
-    targetProductName: dstName,
-    productoDestinoNombre: dstName,
-    productoDestino: dstName,
-    targetProduct: { id: targetId, name: dstName, capacityMl: targetCapacityMl },
-    capacidadDestinoMl: targetCapacityMl,
-    capacidadVolumenDestino: targetCapacityMl,
-    cantidadOrigen: qtySource,
-    cantidadCreadaDestino: qtyTarget,
-    cantidadFinalRegistrada: qtyTarget,
-    cantidadSugeridaPorVolumen: base.cantidadSugeridaPorVolumen ?? reempaqueComputeSuggestedQtyByVolumePOS(qtySource, sourceCapacityMl, targetCapacityMl),
+    eventId, eventoId:eventId,
+    sourceProductId:sourceId, productoOrigenId:sourceId,
+    sourceProductName:srcName, productoOrigenNombre:srcName, productoOrigen:srcName,
+    sourceProduct:{ id:sourceId, name:srcName, capacityMl:sourceCapacityMl },
+    capacidadOrigenMl:sourceCapacityMl, capacidadVolumenOrigen:sourceCapacityMl,
+    targetProductId:targetId, productoDestinoId:targetId,
+    targetProductName:dstName, productoDestinoNombre:dstName, productoDestino:dstName,
+    targetProduct:{ id:targetId, name:dstName, capacityMl:targetCapacityMl },
+    capacidadDestinoMl:targetCapacityMl, capacidadVolumenDestino:targetCapacityMl,
+    cantidadOrigen:qtySource,
+    cantidadSugeridaPorVolumen:rawSuggested,
+    cantidadConversionBase:mermaPlan.baseUnits,
+    cantidadBaseConversion:mermaPlan.baseUnits,
+    cantidadExtraMerma:mermaPlan.extraUnits,
+    cantidadCreadaDestino:qtyTarget,
+    cantidadFinalRegistrada:qtyTarget,
     costoUnitarioOrigen,
-    costoFuenteOrigen: String(base.costoFuenteOrigen || base.costSourceOrigin || '').trim(),
+    costoFuenteOrigen:String(base.costoFuenteOrigen || base.costSourceOrigin || '').trim(),
     costoOrigenTotal,
     costoLiquidoTotal,
-    costoLiquidoDistribuido: costoLiquidoTotal,
+    costoLiquidoDistribuido:costoLiquidoTotal,
     costoLiquidoUnitario,
-    costoUnitarioLiquido: costoLiquidoUnitario,
+    costoUnitarioLiquido:costoLiquidoUnitario,
     costoAdicionalUnitario,
-    costoEmpaqueUnitario: costoAdicionalUnitario,
+    costoEmpaqueUnitario:costoAdicionalUnitario,
     costoAdicionalTotal,
-    costoEmpaqueTotal: costoAdicionalTotal,
+    costoEmpaqueTotal:costoAdicionalTotal,
     costoTotalReempaque,
     costoUnitarioDestino,
-    estado: 'REGISTRADO',
-    movimientoAplicado: true,
-    movimientoTipo: 'INVENTARIO',
-    movimientoOrigen: 'REEMPAQUE',
-    afectaVentas: false,
-    afectaCaja: false,
-    afectaEfectivo: false,
-    afectaDiarioIngreso: false,
-    noVenta: true,
-    noCaja: true,
-    stockOrigenAntes: stockSource,
-    stockOrigenDespues: reempaqueRound4POS(stockSource - qtySource),
-    deltaOrigen: reempaqueRound4POS(-qtySource),
-    deltaDestino: qtyTarget,
-    etapa: '4_COSTEO_GENERICO',
-    updatedAt: now,
-    createdAt: base.createdAt || now
-  };
-
-  const common = {
-    eventId,
-    ...inventoryLotFields,
-    source: 'reempaque',
-    sourceType: 'REEMPAQUE',
-    reempaqueId: record.id,
-    time: now,
-    createdAt: now,
-    affectsSales: false,
-    affectsCash: false,
-    affectsAccountingIncome: false,
-    costoTotalReempaque,
-    costoUnitarioDestino,
-    costoLiquidoTotal,
-    costoLiquidoUnitario,
-    costoAdicionalUnitario,
-    costoAdicionalTotal
+    mermaKey,
+    mermaAnteriorMl:mermaPlan.previousRemainderMl,
+    mermaAnteriorCosto:mermaPlan.previousRemainderLiquidCost,
+    mermaNuevaMl:mermaPlan.newRemainderMl,
+    mermaNuevaCosto:mermaPlan.newRemainderLiquidCost,
+    mermaConsumidaMl:mermaPlan.consumedRemainderMl,
+    mermaConsumidaCosto:mermaPlan.consumedRemainderLiquidCost,
+    mermaPendienteMl:mermaPlan.pendingRemainderMl,
+    mermaPendienteCosto:mermaPlan.pendingRemainderLiquidCost,
+    mlSobranteMerma:mermaPlan.pendingRemainderMl,
+    costoSobranteMerma:mermaPlan.pendingRemainderLiquidCost,
+    merma:{ ml:mermaPlan.pendingRemainderMl, costo:mermaPlan.pendingRemainderLiquidCost },
+    mermaBalanceBefore:reempaqueMermaSnapshotPOS(beforeBalance),
+    mermaBalanceAfter:reempaqueMermaSnapshotPOS(mermaAfter),
+    costoConservacion:{
+      openingRemainderLiquidCost:reempaqueMoneyPOS(mermaPlan.previousRemainderLiquidCost),
+      sourceLiquidCost:costoOrigenTotal,
+      assignedLiquidCost:costoLiquidoTotal,
+      closingRemainderLiquidCost:reempaqueMoneyPOS(mermaPlan.pendingRemainderLiquidCost)
+    },
+    estado:'REGISTRADO', movimientoAplicado:true, movimientoTipo:'INVENTARIO', movimientoOrigen:'REEMPAQUE',
+    afectaVentas:false, afectaCaja:false, afectaEfectivo:false, afectaDiarioIngreso:false, noVenta:true, noCaja:true,
+    stockOrigenAntes:stockSource, stockOrigenDespues:reempaqueRound4POS(stockSource - qtySource),
+    deltaOrigen:reempaqueRound4POS(-qtySource), deltaDestino:qtyTarget,
+    etapa:'4_ENTEROS_MERMA_RECUPERABLE', updatedAt:now, createdAt:base.createdAt || now
   };
 
   const sourceRow = {
-    ...common,
-    productId: sourceId,
-    productName: srcName,
-    type: 'adjust',
-    qty: reempaqueRound4POS(-qtySource),
-    notes: reempaqueMovementNotePOS('salida', srcName, dstName, note),
-    reempaqueRole: 'origen',
-    costoUnitarioOrigen,
-    costoOrigenTotal,
-    costoLiquidoTotal,
-    costoLiquidoUnitario,
-    costoAdicionalUnitario,
-    costoAdicionalTotal,
-    targetProductId: targetId,
-    targetProductName: dstName
+    eventId, ...inventoryLotFields,
+    source:'reempaque', sourceType:'REEMPAQUE', reempaqueId:record.id,
+    time:now, createdAt:now, affectsSales:false, affectsCash:false, affectsAccountingIncome:false,
+    productId:sourceId, productName:srcName, type:'adjust', qty:reempaqueRound4POS(-qtySource),
+    notes:reempaqueMovementNotePOS('salida', srcName, dstName, note), reempaqueRole:'origen',
+    costoUnitarioOrigen, costoOrigenTotal, costoLiquidoTotal:costoOrigenTotal,
+    targetProductId:targetId, targetProductName:dstName,
+    mermaKey, mermaNuevaMl:mermaPlan.newRemainderMl, mermaPendienteMl:mermaPlan.pendingRemainderMl
   };
-
   const targetRow = {
-    ...common,
-    productId: targetId,
-    productName: dstName,
-    type: 'adjust',
-    qty: qtyTarget,
-    notes: reempaqueMovementNotePOS('entrada', srcName, dstName, note),
-    reempaqueRole: 'destino',
-    costoUnitarioDestino,
-    costoLiquidoTotal,
-    costoLiquidoUnitario,
-    costoAdicionalUnitario,
-    costoAdicionalTotal,
-    sourceProductId: sourceId,
-    sourceProductName: srcName
+    eventId, ...inventoryLotFields,
+    source:'reempaque', sourceType:'REEMPAQUE', reempaqueId:record.id,
+    time:now, createdAt:now, affectsSales:false, affectsCash:false, affectsAccountingIncome:false,
+    productId:targetId, productName:dstName, type:'adjust', qty:qtyTarget,
+    notes:reempaqueMovementNotePOS('entrada', srcName, dstName, note), reempaqueRole:'destino',
+    costoUnitarioDestino, costoTotalReempaque, costoLiquidoTotal, costoLiquidoUnitario,
+    costoUnitarioLiquido:costoLiquidoUnitario, costoAdicionalUnitario, costoAdicionalTotal,
+    sourceProductId:sourceId, sourceProductName:srcName,
+    cantidadConversionBase:mermaPlan.baseUnits, cantidadExtraMerma:mermaPlan.extraUnits,
+    mermaKey, mermaPendienteMl:mermaPlan.pendingRemainderMl
   };
 
-  const saved = await reempaqueCommitInventoryMovementPOS(record, sourceRow, targetRow);
+  const saved = await reempaqueCommitInventoryMovementPOS(record, sourceRow, targetRow, mermaAfter);
   try{ await queueLotsUsageSyncPOS(eventId); }catch(_){ }
   return saved;
+}
+
+// Reverso seguro e idempotente de Reempaque + merma técnica.
+async function reempaqueIsLatestForMermaKeysPOS(record){
+  const r = record || {};
+  const keys = [];
+  if (r.mermaKey) keys.push(String(r.mermaKey));
+  if (Array.isArray(r.mermaOperaciones)) r.mermaOperaciones.forEach(x=>{ if (x && x.mermaKey) keys.push(String(x.mermaKey)); });
+  if (!keys.length) return true;
+  const all = await getAll(REEMPAQUE_STORE_POS).catch(()=>[]);
+  for (const key of Array.from(new Set(keys))){
+    const active = (all || []).filter(x => x && !reempaqueIsMermaTechnicalRecordPOS(x) && !x.reversedAt && !x.revertidoAt && (
+      String(x.mermaKey || '') === key || (Array.isArray(x.mermaOperaciones) && x.mermaOperaciones.some(op=>String(op && op.mermaKey || '') === key))
+    )).sort((a,b)=> Number(b.timestamp || Date.parse(b.createdAt || 0) || 0) - Number(a.timestamp || Date.parse(a.createdAt || 0) || 0));
+    if (active.length && String(active[0].id) !== String(r.id)) return false;
+  }
+  return true;
+}
+
+function reempaqueMermaBeforeSnapshotsPOS(record){
+  const r = record || {};
+  if (Array.isArray(r.mermaOperaciones)){
+    return r.mermaOperaciones.map(op=>({
+      key:String(op && op.mermaKey || ''),
+      before:op && op.before,
+      after:op && op.after,
+      targetProductId:op && op.targetProductId,
+      targetProductName:String(op && op.targetProductName || ''),
+      targetCapacityMl:reempaquePositivePOS(op && op.targetCapacityMl)
+    })).filter(x=>x.key);
+  }
+  return r.mermaKey ? [{
+    key:String(r.mermaKey),
+    before:r.mermaBalanceBefore,
+    after:r.mermaBalanceAfter,
+    targetProductId:r.targetProductId ?? r.productoDestinoId ?? null,
+    targetProductName:String(r.targetProductName || r.productoDestinoNombre || r.productoDestino || ''),
+    targetCapacityMl:reempaquePositivePOS(r.capacidadDestinoMl)
+  }] : [];
+}
+
+async function reempaqueReversePOS(recordOrId){
+  if (!db) await openDB();
+  let record = recordOrId && typeof recordOrId === 'object' ? recordOrId : await getOne(REEMPAQUE_STORE_POS, recordOrId);
+  if (!record || reempaqueIsMermaTechnicalRecordPOS(record)) throw reempaqueMovementErrorPOS('Reempaque no encontrado.');
+  if (record.reversedAt || record.revertidoAt || String(record.estado || '').toUpperCase() === 'REVERSADO') return record;
+  if (!(await reempaqueIsLatestForMermaKeysPOS(record))) throw reempaqueMovementErrorPOS('Para conservar la merma correctamente, primero reversa el Reempaque más reciente del mismo lote y producto destino.');
+
+  const eventId = Number(record.eventId ?? record.eventoId);
+  const sourceId = Number(record.sourceProductId ?? record.productoOrigenId ?? (record.sourceProduct && record.sourceProduct.id));
+  const qtySource = reempaqueInventoryQtyPOS(record.cantidadOrigen ?? record.sourceQty ?? record.qtyOrigen);
+  const targets = [];
+  if (Array.isArray(record.deltaDestinos) && record.deltaDestinos.length){
+    record.deltaDestinos.forEach(d=>{
+      const id = Number(d && (d.productId ?? d.targetProductId));
+      const qty = reempaqueFloorUnitsPOS(d && (d.qty ?? d.cantidad));
+      if (id > 0 && qty > 0) targets.push({ productId:id, productName:String(d.productName || d.targetProductName || 'Destino'), qty });
+    });
+  }else{
+    const targetId = Number(record.targetProductId ?? record.productoDestinoId ?? (record.targetProduct && record.targetProduct.id));
+    const qty = reempaqueFloorUnitsPOS(record.cantidadFinalRegistrada ?? record.cantidadCreadaDestino ?? record.deltaDestino);
+    if (targetId > 0 && qty > 0) targets.push({ productId:targetId, productName:String(record.targetProductName || record.productoDestinoNombre || record.productoDestino || 'Destino'), qty });
+  }
+  if (!(eventId > 0) || !(sourceId > 0) || !(qtySource > 0) || !targets.length) throw reempaqueMovementErrorPOS('El Reempaque no tiene trazabilidad suficiente para reversar.');
+  for (const t of targets){
+    const stock = reempaqueInventoryQtyPOS(await computeStock(eventId, t.productId));
+    if ((stock + 0.0001) < t.qty) throw reempaqueMovementErrorPOS(`No se puede reversar: ${t.productName} ya no tiene las ${t.qty} unidades creadas disponibles.`);
+  }
+
+  const now = reempaqueNowISOPOS();
+  const lotFields = reempaqueInventoryLotFieldsPOS(record.loteOrigen || record.sourceLot || record);
+  const srcName = String(record.sourceProductName || record.productoOrigenNombre || record.productoOrigen || 'Origen');
+  const reverseRows = [{
+    eventId, ...lotFields, source:REEMPAQUE_REVERSE_SOURCE_POS, sourceType:'REEMPAQUE_REVERSO', reempaqueId:record.id,
+    reversesReempaqueId:record.id, time:now, createdAt:now, affectsSales:false, affectsCash:false, affectsAccountingIncome:false,
+    productId:sourceId, productName:srcName, type:'adjust', qty:qtySource, reempaqueRole:'reverso_origen',
+    notes:`Reverso Reempaque: restaura ${srcName}`
+  }];
+  targets.forEach(t=>reverseRows.push({
+    eventId, ...lotFields, source:REEMPAQUE_REVERSE_SOURCE_POS, sourceType:'REEMPAQUE_REVERSO', reempaqueId:record.id,
+    reversesReempaqueId:record.id, time:now, createdAt:now, affectsSales:false, affectsCash:false, affectsAccountingIncome:false,
+    productId:t.productId, productName:t.productName, type:'adjust', qty:-t.qty, reempaqueRole:'reverso_destino',
+    notes:`Reverso Reempaque: retira ${t.productName}`
+  }));
+
+  const snapshots = reempaqueMermaBeforeSnapshotsPOS(record);
+  const result = await new Promise((resolve,reject)=>{
+    try{
+      const tr = db.transaction(['inventory', REEMPAQUE_STORE_POS], 'readwrite');
+      const inv = tr.objectStore('inventory');
+      const rp = tr.objectStore(REEMPAQUE_STORE_POS);
+      const reverseIds = new Array(reverseRows.length);
+      let pendingReverseWrites = reverseRows.length;
+      let pendingMermaWrites = snapshots.length;
+      let recordQueued = false;
+      let updated = null;
+
+      const queueUpdatedIfReady = ()=>{
+        if (recordQueued || pendingReverseWrites > 0 || pendingMermaWrites > 0) return;
+        recordQueued = true;
+        updated = {
+          ...record,
+          estado:'REVERSADO', reversedAt:now, revertidoAt:now, movimientoAplicado:false,
+          reverseInventoryMovementIds:reverseIds.slice(), updatedAt:now
+        };
+        const putReq = rp.put(updated);
+        putReq.onerror=()=>{ try{ tr.abort(); }catch(_){ } };
+      };
+
+      reverseRows.forEach((row,idx)=>{
+        const req = inv.add(row);
+        req.onsuccess=()=>{
+          reverseIds[idx]=req.result;
+          pendingReverseWrites=Math.max(0,pendingReverseWrites-1);
+          queueUpdatedIfReady();
+        };
+        req.onerror=()=>{ try{ tr.abort(); }catch(_){ } };
+      });
+
+      snapshots.forEach(item=>{
+        const before = item.before || {};
+        const balanceId = String(before.id || reempaqueMermaIdPOS(item.key));
+        let req = null;
+        if (before.exists){
+          const currentBase = {
+            id:balanceId, tipo:REEMPAQUE_MERMA_TYPE_POS, technicalMerma:true, isTechnicalRemainder:true,
+            mermaKey:item.key,
+            eventId:record.eventId, eventoId:record.eventId,
+            loteId:record.loteOrigenId ?? record.productionLotId ?? null,
+            loteCodigo:String(record.loteOrigenCodigo || record.productionLotCode || ''),
+            loteCargaId:record.loteCargaIdOrigen || null,
+            loteGroupKey:String(record.loteGroupKeyOrigen || ''),
+            targetProductId:item.targetProductId ?? record.targetProductId ?? record.productoDestinoId ?? null,
+            targetProductName:String(item.targetProductName || record.targetProductName || record.productoDestinoNombre || ''),
+            targetProductNameSnapshot:String(item.targetProductName || record.targetProductName || record.productoDestinoNombre || ''),
+            targetCapacityMl:reempaquePositivePOS(item.targetCapacityMl || record.capacidadDestinoMl),
+            targetCapacityMlSnapshot:reempaquePositivePOS(item.targetCapacityMl || record.capacidadDestinoMl),
+            createdAt:record.createdAt || now
+          };
+          const restored = { ...currentBase, ...before, id:balanceId, updatedAt:now };
+          delete restored.exists;
+          req = rp.put(restored);
+        }else{
+          req = rp.delete(balanceId);
+        }
+        req.onsuccess=()=>{
+          pendingMermaWrites=Math.max(0,pendingMermaWrites-1);
+          queueUpdatedIfReady();
+        };
+        req.onerror=()=>{ try{ tr.abort(); }catch(_){ } };
+      });
+
+      queueUpdatedIfReady();
+      tr.oncomplete=()=>resolve(updated || { ...record, estado:'REVERSADO', reversedAt:now, revertidoAt:now, movimientoAplicado:false, reverseInventoryMovementIds:reverseIds.slice(), updatedAt:now });
+      tr.onerror=()=>reject(tr.error || reempaqueMovementErrorPOS('No se pudo reversar Reempaque.'));
+      tr.onabort=()=>reject(tr.error || reempaqueMovementErrorPOS('No se pudo reversar Reempaque.'));
+    }catch(err){ reject(err); }
+  });
+  try{ await queueLotsUsageSyncPOS(eventId); }catch(_){ }
+  return result;
 }
 
 // =========================================================
@@ -16931,6 +17995,321 @@ async function computeLotFifoForEvent(eventId){
     evidenceLotIds: Array.from(evidence.lotIds),
     evidenceLotCodes: Array.from(evidence.lotCodes)
   };
+}
+
+
+function reempaqueLegacyFractionPartPOS(value){
+  const n = reempaqueRound4POS(Math.max(0, reempaqueNumPOS(value,0)));
+  const whole = reempaqueFloorUnitsPOS(n);
+  const fraction = reempaqueRound4POS(Math.max(0, n - whole));
+  return fraction > 0.0001 ? fraction : 0;
+}
+
+function reempaqueLegacyLotTracePOS(lot){
+  const l=lot || {};
+  return reempaqueNormalizeLotTracePOS({
+    loteId:l.loteId ?? null,
+    loteCodigo:l.loteCodigo || '',
+    loteCargaId:l.loteCargaId ?? null,
+    loteGroupKey:l.loteGroupKey || ''
+  });
+}
+
+function reempaqueLegacySanitationIdPOS(eventId, trace, productId, fractionQty){
+  const signature=[
+    Number(eventId)||0,
+    reempaqueLotIdentityForMermaPOS(trace),
+    String(productId ?? ''),
+    reempaqueRound4POS(fractionQty)
+  ].join('|');
+  return REEMPAQUE_SANEAMIENTO_PREFIX_POS + reempaqueHashTextPOS(signature);
+}
+
+
+async function reempaqueHasLegacyFractionEvidencePOS(eventId, trace, productId){
+  const rows=await getInventoryEntries(Number(eventId)).catch(()=>[]);
+  for (const row of (rows || [])){
+    if (!row || Number(row.productId) !== Number(productId)) continue;
+    if (!inventoryEntryMatchesLotPOS(row, trace)) continue;
+    const src=String(row.sourceType || row.source || '').toUpperCase();
+    if (!src.includes('REEMPAQUE')) continue;
+    const role=String(row.reempaqueRole || '').toLowerCase();
+    if (role && role !== 'destino') continue;
+    const qty=Math.abs(reempaqueNumPOS(row.qty,0));
+    if (reempaqueLegacyFractionPartPOS(qty) > 0.0001) return true;
+  }
+  return false;
+}
+
+async function reempaqueResolveLegacyFractionLiquidCostPOS(eventId, trace, productId, fractionQty){
+  const rows=await getInventoryEntries(Number(eventId)).catch(()=>[]);
+  const candidates=[];
+  for (const row of (rows || [])){
+    if (!row || Number(row.productId) !== Number(productId)) continue;
+    if (!inventoryEntryMatchesLotPOS(row, trace)) continue;
+    const src=String(row.sourceType || row.source || '').toUpperCase();
+    if (!src.includes('REEMPAQUE')) continue;
+    const qty=Math.abs(reempaqueNumPOS(row.qty,0));
+    if (!(qty > 0)) continue;
+    let unit=0;
+    const direct=[
+      row.costoLiquidoUnitario,
+      row.costoUnitarioLiquido,
+      row.liquidUnitCost
+    ];
+    for (const v of direct){
+      const n=reempaqueNumPOS(v,0);
+      if (n > 0){ unit=n; break; }
+    }
+    if (!(unit > 0)){
+      const totals=[row.costoLiquidoTotal,row.costoLiquidoAsignado,row.liquidCostTotal];
+      for (const v of totals){
+        const n=reempaqueNumPOS(v,0);
+        if (n > 0){ unit=n/qty; break; }
+      }
+    }
+    if (unit > 0) candidates.push(unit);
+  }
+  if (!candidates.length){
+    return { reliable:false, unitCost:0, cost:0, warning:'Costo líquido histórico no determinable con seguridad.' };
+  }
+  const min=Math.min(...candidates), max=Math.max(...candidates);
+  if ((max-min) > 0.01){
+    return { reliable:false, unitCost:0, cost:0, warning:'Existen costos líquidos históricos distintos en el mismo lote/producto; no se inventó un costo.' };
+  }
+  const unit=candidates.reduce((a,b)=>a+b,0)/candidates.length;
+  return {
+    reliable:true,
+    unitCost:round2(unit),
+    cost:round2(unit * reempaquePositivePOS(fractionQty)),
+    warning:''
+  };
+}
+
+async function reempaqueCommitLegacyFractionSanitationPOS(payload){
+  if (!db) await openDB();
+  const p=payload || {};
+  const eid=Number(p.eventId);
+  const product=p.product || {};
+  const productId=Number(product.id ?? p.productId);
+  const trace=reempaqueLegacyLotTracePOS(p.trace || {});
+  const fractionQty=reempaqueLegacyFractionPartPOS(p.fractionQty);
+  const cap=reempaquePositivePOS(p.capacityMl);
+  if (!eid || !productId || !(fractionQty > 0) || !(cap > 0)) return {applied:false, reason:'invalid'};
+
+  const sanitationId=reempaqueLegacySanitationIdPOS(eid,trace,productId,fractionQty);
+  const existing=await getOne(REEMPAQUE_STORE_POS,sanitationId).catch(()=>null);
+  if (existing && existing.applied === true) return {applied:false,reason:'already',record:existing};
+
+  const before=await reempaqueLoadMermaBalancePOS(eid,trace,product,cap);
+  const costInfo=p.costInfo || {reliable:false,cost:0,warning:'Costo líquido histórico no determinable con seguridad.'};
+  const fractionMl=reempaqueRound4POS(fractionQty*cap);
+  const sourceCost=costInfo.reliable ? reempaqueMoneyPOS(costInfo.cost) : 0;
+  const plan=reempaqueBuildMermaPlanPOS({
+    before,
+    sourceVolumeMl:fractionMl,
+    sourceLiquidCost:sourceCost,
+    targetCapacityMl:cap
+  });
+  const mermaKey=before.mermaKey || reempaqueMermaKeyPOS(eid,trace,productId);
+  const after=reempaqueBuildMermaBalanceAfterPOS(before,plan,{
+    mermaKey,eventId:eid,
+    loteId:trace.loteId,loteCodigo:trace.loteCodigo,loteCargaId:trace.loteCargaId,loteGroupKey:trace.loteGroupKey,
+    targetProductId:productId,targetProductName:String(product.name || p.productName || '').trim(),targetCapacityMl:cap
+  });
+  const priorCostKnown = !(reempaquePositivePOS(before.remainderMl) > 0.0001) || reempaqueMoneyPOS(before.remainderLiquidCost) > 0;
+  const costReliable = !!costInfo.reliable && priorCostKnown && !String(before.costWarning || before.advertenciaCosto || '').trim();
+  const warning = costReliable ? '' : String(costInfo.warning || before.costWarning || before.advertenciaCosto || 'Costo histórico parcialmente indeterminado; se preservó la disponibilidad sin inventar costo.').trim();
+  after.costReliable=costReliable;
+  after.costWarning=warning;
+  after.advertenciaCosto=warning;
+  after.sanitizedLegacy=true;
+
+  const now=reempaqueNowISOPOS();
+  const lotFields=reempaqueInventoryLotFieldsPOS(trace);
+  const removeRow={
+    eventId:eid,...lotFields,
+    source:'reempaque_saneamiento_legacy',sourceType:'REEMPAQUE_SANEAMIENTO_LEGACY',
+    type:'adjust',qty:reempaqueRound4POS(-fractionQty),
+    productId,productName:String(product.name || p.productName || '').trim(),
+    time:now,createdAt:now,affectsSales:false,affectsCash:false,affectsAccountingIncome:false,
+    noVenta:true,noCaja:true,reempaqueRole:'legacy_fraction_to_merma',
+    sanitationId,mermaKey,mlConvertidosAMerma:fractionMl,
+    notes:'Saneamiento compensatorio de fracción legacy: stock vendible entero; fracción trasladada a merma técnica.'
+  };
+  const extraUnits=reempaqueFloorUnitsPOS(plan.extraUnits);
+  const recoveredCost=costReliable ? reempaqueMoneyPOS(plan.consumedRemainderLiquidCost) : 0;
+  const recoveryRow=extraUnits > 0 ? {
+    eventId:eid,...lotFields,
+    source:'reempaque_saneamiento_legacy',sourceType:'REEMPAQUE_SANEAMIENTO_LEGACY',
+    type:'adjust',qty:extraUnits,
+    productId,productName:String(product.name || p.productName || '').trim(),
+    time:now,createdAt:now,affectsSales:false,affectsCash:false,affectsAccountingIncome:false,
+    noVenta:true,noCaja:true,reempaqueRole:'legacy_merma_recovered',
+    sanitationId,mermaKey,cantidadExtraMerma:extraUnits,
+    costoLiquidoUnitario:extraUnits>0 ? round2(recoveredCost/extraUnits) : 0,
+    costoUnitarioLiquido:extraUnits>0 ? round2(recoveredCost/extraUnits) : 0,
+    costoLiquidoTotal:recoveredCost,costoAdicionalUnitario:0,costoAdicionalTotal:0,
+    notes:'Unidad completa recuperada durante saneamiento legacy por merma acumulada.'
+  } : null;
+
+  let resultRecord=null;
+  await new Promise((resolve,reject)=>{
+    try{
+      const tr=db.transaction(['inventory',REEMPAQUE_STORE_POS],'readwrite');
+      const inv=tr.objectStore('inventory');
+      const rp=tr.objectStore(REEMPAQUE_STORE_POS);
+      const check=rp.get(sanitationId);
+      check.onsuccess=()=>{
+        const prior=check.result;
+        if (prior && prior.applied === true){ resultRecord=prior; return; }
+        const movementIds=[];
+        const r1=inv.add(removeRow);
+        r1.onerror=()=>{try{tr.abort();}catch(_){}};
+        r1.onsuccess=()=>{
+          movementIds.push(r1.result);
+          const finish=()=>{
+            rp.put({ ...after, exists:undefined });
+            resultRecord={
+              id:sanitationId,
+              tipo:REEMPAQUE_SANEAMIENTO_TYPE_POS,
+              isLegacyFractionSanitation:true,
+              applied:true,
+              eventId:eid,eventoId:eid,
+              loteId:trace.loteId ?? null,loteCodigo:trace.loteCodigo || '',loteCargaId:trace.loteCargaId ?? null,loteGroupKey:trace.loteGroupKey || '',
+              targetProductId:productId,targetProductName:String(product.name || p.productName || '').trim(),
+              targetCapacityMl:cap,
+              fractionQtyBefore:fractionQty,
+              fractionMl,
+              extraUnitsRecovered:extraUnits,
+              remainderMlAfter:plan.pendingRemainderMl,
+              remainderLiquidCostAfter:plan.pendingRemainderLiquidCost,
+              costReliable,
+              costWarning:warning,
+              inventoryMovementIds:movementIds,
+              mermaKey,
+              affectsSales:false,affectsCash:false,noVenta:true,noCaja:true,
+              createdAt:now,updatedAt:now
+            };
+            rp.put(resultRecord);
+          };
+          if (recoveryRow){
+            const r2=inv.add(recoveryRow);
+            r2.onerror=()=>{try{tr.abort();}catch(_){}};
+            r2.onsuccess=()=>{movementIds.push(r2.result);finish();};
+          }else finish();
+        };
+      };
+      check.onerror=()=>{try{tr.abort();}catch(_){}};
+      tr.oncomplete=()=>resolve(true);
+      tr.onerror=()=>reject(tr.error || new Error('No se pudo sanear la fracción legacy.'));
+      tr.onabort=()=>reject(tr.error || new Error('Transacción abortada saneando fracción legacy.'));
+    }catch(err){reject(err);}
+  });
+  return {applied:!!(resultRecord && resultRecord.id===sanitationId),record:resultRecord,extraUnits,remainderMl:plan.pendingRemainderMl};
+}
+
+async function reempaqueRegisterLegacySanitationWarningPOS(payload){
+  const p=payload || {};
+  const trace=reempaqueLegacyLotTracePOS(p.trace || {});
+  const fraction=reempaqueLegacyFractionPartPOS(p.fractionQty);
+  const id=reempaqueLegacySanitationIdPOS(p.eventId,trace,p.productId,fraction) + '_warn';
+  const existing=await getOne(REEMPAQUE_STORE_POS,id).catch(()=>null);
+  if (existing && existing.warningOnly === true) return existing;
+  const now=reempaqueNowISOPOS();
+  const row={
+    id,tipo:REEMPAQUE_SANEAMIENTO_TYPE_POS,isLegacyFractionSanitation:true,applied:false,warningOnly:true,
+    eventId:Number(p.eventId)||null,eventoId:Number(p.eventId)||null,
+    loteId:trace.loteId ?? null,loteCodigo:trace.loteCodigo || '',loteCargaId:trace.loteCargaId ?? null,loteGroupKey:trace.loteGroupKey || '',
+    targetProductId:p.productId ?? null,targetProductName:String(p.productName || '').trim(),
+    fractionQtyBefore:fraction,
+    costReliable:false,
+    costWarning:String(p.warning || 'No fue posible determinar capacidad en ml; no se alteró la disponibilidad.'),
+    affectsSales:false,affectsCash:false,noVenta:true,noCaja:true,
+    createdAt:now,updatedAt:now
+  };
+  await put(REEMPAQUE_STORE_POS,row);
+  return row;
+}
+
+async function sanitizeLegacyFractionalAvailabilityPOS(){
+  if (!db) await openDB();
+  const products=await getAll('products').catch(()=>[]);
+  const pMap=new Map((products || []).filter(p=>p && p.id!=null).map(p=>[Number(p.id),p]));
+  const events=await getAll('events').catch(()=>[]);
+  let sanitized=0, extraUnits=0, warnings=0;
+  const touchedEvents=new Set();
+
+  for (const ev of (events || [])){
+    const eid=Number(ev && ev.id);
+    if (!Number.isFinite(eid) || !(eid>0)) continue;
+    const fifo=await computeLotFifoForEvent(eid).catch(()=>null);
+    if (!fifo || !fifo.lots) continue;
+    const order=Array.isArray(fifo.lotOrder) ? fifo.lotOrder : Object.keys(fifo.lots);
+    for (const lotKey of order){
+      const lot=fifo.lots[lotKey];
+      if (!lot) continue;
+      const trace=reempaqueLegacyLotTracePOS(lot);
+      for (const [fifoKey,rawAvailable] of Object.entries(lot.remainingByKey || {})){
+        const fraction=reempaqueLegacyFractionPartPOS(rawAvailable);
+        if (!(fraction>0)) continue;
+        const meta=(fifo.keyMeta && fifo.keyMeta[fifoKey]) || {};
+        const internalId=Number(meta.internalId);
+        const product=Number.isFinite(internalId) && internalId>0 ? pMap.get(internalId) : null;
+        if (!product){
+          warnings++;
+          await reempaqueRegisterLegacySanitationWarningPOS({
+            eventId:eid,trace,productId:internalId || meta.productId || null,productName:meta.nombreSnapshot || '',
+            fractionQty:fraction,warning:'Producto legacy no resoluble de forma segura; no se alteró la disponibilidad.'
+          });
+          continue;
+        }
+        const hasLegacyEvidence=await reempaqueHasLegacyFractionEvidencePOS(eid,trace,product.id);
+        if (!hasLegacyEvidence) continue;
+        const cap=reempaquePositivePOS(reempaqueCapacityMlFromProductPOS(product));
+        if (!(cap>0)){
+          warnings++;
+          await reempaqueRegisterLegacySanitationWarningPOS({
+            eventId:eid,trace,productId:product.id,productName:product.name || '',fractionQty:fraction,
+            warning:'Capacidad histórica en ml no determinable; no se alteró la disponibilidad.'
+          });
+          continue;
+        }
+        const costInfo=await reempaqueResolveLegacyFractionLiquidCostPOS(eid,trace,product.id,fraction);
+        if (!costInfo.reliable) warnings++;
+        const res=await reempaqueCommitLegacyFractionSanitationPOS({
+          eventId:eid,trace,product,fractionQty:fraction,capacityMl:cap,costInfo
+        });
+        if (res && res.applied){
+          sanitized++;
+          extraUnits += reempaqueFloorUnitsPOS(res.extraUnits);
+          touchedEvents.add(eid);
+        }
+      }
+    }
+  }
+
+  for (const eid of touchedEvents){
+    try{ await queueLotsUsageSyncPOS(eid); }catch(_){ }
+  }
+
+  // Eventos ya cerrados no deben conservar saldo recuperable después de una migración legacy.
+  for (const ev of (events || [])){
+    const eid=Number(ev && ev.id);
+    if (!eid || !ev.closedAt) continue;
+    try{
+      await reempaqueFinalizeMermaForEventPOS(eid,{
+        provisional:false,
+        eventClosedAt:ev.closedAt,
+        reason:'SANEAMIENTO_LEGACY_EVENTO_CERRADO'
+      });
+    }catch(err){ console.warn('Merma final legacy en evento cerrado',eid,err); }
+  }
+
+  if (sanitized || warnings){
+    console.info('Reempaque legacy saneado', {sanitized,extraUnits,warnings});
+  }
+  return {sanitized,extraUnits,warnings};
 }
 
 // Exponer canónicamente (para etapas siguientes / debug)
@@ -19525,29 +20904,35 @@ async function reempaqueGetUiStatePOS(productsArg){
     unitCostEl.dataset.rpqAutoCost = '1';
   }
   const qtySource = reempaquePositivePOS(qtySourceEl ? qtySourceEl.value : 0);
-  const qtyTarget = reempaquePositivePOS(qtyTargetEl ? qtyTargetEl.value : 0);
+  let qtyTarget = reempaqueFloorUnitsPOS(qtyTargetEl ? qtyTargetEl.value : 0);
   const sourceCap = source ? reempaqueCapacityMlFromProductPOS(source) : 0;
   const targetCap = target ? reempaqueCapacityMlFromProductPOS(target) : 0;
-  const suggested = reempaqueComputeSuggestedQtyByVolumePOS(qtySource, sourceCap, targetCap);
+  const suggestedRaw = reempaqueComputeSuggestedQtyByVolumePOS(qtySource, sourceCap, targetCap);
+  const suggested = suggestedRaw === null ? null : reempaqueFloorUnitsPOS(suggestedRaw);
   const fieldUnitCost = reempaqueMoneyPOS(unitCostEl ? unitCostEl.value : 0);
   const fieldIsManual = !!(unitCostEl && unitCostEl.dataset.rpqAutoCost === '0' && fieldUnitCost > 0);
   const unitCost = fieldUnitCost > 0 ? fieldUnitCost : reempaqueMoneyPOS((exactLotCostInfo || sourceCostInfo).value);
   const unitCostSource = fieldIsManual ? 'manual' : ((exactLotCostInfo && exactLotCostInfo.source) || sourceCostInfo.source || (unitCost > 0 ? 'manual' : ''));
   const extraCostInfo = reempaqueInputNumberInfoPOS(extraCostEl);
   const costAdditionalUnit = extraCostInfo.value > 0 ? round2(extraCostInfo.value) : 0;
-  const costAdditionalTotal = (qtyTarget > 0 && costAdditionalUnit > 0) ? round2(qtyTarget * costAdditionalUnit) : 0;
   const costOriginTotal = (unitCost > 0 && qtySource > 0) ? round2(unitCost * qtySource) : 0;
-  const liquidUnitTarget = (costOriginTotal > 0 && qtyTarget > 0) ? round2(costOriginTotal / qtyTarget) : 0;
-  const costTotal = (costOriginTotal > 0 || costAdditionalTotal > 0) ? round2(costOriginTotal + costAdditionalTotal) : 0;
+  const beforeMerma = (eventId && target && targetCap > 0) ? await reempaqueLoadMermaBalancePOS(eventId, sourceLot, target, targetCap) : reempaqueEmptyMermaBalancePOS(eventId, sourceLot, target || {}, targetCap);
+  const sourceVolumeMl = reempaqueTotalVolumePOS(qtySource, sourceCap);
+  const mermaPlan = reempaqueBuildMermaPlanPOS({ before:beforeMerma, sourceVolumeMl, sourceLiquidCost:costOriginTotal, targetCapacityMl:targetCap });
+  if (mermaPlan.totalUnits > 0) qtyTarget = mermaPlan.totalUnits;
+  const costAdditionalTotal = (qtyTarget > 0 && costAdditionalUnit > 0) ? round2(qtyTarget * costAdditionalUnit) : 0;
+  const liquidDistributed = reempaqueMoneyPOS(mermaPlan.assignedLiquidCost);
+  const liquidUnitTarget = (liquidDistributed > 0 && qtyTarget > 0) ? round2(liquidDistributed / qtyTarget) : 0;
+  const costTotal = (liquidDistributed > 0 || costAdditionalTotal > 0) ? round2(liquidDistributed + costAdditionalTotal) : 0;
   const unitTarget = (costTotal > 0 && qtyTarget > 0) ? round2(costTotal / qtyTarget) : 0;
   let stockSource = null;
   if (sourceLot) stockSource = Number(sourceLot.remaining);
   else if (eventId && source && source.id != null){ try{ stockSource = reempaqueInventoryQtyPOS(await computeStock(eventId, source.id)); }catch(_){ stockSource = null; } }
   return {
-    products, eventId, source, sourceLot, lotState, stockSource, target, selectedTarget, newTarget, qtySource, qtyTarget, sourceCap, targetCap, suggested,
-    unitCost, unitCostSource, costOriginTotal,
+    products, eventId, source, sourceLot, lotState, stockSource, target, selectedTarget, newTarget, qtySource, qtyTarget, sourceCap, targetCap, suggested, suggestedRaw,
+    unitCost, unitCostSource, costOriginTotal, sourceVolumeMl, beforeMerma, mermaPlan,
     extraCostInfo, costAdditionalUnit, costAdditionalTotal,
-    costAdditional: costAdditionalTotal,
+    costAdditional: costAdditionalTotal, liquidDistributed,
     liquidUnitTarget, costTotal, unitTarget
   };
 }
@@ -19571,31 +20956,32 @@ async function reempaqueUpdatePreviewPOS(opts){
 
   if (sourceCapEl) sourceCapEl.textContent = reempaqueFmtMlPOS(state.sourceCap);
   if (targetCapEl) targetCapEl.textContent = reempaqueFmtMlPOS(state.targetCap);
-  if (suggestedEl) suggestedEl.textContent = (state.suggested !== null && state.suggested > 0) ? reempaqueFmtQtyPOS(state.suggested) : '—';
+  if (suggestedEl) suggestedEl.textContent = (state.suggestedRaw !== null && state.suggestedRaw > 0) ? `${reempaqueFmtQtyPOS(state.suggestedRaw)} → ${reempaqueFmtQtyPOS(state.mermaPlan.baseUnits)} enteras` : '—';
 
-  if (qtyTargetEl && state.suggested !== null && state.suggested > 0){
-    const cur = String(qtyTargetEl.value || '').trim();
-    const auto = qtyTargetEl.dataset.rpqAuto === '1';
-    if (!cur || auto || opts.forceSuggested){
-      qtyTargetEl.value = reempaqueFmtQtyPOS(state.suggested);
-      qtyTargetEl.dataset.rpqAuto = '1';
-      state.qtyTarget = reempaquePositivePOS(qtyTargetEl.value);
-      state.costAdditionalTotal = (state.qtyTarget > 0 && state.costAdditionalUnit > 0) ? round2(state.qtyTarget * state.costAdditionalUnit) : 0;
-      state.costAdditional = state.costAdditionalTotal;
-      state.liquidUnitTarget = (state.costOriginTotal > 0 && state.qtyTarget > 0) ? round2(state.costOriginTotal / state.qtyTarget) : 0;
-      state.costTotal = (state.costOriginTotal > 0 || state.costAdditionalTotal > 0) ? round2(state.costOriginTotal + state.costAdditionalTotal) : 0;
-      state.unitTarget = (state.costTotal > 0 && state.qtyTarget > 0) ? round2(state.costTotal / state.qtyTarget) : 0;
-    }
+  if (qtyTargetEl && state.mermaPlan){
+    qtyTargetEl.value = state.mermaPlan.totalUnits > 0 ? String(state.mermaPlan.totalUnits) : '';
+    qtyTargetEl.dataset.rpqAuto = '1';
+    state.qtyTarget = reempaqueFloorUnitsPOS(state.mermaPlan.totalUnits);
+    state.costAdditionalTotal = (state.qtyTarget > 0 && state.costAdditionalUnit > 0) ? round2(state.qtyTarget * state.costAdditionalUnit) : 0;
+    state.costAdditional = state.costAdditionalTotal;
+    state.liquidDistributed = reempaqueMoneyPOS(state.mermaPlan.assignedLiquidCost);
+    state.liquidUnitTarget = (state.liquidDistributed > 0 && state.qtyTarget > 0) ? round2(state.liquidDistributed / state.qtyTarget) : 0;
+    state.costTotal = (state.liquidDistributed > 0 || state.costAdditionalTotal > 0) ? round2(state.liquidDistributed + state.costAdditionalTotal) : 0;
+    state.unitTarget = (state.costTotal > 0 && state.qtyTarget > 0) ? round2(state.costTotal / state.qtyTarget) : 0;
   }
 
   if (costOriginEl) costOriginEl.textContent = reempaqueFmtMoneyPOS(state.costOriginTotal);
   if (costAdditionalUnitEl) costAdditionalUnitEl.textContent = reempaqueFmtMoneyPOS(state.costAdditionalUnit, reempaqueFormatCordobasPOS(0));
   if (targetQtySummaryEl) targetQtySummaryEl.textContent = state.qtyTarget > 0 ? reempaqueFmtQtyPOS(state.qtyTarget) : '—';
   if (costAdditionalEl) costAdditionalEl.textContent = reempaqueFmtMoneyPOS(state.costAdditionalTotal, reempaqueFormatCordobasPOS(0));
-  if (liquidDistributedEl) liquidDistributedEl.textContent = reempaqueFmtMoneyPOS(state.costOriginTotal);
+  if (liquidDistributedEl) liquidDistributedEl.textContent = reempaqueFmtMoneyPOS(state.liquidDistributed);
   if (liquidUnitEl) liquidUnitEl.textContent = reempaqueFmtMoneyPOS(state.liquidUnitTarget);
   if (costTotalEl) costTotalEl.textContent = reempaqueFmtMoneyPOS(state.costTotal);
   if (unitTargetEl) unitTargetEl.textContent = reempaqueFmtMoneyPOS(state.unitTarget);
+  reempaqueSetTextPOS('rp-base-units', state.mermaPlan ? String(state.mermaPlan.baseUnits) : '—');
+  reempaqueSetTextPOS('rp-extra-units', state.mermaPlan && state.mermaPlan.extraUnits > 0 ? `+${state.mermaPlan.extraUnits} ${reempaquePluralProductNamePOS(state.target && state.target.name, state.mermaPlan.extraUnits)} extra por merma acumulada` : '0');
+  reempaqueSetTextPOS('rp-total-units', state.mermaPlan ? String(state.mermaPlan.totalUnits) : '—');
+  reempaqueSetTextPOS('rp-pending-merma', state.mermaPlan ? reempaqueFmtMlPOS(state.mermaPlan.pendingRemainderMl) : '—');
   return state;
 }
 
@@ -19832,8 +21218,10 @@ function reempaqueReadMultiDestinationRowsPOS(products, costoPorMl){
     const extraInfo = reempaqueInputNumberInfoPOS(extraEl);
     const newCapInfo = reempaqueInputNumberInfoPOS(newCapEl);
     const newPriceInfo = reempaqueInputNumberInfoPOS(newPriceEl);
-    const qty = qtyInfo.value > 0 ? qtyInfo.value : 0;
+    const qtyRaw = qtyInfo.value > 0 ? qtyInfo.value : 0;
+    const qty = reempaqueFloorUnitsPOS(qtyRaw);
     const ml = mlInfo.value > 0 ? mlInfo.value : 0;
+    const fractionalRemainderMl = (qtyRaw > qty && ml > 0) ? reempaqueRound4POS((qtyRaw - qty) * ml) : 0;
     const extraUnitCost = extraInfo.value > 0 ? extraInfo.value : 0;
     const volume = reempaqueTotalVolumePOS(qty, ml);
     const liquidTotalCost = (costoPorMl > 0 && volume > 0) ? round2(volume * costoPorMl) : 0;
@@ -19843,7 +21231,7 @@ function reempaqueReadMultiDestinationRowsPOS(products, costoPorMl){
     const unitCost = (qty > 0 && totalCost > 0) ? round2(totalCost / qty) : 0;
     rows.push({
       card, index:idx, kind, isNewTarget, selectEl:sel, qtyEl, mlEl, extraEl, newNameEl, newCapEl, newPriceEl,
-      qtyInfo, mlInfo, extraInfo, newCapInfo, newPriceInfo, newTarget, existingNewTarget, selectedTarget, target, cap, qty, ml, volume,
+      qtyInfo, mlInfo, extraInfo, newCapInfo, newPriceInfo, newTarget, existingNewTarget, selectedTarget, target, cap, qtyRaw, qty, ml, fractionalRemainderMl, volume,
       liquidTotalCost, liquidUnitCost, extraUnitCost, extraTotalCost,
       totalCost, unitCost
     });
@@ -20040,6 +21428,8 @@ async function registrarReempaqueMultipleUiPOS(){
       destinoNuevo: !!d.isNewTarget,
       productoNuevoDestino: !!d.isNewTarget,
       precioVentaDestino: d.isNewTarget ? d.newTarget.price : reempaqueMoneyPOS(d.target && d.target.price),
+      cantidadSolicitadaRaw: d.qtyRaw,
+      fraccionMermaMl: d.fractionalRemainderMl,
       cantidadCreada: d.qty,
       cantidadCreadaDestino: d.qty,
       mlPorUnidad: d.ml,
@@ -20106,6 +21496,8 @@ async function registrarReempaqueMultipleUiPOS(){
         productoNuevoDestino: !!d.isNewTarget,
         productoNuevoCreado: destinoNuevoCreado,
         precioVentaDestino: d.isNewTarget ? d.newTarget.price : reempaqueMoneyPOS(targetForMovement && targetForMovement.price),
+        cantidadSolicitadaRaw: d.qtyRaw,
+        fraccionMermaMl: d.fractionalRemainderMl,
         cantidadCreada: d.qty,
         cantidadCreadaDestino: d.qty,
         mlPorUnidad: d.ml,
@@ -20155,8 +21547,9 @@ async function registrarReempaqueMultipleUiPOS(){
     try{ await refreshSaleStockLabel(); }catch(_){ }
     reempaqueSetModeUiPOS('MULTIPLE');
     await reempaqueRefreshUiPOS();
-    reempaqueSetMsgPOS('Reempaque múltiple registrado.', 'ok');
-    toast('Reempaque múltiple registrado');
+    const successSummary = reempaqueMultipleSuccessSummaryPOS(record);
+    reempaqueSetMsgPOS(successSummary, 'ok');
+    toast(record.cantidadExtraMerma > 0 ? successSummary : 'Reempaque múltiple registrado');
     return record;
   }catch(err){
     if (!movementCompleted && createdTargetsForRollback.length){
@@ -20317,8 +21710,10 @@ function reempaqueHistoryRecordPartsPOS(r){
     nota: String(r.nota || r.note || '').trim(),
     loteOrigenCodigo: lotCodeDisplayPOS(r.loteOrigenCodigo || r.sourceLotCode || r.productionLotCode || (r.loteOrigen && r.loteOrigen.loteCodigo) || (r.sourceLot && r.sourceLot.loteCodigo)),
     multiple: isMulti,
+    reversed: !!(r.reversedAt || r.revertidoAt || String(r.estado || '').toUpperCase() === 'REVERSADO'),
     mermaMl,
-    mermaCosto
+    mermaCosto,
+    extraMerma: reempaqueFloorUnitsPOS(r.cantidadExtraMerma || (Array.isArray(r.mermaOperaciones) ? r.mermaOperaciones.reduce((a,x)=>a + reempaqueFloorUnitsPOS(x && x.cantidadExtraMerma),0) : 0))
   };
 }
 
@@ -20359,6 +21754,8 @@ async function renderReempaqueHistoryPOS(eventId){
           <span><strong>Evento:</strong> ${escapeHtml(p.evento)}</span>
           <span><strong>Fecha/hora:</strong> ${escapeHtml(p.fecha)}</span>
           <span><strong>Tipo:</strong> ${escapeHtml(modeLabel)}</span>
+          <span><strong>Estado:</strong> ${p.reversed ? 'REVERSADO' : 'REGISTRADO'}</span>
+          ${p.extraMerma > 0 ? `<span><strong>Merma recuperada:</strong> +${p.extraMerma} unidad(es)</span>` : ''}
           <span><strong>Origen:</strong> ${escapeHtml(p.origen)}</span>
           <span><strong>Lote origen:</strong> ${escapeHtml(p.loteOrigenCodigo || '—')}</span>
           <span><strong>Cantidad origen:</strong> ${escapeHtml(reempaqueFmtQtyPOS(p.qtyOrigen))}</span>
@@ -20368,6 +21765,9 @@ async function renderReempaqueHistoryPOS(eventId){
           <span><strong>Sobrante/merma:</strong> ${escapeHtml(mermaTxt)}</span>
           ${destinosHtml}
           <span class="reempaque-history-wide"><strong>Nota:</strong> ${escapeHtml(p.nota || '—')}</span>
+        </div>
+        <div class="actions end">
+          <button class="btn-danger btn-pill rp-reverse-btn" type="button" data-reempaque-id="${escapeHtml(String(r.id || ''))}" ${p.reversed ? 'disabled' : ''}>${p.reversed ? 'Reversado' : 'Reversar'}</button>
         </div>
       </article>`;
   }).join('');
@@ -20440,6 +21840,40 @@ async function reempaqueBuildExportRowsPOS(eventId){
       ]);
     }
   }
+
+  // Merma final: trazabilidad separada, sin simular un Reempaque/venta/cortesía.
+  let finalMermas = [];
+  try{ finalMermas = await reempaqueLoadFinalMermaForEventPOS(eventId, { includeProvisional:true }); }catch(_){ finalMermas = []; }
+  for (const fm of finalMermas){
+    rows.push([
+      fm.date || fm.fecha || fm.createdAt || '',
+      fm.eventNameSnapshot || fm.eventName || '',
+      'Merma final',
+      fm.id || '',
+      '',
+      lotCodeExcelCellPOS(fm.loteCodigo || ''),
+      0,
+      '',
+      '',
+      0,
+      '',
+      fm.targetProductNameSnapshot || fm.targetProductName || '',
+      'Técnica',
+      0,
+      fm.targetCapacityMl || '',
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      fm.costoMermaFinal || 0,
+      0,
+      fm.mermaFinalMl || 0,
+      fm.costoMermaFinal || 0,
+      (fm.costWarning ? ('Merma final del evento · ' + fm.costWarning) : 'Merma final del evento')
+    ]);
+  }
   return rows;
 }
 
@@ -20481,7 +21915,7 @@ async function registrarReempaqueUiPOS(){
     errors.push('Selecciona un producto destino activo. Si no existe, créalo primero en Catálogos → Productos.');
     reempaqueSetFieldInvalidPOS('rp-target-product', true);
   }
-  if (!(state.qtyTarget > 0)){ errors.push('Cantidad creada mayor que 0.'); reempaqueSetFieldInvalidPOS('rp-target-qty', true); }
+  if (!(state.mermaPlan && state.mermaPlan.totalUnits > 0)){ errors.push('El volumen todavía no alcanza para crear una unidad completa.'); reempaqueSetFieldInvalidPOS('rp-target-qty', true); }
   if (state.extraCostInfo && (state.extraCostInfo.invalid || (!state.extraCostInfo.empty && state.extraCostInfo.value < 0))){
     errors.push('Costo adicional unitario inválido.');
     reempaqueSetFieldInvalidPOS('rp-extra-cost', true);
@@ -20536,8 +21970,9 @@ async function registrarReempaqueUiPOS(){
     await renderInventario();
     try{ await refreshProductSelect({ keepSelection:true }); }catch(_){ try{ await renderProductChips(); }catch(__){ } }
     try{ await refreshSaleStockLabel(); }catch(_){ }
-    reempaqueSetMsgPOS('Reempaque registrado.', 'ok');
-    toast('Reempaque registrado');
+    const successSummary = reempaqueSuccessSummaryPOS(record);
+    reempaqueSetMsgPOS('Reempaque registrado. ' + successSummary, 'ok');
+    toast(record.cantidadExtraMerma > 0 ? `+${record.cantidadExtraMerma} ${reempaquePluralProductNamePOS(record.targetProductName, record.cantidadExtraMerma)} extra por merma acumulada` : 'Reempaque registrado');
     return record;
   }catch(err){
     console.error('No se pudo registrar Reempaque', err);
@@ -20665,6 +22100,25 @@ document.addEventListener('click', async (e)=>{
   if (!t) return;
   if (t.id === 'btn-toggle-reempaque'){
     reempaqueSetOpenPOS(!reempaqueIsOpenPOS());
+  }
+  if (t.classList && t.classList.contains('rp-reverse-btn')){
+    const id = String(t.dataset.reempaqueId || '').trim();
+    if (!id) return;
+    if (!confirm('¿Reversar este Reempaque? Se restaurará el origen, se retirarán las unidades destino y se restaurará la merma técnica previa.')) return;
+    const old = t.textContent;
+    t.disabled = true; t.textContent = 'Reversando…';
+    try{
+      await reempaqueReversePOS(id);
+      await renderInventario();
+      await renderReempaqueHistoryPOS(reempaqueHistoryEventIdFromUiPOS());
+      reempaqueSetMsgPOS('Reempaque reversado correctamente.', 'ok');
+      toast('Reempaque reversado');
+    }catch(err){
+      console.error('No se pudo reversar Reempaque', err);
+      reempaqueSetMsgPOS('No se pudo reversar Reempaque: ' + humanizeError(err), 'warn');
+      t.disabled = false; t.textContent = old || 'Reversar';
+    }
+    return;
   }
   if (t.id === 'btn-register-reempaque'){
     await registrarReempaqueUiPOS();
@@ -21306,6 +22760,10 @@ function renderSummaryFromSnapshotPOS(archive){
   const courtesyTx = Number(m.courtesyTx || 0) || 0;
   const courtesyEquiv = Number(m.courtesyEquiv || 0) || 0;
   const profitAfterCourtesy = (m.profitAfterCourtesy != null) ? Number(m.profitAfterCourtesy || 0) : (grandProfit - courtesyCost);
+  const cardCommissionTotal = (m.cardCommissionTotal != null) ? Number(m.cardCommissionTotal || 0) : 0;
+  const profitAfterCommission = (m.profitAfterCommission != null) ? Number(m.profitAfterCommission || 0) : (profitAfterCourtesy - cardCommissionTotal);
+  const finalMermaCost = (m.finalMermaCost != null) ? Number(m.finalMermaCost || 0) : 0;
+  const profitAfterFinalMerma = (m.profitAfterFinalMerma != null) ? Number(m.profitAfterFinalMerma || 0) : (profitAfterCommission - finalMermaCost);
 
   // KPIs
   const grandTotalEl = document.getElementById('grand-total');
@@ -21318,8 +22776,12 @@ function renderSummaryFromSnapshotPOS(archive){
   if (profitEl) profitEl.textContent = fmt(grandProfit);
   const courCostEl = document.getElementById('grand-courtesy-cost');
   if (courCostEl) courCostEl.textContent = fmt(courtesyCost);
+  const commissionEl = document.getElementById('grand-card-commission');
+  if (commissionEl) commissionEl.textContent = fmt(cardCommissionTotal);
+  const finalMermaEl = document.getElementById('grand-final-merma');
+  if (finalMermaEl) finalMermaEl.textContent = fmt(finalMermaCost);
   const profitAfterEl = document.getElementById('grand-profit-after-courtesy');
-  if (profitAfterEl) profitAfterEl.textContent = fmt(profitAfterCourtesy);
+  if (profitAfterEl) profitAfterEl.textContent = fmt(profitAfterFinalMerma);
 
   // Cortesías
   const courTotalCostEl = document.getElementById('courtesy-total-cost');
@@ -21417,7 +22879,12 @@ function renderSummaryFromSnapshotPOS(archive){
   }
 
   const byPayRows = readSheetRowsPOS(sheets, 'PorPago').slice(1)
-    .map(r=>({ k: String((r&&r[0])||'').trim(), v: Number((r&&r[1])||0) || 0 }))
+    .map(r=>{
+      const k = String((r&&r[0])||'').trim();
+      const raw = (r&&r[1]) != null ? r[1] : '';
+      const n = Number(raw);
+      return { k, raw, v: Number.isFinite(n) ? n : 0 };
+    })
     .filter(it=>it.k);
   byPayRows.sort((a,b)=>a.k.localeCompare(b.k,'es-NI'));
 
@@ -21426,7 +22893,10 @@ function renderSummaryFromSnapshotPOS(archive){
     tbPay.innerHTML = '';
     for (const it of byPayRows){
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${escapeHtml(getPaymentMethodLabelPOS(it.k))}</td><td>${fmt(it.v)}</td>`;
+      const valueHtml = (it.k === 'Comisión no determinada')
+        ? `<span class="muted">${escapeHtml(String(it.raw || ''))}</span>`
+        : fmt(it.v);
+      tr.innerHTML = `<td>${escapeHtml(getPaymentMethodLabelPOS(it.k))}</td><td>${valueHtml}</td>`;
       tbPay.appendChild(tr);
     }
   }
@@ -21496,8 +22966,10 @@ async function renderSummary(){
   const products = await getAll('products');
 
   // Filtro por período (YYYY-MM) en Resumen
+  let activeSummaryPeriodKey = '';
   try{
     const periodKey = getActiveSummaryPeriodFilterPOS();
+    activeSummaryPeriodKey = String(periodKey || '').trim();
     if (periodKey){
       sales = (sales || []).filter(s => isSaleInPeriodPOS(s, periodKey));
     }
@@ -21576,6 +23048,7 @@ async function renderSummary(){
   const byDiscount = new Map();
   const byPay = new Map();
   const byEvent = new Map();
+  const summaryEconomicSales = [];
 
   // --- Cliente: resolver + filtro activo ---
   let resolver = null;
@@ -21627,6 +23100,7 @@ async function renderSummary(){
     const courtesy = isCourtesySale(s);
 
     if (!courtesy){
+      summaryEconomicSales.push(s);
       grand += total;
 
       const saleDiscount = getSummarySaleDiscountSignedTotalPOS(s);
@@ -21648,7 +23122,7 @@ async function renderSummary(){
         transferByBank.set(label, cur);
       }
 
-      // Costo y utilidad aproximada (ventas reales)
+      // Costo y utilidad antes de comisión; la comisión se resta por separado y no aumenta COGS.
       const lineCost = getLineCost(s);
       const lineProfit = total - lineCost;
       grandCost += lineCost;
@@ -21752,12 +23226,22 @@ async function renderSummary(){
         }
       }
 
-      // Nota: por ahora no tenemos costo/utilidad/cortesías archivados.
+      // Archivos antiguos de evento pueden no conservar el desglose dinámico de comisión.
+      // No se inventa una etiqueta genérica: solo las ventas/snapshots confiables alimentan el detalle visible.
+      // Archivos antiguos pueden no conservar costo/utilidad/cortesías/comisión.
     }
   }
   }
 
   const profitAfterCourtesy = grandProfit - courtesyCost;
+  const cardCommissions = collectSaleCardCommissionsPOS(summaryEconomicSales);
+  const cardCommissionTotal = round2(cardCommissions.total);
+  const profitAfterCommission = round2(profitAfterCourtesy - cardCommissionTotal);
+  const finalMermaSummary = isCustomerFilterActive
+    ? { ml:0, cost:0, records:[] }
+    : await reempaqueGetFinalMermaForSummaryPOS(selectedSummaryEventNum, activeSummaryPeriodKey);
+  const finalMermaCost = round2(finalMermaSummary.cost || 0);
+  const profitAfterFinalMerma = round2(profitAfterCommission - finalMermaCost);
 
   // --- Top KPIs ---
   const grandTotalEl = document.getElementById('grand-total');
@@ -21775,8 +23259,14 @@ async function renderSummary(){
   const courCostEl = document.getElementById('grand-courtesy-cost');
   if (courCostEl) courCostEl.textContent = fmt(courtesyCost);
 
+  const commissionEl = document.getElementById('grand-card-commission');
+  if (commissionEl) commissionEl.textContent = fmt(cardCommissionTotal);
+
+  const finalMermaEl = document.getElementById('grand-final-merma');
+  if (finalMermaEl) finalMermaEl.textContent = fmt(finalMermaCost);
+
   const profitAfterEl = document.getElementById('grand-profit-after-courtesy');
-  if (profitAfterEl) profitAfterEl.textContent = fmt(profitAfterCourtesy);
+  if (profitAfterEl) profitAfterEl.textContent = fmt(profitAfterFinalMerma);
 
 
   // --- Clientes (MVP) ---
@@ -21817,7 +23307,7 @@ async function renderSummary(){
   }
 
   // Compat: si no existe el bloque superior nuevo, intentamos crearlo sin romper el HTML viejo
-  if (!discountEl || !costEl || !profitEl || !courCostEl || !profitAfterEl){
+  if (!discountEl || !costEl || !profitEl || !courCostEl || !commissionEl || !finalMermaEl || !profitAfterEl){
     const totalSpan = document.getElementById('grand-total');
     if (totalSpan){
       const card = totalSpan.closest('.card') || totalSpan.parentElement || document.getElementById('tab-resumen') || document.body;
@@ -21832,7 +23322,9 @@ async function renderSummary(){
         <p>Costo estimado de producto: C$ <span id="grand-cost">${fmt(grandCost)}</span></p>
         <p>Utilidad bruta aproximada: C$ <span id="grand-profit">${fmt(grandProfit)}</span></p>
         <p>Cortesías (Costo real): C$ <span id="grand-courtesy-cost">${fmt(courtesyCost)}</span></p>
-        <p>Utilidad después de cortesías: C$ <span id="grand-profit-after-courtesy">${fmt(profitAfterCourtesy)}</span></p>
+        <p>Comisiones Tarjeta: C$ <span id="grand-card-commission">${fmt(cardCommissionTotal)}</span></p>
+        <p>Merma final: C$ <span id="grand-final-merma">${fmt(finalMermaCost)}</span></p>
+        <p>Utilidad después de comisión y merma: C$ <span id="grand-profit-after-courtesy">${fmt(profitAfterFinalMerma)}</span></p>
       `;
     }
   }
@@ -21901,6 +23393,16 @@ async function renderSummary(){
         tr.innerHTML = `<td>${escapeHtml(getPaymentMethodLabelPOS(k))}</td><td>${fmt(v)}</td>`;
         tbPay.appendChild(tr);
       });
+    for (const item of cardCommissions.byLabel){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(item.label)}</td><td>${fmt(item.total)}</td>`;
+      tbPay.appendChild(tr);
+    }
+    if (cardCommissions.undeterminedCount){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>Comisión no determinada</td><td class="muted">${cardCommissions.undeterminedCount} venta(s)</td>`;
+      tbPay.appendChild(tr);
+    }
   }
 
   // Tabla: Transferencias por banco (Resumen)
@@ -23041,12 +24543,7 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
       }
 
       const lineCost = getLineCost(s);
-      let lineProfit = 0;
-      if (typeof s.lineProfit === 'number' && Number.isFinite(s.lineProfit)) {
-        lineProfit = Number(s.lineProfit || 0);
-      } else {
-        lineProfit = total - lineCost;
-      }
+      const lineProfit = total - lineCost;
       grandCost += lineCost;
       grandProfit += lineProfit;
     } else {
@@ -23074,6 +24571,14 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
   }
 
   const profitAfterCourtesy = grandProfit - courtesyCost;
+  const cardCommissions = collectSaleCardCommissionsPOS(sales);
+  const cardCommissionTotal = round2(cardCommissions.total);
+  const profitAfterCommission = round2(profitAfterCourtesy - cardCommissionTotal);
+  const summaryEventNum = parseSummaryEventIdPOS(selectedSummaryEventId);
+  const finalMermaSummary = await reempaqueGetFinalMermaForSummaryPOS(summaryEventNum, periodKey);
+  const finalMermaCost = round2(finalMermaSummary.cost || 0);
+  const finalMermaMl = reempaqueRound4POS(finalMermaSummary.ml || 0);
+  const profitAfterFinalMerma = round2(profitAfterCommission - finalMermaCost);
 
   // Totales por evento (en el período) + status de evento
   const eventTotals = new Map();
@@ -23105,6 +24610,12 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
       grandProfit,
       courtesyCost,
       profitAfterCourtesy,
+      cardCommissionTotal,
+      profitAfterCommission,
+      finalMermaCost,
+      finalMermaMl,
+      profitAfterFinalMerma,
+      commissionUndeterminedCount: cardCommissions.undeterminedCount,
       courtesyQty,
       courtesyTx,
       courtesyEquiv
@@ -23115,6 +24626,8 @@ async function computeSummaryDataForPeriodPOS(periodKey, selectedSummaryEventId)
     byDiscount: discountList,
     byPay: sortMapDesc(byPay),
     transferByBank: transferList,
+    cardCommissions: cardCommissions.byLabel,
+    commissionUndeterminedCount: cardCommissions.undeterminedCount,
     courtesyByProd: courtesyList,
     events: events
   };
@@ -23137,6 +24650,13 @@ function buildSummarySheetsFromDataPOS(data){
   r.push(['Utilidad bruta', m.grandProfit || 0]);
   r.push(['Cortesías (Costo real)', m.courtesyCost || 0]);
   r.push(['Utilidad después de cortesías', m.profitAfterCourtesy || 0]);
+  r.push(['Comisiones Tarjeta', m.cardCommissionTotal || 0]);
+  for (const item of (data.cardCommissions || [])) r.push([item.label, item.total || 0]);
+  if (Number(data.commissionUndeterminedCount || 0) > 0) r.push(['Comisión no determinada', `${Number(data.commissionUndeterminedCount || 0)} venta(s)`]);
+  r.push(['Utilidad después de comisión', m.profitAfterCommission != null ? m.profitAfterCommission : (Number(m.profitAfterCourtesy || 0) - Number(m.cardCommissionTotal || 0))]);
+  r.push(['Merma final (ml)', m.finalMermaMl || 0]);
+  r.push(['Merma final (Costo C$)', m.finalMermaCost || 0]);
+  r.push(['Utilidad después de comisión y merma', m.profitAfterFinalMerma != null ? m.profitAfterFinalMerma : (Number(m.profitAfterCommission || 0) - Number(m.finalMermaCost || 0))]);
   r.push([]);
   r.push(['Cortesías (unidades)', m.courtesyQty || 0]);
   r.push(['Cortesías (movimientos)', m.courtesyTx || 0]);
@@ -23171,7 +24691,14 @@ function buildSummarySheetsFromDataPOS(data){
   // Hoja PorPago
   const payRows = [['Método','Total C$']];
   for (const it of (data.byPay || [])) payRows.push([getPaymentMethodLabelPOS(it.key), it.val || 0]);
+  for (const item of (data.cardCommissions || [])) payRows.push([item.label, item.total || 0]);
+  if (Number(data.commissionUndeterminedCount || 0) > 0) payRows.push(['Comisión no determinada', `${Number(data.commissionUndeterminedCount || 0)} venta(s)`]);
   sheets.push({ name: 'PorPago', rows: payRows });
+
+  const commissionRows = [['Comisión','Total C$','Transacciones']];
+  for (const item of (data.cardCommissions || [])) commissionRows.push([item.label, item.total || 0, item.count || 0]);
+  if (Number(data.commissionUndeterminedCount || 0) > 0) commissionRows.push(['Comisión no determinada','',Number(data.commissionUndeterminedCount || 0)]);
+  sheets.push({ name: 'ComisionesTarjeta', rows: commissionRows });
 
   // Hoja TransferenciasBanco
   const tb = [['Banco','Total C$','Transacciones']];
@@ -23607,7 +25134,7 @@ function renderSummaryArchivesTablePOS(list){
 //   - Cambio en ventas del período activo (salesRev[YYYY-MM])
 //   - Cambio del período mensual activo (YYYY-MM) (cache por periodKey)
 // -----------------------------
-const A33_POS_CONSOL_CACHE_VER = 1;
+const A33_POS_CONSOL_CACHE_VER = 2;
 const LS_A33_POS_CONSOL_ARCH_REV = 'a33_pos_consol_arch_rev_v1';
 const LS_A33_POS_CONSOL_SALES_REV_MAP = 'a33_pos_consol_sales_rev_map_v1';
 const LS_A33_POS_SUMMARY_ARCH_INDEX = 'a33_pos_summary_archives_index_v1';
@@ -23918,12 +25445,20 @@ function parseArchiveMetricsFromSummarySheetPOS(sheets){
     if (!label) continue;
     const val = __numPOS(r[1]);
     switch (label){
-      case 'Total general': out.grand = val; break;
-      case 'Total descuento': out.discountTotal = val; break;
-      case 'Costo estimado': out.grandCost = val; break;
+      case 'Total general':
+      case 'Venta neta': out.grand = val; break;
+      case 'Total descuento':
+      case 'Descuentos': out.discountTotal = val; break;
+      case 'Costo estimado':
+      case 'Costos de ventas': out.grandCost = val; break;
       case 'Utilidad bruta': out.grandProfit = val; break;
       case 'Cortesías (Costo real)': out.courtesyCost = val; break;
       case 'Utilidad después de cortesías': out.profitAfterCourtesy = val; break;
+      case 'Comisiones Tarjeta': out.cardCommissionTotal = val; break;
+      case 'Utilidad después de comisión': out.profitAfterCommission = val; break;
+      case 'Merma final (ml)': out.finalMermaMl = val; break;
+      case 'Merma final (Costo C$)': out.finalMermaCost = val; break;
+      case 'Utilidad después de comisión y merma': out.profitAfterFinalMerma = val; break;
       case 'Cortesías (unidades)': out.courtesyQty = val; break;
       case 'Cortesías (movimientos)': out.courtesyTx = val; break;
       case 'Cortesías (equivalente ventas)': out.courtesyEquiv = val; break;
@@ -23943,11 +25478,16 @@ function normalizeArchiveMetricsPOS(m){
   const courtesyTx = __numPOS(m && m.courtesyTx);
   const courtesyEquiv = __numPOS(m && m.courtesyEquiv);
   const profitAfterCourtesy = (m && m.profitAfterCourtesy != null) ? __numPOS(m.profitAfterCourtesy) : (grandProfit - courtesyCost);
-  return { grand, discountTotal, grandCost, grandProfit, courtesyCost, profitAfterCourtesy, courtesyQty, courtesyTx, courtesyEquiv };
+  const cardCommissionTotal = __numPOS(m && m.cardCommissionTotal);
+  const profitAfterCommission = (m && m.profitAfterCommission != null) ? __numPOS(m.profitAfterCommission) : (profitAfterCourtesy - cardCommissionTotal);
+  const finalMermaCost = __numPOS(m && m.finalMermaCost);
+  const finalMermaMl = __numPOS(m && m.finalMermaMl);
+  const profitAfterFinalMerma = (m && m.profitAfterFinalMerma != null) ? __numPOS(m.profitAfterFinalMerma) : (profitAfterCommission - finalMermaCost);
+  return { grand, discountTotal, grandCost, grandProfit, courtesyCost, profitAfterCourtesy, cardCommissionTotal, profitAfterCommission, finalMermaCost, finalMermaMl, profitAfterFinalMerma, courtesyQty, courtesyTx, courtesyEquiv };
 }
 
 function zeroArchiveMetricsPOS(){
-  return { grand:0, discountTotal:0, grandCost:0, grandProfit:0, courtesyCost:0, profitAfterCourtesy:0, courtesyQty:0, courtesyTx:0, courtesyEquiv:0 };
+  return { grand:0, discountTotal:0, grandCost:0, grandProfit:0, courtesyCost:0, profitAfterCourtesy:0, cardCommissionTotal:0, profitAfterCommission:0, finalMermaCost:0, finalMermaMl:0, profitAfterFinalMerma:0, courtesyQty:0, courtesyTx:0, courtesyEquiv:0 };
 }
 
 function sumArchiveMetricsPOS(a, b){
@@ -23960,6 +25500,11 @@ function sumArchiveMetricsPOS(a, b){
     grandProfit: x.grandProfit + y.grandProfit,
     courtesyCost: x.courtesyCost + y.courtesyCost,
     profitAfterCourtesy: x.profitAfterCourtesy + y.profitAfterCourtesy,
+    cardCommissionTotal: x.cardCommissionTotal + y.cardCommissionTotal,
+    profitAfterCommission: x.profitAfterCommission + y.profitAfterCommission,
+    finalMermaCost: x.finalMermaCost + y.finalMermaCost,
+    finalMermaMl: x.finalMermaMl + y.finalMermaMl,
+    profitAfterFinalMerma: x.profitAfterFinalMerma + y.profitAfterFinalMerma,
     courtesyQty: x.courtesyQty + y.courtesyQty,
     courtesyTx: x.courtesyTx + y.courtesyTx,
     courtesyEquiv: x.courtesyEquiv + y.courtesyEquiv,
@@ -23977,8 +25522,10 @@ function writeConsolidatedMetricsToCardPOS(prefix, m){
   if (elProfit) elProfit.textContent = fmt(__numPOS(nm.grandProfit));
   const elCourCost = id('courtesyCost');
   if (elCourCost) elCourCost.textContent = fmt(__numPOS(nm.courtesyCost));
+  const elCommission = id('cardCommissionTotal');
+  if (elCommission) elCommission.textContent = fmt(__numPOS(nm.cardCommissionTotal));
   const elPA = id('profitAfterCourtesy');
-  if (elPA) elPA.textContent = fmt(__numPOS(nm.profitAfterCourtesy));
+  if (elPA) elPA.textContent = fmt(__numPOS(nm.profitAfterFinalMerma));
   const elCQ = id('courtesyQty');
   if (elCQ) elCQ.textContent = String(Math.round(__numPOS(nm.courtesyQty)));
   const elCT = id('courtesyTx');
@@ -24109,7 +25656,10 @@ function buildConsolidatedGerenteSheetsPOS(payload){
     r.push(['Costo estimado', __numPOS(m.grandCost)]);
     r.push(['Utilidad bruta', __numPOS(m.grandProfit)]);
     r.push(['Cortesías (Costo real)', __numPOS(m.courtesyCost)]);
-    r.push(['Utilidad después de cortesías', __numPOS(m.profitAfterCourtesy)]);
+    r.push(['Comisiones Tarjeta', __numPOS(m.cardCommissionTotal)]);
+    r.push(['Utilidad después de comisión', __numPOS(m.profitAfterCommission)]);
+    r.push(['Merma final (Costo C$)', __numPOS(m.finalMermaCost)]);
+    r.push(['Utilidad después de comisión y merma', __numPOS(m.profitAfterFinalMerma)]);
   };
 
   addBlock('ARCHIVADO', arch);
@@ -24819,7 +26369,9 @@ async function openEventView(eventId){
     }
   }
 
-  const utilidadBruta = total - costoProductos;
+  const utilidadAntesComision = total - costoProductos;
+  const eventCardCommissions = collectSaleCardCommissionsPOS(sales);
+  const utilidadDespuesComision = round2(utilidadAntesComision - eventCardCommissions.total);
 
   const byPay = sales.reduce((m,s)=>{ 
     const k = normalizePaymentMethodPOS((s && s.payment) || '') || '';
@@ -24828,6 +26380,8 @@ async function openEventView(eventId){
   },{});
 
   const costoCortesiasTotalKnown = costoCortesiasPres + costoCortesiasVasos;
+  const commissionHtml = eventCardCommissions.byLabel.map(item => `<div><b>${escapeHtml(item.label)}:</b> C$ ${fmt(item.total)}</div>`).join('')
+    + (eventCardCommissions.undeterminedCount ? `<div><b>Comisión no determinada:</b> ${eventCardCommissions.undeterminedCount} venta(s)</div>` : '');
 
   $('#ev-totals').innerHTML = `<div><b>Total vendido (pagado):</b> C$ ${fmt(total)}</div>
   <div><b>Cortesías presentaciones:</b> ${Math.round(cortesiasPresU)} unid.</div>
@@ -24837,7 +26391,9 @@ async function openEventView(eventId){
   <div><b>Costo cortesías total:</b> C$ ${fmt(costoCortesiasTotalKnown)}</div>
   <div><b>Costos de ventas:</b> C$ ${fmt(costoVentasPagadas)}</div>
   <div><b>Costos totales:</b> C$ ${fmt(costoProductos)}</div>
-  <div><b>Utilidad después de cortesías:</b> C$ ${fmt(utilidadBruta)}</div>
+  <div><b>Utilidad antes de comisión:</b> C$ ${fmt(utilidadAntesComision)}</div>
+  ${commissionHtml}
+  <div><b>Utilidad después de comisión:</b> C$ ${fmt(utilidadDespuesComision)}</div>
   <div><b>Efectivo:</b> C$ ${fmt(byPay.efectivo||0)}</div>
   <div><b>Transferencia:</b> C$ ${fmt(byPay.transferencia||0)}</div>
   <div><b>Tarjeta:</b> C$ ${fmt(byPay.tarjeta||0)}</div>
@@ -24913,18 +26469,19 @@ async function exportEventSalesCSV(eventId){
   const bankMap = new Map();
   for (const b of banks){ if (b && b.id != null) bankMap.set(Number(b.id), b.name || ''); }
 
-  const rows = [['N°','id','fecha','hora','producto','codigo_lote','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','banco','cortesia','devolucion','cortesia_a','notas','cliente']];
+  const rows = [['N°','id','fecha','hora','producto','codigo_lote','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','banco','comision_pct_snapshot','comision_C$','etiqueta_comision','utilidad_antes_comision_C$','utilidad_despues_comision_C$','cortesia','devolucion','cortesia_a','notas','cliente']];
   const ordered = [...sales].sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a)));
   for (const s of ordered){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
-    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), lotCodeExcelCellPOS(getSaleLotCodePOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
+    rows.push([ (s.seqId || ''), s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), lotCodeExcelCellPOS(getSaleLotCodePOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), bank, readFiniteSaleSnapshotNumberPOS(s,'commissionPctSnapshot') ?? '', readFiniteSaleSnapshotNumberPOS(s,'commissionAmountSnapshot') ?? '', s.commissionLabelSnapshot || '', readFiniteSaleSnapshotNumberPOS(s,'utilidadAntesComision') ?? '', readFiniteSaleSnapshotNumberPOS(s,'utilidadDespuesComision') ?? '', s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = (ev?ev.name:'evento').replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
 }
-function buildCorteSummaryRows(eName, sales){
+function buildCorteSummaryRows(eName, sales, mermaFinalCost=0){
   let efectivo=0, trans=0, tarjeta=0, credito=0, descuentos=0, cortesiasU=0, cortesiasVal=0, devolU=0, devolVal=0, bruto=0;
   let costoVentas=0, costoCortesias=0, ventaNeta=0;
+  const mermaFinalCosto = round2(Math.max(0, Number(mermaFinalCost) || 0));
   for (const s of (sales || [])){
     if (!s) continue;
     const qtyRaw = Number(s.qty || 0);
@@ -24956,11 +26513,15 @@ function buildCorteSummaryRows(eName, sales){
     else if (pay === 'credito'){ credito += Number(s.total || 0); }
   }
   const cobrado = efectivo + trans + tarjeta;
-  const costoTotal = costoVentas + costoCortesias;
+  const costoTotal = round2(costoVentas + costoCortesias + mermaFinalCosto);
   const utilidadBruta = ventaNeta - costoVentas;
   const utilidadDespuesCortesias = utilidadBruta - costoCortesias;
+  const cardCommissions = collectSaleCardCommissionsPOS(sales);
+  const comisionTarjetaTotal = round2(cardCommissions.total);
+  const utilidadDespuesComision = round2(utilidadDespuesCortesias - comisionTarjetaTotal);
+  const utilidadDespuesMerma = round2(utilidadDespuesComision - mermaFinalCosto);
   const neto = cobrado;
-  return {efectivo, trans, tarjeta, credito, descuentos, cortesiasU, cortesiasVal, devolU, devolVal, bruto, cobrado, neto, ventaNeta, costoVentas, costoCortesias, costoTotal, utilidadBruta, utilidadDespuesCortesias};
+  return {efectivo, trans, tarjeta, credito, descuentos, cortesiasU, cortesiasVal, devolU, devolVal, bruto, cobrado, neto, ventaNeta, costoVentas, costoCortesias, mermaFinalCosto, costoTotal, utilidadBruta, utilidadDespuesCortesias, comisionTarjetaTotal, comisionesTarjeta:cardCommissions.byLabel, commissionUndeterminedCount:cardCommissions.undeterminedCount, utilidadDespuesComision, utilidadDespuesMerma};
 }
 async function generateCorteCSV(eventId){
   const events = await getAll('events');
@@ -24981,7 +26542,8 @@ async function generateCorteCSV(eventId){
     cur.count += 1;
     transferByBank.set(label, cur);
   }
-  const sum = buildCorteSummaryRows(ev.name, sales);
+  const finalMerma = await reempaqueGetFinalMermaTotalsPOS(eventId, { includeProvisional:true });
+  const sum = buildCorteSummaryRows(ev.name, sales, finalMerma.cost);
   const rows = [];
   rows.push(['Corte de evento', ev.name]);
   rows.push(['Generado', new Date().toLocaleString()]);
@@ -25009,9 +26571,16 @@ async function generateCorteCSV(eventId){
   rows.push(['Cortesías valor ref. (C$)', sum.cortesiasVal.toFixed(2)]);
   rows.push(['Costo real de cortesías (C$)', sum.costoCortesias.toFixed(2)]);
   rows.push(['Costos de ventas (C$)', sum.costoVentas.toFixed(2)]);
+  rows.push(['Merma final del evento (ml)', finalMerma.ml.toFixed(4)]);
+  rows.push(['Costo Merma final (C$)', sum.mermaFinalCosto.toFixed(2)]);
   rows.push(['Costos totales (C$)', sum.costoTotal.toFixed(2)]);
   rows.push(['Utilidad bruta (C$)', sum.utilidadBruta.toFixed(2)]);
   rows.push(['Utilidad después de cortesías (C$)', sum.utilidadDespuesCortesias.toFixed(2)]);
+  rows.push(['Comisiones Tarjeta (C$)', sum.comisionTarjetaTotal.toFixed(2)]);
+  for (const item of (sum.comisionesTarjeta || [])) rows.push([item.label, Number(item.total || 0).toFixed(2)]);
+  if (sum.commissionUndeterminedCount) rows.push(['Comisión no determinada', `${sum.commissionUndeterminedCount} venta(s)`]);
+  rows.push(['Utilidad después de comisión (C$)', sum.utilidadDespuesComision.toFixed(2)]);
+  rows.push(['Utilidad después de comisión y merma (C$)', sum.utilidadDespuesMerma.toFixed(2)]);
   rows.push(['Devoluciones (unid.)', sum.devolU]);
   rows.push(['Devoluciones (C$)', sum.devolVal.toFixed(2)]);
   rows.push([]);
@@ -25019,11 +26588,11 @@ async function generateCorteCSV(eventId){
   rows.push(['Neto cobrado', sum.neto.toFixed(2)]);
   rows.push([]);
   rows.push(['Detalle de ventas']);
-  rows.push(['id','fecha','hora','producto','codigo_lote','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
+  rows.push(['id','fecha','hora','producto','codigo_lote','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','comision_pct_snapshot','comision_C$','etiqueta_comision','utilidad_antes_comision_C$','utilidad_despues_comision_C$','cortesia','devolucion','cortesia_a','notas','cliente']);
   for (const s of sales){
     const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
     const tp = getSaleCashTenderPartsPOS(s);
-    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), lotCodeExcelCellPOS(getSaleLotCodePOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
+    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), lotCodeExcelCellPOS(getSaleLotCodePOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, readFiniteSaleSnapshotNumberPOS(s,'commissionPctSnapshot') ?? '', readFiniteSaleSnapshotNumberPOS(s,'commissionAmountSnapshot') ?? '', s.commissionLabelSnapshot || '', readFiniteSaleSnapshotNumberPOS(s,'utilidadAntesComision') ?? '', readFiniteSaleSnapshotNumberPOS(s,'utilidadDespuesComision') ?? '', s.courtesy?1:0, s.isReturn?1:0, s.courtesyTo||'', s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
   }
   const safeName = ev.name.replace(/[^a-z0-9_\- ]/gi,'_');
   downloadExcel(`corte_${safeName}.xlsx`, 'Corte', rows);
@@ -25070,7 +26639,8 @@ async function exportEventExcel(eventId){
   resumenRows.push(['Cerrado', ev.closedAt ? new Date(ev.closedAt).toLocaleString() : '']);
   resumenRows.push([]);
 
-  const eventSummary = buildCorteSummaryRows(ev.name, sales);
+  const finalMerma = await reempaqueGetFinalMermaTotalsPOS(eventId, { includeProvisional:true });
+  const eventSummary = buildCorteSummaryRows(ev.name, sales, finalMerma.cost);
   const totalVentas = eventSummary.ventaNeta;
   resumenRows.push(['Resumen de ventas']);
   resumenRows.push(['Venta neta C$', totalVentas]);
@@ -25079,9 +26649,16 @@ async function exportEventExcel(eventId){
   resumenRows.push(['Cortesías valor comercial C$', eventSummary.cortesiasVal]);
   resumenRows.push(['Costo real de cortesías C$', eventSummary.costoCortesias]);
   resumenRows.push(['Costos de ventas C$', eventSummary.costoVentas]);
+  resumenRows.push(['Merma final del evento ml', finalMerma.ml]);
+  resumenRows.push(['Costo Merma final C$', eventSummary.mermaFinalCosto]);
   resumenRows.push(['Costos totales C$', eventSummary.costoTotal]);
   resumenRows.push(['Utilidad bruta C$', eventSummary.utilidadBruta]);
   resumenRows.push(['Utilidad después de cortesías C$', eventSummary.utilidadDespuesCortesias]);
+  resumenRows.push(['Comisiones Tarjeta C$', eventSummary.comisionTarjetaTotal]);
+  for (const item of (eventSummary.comisionesTarjeta || [])) resumenRows.push([item.label, item.total || 0]);
+  if (eventSummary.commissionUndeterminedCount) resumenRows.push(['Comisión no determinada', `${eventSummary.commissionUndeterminedCount} venta(s)`]);
+  resumenRows.push(['Utilidad después de comisión C$', eventSummary.utilidadDespuesComision]);
+  resumenRows.push(['Utilidad después de comisión y merma C$', eventSummary.utilidadDespuesMerma]);
   const eventLotCodes = [];
   for (const sale of sales){
     const code = getSaleLotCodePOS(sale);
@@ -25118,7 +26695,7 @@ async function exportEventExcel(eventId){
 
   // --- Hoja 3 opcional: Ventas_Detalle ---
   const ventasRows = [];
-  ventasRows.push(['N°','id','fecha','hora','producto','codigo_lote','cantidad','PU_C$','descuento_C$','total_C$','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','cortesia','devolucion','cortesia_a','notas','cliente']);
+  ventasRows.push(['N°','id','fecha','hora','producto','codigo_lote','cantidad','PU_C$','descuento_C$','total_C$','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','comision_pct_snapshot','comision_C$','etiqueta_comision','utilidad_antes_comision_C$','utilidad_despues_comision_C$','cortesia','devolucion','cortesia_a','notas','cliente']);
   for (const s of sales){
     const qty = Number(s.qty || 0);
     const costUnit = getSaleCostUnitSnapshotPOS(s);
@@ -25142,6 +26719,11 @@ async function exportEventExcel(eventId){
       getSaleCashTenderPartsPOS(s).change || '',
       getSaleCashTenderPartsPOS(s).equivalent || '',
       isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '',
+      readFiniteSaleSnapshotNumberPOS(s,'commissionPctSnapshot') ?? '',
+      readFiniteSaleSnapshotNumberPOS(s,'commissionAmountSnapshot') ?? '',
+      s.commissionLabelSnapshot || '',
+      readFiniteSaleSnapshotNumberPOS(s,'utilidadAntesComision') ?? '',
+      readFiniteSaleSnapshotNumberPOS(s,'utilidadDespuesComision') ?? '',
       s.courtesy ? 1 : 0,
       s.isReturn ? 1 : 0,
       s.courtesyTo || '',
@@ -25179,6 +26761,20 @@ async function closeEvent(eventId){
   }
 
 
+  // Etapa 5/5: convertir la merma recuperable pendiente a Merma final antes del Corte,
+  // de forma provisional. Si el cierre se cancela/falla, se restaura atómicamente.
+  let finalMerma = { eventId, ids:[], ml:0, cost:0, provisional:true };
+  try{
+    finalMerma = await reempaqueFinalizeMermaForEventPOS(eventId, {
+      provisional:true,
+      reason:'CIERRE_EVENTO'
+    });
+  }catch(err){
+    console.error('reempaqueFinalizeMermaForEventPOS error', err);
+    alert('No se pudo cerrar de forma segura la merma recuperable. El evento permanece abierto.');
+    return;
+  }
+
   // Corte (Excel). Si falla, permitir cerrar de todas formas.
   try{
     await generateCorteCSV(eventId);
@@ -25188,14 +26784,28 @@ async function closeEvent(eventId){
       title: 'Corte falló',
       message: 'No se pudo generar el Corte (Excel) por un error.\n\n¿Cerrar el evento de todas formas?\n(Podrás exportar después desde Eventos: “Exportar (Excel)” o “CSV Corte”.)'
     });
-    if (!ok) return;
+    if (!ok){
+      try{ await reempaqueRollbackFinalMermaForEventPOS(finalMerma); }catch(rollbackErr){ console.error('rollback merma provisional', rollbackErr); }
+      return;
+    }
   }
 
   // Etapa 2C: NO mutar estado del evento hasta confirmar persistencia.
   const closedAtIso = new Date().toISOString();
   const evUpdated = Object.assign({}, ev, { closedAt: closedAtIso });
-  await put('events', evUpdated);
+  try{
+    await put('events', evUpdated);
+  }catch(err){
+    try{ await reempaqueRollbackFinalMermaForEventPOS(finalMerma); }catch(rollbackErr){ console.error('rollback merma provisional', rollbackErr); }
+    throw err;
+  }
   try{ ev.closedAt = closedAtIso; }catch(_){ }
+  try{
+    await reempaqueConfirmFinalMermaForEventPOS(finalMerma, closedAtIso);
+  }catch(err){
+    // El evento ya quedó cerrado; el reconciliador de inicio confirma este estado sin duplicar merma.
+    console.error('confirmación diferida de Merma final', err);
+  }
   const curId = await getMeta('currentEventId');
   if (curId === eventId){
     // Etapa 2: al dejar evento activo, limpiar cliente
@@ -25303,6 +26913,9 @@ async function init(){
 
   // Paso 2: defaults y migraciones
   await runStep('ensureDefaults', ensureDefaults);
+  await runStep('backfillLegacyCardCommissionSnapshotsPOS', backfillLegacyCardCommissionSnapshotsPOS);
+  await runStep('reempaqueReconcileProvisionalFinalMermaPOS', reempaqueReconcileProvisionalFinalMermaPOS);
+  await runStep('sanitizeLegacyFractionalAvailabilityPOS', sanitizeLegacyFractionalAvailabilityPOS);
   await runStep('processPendingPhysicalCupRestores', processPendingPhysicalCupRestoresPOS);
   await runStep('reconcilePhysicalCupConsumptions', reconcilePendingPhysicalCupConsumptionsPOS);
   await runStep('bindPhysicalCupReconciliationHooks', async()=>{ bindPhysicalCupReconciliationHooksPOS(); });
@@ -26027,6 +27640,7 @@ async function addSale(){
   let bankId = null;
   let bankName = '';
   let bankType = null;
+  let selectedBankForSale = null;
   if (isBankPaymentMethodPOS(payment)){
     const activeBanks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
     const label = getPaymentMethodLabelPOS(payment);
@@ -26049,6 +27663,7 @@ async function addSale(){
     bankId = id;
     bankName = (found && found.name) ? String(found.name) : '';
     bankType = getBankTypePOS(found);
+    selectedBankForSale = found;
   }
 
   const events = await getAll('events');
@@ -26137,6 +27752,14 @@ async function addSale(){
     courtesy,
     isReturn
   });
+  const cardCommissionSnapshot = buildSaleCardCommissionSnapshotPOS({
+    payment,
+    bank: selectedBankForSale,
+    ventaNeta: economicSnapshot.ventaNeta,
+    utilidadAntesComision: economicSnapshot.utilidad,
+    courtesy
+  });
+  applySaleCardCommissionSnapshotPOS(economicSnapshot, cardCommissionSnapshot);
 
   const tenderCheck = validateSaleCashTenderPOS({ payment, total, courtesy, isReturn });
   if (!tenderCheck.ok){
@@ -26209,6 +27832,13 @@ async function addSale(){
       costPerUnit: economicSnapshot.costPerUnit,
       costTotal: economicSnapshot.costTotal,
       utilidad: economicSnapshot.utilidad,
+      ...(cardCommissionSnapshot ? {
+        commissionPctSnapshot: cardCommissionSnapshot.commissionPctSnapshot,
+        commissionAmountSnapshot: cardCommissionSnapshot.commissionAmountSnapshot,
+        commissionLabelSnapshot: cardCommissionSnapshot.commissionLabelSnapshot,
+        utilidadAntesComision: cardCommissionSnapshot.utilidadAntesComision,
+        utilidadDespuesComision: cardCommissionSnapshot.utilidadDespuesComision
+      } : {}),
       costSource: economicSnapshot.costSourceSnapshot,
       loteCodigo: primaryLot ? lotCodeDisplayPOS(primaryLot.loteCodigo) : '',
       loteId: primaryLot ? primaryLot.loteId : null,
@@ -26221,6 +27851,8 @@ async function addSale(){
   // Validación mínima (bloqueante antes de guardar)
   const vMin = validateSaleMinimalPOS(saleRecord);
   if (!vMin.ok){ alert(vMin.msg); return; }
+  const vCardCommission = validateSaleCardCommissionSnapshotPOS(saleRecord);
+  if (!vCardCommission.ok){ alert(vCardCommission.msg); return; }
 
   // Etapa 2D: UID estable por intento + dedupe conservador (antes de insertar)
   try{
@@ -26371,6 +28003,7 @@ async function addExtraSale(extraId){
   let bankId = null;
   let bankName = '';
   let bankType = null;
+  let selectedBankForSale = null;
   if (isBankPaymentMethodPOS(payment)){
     const activeBanks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
     const label = getPaymentMethodLabelPOS(payment);
@@ -26393,6 +28026,7 @@ async function addExtraSale(extraId){
     bankId = id;
     bankName = (found && found.name) ? String(found.name) : '';
     bankType = getBankTypePOS(found);
+    selectedBankForSale = found;
   }
 
   const extras = sanitizeExtrasPOS(ev.extras).filter(x=>x && x.active!==false);
@@ -26463,6 +28097,14 @@ async function addExtraSale(extraId){
     courtesy,
     isReturn
   });
+  const cardCommissionSnapshot = buildSaleCardCommissionSnapshotPOS({
+    payment,
+    bank: selectedBankForSale,
+    ventaNeta: economicSnapshot.ventaNeta,
+    utilidadAntesComision: economicSnapshot.utilidad,
+    courtesy
+  });
+  applySaleCardCommissionSnapshotPOS(economicSnapshot, cardCommissionSnapshot);
 
   const tenderCheck = validateSaleCashTenderPOS({ payment, total, courtesy, isReturn });
   if (!tenderCheck.ok){
@@ -26524,6 +28166,13 @@ async function addExtraSale(extraId){
       costPerUnit: economicSnapshot.costPerUnit,
       costTotal: economicSnapshot.costTotal,
       utilidad: economicSnapshot.utilidad,
+      ...(cardCommissionSnapshot ? {
+        commissionPctSnapshot: cardCommissionSnapshot.commissionPctSnapshot,
+        commissionAmountSnapshot: cardCommissionSnapshot.commissionAmountSnapshot,
+        commissionLabelSnapshot: cardCommissionSnapshot.commissionLabelSnapshot,
+        utilidadAntesComision: cardCommissionSnapshot.utilidadAntesComision,
+        utilidadDespuesComision: cardCommissionSnapshot.utilidadDespuesComision
+      } : {}),
       costSource: economicSnapshot.costSourceSnapshot,
       capturedAt: new Date().toISOString()
     }
@@ -26533,6 +28182,8 @@ async function addExtraSale(extraId){
   // Validación mínima (bloqueante antes de guardar)
   const vMin = validateSaleMinimalPOS(saleRecord);
   if (!vMin.ok){ alert(vMin.msg); return; }
+  const vCardCommission = validateSaleCardCommissionSnapshotPOS(saleRecord);
+  if (!vCardCommission.ok){ alert(vCardCommission.msg); return; }
 
   // Etapa 2D: UID estable por intento + dedupe conservador (antes de insertar)
   try{
