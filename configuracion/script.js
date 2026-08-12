@@ -7,6 +7,8 @@
   const COSTS_BACKUP_SCHEMA_VERSION = 2;
   const AGENDA_BACKUP_KEY = 'a33_agenda_records_v1';
   const AGENDA_BACKUP_SCHEMA_VERSION = 9;
+  const QUICK_ORDERS_BACKUP_KEY = 'arcano33_pedidos_rapidos_v1';
+  const QUICK_ORDERS_BACKUP_SCHEMA_VERSION = 1;
   const AGENDA_PURCHASE_GROUP_VERSION = 1;
   const AGENDA_UNITS = new Set(['Unidad','Cajas','Litros','Galones']);
 
@@ -53,6 +55,106 @@
       hash = Math.imul(hash,16777619);
     }
     return (hash >>> 0).toString(36);
+  }
+
+  function quickOrderBackupClean(value, max){
+    return String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g,'').replace(/\s+/g,' ').trim().slice(0,max || 500);
+  }
+
+  function quickOrderBackupTimestamp(value){
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+    const parsed = Date.parse(String(value || ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function normalizeQuickOrderBackupItem(value){
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const source = { ...value };
+    const snapshot = source.productSnapshot && typeof source.productSnapshot === 'object' && !Array.isArray(source.productSnapshot)
+      ? { ...source.productSnapshot }
+      : {};
+    const name = quickOrderBackupClean(source.productNameSnapshot ?? source.productName ?? source.nombreSnapshot ?? source.nombre ?? source.name ?? snapshot.nombre ?? snapshot.name,160);
+    const productId = quickOrderBackupClean(source.productId ?? source.productoId ?? source.catalogProductId,180)
+      || (name ? ('prd_legacy_' + agendaHash(name.toLowerCase())) : '');
+    const quantity = Number(source.cantidad ?? source.qty ?? source.quantity ?? source.unidades);
+    if (!productId || !name || !Number.isInteger(quantity) || quantity < 1) return null;
+    if (!snapshot.productId) snapshot.productId = productId;
+    if (!snapshot.nombre && !snapshot.name) snapshot.nombre = name;
+    return { ...source, productId, productNameSnapshot:name, cantidad:quantity, productSnapshot:snapshot };
+  }
+
+  function normalizeQuickOrderBackupRecord(value){
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const source = { ...value };
+    const customer = source.customer && typeof source.customer === 'object' && !Array.isArray(source.customer) ? source.customer : {};
+    const rawItems = [source.items,source.productosPedido,source.pedidoItems,source.productos].find(Array.isArray) || [];
+    const items = [];
+    const itemIds = new Set();
+    rawItems.forEach((rawItem) => {
+      const item = normalizeQuickOrderBackupItem(rawItem);
+      if (!item || itemIds.has(item.productId)) return;
+      itemIds.add(item.productId);
+      items.push(item);
+    });
+    const customerId = quickOrderBackupClean(source.customerId ?? source.clienteId ?? customer.id,180);
+    const customerName = quickOrderBackupClean(source.customerName ?? source.clienteNombre ?? source.cliente ?? customer.name ?? customer.nombre,180);
+    const deliveryDate = quickOrderBackupClean(source.fechaEntrega ?? source.deliveryDate ?? source.fechaEntregaPedido,10);
+    const code = quickOrderBackupClean(source.codigo,40).toUpperCase();
+    const identity = [code,deliveryDate,customerId,customerName,items.map((item) => item.productId + ':' + item.cantidad).join('|')].join('|');
+    const id = quickOrderBackupClean(source.id,200) || ('pr_legacy_' + agendaHash(identity));
+    const status = quickOrderBackupClean(source.estado,30).toLowerCase() === 'entregado' || source.entregado === true ? 'entregado' : 'pendiente';
+    const createdAt = quickOrderBackupTimestamp(source.createdAt);
+    const updatedAt = quickOrderBackupTimestamp(source.updatedAt) || createdAt;
+    return {
+      ...source,
+      id,
+      tipoPedido:'rapido',
+      schemaVersion:Math.max(QUICK_ORDERS_BACKUP_SCHEMA_VERSION,Number(source.schemaVersion || 1) || 1),
+      codigo:code,
+      customerId,
+      customerName,
+      fechaEntrega:deliveryDate,
+      prioridad:quickOrderBackupClean(source.prioridad,20).toLowerCase() === 'alta' ? 'alta' : 'normal',
+      estado:status,
+      entregado:status === 'entregado',
+      createdAt,
+      updatedAt,
+      deliveredAt:status === 'entregado' ? quickOrderBackupClean(source.deliveredAt ?? source.entregadoAt,100) : '',
+      items
+    };
+  }
+
+  function normalizeQuickOrdersBackupValue(value){
+    let source = value;
+    if (typeof source === 'string'){
+      try{ source = JSON.parse(source || '[]'); }catch(_){ source = []; }
+    }
+    const rows = Array.isArray(source) ? source : [];
+    const byId = new Map();
+    rows.forEach((raw) => {
+      const record = normalizeQuickOrderBackupRecord(raw);
+      if (!record) return;
+      const previous = byId.get(record.id);
+      if (!previous || record.updatedAt >= previous.updatedAt) byId.set(record.id,record);
+    });
+    return Array.from(byId.values());
+  }
+
+  function mergeQuickOrdersBackupValues(currentRaw,incomingRaw){
+    const merged = normalizeQuickOrdersBackupValue(currentRaw);
+    const index = new Map();
+    merged.forEach((record,position) => index.set(record.id,position));
+    normalizeQuickOrdersBackupValue(incomingRaw).forEach((record) => {
+      if (!index.has(record.id)){
+        index.set(record.id,merged.length);
+        merged.push(record);
+        return;
+      }
+      const position = index.get(record.id);
+      if (record.updatedAt >= merged[position].updatedAt) merged[position] = record;
+    });
+    return merged;
   }
 
   function agendaSafeObject(value){
@@ -1382,7 +1484,7 @@
       label: 'Agenda / Compras / Pedidos',
       parts: [
         { id: 'agenda', label: 'Agenda (Reuniones, Tareas y Compras)', keyNeedles: ['agenda', 'a33_agenda', 'suite_a33_agenda'] },
-        { id: 'pedidos', label: 'Pedidos', keyNeedles: ['pedido', 'pedidos', 'arcano33_pedidos'] }
+        { id: 'pedidos', label: 'Pedidos completos y rápidos', keyNeedles: ['arcano33_pedidos', 'arcano33_pedidos_archived', QUICK_ORDERS_BACKUP_KEY] }
       ]
     }
   ];
@@ -1914,7 +2016,7 @@
       Recetas:{ included:!isPartial || selectedOne('inventario','recetas'), count:countLocalKeysByNeedles(local, ['arcano33_recetas_v1']) },
       Ventas:{ included:!isPartial || selectedOne('pos','ventas'), count:countBackupRecords(pos.sales || []) },
       Lotes:{ included:!isPartial || selectedAny('lotes',['lotes','productosPorLote','compatibilidadHistorica']), count:countLocalKeysByNeedles(local, ['arcano33_lotes','a33_lotes','suitea33_lotes']) },
-      Pedidos:{ included:!isPartial || selectedOne('agenda','pedidos'), count:countLocalKeysByNeedles(local, ['pedido','pedidos','arcano33_pedidos']) },
+      Pedidos:{ included:!isPartial || selectedOne('agenda','pedidos'), count:countLocalKeysByNeedles(local, ['arcano33_pedidos','arcano33_pedidos_archived',QUICK_ORDERS_BACKUP_KEY]) },
       Agenda:{ included:!isPartial || selectedOne('agenda','agenda'), count:countLocalKeysByNeedles(local, ['agenda','a33_agenda','suite_a33_agenda']) },
       Históricos:{ included:!isPartial || selectedOne('pos','historicosResumenes') || selectedOne('lotes','compatibilidadHistorica'), count:countBackupRecords(pos.summaryArchives || []) + countBackupRecords(pos.posRemindersIndex || []) + countLocalKeysByNeedles(local, ['histor','summary']) }
     };
@@ -2418,7 +2520,8 @@
     const backup = {
       meta: {
         ...baseFullMeta,
-        schemaVersion:7,
+        schemaVersion:8,
+        quickOrders:{ included:Object.prototype.hasOwnProperty.call(fullLocalStorage,QUICK_ORDERS_BACKUP_KEY), storageKey:QUICK_ORDERS_BACKUP_KEY, schemaVersion:QUICK_ORDERS_BACKUP_SCHEMA_VERSION, mergePolicy:'id_updatedAt' },
         lotCodeContract: { preserveLiteral:true, accepts:['historical','A33_HEBREW_MONTH_YEAR_COMPRESSED_V1'], compressedMarker:'x', numericConsecutiveSeparate:true },
         version:getCustomExportVersionLabel(),
         fechaHoraExportacion:baseFullMeta.exportedAt,
@@ -3055,6 +3158,17 @@
   }
 
   function mergeLocalStorageValue(key, incomingRaw){
+    if (String(key || '') === QUICK_ORDERS_BACKUP_KEY){
+      try{
+        const currentRaw = window.A33Storage.getItem(key) || '[]';
+        const merged = mergeQuickOrdersBackupValues(currentRaw,incomingRaw);
+        window.A33Storage.setItem(key,JSON.stringify(merged));
+        return true;
+      }catch(error){
+        console.warn('Pedidos rápidos no pudieron fusionarse durante la importación.',error);
+        return false;
+      }
+    }
     if (String(key || '') === AGENDA_BACKUP_KEY){
       try{
         const currentRaw = window.A33Storage.getItem(key) || JSON.stringify({ schemaVersion:AGENDA_BACKUP_SCHEMA_VERSION,records:[] });
@@ -3301,6 +3415,9 @@
     for (const [k, v] of Object.entries(incoming)){
       if (!isSuiteLocalStorageKey(k) || isRetiredGateStorageKey(k)) continue;
       if (k === 'a33_catalog_deleted_product_ids_v2') mergeLocalStorageValue(k, v);
+      else if (k === QUICK_ORDERS_BACKUP_KEY){
+        window.A33Storage.setItem(k,JSON.stringify(normalizeQuickOrdersBackupValue(v)));
+      }
       else if (k === AGENDA_BACKUP_KEY){
         const normalizedAgenda = agendaNormalizePayloadValue(v);
         window.A33Storage.setItem(k,JSON.stringify(normalizedAgenda));
@@ -6973,6 +7090,13 @@ Los históricos se conservarán. ¿Continuar?`);
     validateMap:function(map){ return parseAgendaBackupBlock(map); },
     mergeRaw:function(currentRaw,incomingRaw){ return mergeAgendaBackupValues(currentRaw,incomingRaw); },
     summarizeMap:function(map){ return agendaBackupSummary(map); }
+  });
+
+  window.A33QuickOrdersBackupContract = Object.freeze({
+    storageKey:QUICK_ORDERS_BACKUP_KEY,
+    schemaVersion:QUICK_ORDERS_BACKUP_SCHEMA_VERSION,
+    normalizeRaw:function(raw){ return normalizeQuickOrdersBackupValue(raw); },
+    mergeRaw:function(currentRaw,incomingRaw){ return mergeQuickOrdersBackupValues(currentRaw,incomingRaw); }
   });
 
   document.addEventListener('DOMContentLoaded', () => {
