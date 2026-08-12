@@ -24,7 +24,18 @@
     <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.98">v...</div>
   </header>
   <main class="app-main">
-    <section class="card form-card">
+    <section class="card pedidos-mode-switch" aria-label="Tipo de pedido">
+      <div>
+        <h2>Forma de trabajo</h2>
+        <p class="hint">Pedido completo conserva todos sus campos. Pedido rápido es para encargos sencillos.</p>
+      </div>
+      <div class="pedidos-mode-actions" role="group" aria-label="Seleccionar forma de trabajo">
+        <button type="button" class="btn-primary" id="pedido-mode-completo" aria-pressed="true">Pedido completo</button>
+        <button type="button" class="btn-secondary" id="pedido-mode-rapido" aria-pressed="false">Pedido rápido</button>
+      </div>
+    </section>
+
+    <section class="card form-card pedido-completo-view">
       <h2>Nuevo pedido</h2>
       <div class="inline-banner" id="archived-mode-banner" hidden></div>
       <form id="pedido-form">
@@ -193,7 +204,7 @@
       </form>
     </section>
 
-    <section class="card table-card">
+    <section class="card table-card pedido-completo-view">
       <div class="table-header">
         <h2>Pedidos registrados</h2>
         <div class="table-actions">
@@ -229,7 +240,7 @@
       </div>
     </section>
   
-    <section class="card table-card" id="archived-section">
+    <section class="card table-card pedido-completo-view" id="archived-section">
       <div class="table-header">
         <h2>Histórico <span class="badge" id="archived-count">0</span></h2>
         <div class="table-actions">
@@ -261,6 +272,93 @@
         <button type="button" class="btn-secondary" id="archived-load-more">Cargar más</button>
       </div>
     </section>
+
+    <section class="card quick-order-form-card pedido-rapido-view" hidden>
+      <div class="quick-section-head">
+        <div>
+          <h2 id="quick-order-form-title">Nuevo Pedido rápido</h2>
+          <p class="hint">Planificación únicamente. No afecta inventario, ventas, caja ni finanzas.</p>
+        </div>
+        <span class="badge" id="quick-order-code-preview">Código pendiente</span>
+      </div>
+
+      <form id="quick-order-form">
+        <div class="quick-form-grid">
+          <div class="field quick-field-wide">
+            <label for="quick-customer-search">Cliente</label>
+            <input type="search" id="quick-customer-search" placeholder="Buscar cliente…" autocomplete="off" />
+            <select id="quick-customer-select" required></select>
+            <p class="hint hint-small" id="quick-customer-status">Seleccioná un cliente del catálogo de la Suite.</p>
+          </div>
+          <div class="field">
+            <label for="quick-delivery-date">Fecha de entrega</label>
+            <input type="date" id="quick-delivery-date" required />
+          </div>
+          <div class="field">
+            <label for="quick-priority">Prioridad</label>
+            <select id="quick-priority">
+              <option value="normal">Normal</option>
+              <option value="alta">Alta</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="quick-status">Estado</label>
+            <select id="quick-status">
+              <option value="pendiente">Pendiente</option>
+              <option value="entregado">Entregado</option>
+            </select>
+          </div>
+        </div>
+
+        <h3>Productos</h3>
+        <p class="hint">Para agregar, se muestran únicamente productos activos de Catálogos.</p>
+        <div class="quick-product-adder">
+          <select id="quick-product-select" aria-label="Producto"></select>
+          <input type="number" id="quick-product-quantity" min="1" step="1" value="1" inputmode="numeric" aria-label="Cantidad" />
+          <button type="button" class="btn-secondary" id="quick-product-add">Agregar</button>
+        </div>
+        <div class="quick-product-lines" id="quick-product-lines" aria-live="polite"></div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="quick-save-btn">Guardar Pedido rápido</button>
+          <button type="button" class="btn-secondary" id="quick-reset-btn">Limpiar</button>
+        </div>
+        <p class="inline-notice" id="quick-form-notice" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="card quick-order-list-card pedido-rapido-view" hidden>
+      <div class="table-header">
+        <div>
+          <h2>Pedidos rápidos pendientes <span class="badge" id="quick-pending-count">0</span></h2>
+          <p class="hint">Lista operativa compacta.</p>
+        </div>
+        <div class="table-actions">
+          <input type="search" id="quick-pending-search" class="search-input" placeholder="Buscar cliente, código o producto…" autocomplete="off" />
+          <button type="button" class="btn-secondary" id="quick-export-btn">Exportar a Excel</button>
+        </div>
+      </div>
+      <div class="quick-order-list" id="quick-pending-list"></div>
+      <div class="table-pager" id="quick-pending-pager" hidden>
+        <span class="inline-notice" id="quick-pending-shown"></span>
+        <button type="button" class="btn-secondary" id="quick-pending-more">Cargar más</button>
+      </div>
+    </section>
+
+    <details class="card quick-history pedido-rapido-view" id="quick-history" hidden>
+      <summary>
+        <span>Histórico de Pedidos rápidos</span>
+        <span class="badge" id="quick-history-count">0</span>
+      </summary>
+      <div class="quick-history-tools">
+        <input type="search" id="quick-history-search" class="search-input" placeholder="Buscar en Histórico…" autocomplete="off" />
+      </div>
+      <div class="quick-order-list" id="quick-history-list"></div>
+      <div class="table-pager" id="quick-history-pager" hidden>
+        <span class="inline-notice" id="quick-history-shown"></span>
+        <button type="button" class="btn-secondary" id="quick-history-more">Cargar más</button>
+      </div>
+    </details>
 
   </main>
 

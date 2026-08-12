@@ -2519,6 +2519,465 @@ async function deleteArchivedPedido(id){
   showArchivedNotice('Borrado ✓');
 }
 
+// --- Pedido rápido: vista operativa aislada del Pedido completo ---
+const QUICK_ORDER_PAGE_SIZE = 30;
+let quickOrderItemsDraft = [];
+let quickOrderEditingId = null;
+let quickOrderEditingUpdatedAt = null;
+let quickPendingLimit = QUICK_ORDER_PAGE_SIZE;
+let quickHistoryLimit = QUICK_ORDER_PAGE_SIZE;
+
+function setQuickOrderNoticePED(message, kind){
+  const el = $('quick-form-notice');
+  if (!el) return;
+  el.textContent = String(message || '');
+  el.className = 'inline-notice' + (kind ? (' ' + kind) : '');
+}
+
+function quickOrderProductSummaryPED(order){
+  return (order && Array.isArray(order.items) ? order.items : [])
+    .filter((item) => Number(item && item.cantidad) > 0)
+    .map((item) => `${Number(item.cantidad)} ${item.productNameSnapshot || 'Producto'}`)
+    .join(' · ');
+}
+
+function quickOrderSearchTextPED(order){
+  return normalizeCustomerKey([
+    order && order.codigo,
+    order && order.customerName,
+    order && order.fechaEntrega,
+    order && order.prioridad,
+    quickOrderProductSummaryPED(order)
+  ].filter(Boolean).join(' '));
+}
+
+function renderQuickCustomerSelectPED(filterText, selected){
+  const select = $('quick-customer-select');
+  if (!select) return;
+  const previous = selected || select.value;
+  const filter = normalizeCustomerKey(filterText || '');
+  rebuildCustomersCache();
+  select.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Seleccionar cliente…';
+  select.appendChild(placeholder);
+  (customersCache.list || []).forEach((customer) => {
+    if (filter && !normalizeCustomerKey(customer.name).includes(filter)) return;
+    const option = document.createElement('option');
+    option.value = customer.id ? ('id:' + customer.id) : ('name:' + normalizeCustomerKey(customer.name));
+    option.textContent = customer.name;
+    option.dataset.id = customer.id || '';
+    option.dataset.name = customer.name;
+    select.appendChild(option);
+  });
+  if (previous && Array.from(select.options).some((option) => option.value === previous)) select.value = previous;
+  const status = $('quick-customer-status');
+  if (status) status.textContent = select.value ? 'Cliente seleccionado del catálogo compartido.' : 'Seleccioná un cliente del catálogo de la Suite.';
+}
+
+function getQuickCustomerPED(){
+  const select = $('quick-customer-select');
+  const option = select && select.selectedOptions ? select.selectedOptions[0] : null;
+  return {
+    id:option && option.dataset ? String(option.dataset.id || '') : '',
+    name:option && option.dataset ? normalizeQuickOrderTextPED(option.dataset.name || '') : ''
+  };
+}
+
+function ensureQuickHistoricalCustomerPED(order){
+  const select = $('quick-customer-select');
+  if (!select || !order || !order.customerName) return '';
+  const expected = order.customerId ? ('id:' + order.customerId) : ('name:' + normalizeCustomerKey(order.customerName));
+  if (!Array.from(select.options).some((option) => option.value === expected)){
+    const option = document.createElement('option');
+    option.value = expected;
+    option.textContent = order.customerName + ' (guardado)';
+    option.dataset.id = order.customerId || '';
+    option.dataset.name = order.customerName;
+    select.appendChild(option);
+  }
+  select.value = expected;
+  return expected;
+}
+
+function renderQuickProductSelectPED(){
+  const select = $('quick-product-select');
+  if (!select) return;
+  const previous = select.value;
+  select.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = PRESENTACIONES.length ? 'Seleccionar producto activo…' : 'No hay productos activos';
+  select.appendChild(placeholder);
+  PRESENTACIONES.forEach((product) => {
+    if (quickOrderItemsDraft.some((item) => item.productId === product.productId)) return;
+    const option = document.createElement('option');
+    option.value = product.productId;
+    option.textContent = product.displayLabel || product.label;
+    select.appendChild(option);
+  });
+  if (previous && Array.from(select.options).some((option) => option.value === previous)) select.value = previous;
+}
+
+function renderQuickProductLinesPED(){
+  const host = $('quick-product-lines');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!quickOrderItemsDraft.length){
+    const empty = document.createElement('div');
+    empty.className = 'quick-order-empty';
+    empty.textContent = 'Todavía no agregaste productos.';
+    host.appendChild(empty);
+    renderQuickProductSelectPED();
+    return;
+  }
+  quickOrderItemsDraft.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'quick-product-line';
+    const name = document.createElement('strong');
+    name.textContent = item.productNameSnapshot || 'Producto';
+    const quantity = document.createElement('input');
+    quantity.type = 'number';
+    quantity.min = '1';
+    quantity.step = '1';
+    quantity.value = String(item.cantidad || 1);
+    quantity.setAttribute('aria-label', 'Cantidad de ' + (item.productNameSnapshot || 'producto'));
+    quantity.addEventListener('change', () => {
+      const value = Number(quantity.value);
+      if (!Number.isInteger(value) || value < 1){
+        quantity.value = String(item.cantidad || 1);
+        setQuickOrderNoticePED('La cantidad mínima es 1 y debe ser entera.', 'warn');
+        return;
+      }
+      quickOrderItemsDraft[index].cantidad = value;
+      setQuickOrderNoticePED('');
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn-danger a33-icon-btn';
+    remove.textContent = '×';
+    remove.title = 'Quitar producto';
+    remove.setAttribute('aria-label', 'Quitar ' + (item.productNameSnapshot || 'producto'));
+    remove.addEventListener('click', () => {
+      quickOrderItemsDraft.splice(index, 1);
+      renderQuickProductLinesPED();
+    });
+    row.append(name, quantity, remove);
+    host.appendChild(row);
+  });
+  renderQuickProductSelectPED();
+}
+
+function updateQuickCodePreviewPED(){
+  const el = $('quick-order-code-preview');
+  if (!el) return;
+  const date = $('quick-delivery-date') ? $('quick-delivery-date').value : '';
+  if (quickOrderEditingId){
+    const current = loadQuickOrdersPED().find((order) => String(order.id) === String(quickOrderEditingId));
+    el.textContent = current && current.codigo ? current.codigo : 'Código guardado';
+  } else {
+    el.textContent = generateQuickOrderCodePED(date, loadQuickOrdersPED()) || 'Código pendiente';
+  }
+}
+
+function resetQuickOrderFormPED(){
+  quickOrderItemsDraft = [];
+  quickOrderEditingId = null;
+  quickOrderEditingUpdatedAt = null;
+  const form = $('quick-order-form');
+  if (form) form.reset();
+  const today = new Date().toISOString().slice(0, 10);
+  if ($('quick-delivery-date')) $('quick-delivery-date').value = today;
+  if ($('quick-priority')) $('quick-priority').value = 'normal';
+  if ($('quick-status')) $('quick-status').value = 'pendiente';
+  if ($('quick-customer-search')) $('quick-customer-search').value = '';
+  if ($('quick-product-quantity')) $('quick-product-quantity').value = '1';
+  renderQuickCustomerSelectPED('', '');
+  renderQuickProductLinesPED();
+  updateQuickCodePreviewPED();
+  setQuickOrderNoticePED('');
+  if ($('quick-order-form-title')) $('quick-order-form-title').textContent = 'Nuevo Pedido rápido';
+  if ($('quick-save-btn')) $('quick-save-btn').textContent = 'Guardar Pedido rápido';
+}
+
+function editQuickOrderPED(id){
+  const order = loadQuickOrdersPED().find((item) => String(item.id) === String(id));
+  if (!order) return;
+  quickOrderEditingId = order.id;
+  quickOrderEditingUpdatedAt = Number(order.updatedAt || 0);
+  quickOrderItemsDraft = order.items.map((item) => ({ ...item, productSnapshot:{ ...(item.productSnapshot || {}) } }));
+  renderQuickCustomerSelectPED('', '');
+  ensureQuickHistoricalCustomerPED(order);
+  if ($('quick-delivery-date')) $('quick-delivery-date').value = order.fechaEntrega;
+  if ($('quick-priority')) $('quick-priority').value = order.prioridad;
+  if ($('quick-status')) $('quick-status').value = order.estado;
+  renderQuickProductLinesPED();
+  updateQuickCodePreviewPED();
+  if ($('quick-order-form-title')) $('quick-order-form-title').textContent = 'Editar Pedido rápido';
+  if ($('quick-save-btn')) $('quick-save-btn').textContent = 'Actualizar Pedido rápido';
+  setQuickOrderNoticePED('Editando ' + order.codigo + '.');
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+function mutateQuickOrderPED(id, updater){
+  const records = loadQuickOrdersPED();
+  const index = records.findIndex((order) => String(order.id) === String(id));
+  if (index < 0) return { ok:false, message:'Pedido rápido no encontrado.' };
+  const updated = updater({ ...records[index], items:records[index].items.map((item) => ({ ...item })) });
+  if (!updated) return { ok:false, message:'Operación cancelada.' };
+  records[index] = updated;
+  return saveQuickOrdersPED(records);
+}
+
+function setQuickOrderDeliveredPED(id, delivered){
+  const label = delivered ? '¿Marcar este Pedido rápido como Entregado?' : '¿Reabrir este Pedido rápido como Pendiente?';
+  if (!confirm(label)) return;
+  const now = Date.now();
+  const result = mutateQuickOrderPED(id, (order) => ({
+    ...order,
+    estado:delivered ? 'entregado' : 'pendiente',
+    entregado:!!delivered,
+    deliveredAt:delivered ? new Date(now).toISOString() : '',
+    updatedAt:now
+  }));
+  if (!result || !result.ok){
+    alert((result && result.message) || 'No se pudo actualizar el Pedido rápido.');
+    return;
+  }
+  if (String(quickOrderEditingId) === String(id)) resetQuickOrderFormPED();
+  renderQuickOrdersPED();
+}
+
+function deleteQuickOrderPED(id){
+  const records = loadQuickOrdersPED();
+  const order = records.find((item) => String(item.id) === String(id));
+  if (!order) return;
+  if (!confirm(`¿Borrar definitivamente ${order.codigo || 'este Pedido rápido'}?\n\nEsta acción no se puede deshacer.`)) return;
+  const result = saveQuickOrdersPED(records.filter((item) => String(item.id) !== String(id)));
+  if (!result || !result.ok){
+    alert((result && result.message) || 'No se pudo borrar el Pedido rápido.');
+    return;
+  }
+  if (String(quickOrderEditingId) === String(id)) resetQuickOrderFormPED();
+  renderQuickOrdersPED();
+}
+
+function icsEscapePED(value){
+  return String(value || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+}
+
+function createQuickOrderICSPED(order){
+  const date = String(order && order.fechaEntrega || '').slice(0, 10);
+  if (!isExactQuickOrderDatePED(date)) return null;
+  const [year, month, day] = date.split('-').map(Number);
+  const end = new Date(Date.UTC(year, month - 1, day + 1));
+  const startDate = date.replace(/-/g, '');
+  const endDate = [end.getUTCFullYear(), String(end.getUTCMonth() + 1).padStart(2, '0'), String(end.getUTCDate()).padStart(2, '0')].join('');
+  const description = [
+    `Código: ${order.codigo || ''}`,
+    `Cliente: ${order.customerName || ''}`,
+    `Fecha de entrega: ${formatDate(date)}`,
+    `Prioridad: ${order.prioridad === 'alta' ? 'Alta' : 'Normal'}`,
+    'Productos:',
+    ...(order.items || []).map((item) => `- ${item.cantidad} ${item.productNameSnapshot || 'Producto'}`)
+  ].join('\n');
+  return [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Arcano 33//Pedidos Rapidos//ES', 'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT', `UID:${icsEscapePED(order.id || order.codigo)}@arcano33`,
+    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+    `SUMMARY:${icsEscapePED('Entrega ' + (order.customerName || 'Pedido rápido') + ' - ' + (order.prioridad === 'alta' ? 'Alta' : 'Normal'))}`,
+    `DESCRIPTION:${icsEscapePED(description)}`, `DTSTART;VALUE=DATE:${startDate}`, `DTEND;VALUE=DATE:${endDate}`,
+    'END:VEVENT', 'END:VCALENDAR'
+  ].join('\r\n');
+}
+
+function exportQuickOrderCalendarPED(id){
+  const order = loadQuickOrdersPED().find((item) => String(item.id) === String(id));
+  if (!order) return;
+  const content = createQuickOrderICSPED(order);
+  if (!content){ alert('No se pudo generar el calendario. Revisá la fecha de entrega.'); return; }
+  const blob = new Blob([content], { type:'text/calendar;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `pedido_rapido_${String(order.codigo || 'pedido').toLowerCase()}_${order.fechaEntrega}.ics`;
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 0);
+}
+
+function createQuickOrderCardPED(order, historical){
+  const card = document.createElement('article');
+  card.className = 'quick-order-card' + (order.prioridad === 'alta' ? ' is-high' : '');
+  const main = document.createElement('div');
+  main.className = 'quick-order-main';
+  const title = document.createElement('h3');
+  title.className = 'quick-order-title';
+  title.textContent = `${order.customerName} · ${formatDate(order.fechaEntrega)} · ${order.prioridad === 'alta' ? 'Alta' : 'Normal'}`;
+  const status = document.createElement('span');
+  status.className = 'badge ' + (historical ? 'ok' : 'warn');
+  status.textContent = historical ? 'Entregado' : 'Pendiente';
+  main.append(title, status);
+  const products = document.createElement('p');
+  products.className = 'quick-order-products';
+  products.textContent = quickOrderProductSummaryPED(order) || 'Sin productos';
+  const meta = document.createElement('div');
+  meta.className = 'quick-order-meta';
+  meta.textContent = order.codigo || '';
+  const actions = document.createElement('div');
+  actions.className = 'quick-order-actions';
+  const calendar = document.createElement('button');
+  calendar.type = 'button'; calendar.className = 'btn-secondary'; calendar.textContent = '📅 Calendario';
+  calendar.addEventListener('click', () => exportQuickOrderCalendarPED(order.id));
+  actions.appendChild(calendar);
+  if (historical){
+    const reopen = document.createElement('button');
+    reopen.type = 'button'; reopen.className = 'btn-primary'; reopen.textContent = 'Reabrir';
+    reopen.addEventListener('click', () => setQuickOrderDeliveredPED(order.id, false));
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.className = 'btn-danger'; remove.textContent = 'Borrar';
+    remove.addEventListener('click', () => deleteQuickOrderPED(order.id));
+    actions.append(reopen, remove);
+  } else {
+    const edit = document.createElement('button');
+    edit.type = 'button'; edit.className = 'btn-secondary'; edit.textContent = 'Editar';
+    edit.addEventListener('click', () => editQuickOrderPED(order.id));
+    const delivered = document.createElement('button');
+    delivered.type = 'button'; delivered.className = 'btn-primary'; delivered.textContent = 'Entregado';
+    delivered.addEventListener('click', () => setQuickOrderDeliveredPED(order.id, true));
+    actions.append(edit, delivered);
+  }
+  card.append(main, products, meta, actions);
+  return card;
+}
+
+function renderQuickOrderCollectionPED(records, historical){
+  const host = $(historical ? 'quick-history-list' : 'quick-pending-list');
+  if (!host) return;
+  host.innerHTML = '';
+  const search = $(historical ? 'quick-history-search' : 'quick-pending-search');
+  const query = normalizeCustomerKey(search ? search.value : '');
+  const filtered = records.filter((order) => !query || quickOrderSearchTextPED(order).includes(query));
+  const limit = historical ? quickHistoryLimit : quickPendingLimit;
+  const shown = filtered.slice(0, limit);
+  if (!shown.length){
+    const empty = document.createElement('div');
+    empty.className = 'quick-order-empty';
+    empty.textContent = query ? 'No hay resultados.' : (historical ? 'No hay Pedidos rápidos entregados.' : 'No hay Pedidos rápidos pendientes.');
+    host.appendChild(empty);
+  } else shown.forEach((order) => host.appendChild(createQuickOrderCardPED(order, historical)));
+  const pager = $(historical ? 'quick-history-pager' : 'quick-pending-pager');
+  const count = $(historical ? 'quick-history-shown' : 'quick-pending-shown');
+  const more = $(historical ? 'quick-history-more' : 'quick-pending-more');
+  if (count) count.textContent = filtered.length ? `Mostrando ${shown.length} de ${filtered.length}` : '';
+  if (pager) pager.hidden = filtered.length <= QUICK_ORDER_PAGE_SIZE && !query;
+  if (more) more.hidden = shown.length >= filtered.length;
+}
+
+function renderQuickOrdersPED(){
+  const records = loadQuickOrdersPED();
+  const pending = records.filter((order) => order.estado === 'pendiente').sort((a,b) => String(a.fechaEntrega).localeCompare(String(b.fechaEntrega)));
+  const historical = records.filter((order) => order.estado === 'entregado').sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+  if ($('quick-pending-count')) $('quick-pending-count').textContent = String(pending.length);
+  if ($('quick-history-count')) $('quick-history-count').textContent = String(historical.length);
+  renderQuickOrderCollectionPED(pending, false);
+  renderQuickOrderCollectionPED(historical, true);
+}
+
+function setPedidoModePED(mode){
+  const rapid = mode === 'rapido';
+  document.querySelectorAll('.pedido-completo-view').forEach((element) => {
+    element.hidden = rapid;
+    element.style.display = rapid ? 'none' : '';
+  });
+  document.querySelectorAll('.pedido-rapido-view').forEach((element) => {
+    element.hidden = !rapid;
+    element.style.display = rapid ? '' : 'none';
+  });
+  const fullButton = $('pedido-mode-completo');
+  const quickButton = $('pedido-mode-rapido');
+  if (fullButton){ fullButton.className = rapid ? 'btn-secondary' : 'btn-primary'; fullButton.setAttribute('aria-pressed', rapid ? 'false' : 'true'); }
+  if (quickButton){ quickButton.className = rapid ? 'btn-primary' : 'btn-secondary'; quickButton.setAttribute('aria-pressed', rapid ? 'true' : 'false'); }
+  if (rapid) renderQuickOrdersPED();
+}
+
+function initQuickOrdersUI_PED(){
+  if (!$('quick-order-form')) return;
+  resetQuickOrderFormPED();
+  renderQuickOrdersPED();
+  $('pedido-mode-completo')?.addEventListener('click', () => setPedidoModePED('completo'));
+  $('pedido-mode-rapido')?.addEventListener('click', () => setPedidoModePED('rapido'));
+  $('quick-customer-search')?.addEventListener('input', (event) => renderQuickCustomerSelectPED(event.target.value, ''));
+  $('quick-customer-select')?.addEventListener('change', () => {
+    const status = $('quick-customer-status');
+    if (status) status.textContent = getQuickCustomerPED().name ? 'Cliente seleccionado del catálogo compartido.' : 'Seleccioná un cliente del catálogo de la Suite.';
+  });
+  $('quick-delivery-date')?.addEventListener('change', updateQuickCodePreviewPED);
+  $('quick-product-add')?.addEventListener('click', () => {
+    const productId = $('quick-product-select') ? $('quick-product-select').value : '';
+    const quantity = Number($('quick-product-quantity') ? $('quick-product-quantity').value : 0);
+    const product = PRESENTACIONES.find((item) => item.productId === productId);
+    if (!product){ setQuickOrderNoticePED('Seleccioná un producto activo.', 'warn'); return; }
+    if (!Number.isInteger(quantity) || quantity < 1){ setQuickOrderNoticePED('La cantidad mínima es 1 y debe ser entera.', 'warn'); return; }
+    if (quickOrderItemsDraft.some((item) => item.productId === productId)){ setQuickOrderNoticePED('Ese producto ya está incluido.', 'warn'); return; }
+    quickOrderItemsDraft.push({
+      productId:product.productId,
+      productNameSnapshot:product.label,
+      cantidad:quantity,
+      productSnapshot:buildProductSnapshotPED(product.rawProduct, product.rawProduct)
+    });
+    if ($('quick-product-quantity')) $('quick-product-quantity').value = '1';
+    setQuickOrderNoticePED('');
+    renderQuickProductLinesPED();
+  });
+  $('quick-reset-btn')?.addEventListener('click', resetQuickOrderFormPED);
+  $('quick-export-btn')?.addEventListener('click', () => { try{ exportToCSV(); }catch(_){ } });
+  $('quick-order-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const records = loadQuickOrdersPED();
+    const customer = getQuickCustomerPED();
+    const existing = quickOrderEditingId ? records.find((order) => String(order.id) === String(quickOrderEditingId)) : null;
+    if (existing && Number(existing.updatedAt || 0) !== Number(quickOrderEditingUpdatedAt || 0)){
+      setQuickOrderNoticePED('Este Pedido rápido cambió en otra pestaña. Recargá antes de guardar.', 'warn');
+      return;
+    }
+    const now = Date.now();
+    const stateValue = $('quick-status') ? $('quick-status').value : 'pendiente';
+    const candidate = {
+      ...(existing || {}),
+      id:existing ? existing.id : createQuickOrderIdPED(now),
+      codigo:existing ? existing.codigo : generateQuickOrderCodePED($('quick-delivery-date').value, records),
+      createdAt:existing ? existing.createdAt : now,
+      updatedAt:now,
+      customerId:customer.id,
+      customerName:customer.name,
+      fechaEntrega:$('quick-delivery-date').value,
+      prioridad:$('quick-priority').value,
+      estado:stateValue,
+      entregado:stateValue === 'entregado',
+      deliveredAt:stateValue === 'entregado' ? (existing && existing.deliveredAt || new Date(now).toISOString()) : '',
+      items:quickOrderItemsDraft.map((item) => ({ ...item, productSnapshot:{ ...(item.productSnapshot || {}) } }))
+    };
+    const validation = validateQuickOrderPED(candidate);
+    if (!validation.ok){ setQuickOrderNoticePED(validation.message, 'warn'); return; }
+    const index = records.findIndex((order) => String(order.id) === String(validation.data.id));
+    if (index >= 0) records[index] = validation.data; else records.push(validation.data);
+    const result = saveQuickOrdersPED(records);
+    if (!result || !result.ok){ setQuickOrderNoticePED((result && result.message) || 'No se pudo guardar.', 'warn'); return; }
+    resetQuickOrderFormPED();
+    renderQuickOrdersPED();
+    setQuickOrderNoticePED('Pedido rápido guardado ✓', 'ok');
+  });
+  const pendingSearch = debounce(() => { quickPendingLimit = QUICK_ORDER_PAGE_SIZE; renderQuickOrdersPED(); }, 140);
+  const historySearch = debounce(() => { quickHistoryLimit = QUICK_ORDER_PAGE_SIZE; renderQuickOrdersPED(); }, 140);
+  $('quick-pending-search')?.addEventListener('input', pendingSearch);
+  $('quick-history-search')?.addEventListener('input', historySearch);
+  $('quick-pending-more')?.addEventListener('click', () => { quickPendingLimit += QUICK_ORDER_PAGE_SIZE; renderQuickOrdersPED(); });
+  $('quick-history-more')?.addEventListener('click', () => { quickHistoryLimit += QUICK_ORDER_PAGE_SIZE; renderQuickOrdersPED(); });
+  setPedidoModePED('completo');
+}
+
 function createICSEventFromPedido(p) {
   const fechaEntrega = p.fechaEntrega || p.fechaCreacion;
   if (!fechaEntrega) return null;
@@ -2642,7 +3101,8 @@ async function exportToCSV() {
   }catch(_){ }
 
   const pedidos = loadPedidos();
-  if (pedidos.length === 0) {
+  const pedidosRapidos = loadQuickOrdersPED();
+  if (pedidos.length === 0 && pedidosRapidos.length === 0) {
     setStatus('');
     alert("No hay pedidos para exportar.");
     try{ if (btn && btn.dataset) btn.dataset.busy = '0'; }catch(_){ }
@@ -2810,6 +3270,40 @@ async function exportToCSV() {
     wsDetail['!cols'] = [14, 26, 14, 14, 28, 30, 10, 15, 14, 18].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsDetail, "Detalle productos");
 
+    const quickHeaders = ['ID', 'Código', 'Cliente', 'customerId', 'Fecha entrega', 'Prioridad', 'Estado', 'Productos', 'Total unidades', 'Creado', 'Actualizado', 'Entregado'];
+    const quickRows = pedidosRapidos.map((order) => [
+      order.id || '',
+      order.codigo || '',
+      order.customerName || '',
+      order.customerId || '',
+      formatDate(order.fechaEntrega),
+      order.prioridad === 'alta' ? 'Alta' : 'Normal',
+      order.estado === 'entregado' ? 'Entregado' : 'Pendiente',
+      quickOrderProductSummaryPED(order),
+      (order.items || []).reduce((sum, item) => sum + (Number(item.cantidad || 0) || 0), 0),
+      order.createdAt ? new Date(order.createdAt).toISOString() : '',
+      order.updatedAt ? new Date(order.updatedAt).toISOString() : '',
+      order.deliveredAt || ''
+    ]);
+    const quickSheet = XLSX.utils.aoa_to_sheet([quickHeaders, ...quickRows]);
+    quickSheet['!cols'] = [24,18,28,22,14,12,12,48,14,24,24,24].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(wb, quickSheet, 'Pedidos rápidos');
+
+    const quickDetailHeaders = ['ID pedido', 'Código', 'Cliente', 'Fecha entrega', 'Estado', 'productId', 'Producto snapshot', 'Cantidad'];
+    const quickDetailRows = [];
+    pedidosRapidos.forEach((order) => {
+      (order.items || []).forEach((item) => {
+        quickDetailRows.push([
+          order.id || '', order.codigo || '', order.customerName || '', formatDate(order.fechaEntrega),
+          order.estado === 'entregado' ? 'Entregado' : 'Pendiente', item.productId || '',
+          item.productNameSnapshot || '', Number(item.cantidad || 0) || 0
+        ]);
+      });
+    });
+    const quickDetailSheet = XLSX.utils.aoa_to_sheet([quickDetailHeaders, ...quickDetailRows]);
+    quickDetailSheet['!cols'] = [24,18,28,14,12,28,32,10].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(wb, quickDetailSheet, 'Detalle rápidos');
+
     const timestamp = new Date().toISOString().slice(0, 10);
     const filename = `arcano33_pedidos_${timestamp}.xlsx`;
 
@@ -2846,6 +3340,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await refreshPedidosProductCatalog(true);
   clearForm();
   renderPedidosCurrencyReference();
+  initQuickOrdersUI_PED();
 
   // --- Cliente (desde POS) ---
   try{
