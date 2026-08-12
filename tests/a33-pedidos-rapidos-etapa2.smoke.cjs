@@ -56,8 +56,6 @@ check(/Prioridad: Alta/.test(ics), 'ICS no incluye prioridad.');
 check(/2 Djeba/.test(ics) && /3 Media/.test(ics), 'ICS no incluye productos y cantidades.');
 check(/UID:pr_ics@arcano33/.test(ics), 'ICS no usa ID estable como UID.');
 
-check(!/arcano33_pedidos_rapidos_v1/.test(fs.readFileSync(path.join(root, 'centro-mando/app.js'), 'utf8')), 'Etapa 2 modificó integración de CdM anticipadamente.');
-
 if (failures.length){
   console.error('PEDIDOS RÁPIDOS ETAPA 2 SMOKE FAIL');
   failures.forEach((failure) => console.error('- ' + failure));

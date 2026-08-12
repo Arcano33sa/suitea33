@@ -14,6 +14,7 @@ const MODE_GLOBAL = 'GLOBAL';
 const GLOBAL_VALUE = '__GLOBAL_ACTIVOS__';
 const GLOBAL_LABEL = 'GLOBAL (Activos)';
 const ORDERS_KEY = 'arcano33_pedidos';
+const QUICK_ORDERS_KEY = 'arcano33_pedidos_rapidos_v1';
 const AGENDA_KEY = 'a33_agenda_records_v1';
 const INVENTORY_KEY = 'arcano33_inventario';
 const CURRENCY_KEY = 'suite_a33_currency_settings_v1';
@@ -886,6 +887,14 @@ function validYmd(value){
   return /^\d{4}-\d{2}-\d{2}$/.test(text(value).slice(0,10));
 }
 
+function addCalendarDaysYmd(value, days){
+  const raw = text(value).slice(0,10);
+  if (!validYmd(raw)) return '';
+  const [year,month,day] = raw.split('-').map(Number);
+  const date = new Date(Date.UTC(year,month - 1,day + Number(days || 0)));
+  return [date.getUTCFullYear(),String(date.getUTCMonth() + 1).padStart(2,'0'),String(date.getUTCDate()).padStart(2,'0')].join('-');
+}
+
 function normalizeOrderStatus(row){
   const status = text(row && (row.estado ?? row.status)).toLowerCase();
   if (row && (row.entregado === true || row.completed === true || row.done === true || row.cancelled === true || row.canceled === true)) return 'closed';
@@ -932,13 +941,15 @@ function orderProductSummary(row){
 function orderTemporalState(row){
   if (validYmd(row.delivery) && row.delivery < state.today) return { key:'overdue', label:'Vencido', kind:'danger' };
   if (row.delivery === state.today) return { key:'delivery-today', label:'Entregar hoy', kind:'warning' };
+  if (row.sourceType === 'rapido' && row.delivery === addCalendarDaysYmd(state.today,1)) return { key:'delivery-next', label:'Entrega próxima', kind:'warning' };
   if (row.production === state.today) return { key:'manufacture-today', label:'Fabricar hoy', kind:'warning' };
   if (validYmd(row.production) && row.production < state.today) return { key:'manufacture-pending', label:'Fabricación pendiente', kind:'neutral' };
+  if (row.sourceType === 'rapido') return { key:'quick-upcoming', label:'Pedido próximo', kind:'neutral' };
   return { key:'scheduled', label:'Programado', kind:'neutral' };
 }
 
 function orderUrgencySort(a,b){
-  const ranks = { overdue:0, 'delivery-today':1, 'manufacture-today':2, 'manufacture-pending':3, scheduled:4 };
+  const ranks = { overdue:0, 'delivery-today':1, 'delivery-next':2, 'manufacture-today':3, 'manufacture-pending':4, 'quick-upcoming':5, scheduled:6 };
   const ar = ranks[a.temporal.key] ?? 9;
   const br = ranks[b.temporal.key] ?? 9;
   if (ar !== br) return ar - br;
@@ -950,10 +961,12 @@ function orderUrgencySort(a,b){
 
 function readOrdersSignals(){
   const source = readSharedValue(ORDERS_KEY);
+  const quickSource = readSharedValue(QUICK_ORDERS_KEY);
   const rows = Array.isArray(source) ? source.slice(0, MAX_SAFE_ROWS) : [];
-  const normalized = rows.filter((row)=>row && typeof row === 'object' && normalizeOrderStatus(row) === 'pending').map((row,index)=>{
+  const normalizedComplete = rows.filter((row)=>row && typeof row === 'object' && normalizeOrderStatus(row) === 'pending').map((row,index)=>{
     const normalizedRow = {
       id:text(row.id) || `pedido-${index}`,
+      sourceType:'completo',
       customer:text(row.customerName ?? row.clienteNombre ?? row.cliente ?? row.customer) || 'Sin cliente',
       delivery:text(row.fechaEntrega ?? row.deliveryDate ?? row.fechaEntregaPedido ?? row.fechaEnt).slice(0,10),
       production:text(row.fechaCreacion ?? row.fechaFabricacion ?? row.productionDate ?? row.fecha).slice(0,10),
@@ -963,6 +976,25 @@ function readOrdersSignals(){
     normalizedRow.temporal = orderTemporalState(normalizedRow);
     return normalizedRow;
   });
+  const quickLimit = addCalendarDaysYmd(state.today,15);
+  const normalizedQuick = (Array.isArray(quickSource) ? quickSource.slice(0,MAX_SAFE_ROWS) : [])
+    .filter((row)=>row && typeof row === 'object' && normalizeOrderStatus(row) === 'pending')
+    .map((row,index)=>{
+      const normalizedRow = {
+        id:'rapido:' + (text(row.id) || `pedido-rapido-${index}`),
+        sourceType:'rapido',
+        customer:text(row.customerName ?? row.clienteNombre ?? row.cliente ?? row.customer) || 'Sin cliente',
+        delivery:text(row.fechaEntrega ?? row.deliveryDate ?? row.fechaEntregaPedido).slice(0,10),
+        production:'',
+        priority:text(row.prioridad).toLowerCase() === 'alta' ? 'Alta' : 'Normal',
+        productSummary:orderProductSummary(row),
+        eventRefs:[]
+      };
+      normalizedRow.temporal = orderTemporalState(normalizedRow);
+      return normalizedRow;
+    })
+    .filter((row)=>validYmd(row.delivery) && row.delivery <= quickLimit);
+  const normalized = normalizedComplete.concat(normalizedQuick);
   const unique = [];
   const seen = new Set();
   normalized.slice().sort(orderUrgencySort).forEach((row)=>{
@@ -971,8 +1003,10 @@ function readOrdersSignals(){
     unique.push(row);
   });
   return {
-    available:Array.isArray(source),
+    available:Array.isArray(source) || Array.isArray(quickSource),
     pending:normalized.length,
+    completePending:normalizedComplete.length,
+    quickPending:normalizedQuick.length,
     overdue:normalized.filter((row)=>validYmd(row.delivery) && row.delivery < state.today).length,
     today:normalized.filter((row)=>row.delivery === state.today).length,
     manufactureToday:normalized.filter((row)=>row.production === state.today).length,
@@ -1297,16 +1331,19 @@ function renderOrders(){
   setText('ordersOverdue', data.overdue);
   setText('ordersManufactureToday', data.manufactureToday);
   setText('ordersDeliveryToday', data.today);
+  setHidden('ordersMoreWrap', !(data.allRows && data.allRows.length > 3));
   if (!data.urgent.length){
     host.appendChild(emptyOperationalLine('No hay pedidos pendientes.'));
     return;
   }
   data.urgent.forEach((row)=>{
-    const dates = [
-      row.production ? `Fabricación: ${ymdToDisplay(row.production)}` : 'Fabricación: sin fecha',
-      row.delivery ? `Entrega: ${ymdToDisplay(row.delivery)}` : 'Entrega: sin fecha'
-    ];
-    host.appendChild(createOperationalItem(`${row.customer} · ${row.productSummary}`, dates, row.temporal, ()=>navigate(ROUTES.orders)));
+    const dates = row.sourceType === 'rapido'
+      ? [row.productSummary]
+      : [row.production ? `Fabricación: ${ymdToDisplay(row.production)}` : 'Fabricación: sin fecha', row.delivery ? `Entrega: ${ymdToDisplay(row.delivery)}` : 'Entrega: sin fecha'];
+    const title = row.sourceType === 'rapido'
+      ? `Entrega ${ymdToDisplay(row.delivery)} — ${row.customer} — ${row.priority}`
+      : `${row.customer} · ${row.productSummary}`;
+    host.appendChild(createOperationalItem(title, dates, row.temporal, ()=>navigate(row.sourceType === 'rapido' ? `${ROUTES.orders}?view=rapido` : ROUTES.orders)));
   });
 }
 
@@ -1888,6 +1925,7 @@ function bindUi(){
   $('btnOpenAgendaTasks')?.addEventListener('click', ()=>navigate(ROUTES.agenda));
   $('btnOpenAgendaPurchases')?.addEventListener('click', ()=>navigate(ROUTES.agenda));
   $('btnGoOrders')?.addEventListener('click', ()=>navigate(ROUTES.orders));
+  $('btnOrdersMore')?.addEventListener('click', ()=>navigate(`${ROUTES.orders}?view=rapido`));
   $('btnGoInventory')?.addEventListener('click', ()=>navigate(ROUTES.inventory));
 
   if (!state.listenersBound){

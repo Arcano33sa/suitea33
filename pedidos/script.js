@@ -2975,7 +2975,9 @@ function initQuickOrdersUI_PED(){
   $('quick-history-search')?.addEventListener('input', historySearch);
   $('quick-pending-more')?.addEventListener('click', () => { quickPendingLimit += QUICK_ORDER_PAGE_SIZE; renderQuickOrdersPED(); });
   $('quick-history-more')?.addEventListener('click', () => { quickHistoryLimit += QUICK_ORDER_PAGE_SIZE; renderQuickOrdersPED(); });
-  setPedidoModePED('completo');
+  let initialMode = 'completo';
+  try{ if (new URLSearchParams(window.location.search).get('view') === 'rapido') initialMode = 'rapido'; }catch(_){ }
+  setPedidoModePED(initialMode);
 }
 
 function createICSEventFromPedido(p) {

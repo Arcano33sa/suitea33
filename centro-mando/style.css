@@ -577,6 +577,14 @@ button{ -webkit-tap-highlight-color:transparent; }
 }
 .cmd-category-metrics b{ color:var(--cmd-wine); font-size:1.05rem; }
 .cmd-agenda-category .cmd-operational-item{ grid-template-columns:minmax(0,1fr) auto; }
+
+.cmd-list-more{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:10px;
+}
+
+.cmd-list-more[hidden]{ display:none !important; }
 .cmd-agenda-category .cmd-temporal-state{ display:none; }
 
 .cmd-inventory-grid{
