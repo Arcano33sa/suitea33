@@ -46,6 +46,7 @@
 - Confirm that no files or areas outside the agreed scope changed.
 - Report the completed stage, its objective, changes made, modified files, tests run, test results, smoke-test result, risks or observations, and any pending work.
 - After reporting, stop and wait for the user's review and approval. Do not start the next stage or treat successful tests as permission to continue.
+- Do not commit automatically at the end of implementation. Give the user time to test and review the application manually before requesting commit authorization.
 - Firebase, PWA, Service Workers, caches, versions, and other sensitive components may be modified only when they are genuinely part of the stage objective.
 - Do not use a routine version or cache update as justification to modify sensitive components outside the requested scope.
 
@@ -53,6 +54,12 @@
 - Local commits are safe recovery points between stages. When a stage is to be closed with a local commit, use a descriptive message related to that stage.
 - Do not automatically run `git push` after a commit. A local commit does not authorize the next stage; after committing, stop and wait for instructions.
 - Before including changes in a commit, warn the user if pending changes exist that do not belong to the current stage.
+- Positive feedback such as “quedó bien”, “funciona”, “perfecto”, “excelente”, or “listo” may indicate satisfaction but does not authorize a commit.
+- When the user confirms that the stage is correct, ask exactly: **“Etapa aprobada. ¿Procedo al commit local?”** Then wait for explicit authorization before creating the commit.
+- The user may authorize the commit with a message, ask Codex to propose a descriptive message, or request additional changes before committing.
+- Before an authorized commit, verify that the included changes belong only to the approved stage, no modified files fall outside scope, no accidental changes are included, and the Git working tree is in the expected state.
+- After the commit, report its short hash, the message used, and the working-tree state; then stop. The commit does not authorize the next stage or a `git push`.
+- The next stage requires separate explicit authorization. Publication to GitHub occurs only with the user's explicit authorization and through the project's agreed publication flow.
 
 ## GitHub and production workflow
 - The normal publication flow for this project is performed from Terminal when the user decides.
