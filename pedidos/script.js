@@ -1,5 +1,7 @@
 const STORAGE_KEY_PEDIDOS = "arcano33_pedidos";
 const STORAGE_KEY_PEDIDOS_ARCHIVED = "arcano33_pedidos_archived";
+const STORAGE_KEY_PEDIDOS_RAPIDOS = "arcano33_pedidos_rapidos_v1";
+const PEDIDO_RAPIDO_SCHEMA_VERSION = 1;
 let viewingArchivedId = null;
 let editingId = null;
 let editingBaseUpdatedAt = null;
@@ -9,6 +11,156 @@ const PEDIDOS_DRAFT_KEY = 'a33_pedidos_draft_v1';
 let draftPedidoId = null;
 
 function _nowMs(){ return Date.now(); }
+
+function normalizeQuickOrderTextPED(value){
+  return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+}
+
+function isExactQuickOrderDatePED(value){
+  const raw = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  const [year, month, day] = raw.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function quickOrderStableHashPED(value){
+  let hash = 2166136261;
+  const raw = String(value || '');
+  for (let i=0;i<raw.length;i++){
+    hash ^= raw.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+function createQuickOrderIdPED(now){
+  const stamp = Number(now || Date.now());
+  return 'pr_' + stamp.toString(36) + '_' + Math.random().toString(36).slice(2, 9);
+}
+
+function generateQuickOrderCodePED(fechaEntrega, records){
+  const date = String(fechaEntrega || '').slice(0, 10);
+  if (!isExactQuickOrderDatePED(date)) return '';
+  const compact = date.replace(/-/g, '');
+  const prefix = 'PR-' + compact + '-';
+  let max = 0;
+  (Array.isArray(records) ? records : []).forEach((record) => {
+    const code = String(record && record.codigo || '').trim().toUpperCase();
+    if (!code.startsWith(prefix)) return;
+    const suffix = code.slice(prefix.length);
+    if (!/^\d+$/.test(suffix)) return;
+    max = Math.max(max, Number(suffix));
+  });
+  return prefix + String(max + 1).padStart(3, '0');
+}
+
+function normalizeQuickOrderItemPED(raw){
+  if (!raw || typeof raw !== 'object') return null;
+  const snapshot = (raw.productSnapshot && typeof raw.productSnapshot === 'object')
+    ? { ...raw.productSnapshot }
+    : {};
+  const productId = String(raw.productId ?? raw.productoId ?? raw.catalogProductId ?? '').trim();
+  const productNameSnapshot = normalizeQuickOrderTextPED(
+    raw.productNameSnapshot ?? raw.productName ?? raw.nombreSnapshot ?? raw.nombre ?? raw.name ??
+    snapshot.nombre ?? snapshot.name ?? ''
+  );
+  const cantidad = Number(raw.cantidad ?? raw.qty ?? raw.quantity ?? raw.unidades ?? 0);
+  const cleanSnapshot = { ...snapshot };
+  if (productId && !cleanSnapshot.productId) cleanSnapshot.productId = productId;
+  if (productNameSnapshot && !cleanSnapshot.nombre && !cleanSnapshot.name) cleanSnapshot.nombre = productNameSnapshot;
+  return { productId, productNameSnapshot, cantidad, productSnapshot:cleanSnapshot };
+}
+
+function normalizeQuickOrderPED(raw){
+  if (!raw || typeof raw !== 'object') return null;
+  const source = { ...raw };
+  const customer = (source.customer && typeof source.customer === 'object') ? source.customer : {};
+  const arrays = [source.items, source.productosPedido, source.pedidoItems, source.productos];
+  const rawItems = arrays.find(Array.isArray) || [];
+  const items = rawItems.map(normalizeQuickOrderItemPED).filter(Boolean);
+  const fechaEntrega = String(source.fechaEntrega ?? source.deliveryDate ?? source.fechaEntregaPedido ?? '').slice(0, 10);
+  const customerId = String(source.customerId ?? source.clienteId ?? customer.id ?? '').trim();
+  const customerName = normalizeQuickOrderTextPED(source.customerName ?? source.clienteNombre ?? source.cliente ?? customer.name ?? customer.nombre ?? '');
+  const estado = String(source.estado || '').toLowerCase() === 'entregado' || source.entregado === true ? 'entregado' : 'pendiente';
+  const createdAt = Number(source.createdAt || 0);
+  const updatedAt = Number(source.updatedAt || createdAt || 0);
+  const identity = [source.codigo || '', fechaEntrega, customerId, customerName, JSON.stringify(items)].join('|');
+  return {
+    ...source,
+    id:String(source.id || '').trim() || ('pr_legacy_' + quickOrderStableHashPED(identity)),
+    tipoPedido:'rapido',
+    schemaVersion:Math.max(PEDIDO_RAPIDO_SCHEMA_VERSION, Number(source.schemaVersion || 1) || 1),
+    codigo:String(source.codigo || '').trim().toUpperCase(),
+    customerId,
+    customerName,
+    fechaEntrega,
+    prioridad:String(source.prioridad || '').toLowerCase() === 'alta' ? 'alta' : 'normal',
+    estado,
+    entregado:estado === 'entregado',
+    createdAt:Number.isFinite(createdAt) ? createdAt : 0,
+    updatedAt:Number.isFinite(updatedAt) ? updatedAt : 0,
+    deliveredAt:estado === 'entregado' ? String(source.deliveredAt || source.entregadoAt || '') : '',
+    items
+  };
+}
+
+function validateQuickOrderPED(raw){
+  const order = normalizeQuickOrderPED(raw);
+  const errors = [];
+  if (!order) return { ok:false, errors:['Datos inválidos.'], message:'Datos inválidos.' };
+  const rawPriority = String(raw && raw.prioridad || '').toLowerCase();
+  const rawState = String(raw && raw.estado || '').toLowerCase();
+  if (!order.id) errors.push('ID obligatorio.');
+  if (!/^PR-\d{8}-\d{3,}$/.test(order.codigo)) errors.push('Código rápido inválido.');
+  if (!order.customerName) errors.push('Cliente obligatorio.');
+  if (!isExactQuickOrderDatePED(order.fechaEntrega)) errors.push('Fecha de entrega inválida.');
+  if (!['normal','alta'].includes(rawPriority)) errors.push('Prioridad inválida.');
+  if (!['pendiente','entregado'].includes(rawState)) errors.push('Estado inválido.');
+  if (!order.items.length) errors.push('Agregá al menos un producto.');
+
+  const seen = new Set();
+  order.items.forEach((item, index) => {
+    if (!item.productId) errors.push('Producto ' + (index + 1) + ': productId obligatorio.');
+    if (!item.productNameSnapshot) errors.push('Producto ' + (index + 1) + ': nombre obligatorio.');
+    if (!Number.isInteger(item.cantidad) || item.cantidad < 1) errors.push('Producto ' + (index + 1) + ': cantidad debe ser un entero mínimo de 1.');
+    if (item.productId){
+      if (seen.has(item.productId)) errors.push('Producto ' + (index + 1) + ': no puede repetirse en el mismo pedido.');
+      seen.add(item.productId);
+    }
+  });
+  return { ok:errors.length === 0, errors, message:errors.length ? 'No se puede guardar:\n- ' + errors.join('\n- ') : '', data:order };
+}
+
+function loadQuickOrdersPED(){
+  try{
+    if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+      const rows = A33Storage.sharedGet(STORAGE_KEY_PEDIDOS_RAPIDOS, [], 'local');
+      return (Array.isArray(rows) ? rows : []).map(normalizeQuickOrderPED).filter(Boolean);
+    }
+  }catch(error){
+    console.warn('Pedidos rápidos: no se pudo leer el contrato compartido', error);
+  }
+  return [];
+}
+
+function saveQuickOrdersPED(records){
+  const rows = (Array.isArray(records) ? records : []).map(normalizeQuickOrderPED).filter(Boolean);
+  if (!(window.A33Storage && typeof A33Storage.sharedSet === 'function')) return { ok:false, data:rows, message:'A33Storage no disponible.' };
+  return A33Storage.sharedSet(STORAGE_KEY_PEDIDOS_RAPIDOS, rows, { source:'pedidos-rapidos' });
+}
+
+window.A33PedidosRapidosModel = Object.freeze({
+  storageKey:STORAGE_KEY_PEDIDOS_RAPIDOS,
+  schemaVersion:PEDIDO_RAPIDO_SCHEMA_VERSION,
+  createId:createQuickOrderIdPED,
+  generateCode:generateQuickOrderCodePED,
+  normalizeItem:normalizeQuickOrderItemPED,
+  normalize:normalizeQuickOrderPED,
+  validate:validateQuickOrderPED,
+  load:loadQuickOrdersPED,
+  save:saveQuickOrdersPED
+});
 
 function _readDraftPedido(){
   try{

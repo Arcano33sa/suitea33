@@ -666,6 +666,74 @@
     return out;
   }
 
+  function quickOrderHash(value){
+    let h = 2166136261;
+    const str = String(value || '');
+    for (let i=0;i<str.length;i++){
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h.toString(36);
+  }
+
+  function normalizePedidoRapidoItem(raw, orderIndex, itemIndex){
+    if (!raw || typeof raw !== 'object') return null;
+    const item = { ...raw };
+    const snapshot = (item.productSnapshot && typeof item.productSnapshot === 'object')
+      ? { ...item.productSnapshot }
+      : {};
+    const productId = String(item.productId ?? item.productoId ?? item.catalogProductId ?? '').trim();
+    const name = String(
+      item.productNameSnapshot ?? item.productName ?? item.nombreSnapshot ?? item.nombre ?? item.name ??
+      snapshot.nombre ?? snapshot.name ?? ''
+    ).replace(/\s+/g, ' ').trim();
+    const quantity = coerceInt(
+      item.cantidad ?? item.qty ?? item.quantity ?? item.unidades,
+      0,
+      'arcano33_pedidos_rapidos_v1[' + orderIndex + '].items[' + itemIndex + '].cantidad'
+    );
+
+    item.productId = productId;
+    item.productNameSnapshot = name;
+    item.cantidad = quantity < 0 ? 0 : quantity;
+    item.productSnapshot = snapshot;
+    if (productId && !item.productSnapshot.productId) item.productSnapshot.productId = productId;
+    if (name && !item.productSnapshot.nombre && !item.productSnapshot.name) item.productSnapshot.nombre = name;
+    return item;
+  }
+
+  function normalizePedidosRapidos(raw){
+    const source = normalizeArrayObjects(raw, 'arcano33_pedidos_rapidos_v1');
+    return source.map((record, index) => {
+      const out = { ...record };
+      const customer = (out.customer && typeof out.customer === 'object') ? out.customer : {};
+      const rawItems = [out.items, out.productosPedido, out.pedidoItems, out.productos].find(Array.isArray) || [];
+
+      out.tipoPedido = 'rapido';
+      out.schemaVersion = Math.max(1, coerceInt(out.schemaVersion, 1, 'arcano33_pedidos_rapidos_v1[' + index + '].schemaVersion'));
+      out.customerId = String(out.customerId ?? out.clienteId ?? customer.id ?? '').trim();
+      out.customerName = String(out.customerName ?? out.clienteNombre ?? out.cliente ?? customer.name ?? customer.nombre ?? '')
+        .replace(/\s+/g, ' ').trim();
+      out.fechaEntrega = String(out.fechaEntrega ?? out.deliveryDate ?? out.fechaEntregaPedido ?? '').slice(0, 10);
+      out.prioridad = String(out.prioridad || '').toLowerCase() === 'alta' ? 'alta' : 'normal';
+      out.estado = String(out.estado || '').toLowerCase() === 'entregado' || out.entregado === true ? 'entregado' : 'pendiente';
+      out.entregado = out.estado === 'entregado';
+      out.createdAt = coerceInt(out.createdAt, 0, 'arcano33_pedidos_rapidos_v1[' + index + '].createdAt');
+      out.updatedAt = coerceInt(out.updatedAt, out.createdAt || 0, 'arcano33_pedidos_rapidos_v1[' + index + '].updatedAt');
+      out.deliveredAt = out.estado === 'entregado' ? String(out.deliveredAt || out.entregadoAt || '') : '';
+      out.items = rawItems.map((item, itemIndex) => normalizePedidoRapidoItem(item, index, itemIndex)).filter(Boolean);
+
+      if (!String(out.id || '').trim()){
+        const identity = [out.codigo || '', out.fechaEntrega, out.customerId, out.customerName, JSON.stringify(out.items)].join('|');
+        out.id = 'pr_legacy_' + quickOrderHash(identity);
+      } else {
+        out.id = String(out.id).trim();
+      }
+      out.codigo = String(out.codigo || '').trim().toUpperCase();
+      return out;
+    });
+  }
+
   function normalizeCustomersCatalog(raw){
     // Legacy can be a list of strings or objects. We normalize safely, but keep it stable.
     const hash36 = (str)=>{
@@ -758,6 +826,14 @@
       mode: 'replace',
       normalize: normalizePedidos,
       merge(cur,next){ return mergeArrayById(normalizePedidos(cur), normalizePedidos(next), getIdGeneric); },
+      getId: getIdGeneric,
+      defaultValue(){ return []; }
+    },
+    'arcano33_pedidos_rapidos_v1': {
+      expected: 'array',
+      mode: 'replace',
+      normalize: normalizePedidosRapidos,
+      merge(cur,next){ return mergeArrayById(normalizePedidosRapidos(cur), normalizePedidosRapidos(next), getIdGeneric); },
       getId: getIdGeneric,
       defaultValue(){ return []; }
     },
