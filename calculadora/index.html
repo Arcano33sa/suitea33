@@ -530,6 +530,18 @@
       gap: 0.4rem;
       margin: 0 0 0.65rem;
     }
+    .a33-checklist-operational {
+      display: grid;
+      gap: 0.3rem;
+      margin: 0 0 0.65rem;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--a33-border-soft, #333);
+      border-radius: 10px;
+      background: rgba(221,191,100,0.06);
+      font-size: 0.88rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .a33-checklist-operational-line { margin: 0; }
     .a33-checklist-check-cell { width: 92px; }
     .a33-checklist-toggle {
       display: inline-flex;
@@ -2782,6 +2794,52 @@ function a33WireNumericInput(el, mode) {
       return rows.filter((row) => row && typeof row === "object");
     }
 
+    function a33ChecklistProductId(row) {
+      const item = row && typeof row === "object" ? row : {};
+      const snapshot = item.snapshotProduccion && typeof item.snapshotProduccion === "object" ? item.snapshotProduccion : {};
+      return String(item.productId || item.productoId || snapshot.productId || snapshot.productoId || item.id || "").trim();
+    }
+
+    function a33ChecklistProductLetter(row) {
+      const item = row && typeof row === "object" ? row : {};
+      const snapshot = item.snapshotProduccion && typeof item.snapshotProduccion === "object" ? item.snapshotProduccion : {};
+      const stored = a33NormalizeLetter(item.Letra || item.letra || snapshot.Letra || snapshot.letra || "");
+      if (stored) return stored;
+      const productId = a33ChecklistProductId(item);
+      if (!productId) return "";
+      const catalogProduct = (Array.isArray(PRESENTACIONES) ? PRESENTACIONES : []).find((product) =>
+        String(product && (product.productId || product.id) || "").trim() === productId
+      );
+      return a33NormalizeLetter(catalogProduct && (catalogProduct.letra || catalogProduct.Letra) || "");
+    }
+
+    function a33ChecklistProductionDetail(lote) {
+      const quantitiesByLetter = new Map();
+      a33ChecklistProducts(lote).forEach((row) => {
+        const quantity = a33ChecklistNumber(row.cantidad != null ? row.cantidad : row.unidades);
+        const letter = a33ChecklistProductLetter(row);
+        if (!(quantity > 0) || !letter) return;
+        quantitiesByLetter.set(letter, (quantitiesByLetter.get(letter) || 0) + quantity);
+      });
+      return Array.from(quantitiesByLetter.entries())
+        .map(([letter, quantity]) => a33ChecklistOperationalNumber(quantity) + letter)
+        .join(", ");
+    }
+
+    function a33ChecklistOperationalNumber(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "0";
+      const normalized = Math.abs(number - Math.round(number)) < 1e-9 ? Math.round(number) : number;
+      return normalized.toLocaleString("es-NI", { maximumFractionDigits:3, useGrouping:false });
+    }
+
+    function a33ChecklistSyrupFormula(syrupMl) {
+      const syrup = a33ChecklistNumber(syrupMl);
+      if (!(syrup > 0)) return null;
+      const factor = syrup / 200;
+      return { waterMl:factor * 175, sugarT:factor };
+    }
+
     function a33ChecklistEmptyState() {
       const state = {};
       A33_CHECKLIST_INGREDIENTS.forEach((item) => { state[item.key] = false; });
@@ -3166,6 +3224,9 @@ function a33WireNumericInput(el, mode) {
       const ingredients = a33ChecklistIngredients(lote);
       const state = a33ChecklistState(lote);
       const isClosed = a33ChecklistIsClosed(lote);
+      const productionDetail = a33ChecklistProductionDetail(lote);
+      const syrupIngredient = ingredients.find((ingredient) => ingredient.key === "sirope");
+      const syrupFormula = a33ChecklistSyrupFormula(syrupIngredient && syrupIngredient.volume);
 
       document.querySelectorAll(".a33-checklist-history-row").forEach((row) => {
         row.classList.toggle("is-active", row.dataset.checklistIdentity === A33ChecklistSelectedIdentity);
@@ -3187,8 +3248,32 @@ function a33WireNumericInput(el, mode) {
       selected.appendChild(meta);
       content.innerHTML = "";
 
+      if (productionDetail || syrupFormula) {
+        const operational = document.createElement("div");
+        operational.className = "a33-checklist-operational";
+        if (productionDetail) {
+          const productionLine = document.createElement("p");
+          productionLine.className = "a33-checklist-operational-line";
+          productionLine.textContent = "Producción: " + productionDetail;
+          operational.appendChild(productionLine);
+        }
+        if (syrupFormula) {
+          const waterLine = document.createElement("p");
+          waterLine.className = "a33-checklist-operational-line";
+          waterLine.textContent = "Agua: " + a33ChecklistOperationalNumber(syrupFormula.waterMl) + " ml";
+          const sugarLine = document.createElement("p");
+          sugarLine.className = "a33-checklist-operational-line";
+          sugarLine.textContent = "Azúcar: " + a33ChecklistOperationalNumber(syrupFormula.sugarT) + " t";
+          operational.append(waterLine, sugarLine);
+        }
+        content.appendChild(operational);
+      }
+
       if (!ingredients.length) {
-        content.innerHTML = '<p class="a33-checklist-empty">Este lote guardado no contiene detalle de ingredientes disponible para el Checklist.</p>';
+        const empty = document.createElement("p");
+        empty.className = "a33-checklist-empty";
+        empty.textContent = "Este lote guardado no contiene detalle de ingredientes disponible para el Checklist.";
+        content.appendChild(empty);
         if (!opts.keepStatus) a33SetChecklistStatus("", "");
         return;
       }
@@ -3300,7 +3385,7 @@ function a33WireNumericInput(el, mode) {
 
 function registerCalculadoraServiceWorker() {
       if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=10")
+      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=11")
         .catch((error) => console.error("SW Calculadora error", error));
     }
 
