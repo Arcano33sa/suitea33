@@ -459,6 +459,21 @@
       overflow: hidden;
     }
     .a33-checklist-block h3 { margin: 0 0 0.55rem; font-size: 1rem; }
+    .a33-checklist-history-disclosure > summary {
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-checklist-history-disclosure[open] > summary { margin-bottom: 0.55rem; }
+    .a33-checklist-history-disclosure > summary:focus-visible {
+      outline: 3px solid var(--a33-focus, #ddbf64);
+      outline-offset: 3px;
+      border-radius: 6px;
+    }
     .a33-checklist-table-wrap {
       width: 100%;
       overflow-x: auto;
@@ -896,11 +911,6 @@
       </div>
 
       <div class="a33-checklist-block">
-        <h3>Histórico</h3>
-        <div id="a33-checklist-historico"></div>
-      </div>
-
-      <div class="a33-checklist-block">
         <h3>Checklist</h3>
         <div id="a33-checklist-seleccion"></div>
         <div id="a33-checklist-contenido">
@@ -908,6 +918,11 @@
         </div>
         <div id="a33-checklist-estado" class="a33-checklist-status" role="status" aria-live="polite"></div>
       </div>
+
+      <details class="a33-checklist-block a33-checklist-history-disclosure">
+        <summary>Histórico</summary>
+        <div id="a33-checklist-historico"></div>
+      </details>
     </div>
   </section>
 
@@ -3385,7 +3400,7 @@ function a33WireNumericInput(el, mode) {
 
 function registerCalculadoraServiceWorker() {
       if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=11")
+      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=12")
         .catch((error) => console.error("SW Calculadora error", error));
     }
 

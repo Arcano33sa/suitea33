@@ -63,8 +63,8 @@ assert.ok(html.includes('waterLine.textContent = "Agua: "'), 'Falta presentació
 assert.ok(html.includes('sugarLine.textContent = "Azúcar: "'), 'Falta presentación de Azúcar');
 assert.ok(!helpers.includes('setItem('), 'Los datos informativos no deben persistirse');
 assert.ok(!helpers.includes('commitOfficialProduction'), 'Los datos informativos no deben crear movimientos');
-assert.ok(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.98&r=11")'), 'Registro SW no actualizado');
-assert.ok(sw.includes("const MODULE_CACHE_REV = '11';"), 'Cache del módulo no actualizado');
-assert.ok(sw.includes("'./index.html?v=4.20.98&r=20'"), 'HTML precacheado no actualizado');
+assert.ok(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.98&r=12")'), 'Registro SW no actualizado');
+assert.ok(sw.includes("const MODULE_CACHE_REV = '12';"), 'Cache del módulo no actualizado');
+assert.ok(sw.includes("'./index.html?v=4.20.98&r=21'"), 'HTML precacheado no actualizado');
 
 console.log('OK: Checklist muestra Letras dinámicas y fórmula escalada del sirope sin persistencia adicional.');
