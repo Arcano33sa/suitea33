@@ -334,6 +334,10 @@ small.muted{color:var(--muted)}
 .customer-v2-actions .btn-link{padding:6px 0}
 .customer-v2-sticky{font-size:13px}
 .customer-catalog-hint{display:block;margin-top:4px}
+.courtesy-recipient-control{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.courtesy-recipient-control input{flex:1 1 220px;min-width:0}
+.courtesy-recipient-control button{white-space:nowrap}
+#sale-courtesy-to-hint{display:block;margin-top:4px}
 
 .customer-manage{margin-top:8px}
 	.customer-manage-list{display:flex;flex-direction:column;gap:8px}

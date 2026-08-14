@@ -186,7 +186,7 @@
 <div class="row" id="sale-customer-row">
   <div class="customer-v2">
     <div class="customer-v2-field">
-      <label>Cliente</label>
+      <label id="sale-customer-label">Cliente</label>
       <input id="sale-customer" placeholder="Selecciona cliente…" readonly aria-readonly="true">
       <small class="muted customer-catalog-hint">Los clientes se administran desde Catálogos.</small>
     </div>
@@ -219,7 +219,11 @@
         </div>
         <div>
           <label>Cortesía a</label>
-          <input id="sale-courtesy-to" placeholder="Nombre (si marcaste cortesía)" disabled>
+          <div class="courtesy-recipient-control">
+            <input id="sale-courtesy-to" placeholder="Selecciona un cliente" disabled readonly aria-readonly="true">
+            <button id="btn-edit-courtesy-to" class="btn-outline btn-pill btn-pill-mini" type="button" hidden>Editar nombre</button>
+          </div>
+          <small id="sale-courtesy-to-hint" class="muted" hidden>Usa el nombre del cliente seleccionado.</small>
         </div>
       </div>
       <label>Notas (opcional)</label>
@@ -241,7 +245,7 @@
       <table id="tbl-day" class="compact">
         <thead>
           <tr>
-            <th>Hora</th><th>Producto</th><th>Cant.</th><th>PU</th><th>Desc</th><th>Total</th><th>Pago</th><th>C</th><th>Dev</th><th>Cliente</th><th>Cortesía a</th><th></th>
+            <th>Hora</th><th>Producto</th><th>Cant.</th><th>PU</th><th>Desc</th><th>Total</th><th>Pago</th><th>C</th><th>Dev</th><th>Cliente asociado</th><th>Cortesía a</th><th></th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -1311,7 +1315,7 @@
       <h4>Ventas</h4>
       <div class="scroll">
         <table id="ev-sales">
-          <thead><tr><th>ID</th><th>Fecha</th><th>Hora</th><th>Producto</th><th>Cant</th><th>PU</th><th>Desc</th><th>Total</th><th>Pago</th><th>C</th><th>Dev</th><th>Cliente</th><th>Cortesía a</th><th>Notas</th></tr></thead>
+          <thead><tr><th>ID</th><th>Fecha</th><th>Hora</th><th>Producto</th><th>Cant</th><th>PU</th><th>Desc</th><th>Total</th><th>Pago</th><th>C</th><th>Dev</th><th>Cliente asociado</th><th>Cortesía a</th><th>Notas</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
