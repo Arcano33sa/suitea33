@@ -128,6 +128,25 @@ body.fin-body {
   justify-content: space-between;
 }
 
+.fin-internal-nav{
+  margin-top:0;
+  padding:10px 12px;
+  border:1px solid rgba(212,175,55,0.32);
+  border-radius:16px;
+  background:rgba(10,10,10,0.76);
+  box-shadow:0 12px 28px rgba(0,0,0,0.32);
+}
+
+.fin-internal-nav .nav-group{
+  width:100%;
+}
+
+html[data-theme="light"] .fin-internal-nav{
+  border-color:rgba(139,98,30,0.26);
+  background:rgba(255,248,234,0.78);
+  box-shadow:0 12px 28px rgba(92,62,24,0.14);
+}
+
 .nav-group {
   display: flex;
   flex-wrap: wrap;

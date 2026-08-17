@@ -4,7 +4,7 @@ try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=57'); } catch (e) {}
 const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
 const MODULE = 'calculadora';
-const MODULE_CACHE_REV = '12';
+const MODULE_CACHE_REV = '13';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 const PRECACHE_URLS = [
@@ -22,7 +22,9 @@ const PRECACHE_URLS = [
   '/assets/js/a33-input-ux.js?v=4.20.98&r=7',
   '/assets/js/a33-theme.js?v=4.20.98&r=7',
   '/assets/css/a33-header.css?v=4.20.98&r=7',
-  '/assets/css/a33-theme.css?v=4.20.98&r=7'
+  '/assets/css/a33-module-nav.css?v=4.20.98&r=3',
+  '/assets/css/a33-theme.css?v=4.20.98&r=7',
+  '/assets/js/a33-module-nav.js?v=4.20.98&r=3'
 ];
 
 function sameOrigin(url){ try { return url.origin === self.location.origin; } catch (_) { return false; } }

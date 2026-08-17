@@ -8,7 +8,7 @@ const SW_REV = self.A33_RELEASE && self.A33_RELEASE.rev != null
   ? String(self.A33_RELEASE.rev)
   : '1';
 const MODULE = 'centro-mando';
-const MODULE_CACHE_REV = '6';
+const MODULE_CACHE_REV = '7';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 const PRECACHE_URLS = [
@@ -24,7 +24,9 @@ const PRECACHE_URLS = [
   '/assets/js/a33-storage.js?v=4.20.98&r=21',
   '/assets/js/a33-currency.js?v=4.20.98&r=14',
   '/assets/js/a33-theme.js?v=4.20.98&r=7',
+  '/assets/js/a33-module-nav.js?v=4.20.98&r=3',
   '/assets/css/a33-header.css?v=4.20.98&r=7',
+  '/assets/css/a33-module-nav.css?v=4.20.98&r=3',
   '/assets/css/a33-theme.css?v=4.20.98&r=7'
 ];
 

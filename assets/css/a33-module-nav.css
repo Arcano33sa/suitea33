@@ -1,0 +1,250 @@
+/* Suite A33 — Selector global de módulos. Complementa a33-header.css. */
+.a33-header--module-nav{
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+  width:100%;
+  margin-left:0;
+  margin-right:0;
+  isolation:isolate;
+}
+
+body.a33-has-module-nav{
+  padding-top:var(--a33-module-header-height, var(--a33-header-fixed-offset));
+}
+
+body.a33-has-module-nav.a33-has-module-context{
+  padding-top:calc(var(--a33-module-header-height, var(--a33-header-fixed-offset)) + 48px);
+}
+
+.a33-header--module-nav .a33-title{
+  min-width:0;
+}
+
+.a33-module-controls{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex:0 0 auto;
+}
+
+.a33-module-toggle{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  min-height:44px;
+  padding:10px 14px;
+  border:1px solid rgba(221,191,100,0.75);
+  border-radius:14px;
+  background:linear-gradient(180deg, rgba(123,24,24,0.92), rgba(82,12,12,0.96));
+  color:#fefefe;
+  font:700 14px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+  box-shadow:0 10px 20px rgba(0,0,0,0.45);
+  cursor:pointer;
+  transition:transform .12s ease, border-color .12s ease, filter .12s ease;
+}
+
+.a33-module-toggle:hover{
+  border-color:rgba(221,191,100,0.98);
+  filter:brightness(1.08);
+}
+
+.a33-module-toggle:active{
+  transform:scale(.98);
+}
+
+.a33-module-toggle:focus-visible,
+.a33-module-link:focus-visible{
+  outline:2px solid rgba(221,191,100,0.98);
+  outline-offset:3px;
+}
+
+.a33-module-chevron{
+  color:#ddbf64;
+  font-size:13px;
+}
+
+.a33-module-panel{
+  position:absolute;
+  top:calc(100% + 8px);
+  left:max(10px, env(safe-area-inset-left));
+  right:max(10px, env(safe-area-inset-right));
+  z-index:1001;
+  display:grid;
+  grid-template-columns:repeat(6, minmax(0, 1fr));
+  gap:9px;
+  max-height:min(54vh, 330px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  padding:14px;
+  border:1px solid rgba(221,191,100,0.52);
+  border-radius:18px;
+  background:rgba(6,6,6,0.98);
+  box-shadow:0 22px 52px rgba(0,0,0,0.72);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+}
+
+.a33-header--module-nav.has-a33-context .a33-module-panel{
+  top:calc(100% + 56px);
+}
+
+.a33-context-bar{
+  position:absolute;
+  top:100%;
+  left:0;
+  right:0;
+  z-index:1000;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:48px;
+  padding:5px max(14px, env(safe-area-inset-right)) 5px max(14px, env(safe-area-inset-left));
+  border-bottom:1px solid rgba(221,191,100,0.34);
+  background:rgba(9,9,9,0.97);
+  box-shadow:0 10px 22px rgba(0,0,0,0.38);
+}
+
+.a33-context-bar[hidden]{ display:none; }
+
+.a33-context-back{
+  min-height:38px;
+  padding:7px 12px;
+  border:1px solid rgba(221,191,100,0.48);
+  border-radius:999px;
+  background:rgba(255,255,255,0.04);
+  color:#f6f2e8;
+  font:700 13px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+  cursor:pointer;
+}
+
+.a33-context-label{
+  min-width:0;
+  overflow:hidden;
+  color:#ddbf64;
+  font:700 13px/1.2 Cinzel, ui-serif, serif;
+  letter-spacing:.04em;
+  text-align:right;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.a33-context-back:hover{ border-color:rgba(221,191,100,0.88); }
+
+.a33-context-back:focus-visible{
+  outline:2px solid rgba(221,191,100,0.98);
+  outline-offset:2px;
+}
+
+html[data-theme="light"] .a33-context-bar{
+  border-bottom-color:rgba(139,98,30,0.28);
+  background:rgba(255,248,234,0.98);
+  box-shadow:0 10px 22px rgba(92,62,24,0.16);
+}
+
+html[data-theme="light"] .a33-context-back{
+  border-color:rgba(139,98,30,0.32);
+  background:rgba(255,255,255,0.62);
+  color:#1f1710;
+}
+
+html[data-theme="light"] .a33-context-label{ color:#8b621e; }
+
+body.a33-has-module-nav .cfg-section-nav,
+body.a33-has-module-nav .cat-section-nav,
+body.a33-has-module-nav .agenda-internal-nav{
+  display:none;
+}
+
+.a33-module-panel[hidden]{
+  display:none;
+}
+
+.a33-module-link{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:0;
+  min-height:44px;
+  padding:9px 8px;
+  border:1px solid rgba(221,191,100,0.28);
+  border-radius:13px;
+  background:linear-gradient(180deg, rgba(28,28,28,0.98), rgba(12,12,12,0.98));
+  color:#f6f2e8;
+  font:700 13px/1.15 Inter, ui-sans-serif, system-ui, sans-serif;
+  text-align:center;
+  text-decoration:none;
+  overflow-wrap:anywhere;
+  transition:transform .12s ease, border-color .12s ease, background .12s ease;
+}
+
+.a33-module-link:hover{
+  transform:translateY(-1px);
+  border-color:rgba(221,191,100,0.72);
+  background:linear-gradient(180deg, rgba(48,36,18,0.98), rgba(22,17,10,0.98));
+}
+
+.a33-module-link.is-current{
+  border-color:#ddbf64;
+  background:linear-gradient(180deg, rgba(123,24,24,0.96), rgba(74,10,10,0.98));
+  color:#fff8df;
+  box-shadow:inset 0 0 0 1px rgba(221,191,100,0.20);
+}
+
+html[data-theme="light"] .a33-module-toggle{
+  border-color:rgba(123,24,24,0.42);
+  background:linear-gradient(180deg, #8c2424, #681616);
+  box-shadow:0 10px 20px rgba(92,62,24,0.16);
+}
+
+html[data-theme="light"] .a33-module-panel{
+  border-color:rgba(139,98,30,0.34);
+  background:rgba(255,248,234,0.98);
+  box-shadow:0 22px 52px rgba(92,62,24,0.24);
+}
+
+html[data-theme="light"] .a33-module-link{
+  border-color:rgba(139,98,30,0.26);
+  background:rgba(255,255,255,0.66);
+  color:#1f1710;
+}
+
+html[data-theme="light"] .a33-module-link.is-current{
+  border-color:#8b621e;
+  background:linear-gradient(180deg, #8c2424, #681616);
+  color:#fff8ea;
+}
+
+@media (max-width:900px){
+  .a33-module-panel{ grid-template-columns:repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width:620px){
+  .a33-header--module-nav{ gap:8px; }
+  .a33-header--module-nav .a33-title{ font-size:12px; letter-spacing:.04em; }
+  .a33-module-controls{ gap:0; }
+  .a33-module-toggle{ padding:10px 11px; }
+  .a33-module-panel{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:7px;
+    padding:10px;
+    max-height:min(62vh, 390px);
+  }
+  .a33-module-link{ font-size:12px; }
+}
+
+@media (max-width:420px){
+  .a33-header--module-nav .a33-btn-menu{ padding:10px; }
+  .a33-header--module-nav .a33-title{ text-align:left; }
+  .a33-module-toggle span:first-child{ font-size:0; }
+  .a33-module-toggle span:first-child::after{ content:'Mód.'; font-size:13px; }
+  .a33-module-panel{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .a33-module-toggle,
+  .a33-module-link{ transition:none; }
+}
