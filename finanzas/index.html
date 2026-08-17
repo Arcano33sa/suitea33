@@ -25,6 +25,8 @@
       <span class="nav-group-label">Finanzas</span>
       <button type="button" class="fin-tab-btn active" data-view="tablero">Tablero Finanzas</button>
       <button type="button" class="fin-tab-btn" data-view="cajachica">Caja Chica</button>
+      <button type="button" class="fin-tab-btn" data-view="cobrar">Cobrar</button>
+      <button type="button" class="fin-tab-btn" data-view="pagar">Pagar</button>
       <button type="button" class="fin-tab-btn" data-view="recibos">Recibos</button>
       <button type="button" class="fin-tab-btn" data-view="diario" hidden aria-hidden="true" data-a33-hidden-main="1">Diario Contable</button>
       <button type="button" class="fin-tab-btn" data-view="estados" hidden aria-hidden="true" data-a33-hidden-main="1">Estados Financieros</button>
@@ -1237,6 +1239,121 @@
   </div>
 
   <p class="fin-help">Tip: este snapshot lo puede leer POS manualmente como saldo inicial cuando lo habilitas con “Sincronizar”.</p>
+</section>
+
+<!-- CUENTAS POR COBRAR -->
+<section id="view-cobrar" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Cobrar</h2>
+    <p>Control de cuentas pendientes agrupadas por cliente. Esta etapa es informativa y no genera recibos ni movimientos financieros.</p>
+  </header>
+  <div class="fin-filters-row fin-filters-row--compact cobrar-toolbar">
+    <button type="button" id="cobrar-new" class="btn-primary cobrar-action-btn">＋ Nueva cuenta</button>
+    <label class="fin-grow">Buscar cliente
+      <input type="search" id="cobrar-search" placeholder="Nombre del cliente…" autocomplete="off">
+    </label>
+    <button type="button" id="cobrar-refresh" class="btn-small cobrar-action-btn">↻ Actualizar</button>
+    <div id="cobrar-count" class="fin-muted" aria-live="polite"></div>
+  </div>
+  <div class="fin-table-wrapper cobrar-table-wrap">
+    <table class="fin-table cobrar-summary-table" aria-label="Cuentas por cobrar pendientes">
+      <thead><tr><th>Cliente</th><th>Conceptos pendientes</th><th class="num">Monto pendiente</th><th>Fecha más próxima</th><th>Estado</th><th class="fin-actions-cell">Acciones</th></tr></thead>
+      <tbody id="cobrar-tbody"></tbody>
+    </table>
+  </div>
+  <p class="fin-help">Cada fila consolida todas las partidas pendientes. Use <strong>Cobrar</strong> para seleccionar únicamente las que fueron pagadas.</p>
+  <section id="cobrar-editor" class="cobrar-editor hidden" aria-label="Editor de cuenta por cobrar">
+    <header class="fin-section-header fin-section-header--sub cobrar-editor-head">
+      <div><h3 id="cobrar-editor-title">Nueva cuenta por cobrar</h3><p id="cobrar-editor-help">Seleccione un cliente del catálogo o escriba un nombre manual.</p></div>
+      <button type="button" id="cobrar-close" class="btn-close" aria-label="Cerrar editor">×</button>
+    </header>
+    <form id="cobrar-form" class="fin-form" autocomplete="off">
+      <input type="hidden" id="cobrar-group-key">
+      <div class="fin-form-row"><label class="fin-form-grow">Cliente
+        <input type="text" id="cobrar-client" list="cobrar-client-options" placeholder="Buscar o escribir cliente…" required>
+        <datalist id="cobrar-client-options"></datalist>
+      </label></div>
+      <div class="fin-table-wrapper">
+        <table class="fin-table cobrar-lines-table" aria-label="Partidas pendientes del cliente">
+          <thead><tr><th>Descripción</th><th class="num">Monto</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="cobrar-lines-tbody"></tbody>
+        </table>
+      </div>
+      <div class="cobrar-editor-actions">
+        <button type="button" id="cobrar-add-line" class="btn-small cobrar-action-btn">＋ Agregar partida</button><span class="fin-grow"></span>
+        <button type="button" id="cobrar-cancel" class="btn-ghost cobrar-action-btn">Cancelar</button>
+        <button type="submit" id="cobrar-save" class="btn-primary cobrar-action-btn">Guardar pendientes</button>
+      </div>
+      <p id="cobrar-form-message" class="fin-help" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <details id="cobrar-history" class="cobrar-history">
+    <summary><span>Histórico de cobros</span><strong id="cobrar-history-count">0 partidas pagadas</strong></summary>
+    <div class="fin-table-wrapper cobrar-history-wrap">
+      <table class="fin-table cobrar-history-table" aria-label="Histórico de cuentas cobradas">
+        <thead><tr><th>Fecha de cobro</th><th>Cliente</th><th>Descripción</th><th>Fecha original</th><th class="num">Monto</th><th>Estado</th></tr></thead>
+        <tbody id="cobrar-history-tbody"></tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<!-- CUENTAS POR PAGAR -->
+<section id="view-pagar" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Pagar</h2>
+    <p>Control de obligaciones pendientes agrupadas por proveedor o beneficiario. No genera movimientos financieros ni asientos contables.</p>
+  </header>
+  <div class="fin-filters-row fin-filters-row--compact cobrar-toolbar">
+    <button type="button" id="pagar-new" class="btn-primary cobrar-action-btn">＋ Nueva obligación</button>
+    <label class="fin-grow">Buscar proveedor o beneficiario
+      <input type="search" id="pagar-search" placeholder="Nombre…" autocomplete="off">
+    </label>
+    <button type="button" id="pagar-refresh" class="btn-small cobrar-action-btn">↻ Actualizar</button>
+    <div id="pagar-count" class="fin-muted" aria-live="polite"></div>
+  </div>
+  <div class="fin-table-wrapper cobrar-table-wrap">
+    <table class="fin-table cobrar-summary-table" aria-label="Cuentas por pagar pendientes">
+      <thead><tr><th>Proveedor / Beneficiario</th><th>Conceptos pendientes</th><th class="num">Monto pendiente</th><th>Fecha más próxima</th><th>Estado</th><th class="fin-actions-cell">Acciones</th></tr></thead>
+      <tbody id="pagar-tbody"></tbody>
+    </table>
+  </div>
+  <p class="fin-help">Seleccione un proveedor de Finanzas o escriba un beneficiario manual. Use <strong>Pagar</strong> para marcar obligaciones completas.</p>
+  <section id="pagar-editor" class="cobrar-editor hidden" aria-label="Editor de cuenta por pagar">
+    <header class="fin-section-header fin-section-header--sub cobrar-editor-head">
+      <div><h3 id="pagar-editor-title">Nueva cuenta por pagar</h3><p id="pagar-editor-help">Seleccione un proveedor o escriba un beneficiario manual.</p></div>
+      <button type="button" id="pagar-close" class="btn-close" aria-label="Cerrar editor">×</button>
+    </header>
+    <form id="pagar-form" class="fin-form" autocomplete="off">
+      <input type="hidden" id="pagar-group-key">
+      <div class="fin-form-row"><label class="fin-form-grow">Proveedor / Beneficiario
+        <input type="text" id="pagar-party" list="pagar-party-options" placeholder="Buscar o escribir nombre…" required>
+        <datalist id="pagar-party-options"></datalist>
+      </label></div>
+      <div class="fin-table-wrapper">
+        <table class="fin-table cobrar-lines-table" aria-label="Obligaciones pendientes">
+          <thead><tr><th>Descripción</th><th class="num">Monto</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="pagar-lines-tbody"></tbody>
+        </table>
+      </div>
+      <div class="cobrar-editor-actions">
+        <button type="button" id="pagar-add-line" class="btn-small cobrar-action-btn">＋ Agregar obligación</button><span class="fin-grow"></span>
+        <button type="button" id="pagar-cancel" class="btn-ghost cobrar-action-btn">Cancelar</button>
+        <button type="submit" id="pagar-save" class="btn-primary cobrar-action-btn">Guardar pendientes</button>
+      </div>
+      <p id="pagar-form-message" class="fin-help" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+  <details id="pagar-history" class="cobrar-history">
+    <summary><span>Histórico de pagos</span><strong id="pagar-history-count">0 obligaciones pagadas</strong></summary>
+    <div class="fin-table-wrapper cobrar-history-wrap">
+      <table class="fin-table cobrar-history-table" aria-label="Histórico de cuentas pagadas">
+        <thead><tr><th>Fecha de pago</th><th>Proveedor / Beneficiario</th><th>Descripción</th><th>Fecha original</th><th class="num">Monto</th><th>Estado</th></tr></thead>
+        <tbody id="pagar-history-tbody"></tbody>
+      </table>
+    </div>
+  </details>
 </section>
 
 

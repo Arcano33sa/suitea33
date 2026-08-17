@@ -7,7 +7,7 @@
 const FIN_DB_NAME = 'finanzasDB';
 // IMPORTANTE: subir versión cuando se agregan stores/nuevas estructuras.
 // v3 agrega el store `suppliers` para Proveedores (sin romper data existente).
-const FIN_DB_VERSION = 8; // + Transferencias Internas (store `internalTransfers`) + Cuentas Financieras + Recibos + Importación cierres diarios POS
+const FIN_DB_VERSION = 10; // + Cuentas por cobrar/pagar (`receivableItems`, `payableItems`)
 const CENTRAL_EVENT = 'CENTRAL';
 
 // Hardening Etapa 10/10: límites de render visual para reportes largos.
@@ -141,6 +141,22 @@ function openFinDB() {
       // Settings / snapshots (no contable): por ejemplo Caja Chica física.
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'id' });
+      }
+
+      // Una fila persistente por partida; la vista Cobrar agrupa por cliente.
+      if (!db.objectStoreNames.contains('receivableItems')) {
+        const st = db.createObjectStore('receivableItems', { keyPath: 'id' });
+        try { st.createIndex('groupKey', 'groupKey', { unique: false }); } catch (e) {}
+        try { st.createIndex('status', 'status', { unique: false }); } catch (e) {}
+        try { st.createIndex('dueDate', 'dueDate', { unique: false }); } catch (e) {}
+        try { st.createIndex('updatedAtISO', 'updatedAtISO', { unique: false }); } catch (e) {}
+      }
+      if (!db.objectStoreNames.contains('payableItems')) {
+        const st = db.createObjectStore('payableItems', { keyPath: 'id' });
+        try { st.createIndex('groupKey', 'groupKey', { unique: false }); } catch (e) {}
+        try { st.createIndex('status', 'status', { unique: false }); } catch (e) {}
+        try { st.createIndex('dueDate', 'dueDate', { unique: false }); } catch (e) {}
+        try { st.createIndex('updatedAtISO', 'updatedAtISO', { unique: false }); } catch (e) {}
       }
 
       // Importación cierres diarios del POS (idempotencia + lookup por evento/día)
@@ -6318,6 +6334,373 @@ function setupCajaChicaUI() {
       ccSetMsg('T/C central actualizado desde Moneda.');
     });
   } catch (_) {}
+}
+
+/* ---------- Cobrar · Etapa 1: pendientes agrupados por cliente ---------- */
+const COBRAR_CUSTOMERS_KEY = 'a33_pos_customersCatalog';
+let cobrarItems = [];
+let cobrarCustomers = [];
+let cobrarEditorMode = 'edit';
+
+function cobrarText(value, max = 300) { return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max); }
+function cobrarKey(value) {
+  let text = cobrarText(value).toLowerCase();
+  try { text = text.normalize('NFD'); } catch (_) {}
+  return text.replace(/[\u0300-\u036f]/g, '');
+}
+function cobrarEscape(value) {
+  return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+function cobrarId() {
+  try { if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID(); } catch (_) {}
+  return `cxc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+}
+function cobrarToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function cobrarMoney(value) {
+  const amount = Number(value || 0);
+  try { return new Intl.NumberFormat('es-NI', { style: 'currency', currency: 'NIO' }).format(amount); }
+  catch (_) { return `C$ ${amount.toFixed(2)}`; }
+}
+function cobrarDateTime(value) {
+  const d = new Date(value || '');
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('es-NI', { dateStyle: 'short', timeStyle: 'short' }).format(d);
+}
+
+function cobrarReadCustomers() {
+  let raw = [];
+  try {
+    raw = window.A33Storage?.sharedGet ? A33Storage.sharedGet(COBRAR_CUSTOMERS_KEY, [], 'local') : JSON.parse(localStorage.getItem(COBRAR_CUSTOMERS_KEY) || '[]');
+  } catch (_) { raw = []; }
+  const seen = new Set();
+  cobrarCustomers = (Array.isArray(raw) ? raw : []).map(row => {
+    if (typeof row === 'string') return { id: '', name: cobrarText(row), active: true };
+    const active = typeof row.isActive === 'boolean' ? row.isActive : (typeof row.active === 'boolean' ? row.active : true);
+    return { id: cobrarText(row.id, 100), name: cobrarText(row.name || row.nombre), active, merged: !!row.mergedIntoId };
+  }).filter(row => {
+    const key = cobrarKey(row.name);
+    if (!key || !row.active || row.merged || seen.has(key)) return false;
+    seen.add(key); return true;
+  }).sort((a, b) => a.name.localeCompare(b.name, 'es-NI', { sensitivity: 'base' }));
+  const list = document.getElementById('cobrar-client-options');
+  if (list) list.innerHTML = cobrarCustomers.map(row => `<option value="${cobrarEscape(row.name)}"></option>`).join('');
+}
+
+function cobrarGroups() {
+  const map = new Map();
+  cobrarItems.filter(item => item?.status === 'PENDING').forEach(item => {
+    const key = cobrarText(item.groupKey, 180) || `manual:${cobrarKey(item.customerName)}`;
+    if (!map.has(key)) map.set(key, { key, customerName: item.customerName || 'Sin nombre', items: [] });
+    map.get(key).items.push(item);
+  });
+  return Array.from(map.values()).map(group => {
+    group.items.sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
+    group.total = group.items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    group.nextDate = group.items[0]?.dueDate || '';
+    return group;
+  }).sort((a, b) => a.customerName.localeCompare(b.customerName, 'es-NI', { sensitivity: 'base' }));
+}
+
+function cobrarRender() {
+  const tbody = document.getElementById('cobrar-tbody');
+  if (!tbody) return;
+  const query = cobrarKey(document.getElementById('cobrar-search')?.value || '');
+  const groups = cobrarGroups().filter(group => !query || cobrarKey(group.customerName).includes(query));
+  const parts = groups.reduce((n, group) => n + group.items.length, 0);
+  const count = document.getElementById('cobrar-count');
+  if (count) count.textContent = `${groups.length} cliente${groups.length === 1 ? '' : 's'} · ${parts} partida${parts === 1 ? '' : 's'}`;
+  if (!groups.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="cobrar-empty">${query ? 'No hay coincidencias.' : 'No hay cuentas por cobrar pendientes.'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = groups.map(group => `<tr>
+    <td><strong>${cobrarEscape(group.customerName)}</strong></td><td>${group.items.length} partida${group.items.length === 1 ? '' : 's'}</td>
+    <td class="num"><strong>${cobrarEscape(cobrarMoney(group.total))}</strong></td><td>${cobrarEscape(group.nextDate || '—')}</td>
+    <td><span class="cobrar-status-chip">Pendiente</span></td><td class="fin-actions-cell cobrar-row-actions">
+      <button type="button" class="cobrar-icon-btn cobrar-view" data-key="${cobrarEscape(group.key)}">◉ Ver</button>
+      <button type="button" class="cobrar-icon-btn cobrar-icon-edit cobrar-edit" data-key="${cobrarEscape(group.key)}">✎ Editar</button>
+      <button type="button" class="cobrar-icon-btn cobrar-icon-pay cobrar-collect" data-key="${cobrarEscape(group.key)}">$ Cobrar</button>
+    </td></tr>`).join('');
+}
+
+function cobrarRenderHistory() {
+  const tbody = document.getElementById('cobrar-history-tbody');
+  if (!tbody) return;
+  const paid = cobrarItems.filter(item => item?.status === 'PAID')
+    .sort((a, b) => String(b.paidAtISO || '').localeCompare(String(a.paidAtISO || '')));
+  const count = document.getElementById('cobrar-history-count');
+  if (count) count.textContent = `${paid.length} partida${paid.length === 1 ? '' : 's'} pagada${paid.length === 1 ? '' : 's'}`;
+  tbody.innerHTML = paid.length ? paid.map(item => `<tr>
+    <td>${cobrarEscape(cobrarDateTime(item.paidAtISO))}</td><td><strong>${cobrarEscape(item.customerName || 'Sin nombre')}</strong></td>
+    <td title="${cobrarEscape(item.description || '')}">${cobrarEscape(item.description || '—')}</td><td>${cobrarEscape(item.dueDate || '—')}</td>
+    <td class="num"><strong>${cobrarEscape(cobrarMoney(item.amount))}</strong></td><td><span class="cobrar-status-chip is-paid">Pagado</span></td>
+  </tr>`).join('') : '<tr><td colspan="6" class="cobrar-empty">Todavía no hay cobros en el histórico.</td></tr>';
+}
+
+async function cobrarLoad() {
+  cobrarReadCustomers();
+  cobrarItems = (await finGetAll('receivableItems')).filter(item => item && (item.status === 'PENDING' || item.status === 'PAID'));
+  cobrarRender();
+  cobrarRenderHistory();
+}
+
+function cobrarLineRow(item = {}, readonly = false, isNew = false, collect = false) {
+  return `<tr data-id="${cobrarEscape(item.id || '')}">
+    <td><input class="cobrar-line-description" maxlength="300" value="${cobrarEscape(item.description || '')}" placeholder="Descripción de la deuda" ${readonly ? 'disabled' : ''}></td>
+    <td><input class="cobrar-line-amount" type="number" inputmode="decimal" min="0.01" step="0.01" value="${item.amount ? cobrarEscape(item.amount) : ''}" placeholder="0.00" ${readonly ? 'disabled' : ''}></td>
+    <td><input class="cobrar-line-date" type="date" value="${cobrarEscape(item.dueDate || cobrarToday())}" ${readonly ? 'disabled' : ''}></td>
+    <td><span class="cobrar-status-chip">Pendiente</span></td><td>${collect
+      ? '<label class="cobrar-check-label"><input type="checkbox" class="cobrar-payment-check"> Pagado</label>'
+      : (!readonly && isNew ? '<button type="button" class="cobrar-icon-btn cobrar-remove-line">× Quitar</button>' : '')}</td></tr>`;
+}
+
+function cobrarOpenEditor(groupKey = '', mode = 'edit') {
+  const editor = document.getElementById('cobrar-editor');
+  const form = document.getElementById('cobrar-form');
+  if (!editor || !form) return;
+  form.reset(); cobrarEditorMode = mode; document.getElementById('cobrar-group-key').value = groupKey;
+  const group = cobrarGroups().find(row => row.key === groupKey);
+  const readonly = mode === 'view';
+  const collect = mode === 'collect';
+  document.getElementById('cobrar-editor-title').textContent = collect ? 'Registrar cobro' : (readonly ? 'Detalle de cuenta por cobrar' : (group ? 'Editar cuenta por cobrar' : 'Nueva cuenta por cobrar'));
+  document.getElementById('cobrar-editor-help').textContent = collect ? 'Marque las partidas que el cliente pagó. Las no seleccionadas continuarán pendientes.' : (readonly ? 'Consulta de partidas pendientes.' : 'Seleccione un cliente del catálogo o escriba un nombre manual.');
+  const client = document.getElementById('cobrar-client');
+  client.value = group?.customerName || ''; client.disabled = readonly || collect || !!group;
+  document.getElementById('cobrar-lines-tbody').innerHTML = group ? group.items.map(item => cobrarLineRow(item, readonly || collect, false, collect)).join('') : cobrarLineRow({}, false, true, false);
+  document.getElementById('cobrar-add-line').classList.toggle('hidden', readonly || collect);
+  document.getElementById('cobrar-save').classList.toggle('hidden', readonly);
+  document.getElementById('cobrar-save').textContent = collect ? 'Confirmar cobro' : 'Guardar pendientes';
+  document.getElementById('cobrar-form-message').textContent = readonly ? 'Vista de consulta. Use Editar para realizar cambios.' : '';
+  editor.classList.remove('hidden'); editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function cobrarCloseEditor() { document.getElementById('cobrar-editor')?.classList.add('hidden'); }
+
+async function cobrarSave(event) {
+  event.preventDefault();
+  const existingGroupKey = cobrarText(document.getElementById('cobrar-group-key')?.value, 180);
+  const customerName = cobrarText(document.getElementById('cobrar-client')?.value, 180);
+  const message = document.getElementById('cobrar-form-message');
+  if (cobrarEditorMode === 'collect') {
+    const selected = Array.from(document.querySelectorAll('#cobrar-lines-tbody tr')).filter(row => row.querySelector('.cobrar-payment-check')?.checked);
+    if (!selected.length) { message.textContent = 'Seleccione al menos una partida pagada.'; return; }
+    const nowPaid = new Date().toISOString();
+    const batchId = cobrarId();
+    for (const row of selected) {
+      const item = cobrarItems.find(entry => entry.id === cobrarText(row.dataset.id, 100));
+      if (!item || item.status !== 'PENDING') continue;
+      await finPut('receivableItems', { ...item, status: 'PAID', paidAtISO: nowPaid, paymentBatchId: batchId, updatedAtISO: nowPaid });
+    }
+    await cobrarLoad(); cobrarCloseEditor(); return;
+  }
+  if (!customerName) { message.textContent = 'Ingrese o seleccione un cliente.'; return; }
+  const master = cobrarCustomers.find(row => cobrarKey(row.name) === cobrarKey(customerName));
+  const groupKey = existingGroupKey || (master?.id ? `customer:${master.id}` : `manual:${cobrarKey(customerName)}`);
+  if (!existingGroupKey && cobrarGroups().some(group => group.key === groupKey)) { message.textContent = 'Ese cliente ya tiene un registro. Use Editar para agregar nuevas partidas.'; return; }
+  const prepared = [];
+  for (const row of document.querySelectorAll('#cobrar-lines-tbody tr')) {
+    const description = cobrarText(row.querySelector('.cobrar-line-description')?.value, 300);
+    const amount = Number(row.querySelector('.cobrar-line-amount')?.value || 0);
+    const dueDate = cobrarText(row.querySelector('.cobrar-line-date')?.value, 10);
+    if (!description || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { message.textContent = 'Complete descripción, monto mayor que cero y fecha en todas las partidas.'; return; }
+    prepared.push({ row, description, amount: Math.round(amount * 100) / 100, dueDate });
+  }
+  if (!prepared.length) { message.textContent = 'Agregue al menos una partida.'; return; }
+  const now = new Date().toISOString();
+  for (const part of prepared) {
+    const existingId = cobrarText(part.row.dataset.id, 100);
+    const existing = cobrarItems.find(item => item.id === existingId);
+    await finPut('receivableItems', { ...(existing || {}), id: existingId || cobrarId(), groupKey,
+      customerId: master?.id || existing?.customerId || '', customerName, customerSource: master ? 'CATALOG' : 'MANUAL',
+      description: part.description, amount: part.amount, dueDate: part.dueDate, status: 'PENDING',
+      createdAtISO: existing?.createdAtISO || now, updatedAtISO: now });
+  }
+  await cobrarLoad(); cobrarCloseEditor();
+}
+
+function setupCobrarUI() {
+  document.getElementById('cobrar-new')?.addEventListener('click', () => cobrarOpenEditor('', 'edit'));
+  document.getElementById('cobrar-refresh')?.addEventListener('click', () => cobrarLoad().catch(console.error));
+  document.getElementById('cobrar-search')?.addEventListener('input', cobrarRender);
+  document.getElementById('cobrar-add-line')?.addEventListener('click', () => document.getElementById('cobrar-lines-tbody')?.insertAdjacentHTML('beforeend', cobrarLineRow({}, false, true)));
+  document.getElementById('cobrar-close')?.addEventListener('click', cobrarCloseEditor);
+  document.getElementById('cobrar-cancel')?.addEventListener('click', cobrarCloseEditor);
+  document.getElementById('cobrar-form')?.addEventListener('submit', event => cobrarSave(event).catch(err => { console.error(err); document.getElementById('cobrar-form-message').textContent = 'No se pudo guardar la cuenta.'; }));
+  document.getElementById('cobrar-lines-tbody')?.addEventListener('click', event => event.target.closest('.cobrar-remove-line')?.closest('tr')?.remove());
+  document.getElementById('cobrar-tbody')?.addEventListener('click', event => {
+    const view = event.target.closest('.cobrar-view'); const edit = event.target.closest('.cobrar-edit'); const collect = event.target.closest('.cobrar-collect');
+    if (view) cobrarOpenEditor(view.dataset.key, 'view');
+    if (edit) cobrarOpenEditor(edit.dataset.key, 'edit');
+    if (collect) cobrarOpenEditor(collect.dataset.key, 'collect');
+  });
+  window.addEventListener('storage', event => { if (event?.key === COBRAR_CUSTOMERS_KEY) cobrarReadCustomers(); });
+}
+
+/* ---------- Pagar · obligaciones agrupadas por proveedor/beneficiario ---------- */
+let pagarItems = [];
+let pagarParties = [];
+let pagarEditorMode = 'edit';
+
+async function pagarReadParties() {
+  let raw = [];
+  try { raw = await finGetAll('suppliers'); } catch (_) { raw = []; }
+  const seen = new Set();
+  pagarParties = (Array.isArray(raw) ? raw : []).map(normalizeSupplier).filter(row => {
+    const key = cobrarKey(row.nombre);
+    if (!key || !finIsSupplierAvailableForNewPurchases(row) || seen.has(key)) return false;
+    seen.add(key); return true;
+  }).map(row => ({ id: String(row.id), name: row.nombre }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es-NI', { sensitivity: 'base' }));
+  const list = document.getElementById('pagar-party-options');
+  if (list) list.innerHTML = pagarParties.map(row => `<option value="${cobrarEscape(row.name)}"></option>`).join('');
+}
+
+function pagarGroups() {
+  const map = new Map();
+  pagarItems.filter(item => item?.status === 'PENDING').forEach(item => {
+    const key = cobrarText(item.groupKey, 180) || `manual:${cobrarKey(item.partyName)}`;
+    if (!map.has(key)) map.set(key, { key, partyName: item.partyName || 'Sin nombre', items: [] });
+    map.get(key).items.push(item);
+  });
+  return Array.from(map.values()).map(group => {
+    group.items.sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
+    group.total = group.items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    group.nextDate = group.items[0]?.dueDate || '';
+    return group;
+  }).sort((a, b) => a.partyName.localeCompare(b.partyName, 'es-NI', { sensitivity: 'base' }));
+}
+
+function pagarRender() {
+  const tbody = document.getElementById('pagar-tbody');
+  if (!tbody) return;
+  const query = cobrarKey(document.getElementById('pagar-search')?.value || '');
+  const groups = pagarGroups().filter(group => !query || cobrarKey(group.partyName).includes(query));
+  const parts = groups.reduce((n, group) => n + group.items.length, 0);
+  const count = document.getElementById('pagar-count');
+  if (count) count.textContent = `${groups.length} proveedor${groups.length === 1 ? '' : 'es'} / beneficiario${groups.length === 1 ? '' : 's'} · ${parts} ${parts === 1 ? 'obligación' : 'obligaciones'}`;
+  if (!groups.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="cobrar-empty">${query ? 'No hay coincidencias.' : 'No hay cuentas por pagar pendientes.'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = groups.map(group => `<tr>
+    <td><strong>${cobrarEscape(group.partyName)}</strong></td><td>${group.items.length} ${group.items.length === 1 ? 'obligación' : 'obligaciones'}</td>
+    <td class="num"><strong>${cobrarEscape(cobrarMoney(group.total))}</strong></td><td>${cobrarEscape(group.nextDate || '—')}</td>
+    <td><span class="cobrar-status-chip">Pendiente</span></td><td class="fin-actions-cell cobrar-row-actions">
+      <button type="button" class="cobrar-icon-btn pagar-view" data-key="${cobrarEscape(group.key)}">◉ Ver</button>
+      <button type="button" class="cobrar-icon-btn cobrar-icon-edit pagar-edit" data-key="${cobrarEscape(group.key)}">✎ Editar</button>
+      <button type="button" class="cobrar-icon-btn cobrar-icon-pay pagar-collect" data-key="${cobrarEscape(group.key)}">$ Pagar</button>
+    </td></tr>`).join('');
+}
+
+function pagarRenderHistory() {
+  const tbody = document.getElementById('pagar-history-tbody');
+  if (!tbody) return;
+  const paid = pagarItems.filter(item => item?.status === 'PAID')
+    .sort((a, b) => String(b.paidAtISO || '').localeCompare(String(a.paidAtISO || '')));
+  const count = document.getElementById('pagar-history-count');
+  if (count) count.textContent = `${paid.length} ${paid.length === 1 ? 'obligación pagada' : 'obligaciones pagadas'}`;
+  tbody.innerHTML = paid.length ? paid.map(item => `<tr>
+    <td>${cobrarEscape(cobrarDateTime(item.paidAtISO))}</td><td><strong>${cobrarEscape(item.partyName || 'Sin nombre')}</strong></td>
+    <td title="${cobrarEscape(item.description || '')}">${cobrarEscape(item.description || '—')}</td><td>${cobrarEscape(item.dueDate || '—')}</td>
+    <td class="num"><strong>${cobrarEscape(cobrarMoney(item.amount))}</strong></td><td><span class="cobrar-status-chip is-paid">Pagado</span></td>
+  </tr>`).join('') : '<tr><td colspan="6" class="cobrar-empty">Todavía no hay pagos en el histórico.</td></tr>';
+}
+
+async function pagarLoad() {
+  await pagarReadParties();
+  pagarItems = (await finGetAll('payableItems')).filter(item => item && (item.status === 'PENDING' || item.status === 'PAID'));
+  pagarRender(); pagarRenderHistory();
+}
+
+function pagarLineRow(item = {}, readonly = false, isNew = false, collect = false) {
+  return `<tr data-id="${cobrarEscape(item.id || '')}">
+    <td><input class="pagar-line-description" maxlength="300" value="${cobrarEscape(item.description || '')}" placeholder="Descripción de la obligación" ${readonly ? 'disabled' : ''}></td>
+    <td><input class="pagar-line-amount" type="number" inputmode="decimal" min="0.01" step="0.01" value="${item.amount ? cobrarEscape(item.amount) : ''}" placeholder="0.00" ${readonly ? 'disabled' : ''}></td>
+    <td><input class="pagar-line-date" type="date" value="${cobrarEscape(item.dueDate || cobrarToday())}" ${readonly ? 'disabled' : ''}></td>
+    <td><span class="cobrar-status-chip">Pendiente</span></td><td>${collect
+      ? '<label class="cobrar-check-label"><input type="checkbox" class="pagar-payment-check"> Pagado</label>'
+      : (!readonly && isNew ? '<button type="button" class="cobrar-icon-btn pagar-remove-line">× Quitar</button>' : '')}</td></tr>`;
+}
+
+function pagarOpenEditor(groupKey = '', mode = 'edit') {
+  const editor = document.getElementById('pagar-editor');
+  const form = document.getElementById('pagar-form');
+  if (!editor || !form) return;
+  form.reset(); pagarEditorMode = mode; document.getElementById('pagar-group-key').value = groupKey;
+  const group = pagarGroups().find(row => row.key === groupKey);
+  const readonly = mode === 'view'; const collect = mode === 'collect';
+  document.getElementById('pagar-editor-title').textContent = collect ? 'Registrar pago' : (readonly ? 'Detalle de cuenta por pagar' : (group ? 'Editar cuenta por pagar' : 'Nueva cuenta por pagar'));
+  document.getElementById('pagar-editor-help').textContent = collect ? 'Marque las obligaciones pagadas. Las no seleccionadas continuarán pendientes.' : (readonly ? 'Consulta de obligaciones pendientes.' : 'Seleccione un proveedor o escriba un beneficiario manual.');
+  const party = document.getElementById('pagar-party');
+  party.value = group?.partyName || ''; party.disabled = readonly || collect || !!group;
+  document.getElementById('pagar-lines-tbody').innerHTML = group ? group.items.map(item => pagarLineRow(item, readonly || collect, false, collect)).join('') : pagarLineRow({}, false, true, false);
+  document.getElementById('pagar-add-line').classList.toggle('hidden', readonly || collect);
+  document.getElementById('pagar-save').classList.toggle('hidden', readonly);
+  document.getElementById('pagar-save').textContent = collect ? 'Confirmar pago' : 'Guardar pendientes';
+  document.getElementById('pagar-form-message').textContent = readonly ? 'Vista de consulta. Use Editar para realizar cambios.' : '';
+  editor.classList.remove('hidden'); editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function pagarCloseEditor() { document.getElementById('pagar-editor')?.classList.add('hidden'); }
+
+async function pagarSave(event) {
+  event.preventDefault();
+  const existingGroupKey = cobrarText(document.getElementById('pagar-group-key')?.value, 180);
+  const partyName = cobrarText(document.getElementById('pagar-party')?.value, 180);
+  const message = document.getElementById('pagar-form-message');
+  if (pagarEditorMode === 'collect') {
+    const selected = Array.from(document.querySelectorAll('#pagar-lines-tbody tr')).filter(row => row.querySelector('.pagar-payment-check')?.checked);
+    if (!selected.length) { message.textContent = 'Seleccione al menos una obligación pagada.'; return; }
+    const nowPaid = new Date().toISOString(); const batchId = cobrarId();
+    for (const row of selected) {
+      const item = pagarItems.find(entry => entry.id === cobrarText(row.dataset.id, 100));
+      if (!item || item.status !== 'PENDING') continue;
+      await finPut('payableItems', { ...item, status: 'PAID', paidAtISO: nowPaid, paymentBatchId: batchId, updatedAtISO: nowPaid });
+    }
+    await pagarLoad(); pagarCloseEditor(); return;
+  }
+  if (!partyName) { message.textContent = 'Ingrese o seleccione un proveedor o beneficiario.'; return; }
+  const master = pagarParties.find(row => cobrarKey(row.name) === cobrarKey(partyName));
+  const groupKey = existingGroupKey || (master?.id ? `supplier:${master.id}` : `manual:${cobrarKey(partyName)}`);
+  if (!existingGroupKey && pagarGroups().some(group => group.key === groupKey)) { message.textContent = 'Ese proveedor o beneficiario ya tiene un registro. Use Editar para agregar obligaciones.'; return; }
+  const prepared = [];
+  for (const row of document.querySelectorAll('#pagar-lines-tbody tr')) {
+    const description = cobrarText(row.querySelector('.pagar-line-description')?.value, 300);
+    const amount = Number(row.querySelector('.pagar-line-amount')?.value || 0);
+    const dueDate = cobrarText(row.querySelector('.pagar-line-date')?.value, 10);
+    if (!description || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { message.textContent = 'Complete descripción, monto mayor que cero y fecha en todas las obligaciones.'; return; }
+    prepared.push({ row, description, amount: Math.round(amount * 100) / 100, dueDate });
+  }
+  if (!prepared.length) { message.textContent = 'Agregue al menos una obligación.'; return; }
+  const now = new Date().toISOString();
+  for (const part of prepared) {
+    const existingId = cobrarText(part.row.dataset.id, 100);
+    const existing = pagarItems.find(item => item.id === existingId);
+    await finPut('payableItems', { ...(existing || {}), id: existingId || cobrarId(), groupKey,
+      supplierId: master?.id || existing?.supplierId || '', partyName, partySource: master ? 'SUPPLIER' : 'MANUAL',
+      description: part.description, amount: part.amount, dueDate: part.dueDate, status: 'PENDING',
+      createdAtISO: existing?.createdAtISO || now, updatedAtISO: now });
+  }
+  await pagarLoad(); pagarCloseEditor();
+}
+
+function setupPagarUI() {
+  document.getElementById('pagar-new')?.addEventListener('click', () => pagarOpenEditor('', 'edit'));
+  document.getElementById('pagar-refresh')?.addEventListener('click', () => pagarLoad().catch(console.error));
+  document.getElementById('pagar-search')?.addEventListener('input', pagarRender);
+  document.getElementById('pagar-add-line')?.addEventListener('click', () => document.getElementById('pagar-lines-tbody')?.insertAdjacentHTML('beforeend', pagarLineRow({}, false, true)));
+  document.getElementById('pagar-close')?.addEventListener('click', pagarCloseEditor);
+  document.getElementById('pagar-cancel')?.addEventListener('click', pagarCloseEditor);
+  document.getElementById('pagar-form')?.addEventListener('submit', event => pagarSave(event).catch(err => { console.error(err); document.getElementById('pagar-form-message').textContent = 'No se pudo guardar la obligación.'; }));
+  document.getElementById('pagar-lines-tbody')?.addEventListener('click', event => event.target.closest('.pagar-remove-line')?.closest('tr')?.remove());
+  document.getElementById('pagar-tbody')?.addEventListener('click', event => {
+    const view = event.target.closest('.pagar-view'); const edit = event.target.closest('.pagar-edit'); const collect = event.target.closest('.pagar-collect');
+    if (view) pagarOpenEditor(view.dataset.key, 'view');
+    if (edit) pagarOpenEditor(edit.dataset.key, 'edit');
+    if (collect) pagarOpenEditor(collect.dataset.key, 'collect');
+  });
 }
 
 function normStr(s, maxLen = 200) {
@@ -19316,7 +19699,7 @@ function finFindVisibleTabButton(view) {
 }
 
 function finFallbackVisibleView() {
-  const preferred = ['tablero', 'cajachica', 'recibos'];
+  const preferred = ['tablero', 'cajachica', 'cobrar', 'pagar', 'recibos'];
   for (const view of preferred) {
     if (finFindVisibleTabButton(view)) return view;
   }
@@ -19355,6 +19738,8 @@ function finNormalizeViewName(view) {
 function finRunViewSideEffects(view) {
   const v = finNormalizeViewName(view);
   if (v === 'recibos') { rcEnterView(true).catch(() => {}); }
+  if (v === 'cobrar') { cobrarLoad().catch(() => {}); }
+  if (v === 'pagar') { pagarLoad().catch(() => {}); }
   if (v === 'cuentasfinancieras') { renderFinancialAccountsView().catch(() => {}); }
   if (v === 'transferencias') { try { renderInternalTransfersView(finCachedData || {}); } catch (_) {} }
   if (v === 'estados' && finCachedData) { try { finReportEnsureSelectors(finCachedData); renderAccountingReports(finCachedData); } catch (_) {} }
@@ -20933,6 +21318,8 @@ async function initFinanzas() {
     setupTabs();
     setupFinancialAccountsUI();
     setupCajaChicaUI();
+    setupCobrarUI();
+    setupPagarUI();
     setupEstadosSubtabs();
     setupModoERToggle();
     setupAccountingReportsUI();
@@ -20947,6 +21334,8 @@ async function initFinanzas() {
     setupComprasPlanUI();
     setupExportButtons();
     await ccLoadSnapshot();
+    await cobrarLoad();
+    await pagarLoad();
     ccSetFxInputFromSnapshot(true);
     ccRenderCurrency();
     await refreshAllFin();
