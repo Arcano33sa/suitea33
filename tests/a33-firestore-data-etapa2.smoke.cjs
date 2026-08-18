@@ -97,7 +97,7 @@ assert(api.readProgress().modules.every((module) => module.status === 'pending')
 assert(html.includes('id="cfg-firestore-progress-track"'), 'Falta barra de progreso en Configuración');
 assert(html.includes('id="cfg-firestore-module-grid"'), 'Falta cuadrícula de nueve módulos');
 assert(html.includes('a33-firestore-data.js?v=4.20.98&amp;r=1'), 'Configuración no carga la capa Firestore');
-assert(html.indexOf('a33-firestore-data.js') < html.indexOf('script.js?v=4.20.98&amp;r=40'), 'La capa Firestore carga después de Configuración');
+assert(html.indexOf('a33-firestore-data.js') < html.indexOf('script.js?v=4.20.98&amp;r=41'), 'La capa Firestore carga después de Configuración');
 assert(configSource.includes("window.addEventListener('a33:firestore-progress'"), 'Configuración no escucha el progreso Firestore');
 assert(configSource.includes('function renderFirestoreProgress(state)'), 'Falta render del panel Firestore');
 for (const status of ['process','success','warning','error']) {

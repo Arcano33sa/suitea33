@@ -58,7 +58,7 @@ assert(html.includes('id="cfg-auth-password"'), 'Falta campo de contraseña');
 assert(html.includes('no se guarda en localStorage'), 'Falta aviso de privacidad de contraseña');
 assert(html.includes('a33-firebase-auth.js?v=4.20.98&amp;r=16'), 'No se actualizó la revisión de Auth');
 assert(html.includes('a33-firebase-access.js?v=4.20.98&amp;r=17'), 'No se actualizó la revisión de Acceso');
-assert(html.includes('script.js?v=4.20.98&amp;r=40'), 'No se actualizó la revisión de Configuración');
+assert(html.includes('script.js?v=4.20.98&amp;r=41'), 'No se actualizó la revisión de Configuración');
 assert(configSource.includes('function initAuthSection()'), 'Falta inicialización del acceso maestro');
 assert(configSource.includes("A33Toast?.process('Verificando acceso seguro…'"), 'Falta Toast azul durante el acceso');
 assert(configSource.includes("'Sesión iniciada correctamente.', 'success'"), 'Falta confirmación verde de acceso');

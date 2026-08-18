@@ -298,6 +298,51 @@ service cloud.firestore {
         && request.resource.data.createdBy == request.auth.uid;
     }
 
+    function validStage5Module(moduleId) {
+      return moduleId == 'configuracion'
+        || moduleId == 'catalogos'
+        || moduleId == 'lotes';
+    }
+
+    function validStage5Entity(moduleId, entityId) {
+      return (moduleId == 'configuracion' && (entityId == 'identidad' || entityId == 'apariencia' || entityId == 'reportes' || entityId == 'moneda' || entityId == 'pwa'))
+        || (moduleId == 'catalogos' && (entityId == 'productos' || entityId == 'materia_prima' || entityId == 'envases' || entityId == 'tapas' || entityId == 'extras' || entityId == 'bancos' || entityId == 'clientes'))
+        || (moduleId == 'lotes' && (entityId == 'lotes' || entityId == 'productos_lote' || entityId == 'historico'));
+    }
+
+    function validStage5Record(workspaceId, moduleId, entityId, recordId) {
+      return validStage5Module(moduleId)
+        && validStage5Entity(moduleId, entityId)
+        && request.resource.data.contractVersion == 1
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.workspaceId == workspaceId
+        && request.resource.data.moduleId == moduleId
+        && request.resource.data.entityId == entityId
+        && request.resource.data.recordId == recordId
+        && request.resource.data.payload is map
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.rev is int
+        && request.resource.data.rev >= 1
+        && request.resource.data.deleted is bool;
+    }
+
+    function validStage5Result(workspaceId, importId) {
+      return request.resource.data.schemaVersion == 1
+        && request.resource.data.stage == 'E5'
+        && request.resource.data.workspaceId == workspaceId
+        && request.resource.data.importId == importId
+        && request.resource.data.status == 'completed'
+        && request.resource.data.modules is list
+        && request.resource.data.modules.size() == 3
+        && request.resource.data.counts is map
+        && request.resource.data.recordCount is int
+        && request.resource.data.recordCount >= 1
+        && request.resource.data.completedAt is string
+        && request.resource.data.completedBy == request.auth.uid;
+    }
+
     match /workspaces/{workspaceId} {
       allow get: if requesterActiveMember(workspaceId) || (signedIn() && workspaceId == tokenWorkspace());
       allow list: if requesterAdmin(workspaceId);
@@ -332,6 +377,18 @@ service cloud.firestore {
           allow create, update: if requesterAdmin(workspaceId) && validInitialImportChunk(workspaceId, importId);
           allow delete: if requesterAdmin(workspaceId);
         }
+
+        match /applications/e5 {
+          allow get: if requesterAdmin(workspaceId);
+          allow list, delete: if false;
+          allow create, update: if requesterAdmin(workspaceId) && validStage5Result(workspaceId, importId);
+        }
+      }
+
+      match /modules/{moduleId}/entities/{entityId}/records/{recordId} {
+        allow get, list: if requesterActiveMember(workspaceId) && validStage5Module(moduleId) && validStage5Entity(moduleId, entityId);
+        allow create, update: if requesterAdmin(workspaceId) && validStage5Record(workspaceId, moduleId, entityId, recordId);
+        allow delete: if false;
       }
     }
 

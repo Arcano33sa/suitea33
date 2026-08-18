@@ -889,6 +889,28 @@
 <p>La E4 no borra ni sustituye datos. El JSON limpio se guarda por bloques para evitar el límite de tamaño de Firestore; la copia seleccionada permanece intacta en tu equipo.</p>
 </div>
 </section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-apply-e5-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E5</span>
+<div>
+<h3 id="cfg-apply-e5-title">E5 · Base operativa</h3>
+<p>Aplica desde la carga E4 solamente Configuración, Catálogos y Lotes a la estructura canónica de Firestore.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-apply-e5-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-apply-e5-source">E4 pendiente</strong><small id="cfg-apply-e5-source-detail">Primero debe existir una carga inicial preparada.</small></div>
+<div><span>Alcance</span><strong>3 módulos seguros</strong><small>Configuración, Catálogos y Lotes. No incluye módulos críticos.</small></div>
+<div><span>Resultado</span><strong id="cfg-apply-e5-result">Sin aplicar</strong><small id="cfg-apply-e5-result-detail">La información local no se reemplaza ni se elimina.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-apply-e5-run" type="button" disabled>Aplicar E5 en Firestore</button>
+<p class="cfg-action-inline-note" id="cfg-apply-e5-note">E5 usa escritura con fusión e identificadores estables para evitar duplicados.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Límite de E5</strong>
+<p>No borra datos locales ni remotos y no toca POS, Finanzas, Caja Chica, ventas, pedidos, saldos ni históricos operativos.</p>
+</div>
+</section>
 <section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-sync-title">
 <div class="cfg-report-card-head">
 <span class="cfg-report-icon">⇅</span>
@@ -1234,6 +1256,7 @@
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
-<script src="script.js?v=4.20.98&amp;r=40"></script>
+<script src="../assets/js/a33-firebase-apply-e5.js?v=4.20.98&amp;r=1"></script>
+<script src="script.js?v=4.20.98&amp;r=41"></script>
 </body>
 </html>
