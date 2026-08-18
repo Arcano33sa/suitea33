@@ -122,11 +122,20 @@
       workspaceId &&
       config.apiKey &&
       config.authDomain &&
-      config.databaseURL &&
-      isProbablyDatabaseURL(config.databaseURL) &&
       config.projectId &&
       config.appId
     );
+  }
+
+  function isRealtimeConfigured(settings){
+    const data = settings && typeof settings === 'object' ? settings : getSettings();
+    try{
+      if (g.A33FirebaseSettings && typeof g.A33FirebaseSettings.hasRealtimeConfig === 'function'){
+        return !!g.A33FirebaseSettings.hasRealtimeConfig(data);
+      }
+    }catch(_){ }
+    const config = getFirebaseConfig(data);
+    return isFirebaseConfigured(data) && !!(config.databaseURL && isProbablyDatabaseURL(config.databaseURL));
   }
 
   function buildSignature(config){
@@ -319,9 +328,9 @@
       return { ok: false, status: 'disabled', message, path, at: startedAt };
     }
 
-    if (!isFirebaseConfigured(settings)){
+    if (!isRealtimeConfigured(settings)){
       const missing = [];
-      ['apiKey','authDomain','databaseURL','projectId','appId'].forEach(function(key){ if (!clean(credentials[key])) missing.push(key); });
+      ['apiKey','authDomain','projectId','appId','databaseURL'].forEach(function(key){ if (!clean(credentials[key])) missing.push(key); });
       if (clean(credentials.databaseURL) && !isProbablyDatabaseURL(credentials.databaseURL)) missing.push('databaseURL válida');
       const message = missing.length
         ? 'Faltan credenciales mínimas guardadas: ' + missing.join(', ') + '.'
@@ -437,6 +446,7 @@
     refresh,
     getFirebaseConfig,
     isFirebaseConfigured,
+    isRealtimeConfigured,
     initFirebaseApp,
     getRealtimeDatabase,
     testConnection,

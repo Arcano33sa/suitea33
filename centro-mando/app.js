@@ -98,6 +98,10 @@ function formatMoney(value){
 }
 
 function showToast(message, kind){
+  if (window.A33Toast && typeof window.A33Toast.show === 'function') {
+    const toastType = kind === 'error' ? 'error' : kind === 'warn' || kind === 'warning' ? 'warning' : kind === 'process' ? 'process' : 'success';
+    return window.A33Toast.show(message, toastType);
+  }
   const el = $('cmdToast');
   if (!el) return;
   el.textContent = text(message) || 'Listo';

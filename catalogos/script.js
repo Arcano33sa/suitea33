@@ -2101,6 +2101,9 @@
   }
 
   function toast(message){
+    if (window.A33Toast && typeof window.A33Toast.show === 'function') {
+      return window.A33Toast.show(message);
+    }
     const el = byId('cat-toast');
     if (!el) return;
     el.textContent = message || 'Hecho';

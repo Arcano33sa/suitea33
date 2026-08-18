@@ -75,11 +75,15 @@
       normalizeWorkspaceId(data.workspaceId || '') &&
       clean(c.apiKey) &&
       clean(c.authDomain) &&
-      clean(c.databaseURL) &&
-      isProbablyDatabaseURL(c.databaseURL) &&
       clean(c.projectId) &&
       clean(c.appId)
     );
+  }
+
+  function hasRealtimeConfig(settings){
+    const data = settings && typeof settings === 'object' ? settings : {};
+    const c = data.credentials && typeof data.credentials === 'object' ? data.credentials : data;
+    return hasMinimumConfig(data) && !!(clean(c.databaseURL) && isProbablyDatabaseURL(c.databaseURL));
   }
 
   function defaults(){
@@ -182,6 +186,7 @@
     read,
     save,
     hasMinimumConfig,
+    hasRealtimeConfig,
     normalizeWorkspaceId,
     isProbablyDatabaseURL,
     ensureDeviceId,

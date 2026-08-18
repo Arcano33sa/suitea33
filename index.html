@@ -558,6 +558,7 @@
 
 </style>
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
 </head>
 <body>
 
@@ -792,6 +793,7 @@
   <script src="assets/js/a33-storage.js?v=4.20.98&r=20"></script>
   <script src="assets/js/a33-currency.js?v=4.20.98&r=14"></script>
   <script src="assets/js/a33-export-currency.js?v=4.20.98&r=2"></script>
+  <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
   <script>
 
     // --- Apariencia global: leer la preferencia creada en Configuración → Apariencia ---
@@ -1307,6 +1309,9 @@
     // --- Toast ---
     let __toastTimer = null;
     function showToast(message, ms=4000){
+      if (window.A33Toast && typeof window.A33Toast.show === 'function') {
+        return window.A33Toast.show(message, undefined, { duration: Math.max(1500, Number(ms) || 4000) });
+      }
       const el = document.getElementById('a33-toast');
       if (!el) { try{ alert(message); }catch(_){ } return; }
       el.textContent = String(message || '');

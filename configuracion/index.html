@@ -34,8 +34,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
 <link href="../assets/css/a33-header.css?v=4.20.98&amp;r=8" rel="stylesheet"/>
 <link href="../assets/css/a33-module-nav.css?v=4.20.98&amp;r=3" rel="stylesheet"/>
-<link href="style.css?v=4.20.98&amp;r=24" rel="stylesheet"/>
+<link href="style.css?v=4.20.98&amp;r=27" rel="stylesheet"/>
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=8" />
+<link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
 </head>
 <body>
 <header class="a33-header" role="banner" data-a33-module="configuracion" data-a33-context="configuracion">
@@ -709,7 +710,7 @@
 </div>
 <span class="cfg-badge cfg-badge--soft" id="cfg-firebase-save-state">Base local</span>
 </div>
-<p class="cfg-copy">Sincronización híbrida local-first con Firebase Realtime Database. Se sincronizan manualmente Configuración, Catálogos y Lotes; ventas, Finanzas y Caja Chica siguen locales.</p>
+<p class="cfg-copy">La ruta heredada de Realtime Database se conserva para compatibilidad. La migración general de los nueve bloques se prepara con Firestore y todavía no envía datos.</p>
 <div class="cfg-firebase-hero" aria-label="Estado funcional de Firebase">
 <div>
 <span class="cfg-report-mini-label">Modo híbrido local-first</span>
@@ -718,6 +719,34 @@
 </div>
 <span class="cfg-firebase-seal">FB</span>
 </div>
+
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-firestore-progress" aria-labelledby="cfg-firestore-progress-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">☁</span>
+<div>
+<h3 id="cfg-firestore-progress-title">Preparación de datos Firestore</h3>
+<p>Seguimiento de los nueve bloques que formarán la base en línea de Suite A33.</p>
+</div>
+</div>
+<div class="cfg-firestore-progress-summary">
+<div>
+<span>Estado general</span>
+<strong id="cfg-firestore-progress-label">Preparación local</strong>
+<small id="cfg-firestore-progress-message">Contrato Firestore listo. Todavía no se han cargado datos.</small>
+</div>
+<strong id="cfg-firestore-progress-count">0 de 9</strong>
+</div>
+<div class="cfg-firestore-progress-track" id="cfg-firestore-progress-track" role="progressbar" aria-label="Progreso de carga de módulos" aria-valuemin="0" aria-valuemax="9" aria-valuenow="0">
+<span id="cfg-firestore-progress-bar"></span>
+</div>
+<div class="cfg-firestore-module-grid" id="cfg-firestore-module-grid" aria-live="polite">
+<p class="cfg-action-inline-note">Preparando el listado de módulos…</p>
+</div>
+<div class="cfg-firestore-contract-note" role="note">
+<strong>E2 · Preparación local</strong>
+<p>Esta sección todavía no envía información. Firebase se configurará contigo en una etapa posterior antes de cualquier carga real.</p>
+</div>
+</section>
 
 <div class="cfg-firebase-local-lock" id="cfg-firebase-local-lock" aria-live="polite">
   <section class="cfg-firebase-card cfg-firebase-card--wide cfg-firebase-lock-card" aria-labelledby="cfg-firebase-lock-title">
@@ -803,7 +832,7 @@
 <div class="cfg-firebase-fields-grid" aria-label="Credenciales web Firebase">
 <label class="cfg-report-field" for="cfg-firebase-apiKey"><span>apiKey</span><input autocomplete="off" id="cfg-firebase-apiKey" name="apiKey" placeholder="Credencial web pública" type="text"/><small>Permitido vacío en esta etapa.</small></label>
 <label class="cfg-report-field" for="cfg-firebase-authDomain"><span>authDomain</span><input autocomplete="off" id="cfg-firebase-authDomain" name="authDomain" placeholder="proyecto.firebaseapp.com" type="text"/><small>Sin Google Sign-In en esta etapa.</small></label>
-<label class="cfg-report-field" for="cfg-firebase-databaseURL"><span>databaseURL</span><input autocomplete="off" id="cfg-firebase-databaseURL" name="databaseURL" placeholder="https://proyecto-default-rtdb.firebaseio.com" type="text"/><small>Referencia futura para Realtime Database.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-databaseURL"><span>databaseURL</span><input autocomplete="off" id="cfg-firebase-databaseURL" name="databaseURL" placeholder="Opcional · solo Realtime Database" type="text"/><small>Opcional. Auth y Firestore no necesitan este campo.</small></label>
 <label class="cfg-report-field" for="cfg-firebase-projectId"><span>projectId</span><input autocomplete="off" id="cfg-firebase-projectId" name="projectId" placeholder="ID del proyecto" type="text"/><small>Campo principal para estado configurado.</small></label>
 <label class="cfg-report-field" for="cfg-firebase-storageBucket"><span>storageBucket</span><input autocomplete="off" id="cfg-firebase-storageBucket" name="storageBucket" placeholder="proyecto.appspot.com" type="text"/><small>Opcional por ahora.</small></label>
 <label class="cfg-report-field" for="cfg-firebase-messagingSenderId"><span>messagingSenderId</span><input autocomplete="off" id="cfg-firebase-messagingSenderId" name="messagingSenderId" placeholder="Número de sender" type="text"/><small>Opcional por ahora.</small></label>
@@ -905,6 +934,7 @@
 <li>Usa workspaceId arcano33, mode hybrid, environment production y enabled false por defecto.</li>
 <li>Permite Probar conexión técnica y Sincronizar datos ahora con resumen de subidos, descargados, conflictos y errores.</li>
 <li>Sincroniza manualmente Configuración, Catálogos y Lotes con identidad estable.</li>
+<li>Prepara por separado el contrato Firestore para los nueve bloques, sin escrituras remotas en E2.</li>
 <li>No pide ni guarda llaves privadas, Admin SDK JSON ni secretos de servidor.</li>
 <li>Respeta Oscuro, Claro y Automático/Sistema.</li>
 </ul>
@@ -932,14 +962,33 @@
 </div>
 </div>
 <p class="cfg-copy" id="cfg-users-copy">Control de usuarios, roles, permisos y acceso administrativo. Este apartado concentra la seguridad de Configuración sin mezclarla con ventas, inventario ni finanzas.</p>
+<section aria-labelledby="cfg-auth-title" class="cfg-auth-card">
+<div class="cfg-auth-heading">
+<div>
+<p class="cfg-eyebrow">Acceso protegido</p>
+<h3 id="cfg-auth-title">Usuario maestro</h3>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-auth-status-badge">Firebase pendiente</span>
+</div>
+<p class="cfg-status-copy" id="cfg-auth-status-copy">Primero configuraremos Firebase juntos. Hasta entonces, este acceso permanece cerrado y la Suite sigue local.</p>
+<form class="cfg-auth-form" id="cfg-auth-form" novalidate="">
+<label class="cfg-field"><span>Correo</span><input autocomplete="username" class="cfg-input" id="cfg-auth-email" maxlength="180" placeholder="usuario@dominio.com" type="email"/></label>
+<label class="cfg-field"><span>Contraseña</span><input autocomplete="current-password" class="cfg-input" id="cfg-auth-password" placeholder="Contraseña de Firebase" type="password"/></label>
+<div class="cfg-form-actions cfg-auth-actions">
+<button class="cfg-btn cfg-btn-primary cfg-btn-compact" disabled="" id="cfg-auth-signin" type="submit">Iniciar sesión</button>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-compact" hidden="" id="cfg-auth-signout" type="button">Cerrar sesión</button>
+</div>
+</form>
+<div class="cfg-auth-safety">La contraseña se entrega directamente a Firebase Authentication y no se guarda en localStorage, respaldos ni Firestore.</div>
+</section>
 <div class="cfg-note-grid cfg-note-grid--dual cfg-note-grid--users">
 <div class="cfg-note-card">
 <strong>Base seria</strong>
 <p>Perfiles reales en Firestore, roles extensibles y permisos leíbles por la app sin inventar seguridad de cartón.</p>
 </div>
 <div class="cfg-note-card">
-<strong>Backend correcto</strong>
-<p>Las altas, cambios de rol, activación/desactivación y borrado seguro con archivo previo pasan por Functions + Admin SDK cuando el backend ya está desplegado.</p>
+<strong>Modo Spark seguro</strong>
+<p>Authentication y Firestore operan sin facturación. Las altas y cambios de usuarios se realizan manualmente desde Firebase Console.</p>
 </div>
 </div>
 <section aria-label="Estado del acceso real" class="cfg-users-runtime-strip">
@@ -1049,7 +1098,7 @@
 <button class="cfg-btn cfg-btn-ghost cfg-btn-compact" id="cfg-user-cancel" type="button">Limpiar</button>
 <button class="cfg-btn cfg-btn-ghost cfg-btn-compact" hidden="" id="cfg-user-bootstrap" type="button">Activar admin inicial</button>
 </div>
-<div class="cfg-form-hint" id="cfg-user-form-hint">Cuando Functions esté desplegado y haya un Admin activo, este formulario operará sobre Authentication + Firestore con validaciones para no dejar el workspace sin gobierno.</div>
+<div class="cfg-form-hint" id="cfg-user-form-hint">En el plan Spark, los perfiles se consultan aquí y los cambios de usuarios se realizan manualmente desde Firebase Console.</div>
 </form>
 <div class="cfg-status-stack cfg-status-stack--users">
 <div class="cfg-status-card">
@@ -1151,12 +1200,14 @@
 <script src="../assets/js/a33-currency.js?v=4.20.98&amp;r=14"></script>
 <script src="../assets/js/a33-export-currency.js?v=4.20.98&amp;r=2"></script>
 <script src="../assets/js/a33-lot-code.js?v=4.20.98&amp;r=6"></script>
-<script src="../assets/js/a33-firebase-config.js?v=4.20.98&amp;r=18"></script>
-<script src="../assets/js/a33-firebase-core.js?v=4.20.98&amp;r=18"></script>
+<script src="../assets/js/a33-firebase-config.js?v=4.20.98&amp;r=19"></script>
+<script src="../assets/js/a33-firebase-core.js?v=4.20.98&amp;r=19"></script>
 <script src="../assets/js/a33-cloud-sync.js?v=4.20.98&amp;r=8"></script>
-<script src="../assets/js/a33-firebase-auth.js?v=4.20.98&amp;r=15"></script>
-<script src="../assets/js/a33-firebase-access.js?v=4.20.98&amp;r=15"></script>
-<script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=15"></script>
-<script src="script.js?v=4.20.98&amp;r=35"></script>
+<script src="../assets/js/a33-firebase-auth.js?v=4.20.98&amp;r=16"></script>
+<script src="../assets/js/a33-firebase-access.js?v=4.20.98&amp;r=17"></script>
+<script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=16"></script>
+<script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+<script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
+<script src="script.js?v=4.20.98&amp;r=39"></script>
 </body>
 </html>

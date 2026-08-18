@@ -1378,6 +1378,9 @@
 
   let toastTimer = null;
   function showToast(message, ms = 4000){
+    if (window.A33Toast && typeof window.A33Toast.show === 'function') {
+      return window.A33Toast.show(message, undefined, { duration: Math.max(1500, Number(ms) || 4000) });
+    }
     const el = document.getElementById('a33-toast');
     if (!el) {
       try{ alert(message); }catch(_){ }
@@ -4011,12 +4014,14 @@ Los históricos se conservarán. ¿Continuar?`);
       accessDetail: hasSession
         ? `${roleLabel} · ${statusLabel}`
         : 'Inicia sesión para leer tu perfil y verificar el backend.',
-      backendCurrent: backendReady ? 'Listo' : (backendHealth === 'missing' ? 'No desplegado' : backendHealth === 'checking' ? 'Verificando' : 'Pendiente'),
+      backendCurrent: backendHealth === 'spark-manual' ? 'Spark manual' : (backendReady ? 'Listo' : (backendHealth === 'missing' ? 'No desplegado' : backendHealth === 'checking' ? 'Verificando' : 'Pendiente')),
       backendDetail: String(current.backendMessage || 'Functions todavía no ha sido verificado.'),
       workspaceCurrent: String(current.workspaceId || 'default') || 'default',
       workspaceDetail: 'Preparado para tenant simple sin volver esto un laberinto.',
       storageLabel: 'Firestore canónico',
-      storageCopy: 'El perfil real vive en Firestore; las acciones privilegiadas pasan por Functions + Admin SDK.',
+      storageCopy: backendHealth === 'spark-manual'
+        ? 'El perfil real vive en Firestore. En Spark, las altas y cambios de usuarios se realizan manualmente desde Firebase.'
+        : 'El perfil real vive en Firestore; las acciones privilegiadas pasan por Functions + Admin SDK.',
       permissionsLabel: hasSession
         ? `${roleLabel} · ${Array.isArray(current.permissions) ? current.permissions.length : 0} permisos`
         : 'Sin perfil todavía',
@@ -4073,6 +4078,22 @@ Los históricos se conservarán. ¿Continuar?`);
       model.emptyTitle = 'Workspace sin admin';
       model.emptyCopy = 'Usa “Activar admin inicial” para crear el primer perfil administrativo serio.';
       model.disableReason = 'Activa primero el admin inicial del workspace.';
+      return model;
+    }
+
+    if (backendHealth === 'spark-manual'){
+      model.modeBadge = profile && current.isAdmin ? 'Admin · Spark' : 'Spark manual';
+      model.sideBadge = profile && current.isAdmin ? 'Admin activo' : 'Perfil pendiente';
+      model.headline = profile
+        ? 'Sesión y permisos activos en Firestore. El plan Spark conserva la administración de usuarios dentro de Firebase.'
+        : 'Plan Spark activo. Falta crear o verificar el perfil del usuario maestro en Firestore.';
+      model.nextLabel = 'Operación Spark';
+      model.nextCopy = 'Authentication y Firestore están disponibles sin Functions ni facturación.';
+      model.emptyTitle = profile ? 'Perfil activo' : 'Perfil maestro pendiente';
+      model.emptyCopy = profile
+        ? 'La sesión puede consultar sus permisos. Los cambios de usuarios se hacen desde Firebase.'
+        : 'Crea el perfil maestro manualmente en Firestore para completar el acceso.';
+      model.disableReason = 'En el plan Spark, administra usuarios manualmente desde Firebase Console.';
       return model;
     }
 
@@ -4319,6 +4340,103 @@ Los históricos se conservarán. ¿Continuar?`);
         showToast(String(error?.message || error || 'No se pudo borrar el usuario.'));
       }
     }
+  }
+
+  function authState(){
+    const api = window.A33FirebaseAuth;
+    return api && typeof api.getState === 'function' ? api.getState() : { ready:false, status:'disabled', user:null, message:'Firebase está pendiente.' };
+  }
+
+  function renderAuthSection(){
+    const section = window.__cfgAuthSection;
+    if (!section) return;
+    const current = authState();
+    const user = current.user || null;
+    const ready = !!current.ready;
+    const busy = current.status === 'loading' || current.status === 'signing-in';
+    const labels = {
+      disabled:'Firebase pendiente',
+      'not-configured':'Configuración pendiente',
+      loading:'Preparando acceso',
+      ready:'Listo para iniciar',
+      'signing-in':'Verificando',
+      authenticated:'Sesión activa',
+      error:'Revisar acceso'
+    };
+    section.badge.textContent = labels[current.status] || 'Acceso pendiente';
+    section.copy.textContent = user
+      ? `Sesión activa como ${user.displayName || user.email}. El perfil y los permisos se verifican en Firestore.`
+      : String(current.message || 'Primero configuraremos Firebase juntos. Hasta entonces, este acceso permanece cerrado.');
+    section.email.disabled = !ready || !!user || busy;
+    section.password.disabled = !ready || !!user || busy;
+    section.signIn.disabled = !ready || !!user || busy;
+    section.signIn.textContent = busy ? 'Verificando…' : 'Iniciar sesión';
+    section.signOut.hidden = !user;
+    section.signOut.disabled = busy;
+    if (user){
+      section.email.value = user.email || '';
+      section.password.value = '';
+    }
+  }
+
+  async function signInMaster(event){
+    event.preventDefault();
+    const section = window.__cfgAuthSection;
+    const api = window.A33FirebaseAuth;
+    if (!section || !api) return;
+    const email = normalizeUserEmail(section.email.value);
+    const password = String(section.password.value || '');
+    if (!isValidEmail(email)){
+      showToast('Escribe un correo válido.');
+      section.email.focus();
+      return;
+    }
+    if (!password){
+      showToast('Escribe la contraseña de Firebase.');
+      section.password.focus();
+      return;
+    }
+    const toastId = window.A33Toast?.process('Verificando acceso seguro…', { id:'cfg-auth-process' }) || '';
+    try{
+      await api.signIn(email, password);
+      section.password.value = '';
+      window.A33Toast?.replace(toastId, 'Sesión iniciada correctamente.', 'success');
+    }catch(error){
+      section.password.value = '';
+      window.A33Toast?.replace(toastId, String(error?.message || error || 'No se pudo iniciar sesión.'), 'error');
+    }finally{
+      renderAuthSection();
+    }
+  }
+
+  async function signOutMaster(){
+    const api = window.A33FirebaseAuth;
+    if (!api) return;
+    const toastId = window.A33Toast?.process('Cerrando sesión…', { id:'cfg-auth-process' }) || '';
+    try{
+      await api.signOut();
+      window.A33Toast?.replace(toastId, 'Sesión cerrada correctamente.', 'success');
+    }catch(error){
+      window.A33Toast?.replace(toastId, String(error?.message || error || 'No se pudo cerrar la sesión.'), 'error');
+    }
+  }
+
+  function initAuthSection(){
+    const form = document.getElementById('cfg-auth-form');
+    if (!form) return;
+    window.__cfgAuthSection = {
+      form,
+      email:document.getElementById('cfg-auth-email'),
+      password:document.getElementById('cfg-auth-password'),
+      signIn:document.getElementById('cfg-auth-signin'),
+      signOut:document.getElementById('cfg-auth-signout'),
+      badge:document.getElementById('cfg-auth-status-badge'),
+      copy:document.getElementById('cfg-auth-status-copy')
+    };
+    form.addEventListener('submit', signInMaster);
+    window.__cfgAuthSection.signOut.addEventListener('click', signOutMaster);
+    window.addEventListener('a33:auth-state', renderAuthSection);
+    renderAuthSection();
   }
 
   function initUsersSection(){
@@ -5204,7 +5322,6 @@ Los históricos se conservarán. ¿Continuar?`);
   const FIREBASE_REQUIRED_WHEN_ENABLED = [
     { key: 'apiKey', label: 'apiKey' },
     { key: 'authDomain', label: 'authDomain' },
-    { key: 'databaseURL', label: 'databaseURL' },
     { key: 'projectId', label: 'projectId' },
     { key: 'appId', label: 'appId' }
   ];
@@ -5574,8 +5691,6 @@ Los históricos se conservarán. ¿Continuar?`);
       normalizeFirebaseWorkspaceId(data.workspaceId || '') &&
       cleanFirebaseText(c.apiKey) &&
       cleanFirebaseText(c.authDomain) &&
-      cleanFirebaseText(c.databaseURL) &&
-      isProbablyFirebaseDatabaseURL(c.databaseURL) &&
       cleanFirebaseText(c.projectId) &&
       cleanFirebaseText(c.appId)
     );
@@ -5746,13 +5861,8 @@ Los históricos se conservarán. ¿Continuar?`);
     const dbValue = cleanFirebaseText(creds.databaseURL, 420);
     if (dbValue && !isProbablyFirebaseDatabaseURL(dbValue)){
       const msg = 'databaseURL no parece una URL válida de Firebase Realtime Database. Ejemplo: https://proyecto-default-rtdb.firebaseio.com';
-      if (normalized.enabled){
-        errors.push(msg);
-        invalidIds.add('cfg-firebase-databaseURL');
-      } else {
-        warnings.push(msg);
-        invalidIds.add('cfg-firebase-databaseURL');
-      }
+      warnings.push(msg);
+      invalidIds.add('cfg-firebase-databaseURL');
     }
 
     if (options.includeConfiguredHint && normalized.enabled && normalized.configured){
@@ -5782,6 +5892,71 @@ Los históricos se conservarán. ¿Continuar?`);
       list.appendChild(li);
     });
     return validation;
+  }
+
+  function getFirestoreProgressState(){
+    try{
+      if (window.A33FirestoreData && typeof window.A33FirestoreData.readProgress === 'function'){
+        return window.A33FirestoreData.readProgress();
+      }
+    }catch(_){ }
+    return null;
+  }
+
+  function renderFirestoreProgress(state){
+    const engine = window.A33FirestoreData;
+    const progress = state && typeof state === 'object' ? state : getFirestoreProgressState();
+    const grid = document.getElementById('cfg-firestore-module-grid');
+    const track = document.getElementById('cfg-firestore-progress-track');
+    const bar = document.getElementById('cfg-firestore-progress-bar');
+    const label = document.getElementById('cfg-firestore-progress-label');
+    const message = document.getElementById('cfg-firestore-progress-message');
+    const count = document.getElementById('cfg-firestore-progress-count');
+    if (!progress || !engine || !grid) return;
+    const summary = typeof engine.progressSummary === 'function'
+      ? engine.progressSummary(progress)
+      : { total: 9, processed: 0, loaded: 0, percent: 0 };
+    if (label) label.textContent = progress.label || 'Preparación local';
+    if (message) message.textContent = progress.message || 'Contrato Firestore listo. Todavía no se han cargado datos.';
+    if (count) count.textContent = `${summary.loaded || 0} de ${summary.total || 9}`;
+    if (track){
+      track.setAttribute('aria-valuemax', String(summary.total || 9));
+      track.setAttribute('aria-valuenow', String(summary.processed || 0));
+      track.setAttribute('aria-valuetext', `${summary.loaded || 0} de ${summary.total || 9} módulos cargados`);
+    }
+    if (bar) bar.style.width = `${Math.max(0, Math.min(100, Number(summary.percent || 0) || 0))}%`;
+
+    const statusLabels = {
+      pending: 'Pendiente',
+      process: 'En proceso',
+      success: 'Cargado',
+      warning: 'Con aviso',
+      error: 'Error'
+    };
+    grid.replaceChildren();
+    (Array.isArray(progress.modules) ? progress.modules : []).forEach((module) => {
+      const item = document.createElement('article');
+      item.className = 'cfg-firestore-module';
+      item.dataset.module = String(module.id || '');
+      item.dataset.status = statusLabels[module.status] ? module.status : 'pending';
+
+      const head = document.createElement('div');
+      head.className = 'cfg-firestore-module-head';
+      const title = document.createElement('strong');
+      title.textContent = module.label || module.id || 'Módulo';
+      const status = document.createElement('span');
+      status.className = 'cfg-firestore-module-status';
+      status.textContent = statusLabels[module.status] || statusLabels.pending;
+      head.append(title, status);
+
+      const detail = document.createElement('small');
+      const counter = Number(module.total || 0) > 0
+        ? ` · ${Math.max(0, Number(module.processed || 0) || 0)}/${Math.max(0, Number(module.total || 0) || 0)}`
+        : '';
+      detail.textContent = (module.detail || 'Pendiente de configuración e importación.') + counter;
+      item.append(head, detail);
+      grid.appendChild(item);
+    });
   }
 
 
@@ -5943,7 +6118,7 @@ Los históricos se conservarán. ¿Continuar?`);
       } else if (data.configured){
         heroCopy.textContent = 'Credenciales web guardadas localmente. Firebase sigue desactivado hasta que lo activés para la prueba técnica.';
       } else if (data.enabled){
-        heroCopy.textContent = 'Firebase está activado localmente, pero faltan campos principales o databaseURL válida.';
+        heroCopy.textContent = 'Firebase está activado localmente, pero faltan las credenciales web principales.';
       } else {
         heroCopy.textContent = 'Firebase está desactivado. La Suite conserva almacenamiento local como prioridad y mantiene syncQueue local en espera.';
       }
@@ -6227,6 +6402,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const form = document.getElementById('cfg-firebase-form');
     if (!form) return;
     renderFirebaseSettings(readFirebaseSettings());
+    renderFirestoreProgress(getFirestoreProgressState());
     initFirebaseLocalLock();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
@@ -6274,6 +6450,9 @@ Los históricos se conservarán. ¿Continuar?`);
     window.addEventListener('a33:cloud-sync-status', (event) => {
       renderFirebaseCloudSyncStatus(event && event.detail ? event.detail : null);
     });
+    window.addEventListener('a33:firestore-progress', (event) => {
+      renderFirestoreProgress(event && event.detail ? event.detail : null);
+    });
     window.A33FirebaseConfigLocal = Object.assign({}, window.A33FirebaseConfigLocal || {}, {
       storageKey: FIREBASE_SETTINGS_KEY,
       deviceKey: FIREBASE_DEVICE_KEY,
@@ -6285,7 +6464,9 @@ Los históricos se conservarán. ¿Continuar?`);
       isProbablyDatabaseURL: isProbablyFirebaseDatabaseURL,
       testConnection: testFirebaseConnection,
       syncNow: syncFirebaseNow,
-      getSyncStatus: getFirebaseCloudSyncStatus
+      getSyncStatus: getFirebaseCloudSyncStatus,
+      getFirestoreProgress: getFirestoreProgressState,
+      renderFirestoreProgress
     });
   }
 
@@ -7108,6 +7289,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initReportsSection();
     initCurrencySection();
     initFirebaseSettingsSection();
+    initAuthSection();
     initUsersSection();
     initFirebaseStatus();
     renderBackupImportLog();

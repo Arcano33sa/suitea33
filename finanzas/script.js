@@ -8502,6 +8502,9 @@ async function exportFlujoCajaExcel() {
 /* ---------- UI: helpers ---------- */
 
 function showToast(msg) {
+  if (window.A33Toast && typeof window.A33Toast.show === 'function') {
+    return window.A33Toast.show(msg);
+  }
   const el = $('#toast');
   if (!el) return;
   el.textContent = msg;

@@ -13,7 +13,7 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '1'; // POS cache bump local — Cierre Parte 4 Final
 
 const MODULE = 'pos';
-const MODULE_CACHE_REV = '57';
+const MODULE_CACHE_REV = '58';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -35,12 +35,14 @@ const PRECACHE_URLS = [
   '/assets/js/a33-release.js?v=4.20.98&r=57',
 
   '/assets/js/a33-input-ux.js?v=4.20.98&r=13',
+  '/assets/js/a33-toast.js?v=4.20.98&r=1',
   '/assets/js/a33-storage.js?v=4.20.98&r=20',
   '/assets/js/a33-currency.js?v=4.20.98&r=14',
   '/assets/js/a33-presentations.js?v=4.20.98&r=15',
   '/assets/js/a33-lot-code.js?v=4.20.98&r=6',
   '/assets/css/a33-header.css?v=4.20.98&r=13',
   '/assets/css/a33-module-nav.css?v=4.20.98&r=3',
+  '/assets/css/a33-toast.css?v=4.20.98&r=1',
   '/assets/css/a33-theme.css?v=4.20.98&r=13',
   '/assets/js/a33-theme.js?v=4.20.98&r=13',
   '/assets/js/a33-module-nav.js?v=4.20.98&r=3'

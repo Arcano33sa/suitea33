@@ -557,6 +557,57 @@ textarea{
   margin-bottom:18px;
 }
 
+.cfg-auth-card{
+  position:relative;
+  z-index:1;
+  display:grid;
+  gap:14px;
+  margin:0 0 18px;
+  padding:18px;
+  border:1px solid rgba(221,191,100,0.20);
+  border-radius:20px;
+  background:linear-gradient(145deg, rgba(123,24,24,0.13), rgba(12,12,12,0.76));
+}
+
+.cfg-auth-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap;
+}
+
+.cfg-auth-heading h3{
+  margin:2px 0 0;
+  color:var(--cfg-gold);
+  font-family:"Cinzel", ui-serif, Georgia, serif;
+}
+
+.cfg-auth-form{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap:12px;
+  align-items:end;
+}
+
+.cfg-auth-actions{
+  flex-wrap:nowrap;
+}
+
+.cfg-auth-actions [hidden]{
+  display:none !important;
+}
+
+.cfg-auth-safety{
+  padding:11px 13px;
+  border-radius:14px;
+  border:1px solid rgba(65,150,100,0.25);
+  background:rgba(65,150,100,0.08);
+  color:var(--cfg-muted);
+  font-size:0.8rem;
+  line-height:1.5;
+}
+
 .cfg-users-toolbar{
   position:relative;
   z-index:1;
@@ -926,6 +977,10 @@ details summary{ cursor:pointer; color:var(--cfg-gold); margin-top:0.35rem; }
     grid-template-columns:repeat(2, minmax(0, 1fr));
   }
 
+  .cfg-auth-form{
+    grid-template-columns:1fr;
+  }
+
   .cfg-firebase-grid,
   .cfg-pwa-dashboard{
     grid-template-columns:1fr;
@@ -951,6 +1006,7 @@ details summary{ cursor:pointer; color:var(--cfg-gold); margin-top:0.35rem; }
   .cfg-btn{ width:100%; }
   .cfg-head-actions,
   .cfg-form-actions{ flex-direction:column; }
+  .cfg-auth-actions{ align-items:stretch; }
   .cfg-users-metrics{ grid-template-columns:1fr; }
   .cfg-user-card-head,
   .cfg-user-card-meta,
@@ -3046,6 +3102,168 @@ html[data-theme="light"] .cfg-reports-currency-card .is-empty{
   gap:10px;
 }
 
+.cfg-firestore-progress{
+  overflow:hidden;
+}
+
+.cfg-firestore-progress-summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:14px;
+  border:1px solid rgba(96,165,250,0.24);
+  border-radius:18px;
+  background:rgba(29,78,216,0.10);
+}
+
+.cfg-firestore-progress-summary span,
+.cfg-firestore-progress-summary small{
+  display:block;
+  color:var(--cfg-muted);
+}
+
+.cfg-firestore-progress-summary span{
+  margin-bottom:5px;
+  font-size:0.74rem;
+  font-weight:800;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+}
+
+.cfg-firestore-progress-summary strong{
+  display:block;
+  color:#93c5fd;
+}
+
+#cfg-firestore-progress-count{
+  flex:0 0 auto;
+  min-width:82px;
+  font-size:1.12rem;
+  text-align:right;
+}
+
+.cfg-firestore-progress-track{
+  height:10px;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(148,163,184,0.18);
+  box-shadow:inset 0 0 0 1px rgba(148,163,184,0.12);
+}
+
+.cfg-firestore-progress-track > span{
+  display:block;
+  width:0;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg, #2563eb, #60a5fa);
+  transition:width 240ms ease;
+}
+
+.cfg-firestore-module-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+
+.cfg-firestore-module{
+  min-width:0;
+  padding:13px;
+  border:1px solid rgba(148,163,184,0.16);
+  border-radius:16px;
+  background:rgba(255,255,255,0.03);
+}
+
+.cfg-firestore-module-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:7px;
+}
+
+.cfg-firestore-module-head strong{
+  min-width:0;
+  overflow-wrap:anywhere;
+  color:var(--cfg-text);
+  font-size:0.88rem;
+}
+
+.cfg-firestore-module-status{
+  flex:0 0 auto;
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(148,163,184,0.14);
+  color:#cbd5e1;
+  font-size:0.67rem;
+  font-weight:900;
+  letter-spacing:0.04em;
+  text-transform:uppercase;
+}
+
+.cfg-firestore-module small{
+  display:block;
+  color:var(--cfg-muted);
+  line-height:1.4;
+}
+
+.cfg-firestore-module[data-status="process"]{
+  border-color:rgba(96,165,250,0.46);
+  background:rgba(29,78,216,0.12);
+}
+
+.cfg-firestore-module[data-status="process"] .cfg-firestore-module-status{
+  background:#1d4ed8;
+  color:#fff;
+}
+
+.cfg-firestore-module[data-status="success"]{
+  border-color:rgba(74,222,128,0.38);
+  background:rgba(21,128,61,0.11);
+}
+
+.cfg-firestore-module[data-status="success"] .cfg-firestore-module-status{
+  background:#15803d;
+  color:#fff;
+}
+
+.cfg-firestore-module[data-status="warning"]{
+  border-color:rgba(251,191,36,0.42);
+  background:rgba(180,83,9,0.12);
+}
+
+.cfg-firestore-module[data-status="warning"] .cfg-firestore-module-status{
+  background:#b45309;
+  color:#fff;
+}
+
+.cfg-firestore-module[data-status="error"]{
+  border-color:rgba(248,113,113,0.42);
+  background:rgba(185,28,28,0.12);
+}
+
+.cfg-firestore-module[data-status="error"] .cfg-firestore-module-status{
+  background:#b91c1c;
+  color:#fff;
+}
+
+.cfg-firestore-contract-note{
+  padding:13px 14px;
+  border:1px solid rgba(221,191,100,0.18);
+  border-radius:16px;
+  background:rgba(221,191,100,0.06);
+}
+
+.cfg-firestore-contract-note strong{
+  color:var(--cfg-gold);
+}
+
+.cfg-firestore-contract-note p{
+  margin:5px 0 0;
+  color:var(--cfg-muted);
+  line-height:1.5;
+}
+
 .cfg-firebase-fields-grid{
   display:grid;
   grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -3182,6 +3400,20 @@ html[data-theme="light"] .cfg-report-field select{
   color:var(--cfg-text);
 }
 
+html[data-theme="light"] .cfg-firestore-progress-summary{
+  background:rgba(37,99,235,0.08);
+  border-color:rgba(37,99,235,0.24);
+}
+
+html[data-theme="light"] .cfg-firestore-progress-summary strong{
+  color:#1d4ed8;
+}
+
+html[data-theme="light"] .cfg-firestore-module{
+  background:rgba(255,255,255,0.72);
+  border-color:rgba(100,116,139,0.20);
+}
+
 html[data-theme="light"] .cfg-firebase-private-warning{
   background:rgba(123,24,24,0.08);
   border-color:rgba(123,24,24,0.24);
@@ -3193,6 +3425,10 @@ html[data-theme="light"] .cfg-firebase-private-warning{
   .cfg-firebase-fields-grid,
   .cfg-firebase-fields-grid--workspace{
     grid-template-columns:1fr;
+  }
+
+  .cfg-firestore-module-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -3210,6 +3446,20 @@ html[data-theme="light"] .cfg-firebase-private-warning{
 
   .cfg-firebase-actions .cfg-btn{
     width:100%;
+  }
+
+  .cfg-firestore-progress-summary{
+    align-items:flex-start;
+  }
+
+  .cfg-firestore-module-grid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .cfg-firestore-progress-track > span{
+    transition:none;
   }
 }
 

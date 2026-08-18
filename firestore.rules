@@ -8,7 +8,7 @@ service cloud.firestore {
     function tokenWorkspace() {
       return signedIn() && request.auth.token.workspaceId is string && request.auth.token.workspaceId.size() > 0
         ? request.auth.token.workspaceId
-        : 'default';
+        : 'arcano33';
     }
 
     function requesterPath(workspaceId) {

@@ -11911,6 +11911,10 @@ const $$ = s => Array.from(document.querySelectorAll(s));
 function fmt(n){ return (n||0).toLocaleString('es-NI', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 let toastTimerId = null;
 function showToast(msg, type='ok', durationMs=5000){
+  if (window.A33Toast && typeof window.A33Toast.show === 'function') {
+    const toastType = type === 'error' ? 'error' : type === 'warn' || type === 'warning' ? 'warning' : type === 'process' ? 'process' : 'success';
+    return window.A33Toast.show(msg, toastType, { duration: Math.max(800, Number(durationMs || 0) || 0) });
+  }
   const t = document.getElementById('toast');
   if (!t) return;
   // Accesibilidad

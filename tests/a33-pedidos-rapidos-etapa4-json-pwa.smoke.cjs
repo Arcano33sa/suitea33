@@ -80,7 +80,7 @@ check(pedidosHtml.includes('script.js?v=4.20.98&r=17'), 'Pedidos HTML no apunta 
 check(pedidosHtml.includes('a33-storage.js?v=4.20.98&r=21'), 'Pedidos HTML no apunta al almacenamiento vigente.');
 check(pedidosHtml.includes('manifest.webmanifest?v=4.20.98&r=9'), 'Pedidos HTML no apunta al manifest vigente.');
 check(pedidosManifest.start_url === './index.html?v=4.20.98&r=14', 'Pedidos manifest no abre el index vigente.');
-for (const token of ["MODULE_CACHE_REV = '20'","index.html?v=4.20.98&r=14","style.css?v=4.20.98&r=9","script.js?v=4.20.98&r=17","manifest.webmanifest?v=4.20.98&r=9","a33-storage.js?v=4.20.98&r=21","'./offline.html'"]){
+for (const token of ["MODULE_CACHE_REV = '22'","index.html?v=4.20.98&r=14","style.css?v=4.20.98&r=9","script.js?v=4.20.98&r=17","manifest.webmanifest?v=4.20.98&r=9","a33-storage.js?v=4.20.98&r=21","'./offline.html'"]){
   check(pedidosSw.includes(token), `Pedidos SW no contiene ${token}.`);
 }
 check(cdmHtml.includes('style.css?v=4.20.98&r=19'), 'CdM HTML no apunta al CSS vigente.');
@@ -88,11 +88,11 @@ check(cdmHtml.includes('app.js?v=4.20.98&r=23'), 'CdM HTML no apunta al JS vigen
 check(cdmHtml.includes('a33-storage.js?v=4.20.98&r=21'), 'CdM HTML no apunta al almacenamiento vigente.');
 check(cdmHtml.includes('manifest.webmanifest?v=4.20.98&r=6'), 'CdM HTML no apunta al manifest vigente.');
 check(cdmManifest.start_url === './index.html?v=4.20.98&r=23', 'CdM manifest no abre el index vigente.');
-for (const token of ["MODULE_CACHE_REV = '6'","index.html?v=4.20.98&r=23","style.css?v=4.20.98&r=19","app.js?v=4.20.98&r=23","manifest.webmanifest?v=4.20.98&r=6","a33-storage.js?v=4.20.98&r=21","'./offline.html'"]){
+for (const token of ["MODULE_CACHE_REV = '8'","index.html?v=4.20.98&r=23","style.css?v=4.20.98&r=19","app.js?v=4.20.98&r=23","manifest.webmanifest?v=4.20.98&r=6","a33-storage.js?v=4.20.98&r=21","'./offline.html'"]){
   check(cdmSw.includes(token), `CdM SW no contiene ${token}.`);
 }
 check(configHtml.includes('a33-storage.js?v=4.20.98&amp;r=21'), 'Configuración no apunta al almacenamiento vigente.');
-check(configHtml.includes('script.js?v=4.20.98&amp;r=35'), 'Configuración no apunta al JS vigente.');
+check(configHtml.includes('script.js?v=4.20.98&amp;r=39'), 'Configuración no apunta al JS vigente.');
 
 async function exerciseOfflineNavigation(source,modulePath){
   const base = `https://example.test/${modulePath}/`;
