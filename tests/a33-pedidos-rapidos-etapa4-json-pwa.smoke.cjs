@@ -92,7 +92,7 @@ for (const token of ["MODULE_CACHE_REV = '8'","index.html?v=4.20.98&r=23","style
   check(cdmSw.includes(token), `CdM SW no contiene ${token}.`);
 }
 check(configHtml.includes('a33-storage.js?v=4.20.98&amp;r=21'), 'Configuración no apunta al almacenamiento vigente.');
-check(configHtml.includes('script.js?v=4.20.98&amp;r=39'), 'Configuración no apunta al JS vigente.');
+check(configHtml.includes('script.js?v=4.20.98&amp;r=40'), 'Configuración no apunta al JS vigente.');
 
 async function exerciseOfflineNavigation(source,modulePath){
   const base = `https://example.test/${modulePath}/`;

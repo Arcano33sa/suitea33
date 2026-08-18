@@ -34,7 +34,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
 <link href="../assets/css/a33-header.css?v=4.20.98&amp;r=8" rel="stylesheet"/>
 <link href="../assets/css/a33-module-nav.css?v=4.20.98&amp;r=3" rel="stylesheet"/>
-<link href="style.css?v=4.20.98&amp;r=27" rel="stylesheet"/>
+<link href="style.css?v=4.20.98&amp;r=28" rel="stylesheet"/>
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=8" />
 <link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
 </head>
@@ -864,6 +864,31 @@
 <label class="cfg-report-field" for="cfg-firebase-deviceName"><span>deviceName</span><input autocomplete="off" id="cfg-firebase-deviceName" name="deviceName" placeholder="Ej. ipad-eventos o macbook-admin" type="text"/><small>Opcional y editable para identificar el equipo.</small></label>
 </div>
 </section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-initial-import-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">JSON</span>
+<div>
+<h3 id="cfg-initial-import-title">E4 · Carga inicial</h3>
+<p>Prepara un respaldo completo de Suite A33 en una zona aislada de Firestore, sin aplicarlo todavía a los módulos.</p>
+</div>
+</div>
+<input accept="application/json,.json" id="cfg-initial-import-file" type="file" hidden/>
+<div class="cfg-initial-import-state" id="cfg-initial-import-state" data-state="empty" aria-live="polite">
+<div><span>Archivo</span><strong id="cfg-initial-import-file-name">Sin seleccionar</strong><small id="cfg-initial-import-file-detail">Límite 50 MB. Debe ser un respaldo completo de Suite A33.</small></div>
+<div><span>Revisión</span><strong id="cfg-initial-import-review">Pendiente</strong><small id="cfg-initial-import-review-detail">Se excluirán credenciales, sesiones y datos de acceso antes de preparar la carga.</small></div>
+<div><span>Destino</span><strong id="cfg-initial-import-destination">Importación aislada</strong><small id="cfg-initial-import-destination-detail">Estado staged: no reemplaza información operativa.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-ghost" id="cfg-initial-import-select" type="button">Seleccionar JSON</button>
+<button class="cfg-btn cfg-btn-primary" id="cfg-initial-import-upload" type="button" disabled>Preparar en Firebase</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-initial-import-clear" type="button" disabled>Quitar archivo</button>
+<p class="cfg-action-inline-note" id="cfg-initial-import-note">La carga solo se ejecuta al confirmarla. E5–E7 aplicarán después cada bloque a su módulo.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Protección de datos</strong>
+<p>La E4 no borra ni sustituye datos. El JSON limpio se guarda por bloques para evitar el límite de tamaño de Firestore; la copia seleccionada permanece intacta en tu equipo.</p>
+</div>
+</section>
 <section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-sync-title">
 <div class="cfg-report-card-head">
 <span class="cfg-report-icon">⇅</span>
@@ -1208,6 +1233,7 @@
 <script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=16"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
-<script src="script.js?v=4.20.98&amp;r=39"></script>
+<script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
+<script src="script.js?v=4.20.98&amp;r=40"></script>
 </body>
 </html>

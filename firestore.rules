@@ -251,6 +251,53 @@ service cloud.firestore {
         && validStatus(request.resource.data.status);
     }
 
+    function validInitialImport(workspaceId, importId) {
+      return request.resource.data.workspaceId == workspaceId
+        && request.resource.data.importId == importId
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.kind == 'initial-json'
+        && request.resource.data.status == 'staged'
+        && request.resource.data.applied == false
+        && request.resource.data.sanitized == true
+        && request.resource.data.bytes is int
+        && request.resource.data.bytes > 0
+        && request.resource.data.bytes <= 52428800
+        && request.resource.data.chunkCount is int
+        && request.resource.data.chunkCount >= 1
+        && request.resource.data.chunkCount <= 498
+        && request.resource.data.fileName is string
+        && request.resource.data.fileName.size() >= 1
+        && request.resource.data.fileName.size() <= 180
+        && request.resource.data.checksum is string
+        && request.resource.data.checksum.size() == 8
+        && request.resource.data.summary is map
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdBy == request.auth.uid;
+    }
+
+    function validInitialImportChunk(workspaceId, importId) {
+      return request.resource.data.workspaceId == workspaceId
+        && request.resource.data.importId == importId
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.index is int
+        && request.resource.data.index >= 0
+        && request.resource.data.total is int
+        && request.resource.data.total >= 1
+        && request.resource.data.total <= 498
+        && request.resource.data.index < request.resource.data.total
+        && request.resource.data.encoding == 'json-utf8'
+        && request.resource.data.checksum is string
+        && request.resource.data.checksum.size() == 8
+        && request.resource.data.bytes is int
+        && request.resource.data.bytes > 0
+        && request.resource.data.bytes <= 400000
+        && request.resource.data.content is string
+        && request.resource.data.content.size() >= 1
+        && request.resource.data.content.size() <= 400000
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdBy == request.auth.uid;
+    }
+
     match /workspaces/{workspaceId} {
       allow get: if requesterActiveMember(workspaceId) || (signedIn() && workspaceId == tokenWorkspace());
       allow list: if requesterAdmin(workspaceId);
@@ -273,6 +320,18 @@ service cloud.firestore {
         allow get, list: if requesterAgenda(workspaceId);
         allow create, update: if requesterAgenda(workspaceId) && validAgendaPayload(workspaceId, recordId);
         allow delete: if requesterAgenda(workspaceId);
+      }
+
+      match /imports/{importId} {
+        allow get, list: if requesterAdmin(workspaceId);
+        allow create, update: if requesterAdmin(workspaceId) && validInitialImport(workspaceId, importId);
+        allow delete: if requesterAdmin(workspaceId);
+
+        match /chunks/{chunkId} {
+          allow get, list: if requesterAdmin(workspaceId);
+          allow create, update: if requesterAdmin(workspaceId) && validInitialImportChunk(workspaceId, importId);
+          allow delete: if requesterAdmin(workspaceId);
+        }
       }
     }
 

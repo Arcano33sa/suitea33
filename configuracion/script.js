@@ -5959,6 +5959,141 @@ Los históricos se conservarán. ¿Continuar?`);
     });
   }
 
+  function formatInitialImportBytes(value){
+    const bytes = Math.max(0, Number(value || 0) || 0);
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function renderInitialImportState(data, state = ''){
+    const current = data && typeof data === 'object' ? data : null;
+    const box = document.getElementById('cfg-initial-import-state');
+    const upload = document.getElementById('cfg-initial-import-upload');
+    const clear = document.getElementById('cfg-initial-import-clear');
+    if (!box) return;
+    const staged = state === 'staged' || !!(current && current.status === 'staged');
+    const ready = !!current && !staged;
+    box.dataset.state = staged ? 'staged' : (ready ? 'ready' : 'empty');
+    setFirebaseText('cfg-initial-import-file-name', current ? current.fileName : 'Sin seleccionar');
+    setFirebaseText('cfg-initial-import-file-detail', current
+      ? `${formatInitialImportBytes(current.bytes)} limpios · ${current.chunkCount || 0} bloque(s)`
+      : 'Límite 50 MB. Debe ser un respaldo completo de Suite A33.');
+    setFirebaseText('cfg-initial-import-review', staged ? 'Preparado' : (ready ? 'Validado y limpio' : 'Pendiente'));
+    setFirebaseText('cfg-initial-import-review-detail', current
+      ? `${current.summary && current.summary.localKeys || 0} claves locales · ${current.summary && current.summary.databases || 0} bases detectadas`
+      : 'Se excluirán credenciales, sesiones y datos de acceso antes de preparar la carga.');
+    setFirebaseText('cfg-initial-import-destination', staged ? 'Guardado en Firebase' : 'Importación aislada');
+    setFirebaseText('cfg-initial-import-destination-detail', staged
+      ? `ID ${current.importId}. Queda staged y no aplicado.`
+      : 'Estado staged: no reemplaza información operativa.');
+    if (upload) upload.disabled = !ready;
+    if (clear){
+      clear.disabled = !current;
+      clear.textContent = staged ? 'Cerrar resultado' : 'Quitar archivo';
+    }
+  }
+
+  function resetInitialImport(){
+    const input = document.getElementById('cfg-initial-import-file');
+    if (input) input.value = '';
+    if (window.A33FirebaseImport && typeof window.A33FirebaseImport.clearPrepared === 'function'){
+      window.A33FirebaseImport.clearPrepared();
+    }
+    renderInitialImportState(null);
+    setFirebaseText('cfg-initial-import-note', 'La carga solo se ejecuta al confirmarla. E5–E7 aplicarán después cada bloque a su módulo.');
+  }
+
+  async function prepareInitialImportFile(event){
+    const input = event && event.target ? event.target : document.getElementById('cfg-initial-import-file');
+    const file = input && input.files ? input.files[0] : null;
+    if (!file) return;
+    const toastId = window.A33Toast ? window.A33Toast.process('Revisando y limpiando el respaldo JSON…') : '';
+    try{
+      if (!window.A33FirebaseImport || typeof window.A33FirebaseImport.prepareFile !== 'function'){
+        throw new Error('No está disponible el preparador de la E4.');
+      }
+      const result = await window.A33FirebaseImport.prepareFile(file);
+      renderInitialImportState(result, 'ready');
+      setFirebaseText('cfg-initial-import-note', 'Archivo listo. Preparar en Firebase creará una copia aislada y no aplicada.');
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, 'JSON validado y limpiado. Ya podés confirmar la preparación.', 'success');
+        else window.A33Toast.success('JSON validado y limpiado. Ya podés confirmar la preparación.');
+      }
+    }catch(error){
+      resetInitialImport();
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo preparar el respaldo JSON.';
+      setFirebaseText('cfg-initial-import-note', message);
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'error');
+        else window.A33Toast.error(message);
+      }else showToast(message);
+    }
+  }
+
+  async function uploadInitialImport(){
+    if (!requireFirebaseUnlocked('Preparar carga inicial')) return;
+    const engine = window.A33FirebaseImport;
+    const current = engine && typeof engine.getPrepared === 'function' ? engine.getPrepared() : null;
+    if (!current){
+      const message = 'Primero seleccioná un respaldo JSON válido.';
+      if (window.A33Toast) window.A33Toast.warning(message); else showToast(message);
+      return;
+    }
+    const accepted = window.confirm(
+      `Se preparará “${current.fileName}” en una zona aislada de Firebase.\n\n` +
+      'No se borrarán ni reemplazarán datos, y la carga no se aplicará todavía a los módulos. ¿Continuar?'
+    );
+    if (!accepted){
+      if (window.A33Toast) window.A33Toast.warning('Preparación cancelada. No se envió información.');
+      return;
+    }
+    const btn = document.getElementById('cfg-initial-import-upload');
+    const toastId = window.A33Toast ? window.A33Toast.process('Preparando el respaldo inicial en Firebase…') : '';
+    let completed = false;
+    try{
+      if (btn) btn.disabled = true;
+      const result = await engine.upload();
+      completed = true;
+      renderInitialImportState(result, 'staged');
+      setFirebaseText('cfg-initial-import-note', 'Carga inicial preparada. E5–E7 decidirán cómo aplicar cada bloque; los módulos siguen sin cambios.');
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, 'Carga inicial preparada en Firebase sin aplicar datos.', 'success');
+        else window.A33Toast.success('Carga inicial preparada en Firebase sin aplicar datos.');
+      }
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo preparar la carga inicial en Firebase.';
+      renderInitialImportState(current, 'ready');
+      setFirebaseText('cfg-initial-import-note', message);
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'error');
+        else window.A33Toast.error(message);
+      }else showToast(message);
+    }finally{
+      if (btn && !completed && engine && engine.getPrepared && engine.getPrepared()) btn.disabled = false;
+    }
+  }
+
+  function initInitialImport(){
+    const engine = window.A33FirebaseImport;
+    const last = engine && typeof engine.readLast === 'function' ? engine.readLast() : null;
+    renderInitialImportState(last, last ? 'staged' : '');
+    const input = document.getElementById('cfg-initial-import-file');
+    const select = document.getElementById('cfg-initial-import-select');
+    const upload = document.getElementById('cfg-initial-import-upload');
+    const clear = document.getElementById('cfg-initial-import-clear');
+    if (select && input) select.addEventListener('click', () => input.click());
+    if (input) input.addEventListener('change', prepareInitialImportFile);
+    if (upload) upload.addEventListener('click', uploadInitialImport);
+    if (clear) clear.addEventListener('click', resetInitialImport);
+    window.addEventListener('a33:initial-import-progress', (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      const processed = Math.max(0, Number(detail.processed || 0) || 0);
+      const total = Math.max(0, Number(detail.total || 0) || 0);
+      if (total) setFirebaseText('cfg-initial-import-note', `Cargando bloque ${processed} de ${total}…`);
+    });
+  }
+
 
   function getFirebaseConnectionPathFromData(data){
     const normalized = normalizeFirebaseSettings(data);
@@ -6404,6 +6539,7 @@ Los históricos se conservarán. ¿Continuar?`);
     renderFirebaseSettings(readFirebaseSettings());
     renderFirestoreProgress(getFirestoreProgressState());
     initFirebaseLocalLock();
+    initInitialImport();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
     if (saveBtn){
