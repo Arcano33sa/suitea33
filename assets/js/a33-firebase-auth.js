@@ -17,7 +17,12 @@
     if (!user) return null;
     return { uid:clean(user.uid, 160), email:clean(user.email, 180).toLowerCase(), displayName:clean(user.displayName, 160), emailVerified:!!user.emailVerified };
   }
-  function getState(){ return Object.assign({}, state, { user:state.user ? Object.assign({}, state.user) : null }); }
+  function getState(){
+    return Object.assign({}, state, {
+      authenticated:state.status === 'authenticated' && !!state.user,
+      user:state.user ? Object.assign({}, state.user) : null
+    });
+  }
   function dispatch(){ try{ if (typeof g.CustomEvent === 'function' && g.dispatchEvent) g.dispatchEvent(new CustomEvent('a33:auth-state', { detail:getState() })); }catch(_){ } }
   function setState(patch){ state = Object.assign({}, state, patch || {}); dispatch(); return getState(); }
 

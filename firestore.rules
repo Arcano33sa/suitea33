@@ -343,6 +343,51 @@ service cloud.firestore {
         && request.resource.data.completedBy == request.auth.uid;
     }
 
+    function validStage6Module(moduleId) {
+      return moduleId == 'inventario'
+        || moduleId == 'pedidos'
+        || moduleId == 'agenda';
+    }
+
+    function validStage6Entity(moduleId, entityId) {
+      return (moduleId == 'inventario' && (entityId == 'existencias' || entityId == 'movimientos' || entityId == 'recetas' || entityId == 'calculadora_produccion'))
+        || (moduleId == 'pedidos' && (entityId == 'pedidos' || entityId == 'pedidos_rapidos' || entityId == 'historico'))
+        || (moduleId == 'agenda' && (entityId == 'reuniones' || entityId == 'tareas' || entityId == 'compras'));
+    }
+
+    function validStage6Record(workspaceId, moduleId, entityId, recordId) {
+      return validStage6Module(moduleId)
+        && validStage6Entity(moduleId, entityId)
+        && request.resource.data.contractVersion == 1
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.workspaceId == workspaceId
+        && request.resource.data.moduleId == moduleId
+        && request.resource.data.entityId == entityId
+        && request.resource.data.recordId == recordId
+        && request.resource.data.payload is map
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.rev is int
+        && request.resource.data.rev >= 1
+        && request.resource.data.deleted is bool;
+    }
+
+    function validStage6Result(workspaceId, importId) {
+      return request.resource.data.schemaVersion == 1
+        && request.resource.data.stage == 'E6'
+        && request.resource.data.workspaceId == workspaceId
+        && request.resource.data.importId == importId
+        && request.resource.data.status == 'completed'
+        && request.resource.data.modules is list
+        && request.resource.data.modules.size() == 3
+        && request.resource.data.counts is map
+        && request.resource.data.recordCount is int
+        && request.resource.data.recordCount >= 1
+        && request.resource.data.completedAt is string
+        && request.resource.data.completedBy == request.auth.uid;
+    }
+
     match /workspaces/{workspaceId} {
       allow get: if requesterActiveMember(workspaceId) || (signedIn() && workspaceId == tokenWorkspace());
       allow list: if requesterAdmin(workspaceId);
@@ -383,11 +428,21 @@ service cloud.firestore {
           allow list, delete: if false;
           allow create, update: if requesterAdmin(workspaceId) && validStage5Result(workspaceId, importId);
         }
+
+        match /applications/e6 {
+          allow get: if requesterAdmin(workspaceId);
+          allow list, delete: if false;
+          allow create, update: if requesterAdmin(workspaceId) && validStage6Result(workspaceId, importId);
+        }
       }
 
       match /modules/{moduleId}/entities/{entityId}/records/{recordId} {
-        allow get, list: if requesterActiveMember(workspaceId) && validStage5Module(moduleId) && validStage5Entity(moduleId, entityId);
-        allow create, update: if requesterAdmin(workspaceId) && validStage5Record(workspaceId, moduleId, entityId, recordId);
+        allow get, list: if requesterActiveMember(workspaceId)
+          && ((validStage5Module(moduleId) && validStage5Entity(moduleId, entityId))
+            || (validStage6Module(moduleId) && validStage6Entity(moduleId, entityId)));
+        allow create, update: if requesterAdmin(workspaceId)
+          && (validStage5Record(workspaceId, moduleId, entityId, recordId)
+            || validStage6Record(workspaceId, moduleId, entityId, recordId));
         allow delete: if false;
       }
     }

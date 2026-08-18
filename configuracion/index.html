@@ -911,6 +911,28 @@
 <p>No borra datos locales ni remotos y no toca POS, Finanzas, Caja Chica, ventas, pedidos, saldos ni históricos operativos.</p>
 </div>
 </section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-apply-e6-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E6</span>
+<div>
+<h3 id="cfg-apply-e6-title">E6 · Operación intermedia</h3>
+<p>Aplica desde la misma carga E4 Inventario y Producción, Pedidos y Agenda, después de confirmar E5.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-apply-e6-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-apply-e6-source">E5 pendiente</strong><small id="cfg-apply-e6-source-detail">Primero debe completarse E5 para la carga preparada.</small></div>
+<div><span>Alcance</span><strong>3 módulos operativos</strong><small>Inventario y Producción, Pedidos y Agenda.</small></div>
+<div><span>Resultado</span><strong id="cfg-apply-e6-result">Sin aplicar</strong><small id="cfg-apply-e6-result-detail">La información local no se reemplaza ni se elimina.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-apply-e6-run" type="button" disabled>Aplicar E6 en Firestore</button>
+<p class="cfg-action-inline-note" id="cfg-apply-e6-note">E6 conserva identificadores estables y excluye borradores temporales.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Límite de E6</strong>
+<p>No borra datos locales ni remotos y no toca POS, Finanzas, Caja Chica, Seguridad, cierres, saldos ni movimientos de dinero.</p>
+</div>
+</section>
 <section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-sync-title">
 <div class="cfg-report-card-head">
 <span class="cfg-report-icon">⇅</span>
@@ -1250,13 +1272,14 @@
 <script src="../assets/js/a33-firebase-config.js?v=4.20.98&amp;r=19"></script>
 <script src="../assets/js/a33-firebase-core.js?v=4.20.98&amp;r=19"></script>
 <script src="../assets/js/a33-cloud-sync.js?v=4.20.98&amp;r=8"></script>
-<script src="../assets/js/a33-firebase-auth.js?v=4.20.98&amp;r=16"></script>
+<script src="../assets/js/a33-firebase-auth.js?v=4.20.98&amp;r=17"></script>
 <script src="../assets/js/a33-firebase-access.js?v=4.20.98&amp;r=17"></script>
 <script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=16"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
-<script src="../assets/js/a33-firebase-apply-e5.js?v=4.20.98&amp;r=1"></script>
-<script src="script.js?v=4.20.98&amp;r=41"></script>
+<script src="../assets/js/a33-firebase-apply-e5.js?v=4.20.98&amp;r=2"></script>
+<script src="../assets/js/a33-firebase-apply-e6.js?v=4.20.98&amp;r=1"></script>
+<script src="script.js?v=4.20.98&amp;r=43"></script>
 </body>
 </html>

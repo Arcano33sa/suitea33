@@ -6116,7 +6116,7 @@ Los históricos se conservarán. ¿Continuar?`);
       : 'Primero debe existir una carga inicial preparada.');
     setFirebaseText('cfg-apply-e5-result', completed ? 'E5 aplicada' : 'Sin aplicar');
     setFirebaseText('cfg-apply-e5-result-detail', completed
-      ? `${completed.recordCount || 0} registros · ${formatFirebaseTime(completed.completedAt)}`
+      ? `${completed.recordCount || 0} registros · ${formatFirebaseStamp(completed.completedAt)}`
       : 'La información local no se reemplaza ni se elimina.');
     if (button) button.disabled = !staged;
   }
@@ -6146,6 +6146,7 @@ Los históricos se conservarán. ¿Continuar?`);
     }
     const button = document.getElementById('cfg-apply-e5-run');
     const toastId = window.A33Toast ? window.A33Toast.process('E5 en proceso: verificando la carga preparada…') : '';
+    let appliedResult = null;
     try{
       if (button) button.disabled = true;
       if (window.A33FirestoreData){
@@ -6155,6 +6156,7 @@ Los históricos se conservarán. ¿Continuar?`);
         });
       }
       const result = await engine.apply();
+      appliedResult = result;
       if (window.A33FirestoreData){
         ['configuracion', 'catalogos', 'lotes'].forEach((moduleId) => {
           const count = Number(result.counts && result.counts[moduleId] || 0) || 0;
@@ -6170,6 +6172,14 @@ Los históricos se conservarán. ¿Continuar?`);
       }
     }catch(error){
       const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E5.';
+      if (appliedResult){
+        setFirebaseText('cfg-apply-e5-note', 'E5 quedó aplicada en Firestore. Ocurrió un inconveniente solamente al actualizar la pantalla.');
+        if (window.A33Toast){
+          const confirmed = `E5 confirmada: ${appliedResult.recordCount || 0} registros aplicados. Actualizá la pantalla para renovar el estado visual.`;
+          if (toastId) window.A33Toast.replace(toastId, confirmed, 'success'); else window.A33Toast.success(confirmed);
+        }
+        return;
+      }
       if (window.A33FirestoreData){
         ['configuracion', 'catalogos', 'lotes'].forEach((moduleId) => {
           window.A33FirestoreData.setModuleProgress(moduleId, 'error', message, { processed:0, total:0 });
@@ -6181,7 +6191,9 @@ Los históricos se conservarán. ¿Continuar?`);
         if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
       }else showToast(message);
     }finally{
-      renderApplyE5State();
+      try{ renderApplyE5State(); }catch(error){
+        try{ console.warn('E5 aplicada; no se pudo actualizar su estado visual.', error); }catch(_){ }
+      }
     }
   }
 
@@ -6193,6 +6205,138 @@ Los históricos se conservarán. ¿Continuar?`);
     window.addEventListener('a33:e5-progress', (event) => {
       const detail = event && event.detail ? event.detail : {};
       if (detail.total) setFirebaseText('cfg-apply-e5-note', `Aplicando registro ${detail.processed} de ${detail.total}…`);
+    });
+  }
+
+  function getCompletedE5ForCurrentImport(){
+    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
+      ? window.A33FirebaseImport.readLast()
+      : null;
+    const result = window.A33FirebaseApplyE5 && window.A33FirebaseApplyE5.readLast
+      ? window.A33FirebaseApplyE5.readLast()
+      : null;
+    return staged && result
+      && result.importId === staged.importId
+      && result.workspaceId === staged.workspaceId
+      && result.sourceChecksum === staged.checksum
+      ? result
+      : null;
+  }
+
+  function renderApplyE6State(){
+    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
+      ? window.A33FirebaseImport.readLast()
+      : null;
+    const e5 = getCompletedE5ForCurrentImport();
+    const storedResult = window.A33FirebaseApplyE6 && window.A33FirebaseApplyE6.readLast
+      ? window.A33FirebaseApplyE6.readLast()
+      : null;
+    const completed = staged && storedResult
+      && storedResult.importId === staged.importId
+      && storedResult.workspaceId === staged.workspaceId
+      && storedResult.sourceChecksum === staged.checksum
+      ? storedResult
+      : null;
+    const box = document.getElementById('cfg-apply-e6-state');
+    const button = document.getElementById('cfg-apply-e6-run');
+    if (box) box.dataset.state = completed ? 'staged' : (e5 ? 'ready' : 'empty');
+    setFirebaseText('cfg-apply-e6-source', e5 ? 'E5 confirmada' : (staged ? 'E5 pendiente' : 'E4 pendiente'));
+    setFirebaseText('cfg-apply-e6-source-detail', e5
+      ? `Carga ${e5.importId} lista para el segundo bloque.`
+      : (staged ? 'Completá E5 antes de aplicar este bloque.' : 'Primero debe existir una carga E4 preparada.'));
+    setFirebaseText('cfg-apply-e6-result', completed ? 'E6 aplicada' : 'Sin aplicar');
+    setFirebaseText('cfg-apply-e6-result-detail', completed
+      ? `${completed.recordCount || 0} registros · ${formatFirebaseStamp(completed.completedAt)}`
+      : 'Inventario, Pedidos y Agenda permanecen sin cambios remotos.');
+    if (button) button.disabled = !e5;
+  }
+
+  async function applyStageE6(){
+    if (!requireFirebaseUnlocked('Aplicar E6')) return;
+    const engine = window.A33FirebaseApplyE6;
+    if (!engine || typeof engine.apply !== 'function'){
+      const message = 'No está disponible el motor de aplicación E6.';
+      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
+      return;
+    }
+    const e5 = getCompletedE5ForCurrentImport();
+    if (!e5){
+      if (window.A33Toast) window.A33Toast.warning('Primero completá E5 para esta carga E4.');
+      return;
+    }
+    const accepted = window.confirm(
+      'E6 copiará Inventario y Producción, Pedidos y Agenda desde la carga preparada a Firestore.\n\n' +
+      'No borrará información local o remota y no tocará POS, Finanzas ni Seguridad. ¿Continuar?'
+    );
+    if (!accepted){
+      if (window.A33Toast) window.A33Toast.warning('E6 cancelada. No se escribió información.');
+      return;
+    }
+    const button = document.getElementById('cfg-apply-e6-run');
+    const toastId = window.A33Toast ? window.A33Toast.process('E6 en proceso: verificando Inventario, Pedidos y Agenda…') : '';
+    let appliedResult = null;
+    try{
+      if (button) button.disabled = true;
+      if (window.A33FirestoreData){
+        window.A33FirestoreData.startProgress({ message:'E6: verificando Inventario, Pedidos y Agenda…', toast:false });
+        ['configuracion', 'catalogos', 'lotes'].forEach((moduleId) => {
+          const count = Number(e5.counts && e5.counts[moduleId] || 0) || 0;
+          window.A33FirestoreData.setModuleProgress(moduleId, count ? 'success' : 'warning', count ? `${count} registro(s) aplicados en E5.` : 'E5 no contenía registros para este módulo.', { processed:count, total:count });
+        });
+        ['inventario', 'pedidos', 'agenda'].forEach((moduleId) => {
+          window.A33FirestoreData.setModuleProgress(moduleId, 'process', 'Verificando datos preparados.', { processed:0, total:0 });
+        });
+      }
+      const result = await engine.apply();
+      appliedResult = result;
+      if (window.A33FirestoreData){
+        ['inventario', 'pedidos', 'agenda'].forEach((moduleId) => {
+          const count = Number(result.counts && result.counts[moduleId] || 0) || 0;
+          window.A33FirestoreData.setModuleProgress(moduleId, count ? 'success' : 'warning', count ? `${count} registro(s) aplicados.` : 'El respaldo no contenía registros para este módulo.', { processed:count, total:count });
+        });
+        window.A33FirestoreData.finishProgress({ message:`E6 completada: ${result.recordCount || 0} registros en el segundo bloque; POS, Finanzas y Seguridad siguen pendientes.`, toast:false });
+      }
+      renderApplyE6State();
+      setFirebaseText('cfg-apply-e6-note', 'E6 completada. POS, Finanzas y Seguridad permanecen pendientes y sin cambios.');
+      if (window.A33Toast){
+        const message = `E6 confirmada: ${result.recordCount || 0} registros aplicados sin borrar datos.`;
+        if (toastId) window.A33Toast.replace(toastId, message, 'success'); else window.A33Toast.success(message);
+      }
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E6.';
+      if (appliedResult){
+        setFirebaseText('cfg-apply-e6-note', 'E6 quedó aplicada en Firestore. Ocurrió un inconveniente solamente al actualizar la pantalla.');
+        if (window.A33Toast){
+          const confirmed = `E6 confirmada: ${appliedResult.recordCount || 0} registros aplicados. Actualizá la pantalla para renovar el estado visual.`;
+          if (toastId) window.A33Toast.replace(toastId, confirmed, 'success'); else window.A33Toast.success(confirmed);
+        }
+        return;
+      }
+      if (window.A33FirestoreData){
+        ['inventario', 'pedidos', 'agenda'].forEach((moduleId) => {
+          window.A33FirestoreData.setModuleProgress(moduleId, 'error', message, { processed:0, total:0 });
+        });
+        window.A33FirestoreData.finishProgress({ message:`E6 detenida: ${message}`, toast:false });
+      }
+      setFirebaseText('cfg-apply-e6-note', `${message} Podés repetir E6: los identificadores estables evitan duplicados.`);
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
+      }else showToast(message);
+    }finally{
+      try{ renderApplyE6State(); }catch(error){
+        try{ console.warn('E6 aplicada; no se pudo actualizar su estado visual.', error); }catch(_){ }
+      }
+    }
+  }
+
+  function initApplyE6(){
+    renderApplyE6State();
+    const button = document.getElementById('cfg-apply-e6-run');
+    if (button) button.addEventListener('click', applyStageE6);
+    window.addEventListener('a33:initial-import-staged', renderApplyE6State);
+    window.addEventListener('a33:e6-progress', (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      if (detail.total) setFirebaseText('cfg-apply-e6-note', `Aplicando registro ${detail.processed} de ${detail.total}…`);
     });
   }
 
@@ -6643,6 +6787,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initFirebaseLocalLock();
     initInitialImport();
     initApplyE5();
+    initApplyE6();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
     if (saveBtn){

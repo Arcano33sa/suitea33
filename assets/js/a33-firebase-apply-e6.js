@@ -1,33 +1,13 @@
-/* Suite A33 — aplicación inicial segura: Configuración, Catálogos y Lotes (E5). */
+/* Suite A33 — aplicación intermedia segura: Inventario, Pedidos y Agenda (E6). */
 (function(g){
   'use strict';
 
   const SDK_VERSION = '10.12.5';
   const SCRIPT_ID = 'a33-firebase-sdk-firestore-compat';
   const SCRIPT_URL = 'https://www.gstatic.com/firebasejs/' + SDK_VERSION + '/firebase-firestore-compat.js';
-  const RESULT_KEY = 'suite_a33_firebase_apply_e5_v1';
+  const RESULT_KEY = 'suite_a33_firebase_apply_e6_v1';
   const BATCH_LIMIT = 200;
-  const CONFIG_CHUNK_MAX_BYTES = 250000;
-  const MODULE_IDS = Object.freeze(['configuracion', 'catalogos', 'lotes']);
-  const CONFIG_KEYS = Object.freeze({
-    identidad:['suite_a33_identity_v1'],
-    apariencia:['suite_a33_appearance_preference'],
-    reportes:['suite_a33_reports_preferences_v1'],
-    moneda:['suite_a33_currency_settings_v1'],
-    pwa:['suite_a33_pwa', 'a33_build', 'a33_version']
-  });
-  const CATALOG_STORES = Object.freeze({
-    productos:'products',
-    materia_prima:'rawMaterials',
-    extras:'extras',
-    bancos:'banks',
-    clientes:'customers'
-  });
-  const CATALOG_KEYS = Object.freeze({
-    envases:['a33_catalog_envases'],
-    tapas:['a33_catalog_tapas'],
-    clientes:['a33_pos_customers']
-  });
+  const MODULE_IDS = Object.freeze(['inventario', 'pedidos', 'agenda']);
 
   function clean(value, maxLen){
     return String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, maxLen || 320);
@@ -76,7 +56,7 @@
     const auth = g.A33FirebaseAuth && g.A33FirebaseAuth.getState ? g.A33FirebaseAuth.getState() : null;
     const access = g.A33Access && g.A33Access.getState ? g.A33Access.getState() : null;
     if (!auth || !auth.authenticated || !auth.user || !auth.user.uid) throw new Error('Iniciá sesión con el usuario maestro.');
-    if (!access || !access.isAdmin || !access.profile || access.profile.status !== 'active') throw new Error('E5 requiere un perfil Admin activo.');
+    if (!access || !access.isAdmin || !access.profile || access.profile.status !== 'active') throw new Error('E6 requiere un perfil Admin activo.');
     return { user:auth.user, access:access };
   }
 
@@ -99,6 +79,11 @@
     return parsed == null || parsed === '' ? [] : [{ value:parsed }];
   }
 
+  function exactLocal(local, key){
+    const source = local && typeof local === 'object' ? local : {};
+    return Object.prototype.hasOwnProperty.call(source, key) ? parseStored(source[key]) : null;
+  }
+
   function findLocal(local, needles){
     const source = local && typeof local === 'object' ? local : {};
     const lowered = (needles || []).map(function(item){ return clean(item, 180).toLowerCase(); });
@@ -110,15 +95,15 @@
 
   function stableId(value, prefix, index){
     const source = value && typeof value === 'object' ? value : {};
-    const candidate = source.id || source.uid || source.code || source.codigo || source.productId || source.materialId ||
-      source.customerId || source.clientId || source.loteId || source.batchId || source._sourceKey;
+    const candidate = source.id || source.uid || source.code || source.codigo || source.orderId || source.recordId ||
+      source.productId || source.materialId || source.clientId || source.customerId || source._sourceKey;
     if (candidate) return clean(candidate, 180);
     return (prefix || 'registro') + '_' + checksum(JSON.stringify(value) + ':' + String(index));
   }
 
-  function createRecord(engine, context, moduleId, entityId, recordId, payload, sourceId){
+  function makeRecord(engine, context, moduleId, entityId, recordId, payload, sourceId){
     const body = payload && typeof payload === 'object' && !Array.isArray(payload) ? clone(payload) : { value:clone(payload) };
-    return engine.createDocument({
+    const document = engine.createDocument({
       workspaceId:context.workspaceId,
       moduleId:moduleId,
       entityId:entityId,
@@ -128,134 +113,63 @@
       deviceId:context.deviceId,
       payload:body
     });
-  }
-
-  function validateRecord(engine, document, label){
     const validation = engine.validateDocument(document);
-    if (!validation.ok) throw new Error(label + ': ' + validation.errors.join(', '));
+    if (!validation.ok) throw new Error(moduleId + '/' + entityId + ': ' + validation.errors.join(', '));
     return document;
   }
 
-  function makeRecord(engine, context, moduleId, entityId, recordId, payload, sourceId){
-    return validateRecord(engine, createRecord(engine, context, moduleId, entityId, recordId, payload, sourceId), moduleId + '/' + entityId);
-  }
-
-  function splitUtf8(text, maxBytes){
-    const source = String(text || '');
-    const limit = Math.max(1024, Number(maxBytes) || CONFIG_CHUNK_MAX_BYTES);
-    const chunks = [];
-    let offset = 0;
-    while (offset < source.length){
-      let low = offset + 1;
-      let high = source.length;
-      let end = low;
-      while (low <= high){
-        const middle = Math.floor((low + high) / 2);
-        if (byteLength(source.slice(offset, middle)) <= limit){
-          end = middle;
-          low = middle + 1;
-        }else{
-          high = middle - 1;
-        }
-      }
-      if (end < source.length && end > offset && /[\uD800-\uDBFF]/.test(source.charAt(end - 1))) end -= 1;
-      if (end <= offset) end = offset + 1;
-      chunks.push(source.slice(offset, end));
-      offset = end;
-    }
-    return chunks;
-  }
-
-  function makeConfigRecords(engine, context, entityId, recordId, payload, sourceId){
-    const regular = createRecord(engine, context, 'configuracion', entityId, recordId, payload, sourceId);
-    const regularValidation = engine.validateDocument(regular);
-    if (regularValidation.ok) return [regular];
-    const onlyOversized = regularValidation.errors.length === 1 && regularValidation.errors[0] === 'Documento excede el límite seguro de 900 KB';
-    if (!onlyOversized) throw new Error('configuracion/' + entityId + ': ' + regularValidation.errors.join(', '));
-
-    const serialized = JSON.stringify(regular.payload);
-    const chunks = splitUtf8(serialized, CONFIG_CHUNK_MAX_BYTES);
-    const fullChecksum = checksum(serialized);
-    const manifest = {
-      chunked:true,
-      chunkSchemaVersion:1,
-      encoding:'json-utf8',
-      checksum:fullChecksum,
-      bytes:byteLength(serialized),
-      chunkCount:chunks.length,
-      recordPrefix:recordId + '_chunk_'
-    };
-    const records = [makeRecord(engine, context, 'configuracion', entityId, recordId, manifest, sourceId)];
-    chunks.forEach(function(content, index){
-      const chunkId = recordId + '_chunk_' + String(index + 1).padStart(4, '0');
-      records.push(makeRecord(engine, context, 'configuracion', entityId, chunkId, {
-        chunkedPart:true,
-        parentRecordId:recordId,
-        index:index,
-        total:chunks.length,
-        encoding:'json-utf8',
-        checksum:fullChecksum,
-        bytes:byteLength(content),
-        content:content
-      }, sourceId + ':' + chunkId));
-    });
-    return records;
-  }
-
-  function addConfig(plan, engine, context, local){
-    Object.keys(CONFIG_KEYS).forEach(function(entityId){
-      const matches = findLocal(local, CONFIG_KEYS[entityId]);
-      if (!matches.length) return;
-      const payload = matches.length === 1
-        ? { storageKey:matches[0].key, value:matches[0].value }
-        : { values:matches.reduce(function(out, item){ out[item.key] = item.value; return out; }, {}) };
-      const sourceId = matches.map(function(item){ return item.key; }).join(',');
-      makeConfigRecords(engine, context, entityId, 'actual', payload, sourceId).forEach(function(document){ plan.push(document); });
-    });
-  }
-
-  function addCatalogs(plan, engine, context, backup){
-    const indexed = backup.data.indexedDB && backup.data.indexedDB['a33-pos'];
-    const db = indexed && typeof indexed === 'object' ? indexed : {};
-    Object.keys(CATALOG_STORES).forEach(function(entityId){
-      const store = CATALOG_STORES[entityId];
-      asRecords(db[store]).forEach(function(item, index){
-        const id = stableId(item, entityId, index);
-        plan.push(makeRecord(engine, context, 'catalogos', entityId, id, item, store + ':' + id));
-      });
-    });
-    Object.keys(CATALOG_KEYS).forEach(function(entityId){
-      if (entityId === 'clientes' && asRecords(db.customers).length) return;
-      findLocal(backup.data.localStorage, CATALOG_KEYS[entityId]).forEach(function(match){
-        asRecords(match.value).forEach(function(item, index){
-          const id = stableId(item, entityId, index);
-          plan.push(makeRecord(engine, context, 'catalogos', entityId, id, item, match.key + ':' + id));
+  function addInventory(plan, engine, context, local){
+    const inventory = exactLocal(local, 'arcano33_inventario');
+    if (inventory && typeof inventory === 'object'){
+      ['liquids', 'bottles', 'finished', 'finishedByProductId', 'caps'].forEach(function(section){
+        const rows = inventory[section] && typeof inventory[section] === 'object' ? inventory[section] : {};
+        Object.keys(rows).sort().forEach(function(key, index){
+          const item = rows[key];
+          const id = section + '_' + stableId(Object.assign({ _sourceKey:key }, item && typeof item === 'object' ? item : { value:item }), 'existencia', index);
+          plan.push(makeRecord(engine, context, 'inventario', 'existencias', id, { section:section, key:key, item:item }, 'arcano33_inventario:' + section + ':' + key));
         });
       });
+      asRecords(inventory.varios).forEach(function(item, index){
+        const id = 'varios_' + stableId(item, 'existencia', index);
+        plan.push(makeRecord(engine, context, 'inventario', 'existencias', id, { section:'varios', item:item }, 'arcano33_inventario:varios:' + id));
+      });
+      asRecords(inventory.movimientos).forEach(function(item, index){
+        const id = stableId(item, 'movimiento', index);
+        plan.push(makeRecord(engine, context, 'inventario', 'movimientos', id, item, 'arcano33_inventario:movimientos:' + id));
+      });
+    }
+    const recipes = exactLocal(local, 'arcano33_recetas_v1');
+    if (recipes != null){
+      plan.push(makeRecord(engine, context, 'inventario', 'recetas', 'actual', { storageKey:'arcano33_recetas_v1', value:recipes }, 'arcano33_recetas_v1'));
+    }
+    const production = findLocal(local, ['arcano33_lote_actual', 'arcano33_fecha_produccion', 'arcano33_notas_lote', 'arcano33_calc_', 'a33_calc_hebrew']);
+    if (production.length){
+      const values = production.reduce(function(out, item){ out[item.key] = item.value; return out; }, {});
+      plan.push(makeRecord(engine, context, 'inventario', 'calculadora_produccion', 'actual', { values:values }, production.map(function(item){ return item.key; }).join(',')));
+    }
+  }
+
+  function addOrders(plan, engine, context, local){
+    [
+      { key:'arcano33_pedidos', entity:'pedidos', prefix:'pedido' },
+      { key:'arcano33_pedidos_rapidos_v1', entity:'pedidos_rapidos', prefix:'pedido_rapido' },
+      { key:'arcano33_pedidos_archived', entity:'historico', prefix:'pedido_historico' }
+    ].forEach(function(spec){
+      asRecords(exactLocal(local, spec.key)).forEach(function(item, index){
+        const id = stableId(item, spec.prefix, index);
+        plan.push(makeRecord(engine, context, 'pedidos', spec.entity, id, item, spec.key + ':' + id));
+      });
     });
   }
 
-  function addLots(plan, engine, context, local){
-    const lotMatches = findLocal(local, ['arcano33_lotes']);
-    lotMatches.forEach(function(match){
-      asRecords(match.value).forEach(function(lot, index){
-        const lotId = stableId(lot, 'lote', index);
-        plan.push(makeRecord(engine, context, 'lotes', 'lotes', lotId, lot, match.key + ':' + lotId));
-        const products = lot && (lot.productos || lot.products || lot.productosProducidos || lot.producedProducts);
-        asRecords(products).forEach(function(product, productIndex){
-          const productId = lotId + '_' + stableId(product, 'producto', productIndex);
-          plan.push(makeRecord(engine, context, 'lotes', 'productos_lote', productId, {
-            loteId:lotId,
-            producto:product
-          }, match.key + ':' + productId));
-        });
-      });
+  function addAgenda(plan, engine, context, local){
+    const agenda = exactLocal(local, 'a33_agenda_records_v1');
+    asRecords(agenda).forEach(function(item, index){
+      const type = clean(item && item.type, 30).toLowerCase();
+      const entity = type === 'reunion' ? 'reuniones' : (type === 'compra' ? 'compras' : 'tareas');
+      const id = stableId(item, type || 'agenda', index);
+      plan.push(makeRecord(engine, context, 'agenda', entity, id, item, 'a33_agenda_records_v1:' + id));
     });
-    const compatibility = findLocal(local, ['arcano33_calc_ultimo_consecutivo', 'arcano33_calc_consecutivo_actual']);
-    if (compatibility.length){
-      const values = compatibility.reduce(function(out, item){ out[item.key] = item.value; return out; }, {});
-      plan.push(makeRecord(engine, context, 'lotes', 'historico', 'compatibilidad', { values:values }, 'compatibilidad-historica'));
-    }
   }
 
   function buildPlan(backup, options){
@@ -265,9 +179,9 @@
     if (!engine || typeof engine.createDocument !== 'function') throw new Error('No está disponible el contrato Firestore.');
     const context = Object.assign({ workspaceId:'arcano33', uid:'', deviceId:'device' }, options || {});
     const plan = [];
-    addConfig(plan, engine, context, backup.data.localStorage);
-    addCatalogs(plan, engine, context, backup);
-    addLots(plan, engine, context, backup.data.localStorage);
+    addInventory(plan, engine, context, backup.data.localStorage);
+    addOrders(plan, engine, context, backup.data.localStorage);
+    addAgenda(plan, engine, context, backup.data.localStorage);
     return plan;
   }
 
@@ -279,6 +193,9 @@
     const manifest = manifestSnapshot.data();
     if (!manifest || manifest.status !== 'staged' || manifest.applied !== false || manifest.sanitized !== true) throw new Error('La carga E4 no está en estado staged seguro.');
     if (manifest.workspaceId !== workspaceId || manifest.importId !== last.importId) throw new Error('La carga E4 pertenece a otro workspace.');
+    const e5Snapshot = await root.collection('applications').doc('e5').get();
+    const e5 = e5Snapshot && e5Snapshot.exists ? e5Snapshot.data() : null;
+    if (!e5 || e5.status !== 'completed' || e5.sourceChecksum !== manifest.checksum) throw new Error('Primero debe completarse E5 para esta misma carga E4.');
     const chunksSnapshot = await root.collection('chunks').orderBy('index', 'asc').get();
     const chunks = [];
     chunksSnapshot.forEach(function(doc){ chunks.push(doc.data()); });
@@ -309,27 +226,25 @@
       current.forEach(function(document){ batch.set(db.doc(document.path), document, { merge:true }); });
       await batch.commit();
       try{
-        if (g.dispatchEvent && typeof g.CustomEvent === 'function') g.dispatchEvent(new CustomEvent('a33:e5-progress', {
+        if (g.dispatchEvent && typeof g.CustomEvent === 'function') g.dispatchEvent(new CustomEvent('a33:e6-progress', {
           detail:{ processed:Math.min(offset + BATCH_LIMIT, plan.length), total:plan.length }
         }));
       }catch(_){ }
     }
-    const counts = moduleCounts(plan);
-    const now = new Date().toISOString();
     const result = {
       schemaVersion:1,
-      stage:'E5',
+      stage:'E6',
       workspaceId:context.workspaceId,
       importId:staged.manifest.importId,
       sourceChecksum:staged.manifest.checksum,
       status:'completed',
       modules:MODULE_IDS.slice(),
-      counts:counts,
+      counts:moduleCounts(plan),
       recordCount:plan.length,
-      completedAt:now,
+      completedAt:new Date().toISOString(),
       completedBy:context.uid
     };
-    await staged.root.collection('applications').doc('e5').set(result, { merge:true });
+    await staged.root.collection('applications').doc('e6').set(result, { merge:true });
     try{ localStorage.setItem(RESULT_KEY, JSON.stringify(result)); }catch(_){ }
     return result;
   }
@@ -347,7 +262,7 @@
     const deviceId = clean(settings.deviceId, 180) || 'device';
     const staged = await readStaged(db, workspaceId, g.A33FirebaseImport.readLast());
     const plan = buildPlan(staged.backup, { workspaceId:workspaceId, uid:session.user.uid, deviceId:deviceId });
-    if (!plan.length) throw new Error('El respaldo E4 no contiene datos aplicables en Configuración, Catálogos o Lotes.');
+    if (!plan.length) throw new Error('El respaldo E4 no contiene datos aplicables en Inventario, Pedidos o Agenda.');
     return writePlan(db, staged, plan, { workspaceId:workspaceId, uid:session.user.uid });
   }
 
@@ -355,12 +270,11 @@
     try{ const raw = localStorage.getItem(RESULT_KEY); return raw ? JSON.parse(raw) : null; }catch(_){ return null; }
   }
 
-  g.A33FirebaseApplyE5 = Object.freeze({
+  g.A33FirebaseApplyE6 = Object.freeze({
     modules:MODULE_IDS,
     buildPlan:buildPlan,
     apply:apply,
     readLast:readLast,
-    checksum:checksum,
-    splitUtf8:splitUtf8
+    checksum:checksum
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

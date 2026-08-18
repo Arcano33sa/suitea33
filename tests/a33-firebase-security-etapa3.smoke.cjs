@@ -42,6 +42,7 @@ vm.runInContext(moduleSource, sandbox, { filename:'a33-module-access.js' });
 
 assert(sandbox.A33FirebaseAuth, 'No se publicó A33FirebaseAuth');
 assert.strictEqual(sandbox.A33FirebaseAuth.getState().status, 'disabled', 'Auth debe iniciar bloqueado si Firebase está apagado');
+assert.strictEqual(sandbox.A33FirebaseAuth.getState().authenticated, false, 'Auth desactivado no debe declararse autenticado');
 assert.strictEqual(sandbox.A33FirebaseAuth.getCurrentUser(), null, 'No debe inventarse una sesión local');
 assert(sandbox.A33Access, 'No se publicó A33Access');
 assert.strictEqual(sandbox.A33Access.getState().workspaceId, 'arcano33', 'Workspace de seguridad inesperado');
@@ -56,9 +57,9 @@ assert.strictEqual(sandbox.A33ModuleAccess.requiredPermission('finanzas'), 'fina
 assert(html.includes('id="cfg-auth-form"'), 'Falta formulario de acceso maestro');
 assert(html.includes('id="cfg-auth-password"'), 'Falta campo de contraseña');
 assert(html.includes('no se guarda en localStorage'), 'Falta aviso de privacidad de contraseña');
-assert(html.includes('a33-firebase-auth.js?v=4.20.98&amp;r=16'), 'No se actualizó la revisión de Auth');
+assert(html.includes('a33-firebase-auth.js?v=4.20.98&amp;r=17'), 'No se actualizó la revisión de Auth');
 assert(html.includes('a33-firebase-access.js?v=4.20.98&amp;r=17'), 'No se actualizó la revisión de Acceso');
-assert(html.includes('script.js?v=4.20.98&amp;r=41'), 'No se actualizó la revisión de Configuración');
+assert(html.includes('script.js?v=4.20.98&amp;r=43'), 'No se actualizó la revisión de Configuración');
 assert(configSource.includes('function initAuthSection()'), 'Falta inicialización del acceso maestro');
 assert(configSource.includes("A33Toast?.process('Verificando acceso seguro…'"), 'Falta Toast azul durante el acceso');
 assert(configSource.includes("'Sesión iniciada correctamente.', 'success'"), 'Falta confirmación verde de acceso');
@@ -74,6 +75,7 @@ for (const callable of ['a33BootstrapWorkspaceAdmin','a33AdminUpsertUser','a33Ad
 }
 assert(!accessSource.includes("call('a33AdminHealthcheck'"), 'Spark no debe verificar Functions automáticamente');
 assert(!authSource.includes('localStorage.setItem'), 'Auth no debe persistir contraseñas ni sesiones manualmente');
+assert(authSource.includes("authenticated:state.status === 'authenticated' && !!state.user"), 'Auth no publica el indicador compatible que requieren E4-E6');
 assert(authSource.includes('signInWithEmailAndPassword'), 'Auth no usa Email/Password de Firebase');
 assert(accessSource.includes("collection('members')"), 'Seguridad no lee perfiles de Firestore');
 assert(accessSource.includes("const BACKEND_MODE = 'spark-manual'"), 'Seguridad no declara el modo Spark manual');
