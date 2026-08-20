@@ -6249,6 +6249,7 @@ Los históricos se conservarán. ¿Continuar?`);
       ? `${completed.recordCount || 0} registros · ${formatFirebaseStamp(completed.completedAt)}`
       : 'Inventario, Pedidos y Agenda permanecen sin cambios remotos.');
     if (button) button.disabled = !e5;
+    if (typeof renderAnalyzeE7State === 'function') renderAnalyzeE7State();
   }
 
   async function applyStageE6(){
@@ -6338,6 +6339,114 @@ Los históricos se conservarán. ¿Continuar?`);
       const detail = event && event.detail ? event.detail : {};
       if (detail.total) setFirebaseText('cfg-apply-e6-note', `Aplicando registro ${detail.processed} de ${detail.total}…`);
     });
+  }
+
+  function getCompletedE6ForCurrentImport(){
+    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
+      ? window.A33FirebaseImport.readLast()
+      : null;
+    const result = window.A33FirebaseApplyE6 && window.A33FirebaseApplyE6.readLast
+      ? window.A33FirebaseApplyE6.readLast()
+      : null;
+    return staged && result && result.status === 'completed'
+      && result.importId === staged.importId
+      && result.workspaceId === staged.workspaceId
+      && result.sourceChecksum === staged.checksum
+      ? result
+      : null;
+  }
+
+  function getE7AnalysisForCurrentImport(){
+    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
+      ? window.A33FirebaseImport.readLast()
+      : null;
+    const report = window.A33FirebaseAnalyzeE7 && window.A33FirebaseAnalyzeE7.readLast
+      ? window.A33FirebaseAnalyzeE7.readLast()
+      : null;
+    return staged && report && report.stage === 'E7.1'
+      && report.importId === staged.importId
+      && report.workspaceId === staged.workspaceId
+      && report.sourceChecksum === staged.checksum
+      ? report
+      : null;
+  }
+
+  function renderAnalyzeE7State(){
+    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
+      ? window.A33FirebaseImport.readLast()
+      : null;
+    const e6 = getCompletedE6ForCurrentImport();
+    const report = getE7AnalysisForCurrentImport();
+    const box = document.getElementById('cfg-analyze-e7-state');
+    const button = document.getElementById('cfg-analyze-e7-run');
+    if (box) box.dataset.state = report ? (report.readyForE72 ? 'staged' : 'ready') : (e6 ? 'ready' : 'empty');
+    setFirebaseText('cfg-analyze-e7-source', e6 ? 'E6 confirmada' : (staged ? 'E6 pendiente' : 'E4 pendiente'));
+    setFirebaseText('cfg-analyze-e7-source-detail', e6
+      ? `Carga ${e6.importId} disponible para diagnóstico de solo lectura.`
+      : (staged ? 'Completá E6 antes de analizar el bloque crítico.' : 'Primero debe existir una carga E4 preparada.'));
+    setFirebaseText('cfg-analyze-e7-result', report
+      ? (report.readyForE72 ? 'Diagnóstico listo' : 'Revisión requerida')
+      : 'Sin analizar');
+    const warningCount = report && Array.isArray(report.warnings) ? report.warnings.length : 0;
+    setFirebaseText('cfg-analyze-e7-result-detail', report
+      ? (report.readyForE72
+        ? `${report.recordCount || 0} registros en ${report.sourceCount || 0} fuentes · listo para revisar E7.2.`
+        : `${warningCount} advertencia(s); E7.2 permanece bloqueada.`)
+      : 'E7.1 no escribe información en Firestore.');
+    if (button) button.disabled = !e6;
+  }
+
+  async function analyzeStageE7(){
+    if (!requireFirebaseUnlocked('Analizar E7.1')) return;
+    const engine = window.A33FirebaseAnalyzeE7;
+    if (!engine || typeof engine.analyze !== 'function'){
+      const message = 'No está disponible el motor de diagnóstico E7.1.';
+      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
+      return;
+    }
+    if (!getCompletedE6ForCurrentImport()){
+      if (window.A33Toast) window.A33Toast.warning('Primero completá E6 para esta carga E4.');
+      return;
+    }
+    const accepted = window.confirm(
+      'E7.1 leerá la carga E4 confirmada para diagnosticar POS y ventas, Finanzas y Caja Chica.\n\n' +
+      'No copiará, modificará ni eliminará datos en Firestore. Seguridad queda excluida. ¿Continuar?'
+    );
+    if (!accepted){
+      if (window.A33Toast) window.A33Toast.warning('E7.1 cancelada. No se modificó información.');
+      return;
+    }
+    const button = document.getElementById('cfg-analyze-e7-run');
+    const toastId = window.A33Toast ? window.A33Toast.process('E7.1 en proceso: analizando el bloque crítico en modo de solo lectura…') : '';
+    try{
+      if (button) button.disabled = true;
+      setFirebaseText('cfg-analyze-e7-note', 'Analizando la carga confirmada sin escribir en Firestore…');
+      const report = await engine.analyze();
+      renderAnalyzeE7State();
+      const message = report.readyForE72
+        ? `E7.1 confirmada: ${report.recordCount || 0} registros revisados; E7.2 puede planificarse.`
+        : `E7.1 requiere revisión: ${Array.isArray(report.warnings) ? report.warnings.length : 0} advertencia(s).`;
+      setFirebaseText('cfg-analyze-e7-note', message);
+      if (window.A33Toast){
+        const type = report.readyForE72 ? 'success' : 'warning';
+        if (toastId) window.A33Toast.replace(toastId, message, type); else window.A33Toast[type](message);
+      }
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar el diagnóstico E7.1.';
+      setFirebaseText('cfg-analyze-e7-note', `${message} No se escribió información en Firestore.`);
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
+      }else showToast(message);
+    }finally{
+      renderAnalyzeE7State();
+    }
+  }
+
+  function initAnalyzeE7(){
+    renderAnalyzeE7State();
+    const button = document.getElementById('cfg-analyze-e7-run');
+    if (button) button.addEventListener('click', analyzeStageE7);
+    window.addEventListener('a33:initial-import-staged', renderAnalyzeE7State);
   }
 
 
@@ -6788,6 +6897,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initInitialImport();
     initApplyE5();
     initApplyE6();
+    initAnalyzeE7();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
     if (saveBtn){

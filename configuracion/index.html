@@ -933,6 +933,28 @@
 <p>No borra datos locales ni remotos y no toca POS, Finanzas, Caja Chica, Seguridad, cierres, saldos ni movimientos de dinero.</p>
 </div>
 </section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-analyze-e7-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E7.1</span>
+<div>
+<h3 id="cfg-analyze-e7-title">E7.1 · Diagnóstico del bloque crítico</h3>
+<p>Analiza la carga confirmada de POS y ventas, Finanzas (incluye Cobros y Pagos) y Caja Chica antes de E7.2.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-analyze-e7-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-analyze-e7-source">E6 pendiente</strong><small id="cfg-analyze-e7-source-detail">Primero debe completarse E6 para esta misma carga E4.</small></div>
+<div><span>Alcance</span><strong>3 áreas críticas</strong><small>POS y ventas, Finanzas (incluye Cobros/Pagos) y Caja Chica.</small></div>
+<div><span>Resultado</span><strong id="cfg-analyze-e7-result">Sin analizar</strong><small id="cfg-analyze-e7-result-detail">E7.1 no escribe información en Firestore.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-analyze-e7-run" type="button" disabled>Analizar E7.1</button>
+<p class="cfg-action-inline-note" id="cfg-analyze-e7-note">El diagnóstico se guarda solamente en este navegador para preparar E7.2.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Solo lectura</strong>
+<p>E7.1 no copia, modifica ni elimina datos. Seguridad queda excluida y E7.2 no se ejecuta en esta etapa.</p>
+</div>
+</section>
 <section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-sync-title">
 <div class="cfg-report-card-head">
 <span class="cfg-report-icon">⇅</span>
@@ -1280,6 +1302,7 @@
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-apply-e5.js?v=4.20.98&amp;r=2"></script>
 <script src="../assets/js/a33-firebase-apply-e6.js?v=4.20.98&amp;r=1"></script>
-<script src="script.js?v=4.20.98&amp;r=43"></script>
+<script src="../assets/js/a33-firebase-analyze-e7.js?v=4.20.98&amp;r=1"></script>
+<script src="script.js?v=4.20.98&amp;r=44"></script>
 </body>
 </html>

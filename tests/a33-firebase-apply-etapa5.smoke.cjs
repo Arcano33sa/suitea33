@@ -86,7 +86,7 @@ assert.deepStrictEqual(Array.from(repeatedLarge.map((item) => item.path)), Array
 
 assert(html.includes('id="cfg-apply-e5-run"'), 'Falta el botón de E5.');
 assert(html.includes('a33-firebase-apply-e5.js?v=4.20.98&amp;r=2'), 'Falta cargar el motor E5 corregido.');
-assert(html.includes('script.js?v=4.20.98&amp;r=43'), 'No se actualizó la revisión del script de Configuración.');
+assert(html.includes('script.js?v=4.20.98&amp;r=44'), 'No se actualizó la revisión del script de Configuración.');
 assert(configSource.includes('function applyStageE5()'), 'Configuración no integra la aplicación E5.');
 assert(!configSource.includes('formatFirebaseTime('), 'E5/E6 conserva una llamada al formateador inexistente.');
 assert(configSource.includes('formatFirebaseStamp(completed.completedAt)'), 'E5/E6 no reutiliza el formateador seguro de Firebase.');
