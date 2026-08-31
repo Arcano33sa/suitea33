@@ -76,7 +76,7 @@ assert.deepStrictEqual(Array.from(repeated.map((item) => item.path)), Array.from
 
 assert(html.includes('id="cfg-apply-e6-run"'), 'Falta el botón de E6.');
 assert(html.includes('a33-firebase-apply-e6.js?v=4.20.98&amp;r=1'), 'Falta cargar el motor E6.');
-assert(html.includes('script.js?v=4.20.98&amp;r=45'), 'No se actualizó la revisión del script de Configuración.');
+assert(html.includes('script.js?v=4.20.98&amp;r=49'), 'No se actualizó la revisión del script de Configuración.');
 assert(configSource.includes('function applyStageE6()'), 'Configuración no integra la aplicación E6.');
 assert(source.includes("doc('e5')"), 'E6 no exige la finalización previa de E5.');
 assert(source.includes('e5.sourceChecksum !== manifest.checksum'), 'E6 no vincula E5 con la misma carga E4.');

@@ -38,11 +38,36 @@
 
   function entityFor(areaId, sourceId){
     const source = String(sourceId || '').toLowerCase();
+    const storeName = source.split('/').pop();
+    if (source.startsWith('localstorage/') && storeName.endsWith('__meta')) return { excluded:true, reason:'metadato_storage' };
+    if (source === 'localstorage/arcano33_inventario') return { excluded:true, reason:'gestionado_en_e6' };
+    const excludedStores = ['products', 'rawmaterials', 'extras', 'banks', 'customers', 'meta', 'daylocks', 'posremindersindex'];
+    if (excludedStores.includes(storeName)) return { excluded:true, reason:excludedStores.slice(0, 5).includes(storeName) ? 'gestionado_en_e5' : 'fuente_tecnica' };
+    const excludedLocalCatalogs = [
+      'a33_pos_groupcatalog', 'a33_pos_groupcatalog_v0', 'a33_pos_groupcatalog_v1',
+      'a33_pos_groupscatalog', 'a33_pos_groupscatalog_v1',
+      'a33_pos_customerscatalog', 'a33_pos_customersdisabled'
+    ];
+    const excludedLocalPreferences = [
+      'a33_pos_lastgroupname', 'a33_pos_hiddengroups', 'a33_pos_customersticky',
+      'a33_pos_customerlast', 'a33_pos_customermanagefilter',
+      'a33_pos_customermanagecompact', 'a33_pos_customermanageopengroups'
+    ];
+    if (source.startsWith('localstorage/') && excludedLocalCatalogs.includes(storeName)) return { excluded:true, reason:'gestionado_en_e5' };
+    if (source.startsWith('localstorage/') && excludedLocalPreferences.includes(storeName)) return { excluded:true, reason:'preferencia_ui' };
     if (areaId === 'caja_chica') return { moduleId:'finanzas', entityId:'caja_chica' };
     if (areaId === 'pos'){
-      if (source.includes('cash') || source.includes('cierre')) return { moduleId:'pos', entityId:'cierres_diarios' };
+      if (storeName === 'events') return { moduleId:'pos', entityId:'eventos' };
+      if (storeName === 'sales' || storeName === 'ventas') return { moduleId:'pos', entityId:'ventas' };
+      if (storeName === 'inventory') return { moduleId:'pos', entityId:'inventario_evento' };
+      if (storeName === 'reempaques') return { moduleId:'pos', entityId:'reempaques' };
+      if (['cashv2', 'cashv2hist', 'dailyclosures'].includes(storeName)) return { moduleId:'pos', entityId:'cierres_diarios' };
+      if (storeName === 'cashv2snap' || storeName === 'summaryarchives') return { moduleId:'pos', entityId:'resumenes' };
       if (source.includes('efectivo') || source.includes('a33.ef2')) return { moduleId:'pos', entityId:'efectivo' };
-      return { moduleId:'pos', entityId:'ventas' };
+      if (storeName === 'accounts') return { moduleId:'finanzas', entityId:'cuentas' };
+      if (storeName === 'journalentries') return { moduleId:'finanzas', entityId:'asientos' };
+      if (storeName === 'journallines') return { moduleId:'finanzas', entityId:'lineas_asiento' };
+      return { blocked:true, reason:'fuente_pos_desconocida' };
     }
     if (source.includes('journalentries') || source.includes('/asientos')) return { moduleId:'finanzas', entityId:'asientos' };
     if (source.includes('journallines')) return { moduleId:'finanzas', entityId:'lineas_asiento' };
@@ -61,8 +86,14 @@
     if (!report.readyForE72) throw new Error('E7.1 detectó riesgos que deben resolverse antes de planificar E7.2.');
     const operations = [];
     const areaTotals = { pos:0, finanzas:0, caja_chica:0 };
+    const excludedSources = [];
     analyzer.listCriticalSources(backup).forEach(function(source){
       const target = entityFor(source.areaId, source.sourceId);
+      if (target.excluded){
+        excludedSources.push({ areaId:source.areaId, sourceId:source.sourceId, records:source.records.length, reason:target.reason });
+        return;
+      }
+      if (target.blocked) throw new Error('E7.2B.2 bloqueó una fuente sin ruta canónica: ' + source.sourceId + '.');
       source.records.forEach(function(record, index){
         const serialized = JSON.stringify(record == null ? null : record);
         const candidate = stableCandidate(record);
@@ -88,7 +119,7 @@
       batches.push({ index:batches.length, from:start, to:start + slice.length - 1, operations:slice.length, checksum:checksum(JSON.stringify(slice)) });
     }
     const plan = {
-      schemaVersion:1,
+      schemaVersion:2,
       stage:'E7.2A',
       status:'planned',
       readOnly:true,
@@ -104,6 +135,9 @@
       batchCount:batches.length,
       generatedIdCount:operations.filter(function(item){ return item.generatedId; }).length,
       areaTotals:areaTotals,
+      excludedSourceCount:excludedSources.length,
+      excludedRecordCount:excludedSources.reduce(function(total, source){ return total + source.records; }, 0),
+      excludedSources:excludedSources,
       batches:batches,
       operations:operations
     };

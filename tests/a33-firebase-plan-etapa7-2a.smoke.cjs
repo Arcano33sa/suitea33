@@ -47,6 +47,7 @@ const backup = {
 const first = planner.planBackup(backup, { workspaceId:'arcano33', importId:'import-1', sourceChecksum:'abc123' });
 const second = planner.planBackup(backup, { workspaceId:'arcano33', importId:'import-1', sourceChecksum:'abc123' });
 assert.equal(first.stage, 'E7.2A');
+assert.equal(first.schemaVersion, 2);
 assert.equal(first.status, 'planned');
 assert.equal(first.readOnly, true);
 assert.equal(first.operationCount, 7);
@@ -57,6 +58,43 @@ assert.deepEqual(Array.from(first.excluded), ['seguridad']);
 assert(first.operations.every((item) => item.strategy === 'merge'), 'El plan contiene una estrategia destructiva.');
 assert(first.operations.every((item) => !Object.prototype.hasOwnProperty.call(item, 'payload')), 'El plan local retuvo datos operativos completos.');
 assert(first.operations.some((item) => item.moduleId === 'finanzas' && item.entityId === 'caja_chica'), 'Caja Chica no recibió destino canónico.');
+assert.deepEqual(JSON.parse(JSON.stringify(planner.entityFor('pos', 'indexedDB/a33-pos/events'))), { moduleId:'pos', entityId:'eventos' });
+assert.deepEqual(JSON.parse(JSON.stringify(planner.entityFor('pos', 'indexedDB/a33-pos/inventory'))), { moduleId:'pos', entityId:'inventario_evento' });
+assert.deepEqual(JSON.parse(JSON.stringify(planner.entityFor('pos', 'indexedDB/a33-pos/journalEntries'))), { moduleId:'finanzas', entityId:'asientos' });
+assert.equal(planner.entityFor('pos', 'indexedDB/a33-pos/banks').excluded, true, 'Bancos volvió a tratarse como venta.');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(planner.entityFor('pos', 'localStorage/a33_pos_customerSticky'))),
+  { excluded:true, reason:'preferencia_ui' },
+  'La preferencia de cliente pegajoso volvió a tratarse como información operativa.'
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(planner.entityFor('pos', 'localStorage/a33_pos_customersCatalog'))),
+  { excluded:true, reason:'gestionado_en_e5' },
+  'El catálogo de clientes volvió a tratarse como una venta.'
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(planner.entityFor('pos', 'localStorage/a33_pos_customersCatalog__meta'))),
+  { excluded:true, reason:'metadato_storage' },
+  'El metadato del catálogo de clientes volvió a tratarse como información operativa.'
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(planner.entityFor('pos', 'localStorage/a33.ef2__meta'))),
+  { excluded:true, reason:'metadato_storage' },
+  'El metadato de Efectivo volvió a tratarse como un movimiento.'
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(planner.entityFor('pos', 'localStorage/arcano33_inventario'))),
+  { excluded:true, reason:'gestionado_en_e6' },
+  'El inventario central aplicado en E6 volvió a entrar en el bloque crítico.'
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(planner.entityFor('pos', 'localStorage/a33_pos_groupCatalog_v1'))),
+  { excluded:true, reason:'gestionado_en_e5' },
+  'El catálogo de grupos volvió a tratarse como una venta.'
+);
+assert.equal(planner.entityFor('pos', 'localStorage/a33_pos_pending_sale_uid_v1').blocked, true, 'Una clave operativa pendiente fue excluida sin clasificación.');
+assert.equal(planner.entityFor('pos', 'indexedDB/a33-pos/unknownStore').blocked, true, 'Una fuente POS desconocida no quedó bloqueada.');
+assert.equal(planner.entityFor('pos', 'localStorage/a33_pos_unknownState').blocked, true, 'Una fuente local POS desconocida no quedó bloqueada.');
 
 [
   /\.set\s*\(/,
@@ -69,11 +107,12 @@ assert(first.operations.some((item) => item.moduleId === 'finanzas' && item.enti
 ].forEach((pattern) => assert(!pattern.test(plannerSource), `E7.2A contiene una operación remota no permitida: ${pattern}`));
 
 assert(html.includes('id="cfg-plan-e72a-run"'), 'No existe el botón E7.2A.');
-assert(html.includes('a33-firebase-plan-e72a.js?v=4.20.98&amp;r=1'), 'No se cargó el planificador E7.2A.');
-assert(html.includes('script.js?v=4.20.98&amp;r=45'), 'No se actualizó la revisión de Configuración.');
+assert(html.includes('a33-firebase-plan-e72a.js?v=4.20.98&amp;r=6'), 'No se cargó el planificador E7.2A.');
+assert(html.includes('script.js?v=4.20.98&amp;r=49'), 'No se actualizó la revisión de Configuración.');
 assert(html.indexOf('cfg-analyze-e7-title') < html.indexOf('cfg-plan-e72a-title'), 'E7.2A no quedó después de E7.1.');
 assert(html.indexOf('cfg-plan-e72a-title') < html.indexOf('cfg-firebase-sync-title'), 'E7.2A no quedó antes de la sincronización general.');
 assert(configScript.includes('function initPlanE72A()'), 'No se inicializa la interfaz E7.2A.');
+assert(/const plan = await engine\.plan\(\);[\s\S]{0,160}renderPlanE72AState\(\);[\s\S]{0,80}renderValidateE72BState\(\);/.test(configScript), 'E7.2A no habilita la interfaz E7.2B.2 al terminar.');
 assert(configScript.includes('No escribirá, modificará ni eliminará documentos en Firestore.'), 'Falta la advertencia explícita de no escritura.');
 
 console.log('OK a33-firebase-plan-etapa7-2a.smoke');

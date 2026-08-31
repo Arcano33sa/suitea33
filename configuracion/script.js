@@ -6455,6 +6455,7 @@ Los históricos se conservarán. ¿Continuar?`);
       ? window.A33FirebasePlanE72A.readLast()
       : null;
     return report && plan && plan.stage === 'E7.2A'
+      && plan.schemaVersion === 2
       && plan.status === 'planned'
       && plan.importId === report.importId
       && plan.workspaceId === report.workspaceId
@@ -6476,7 +6477,7 @@ Los históricos se conservarán. ¿Continuar?`);
       : 'Primero debe existir un diagnóstico E7.1 confirmado y apto.');
     setFirebaseText('cfg-plan-e72a-result', plan ? 'Plan local listo' : 'Sin planificar');
     setFirebaseText('cfg-plan-e72a-result-detail', plan
-      ? `${plan.operationCount || 0} operaciones en ${plan.batchCount || 0} lote(s) · sin escrituras remotas.`
+      ? `${plan.operationCount || 0} operaciones en ${plan.batchCount || 0} lote(s) · ${plan.excludedRecordCount || 0} registro(s) fuera del bloque crítico.`
       : 'E7.2A no escribe información en Firestore.');
     setFirebaseText('cfg-plan-e72a-note', plan
       ? `Plan ${plan.planChecksum || ''} guardado localmente. E7.2B permanece sin ejecutar.`
@@ -6512,6 +6513,7 @@ Los históricos se conservarán. ¿Continuar?`);
       setFirebaseText('cfg-plan-e72a-note', 'Leyendo la carga confirmada para preparar el plan local…');
       const plan = await engine.plan();
       renderPlanE72AState();
+      renderValidateE72BState();
       const message = `E7.2A confirmada: ${plan.operationCount || 0} operaciones planificadas en ${plan.batchCount || 0} lote(s), sin escribir en Firestore.`;
       if (window.A33Toast){
         if (toastId) window.A33Toast.replace(toastId, message, 'success'); else window.A33Toast.success(message);
@@ -6532,6 +6534,115 @@ Los históricos se conservarán. ¿Continuar?`);
     const button = document.getElementById('cfg-plan-e72a-run');
     if (button) button.addEventListener('click', planStageE72A);
     window.addEventListener('a33:initial-import-staged', renderPlanE72AState);
+  }
+
+  function getE72BValidationForCurrentPlan(){
+    const plan = getE72APlanForCurrentImport();
+    const result = window.A33FirebaseValidateE72B && window.A33FirebaseValidateE72B.readLast
+      ? window.A33FirebaseValidateE72B.readLast()
+      : null;
+    return plan && result && result.stage === 'E7.2B.2'
+      && result.schemaVersion === 3
+      && result.importId === plan.importId
+      && result.workspaceId === plan.workspaceId
+      && result.sourceChecksum === plan.sourceChecksum
+      && result.planChecksum === plan.planChecksum
+      ? result
+      : null;
+  }
+
+  function renderValidateE72BState(){
+    const plan = getE72APlanForCurrentImport();
+    const result = getE72BValidationForCurrentPlan();
+    const box = document.getElementById('cfg-validate-e72b-state');
+    const duplicateBox = document.getElementById('cfg-validate-e72b-duplicates');
+    const button = document.getElementById('cfg-validate-e72b-run');
+    if (box) box.dataset.state = result ? (result.readyForE72C ? 'staged' : 'ready') : (plan ? 'ready' : 'empty');
+    if (duplicateBox) duplicateBox.dataset.state = result ? (result.readyForE72C ? 'staged' : 'ready') : 'empty';
+    setFirebaseText('cfg-validate-e72b-source', plan ? 'E7.2A confirmada' : 'E7.2A pendiente');
+    setFirebaseText('cfg-validate-e72b-source-detail', plan
+      ? `${plan.operationCount || 0} operaciones en ${plan.batchCount || 0} lote(s) disponibles para prevalidación.`
+      : 'Primero debe existir un plan local E7.2A.');
+    setFirebaseText('cfg-validate-e72b-result', result
+      ? (result.readyForE72C ? 'Prevalidación lista' : 'Revisión requerida')
+      : 'Sin validar');
+    setFirebaseText('cfg-validate-e72b-result-detail', result
+      ? (result.readyForE72C
+        ? `${result.operationCount || 0} operaciones y ${result.checkedTargets || 0} destinos verificados.`
+        : `${Array.isArray(result.errors) ? result.errors.length : 0} bloqueo(s) detectado(s); E7.2C no puede continuar.`)
+      : 'E7.2B no escribe información en Firestore.');
+    setFirebaseText('cfg-validate-e72b-note', result
+      ? (result.readyForE72C
+        ? `Validación ${result.validationChecksum || ''} guardada localmente. E7.2C puede planificarse.`
+        : ((result.errors && result.errors[0]) || 'La prevalidación requiere revisión antes de continuar.'))
+      : 'El resultado se guarda solo en este navegador; E7.2C permanece bloqueada hasta aprobar la validación.');
+    const duplicateGroups = result && Array.isArray(result.duplicateGroups) ? result.duplicateGroups : [];
+    const sourceNames = Array.from(new Set(duplicateGroups.reduce((all, group) => all.concat(Array.isArray(group.sources) ? group.sources : []), []))).sort();
+    setFirebaseText('cfg-validate-e72b-identical', result ? `${result.identicalDuplicateGroupCount || 0} destino(s)` : 'Sin analizar');
+    setFirebaseText('cfg-validate-e72b-identical-detail', result
+      ? `${result.identicalDuplicateOperationCount || 0} operación(es) repetidas con contenido idéntico.`
+      : 'Mismo destino y mismo contenido.');
+    setFirebaseText('cfg-validate-e72b-conflicts', result ? `${result.conflictingDuplicateGroupCount || 0} destino(s)` : 'Sin analizar');
+    setFirebaseText('cfg-validate-e72b-conflicts-detail', result
+      ? `${result.conflictingDuplicateOperationCount || 0} operación(es) repetidas con contenido diferente.`
+      : 'Mismo destino con contenido diferente.');
+    setFirebaseText('cfg-validate-e72b-sources', result ? `${sourceNames.length} fuente(s)` : 'Sin analizar');
+    setFirebaseText('cfg-validate-e72b-sources-detail', result
+      ? (sourceNames.length ? sourceNames.slice(0, 3).join(' · ') + (sourceNames.length > 3 ? ` · +${sourceNames.length - 3}` : '') : 'No se detectaron fuentes duplicadas.')
+      : 'Se mostrarán sin exponer los datos operativos.');
+    if (button) button.disabled = !plan;
+  }
+
+  async function validateStageE72B(){
+    if (!requireFirebaseUnlocked('Validar rutas E7.2B.2')) return;
+    const engine = window.A33FirebaseValidateE72B;
+    if (!engine || typeof engine.validate !== 'function'){
+      const message = 'No está disponible la validación E7.2B.2.';
+      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
+      return;
+    }
+    if (!getE72APlanForCurrentImport()){
+      if (window.A33Toast) window.A33Toast.warning('Primero prepará E7.2A para esta carga.');
+      return;
+    }
+    const accepted = window.confirm(
+      'E7.2B.2 comprobará las rutas refinadas y volverá a clasificar los destinos repetidos.\n\n' +
+      'Solo leerá la carga confirmada; no escribirá ni eliminará documentos en Firestore. ¿Continuar?'
+    );
+    if (!accepted){
+      if (window.A33Toast) window.A33Toast.warning('E7.2B.2 cancelada. No se modificó información.');
+      return;
+    }
+    const button = document.getElementById('cfg-validate-e72b-run');
+    const toastId = window.A33Toast ? window.A33Toast.process('E7.2B.2 en proceso: validando las rutas refinadas…') : '';
+    try{
+      if (button) button.disabled = true;
+      setFirebaseText('cfg-validate-e72b-note', 'Contrastando el plan con la carga confirmada, sin escrituras remotas…');
+      const result = await engine.validate();
+      renderValidateE72BState();
+      const message = result.readyForE72C
+        ? `E7.2B.2 confirmada: ${result.identicalDuplicateGroupCount || 0} copia(s) idénticas y 0 conflictos reales; E7.2C puede planificarse.`
+        : `E7.2B.2 requiere revisión: ${result.conflictingDuplicateGroupCount || 0} conflicto(s) reales detectado(s).`;
+      if (window.A33Toast){
+        const type = result.readyForE72C ? 'success' : 'warning';
+        if (toastId) window.A33Toast.replace(toastId, message, type); else window.A33Toast[type](message);
+      }
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E7.2B.2.';
+      setFirebaseText('cfg-validate-e72b-note', `${message} No se escribió información en Firestore.`);
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
+      }else showToast(message);
+    }finally{
+      renderValidateE72BState();
+    }
+  }
+
+  function initValidateE72B(){
+    renderValidateE72BState();
+    const button = document.getElementById('cfg-validate-e72b-run');
+    if (button) button.addEventListener('click', validateStageE72B);
+    window.addEventListener('a33:initial-import-staged', renderValidateE72BState);
   }
 
 
@@ -6984,6 +7095,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initApplyE6();
     initAnalyzeE7();
     initPlanE72A();
+    initValidateE72B();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
     if (saveBtn){
