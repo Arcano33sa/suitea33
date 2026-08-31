@@ -134,10 +134,43 @@
     area.sourceDetails.push(detail);
   }
 
-  function analyzeBackup(backup, sourceInfo){
+  function listCriticalSources(backup){
     if (!backup || !backup.data || typeof backup.data !== 'object') throw new Error('La carga E4 no tiene una sección data válida.');
     const local = normalizeLocalStorage(backup.data.localStorage);
     const databases = normalizeIndexedDB(backup.data.indexedDB);
+    const sources = [];
+    function include(areaId, sourceId, value){
+      const records = asRecords(value);
+      if (records.length) sources.push({ areaId:areaId, sourceId:sourceId, records:records });
+    }
+    Object.keys(databases).sort().forEach(function(databaseName){
+      const stores = databases[databaseName] || {};
+      Object.keys(stores).sort().forEach(function(storeName){
+        const sourceId = 'indexedDB/' + databaseName + '/' + storeName;
+        const isPos = databaseName.includes('a33-pos') || databaseName === 'pos' || storeName === 'sales' || storeName === 'ventas' || storeName.startsWith('cash');
+        const isCaja = storeName.includes('caja_chica') || storeName === 'cajachica';
+        const isFinance = databaseName.includes('finanzas') || databaseName.includes('finance') || [
+          'accounts', 'journalentries', 'journallines', 'receipts', 'purchases', 'posdailycloseimports',
+          'settings', 'cobrar', 'pagar', 'cuentas', 'asientos', 'recibos', 'compras'
+        ].includes(storeName);
+        if (isCaja) include('caja_chica', sourceId, stores[storeName]);
+        else if (isPos) include('pos', sourceId, stores[storeName]);
+        else if (isFinance) include('finanzas', sourceId, stores[storeName]);
+      });
+    });
+    Object.keys(local).sort().forEach(function(key){
+      const lowered = key.toLowerCase();
+      const sourceId = 'localStorage/' + key;
+      if (lowered.includes('seguridad') || lowered.includes('security') || lowered.includes('firebase')) return;
+      if (lowered.includes('caja_chica') || lowered.includes('cajachica')) include('caja_chica', sourceId, local[key]);
+      else if (lowered.includes('a33.ef2') || lowered.includes('pos_') || lowered.includes('_pos') || lowered.includes('venta')) include('pos', sourceId, local[key]);
+      else if (lowered.includes('finanzas') || lowered.includes('finance_dashboard') || lowered.includes('cuentas_financieras') || lowered.includes('cat_usage_cache')) include('finanzas', sourceId, local[key]);
+    });
+    return sources;
+  }
+
+  function analyzeBackup(backup, sourceInfo){
+    if (!backup || !backup.data || typeof backup.data !== 'object') throw new Error('La carga E4 no tiene una sección data válida.');
     const report = {
       schemaVersion:1,
       stage:'E7.1',
@@ -157,29 +190,8 @@
       readyForE72:true
     };
 
-    Object.keys(databases).sort().forEach(function(databaseName){
-      const stores = databases[databaseName] || {};
-      Object.keys(stores).sort().forEach(function(storeName){
-        const sourceId = 'indexedDB/' + databaseName + '/' + storeName;
-        const isPos = databaseName.includes('a33-pos') || databaseName === 'pos' || storeName === 'sales' || storeName === 'ventas' || storeName.startsWith('cash');
-        const isCaja = storeName.includes('caja_chica') || storeName === 'cajachica';
-        const isFinance = databaseName.includes('finanzas') || databaseName.includes('finance') || [
-          'accounts', 'journalentries', 'journallines', 'receipts', 'purchases', 'posdailycloseimports',
-          'settings', 'cobrar', 'pagar', 'cuentas', 'asientos', 'recibos', 'compras'
-        ].includes(storeName);
-        if (isCaja) addSource(report, 'caja_chica', sourceId, stores[storeName]);
-        else if (isPos) addSource(report, 'pos', sourceId, stores[storeName]);
-        else if (isFinance) addSource(report, 'finanzas', sourceId, stores[storeName]);
-      });
-    });
-
-    Object.keys(local).sort().forEach(function(key){
-      const lowered = key.toLowerCase();
-      const sourceId = 'localStorage/' + key;
-      if (lowered.includes('seguridad') || lowered.includes('security') || lowered.includes('firebase')) return;
-      if (lowered.includes('caja_chica') || lowered.includes('cajachica')) addSource(report, 'caja_chica', sourceId, local[key]);
-      else if (lowered.includes('a33.ef2') || lowered.includes('pos_') || lowered.includes('_pos') || lowered.includes('venta')) addSource(report, 'pos', sourceId, local[key]);
-      else if (lowered.includes('finanzas') || lowered.includes('finance_dashboard') || lowered.includes('cuentas_financieras') || lowered.includes('cat_usage_cache')) addSource(report, 'finanzas', sourceId, local[key]);
+    listCriticalSources(backup).forEach(function(source){
+      addSource(report, source.areaId, source.sourceId, source.records);
     });
 
     AREAS.forEach(function(areaId){
@@ -292,6 +304,9 @@
     areas:AREAS,
     excluded:EXCLUDED,
     analyzeBackup:analyzeBackup,
+    listCriticalSources:listCriticalSources,
+    readStaged:readStaged,
+    ensureFirestore:loadScript,
     analyze:analyze,
     readLast:readLast,
     checksum:checksum

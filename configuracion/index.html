@@ -955,6 +955,28 @@
 <p>E7.1 no copia, modifica ni elimina datos. Seguridad queda excluida y E7.2 no se ejecuta en esta etapa.</p>
 </div>
 </section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-plan-e72a-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E7.2A</span>
+<div>
+<h3 id="cfg-plan-e72a-title">E7.2A · Plan local del bloque crítico</h3>
+<p>Prepara el orden, los destinos y los lotes de POS y ventas, Finanzas y Caja Chica antes de cualquier aplicación remota.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-plan-e72a-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-plan-e72a-source">E7.1 pendiente</strong><small id="cfg-plan-e72a-source-detail">Primero debe existir un diagnóstico E7.1 confirmado.</small></div>
+<div><span>Alcance</span><strong>3 áreas críticas</strong><small>Plan determinista por rutas e identificadores; Seguridad queda excluida.</small></div>
+<div><span>Resultado</span><strong id="cfg-plan-e72a-result">Sin planificar</strong><small id="cfg-plan-e72a-result-detail">E7.2A no escribe información en Firestore.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-plan-e72a-run" type="button" disabled>Preparar plan E7.2A</button>
+<p class="cfg-action-inline-note" id="cfg-plan-e72a-note">El plan se guarda solo en este navegador y podrá revisarse antes de E7.2B.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Sin aplicación remota</strong>
+<p>E7.2A no crea, modifica ni elimina documentos en Firestore. Tampoco altera datos locales ni ejecuta E7.2B.</p>
+</div>
+</section>
 <section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-sync-title">
 <div class="cfg-report-card-head">
 <span class="cfg-report-icon">⇅</span>
@@ -1303,6 +1325,7 @@
 <script src="../assets/js/a33-firebase-apply-e5.js?v=4.20.98&amp;r=2"></script>
 <script src="../assets/js/a33-firebase-apply-e6.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-analyze-e7.js?v=4.20.98&amp;r=1"></script>
-<script src="script.js?v=4.20.98&amp;r=44"></script>
+<script src="../assets/js/a33-firebase-plan-e72a.js?v=4.20.98&amp;r=1"></script>
+<script src="script.js?v=4.20.98&amp;r=45"></script>
 </body>
 </html>

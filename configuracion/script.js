@@ -6449,6 +6449,91 @@ Los históricos se conservarán. ¿Continuar?`);
     window.addEventListener('a33:initial-import-staged', renderAnalyzeE7State);
   }
 
+  function getE72APlanForCurrentImport(){
+    const report = getE7AnalysisForCurrentImport();
+    const plan = window.A33FirebasePlanE72A && window.A33FirebasePlanE72A.readLast
+      ? window.A33FirebasePlanE72A.readLast()
+      : null;
+    return report && plan && plan.stage === 'E7.2A'
+      && plan.status === 'planned'
+      && plan.importId === report.importId
+      && plan.workspaceId === report.workspaceId
+      && plan.sourceChecksum === report.sourceChecksum
+      ? plan
+      : null;
+  }
+
+  function renderPlanE72AState(){
+    const report = getE7AnalysisForCurrentImport();
+    const ready = !!(report && report.readyForE72);
+    const plan = getE72APlanForCurrentImport();
+    const box = document.getElementById('cfg-plan-e72a-state');
+    const button = document.getElementById('cfg-plan-e72a-run');
+    if (box) box.dataset.state = plan ? 'staged' : (ready ? 'ready' : 'empty');
+    setFirebaseText('cfg-plan-e72a-source', ready ? 'E7.1 confirmada' : 'E7.1 pendiente');
+    setFirebaseText('cfg-plan-e72a-source-detail', ready
+      ? `${report.recordCount || 0} registros diagnosticados y aptos para planificación.`
+      : 'Primero debe existir un diagnóstico E7.1 confirmado y apto.');
+    setFirebaseText('cfg-plan-e72a-result', plan ? 'Plan local listo' : 'Sin planificar');
+    setFirebaseText('cfg-plan-e72a-result-detail', plan
+      ? `${plan.operationCount || 0} operaciones en ${plan.batchCount || 0} lote(s) · sin escrituras remotas.`
+      : 'E7.2A no escribe información en Firestore.');
+    setFirebaseText('cfg-plan-e72a-note', plan
+      ? `Plan ${plan.planChecksum || ''} guardado localmente. E7.2B permanece sin ejecutar.`
+      : 'El plan se guarda solo en este navegador y podrá revisarse antes de E7.2B.');
+    if (button) button.disabled = !ready;
+  }
+
+  async function planStageE72A(){
+    if (!requireFirebaseUnlocked('Preparar E7.2A')) return;
+    const engine = window.A33FirebasePlanE72A;
+    if (!engine || typeof engine.plan !== 'function'){
+      const message = 'No está disponible el planificador local E7.2A.';
+      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
+      return;
+    }
+    const report = getE7AnalysisForCurrentImport();
+    if (!report || !report.readyForE72){
+      if (window.A33Toast) window.A33Toast.warning('Primero confirmá un diagnóstico E7.1 apto para esta carga.');
+      return;
+    }
+    const accepted = window.confirm(
+      'E7.2A preparará solamente un plan local para POS y ventas, Finanzas y Caja Chica.\n\n' +
+      'No escribirá, modificará ni eliminará documentos en Firestore. Seguridad queda excluida. ¿Continuar?'
+    );
+    if (!accepted){
+      if (window.A33Toast) window.A33Toast.warning('E7.2A cancelada. No se modificó información.');
+      return;
+    }
+    const button = document.getElementById('cfg-plan-e72a-run');
+    const toastId = window.A33Toast ? window.A33Toast.process('E7.2A en proceso: preparando el plan local…') : '';
+    try{
+      if (button) button.disabled = true;
+      setFirebaseText('cfg-plan-e72a-note', 'Leyendo la carga confirmada para preparar el plan local…');
+      const plan = await engine.plan();
+      renderPlanE72AState();
+      const message = `E7.2A confirmada: ${plan.operationCount || 0} operaciones planificadas en ${plan.batchCount || 0} lote(s), sin escribir en Firestore.`;
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'success'); else window.A33Toast.success(message);
+      }
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo preparar E7.2A.';
+      setFirebaseText('cfg-plan-e72a-note', `${message} No se escribió información en Firestore.`);
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
+      }else showToast(message);
+    }finally{
+      renderPlanE72AState();
+    }
+  }
+
+  function initPlanE72A(){
+    renderPlanE72AState();
+    const button = document.getElementById('cfg-plan-e72a-run');
+    if (button) button.addEventListener('click', planStageE72A);
+    window.addEventListener('a33:initial-import-staged', renderPlanE72AState);
+  }
+
 
   function getFirebaseConnectionPathFromData(data){
     const normalized = normalizeFirebaseSettings(data);
@@ -6898,6 +6983,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initApplyE5();
     initApplyE6();
     initAnalyzeE7();
+    initPlanE72A();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
     if (saveBtn){
