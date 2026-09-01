@@ -6838,6 +6838,90 @@ Los históricos se conservarán. ¿Continuar?`);
     window.addEventListener('a33:initial-import-staged', renderApplyE72DState);
   }
 
+  const E72E_EXECUTION_ENABLED = true;
+
+  function getE72EAuditForCurrentApplication(){
+    const application = getE72DResultForCurrentSimulation();
+    const result = window.A33FirebaseAuditE72E && window.A33FirebaseAuditE72E.readLast
+      ? window.A33FirebaseAuditE72E.readLast()
+      : null;
+    return application && result && result.stage === 'E7.2E'
+      && result.planChecksum === application.planChecksum
+      && result.validationChecksum === application.validationChecksum
+      && result.simulationChecksum === application.simulationChecksum
+      ? result
+      : null;
+  }
+
+  function renderAuditE72EState(){
+    const application = getE72DResultForCurrentSimulation();
+    const result = getE72EAuditForCurrentApplication();
+    const ready = !!application;
+    const box = document.getElementById('cfg-audit-e72e-state');
+    const button = document.getElementById('cfg-audit-e72e-run');
+    if (box) box.dataset.state = result ? (result.readyForE72F ? 'staged' : 'ready') : (ready && E72E_EXECUTION_ENABLED ? 'ready' : 'empty');
+    setFirebaseText('cfg-audit-e72e-source', ready ? 'E7.2D confirmada' : 'E7.2D pendiente');
+    setFirebaseText('cfg-audit-e72e-source-detail', ready
+      ? `${application.appliedCount || 0} registro(s) y ${application.completedBatches || 0} lote(s) confirmados.`
+      : 'Primero debe completarse la aplicación crítica.');
+    setFirebaseText('cfg-audit-e72e-result', result ? (result.readyForE72F ? 'Auditoría correcta' : 'Revisión requerida') : 'Sin auditar');
+    setFirebaseText('cfg-audit-e72e-result-detail', result
+      ? `${result.verifiedCount || 0}/${result.expectedCount || 0} verificados; ${(result.missingCount || 0) + (result.differentCount || 0) + (result.invalidContractCount || 0) + (result.errorCount || 0)} incidencia(s).`
+      : (E72E_EXECUTION_ENABLED ? 'Lista para contrastar Firestore en modo solo lectura.' : 'E7.2F habilitará únicamente las lecturas remotas.'));
+    setFirebaseText('cfg-audit-e72e-note', result
+      ? (result.readyForE72F
+        ? `Auditoría ${result.auditChecksum || ''} correcta; el bloque crítico puede cerrarse.`
+        : 'La auditoría detectó faltantes, diferencias, contratos inválidos o errores; no se cierra el bloque.')
+      : (E72E_EXECUTION_ENABLED
+        ? 'La auditoría leerá el checkpoint y cada destino aprobado; no realizará escrituras.'
+        : 'E7.2E preparada localmente; la ejecución permanecerá bloqueada hasta E7.2F.'));
+    if (button) button.disabled = !ready || !E72E_EXECUTION_ENABLED || !!(result && result.readyForE72F);
+  }
+
+  async function auditStageE72E(){
+    if (!E72E_EXECUTION_ENABLED){
+      if (window.A33Toast) window.A33Toast.warning('E7.2F debe habilitar la auditoría remota de solo lectura.');
+      return;
+    }
+    if (!requireFirebaseUnlocked('Auditar E7.2E')) return;
+    const engine = window.A33FirebaseAuditE72E;
+    if (!engine || typeof engine.audit !== 'function'){
+      const message = 'No está disponible el auditor E7.2E.';
+      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
+      return;
+    }
+    const button = document.getElementById('cfg-audit-e72e-run');
+    const toastId = window.A33Toast ? window.A33Toast.process('E7.2E en proceso: verificando checkpoint y destinos…') : '';
+    try{
+      if (button) button.disabled = true;
+      setFirebaseText('cfg-audit-e72e-note', 'Leyendo Firestore en grupos controlados; no se modificará información…');
+      const result = await engine.audit();
+      renderAuditE72EState();
+      const message = result.readyForE72F
+        ? `E7.2E confirmada: ${result.verifiedCount || 0}/${result.expectedCount || 0} registros verificados sin diferencias.`
+        : `E7.2E requiere revisión: ${(result.missingCount || 0) + (result.differentCount || 0) + (result.invalidContractCount || 0) + (result.errorCount || 0)} incidencia(s).`;
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, result.readyForE72F ? 'success' : 'warning');
+        else if (result.readyForE72F) window.A33Toast.success(message); else window.A33Toast.warning(message);
+      }
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E7.2E.';
+      setFirebaseText('cfg-audit-e72e-note', message);
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
+      }else showToast(message);
+    }finally{
+      renderAuditE72EState();
+    }
+  }
+
+  function initAuditE72E(){
+    renderAuditE72EState();
+    const button = document.getElementById('cfg-audit-e72e-run');
+    if (button) button.addEventListener('click', auditStageE72E);
+    window.addEventListener('a33:initial-import-staged', renderAuditE72EState);
+  }
+
 
   function getFirebaseConnectionPathFromData(data){
     const normalized = normalizeFirebaseSettings(data);
@@ -7291,6 +7375,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initValidateE72B();
     initSimulateE72C();
     initApplyE72D();
+    initAuditE72E();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
     if (saveBtn){

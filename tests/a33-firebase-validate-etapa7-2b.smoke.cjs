@@ -81,7 +81,7 @@ assert(conflict.duplicateTargetCount > 0, 'No se informó el destino duplicado.'
 
 assert(html.includes('id="cfg-validate-e72b-run"'), 'No existe el botón E7.2B.');
 assert(html.includes('a33-firebase-validate-e72b.js?v=4.20.98&amp;r=3'), 'No se cargó el prevalidador E7.2B.2.');
-assert(html.includes('script.js?v=4.20.98&amp;r=53'), 'No se actualizó la revisión de Configuración.');
+assert(html.includes('script.js?v=4.20.98&amp;r=55'), 'No se actualizó la revisión de Configuración.');
 assert(html.indexOf('cfg-plan-e72a-title') < html.indexOf('cfg-validate-e72b-title'), 'E7.2B no quedó después de E7.2A.');
 assert(html.indexOf('cfg-validate-e72b-title') < html.indexOf('cfg-firebase-sync-title'), 'E7.2B no quedó antes de la sincronización general.');
 assert(configScript.includes('function initValidateE72B()'), 'No se inicializa E7.2B.');

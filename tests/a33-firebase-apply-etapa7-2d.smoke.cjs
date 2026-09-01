@@ -83,7 +83,7 @@ const vm = require('node:vm');
   assert(!/\.update\s*\(|\.delete\s*\(/.test(engineSource), 'E7.2D contiene actualización o eliminación directa.');
   assert(html.includes('id="cfg-apply-e72d-run"'), 'No existe el botón E7.2D.');
   assert(html.includes('a33-firebase-apply-e72d.js?v=4.20.98&amp;r=1'), 'No se cargó el motor E7.2D.');
-  assert(html.includes('script.js?v=4.20.98&amp;r=53'), 'No se actualizó la revisión de Configuración.');
+  assert(html.includes('script.js?v=4.20.98&amp;r=55'), 'No se actualizó la revisión de Configuración.');
   assert(html.indexOf('cfg-simulate-e72c-title') < html.indexOf('cfg-apply-e72d-title'), 'E7.2D no quedó después de E7.2C.');
   assert(configScript.includes('const E72D_RULES_DEPLOYED = true;'), 'La compuerta E7.2D.2 no habilita la aplicación después del despliegue.');
   assert(rules.includes('function validStage7CreateRecord'), 'Faltan reglas locales de creación E7.');

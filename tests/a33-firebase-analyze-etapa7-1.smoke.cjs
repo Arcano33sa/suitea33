@@ -85,7 +85,7 @@ assert(source.includes('.get()'), 'E7.1 no contiene lecturas verificables de Fir
 
 assert(html.includes('id="cfg-analyze-e7-run"'), 'No existe el botón de diagnóstico E7.1.');
 assert(html.includes('a33-firebase-analyze-e7.js?v=4.20.98&amp;r=1'), 'No se cargó el motor E7.1.');
-assert(html.includes('script.js?v=4.20.98&amp;r=53'), 'No se actualizó la revisión de Configuración.');
+assert(html.includes('script.js?v=4.20.98&amp;r=55'), 'No se actualizó la revisión de Configuración.');
 assert(html.indexOf('cfg-analyze-e7-title') < html.indexOf('cfg-firebase-sync-title'), 'E7.1 no quedó antes de la sincronización general.');
 assert(configScript.includes('function initAnalyzeE7()'), 'No se inicializa la interfaz E7.1.');
 assert(configScript.includes('No copiará, modificará ni eliminará datos en Firestore.'), 'Falta la advertencia explícita de solo lectura.');

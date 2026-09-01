@@ -89,7 +89,7 @@ const vm = require('node:vm');
 
   assert(html.includes('id="cfg-simulate-e72c-run"'), 'No existe el botón E7.2C.');
   assert(html.includes('a33-firebase-simulate-e72c.js?v=4.20.98&amp;r=2'), 'No se cargó el simulador E7.2C.');
-  assert(html.includes('script.js?v=4.20.98&amp;r=53'), 'No se actualizó la revisión de Configuración.');
+  assert(html.includes('script.js?v=4.20.98&amp;r=55'), 'No se actualizó la revisión de Configuración.');
   assert(html.indexOf('cfg-validate-e72b-title') < html.indexOf('cfg-simulate-e72c-title'), 'E7.2C no quedó después de E7.2B.2.');
   assert(html.indexOf('cfg-simulate-e72c-title') < html.indexOf('cfg-firebase-sync-title'), 'E7.2C no quedó antes de la sincronización general.');
   assert(configScript.includes('function initSimulateE72C()'), 'No se inicializa E7.2C.');
