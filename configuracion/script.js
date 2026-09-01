@@ -6514,6 +6514,7 @@ Los históricos se conservarán. ¿Continuar?`);
       const plan = await engine.plan();
       renderPlanE72AState();
       renderValidateE72BState();
+      renderSimulateE72CState();
       const message = `E7.2A confirmada: ${plan.operationCount || 0} operaciones planificadas en ${plan.batchCount || 0} lote(s), sin escribir en Firestore.`;
       if (window.A33Toast){
         if (toastId) window.A33Toast.replace(toastId, message, 'success'); else window.A33Toast.success(message);
@@ -6620,6 +6621,7 @@ Los históricos se conservarán. ¿Continuar?`);
       setFirebaseText('cfg-validate-e72b-note', 'Contrastando el plan con la carga confirmada, sin escrituras remotas…');
       const result = await engine.validate();
       renderValidateE72BState();
+      renderSimulateE72CState();
       const message = result.readyForE72C
         ? `E7.2B.2 confirmada: ${result.identicalDuplicateGroupCount || 0} copia(s) idénticas y 0 conflictos reales; E7.2C puede planificarse.`
         : `E7.2B.2 requiere revisión: ${result.conflictingDuplicateGroupCount || 0} conflicto(s) reales detectado(s).`;
@@ -6643,6 +6645,100 @@ Los históricos se conservarán. ¿Continuar?`);
     const button = document.getElementById('cfg-validate-e72b-run');
     if (button) button.addEventListener('click', validateStageE72B);
     window.addEventListener('a33:initial-import-staged', renderValidateE72BState);
+  }
+
+  function getE72CSimulationForCurrentValidation(){
+    const validation = getE72BValidationForCurrentPlan();
+    const result = window.A33FirebaseSimulateE72C && window.A33FirebaseSimulateE72C.readLast
+      ? window.A33FirebaseSimulateE72C.readLast()
+      : null;
+    return validation && result && result.stage === 'E7.2C'
+      && result.schemaVersion === 1
+      && result.planChecksum === validation.planChecksum
+      && result.validationChecksum === validation.validationChecksum
+      ? result
+      : null;
+  }
+
+  function renderSimulateE72CState(){
+    const validation = getE72BValidationForCurrentPlan();
+    const ready = !!(validation && validation.readyForE72C);
+    const result = getE72CSimulationForCurrentValidation();
+    const box = document.getElementById('cfg-simulate-e72c-state');
+    const counts = document.getElementById('cfg-simulate-e72c-counts');
+    const button = document.getElementById('cfg-simulate-e72c-run');
+    if (box) box.dataset.state = result ? (result.readyForE72D ? 'staged' : 'ready') : (ready ? 'ready' : 'empty');
+    if (counts) counts.dataset.state = result ? (result.readyForE72D ? 'staged' : 'ready') : 'empty';
+    setFirebaseText('cfg-simulate-e72c-source', ready ? 'E7.2B.2 confirmada' : 'E7.2B.2 pendiente');
+    setFirebaseText('cfg-simulate-e72c-source-detail', ready
+      ? `${validation.operationCount || 0} destinos aprobados para lectura remota.`
+      : 'Primero debe aprobarse la validación de rutas.');
+    setFirebaseText('cfg-simulate-e72c-result', result ? (result.readyForE72D ? 'Simulación apta' : 'Aplicación bloqueada') : 'Sin simular');
+    setFirebaseText('cfg-simulate-e72c-result-detail', result
+      ? `${result.readCount || 0} lectura(s): ${result.differentCount || 0} diferencia(s) y ${result.errorCount || 0} error(es).`
+      : 'E7.2D permanece bloqueada.');
+    setFirebaseText('cfg-simulate-e72c-note', result
+      ? (result.readyForE72D
+        ? `Simulación ${result.simulationChecksum || ''} guardada localmente. E7.2D puede planificarse.`
+        : `La simulación detectó diferencias o errores${result.firstErrorCode ? ` (${result.firstErrorCode})` : ''}; E7.2D no puede continuar.`)
+      : 'La simulación puede consumir hasta una lectura por destino y guarda solo estados y checksums localmente.');
+    setFirebaseText('cfg-simulate-e72c-new', result ? `${result.newCount || 0} destino(s)` : 'Sin analizar');
+    setFirebaseText('cfg-simulate-e72c-identical', result ? `${result.identicalCount || 0} destino(s)` : 'Sin analizar');
+    setFirebaseText('cfg-simulate-e72c-blocked', result ? `${(result.differentCount || 0) + (result.errorCount || 0)} destino(s)` : 'Sin analizar');
+    if (button) button.disabled = !ready;
+  }
+
+  async function simulateStageE72C(){
+    if (!requireFirebaseUnlocked('Simular E7.2C')) return;
+    const engine = window.A33FirebaseSimulateE72C;
+    const validation = getE72BValidationForCurrentPlan();
+    if (!engine || typeof engine.simulate !== 'function'){
+      const message = 'No está disponible el simulador E7.2C.';
+      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
+      return;
+    }
+    if (!validation || !validation.readyForE72C){
+      if (window.A33Toast) window.A33Toast.warning('Primero confirmá E7.2B.2 para este plan.');
+      return;
+    }
+    const accepted = window.confirm(
+      `E7.2C leerá hasta ${validation.operationCount || 0} destinos aprobados en Firestore para compararlos con el plan local.\n\n` +
+      'No creará, modificará ni eliminará documentos. Seguridad permanece excluida. ¿Continuar?'
+    );
+    if (!accepted){
+      if (window.A33Toast) window.A33Toast.warning('E7.2C cancelada. No se modificó información.');
+      return;
+    }
+    const button = document.getElementById('cfg-simulate-e72c-run');
+    const toastId = window.A33Toast ? window.A33Toast.process('E7.2C en proceso: leyendo y comparando destinos remotos…') : '';
+    try{
+      if (button) button.disabled = true;
+      setFirebaseText('cfg-simulate-e72c-note', 'Leyendo únicamente las rutas aprobadas; no se ejecutan escrituras…');
+      const result = await engine.simulate();
+      renderSimulateE72CState();
+      const message = result.readyForE72D
+        ? `E7.2C confirmada: ${result.newCount || 0} nuevo(s), ${result.identicalCount || 0} idéntico(s), sin diferencias ni errores.`
+        : `E7.2C bloqueó la aplicación: ${result.differentCount || 0} diferencia(s) y ${result.errorCount || 0} error(es).`;
+      if (window.A33Toast){
+        const type = result.readyForE72D ? 'success' : 'warning';
+        if (toastId) window.A33Toast.replace(toastId, message, type); else window.A33Toast[type](message);
+      }
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E7.2C.';
+      setFirebaseText('cfg-simulate-e72c-note', `${message} No se escribió información en Firestore.`);
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
+      }else showToast(message);
+    }finally{
+      renderSimulateE72CState();
+    }
+  }
+
+  function initSimulateE72C(){
+    renderSimulateE72CState();
+    const button = document.getElementById('cfg-simulate-e72c-run');
+    if (button) button.addEventListener('click', simulateStageE72C);
+    window.addEventListener('a33:initial-import-staged', renderSimulateE72CState);
   }
 
 
@@ -7096,6 +7192,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initAnalyzeE7();
     initPlanE72A();
     initValidateE72B();
+    initSimulateE72C();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
     if (saveBtn){

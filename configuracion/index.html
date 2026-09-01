@@ -1004,6 +1004,33 @@
 <p>E7.2B.2 no crea, fusiona, modifica ni elimina documentos en Firestore. Tampoco resuelve conflictos ni ejecuta E7.2C.</p>
 </div>
 </section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-simulate-e72c-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E7.2C</span>
+<div>
+<h3 id="cfg-simulate-e72c-title">E7.2C · Simulación remota de solo lectura</h3>
+<p>Contrasta las rutas aprobadas con Firestore y clasifica destinos nuevos, idénticos, diferentes o con error.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-simulate-e72c-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-simulate-e72c-source">E7.2B.2 pendiente</strong><small id="cfg-simulate-e72c-source-detail">Primero debe aprobarse la validación de rutas.</small></div>
+<div><span>Control</span><strong>Solo lectura remota</strong><small>Lee únicamente los destinos canónicos aprobados; no ejecuta escrituras.</small></div>
+<div><span>Resultado</span><strong id="cfg-simulate-e72c-result">Sin simular</strong><small id="cfg-simulate-e72c-result-detail">E7.2D permanece bloqueada.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-simulate-e72c-run" type="button" disabled>Simular E7.2C</button>
+<p class="cfg-action-inline-note" id="cfg-simulate-e72c-note">La simulación puede consumir hasta una lectura por destino y guarda solo estados y checksums localmente.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-simulate-e72c-counts" data-state="empty" aria-live="polite">
+<div><span>Nuevos</span><strong id="cfg-simulate-e72c-new">Sin analizar</strong><small>No existe documento remoto.</small></div>
+<div><span>Idénticos</span><strong id="cfg-simulate-e72c-identical">Sin analizar</strong><small>El contenido remoto coincide.</small></div>
+<div><span>Diferentes / errores</span><strong id="cfg-simulate-e72c-blocked">Sin analizar</strong><small>Cualquier diferencia bloquea E7.2D.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Sin aplicación remota</strong>
+<p>E7.2C no crea, fusiona, modifica ni elimina documentos en Firestore. Seguridad permanece excluida.</p>
+</div>
+</section>
 <section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-sync-title">
 <div class="cfg-report-card-head">
 <span class="cfg-report-icon">⇅</span>
@@ -1354,6 +1381,7 @@
 <script src="../assets/js/a33-firebase-analyze-e7.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-plan-e72a.js?v=4.20.98&amp;r=6"></script>
 <script src="../assets/js/a33-firebase-validate-e72b.js?v=4.20.98&amp;r=3"></script>
-<script src="script.js?v=4.20.98&amp;r=49"></script>
+<script src="../assets/js/a33-firebase-simulate-e72c.js?v=4.20.98&amp;r=2"></script>
+<script src="script.js?v=4.20.98&amp;r=51"></script>
 </body>
 </html>

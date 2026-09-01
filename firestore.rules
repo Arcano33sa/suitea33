@@ -388,6 +388,16 @@ service cloud.firestore {
         && request.resource.data.completedBy == request.auth.uid;
     }
 
+    function validStage7ReadModule(moduleId) {
+      return moduleId == 'pos'
+        || moduleId == 'finanzas';
+    }
+
+    function validStage7ReadEntity(moduleId, entityId) {
+      return (moduleId == 'pos' && (entityId == 'eventos' || entityId == 'ventas' || entityId == 'cierres_diarios' || entityId == 'efectivo' || entityId == 'inventario_evento' || entityId == 'reempaques' || entityId == 'resumenes'))
+        || (moduleId == 'finanzas' && (entityId == 'cuentas' || entityId == 'asientos' || entityId == 'lineas_asiento' || entityId == 'recibos' || entityId == 'compras' || entityId == 'caja_chica' || entityId == 'cobrar' || entityId == 'pagar'));
+    }
+
     match /workspaces/{workspaceId} {
       allow get: if requesterActiveMember(workspaceId) || (signedIn() && workspaceId == tokenWorkspace());
       allow list: if requesterAdmin(workspaceId);
@@ -437,7 +447,13 @@ service cloud.firestore {
       }
 
       match /modules/{moduleId}/entities/{entityId}/records/{recordId} {
-        allow get, list: if requesterActiveMember(workspaceId)
+        allow get: if (requesterActiveMember(workspaceId)
+          && ((validStage5Module(moduleId) && validStage5Entity(moduleId, entityId))
+            || (validStage6Module(moduleId) && validStage6Entity(moduleId, entityId))))
+          || (requesterAdmin(workspaceId)
+            && validStage7ReadModule(moduleId)
+            && validStage7ReadEntity(moduleId, entityId));
+        allow list: if requesterActiveMember(workspaceId)
           && ((validStage5Module(moduleId) && validStage5Entity(moduleId, entityId))
             || (validStage6Module(moduleId) && validStage6Entity(moduleId, entityId)));
         allow create, update: if requesterAdmin(workspaceId)

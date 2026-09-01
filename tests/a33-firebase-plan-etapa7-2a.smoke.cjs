@@ -108,11 +108,12 @@ assert.equal(planner.entityFor('pos', 'localStorage/a33_pos_unknownState').block
 
 assert(html.includes('id="cfg-plan-e72a-run"'), 'No existe el botón E7.2A.');
 assert(html.includes('a33-firebase-plan-e72a.js?v=4.20.98&amp;r=6'), 'No se cargó el planificador E7.2A.');
-assert(html.includes('script.js?v=4.20.98&amp;r=49'), 'No se actualizó la revisión de Configuración.');
+assert(html.includes('script.js?v=4.20.98&amp;r=51'), 'No se actualizó la revisión de Configuración.');
 assert(html.indexOf('cfg-analyze-e7-title') < html.indexOf('cfg-plan-e72a-title'), 'E7.2A no quedó después de E7.1.');
 assert(html.indexOf('cfg-plan-e72a-title') < html.indexOf('cfg-firebase-sync-title'), 'E7.2A no quedó antes de la sincronización general.');
 assert(configScript.includes('function initPlanE72A()'), 'No se inicializa la interfaz E7.2A.');
 assert(/const plan = await engine\.plan\(\);[\s\S]{0,160}renderPlanE72AState\(\);[\s\S]{0,80}renderValidateE72BState\(\);/.test(configScript), 'E7.2A no habilita la interfaz E7.2B.2 al terminar.');
+assert(/renderValidateE72BState\(\);[\s\S]{0,80}renderSimulateE72CState\(\);/.test(configScript), 'E7.2A no invalida visualmente una simulación E7.2C anterior.');
 assert(configScript.includes('No escribirá, modificará ni eliminará documentos en Firestore.'), 'Falta la advertencia explícita de no escritura.');
 
 console.log('OK a33-firebase-plan-etapa7-2a.smoke');
