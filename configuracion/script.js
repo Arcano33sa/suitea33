@@ -6741,6 +6741,103 @@ Los históricos se conservarán. ¿Continuar?`);
     window.addEventListener('a33:initial-import-staged', renderSimulateE72CState);
   }
 
+  const E72D_RULES_DEPLOYED = true;
+
+  function getE72DResultForCurrentSimulation(){
+    const simulation = getE72CSimulationForCurrentValidation();
+    const result = window.A33FirebaseApplyE72D && window.A33FirebaseApplyE72D.readLast
+      ? window.A33FirebaseApplyE72D.readLast()
+      : null;
+    return simulation && result && result.stage === 'E7.2D'
+      && result.status === 'completed'
+      && result.planChecksum === simulation.planChecksum
+      && result.validationChecksum === simulation.validationChecksum
+      && result.simulationChecksum === simulation.simulationChecksum
+      ? result
+      : null;
+  }
+
+  function renderApplyE72DState(){
+    const simulation = getE72CSimulationForCurrentValidation();
+    const ready = !!(simulation && simulation.readyForE72D);
+    const result = getE72DResultForCurrentSimulation();
+    const box = document.getElementById('cfg-apply-e72d-state');
+    const button = document.getElementById('cfg-apply-e72d-run');
+    if (box) box.dataset.state = result ? 'staged' : (ready && E72D_RULES_DEPLOYED ? 'ready' : 'empty');
+    setFirebaseText('cfg-apply-e72d-source', ready ? 'E7.2C confirmada' : 'E7.2C pendiente');
+    setFirebaseText('cfg-apply-e72d-source-detail', ready
+      ? `${simulation.newCount || 0} destino(s) nuevos y ${simulation.identicalCount || 0} idéntico(s) aprobados.`
+      : 'Primero debe aprobarse la simulación remota.');
+    setFirebaseText('cfg-apply-e72d-result', result ? 'Aplicación completada' : (E72D_RULES_DEPLOYED ? 'Lista para aplicar' : 'Reglas pendientes'));
+    setFirebaseText('cfg-apply-e72d-result-detail', result
+      ? `${result.appliedCount || 0} registro(s) creados en ${result.completedBatches || 0} lote(s).`
+      : (E72D_RULES_DEPLOYED ? 'La ejecución reanudará desde el último checkpoint confirmado.' : 'E7.2D.2 debe desplegar las reglas antes de habilitar la aplicación.'));
+    setFirebaseText('cfg-apply-e72d-note', result
+      ? `E7.2D completada por ${result.completedBy || 'Admin'}; no se sobrescribieron registros.`
+      : (E72D_RULES_DEPLOYED
+        ? 'La aplicación creará únicamente destinos nuevos y registrará un checkpoint por lote.'
+        : 'E7.2D.1 preparada localmente; el botón permanecerá bloqueado hasta desplegar E7.2D.2.'));
+    if (button) button.disabled = !ready || !E72D_RULES_DEPLOYED || !!result;
+  }
+
+  async function applyStageE72D(){
+    if (!E72D_RULES_DEPLOYED){
+      if (window.A33Toast) window.A33Toast.warning('E7.2D.2 debe desplegar las reglas antes de aplicar datos.');
+      return;
+    }
+    if (!requireFirebaseUnlocked('Aplicar E7.2D')) return;
+    const engine = window.A33FirebaseApplyE72D;
+    const simulation = getE72CSimulationForCurrentValidation();
+    if (!engine || typeof engine.apply !== 'function'){
+      const message = 'No está disponible el motor E7.2D.';
+      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
+      return;
+    }
+    if (!simulation || !simulation.readyForE72D){
+      if (window.A33Toast) window.A33Toast.warning('Primero confirmá E7.2C para este plan.');
+      return;
+    }
+    const accepted = window.confirm(
+      `E7.2D creará ${simulation.newCount || 0} registros críticos nuevos en Firestore.\n\n` +
+      'No actualizará ni eliminará rutas existentes. La ejecución usará checkpoints reanudables. ¿Continuar?'
+    );
+    if (!accepted){
+      if (window.A33Toast) window.A33Toast.warning('E7.2D cancelada. No se modificó información.');
+      return;
+    }
+    const button = document.getElementById('cfg-apply-e72d-run');
+    const toastId = window.A33Toast ? window.A33Toast.process('E7.2D en proceso: creando registros críticos por lotes…') : '';
+    try{
+      if (button) button.disabled = true;
+      setFirebaseText('cfg-apply-e72d-note', 'Aplicando lotes con checkpoint atómico; no cierres esta pestaña…');
+      const result = await engine.apply();
+      renderApplyE72DState();
+      const message = `E7.2D confirmada: ${result.appliedCount || 0} registro(s) creados en ${result.completedBatches || 0} lote(s), sin sobrescrituras.`;
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'success'); else window.A33Toast.success(message);
+      }
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E7.2D.';
+      setFirebaseText('cfg-apply-e72d-note', `${message} Podés reanudar desde el último checkpoint confirmado.`);
+      if (window.A33Toast){
+        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
+      }else showToast(message);
+    }finally{
+      renderApplyE72DState();
+    }
+  }
+
+  function initApplyE72D(){
+    renderApplyE72DState();
+    const button = document.getElementById('cfg-apply-e72d-run');
+    if (button) button.addEventListener('click', applyStageE72D);
+    window.addEventListener('a33:e72d-progress', function(event){
+      const detail = event && event.detail ? event.detail : {};
+      setFirebaseText('cfg-apply-e72d-note', `E7.2D en proceso: ${detail.processed || 0}/${detail.total || 0} registro(s) confirmados…`);
+    });
+    window.addEventListener('a33:initial-import-staged', renderApplyE72DState);
+  }
+
 
   function getFirebaseConnectionPathFromData(data){
     const normalized = normalizeFirebaseSettings(data);
@@ -7193,6 +7290,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initPlanE72A();
     initValidateE72B();
     initSimulateE72C();
+    initApplyE72D();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
     if (saveBtn){

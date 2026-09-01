@@ -48,7 +48,7 @@ vm.runInNewContext(source, context, { filename:'a33-firebase-import.js' });
 assert(html.includes('id="cfg-initial-import-file"'), 'Falta selector JSON de E4.');
 assert(html.includes('a33-firebase-import.js?v=4.20.98&amp;r=1'), 'Falta cargar el motor E4.');
 assert(html.includes('style.css?v=4.20.98&amp;r=28'), 'No se actualizó la revisión CSS.');
-assert(html.includes('script.js?v=4.20.98&amp;r=51'), 'No se actualizó la revisión JS.');
+assert(html.includes('script.js?v=4.20.98&amp;r=53'), 'No se actualizó la revisión JS.');
 assert(rules.includes('match /imports/{importId}'), 'Faltan reglas para importaciones preparadas.');
 assert(rules.includes('requesterAdmin(workspaceId) && validInitialImport'), 'La carga E4 no quedó limitada a Admin.');
 
