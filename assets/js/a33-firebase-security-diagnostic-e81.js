@@ -2,19 +2,6 @@
 (function(g){
   'use strict';
 
-  const MODULES = [
-    ['configuracion', 'Configuración', 'config.view'],
-    ['pos', 'POS y ventas', 'sales.use'],
-    ['agenda', 'Agenda', 'agenda.use'],
-    ['finanzas', 'Finanzas', 'finance.use'],
-    ['inventario', 'Inventario', 'inventory.use'],
-    ['produccion', 'Producción', 'production.use'],
-    ['lotes', 'Lotes', 'lots.use'],
-    ['pedidos', 'Pedidos', 'pedidos.use'],
-    ['centro-mando', 'Centro de mando', 'center.view'],
-    ['catalogos', 'Catálogos', 'catalog.view']
-  ];
-
   function clean(value, maxLen){
     return String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, maxLen || 240);
   }
@@ -27,6 +14,13 @@
         label:clean(role.label, 80),
         permissions:Array.isArray(role.permissions) ? role.permissions.map(function(item){ return clean(item, 80); }).filter(Boolean) : []
       };
+    });
+  }
+
+  function cloneModules(api){
+    if (!api || typeof api.getModuleOptions !== 'function') return [];
+    return api.getModuleOptions().map(function(module){
+      return [clean(module.key, 80), clean(module.label, 100), clean(module.permission, 80)];
     });
   }
 
@@ -48,6 +42,7 @@
     const access = source.access && typeof source.access === 'object' ? source.access : {};
     const workspaceId = clean(access.workspaceId, 80) || 'arcano33';
     const roles = Array.isArray(source.roles) ? source.roles : [];
+    const modules = Array.isArray(source.modules) ? source.modules : [];
     const roleMap = new Map(roles.map(function(role){ return [clean(role.key, 40), role]; }));
     const users = (Array.isArray(source.users) ? source.users : []).map(normalizeUser).filter(function(user){ return user.uid || user.email; });
     const issues = [];
@@ -72,7 +67,7 @@
     if (!activeAdmins.length) issues.push({ code:'active-admin-missing', message:'No se encontró un Admin activo en los perfiles visibles.' });
     if (activeAdmins.length === 1) warnings.push({ code:'single-admin', message:'Existe un solo Admin activo; debe conservarse como vía de recuperación.' });
 
-    const moduleMatrix = MODULES.map(function(module){
+    const moduleMatrix = modules.map(function(module){
       return {
         id:module[0],
         label:module[1],
@@ -117,12 +112,11 @@
     const moduleState = g.A33ModuleAccess && typeof g.A33ModuleAccess.getState === 'function'
       ? g.A33ModuleAccess.getState()
       : { enforcementEnabled:false };
-    return diagnose({ access:access, users:users, roles:cloneRoles(accessApi), moduleAccess:moduleState });
+    return diagnose({ access:access, users:users, roles:cloneRoles(accessApi), modules:cloneModules(accessApi), moduleAccess:moduleState });
   }
 
   g.A33SecurityDiagnosticE81 = Object.assign({}, g.A33SecurityDiagnosticE81 || {}, {
     diagnose:diagnose,
-    run:run,
-    modules:function(){ return MODULES.map(function(item){ return item.slice(); }); }
+    run:run
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

@@ -4655,6 +4655,63 @@ Los históricos se conservarán. ¿Continuar?`);
     button.addEventListener('click', runSecuritySimulationE82);
   }
 
+  function renderSecurityPreparationE83(result){
+    if (!result) return;
+    const stateValue = result.readyForE84 ? 'ready' : 'empty';
+    document.getElementById('cfg-security-e83-state')?.setAttribute('data-state', stateValue);
+    document.getElementById('cfg-security-e83-metrics')?.setAttribute('data-state', stateValue);
+    setFirebaseText('cfg-security-e83-source', result.readyForE84 ? 'E8.2 confirmada' : 'E8.2 requiere revisión');
+    setFirebaseText('cfg-security-e83-source-detail', `${result.moduleCount || 0} módulos incluidos en la política central.`);
+    setFirebaseText('cfg-security-e83-recovery', result.recoveryReady ? 'Admin Maestro protegido' : 'Recuperación pendiente');
+    setFirebaseText('cfg-security-e83-recovery-detail', result.recoveryReady
+      ? `Acceso de recuperación validado en ${result.moduleCount || 0}/${result.moduleCount || 0} módulos.`
+      : 'La cobertura de recuperación no está completa.');
+    setFirebaseText('cfg-security-e83-result', result.readyForE84 ? 'Política preparada' : 'Revisión requerida');
+    setFirebaseText('cfg-security-e83-result-detail', result.readyForE84
+      ? 'Catálogo alineado y compuerta apagada; E8.4 puede planificarse.'
+      : `${result.issues?.length || 0} bloqueo(s) detectado(s); E8.4 permanece pendiente.`);
+    setFirebaseText('cfg-security-e83-navigation', `${result.navigationCount || 0} módulo(s)`);
+    setFirebaseText('cfg-security-e83-policy', `${result.moduleCount || 0} permiso(s)`);
+    setFirebaseText('cfg-security-e83-gate', result.enforcementEnabled ? 'Activa' : 'Desactivada');
+    setFirebaseText('cfg-security-e83-note', result.readyForE84
+      ? 'E8.3 confirmada: navegación, permisos y recuperación están alineados sin activar restricciones.'
+      : (result.issues?.[0] || 'La política requiere revisión.'));
+  }
+
+  async function runSecurityPreparationE83(){
+    const api = window.A33SecurityPreparationE83;
+    if (!api || typeof api.run !== 'function'){
+      showToast('No está disponible la prevalidación E8.3.');
+      return;
+    }
+    const button = document.getElementById('cfg-security-e83-run');
+    if (button){ button.disabled = true; button.textContent = 'Prevalidando…'; }
+    const toastId = window.A33Toast?.process('E8.3 en proceso: alineando política y recuperación…') || '';
+    try{
+      const result = await api.run();
+      renderSecurityPreparationE83(result);
+      const message = result.readyForE84
+        ? `E8.3 confirmada: ${result.moduleCount || 0} módulos alineados y Admin Maestro protegido; E8.4 puede planificarse.`
+        : `E8.3 requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE84 ? 'success' : 'warning');
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.3.';
+      setFirebaseText('cfg-security-e83-result', 'No completado');
+      setFirebaseText('cfg-security-e83-result-detail', message);
+      setFirebaseText('cfg-security-e83-note', message);
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
+      else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Prevalidar E8.3'; }
+    }
+  }
+
+  function initSecurityPreparationE83(){
+    const button = document.getElementById('cfg-security-e83-run');
+    if (!button) return;
+    button.addEventListener('click', runSecurityPreparationE83);
+  }
+
 
   const IDENTITY_STORAGE_KEY = 'suite_a33_identity_v1';
   const IDENTITY_LOGO_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -8389,6 +8446,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initUsersSection();
     initSecurityDiagnosticE81();
     initSecuritySimulationE82();
+    initSecurityPreparationE83();
     initFirebaseStatus();
     renderBackupImportLog();
 

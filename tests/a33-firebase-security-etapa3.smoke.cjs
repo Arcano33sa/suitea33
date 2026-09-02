@@ -50,9 +50,15 @@ const roles = sandbox.A33Access.getRoleOptions();
 assert.deepStrictEqual(Array.from(roles, (role) => role.key), ['admin','ventas','finanzas','consulta']);
 assert(roles.find((role) => role.key === 'admin').permissions.includes('users.manage'), 'Admin no incluye gestión de usuarios');
 assert(roles.find((role) => role.key === 'finanzas').permissions.includes('finance.use'), 'Finanzas no incluye permiso financiero');
+const modules = sandbox.A33Access.getModuleOptions();
+assert.strictEqual(modules.length, 12, 'La política central no cubre todo el menú global');
+assert.strictEqual(modules.find((module) => module.key === 'produccion').permission, 'production.use');
+assert.strictEqual(modules.find((module) => module.key === 'temporal').permission, 'sandbox.use');
 assert.strictEqual(sandbox.A33ModuleAccess.isEnabled(), false, 'E3 no debe activar el bloqueo de módulos');
 assert.strictEqual(sandbox.A33ModuleAccess.canOpen('finanzas'), true, 'E3 debe conservar acceso local a Finanzas');
 assert.strictEqual(sandbox.A33ModuleAccess.requiredPermission('finanzas'), 'finance.use');
+assert.strictEqual(sandbox.A33ModuleAccess.requiredPermission('produccion'), 'production.use');
+assert.strictEqual(sandbox.A33Access.evaluateModuleAccess('pos', { user:{uid:'master'}, profile:{role:'admin',status:'active'}, role:'admin', permissions:[] }, { enforcementEnabled:true }).reason, 'admin-recovery');
 
 assert(html.includes('id="cfg-auth-form"'), 'Falta formulario de acceso maestro');
 assert(html.includes('id="cfg-auth-password"'), 'Falta campo de contraseña');

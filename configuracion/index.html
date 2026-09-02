@@ -1275,6 +1275,33 @@
 <p>E8.2 no intercepta enlaces ni activa permisos. Si el Admin Maestro no conserva acceso completo, E8.3 quedará bloqueada.</p>
 </div>
 </section>
+<section aria-labelledby="cfg-security-e83-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.3</span>
+<div>
+<h3 id="cfg-security-e83-title">E8.3 · Política central y recuperación</h3>
+<p>Comprueba que la navegación y la política usen el mismo catálogo, y que el Admin Maestro conserve una vía segura de acceso.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e83-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e83-source">E8.2 pendiente</strong><small id="cfg-security-e83-source-detail">Primero debe existir una simulación apta.</small></div>
+<div><span>Protección</span><strong id="cfg-security-e83-recovery">Sin validar</strong><small id="cfg-security-e83-recovery-detail">El Admin debe conservar acceso a todos los módulos.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e83-result">Sin preparar</strong><small id="cfg-security-e83-result-detail">E8.4 permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e83-run" type="button">Prevalidar E8.3</button>
+<p class="cfg-action-inline-note" id="cfg-security-e83-note">La compuerta seguirá apagada después de esta prevalidación.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e83-metrics" data-state="empty">
+<div><span>Navegación</span><strong id="cfg-security-e83-navigation">Sin analizar</strong><small>Módulos publicados en el menú global.</small></div>
+<div><span>Política</span><strong id="cfg-security-e83-policy">Sin analizar</strong><small>Permisos canónicos centralizados.</small></div>
+<div><span>Compuerta real</span><strong id="cfg-security-e83-gate">Desactivada</strong><small>E8.3 no intercepta la navegación.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Preparación reversible</strong>
+<p>E8.3 no cambia usuarios ni reglas, no escribe en Firestore y no activa restricciones. Una ruta desconocida se prepara para fallar de forma segura cuando E8.4 sea autorizada.</p>
+</div>
+</section>
 <section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
 <div class="cfg-users-metrics">
 <article class="cfg-metric-card">
@@ -1475,6 +1502,7 @@
 <script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=16"></script>
 <script src="../assets/js/a33-firebase-security-diagnostic-e81.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-simulate-e82.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-security-prepare-e83.js?v=4.20.98&amp;r=1"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>

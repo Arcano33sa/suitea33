@@ -15,22 +15,28 @@ const roles = [
   { key:'admin', label:'Admin', permissions:['config.view','sales.use','agenda.use','finance.use','inventory.use','production.use','lots.use','pedidos.use','center.view','catalog.view'] },
   { key:'consulta', label:'Consulta', permissions:['center.view','catalog.view'] }
 ];
+const modules = [
+  ['produccion','Producción','production.use'], ['lotes','Lotes','lots.use'], ['inventario','Inventario','inventory.use'],
+  ['pos','POS','sales.use'], ['analitica','Analítica','reports.view'], ['pedidos','Pedidos','pedidos.use'],
+  ['finanzas','Finanzas','finance.use'], ['catalogos','Catálogos','catalog.view'], ['agenda','Agenda','agenda.use'],
+  ['centro-mando','Centro de mando','center.view'], ['configuracion','Configuración','config.view'], ['temporal','Temporal','sandbox.use']
+];
 const healthy = sandbox.A33SecurityDiagnosticE81.diagnose({
   access:{ user:{ uid:'master-1' }, profile:{ uid:'master-1', workspaceId:'arcano33', role:'admin', status:'active' }, workspaceId:'arcano33', isAdmin:true },
   users:[{ uid:'master-1', workspaceId:'arcano33', name:'Maestro', email:'maestro@example.com', role:'admin', status:'active' }],
-  roles,
+  roles, modules,
   moduleAccess:{ enforcementEnabled:false }
 });
 assert.equal(healthy.stage, 'E8.1');
 assert.equal(healthy.readOnly, true);
 assert.equal(healthy.readyForE82, true);
 assert.equal(healthy.activeAdminCount, 1);
-assert.equal(healthy.moduleCount, 10);
+assert.equal(healthy.moduleCount, 12);
 assert.equal(healthy.enforcementEnabled, false);
 
 const blocked = sandbox.A33SecurityDiagnosticE81.diagnose({
   access:{ user:{ uid:'master-1' }, profile:null, workspaceId:'arcano33', isAdmin:false },
-  users:[], roles, moduleAccess:{ enforcementEnabled:false }
+  users:[], roles, modules, moduleAccess:{ enforcementEnabled:false }
 });
 assert.equal(blocked.readyForE82, false);
 assert(blocked.issues.some((item) => item.code === 'profile-missing'));

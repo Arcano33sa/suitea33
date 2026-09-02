@@ -15,6 +15,20 @@
     { key:'finanzas', label:'Finanzas', description:'Finanzas, compras e informes', permissions:['suite.use','finance.use','purchases.use','reports.view','center.view','catalog.view'] },
     { key:'consulta', label:'Consulta', description:'Consulta de informes, centro y catálogos', permissions:['suite.use','reports.view','center.view','catalog.view'] }
   ];
+  const moduleOptions = [
+    { key:'produccion', label:'Producción', permission:'production.use' },
+    { key:'lotes', label:'Lotes', permission:'lots.use' },
+    { key:'inventario', label:'Inventario', permission:'inventory.use' },
+    { key:'pos', label:'POS', permission:'sales.use' },
+    { key:'analitica', label:'Analítica', permission:'reports.view' },
+    { key:'pedidos', label:'Pedidos', permission:'pedidos.use' },
+    { key:'finanzas', label:'Finanzas', permission:'finance.use' },
+    { key:'catalogos', label:'Catálogos', permission:'catalog.view' },
+    { key:'agenda', label:'Agenda', permission:'agenda.use' },
+    { key:'centro-mando', label:'Centro de mando', permission:'center.view' },
+    { key:'configuracion', label:'Configuración', permission:'config.view' },
+    { key:'temporal', label:'Temporal', permission:'sandbox.use' }
+  ];
   let firestore = null;
   let functions = null;
   let initPromise = null;
@@ -120,8 +134,23 @@
     return result;
   }
   function hasPermission(permission){ return state.permissions.includes(clean(permission, 80)); }
+  function moduleMeta(moduleId){ return moduleOptions.find(function(item){ return item.key === clean(moduleId, 80).toLowerCase(); }) || null; }
+  function evaluateModuleAccess(moduleId, accessOverride, options){
+    const current = accessOverride && typeof accessOverride === 'object' ? accessOverride : state;
+    const meta = moduleMeta(moduleId);
+    const enforcementEnabled = !!(options && options.enforcementEnabled);
+    if (!enforcementEnabled) return { allowed:true, reason:'enforcement-disabled', permission:meta ? meta.permission : '' };
+    if (!meta) return { allowed:false, reason:'module-unknown', permission:'' };
+    const profile = current.profile && typeof current.profile === 'object' ? current.profile : null;
+    const active = !!(profile && profile.status === 'active');
+    const role = clean(current.role || (profile && profile.role), 40);
+    if (active && role === 'admin') return { allowed:true, reason:'admin-recovery', permission:meta.permission };
+    if (!current.user || !active) return { allowed:false, reason:'profile-unavailable', permission:meta.permission };
+    const permissions = Array.isArray(current.permissions) ? current.permissions : [];
+    return { allowed:permissions.includes(meta.permission), reason:permissions.includes(meta.permission) ? 'permission-granted' : 'permission-missing', permission:meta.permission };
+  }
 
-  g.A33Access = Object.assign({}, g.A33Access || {}, { init, refresh:loadCurrentAccess, getState, getRoleOptions:function(){ return roleOptions.map(function(item){ return Object.assign({}, item, { permissions:item.permissions.slice() }); }); }, hasPermission, listUsers, saveUser, deleteUser, bootstrapAdmin });
+  g.A33Access = Object.assign({}, g.A33Access || {}, { init, refresh:loadCurrentAccess, getState, getRoleOptions:function(){ return roleOptions.map(function(item){ return Object.assign({}, item, { permissions:item.permissions.slice() }); }); }, getModuleOptions:function(){ return moduleOptions.map(function(item){ return Object.assign({}, item); }); }, evaluateModuleAccess, hasPermission, listUsers, saveUser, deleteUser, bootstrapAdmin });
   if (g.addEventListener) g.addEventListener('a33:auth-state', function(){ loadCurrentAccess().catch(function(){}); });
   try{ init(); }catch(_){ }
 })(typeof globalThis !== 'undefined' ? globalThis : window);
