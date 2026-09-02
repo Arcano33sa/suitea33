@@ -1247,6 +1247,34 @@
 <p>E8.1 solo lee Authentication mediante la sesión actual y los perfiles visibles en Firestore. No guarda contraseñas, no cambia reglas y no habilita el bloqueo de módulos.</p>
 </div>
 </section>
+<section aria-labelledby="cfg-security-e82-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.2</span>
+<div>
+<h3 id="cfg-security-e82-title">E8.2 · Simulación de acceso por roles</h3>
+<p>Calcula qué módulos podría abrir cada rol y verifica la vía de recuperación del usuario Maestro, sin aplicar restricciones.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e82-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e82-source">E8.1 pendiente</strong><small id="cfg-security-e82-source-detail">Primero debe existir un diagnóstico apto.</small></div>
+<div><span>Control</span><strong>Simulación local</strong><small>No cambia usuarios, reglas ni navegación.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e82-result">Sin simular</strong><small id="cfg-security-e82-result-detail">E8.3 permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e82-run" type="button">Simular E8.2</button>
+<p class="cfg-action-inline-note" id="cfg-security-e82-note">Los módulos seguirán abiertos mientras se revisa esta matriz.</p>
+</div>
+<div class="cfg-note-grid" id="cfg-security-e82-role-grid">
+<div class="cfg-note-card"><strong id="cfg-security-e82-admin">Admin · Sin analizar</strong><p id="cfg-security-e82-admin-detail">Debe conservar acceso completo.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e82-sales">Ventas · Sin analizar</strong><p id="cfg-security-e82-sales-detail">Acceso comercial por verificar.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e82-finance">Finanzas · Sin analizar</strong><p id="cfg-security-e82-finance-detail">Acceso financiero por verificar.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e82-readonly">Consulta · Sin analizar</strong><p id="cfg-security-e82-readonly-detail">Acceso de consulta por verificar.</p></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Simulación sin bloqueo</strong>
+<p>E8.2 no intercepta enlaces ni activa permisos. Si el Admin Maestro no conserva acceso completo, E8.3 quedará bloqueada.</p>
+</div>
+</section>
 <section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
 <div class="cfg-users-metrics">
 <article class="cfg-metric-card">
@@ -1446,6 +1474,7 @@
 <script src="../assets/js/a33-firebase-access.js?v=4.20.98&amp;r=17"></script>
 <script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=16"></script>
 <script src="../assets/js/a33-firebase-security-diagnostic-e81.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-security-simulate-e82.js?v=4.20.98&amp;r=1"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>

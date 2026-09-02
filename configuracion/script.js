@@ -4593,6 +4593,68 @@ Los históricos se conservarán. ¿Continuar?`);
     renderSecurityDiagnosticE81(null);
   }
 
+  function renderSecuritySimulationRole(result, roleKey, valueId, detailId){
+    const role = result?.roleMatrix?.find((item) => item.key === roleKey);
+    if (!role) return;
+    setFirebaseText(valueId, `${role.label} · ${role.allowedCount}/${result.moduleCount}`);
+    setFirebaseText(detailId, role.deniedCount
+      ? `Permitiría ${role.allowedModules.join(', ') || 'ningún módulo'}; ${role.deniedCount} restringido(s).`
+      : 'Acceso completo a todos los módulos revisados.');
+  }
+
+  function renderSecuritySimulationE82(result){
+    if (!result) return;
+    const stateValue = result.readyForE83 ? 'ready' : 'empty';
+    document.getElementById('cfg-security-e82-state')?.setAttribute('data-state', stateValue);
+    setFirebaseText('cfg-security-e82-source', result.readyForE83 ? 'E8.1 confirmada' : 'E8.1 requiere revisión');
+    setFirebaseText('cfg-security-e82-source-detail', `${result.moduleCount || 0} módulos y ${result.roleCount || 0} roles incluidos.`);
+    setFirebaseText('cfg-security-e82-result', result.readyForE83 ? 'Simulación apta' : 'Revisión requerida');
+    setFirebaseText('cfg-security-e82-result-detail', result.readyForE83
+      ? 'Admin completo y usuario Maestro protegido; E8.3 puede planificarse.'
+      : `${result.issues?.length || 0} bloqueo(s) detectado(s); E8.3 permanece pendiente.`);
+    setFirebaseText('cfg-security-e82-note', result.readyForE83
+      ? 'E8.2 confirmada: la matriz fue simulada sin activar restricciones.'
+      : (result.issues?.[0] || 'La simulación requiere revisión.'));
+    renderSecuritySimulationRole(result, 'admin', 'cfg-security-e82-admin', 'cfg-security-e82-admin-detail');
+    renderSecuritySimulationRole(result, 'ventas', 'cfg-security-e82-sales', 'cfg-security-e82-sales-detail');
+    renderSecuritySimulationRole(result, 'finanzas', 'cfg-security-e82-finance', 'cfg-security-e82-finance-detail');
+    renderSecuritySimulationRole(result, 'consulta', 'cfg-security-e82-readonly', 'cfg-security-e82-readonly-detail');
+  }
+
+  async function runSecuritySimulationE82(){
+    const api = window.A33SecuritySimulationE82;
+    if (!api || typeof api.run !== 'function'){
+      showToast('No está disponible la simulación E8.2.');
+      return;
+    }
+    const button = document.getElementById('cfg-security-e82-run');
+    if (button){ button.disabled = true; button.textContent = 'Simulando…'; }
+    const toastId = window.A33Toast?.process('E8.2 en proceso: calculando accesos por rol…') || '';
+    try{
+      const result = await api.run();
+      renderSecuritySimulationE82(result);
+      const message = result.readyForE83
+        ? `E8.2 confirmada: ${result.roleCount || 0} roles y ${result.moduleCount || 0} módulos simulados; E8.3 puede planificarse.`
+        : `E8.2 requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE83 ? 'success' : 'warning');
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.2.';
+      setFirebaseText('cfg-security-e82-result', 'No completado');
+      setFirebaseText('cfg-security-e82-result-detail', message);
+      setFirebaseText('cfg-security-e82-note', message);
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
+      else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Simular E8.2'; }
+    }
+  }
+
+  function initSecuritySimulationE82(){
+    const button = document.getElementById('cfg-security-e82-run');
+    if (!button) return;
+    button.addEventListener('click', runSecuritySimulationE82);
+  }
+
 
   const IDENTITY_STORAGE_KEY = 'suite_a33_identity_v1';
   const IDENTITY_LOGO_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -8326,6 +8388,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initAuthSection();
     initUsersSection();
     initSecurityDiagnosticE81();
+    initSecuritySimulationE82();
     initFirebaseStatus();
     renderBackupImportLog();
 
