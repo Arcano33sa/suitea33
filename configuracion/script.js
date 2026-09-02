@@ -4531,6 +4531,68 @@ Los históricos se conservarán. ¿Continuar?`);
     });
   }
 
+  function renderSecurityDiagnosticE81(result){
+    const current = accessState() || {};
+    const hasSession = !!current.user;
+    setFirebaseText('cfg-security-e81-source', hasSession ? (current.profile ? 'Perfil canónico visible' : 'Perfil pendiente') : 'Sesión pendiente');
+    setFirebaseText('cfg-security-e81-source-detail', hasSession
+      ? `${current.workspaceId || 'arcano33'} · ${current.roleLabel || 'Sin rol'} · ${current.statusLabel || 'Sin estado'}`
+      : 'Inicia sesión para revisar el workspace canónico.');
+    setFirebaseText('cfg-security-e81-enforcement', current && window.A33ModuleAccess?.isEnabled?.() ? 'Activo' : 'Desactivado');
+    if (!result) return;
+    const incidences = (result.issues?.length || 0);
+    const warnings = (result.warnings?.length || 0);
+    const stateValue = result.readyForE82 ? 'ready' : 'empty';
+    document.getElementById('cfg-security-e81-state')?.setAttribute('data-state', stateValue);
+    document.getElementById('cfg-security-e81-metrics')?.setAttribute('data-state', stateValue);
+    setFirebaseText('cfg-security-e81-users', String(result.userCount || 0));
+    setFirebaseText('cfg-security-e81-users-detail', `${result.activeCount || 0} activo(s) · ${result.inactiveCount || 0} inactivo(s).`);
+    setFirebaseText('cfg-security-e81-admins', String(result.activeAdminCount || 0));
+    setFirebaseText('cfg-security-e81-result', result.readyForE82 ? 'Diagnóstico apto' : 'Revisión requerida');
+    setFirebaseText('cfg-security-e81-result-detail', result.readyForE82
+      ? `${result.moduleCount || 0} módulos y ${result.roleCount || 0} roles revisados; E8.2 puede planificarse.`
+      : `${incidences} incidencia(s) y ${warnings} advertencia(s); E8.2 permanece pendiente.`);
+    setFirebaseText('cfg-security-e81-note', result.readyForE82
+      ? `E8.1 confirmada: ${result.userCount || 0} perfil(es), ${result.activeAdminCount || 0} Admin activo(s) y bloqueo por módulos desactivado.`
+      : ((result.issues && result.issues[0] && result.issues[0].message) || 'El diagnóstico requiere revisión antes de E8.2.'));
+  }
+
+  async function runSecurityDiagnosticE81(){
+    const api = window.A33SecurityDiagnosticE81;
+    if (!api || typeof api.run !== 'function'){
+      showToast('No está disponible el diagnóstico E8.1.');
+      return;
+    }
+    const button = document.getElementById('cfg-security-e81-run');
+    if (button){ button.disabled = true; button.textContent = 'Diagnosticando…'; }
+    const toastId = window.A33Toast?.process('E8.1 en proceso: leyendo perfiles y permisos…') || '';
+    try{
+      const result = await api.run();
+      renderSecurityDiagnosticE81(result);
+      const message = result.readyForE82
+        ? `E8.1 confirmada: ${result.userCount || 0} perfil(es) revisados; E8.2 puede planificarse.`
+        : `E8.1 requiere revisión: ${result.issues?.length || 0} incidencia(s) detectada(s).`;
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE82 ? 'success' : 'warning');
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.1.';
+      setFirebaseText('cfg-security-e81-result', 'No completado');
+      setFirebaseText('cfg-security-e81-result-detail', message);
+      setFirebaseText('cfg-security-e81-note', message);
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
+      else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Diagnosticar E8.1'; }
+    }
+  }
+
+  function initSecurityDiagnosticE81(){
+    const button = document.getElementById('cfg-security-e81-run');
+    if (!button) return;
+    button.addEventListener('click', runSecurityDiagnosticE81);
+    window.addEventListener('a33:access-state', function(){ renderSecurityDiagnosticE81(null); });
+    renderSecurityDiagnosticE81(null);
+  }
+
 
   const IDENTITY_STORAGE_KEY = 'suite_a33_identity_v1';
   const IDENTITY_LOGO_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -8263,6 +8325,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initFirebaseSettingsSection();
     initAuthSection();
     initUsersSection();
+    initSecurityDiagnosticE81();
     initFirebaseStatus();
     renderBackupImportLog();
 

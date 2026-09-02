@@ -1219,6 +1219,34 @@
 <p class="cfg-status-copy" id="cfg-users-workspace-detail">Preparado para tenant simple sin volver esto un laberinto.</p>
 </article>
 </section>
+<section aria-labelledby="cfg-security-e81-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.1</span>
+<div>
+<p class="cfg-eyebrow">Diagnóstico de solo lectura</p>
+<h3 id="cfg-security-e81-title">Usuarios, perfiles y permisos</h3>
+<p>Comprueba la sesión, el perfil Maestro, los administradores activos y la cobertura de permisos antes de simular cualquier bloqueo.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e81-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e81-source">Sesión pendiente</strong><small id="cfg-security-e81-source-detail">Inicia sesión para revisar el workspace canónico.</small></div>
+<div><span>Control</span><strong id="cfg-security-e81-control">Solo lectura</strong><small id="cfg-security-e81-control-detail">No crea, modifica ni elimina usuarios o perfiles.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e81-result">Sin diagnosticar</strong><small id="cfg-security-e81-result-detail">E8.2 permanece sin ejecutar.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e81-run" type="button">Diagnosticar E8.1</button>
+<p class="cfg-action-inline-note" id="cfg-security-e81-note">El resultado se muestra en esta sesión y no activa restricciones por módulo.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e81-metrics" data-state="empty">
+<div><span>Perfiles visibles</span><strong id="cfg-security-e81-users">Sin analizar</strong><small id="cfg-security-e81-users-detail">Activos e inactivos del workspace.</small></div>
+<div><span>Admins activos</span><strong id="cfg-security-e81-admins">Sin analizar</strong><small>Se conservará una vía de recuperación antes de E8.4.</small></div>
+<div><span>Bloqueo por módulos</span><strong id="cfg-security-e81-enforcement">Desactivado</strong><small>E8.1 no cambia esta compuerta.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Sin cambios de seguridad</strong>
+<p>E8.1 solo lee Authentication mediante la sesión actual y los perfiles visibles en Firestore. No guarda contraseñas, no cambia reglas y no habilita el bloqueo de módulos.</p>
+</div>
+</section>
 <section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
 <div class="cfg-users-metrics">
 <article class="cfg-metric-card">
@@ -1417,6 +1445,7 @@
 <script src="../assets/js/a33-firebase-auth.js?v=4.20.98&amp;r=17"></script>
 <script src="../assets/js/a33-firebase-access.js?v=4.20.98&amp;r=17"></script>
 <script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=16"></script>
+<script src="../assets/js/a33-firebase-security-diagnostic-e81.js?v=4.20.98&amp;r=1"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
