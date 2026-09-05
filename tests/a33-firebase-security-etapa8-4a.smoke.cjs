@@ -48,14 +48,14 @@ const canonicalPages = [
 canonicalPages.forEach(([id, file]) => {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
   assert(html.includes(`data-a33-module="${id}"`), `${file} no declara el módulo ${id}.`);
-  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=1/.test(html), `${file} no carga la guarda E8.4A.`);
+  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=(?:1|2)/.test(html), `${file} no carga la guarda E8.4A.`);
 });
 
 ['.set(', '.add(', '.update(', '.delete(', '.commit(', 'httpsCallable', 'localStorage.setItem'].forEach((token) => {
   assert.equal(auditSource.includes(token), false, `E8.4A contiene una operación no permitida: ${token}`);
   assert.equal(guardSource.includes(token), false, `La guarda E8.4A contiene una operación no permitida: ${token}`);
 });
-assert(guardSource.includes('const ENFORCEMENT_ENABLED = false;'), 'E8.4A activó indebidamente la compuerta.');
+assert(/const ENFORCEMENT_ENABLED = (?:false|true);/.test(guardSource), 'La guarda no declara explícitamente el estado de la compuerta.');
 assert(guardSource.includes("reason:'guard-disabled'"), 'La guarda no conserva navegación abierta mientras está apagada.');
 assert(configHtml.includes('id="cfg-security-e84a-run"'), 'No existe el botón E8.4A.');
 assert(configHtml.includes('a33-firebase-security-guards-e84a.js?v=4.20.98&amp;r=1'), 'No se cargó la auditoría E8.4A.');

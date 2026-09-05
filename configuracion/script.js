@@ -4835,6 +4835,59 @@ Los históricos se conservarán. ¿Continuar?`);
     button.addEventListener('click', runSecurityTestE84B);
   }
 
+  function renderSecurityActivationE84C(result){
+    if (!result) return;
+    const complete = result.completed === true;
+    const stateValue = complete ? 'ready' : 'empty';
+    document.getElementById('cfg-security-e84c-state')?.setAttribute('data-state', stateValue);
+    document.getElementById('cfg-security-e84c-metrics')?.setAttribute('data-state', stateValue);
+    setFirebaseText('cfg-security-e84c-recovery', result.adminRecoveryReady ? 'Admin Maestro protegido' : 'Recuperación pendiente');
+    setFirebaseText('cfg-security-e84c-result', complete ? 'Activación correcta' : 'Revisión requerida');
+    setFirebaseText('cfg-security-e84c-result-detail', complete
+      ? 'Menú, acceso directo y recuperación quedaron protegidos.'
+      : `${result.issues?.length || 0} bloqueo(s) detectado(s).`);
+    setFirebaseText('cfg-security-e84c-pages', `${result.activeGuardCount || 0}/12 activas`);
+    setFirebaseText('cfg-security-e84c-checks', `${result.checkCount || 0} verificados`);
+    setFirebaseText('cfg-security-e84c-enforcement', result.enforcementEnabled ? 'Activa' : 'Desactivada');
+    setFirebaseText('cfg-security-e84c-note', complete
+      ? 'E8.4C confirmada: guardas activas, restricciones verificadas y recuperación Maestro disponible.'
+      : (result.issues?.[0] || 'La activación requiere revisión.'));
+  }
+
+  async function runSecurityActivationE84C(){
+    const api = window.A33SecurityActivationE84C;
+    if (!api || typeof api.run !== 'function'){
+      showToast('No está disponible la verificación E8.4C.');
+      return;
+    }
+    const button = document.getElementById('cfg-security-e84c-run');
+    if (button){ button.disabled = true; button.textContent = 'Verificando…'; }
+    const toastId = window.A33Toast?.process('E8.4C en proceso: verificando activación y recuperación…') || '';
+    try{
+      const result = await api.run();
+      renderSecurityActivationE84C(result);
+      const message = result.completed
+        ? `E8.4C confirmada: ${result.activeGuardCount || 0}/12 guardas activas y ${result.checkCount || 0} controles correctos.`
+        : `E8.4C requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.completed ? 'success' : 'warning');
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.4C.';
+      setFirebaseText('cfg-security-e84c-result', 'No completado');
+      setFirebaseText('cfg-security-e84c-result-detail', message);
+      setFirebaseText('cfg-security-e84c-note', message);
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
+      else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Verificar activación E8.4C'; }
+    }
+  }
+
+  function initSecurityActivationE84C(){
+    const button = document.getElementById('cfg-security-e84c-run');
+    if (!button) return;
+    button.addEventListener('click', runSecurityActivationE84C);
+  }
+
 
   const IDENTITY_STORAGE_KEY = 'suite_a33_identity_v1';
   const IDENTITY_LOGO_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -8572,6 +8625,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initSecurityPreparationE83();
     initSecurityGuardsE84A();
     initSecurityTestE84B();
+    initSecurityActivationE84C();
     initFirebaseStatus();
     renderBackupImportLog();
 

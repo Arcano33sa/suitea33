@@ -1362,6 +1362,33 @@
 <p>E8.4B no activa la guarda real, no modifica usuarios ni escribe en Firebase. La activación definitiva corresponde exclusivamente a E8.4C.</p>
 </div>
 </section>
+<section aria-labelledby="cfg-security-e84c-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.4C</span>
+<div>
+<h3 id="cfg-security-e84c-title">E8.4C · Activación final de guardas</h3>
+<p>Verifica la compuerta activa en las 12 páginas, la política por roles y la vía de recuperación del Admin Maestro.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84c-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e84c-source">E8.4B confirmada</strong><small>50 controles previos aprobados.</small></div>
+<div><span>Protección</span><strong id="cfg-security-e84c-recovery">Validación pendiente</strong><small>El Admin debe conservar acceso total.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e84c-result">Sin verificar</strong><small id="cfg-security-e84c-result-detail">La activación local requiere auditoría final.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e84c-run" type="button">Verificar activación E8.4C</button>
+<p class="cfg-action-inline-note" id="cfg-security-e84c-note">La verificación es de solo lectura y no cambia permisos.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84c-metrics" data-state="empty">
+<div><span>Guardas activas</span><strong id="cfg-security-e84c-pages">Sin verificar</strong><small>Doce páginas canónicas.</small></div>
+<div><span>Controles de acceso</span><strong id="cfg-security-e84c-checks">Sin verificar</strong><small>Roles, ruta desconocida y perfil inactivo.</small></div>
+<div><span>Compuerta real</span><strong id="cfg-security-e84c-enforcement">Activa</strong><small>Protege menú y acceso directo.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Recuperación protegida</strong>
+<p>Configuración conserva el inicio de sesión Maestro cuando una sesión no tiene acceso. Los demás módulos ofrecen volver al inicio o dirigirse a Configuración.</p>
+</div>
+</section>
 <section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
 <div class="cfg-users-metrics">
 <article class="cfg-metric-card">
@@ -1560,12 +1587,13 @@
 <script src="../assets/js/a33-firebase-auth.js?v=4.20.98&amp;r=17"></script>
 <script src="../assets/js/a33-firebase-access.js?v=4.20.98&amp;r=17"></script>
 <script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=16"></script>
-<script src="../assets/js/a33-module-guard.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-module-guard.js?v=4.20.98&amp;r=2"></script>
 <script src="../assets/js/a33-firebase-security-diagnostic-e81.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-simulate-e82.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-prepare-e83.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-guards-e84a.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-test-e84b.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-security-activate-e84c.js?v=4.20.98&amp;r=1"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>

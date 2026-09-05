@@ -30,7 +30,7 @@
       const response = await fetch(page[1], { cache:'no-store', credentials:'same-origin' });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const html = await response.text();
-      const guardInstalled = /a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=1/.test(html);
+      const guardInstalled = /a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=(?:1|2)/.test(html);
       return { id:page[0], path:page[1], guardInstalled:guardInstalled, headerMatches:html.includes('data-a33-module="' + page[0] + '"') };
     }catch(error){
       return { id:page[0], path:page[1], guardInstalled:false, headerMatches:false, error:String(error && error.message || error) };

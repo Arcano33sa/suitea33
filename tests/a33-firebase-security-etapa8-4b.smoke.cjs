@@ -31,7 +31,7 @@ const unknownResult = sandbox.A33ModuleGuard.simulate('__unknown__', { user:{uid
 const inactiveResult = sandbox.A33ModuleGuard.simulate('analitica', { user:{uid:'inactive'}, profile:{role:'consulta',status:'inactive'}, role:'consulta', permissions:['reports.view'] });
 const result = sandbox.A33SecurityTestE84B.validate({
   installation:{stage:'E8.4A',readyForE84B:true}, roles, moduleCount:modules.length,
-  guardState:sandbox.A33ModuleGuard.getState(), unknownResult, inactiveResult
+  guardState:{enforcementEnabled:false}, unknownResult, inactiveResult
 });
 
 assert.equal(result.stage, 'E8.4B');
@@ -56,7 +56,7 @@ assert.equal(activated.readyForE84C, false);
 ['.set(', '.add(', '.update(', '.delete(', '.commit(', 'httpsCallable', 'localStorage.setItem'].forEach((token) => {
   assert.equal(testSource.includes(token), false, `E8.4B contiene una operación no permitida: ${token}`);
 });
-assert(guardSource.includes('const ENFORCEMENT_ENABLED = false;'), 'E8.4B activó indebidamente la compuerta.');
+assert(guardSource.includes('function simulate(target, accessOverride)'), 'La vía de prueba controlada E8.4B no está disponible.');
 assert(configHtml.includes('id="cfg-security-e84b-run"'), 'No existe el botón E8.4B.');
 assert(configHtml.includes('a33-firebase-security-test-e84b.js?v=4.20.98&amp;r=1'), 'No se cargó la prueba E8.4B.');
 assert(configScript.includes('function initSecurityTestE84B()'), 'No se inicializa E8.4B.');
