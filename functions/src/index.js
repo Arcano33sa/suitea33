@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const crypto = require('node:crypto');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 
@@ -10,8 +11,8 @@ const db = admin.firestore();
 const auth = admin.auth();
 
 const REGION = 'us-central1';
-const BACKEND_VERSION = '2026.03.25-etapa11';
-const DEFAULT_WORKSPACE_ID = 'default';
+const BACKEND_VERSION = '2026.09.05-e9.2';
+const DEFAULT_WORKSPACE_ID = 'arcano33';
 const PROFILE_VERSION = 2;
 
 setGlobalOptions({ region: REGION, maxInstances: 10 });
@@ -92,6 +93,14 @@ function normalizeWorkspaceId(value) {
   return cleaned || DEFAULT_WORKSPACE_ID;
 }
 
+function assertWorkspaceId(value) {
+  const clean = cleanString(value).toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,79}$/.test(clean)) {
+    throw new HttpsError('invalid-argument', 'El workspace no tiene un identificador válido.');
+  }
+  return clean;
+}
+
 function validRole(role) {
   return Object.prototype.hasOwnProperty.call(ROLE_DEFINITIONS, role);
 }
@@ -137,9 +146,17 @@ function generateTemporaryPassword() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
   let out = '';
   for (let i = 0; i < 14; i += 1) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    out += alphabet[crypto.randomInt(0, alphabet.length)];
   }
   return out;
+}
+
+function assertTemporaryPassword(value) {
+  const password = String(value == null ? '' : value);
+  if (password.length < 12 || password.length > 128) {
+    throw new HttpsError('invalid-argument', 'La contraseña temporal debe tener entre 12 y 128 caracteres.');
+  }
+  return password;
 }
 
 function workspaceRef(workspaceId) {
@@ -160,9 +177,13 @@ async function getWorkspaceSummary(workspaceId) {
 }
 
 async function assertNotLastActiveAdmin(workspaceId, uid) {
-  const summary = await getWorkspaceSummary(workspaceId);
-  const activeAdminCount = Number(summary.activeAdminCount || 0);
-  if (activeAdminCount <= 1) {
+  const membersSnap = await workspaceRef(workspaceId).collection('members').get();
+  let activeAdminCount = 0;
+  membersSnap.forEach((doc) => {
+    const data = doc.data() || {};
+    if (doc.id !== uid && data.role === 'admin' && data.status === 'active') activeAdminCount += 1;
+  });
+  if (activeAdminCount < 1) {
     throw new HttpsError('failed-precondition', 'No puedes dejar el workspace sin al menos un Admin activo.');
   }
   return activeAdminCount;
@@ -227,14 +248,14 @@ async function assertAuthenticated(request) {
 
 async function assertAdminContext(request) {
   const authContext = await assertAuthenticated(request);
-  const workspaceId = normalizeWorkspaceId(authContext.token.workspaceId || DEFAULT_WORKSPACE_ID);
+  const workspaceId = assertWorkspaceId(authContext.token.workspaceId || DEFAULT_WORKSPACE_ID);
   if (cleanString(authContext.token.role).toLowerCase() !== 'admin' || cleanString(authContext.token.status).toLowerCase() !== 'active') {
     throw new HttpsError('permission-denied', 'Tu token no trae privilegios administrativos activos.');
   }
 
   const memberSnap = await memberRef(workspaceId, authContext.uid).get();
   const memberData = memberSnap.exists ? memberSnap.data() || {} : null;
-  if (!memberData || memberData.role !== 'admin' || memberData.status !== 'active') {
+  if (!memberData || memberData.uid !== authContext.uid || memberData.workspaceId !== workspaceId || memberData.role !== 'admin' || memberData.status !== 'active') {
     throw new HttpsError('permission-denied', 'Tu perfil ya no tiene permisos administrativos vigentes.');
   }
 
@@ -294,8 +315,11 @@ async function archiveMemberProfile({ workspaceId, uid, actorUid, reason, member
 
 exports.a33AdminHealthcheck = onCall(async (request) => {
   const authContext = await assertAuthenticated(request);
-  const requestedWorkspace = request.data && request.data.workspaceId ? request.data.workspaceId : authContext.token.workspaceId;
-  const workspaceId = normalizeWorkspaceId(requestedWorkspace || DEFAULT_WORKSPACE_ID);
+  const tokenWorkspace = authContext.token.workspaceId ? assertWorkspaceId(authContext.token.workspaceId) : '';
+  const workspaceId = assertWorkspaceId((request.data && request.data.workspaceId) || tokenWorkspace || DEFAULT_WORKSPACE_ID);
+  if ((tokenWorkspace && workspaceId !== tokenWorkspace) || (!tokenWorkspace && workspaceId !== DEFAULT_WORKSPACE_ID)) {
+    throw new HttpsError('permission-denied', 'No puedes consultar otro workspace.');
+  }
   const workspaceSnap = await workspaceRef(workspaceId).get();
   const workspaceData = workspaceSnap.exists ? workspaceSnap.data() || {} : {};
   const activeAdminCount = Number(workspaceData.activeAdminCount || 0);
@@ -316,7 +340,11 @@ exports.a33AdminHealthcheck = onCall(async (request) => {
 
 exports.a33BootstrapWorkspaceAdmin = onCall(async (request) => {
   const authContext = await assertAuthenticated(request);
-  const workspaceId = normalizeWorkspaceId((request.data && request.data.workspaceId) || authContext.token.workspaceId || DEFAULT_WORKSPACE_ID);
+  const tokenWorkspace = authContext.token.workspaceId ? assertWorkspaceId(authContext.token.workspaceId) : '';
+  const workspaceId = assertWorkspaceId((request.data && request.data.workspaceId) || tokenWorkspace || DEFAULT_WORKSPACE_ID);
+  if ((tokenWorkspace && workspaceId !== tokenWorkspace) || (!tokenWorkspace && workspaceId !== DEFAULT_WORKSPACE_ID)) {
+    throw new HttpsError('permission-denied', 'No puedes inicializar otro workspace.');
+  }
   const userRecord = await auth.getUser(authContext.uid);
   const email = assertEmail(userRecord.email || authContext.email);
   const name = assertName(userRecord.displayName || email.split('@')[0] || 'Administrador');
@@ -328,7 +356,7 @@ exports.a33BootstrapWorkspaceAdmin = onCall(async (request) => {
     const owner = cleanString(data.bootstrapOwner || '');
     const activeAdminCount = Number(data.activeAdminCount || 0);
 
-    if (activeAdminCount > 0 && owner && owner !== authContext.uid) {
+    if ((owner && owner !== authContext.uid) || (activeAdminCount > 0 && owner !== authContext.uid)) {
       throw new HttpsError('failed-precondition', 'Ese workspace ya tiene un admin inicial activo.');
     }
 
@@ -384,7 +412,7 @@ exports.a33BootstrapWorkspaceAdmin = onCall(async (request) => {
 exports.a33AdminUpsertUser = onCall(async (request) => {
   const adminContext = await assertAdminContext(request);
   const input = request.data && typeof request.data === 'object' ? request.data : {};
-  const workspaceId = normalizeWorkspaceId(input.workspaceId || adminContext.workspaceId);
+  const workspaceId = assertWorkspaceId(input.workspaceId || adminContext.workspaceId);
   if (workspaceId !== adminContext.workspaceId) {
     throw new HttpsError('permission-denied', 'No puedes administrar otro workspace.');
   }
@@ -394,7 +422,7 @@ exports.a33AdminUpsertUser = onCall(async (request) => {
   const role = normalizeRole(input.role);
   const status = normalizeStatus(input.status);
   const providedUid = cleanString(input.uid || '');
-  const providedPassword = cleanString(input.tempPassword || '');
+  const providedPassword = input.tempPassword == null || input.tempPassword === '' ? '' : assertTemporaryPassword(input.tempPassword);
 
   let userRecord;
   let created = false;
@@ -403,6 +431,9 @@ exports.a33AdminUpsertUser = onCall(async (request) => {
   if (providedUid) {
     const existingMemberSnap = await memberRef(workspaceId, providedUid).get();
     const existingMember = existingMemberSnap.exists ? existingMemberSnap.data() || {} : null;
+    if (!existingMember || existingMember.uid !== providedUid || existingMember.workspaceId !== workspaceId) {
+      throw new HttpsError('not-found', 'El usuario no pertenece al workspace administrado.');
+    }
     const wasActiveAdmin = !!(existingMember && existingMember.role === 'admin' && existingMember.status === 'active');
     const willBeActiveAdmin = role === 'admin' && status === 'active';
 
@@ -479,7 +510,7 @@ exports.a33AdminUpsertUser = onCall(async (request) => {
 exports.a33AdminDeleteUser = onCall(async (request) => {
   const adminContext = await assertAdminContext(request);
   const input = request.data && typeof request.data === 'object' ? request.data : {};
-  const workspaceId = normalizeWorkspaceId(input.workspaceId || adminContext.workspaceId);
+  const workspaceId = assertWorkspaceId(input.workspaceId || adminContext.workspaceId);
   const uid = cleanString(input.uid || '');
 
   if (!uid) {
@@ -494,6 +525,9 @@ exports.a33AdminDeleteUser = onCall(async (request) => {
 
   const memberSnap = await memberRef(workspaceId, uid).get();
   const memberData = memberSnap.exists ? memberSnap.data() || {} : null;
+  if (!memberData || memberData.uid !== uid || memberData.workspaceId !== workspaceId) {
+    throw new HttpsError('not-found', 'El usuario no pertenece al workspace administrado.');
+  }
   const targetIsActiveAdmin = !!(memberData && memberData.role === 'admin' && memberData.status === 'active');
   if (targetIsActiveAdmin) {
     await assertNotLastActiveAdmin(workspaceId, uid);

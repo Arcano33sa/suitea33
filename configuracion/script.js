@@ -4941,6 +4941,51 @@ Los históricos se conservarán. ¿Continuar?`);
     button.addEventListener('click', runUsersDiagnosticE91);
   }
 
+  function renderUsersHardeningE92(result){
+    if (!result) return;
+    const complete = result.completed === true;
+    const stateValue = complete ? 'ready' : 'empty';
+    document.getElementById('cfg-security-e92-state')?.setAttribute('data-state', stateValue);
+    document.getElementById('cfg-security-e92-metrics')?.setAttribute('data-state', stateValue);
+    setFirebaseText('cfg-security-e92-result', complete ? 'Blindaje apto' : 'Revisión requerida');
+    setFirebaseText('cfg-security-e92-result-detail', complete ? 'E9.3 puede planificarse sin activar Functions.' : `${result.issues?.length || 0} bloqueo(s) detectado(s).`);
+    setFirebaseText('cfg-security-e92-safeguards', `${result.safeguardCount || 0}/7 correctos`);
+    setFirebaseText('cfg-security-e92-workspace', result.workspaceId || 'Sin identificar');
+    setFirebaseText('cfg-security-e92-management', result.administrationEnabled ? 'Activa' : 'Desactivada');
+    setFirebaseText('cfg-security-e92-note', complete
+      ? 'E9.2 confirmada: siete blindajes correctos con la administración real desactivada.'
+      : (result.issues?.[0] || 'El blindaje requiere revisión.'));
+  }
+
+  async function runUsersHardeningE92(){
+    const api = window.A33UsersHardeningE92;
+    if (!api || typeof api.run !== 'function') return showToast('No está disponible la validación E9.2.');
+    const button = document.getElementById('cfg-security-e92-run');
+    if (button){ button.disabled = true; button.textContent = 'Validando…'; }
+    const toastId = window.A33Toast?.process('E9.2 en proceso: verificando blindajes locales…') || '';
+    try{
+      const result = await api.run();
+      renderUsersHardeningE92(result);
+      const message = result.completed
+        ? `E9.2 confirmada: ${result.safeguardCount || 0} blindajes correctos; E9.3 puede planificarse.`
+        : `E9.2 requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.completed ? 'success' : 'warning');
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E9.2.';
+      setFirebaseText('cfg-security-e92-result', 'No completado');
+      setFirebaseText('cfg-security-e92-result-detail', message);
+      setFirebaseText('cfg-security-e92-note', message);
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error'); else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Validar blindaje E9.2'; }
+    }
+  }
+
+  function initUsersHardeningE92(){
+    const button = document.getElementById('cfg-security-e92-run');
+    if (button) button.addEventListener('click', runUsersHardeningE92);
+  }
+
 
   const IDENTITY_STORAGE_KEY = 'suite_a33_identity_v1';
   const IDENTITY_LOGO_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -8680,6 +8725,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initSecurityTestE84B();
     initSecurityActivationE84C();
     initUsersDiagnosticE91();
+    initUsersHardeningE92();
     initFirebaseStatus();
     renderBackupImportLog();
 

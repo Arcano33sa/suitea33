@@ -1417,6 +1417,33 @@
 <p>E9.1 solo lee el perfil y los miembros visibles del workspace. No crea, modifica, desactiva ni elimina usuarios; tampoco cambia claims, reglas o Functions.</p>
 </div>
 </section>
+<section aria-labelledby="cfg-security-e92-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E9.2</span>
+<div>
+<h3 id="cfg-security-e92-title">E9.2 · Blindaje del backend administrativo</h3>
+<p>Verifica las defensas locales de workspace, pertenencia, último Admin, bootstrap y contraseñas antes de conectar el panel.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e92-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e92-source">E9.1 confirmada</strong><small>Perfiles y contratos administrativos revisados.</small></div>
+<div><span>Control</span><strong>Administración apagada</strong><small>No se invocan ni despliegan Functions.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e92-result">Sin validar</strong><small id="cfg-security-e92-result-detail">E9.3 permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e92-run" type="button">Validar blindaje E9.2</button>
+<p class="cfg-action-inline-note" id="cfg-security-e92-note">La validación es local y no modifica usuarios ni Firebase.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e92-metrics" data-state="empty">
+<div><span>Blindajes</span><strong id="cfg-security-e92-safeguards">Sin analizar</strong><small>Controles críticos del backend.</small></div>
+<div><span>Workspace</span><strong id="cfg-security-e92-workspace">Sin analizar</strong><small>Debe coincidir con el tenant canónico.</small></div>
+<div><span>Administración real</span><strong id="cfg-security-e92-management">Desactivada</strong><small>E9.3 conectará únicamente una simulación.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Blindaje local sin despliegue</strong>
+<p>E9.2 no llama Functions ni cambia Authentication, perfiles, claims o reglas. El backend endurecido permanece únicamente en el código local.</p>
+</div>
+</section>
 <section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
 <div class="cfg-users-metrics">
 <article class="cfg-metric-card">
@@ -1623,6 +1650,7 @@
 <script src="../assets/js/a33-firebase-security-test-e84b.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-activate-e84c.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-users-diagnostic-e91.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-users-hardening-e92.js?v=4.20.98&amp;r=1"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
