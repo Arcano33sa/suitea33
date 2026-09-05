@@ -1302,6 +1302,33 @@
 <p>E8.3 no cambia usuarios ni reglas, no escribe en Firestore y no activa restricciones. Una ruta desconocida se prepara para fallar de forma segura cuando E8.4 sea autorizada.</p>
 </div>
 </section>
+<section aria-labelledby="cfg-security-e84a-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.4A</span>
+<div>
+<h3 id="cfg-security-e84a-title">E8.4A · Guardas preparadas por módulo</h3>
+<p>Audita que las 12 páginas canónicas carguen la guarda común y confirma que la compuerta permanezca apagada.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84a-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e84a-source">E8.3 pendiente</strong><small id="cfg-security-e84a-source-detail">Primero debe estar preparada la política central.</small></div>
+<div><span>Control</span><strong id="cfg-security-e84a-gate">Compuerta apagada</strong><small>Las guardas no interceptan la navegación en esta etapa.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e84a-result">Sin auditar</strong><small id="cfg-security-e84a-result-detail">E8.4B permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e84a-run" type="button">Validar guardas E8.4A</button>
+<p class="cfg-action-inline-note" id="cfg-security-e84a-note">La validación es local y no activa restricciones.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84a-metrics" data-state="empty">
+<div><span>Páginas canónicas</span><strong id="cfg-security-e84a-pages">Sin analizar</strong><small>Doce entradas del menú global.</small></div>
+<div><span>Guardas instaladas</span><strong id="cfg-security-e84a-installed">Sin analizar</strong><small>Script común y módulo declarado.</small></div>
+<div><span>Compuerta real</span><strong id="cfg-security-e84a-enforcement">Desactivada</strong><small>E8.4A solo prepara la instalación.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Preparación sin bloqueo</strong>
+<p>E8.4A no cambia usuarios, perfiles, reglas ni datos; tampoco impide abrir módulos. La prueba controlada corresponde a E8.4B y requiere autorización independiente.</p>
+</div>
+</section>
 <section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
 <div class="cfg-users-metrics">
 <article class="cfg-metric-card">
@@ -1500,9 +1527,11 @@
 <script src="../assets/js/a33-firebase-auth.js?v=4.20.98&amp;r=17"></script>
 <script src="../assets/js/a33-firebase-access.js?v=4.20.98&amp;r=17"></script>
 <script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=16"></script>
+<script src="../assets/js/a33-module-guard.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-diagnostic-e81.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-simulate-e82.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-prepare-e83.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-security-guards-e84a.js?v=4.20.98&amp;r=1"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>

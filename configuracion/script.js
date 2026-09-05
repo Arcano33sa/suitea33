@@ -4712,6 +4712,61 @@ Los históricos se conservarán. ¿Continuar?`);
     button.addEventListener('click', runSecurityPreparationE83);
   }
 
+  function renderSecurityGuardsE84A(result){
+    if (!result) return;
+    const ready = result.readyForE84B === true;
+    const stateValue = ready ? 'ready' : 'empty';
+    document.getElementById('cfg-security-e84a-state')?.setAttribute('data-state', stateValue);
+    document.getElementById('cfg-security-e84a-metrics')?.setAttribute('data-state', stateValue);
+    setFirebaseText('cfg-security-e84a-source', ready ? 'E8.3 confirmada' : 'E8.3 requiere revisión');
+    setFirebaseText('cfg-security-e84a-source-detail', `${result.pageCount || 0} de 12 páginas canónicas revisadas.`);
+    setFirebaseText('cfg-security-e84a-gate', result.enforcementEnabled ? 'Compuerta activa' : 'Compuerta apagada');
+    setFirebaseText('cfg-security-e84a-result', ready ? 'Guardas preparadas' : 'Revisión requerida');
+    setFirebaseText('cfg-security-e84a-result-detail', ready
+      ? 'Instalación completa y sin bloqueo; E8.4B puede planificarse.'
+      : `${result.issues?.length || 0} bloqueo(s) detectado(s); E8.4B permanece pendiente.`);
+    setFirebaseText('cfg-security-e84a-pages', `${result.pageCount || 0}/12 revisadas`);
+    setFirebaseText('cfg-security-e84a-installed', `${result.installedCount || 0}/12 instaladas`);
+    setFirebaseText('cfg-security-e84a-enforcement', result.enforcementEnabled ? 'Activa' : 'Desactivada');
+    setFirebaseText('cfg-security-e84a-note', ready
+      ? 'E8.4A confirmada: las 12 guardas están preparadas con la compuerta apagada.'
+      : (result.issues?.[0] || 'La instalación requiere revisión.'));
+  }
+
+  async function runSecurityGuardsE84A(){
+    const api = window.A33SecurityGuardsE84A;
+    if (!api || typeof api.run !== 'function'){
+      showToast('No está disponible la validación E8.4A.');
+      return;
+    }
+    const button = document.getElementById('cfg-security-e84a-run');
+    if (button){ button.disabled = true; button.textContent = 'Validando…'; }
+    const toastId = window.A33Toast?.process('E8.4A en proceso: auditando guardas por módulo…') || '';
+    try{
+      const result = await api.run();
+      renderSecurityGuardsE84A(result);
+      const message = result.readyForE84B
+        ? `E8.4A confirmada: ${result.installedCount || 0}/12 guardas preparadas con la compuerta apagada; E8.4B puede planificarse.`
+        : `E8.4A requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE84B ? 'success' : 'warning');
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.4A.';
+      setFirebaseText('cfg-security-e84a-result', 'No completado');
+      setFirebaseText('cfg-security-e84a-result-detail', message);
+      setFirebaseText('cfg-security-e84a-note', message);
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
+      else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Validar guardas E8.4A'; }
+    }
+  }
+
+  function initSecurityGuardsE84A(){
+    const button = document.getElementById('cfg-security-e84a-run');
+    if (!button) return;
+    button.addEventListener('click', runSecurityGuardsE84A);
+  }
+
 
   const IDENTITY_STORAGE_KEY = 'suite_a33_identity_v1';
   const IDENTITY_LOGO_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -8447,6 +8502,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initSecurityDiagnosticE81();
     initSecuritySimulationE82();
     initSecurityPreparationE83();
+    initSecurityGuardsE84A();
     initFirebaseStatus();
     renderBackupImportLog();
 
