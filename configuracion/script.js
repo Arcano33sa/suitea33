@@ -4888,6 +4888,59 @@ Los históricos se conservarán. ¿Continuar?`);
     button.addEventListener('click', runSecurityActivationE84C);
   }
 
+  function renderUsersDiagnosticE91(result){
+    if (!result) return;
+    const complete = result.completed === true;
+    const stateValue = complete ? 'ready' : 'empty';
+    document.getElementById('cfg-security-e91-state')?.setAttribute('data-state', stateValue);
+    document.getElementById('cfg-security-e91-metrics')?.setAttribute('data-state', stateValue);
+    setFirebaseText('cfg-security-e91-source', result.guardActive ? 'E8.4C confirmada' : 'E8.4C pendiente');
+    setFirebaseText('cfg-security-e91-source-detail', result.guardActive ? `Workspace ${result.workspaceId || 'sin identificar'} con compuerta activa.` : 'La compuerta activa debe estar confirmada.');
+    setFirebaseText('cfg-security-e91-result', complete ? 'Diagnóstico apto' : 'Revisión requerida');
+    setFirebaseText('cfg-security-e91-result-detail', complete ? 'E9.2 puede planificarse sin activar operaciones privilegiadas.' : `${result.issues?.length || 0} bloqueo(s) detectado(s).`);
+    setFirebaseText('cfg-security-e91-profiles', `${result.profileCount || 0} perfil(es)`);
+    setFirebaseText('cfg-security-e91-profiles-detail', `${result.activeAdminCount || 0} Admin activo(s) visible(s).`);
+    setFirebaseText('cfg-security-e91-contracts', `${result.contractCount || 0}/${result.expectedContractCount || 3} disponibles`);
+    setFirebaseText('cfg-security-e91-management', result.administrationEnabled ? 'Activa' : 'Desactivada');
+    setFirebaseText('cfg-security-e91-note', complete
+      ? 'E9.1 confirmada: perfiles y contratos revisados con la administración real desactivada.'
+      : (result.issues?.[0] || 'El diagnóstico requiere revisión.'));
+  }
+
+  async function runUsersDiagnosticE91(){
+    const api = window.A33UsersDiagnosticE91;
+    if (!api || typeof api.run !== 'function'){
+      showToast('No está disponible el diagnóstico E9.1.');
+      return;
+    }
+    const button = document.getElementById('cfg-security-e91-run');
+    if (button){ button.disabled = true; button.textContent = 'Diagnosticando…'; }
+    const toastId = window.A33Toast?.process('E9.1 en proceso: revisando perfiles y contratos sin ejecutar Functions…') || '';
+    try{
+      const result = await api.run();
+      renderUsersDiagnosticE91(result);
+      const message = result.completed
+        ? `E9.1 confirmada: ${result.profileCount || 0} perfil(es) y ${result.contractCount || 0} contratos revisados; E9.2 puede planificarse.`
+        : `E9.1 requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.completed ? 'success' : 'warning');
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E9.1.';
+      setFirebaseText('cfg-security-e91-result', 'No completado');
+      setFirebaseText('cfg-security-e91-result-detail', message);
+      setFirebaseText('cfg-security-e91-note', message);
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
+      else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Diagnosticar E9.1'; }
+    }
+  }
+
+  function initUsersDiagnosticE91(){
+    const button = document.getElementById('cfg-security-e91-run');
+    if (!button) return;
+    button.addEventListener('click', runUsersDiagnosticE91);
+  }
+
 
   const IDENTITY_STORAGE_KEY = 'suite_a33_identity_v1';
   const IDENTITY_LOGO_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -8626,6 +8679,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initSecurityGuardsE84A();
     initSecurityTestE84B();
     initSecurityActivationE84C();
+    initUsersDiagnosticE91();
     initFirebaseStatus();
     renderBackupImportLog();
 

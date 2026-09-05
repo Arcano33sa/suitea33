@@ -1389,6 +1389,34 @@
 <p>Configuración conserva el inicio de sesión Maestro cuando una sesión no tiene acceso. Los demás módulos ofrecen volver al inicio o dirigirse a Configuración.</p>
 </div>
 </section>
+<section aria-labelledby="cfg-security-e91-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E9.1</span>
+<div>
+<p class="cfg-eyebrow">Diagnóstico administrativo de solo lectura</p>
+<h3 id="cfg-security-e91-title">Usuarios reales y backend administrativo</h3>
+<p>Comprueba la sesión Admin, los perfiles visibles, la recuperación y los contratos locales antes de habilitar cualquier operación privilegiada.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e91-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e91-source">E8.4C pendiente</strong><small id="cfg-security-e91-source-detail">La compuerta activa debe estar confirmada.</small></div>
+<div><span>Control</span><strong id="cfg-security-e91-control">Solo lectura</strong><small>Funciones, usuarios y reglas permanecen sin cambios.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e91-result">Sin diagnosticar</strong><small id="cfg-security-e91-result-detail">E9.2 permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e91-run" type="button">Diagnosticar E9.1</button>
+<p class="cfg-action-inline-note" id="cfg-security-e91-note">E9.1 no llama Functions ni habilita la administración de usuarios.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e91-metrics" data-state="empty">
+<div><span>Perfiles visibles</span><strong id="cfg-security-e91-profiles">Sin analizar</strong><small id="cfg-security-e91-profiles-detail">Incluye la vía de recuperación Admin.</small></div>
+<div><span>Contratos locales</span><strong id="cfg-security-e91-contracts">Sin analizar</strong><small>Alta/cambio, baja y bootstrap; no se ejecutan.</small></div>
+<div><span>Administración real</span><strong id="cfg-security-e91-management">Desactivada</strong><small>E9.2 requerirá autorización independiente.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Sin mutaciones ni despliegues</strong>
+<p>E9.1 solo lee el perfil y los miembros visibles del workspace. No crea, modifica, desactiva ni elimina usuarios; tampoco cambia claims, reglas o Functions.</p>
+</div>
+</section>
 <section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
 <div class="cfg-users-metrics">
 <article class="cfg-metric-card">
@@ -1594,6 +1622,7 @@
 <script src="../assets/js/a33-firebase-security-guards-e84a.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-test-e84b.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-activate-e84c.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-users-diagnostic-e91.js?v=4.20.98&amp;r=1"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
