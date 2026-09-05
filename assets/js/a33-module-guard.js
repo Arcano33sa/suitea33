@@ -47,6 +47,11 @@
     const api = await ensureAccess();
     return { allowed:api.canOpen(target), reason:api.canOpen(target) ? 'access-granted' : 'access-denied', moduleId:String(target || '') };
   }
+  function simulate(target, accessOverride){
+    const accessApi = g.A33Access;
+    if (!accessApi || typeof accessApi.evaluateModuleAccess !== 'function') throw new Error('La política de acceso no está disponible para la prueba controlada.');
+    return accessApi.evaluateModuleAccess(target, accessOverride, { enforcementEnabled:true });
+  }
   async function handleNavigation(event){
     if (!ENFORCEMENT_ENABLED) return;
     const link = event.target && event.target.closest ? event.target.closest('a[data-a33-module-target]') : null;
@@ -69,7 +74,7 @@
     return getState();
   }
 
-  g.A33ModuleGuard = Object.assign({}, g.A33ModuleGuard || {}, { init:init, getState:getState, evaluate:evaluate, isEnabled:function(){ return ENFORCEMENT_ENABLED; } });
+  g.A33ModuleGuard = Object.assign({}, g.A33ModuleGuard || {}, { init:init, getState:getState, evaluate:evaluate, simulate:simulate, isEnabled:function(){ return ENFORCEMENT_ENABLED; } });
   if (typeof document !== 'undefined'){
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once:true });
     else init();

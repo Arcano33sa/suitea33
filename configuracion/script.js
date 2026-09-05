@@ -4767,6 +4767,74 @@ Los históricos se conservarán. ¿Continuar?`);
     button.addEventListener('click', runSecurityGuardsE84A);
   }
 
+  function renderSecurityTestRoleE84B(result, roleKey, valueId, detailId){
+    const role = result?.roleMatrix?.find((item) => item.key === roleKey);
+    if (!role) return;
+    setFirebaseText(valueId, `${role.label} · ${role.allowedCount}/${result.moduleCount}`);
+    setFirebaseText(detailId, role.deniedCount
+      ? `${role.allowedCount} permitido(s) y ${role.deniedCount} restringido(s).`
+      : 'Acceso completo y recuperación protegida.');
+  }
+
+  function renderSecurityTestE84B(result){
+    if (!result) return;
+    const ready = result.readyForE84C === true;
+    const stateValue = ready ? 'ready' : 'empty';
+    document.getElementById('cfg-security-e84b-state')?.setAttribute('data-state', stateValue);
+    document.getElementById('cfg-security-e84b-metrics')?.setAttribute('data-state', stateValue);
+    setFirebaseText('cfg-security-e84b-source', ready ? 'E8.4A confirmada' : 'E8.4A requiere revisión');
+    setFirebaseText('cfg-security-e84b-source-detail', `${result.moduleCount || 0} módulos y ${result.roleCount || 0} roles incluidos.`);
+    setFirebaseText('cfg-security-e84b-gate', result.enforcementEnabled ? 'Compuerta activa' : 'Compuerta apagada');
+    setFirebaseText('cfg-security-e84b-result', ready ? 'Prueba apta' : 'Revisión requerida');
+    setFirebaseText('cfg-security-e84b-result-detail', ready
+      ? `${result.checkCount || 0} controles correctos; E8.4C puede planificarse.`
+      : `${result.issues?.length || 0} bloqueo(s) detectado(s); E8.4C permanece pendiente.`);
+    renderSecurityTestRoleE84B(result, 'admin', 'cfg-security-e84b-admin', 'cfg-security-e84b-admin-detail');
+    renderSecurityTestRoleE84B(result, 'ventas', 'cfg-security-e84b-sales', 'cfg-security-e84b-sales-detail');
+    renderSecurityTestRoleE84B(result, 'finanzas', 'cfg-security-e84b-finance', 'cfg-security-e84b-finance-detail');
+    renderSecurityTestRoleE84B(result, 'consulta', 'cfg-security-e84b-readonly', 'cfg-security-e84b-readonly-detail');
+    setFirebaseText('cfg-security-e84b-unknown', result.unknownRouteBlocked ? 'Bloqueada' : 'No bloqueada');
+    setFirebaseText('cfg-security-e84b-inactive', result.inactiveProfileBlocked ? 'Bloqueado' : 'No bloqueado');
+    setFirebaseText('cfg-security-e84b-enforcement', result.enforcementEnabled ? 'Activa' : 'Desactivada');
+    setFirebaseText('cfg-security-e84b-note', ready
+      ? 'E8.4B confirmada: permisos, restricciones y recuperación fueron simulados sin activar la compuerta.'
+      : (result.issues?.[0] || 'La prueba controlada requiere revisión.'));
+  }
+
+  async function runSecurityTestE84B(){
+    const api = window.A33SecurityTestE84B;
+    if (!api || typeof api.run !== 'function'){
+      showToast('No está disponible la prueba E8.4B.');
+      return;
+    }
+    const button = document.getElementById('cfg-security-e84b-run');
+    if (button){ button.disabled = true; button.textContent = 'Probando…'; }
+    const toastId = window.A33Toast?.process('E8.4B en proceso: simulando guardas y recuperación…') || '';
+    try{
+      const result = await api.run();
+      renderSecurityTestE84B(result);
+      const message = result.readyForE84C
+        ? `E8.4B confirmada: ${result.checkCount || 0} controles correctos con la compuerta apagada; E8.4C puede planificarse.`
+        : `E8.4B requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE84C ? 'success' : 'warning');
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.4B.';
+      setFirebaseText('cfg-security-e84b-result', 'No completado');
+      setFirebaseText('cfg-security-e84b-result-detail', message);
+      setFirebaseText('cfg-security-e84b-note', message);
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
+      else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Probar guardas E8.4B'; }
+    }
+  }
+
+  function initSecurityTestE84B(){
+    const button = document.getElementById('cfg-security-e84b-run');
+    if (!button) return;
+    button.addEventListener('click', runSecurityTestE84B);
+  }
+
 
   const IDENTITY_STORAGE_KEY = 'suite_a33_identity_v1';
   const IDENTITY_LOGO_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -8503,6 +8571,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initSecuritySimulationE82();
     initSecurityPreparationE83();
     initSecurityGuardsE84A();
+    initSecurityTestE84B();
     initFirebaseStatus();
     renderBackupImportLog();
 

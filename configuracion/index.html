@@ -1329,6 +1329,39 @@
 <p>E8.4A no cambia usuarios, perfiles, reglas ni datos; tampoco impide abrir módulos. La prueba controlada corresponde a E8.4B y requiere autorización independiente.</p>
 </div>
 </section>
+<section aria-labelledby="cfg-security-e84b-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.4B</span>
+<div>
+<h3 id="cfg-security-e84b-title">E8.4B · Prueba controlada de guardas</h3>
+<p>Simula la política sobre los cuatro roles y comprueba recuperación, perfiles inactivos y rutas desconocidas sin bloquear la navegación real.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84b-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e84b-source">E8.4A pendiente</strong><small id="cfg-security-e84b-source-detail">Primero deben estar instaladas las 12 guardas.</small></div>
+<div><span>Control</span><strong id="cfg-security-e84b-gate">Compuerta apagada</strong><small>La política se evalúa únicamente dentro del simulador.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e84b-result">Sin probar</strong><small id="cfg-security-e84b-result-detail">E8.4C permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e84b-run" type="button">Probar guardas E8.4B</button>
+<p class="cfg-action-inline-note" id="cfg-security-e84b-note">La prueba no cambia sesiones, perfiles ni permisos.</p>
+</div>
+<div class="cfg-note-grid" id="cfg-security-e84b-role-grid">
+<div class="cfg-note-card"><strong id="cfg-security-e84b-admin">Admin · Sin probar</strong><p id="cfg-security-e84b-admin-detail">Debe conservar acceso y recuperación completos.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e84b-sales">Ventas · Sin probar</strong><p id="cfg-security-e84b-sales-detail">Accesos permitidos y restringidos por verificar.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e84b-finance">Finanzas · Sin probar</strong><p id="cfg-security-e84b-finance-detail">Accesos permitidos y restringidos por verificar.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e84b-readonly">Consulta · Sin probar</strong><p id="cfg-security-e84b-readonly-detail">Accesos de consulta por verificar.</p></div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84b-metrics" data-state="empty">
+<div><span>Ruta desconocida</span><strong id="cfg-security-e84b-unknown">Sin probar</strong><small>Debe fallar de forma segura.</small></div>
+<div><span>Perfil inactivo</span><strong id="cfg-security-e84b-inactive">Sin probar</strong><small>No debe abrir módulos protegidos.</small></div>
+<div><span>Compuerta real</span><strong id="cfg-security-e84b-enforcement">Desactivada</strong><small>E8.4B no intercepta enlaces.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Simulación aislada</strong>
+<p>E8.4B no activa la guarda real, no modifica usuarios ni escribe en Firebase. La activación definitiva corresponde exclusivamente a E8.4C.</p>
+</div>
+</section>
 <section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
 <div class="cfg-users-metrics">
 <article class="cfg-metric-card">
@@ -1532,6 +1565,7 @@
 <script src="../assets/js/a33-firebase-security-simulate-e82.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-prepare-e83.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-security-guards-e84a.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-security-test-e84b.js?v=4.20.98&amp;r=1"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
