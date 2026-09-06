@@ -5052,6 +5052,37 @@ Los históricos se conservarán. ¿Continuar?`);
     if (button) button.addEventListener('click', runUsersSimulationE93);
   }
 
+  async function runUsersConnectE94A(){
+    const api = window.A33UsersConnectE94A;
+    if (!api || typeof api.run !== 'function') return showToast('No está disponible el conector E9.4A.');
+    const button = document.getElementById('cfg-security-e94a-run');
+    if (button){ button.disabled = true; button.textContent = 'Verificando…'; }
+    try{
+      const result = await api.run();
+      document.getElementById('cfg-security-e94a-state')?.setAttribute('data-state', result.connectorPrepared && result.safeFallback ? 'ready' : 'empty');
+      setFirebaseText('cfg-security-e94a-result', result.connectorPrepared ? 'Conector preparado' : 'Revisión requerida');
+      const healthLabels = {ready:'Functions disponible',missing:'Functions pendiente',error:'Error de conexión',checking:'Verificando'};
+      setFirebaseText('cfg-security-e94a-detail', `${healthLabels[result.backendHealth] || result.backendHealth}; administración real ${result.administrationEnabled ? 'habilitada' : 'apagada'}.`);
+      setFirebaseText('cfg-security-e94a-note', result.connectorPrepared ? 'E9.4A confirmada: el conector aplica fallo seguro; E9.4B puede planificarse.' : (result.issues[0] || 'El conector requiere revisión.'));
+      if (window.A33Toast){
+        if (!result.connectorPrepared) window.A33Toast.error(result.issues[0] || 'E9.4A requiere revisión.');
+        else if (result.administrationEnabled) window.A33Toast.success('E9.4A confirmada: backend administrativo disponible.');
+        else window.A33Toast.warning('E9.4A confirmada: Functions pendiente y administración real apagada.');
+      }else showToast(result.connectorPrepared ? 'E9.4A confirmada con administración real apagada.' : (result.issues[0] || 'E9.4A requiere revisión.'));
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo verificar E9.4A.';
+      setFirebaseText('cfg-security-e94a-result', 'No completado');
+      setFirebaseText('cfg-security-e94a-detail', message);
+      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Verificar conector E9.4A'; }
+    }
+  }
+
+  function initUsersConnectE94A(){
+    document.getElementById('cfg-security-e94a-run')?.addEventListener('click', runUsersConnectE94A);
+  }
+
 
   const IDENTITY_STORAGE_KEY = 'suite_a33_identity_v1';
   const IDENTITY_LOGO_MAX_BYTES = 2.5 * 1024 * 1024;
@@ -8793,6 +8824,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initUsersDiagnosticE91();
     initUsersHardeningE92();
     initUsersSimulationE93();
+    initUsersConnectE94A();
     initFirebaseStatus();
     renderBackupImportLog();
 

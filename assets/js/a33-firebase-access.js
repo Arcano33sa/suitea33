@@ -4,7 +4,7 @@
 
   const SDK_VERSION = '10.12.5';
   const REGION = 'us-central1';
-  const BACKEND_MODE = 'spark-manual';
+  const BACKEND_MODE = 'functions';
   const scripts = {
     firestore:['a33-firebase-sdk-firestore-compat', 'https://www.gstatic.com/firebasejs/' + SDK_VERSION + '/firebase-firestore-compat.js'],
     functions:['a33-firebase-sdk-functions-compat', 'https://www.gstatic.com/firebasejs/' + SDK_VERSION + '/firebase-functions-compat.js']
@@ -34,7 +34,7 @@
   let initPromise = null;
   let state = baseState();
 
-  function baseState(){ return { user:null, profile:null, workspaceId:'arcano33', role:'', roleLabel:'Sin rol', statusLabel:'Sin estado', permissions:[], backendMode:BACKEND_MODE, backendHealth:BACKEND_MODE, backendMessage:'Plan Spark: perfiles y roles se administran manualmente desde Firebase.', managementReady:false, canBootstrap:false, loadingProfile:false, profileMissing:false, isAdmin:false }; }
+  function baseState(){ return { user:null, profile:null, workspaceId:'arcano33', role:'', roleLabel:'Sin rol', statusLabel:'Sin estado', permissions:[], backendMode:BACKEND_MODE, backendHealth:'checking', backendMessage:'Verificando el backend administrativo…', managementReady:false, canBootstrap:false, loadingProfile:false, profileMissing:false, isAdmin:false }; }
   function clean(value, maxLen){ return String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, maxLen || 320); }
   function workspaceId(){ try{ return clean(g.A33FirebaseSettings.read().workspaceId, 80) || 'arcano33'; }catch(_){ return 'arcano33'; } }
   function roleMeta(role){ return roleOptions.find(function(item){ return item.key === role; }) || null; }
@@ -84,12 +84,40 @@
     const result = await functions.httpsCallable(name)(data || {});
     return result && result.data ? result.data : {};
   }
+  async function readTokenClaims(){
+    const nativeUser = g.A33FirebaseAuth && g.A33FirebaseAuth.getNativeUser ? g.A33FirebaseAuth.getNativeUser() : null;
+    if (!nativeUser || typeof nativeUser.getIdTokenResult !== 'function') return {};
+    const result = await nativeUser.getIdTokenResult(false);
+    return result && result.claims && typeof result.claims === 'object' ? result.claims : {};
+  }
+  function backendFailureState(error){
+    const code = clean(error && error.code, 120).toLowerCase();
+    const missing = code.includes('not-found') || code.includes('unimplemented');
+    return {
+      backendHealth:missing ? 'missing' : 'error', managementReady:false, canBootstrap:false,
+      backendMessage:missing ? 'Functions administrativas aún no están desplegadas.' : (clean(error && error.message, 300) || 'No se pudo verificar el backend administrativo.')
+    };
+  }
+  async function verifyBackend({ workspaceId:ws, isAdmin, active }){
+    try{
+      const result = await call('a33AdminHealthcheck', { workspaceId:ws });
+      if (!result || result.ok !== true || result.workspaceId !== ws) throw new Error('El healthcheck no confirmó el workspace activo.');
+      const claims = await readTokenClaims();
+      const claimsReady = claims.workspaceId === ws && claims.role === 'admin' && claims.status === 'active';
+      const managementReady = !!(result.workspaceReady && isAdmin && active && claimsReady);
+      return {
+        backendHealth:'ready', managementReady,
+        canBootstrap:!!(result.currentUserCanBootstrap && active && isAdmin),
+        backendMessage:managementReady ? 'Backend administrativo verificado y listo.' : (claimsReady ? clean(result.message, 300) : 'Backend disponible; falta sincronizar los claims del Admin Maestro.')
+      };
+    }catch(error){ return backendFailureState(error); }
+  }
   async function loadCurrentAccess(){
     const authState = g.A33FirebaseAuth && g.A33FirebaseAuth.getState ? g.A33FirebaseAuth.getState() : {};
     const user = authState.user || null;
     const ws = workspaceId();
     if (!user){ state = Object.assign(baseState(), { workspaceId:ws }); dispatch(); return getState(); }
-    setState({ user, workspaceId:ws, loadingProfile:true, backendHealth:BACKEND_MODE, backendMessage:'Leyendo el perfil del usuario en Firestore…' });
+    setState({ user, workspaceId:ws, loadingProfile:true, backendHealth:'checking', backendMessage:'Leyendo el perfil y verificando Functions…' });
     try{
       await ensureFirestore();
       let profile = null;
@@ -101,9 +129,10 @@
       const active = !!(profile && profile.status === 'active');
       const permissions = active ? profile.permissions.slice() : [];
       const isAdmin = active && role === 'admin';
-      return setState({ user, profile, workspaceId:ws, role, roleLabel:roleMeta(role) ? roleMeta(role).label : 'Sin rol', statusLabel:profile ? (active ? 'Activo' : 'Inactivo') : 'Sin estado', permissions, backendMode:BACKEND_MODE, backendHealth:BACKEND_MODE, backendMessage:'Plan Spark activo. Los perfiles se consultan en Firestore y los usuarios se administran manualmente en Firebase.', managementReady:false, canBootstrap:false, loadingProfile:false, profileMissing:!profile, isAdmin });
+      const backend = await verifyBackend({ workspaceId:ws, isAdmin, active });
+      return setState(Object.assign({ user, profile, workspaceId:ws, role, roleLabel:roleMeta(role) ? roleMeta(role).label : 'Sin rol', statusLabel:profile ? (active ? 'Activo' : 'Inactivo') : 'Sin estado', permissions, backendMode:BACKEND_MODE, loadingProfile:false, profileMissing:!profile, isAdmin }, backend));
     }catch(error){
-      return setState({ user, workspaceId:ws, loadingProfile:false, backendMode:BACKEND_MODE, backendHealth:BACKEND_MODE, backendMessage:clean(error && error.message, 300) || 'No se pudo leer el perfil de Firestore.', managementReady:false, canBootstrap:false, profileMissing:true, isAdmin:false });
+      return setState({ user, workspaceId:ws, loadingProfile:false, backendMode:BACKEND_MODE, backendHealth:'error', backendMessage:clean(error && error.message, 300) || 'No se pudo leer el perfil de Firestore.', managementReady:false, canBootstrap:false, profileMissing:true, isAdmin:false });
     }
   }
   async function init(){

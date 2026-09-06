@@ -1453,6 +1453,12 @@
 <div><span>Controles</span><strong id="cfg-security-e93-controls">Sin analizar</strong><small>Alta, cambio, estado, baja y recuperación.</small></div><div><span>Escrituras</span><strong id="cfg-security-e93-writes">0</strong><small>Authentication y Firestore sin cambios.</small></div><div><span>Última vista previa</span><strong id="cfg-security-e93-preview">Sin acciones</strong><small id="cfg-security-e93-preview-detail">Usa el formulario para simular una operación.</small></div></div>
 <div class="cfg-firebase-private-warning" role="note"><strong>Panel conectado en modo simulación</strong><p>Las acciones del panel generan únicamente una vista previa durante esta sesión. No crean contraseñas, no llaman Functions y no alteran perfiles, claims ni reglas.</p></div>
 </section>
+<section aria-labelledby="cfg-security-e94a-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head"><span class="cfg-report-icon">E9.4A</span><div><h3 id="cfg-security-e94a-title">E9.4A · Conector administrativo condicionado</h3><p>Verifica Functions, el workspace, el perfil Admin y sus claims antes de permitir operaciones reales.</p></div></div>
+<div class="cfg-initial-import-state" id="cfg-security-e94a-state" data-state="empty" aria-live="polite"><div><span>Origen</span><strong>E9.3 confirmada</strong><small>Cinco controles simulados sin escrituras.</small></div><div><span>Protección</span><strong>Activación por healthcheck</strong><small>Un fallo mantiene la administración apagada.</small></div><div><span>Resultado</span><strong id="cfg-security-e94a-result">Sin verificar</strong><small id="cfg-security-e94a-detail">E9.4B permanece pendiente.</small></div></div>
+<div class="cfg-actions cfg-firebase-actions"><button class="cfg-btn cfg-btn-primary" id="cfg-security-e94a-run" type="button">Verificar conector E9.4A</button><p class="cfg-action-inline-note" id="cfg-security-e94a-note">Esta comprobación no crea, cambia ni elimina usuarios.</p></div>
+<div class="cfg-firebase-private-warning" role="note"><strong>Fallo seguro</strong><p>Si Functions no está desplegado o los claims no coinciden, el panel continúa bloqueado y muestra el estado pendiente.</p></div>
+</section>
 <section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
 <div class="cfg-users-metrics">
 <article class="cfg-metric-card">
@@ -1661,6 +1667,7 @@
 <script src="../assets/js/a33-firebase-users-diagnostic-e91.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-users-hardening-e92.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-users-simulate-e93.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-users-connect-e94a.js?v=4.20.98&amp;r=1"></script>
 <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
 <script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
 <script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
