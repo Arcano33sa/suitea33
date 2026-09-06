@@ -3917,7 +3917,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const roleMeta = getRoleMetaMap();
     if (section.roleInput && section.roleInput.value !== 'admin' && roleMeta.admin) section.roleInput.value = 'admin';
     if (section.statusInput) section.statusInput.value = 'active';
-    if (section.saveBtn) section.saveBtn.textContent = 'Guardar usuario';
+    if (section.saveBtn) section.saveBtn.textContent = buildUsersUiModel().canSimulate ? 'Simular usuario' : 'Guardar usuario';
     if (section.formHint) section.formHint.textContent = 'Cuando Functions esté desplegado y tu sesión tenga rol Admin activo, este formulario operará sobre Authentication + Firestore.';
     if (focus && section.nameInput && !section.nameInput.disabled) section.nameInput.focus();
   }
@@ -3934,8 +3934,11 @@ Los históricos se conservarán. ¿Continuar?`);
     const roleMeta = getRoleMetaMap();
     section.roleInput.value = roleMeta[user.role] ? user.role : 'consulta';
     section.statusInput.value = USER_STATUS_META[user.status] ? user.status : 'active';
-    section.saveBtn.textContent = 'Actualizar usuario';
-    section.formHint.textContent = `Editando perfil real de ${user.name}. Los cambios pasan por Functions + Admin SDK.`;
+    const simulation = buildUsersUiModel().canSimulate;
+    section.saveBtn.textContent = simulation ? 'Simular actualización' : 'Actualizar usuario';
+    section.formHint.textContent = simulation
+      ? `Vista previa de ${user.name}; no se modificará su perfil real.`
+      : `Editando perfil real de ${user.name}. Los cambios pasan por Functions + Admin SDK.`;
     if (!section.nameInput.disabled) section.nameInput.focus();
   }
 
@@ -4000,6 +4003,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const backendHealth = String(current.backendHealth || 'idle');
     const backendReady = backendHealth === 'ready';
     const canManage = !!current.managementReady;
+    const canSimulate = !canManage && backendHealth === 'spark-manual' && !!current.isAdmin && !!current.profile && current.profile.status === 'active';
     const canBootstrap = !!current.canBootstrap;
     const loading = !!current.loadingProfile;
     const profile = current.profile || null;
@@ -4037,6 +4041,7 @@ Los históricos se conservarán. ¿Continuar?`);
             ? 'Puedes activar el primer Admin del workspace desde aquí si todavía no existe.'
             : 'Esta base ya deja el backend correcto para la administración privilegiada posterior.'),
       canManage,
+      canSimulate,
       canBootstrap,
       hasSession,
       loading,
@@ -4082,18 +4087,18 @@ Los históricos se conservarán. ¿Continuar?`);
     }
 
     if (backendHealth === 'spark-manual'){
-      model.modeBadge = profile && current.isAdmin ? 'Admin · Spark' : 'Spark manual';
+      model.modeBadge = canSimulate ? 'Simulación E9.3' : 'Spark manual';
       model.sideBadge = profile && current.isAdmin ? 'Admin activo' : 'Perfil pendiente';
       model.headline = profile
         ? 'Sesión y permisos activos en Firestore. El plan Spark conserva la administración de usuarios dentro de Firebase.'
         : 'Plan Spark activo. Falta crear o verificar el perfil del usuario maestro en Firestore.';
-      model.nextLabel = 'Operación Spark';
-      model.nextCopy = 'Authentication y Firestore están disponibles sin Functions ni facturación.';
+      model.nextLabel = canSimulate ? 'Panel en simulación' : 'Operación Spark';
+      model.nextCopy = canSimulate ? 'Las acciones producen vistas previas locales; cero escrituras y cero llamadas a Functions.' : 'Authentication y Firestore están disponibles sin Functions ni facturación.';
       model.emptyTitle = profile ? 'Perfil activo' : 'Perfil maestro pendiente';
       model.emptyCopy = profile
         ? 'La sesión puede consultar sus permisos. Los cambios de usuarios se hacen desde Firebase.'
         : 'Crea el perfil maestro manualmente en Firestore para completar el acceso.';
-      model.disableReason = 'En el plan Spark, administra usuarios manualmente desde Firebase Console.';
+      model.disableReason = canSimulate ? 'E9.3: este formulario solo simula; no guardará usuarios.' : 'En el plan Spark, administra usuarios manualmente desde Firebase Console.';
       return model;
     }
 
@@ -4143,10 +4148,10 @@ Los históricos se conservarán. ¿Continuar?`);
     if (section.nextCopyEl) section.nextCopyEl.textContent = ui.nextCopy;
     if (section.formHint) section.formHint.textContent = ui.disableReason || 'Backend listo para operar usuarios reales.';
     if (section.bootstrapBtn) section.bootstrapBtn.hidden = !ui.canBootstrap;
-    if (section.newTopBtn) section.newTopBtn.disabled = !ui.canManage;
-    if (section.emptyCta) section.emptyCta.disabled = !ui.canManage;
+    if (section.newTopBtn) section.newTopBtn.disabled = !(ui.canManage || ui.canSimulate);
+    if (section.emptyCta) section.emptyCta.disabled = !(ui.canManage || ui.canSimulate);
 
-    setUserFormEnabled(ui.canManage);
+    setUserFormEnabled(ui.canManage || ui.canSimulate);
     populateRoleOptions(section.roleInput);
 
     if (section.totalEl) section.totalEl.textContent = String(stats.total);
@@ -4168,15 +4173,15 @@ Los históricos se conservarán. ¿Continuar?`);
     if (section.noResultsEl) section.noResultsEl.hidden = !hasUsers || hasFiltered || section.loadingUsers;
 
     const actionCell = (user) => {
-      if (!ui.canManage) return '<span class="cfg-action-inline-note">Solo lectura</span>';
+      if (!ui.canManage && !ui.canSimulate) return '<span class="cfg-action-inline-note">Solo lectura</span>';
       const isSelf = user.uid === accessState()?.user?.uid;
       const canDelete = !isSelf;
       const canToggle = !isSelf;
       return `
         <div class="cfg-user-actions">
-          <button class="cfg-action-btn" type="button" data-user-action="edit" data-user-id="${escapeHtml(user.uid)}">Editar</button>
-          ${canToggle ? `<button class="cfg-action-btn" type="button" data-user-action="toggle" data-user-id="${escapeHtml(user.uid)}">${user.status === 'active' ? 'Desactivar' : 'Activar'}</button>` : '<span class="cfg-action-inline-note">Tu propio perfil admin se mantiene activo desde este panel.</span>'}
-          ${canDelete ? `<button class="cfg-action-btn cfg-action-btn--danger" type="button" data-user-action="delete" data-user-id="${escapeHtml(user.uid)}">Borrar</button>` : ''}
+          <button class="cfg-action-btn" type="button" data-user-action="edit" data-user-id="${escapeHtml(user.uid)}">${ui.canSimulate ? 'Simular edición' : 'Editar'}</button>
+          ${canToggle ? `<button class="cfg-action-btn" type="button" data-user-action="toggle" data-user-id="${escapeHtml(user.uid)}">${ui.canSimulate ? 'Simular ' : ''}${user.status === 'active' ? 'desactivar' : 'activar'}</button>` : '<span class="cfg-action-inline-note">Tu propio perfil admin conserva la recuperación.</span>'}
+          ${canDelete ? `<button class="cfg-action-btn cfg-action-btn--danger" type="button" data-user-action="delete" data-user-id="${escapeHtml(user.uid)}">${ui.canSimulate ? 'Simular baja' : 'Borrar'}</button>` : ''}
         </div>
       `;
     };
@@ -4226,7 +4231,7 @@ Los históricos se conservarán. ¿Continuar?`);
     if (!section || !api) return;
 
     const current = buildUsersUiModel();
-    if (!current.canManage){
+    if (!current.canManage && !current.canSimulate){
       showToast(current.disableReason || 'Tu sesión no puede administrar usuarios todavía.');
       return;
     }
@@ -4249,6 +4254,12 @@ Los históricos se conservarán. ¿Continuar?`);
       return;
     }
 
+    if (current.canSimulate){
+      const result = window.A33UsersSimulationE93?.simulate?.({ operation:uid ? 'update' : 'create', user:{ uid, workspaceId:accessState()?.workspaceId, name, email, role, status } }, { access:accessState(), users:section.users });
+      renderUsersSimulationPreviewE93(result);
+      showToast(result?.approved ? 'Vista previa E9.3 correcta; no se guardó información.' : (result?.issues?.[0] || 'La simulación fue rechazada.'));
+      return;
+    }
     section.saveBtn.disabled = true;
     const originalLabel = section.saveBtn.textContent;
     section.saveBtn.textContent = uid ? 'Actualizando…' : 'Creando…';
@@ -4308,6 +4319,14 @@ Los históricos se conservarán. ¿Continuar?`);
 
     if (action === 'edit'){
       loadUserIntoForm(userId);
+      return;
+    }
+
+    const ui = buildUsersUiModel();
+    if (ui.canSimulate && (action === 'toggle' || action === 'delete')){
+      const result = window.A33UsersSimulationE93?.simulate?.({ operation:action, user:user }, { access:accessState(), users:section.users });
+      renderUsersSimulationPreviewE93(result);
+      showToast(result?.approved ? `Vista previa de ${action === 'delete' ? 'baja' : 'cambio de estado'} correcta; no se modificó información.` : (result?.issues?.[0] || 'La simulación fue rechazada.'));
       return;
     }
 
@@ -4984,6 +5003,53 @@ Los históricos se conservarán. ¿Continuar?`);
   function initUsersHardeningE92(){
     const button = document.getElementById('cfg-security-e92-run');
     if (button) button.addEventListener('click', runUsersHardeningE92);
+  }
+
+  function renderUsersSimulationPreviewE93(result){
+    if (!result) return;
+    const labels = {create:'Alta',update:'Actualización',toggle:'Cambio de estado',delete:'Baja'};
+    setFirebaseText('cfg-security-e93-preview', `${labels[result.operation] || 'Operación'} ${result.approved ? 'apta' : 'rechazada'}`);
+    setFirebaseText('cfg-security-e93-preview-detail', result.approved ? `${result.target?.email || 'Sin correo'} · vista previa local, sin escrituras.` : (result.issues?.[0] || 'La vista previa requiere revisión.'));
+  }
+
+  function renderUsersSimulationE93(result){
+    if (!result) return;
+    const complete = result.completed === true;
+    const stateValue = complete ? 'ready' : 'empty';
+    document.getElementById('cfg-security-e93-state')?.setAttribute('data-state', stateValue);
+    document.getElementById('cfg-security-e93-metrics')?.setAttribute('data-state', stateValue);
+    setFirebaseText('cfg-security-e93-result', complete ? 'Simulación apta' : 'Revisión requerida');
+    setFirebaseText('cfg-security-e93-result-detail', complete ? 'E9.4 puede planificarse; la administración real sigue apagada.' : `${result.caseCount - result.controlsPassed} control(es) fallido(s).`);
+    setFirebaseText('cfg-security-e93-controls', `${result.controlsPassed || 0}/${result.caseCount || 5} correctos`);
+    setFirebaseText('cfg-security-e93-writes', String(result.writes || 0));
+    setFirebaseText('cfg-security-e93-note', complete ? 'E9.3 confirmada: panel y recuperación simulados sin escrituras ni llamadas a Functions.' : 'La simulación requiere revisión antes de E9.4.');
+  }
+
+  async function runUsersSimulationE93(){
+    const api = window.A33UsersSimulationE93;
+    if (!api || typeof api.run !== 'function') return showToast('No está disponible la simulación E9.3.');
+    const button = document.getElementById('cfg-security-e93-run');
+    if (button){ button.disabled = true; button.textContent = 'Simulando…'; }
+    const toastId = window.A33Toast?.process('E9.3 en proceso: simulando el panel sin escrituras…') || '';
+    try{
+      const result = await api.run();
+      renderUsersSimulationE93(result);
+      const message = result.completed ? `E9.3 confirmada: ${result.controlsPassed || 0} controles simulados sin escrituras; E9.4 puede planificarse.` : `E9.3 requiere revisión: ${(result.caseCount || 0) - (result.controlsPassed || 0)} control(es) fallido(s).`;
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.completed ? 'success' : 'warning');
+    }catch(error){
+      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E9.3.';
+      setFirebaseText('cfg-security-e93-result', 'No completado');
+      setFirebaseText('cfg-security-e93-result-detail', message);
+      setFirebaseText('cfg-security-e93-note', message);
+      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error'); else showToast(message);
+    }finally{
+      if (button){ button.disabled = false; button.textContent = 'Simular panel E9.3'; }
+    }
+  }
+
+  function initUsersSimulationE93(){
+    const button = document.getElementById('cfg-security-e93-run');
+    if (button) button.addEventListener('click', runUsersSimulationE93);
   }
 
 
@@ -8726,6 +8792,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initSecurityActivationE84C();
     initUsersDiagnosticE91();
     initUsersHardeningE92();
+    initUsersSimulationE93();
     initFirebaseStatus();
     renderBackupImportLog();
 
