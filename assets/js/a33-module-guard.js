@@ -6,8 +6,8 @@
   const dependencies = [
     ['a33-firebase-config', '/assets/js/a33-firebase-config.js?v=4.20.98&r=19'],
     ['a33-firebase-core', '/assets/js/a33-firebase-core.js?v=4.20.98&r=19'],
-    ['a33-firebase-auth', '/assets/js/a33-firebase-auth.js?v=4.20.98&r=17'],
-    ['a33-firebase-access', '/assets/js/a33-firebase-access.js?v=4.20.98&r=17'],
+    ['a33-firebase-auth', '/assets/js/a33-firebase-auth.js?v=4.20.98&r=18'],
+    ['a33-firebase-access', '/assets/js/a33-firebase-access.js?v=4.20.98&r=18'],
     ['a33-module-access', '/assets/js/a33-module-access.js?v=4.20.98&r=16']
   ];
   let accessPromise = null;

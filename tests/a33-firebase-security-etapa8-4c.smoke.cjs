@@ -33,14 +33,14 @@ assert.equal(result.readOnly, true);
 assert.equal(result.activationAudit, true);
 assert.equal(result.pageCount, 12);
 assert.equal(result.activeGuardCount, 12);
-assert.equal(result.roleCount, 4);
-assert.equal(result.checkCount, 50);
+assert.equal(result.roleCount, 2);
+assert.equal(result.checkCount, 26);
 assert.equal(result.adminRecoveryReady, true);
 assert.equal(result.unknownRouteBlocked, true);
 assert.equal(result.inactiveProfileBlocked, true);
 assert.equal(result.enforcementEnabled, true);
 assert.equal(result.completed, true);
-assert.deepEqual(Array.from(roles, (role) => role.allowedCount), [12, 9, 4, 3]);
+assert.deepEqual(Array.from(roles, (role) => role.allowedCount), [12, 11]);
 
 const noRecovery = sandbox.A33SecurityActivationE84C.validate({ access:{}, guardState:{enforcementEnabled:true}, pages, roleMatrix:roles, unknownResult, inactiveResult });
 assert.equal(noRecovery.completed, false);
@@ -54,7 +54,7 @@ const canonicalPages = [
 canonicalPages.forEach(([id, file]) => {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
   assert(html.includes(`data-a33-module="${id}"`), `${file} no declara ${id}.`);
-  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=2/.test(html), `${file} no carga la guarda activa E8.4C.`);
+  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=4/.test(html), `${file} no carga la guarda activa E8.4C.`);
 });
 
 ['.set(', '.add(', '.update(', '.delete(', '.commit(', 'httpsCallable', 'localStorage.setItem'].forEach((token) => {
@@ -66,7 +66,7 @@ assert(guardSource.includes('simulate(target, g.A33Access.getState())'), 'El men
 assert(guardSource.includes('Acceder como Maestro'), 'Configuración no conserva la recuperación autenticable.');
 assert(guardSource.includes('child.inert = true'), 'El contenido restringido sigue disponible para interacción por teclado.');
 assert(configHtml.includes('id="cfg-security-e84c-run"'), 'No existe el botón E8.4C.');
-assert(configHtml.includes('a33-firebase-security-activate-e84c.js?v=4.20.98&amp;r=1'), 'No se cargó la auditoría E8.4C.');
+assert(configHtml.includes('a33-firebase-security-activate-e84c.js?v=4.20.98&amp;r=2'), 'No se cargó la auditoría E8.4C.');
 assert(configScript.includes('function initSecurityActivationE84C()'), 'No se inicializa E8.4C.');
 assert(configScript.includes('initSecurityActivationE84C();'), 'E8.4C no se activa al cargar Configuración.');
 

@@ -11,10 +11,9 @@
   };
   const roleOptions = [
     { key:'admin', label:'Admin', description:'Administración completa', permissions:['suite.use','config.view','users.view','users.manage','roles.assign','backup.manage','firebase.admin','sales.use','agenda.use','finance.use','purchases.use','reports.view','inventory.use','production.use','lots.use','pedidos.use','center.view','sandbox.use','catalog.view'] },
-    { key:'ventas', label:'Ventas', description:'Ventas, clientes y operación comercial', permissions:['suite.use','sales.use','agenda.use','customers.view','inventory.use','production.use','lots.use','pedidos.use','center.view','reports.view','catalog.view'] },
-    { key:'finanzas', label:'Finanzas', description:'Finanzas, compras e informes', permissions:['suite.use','finance.use','purchases.use','reports.view','center.view','catalog.view'] },
-    { key:'consulta', label:'Consulta', description:'Consulta de informes, centro y catálogos', permissions:['suite.use','reports.view','center.view','catalog.view'] }
+    { key:'usuario', label:'Usuario', description:'Operación completa sin Configuración ni cierres protegidos', permissions:['suite.use','sales.use','agenda.use','customers.view','finance.use','purchases.use','reports.view','inventory.use','production.use','lots.use','pedidos.use','center.view','sandbox.use','catalog.view'] }
   ];
+  const legacyRoleAliases = { ventas:'usuario', finanzas:'usuario', consulta:'usuario' };
   const moduleOptions = [
     { key:'produccion', label:'Producción', permission:'production.use' },
     { key:'lotes', label:'Lotes', permission:'lots.use' },
@@ -37,7 +36,8 @@
   function baseState(){ return { user:null, profile:null, workspaceId:'arcano33', role:'', roleLabel:'Sin rol', statusLabel:'Sin estado', permissions:[], backendMode:BACKEND_MODE, backendHealth:'checking', backendMessage:'Verificando el backend administrativo…', managementReady:false, canBootstrap:false, loadingProfile:false, profileMissing:false, isAdmin:false }; }
   function clean(value, maxLen){ return String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, maxLen || 320); }
   function workspaceId(){ try{ return clean(g.A33FirebaseSettings.read().workspaceId, 80) || 'arcano33'; }catch(_){ return 'arcano33'; } }
-  function roleMeta(role){ return roleOptions.find(function(item){ return item.key === role; }) || null; }
+  function canonicalRole(role){ const cleanRole=clean(role, 30).toLowerCase(); return legacyRoleAliases[cleanRole] || cleanRole; }
+  function roleMeta(role){ const canonical=canonicalRole(role); return roleOptions.find(function(item){ return item.key === canonical; }) || null; }
   function getState(){ return Object.assign({}, state, { user:state.user ? Object.assign({}, state.user) : null, profile:state.profile ? Object.assign({}, state.profile) : null, permissions:state.permissions.slice() }); }
   function dispatch(){ try{ if (typeof g.CustomEvent === 'function' && g.dispatchEvent) g.dispatchEvent(new CustomEvent('a33:access-state', { detail:getState() })); }catch(_){ } }
   function setState(patch){ state = Object.assign({}, state, patch || {}); dispatch(); return getState(); }
@@ -61,8 +61,8 @@
   }
   function normalizeProfile(data, uid){
     const src = data && typeof data === 'object' ? data : {};
-    const role = roleMeta(clean(src.role, 30)) ? clean(src.role, 30) : 'consulta';
-    return { uid:clean(src.uid || uid, 160), workspaceId:clean(src.workspaceId || workspaceId(), 80), name:clean(src.name, 160), email:clean(src.email, 180).toLowerCase(), role, status:src.status === 'active' ? 'active' : 'inactive', permissions:Array.isArray(src.permissions) ? src.permissions.map(function(item){ return clean(item, 80); }).filter(Boolean) : roleMeta(role).permissions.slice(), createdAt:timestamp(src.createdAt), updatedAt:timestamp(src.updatedAt), lastAdminMutationAt:timestamp(src.lastAdminMutationAt) };
+    const role = roleMeta(src.role) ? canonicalRole(src.role) : 'usuario';
+    return { uid:clean(src.uid || uid, 160), workspaceId:clean(src.workspaceId || workspaceId(), 80), name:clean(src.name, 160), email:clean(src.email, 180).toLowerCase(), role, status:src.status === 'active' ? 'active' : 'inactive', permissions:roleMeta(role).permissions.slice(), createdAt:timestamp(src.createdAt), updatedAt:timestamp(src.updatedAt), lastAdminMutationAt:timestamp(src.lastAdminMutationAt) };
   }
   async function ensureFirestore(){
     const settings = g.A33FirebaseSettings && g.A33FirebaseSettings.read ? g.A33FirebaseSettings.read() : null;

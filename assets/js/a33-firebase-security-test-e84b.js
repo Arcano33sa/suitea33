@@ -21,7 +21,7 @@
     if (installation.stage !== 'E8.4A' || installation.readyForE84B !== true) issues.push('E8.4A no está confirmada para probar las guardas.');
     if (guardState.enforcementEnabled) issues.push('La compuerta real se activó durante la prueba controlada.');
     if (moduleCount !== 12) issues.push('La prueba no cubrió los 12 módulos canónicos.');
-    if (roles.length !== 4) issues.push('La prueba no cubrió los 4 roles canónicos.');
+    if (roles.length !== 2) issues.push('La prueba no cubrió los 2 roles canónicos.');
     if (!admin || admin.allowedCount !== moduleCount || admin.deniedCount !== 0 || !admin.recoveryReady) issues.push('El Admin Maestro no conserva recuperación completa.');
     if (nonAdmins.some(function(role){ return role.allowedCount + role.deniedCount !== moduleCount; })) issues.push('Hay roles con cobertura incompleta.');
     if (nonAdmins.some(function(role){ return role.deniedCount === 0; })) issues.push('La prueba no confirmó restricciones para todos los roles limitados.');

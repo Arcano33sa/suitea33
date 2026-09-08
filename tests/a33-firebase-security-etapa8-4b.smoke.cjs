@@ -37,15 +37,15 @@ const result = sandbox.A33SecurityTestE84B.validate({
 assert.equal(result.stage, 'E8.4B');
 assert.equal(result.simulationOnly, true);
 assert.equal(result.readOnly, true);
-assert.equal(result.roleCount, 4);
+assert.equal(result.roleCount, 2);
 assert.equal(result.moduleCount, 12);
-assert.equal(result.checkCount, 50);
+assert.equal(result.checkCount, 26);
 assert.equal(result.adminRecoveryReady, true);
 assert.equal(result.unknownRouteBlocked, true);
 assert.equal(result.inactiveProfileBlocked, true);
 assert.equal(result.enforcementEnabled, false);
 assert.equal(result.readyForE84C, true);
-assert.deepEqual(Array.from(roles, (role) => role.allowedCount), [12, 9, 4, 3]);
+assert.deepEqual(Array.from(roles, (role) => role.allowedCount), [12, 11]);
 
 const activated = sandbox.A33SecurityTestE84B.validate({
   installation:{stage:'E8.4A',readyForE84B:true}, roles, moduleCount:12,
@@ -58,7 +58,7 @@ assert.equal(activated.readyForE84C, false);
 });
 assert(guardSource.includes('function simulate(target, accessOverride)'), 'La vía de prueba controlada E8.4B no está disponible.');
 assert(configHtml.includes('id="cfg-security-e84b-run"'), 'No existe el botón E8.4B.');
-assert(configHtml.includes('a33-firebase-security-test-e84b.js?v=4.20.98&amp;r=1'), 'No se cargó la prueba E8.4B.');
+assert(configHtml.includes('a33-firebase-security-test-e84b.js?v=4.20.98&amp;r=2'), 'No se cargó la prueba E8.4B.');
 assert(configScript.includes('function initSecurityTestE84B()'), 'No se inicializa E8.4B.');
 assert(configScript.includes('initSecurityTestE84B();'), 'E8.4B no se activa al cargar Configuración.');
 

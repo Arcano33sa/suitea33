@@ -66,14 +66,23 @@
         await loadScript();
         auth = g.firebase.auth(app);
         if (unsubscribe) unsubscribe();
-        unsubscribe = auth.onAuthStateChanged(function(user){
-          setState({ ready:true, status:user ? 'authenticated' : 'ready', mode:'firebase-auth', user:publicUser(user), message:user ? 'Sesión segura activa.' : 'Firebase Auth listo para iniciar sesión.', lastError:'' });
-        }, function(error){
-          const message = friendlyError(error);
-          setState({ ready:false, status:'error', user:null, message, lastError:message });
+        return await new Promise(function(resolve){
+          let initialStatePending = true;
+          unsubscribe = auth.onAuthStateChanged(function(user){
+            const next = setState({ ready:true, status:user ? 'authenticated' : 'ready', mode:'firebase-auth', user:publicUser(user), message:user ? 'Sesión segura activa.' : 'Firebase Auth listo para iniciar sesión.', lastError:'' });
+            if (initialStatePending){
+              initialStatePending = false;
+              resolve(next);
+            }
+          }, function(error){
+            const message = friendlyError(error);
+            const next = setState({ ready:false, status:'error', user:null, message, lastError:message });
+            if (initialStatePending){
+              initialStatePending = false;
+              resolve(next);
+            }
+          });
         });
-        setState({ ready:true, status:auth.currentUser ? 'authenticated' : 'ready', mode:'firebase-auth', user:publicUser(auth.currentUser), message:auth.currentUser ? 'Sesión segura activa.' : 'Firebase Auth listo para iniciar sesión.', lastError:'' });
-        return getState();
       }catch(error){
         initPromise = null;
         const message = friendlyError(error);
@@ -91,7 +100,9 @@
     setState({ status:'signing-in', message:'Verificando credenciales…', lastError:'' });
     try{
       const credential = await auth.signInWithEmailAndPassword(normalizedEmail, String(password));
-      return { ok:true, user:publicUser(credential && credential.user) };
+      const user = credential && credential.user ? credential.user : auth.currentUser;
+      setState({ ready:true, status:'authenticated', mode:'firebase-auth', user:publicUser(user), message:'Sesión segura activa.', lastError:'' });
+      return { ok:true, user:publicUser(user) };
     }catch(error){
       const message = friendlyError(error);
       setState({ status:'error', message, lastError:message, user:null });

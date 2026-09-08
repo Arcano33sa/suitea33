@@ -24,7 +24,7 @@
     if (!guardState.enforcementEnabled) issues.push('La compuerta real de módulos no está activa.');
     if (pages.length !== 12 || missing.length) issues.push('La activación no cubre las 12 páginas canónicas' + (missing.length ? ': ' + missing.join(', ') : '') + '.');
     if (!access.user || !access.profile || access.profile.status !== 'active' || access.role !== 'admin' || !access.isAdmin) issues.push('La sesión actual no confirma la recuperación del Admin Maestro.');
-    if (roleMatrix.length !== 4) issues.push('La validación no cubrió los cuatro roles.');
+    if (roleMatrix.length !== 2) issues.push('La validación no cubrió los dos roles.');
     if (!admin || admin.allowedCount !== 12 || admin.deniedCount !== 0 || !admin.recoveryReady) issues.push('La recuperación Admin no cubre los 12 módulos.');
     if (roleMatrix.filter(function(role){ return role.key !== 'admin'; }).some(function(role){ return role.deniedCount < 1; })) issues.push('Algún rol limitado no conserva restricciones.');
     if (unknownResult.allowed !== false || unknownResult.reason !== 'module-unknown') issues.push('Una ruta desconocida no falla de forma segura.');
@@ -45,7 +45,7 @@
       const response = await fetch(page[1], { cache:'no-store', credentials:'same-origin' });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const html = await response.text();
-      return { id:page[0], path:page[1], guardActive:/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=2/.test(html), headerMatches:html.includes('data-a33-module="' + page[0] + '"') };
+      return { id:page[0], path:page[1], guardActive:/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=4/.test(html), headerMatches:html.includes('data-a33-module="' + page[0] + '"') };
     }catch(error){
       return { id:page[0], path:page[1], guardActive:false, headerMatches:false, error:String(error && error.message || error) };
     }

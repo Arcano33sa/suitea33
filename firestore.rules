@@ -36,6 +36,7 @@ service cloud.firestore {
     function requesterAgenda(workspaceId) {
       return requesterActiveMember(workspaceId)
         && (requesterData(workspaceId).role == 'admin'
+          || requesterData(workspaceId).role == 'usuario'
           || requesterData(workspaceId).role == 'ventas');
     }
 
@@ -45,6 +46,7 @@ service cloud.firestore {
 
     function validRole(role) {
       return role == 'admin'
+        || role == 'usuario'
         || role == 'ventas'
         || role == 'finanzas'
         || role == 'consulta';

@@ -42,42 +42,31 @@ const ROLE_DEFINITIONS = {
       'catalog.view'
     ]
   },
-  ventas: {
-    label: 'Ventas',
+  usuario: {
+    label: 'Usuario',
     permissions: [
       'suite.use',
       'sales.use',
       'agenda.use',
       'customers.view',
+      'finance.use',
+      'purchases.use',
+      'reports.view',
       'inventory.use',
       'production.use',
       'lots.use',
       'pedidos.use',
       'center.view',
-      'reports.view',
-      'catalog.view'
-    ]
-  },
-  finanzas: {
-    label: 'Finanzas',
-    permissions: [
-      'suite.use',
-      'finance.use',
-      'purchases.use',
-      'reports.view',
-      'center.view',
-      'catalog.view'
-    ]
-  },
-  consulta: {
-    label: 'Consulta',
-    permissions: [
-      'suite.use',
-      'reports.view',
-      'center.view',
+      'sandbox.use',
       'catalog.view'
     ]
   }
+};
+
+const LEGACY_ROLE_ALIASES = {
+  ventas: 'usuario',
+  finanzas: 'usuario',
+  consulta: 'usuario'
 };
 
 function cleanString(value) {
@@ -128,10 +117,11 @@ function assertEmail(email) {
 
 function normalizeRole(role) {
   const clean = cleanString(role).toLowerCase();
-  if (!validRole(clean)) {
+  const canonical = LEGACY_ROLE_ALIASES[clean] || clean;
+  if (!validRole(canonical)) {
     throw new HttpsError('invalid-argument', 'Rol inválido.');
   }
-  return clean;
+  return canonical;
 }
 
 function normalizeStatus(status) {
@@ -190,7 +180,7 @@ async function assertNotLastActiveAdmin(workspaceId, uid) {
 }
 
 function buildPermissions(role) {
-  return Array.from(new Set((ROLE_DEFINITIONS[role] && ROLE_DEFINITIONS[role].permissions) || ROLE_DEFINITIONS.consulta.permissions));
+  return Array.from(new Set((ROLE_DEFINITIONS[role] && ROLE_DEFINITIONS[role].permissions) || ROLE_DEFINITIONS.usuario.permissions));
 }
 
 function buildClaims({ role, status, workspaceId }) {
