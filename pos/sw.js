@@ -13,7 +13,7 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '1'; // POS cache bump local — Cierre Parte 4 Final
 
 const MODULE = 'pos';
-const MODULE_CACHE_REV = '58';
+const MODULE_CACHE_REV = '59';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -25,9 +25,9 @@ function isLegacySuiteCache(name){
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.98&r=35',
+  './index.html?v=4.20.98&r=36',
   './styles.css?v=4.20.98&r=25',
-  './app.js?v=4.20.98&r=52',
+  './app.js?v=4.20.98&r=53',
   './manifest.webmanifest?v=4.20.98&r=28',
   './offline.html',
   './logo.png',

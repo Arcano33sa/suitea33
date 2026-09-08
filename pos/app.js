@@ -24447,6 +24447,12 @@ async function applyClosePeriodGatekeeperUI_POS(opts){
 
   const hintEl = document.getElementById('summary-period-hint');
 
+  if (!canManageProtectedClosuresPOS()){
+    try{ btn.disabled = true; }catch(_){ }
+    if (hintEl) hintEl.textContent = 'Solo el Administrador puede cerrar períodos.';
+    return;
+  }
+
   // Guardar hint default para poder restaurarlo al quedar OK
   try{
     if (hintEl && !hintEl.dataset.defaultText){
@@ -24863,6 +24869,7 @@ async function resetOperationalStoresAfterArchivePOS(){
 }
 
 async function openSummaryClosePeriodModalPOS(){
+  if (!requireProtectedClosurePOS('cerrar períodos')) return;
   if (isSummaryConsolidatedViewActivePOS()){
     showToast('CONSOLIDADO es solo lectura. Volvé a Archivo normal para cerrar períodos.', 'error', 4000);
     return;
@@ -24923,6 +24930,7 @@ function closeSummaryClosePeriodModalPOS(){
 }
 
 async function confirmClosePeriodPOS(){
+  if (!requireProtectedClosurePOS('cerrar períodos')) return;
   if (isSummaryConsolidatedViewActivePOS()){
     showToast('CONSOLIDADO es solo lectura. No se puede cerrar/archivar desde esa vista.', 'error', 4000);
     return;
@@ -26390,6 +26398,7 @@ async function renderEventos(){
     `;
     tbody.appendChild(tr);
   }
+  applyProtectedClosureAccessUI_POS();
 }
 // Modal VER: rellenar
 function showEventView(show){ $('#event-view').style.display = show ? 'flex' : 'none'; }
@@ -26823,8 +26832,57 @@ async function exportEventExcel(eventId){
   XLSX.writeFile(wb, `evento_${safeName}.xlsx`);
 }
 
+// --- Cierres protegidos por rol (E9.5B-R2) ---
+function canManageProtectedClosuresPOS(accessOverride){
+  const access = accessOverride && typeof accessOverride === 'object'
+    ? accessOverride
+    : (window.A33Access && typeof window.A33Access.getState === 'function' ? window.A33Access.getState() : null);
+  const profile = access && access.profile && typeof access.profile === 'object' ? access.profile : null;
+  const role = String((access && access.role) || (profile && profile.role) || '').trim().toLowerCase();
+  return !!(access && access.user && profile && profile.status === 'active' && role === 'admin');
+}
+
+function requireProtectedClosurePOS(actionLabel, accessOverride){
+  if (canManageProtectedClosuresPOS(accessOverride)) return true;
+  const message = `Solo el Administrador puede ${String(actionLabel || 'realizar este cierre')}.`;
+  try{ showToast(message, 'error', 4500); }catch(_){ try{ alert(message); }catch(__){ } }
+  return false;
+}
+
+function applyProtectedClosureAccessUI_POS(accessOverride){
+  const allowed = canManageProtectedClosuresPOS(accessOverride);
+  const buttons = document.querySelectorAll('#btn-close-event, .act-cerrar, #btn-summary-close-period, #summary-close-confirm');
+  buttons.forEach(function(button){
+    if (!allowed){
+      if (button.dataset.a33ClosureDenied !== '1') button.dataset.a33ClosurePreviousDisabled = button.disabled ? '1' : '0';
+      button.dataset.a33ClosureDenied = '1';
+      button.disabled = true;
+      button.setAttribute('aria-disabled', 'true');
+      button.title = 'Solo el Administrador puede realizar cierres de eventos o períodos.';
+    }else if (button.dataset.a33ClosureDenied === '1'){
+      button.disabled = button.dataset.a33ClosurePreviousDisabled === '1';
+      button.removeAttribute('aria-disabled');
+      button.removeAttribute('title');
+      delete button.dataset.a33ClosureDenied;
+      delete button.dataset.a33ClosurePreviousDisabled;
+    }
+  });
+}
+
+if (window.addEventListener){
+  window.addEventListener('a33:access-state', function(event){
+    applyProtectedClosureAccessUI_POS(event && event.detail ? event.detail : null);
+  });
+}
+if (document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', function(){ applyProtectedClosureAccessUI_POS(); }, { once:true });
+}else{
+  setTimeout(function(){ applyProtectedClosureAccessUI_POS(); }, 0);
+}
+
 // --- Close / Reopen / Activate / Delete ---
 async function closeEvent(eventId){
+  if (!requireProtectedClosurePOS('cerrar eventos')) return;
   const events = await getAll('events');
   const ev = events.find(e=>e.id===eventId);
   if (!ev){ alert('Evento no encontrado'); return; }
