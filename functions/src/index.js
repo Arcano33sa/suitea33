@@ -313,7 +313,7 @@ async function archiveMemberProfile({ workspaceId, uid, actorUid, reason, member
   }, { merge: true });
 }
 
-exports.a33AdminHealthcheck = onCall(async (request) => {
+exports.a33AdminHealthcheck = onCall({ invoker: 'public' }, async (request) => {
   const authContext = await assertAuthenticated(request);
   const tokenWorkspace = authContext.token.workspaceId ? assertWorkspaceId(authContext.token.workspaceId) : '';
   const workspaceId = assertWorkspaceId((request.data && request.data.workspaceId) || tokenWorkspace || DEFAULT_WORKSPACE_ID);
@@ -338,7 +338,7 @@ exports.a33AdminHealthcheck = onCall(async (request) => {
   };
 });
 
-exports.a33BootstrapWorkspaceAdmin = onCall(async (request) => {
+exports.a33BootstrapWorkspaceAdmin = onCall({ invoker: 'public' }, async (request) => {
   const authContext = await assertAuthenticated(request);
   const tokenWorkspace = authContext.token.workspaceId ? assertWorkspaceId(authContext.token.workspaceId) : '';
   const workspaceId = assertWorkspaceId((request.data && request.data.workspaceId) || tokenWorkspace || DEFAULT_WORKSPACE_ID);
@@ -409,7 +409,7 @@ exports.a33BootstrapWorkspaceAdmin = onCall(async (request) => {
   };
 });
 
-exports.a33AdminUpsertUser = onCall(async (request) => {
+exports.a33AdminUpsertUser = onCall({ invoker: 'public' }, async (request) => {
   const adminContext = await assertAdminContext(request);
   const input = request.data && typeof request.data === 'object' ? request.data : {};
   const workspaceId = assertWorkspaceId(input.workspaceId || adminContext.workspaceId);
@@ -507,7 +507,7 @@ exports.a33AdminUpsertUser = onCall(async (request) => {
   };
 });
 
-exports.a33AdminDeleteUser = onCall(async (request) => {
+exports.a33AdminDeleteUser = onCall({ invoker: 'public' }, async (request) => {
   const adminContext = await assertAdminContext(request);
   const input = request.data && typeof request.data === 'object' ? request.data : {};
   const workspaceId = assertWorkspaceId(input.workspaceId || adminContext.workspaceId);
