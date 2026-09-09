@@ -157,6 +157,30 @@
       panel.appendChild(link);
     });
 
+    const signOut = document.createElement('button');
+    signOut.className = 'a33-module-link a33-module-signout';
+    signOut.type = 'button';
+    signOut.textContent = 'Cerrar sesión';
+    signOut.addEventListener('click', async function () {
+      if (signOut.disabled) return;
+      signOut.disabled = true;
+      signOut.textContent = 'Cerrando…';
+      try {
+        if (!g.A33FirebaseAuth || typeof g.A33FirebaseAuth.signOut !== 'function') {
+          throw new Error('El servicio de sesión no está disponible.');
+        }
+        await g.A33FirebaseAuth.signOut();
+        g.location.assign('/index.html');
+      } catch (error) {
+        signOut.disabled = false;
+        signOut.textContent = 'Cerrar sesión';
+        if (g.A33Toast && typeof g.A33Toast.error === 'function') {
+          g.A33Toast.error(String(error && error.message || 'No se pudo cerrar la sesión.'));
+        }
+      }
+    });
+    panel.appendChild(signOut);
+
     function setOpen(open, options) {
       const shouldOpen = Boolean(open);
       panel.hidden = !shouldOpen;
@@ -172,7 +196,7 @@
     });
 
     panel.addEventListener('click', function (event) {
-      if (event.target.closest('.a33-module-link')) setOpen(false);
+      if (event.target.closest('.a33-module-link:not(.a33-module-signout)')) setOpen(false);
     });
 
     document.addEventListener('keydown', function (event) {

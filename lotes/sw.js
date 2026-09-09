@@ -13,7 +13,7 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '1';
 
 const MODULE = 'lotes';
-const MODULE_CACHE_REV = '26';
+const MODULE_CACHE_REV = '27';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -39,10 +39,10 @@ const PRECACHE_URLS = [
   '/assets/js/a33-lot-code.js?v=4.20.98&r=6',
   '/assets/js/a33-production.js?v=4.20.98&r=5',
   '/assets/css/a33-header.css?v=4.20.98&r=7',
-  '/assets/css/a33-module-nav.css?v=4.20.98&r=3',
+  '/assets/css/a33-module-nav.css?v=4.20.98&r=4',
   '/assets/css/a33-toast.css?v=4.20.98&r=1',
   '/assets/js/a33-theme.js?v=4.20.98&r=7',
-  '/assets/js/a33-module-nav.js?v=4.20.98&r=3',
+  '/assets/js/a33-module-nav.js?v=4.20.98&r=4',
   '/assets/css/a33-theme.css?v=4.20.98&r=7',
   './vendor/xlsx.full.min.js?v=4.20.98&r=7'
 ];

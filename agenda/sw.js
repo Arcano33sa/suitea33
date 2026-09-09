@@ -2,7 +2,7 @@
 try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=54'); } catch (_) {}
 const VERSION = self.A33_RELEASE && self.A33_RELEASE.suiteVersion ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const REV = self.A33_RELEASE && self.A33_RELEASE.rev != null ? String(self.A33_RELEASE.rev) : '1';
-const CACHE = `a33-v${VERSION}-agenda-r${REV}-m6`;
+const CACHE = `a33-v${VERSION}-agenda-r${REV}-m7`;
 const PRECACHE = [
   './',
   './index.html?v=4.20.98&r=4',
@@ -18,9 +18,9 @@ const PRECACHE = [
   '/assets/js/a33-materials.js?v=4.20.98&r=2',
   '/assets/js/a33-toast.js?v=4.20.98&r=1',
   '/assets/js/a33-theme.js?v=4.20.98&r=7',
-  '/assets/js/a33-module-nav.js?v=4.20.98&r=3',
+  '/assets/js/a33-module-nav.js?v=4.20.98&r=4',
   '/assets/css/a33-header.css?v=4.20.98&r=7',
-  '/assets/css/a33-module-nav.css?v=4.20.98&r=3',
+  '/assets/css/a33-module-nav.css?v=4.20.98&r=4',
   '/assets/css/a33-toast.css?v=4.20.98&r=1',
   '/assets/css/a33-theme.css?v=4.20.98&r=7'
 ];

@@ -17,8 +17,8 @@ assert(app.includes("window.addEventListener('a33:access-state'"), 'La interfaz 
 assert(app.includes("document.addEventListener('DOMContentLoaded'"), 'La restricción no se aplica en la carga inicial.');
 assert(!app.includes("#btn-summary-close-day, .act-cerrar"), 'El cierre diario no debe quedar incluido por accidente.');
 assert(html.includes('app.js?v=4.20.98&r=53'), 'POS no carga la revisión R2 de app.js.');
-assert(html.includes("-pos-r'+rev+'-m59"), 'POS no expone el caché R2 vigente.');
-assert(sw.includes("const MODULE_CACHE_REV = '59';"), 'El caché POS no fue actualizado.');
+assert(html.includes("-pos-r'+rev+'-m60"), 'POS no expone el caché vigente.');
+assert(sw.includes("const MODULE_CACHE_REV = '60';"), 'El caché POS no fue actualizado.');
 assert(sw.includes("'./app.js?v=4.20.98&r=53'"), 'El service worker no precarga la revisión R2.');
 
 const canStart = app.indexOf('function canManageProtectedClosuresPOS(accessOverride)');

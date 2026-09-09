@@ -32,7 +32,7 @@
 </script>
 <link rel="stylesheet" href="styles.css?v=4.20.98&r=25">
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=13" />
-  <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=3" />
+  <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=4" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=13" />
   <link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
   <script src="/assets/js/a33-theme.js?v=4.20.98&r=13"></script>
@@ -1684,7 +1684,7 @@
 
 <script src="./vendor/xlsx.full.min.js?v=4.20.98&r=13"></script>
   <script src="/assets/js/a33-release.js?v=4.20.98&r=57"></script>
-  <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=3"></script>
+  <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=4"></script>
   <script src="/assets/js/a33-module-guard.js?v=4.20.98&r=5"></script>
 
 <script src="/assets/js/a33-storage.js?v=4.20.98&r=20"></script>
@@ -1700,7 +1700,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m59').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m60').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1709,7 +1709,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m59')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m60')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
