@@ -54,7 +54,7 @@ const canonicalPages = [
 canonicalPages.forEach(([id, file]) => {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
   assert(html.includes(`data-a33-module="${id}"`), `${file} no declara ${id}.`);
-  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=4/.test(html), `${file} no carga la guarda activa E8.4C.`);
+  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=5/.test(html), `${file} no carga la guarda activa E8.4C.`);
 });
 
 ['.set(', '.add(', '.update(', '.delete(', '.commit(', 'httpsCallable', 'localStorage.setItem'].forEach((token) => {

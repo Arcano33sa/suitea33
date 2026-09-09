@@ -47,7 +47,7 @@ assert(
 guardedPages.forEach((file) => {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
   assert(
-    html.includes('a33-module-guard.js?v=4.20.98') && /a33-module-guard\.js\?v=4\.20\.98(?:&|&amp;)r=4/.test(html),
+    html.includes('a33-module-guard.js?v=4.20.98') && /a33-module-guard\.js\?v=4\.20\.98(?:&|&amp;)r=5/.test(html),
     `${file} debe cargar la revisión nueva de la guarda.`
   );
 });

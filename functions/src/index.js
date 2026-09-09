@@ -11,7 +11,7 @@ const db = admin.firestore();
 const auth = admin.auth();
 
 const REGION = 'us-central1';
-const BACKEND_VERSION = '2026.09.05-e9.2';
+const BACKEND_VERSION = '2026.09.08-e9.5b-r3';
 const DEFAULT_WORKSPACE_ID = 'arcano33';
 const PROFILE_VERSION = 2;
 

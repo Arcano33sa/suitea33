@@ -3763,9 +3763,7 @@ Los históricos se conservarán. ¿Continuar?`);
 
   const USER_ROLE_META = {
     admin: { label: 'Admin' },
-    ventas: { label: 'Ventas' },
-    finanzas: { label: 'Finanzas' },
-    consulta: { label: 'Consulta' }
+    usuario: { label: 'Usuario' }
   };
   const USER_STATUS_META = {
     active: { label: 'Activo' },
@@ -3827,7 +3825,7 @@ Los históricos se conservarán. ¿Continuar?`);
 
   function normalizeRemoteUser(item){
     const roleMeta = getRoleMetaMap();
-    const role = roleMeta[item?.role] ? item.role : 'consulta';
+    const role = roleMeta[item?.role] ? item.role : 'usuario';
     const status = USER_STATUS_META[item?.status] ? item.status : 'pending';
     return {
       id: String(item?.uid || item?.id || ''),
@@ -3850,7 +3848,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const inactive = list.filter((user) => user.status === 'inactive').length;
     const roleCounts = list.reduce((acc, user) => {
       const roleMeta = getRoleMetaMap();
-      const role = roleMeta[user.role] ? user.role : 'consulta';
+      const role = roleMeta[user.role] ? user.role : 'usuario';
       acc[role] = (acc[role] || 0) + 1;
       return acc;
     }, {});
@@ -3887,7 +3885,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const meta = getRoleMetaMap();
     const html = Object.entries(meta).map(([key, item]) => `<option value="${escapeHtml(key)}">${escapeHtml(item.label || key)}</option>`).join('');
     select.innerHTML = html;
-    const preferred = meta[current] ? current : (meta.admin ? 'admin' : Object.keys(meta)[0] || 'consulta');
+    const preferred = meta[current] ? current : (meta.admin ? 'admin' : Object.keys(meta)[0] || 'usuario');
     select.value = preferred;
   }
 
@@ -3932,7 +3930,7 @@ Los históricos se conservarán. ¿Continuar?`);
     section.emailInput.value = user.email;
     populateRoleOptions(section.roleInput);
     const roleMeta = getRoleMetaMap();
-    section.roleInput.value = roleMeta[user.role] ? user.role : 'consulta';
+    section.roleInput.value = roleMeta[user.role] ? user.role : 'usuario';
     section.statusInput.value = USER_STATUS_META[user.status] ? user.status : 'active';
     const simulation = buildUsersUiModel().canSimulate;
     section.saveBtn.textContent = simulation ? 'Simular actualización' : 'Actualizar usuario';
@@ -4240,7 +4238,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const name = normalizeUserName(section.nameInput.value);
     const email = normalizeUserEmail(section.emailInput.value);
     const roleMeta = getRoleMetaMap();
-    const role = roleMeta[section.roleInput.value] ? section.roleInput.value : 'consulta';
+    const role = roleMeta[section.roleInput.value] ? section.roleInput.value : 'usuario';
     const status = USER_STATUS_META[section.statusInput.value] ? section.statusInput.value : 'active';
 
     if (!name || name.length < 2){

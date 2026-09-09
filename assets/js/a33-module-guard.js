@@ -13,6 +13,7 @@
   let accessPromise = null;
   let accessReady = false;
   let verificationPromise = null;
+  let authenticationInProgress = false;
 
   function header(){ return typeof document === 'undefined' ? null : document.querySelector('.a33-header[data-a33-module]'); }
   function moduleId(){ const node = header(); return node ? String(node.dataset.a33Module || '').trim() : ''; }
@@ -104,15 +105,7 @@
       home.href = '/index.html';
       home.textContent = 'Volver al inicio';
       actions.appendChild(home);
-      if (moduleId() !== 'configuracion'){
-        const login = document.createElement('a');
-        login.className = 'a33-module-guard-button';
-        login.href = '/configuracion/index.html';
-        login.textContent = 'Iniciar sesión';
-        actions.appendChild(login);
-      }else{
-        renderRecoveryForm(node);
-      }
+      renderRecoveryForm(node);
     }
     return node;
   }
@@ -122,22 +115,25 @@
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'a33-module-guard-button';
-    button.textContent = 'Acceder como Maestro';
+    button.textContent = moduleId() === 'configuracion' ? 'Acceder como Maestro' : 'Iniciar sesión';
     node.querySelector('.a33-module-guard-actions').prepend(button);
     button.addEventListener('click', async function(){
       const inputs = host.querySelectorAll('input');
       const error = node.querySelector('.a33-module-guard-error');
       button.disabled = true;
       error.textContent = '';
+      authenticationInProgress = true;
       try{
         await g.A33FirebaseAuth.signIn(inputs[0].value, inputs[1].value);
         inputs[1].value = '';
         await g.A33Access.refresh();
+        authenticationInProgress = false;
         await verifyCurrentModule();
       }catch(failure){
+        authenticationInProgress = false;
         inputs[1].value = '';
         error.textContent = String(failure && failure.message || 'No se pudo iniciar sesión.');
-      }finally{ button.disabled = false; }
+      }finally{ authenticationInProgress = false; button.disabled = false; }
     });
   }
   function unlock(){
@@ -168,7 +164,9 @@
     node.dataset.a33GuardReady = '1';
     node.dataset.a33GuardMode = ENFORCEMENT_ENABLED ? 'enforced' : 'prepared-disabled';
     document.addEventListener('click', handleNavigation, true);
-    if (g.addEventListener) g.addEventListener('a33:access-state', verifyCurrentModule);
+    if (g.addEventListener) g.addEventListener('a33:access-state', function(){
+      if (!authenticationInProgress) verifyCurrentModule();
+    });
     verifyCurrentModule();
     return getState();
   }

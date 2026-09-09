@@ -48,7 +48,7 @@ const canonicalPages = [
 canonicalPages.forEach(([id, file]) => {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
   assert(html.includes(`data-a33-module="${id}"`), `${file} no declara el módulo ${id}.`);
-  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=(?:1|2|3|4)/.test(html), `${file} no carga la guarda E8.4A.`);
+  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&amp;|&)r=(?:1|2|3|4|5)/.test(html), `${file} no carga la guarda E8.4A.`);
 });
 
 ['.set(', '.add(', '.update(', '.delete(', '.commit(', 'httpsCallable', 'localStorage.setItem'].forEach((token) => {

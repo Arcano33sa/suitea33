@@ -31,6 +31,6 @@ modules.filter((module) => module.key !== 'configuracion').forEach((module) => a
 assert(functionsSource.includes("ROLE_DEFINITIONS.usuario.permissions"), 'El fallback backend no usa Usuario.');
 assert(rulesSource.includes("role == 'usuario'"), 'Las reglas locales no preparan el rol Usuario.');
 assert(configHtml.includes('a33-firebase-access.js?v=4.20.98&amp;r=18'), 'Configuración no carga la política R1.');
-assert(configHtml.includes('a33-module-guard.js?v=4.20.98&amp;r=4'), 'Configuración no carga la guarda R1.');
+assert(configHtml.includes('a33-module-guard.js?v=4.20.98&amp;r=5'), 'Configuración no carga la guarda vigente.');
 
 console.log('OK a33-firebase-users-etapa9-5b-r1.smoke');
