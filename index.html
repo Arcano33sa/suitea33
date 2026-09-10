@@ -559,6 +559,7 @@
 </style>
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
 <link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
+<link rel="stylesheet" href="/assets/css/a33-home-access.css?v=4.20.98&r=1" />
 </head>
 <body>
 
@@ -577,10 +578,26 @@
         Selecciona un módulo para trabajar. Puedes fijar esta Suite en la pantalla de inicio de tu teléfono para acceder más rápido.
       </p>
 
+      <section class="a33-home-access" id="a33-home-access" aria-live="polite">
+        <div class="a33-home-access-copy">
+          <strong data-a33-home-access-title>Verificando acceso…</strong>
+          <span data-a33-home-access-message>Estamos cargando tu sesión y permisos.</span>
+        </div>
+        <form class="a33-home-access-form" data-a33-home-access-form hidden>
+          <label class="a33-home-access-field"><span>Correo</span><input name="email" type="email" autocomplete="username" required></label>
+          <label class="a33-home-access-field"><span>Contraseña</span><input name="password" type="password" autocomplete="current-password" required></label>
+          <button class="a33-home-access-button" type="submit">Iniciar sesión</button>
+        </form>
+        <div class="a33-home-access-actions" data-a33-home-signed-actions hidden>
+          <button class="a33-home-access-button" data-a33-home-signout type="button">Cerrar sesión</button>
+        </div>
+        <p class="a33-home-access-error" data-a33-home-access-error aria-live="assertive"></p>
+      </section>
+
       <section class="menu-section">
         <h2 class="menu-title">Suite A33 Hecha por El Alquimista</h2>
         <div class="grid">
-        <article class="card" data-link="calculadora/index.html">
+        <article class="card" data-link="calculadora/index.html" data-a33-module-target="produccion" hidden>
           <div class="pill"><span>🧪</span><span>Producción</span></div>
           <h2>Calculadora de Producción</h2>
           <p>Define cantidades de los productos activos con Receta y obtén la materia prima y volumen final.</p>
@@ -590,7 +607,7 @@
           </div>
         </article>
 
-        <article class="card" data-link="lotes/index.html">
+        <article class="card" data-link="lotes/index.html" data-a33-module-target="lotes" hidden>
           <div class="pill"><span>📦</span><span>Lotes</span></div>
           <h2>Control de Lotes</h2>
           <p>Registra cada lote producido con fechas, volúmenes y presentaciones. Exporta CSV y consulta historial.</p>
@@ -599,7 +616,7 @@
             <button class="link-btn"><span>Ir</span> →</button>
           </div>
         </article>
-        <article class="card" data-link="inventario/index.html">
+        <article class="card" data-link="inventario/index.html" data-a33-module-target="inventario" hidden>
           <div class="pill"><span>📊</span><span>Inventario</span></div>
           <h2>Inventario</h2>
           <p>Control de insumos líquidos y botellas por presentación, con alertas internas.</p>
@@ -609,7 +626,7 @@
           </div>
         </article>
 
-        <article class="card" data-link="pos/index.html">
+        <article class="card" data-link="pos/index.html" data-a33-module-target="pos" hidden>
           <div class="pill"><span>🧾</span><span>Ventas</span></div>
           <h2>A33 POS · Eventos</h2>
           <p>Registra ventas por evento, manejo de inventario y métodos de pago. Funciona offline.</p>
@@ -618,7 +635,7 @@
             <button class="link-btn"><span>Ir</span> →</button>
           </div>
         </article>
-        <article class="card" data-link="analitica/index.html">
+        <article class="card" data-link="analitica/index.html" data-a33-module-target="analitica" hidden>
           <div class="pill"><span>📈</span><span>Analítica</span></div>
           <h2>Analítica de Ventas</h2>
           <p>Resumen mensual, comparativo por evento y por presentación, en solo lectura desde el POS.</p>
@@ -627,7 +644,7 @@
             <button class="link-btn"><span>Ir</span> →</button>
           </div>
         </article>
-        <article class="card" data-link="pedidos/index.html">
+        <article class="card" data-link="pedidos/index.html" data-a33-module-target="pedidos" hidden>
           <div class="pill"><span>📅</span><span>Pedidos</span></div>
           <h2>Planificación de Pedidos</h2>
           <p>Registra pedidos de clientes, totales a pagar y marca cuándo han sido entregados.</p>
@@ -643,7 +660,7 @@
       <section class="menu-section">
         <h2 class="menu-title">Gestión Operativa</h2>
         <div class="grid">
-          <article class="card" data-link="finanzas/index.html#tab=tablero">
+          <article class="card" data-link="finanzas/index.html#tab=tablero" data-a33-module-target="finanzas" hidden>
             <div class="pill"><span>📊</span><span>Finanzas</span></div>
             <h2>Tablero Finanzas</h2>
             <p>Centro operativo de ventas, caja, bancos, gastos, ingresos adicionales y utilidad por período o evento.</p>
@@ -653,7 +670,7 @@
             </div>
           </article>
 
-          <article class="card" data-link="finanzas/index.html#tab=cajachica">
+          <article class="card" data-link="finanzas/index.html#tab=cajachica" data-a33-module-target="finanzas" hidden>
             <div class="pill"><span>💵</span><span>Caja Chica</span></div>
             <h2>Caja Chica</h2>
             <p>Control rápido del efectivo físico en C$ y USD.</p>
@@ -663,7 +680,7 @@
             </div>
           </article>
 
-          <article class="card" data-link="catalogos/index.html">
+          <article class="card" data-link="catalogos/index.html" data-a33-module-target="catalogos" hidden>
             <div class="pill"><span>🗂️</span><span>Datos maestros</span></div>
             <h2>Catálogos</h2>
             <p>Productos, envases, tapas, extras, bancos y clientes que alimentan la Suite.</p>
@@ -680,7 +697,7 @@
         <h2 class="menu-title">NÚCLEO A33</h2>
         <div class="grid support-grid" id="support-grid">
 
-          <article class="card" id="card-config-hub" data-link="configuracion/index.html">
+          <article class="card" id="card-config-hub" data-link="configuracion/index.html" data-a33-module-target="configuracion" hidden>
             <div class="pill"><span>⚙️</span><span>Configuración</span></div>
             <h2>Configuración</h2>
             <p>Ajustes, respaldo y opciones generales de la Suite.</p>
@@ -690,7 +707,7 @@
             </div>
           </article>
 
-          <article class="card" id="card-centro-mando" data-link="centro-mando/index.html">
+          <article class="card" id="card-centro-mando" data-link="centro-mando/index.html" data-a33-module-target="centro-mando" hidden>
             <div class="pill"><span>🧭</span><span>Centro</span></div>
             <h2>Centro de Mando</h2>
             <p>Radar ligero por evento: Efectivo, ventas, top productos e inventario crítico.</p>
@@ -700,7 +717,7 @@
             </div>
           </article>
 
-          <article class="card" id="card-calculadora-temporal-home" data-link="calculadora_temporal/index.html">
+          <article class="card" id="card-calculadora-temporal-home" data-link="calculadora_temporal/index.html" data-a33-module-target="temporal" hidden>
             <div class="pill"><span>⏳</span><span>Temporal</span></div>
             <h2>Calculadora Temporal</h2>
             <p>Espacio aislado para pruebas, corridas temporales y cálculos propios sin tocar Producción, Lotes ni datos operativos reales.</p>
@@ -710,7 +727,7 @@
             </div>
           </article>
 
-          <article class="card" id="card-agenda-home" data-link="agenda/index.html">
+          <article class="card" id="card-agenda-home" data-link="agenda/index.html" data-a33-module-target="agenda" hidden>
             <div class="pill"><span>🗓️</span><span>Agenda</span></div>
             <h2>Agenda</h2>
             <p>Organiza reuniones, tareas y compras planificadas con presupuesto, estados y exportación al Calendario.</p>
@@ -2076,5 +2093,6 @@
     });
   </script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
+  <script src="/assets/js/a33-home-access.js?v=4.20.98&r=1"></script>
 </body>
 </html>

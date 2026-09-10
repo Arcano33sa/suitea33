@@ -1,0 +1,72 @@
+/* Suite A33 — visibilidad del Inicio según sesión y permisos (E10.2). */
+.a33-home-access{
+  display:grid;
+  gap:14px;
+  margin:0 0 22px;
+  padding:18px;
+  border:1px solid rgba(221,191,100,.34);
+  border-radius:18px;
+  background:rgba(14,12,10,.72);
+}
+
+.a33-home-access[hidden],
+.card[hidden],
+.menu-section[data-a33-access-empty="true"]{
+  display:none !important;
+}
+
+.a33-home-access-copy{
+  display:grid;
+  gap:5px;
+}
+
+.a33-home-access-copy strong{ color:var(--gold, #ddbf64); }
+.a33-home-access-copy span{ color:var(--muted, #bdb6aa); line-height:1.45; }
+
+.a33-home-access-form,
+.a33-home-access-actions{
+  display:flex;
+  align-items:end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.a33-home-access-field{
+  display:grid;
+  flex:1 1 220px;
+  gap:6px;
+  color:var(--muted, #bdb6aa);
+  font-size:.86rem;
+}
+
+.a33-home-access-field input{
+  min-height:44px;
+  padding:9px 12px;
+  border:1px solid rgba(221,191,100,.38);
+  border-radius:11px;
+  background:#090807;
+  color:#fff;
+  font:inherit;
+}
+
+.a33-home-access-button{
+  min-height:44px;
+  padding:9px 17px;
+  border:1px solid rgba(221,191,100,.72);
+  border-radius:999px;
+  background:linear-gradient(180deg, #8c2424, #681616);
+  color:#fff;
+  font:700 .9rem/1 system-ui, sans-serif;
+  cursor:pointer;
+}
+
+.a33-home-access-button:disabled{ cursor:wait; opacity:.65; }
+.a33-home-access-error{ min-height:20px; margin:0; color:#ffaaa8; }
+
+html[data-theme="light"] .a33-home-access{ background:rgba(255,248,234,.78); }
+html[data-theme="light"] .a33-home-access-field input{ background:#fffdf8; color:#1f1710; }
+
+@media (max-width:620px){
+  .a33-home-access-form{ align-items:stretch; }
+  .a33-home-access-button{ width:100%; }
+}
