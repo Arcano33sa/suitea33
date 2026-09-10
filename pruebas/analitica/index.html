@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Arcano 33 · Analítica</title>
+  <meta name="description" content="Analítica interna de ventas por evento y presentación para Arcano 33, solo lectura desde el POS." />
+  <meta name="theme-color" content="#7b1818" />
+
+  
+<script src="/assets/js/a33-theme.js?v=4.20.98&r=7"></script>
+<link rel="icon" type="image/png" sizes="192x192" href="../inventario/images/logo.png" />
+  <link rel="apple-touch-icon" href="../inventario/images/logo.png" />
+
+  <!-- Brand fonts (optional; falls back gracefully if offline) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=9" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=4" />
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
+</head>
+<body class="a33-analytics-page">
+  <header class="a33-header" role="banner" data-a33-module="analitica">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Analítica</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.98">v...</div>
+  </header>
+  <main class="app-main analytics-main">
+    <section class="card analytics-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Analítica de Ventas</h2>
+          <p class="hint">Visualiza el comportamiento de tus ventas por periodo, evento y presentación. Esta vista es solo de lectura y utiliza los datos registrados en A33 POS en este mismo navegador.</p>
+        </div>
+      </div>
+
+      <p id="analytics-error" class="hint error" style="display:none;">
+        No se pudo leer la base de datos de ventas. Asegúrate de haber utilizado antes el módulo A33 POS en este navegador.
+      </p>
+
+      <section class="analytics-filters">
+        <div class="field">
+          <label for="period-select">Periodo</label>
+          <select id="period-select">
+            <option value="today">Hoy</option>
+            <option value="7d">Últimos 7 días</option>
+            <option value="30d">Últimos 30 días</option>
+            <option value="90d">Últimos 3 meses</option>
+            <option value="ytd">Año actual</option>
+            <option value="all">Todo el histórico</option>
+            <option value="custom">Rango personalizado</option>
+          </select>
+        </div>
+        <div class="field field-inline" id="custom-range" style="display:none;">
+          <label>Rango personalizado</label>
+          <div class="range-inputs">
+            <input type="date" id="date-from" />
+            <span>→</span>
+            <input type="date" id="date-to" />
+          </div>
+        </div>
+      </section>
+
+      <section class="analytics-tabs" aria-label="Pestañas de analítica">
+        <button class="tab-btn active" data-tab="resumen" type="button">Resumen</button>
+        <button class="tab-btn" data-tab="eventos" type="button">Eventos</button>
+        <button class="tab-btn" data-tab="presentaciones" type="button">Productos</button>
+        <button class="tab-btn" data-tab="clientes" type="button">Clientes</button>
+        <button class="tab-btn" data-tab="cortesias" type="button">Cortesías</button>
+        <button class="tab-btn" data-tab="avanzado" type="button">Avanzado</button>
+      </section>
+
+      <!-- TAB RESUMEN -->
+      <section class="tab-content active" id="tab-resumen">
+        <div class="kpi-grid">
+          <article class="kpi-card">
+            <p class="kpi-label">Ventas totales</p>
+            <p class="kpi-value" id="kpi-total-ventas">C$ 0.00</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Unidades vendidas</p>
+            <p class="kpi-value" id="kpi-total-botellas">0</p>
+            <p class="kpi-sub" id="kpi-detalle-botellas">Sin productos en el periodo</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Eventos con ventas</p>
+            <p class="kpi-value" id="kpi-eventos">0</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Ticket promedio</p>
+            <p class="kpi-value" id="kpi-ticket-promedio">C$ 0.00</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Costo total</p>
+            <p class="kpi-value" id="kpi-total-costo">C$ 0.00</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Utilidad total</p>
+            <p class="kpi-value" id="kpi-total-utilidad">C$ 0.00</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Margen global</p>
+            <p class="kpi-value" id="kpi-margen-global">0.0%</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Cortesías (valor lista)</p>
+            <p class="kpi-value" id="kpi-cortesias-total">C$ 0.00</p>
+            <p class="kpi-sub" id="kpi-cortesias-sub">Unidades 0 · Costo C$ 0.00</p>
+            <p class="kpi-sub" id="kpi-cortesias-nivel">🟢 Bajo (0.0%)</p>
+          </article>
+        </div>
+
+        <section class="card analytics-lot-summary-card" aria-labelledby="analytics-lot-summary-title">
+          <div class="card-head"><h3 id="analytics-lot-summary-title">Códigos de lote del período</h3></div>
+          <div id="analytics-lot-summary" class="analytics-lot-summary"><span class="hint small">Sin códigos de lote en el período.</span></div>
+        </section>
+
+        <div class="analytics-layout">
+          <section class="card chart-card">
+            <div class="card-head">
+              <h3>Ventas por mes</h3>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="chart-mensual-ventas"></canvas>
+            </div>
+            <p class="hint small">Importe total de ventas netas por mes, considerando devoluciones y cortesías.</p>
+          </section>
+
+          <div class="card table-card">
+            <div class="card-head">
+              <h3>Detalle mensual</h3>
+            </div>
+            <div class="table-wrapper">
+              <table class="inv-table analytics-table">
+                <thead>
+                  <tr id="resumen-mensual-head">
+                    <th>Mes</th>
+                    <th>Ventas (C$)</th>
+                    <th>Costo (C$)</th>
+                    <th>Utilidad (C$)</th>
+                    <th>Margen %</th>
+                    <th># Eventos</th>
+                    <th>Ticket prom.</th>
+                    <th>Cortesías (unid.)</th>
+                    <th>Cortesías valor (C$)</th>
+                    <th>Cortesías costo (C$)</th>
+                    <th>Cortesías %</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-resumen-mensual"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <section class="card recs-card">
+          <div class="card-head">
+            <h3>Rentabilidad del periodo</h3>
+          </div>
+          <p class="hint small" id="kpi-top-contribucion">Mayor contribución: —</p>
+          <p class="hint small" id="kpi-top-margen">Mejor margen: —</p>
+          <h4 class="recs-title">Recomendaciones rápidas</h4>
+          <ul id="recs-rentabilidad" class="recs-list"></ul>
+        </section>
+
+        <div class="export-buttons">
+          <button type="button" id="btn-export-resumen" class="btn-secondary">Exportar Excel · Resumen</button>
+        </div>
+      </section>
+
+      <!-- TAB EVENTOS -->
+      <section class="tab-content" id="tab-eventos">
+        <div class="tab-top">
+          <p class="hint small">Ranking de eventos según las ventas registradas en el periodo seleccionado.</p>
+
+          <div class="field" style="max-width:240px;">
+            <label for="orden-eventos">Ordenar por</label>
+            <select id="orden-eventos">
+              <option value="ventas">Ventas (C$)</option>
+              <option value="botellas">Unidades</option>
+              <option value="ticket">Ticket promedio</option>
+              <option value="utilidad">Utilidad (C$)</option>
+              <option value="margen">Margen %</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="analytics-layout">
+          <section class="card chart-card">
+            <div class="card-head">
+              <h3>Top eventos por ventas</h3>
+            </div>
+            <div class="chart-wrap chart-wrap--tall">
+              <canvas id="chart-eventos-ventas"></canvas>
+            </div>
+            <p class="hint small">Solo se muestran los eventos con ventas dentro del periodo.</p>
+
+            <hr class="chart-separator" />
+
+            <div class="card-head">
+              <h3>Top eventos por utilidad</h3>
+            </div>
+            <div class="chart-wrap chart-wrap--tall">
+              <canvas id="chart-eventos-utilidad"></canvas>
+            </div>
+            <p class="hint small">Comparativo de utilidad total por evento en el periodo.</p>
+          </section>
+
+          <div class="card table-card">
+            <div class="card-head">
+              <h3>Detalle por evento</h3>
+            </div>
+            <div class="table-wrapper">
+              <table class="inv-table analytics-table">
+                <thead>
+                  <tr>
+                    <th>Evento</th>
+                    <th>Código de lote</th>
+                    <th>Estado</th>
+                    <th>Ventas (C$)</th>
+                    <th>Costo (C$)</th>
+                    <th>Utilidad (C$)</th>
+                    <th>Margen %</th>
+                    <th>Unidades</th>
+                    <th>Ticket prom.</th>
+                    <th>% del total</th>
+                    <th>Cortesías (unid.)</th>
+                    <th>Cortesías valor (C$)</th>
+                    <th>Cortesías costo (C$)</th>
+                    <th>Cortesías %</th>
+                    <th>Semáforo cortesías</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-eventos"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="export-buttons">
+          <button type="button" id="btn-export-eventos" class="btn-secondary">Exportar Excel · Eventos</button>
+        </div>
+      </section>
+
+      <!-- TAB PRESENTACIONES -->
+      <section class="tab-content" id="tab-presentaciones">
+        <p class="hint small" style="margin-bottom:0.6rem;">
+          Comparativo dinámico por producto, conservando identidades históricas sin reactivar el catálogo.
+        </p>
+
+        <div class="analytics-layout">
+          <section class="card chart-card">
+            <div class="card-head">
+              <h3>Ventas por producto</h3>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="chart-pres-ventas"></canvas>
+            </div>
+            <p class="hint small">Incluye unidades vendidas y cortesías; devoluciones restan del total.</p>
+
+            <hr class="chart-separator" />
+
+            <div class="card-head">
+              <h3>Margen unitario por producto</h3>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="chart-pres-margen"></canvas>
+            </div>
+            <p class="hint small">Muestra el margen porcentual promedio por unidad en cada presentación.</p>
+          </section>
+
+          <div class="card table-card">
+            <div class="card-head">
+              <h3>Detalle por producto</h3>
+            </div>
+            <div class="table-wrapper">
+              <table class="inv-table analytics-table">
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th>Código de lote</th>
+                    <th>Unidades netas</th>
+                    <th>Precio unitario prom. (C$)</th>
+                    <th>Costo unitario snapshot (C$)</th>
+                    <th>Utilidad unitaria (C$)</th>
+                    <th>Margen unitario %</th>
+                    <th>Ventas totales (C$)</th>
+                    <th>% de ventas</th>
+                    <th>Cortesías (unid.)</th>
+                    <th>Cortesías valor (C$)</th>
+                    <th>Cortesías costo (C$)</th>
+                    <th>Cortesías %</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-presentaciones"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="export-buttons">
+          <button type="button" id="btn-export-presentaciones" class="btn-secondary">Exportar Excel · Productos</button>
+        </div>
+      </section>
+
+
+      <!-- TAB CLIENTES -->
+      <section class="tab-content" id="tab-clientes">
+        <div class="clientes-top">
+          <div class="field" style="max-width:320px;">
+            <label for="clientes-buscar">Buscar cliente</label>
+            <input type="text" id="clientes-buscar" placeholder="Nombre del cliente…" autocomplete="off" />
+          </div>
+
+          <div class="field small" style="max-width:220px;">
+            <label for="clientes-dormidos-days">Dormidos si no compra desde</label>
+            <select id="clientes-dormidos-days">
+              <option value="14">14 días</option>
+              <option value="30">30 días</option>
+              <option value="45" selected>45 días</option>
+              <option value="60">60 días</option>
+              <option value="90">90 días</option>
+              <option value="180">180 días</option>
+            </select>
+          </div>
+        </div>
+
+        <p class="hint small" id="clientes-resumen">Sin datos.</p>
+
+        <div class="clientes-layout">
+          <section class="card clientes-list-card">
+            <div class="card-head">
+              <h3>Listado</h3>
+              <span class="hint small" id="clientes-count"></span>
+            </div>
+            <ul id="clientes-list" class="clientes-list"></ul>
+            <p class="hint small" id="clientes-empty" style="display:none;">Sin datos de clientes en el periodo.</p>
+          </section>
+
+          <section class="card clientes-detail-card">
+            <div class="card-head">
+              <h3 id="cliente-nombre">Cliente</h3>
+              <div class="clientes-badges" id="cliente-badges"></div>
+            </div>
+
+            <p class="hint small" id="cliente-sin-seleccion">Selecciona un cliente para ver su ficha.</p>
+
+            <div id="cliente-detalle" style="display:none;">
+              <div class="kpi-grid kpi-grid--clientes">
+                <article class="kpi-card">
+                  <p class="kpi-label">Gasto neto</p>
+                  <p class="kpi-value" id="cliente-gasto">C$ 0.00</p>
+                  <p class="kpi-sub" id="cliente-devs">Devoluciones: C$ 0.00</p>
+                </article>
+                <article class="kpi-card">
+                  <p class="kpi-label">Compras</p>
+                  <p class="kpi-value" id="cliente-compras">0</p>
+                  <p class="kpi-sub" id="cliente-transacciones">Transacciones: 0</p>
+                </article>
+                <article class="kpi-card">
+                  <p class="kpi-label">Ticket promedio</p>
+                  <p class="kpi-value" id="cliente-ticket">C$ 0.00</p>
+                  <p class="kpi-sub" id="cliente-ultima">Última compra: —</p>
+                </article>
+              </div>
+
+              <div class="clientes-subgrid">
+                <div class="clientes-favoritos">
+                  <h4>Formatos favoritos</h4>
+                  <ul id="cliente-favoritos" class="mini-list"></ul>
+                  <p class="hint small" id="cliente-favoritos-empty" style="display:none;">Aún no hay suficientes compras para definir favoritos.</p>
+                </div>
+
+                <div class="clientes-segmento">
+                  <h4>Segmento</h4>
+                  <ul class="mini-list" id="cliente-segmento"></ul>
+                </div>
+              </div>
+
+              <div class="table-wrapper" style="margin-top:0.75rem;">
+                <table class="analytics-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Evento</th>
+                      <th>Producto</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-cliente-historial"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="card clientes-recos-card" style="margin-top:1rem;">
+          <div class="card-head">
+            <h3>Recomendaciones</h3>
+            <div class="head-right">
+              <button type="button" id="btn-clientes-recalcular" class="btn-secondary">Recalcular</button>
+              <span class="hint small" id="reco-updated">Actualizado: —</span>
+            </div>
+          </div>
+          <p class="hint small">Basado en ventas reales. Se guarda en localStorage para que otros módulos (ej. Centro de Mando) lo consuman.</p>
+          <ul id="clientes-recos-preview" class="recs-list"></ul>
+          <p class="hint small" id="clientes-recos-empty" style="display:none;">Sin recomendaciones por ahora.</p>
+        </section>
+      </section>
+
+
+      <!-- TAB CORTESÍAS -->
+      <section class="tab-content" id="tab-cortesias">
+        <section class="card advanced-block">
+          <div class="card-head">
+            <h3>Listado de cortesías</h3>
+          </div>
+          <p class="hint small" id="resumen-cortesias-top">
+            Muestra todas las líneas marcadas como cortesía en el periodo seleccionado. Usa el filtro de evento para afinar el análisis.
+          </p>
+          <div class="advanced-filters-row">
+            <div class="field small">
+              <label for="cortesias-event-select">Evento</label>
+              <select id="cortesias-event-select">
+                <option value="all">Todos los eventos</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table class="inv-table analytics-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Evento</th>
+                  <th>Producto / presentación</th>
+                  <th>Cantidad</th>
+                  <th>Destinatario</th>
+                  <th>Valor lista (C$)</th>
+                  <th>Costo estimado (C$)</th>
+                  <th>Notas</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-cortesias"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- TAB AVANZADO -->
+      <section class="tab-content" id="tab-avanzado">
+        <section class="card advanced-block">
+          <div class="card-head">
+            <h3>Horarios de venta (horas pico)</h3>
+          </div>
+          <p class="hint small">Identifica en qué horas se concentra la mayor parte de tus ventas en el rango seleccionado.</p>
+          <div class="advanced-filters-row">
+            <div class="field small">
+              <label for="horas-event-select">Evento</label>
+              <select id="horas-event-select">
+                <option value="all">Todos los eventos</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="chart-wrap">
+            <canvas id="chart-horas-ventas"></canvas>
+          </div>
+
+          <p class="hint small" id="resumen-horas-pico">Aún no hay datos suficientes para este rango.</p>
+          <div class="table-wrapper">
+            <table class="analytics-table">
+              <thead>
+                <tr>
+                  <th>Hora</th>
+                  <th>Ventas (C$)</th>
+                  <th>Unidades netas</th>
+                  <th>% de ventas</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-horas"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card advanced-block">
+          <div class="card-head">
+            <h3>Riesgo de agotamiento (producto terminado)</h3>
+          </div>
+          <p class="hint small">Estimación basada en ventas recientes y stock actual de productos terminados.</p>
+          <div class="advanced-filters-row">
+            <div class="field small">
+              <label for="agotamiento-ventana">Ventana de análisis</label>
+              <select id="agotamiento-ventana">
+                <option value="7">Últimos 7 días</option>
+                <option value="30" selected>Últimos 30 días</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table class="analytics-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Stock actual (unidades)</th>
+                  <th>Promedio u/día</th>
+                  <th>Días estimados</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-agotamiento"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card advanced-block">
+          <div class="card-head">
+            <h3>Alertas y avisos del periodo</h3>
+          </div>
+          <p class="hint small">Semáforo basado en márgenes, volumen y riesgo de agotamiento en el rango seleccionado.</p>
+          <ul id="panel-alertas" class="alert-list"></ul>
+        </section>
+
+        <section class="card advanced-block">
+          <div class="card-head">
+            <h3>Proyecciones y reportes</h3>
+          </div>
+          <p class="hint small">Proyecciones simples basadas en el comportamiento del rango actual (no son estimaciones científicas).</p>
+          <p id="proy-resumen" class="hint"></p>
+          <div class="table-wrapper">
+            <table class="analytics-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Unidades/día (prom.)</th>
+                  <th>Unidades proyectadas (30 días)</th>
+                  <th>Ventas proyectadas (30 días)</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-proyecciones-pres"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.98&r=7"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.98&r=54"></script>
+  <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=4"></script>
+  <script src="/assets/js/a33-module-guard.js?v=4.20.98&r=5"></script>
+
+  <script src="/assets/js/a33-storage.js?v=4.20.98&r=20"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.98&r=14"></script>
+  <script src="/assets/js/a33-export-currency.js?v=4.20.98&r=2"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+  <script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
+
+  <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+  <script src="script.js?v=4.20.98&r=10"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
+</body>
+</html>

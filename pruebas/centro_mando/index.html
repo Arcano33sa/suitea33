@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="refresh" content="1;url=../centro-mando/index.html">
+  <title>Centro de Mando — Ruta actualizada</title>
+  <script>
+    (async function(){
+      'use strict';
+      var target = '../centro-mando/index.html' + (location.search || '') + (location.hash || '');
+      try {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+          var regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all((regs || []).filter(function(reg){
+            try {
+              var scope = String(reg.scope || '').toLowerCase();
+              var worker = reg.active || reg.waiting || reg.installing;
+              var script = String(worker && worker.scriptURL || '').toLowerCase();
+              return scope.indexOf('/centro_mando/') >= 0 || script.indexOf('/centro_mando/sw.js') >= 0;
+            } catch (_) { return false; }
+          }).map(function(reg){ return reg.unregister().catch(function(){ return false; }); }));
+        }
+      } catch (_) {}
+      try {
+        if (window.caches && caches.keys) {
+          var keys = await caches.keys();
+          await Promise.all((keys || []).filter(function(key){
+            var k = String(key || '').toLowerCase();
+            return k.indexOf('centro_mando') >= 0 && (k.indexOf('a33-') === 0 || k.indexOf('arcano33-') === 0);
+          }).map(function(key){ return caches.delete(key).catch(function(){ return false; }); }));
+        }
+      } catch (_) {}
+      try { location.replace(target); } catch (_) { location.href = target; }
+    })();
+  </script>
+</head>
+<body>
+  <p>Abriendo la ruta oficial… <a href="../centro-mando/index.html">Centro de Mando</a></p>
+</body>
+</html>

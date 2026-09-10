@@ -1,0 +1,1238 @@
+/* Suite A33 — Apariencia global compartida
+   Etapa 3/5: componentes comunes, formularios, botones, modales y tablas.
+   Alcance seguro: no reescribe lógica ni estructuras; solo tema visual.
+*/
+
+:root{
+  --a33-bg:#060606;
+  --a33-bg-soft:#0d0d0d;
+  --a33-surface:#111111;
+  --a33-surface-2:#161616;
+  --a33-surface-3:#1b1b1b;
+  --a33-text:#f6f2e8;
+  --a33-muted:rgba(246,242,232,0.72);
+  --a33-gold:#ddbf64;
+  --a33-gold-2:#b28d38;
+  --a33-red:#7b1818;
+  --a33-red-dark:#5c0f0f;
+  --a33-danger:#ff6b6b;
+  --a33-success:#9fe0b3;
+  --a33-border:rgba(221,191,100,0.24);
+  --a33-border-soft:rgba(255,255,255,0.10);
+  --a33-shadow:0 18px 42px rgba(0,0,0,0.36);
+  --a33-radius:18px;
+}
+
+html[data-theme="dark"]{ color-scheme:dark; }
+html[data-theme="light"]{
+  color-scheme:light;
+  --a33-bg:#f4ead8;
+  --a33-bg-soft:#eadcc6;
+  --a33-surface:#fff8ea;
+  --a33-surface-2:#f8edda;
+  --a33-surface-3:#fffaf0;
+  --a33-text:#1f1710;
+  --a33-muted:rgba(31,23,16,0.72);
+  --a33-gold:#9d6f1f;
+  --a33-gold-2:#8b621e;
+  --a33-red:#7b1818;
+  --a33-red-dark:#5c0f0f;
+  --a33-danger:#8f1515;
+  --a33-success:#1f6f3d;
+  --a33-border:rgba(139,98,30,0.24);
+  --a33-border-soft:rgba(139,98,30,0.16);
+  --a33-shadow:0 18px 42px rgba(92,62,24,0.16);
+
+  /* variables usadas por módulos legacy/general */
+  --agenda-bg:#f4ead8;
+  --agenda-card:#fff8ea;
+  --agenda-card-2:#f8edda;
+  --agenda-text:#1f1710;
+  --agenda-muted:rgba(31,23,16,0.72);
+  --agenda-gold:#9d6f1f;
+  --agenda-red:#7b1818;
+  --agenda-red-soft:rgba(123,24,24,0.10);
+  --agenda-border:rgba(139,98,30,0.28);
+  --agenda-shadow:0 18px 42px rgba(92,62,24,0.16);
+
+  --cfg-bg:#f4ead8;
+  --cfg-card:#fff8ea;
+  --cfg-card-2:#f8edda;
+  --cfg-text:#1f1710;
+  --cfg-muted:rgba(31,23,16,0.72);
+  --cfg-gold:#9d6f1f;
+  --cfg-red:#7b1818;
+  --cfg-red-soft:rgba(123,24,24,0.10);
+  --cfg-border:rgba(139,98,30,0.28);
+  --cfg-shadow:0 18px 42px rgba(92,62,24,0.16);
+
+  --color-bg:#f4ead8;
+  --color-surface:rgba(255,248,234,0.94);
+  --color-card:rgba(255,248,234,0.96);
+  --color-border:rgba(139,98,30,0.22);
+  --color-border-strong:rgba(139,98,30,0.32);
+  --color-text:#1f1710;
+  --color-text-muted:rgba(31,23,16,0.72);
+  --color-accent:#7b1818;
+  --color-accent-soft:#9d6f1f;
+  --color-partial-text:#5c3b12;
+  --shadow-soft:0 14px 30px rgba(92,62,24,0.14);
+  --shadow-card:0 14px 26px rgba(92,62,24,0.12);
+
+  --bg:#f4ead8;
+  --panel:#fff8ea;
+  --panel2:#f8edda;
+  --stroke:rgba(139,98,30,0.24);
+  --stroke2:rgba(139,98,30,0.16);
+  --text:#1f1710;
+  --muted:rgba(31,23,16,0.72);
+  --gold:#9d6f1f;
+  --gold2:#8b621e;
+  --red:#7b1818;
+  --shadow:0 12px 28px rgba(92,62,24,0.14);
+}
+
+html,
+body{
+  max-width:100%;
+  overflow-x:hidden;
+}
+
+html[data-theme="light"] body{
+  background:
+    radial-gradient(circle at top right, rgba(221,191,100,0.22), transparent 30%),
+    radial-gradient(circle at bottom left, rgba(123,24,24,0.10), transparent 32%),
+    linear-gradient(180deg, #f6ecdc 0%, #eadcc6 100%);
+  color:var(--a33-text);
+}
+
+/* Superficies / tarjetas generales */
+html[data-theme="light"] .card,
+html[data-theme="light"] .agenda-card,
+html[data-theme="light"] .agenda-mini-stat,
+html[data-theme="light"] .agenda-type-group,
+html[data-theme="light"] .agenda-toggle-card,
+html[data-theme="light"] .agenda-empty,
+html[data-theme="light"] .agenda-record,
+html[data-theme="light"] .cfg-card,
+html[data-theme="light"] .cfg-tab,
+html[data-theme="light"] .cfg-note-card,
+html[data-theme="light"] .cfg-status-card,
+html[data-theme="light"] .cfg-mini-stat,
+html[data-theme="light"] .cmd-card,
+html[data-theme="light"] .cmd-alert,
+html[data-theme="light"] .cmd-chk-col,
+html[data-theme="light"] .cmd-rem-card,
+html[data-theme="light"] .table-card,
+html[data-theme="light"] .chart-card,
+html[data-theme="light"] .kpi-card,
+html[data-theme="light"] .clientes-list-card,
+html[data-theme="light"] .clientes-detail-card,
+html[data-theme="light"] .clientes-recos-card,
+html[data-theme="light"] .lote-card,
+html[data-theme="light"] .totals-chip,
+html[data-theme="light"] .customer-new-panel{
+  background:linear-gradient(180deg, rgba(255,250,240,0.98), rgba(246,235,216,0.98));
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+  box-shadow:var(--a33-shadow);
+}
+
+html[data-theme="light"] .card::before,
+html[data-theme="light"] .agenda-card::before,
+html[data-theme="light"] .cfg-card::before{
+  background:linear-gradient(135deg, rgba(157,111,31,0.10), transparent 36%, rgba(123,24,24,0.08));
+}
+
+/* Textos, labels y ayuda */
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] .brand-text h1,
+html[data-theme="light"] .card h2,
+html[data-theme="light"] .card h3,
+html[data-theme="light"] .agenda-hero h1,
+html[data-theme="light"] .agenda-panel h2,
+html[data-theme="light"] .agenda-record h3,
+html[data-theme="light"] .cmd-section-title,
+html[data-theme="light"] .cmd-alert-title,
+html[data-theme="light"] .modal-title{
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] p,
+html[data-theme="light"] label,
+html[data-theme="light"] .hint,
+html[data-theme="light"] .hint.small,
+html[data-theme="light"] .brand-text p,
+html[data-theme="light"] .agenda-lead,
+html[data-theme="light"] .agenda-note,
+html[data-theme="light"] .agenda-list,
+html[data-theme="light"] .agenda-helper,
+html[data-theme="light"] .agenda-empty p,
+html[data-theme="light"] .agenda-record-preview,
+html[data-theme="light"] .agenda-record-foot,
+html[data-theme="light"] .agenda-field-note,
+html[data-theme="light"] .cmd-muted,
+html[data-theme="light"] .cmd-alert-sub,
+html[data-theme="light"] .cmd-item-sub,
+html[data-theme="light"] .small-note,
+html[data-theme="light"] .field-help,
+html[data-theme="light"] .empty-state,
+html[data-theme="light"] .agenda-mini-label,
+html[data-theme="light"] .cfg-status-label,
+html[data-theme="light"] .cfg-tab-meta,
+html[data-theme="light"] .cfg-copy,
+html[data-theme="light"] .cfg-lead,
+html[data-theme="light"] .cfg-shell-copy,
+html[data-theme="light"] .cfg-form-hint,
+html[data-theme="light"] .cfg-status-copy{
+  color:var(--a33-muted);
+}
+
+html[data-theme="light"] .agenda-kicker,
+html[data-theme="light"] .agenda-eyebrow,
+html[data-theme="light"] .agenda-type-group legend,
+html[data-theme="light"] .cfg-kicker,
+html[data-theme="light"] .cfg-eyebrow,
+html[data-theme="light"] .cfg-note-card strong,
+html[data-theme="light"] .cfg-status-card strong,
+html[data-theme="light"] .cmd-version,
+html[data-theme="light"] .lote-card-code,
+html[data-theme="light"] .totals-chip-val,
+html[data-theme="light"] .card h3{
+  color:var(--a33-gold);
+}
+
+/* Formularios: inputs, selects, textareas, campos numericos */
+html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] .cfg-input,
+html[data-theme="light"] .cmd-input,
+html[data-theme="light"] .search-input,
+html[data-theme="light"] .customer-picker input[type="text"],
+html[data-theme="light"] .customer-picker select{
+  background:rgba(255,250,240,0.98);
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+  box-shadow:none;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder,
+html[data-theme="light"] .cfg-input::placeholder{
+  color:rgba(31,23,16,0.44);
+}
+
+html[data-theme="light"] input:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] textarea:focus,
+html[data-theme="light"] .cfg-input:focus,
+html[data-theme="light"] .cmd-input:focus{
+  background:#fffaf0;
+  border-color:rgba(157,111,31,0.58);
+  box-shadow:0 0 0 3px rgba(157,111,31,0.14);
+}
+
+html[data-theme="light"] select option{
+  background:#fff8ea;
+  color:#1f1710;
+}
+
+html[data-theme="light"] input[readonly],
+html[data-theme="light"] input:disabled,
+html[data-theme="light"] select:disabled,
+html[data-theme="light"] textarea:disabled,
+html[data-theme="light"] .cfg-input:disabled{
+  background:rgba(234,220,198,0.70);
+  color:rgba(31,23,16,0.62);
+  border-color:rgba(139,98,30,0.16);
+}
+
+/* Botones compartidos */
+html[data-theme="light"] .btn.primary,
+html[data-theme="light"] .btn-primary,
+html[data-theme="light"] .agenda-btn--primary,
+html[data-theme="light"] .cfg-btn-primary,
+html[data-theme="light"] .cmd-btn-primary,
+html[data-theme="light"] .link-btn:not(.secondary),
+html[data-theme="light"] .a33-pill-btn{
+  background:linear-gradient(180deg, rgba(123,24,24,0.98), rgba(92,15,15,1));
+  border-color:rgba(123,24,24,0.50);
+  color:#fff;
+  box-shadow:0 10px 22px rgba(123,24,24,0.18);
+}
+
+html[data-theme="light"] .btn.secondary,
+html[data-theme="light"] .btn-secondary,
+html[data-theme="light"] .agenda-btn--ghost,
+html[data-theme="light"] .agenda-inline-btn,
+html[data-theme="light"] .cfg-btn-ghost,
+html[data-theme="light"] .cmd-btn,
+html[data-theme="light"] .link-btn.secondary,
+html[data-theme="light"] .cmd-picker-btn,
+html[data-theme="light"] .cmd-icon-btn{
+  background:rgba(255,255,255,0.46);
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+  box-shadow:0 10px 20px rgba(92,62,24,0.10);
+}
+
+html[data-theme="light"] .btn.danger,
+html[data-theme="light"] .btn-danger,
+html[data-theme="light"] .agenda-btn--danger,
+html[data-theme="light"] .agenda-inline-btn--danger,
+html[data-theme="light"] .cfg-action-btn--danger,
+html[data-theme="light"] .danger{
+  background:rgba(123,24,24,0.08);
+  border-color:rgba(123,24,24,0.34);
+  color:#7b1818;
+}
+
+html[data-theme="light"] button:hover,
+html[data-theme="light"] .btn:hover,
+html[data-theme="light"] .cfg-btn:hover,
+html[data-theme="light"] .agenda-btn:hover,
+html[data-theme="light"] .cmd-btn:hover{
+  filter:brightness(1.02);
+}
+
+/* Chips, badges, etiquetas y estados */
+html[data-theme="light"] .badge,
+html[data-theme="light"] .chip,
+html[data-theme="light"] .status-chip,
+html[data-theme="light"] .alert-pill,
+html[data-theme="light"] .agenda-badge,
+html[data-theme="light"] .agenda-toggle-pill,
+html[data-theme="light"] .agenda-pulse-chip,
+html[data-theme="light"] .agenda-filter-chip,
+html[data-theme="light"] .agenda-date-pill,
+html[data-theme="light"] .agenda-chip,
+html[data-theme="light"] .cfg-badge,
+html[data-theme="light"] .cfg-pill,
+html[data-theme="light"] .cfg-nav-chip,
+html[data-theme="light"] .cfg-tag,
+html[data-theme="light"] .cmd-pill,
+html[data-theme="light"] .cmd-version{
+  background:rgba(255,255,255,0.48);
+  border-color:var(--a33-border);
+  color:var(--a33-gold);
+}
+
+html[data-theme="light"] .agenda-filter-chip.is-active,
+html[data-theme="light"] .agenda-filter-chip[aria-selected="true"],
+html[data-theme="light"] .agenda-toggle-card.is-active,
+html[data-theme="light"] .cfg-tab.is-active,
+html[data-theme="light"] .tab-btn.active,
+html[data-theme="light"] .cmd-item-selected{
+  background:linear-gradient(180deg, rgba(123,24,24,0.13), rgba(255,248,234,0.98));
+  border-color:rgba(157,111,31,0.46);
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] .status-chip[data-state="active"],
+html[data-theme="light"] .badge.ok,
+html[data-theme="light"] .alert-ok,
+html[data-theme="light"] .agenda-chip--timing-upcoming,
+html[data-theme="light"] .agenda-inline-btn--done{
+  background:rgba(33,112,58,0.10);
+  border-color:rgba(33,112,58,0.24);
+  color:#1f6f3d;
+}
+
+html[data-theme="light"] .status-chip[data-state="inactive"],
+html[data-theme="light"] .badge.warn,
+html[data-theme="light"] .alert-warning,
+html[data-theme="light"] .agenda-chip--timing-today{
+  background:rgba(157,111,31,0.12);
+  border-color:rgba(157,111,31,0.28);
+  color:#7a4f12;
+}
+
+html[data-theme="light"] .alert-critical,
+html[data-theme="light"] .agenda-chip--timing-overdue,
+html[data-theme="light"] .agenda-inline-btn--cancel{
+  background:rgba(123,24,24,0.08);
+  border-color:rgba(123,24,24,0.30);
+  color:#7b1818;
+}
+
+/* Tablas */
+html[data-theme="light"] .table-wrapper,
+html[data-theme="light"] .cfg-users-table-wrap{
+  background:rgba(255,255,255,0.42);
+  border-color:var(--a33-border);
+  box-shadow:0 12px 24px rgba(92,62,24,0.10);
+}
+
+html[data-theme="light"] table,
+html[data-theme="light"] .analytics-table,
+html[data-theme="light"] .cfg-users-table{
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] table thead th,
+html[data-theme="light"] .analytics-table th,
+html[data-theme="light"] .cfg-users-table thead th{
+  background:rgba(157,111,31,0.10);
+  color:rgba(31,23,16,0.76);
+  border-color:rgba(139,98,30,0.18);
+}
+
+html[data-theme="light"] table tbody td,
+html[data-theme="light"] .analytics-table td,
+html[data-theme="light"] .cfg-users-table tbody td{
+  border-color:rgba(139,98,30,0.14);
+}
+
+html[data-theme="light"] table tbody tr:nth-child(even),
+html[data-theme="light"] .analytics-table tbody tr:nth-child(even){
+  background:rgba(255,255,255,0.22);
+}
+
+/* Modales, overlays, alertas y vacios */
+html[data-theme="light"] .modal-overlay,
+html[data-theme="light"] .cmd-modal-overlay{
+  background:rgba(58,38,16,0.32);
+  backdrop-filter:blur(6px);
+}
+
+html[data-theme="light"] .modal-card,
+html[data-theme="light"] .cmd-modal-card,
+html[data-theme="light"] .history-modal-card{
+  background:linear-gradient(145deg,#fff8ea,#f1e2c9);
+  border-color:rgba(139,98,30,0.30);
+  color:var(--a33-text);
+  box-shadow:0 18px 40px rgba(92,62,24,0.20);
+}
+
+html[data-theme="light"] .modal-body,
+html[data-theme="light"] .cmd-modal-body{
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] .modal-body .muted,
+html[data-theme="light"] .cmd-modal-body .cmd-muted{
+  color:var(--a33-muted);
+}
+
+html[data-theme="light"] .modal-body hr,
+html[data-theme="light"] .cmd-modal-actions,
+html[data-theme="light"] .modal-actions{
+  border-color:rgba(139,98,30,0.18);
+}
+
+html[data-theme="light"] .empty,
+html[data-theme="light"] .agenda-empty,
+html[data-theme="light"] .cmd-empty,
+html[data-theme="light"] .cfg-empty-state,
+html[data-theme="light"] .cfg-inline-empty{
+  background:rgba(255,255,255,0.42);
+  border-color:var(--a33-border);
+  color:var(--a33-muted);
+}
+
+html[data-theme="light"] .a33-toast,
+html[data-theme="light"] .toast,
+html[data-theme="light"] .alert-item,
+html[data-theme="light"] .recs-item{
+  background:rgba(255,248,234,0.96);
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+  box-shadow:0 16px 40px rgba(92,62,24,0.20);
+}
+
+/* Separadores / bordes internos */
+html[data-theme="light"] hr,
+html[data-theme="light"] .table-header,
+html[data-theme="light"] .card-head,
+html[data-theme="light"] .cmd-item,
+html[data-theme="light"] .agenda-record + .agenda-record{
+  border-color:rgba(139,98,30,0.16);
+}
+
+@media (max-width: 760px){
+  html[data-theme="light"] .table-wrapper{
+    max-width:100%;
+  }
+}
+
+
+/* =========================================================
+   Etapa 4/5 — Apariencia en POS, Inventario y Reempaque
+   Alcance: tema visual solamente. Sin tocar lógica de negocio.
+   ========================================================= */
+html[data-theme="light"] .container,
+html[data-theme="light"] .app-main{
+  color:var(--a33-text);
+}
+
+/* POS — superficies principales */
+html[data-theme="light"] .tab,
+html[data-theme="light"] .inner,
+html[data-theme="light"] .metric,
+html[data-theme="light"] .summary-top,
+html[data-theme="light"] .summary-customer-card,
+html[data-theme="light"] .customers-card,
+html[data-theme="light"] .courtesy-card,
+html[data-theme="light"] .consolidated-card,
+html[data-theme="light"] .sale-cash-tender,
+html[data-theme="light"] .lotes-block,
+html[data-theme="light"] .sobrante-panel,
+html[data-theme="light"] .reverso-panel,
+html[data-theme="light"] .calc-display,
+html[data-theme="light"] .cashv2-move-row,
+html[data-theme="light"] .cashv2-hist-event,
+html[data-theme="light"] .cashv2-summary-table,
+html[data-theme="light"] .cashv2-hist-audit-row,
+html[data-theme="light"] .customer-manage-item,
+html[data-theme="light"] .customer-manage-group,
+html[data-theme="light"] .customer-manage-group-header,
+html[data-theme="light"] .customer-manage-results-head,
+html[data-theme="light"] .customer-picker-item,
+html[data-theme="light"] .extra-row,
+html[data-theme="light"] .product-meta-item,
+html[data-theme="light"] .chk-row,
+html[data-theme="light"] .rem-item,
+html[data-theme="light"] .rem-chip,
+html[data-theme="light"] .reempaque-block,
+html[data-theme="light"] .reempaque-panel,
+html[data-theme="light"] .reempaque-card,
+html[data-theme="light"] .reempaque-card.soft,
+html[data-theme="light"] .reempaque-new-target,
+html[data-theme="light"] .reempaque-history,
+html[data-theme="light"] .reempaque-history-item,
+html[data-theme="light"] .reempaque-empty,
+html[data-theme="light"] .reempaque-mode-card,
+html[data-theme="light"] .reempaque-mode-pill,
+html[data-theme="light"] .reempaque-dest-card,
+html[data-theme="light"] .rp-multi-new-mode,
+html[data-theme="light"] .reempaque-warning,
+html[data-theme="light"] #banks-list .bank-table tr{
+  background:linear-gradient(180deg, rgba(255,250,240,0.98), rgba(246,235,216,0.96));
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+  box-shadow:0 10px 24px rgba(92,62,24,0.10);
+}
+
+html[data-theme="light"] .card.inner,
+html[data-theme="light"] .sale-cash-tender{
+  background:rgba(255,250,240,0.72);
+}
+
+html[data-theme="light"] .reempaque-mode-pill:has(input:checked),
+html[data-theme="light"] .chip.active,
+html[data-theme="light"] .btn-outline.is-active,
+html[data-theme="light"] .customer-manage-filters button.is-active{
+  background:linear-gradient(180deg, rgba(157,111,31,0.14), rgba(255,248,234,0.98));
+  border-color:rgba(157,111,31,0.58);
+  color:var(--a33-text);
+  box-shadow:0 0 0 3px rgba(157,111,31,0.12);
+}
+
+html[data-theme="light"] .reempaque-title,
+html[data-theme="light"] .reempaque-mode-pill span,
+html[data-theme="light"] .reempaque-dest-head b,
+html[data-theme="light"] .reempaque-history-main b,
+html[data-theme="light"] .product-title,
+html[data-theme="light"] .metric .value,
+html[data-theme="light"] .calc-output,
+html[data-theme="light"] .cashv2-move-amt,
+html[data-theme="light"] .cashv2-hist-event-head h4,
+html[data-theme="light"] .cashv2-hist-daykey,
+html[data-theme="light"] .cashv2-hist-audit-action,
+html[data-theme="light"] .info-strong,
+html[data-theme="light"] .customer-manage-name,
+html[data-theme="light"] .customer-manage-results-title,
+html[data-theme="light"] .sobrante-title,
+html[data-theme="light"] .reverso-title{
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] .reempaque-kv span,
+html[data-theme="light"] .reempaque-msg,
+html[data-theme="light"] .reempaque-mode-pill small,
+html[data-theme="light"] .reempaque-dest-card label,
+html[data-theme="light"] .metric .label,
+html[data-theme="light"] .cashv2-move-note,
+html[data-theme="light"] .cashv2-hist-versions,
+html[data-theme="light"] .cashv2-hist-audit-reason,
+html[data-theme="light"] .cashv2-hist-audit-ts,
+html[data-theme="light"] .chk-mini,
+html[data-theme="light"] .rem-empty,
+html[data-theme="light"] .rem-chip,
+html[data-theme="light"] .disabled-note,
+html[data-theme="light"] .tech-mono{
+  color:var(--a33-muted);
+}
+
+html[data-theme="light"] .reempaque-kv,
+html[data-theme="light"] .cashv2-summary-table td,
+html[data-theme="light"] .cashv2-hist-day,
+html[data-theme="light"] .rem-block-sep,
+html[data-theme="light"] .product-meta-item,
+html[data-theme="light"] .chk-row,
+html[data-theme="light"] .rem-item{
+  border-color:rgba(139,98,30,0.16);
+}
+
+/* POS — tablas y registros */
+html[data-theme="light"] th,
+html[data-theme="light"] td{
+  border-bottom-color:rgba(139,98,30,0.14);
+}
+html[data-theme="light"] #tbl-day th:last-child,
+html[data-theme="light"] #tbl-day td:last-child,
+html[data-theme="light"] #tbl-eventos th:last-child,
+html[data-theme="light"] #tbl-eventos td:last-child{
+  background:var(--a33-surface);
+  box-shadow:-10px 0 10px rgba(92,62,24,0.12);
+}
+html[data-theme="light"] .table-scroll,
+html[data-theme="light"] .modal .scroll{
+  border-color:var(--a33-border);
+  background:rgba(255,250,240,0.58);
+}
+html[data-theme="light"] #banks-list .bank-table th,
+html[data-theme="light"] #banks-list .bank-table td{
+  border-color:rgba(139,98,30,0.14);
+}
+
+/* POS — botones, chips y métodos de pago */
+html[data-theme="light"] .btn-primary,
+html[data-theme="light"] .btn-ok,
+html[data-theme="light"] .calc-keys button.eq{
+  background:linear-gradient(180deg, #ddbf64, #9d6f1f);
+  color:#1f1710;
+  border-color:rgba(157,111,31,0.42);
+}
+html[data-theme="light"] .btn-warn{
+  background:rgba(157,111,31,0.16);
+  color:#6d4610;
+  border-color:rgba(157,111,31,0.36);
+}
+html[data-theme="light"] .btn-danger,
+html[data-theme="light"] .btn.danger,
+html[data-theme="light"] .danger,
+html[data-theme="light"] .rem-pri-high{
+  background:rgba(123,24,24,0.10);
+  color:#7b1818;
+  border-color:rgba(123,24,24,0.34);
+}
+html[data-theme="light"] .btn-outline,
+html[data-theme="light"] .btn-secondary,
+html[data-theme="light"] .btn-link,
+html[data-theme="light"] .btn-mini,
+html[data-theme="light"] .chk-mini,
+html[data-theme="light"] .calc-keys button.op,
+html[data-theme="light"] .calc-keys button.util,
+html[data-theme="light"] .tabbar button{
+  background:rgba(255,255,255,0.50);
+  color:var(--a33-text);
+  border-color:var(--a33-border);
+}
+html[data-theme="light"] .btn-link{
+  color:var(--a33-gold);
+  background:transparent;
+}
+html[data-theme="light"] .chip,
+html[data-theme="light"] .stockpill,
+html[data-theme="light"] .tag,
+html[data-theme="light"] .pill,
+html[data-theme="light"] .cashv2-mtag,
+html[data-theme="light"] .badge,
+html[data-theme="light"] .customer-manage-group-count,
+html[data-theme="light"] .rem-chip{
+  background:rgba(255,255,255,0.52);
+  color:var(--a33-gold);
+  border-color:var(--a33-border);
+}
+html[data-theme="light"] .pay-ef,
+html[data-theme="light"] .badge-on,
+html[data-theme="light"] .tag.open,
+html[data-theme="light"] .rem-pri-low{
+  background:rgba(33,112,58,0.10);
+  color:#1f6f3d;
+  border-color:rgba(33,112,58,0.28);
+}
+html[data-theme="light"] .pay-tr,
+html[data-theme="light"] .pay-card{
+  background:rgba(157,111,31,0.12);
+  color:#765012;
+  border-color:rgba(157,111,31,0.34);
+}
+html[data-theme="light"] .pay-cr,
+html[data-theme="light"] .badge-off,
+html[data-theme="light"] .tag.closed,
+html[data-theme="light"] .stockpill.low,
+html[data-theme="light"] .pill.danger,
+html[data-theme="light"] .rem-pri-med{
+  background:rgba(123,24,24,0.08);
+  color:#7b1818;
+  border-color:rgba(123,24,24,0.28);
+}
+
+/* POS — barra inferior y total */
+html[data-theme="light"] .tabbar{
+  background:rgba(255,248,234,0.94);
+  border-color:rgba(157,111,31,0.36);
+  box-shadow:0 12px 30px rgba(92,62,24,0.18);
+}
+html[data-theme="light"] .tabbar button{
+  color:rgba(31,23,16,0.72);
+  border:0;
+  box-shadow:none;
+}
+html[data-theme="light"] .tabbar button:hover,
+html[data-theme="light"] .tabbar button.active{
+  color:var(--a33-red);
+  background:rgba(157,111,31,0.12);
+  box-shadow:inset 0 0 0 1px rgba(157,111,31,0.20);
+}
+html[data-theme="light"] .tabbar button.active::after{
+  background:var(--a33-red);
+}
+html[data-theme="light"] .totalbar{
+  background:rgba(255,248,234,0.96);
+  border-top-color:rgba(139,98,30,0.24);
+  color:var(--a33-text);
+  box-shadow:0 -12px 28px rgba(92,62,24,0.12);
+}
+
+/* POS — modales, avisos y mensajes */
+html[data-theme="light"] .modal{
+  background:rgba(58,38,16,0.32);
+}
+html[data-theme="light"] .modal .panel{
+  background:linear-gradient(145deg,#fff8ea,#f1e2c9);
+  border-color:rgba(139,98,30,0.30);
+  color:var(--a33-text);
+  box-shadow:0 18px 40px rgba(92,62,24,0.20);
+}
+html[data-theme="light"] .toast{
+  background:rgba(255,248,234,0.98);
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+}
+html[data-theme="light"] .info,
+html[data-theme="light"] .reempaque-msg.ok,
+html[data-theme="light"] .reempaque-warning.ok{
+  background:rgba(33,112,58,0.10);
+  border-color:rgba(33,112,58,0.24);
+  color:#1f6f3d;
+}
+html[data-theme="light"] .warn,
+html[data-theme="light"] .reempaque-msg.warn,
+html[data-theme="light"] .reempaque-warning.warn,
+html[data-theme="light"] .pill.warn{
+  background:rgba(157,111,31,0.12);
+  border-color:rgba(157,111,31,0.30);
+  color:#754c12;
+}
+html[data-theme="light"] .offline{
+  background:#fff3cf;
+  color:#5c3b12;
+  border-bottom:1px solid rgba(157,111,31,0.24);
+}
+
+/* POS — Reempaque específico */
+html[data-theme="light"] .rp-multi-new-mode{
+  background:linear-gradient(180deg, rgba(157,111,31,0.12), rgba(255,248,234,0.98));
+}
+html[data-theme="light"] .reempaque-new-target{
+  border-style:dashed;
+}
+html[data-theme="light"] .reempaque-history-meta,
+html[data-theme="light"] .reempaque-history-meta strong{
+  color:var(--a33-muted);
+}
+html[data-theme="light"] .reempaque-history-meta strong{
+  color:var(--a33-text);
+}
+
+/* Inventario módulo independiente */
+html[data-theme="light"] .app-header{
+  background:linear-gradient(90deg, rgba(255,248,234,0.94), rgba(241,226,201,0.98));
+  border-bottom-color:rgba(139,98,30,0.28);
+}
+html[data-theme="light"] .table-wrapper{
+  background:rgba(255,250,240,0.62);
+  border-color:var(--a33-border);
+}
+html[data-theme="light"] thead{
+  background:rgba(246,235,216,0.98);
+}
+html[data-theme="light"] tr:nth-child(even) td{
+  background:rgba(255,255,255,0.24);
+}
+html[data-theme="light"] .inv-table tr,
+html[data-theme="light"] .app-footer,
+html[data-theme="light"] .a33-modal-card{
+  background:linear-gradient(180deg, rgba(255,250,240,0.98), rgba(246,235,216,0.96));
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+}
+html[data-theme="light"] .a33-modal{
+  background:rgba(58,38,16,0.32);
+}
+html[data-theme="light"] .a33-modal-title,
+html[data-theme="light"] .a33-modal-text,
+html[data-theme="light"] .a33-modal-label,
+html[data-theme="light"] .inv-status,
+html[data-theme="light"] .legend,
+html[data-theme="light"] .empty-state{
+  color:var(--a33-muted);
+}
+html[data-theme="light"] .a33-modal-title{
+  color:var(--a33-text);
+}
+html[data-theme="light"] .inv-table td::before{
+  color:rgba(31,23,16,0.72);
+}
+html[data-theme="light"] .inv-table.has-actions .inv-actions .btn-secondary,
+html[data-theme="light"] .varios-delta-btn{
+  background:rgba(157,111,31,0.10);
+  border-color:rgba(157,111,31,0.32);
+  color:var(--a33-gold);
+}
+html[data-theme="light"] .inv-table.has-actions .inv-actions .btn-danger,
+html[data-theme="light"] .varios-delete-btn{
+  background:rgba(123,24,24,0.08);
+  border-color:rgba(123,24,24,0.28);
+  color:#7b1818;
+}
+html[data-theme="light"] .status-ok,
+html[data-theme="light"] .inv-status.inv-status--ok{
+  color:#1f6f3d;
+  border-color:rgba(33,112,58,0.28);
+}
+html[data-theme="light"] .status-warn,
+html[data-theme="light"] .inv-status.inv-status--warn,
+html[data-theme="light"] .varios-pending{
+  color:#754c12;
+  border-color:rgba(157,111,31,0.34);
+}
+html[data-theme="light"] .status-critical,
+html[data-theme="light"] .inv-status.inv-status--error{
+  color:#7b1818;
+  border-color:rgba(123,24,24,0.34);
+}
+html[data-theme="light"] .status-neutral{
+  color:rgba(31,23,16,0.70);
+  border-color:rgba(139,98,30,0.20);
+}
+
+@media (max-width:640px){
+  html[data-theme="light"] .inv-table tr,
+  html[data-theme="light"] #banks-list .bank-table tr,
+  html[data-theme="light"] #inv-lote-selector-table tr{
+    background:linear-gradient(180deg, rgba(255,250,240,0.98), rgba(246,235,216,0.96));
+    border-color:var(--a33-border);
+  }
+}
+
+
+/* =========================================================
+   Etapa 5/5 — Apariencia global: Finanzas, Calculadora y cierre
+   Alcance: tema visual solamente. Sin tocar lógica de negocio.
+   ========================================================= */
+
+/* Finanzas — variables puente para que el CSS legacy obedezca el tema claro */
+html[data-theme="light"]{
+  --fin-bg:#f4ead8;
+  --fin-bg-alt:#fff8ea;
+  --fin-card:#fff8ea;
+  --fin-border:rgba(139,98,30,0.28);
+  --fin-text:#1f1710;
+  --fin-muted:rgba(31,23,16,0.70);
+  --fin-gold:#9d6f1f;
+  --fin-red:#7b1818;
+  --fin-red-soft:rgba(123,24,24,0.10);
+  --fin-green:#1f6f3d;
+}
+
+html[data-theme="light"] body.fin-body{
+  background:
+    radial-gradient(circle at top left, rgba(221,191,100,0.22), transparent 31%),
+    radial-gradient(circle at bottom right, rgba(123,24,24,0.10), transparent 34%),
+    linear-gradient(180deg, #f6ecdc 0%, #eadcc6 100%);
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] .fin-app,
+html[data-theme="light"] .fin-main,
+html[data-theme="light"] .fin-view,
+html[data-theme="light"] .fin-section-header,
+html[data-theme="light"] .fin-modal-body{
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] .fin-header,
+html[data-theme="light"] .fin-view,
+html[data-theme="light"] .fin-card,
+html[data-theme="light"] .fin-form,
+html[data-theme="light"] .fin-cardbox,
+html[data-theme="light"] .fin-empty,
+html[data-theme="light"] .prov-prod-item,
+html[data-theme="light"] .prov-prod-modal-row,
+html[data-theme="light"] .cc-consolidated-card,
+html[data-theme="light"] .cc-summary-item,
+html[data-theme="light"] .purchase-card,
+html[data-theme="light"] .purchase-modal-totals,
+html[data-theme="light"] .purchase-notes--read .purchase-notes-read,
+html[data-theme="light"] .fin-form--inmodal{
+  background:linear-gradient(180deg, rgba(255,250,240,0.98), rgba(246,235,216,0.96));
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+  box-shadow:0 14px 34px rgba(92,62,24,0.12);
+}
+
+html[data-theme="light"] .fin-header{
+  background:
+    radial-gradient(circle at top left, rgba(157,111,31,0.16), transparent 35%),
+    linear-gradient(135deg, rgba(255,250,240,0.98), rgba(241,226,201,0.98));
+  box-shadow:0 18px 42px rgba(92,62,24,0.16);
+}
+
+html[data-theme="light"] .fin-logo-img{
+  border-color:rgba(157,111,31,0.72);
+  box-shadow:0 12px 22px rgba(92,62,24,0.18), 0 0 18px rgba(157,111,31,0.18);
+}
+
+html[data-theme="light"] .fin-title-block h1,
+html[data-theme="light"] .fin-section-header h2,
+html[data-theme="light"] .fin-section-header--sub h3,
+html[data-theme="light"] .fin-card-number,
+html[data-theme="light"] .prov-prod-title,
+html[data-theme="light"] .prov-prod-modal-cell.name .prov-prod-modal-val,
+html[data-theme="light"] .cc-summary-item strong,
+html[data-theme="light"] .purchase-total-cell,
+html[data-theme="light"] .purchase-totals,
+html[data-theme="light"] .purchase-modal-totals .strong,
+html[data-theme="light"] .fin-row-strong td{
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] .fin-title-block p,
+html[data-theme="light"] .fin-version,
+html[data-theme="light"] .nav-group-label,
+html[data-theme="light"] .fin-section-header p,
+html[data-theme="light"] .fin-card h3,
+html[data-theme="light"] .fin-filters-row label,
+html[data-theme="light"] .fin-form-row label,
+html[data-theme="light"] .fin-help,
+html[data-theme="light"] .fin-hint,
+html[data-theme="light"] .fin-muted,
+html[data-theme="light"] .fin-detalle-meta,
+html[data-theme="light"] .prov-prod-meta,
+html[data-theme="light"] .prov-prod-modal-head,
+html[data-theme="light"] .cc-updated,
+html[data-theme="light"] .cc-consolidated-head p,
+html[data-theme="light"] .cc-summary-item span,
+html[data-theme="light"] .cc-msg,
+html[data-theme="light"] .purchase-grid-header,
+html[data-theme="light"] .purchase-notes label,
+html[data-theme="light"] .fin-table th{
+  color:var(--a33-muted);
+}
+
+html[data-theme="light"] .cc-consolidated-head h3,
+html[data-theme="light"] .purchase-modal-section h4,
+html[data-theme="light"] .btn-link,
+html[data-theme="light"] .fin-pill--gold,
+html[data-theme="light"] .fin-pill--transfer,
+html[data-theme="light"] .cc-chip,
+html[data-theme="light"] .prov-prod-chip{
+  color:var(--a33-gold);
+}
+
+html[data-theme="light"] .fin-main-nav a,
+html[data-theme="light"] .fin-tab-btn,
+html[data-theme="light"] .fin-subtab-btn,
+html[data-theme="light"] .cc-tab,
+html[data-theme="light"] .btn-ghost,
+html[data-theme="light"] .btn-small,
+html[data-theme="light"] .btn-close,
+html[data-theme="light"] .fin-pill{
+  background:rgba(255,255,255,0.50);
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+  box-shadow:0 8px 18px rgba(92,62,24,0.08);
+}
+
+html[data-theme="light"] .fin-main-nav a:hover,
+html[data-theme="light"] .fin-tab-btn:hover,
+html[data-theme="light"] .fin-subtab-btn:hover,
+html[data-theme="light"] .cc-tab:hover,
+html[data-theme="light"] .btn-ghost:hover,
+html[data-theme="light"] .btn-small:hover{
+  border-color:rgba(157,111,31,0.48);
+  background:rgba(255,250,240,0.88);
+}
+
+html[data-theme="light"] .fin-tab-btn.active,
+html[data-theme="light"] .fin-subtab-btn.active,
+html[data-theme="light"] .cc-tab.active,
+html[data-theme="light"] .fin-card-strong{
+  background:linear-gradient(180deg, rgba(157,111,31,0.15), rgba(255,248,234,0.98));
+  border-color:rgba(157,111,31,0.58);
+  box-shadow:0 0 0 3px rgba(157,111,31,0.10), 0 12px 28px rgba(92,62,24,0.12);
+}
+
+html[data-theme="light"] .fin-body .btn-primary{
+  background:linear-gradient(180deg, rgba(123,24,24,0.98), rgba(92,15,15,1));
+  border-color:rgba(123,24,24,0.42);
+  color:#fff;
+  box-shadow:0 10px 22px rgba(123,24,24,0.16);
+}
+
+html[data-theme="light"] .fin-body .btn-primary--gold,
+html[data-theme="light"] .fin-btn-export{
+  background:linear-gradient(180deg, #ddbf64, #9d6f1f);
+  border-color:rgba(157,111,31,0.44);
+  color:#1f1710;
+  box-shadow:0 10px 22px rgba(92,62,24,0.14);
+}
+
+html[data-theme="light"] .fin-body .btn-danger,
+html[data-theme="light"] .fin-pill--red{
+  background:rgba(123,24,24,0.08);
+  border-color:rgba(123,24,24,0.32);
+  color:#7b1818;
+}
+
+html[data-theme="light"] .fin-pill--green{
+  background:rgba(33,112,58,0.10);
+  border-color:rgba(33,112,58,0.26);
+  color:#1f6f3d;
+}
+
+html[data-theme="light"] .fin-pill--muted,
+html[data-theme="light"] .fin-pill--cash{
+  background:rgba(255,255,255,0.46);
+  border-color:rgba(139,98,30,0.18);
+  color:rgba(31,23,16,0.70);
+}
+
+html[data-theme="light"] .fin-filters-row select,
+html[data-theme="light"] .fin-filters-row input[type="date"],
+html[data-theme="light"] .fin-filters-row input[type="number"],
+html[data-theme="light"] .fin-filters-row input[type="text"],
+html[data-theme="light"] .fin-form-row input,
+html[data-theme="light"] .fin-form-row select,
+html[data-theme="light"] .cc-summary-rate input,
+html[data-theme="light"] .cc-table input,
+html[data-theme="light"] .purchase-grid input:not([type="checkbox"]),
+html[data-theme="light"] .purchase-grid select,
+html[data-theme="light"] .purchase-notes textarea{
+  background:rgba(255,250,240,0.98);
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] .fin-filters-row select:focus,
+html[data-theme="light"] .fin-filters-row input:focus,
+html[data-theme="light"] .fin-form-row input:focus,
+html[data-theme="light"] .fin-form-row select:focus,
+html[data-theme="light"] .cc-summary-rate input:focus,
+html[data-theme="light"] .cc-table input:focus,
+html[data-theme="light"] .purchase-grid input:not([type="checkbox"]):focus,
+html[data-theme="light"] .purchase-grid select:focus,
+html[data-theme="light"] .purchase-notes textarea:focus{
+  background:#fffaf0;
+  border-color:rgba(157,111,31,0.58);
+  box-shadow:0 0 0 3px rgba(157,111,31,0.14);
+  outline:none;
+}
+
+html[data-theme="light"] .fin-table-wrapper,
+html[data-theme="light"] .cc-table-wrap{
+  background:rgba(255,250,240,0.55);
+  border-color:var(--a33-border);
+  box-shadow:0 12px 24px rgba(92,62,24,0.10);
+}
+
+html[data-theme="light"] .fin-table{
+  background:rgba(255,250,240,0.96);
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] .fin-table thead{
+  background:linear-gradient(180deg, rgba(157,111,31,0.13), rgba(246,235,216,0.98));
+}
+
+html[data-theme="light"] .fin-table th,
+html[data-theme="light"] .fin-table td,
+html[data-theme="light"] .purchase-grid-row,
+html[data-theme="light"] .purchase-totals,
+html[data-theme="light"] .prov-prod-editor,
+html[data-theme="light"] .fin-row-strong td,
+html[data-theme="light"] .fin-receipts-filters,
+html[data-theme="light"] .fin-modal-header{
+  border-color:rgba(139,98,30,0.16);
+}
+
+html[data-theme="light"] .fin-table tbody tr:nth-child(odd),
+html[data-theme="light"] .fin-table tbody tr:nth-child(even){
+  background:rgba(255,255,255,0.34);
+}
+html[data-theme="light"] .fin-table tbody tr:hover{
+  background:rgba(157,111,31,0.10);
+}
+
+html[data-theme="light"] .fin-integrity-banner{
+  background:rgba(123,24,24,0.08);
+  border-color:rgba(123,24,24,0.26);
+  color:var(--a33-text);
+}
+html[data-theme="light"] .fin-integrity-banner strong{ color:var(--a33-red); }
+
+html[data-theme="light"] .fin-modal{
+  background:rgba(58,38,16,0.32);
+  backdrop-filter:blur(6px);
+}
+html[data-theme="light"] .fin-modal-content{
+  background:linear-gradient(145deg,#fff8ea,#f1e2c9);
+  border-color:rgba(139,98,30,0.30);
+  color:var(--a33-text);
+  box-shadow:0 18px 40px rgba(92,62,24,0.20);
+}
+html[data-theme="light"] .fin-toast{
+  background:rgba(255,248,234,0.98);
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+  box-shadow:0 16px 40px rgba(92,62,24,0.20);
+}
+
+/* Calculadora principal y Calculadora Temporal */
+html[data-theme="light"] body.calc-body{
+  background:
+    radial-gradient(circle at top right, rgba(221,191,100,0.22), transparent 30%),
+    radial-gradient(circle at bottom left, rgba(123,24,24,0.10), transparent 32%),
+    linear-gradient(180deg, #f6ecdc 0%, #eadcc6 100%);
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] body.calc-body .app-container,
+html[data-theme="light"] body.calc-body .section,
+html[data-theme="light"] body.calc-body .results,
+html[data-theme="light"] body.calc-body .a33-modal-card,
+html[data-theme="light"] body.calc-body .a33-history-card{
+  background:linear-gradient(180deg, rgba(255,250,240,0.98), rgba(246,235,216,0.96));
+  border:1px solid var(--a33-border);
+  border-radius:var(--a33-radius);
+  color:var(--a33-text);
+  box-shadow:0 14px 34px rgba(92,62,24,0.12);
+}
+html[data-theme="light"] body.calc-body .section{
+  padding:0.9rem;
+}
+
+html[data-theme="light"] body.calc-body h1,
+html[data-theme="light"] body.calc-body h2,
+html[data-theme="light"] body.calc-body h3,
+html[data-theme="light"] body.calc-body label,
+html[data-theme="light"] body.calc-body .results-title,
+html[data-theme="light"] body.calc-body .a33-modal-text,
+html[data-theme="light"] body.calc-body .a33-history-title{
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] body.calc-body .subtitle,
+html[data-theme="light"] body.calc-body .hint,
+html[data-theme="light"] body.calc-body .a33-history-body,
+html[data-theme="light"] body.calc-body .a33-history-meta,
+html[data-theme="light"] body.calc-body .a33-history-empty{
+  color:var(--a33-muted) !important;
+}
+
+html[data-theme="light"] body.calc-body input[type="number"],
+html[data-theme="light"] body.calc-body input[type="text"],
+html[data-theme="light"] body.calc-body input[type="date"],
+html[data-theme="light"] body.calc-body textarea,
+html[data-theme="light"] body.calc-body select{
+  background:rgba(255,250,240,0.98);
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+}
+
+html[data-theme="light"] body.calc-body input:focus,
+html[data-theme="light"] body.calc-body textarea:focus,
+html[data-theme="light"] body.calc-body select:focus{
+  background:#fffaf0;
+  border-color:rgba(157,111,31,0.58);
+  box-shadow:0 0 0 3px rgba(157,111,31,0.14);
+  outline:none;
+}
+
+html[data-theme="light"] body.calc-body table{
+  color:var(--a33-text);
+  background:rgba(255,250,240,0.92);
+}
+html[data-theme="light"] body.calc-body th{
+  background:rgba(157,111,31,0.12);
+  color:rgba(31,23,16,0.76);
+  border-color:rgba(139,98,30,0.18);
+}
+html[data-theme="light"] body.calc-body td{
+  border-color:rgba(139,98,30,0.14);
+  color:var(--a33-text);
+}
+html[data-theme="light"] body.calc-body tr:nth-child(even) td{
+  background:rgba(255,255,255,0.24);
+}
+html[data-theme="light"] body.calc-body .a33-table-wrap{
+  background:rgba(255,250,240,0.55);
+  border:1px solid var(--a33-border);
+  box-shadow:0 12px 24px rgba(92,62,24,0.08);
+}
+
+html[data-theme="light"] body.calc-body .btn-main,
+html[data-theme="light"] body.calc-body .a33-btn-primary-pill,
+html[data-theme="light"] body.calc-body .a33-main-action,
+html[data-theme="light"] body.calc-body .a33-save-ready{
+  background:linear-gradient(180deg, #ddbf64, #9d6f1f);
+  border-color:rgba(157,111,31,0.44);
+  color:#1f1710;
+  box-shadow:0 10px 22px rgba(92,62,24,0.14);
+}
+html[data-theme="light"] body.calc-body .btn-secondary,
+html[data-theme="light"] body.calc-body .btn-pill,
+html[data-theme="light"] body.calc-body .badge{
+  background:rgba(255,255,255,0.50);
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+}
+html[data-theme="light"] body.calc-body .a33-danger-action{
+  background:rgba(123,24,24,0.08);
+  border-color:rgba(123,24,24,0.32);
+  color:#7b1818;
+}
+html[data-theme="light"] body.calc-body .a33-pill-sugerido,
+html[data-theme="light"] body.calc-body .a33-pill-ok{
+  background:rgba(157,111,31,0.12);
+  border-color:rgba(157,111,31,0.34);
+  color:#765012;
+}
+html[data-theme="light"] body.calc-body .a33-pill-editado{
+  background:rgba(123,24,24,0.08);
+  border-color:rgba(123,24,24,0.28);
+  color:#7b1818;
+}
+html[data-theme="light"] body.calc-body .a33-modal{
+  background:rgba(58,38,16,0.32);
+  backdrop-filter:blur(6px);
+}
+html[data-theme="light"] body.calc-body .logo-container img{
+  box-shadow:0 12px 24px rgba(92,62,24,0.16);
+}
+
+/* Legacy / placeholders visibles */
+html[data-theme="light"] .offline-card,
+html[data-theme="light"] .legacy-card,
+html[data-theme="light"] .placeholder-card{
+  background:linear-gradient(180deg, rgba(255,250,240,0.98), rgba(246,235,216,0.96));
+  border-color:var(--a33-border);
+  color:var(--a33-text);
+}

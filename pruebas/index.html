@@ -1,0 +1,2098 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Suite A33 · Arcano 33</title>
+  <meta name="theme-color" content="#000000">
+  
+<script src="/assets/js/a33-theme.js?v=4.20.98&r=7"></script>
+<link rel="icon" type="image/png" sizes="192x192" href="icon-a33-192.png">
+  <link rel="apple-touch-icon" href="icon-a33-192.png">
+  <script>
+    (function(){
+      try{
+        var key = 'suite_a33_appearance_preference';
+        var pref = localStorage.getItem(key) || 'dark';
+        if (pref !== 'dark' && pref !== 'light' && pref !== 'auto') pref = 'dark';
+        var resolved = pref;
+        if (pref === 'auto'){
+          resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-a33-theme-preference', pref);
+        document.documentElement.setAttribute('data-theme', resolved);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', resolved === 'light' ? '#f4ead8' : '#060606');
+      }catch(_){
+        document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <style>
+    :root{
+      --bg:#000000;
+      --bg-alt:#111111;
+      --card:#1b1b1b;
+      --primary:#7b1818;
+      --primary-soft:#b28d38;
+      --accent:#ddbf64;
+      --text:#fefefe;
+      --muted:#aaaaaa;
+      --danger:#b00020;
+      --radius:18px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+    html{max-width:100%;overflow-x:hidden;}
+    html[data-theme="dark"]{color-scheme:dark;}
+    html[data-theme="light"]{
+      color-scheme:light;
+      --bg:#f4ead8;
+      --bg-alt:#eadcc6;
+      --card:#fff8ea;
+      --primary:#7b1818;
+      --primary-soft:#9d6f1f;
+      --accent:#9d6f1f;
+      --text:#1f1710;
+      --muted:rgba(31,23,16,0.72);
+      --danger:#8f1515;
+    }
+    body{
+      min-height:100vh;
+      background:radial-gradient(circle at top,#1b1b1b 0,#000000 55%,#000000 100%);
+      color:var(--text);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:1.5rem;
+      overflow-x:hidden;
+    }
+    .shell{
+      width:100%;
+      max-width:960px;
+      background:rgba(0,0,0,0.75);
+      border-radius:24px;
+      border:1px solid rgba(221,191,100,0.25);
+      box-shadow:0 20px 40px rgba(0,0,0,0.7);
+      padding:1.75rem 1.5rem 1.5rem;
+      backdrop-filter:blur(10px);
+    }
+    header{
+      display:flex;
+      align-items:center;
+      gap:1rem;
+      margin-bottom:1rem;
+    }
+    header img{
+      width:60px;
+      height:60px;
+      border-radius:999px;
+      object-fit:contain;
+      border:1px solid rgba(221,191,100,0.5);
+      padding:4px;
+      background:#000;
+    }
+    .title-block h1{
+      font-family:"Cinzel",serif;
+      font-size:1.4rem;
+      letter-spacing:0.07em;
+      text-transform:uppercase;
+    }
+    .title-block p{
+      font-size:0.85rem;
+      color:var(--muted);
+    }
+    main{
+      margin-top:0.75rem;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+      gap:1rem;
+      margin-top:0.75rem;
+    }
+    .card{
+      background:linear-gradient(135deg,rgba(27,27,27,0.95),rgba(16,16,16,0.98));
+      border-radius:var(--radius);
+      border:1px solid rgba(178,141,56,0.45);
+      padding:1rem;
+      position:relative;
+      overflow:hidden;
+      cursor:pointer;
+      transition:transform 0.18s ease,box-shadow 0.18s ease,border-color 0.18s ease;
+    }
+    .card::before{
+      content:"";
+      position:absolute;
+      inset:-40%;
+      background:radial-gradient(circle at top,var(--primary) 0,transparent 55%);
+      opacity:0;
+      transition:opacity 0.25s ease;
+      pointer-events:none;
+    }
+    .card:hover{
+      transform:translateY(-3px);
+      box-shadow:0 18px 35px rgba(0,0,0,0.85);
+      border-color:var(--accent);
+    }
+    .card:hover::before{
+      opacity:0.25;
+    }
+    .card h2{
+      font-size:1.05rem;
+      margin-bottom:0.4rem;
+    }
+    .card p{
+      font-size:0.85rem;
+      color:var(--muted);
+      margin-bottom:0.6rem;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:0.25rem;
+      padding:0.18rem 0.55rem;
+      border-radius:999px;
+      font-size:0.72rem;
+      background:rgba(0,0,0,0.6);
+      border:1px solid rgba(221,191,100,0.5);
+      color:var(--accent);
+    }
+    .pill span{
+      font-size:0.85rem;
+    }
+    .footer-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-size:0.75rem;
+      color:var(--muted);
+      margin-top:0.35rem;
+    }
+    .link-btn{
+      border:none;
+      border-radius:999px;
+      padding:0.35rem 0.9rem;
+      font-size:0.78rem;
+      background:var(--primary);
+      color:#fff;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:0.25rem;
+    }
+    .link-btn span{
+      font-size:0.9rem;
+    }
+    .link-btn.secondary{
+      background:transparent;
+      border:1px solid rgba(255,255,255,0.18);
+      color:var(--text);
+    }
+    .field{
+      margin-bottom:0.6rem;
+    }
+    .field label{
+      display:block;
+      font-size:0.78rem;
+      margin-bottom:0.22rem;
+      color:var(--accent);
+      letter-spacing:0.04em;
+      text-transform:uppercase;
+    }
+    .field input[type="text"]{
+      width:100%;
+      padding:0.45rem 0.65rem;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,0.16);
+      background:#050505;
+      color:var(--text);
+      font-size:0.95rem;
+      letter-spacing:0.02em;
+      text-align:left;
+    }
+    .btn-row{
+      display:flex;
+      gap:0.5rem;
+      margin-top:0.4rem;
+      align-items:center;
+    }
+    .btn{
+      flex:1;
+      border-radius:999px;
+      border:none;
+      padding:0.45rem 0.9rem;
+      font-size:0.82rem;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:0.25rem;
+    }
+    .btn-primary{ background:var(--primary); color:#fff; }
+    .btn-ghost{ background:transparent; border:1px solid rgba(255,255,255,0.18); color:var(--text); }
+    .btn-danger{ background:transparent; border:1px solid rgba(176,0,32,0.8); color:#ff8a80; }
+
+    /* --- Toast (mensajes rápidos) --- */
+    .a33-toast{
+      position:fixed;
+      left:50%;
+      bottom:18px;
+      transform:translateX(-50%) translateY(0);
+      background:rgba(8,8,8,0.92);
+      border:1px solid rgba(221,191,100,0.35);
+      color:var(--text);
+      padding:0.55rem 0.85rem;
+      border-radius:14px;
+      font-size:0.82rem;
+      z-index:9999;
+      box-shadow:0 16px 40px rgba(0,0,0,0.65);
+      max-width:min(560px, calc(100vw - 24px));
+      opacity:0;
+      pointer-events:none;
+      transition:opacity 160ms ease, transform 160ms ease;
+      text-align:center;
+    }
+    .a33-toast.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(-4px);
+    }
+    @media (max-width:600px){
+      .shell{padding:1.25rem 1rem 1rem;}
+      header img{width:52px;height:52px;}
+      .grid{grid-template-columns:1fr;}
+    }
+  
+    .menu-section{
+      margin-top:1.25rem;
+    }
+    .menu-title{
+      font-size:0.85rem;
+      letter-spacing:0.12em;
+      text-transform:uppercase;
+      color:var(--muted);
+      margin:0 0 0.4rem;
+    }
+
+    /* --- NÚCLEO A33 --- */
+    .hidden{ display:none !important; }
+    #support-grid{ grid-template-columns:1fr; align-items:start; }
+    #support-grid .card{ min-width:0; }
+    @media (min-width: 720px){
+      #support-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @media (min-width: 920px){
+      #support-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+    }
+    @media (min-width: 980px){
+      #support-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); }
+    }
+
+    /* --- Respaldo (Backup) --- */
+    .modal-overlay{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.72);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:1.25rem;
+      z-index:50;
+      backdrop-filter:blur(6px);
+    }
+    .modal-card{
+      width:100%;
+      max-width:720px;
+      background:linear-gradient(145deg,#101010,#1c1414);
+      border-radius:20px;
+      padding:1.2rem 1.1rem 1.05rem;
+      border:1px solid rgba(221,191,100,0.45);
+      box-shadow:0 18px 40px rgba(0,0,0,0.9);
+    }
+    .modal-title{
+      font-size:1.05rem;
+      margin-bottom:0.35rem;
+    }
+    .modal-body{
+      font-size:0.85rem;
+      color:var(--text);
+      line-height:1.35;
+      max-height:60vh;
+      overflow:auto;
+      padding-right:0.2rem;
+    }
+    .modal-body .muted{ color:var(--muted); }
+    .modal-body hr{ border:none;border-top:1px solid rgba(255,255,255,0.12); margin:0.7rem 0; }
+    .modal-body ul{ margin:0.35rem 0 0.6rem 1.15rem; }
+    .modal-body li{ margin:0.15rem 0; }
+    .modal-actions{
+      display:flex;
+      gap:0.5rem;
+      margin-top:0.8rem;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+    }
+    .badge-warn{
+      display:inline-flex;
+      align-items:center;
+      gap:0.35rem;
+      padding:0.18rem 0.55rem;
+      border-radius:999px;
+      border:1px solid rgba(176,0,32,0.75);
+      color:#ff8a80;
+      background:rgba(0,0,0,0.35);
+      font-size:0.75rem;
+      margin-top:0.35rem;
+    }
+    .kv{
+      display:grid;
+      grid-template-columns:150px 1fr;
+      gap:0.25rem 0.75rem;
+      margin-top:0.4rem;
+    }
+    .kv div{ padding:0.15rem 0; }
+    .kv .k{ color:var(--accent); font-size:0.78rem; letter-spacing:0.02em; }
+    .kv .v{ color:var(--text); font-size:0.85rem; word-break:break-word; }
+    .small-note{ font-size:0.75rem; color:var(--muted); margin-top:0.4rem; }
+    details summary{
+      cursor:pointer;
+      color:var(--accent);
+      margin-top:0.35rem;
+    }
+
+    .config-topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:0.75rem;
+      margin-bottom:1rem;
+      padding:0.75rem;
+      border-radius:18px;
+      border:1px solid rgba(221,191,100,0.25);
+      background:rgba(0,0,0,0.35);
+    }
+    .config-title-block h2{
+      font-size:1.15rem;
+      color:var(--accent);
+      letter-spacing:0.04em;
+      text-transform:uppercase;
+    }
+    .config-title-block p{
+      font-size:0.8rem;
+      color:var(--muted);
+      margin-top:0.2rem;
+    }
+    .config-back-btn{
+      border:none;
+      border-radius:999px;
+      padding:0.45rem 0.85rem;
+      background:rgba(0,0,0,0.45);
+      border:1px solid rgba(221,191,100,0.42);
+      color:var(--accent);
+      cursor:pointer;
+      font-size:0.8rem;
+      white-space:nowrap;
+    }
+    .config-back-btn:hover{ border-color:var(--accent); }
+    .config-lead{
+      color:var(--muted);
+      font-size:0.85rem;
+      line-height:1.45;
+      margin:0 0 0.75rem;
+    }
+    .config-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+      gap:1rem;
+      margin-top:0.75rem;
+    }
+    .config-pwa-status{
+      display:grid;
+      gap:0.45rem;
+      margin:0.75rem 0 0.9rem;
+      padding:0.75rem;
+      border-radius:16px;
+      border:1px solid rgba(221,191,100,0.18);
+      background:rgba(0,0,0,0.22);
+    }
+    .config-pwa-row{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:0.75rem;
+      color:var(--muted);
+      font-size:0.78rem;
+      line-height:1.35;
+    }
+    .config-pwa-row strong{
+      color:var(--text);
+      text-align:right;
+      word-break:break-word;
+    }
+    .config-pwa-card .link-btn{
+      min-height:44px;
+      justify-content:center;
+    }
+    @media(max-width:560px){
+      .config-topbar{ align-items:flex-start; flex-direction:column; }
+      .config-back-btn{ width:100%; justify-content:center; }
+    }
+
+
+    /* --- Apariencia global: Menú principal responde a Oscuro / Claro / Automático --- */
+    html[data-theme="light"] body{
+      background:
+        radial-gradient(circle at top right, rgba(221,191,100,0.24), transparent 30%),
+        radial-gradient(circle at bottom left, rgba(123,24,24,0.10), transparent 34%),
+        linear-gradient(180deg, #f6ecdc 0%, #eadcc6 100%);
+    }
+    html[data-theme="light"] .shell{
+      background:rgba(255,248,234,0.84);
+      border-color:rgba(139,98,30,0.28);
+      box-shadow:0 20px 42px rgba(92,62,24,0.18);
+    }
+    html[data-theme="light"] header img{
+      background:#fff8ea;
+      border-color:rgba(139,98,30,0.34);
+      box-shadow:0 10px 24px rgba(92,62,24,0.12);
+    }
+    html[data-theme="light"] .title-block h1,
+    html[data-theme="light"] .card h2,
+    html[data-theme="light"] .modal-title,
+    html[data-theme="light"] .config-title-block h2{
+      color:#1f1710;
+    }
+    html[data-theme="light"] .menu-title{
+      color:rgba(31,23,16,0.74);
+    }
+    html[data-theme="light"] .card{
+      background:
+        radial-gradient(circle at top right, rgba(221,191,100,0.14), transparent 36%),
+        linear-gradient(135deg, rgba(255,250,240,0.98), rgba(246,235,216,0.98));
+      border-color:rgba(139,98,30,0.24);
+      box-shadow:0 14px 30px rgba(92,62,24,0.12);
+    }
+    html[data-theme="light"] .card::before{
+      background:radial-gradient(circle at top,var(--primary) 0,transparent 56%);
+      opacity:0.04;
+    }
+    html[data-theme="light"] .card:hover{
+      box-shadow:0 18px 34px rgba(92,62,24,0.18);
+      border-color:rgba(157,111,31,0.52);
+    }
+    html[data-theme="light"] .card:hover::before{
+      opacity:0.10;
+    }
+    html[data-theme="light"] .pill,
+    html[data-theme="light"] .link-btn.secondary,
+    html[data-theme="light"] .btn-ghost,
+    html[data-theme="light"] .config-back-btn{
+      background:rgba(255,255,255,0.46);
+      border-color:rgba(139,98,30,0.26);
+      color:#1f1710;
+    }
+    html[data-theme="light"] .pill{
+      color:var(--accent);
+    }
+    html[data-theme="light"] .link-btn,
+    html[data-theme="light"] .btn-primary{
+      background:linear-gradient(180deg, rgba(123,24,24,0.98), rgba(92,15,15,1));
+      color:#fff;
+      box-shadow:0 10px 22px rgba(123,24,24,0.18);
+    }
+    html[data-theme="light"] .footer-row,
+    html[data-theme="light"] .card p,
+    html[data-theme="light"] .title-block p,
+    html[data-theme="light"] .config-lead,
+    html[data-theme="light"] .config-title-block p,
+    html[data-theme="light"] .config-pwa-row{
+      color:rgba(31,23,16,0.72);
+    }
+    html[data-theme="light"] .field label,
+    html[data-theme="light"] .kv .k,
+    html[data-theme="light"] details summary,
+    html[data-theme="light"] .config-pwa-row strong{
+      color:var(--accent);
+    }
+    html[data-theme="light"] .field input[type="text"]{
+      background:rgba(255,250,240,0.98);
+      border-color:rgba(139,98,30,0.22);
+      color:#1f1710;
+    }
+    html[data-theme="light"] .config-topbar,
+    html[data-theme="light"] .config-pwa-status{
+      background:rgba(255,255,255,0.40);
+      border-color:rgba(139,98,30,0.22);
+    }
+    html[data-theme="light"] .modal-overlay{
+      background:rgba(58,38,16,0.32);
+    }
+    html[data-theme="light"] .modal-card{
+      background:linear-gradient(145deg,#fff8ea,#f1e2c9);
+      border-color:rgba(139,98,30,0.30);
+      box-shadow:0 18px 40px rgba(92,62,24,0.20);
+      color:#1f1710;
+    }
+    html[data-theme="light"] .modal-body,
+    html[data-theme="light"] .kv .v{
+      color:#1f1710;
+    }
+    html[data-theme="light"] .modal-body .muted,
+    html[data-theme="light"] .small-note{
+      color:rgba(31,23,16,0.70);
+    }
+    html[data-theme="light"] .modal-body hr{
+      border-top-color:rgba(139,98,30,0.18);
+    }
+    html[data-theme="light"] .badge-warn{
+      background:rgba(123,24,24,0.08);
+      border-color:rgba(123,24,24,0.34);
+      color:#7b1818;
+    }
+    html[data-theme="light"] .a33-toast{
+      background:rgba(255,248,234,0.96);
+      border-color:rgba(139,98,30,0.28);
+      color:#1f1710;
+      box-shadow:0 16px 40px rgba(92,62,24,0.20);
+    }
+
+</style>
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
+<link rel="stylesheet" href="/assets/css/a33-home-access.css?v=4.20.98&r=1" />
+</head>
+<body>
+
+  <div class="shell" id="app-shell" style="display:block;">
+    <header>
+      <img src="icon-a33-192.png" alt="Arcano 33">
+      <div class="title-block">
+        <h1>Suite A33 · Arcano 33</h1>
+        <p>Panel interno para producción, control de lotes y ventas.</p>
+      </div>
+    </header>
+
+    <main>
+      <div id="home-view">
+      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.35rem;">
+        Selecciona un módulo para trabajar. Puedes fijar esta Suite en la pantalla de inicio de tu teléfono para acceder más rápido.
+      </p>
+
+      <section class="a33-home-access" id="a33-home-access" aria-live="polite">
+        <div class="a33-home-access-copy">
+          <strong data-a33-home-access-title>Verificando acceso…</strong>
+          <span data-a33-home-access-message>Estamos cargando tu sesión y permisos.</span>
+        </div>
+        <form class="a33-home-access-form" data-a33-home-access-form hidden>
+          <label class="a33-home-access-field"><span>Correo</span><input name="email" type="email" autocomplete="username" required></label>
+          <label class="a33-home-access-field"><span>Contraseña</span><input name="password" type="password" autocomplete="current-password" required></label>
+          <button class="a33-home-access-button" type="submit">Iniciar sesión</button>
+        </form>
+        <div class="a33-home-access-actions" data-a33-home-signed-actions hidden>
+          <button class="a33-home-access-button" data-a33-home-signout type="button">Cerrar sesión</button>
+        </div>
+        <p class="a33-home-access-error" data-a33-home-access-error aria-live="assertive"></p>
+      </section>
+
+      <section class="menu-section">
+        <h2 class="menu-title">Suite A33 Hecha por El Alquimista</h2>
+        <div class="grid">
+        <article class="card" data-link="calculadora/index.html" data-a33-module-target="produccion" hidden>
+          <div class="pill"><span>🧪</span><span>Producción</span></div>
+          <h2>Calculadora de Producción</h2>
+          <p>Define cantidades de los productos activos con Receta y obtén la materia prima y volumen final.</p>
+          <div class="footer-row">
+            <span>Basado en recetas A33.</span>
+            <button class="link-btn"><span>Ir</span> →</button>
+          </div>
+        </article>
+
+        <article class="card" data-link="lotes/index.html" data-a33-module-target="lotes" hidden>
+          <div class="pill"><span>📦</span><span>Lotes</span></div>
+          <h2>Control de Lotes</h2>
+          <p>Registra cada lote producido con fechas, volúmenes y presentaciones. Exporta CSV y consulta historial.</p>
+          <div class="footer-row">
+            <span>Seguimiento interno.</span>
+            <button class="link-btn"><span>Ir</span> →</button>
+          </div>
+        </article>
+        <article class="card" data-link="inventario/index.html" data-a33-module-target="inventario" hidden>
+          <div class="pill"><span>📊</span><span>Inventario</span></div>
+          <h2>Inventario</h2>
+          <p>Control de insumos líquidos y botellas por presentación, con alertas internas.</p>
+          <div class="footer-row">
+            <span>Se ajusta con la producción.</span>
+            <button class="link-btn"><span>Ir</span> →</button>
+          </div>
+        </article>
+
+        <article class="card" data-link="pos/index.html" data-a33-module-target="pos" hidden>
+          <div class="pill"><span>🧾</span><span>Ventas</span></div>
+          <h2>A33 POS · Eventos</h2>
+          <p>Registra ventas por evento, manejo de inventario y métodos de pago. Funciona offline.</p>
+          <div class="footer-row">
+            <span>Incluye descuentos por unidad.</span>
+            <button class="link-btn"><span>Ir</span> →</button>
+          </div>
+        </article>
+        <article class="card" data-link="analitica/index.html" data-a33-module-target="analitica" hidden>
+          <div class="pill"><span>📈</span><span>Analítica</span></div>
+          <h2>Analítica de Ventas</h2>
+          <p>Resumen mensual, comparativo por evento y por presentación, en solo lectura desde el POS.</p>
+          <div class="footer-row">
+            <span>No modifica datos, solo analiza.</span>
+            <button class="link-btn"><span>Ir</span> →</button>
+          </div>
+        </article>
+        <article class="card" data-link="pedidos/index.html" data-a33-module-target="pedidos" hidden>
+          <div class="pill"><span>📅</span><span>Pedidos</span></div>
+          <h2>Planificación de Pedidos</h2>
+          <p>Registra pedidos de clientes, totales a pagar y marca cuándo han sido entregados.</p>
+          <div class="footer-row">
+            <span>Enlace opcional a lotes.</span>
+            <button class="link-btn"><span>Ir</span> →</button>
+          </div>
+        </article>
+
+      </div>
+      </section>
+
+      <section class="menu-section">
+        <h2 class="menu-title">Gestión Operativa</h2>
+        <div class="grid">
+          <article class="card" data-link="finanzas/index.html#tab=tablero" data-a33-module-target="finanzas" hidden>
+            <div class="pill"><span>📊</span><span>Finanzas</span></div>
+            <h2>Tablero Finanzas</h2>
+            <p>Centro operativo de ventas, caja, bancos, gastos, ingresos adicionales y utilidad por período o evento.</p>
+            <div class="footer-row">
+              <span>Vista operativa.</span>
+              <button class="link-btn"><span>Ir</span> →</button>
+            </div>
+          </article>
+
+          <article class="card" data-link="finanzas/index.html#tab=cajachica" data-a33-module-target="finanzas" hidden>
+            <div class="pill"><span>💵</span><span>Caja Chica</span></div>
+            <h2>Caja Chica</h2>
+            <p>Control rápido del efectivo físico en C$ y USD.</p>
+            <div class="footer-row">
+              <span>Acceso directo operativo.</span>
+              <button class="link-btn"><span>Ir</span> →</button>
+            </div>
+          </article>
+
+          <article class="card" data-link="catalogos/index.html" data-a33-module-target="catalogos" hidden>
+            <div class="pill"><span>🗂️</span><span>Datos maestros</span></div>
+            <h2>Catálogos</h2>
+            <p>Productos, envases, tapas, extras, bancos y clientes que alimentan la Suite.</p>
+            <div class="footer-row">
+              <span>Base operativa central.</span>
+              <button class="link-btn"><span>Ir</span> →</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      
+      <section class="menu-section">
+        <h2 class="menu-title">NÚCLEO A33</h2>
+        <div class="grid support-grid" id="support-grid">
+
+          <article class="card" id="card-config-hub" data-link="configuracion/index.html" data-a33-module-target="configuracion" hidden>
+            <div class="pill"><span>⚙️</span><span>Configuración</span></div>
+            <h2>Configuración</h2>
+            <p>Ajustes, respaldo y opciones generales de la Suite.</p>
+            <div class="footer-row">
+              <span>Organización general</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
+            </div>
+          </article>
+
+          <article class="card" id="card-centro-mando" data-link="centro-mando/index.html" data-a33-module-target="centro-mando" hidden>
+            <div class="pill"><span>🧭</span><span>Centro</span></div>
+            <h2>Centro de Mando</h2>
+            <p>Radar ligero por evento: Efectivo, ventas, top productos e inventario crítico.</p>
+            <div class="footer-row">
+              <span>Evento enfocado + accesos rápidos.</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
+            </div>
+          </article>
+
+          <article class="card" id="card-calculadora-temporal-home" data-link="calculadora_temporal/index.html" data-a33-module-target="temporal" hidden>
+            <div class="pill"><span>⏳</span><span>Temporal</span></div>
+            <h2>Calculadora Temporal</h2>
+            <p>Espacio aislado para pruebas, corridas temporales y cálculos propios sin tocar Producción, Lotes ni datos operativos reales.</p>
+            <div class="footer-row">
+              <span>Persistencia separada del mundo real.</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
+            </div>
+          </article>
+
+          <article class="card" id="card-agenda-home" data-link="agenda/index.html" data-a33-module-target="agenda" hidden>
+            <div class="pill"><span>🗓️</span><span>Agenda</span></div>
+            <h2>Agenda</h2>
+            <p>Organiza reuniones, tareas y compras planificadas con presupuesto, estados y exportación al Calendario.</p>
+            <div class="footer-row">
+              <span>Reuniones, Tareas y Compras separadas.</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
+            </div>
+          </article>
+
+          <!-- Elementos ocultos (reuso de handlers existentes) -->
+          <button id="card-export-backup" class="hidden" type="button" aria-hidden="true"></button>
+          <button id="card-import-backup" class="hidden" type="button" aria-hidden="true"></button>
+
+        </div>
+      </section>
+
+      </div>
+
+      <section id="config-view" class="hidden" aria-label="Configuración">
+        <div class="config-topbar">
+          <div class="config-title-block">
+            <h2>Configuración</h2>
+            <p>Ajustes, respaldo y opciones generales de la Suite.</p>
+          </div>
+          <button id="btn-config-back-home" class="config-back-btn" type="button">← Menú principal</button>
+        </div>
+
+        <p class="config-lead">
+          Centro interno para ordenar opciones generales de la Suite. El primer apartado concentra el control PWA; Respaldo queda después, sin cambiar datos, JSON ni llaves históricas.
+        </p>
+
+        <div class="config-grid">
+          <article class="card config-pwa-card" id="card-config-pwa">
+            <div class="pill"><span>📲</span><span>PWA</span></div>
+            <h2>PWA</h2>
+            <p>Actualización y control de la versión instalada de la Suite.</p>
+            <div class="config-pwa-status" aria-label="Estado PWA">
+              <div class="config-pwa-row"><span>Estado</span><strong id="cfg-pwa-status">Sin revisar</strong></div>
+              <div class="config-pwa-row"><span>Última búsqueda</span><strong id="cfg-pwa-last-check">Sin registros</strong></div>
+              <div class="config-pwa-row"><span>Última actualización</span><strong id="cfg-pwa-last-update">Sin registros</strong></div>
+            </div>
+            <div class="footer-row">
+              <span>Control central</span>
+              <button id="cfg-pwa-check" class="link-btn secondary" type="button"><span>Buscar actualizaciones</span></button>
+            </div>
+          </article>
+
+          <article class="card" id="card-config-backup">
+            <div class="pill"><span>🗄️</span><span>Respaldo</span></div>
+            <h2>Respaldo</h2>
+            <p>Exportar e importar respaldos completos o parciales desde Configuración.</p>
+            <div class="footer-row">
+              <span>Exportar / Importar</span>
+              <button class="link-btn secondary"><span>Abrir</span> →</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="backup-modal" style="display:none;">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
+      <h2 class="modal-title" id="backup-modal-title">Respaldo</h2>
+      <div class="modal-body" id="backup-modal-body"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="backup-modal-cancel">Cancelar</button>
+        <button class="btn btn-ghost" id="backup-modal-secondary" style="display:none;">Secundario</button>
+        <button class="btn btn-primary" id="backup-modal-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <input id="backup-file-input" type="file" accept="application/json" style="display:none;">
+  <input id="calc-only-file-input" type="file" accept="application/json" style="display:none;">
+  <div id="a33-toast" class="a33-toast" aria-live="polite"></div>
+
+  <script src="/assets/js/a33-release.js?v=4.20.98&r=57"></script>
+  <script src="assets/js/a33-storage.js?v=4.20.98&r=20"></script>
+  <script src="assets/js/a33-currency.js?v=4.20.98&r=14"></script>
+  <script src="assets/js/a33-export-currency.js?v=4.20.98&r=2"></script>
+  <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+  <script>
+
+    // --- Apariencia global: leer la preferencia creada en Configuración → Apariencia ---
+    (function(){
+      const APPEARANCE_STORAGE_KEY = 'suite_a33_appearance_preference';
+      const valid = new Set(['dark', 'light', 'auto']);
+      let mql = null;
+
+      function normalize(value){
+        const v = String(value || '').trim().toLowerCase();
+        return valid.has(v) ? v : 'dark';
+      }
+
+      function resolve(pref){
+        if (pref === 'auto'){
+          try{
+            return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+          }catch(_){ return 'dark'; }
+        }
+        return pref;
+      }
+
+      function read(){
+        try{ return normalize(localStorage.getItem(APPEARANCE_STORAGE_KEY)); }
+        catch(_){ return 'dark'; }
+      }
+
+      function apply(pref){
+        const preference = normalize(pref || read());
+        const resolved = resolve(preference);
+        try{
+          document.documentElement.setAttribute('data-a33-theme-preference', preference);
+          document.documentElement.setAttribute('data-theme', resolved);
+          if (document.body){
+            document.body.setAttribute('data-a33-theme-preference', preference);
+            document.body.setAttribute('data-theme', resolved);
+          }
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', resolved === 'light' ? '#f4ead8' : '#060606');
+        }catch(_){ }
+        return { preference, resolved };
+      }
+
+      function bindSystem(){
+        try{
+          if (!window.matchMedia) return;
+          mql = window.matchMedia('(prefers-color-scheme: dark)');
+          const onChange = () => {
+            if (read() === 'auto') apply('auto');
+          };
+          if (typeof mql.addEventListener === 'function') mql.addEventListener('change', onChange);
+          else if (typeof mql.addListener === 'function') mql.addListener(onChange);
+        }catch(_){ }
+      }
+
+      try{
+        window.A33Theme = Object.assign({}, window.A33Theme || {}, {
+          key: APPEARANCE_STORAGE_KEY,
+          read,
+          apply,
+          getPreference: read,
+          getResolvedTheme: () => resolve(read())
+        });
+        window.addEventListener('storage', (event) => {
+          if (!event || event.key === APPEARANCE_STORAGE_KEY) apply(read());
+        });
+      }catch(_){ }
+
+      if (document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', () => { apply(read()); bindSystem(); }, { once:true });
+      }else{
+        apply(read());
+        bindSystem();
+      }
+    })();
+
+    // --- Home libre de acceso ---
+    function hideBootSplash(){}
+
+    function showApp(){
+      const shell = document.getElementById('app-shell');
+      if (shell) shell.style.display = 'block';
+    }
+
+    async function initHomeUi(){
+      showApp();
+    }
+
+    // --- Respaldo local (Exportar / Importar) ---
+    const BACKUP_APP_NAME = 'Suite A33';
+    const SUITE_LS_PREFIXES = ['arcano33_', 'a33_', 'suite_a33_']; 
+
+    function isSuiteLocalStorageKey(key){
+      if (!key) return false;
+      return SUITE_LS_PREFIXES.some(p => key.startsWith(p));
+    }
+
+    function isSuiteDbName(name){
+      if (!name) return false;
+      if (name === 'finanzasDB') return true;
+      const n = String(name).toLowerCase();
+      return n.includes('a33') || n.includes('arcano') || n.includes('finanzas');
+    }
+
+    function isRetiredGateStorageKey(key){
+      try{
+        if (window.A33Storage && typeof A33Storage.isRetiredGateKey === 'function'){
+          return !!A33Storage.isRetiredGateKey(key);
+        }
+      }catch(_){ }
+      const s = String(key || '').toLowerCase().trim();
+      if (!s) return false;
+      const retiredTags = [
+        ['au','th'],
+        ['log','in'],
+        ['un','lock'],
+        ['ses','sion'],
+        ['pro','file'],
+        ['per','fil'],
+        ['last','url'],
+        ['p','in'],
+        ['ac','ceso'],
+        ['ac','cess']
+      ].map(parts => parts.join(''));
+      const exact = new Set([
+        ['suite_a33_', ['au','th'].join(''), '_v1'].join(''),
+        ['suite_a33_', ['pro','file'].join(''), '_v1'].join(''),
+        ['suite_a33_', ['ses','sion'].join(''), '_v1'].join(''),
+        ['suite_a33_', ['p','in'].join('')].join(''),
+        ['suite_a33_exec_', ['un','lock'].join(''), '_v1'].join(''),
+        ['suite_a33_last_url_v1'].join('')
+      ]);
+      if (exact.has(s)) return true;
+      const prefixed = SUITE_LS_PREFIXES.some(p => s.startsWith(String(p || '').toLowerCase()));
+      if (!prefixed) return false;
+      return retiredTags.some(tag => {
+        if (!tag) return false;
+        if (tag === 'lasturl') return /(?:^|[_-])last[_-]?url(?:[_-]|$)/.test(s);
+        const rx = new RegExp('(?:^|[_-])' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[_-]|$)');
+        return rx.test(s);
+      });
+    }
+
+    function isRetiredGateDbName(name){
+      try{
+        if (window.A33Storage && typeof A33Storage.isRetiredGateDbName === 'function'){
+          return !!A33Storage.isRetiredGateDbName(name);
+        }
+      }catch(_){ }
+      const s = String(name || '').toLowerCase().trim();
+      if (!s) return false;
+      const looksSuite = s.includes('a33') || s.includes('arcano') || s.includes('suite');
+      if (!looksSuite) return false;
+      const retiredTags = [
+        ['au','th'],
+        ['log','in'],
+        ['un','lock'],
+        ['ses','sion'],
+        ['pro','file'],
+        ['p','in'],
+        ['ac','ceso'],
+        ['ac','cess']
+      ].map(parts => parts.join(''));
+      return retiredTags.some(tag => {
+        const rx = new RegExp('(?:^|[_-])' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[_-]|$)');
+        return rx.test(s);
+      });
+    }
+
+    function isRetiredGateStoreName(name){
+      const s = String(name || '').toLowerCase().trim();
+      if (!s) return false;
+      const retiredTags = [
+        ['au','th'],
+        ['log','in'],
+        ['un','lock'],
+        ['ses','sion'],
+        ['pro','file'],
+        ['p','in'],
+        ['ac','ceso'],
+        ['ac','cess']
+      ].map(parts => parts.join(''));
+      return retiredTags.some(tag => {
+        const rx = new RegExp('(?:^|[_-])' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[_-]|$)');
+        return rx.test(s);
+      });
+    }
+
+    function sanitizeSuiteLocalStorageMap(mapLike){
+      const src = (mapLike && typeof mapLike === 'object') ? mapLike : {};
+      const out = {};
+      for (const [k, v] of Object.entries(src)){
+        if (!isSuiteLocalStorageKey(k)) continue;
+        if (isRetiredGateStorageKey(k)) continue;
+        out[k] = v;
+      }
+      return out;
+    }
+
+    function sanitizeIndexedDbPayload(indexedMap, dbSchemas, dbVersions){
+      const src = (indexedMap && typeof indexedMap === 'object') ? indexedMap : {};
+      const cleanData = {};
+      const cleanSchemas = {};
+      const cleanVersions = {};
+      for (const [dbName, stores] of Object.entries(src)){
+        if (!isSuiteDbName(dbName)) continue;
+        if (isRetiredGateDbName(dbName)) continue;
+
+        const safeStores = {};
+        const storeEntries = (stores && typeof stores === 'object') ? Object.entries(stores) : [];
+        for (const [storeName, records] of storeEntries){
+          if (isRetiredGateStoreName(storeName)) continue;
+          safeStores[storeName] = Array.isArray(records) ? records : [];
+        }
+        cleanData[dbName] = safeStores;
+
+        const srcSchemaDb = (dbSchemas && typeof dbSchemas === 'object' && dbSchemas[dbName] && typeof dbSchemas[dbName] === 'object')
+          ? dbSchemas[dbName]
+          : {};
+        const safeSchemaDb = {};
+        for (const [storeName, schema] of Object.entries(srcSchemaDb)){
+          if (isRetiredGateStoreName(storeName)) continue;
+          safeSchemaDb[storeName] = schema;
+        }
+        cleanSchemas[dbName] = safeSchemaDb;
+
+        if (dbVersions && Object.prototype.hasOwnProperty.call(dbVersions, dbName)){
+          cleanVersions[dbName] = dbVersions[dbName];
+        }
+      }
+      return { data: cleanData, schemas: cleanSchemas, versions: cleanVersions };
+    }
+
+    function sanitizeBackupObject(obj){
+      const src = (obj && typeof obj === 'object') ? obj : {};
+      const meta = (src.meta && typeof src.meta === 'object') ? src.meta : {};
+      const data = (src.data && typeof src.data === 'object') ? src.data : {};
+      const cleanIndexed = sanitizeIndexedDbPayload(data.indexedDB || {}, meta.dbSchemas || {}, meta.dbVersions || {});
+      return {
+        meta: {
+          ...meta,
+          dbSchemas: cleanIndexed.schemas,
+          dbVersions: cleanIndexed.versions
+        },
+        data: {
+          indexedDB: cleanIndexed.data,
+          localStorage: sanitizeSuiteLocalStorageMap(data.localStorage || {})
+        }
+      };
+    }
+
+    function escapeHtml(str){
+      return String(str ?? '')
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
+    }
+
+    function formatBytes(bytes){
+      const b = Number(bytes || 0);
+      if (!Number.isFinite(b) || b <= 0) return '0 B';
+      const units = ['B','KB','MB','GB'];
+      let v = b;
+      let i = 0;
+      while (v >= 1024 && i < units.length - 1){
+        v = v / 1024;
+        i++;
+      }
+      return `${v.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
+    }
+
+    function reqToPromise(req){
+      return new Promise((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error('IndexedDB request error'));
+      });
+    }
+
+    function txDone(tx){
+      return new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve(true);
+        tx.onabort = () => reject(tx.error || new Error('Transacción abortada'));
+        tx.onerror = () => reject(tx.error || new Error('Error en transacción'));
+      });
+    }
+
+    async function safeListIndexedDBDatabases(){
+      if (indexedDB.databases){
+        try{
+          const list = await indexedDB.databases();
+          if (Array.isArray(list)) return list.filter(d => d && d.name);
+        }catch(e){}
+      }
+      // Fallback (navegadores sin indexedDB.databases)
+      return [
+        { name: 'a33-pos' },
+        { name: 'finanzasDB' }
+      ];
+    }
+
+    function openExistingDB(dbName){
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(dbName);
+        // Si no existe, esto intentaría crearlo: abortamos para NO mutar el navegador al solo "leer"
+        req.onupgradeneeded = (e) => {
+          try{ e.target.transaction.abort(); }catch(_){}
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error(`No se pudo abrir la base de datos: ${dbName}`));
+      });
+    }
+
+    async function getAllFromStore(store){
+      if (store.getAll){
+        return await reqToPromise(store.getAll());
+      }
+      // Fallback cursor
+      return await new Promise((resolve, reject) => {
+        const out = [];
+        const req = store.openCursor();
+        req.onerror = () => reject(req.error || new Error('Error leyendo cursor'));
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor){
+            out.push(cursor.value);
+            cursor.continue();
+          } else {
+            resolve(out);
+          }
+        };
+      });
+    }
+
+    async function snapshotDatabase(dbName){
+      const db = await openExistingDB(dbName);
+      const snapshot = {
+        name: dbName,
+        version: db.version,
+        stores: {}
+      };
+
+      const storeNames = Array.from(db.objectStoreNames || []);
+      for (const storeName of storeNames){
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+
+        const schema = {
+          keyPath: store.keyPath ?? null,
+          autoIncrement: !!store.autoIncrement,
+          indices: []
+        };
+
+        try{
+          const indexNames = Array.from(store.indexNames || []);
+          for (const idxName of indexNames){
+            const idx = store.index(idxName);
+            schema.indices.push({
+              name: idxName,
+              keyPath: idx.keyPath ?? null,
+              unique: !!idx.unique,
+              multiEntry: !!idx.multiEntry
+            });
+          }
+        }catch(_){}
+
+        const records = await getAllFromStore(store);
+        await txDone(tx);
+
+        snapshot.stores[storeName] = {
+          count: Array.isArray(records) ? records.length : 0,
+          schema,
+          records: Array.isArray(records) ? records : []
+        };
+      }
+
+      try{ db.close(); }catch(_){}
+      return snapshot;
+    }
+
+    function getSuiteLocalStorageSnapshot(){
+      const out = {};
+      const keys = [];
+      const allKeys = A33Storage.keys({ scope: 'local' });
+      for (const k of allKeys){
+        if (!k) continue;
+        if (!isSuiteLocalStorageKey(k)) continue;
+        if (isRetiredGateStorageKey(k)) continue;
+        keys.push(k);
+        out[k] = A33Storage.getItem(k);
+      }
+      keys.sort();
+      return { data: out, keys, count: keys.length };
+    }
+
+    function buildSummaryHtmlFromSnapshot({ dbSnapshots, lsKeys, exportedAt, estimatedBytes, warnings, appName }){
+      const totalDbRecords = dbSnapshots.reduce((acc, d) => {
+        const stores = Object.values(d.stores || {});
+        return acc + stores.reduce((a, s) => a + (Number(s.count) || 0), 0);
+      }, 0);
+
+      const dbHtml = dbSnapshots.length
+        ? dbSnapshots.map(d => {
+            const stores = Object.entries(d.stores || {});
+            const storeLines = stores.length
+              ? `<ul>${stores.map(([sn, s]) => `<li><b>${escapeHtml(sn)}</b>: ${Number(s.count)||0}</li>`).join('')}</ul>`
+              : `<div class="muted">Sin stores detectados.</div>`;
+            return `
+              <div style="margin-top:0.35rem;">
+                <div><b>${escapeHtml(d.name)}</b> <span class="muted">(versión ${escapeHtml(d.version)})</span></div>
+                ${storeLines}
+              </div>
+            `;
+          }).join('')
+        : `<div class="muted">No se detectaron bases de datos de la Suite en este navegador.</div>`;
+
+      const warnHtml = (warnings && warnings.length)
+        ? `<div class="badge-warn">⚠️ ${escapeHtml(warnings.join(' · '))}</div>`
+        : '';
+
+      const lsDetails = lsKeys && lsKeys.length
+        ? `<details><summary>Ver keys (${lsKeys.length})</summary><ul>${lsKeys.map(k => `<li>${escapeHtml(k)}</li>`).join('')}</ul></details>`
+        : `<div class="muted">0 keys</div>`;
+
+      const exportedAtPretty = exportedAt ? new Date(exportedAt).toLocaleString() : '';
+
+      return `
+        <div>
+          <div class="kv">
+            <div class="k">App</div><div class="v">${escapeHtml(appName || BACKUP_APP_NAME)}</div>
+            <div class="k">Fecha</div><div class="v">${escapeHtml(exportedAtPretty)}</div>
+            <div class="k">Registros</div><div class="v">${totalDbRecords}</div>
+            <div class="k">Keys localStorage</div><div class="v">${lsKeys ? lsKeys.length : 0}</div>
+            <div class="k">Tamaño aprox.</div><div class="v">${escapeHtml(formatBytes(estimatedBytes || 0))}</div>
+          </div>
+
+          ${warnHtml}
+
+          <hr>
+
+          <div><b>IndexedDB</b></div>
+          ${dbHtml}
+
+          <hr>
+
+          <div><b>localStorage (Suite)</b></div>
+          ${lsDetails}
+
+          <div class="small-note">Nota: este respaldo es local (no sincroniza). Al importar, se reemplaza TODO lo de este navegador.</div>
+        </div>
+      `;
+    }
+
+    function showModal({ title, bodyHtml, primaryText, onPrimary, secondaryText, onSecondary, cancelText, onCancel, disableCancel, disablePrimary }){
+      const modal = document.getElementById('backup-modal');
+      const titleEl = document.getElementById('backup-modal-title');
+      const bodyEl = document.getElementById('backup-modal-body');
+      const btnCancel = document.getElementById('backup-modal-cancel');
+      const btnPrimary = document.getElementById('backup-modal-primary');
+      const btnSecondary = document.getElementById('backup-modal-secondary');
+
+      titleEl.textContent = title || 'Respaldo';
+      bodyEl.innerHTML = bodyHtml || '';
+
+      btnPrimary.textContent = primaryText || 'OK';
+      btnPrimary.style.display = disablePrimary ? 'none' : 'inline-flex';
+      btnPrimary.onclick = null;
+      btnPrimary.onclick = async () => {
+        if (typeof onPrimary === 'function') await onPrimary();
+      };
+
+      if (secondaryText && typeof onSecondary === 'function'){
+        btnSecondary.style.display = 'inline-flex';
+        btnSecondary.textContent = secondaryText;
+        btnSecondary.onclick = null;
+        btnSecondary.onclick = async () => {
+          await onSecondary();
+        };
+      } else {
+        btnSecondary.style.display = 'none';
+        btnSecondary.onclick = null;
+      }
+
+      btnCancel.textContent = cancelText || 'Cancelar';
+      btnCancel.style.display = disableCancel ? 'none' : 'inline-flex';
+      btnCancel.onclick = null;
+      btnCancel.onclick = () => {
+        if (typeof onCancel === 'function') onCancel();
+        hideModal();
+      };
+
+      modal.style.display = 'flex';
+    }
+
+    function hideModal(){
+      const modal = document.getElementById('backup-modal');
+      modal.style.display = 'none';
+    }
+
+    function downloadTextFile(filename, content){
+      const blob = new Blob([content], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    // --- Toast ---
+    let __toastTimer = null;
+    function showToast(message, ms=4000){
+      if (window.A33Toast && typeof window.A33Toast.show === 'function') {
+        return window.A33Toast.show(message, undefined, { duration: Math.max(1500, Number(ms) || 4000) });
+      }
+      const el = document.getElementById('a33-toast');
+      if (!el) { try{ alert(message); }catch(_){ } return; }
+      el.textContent = String(message || '');
+      el.classList.add('show');
+      if (__toastTimer) clearTimeout(__toastTimer);
+      __toastTimer = setTimeout(() => {
+        try{ el.classList.remove('show'); }catch(_){ }
+      }, Math.max(1500, Number(ms) || 4000));
+    }
+
+    // --- Calculadora (ONLY) : export + reset blindado ---
+    // Calculadora ONLY (estricto): NO incluye inventario.
+    // Compat: backups viejos podrían traer arcano33_inventario; lo aceptamos pero lo IGNORAMOS al restaurar.
+    const CALC_ONLY_KEYS = [
+      'arcano33_recetas_v1',
+      'arcano33_lote_actual',
+      'arcano33_fecha_produccion',
+      'arcano33_notas_lote',
+      'arcano33_lotes'
+    ];
+    const CALC_ONLY_LEGACY_IGNORED_KEYS = ['arcano33_inventario'];
+    const CALC_ONLY_ALLOWED_KEYS = CALC_ONLY_KEYS.concat(CALC_ONLY_LEGACY_IGNORED_KEYS);
+
+    function snapshotCalculatorLocalStorage(){
+      const data = {};
+      for (const k of CALC_ONLY_KEYS){
+        const v = A33Storage.getItem(k);
+        if (v != null) data[k] = String(v);
+      }
+      return data;
+    }
+
+    function buildCalcOnlyFilename(){
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2,'0');
+      const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+      return `A33_Calculadora_ONLY_${stamp}.json`;
+    }
+
+    function buildCalculatorOnlyExport(){
+      return {
+        app: 'Suite A33',
+        module: 'calculadora',
+        exportedAt: new Date().toISOString(),
+        schemaVersion: 1,
+        data: {
+          localStorage: snapshotCalculatorLocalStorage()
+        }
+      };
+    }
+
+    function validateCalculatorOnlyBackup(obj){
+      if (!obj || typeof obj !== 'object') return { ok:false, reason:'Archivo inválido (no es un objeto JSON).' };
+
+      // metadata mínima (estricta)
+      const app = obj.app;
+      const module = obj.module;
+      if (app !== 'Suite A33') return { ok:false, reason:'Metadata inválida: app debe ser "Suite A33".' };
+      if (module !== 'calculadora') return { ok:false, reason:'Metadata inválida: module debe ser "calculadora".' };
+
+      const data = obj.data;
+      if (!data || typeof data !== 'object') return { ok:false, reason:'Falta data.' };
+
+      const ls = data.localStorage;
+      if (!ls || typeof ls !== 'object') return { ok:false, reason:'Falta data.localStorage.' };
+
+      // Debe contener solo claves permitidas (y al menos 1)
+      const keys = Object.keys(ls);
+      if (keys.length === 0) return { ok:false, reason:'data.localStorage está vacío.' };
+
+      for (const k of keys){
+        if (!CALC_ONLY_ALLOWED_KEYS.includes(k)){
+          return { ok:false, reason:`Clave no permitida en data.localStorage: ${k}` };
+        }
+        const v = ls[k];
+        if (typeof v !== 'string'){
+          return { ok:false, reason:`Valor inválido para ${k}: se esperaba string.` };
+        }
+      }
+
+      // Filtrar solo lo estrictamente permitido (sin inventario)
+      const filtered = {};
+      for (const k of CALC_ONLY_KEYS){
+        if (typeof ls[k] === 'string') filtered[k] = ls[k];
+      }
+      return { ok:true, payload:{ app, module, exportedAt: obj.exportedAt, schemaVersion: obj.schemaVersion, localStorage: filtered } };
+    }
+
+    function normalizeJsonText(s){
+      return String(s || '').replace(/^﻿/, '').trim();
+    }
+
+    function safeJsonParse(text){
+      const t = normalizeJsonText(text);
+      try{ return { ok:true, obj: JSON.parse(t) }; }catch(e){ return { ok:false, error:e }; }
+    }
+
+    function shallowEqualStringsObj(a,b){
+      const ak = Object.keys(a||{}).sort();
+      const bk = Object.keys(b||{}).sort();
+      if (ak.length !== bk.length) return false;
+      for (let i=0;i<ak.length;i++){
+        if (ak[i] !== bk[i]) return false;
+        if (String(a[ak[i]]) !== String(b[bk[i]])) return false;
+      }
+      return true;
+    }
+
+    async function deleteAllSuiteCaches(){
+      if (!('caches' in window)) return;
+      try{
+        const names = await caches.keys();
+        const victims = names.filter(n => { const s = String(n||"" ).toLowerCase(); return s.startsWith("a33-") || s.startsWith("arcano33-"); });
+        await Promise.all(victims.map(n => caches.delete(n)));
+      }catch(_){ }
+    }
+
+    function clearSuiteStorageExceptCalculator(keepCalculator){
+      // localStorage: solo claves suite
+      const suiteKeys = getSuiteLocalStorageKeysInThisBrowser();
+      for (const k of suiteKeys){
+        if (keepCalculator && CALC_ONLY_KEYS.includes(k)) continue;
+        try{ A33Storage.removeItem(k); }catch(_){ }
+      }
+
+      // sessionStorage: solo claves suite
+      try{
+        const toRemove = A33Storage.keys({ scope:'session' }).filter(k => k && isSuiteLocalStorageKey(k));
+        toRemove.forEach(k => { try{ A33Storage.removeItem(k, 'session'); }catch(_){ } });
+      }catch(_){ }
+    }
+
+    function restoreCalculatorLocalStorage(lsObj){
+      const entries = Object.entries(lsObj || {});
+      for (const [k,v] of entries){
+        if (!CALC_ONLY_KEYS.includes(k)) continue;
+        try{ A33Storage.setItem(k, String(v)); }catch(_){ }
+      }
+    }
+
+    async function resetSuitePreservingCalculator(validCalcPayload){
+      // Anti-duplicado: si el respaldo coincide con lo actual, no borramos las claves de calculadora.
+      const currentCalc = snapshotCalculatorLocalStorage();
+      const incomingCalc = validCalcPayload?.localStorage || {};
+      const keepCalculator = shallowEqualStringsObj(currentCalc, incomingCalc);
+
+      // 1) IndexedDB (Suite)
+      const all = await safeListIndexedDBDatabases();
+      const suiteDbList = (Array.isArray(all) ? all : [])
+        .filter(d => d && d.name && isSuiteDbName(d.name))
+        .map(d => d.name);
+
+      for (const dbName of suiteDbList){
+        await deleteDatabase(dbName);
+      }
+
+      // 2) localStorage / sessionStorage
+      clearSuiteStorageExceptCalculator(keepCalculator);
+
+      // 3) caches (SW)
+      await deleteAllSuiteCaches();
+
+      // 4) Restaurar Calculadora (si no la mantuvimos)
+      if (!keepCalculator){
+        restoreCalculatorLocalStorage(incomingCalc);
+      }
+
+      return { kept: keepCalculator };
+    }
+
+    function buildBackupFilename(){
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2,'0');
+      const stamp = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+      return `suitea33-backup-${stamp}.json`;
+    }
+
+    async function buildFullBackup(){
+      const all = await safeListIndexedDBDatabases();
+      const suiteDbList = (Array.isArray(all) ? all : []).filter(d => d && d.name && isSuiteDbName(d.name));
+
+      const dbSnapshots = [];
+      const dataIndexedDB = {};
+      const dbVersions = {};
+      const dbSchemas = {};
+
+      for (const d of suiteDbList){
+        try{
+          const snap = await snapshotDatabase(d.name);
+          dbSnapshots.push(snap);
+
+          dataIndexedDB[d.name] = {};
+          dbSchemas[d.name] = {};
+          dbVersions[d.name] = snap.version;
+
+          for (const [storeName, s] of Object.entries(snap.stores || {})){
+            dataIndexedDB[d.name][storeName] = s.records || [];
+            dbSchemas[d.name][storeName] = s.schema || {};
+          }
+        }catch(e){
+          console.warn('No se pudo leer DB', d.name, e);
+        }
+      }
+
+      const lsSnap = getSuiteLocalStorageSnapshot();
+      const cleanIndexed = sanitizeIndexedDbPayload(dataIndexedDB, dbSchemas, dbVersions);
+
+      const backup = {
+        meta: (window.A33ExportCurrency && typeof window.A33ExportCurrency.decorateJsonMeta === 'function')
+          ? window.A33ExportCurrency.decorateJsonMeta({
+            appName: BACKUP_APP_NAME,
+            exportedAt: new Date().toISOString(),
+            dbVersions: cleanIndexed.versions,
+            dbSchemas: cleanIndexed.schemas
+          })
+          : {
+            appName: BACKUP_APP_NAME,
+            exportedAt: new Date().toISOString(),
+            dbVersions: cleanIndexed.versions,
+            dbSchemas: cleanIndexed.schemas
+          },
+        data: {
+          indexedDB: cleanIndexed.data,
+          localStorage: sanitizeSuiteLocalStorageMap(lsSnap.data)
+        }
+      };
+
+      const jsonString = JSON.stringify(backup, null, 2);
+      const estimatedBytes = new Blob([jsonString]).size;
+
+      return {
+        backup,
+        jsonString,
+        estimatedBytes,
+        dbSnapshots,
+        lsKeys: lsSnap.keys
+      };
+    }
+
+    function validateBackupStructure(obj){
+      if (!obj || typeof obj !== 'object') return { ok:false, reason:'Archivo inválido (no es un objeto JSON).' };
+      if (!obj.meta || typeof obj.meta !== 'object') return { ok:false, reason:'Falta meta.' };
+      if (!obj.data || typeof obj.data !== 'object') return { ok:false, reason:'Falta data.' };
+      if (obj.meta.appName !== BACKUP_APP_NAME) return { ok:false, reason:`appName inválido: se esperaba "${BACKUP_APP_NAME}".` };
+      if (!obj.data.indexedDB || typeof obj.data.indexedDB !== 'object') return { ok:false, reason:'Falta data.indexedDB.' };
+      if (!obj.data.localStorage || typeof obj.data.localStorage !== 'object') return { ok:false, reason:'Falta data.localStorage.' };
+      return { ok:true };
+    }
+
+    function summarizeBackupObject(obj){
+      const cleanObj = sanitizeBackupObject(obj);
+      const dbSnapshots = [];
+      const indexed = cleanObj?.data?.indexedDB || {};
+      const versions = cleanObj?.meta?.dbVersions || {};
+      const schemas = cleanObj?.meta?.dbSchemas || {};
+
+      for (const [dbName, stores] of Object.entries(indexed)){
+        const snap = { name: dbName, version: versions?.[dbName] ?? '', stores: {} };
+        if (stores && typeof stores === 'object'){
+          for (const [storeName, records] of Object.entries(stores)){
+            const arr = Array.isArray(records) ? records : [];
+            snap.stores[storeName] = {
+              count: arr.length,
+              schema: (schemas?.[dbName]?.[storeName]) || {},
+              records: [] // no duplicar aquí
+            };
+          }
+        }
+        dbSnapshots.push(snap);
+      }
+
+      const lsKeys = Object.keys(cleanObj?.data?.localStorage || {}).sort();
+      let estimatedBytes = 0;
+      try{
+        estimatedBytes = new Blob([JSON.stringify(obj)]).size;
+      }catch(_){}
+
+      return { dbSnapshots, lsKeys, estimatedBytes, exportedAt: obj?.meta?.exportedAt, appName: obj?.meta?.appName };
+    }
+
+    async function buildDbVersionWarnings(backupObj){
+      const cleanBackup = sanitizeBackupObject(backupObj);
+      const warnings = [];
+      const bVersions = cleanBackup?.meta?.dbVersions || {};
+      const dbNames = Object.keys(cleanBackup?.data?.indexedDB || {});
+      for (const dbName of dbNames){
+        const b = bVersions?.[dbName];
+        if (typeof b !== 'number') continue;
+        try{
+          const db = await openExistingDB(dbName);
+          const c = db.version;
+          try{ db.close(); }catch(_){}
+          if (typeof c === 'number' && b !== c){
+            warnings.push(`${dbName}: respaldo v${b} / este navegador v${c}`);
+          }
+        }catch(_){
+          // Si no existe o no se puede abrir, no advertimos: se creará al importar.
+        }
+      }
+      return warnings;
+    }
+
+    function getSuiteLocalStorageKeysInThisBrowser(){
+      return A33Storage.keys({ scope: 'local' }).filter(k => k && isSuiteLocalStorageKey(k));
+    }
+
+    function deleteDatabase(dbName){
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.deleteDatabase(dbName);
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => reject(req.error || new Error(`No se pudo borrar la DB: ${dbName}`));
+        req.onblocked = () => reject(new Error(`Bloqueado: cierra otras pestañas de la Suite y reintenta (DB: ${dbName}).`));
+      });
+    }
+
+    function openDBForRestore(dbName, version, schemaByStore){
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(dbName, Number(version) || 1);
+
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+
+          const stores = schemaByStore && typeof schemaByStore === 'object'
+            ? Object.entries(schemaByStore)
+            : [];
+
+          for (const [storeName, sch] of stores){
+            if (db.objectStoreNames.contains(storeName)) continue;
+
+            const keyPath = (sch && ('keyPath' in sch)) ? sch.keyPath : null;
+            const autoIncrement = !!(sch && sch.autoIncrement);
+
+            const opts = {};
+            if (keyPath) opts.keyPath = keyPath;
+            if (autoIncrement) opts.autoIncrement = true;
+
+            let os;
+            try{
+              os = db.createObjectStore(storeName, opts);
+            }catch(err){
+              // fallback súper defensivo
+              os = db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+            }
+
+            try{
+              const indices = Array.isArray(sch?.indices) ? sch.indices : [];
+              for (const idx of indices){
+                if (!idx?.name) continue;
+                try{
+                  os.createIndex(idx.name, idx.keyPath, { unique: !!idx.unique, multiEntry: !!idx.multiEntry });
+                }catch(_){}
+              }
+            }catch(_){}
+          }
+        };
+
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error(`No se pudo abrir la DB para restaurar: ${dbName}`));
+      });
+    }
+
+    async function restoreDatabase(dbName, dbPayload, dbVersion, dbSchemas){
+      const schemaByStore = dbSchemas?.[dbName] || {};
+      const version = dbVersion?.[dbName] || 1;
+
+      const schemaAvailable = schemaByStore && typeof schemaByStore === 'object' && Object.keys(schemaByStore).length > 0;
+
+      // Si hay esquema: recreamos DB y stores con total seguridad.
+      // Si NO hay esquema: intentamos importar sobre una DB ya existente (sin crear / sin cambiar versión).
+      const db = schemaAvailable
+        ? await openDBForRestore(dbName, version, schemaByStore)
+        : await openExistingDB(dbName);
+
+      // Insertar registros por store
+      const stores = dbPayload && typeof dbPayload === 'object'
+        ? Object.entries(dbPayload)
+        : [];
+
+      for (const [storeName, records] of stores){
+        if (!db.objectStoreNames.contains(storeName)) continue;
+
+        const arr = Array.isArray(records) ? records : [];
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+
+        // limpiar store antes de insertar
+        try{ store.clear(); }catch(_){}
+
+        for (const rec of arr){
+          try{ store.put(rec); }catch(_){}
+        }
+        await txDone(tx);
+      }
+
+      try{ db.close(); }catch(_){}
+    } 
+    async function performImport(obj){ 
+      const cleanObj = sanitizeBackupObject(obj);
+      const dbPayload = cleanObj?.data?.indexedDB || {};
+      const dbVersions = cleanObj?.meta?.dbVersions || {};
+      const dbSchemas = cleanObj?.meta?.dbSchemas || {};
+
+      // DBs del archivo que pertenecen a la Suite
+      const fileSuite = Object.keys(dbPayload || {}).filter((dbName) => isSuiteDbName(dbName) && !isRetiredGateDbName(dbName));
+
+      // DBs con esquema disponible (podemos borrar y recrear sin miedo)
+      const schemaSupported = new Set(
+        fileSuite.filter((dbName) => {
+          const sch = dbSchemas?.[dbName];
+          return sch && typeof sch === 'object' && Object.keys(sch).length > 0;
+        })
+      );
+
+      // 2) Detectar DBs actuales de la Suite y borrarlas (solo si hay esquema para recrear)
+      const current = await safeListIndexedDBDatabases();
+      const currentSuite = (Array.isArray(current) ? current : [])
+        .filter(d => d?.name && isSuiteDbName(d.name))
+        .map(d => d.name);
+
+      const toDelete = Array.from(new Set([...currentSuite, ...fileSuite]))
+        .filter(dbName => schemaSupported.has(dbName));
+
+      for (const dbName of toDelete){
+        try{
+          await deleteDatabase(dbName);
+        }catch(e){
+          // Si no existía, ok; si está bloqueado, es crítico
+          if (String(e?.message || '').toLowerCase().includes('bloqueado')){
+            throw e;
+          }
+        }
+      }
+
+      // 3) Restaurar DBs desde el archivo (con o sin esquema)
+      for (const dbName of fileSuite){
+        await restoreDatabase(dbName, dbPayload[dbName], dbVersions, dbSchemas);
+      }
+
+      // 4) Restaurar localStorage (solo keys Suite)
+      const currentLsKeys = getSuiteLocalStorageKeysInThisBrowser();
+      for (const k of currentLsKeys){
+        try{ A33Storage.removeItem(k); }catch(_){}
+      }
+
+      const incoming = sanitizeSuiteLocalStorageMap(cleanObj?.data?.localStorage || {});
+      for (const [k, v] of Object.entries(incoming)){
+        if (!isSuiteLocalStorageKey(k)) continue;
+        if (isRetiredGateStorageKey(k)) continue;
+        try{ A33Storage.setItem(k, String(v ?? '')); }catch(_){}
+      }
+
+      return true;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Navegación: tarjetas del menú principal
+      document.querySelectorAll('[data-link]').forEach(card => {
+        card.addEventListener('click', () => {
+          const href = card.getAttribute('data-link');
+          if (href) window.location.href = href;
+        });
+      });
+
+      // --- Respaldo: Exportar / Importar ---
+      const exportCard = document.getElementById('card-export-backup');
+      const importCard = document.getElementById('card-import-backup');
+      const fileInput = document.getElementById('backup-file-input');
+
+      function openBackupHub(){
+        showModal({
+          title: 'Respaldo',
+          bodyHtml: `
+            <div>Elegí una acción. Esto trabaja <b>solo en este dispositivo</b> (no hay sync).</div>
+            <div class="small-note">Tip: exportá antes de importar, por si acaso.</div>
+          `,
+          primaryText: 'Exportar',
+          onPrimary: () => {
+            hideModal();
+            if (exportCard) exportCard.click();
+          },
+          secondaryText: 'Importar',
+          onSecondary: () => {
+            hideModal();
+            if (importCard) importCard.click();
+          },
+          cancelText: 'Cerrar',
+          onCancel: hideModal
+        });
+      }
+
+      const PWA_KEYS = {
+        lastCheck: 'suite_a33_pwa_last_check_at',
+        lastUpdate: 'suite_a33_pwa_last_update_at',
+        status: 'suite_a33_pwa_update_status'
+      };
+
+      function pwaStorageGet(key){
+        try{
+          if (window.A33Storage && typeof window.A33Storage.getItem === 'function'){
+            const v = window.A33Storage.getItem(key);
+            if (v !== undefined && v !== null && String(v).trim() !== '') return String(v);
+          }
+        }catch(_){ }
+        try{
+          const v = localStorage.getItem(key);
+          return (v && String(v).trim()) ? String(v) : '';
+        }catch(_){ return ''; }
+      }
+
+      function pwaStorageSet(key, value){
+        try{
+          if (window.A33Storage && typeof window.A33Storage.setItem === 'function'){
+            window.A33Storage.setItem(key, String(value));
+            return;
+          }
+        }catch(_){ }
+        try{ localStorage.setItem(key, String(value)); }catch(_){ }
+      }
+
+      function formatPwaTimestamp(value){
+        const raw = String(value || '').trim();
+        if (!raw) return 'Sin registros';
+        let date = null;
+        const num = Number(raw);
+        if (Number.isFinite(num) && num > 0) date = new Date(num);
+        if (!date || Number.isNaN(date.getTime())) date = new Date(raw);
+        if (!date || Number.isNaN(date.getTime())) return raw;
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      }
+
+      function renderPwaCard(){
+        const statusEl = document.getElementById('cfg-pwa-status');
+        const lastCheckEl = document.getElementById('cfg-pwa-last-check');
+        const lastUpdateEl = document.getElementById('cfg-pwa-last-update');
+        const status = pwaStorageGet(PWA_KEYS.status) || 'Sin revisar';
+        const lastCheck = pwaStorageGet(PWA_KEYS.lastCheck);
+        const lastUpdate = pwaStorageGet(PWA_KEYS.lastUpdate);
+        if (statusEl) statusEl.textContent = status;
+        if (lastCheckEl) lastCheckEl.textContent = formatPwaTimestamp(lastCheck);
+        if (lastUpdateEl) lastUpdateEl.textContent = formatPwaTimestamp(lastUpdate);
+      }
+
+      function registerPwaCheckClick(){
+        const btn = document.getElementById('cfg-pwa-check');
+        if (!btn) return;
+        btn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          window.location.href = 'configuracion/index.html';
+        });
+      }
+
+      // PWA: renderizar tarjeta después de declarar constantes y helpers.
+      // Esto evita cortar el DOMContentLoaded antes de registrar la navegación del menú.
+      renderPwaCard();
+      registerPwaCheckClick();
+
+      function showHomeView(){
+        const homeView = document.getElementById('home-view');
+        const configView = document.getElementById('config-view');
+        if (configView) configView.classList.add('hidden');
+        if (homeView) homeView.classList.remove('hidden');
+        try{ window.scrollTo({ top: 0, behavior: 'smooth' }); }catch(_){ window.scrollTo(0, 0); }
+      }
+
+      function showConfigView(){
+        const homeView = document.getElementById('home-view');
+        const configView = document.getElementById('config-view');
+        if (homeView) homeView.classList.add('hidden');
+        if (configView) configView.classList.remove('hidden');
+        try{ window.scrollTo({ top: 0, behavior: 'smooth' }); }catch(_){ window.scrollTo(0, 0); }
+      }
+
+      // Card: Configuración (hub)
+      const configHubCard = document.getElementById('card-config-hub');
+      if (configHubCard && !configHubCard.getAttribute('data-link')){
+        configHubCard.addEventListener('click', () => {
+          window.location.href = 'configuracion/index.html';
+        });
+      }
+
+      const configBackHome = document.getElementById('btn-config-back-home');
+      if (configBackHome){
+        configBackHome.addEventListener('click', showHomeView);
+      }
+
+      const configBackupCard = document.getElementById('card-config-backup');
+      if (configBackupCard){
+        configBackupCard.addEventListener('click', () => {
+          window.location.href = 'configuracion/index.html';
+        });
+      }
+
+      if (exportCard){
+        exportCard.addEventListener('click', async () => {
+          window.location.href = 'configuracion/index.html#respaldo';
+          return;
+          showModal({
+            title: 'Resumen del respaldo',
+            bodyHtml: '<div class="muted">Generando resumen...</div>',
+            primaryText: 'Cerrar',
+            onPrimary: hideModal,
+            cancelText: 'Cancelar',
+            onCancel: hideModal
+          });
+
+          try{
+            const { backup, jsonString, estimatedBytes, dbSnapshots, lsKeys } = await buildFullBackup();
+
+            const totalDbRecords = dbSnapshots.reduce((acc, d) => {
+              const stores = Object.values(d.stores || {});
+              return acc + stores.reduce((a, s) => a + (Number(s.count) || 0), 0);
+            }, 0);
+
+            const hasAnyData = totalDbRecords > 0 || (lsKeys && lsKeys.length > 0);
+
+            if (!hasAnyData){
+              showModal({
+                title: 'Resumen del respaldo',
+                bodyHtml: '<div class="badge-warn">⚠️ No hay datos para respaldar.</div>',
+                primaryText: 'Cerrar',
+                onPrimary: hideModal,
+                disableCancel: true
+              });
+              return;
+            }
+
+            const summaryHtml = buildSummaryHtmlFromSnapshot({
+              dbSnapshots,
+              lsKeys,
+              exportedAt: backup?.meta?.exportedAt,
+              estimatedBytes,
+              warnings: [],
+              appName: backup?.meta?.appName
+            });
+
+            showModal({
+              title: 'Resumen del respaldo',
+              bodyHtml: summaryHtml,
+              primaryText: 'Descargar respaldo',
+              onPrimary: async () => {
+                downloadTextFile(buildBackupFilename(), jsonString);
+                hideModal();
+              },
+              cancelText: 'Cancelar',
+              onCancel: hideModal
+            });
+          }catch(e){
+            showModal({
+              title: 'Error',
+              bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(e?.message || e)}</div>`,
+              primaryText: 'Cerrar',
+              onPrimary: hideModal,
+              disableCancel: true
+            });
+          }
+        });
+      }
+
+      if (importCard && fileInput){
+        importCard.addEventListener('click', () => {
+          window.location.href = 'configuracion/index.html#respaldo';
+          return;
+          fileInput.value = '';
+          fileInput.click();
+        });
+
+        fileInput.addEventListener('change', async () => {
+          const file = fileInput.files && fileInput.files[0];
+          if (!file) return;
+
+          showModal({
+            title: 'Resumen del archivo',
+            bodyHtml: '<div class="muted">Leyendo archivo...</div>',
+            primaryText: 'Cerrar',
+            onPrimary: hideModal,
+            cancelText: 'Cancelar',
+            onCancel: hideModal
+          });
+
+          try{
+            const text = await file.text();
+            let obj;
+            try{
+              obj = JSON.parse(text);
+            }catch(_){
+              throw new Error('JSON inválido o corrupto.');
+            }
+
+            const v = validateBackupStructure(obj);
+            if (!v.ok) throw new Error(v.reason);
+
+            const sum = summarizeBackupObject(obj);
+
+            // Comparar versiones del respaldo vs las DB existentes en ESTE navegador (solo advertencia, no bloqueo)
+            const warnings = await buildDbVersionWarnings(obj);
+
+            const summaryHtml = buildSummaryHtmlFromSnapshot({
+              dbSnapshots: sum.dbSnapshots,
+              lsKeys: sum.lsKeys,
+              exportedAt: sum.exportedAt,
+              estimatedBytes: sum.estimatedBytes,
+              warnings: warnings,
+              appName: sum.appName
+            }) + `
+              <hr>
+              <div class="badge-warn">⚠️ Esto reemplazará todos los datos actuales de este navegador.</div>
+            `;
+
+            showModal({
+              title: 'Resumen del archivo',
+              bodyHtml: summaryHtml,
+              primaryText: 'Importar y reemplazar',
+              onPrimary: async () => {if (!confirm('Esto reemplazará TODOS los datos actuales de la Suite A33 en este navegador. ¿Importar y reemplazar?')) return;
+
+                showModal({
+                  title: 'Importando...',
+                  bodyHtml: '<div class="muted">Aplicando respaldo... No cierres esta pestaña.</div>',
+                  disableCancel: true,
+                  disablePrimary: true
+                });
+
+                try{
+                  await performImport(obj);
+
+                  showModal({
+                    title: 'Importación exitosa',
+                    bodyHtml: '<div>✅ Respaldo importado correctamente.</div><div class="small-note">Recomendado: recargar para que todos los módulos lean los nuevos datos.</div>',
+                    primaryText: 'Recargar ahora',
+                    onPrimary: () => location.reload(),
+                    cancelText: 'Más tarde',
+                    onCancel: hideModal
+                  });
+                }catch(err){
+                  showModal({
+                    title: 'Error de importación',
+                    bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(err?.message || err)}</div><div class="small-note">Tip: cierra otras pestañas de la Suite y vuelve a intentar.</div>`,
+                    primaryText: 'Cerrar',
+                    onPrimary: hideModal,
+                    disableCancel: true
+                  });
+                }
+              },
+              cancelText: 'Cancelar',
+              onCancel: hideModal
+            });
+
+          }catch(e){
+            showModal({
+              title: 'Error',
+              bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(e?.message || e)}</div>`,
+              primaryText: 'Cerrar',
+              onPrimary: hideModal,
+              disableCancel: true
+            });
+          }
+        });
+      }
+      initHomeUi();
+
+    });
+  </script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
+  <script src="/assets/js/a33-home-access.js?v=4.20.98&r=1"></script>
+</body>
+</html>

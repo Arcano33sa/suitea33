@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Arcano 33 · Inventario</title>
+  <meta name="description" content="Inventario interno de insumos, botellas y producto terminado de Arcano 33." />
+  <meta name="theme-color" content="#7b1818" />
+  <!-- Etapa 4/5 — aplicar Apariencia antes del CSS para evitar parpadeos -->
+<script>
+  (function(){
+    try{
+      var key = 'suite_a33_appearance_preference';
+      var pref = localStorage.getItem(key) || 'dark';
+      if (!/^(dark|light|auto)$/.test(pref)) pref = 'dark';
+      var resolved = pref === 'auto'
+        ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')
+        : pref;
+      document.documentElement.setAttribute('data-a33-theme-preference', pref);
+      document.documentElement.setAttribute('data-theme', resolved);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', resolved === 'light' ? '#f4ead8' : '#060606');
+    }catch(_){
+      document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
+
+  <link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
+  <link rel="apple-touch-icon" href="images/logo.png" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.98&r=9" />
+
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=10" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=8" />
+  <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=4" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=8" />
+  <link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
+  <script src="/assets/js/a33-theme.js?v=4.20.98&r=8"></script>
+</head>
+<body>
+  <header class="a33-header" role="banner" data-a33-module="inventario">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Inventario</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.98">v...</div>
+  </header>
+  <main class="app-main">
+
+    <section class="card table-card inv-span-2 inv-currency-card" aria-labelledby="inv-currency-title">
+      <div class="table-header inv-currency-header">
+        <div>
+          <h2 id="inv-currency-title">Referencia de Moneda</h2>
+          <p class="hint">Lectura segura desde Configuración → Moneda para formato monetario y T/C. No recalcula existencias ni movimientos históricos.</p>
+        </div>
+        <span id="inv-currency-badge" class="inv-currency-badge">C$ / NIO</span>
+      </div>
+      <div class="inv-currency-grid" aria-label="Estado de moneda en Inventario">
+        <div class="inv-currency-item"><span>Moneda principal</span><strong id="inv-currency-primary">C$ / NIO</strong><small>Córdoba nicaragüense</small></div>
+        <div class="inv-currency-item"><span>Moneda secundaria</span><strong id="inv-currency-secondary">US$ / USD</strong><small>Dólar estadounidense</small></div>
+        <div class="inv-currency-item"><span>T/C central</span><strong id="inv-currency-rate">T/C no configurado</strong><small id="inv-currency-rate-note">Sin conversiones silenciosas.</small></div>
+        <div class="inv-currency-item"><span>Última actualización</span><strong id="inv-currency-updated-at">Sin registros</strong><small>Dato leído desde Moneda.</small></div>
+      </div>
+      <div id="inv-currency-note" class="inv-currency-note" aria-live="polite">Inventario opera en C$ y solo lee Moneda como referencia visual segura.</div>
+    </section>
+    <section class="card form-card inv-span-2">
+      <h2>Inventario de materia prima líquida</h2>
+      <p class="hint">Control en mililitros de los líquidos base que se utilizan en las recetas y producción.</p>
+      <div class="table-wrapper">
+        <table class="inv-table has-actions">
+          <thead>
+            <tr>
+              <th>Ingrediente</th>
+              <th>Stock actual (ml)</th>
+              <th>Stock máximo (ml)</th>
+              <th>% restante</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inv-liquidos-body">
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <div id="inv-liquidos-empty" class="empty-state" hidden>Sin resultados.</div>
+        <button id="inv-liquidos-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
+      </div>
+      <p class="legend">
+        Alerta cuando un ingrediente esté por debajo del <strong>20&nbsp;%</strong> de su stock máximo configurado.
+      </p>
+    </section>
+
+    <section class="card table-card">
+      <h2>Envases / Botellas disponibles</h2>
+      <p class="hint">Control de unidades de envases y botellas activas desde Catálogos, listas para abastecer Producción.</p>
+      <div class="table-wrapper">
+        <table class="inv-table has-actions">
+          <thead>
+            <tr>
+              <th>Presentación</th>
+              <th>Stock actual (unid.)</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inv-botellas-body">
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <div id="inv-botellas-empty" class="empty-state" hidden>No hay Envases activos en Catálogos.</div>
+        <button id="inv-botellas-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
+      </div>
+      <p class="legend">
+        Alerta cuando una presentación tenga <strong>10 botellas o menos</strong> en inventario.
+      </p>
+    </section>
+
+    <section class="card table-card">
+      <h2>Tapas / Corchos disponibles</h2>
+      <p class="hint">Control de tapas y corchos activos desde Catálogos. Ajusta stock y mínimo; el estado se actualiza en tiempo real.</p>
+      <div class="table-wrapper">
+        <table class="inv-table has-actions">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Stock (unid.)</th>
+              <th>Mínimo</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inv-caps-body">
+            <!-- Filas dinámicas de tapas/corchos -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <div id="inv-caps-empty" class="empty-state" hidden>No hay Tapas o cierres activos en Catálogos.</div>
+        <button id="inv-caps-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
+      </div>
+      <p class="legend">
+        Semáforo: <strong>Sin stock</strong> (stock &le; 0), <strong>Bajo</strong> (stock &le; mínimo), <strong>OK</strong>.
+      </p>
+    </section>
+  
+    <section class="card table-card">
+      <div class="table-header">
+        <div>
+          <h2>Inventario Varios</h2>
+          <p class="hint">Consumibles y otros insumos manuales (vasos, guantes, tapas extra, etc.).</p>
+        </div>
+        <div class="table-actions">
+          <input id="inv-varios-search" class="varios-search" type="text" inputmode="search" autocomplete="off" placeholder="Buscar…" aria-label="Buscar en inventario varios" />
+          <button id="inv-varios-add" class="btn secondary" type="button">Agregar línea</button>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="inv-table inv-varios-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Stock</th>
+              <th>Mínimo</th>
+              <th>Estado</th>
+              <th>Eliminar</th>
+            </tr>
+          </thead>
+          <tbody id="inv-varios-body">
+            <!-- Filas dinámicas (Varios) -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <div id="inv-varios-empty" class="empty-state" hidden>Sin líneas. Agrega una para comenzar.</div>
+      </div>
+
+      <p class="legend">
+        Semáforo: <strong>Sin stock</strong> (stock &le; 0), <strong>Bajo</strong> (stock &le; mínimo), <strong>OK</strong>. Stock negativo permitido.
+      </p>
+    </section>
+
+    <section class="card table-card">
+      <div class="table-header">
+        <div>
+          <h2>Inventario de producto terminado</h2>
+          <p class="hint">Productos terminados definidos en Catálogos. El stock moderno se identifica por productId; los registros legacy se conservan separados como históricos.</p>
+        </div>
+        <div class="table-actions">
+          <button id="inv-finished-clear" class="btn danger btn-pill" type="button">Borrar Productos</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="inv-table">
+          <thead>
+            <tr>
+              <th>Presentación</th>
+              <th>Stock actual (unid.)</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="inv-productos-body">
+            <!-- Filas dinámicas de producto terminado -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <div id="inv-productos-empty" class="empty-state" hidden>No hay Productos activos en Catálogos ni inventario histórico para mostrar.</div>
+        <button id="inv-productos-more" class="btn-secondary btn-pill" type="button" hidden>Cargar más</button>
+      </div>
+      <p class="legend">
+        Este bloque es solo de consulta. Se alimenta de la producción registrada y de las ventas / devoluciones del POS.
+      </p>
+    </section>
+</main>
+
+  <footer class="app-footer">
+    <p>Arcano 33 · Inventario interno de insumos, botellas y producto terminado</p>
+  </footer>
+
+  <!-- A33 — Modal numérico (Líquidos) -->
+  <div id="a33-modal-cantidad" class="a33-modal" hidden aria-hidden="true">
+    <div class="a33-modal-card" role="dialog" aria-modal="true" aria-labelledby="a33-modal-cantidad-title">
+      <div id="a33-modal-cantidad-title" class="a33-modal-title">Cantidad</div>
+      <div id="a33-modal-cantidad-text" class="a33-modal-text"></div>
+
+      <label class="a33-modal-field" for="a33-modal-cantidad-input">
+        <span class="a33-modal-label">Cantidad</span>
+        <input
+          id="a33-modal-cantidad-input"
+          class="a33-modal-input"
+          type="number"
+          inputmode="decimal"
+          step="0.01"
+          min="0"
+          autocomplete="off"
+          placeholder=""
+        />
+      </label>
+
+      <div class="a33-modal-actions">
+        <button id="a33-modal-cantidad-cancel" class="btn secondary btn-pill" type="button">Cancelar</button>
+        <button id="a33-modal-cantidad-ok" class="btn primary btn-pill" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+  <script src="/assets/js/a33-release.js?v=4.20.98&r=54"></script>
+  <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=4"></script>
+  <script src="/assets/js/a33-module-guard.js?v=4.20.98&r=5"></script>
+
+
+  <script src="/assets/js/a33-storage.js?v=4.20.98&r=20"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.98&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+
+  <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+  <script src="script.js?v=4.20.98&r=14"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=8"></script>
+</body>
+</html>

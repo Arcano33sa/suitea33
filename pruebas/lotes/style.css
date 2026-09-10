@@ -1,0 +1,1075 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --color-bg: #0d0d0d;
+  --color-card: #1b1b1b;
+  --color-accent: #7b1818;
+  --color-accent-soft: #ddbf64;
+  /* Usar el MISMO dorado del pill PARCIAL (texto) para segunda línea de cantidades */
+  --color-partial-text: rgba(255, 245, 220, 0.95);
+  --color-border: #333333;
+  --color-text: #fefefe;
+  --color-text-muted: #c0c0c0;
+  --radius-lg: 18px;
+  --shadow-soft: 0 14px 30px rgba(0, 0, 0, 0.45);
+  --transition-fast: 0.18s ease-out;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle at top, #2a1010 0, #050505 50%, #000 100%);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  min-height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  background: linear-gradient(90deg, rgba(10, 10, 10, 0.9), rgba(20, 10, 10, 0.9));
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.logo {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  border-radius: 14px;
+  border: 2px solid var(--color-accent-soft);
+  background: #fef3d4;
+  box-shadow: 0 0 18px rgba(219, 166, 84, 0.55);
+}
+
+.brand-text h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brand-text p {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.app-main {
+  flex: 1;
+  padding: 1.2rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr);
+  gap: 1.2rem;
+}
+
+.card {
+  background: radial-gradient(circle at top left, rgba(219, 191, 100, 0.06), rgba(15, 15, 15, 0.98));
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: var(--shadow-soft);
+  padding: 1.1rem 1.2rem 1.3rem;
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 1.05rem;
+  margin-bottom: 0.8rem;
+}
+
+.card h3 {
+  font-size: 0.95rem;
+  margin: 1.1rem 0 0.6rem;
+  color: var(--color-accent-soft);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem 0.9rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+label {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+input[type="text"],
+input[type="date"],
+input[type="number"],
+textarea {
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: rgba(5, 5, 5, 0.9);
+  padding: 0.45rem 0.6rem;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+}
+
+input[type="date"]:read-only {
+  opacity: 0.8;
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--color-accent-soft);
+  box-shadow: 0 0 0 1px rgba(221, 191, 100, 0.7);
+  background: rgba(18, 10, 10, 0.95);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.btn {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, #7b1818, #b02828);
+  color: #fefefe;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.6);
+}
+
+.btn.primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.8);
+}
+
+.btn.secondary {
+  background: transparent;
+  color: var(--color-text-muted);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.btn.secondary:hover {
+  border-color: var(--color-accent-soft);
+  color: var(--color-accent-soft);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.btn.danger {
+  background: transparent;
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.4);
+}
+
+.btn.danger:hover {
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.table-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.6rem;
+}
+
+.table-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+/* ================================
+   Etapa 3: Controles de lista (búsqueda + paginación)
+   ================================ */
+
+.list-controls{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.2rem 0 0.55rem;
+}
+
+#list-search{
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.list-meta{
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.list-footer{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.export-hint{
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.export-hint.is-error{
+  color: #ff6b6b;
+}
+
+/* ================================
+   Etapa 3: Vista tipo tarjeta (iPad-first, sin scroll horizontal)
+   ================================ */
+
+.lotes-cards{
+  display: none;
+}
+
+.lote-card{
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  background: rgba(0,0,0,0.22);
+  padding: 0.75rem 0.8rem;
+  display: grid;
+  gap: 0.55rem;
+  box-shadow: 0 10px 22px rgba(0,0,0,0.45);
+}
+
+.lote-card-head{
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.lote-card-date{
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.lote-card-code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 800;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.lote-card-grid{
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mini-kpi{
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  padding: 0.35rem 0.25rem;
+  text-align: center;
+}
+
+.mini-kpi-key{
+  font-size: 0.62rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mini-kpi-val{
+  margin-top: 0.15rem;
+  font-size: 0.86rem;
+  font-weight: 900;
+  display: flex;
+  justify-content: center;
+}
+
+.mini-kpi-val .qty-stack{
+  line-height: 1.05;
+}
+
+.lote-card-actions{
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 420px){
+  .lote-card-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ================================
+   Parte 3 Etapa 1: Productos producibles + Totales dinámicos por Letra
+   ================================ */
+
+.catalog-products-bar,
+.totals-bar{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.45rem 0.6rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(4, 4, 4, 0.65);
+  margin-bottom: 0.55rem;
+}
+
+.catalog-products-bar{
+  align-items: flex-start;
+  border-color: rgba(221, 191, 100, 0.18);
+  background: linear-gradient(135deg, rgba(221, 191, 100, 0.07), rgba(4, 4, 4, 0.62));
+}
+
+.catalog-products-content{
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-end;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.catalog-products-chips{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
+.catalog-product-chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 0.16rem 0.48rem;
+  border-radius: 999px;
+  border: 1px solid rgba(221, 191, 100, 0.48);
+  background: rgba(255,255,255,0.035);
+  color: rgba(255, 245, 220, 0.95);
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.catalog-product-chip strong{
+  color: var(--color-accent-soft);
+  letter-spacing: 0.07em;
+}
+
+.catalog-product-chip span{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-products-status{
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  text-align: right;
+}
+
+.catalog-products-bar.is-warn{
+  border-color: rgba(255, 170, 70, 0.35);
+}
+
+.totals-label{
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.totals-chips{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.totals-chip{
+  width: auto;
+  min-width: 44px;
+  padding: 0.22rem 0.35rem;
+  border-radius: 12px;
+  border: 1px solid rgba(221, 191, 100, 0.55);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.05;
+}
+
+.totals-chip-key{
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.totals-chip-val{
+  font-size: 0.82rem;
+  font-weight: 900;
+  color: rgba(255, 245, 220, 0.95);
+}
+
+.totals-chip-val.is-zero{
+  opacity: 0.45;
+}
+
+.table-wrapper {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: auto;
+  max-height: calc(100vh - 210px);
+  background: rgba(4, 4, 4, 0.9);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+thead {
+  position: sticky;
+  top: 0;
+  background: rgba(15, 15, 15, 0.98);
+  z-index: 1;
+}
+
+th,
+td {
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+th {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(221, 191, 100, 0.75);
+  font-size: 0.7rem;
+  color: var(--color-accent-soft);
+}
+
+/* Chips de estado (DISPONIBLE / EN EVENTO / CERRADO) */
+.lote-codecell{
+  min-width: 12rem;
+  max-width: 22rem;
+  white-space: normal;
+}
+.lote-code-text{
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
+}
+.lote-status-line{
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+/* Forzar salto de línea dentro de la fila de chips (para alinear PARCIAL con renglón 2) */
+.chip-break{
+  flex-basis: 100%;
+  width: 0;
+  height: 0;
+}
+.chip{
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(221, 191, 100, 0.55);
+  font-size: 0.66rem;
+  color: var(--color-accent-soft);
+  max-width: 100%;
+}
+.chip--available{
+  border-color: rgba(221, 191, 100, 0.75);
+  color: var(--color-accent-soft);
+}
+.chip--in-event{
+  border-color: rgba(123, 24, 24, 0.85);
+  color: rgba(255, 245, 245, 0.95);
+  background: rgba(123, 24, 24, 0.16);
+}
+
+/* Semáforo de consumo por evento (Etapa 3 UI) */
+.chip--partial{
+  border-color: rgba(221, 191, 100, 0.92);
+  color: var(--color-partial-text);
+  background: rgba(221, 191, 100, 0.12);
+}
+.chip--sold{
+  border-color: rgba(32, 128, 74, 0.85);
+  color: rgba(225, 255, 240, 0.95);
+  background: rgba(32, 128, 74, 0.12);
+}
+.chip--closed{
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+.chip--product-dynamic{
+  border-color: rgba(221, 191, 100, 0.35);
+  color: rgba(255, 245, 220, 0.94);
+  background: rgba(221, 191, 100, 0.07);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Indicador Disponible/Producido agotado: mismo semáforo visual de VENDIDO. */
+.chip--product-dynamic.is-sold-out{
+  border-color: rgba(32, 128, 74, 0.85);
+  color: rgba(225, 255, 240, 0.95);
+  background: rgba(32, 128, 74, 0.12);
+}
+
+.chip--event{
+  border-color: rgba(221, 191, 100, 0.45);
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip--child{
+  border-color: rgba(212,175,55,0.55);
+  background: rgba(212,175,55,0.08);
+  color: rgba(255,245,220,0.95);
+}
+
+.chip--parent{
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: rgba(240,240,240,0.95);
+
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions-cell{
+  /* Mantener comportamiento de celda de tabla (evita romper anchos) */
+  white-space: nowrap;
+  text-align: right;
+}
+
+.app-footer {
+  padding: 0.6rem 1.5rem 0.9rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(5, 5, 5, 0.95);
+}
+
+/* ================================
+   Ajustes iPad PWA — Tabla Lotes
+   (evita overflow de acciones)
+   ================================ */
+
+.table-wrapper{
+  /* Evitar scroll horizontal en iPad, mantener scroll vertical */
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Tabla específica de lotes (si existe la clase) */
+.table-lotes{
+  width: 100%;
+  table-layout: fixed; /* clave para respetar anchos */
+}
+
+/* Mantener todo en una línea */
+.table-lotes th,
+.table-lotes td{
+  white-space: nowrap;
+}
+
+/* Columna 1: FECHA (YYYY-MM-DD) */
+.table-lotes th:nth-child(1),
+.table-lotes td:nth-child(1){
+  width: 10ch;
+  min-width: 10ch;
+  max-width: 10ch;
+}
+
+/* Columna 2: CÓDIGO — siempre 16 caracteres */
+.table-lotes th:nth-child(2),
+.table-lotes td:nth-child(2){
+  width: 16ch;
+  min-width: 16ch;
+  max-width: 16ch;
+  padding-left: .25rem;
+  padding-right: .25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.table-lotes td:nth-child(2){
+  overflow: hidden;
+  text-overflow: unset;
+  white-space: normal;
+  line-height: 1.15;
+}
+
+/* Columna 3: VOL. ML */
+.table-lotes th:nth-child(3),
+.table-lotes td:nth-child(3){
+  width: 7ch;
+  min-width: 7ch;
+  max-width: 7ch;
+  text-align: right;
+  padding-left: .25rem;
+  padding-right: .25rem;
+}
+
+/* Columnas 4-8: P M D L G (compactas) */
+.table-lotes th:nth-child(4),
+.table-lotes td:nth-child(4),
+.table-lotes th:nth-child(5),
+.table-lotes td:nth-child(5),
+.table-lotes th:nth-child(6),
+.table-lotes td:nth-child(6),
+.table-lotes th:nth-child(7),
+.table-lotes td:nth-child(7),
+.table-lotes th:nth-child(8),
+.table-lotes td:nth-child(8){
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  text-align: center;
+  padding-left: .18rem;
+  padding-right: .18rem;
+  font-weight: 800;
+}
+
+/* Cantidades apiladas (Creado + Parcial/restante) */
+.qty-stack{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.05;
+}
+.qty-stack span{
+  display: block;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.qty-stack .qty-remaining{
+  color: var(--color-partial-text);
+}
+
+/* Doble línea por presentación: Creado (arriba) + Restante (abajo) */
+.qty-stack{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.05;
+}
+.qty-stack span{
+  display: block;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.qty-stack .qty-remaining{
+  color: var(--color-partial-text);
+}
+
+/* Columna 9: CADUCIDAD (YYYY-MM-DD) */
+.table-lotes th:nth-child(9),
+.table-lotes td:nth-child(9){
+  width: 10ch;
+  min-width: 10ch;
+  max-width: 10ch;
+}
+
+/* Columna 10: ACCIONES — que quepan 3 íconos */
+.table-lotes th:nth-child(10),
+.table-lotes td:nth-child(10){
+  width: 124px;
+  min-width: 124px;
+  max-width: 124px;
+  padding-left: .2rem;
+  padding-right: .2rem;
+  overflow: visible; /* no recortar el 🗑 */
+}
+
+/* Wrapper de acciones (si existe) */
+.table-lotes .acciones{
+  display: inline-flex;
+  gap: 4px;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+/* Si los botones están directo en la celda (fallback) */
+.table-lotes td:nth-child(10) > button{
+  margin-left: 4px;
+}
+
+/* Botón icon-only (si usan clase .btn.icon) */
+.table-lotes .btn.icon{
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ================================
+   Modal / Histórico (Etapa 5)
+   ================================ */
+
+.modal{
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 50;
+}
+
+.modal.is-open{
+  display: block;
+}
+
+.modal__backdrop{
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(4px);
+}
+
+.modal__panel{
+  position: relative;
+  margin: 8vh auto 0;
+  width: min(860px, 92vw);
+  max-height: 84vh;
+  overflow: hidden;
+  background: radial-gradient(circle at top left, rgba(219, 191, 100, 0.08), rgba(10, 10, 10, 0.98));
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  box-shadow: 0 18px 42px rgba(0,0,0,0.62);
+}
+
+.modal__header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.modal__header h3{
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+
+.modal__body{
+  padding: 0.9rem 1rem 1rem;
+  display: grid;
+  gap: 0.7rem;
+  max-height: calc(84vh - 62px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.modal__meta{
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.history-list{
+  display: grid;
+  gap: 0.55rem;
+}
+
+.history-item{
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  background: rgba(0,0,0,0.22);
+  padding: 0.65rem 0.75rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.history-main{
+  min-width: 0;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.history-code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 700;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-meta-line{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.history-meta-line .chip{
+  font-size: 0.64rem;
+}
+
+.history-actions{
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.modal__close.btn.icon,
+.history-actions .btn.icon{
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+
+/* Responsive */
+
+@media (max-width: 1024px) {
+  .table-wrapper{ display: none; }
+  .lotes-cards{ display: grid; gap: 0.55rem; }
+
+  .app-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .table-wrapper {
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-header {
+    padding-inline: 1rem;
+  }
+
+  .app-main {
+    padding: 0.9rem;
+  }
+
+  .card {
+    padding-inline: 0.9rem;
+  }
+
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand-text h1 {
+    font-size: 1.05rem;
+  }
+
+  .logo {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+
+@media (max-width: 520px){
+  .catalog-products-bar,
+  .totals-bar{
+    align-items: stretch;
+  }
+
+  .catalog-products-content,
+  .catalog-products-chips,
+  .totals-chips{
+    justify-content: flex-start;
+    align-items: flex-start;
+    margin-left: 0;
+  }
+
+  .catalog-products-status{
+    text-align: left;
+  }
+}
+
+
+/* Etapa 2/4 Lotes: productos dinámicos adicionales */
+.dynamic-products-section {
+  margin: 0.85rem 0 0.95rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(219, 191, 100, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.dynamic-products-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.dynamic-products-head h3 {
+  margin: 0;
+}
+
+.dynamic-products-head p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+.dynamic-products-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem 0.75rem;
+}
+
+.dynamic-product-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.dynamic-product-field label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dynamic-product-field label strong {
+  color: var(--color-accent-soft);
+  letter-spacing: 0.05em;
+}
+
+.dynamic-product-input {
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .dynamic-products-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dynamic-products-head p {
+    text-align: left;
+  }
+
+  .dynamic-products-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .dynamic-products-grid {
+    grid-template-columns: 1fr;
+  }
+}

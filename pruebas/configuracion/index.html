@@ -1,0 +1,1682 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>Suite A33 · Configuración</title>
+<meta content="Módulo Configuración de Suite A33. Organiza PWA, Identidad, Apariencia, Reportes, Moneda, Firebase, Seguridad y Respaldo en un solo lugar." name="description"/>
+<meta content="#7b1818" name="theme-color"/>
+
+<script src="/assets/js/a33-theme.js?v=4.20.98&r=8"></script>
+<link href="../icon-a33-192.png" rel="icon" sizes="192x192" type="image/png"/>
+<link href="../icon-a33-192.png" rel="apple-touch-icon"/>
+<script>
+(function(){
+  try{
+    var key = 'suite_a33_appearance_preference';
+    var pref = localStorage.getItem(key) || 'dark';
+    if (pref !== 'dark' && pref !== 'light' && pref !== 'auto') pref = 'dark';
+    var resolved = pref;
+    if (pref === 'auto'){
+      resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-a33-theme-preference', pref);
+    document.documentElement.setAttribute('data-theme', resolved);
+  }catch(_){
+    document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+})();
+</script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="../assets/css/a33-header.css?v=4.20.98&amp;r=8" rel="stylesheet"/>
+<link href="../assets/css/a33-module-nav.css?v=4.20.98&amp;r=4" rel="stylesheet"/>
+<link href="style.css?v=4.20.98&amp;r=28" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=8" />
+<link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
+</head>
+<body>
+<header class="a33-header" role="banner" data-a33-module="configuracion" data-a33-context="configuracion">
+<a aria-label="Ir al Menú principal" class="a33-btn-menu" href="../index.html">⌂ Menú principal</a>
+<div class="a33-title">Configuración</div>
+<div class="a33-version" data-a33-fallback="v4.20.98" data-a33-version="1">v...</div>
+</header>
+<main class="cfg-main" role="main">
+<section aria-label="Apartados de Configuración" class="cfg-shell cfg-card">
+<div class="cfg-shell-head">
+<div>
+<p class="cfg-eyebrow">Configuración</p>
+<h2 class="cfg-shell-title">Apartados de Configuración</h2>
+<p class="cfg-shell-copy">Seleccioná una tarjeta para abrir su apartado. Al entrar, las demás opciones se ocultan y quedan disponibles los accesos para volver a Configuración o ir al Menú principal.</p>
+</div>
+</div>
+<div aria-label="Tarjetas de Configuración" class="cfg-tabs"><button aria-controls="cfg-panel-pwa" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="pwa" id="cfg-tab-pwa" type="button"><span class="cfg-tab-title">PWA</span><span class="cfg-tab-meta">Actualización central de la Suite</span></button><button aria-controls="cfg-panel-identity" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="identity" id="cfg-tab-identity" type="button"><span class="cfg-tab-title">Identidad</span><span class="cfg-tab-meta">Marca, datos generales y presentación</span></button><button aria-controls="cfg-panel-appearance" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="appearance" id="cfg-tab-appearance" type="button"><span class="cfg-tab-title">Apariencia</span><span class="cfg-tab-meta">Modo claro, oscuro o sistema</span></button><button aria-controls="cfg-panel-reports" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="reports" id="cfg-tab-reports" type="button"><span class="cfg-tab-title">Reportes</span><span class="cfg-tab-meta">Preferencias de reportes y salida</span></button><button aria-controls="cfg-panel-currency" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="currency" id="cfg-tab-currency" type="button"><span class="cfg-tab-title">Moneda</span><span class="cfg-tab-meta">Parámetros monetarios globales</span></button><button aria-controls="cfg-panel-firebase" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="firebase" id="cfg-tab-firebase" type="button"><span class="cfg-tab-title">Firebase</span><span class="cfg-tab-meta">Híbrido local-first y credenciales web</span></button><button aria-controls="cfg-panel-users" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="security" id="cfg-tab-users" type="button"><span class="cfg-tab-title">Seguridad</span><span class="cfg-tab-meta">Usuarios, roles y permisos</span></button><button aria-controls="cfg-panel-backup" aria-expanded="false" class="cfg-tab cfg-section-card" data-target="backup" id="cfg-tab-backup" type="button"><span class="cfg-tab-title">Respaldo</span><span class="cfg-tab-meta">Exportar e importar JSON</span></button></div>
+<div class="cfg-panels" hidden="">
+
+
+
+<section aria-hidden="true" aria-labelledby="cfg-tab-pwa" class="cfg-panel-view" data-panel="pwa" hidden="" id="cfg-panel-pwa" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="cfg-pwa-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Primer apartado</p>
+<h2 id="cfg-pwa-title">PWA</h2>
+</div>
+<span class="cfg-badge">Motor central</span>
+</div>
+<p class="cfg-copy">Actualización y control de la versión instalada de la Suite. Este apartado ejecuta la búsqueda central de Service Workers registrados, guarda la última búsqueda, detecta si hay actualización pendiente y permite aplicarla de forma controlada.</p>
+<div aria-label="Estado PWA de la Suite" class="cfg-pwa-dashboard">
+<article class="cfg-status-card cfg-pwa-stat">
+<span class="cfg-status-label">Estado</span>
+<strong id="cfg-pwa-status">Sin revisar</strong>
+<p class="cfg-status-copy">Estado central de revisión PWA.</p>
+</article>
+<article class="cfg-status-card cfg-pwa-stat">
+<span class="cfg-status-label">Última búsqueda</span>
+<strong id="cfg-pwa-last-check">Sin registros</strong>
+<p class="cfg-status-copy">Se mostrará en formato DD/MM/AAAA HH:mm.</p>
+</article>
+<article class="cfg-status-card cfg-pwa-stat">
+<span class="cfg-status-label">Última actualización</span>
+<strong id="cfg-pwa-last-update">Sin registros</strong>
+<p class="cfg-status-copy">Solo cambia cuando se aplique correctamente una actualización.</p>
+</article>
+</div>
+<div class="cfg-actions cfg-actions--pwa">
+<button class="cfg-btn cfg-btn-primary" id="cfg-pwa-check" type="button">Buscar actualizaciones</button>
+</div>
+</article>
+<aside aria-labelledby="cfg-pwa-side-title" class="cfg-card cfg-panel cfg-side-panel">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Actualizaciones</p>
+<h2 id="cfg-pwa-side-title">Motor central</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft">Centralizado</span>
+</div>
+<ul class="cfg-list">
+<li>Busca actualizaciones disponibles para la Suite.</li>
+<li>Permite aplicar una actualización pendiente de forma controlada.</li>
+<li>Muestra última búsqueda, última actualización y estado actual.</li>
+</ul>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-identity" class="cfg-panel-view" data-panel="identity" hidden="" id="cfg-panel-identity" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="identity-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="identity-title">Identidad</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft">Guardado local</span>
+</div>
+<p class="cfg-copy">Datos generales de identidad del negocio y de la Suite. En esta fase se guardan localmente para conservarse al recargar la app, sin alimentar reportes, PDFs, POS, Finanzas ni otros módulos.</p>
+<form aria-label="Formulario de Identidad" class="cfg-identity-form" id="cfg-identity-form" novalidate="">
+<div class="cfg-identity-grid">
+<label class="cfg-field">
+<span>Nombre comercial</span>
+<input autocomplete="organization" class="cfg-input" id="cfg-identity-commercial-name" maxlength="120" placeholder="Ingrese el nombre comercial" type="text"/>
+</label>
+<label class="cfg-field">
+<span>Nombre legal</span>
+<input autocomplete="organization" class="cfg-input" id="cfg-identity-legal-name" maxlength="160" placeholder="Ingrese el nombre legal" type="text"/>
+</label>
+<label class="cfg-field">
+<span>RUC / identificación fiscal</span>
+<input class="cfg-input" id="cfg-identity-tax-id" maxlength="60" placeholder="Ingrese identificación fiscal" type="text"/>
+</label>
+<label class="cfg-field">
+<span>Teléfono</span>
+<input autocomplete="tel" class="cfg-input" id="cfg-identity-phone" inputmode="tel" maxlength="40" placeholder="Ingrese teléfono" type="tel"/>
+</label>
+<label class="cfg-field">
+<span>WhatsApp</span>
+<input autocomplete="tel" class="cfg-input" id="cfg-identity-whatsapp" inputmode="tel" maxlength="40" placeholder="Ingrese WhatsApp" type="tel"/>
+</label>
+<label class="cfg-field">
+<span>Correo</span>
+<input autocomplete="email" class="cfg-input" id="cfg-identity-email" maxlength="120" placeholder="Ingrese correo" type="email"/>
+</label>
+<label class="cfg-field cfg-field--full">
+<span>Dirección</span>
+<textarea class="cfg-input cfg-textarea" id="cfg-identity-address" maxlength="240" placeholder="Ingrese dirección" rows="3"></textarea>
+</label>
+<label class="cfg-field">
+<span>Nombre de la Suite</span>
+<input class="cfg-input" id="cfg-identity-suite-name" maxlength="120" placeholder="Ingrese nombre de la Suite" type="text"/>
+</label>
+<label class="cfg-field">
+<span>Marca principal</span>
+<input class="cfg-input" id="cfg-identity-main-brand" maxlength="120" placeholder="Ingrese marca principal" type="text"/>
+</label>
+<label class="cfg-field cfg-field--full">
+<span>Descripción corta / lema</span>
+<textarea class="cfg-input cfg-textarea" id="cfg-identity-tagline" maxlength="220" placeholder="Ingrese descripción corta o lema" rows="3"></textarea>
+</label>
+<div aria-labelledby="cfg-identity-logo-label" class="cfg-field cfg-field--full cfg-logo-field" role="group">
+<span id="cfg-identity-logo-label">Logo principal</span>
+<div class="cfg-logo-shell">
+<div class="cfg-logo-preview" id="cfg-identity-logo-preview" aria-hidden="true">
+<span class="cfg-logo-placeholder" id="cfg-identity-logo-placeholder">◇</span>
+<img alt="Previsualización del logo principal" id="cfg-identity-logo-img" hidden=""/>
+</div>
+<div>
+<strong id="cfg-identity-logo-title">Sin logo cargado</strong>
+<p id="cfg-identity-logo-meta">Podés subir una imagen común compatible con navegador. Se guardará localmente junto con la Identidad.</p>
+</div>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-compact" id="cfg-identity-logo-button" type="button">Subir logo</button>
+<input accept="image/*" id="cfg-identity-logo-input" type="file"/>
+</div>
+</div>
+</div>
+<div class="cfg-form-actions cfg-identity-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-identity-save" type="submit">Guardar</button>
+</div>
+<div class="cfg-form-hint" id="cfg-identity-status">Los campos empiezan vacíos. Al guardar, la Identidad queda conservada en este navegador.</div>
+</form>
+</article>
+<aside aria-labelledby="identity-side-title" class="cfg-card cfg-panel cfg-side-panel cfg-identity-summary-card">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Vista resumen</p>
+<h2 id="identity-side-title">Identidad guardada</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-identity-summary-state">Vacía</span>
+</div>
+<div class="cfg-identity-summary-hero" aria-label="Resumen visual de Identidad">
+<div class="cfg-identity-summary-logo" aria-hidden="true">
+<span id="cfg-identity-summary-logo-placeholder">◇</span>
+<img alt="" id="cfg-identity-summary-logo-img" hidden=""/>
+</div>
+<div class="cfg-identity-summary-titlebox">
+<strong id="cfg-identity-summary-name">Sin nombre comercial</strong>
+<p id="cfg-identity-summary-tagline">La identidad aparecerá aquí cuando guardés los datos.</p>
+</div>
+</div>
+<div class="cfg-identity-summary-empty" id="cfg-identity-summary-empty">Aún no hay datos guardados. La tarjeta está lista; solo falta alimentar al dragón.</div>
+<dl class="cfg-identity-summary-list" id="cfg-identity-summary-list">
+<div><dt>Nombre comercial</dt><dd id="cfg-identity-summary-commercial-name">—</dd></div>
+<div><dt>Nombre legal</dt><dd id="cfg-identity-summary-legal-name">—</dd></div>
+<div><dt>RUC / identificación fiscal</dt><dd id="cfg-identity-summary-tax-id">—</dd></div>
+<div><dt>Teléfono</dt><dd id="cfg-identity-summary-phone">—</dd></div>
+<div><dt>WhatsApp</dt><dd id="cfg-identity-summary-whatsapp">—</dd></div>
+<div><dt>Correo</dt><dd id="cfg-identity-summary-email">—</dd></div>
+<div><dt>Dirección</dt><dd id="cfg-identity-summary-address">—</dd></div>
+<div><dt>Nombre de la Suite</dt><dd id="cfg-identity-summary-suite-name">—</dd></div>
+<div><dt>Marca principal</dt><dd id="cfg-identity-summary-main-brand">—</dd></div>
+</dl>
+<div class="cfg-identity-summary-footer">
+<span>Último guardado</span>
+<strong id="cfg-identity-summary-updated">Sin registros</strong>
+</div>
+<div class="cfg-identity-summary-note">
+<p>Este resumen solo vive en Configuración → Identidad. No alimenta reportes, PDFs, POS, Finanzas ni otros módulos todavía.</p>
+</div>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-appearance" class="cfg-panel-view" data-panel="appearance" hidden="" id="cfg-panel-appearance" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="appearance-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="appearance-title">Apariencia</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-theme-badge">Modo oscuro</span>
+</div>
+<p class="cfg-copy">Personaliza el modo visual de Suite A33.</p>
+<div class="cfg-appearance-status" aria-live="polite">
+<span>Modo actual</span>
+<strong id="cfg-theme-current">Modo actual: Oscuro</strong>
+<p id="cfg-theme-resolved">Tema aplicado: Oscuro.</p>
+</div>
+<div aria-label="Selector de modo visual" class="cfg-theme-selector" role="radiogroup">
+<button aria-checked="false" class="cfg-theme-option" data-theme-pref="dark" role="radio" type="button">
+<span class="cfg-theme-preview cfg-theme-preview--dark" aria-hidden="true">
+<span class="cfg-theme-preview-top"></span>
+<span class="cfg-theme-preview-card"></span>
+<span class="cfg-theme-preview-line"></span>
+</span>
+<span class="cfg-theme-option-copy">
+<strong>Oscuro</strong>
+<small>Modo A33 clásico, negro premium con acentos dorados y rojo A33.</small>
+</span>
+</button>
+<button aria-checked="false" class="cfg-theme-option" data-theme-pref="light" role="radio" type="button">
+<span class="cfg-theme-preview cfg-theme-preview--light" aria-hidden="true">
+<span class="cfg-theme-preview-top"></span>
+<span class="cfg-theme-preview-card"></span>
+<span class="cfg-theme-preview-line"></span>
+</span>
+<span class="cfg-theme-option-copy">
+<strong>Claro</strong>
+<small>Crema premium, texto oscuro y acentos A33. Nada de blanco quirúrgico.</small>
+</span>
+</button>
+<button aria-checked="false" class="cfg-theme-option" data-theme-pref="auto" role="radio" type="button">
+<span class="cfg-theme-preview cfg-theme-preview--auto" aria-hidden="true">
+<span class="cfg-theme-preview-split cfg-theme-preview-split--dark"></span>
+<span class="cfg-theme-preview-split cfg-theme-preview-split--light"></span>
+<span class="cfg-theme-preview-card"></span>
+<span class="cfg-theme-preview-line"></span>
+</span>
+<span class="cfg-theme-option-copy">
+<strong>Automático</strong>
+<small>Usa la preferencia visual del dispositivo o navegador.</small>
+</span>
+</button>
+</div>
+<p class="cfg-inline-note cfg-theme-save-note">La selección se guarda automáticamente al tocar una opción. Sin botón adicional: un toque y listo.</p>
+</article>
+<aside aria-labelledby="appearance-side-title" class="cfg-card cfg-panel cfg-side-panel">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Vista previa</p>
+<h2 id="appearance-side-title">Base global</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-theme-resolved-badge">Aplicado</span>
+</div>
+<div class="cfg-theme-live-preview" id="cfg-theme-live-preview" aria-label="Vista previa visual del tema actual">
+<div class="cfg-theme-live-top"></div>
+<div class="cfg-theme-live-card">
+<strong>Suite A33</strong>
+<p>Tarjeta premium con acento dorado, rojo A33 y lectura clara.</p>
+<span>Vista previa</span>
+</div>
+</div>
+<ul class="cfg-list cfg-theme-list">
+<li>Oscuro conserva la base visual actual de la Suite.</li>
+<li>Claro usa crema premium, no blanco puro.</li>
+<li>Automático responde a cambios del sistema cuando el navegador lo permite.</li>
+</ul>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-reports" class="cfg-panel-view" data-panel="reports" hidden="" id="cfg-panel-reports" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid cfg-reports-view">
+<article aria-labelledby="reports-title" class="cfg-card cfg-panel cfg-panel--main cfg-reports-panel">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="reports-title">Reportes</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-reports-save-state">Preferencias generales</span>
+</div>
+<p class="cfg-copy">Configuración inicial para reportes futuros: Identidad, formato, Moneda, exportaciones, privacidad, POS y vista previa controlada.</p>
+<div class="cfg-reports-hero" aria-label="Estado funcional de Reportes">
+<div>
+<span class="cfg-report-mini-label">Guardado funcional</span>
+<strong>Preferencias generales listas para conservarse</strong>
+<p>Estos ajustes solo preparan la base futura de reportes. No modifican PDFs, Excel, POS, Finanzas ni exportaciones reales.</p>
+</div>
+<span class="cfg-report-seal">A33</span>
+</div>
+<form aria-label="Preferencias generales de Reportes" class="cfg-reports-form" id="cfg-reports-form" novalidate="">
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-identity-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◇</span>
+<div>
+<h3 id="reports-identity-title">Identidad en reportes</h3>
+<p>Elegí qué datos de Configuración → Identidad podrán usarse en reportes futuros. Todas las opciones inician activadas.</p>
+</div>
+</div>
+<div class="cfg-report-options" aria-label="Datos de Identidad permitidos en reportes futuros">
+<label class="cfg-report-option" for="cfg-reports-identity-logo"><input id="cfg-reports-identity-logo" data-reports-identity-field="logo" type="checkbox"/><span><strong>Logo principal</strong><small>Imagen principal de la marca.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-commercial-name"><input id="cfg-reports-identity-commercial-name" data-reports-identity-field="commercialName" type="checkbox"/><span><strong>Nombre comercial</strong><small>Nombre público del negocio.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-legal-name"><input id="cfg-reports-identity-legal-name" data-reports-identity-field="legalName" type="checkbox"/><span><strong>Nombre legal</strong><small>Razón o nombre legal.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-tax-id"><input id="cfg-reports-identity-tax-id" data-reports-identity-field="taxId" type="checkbox"/><span><strong>RUC / identificación fiscal</strong><small>Dato fiscal registrado.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-phone"><input id="cfg-reports-identity-phone" data-reports-identity-field="phone" type="checkbox"/><span><strong>Teléfono</strong><small>Número general de contacto.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-whatsapp"><input id="cfg-reports-identity-whatsapp" data-reports-identity-field="whatsapp" type="checkbox"/><span><strong>WhatsApp</strong><small>Contacto directo comercial.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-email"><input id="cfg-reports-identity-email" data-reports-identity-field="email" type="checkbox"/><span><strong>Correo</strong><small>Correo de contacto.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-address"><input id="cfg-reports-identity-address" data-reports-identity-field="address" type="checkbox"/><span><strong>Dirección</strong><small>Dirección registrada.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-identity-tagline"><input id="cfg-reports-identity-tagline" data-reports-identity-field="tagline" type="checkbox"/><span><strong>Descripción corta / lema</strong><small>Frase o descripción breve.</small></span></label>
+</div>
+<div class="cfg-report-reference" aria-label="Referencia compacta de Identidad actual">
+<div class="cfg-report-reference-head">
+<strong>Referencia actual de Identidad</strong>
+<span>No editable desde Reportes</span>
+</div>
+<div class="cfg-report-reference-body">
+<div class="cfg-report-logo-ref" aria-label="Logo principal configurado">
+<img alt="Logo principal de Identidad" hidden="" id="cfg-reports-ref-logo-img"/>
+<span id="cfg-reports-ref-logo-placeholder">A33</span>
+<small id="cfg-reports-ref-logo-text">No configurado</small>
+</div>
+<dl class="cfg-report-ref-list">
+<div><dt>Nombre comercial</dt><dd id="cfg-reports-ref-commercial-name">No configurado</dd></div>
+<div><dt>Nombre legal</dt><dd id="cfg-reports-ref-legal-name">No configurado</dd></div>
+<div><dt>RUC / identificación fiscal</dt><dd id="cfg-reports-ref-tax-id">No configurado</dd></div>
+<div><dt>Teléfono</dt><dd id="cfg-reports-ref-phone">No configurado</dd></div>
+<div><dt>WhatsApp</dt><dd id="cfg-reports-ref-whatsapp">No configurado</dd></div>
+<div><dt>Correo</dt><dd id="cfg-reports-ref-email">No configurado</dd></div>
+<div><dt>Dirección</dt><dd id="cfg-reports-ref-address">No configurado</dd></div>
+<div><dt>Descripción corta / lema</dt><dd id="cfg-reports-ref-tagline">No configurado</dd></div>
+</dl>
+</div>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-format-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◷</span>
+<div>
+<h3 id="reports-format-title">Formato general</h3>
+<p>Estándar protegido para toda la base futura de reportes. Sin selector por ahora: menos invento, más orden.</p>
+</div>
+</div>
+<div class="cfg-report-format-grid" aria-label="Formato general fijo de reportes">
+<div class="cfg-report-format-item"><span>Fecha</span><strong>DD/MM/AAAA</strong><small>Formato estándar</small></div>
+<div class="cfg-report-format-item"><span>Fecha y hora</span><strong>DD/MM/AAAA HH:mm</strong><small>Hora militar</small></div>
+<div class="cfg-report-format-item"><span>AM/PM</span><strong>No usar</strong><small>Sin AM/PM</small></div>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide cfg-reports-currency-card" aria-labelledby="reports-currency-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">C$</span>
+<div>
+<h3 id="reports-currency-title">Moneda para reportes</h3>
+<p>Referencia segura leída desde Configuración → Moneda. Prepara reportes futuros sin recalcular montos ni tocar exportaciones reales.</p>
+</div>
+</div>
+<div class="cfg-currency-preview-grid cfg-reports-currency-grid" aria-label="Referencia monetaria para reportes futuros">
+<div class="cfg-currency-preview-item"><span>Moneda principal</span><strong id="cfg-reports-currency-primary">C$ / NIO</strong><small id="cfg-reports-currency-primary-name">Córdoba nicaragüense</small></div>
+<div class="cfg-currency-preview-item"><span>Moneda secundaria</span><strong id="cfg-reports-currency-secondary">US$ / USD</strong><small id="cfg-reports-currency-secondary-name">Dólar estadounidense</small></div>
+<div class="cfg-currency-preview-item"><span>T/C actual</span><strong id="cfg-reports-currency-rate">No configurado</strong><small id="cfg-reports-currency-rate-state">Estado seguro: sin conversiones automáticas.</small></div>
+<div class="cfg-currency-preview-item"><span>Última actualización</span><strong id="cfg-reports-currency-updated-at">Sin registros</strong><small>Fecha/hora proveniente de Moneda.</small></div>
+</div>
+<div class="cfg-report-currency-note" aria-live="polite" id="cfg-reports-currency-note">Estos valores provienen de Configuración → Moneda.</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-export-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⇩</span>
+<div>
+<h3 id="reports-export-title">Exportaciones y nombre de archivos</h3>
+<p>Preferencias futuras para nombrar archivos y ordenar formatos por módulo, sin activar exportadores reales todavía.</p>
+</div>
+</div>
+<div class="cfg-report-file-grid" aria-label="Nombre base futuro de archivos exportados">
+<label class="cfg-report-field" for="cfg-reports-file-base-name">
+<span>Nombre base de archivos</span>
+<input autocomplete="off" id="cfg-reports-file-base-name" maxlength="64" name="reportsFileBaseName" type="text"/>
+<small id="cfg-reports-file-base-hint">Se recomienda usar el Nombre comercial de Identidad. Si no existe, se usa SuiteA33.</small>
+</label>
+<div class="cfg-report-file-example" aria-live="polite">
+<span>Ejemplo futuro</span>
+<strong id="cfg-reports-file-example">SuiteA33_Modulo_TipoReporte_2026-05-21.xlsx</strong>
+<small>Vista conceptual. No cambia nombres reales ni genera archivos desde Reportes.</small>
+</div>
+</div>
+<div class="cfg-report-finance-rule" aria-label="Regla fija de Finanzas">
+<div>
+<span class="cfg-report-mini-label">Regla fija protegida</span>
+<strong>Finanzas: exportaciones exclusivamente en Excel.</strong>
+<p>No se permite TXT ni CSV para reportes financieros. Esto queda protegido como preferencia base futura.</p>
+</div>
+<span class="cfg-report-protected-pill">Protegido</span>
+</div>
+<div class="cfg-report-module-grid" aria-label="Preferencias futuras de formatos por módulo">
+<div class="cfg-report-module-card cfg-report-module-card--locked" data-report-module-card="finances">
+<div class="cfg-report-module-head"><strong>Finanzas</strong><span>Excel exclusivo</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip cfg-report-format-chip--locked"><input checked="" disabled="" id="cfg-reports-format-finances-excel" type="checkbox"/>Excel</label>
+<span class="cfg-report-format-chip cfg-report-format-chip--blocked">Sin CSV/TXT</span>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="pos">
+<div class="cfg-report-module-head"><strong>POS</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="pos" id="cfg-reports-format-pos-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="pos" id="cfg-reports-format-pos-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="pos" id="cfg-reports-format-pos-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="inventory">
+<div class="cfg-report-module-head"><strong>Inventario</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="inventory" id="cfg-reports-format-inventory-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="inventory" id="cfg-reports-format-inventory-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="inventory" id="cfg-reports-format-inventory-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="repack">
+<div class="cfg-report-module-head"><strong>Reempaque</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="repack" id="cfg-reports-format-repack-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="repack" id="cfg-reports-format-repack-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="repack" id="cfg-reports-format-repack-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="calculator">
+<div class="cfg-report-module-head"><strong>Calculadora</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="calculator" id="cfg-reports-format-calculator-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="calculator" id="cfg-reports-format-calculator-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="calculator" id="cfg-reports-format-calculator-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="agenda">
+<div class="cfg-report-module-head"><strong>Agenda</strong><span>Preferencia futura</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="pdf" data-report-module="agenda" id="cfg-reports-format-agenda-pdf" type="checkbox"/>PDF</label>
+<label class="cfg-report-format-chip"><input data-report-format="excel" data-report-module="agenda" id="cfg-reports-format-agenda-excel" type="checkbox"/>Excel</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="agenda" id="cfg-reports-format-agenda-preview" type="checkbox"/>Vista previa</label>
+</div>
+</div>
+<div class="cfg-report-module-card" data-report-module-card="suite">
+<div class="cfg-report-module-head"><strong>Base general</strong><span>Respaldo técnico futuro</span></div>
+<div class="cfg-report-format-chips">
+<label class="cfg-report-format-chip"><input data-report-format="json" data-report-module="suite" id="cfg-reports-format-suite-json" type="checkbox"/>JSON</label>
+<label class="cfg-report-format-chip"><input data-report-format="preview" data-report-module="suite" id="cfg-reports-format-suite-preview" type="checkbox"/>Impresión futura</label>
+</div>
+</div>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-privacy-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◆</span>
+<div>
+<h3 id="reports-privacy-title">Privacidad / Información sensible</h3>
+<p>Preferencias futuras para controlar datos delicados. Costos y utilidad inician ocultos; comisiones internas quedan protegidas por regla fija.</p>
+</div>
+</div>
+<div class="cfg-report-options cfg-report-options--sensitive" aria-label="Preferencias de privacidad para reportes futuros">
+<label class="cfg-report-option" for="cfg-reports-privacy-show-costs"><input id="cfg-reports-privacy-show-costs" data-reports-privacy="showCosts" type="checkbox"/><span><strong>Mostrar costos en reportes futuros</strong><small>Desactivado por defecto. Solo se usará cuando una etapa futura conecte reportes reales.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-privacy-show-profit"><input id="cfg-reports-privacy-show-profit" data-reports-privacy="showProfit" type="checkbox"/><span><strong>Mostrar utilidad en reportes futuros</strong><small>Desactivado por defecto. Se guarda como preferencia, no cambia cálculos actuales.</small></span></label>
+<label class="cfg-report-option cfg-report-option--protected" for="cfg-reports-privacy-protect-commissions"><input id="cfg-reports-privacy-protect-commissions" data-reports-privacy="protectInternalCommissions" checked="" disabled="" type="checkbox"/><span><strong>Comisiones internas protegidas</strong><small>Regla fija: pueden existir como lógica interna, pero no se exponen desde Reportes.</small></span><em>Protegido</em></label>
+<label class="cfg-report-option cfg-report-option--protected" for="cfg-reports-privacy-hide-commission-sale"><input id="cfg-reports-privacy-hide-commission-sale" data-reports-privacy="hideCommissionPerSale" checked="" disabled="" type="checkbox"/><span><strong>Ocultar comisión por venta</strong><small>Regla fija: no se crea opción para mostrar comisión usada por venta.</small></span><em>Protegido</em></label>
+</div>
+<div class="cfg-report-protected-note" aria-label="Regla protegida de comisiones">
+<strong>Comisiones de tarjeta</strong>
+<p>No se muestran por venta, no se agregan a registros visibles y no se toca la lógica existente de bancos o tarjeta.</p>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-pos-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">▣</span>
+<div>
+<h3 id="reports-pos-title">POS en reportes futuros</h3>
+<p>Opciones futuras para reportes POS. Todas inician activadas y no modifican ventas, resumen, cierres ni reportes reales todavía.</p>
+</div>
+</div>
+<div class="cfg-report-options" aria-label="Preferencias POS para reportes futuros">
+<label class="cfg-report-option" for="cfg-reports-pos-discounts"><input id="cfg-reports-pos-discounts" data-reports-pos="includeDiscounts" type="checkbox"/><span><strong>Incluir descuentos</strong><small>Preferencia futura para reportes POS.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-courtesy"><input id="cfg-reports-pos-courtesy" data-reports-pos="includeCourtesy" type="checkbox"/><span><strong>Incluir cortesías</strong><small>Preferencia futura para reportes POS.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-bank-transfers"><input id="cfg-reports-pos-bank-transfers" data-reports-pos="includeBankTransfers" type="checkbox"/><span><strong>Incluir transferencias por banco</strong><small>Preferencia futura para consolidar transferencias por banco.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-payment-method"><input id="cfg-reports-pos-payment-method" data-reports-pos="includePaymentMethod" type="checkbox"/><span><strong>Incluir método de pago</strong><small>Preferencia futura para reportar efectivo, transferencia, tarjeta o crédito.</small></span></label>
+</div>
+</section>
+<section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-preview-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◈</span>
+<div>
+<h3 id="reports-preview-title">Vista previa</h3>
+<p>Preferencia futura para revisar reportes antes de exportar. Queda activada por defecto, sin implementar motor real todavía.</p>
+</div>
+</div>
+<div class="cfg-report-options cfg-report-options--single" aria-label="Preferencia futura de vista previa">
+<label class="cfg-report-option" for="cfg-reports-preview-before-export"><input id="cfg-reports-preview-before-export" data-reports-preview="beforeExport" type="checkbox"/><span><strong>Vista previa antes de exportar</strong><small>Activada por defecto. No genera reportes ni archivos desde esta sección.</small></span></label>
+</div>
+</section>
+<div class="cfg-report-final-note" aria-label="Cierre funcional de Reportes">
+<strong>Aplicación futura por módulos</strong>
+<p>Reportes actualmente guarda preferencias generales y lee Moneda como referencia segura. La aplicación real en POS, Finanzas, Inventario y otros módulos se hará en etapas específicas para evitar romper partes sensibles.</p>
+</div>
+<div class="cfg-actions cfg-reports-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-reports-save" type="submit">Guardar preferencias</button>
+<p class="cfg-action-inline-note" id="cfg-reports-status">Preferencias listas. Se guardan únicamente al presionar el botón.</p>
+</div>
+</form>
+</article>
+<aside aria-labelledby="reports-side-title" class="cfg-card cfg-panel cfg-side-panel cfg-reports-side">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Alcance protegido</p>
+<h2 id="reports-side-title">Reportes</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-reports-side-badge">Base local</span>
+</div>
+<ul class="cfg-list">
+<li>Guarda preferencias de Reportes en una clave aislada.</li>
+<li>Lee Identidad solo como referencia compacta.</li>
+<li>Lee Moneda como referencia segura: C$ / NIO, US$ / USD, T/C y última actualización.</li>
+<li>Mantiene fecha DD/MM/AAAA y fecha-hora DD/MM/AAAA HH:mm.</li>
+<li>Prepara nombre base de archivos usando Identidad o fallback SuiteA33.</li>
+<li>Protege Finanzas como Excel exclusivo, sin CSV ni TXT.</li>
+<li>Guarda privacidad sensible: costos, utilidad y comisiones internas.</li>
+<li>Prepara preferencias POS: descuentos, cortesías, transferencias y método de pago.</li>
+<li>Mantiene vista previa futura activada por defecto.</li>
+<li>No toca reportes reales, exportaciones, POS, Finanzas ni módulos sensibles.</li>
+<li>Respeta Oscuro, Claro y Automático/Sistema.</li>
+</ul>
+<div class="cfg-report-lockbox">
+<strong>Regla de oro</strong>
+<p>Reportes queda funcional para guardar preferencias generales, sin abrir todavía la puerta de los módulos delicados. Candado puesto; llave guardada.</p>
+</div>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-currency" class="cfg-panel-view" data-panel="currency" hidden="" id="cfg-panel-currency" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid cfg-currency-view">
+<article aria-labelledby="currency-title" class="cfg-card cfg-panel cfg-panel--main cfg-currency-panel">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="currency-title">Moneda</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-currency-save-state">Base local</span>
+</div>
+<p class="cfg-copy">Configuración inicial de moneda para Suite A33: Córdoba nicaragüense como moneda principal, dólar estadounidense como moneda secundaria y tipo de cambio manual guardado localmente.</p>
+<div class="cfg-currency-hero" aria-label="Estado funcional de Moneda">
+<div>
+<span class="cfg-report-mini-label">Tipo de cambio manual</span>
+<strong>Último T/C guardado: <span id="cfg-currency-hero-rate">Sin configurar</span></strong>
+<p id="cfg-currency-hero-copy">Este apartado guarda el parámetro monetario base y lo lee desde el motor central seguro. La conexión con POS, Finanzas y demás módulos queda para etapas posteriores.</p>
+</div>
+<span class="cfg-currency-seal">C$ / US$</span>
+</div>
+<form aria-label="Configuración de Moneda" class="cfg-currency-form" id="cfg-currency-form" novalidate="">
+<section class="cfg-currency-card" aria-labelledby="cfg-currency-primary-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">C$</span>
+<div>
+<h3 id="cfg-currency-primary-title">Moneda principal</h3>
+<p>Moneda fija para la operación base de la Suite.</p>
+</div>
+</div>
+<div class="cfg-currency-info-grid" aria-label="Datos de moneda principal">
+<div><span>Nombre</span><strong>Córdoba nicaragüense</strong></div>
+<div><span>Símbolo</span><strong>C$</strong></div>
+<div><span>Código</span><strong>NIO</strong></div>
+</div>
+</section>
+<section class="cfg-currency-card" aria-labelledby="cfg-currency-secondary-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">US$</span>
+<div>
+<h3 id="cfg-currency-secondary-title">Moneda secundaria</h3>
+<p>Moneda fija para referencias en dólares estadounidenses.</p>
+</div>
+</div>
+<div class="cfg-currency-info-grid" aria-label="Datos de moneda secundaria">
+<div><span>Nombre</span><strong>Dólar estadounidense</strong></div>
+<div><span>Símbolo</span><strong>US$</strong></div>
+<div><span>Código</span><strong>USD</strong></div>
+</div>
+</section>
+<section class="cfg-currency-card cfg-currency-card--wide" aria-labelledby="cfg-currency-rate-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⇄</span>
+<div>
+<h3 id="cfg-currency-rate-title">Tipo de cambio</h3>
+<p>Manual, editable y guardado únicamente al presionar Guardar. Debe ser mayor que 0 y tener máximo 2 decimales.</p>
+</div>
+</div>
+<div class="cfg-currency-rate-grid">
+<label class="cfg-report-field cfg-currency-rate-field" for="cfg-currency-rate-input">
+<span>T/C manual</span>
+<input autocomplete="off" id="cfg-currency-rate-input" inputmode="decimal" maxlength="12" name="currencyRate" placeholder="Ej. 36.80" type="text"/>
+<small>Usá punto o coma decimal. Al guardar se mostrará siempre con 2 decimales.</small>
+</label>
+<div class="cfg-currency-last-update" aria-live="polite">
+<span>Última actualización</span>
+<strong id="cfg-currency-updated-at">Sin registros</strong>
+<small>No cambia si el guardado falla.</small>
+</div>
+</div>
+<div class="cfg-currency-message" id="cfg-currency-status" role="status" aria-live="polite">El T/C inicia vacío si aún no hay dato guardado.</div>
+</section>
+<section class="cfg-currency-card cfg-currency-card--wide" aria-labelledby="cfg-currency-preview-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◈</span>
+<div>
+<h3 id="cfg-currency-preview-title">Vista previa monetaria</h3>
+<p>Ejemplo visual del formato base. Es solo referencia de Configuración en esta etapa.</p>
+</div>
+</div>
+<div class="cfg-currency-preview-grid" aria-label="Vista previa de moneda">
+<div class="cfg-currency-preview-item"><span>Córdoba</span><strong id="cfg-currency-preview-primary">C$1,250.00</strong><small>Formato principal</small></div>
+<div class="cfg-currency-preview-item"><span>Dólar</span><strong id="cfg-currency-preview-secondary">US$35.50</strong><small>Formato secundario</small></div>
+<div class="cfg-currency-preview-item"><span>Tipo de cambio</span><strong id="cfg-currency-preview-rate">T/C no configurado</strong><small id="cfg-currency-preview-note">Configurá un T/C válido para activar la vista previa.</small></div>
+</div>
+</section>
+<div class="cfg-report-final-note cfg-currency-safe-note" aria-label="Alcance protegido de Moneda">
+<strong>Alcance de esta etapa</strong>
+<p>Moneda queda funcional para guardar el último T/C, sin conectar todavía POS, Ventas, Caja Chica, Finanzas, Reportes reales, Inventario, Reempaque, Calculadora ni Agenda/Pedidos.</p>
+</div>
+<div class="cfg-actions cfg-currency-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-currency-save" type="submit">Guardar</button>
+<p class="cfg-action-inline-note" id="cfg-currency-inline-note">Solo se guarda el último T/C. Sin historial, sin automatismos y sin tocar otros módulos.</p>
+</div>
+</form>
+</article>
+<aside aria-labelledby="currency-side-title" class="cfg-card cfg-panel cfg-side-panel cfg-currency-side">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Base monetaria</p>
+<h2 id="currency-side-title">Moneda</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-currency-side-badge">Aislado</span>
+</div>
+<ul class="cfg-list">
+<li>Moneda principal fija: Córdoba nicaragüense, C$, NIO.</li>
+<li>Moneda secundaria fija: Dólar estadounidense, US$, USD.</li>
+<li>T/C manual editable desde Configuración.</li>
+<li>Motor central disponible para lectura, formato y conversión segura.</li>
+<li>Guardado con botón Guardar.</li>
+<li>Solo conserva el último T/C, sin historial.</li>
+<li>Última actualización en formato DD/MM/AAAA HH:mm.</li>
+<li>No conecta todavía con módulos reales.</li>
+<li>Respeta Oscuro, Claro y Automático/Sistema.</li>
+</ul>
+<div class="cfg-report-lockbox cfg-currency-lockbox">
+<strong>Regla de seguridad</strong>
+<p>Esta etapa prepara la llave; todavía no abre la bóveda de POS ni Finanzas. Paso firme, sin patinar en córdobas.</p>
+</div>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-firebase" class="cfg-panel-view" data-panel="firebase" hidden="" id="cfg-panel-firebase" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid cfg-firebase-view">
+<article aria-labelledby="cfg-firebase-title" class="cfg-card cfg-panel cfg-panel--main cfg-firebase-panel">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="cfg-firebase-title">Firebase</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-firebase-save-state">Base local</span>
+</div>
+<p class="cfg-copy">La ruta heredada de Realtime Database se conserva para compatibilidad. La migración general de los nueve bloques se prepara con Firestore y todavía no envía datos.</p>
+<div class="cfg-firebase-hero" aria-label="Estado funcional de Firebase">
+<div>
+<span class="cfg-report-mini-label">Modo híbrido local-first</span>
+<strong>Workspace: <span id="cfg-firebase-hero-workspace">arcano33</span></strong>
+<p id="cfg-firebase-hero-copy">Firebase inicia desactivado. La Suite conserva el almacenamiento local como prioridad y usa Firebase como espejo manual para datos de bajo riesgo.</p>
+</div>
+<span class="cfg-firebase-seal">FB</span>
+</div>
+
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-firestore-progress" aria-labelledby="cfg-firestore-progress-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">☁</span>
+<div>
+<h3 id="cfg-firestore-progress-title">Preparación de datos Firestore</h3>
+<p>Seguimiento de los nueve bloques que formarán la base en línea de Suite A33.</p>
+</div>
+</div>
+<div class="cfg-firestore-progress-summary">
+<div>
+<span>Estado general</span>
+<strong id="cfg-firestore-progress-label">Preparación local</strong>
+<small id="cfg-firestore-progress-message">Contrato Firestore listo. Todavía no se han cargado datos.</small>
+</div>
+<strong id="cfg-firestore-progress-count">0 de 9</strong>
+</div>
+<div class="cfg-firestore-progress-track" id="cfg-firestore-progress-track" role="progressbar" aria-label="Progreso de carga de módulos" aria-valuemin="0" aria-valuemax="9" aria-valuenow="0">
+<span id="cfg-firestore-progress-bar"></span>
+</div>
+<div class="cfg-firestore-module-grid" id="cfg-firestore-module-grid" aria-live="polite">
+<p class="cfg-action-inline-note">Preparando el listado de módulos…</p>
+</div>
+<div class="cfg-firestore-contract-note" role="note">
+<strong>E2 · Preparación local</strong>
+<p>Esta sección todavía no envía información. Firebase se configurará contigo en una etapa posterior antes de cualquier carga real.</p>
+</div>
+</section>
+
+<div class="cfg-firebase-local-lock" id="cfg-firebase-local-lock" aria-live="polite">
+  <section class="cfg-firebase-card cfg-firebase-card--wide cfg-firebase-lock-card" aria-labelledby="cfg-firebase-lock-title">
+    <div class="cfg-report-card-head">
+      <span class="cfg-report-icon">🔐</span>
+      <div>
+        <h3 id="cfg-firebase-lock-title">Protección local con palabra clave</h3>
+        <p>La palabra clave protege este apartado dentro de la Suite. La seguridad real de la base depende de las reglas de Firebase.</p>
+      </div>
+    </div>
+    <div class="cfg-firebase-lock-status">
+      <span>Estado</span>
+      <strong id="cfg-firebase-passphrase-status">Revisando...</strong>
+      <small id="cfg-firebase-passphrase-help">Si olvidás la palabra clave, será necesario restablecer la configuración local de Firebase. No se borran datos de negocio.</small>
+    </div>
+    <div class="cfg-firebase-passphrase-grid" id="cfg-firebase-create-passphrase-box" hidden>
+      <label class="cfg-report-field" for="cfg-firebase-new-passphrase"><span>Nueva palabra clave</span><input autocomplete="new-password" id="cfg-firebase-new-passphrase" placeholder="Crear palabra clave local" type="password"/><small>Mínimo 6 caracteres. No se guarda en texto plano.</small></label>
+      <label class="cfg-report-field" for="cfg-firebase-confirm-passphrase"><span>Confirmar palabra clave</span><input autocomplete="new-password" id="cfg-firebase-confirm-passphrase" placeholder="Repetir palabra clave" type="password"/><small>Debe coincidir exactamente.</small></label>
+      <button class="cfg-btn cfg-btn-primary" id="cfg-firebase-create-passphrase" type="button">Crear palabra clave</button>
+      <button class="cfg-btn cfg-btn-ghost" data-firebase-toggle-passphrase="create" type="button">Mostrar/Ocultar palabra clave</button>
+    </div>
+    <div class="cfg-firebase-passphrase-grid" id="cfg-firebase-unlock-box" hidden>
+      <label class="cfg-report-field" for="cfg-firebase-passphrase"><span>Palabra clave</span><input autocomplete="current-password" id="cfg-firebase-passphrase" placeholder="Ingresar palabra clave" type="password"/><small>Desbloquea credenciales, guardado, limpieza y prueba de conexión.</small></label>
+      <button class="cfg-btn cfg-btn-primary" id="cfg-firebase-unlock" type="button">Desbloquear</button>
+      <button class="cfg-btn cfg-btn-ghost" data-firebase-toggle-passphrase="unlock" type="button">Mostrar/Ocultar palabra clave</button>
+    </div>
+    <p class="cfg-action-inline-note" id="cfg-firebase-lock-message">Protección local pendiente.</p>
+  </section>
+</div>
+<div class="cfg-firebase-locked-notice" id="cfg-firebase-locked-notice" aria-live="polite">
+  <section class="cfg-firebase-card cfg-firebase-card--wide cfg-firebase-locked-card" aria-labelledby="cfg-firebase-locked-title">
+    <div class="cfg-report-card-head">
+      <span class="cfg-report-icon">🔒</span>
+      <div>
+        <h3 id="cfg-firebase-locked-title">Credenciales protegidas</h3>
+        <p>Desbloqueá Firebase para mostrar y editar los espacios de credenciales web.</p>
+      </div>
+    </div>
+    <div class="cfg-firebase-locked-fields" aria-label="Campos protegidos de credenciales Firebase">
+      <span>apiKey</span>
+      <span>authDomain</span>
+      <span>databaseURL</span>
+      <span>projectId</span>
+      <span>appId</span>
+    </div>
+    <p class="cfg-action-inline-note">Mientras esté bloqueado no se muestran valores guardados ni credenciales. Al desbloquear, aparece el formulario completo.</p>
+  </section>
+</div>
+<form aria-label="Configuración Firebase" class="cfg-firebase-form" id="cfg-firebase-form" novalidate="">
+<section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-status-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">◉</span>
+<div>
+<h3 id="cfg-firebase-status-title">Estado</h3>
+<p>Resumen local, estado del motor híbrido y resultado de la prueba técnica de Firebase Realtime Database.</p>
+</div>
+</div>
+<div class="cfg-firebase-status-grid" aria-label="Estado Firebase local">
+<div class="cfg-firebase-status-item"><span>Firebase</span><strong id="cfg-firebase-status-enabled">Desactivado</strong><small>Valor inicial seguro: enabled false.</small></div>
+<div class="cfg-firebase-status-item"><span>Estado</span><strong id="cfg-firebase-status-configured">No configurado</strong><small>Se calcula con campos principales guardados localmente.</small></div>
+<div class="cfg-firebase-status-item"><span>Modo</span><strong id="cfg-firebase-status-mode">Híbrido local-first</strong><small>Sin sincronización automática.</small></div>
+<div class="cfg-firebase-status-item"><span>Workspace</span><strong id="cfg-firebase-status-workspace">arcano33</strong><small id="cfg-firebase-status-workspace-name">Arcano 33</small></div>
+<div class="cfg-firebase-status-item"><span>Dispositivo</span><strong id="cfg-firebase-status-device">Generando...</strong><small id="cfg-firebase-status-device-name">Nombre opcional pendiente</small></div>
+<div class="cfg-firebase-status-item"><span>Última prueba de conexión</span><strong id="cfg-firebase-status-last-test">Sin registros</strong><small>Se actualiza al presionar Probar conexión.</small></div>
+<div class="cfg-firebase-status-item"><span>Estado de prueba</span><strong id="cfg-firebase-status-connection">No probado</strong><small id="cfg-firebase-status-connection-detail">Sin prueba ejecutada.</small></div>
+<div class="cfg-firebase-status-item"><span>Última sincronización</span><strong id="cfg-firebase-status-last-sync">Sin registros</strong><small>Config./Catálogos manual.</small></div>
+<div class="cfg-firebase-status-item cfg-firebase-status-item--wide"><span>Ruta técnica de prueba</span><strong id="cfg-firebase-status-path">workspaces/arcano33/_meta/syncEngineTests/device</strong><small>Ruta segura: no toca productos, ventas, finanzas, caja, pedidos ni catálogos.</small></div>
+<div class="cfg-firebase-status-item cfg-firebase-status-item--wide"><span>Último error</span><strong id="cfg-firebase-status-last-error">Sin errores</strong><small>Errores controlados de SDK, reglas o conexión.</small></div>
+</div>
+<label class="cfg-firebase-toggle" for="cfg-firebase-enabled">
+<input id="cfg-firebase-enabled" name="enabled" type="checkbox"/>
+<span><strong>Activar Firebase para prueba técnica</strong><small>Permite ejecutar Probar conexión. No activa sincronización ni descarga datos.</small></span>
+</label>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-credentials-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">{ }</span>
+<div>
+<h3 id="cfg-firebase-credentials-title">Credenciales Web</h3>
+<p>Usar solo credenciales web públicas de Firebase. No pegar llaves privadas ni archivos Admin SDK.</p>
+</div>
+</div>
+<div class="cfg-firebase-fields-grid" aria-label="Credenciales web Firebase">
+<label class="cfg-report-field" for="cfg-firebase-apiKey"><span>apiKey</span><input autocomplete="off" id="cfg-firebase-apiKey" name="apiKey" placeholder="Credencial web pública" type="text"/><small>Permitido vacío en esta etapa.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-authDomain"><span>authDomain</span><input autocomplete="off" id="cfg-firebase-authDomain" name="authDomain" placeholder="proyecto.firebaseapp.com" type="text"/><small>Sin Google Sign-In en esta etapa.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-databaseURL"><span>databaseURL</span><input autocomplete="off" id="cfg-firebase-databaseURL" name="databaseURL" placeholder="Opcional · solo Realtime Database" type="text"/><small>Opcional. Auth y Firestore no necesitan este campo.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-projectId"><span>projectId</span><input autocomplete="off" id="cfg-firebase-projectId" name="projectId" placeholder="ID del proyecto" type="text"/><small>Campo principal para estado configurado.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-storageBucket"><span>storageBucket</span><input autocomplete="off" id="cfg-firebase-storageBucket" name="storageBucket" placeholder="proyecto.appspot.com" type="text"/><small>Opcional por ahora.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-messagingSenderId"><span>messagingSenderId</span><input autocomplete="off" id="cfg-firebase-messagingSenderId" name="messagingSenderId" placeholder="Número de sender" type="text"/><small>Opcional por ahora.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-appId"><span>appId</span><input autocomplete="off" id="cfg-firebase-appId" name="appId" placeholder="ID de la app web" type="text"/><small>Campo principal para estado configurado.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-measurementId"><span>measurementId</span><input autocomplete="off" id="cfg-firebase-measurementId" name="measurementId" placeholder="G-XXXXXXXXXX" type="text"/><small>Opcional. Analytics no se activa aquí.</small></label>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Regla de seguridad</strong>
+<p>Usar solo credenciales web públicas de Firebase. No pegar private_key, serviceAccount, client_email de servidor, Admin SDK JSON ni secretos de backend.</p>
+</div>
+<div class="cfg-firebase-validation" id="cfg-firebase-validation" role="alert" hidden="">
+<strong>Revisión de campos</strong>
+<ul id="cfg-firebase-validation-list"></ul>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-workspace-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⌁</span>
+<div>
+<h3 id="cfg-firebase-workspace-title">Workspace</h3>
+<p>Identificador operativo para separar la ruta técnica de prueba sin alterar módulos reales.</p>
+</div>
+</div>
+<div class="cfg-firebase-fields-grid cfg-firebase-fields-grid--workspace" aria-label="Workspace Firebase">
+<label class="cfg-report-field" for="cfg-firebase-workspaceId"><span>workspaceId</span><input autocomplete="off" id="cfg-firebase-workspaceId" name="workspaceId" placeholder="arcano33" type="text"/><small>Debe iniciar como arcano33.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-workspaceName"><span>workspaceName</span><input autocomplete="organization" id="cfg-firebase-workspaceName" name="workspaceName" placeholder="Arcano 33" type="text"/><small>Nombre visible del workspace.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-environment"><span>environment</span><select id="cfg-firebase-environment" name="environment"><option value="production">production</option><option value="staging">staging</option><option value="development">development</option></select><small>Valor inicial: production.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-deviceId"><span>deviceId</span><input autocomplete="off" id="cfg-firebase-deviceId" name="deviceId" readonly="" type="text"/><small>Se genera automático y queda estable por navegador/dispositivo.</small></label>
+<label class="cfg-report-field" for="cfg-firebase-deviceName"><span>deviceName</span><input autocomplete="off" id="cfg-firebase-deviceName" name="deviceName" placeholder="Ej. ipad-eventos o macbook-admin" type="text"/><small>Opcional y editable para identificar el equipo.</small></label>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-initial-import-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">JSON</span>
+<div>
+<h3 id="cfg-initial-import-title">E4 · Carga inicial</h3>
+<p>Prepara un respaldo completo de Suite A33 en una zona aislada de Firestore, sin aplicarlo todavía a los módulos.</p>
+</div>
+</div>
+<input accept="application/json,.json" id="cfg-initial-import-file" type="file" hidden/>
+<div class="cfg-initial-import-state" id="cfg-initial-import-state" data-state="empty" aria-live="polite">
+<div><span>Archivo</span><strong id="cfg-initial-import-file-name">Sin seleccionar</strong><small id="cfg-initial-import-file-detail">Límite 50 MB. Debe ser un respaldo completo de Suite A33.</small></div>
+<div><span>Revisión</span><strong id="cfg-initial-import-review">Pendiente</strong><small id="cfg-initial-import-review-detail">Se excluirán credenciales, sesiones y datos de acceso antes de preparar la carga.</small></div>
+<div><span>Destino</span><strong id="cfg-initial-import-destination">Importación aislada</strong><small id="cfg-initial-import-destination-detail">Estado staged: no reemplaza información operativa.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-ghost" id="cfg-initial-import-select" type="button">Seleccionar JSON</button>
+<button class="cfg-btn cfg-btn-primary" id="cfg-initial-import-upload" type="button" disabled>Preparar en Firebase</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-initial-import-clear" type="button" disabled>Quitar archivo</button>
+<p class="cfg-action-inline-note" id="cfg-initial-import-note">La carga solo se ejecuta al confirmarla. E5–E7 aplicarán después cada bloque a su módulo.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Protección de datos</strong>
+<p>La E4 no borra ni sustituye datos. El JSON limpio se guarda por bloques para evitar el límite de tamaño de Firestore; la copia seleccionada permanece intacta en tu equipo.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-apply-e5-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E5</span>
+<div>
+<h3 id="cfg-apply-e5-title">E5 · Base operativa</h3>
+<p>Aplica desde la carga E4 solamente Configuración, Catálogos y Lotes a la estructura canónica de Firestore.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-apply-e5-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-apply-e5-source">E4 pendiente</strong><small id="cfg-apply-e5-source-detail">Primero debe existir una carga inicial preparada.</small></div>
+<div><span>Alcance</span><strong>3 módulos seguros</strong><small>Configuración, Catálogos y Lotes. No incluye módulos críticos.</small></div>
+<div><span>Resultado</span><strong id="cfg-apply-e5-result">Sin aplicar</strong><small id="cfg-apply-e5-result-detail">La información local no se reemplaza ni se elimina.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-apply-e5-run" type="button" disabled>Aplicar E5 en Firestore</button>
+<p class="cfg-action-inline-note" id="cfg-apply-e5-note">E5 usa escritura con fusión e identificadores estables para evitar duplicados.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Límite de E5</strong>
+<p>No borra datos locales ni remotos y no toca POS, Finanzas, Caja Chica, ventas, pedidos, saldos ni históricos operativos.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-apply-e6-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E6</span>
+<div>
+<h3 id="cfg-apply-e6-title">E6 · Operación intermedia</h3>
+<p>Aplica desde la misma carga E4 Inventario y Producción, Pedidos y Agenda, después de confirmar E5.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-apply-e6-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-apply-e6-source">E5 pendiente</strong><small id="cfg-apply-e6-source-detail">Primero debe completarse E5 para la carga preparada.</small></div>
+<div><span>Alcance</span><strong>3 módulos operativos</strong><small>Inventario y Producción, Pedidos y Agenda.</small></div>
+<div><span>Resultado</span><strong id="cfg-apply-e6-result">Sin aplicar</strong><small id="cfg-apply-e6-result-detail">La información local no se reemplaza ni se elimina.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-apply-e6-run" type="button" disabled>Aplicar E6 en Firestore</button>
+<p class="cfg-action-inline-note" id="cfg-apply-e6-note">E6 conserva identificadores estables y excluye borradores temporales.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Límite de E6</strong>
+<p>No borra datos locales ni remotos y no toca POS, Finanzas, Caja Chica, Seguridad, cierres, saldos ni movimientos de dinero.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-analyze-e7-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E7.1</span>
+<div>
+<h3 id="cfg-analyze-e7-title">E7.1 · Diagnóstico del bloque crítico</h3>
+<p>Analiza la carga confirmada de POS y ventas, Finanzas (incluye Cobros y Pagos) y Caja Chica antes de E7.2.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-analyze-e7-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-analyze-e7-source">E6 pendiente</strong><small id="cfg-analyze-e7-source-detail">Primero debe completarse E6 para esta misma carga E4.</small></div>
+<div><span>Alcance</span><strong>3 áreas críticas</strong><small>POS y ventas, Finanzas (incluye Cobros/Pagos) y Caja Chica.</small></div>
+<div><span>Resultado</span><strong id="cfg-analyze-e7-result">Sin analizar</strong><small id="cfg-analyze-e7-result-detail">E7.1 no escribe información en Firestore.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-analyze-e7-run" type="button" disabled>Analizar E7.1</button>
+<p class="cfg-action-inline-note" id="cfg-analyze-e7-note">El diagnóstico se guarda solamente en este navegador para preparar E7.2.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Solo lectura</strong>
+<p>E7.1 no copia, modifica ni elimina datos. Seguridad queda excluida y E7.2 no se ejecuta en esta etapa.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-plan-e72a-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E7.2A</span>
+<div>
+<h3 id="cfg-plan-e72a-title">E7.2A · Plan local del bloque crítico</h3>
+<p>Prepara el orden, los destinos y los lotes de POS y ventas, Finanzas y Caja Chica antes de cualquier aplicación remota.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-plan-e72a-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-plan-e72a-source">E7.1 pendiente</strong><small id="cfg-plan-e72a-source-detail">Primero debe existir un diagnóstico E7.1 confirmado.</small></div>
+<div><span>Alcance</span><strong>3 áreas críticas</strong><small>Plan determinista por rutas e identificadores; Seguridad queda excluida.</small></div>
+<div><span>Resultado</span><strong id="cfg-plan-e72a-result">Sin planificar</strong><small id="cfg-plan-e72a-result-detail">E7.2A no escribe información en Firestore.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-plan-e72a-run" type="button" disabled>Preparar plan E7.2A</button>
+<p class="cfg-action-inline-note" id="cfg-plan-e72a-note">El plan se guarda solo en este navegador y podrá revisarse antes de E7.2B.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Sin aplicación remota</strong>
+<p>E7.2A no crea, modifica ni elimina documentos en Firestore. Tampoco altera datos locales ni ejecuta E7.2B.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-validate-e72b-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E7.2B.2</span>
+<div>
+<h3 id="cfg-validate-e72b-title">E7.2B.2 · Rutas críticas refinadas</h3>
+<p>Valida el plan regenerado con rutas específicas para eventos, ventas, inventario POS, cierres, resúmenes y contabilidad.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-validate-e72b-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-validate-e72b-source">E7.2A pendiente</strong><small id="cfg-validate-e72b-source-detail">Primero debe existir un plan local E7.2A.</small></div>
+<div><span>Control</span><strong>Diagnóstico detallado</strong><small>Integridad, rutas, identificadores, tamaños, duplicados y lotes.</small></div>
+<div><span>Resultado</span><strong id="cfg-validate-e72b-result">Sin validar</strong><small id="cfg-validate-e72b-result-detail">E7.2B no escribe información en Firestore.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-validate-e72b-run" type="button" disabled>Validar rutas E7.2B.2</button>
+<p class="cfg-action-inline-note" id="cfg-validate-e72b-note">El resultado se guarda solo en este navegador; E7.2C permanece bloqueada hasta aprobar la validación.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-validate-e72b-duplicates" data-state="empty" aria-live="polite">
+<div><span>Copias idénticas</span><strong id="cfg-validate-e72b-identical">Sin analizar</strong><small id="cfg-validate-e72b-identical-detail">Mismo destino y mismo contenido.</small></div>
+<div><span>Conflictos reales</span><strong id="cfg-validate-e72b-conflicts">Sin analizar</strong><small id="cfg-validate-e72b-conflicts-detail">Mismo destino con contenido diferente.</small></div>
+<div><span>Fuentes implicadas</span><strong id="cfg-validate-e72b-sources">Sin analizar</strong><small id="cfg-validate-e72b-sources-detail">Se mostrarán sin exponer los datos operativos.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Solo lectura</strong>
+<p>E7.2B.2 no crea, fusiona, modifica ni elimina documentos en Firestore. Tampoco resuelve conflictos ni ejecuta E7.2C.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-simulate-e72c-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E7.2C</span>
+<div>
+<h3 id="cfg-simulate-e72c-title">E7.2C · Simulación remota de solo lectura</h3>
+<p>Contrasta las rutas aprobadas con Firestore y clasifica destinos nuevos, idénticos, diferentes o con error.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-simulate-e72c-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-simulate-e72c-source">E7.2B.2 pendiente</strong><small id="cfg-simulate-e72c-source-detail">Primero debe aprobarse la validación de rutas.</small></div>
+<div><span>Control</span><strong>Solo lectura remota</strong><small>Lee únicamente los destinos canónicos aprobados; no ejecuta escrituras.</small></div>
+<div><span>Resultado</span><strong id="cfg-simulate-e72c-result">Sin simular</strong><small id="cfg-simulate-e72c-result-detail">E7.2D permanece bloqueada.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-simulate-e72c-run" type="button" disabled>Simular E7.2C</button>
+<p class="cfg-action-inline-note" id="cfg-simulate-e72c-note">La simulación puede consumir hasta una lectura por destino y guarda solo estados y checksums localmente.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-simulate-e72c-counts" data-state="empty" aria-live="polite">
+<div><span>Nuevos</span><strong id="cfg-simulate-e72c-new">Sin analizar</strong><small>No existe documento remoto.</small></div>
+<div><span>Idénticos</span><strong id="cfg-simulate-e72c-identical">Sin analizar</strong><small>El contenido remoto coincide.</small></div>
+<div><span>Diferentes / errores</span><strong id="cfg-simulate-e72c-blocked">Sin analizar</strong><small>Cualquier diferencia bloquea E7.2D.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Sin aplicación remota</strong>
+<p>E7.2C no crea, fusiona, modifica ni elimina documentos en Firestore. Seguridad permanece excluida.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-apply-e72d-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E7.2D</span>
+<div>
+<h3 id="cfg-apply-e72d-title">E7.2D · Aplicación crítica reanudable</h3>
+<p>Crea únicamente los destinos nuevos aprobados, en lotes con checkpoint atómico y sin sobrescribir registros existentes.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-apply-e72d-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-apply-e72d-source">E7.2C pendiente</strong><small id="cfg-apply-e72d-source-detail">Primero debe aprobarse la simulación remota.</small></div>
+<div><span>Estrategia</span><strong>Crear únicamente</strong><small>2 lotes máximos de 200; cada lote confirma también su checkpoint.</small></div>
+<div><span>Resultado</span><strong id="cfg-apply-e72d-result">Sin aplicar</strong><small id="cfg-apply-e72d-result-detail">Las reglas de escritura E7 permanecen pendientes.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-apply-e72d-run" type="button" disabled>Aplicar E7.2D en Firestore</button>
+<p class="cfg-action-inline-note" id="cfg-apply-e72d-note">E7.2D.1 preparada localmente; el botón permanecerá bloqueado hasta desplegar E7.2D.2.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Protección contra sobrescritura</strong>
+<p>Las reglas E7 permiten crear, pero no actualizar ni eliminar registros críticos. Una ruta ocupada rechazará el lote completo.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import" aria-labelledby="cfg-audit-e72e-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E7.2E</span>
+<div>
+<h3 id="cfg-audit-e72e-title">E7.2E · Auditoría posterior de solo lectura</h3>
+<p>Contrasta el checkpoint final y cada destino aplicado con el plan aprobado, sin modificar Firestore.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-audit-e72e-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-audit-e72e-source">E7.2D pendiente</strong><small id="cfg-audit-e72e-source-detail">Primero debe completarse la aplicación crítica.</small></div>
+<div><span>Control</span><strong>Checkpoint + contenido</strong><small>Verifica rutas, contrato y checksum de los 372 destinos esperados.</small></div>
+<div><span>Resultado</span><strong id="cfg-audit-e72e-result">Sin auditar</strong><small id="cfg-audit-e72e-result-detail">E7.2F ejecutará únicamente lecturas remotas.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-audit-e72e-run" type="button" disabled>Auditar E7.2E en Firestore</button>
+<p class="cfg-action-inline-note" id="cfg-audit-e72e-note">E7.2E preparada localmente; la ejecución permanecerá bloqueada hasta E7.2F.</p>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Solo lectura</strong>
+<p>E7.2E no crea, actualiza ni elimina documentos. Seguridad permanece excluida.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide" aria-labelledby="cfg-firebase-sync-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⇅</span>
+<div>
+<h3 id="cfg-firebase-sync-title">Motor híbrido local-first</h3>
+<p>A33CloudSync, syncQueue local y sincronización manual de Configuración + Catálogos.</p>
+</div>
+</div>
+<div class="cfg-firebase-sync-grid" aria-label="Estado de sincronización futura">
+<div class="cfg-firebase-status-item"><span>Estado</span><strong id="cfg-firebase-sync-state">Inactivo</strong><small id="cfg-firebase-sync-state-detail">Firebase no reemplaza almacenamiento local.</small></div>
+<div class="cfg-firebase-status-item"><span>Estado online/offline</span><strong id="cfg-firebase-online-status">Sin detectar</strong><small>Lectura segura de navigator.onLine.</small></div>
+<div class="cfg-firebase-status-item"><span>Resultado prueba</span><strong id="cfg-firebase-test-result">No probado</strong><small id="cfg-firebase-test-detail">La prueba usa la configuración guardada localmente.</small></div>
+<div class="cfg-firebase-status-item"><span>Pendientes locales</span><strong id="cfg-firebase-pending-count">0</strong><small id="cfg-firebase-pending-detail">syncQueue local creada; alcance Configuración/Catálogos.</small></div>
+<div class="cfg-firebase-status-item"><span>Última sincronización</span><strong id="cfg-firebase-sync-last-sync">Sin registros</strong><small>Sincronización manual de bajo riesgo.</small></div>
+<div class="cfg-firebase-status-item"><span>Último error</span><strong id="cfg-firebase-sync-last-error">Sin errores</strong><small>Errores controlados del motor híbrido.</small></div>
+<div class="cfg-firebase-status-item cfg-firebase-status-item--wide"><span>Ruta de sincronización</span><strong id="cfg-firebase-test-path">workspaces/arcano33/_meta/sync</strong><small>Rutas permitidas: Configuración, Catálogos y Lotes. No toca ventas, Finanzas ni Caja Chica.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-firebase-test-connection" type="button">Probar conexión</button>
+<button class="cfg-btn cfg-btn-primary" id="cfg-firebase-sync-now" type="button">Sincronizar datos ahora</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-firebase-view-sync-status" type="button">Ver estado de sincronización</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-firebase-retry-pending" type="button">Reintentar pendientes</button>
+<p class="cfg-action-inline-note" id="cfg-firebase-sync-note">Probar conexión usa ruta técnica. Sincronizar datos ahora sube/baja Configuración, Catálogos y Lotes.</p>
+</div>
+</section>
+<section class="cfg-firebase-card cfg-firebase-card--wide cfg-firebase-passphrase-admin" aria-labelledby="cfg-firebase-passphrase-admin-title">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">⚿</span>
+<div>
+<h3 id="cfg-firebase-passphrase-admin-title">Palabra clave</h3>
+<p>Permite cambiar la protección local del apartado Firebase sin activar Google Sign-In ni Firebase Auth.</p>
+</div>
+</div>
+<div class="cfg-firebase-passphrase-grid">
+<label class="cfg-report-field" for="cfg-firebase-current-passphrase"><span>Palabra clave actual</span><input autocomplete="current-password" id="cfg-firebase-current-passphrase" placeholder="Actual" type="password"/></label>
+<label class="cfg-report-field" for="cfg-firebase-change-passphrase"><span>Nueva palabra clave</span><input autocomplete="new-password" id="cfg-firebase-change-passphrase" placeholder="Nueva" type="password"/></label>
+<label class="cfg-report-field" for="cfg-firebase-change-passphrase-confirm"><span>Confirmar nueva palabra clave</span><input autocomplete="new-password" id="cfg-firebase-change-passphrase-confirm" placeholder="Confirmar" type="password"/></label>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-firebase-change-passphrase-btn" type="button">Cambiar palabra clave</button>
+<button class="cfg-btn cfg-btn-ghost" data-firebase-toggle-passphrase="change" type="button">Mostrar/Ocultar palabra clave</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-firebase-lock-now" type="button">Bloquear</button>
+</div>
+<p class="cfg-action-inline-note">Si olvidás la palabra clave, será necesario restablecer la configuración local de Firebase. No se implementa recuperación compleja todavía.</p>
+</section>
+<div class="cfg-report-final-note cfg-firebase-safe-note" aria-label="Alcance protegido de Firebase">
+<strong>Alcance de esta etapa</strong>
+<p>Firebase queda limitado a Configuración, Catálogos, A33CloudSync y syncQueue base. No toca POS, Finanzas, Caja Chica, ventas, cierres, pedidos históricos, saldos ni movimientos críticos.</p>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-firebase-save" type="submit">Guardar configuración Firebase</button>
+<button class="cfg-btn cfg-btn-ghost cfg-firebase-clear-btn" id="cfg-firebase-clear-credentials" type="button">Limpiar credenciales</button>
+<p class="cfg-action-inline-note" id="cfg-firebase-inline-note">Guardado local y prueba técnica solamente. Sin sincronización de datos de negocio.</p>
+</div>
+</form>
+</article>
+<aside aria-labelledby="cfg-firebase-side-title" class="cfg-card cfg-panel cfg-side-panel cfg-firebase-side">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Firebase</p>
+<h2 id="cfg-firebase-side-title">Preparación segura</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-firebase-side-badge">Local-first</span>
+</div>
+<ul class="cfg-list">
+<li>Ordenado después de Moneda y antes de Seguridad.</li>
+<li>Guarda enabled, configured, mode, workspace, dispositivo y credenciales web.</li>
+<li>Usa workspaceId arcano33, mode hybrid, environment production y enabled false por defecto.</li>
+<li>Permite Probar conexión técnica y Sincronizar datos ahora con resumen de subidos, descargados, conflictos y errores.</li>
+<li>Sincroniza manualmente Configuración, Catálogos y Lotes con identidad estable.</li>
+<li>Prepara por separado el contrato Firestore para los nueve bloques, sin escrituras remotas en E2.</li>
+<li>No pide ni guarda llaves privadas, Admin SDK JSON ni secretos de servidor.</li>
+<li>Respeta Oscuro, Claro y Automático/Sistema.</li>
+</ul>
+<div class="cfg-report-lockbox cfg-firebase-lockbox">
+<strong>Puerta cerrada</strong>
+<p>La tarjeta abre solo una rendija técnica para comprobar que la llave gira. La bodega de datos de negocio sigue bajo siete candados.</p>
+</div>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-users" class="cfg-panel-view" data-panel="security" hidden="" id="cfg-panel-users" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="cfg-users-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head cfg-panel-head--users">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="cfg-users-title">Seguridad</h2>
+</div>
+<div class="cfg-head-actions">
+<span class="cfg-badge cfg-badge--soft" id="cfg-users-mode-badge">Sin backend</span>
+<button class="cfg-btn cfg-btn-primary cfg-btn-compact" id="cfg-user-new-top" type="button">+ Nuevo usuario</button>
+</div>
+</div>
+<p class="cfg-copy" id="cfg-users-copy">Control de usuarios, roles, permisos y acceso administrativo. Este apartado concentra la seguridad de Configuración sin mezclarla con ventas, inventario ni finanzas.</p>
+<section aria-labelledby="cfg-auth-title" class="cfg-auth-card">
+<div class="cfg-auth-heading">
+<div>
+<p class="cfg-eyebrow">Acceso protegido</p>
+<h3 id="cfg-auth-title">Usuario maestro</h3>
+</div>
+<span class="cfg-badge cfg-badge--soft" id="cfg-auth-status-badge">Firebase pendiente</span>
+</div>
+<p class="cfg-status-copy" id="cfg-auth-status-copy">Primero configuraremos Firebase juntos. Hasta entonces, este acceso permanece cerrado y la Suite sigue local.</p>
+<form class="cfg-auth-form" id="cfg-auth-form" novalidate="">
+<label class="cfg-field"><span>Correo</span><input autocomplete="username" class="cfg-input" id="cfg-auth-email" maxlength="180" placeholder="usuario@dominio.com" type="email"/></label>
+<label class="cfg-field"><span>Contraseña</span><input autocomplete="current-password" class="cfg-input" id="cfg-auth-password" placeholder="Contraseña de Firebase" type="password"/></label>
+<div class="cfg-form-actions cfg-auth-actions">
+<button class="cfg-btn cfg-btn-primary cfg-btn-compact" disabled="" id="cfg-auth-signin" type="submit">Iniciar sesión</button>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-compact" hidden="" id="cfg-auth-signout" type="button">Cerrar sesión</button>
+</div>
+</form>
+<div class="cfg-auth-safety">La contraseña se entrega directamente a Firebase Authentication y no se guarda en localStorage, respaldos ni Firestore.</div>
+</section>
+<div class="cfg-note-grid cfg-note-grid--dual cfg-note-grid--users">
+<div class="cfg-note-card">
+<strong>Base seria</strong>
+<p>Perfiles reales en Firestore, roles extensibles y permisos leíbles por la app sin inventar seguridad de cartón.</p>
+</div>
+<div class="cfg-note-card">
+<strong>Modo Spark seguro</strong>
+<p>Authentication y Firestore operan sin facturación. Las altas y cambios de usuarios se realizan manualmente desde Firebase Console.</p>
+</div>
+</div>
+<section aria-label="Estado del acceso real" class="cfg-users-runtime-strip">
+<article class="cfg-status-card">
+<span class="cfg-status-label">Acceso actual</span>
+<strong id="cfg-users-access-current">Sin sesión</strong>
+<p class="cfg-status-copy" id="cfg-users-access-detail">Inicia sesión para leer tu perfil real.</p>
+</article>
+<article class="cfg-status-card">
+<span class="cfg-status-label">Backend admin</span>
+<strong id="cfg-users-backend-current">Pendiente</strong>
+<p class="cfg-status-copy" id="cfg-users-backend-detail">Functions todavía no ha sido verificado.</p>
+</article>
+<article class="cfg-status-card">
+<span class="cfg-status-label">Workspace</span>
+<strong id="cfg-users-workspace-current">default</strong>
+<p class="cfg-status-copy" id="cfg-users-workspace-detail">Preparado para tenant simple sin volver esto un laberinto.</p>
+</article>
+</section>
+<section aria-labelledby="cfg-security-e81-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.1</span>
+<div>
+<p class="cfg-eyebrow">Diagnóstico de solo lectura</p>
+<h3 id="cfg-security-e81-title">Usuarios, perfiles y permisos</h3>
+<p>Comprueba la sesión, el perfil Maestro, los administradores activos y la cobertura de permisos antes de simular cualquier bloqueo.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e81-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e81-source">Sesión pendiente</strong><small id="cfg-security-e81-source-detail">Inicia sesión para revisar el workspace canónico.</small></div>
+<div><span>Control</span><strong id="cfg-security-e81-control">Solo lectura</strong><small id="cfg-security-e81-control-detail">No crea, modifica ni elimina usuarios o perfiles.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e81-result">Sin diagnosticar</strong><small id="cfg-security-e81-result-detail">E8.2 permanece sin ejecutar.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e81-run" type="button">Diagnosticar E8.1</button>
+<p class="cfg-action-inline-note" id="cfg-security-e81-note">El resultado se muestra en esta sesión y no activa restricciones por módulo.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e81-metrics" data-state="empty">
+<div><span>Perfiles visibles</span><strong id="cfg-security-e81-users">Sin analizar</strong><small id="cfg-security-e81-users-detail">Activos e inactivos del workspace.</small></div>
+<div><span>Admins activos</span><strong id="cfg-security-e81-admins">Sin analizar</strong><small>Se conservará una vía de recuperación antes de E8.4.</small></div>
+<div><span>Bloqueo por módulos</span><strong id="cfg-security-e81-enforcement">Desactivado</strong><small>E8.1 no cambia esta compuerta.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Sin cambios de seguridad</strong>
+<p>E8.1 solo lee Authentication mediante la sesión actual y los perfiles visibles en Firestore. No guarda contraseñas, no cambia reglas y no habilita el bloqueo de módulos.</p>
+</div>
+</section>
+<section aria-labelledby="cfg-security-e82-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.2</span>
+<div>
+<h3 id="cfg-security-e82-title">E8.2 · Simulación de acceso por roles</h3>
+<p>Calcula qué módulos podría abrir cada rol y verifica la vía de recuperación del usuario Maestro, sin aplicar restricciones.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e82-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e82-source">E8.1 pendiente</strong><small id="cfg-security-e82-source-detail">Primero debe existir un diagnóstico apto.</small></div>
+<div><span>Control</span><strong>Simulación local</strong><small>No cambia usuarios, reglas ni navegación.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e82-result">Sin simular</strong><small id="cfg-security-e82-result-detail">E8.3 permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e82-run" type="button">Simular E8.2</button>
+<p class="cfg-action-inline-note" id="cfg-security-e82-note">Los módulos seguirán abiertos mientras se revisa esta matriz.</p>
+</div>
+<div class="cfg-note-grid" id="cfg-security-e82-role-grid">
+<div class="cfg-note-card"><strong id="cfg-security-e82-admin">Admin · Sin analizar</strong><p id="cfg-security-e82-admin-detail">Debe conservar acceso completo.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e82-sales">Ventas · Sin analizar</strong><p id="cfg-security-e82-sales-detail">Acceso comercial por verificar.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e82-finance">Finanzas · Sin analizar</strong><p id="cfg-security-e82-finance-detail">Acceso financiero por verificar.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e82-readonly">Consulta · Sin analizar</strong><p id="cfg-security-e82-readonly-detail">Acceso de consulta por verificar.</p></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Simulación sin bloqueo</strong>
+<p>E8.2 no intercepta enlaces ni activa permisos. Si el Admin Maestro no conserva acceso completo, E8.3 quedará bloqueada.</p>
+</div>
+</section>
+<section aria-labelledby="cfg-security-e83-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.3</span>
+<div>
+<h3 id="cfg-security-e83-title">E8.3 · Política central y recuperación</h3>
+<p>Comprueba que la navegación y la política usen el mismo catálogo, y que el Admin Maestro conserve una vía segura de acceso.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e83-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e83-source">E8.2 pendiente</strong><small id="cfg-security-e83-source-detail">Primero debe existir una simulación apta.</small></div>
+<div><span>Protección</span><strong id="cfg-security-e83-recovery">Sin validar</strong><small id="cfg-security-e83-recovery-detail">El Admin debe conservar acceso a todos los módulos.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e83-result">Sin preparar</strong><small id="cfg-security-e83-result-detail">E8.4 permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e83-run" type="button">Prevalidar E8.3</button>
+<p class="cfg-action-inline-note" id="cfg-security-e83-note">La compuerta seguirá apagada después de esta prevalidación.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e83-metrics" data-state="empty">
+<div><span>Navegación</span><strong id="cfg-security-e83-navigation">Sin analizar</strong><small>Módulos publicados en el menú global.</small></div>
+<div><span>Política</span><strong id="cfg-security-e83-policy">Sin analizar</strong><small>Permisos canónicos centralizados.</small></div>
+<div><span>Compuerta real</span><strong id="cfg-security-e83-gate">Desactivada</strong><small>E8.3 no intercepta la navegación.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Preparación reversible</strong>
+<p>E8.3 no cambia usuarios ni reglas, no escribe en Firestore y no activa restricciones. Una ruta desconocida se prepara para fallar de forma segura cuando E8.4 sea autorizada.</p>
+</div>
+</section>
+<section aria-labelledby="cfg-security-e84a-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.4A</span>
+<div>
+<h3 id="cfg-security-e84a-title">E8.4A · Guardas preparadas por módulo</h3>
+<p>Audita que las 12 páginas canónicas carguen la guarda común y confirma que la compuerta permanezca apagada.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84a-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e84a-source">E8.3 pendiente</strong><small id="cfg-security-e84a-source-detail">Primero debe estar preparada la política central.</small></div>
+<div><span>Control</span><strong id="cfg-security-e84a-gate">Compuerta apagada</strong><small>Las guardas no interceptan la navegación en esta etapa.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e84a-result">Sin auditar</strong><small id="cfg-security-e84a-result-detail">E8.4B permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e84a-run" type="button">Validar guardas E8.4A</button>
+<p class="cfg-action-inline-note" id="cfg-security-e84a-note">La validación es local y no activa restricciones.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84a-metrics" data-state="empty">
+<div><span>Páginas canónicas</span><strong id="cfg-security-e84a-pages">Sin analizar</strong><small>Doce entradas del menú global.</small></div>
+<div><span>Guardas instaladas</span><strong id="cfg-security-e84a-installed">Sin analizar</strong><small>Script común y módulo declarado.</small></div>
+<div><span>Compuerta real</span><strong id="cfg-security-e84a-enforcement">Desactivada</strong><small>E8.4A solo prepara la instalación.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Preparación sin bloqueo</strong>
+<p>E8.4A no cambia usuarios, perfiles, reglas ni datos; tampoco impide abrir módulos. La prueba controlada corresponde a E8.4B y requiere autorización independiente.</p>
+</div>
+</section>
+<section aria-labelledby="cfg-security-e84b-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.4B</span>
+<div>
+<h3 id="cfg-security-e84b-title">E8.4B · Prueba controlada de guardas</h3>
+<p>Simula la política sobre los dos roles y comprueba recuperación, perfiles inactivos y rutas desconocidas sin bloquear la navegación real.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84b-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e84b-source">E8.4A pendiente</strong><small id="cfg-security-e84b-source-detail">Primero deben estar instaladas las 12 guardas.</small></div>
+<div><span>Control</span><strong id="cfg-security-e84b-gate">Compuerta apagada</strong><small>La política se evalúa únicamente dentro del simulador.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e84b-result">Sin probar</strong><small id="cfg-security-e84b-result-detail">E8.4C permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e84b-run" type="button">Probar guardas E8.4B</button>
+<p class="cfg-action-inline-note" id="cfg-security-e84b-note">La prueba no cambia sesiones, perfiles ni permisos.</p>
+</div>
+<div class="cfg-note-grid" id="cfg-security-e84b-role-grid">
+<div class="cfg-note-card"><strong id="cfg-security-e84b-admin">Admin · Sin probar</strong><p id="cfg-security-e84b-admin-detail">Debe conservar acceso y recuperación completos.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e84b-sales">Ventas · Sin probar</strong><p id="cfg-security-e84b-sales-detail">Accesos permitidos y restringidos por verificar.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e84b-finance">Finanzas · Sin probar</strong><p id="cfg-security-e84b-finance-detail">Accesos permitidos y restringidos por verificar.</p></div>
+<div class="cfg-note-card"><strong id="cfg-security-e84b-readonly">Consulta · Sin probar</strong><p id="cfg-security-e84b-readonly-detail">Accesos de consulta por verificar.</p></div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84b-metrics" data-state="empty">
+<div><span>Ruta desconocida</span><strong id="cfg-security-e84b-unknown">Sin probar</strong><small>Debe fallar de forma segura.</small></div>
+<div><span>Perfil inactivo</span><strong id="cfg-security-e84b-inactive">Sin probar</strong><small>No debe abrir módulos protegidos.</small></div>
+<div><span>Compuerta real</span><strong id="cfg-security-e84b-enforcement">Desactivada</strong><small>E8.4B no intercepta enlaces.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Simulación aislada</strong>
+<p>E8.4B no activa la guarda real, no modifica usuarios ni escribe en Firebase. La activación definitiva corresponde exclusivamente a E8.4C.</p>
+</div>
+</section>
+<section aria-labelledby="cfg-security-e84c-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E8.4C</span>
+<div>
+<h3 id="cfg-security-e84c-title">E8.4C · Activación final de guardas</h3>
+<p>Verifica la compuerta activa en las 12 páginas, la política por roles y la vía de recuperación del Admin Maestro.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84c-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e84c-source">E8.4B confirmada</strong><small>50 controles previos aprobados.</small></div>
+<div><span>Protección</span><strong id="cfg-security-e84c-recovery">Validación pendiente</strong><small>El Admin debe conservar acceso total.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e84c-result">Sin verificar</strong><small id="cfg-security-e84c-result-detail">La activación local requiere auditoría final.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e84c-run" type="button">Verificar activación E8.4C</button>
+<p class="cfg-action-inline-note" id="cfg-security-e84c-note">La verificación es de solo lectura y no cambia permisos.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e84c-metrics" data-state="empty">
+<div><span>Guardas activas</span><strong id="cfg-security-e84c-pages">Sin verificar</strong><small>Doce páginas canónicas.</small></div>
+<div><span>Controles de acceso</span><strong id="cfg-security-e84c-checks">Sin verificar</strong><small>Roles, ruta desconocida y perfil inactivo.</small></div>
+<div><span>Compuerta real</span><strong id="cfg-security-e84c-enforcement">Activa</strong><small>Protege menú y acceso directo.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Recuperación protegida</strong>
+<p>Configuración conserva el inicio de sesión Maestro cuando una sesión no tiene acceso. Los demás módulos ofrecen volver al inicio o dirigirse a Configuración.</p>
+</div>
+</section>
+<section aria-labelledby="cfg-security-e91-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E9.1</span>
+<div>
+<p class="cfg-eyebrow">Diagnóstico administrativo de solo lectura</p>
+<h3 id="cfg-security-e91-title">Usuarios reales y backend administrativo</h3>
+<p>Comprueba la sesión Admin, los perfiles visibles, la recuperación y los contratos locales antes de habilitar cualquier operación privilegiada.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e91-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e91-source">E8.4C pendiente</strong><small id="cfg-security-e91-source-detail">La compuerta activa debe estar confirmada.</small></div>
+<div><span>Control</span><strong id="cfg-security-e91-control">Solo lectura</strong><small>Funciones, usuarios y reglas permanecen sin cambios.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e91-result">Sin diagnosticar</strong><small id="cfg-security-e91-result-detail">E9.2 permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e91-run" type="button">Diagnosticar E9.1</button>
+<p class="cfg-action-inline-note" id="cfg-security-e91-note">E9.1 no llama Functions ni habilita la administración de usuarios.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e91-metrics" data-state="empty">
+<div><span>Perfiles visibles</span><strong id="cfg-security-e91-profiles">Sin analizar</strong><small id="cfg-security-e91-profiles-detail">Incluye la vía de recuperación Admin.</small></div>
+<div><span>Contratos locales</span><strong id="cfg-security-e91-contracts">Sin analizar</strong><small>Alta/cambio, baja y bootstrap; no se ejecutan.</small></div>
+<div><span>Administración real</span><strong id="cfg-security-e91-management">Desactivada</strong><small>E9.2 requerirá autorización independiente.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Sin mutaciones ni despliegues</strong>
+<p>E9.1 solo lee el perfil y los miembros visibles del workspace. No crea, modifica, desactiva ni elimina usuarios; tampoco cambia claims, reglas o Functions.</p>
+</div>
+</section>
+<section aria-labelledby="cfg-security-e92-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head">
+<span class="cfg-report-icon">E9.2</span>
+<div>
+<h3 id="cfg-security-e92-title">E9.2 · Blindaje del backend administrativo</h3>
+<p>Verifica las defensas locales de workspace, pertenencia, último Admin, bootstrap y contraseñas antes de conectar el panel.</p>
+</div>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e92-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong id="cfg-security-e92-source">E9.1 confirmada</strong><small>Perfiles y contratos administrativos revisados.</small></div>
+<div><span>Control</span><strong>Administración apagada</strong><small>No se invocan ni despliegan Functions.</small></div>
+<div><span>Resultado</span><strong id="cfg-security-e92-result">Sin validar</strong><small id="cfg-security-e92-result-detail">E9.3 permanece pendiente.</small></div>
+</div>
+<div class="cfg-actions cfg-firebase-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-security-e92-run" type="button">Validar blindaje E9.2</button>
+<p class="cfg-action-inline-note" id="cfg-security-e92-note">La validación es local y no modifica usuarios ni Firebase.</p>
+</div>
+<div class="cfg-initial-import-state" id="cfg-security-e92-metrics" data-state="empty">
+<div><span>Blindajes</span><strong id="cfg-security-e92-safeguards">Sin analizar</strong><small>Controles críticos del backend.</small></div>
+<div><span>Workspace</span><strong id="cfg-security-e92-workspace">Sin analizar</strong><small>Debe coincidir con el tenant canónico.</small></div>
+<div><span>Administración real</span><strong id="cfg-security-e92-management">Desactivada</strong><small>E9.3 conectará únicamente una simulación.</small></div>
+</div>
+<div class="cfg-firebase-private-warning" role="note">
+<strong>Blindaje local sin despliegue</strong>
+<p>E9.2 no llama Functions ni cambia Authentication, perfiles, claims o reglas. El backend endurecido permanece únicamente en el código local.</p>
+</div>
+</section>
+<section aria-labelledby="cfg-security-e93-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head"><span class="cfg-report-icon">E9.3</span><div><h3 id="cfg-security-e93-title">E9.3 · Simulación del panel administrativo</h3><p>Conecta el formulario y sus acciones a vistas previas locales para probar altas, cambios, estados y bajas sin invocar Functions.</p></div></div>
+<div class="cfg-initial-import-state" id="cfg-security-e93-state" data-state="empty" aria-live="polite">
+<div><span>Origen</span><strong>E9.2 confirmada</strong><small>Siete blindajes administrativos preparados.</small></div><div><span>Control</span><strong>Simulación local</strong><small>Cero escrituras y cero llamadas privilegiadas.</small></div><div><span>Resultado</span><strong id="cfg-security-e93-result">Sin simular</strong><small id="cfg-security-e93-result-detail">E9.4 permanece pendiente.</small></div></div>
+<div class="cfg-actions cfg-firebase-actions"><button class="cfg-btn cfg-btn-primary" id="cfg-security-e93-run" type="button">Simular panel E9.3</button><p class="cfg-action-inline-note" id="cfg-security-e93-note">El formulario funcionará como vista previa y no guardará usuarios.</p></div>
+<div class="cfg-initial-import-state" id="cfg-security-e93-metrics" data-state="empty">
+<div><span>Controles</span><strong id="cfg-security-e93-controls">Sin analizar</strong><small>Alta, cambio, estado, baja y recuperación.</small></div><div><span>Escrituras</span><strong id="cfg-security-e93-writes">0</strong><small>Authentication y Firestore sin cambios.</small></div><div><span>Última vista previa</span><strong id="cfg-security-e93-preview">Sin acciones</strong><small id="cfg-security-e93-preview-detail">Usa el formulario para simular una operación.</small></div></div>
+<div class="cfg-firebase-private-warning" role="note"><strong>Panel conectado en modo simulación</strong><p>Las acciones del panel generan únicamente una vista previa durante esta sesión. No crean contraseñas, no llaman Functions y no alteran perfiles, claims ni reglas.</p></div>
+</section>
+<section aria-labelledby="cfg-security-e94a-title" class="cfg-firebase-card cfg-firebase-card--wide cfg-initial-import">
+<div class="cfg-report-card-head"><span class="cfg-report-icon">E9.4A</span><div><h3 id="cfg-security-e94a-title">E9.4A · Conector administrativo condicionado</h3><p>Verifica Functions, el workspace, el perfil Admin y sus claims antes de permitir operaciones reales.</p></div></div>
+<div class="cfg-initial-import-state" id="cfg-security-e94a-state" data-state="empty" aria-live="polite"><div><span>Origen</span><strong>E9.3 confirmada</strong><small>Cinco controles simulados sin escrituras.</small></div><div><span>Protección</span><strong>Activación por healthcheck</strong><small>Un fallo mantiene la administración apagada.</small></div><div><span>Resultado</span><strong id="cfg-security-e94a-result">Sin verificar</strong><small id="cfg-security-e94a-detail">E9.4B permanece pendiente.</small></div></div>
+<div class="cfg-actions cfg-firebase-actions"><button class="cfg-btn cfg-btn-primary" id="cfg-security-e94a-run" type="button">Verificar conector E9.4A</button><p class="cfg-action-inline-note" id="cfg-security-e94a-note">Esta comprobación no crea, cambia ni elimina usuarios.</p></div>
+<div class="cfg-firebase-private-warning" role="note"><strong>Fallo seguro</strong><p>Si Functions no está desplegado o los claims no coinciden, el panel continúa bloqueado y muestra el estado pendiente.</p></div>
+</section>
+<section aria-label="Resumen de usuarios" class="cfg-users-toolbar">
+<div class="cfg-users-metrics">
+<article class="cfg-metric-card">
+<span class="cfg-metric-label">Usuarios</span>
+<strong id="cfg-user-count-total">0</strong>
+</article>
+<article class="cfg-metric-card">
+<span class="cfg-metric-label">Activos</span>
+<strong id="cfg-user-count-active">0</strong>
+</article>
+<article class="cfg-metric-card">
+<span class="cfg-metric-label">Inactivos</span>
+<strong id="cfg-user-count-inactive">0</strong>
+</article>
+<article class="cfg-metric-card">
+<span class="cfg-metric-label">Rol dominante</span>
+<strong id="cfg-user-role-top">—</strong>
+</article>
+</div>
+<div class="cfg-search-wrap">
+<label class="cfg-search-label" for="cfg-user-search">Buscar usuario</label>
+<input autocomplete="off" class="cfg-input cfg-search-input" id="cfg-user-search" placeholder="Nombre o correo" type="search"/>
+</div>
+</section>
+<div class="cfg-users-list-shell">
+<div class="cfg-empty-state" hidden="" id="cfg-users-empty">
+<div class="cfg-empty-icon">◎</div>
+<h3 id="cfg-users-empty-title">Sin perfiles todavía</h3>
+<p id="cfg-users-empty-copy">Cuando el backend esté listo, aquí aparecerán los perfiles reales del workspace.</p>
+<button class="cfg-btn cfg-btn-primary cfg-btn-compact" id="cfg-user-empty-cta" type="button">Preparar formulario</button>
+</div>
+<div class="cfg-users-table-wrap" hidden="" id="cfg-users-table-wrap">
+<table aria-label="Listado de usuarios" class="cfg-users-table">
+<thead>
+<tr>
+<th scope="col">Usuario</th>
+<th scope="col">Correo</th>
+<th scope="col">Rol</th>
+<th scope="col">Estado</th>
+<th scope="col">Acciones</th>
+</tr>
+</thead>
+<tbody id="cfg-users-tbody"></tbody>
+</table>
+</div>
+<div class="cfg-users-cards" hidden="" id="cfg-users-cards"></div>
+<div class="cfg-inline-empty" hidden="" id="cfg-users-noresults">No hay coincidencias para esa búsqueda.</div>
+</div>
+</article>
+<aside aria-labelledby="cfg-users-side-title" class="cfg-card cfg-panel cfg-side-panel">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Seguridad</p>
+<h2 id="cfg-users-side-title">Usuarios y roles</h2>
+</div>
+<span class="cfg-badge" id="cfg-users-side-badge">Perfil pendiente</span>
+</div>
+<form class="cfg-form" id="cfg-user-form" novalidate="">
+<input id="cfg-user-id" type="hidden"/>
+<label class="cfg-field">
+<span>Nombre</span>
+<input class="cfg-input" id="cfg-user-name" maxlength="80" placeholder="Ej. Mariana López" required="" type="text"/>
+</label>
+<label class="cfg-field">
+<span>Correo</span>
+<input autocomplete="email" class="cfg-input" id="cfg-user-email" maxlength="120" placeholder="correo@dominio.com" required="" type="email"/>
+</label>
+<div class="cfg-field-row">
+<label class="cfg-field">
+<span>Rol</span>
+<select class="cfg-input" id="cfg-user-role" required="">
+<option value="admin">Admin</option>
+<option value="usuario">Usuario</option>
+</select>
+</label>
+<label class="cfg-field">
+<span>Estado</span>
+<select class="cfg-input" id="cfg-user-status" required="">
+<option value="active">Activo</option>
+<option value="inactive">Inactivo</option>
+</select>
+</label>
+</div>
+<div class="cfg-form-actions">
+<button class="cfg-btn cfg-btn-primary cfg-btn-compact" id="cfg-user-save" type="submit">Guardar usuario</button>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-compact" id="cfg-user-cancel" type="button">Limpiar</button>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-compact" hidden="" id="cfg-user-bootstrap" type="button">Activar admin inicial</button>
+</div>
+<div class="cfg-form-hint" id="cfg-user-form-hint">En el plan Spark, los perfiles se consultan aquí y los cambios de usuarios se realizan manualmente desde Firebase Console.</div>
+</form>
+<div class="cfg-status-stack cfg-status-stack--users">
+<div class="cfg-status-card">
+<span class="cfg-status-label">Persistencia</span>
+<strong id="cfg-users-storage-label">Firestore canónico</strong>
+<p class="cfg-status-copy" id="cfg-users-storage-copy">El perfil real vive en Firestore; el backend privilegiado vive en Functions y archiva antes del borrado definitivo.</p>
+</div>
+<div class="cfg-status-card">
+<span class="cfg-status-label">Permisos</span>
+<strong id="cfg-users-permissions-label">Sin perfil todavía</strong>
+<p class="cfg-status-copy" id="cfg-users-permissions-copy">La app leerá permisos desde el rol asignado y los expondrá de forma uniforme.</p>
+</div>
+<div class="cfg-status-card">
+<span class="cfg-status-label">Siguiente salto</span>
+<strong id="cfg-users-next-label">Administración progresiva</strong>
+<p class="cfg-status-copy" id="cfg-users-next-copy">La base queda lista para crecer con permisos y controles administrativos dentro del apartado correcto.</p>
+</div>
+</div>
+</aside>
+</div>
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-backup" class="cfg-panel-view" data-panel="backup" hidden="" id="cfg-panel-backup" role="tabpanel">
+<div aria-label="Navegación del apartado" class="cfg-section-nav">
+<button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
+<a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
+</div>
+<div class="cfg-view-grid">
+<article aria-labelledby="cfg-backup-title" class="cfg-card cfg-panel cfg-panel--main">
+<div class="cfg-panel-head">
+<div>
+<p class="cfg-eyebrow">Apartado</p>
+<h2 id="cfg-backup-title">Respaldo</h2>
+</div>
+<span class="cfg-badge">JSON local</span>
+</div>
+<p class="cfg-copy">Exporta o importa respaldos completos de la Suite A33. También puedes generar e importar JSON personalizados por módulos, submódulos y eventos POS sin borrar datos no incluidos.</p>
+<div class="cfg-actions">
+<button class="cfg-btn cfg-btn-primary" id="cfg-export-backup" type="button">Exportar respaldo completo</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-export-custom-backup" type="button">Exportar respaldo personalizado</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-import-backup" type="button">Importar JSON</button>
+<button class="cfg-btn cfg-btn-ghost" id="cfg-audit-products" type="button">Auditar Productos</button>
+</div>
+<div class="cfg-note-grid">
+<div class="cfg-note-card">
+<strong>Qué hace</strong>
+<p>Exporta un archivo completo o personalizado con localStorage e IndexedDB de la Suite detectados en este navegador.</p>
+</div>
+<div class="cfg-note-card">
+<strong>Qué no cambia</strong>
+<p>El respaldo completo conserva su formato histórico; el personalizado se identifica como parcial.</p>
+</div>
+<div class="cfg-note-card">
+<strong>Cuidado</strong>
+<p>Al importar un respaldo completo se reemplaza todo; al importar uno parcial se fusionan solo las secciones incluidas. Mejor exportar antes; drama evitado.</p>
+</div>
+</div>
+<div class="cfg-backup-import-log-card">
+<strong>JSON importados</strong>
+<p>Registro compacto de los últimos respaldos importados en este navegador.</p>
+<div id="cfg-backup-import-log" class="cfg-backup-import-log"></div>
+</div>
+</article>
+<aside aria-labelledby="cfg-backup-side-title" class="cfg-card cfg-panel cfg-side-panel">
+<div class="cfg-panel-head cfg-panel-head--stack">
+<div>
+<p class="cfg-eyebrow">Respaldo</p>
+<h2 id="cfg-backup-side-title">Operación segura</h2>
+</div>
+<span class="cfg-badge cfg-badge--soft">Operativo</span>
+</div>
+<ul class="cfg-list">
+<li>Exporta respaldo JSON completo.</li>
+<li>Exporta JSON personalizado por módulos y submódulos.</li>
+<li>Importa respaldos completos o parciales desde este navegador.</li>
+<li>Mantiene el formato histórico del archivo completo.</li>
+<li>Conserva lectura clara en desktop e iPad.</li>
+</ul>
+</aside>
+</div>
+</section></div>
+</section>
+</main>
+<div class="modal-overlay" id="backup-modal" style="display:none;">
+<div aria-labelledby="backup-modal-title" aria-modal="true" class="modal-card" role="dialog">
+<h2 class="modal-title" id="backup-modal-title">Respaldo</h2>
+<div class="modal-body" id="backup-modal-body"></div>
+<div class="modal-actions">
+<button class="cfg-btn cfg-btn-ghost cfg-btn-modal" id="backup-modal-cancel" type="button">Cancelar</button>
+<button class="cfg-btn cfg-btn-ghost cfg-btn-modal" id="backup-modal-secondary" style="display:none;" type="button">Secundario</button>
+<button class="cfg-btn cfg-btn-primary cfg-btn-modal" id="backup-modal-primary" type="button">OK</button>
+</div>
+</div>
+</div>
+<input accept="application/json" id="backup-file-input" style="display:none;" type="file"/>
+<div aria-live="polite" class="a33-toast" id="a33-toast"></div>
+<script src="../assets/js/a33-release.js?v=4.20.98&amp;r=55"></script>
+<script src="../assets/js/a33-module-nav.js?v=4.20.98&amp;r=4"></script>
+<script src="../assets/js/a33-storage.js?v=4.20.98&amp;r=21"></script>
+<script src="../assets/js/a33-product-integrity.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-currency.js?v=4.20.98&amp;r=14"></script>
+<script src="../assets/js/a33-export-currency.js?v=4.20.98&amp;r=2"></script>
+<script src="../assets/js/a33-lot-code.js?v=4.20.98&amp;r=6"></script>
+<script src="../assets/js/a33-firebase-config.js?v=4.20.98&amp;r=19"></script>
+<script src="../assets/js/a33-firebase-core.js?v=4.20.98&amp;r=19"></script>
+<script src="../assets/js/a33-cloud-sync.js?v=4.20.98&amp;r=8"></script>
+<script src="../assets/js/a33-firebase-auth.js?v=4.20.98&amp;r=18"></script>
+<script src="../assets/js/a33-firebase-access.js?v=4.20.98&amp;r=18"></script>
+<script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=16"></script>
+<script src="../assets/js/a33-module-guard.js?v=4.20.98&amp;r=5"></script>
+<script src="../assets/js/a33-firebase-security-diagnostic-e81.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-security-simulate-e82.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-security-prepare-e83.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-security-guards-e84a.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-security-test-e84b.js?v=4.20.98&amp;r=2"></script>
+<script src="../assets/js/a33-firebase-security-activate-e84c.js?v=4.20.98&amp;r=2"></script>
+<script src="../assets/js/a33-firebase-users-diagnostic-e91.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-users-hardening-e92.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-users-simulate-e93.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-users-connect-e94a.js?v=4.20.98&amp;r=1"></script>
+<script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+<script src="../assets/js/a33-firestore-data.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-import.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-apply-e5.js?v=4.20.98&amp;r=2"></script>
+<script src="../assets/js/a33-firebase-apply-e6.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-analyze-e7.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-plan-e72a.js?v=4.20.98&amp;r=6"></script>
+<script src="../assets/js/a33-firebase-validate-e72b.js?v=4.20.98&amp;r=3"></script>
+<script src="../assets/js/a33-firebase-simulate-e72c.js?v=4.20.98&amp;r=2"></script>
+<script src="../assets/js/a33-firebase-apply-e72d.js?v=4.20.98&amp;r=1"></script>
+<script src="../assets/js/a33-firebase-audit-e72e.js?v=4.20.98&amp;r=1"></script>
+<script src="script.js?v=4.20.98&amp;r=55"></script>
+</body>
+</html>

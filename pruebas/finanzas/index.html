@@ -1,0 +1,1840 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Finanzas – Suite A33</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#060606">
+  <script src="/assets/js/a33-theme.js?v=4.20.98&r=10"></script>
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=1">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=7">
+  <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=4">
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=1">
+  <link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1">
+</head>
+<body class="fin-body">
+  <div class="fin-app">
+
+    <header class="a33-header" role="banner" data-a33-module="finanzas">
+      <a class="a33-btn-menu" href="../index.html" aria-label="Ir al Menú principal">⌂ Inicio</a>
+      <div class="a33-title">Finanzas</div>
+      <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.98">v...</div>
+    </header>
+
+  <nav class="fin-main-nav fin-internal-nav" aria-label="Secciones de Finanzas">
+    <div class="nav-group">
+      <span class="nav-group-label">Finanzas</span>
+      <button type="button" class="fin-tab-btn active" data-view="tablero">Tablero Finanzas</button>
+      <button type="button" class="fin-tab-btn" data-view="cajachica">Caja Chica</button>
+      <button type="button" class="fin-tab-btn" data-view="cobrar">Cobrar</button>
+      <button type="button" class="fin-tab-btn" data-view="pagar">Pagar</button>
+      <button type="button" class="fin-tab-btn" data-view="recibos">Recibos</button>
+      <button type="button" class="fin-tab-btn" data-view="diario" hidden aria-hidden="true" data-a33-hidden-main="1">Diario Contable</button>
+      <button type="button" class="fin-tab-btn" data-view="estados" hidden aria-hidden="true" data-a33-hidden-main="1">Estados Financieros</button>
+      <button type="button" class="fin-tab-btn" data-view="comprasplan" hidden aria-hidden="true" data-a33-hidden-main="1">Compras</button>
+      <button type="button" class="fin-tab-btn" data-view="catalogo" hidden aria-hidden="true" data-a33-hidden-main="1">Catálogo de Cuentas</button>
+    </div>
+  </nav>
+
+    <main class="fin-main">
+
+      <section id="fin-currency-reference" class="fin-currency-reference" aria-live="polite">
+        <div class="fin-currency-reference__main">
+          <strong>Referencia monetaria</strong>
+          <span id="fin-currency-primary">C$ / NIO</span>
+          <span class="fin-currency-sep">·</span>
+          <span id="fin-currency-secondary">US$ / USD</span>
+          <span class="fin-currency-sep">·</span>
+          <span id="fin-currency-rate">T/C no configurado</span>
+        </div>
+        <p id="fin-currency-note">Finanzas mantiene C$ como moneda base y no convierte valores sin T/C configurado.</p>
+      </section>
+
+      <!-- TABLERO FINANZAS -->
+      <section id="view-tablero" class="fin-view active">
+        <header class="fin-section-header">
+          <h2>Tablero Finanzas Operativo</h2>
+          <p>Resultados y movimiento de dinero por período/evento, alimentado por POS, Caja/Efectivo y Recibos.</p>
+        </header>
+
+        <div class="fin-dashboard-band" aria-label="Filtros y referencia monetaria del Tablero operativo">
+          <div class="fin-filters-row fin-filters-row--tablero">
+            <label>
+              Mes
+              <select id="tab-mes"></select>
+            </label>
+            <label>
+              Año
+              <select id="tab-anio"></select>
+            </label>
+            <label>
+              Vista
+              <select id="tab-vista">
+                <option value="GLOBAL">GLOBAL</option>
+                <option value="EVENT">Por evento</option>
+              </select>
+            </label>
+            <label id="tab-evento-wrap" class="fin-dashboard-event-filter">
+              Evento
+              <select id="tab-evento"></select>
+            </label>
+          </div>
+
+          <div class="fin-dashboard-fx" aria-label="Tipo de cambio vigente">
+            <span>Moneda</span>
+            <strong id="tab-fx-rate">T/C vigente —</strong>
+            <small id="tab-fx-updated">Última actualización: —</small>
+          </div>
+        </div>
+
+        <div class="fin-cards-grid fin-cards-grid--tablero fin-operational-kpis">
+          <article class="fin-card">
+            <h3>Venta Total</h3>
+            <p id="tab-venta-total" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Descuentos</h3>
+            <p id="tab-descuentos" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Cortesías</h3>
+            <p id="tab-cortesias" class="fin-card-number">C$ 0.00</p>
+            <small id="tab-cortesias-costo" class="fin-muted">Costo real: C$ 0.00</small>
+          </article>
+
+          <article class="fin-card fin-card-strong">
+            <h3>Venta Neta</h3>
+            <p id="tab-venta-neta" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Costos de ventas</h3>
+            <p id="tab-costos" class="fin-card-number">C$ 0.00</p>
+            <small id="tab-merma-final" class="fin-muted">Merma final: C$ 0.00</small>
+            <small id="tab-costos-total" class="fin-muted">Total con cortesías y merma: C$ 0.00</small>
+          </article>
+
+          <article class="fin-card fin-card-strong">
+            <h3>Utilidad Bruta</h3>
+            <p id="tab-utilidad-bruta" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Ingresos Adicionales</h3>
+            <p id="tab-ingresos-adicionales" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Gastos</h3>
+            <p id="tab-gastos" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card fin-card-strong">
+            <h3>Utilidad Neta</h3>
+            <p id="tab-utilidad-neta" class="fin-card-number">C$ 0.00</p>
+            <small id="tab-comisiones-tarjeta-total" class="fin-muted">Comisiones Tarjeta: C$ 0.00</small>
+            <div id="tab-comisiones-tarjeta-detalle" class="fin-muted"></div>
+          </article>
+
+          <article class="fin-card">
+            <h3>Margen Bruto</h3>
+            <p id="tab-margen-bruto" class="fin-card-number">0%</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Margen Neto</h3>
+            <p id="tab-margen-neto" class="fin-card-number">0%</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Número de eventos</h3>
+            <p id="tab-num-eventos" class="fin-card-number">0</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Flujo de Caja</h3>
+            <p id="tab-flujo-caja" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Caja del período</h3>
+            <p id="tab-caja-periodo" class="fin-card-number">C$ 0.00</p>
+          </article>
+
+          <article class="fin-card">
+            <h3>Bancos del período</h3>
+            <p id="tab-bancos-periodo" class="fin-card-number">C$ 0.00</p>
+          </article>
+        </div>
+
+        <section class="fin-subsection fin-tablero-liquidity-section">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Caja y bancos del período</h3>
+            <p id="tab-liquidity-note">Movimiento de caja y bancos dentro del filtro seleccionado.</p>
+          </header>
+
+          <div class="fin-liquidity-grid">
+            <article class="fin-liquidity-panel">
+              <div class="fin-liquidity-head">
+                <h4>Caja por moneda</h4>
+                <span>Fuente: POS + Caja/Recibos</span>
+              </div>
+              <div class="fin-liquidity-totals">
+                <div><small>Caja C$</small><strong id="tab-cash-nio">C$ 0.00</strong></div>
+                <div><small>Caja US$</small><strong id="tab-cash-usd">US$ 0.00</strong></div>
+                <div><small>Total caja equivalente C$</small><strong id="tab-cash-equivalent">C$ 0.00</strong></div>
+              </div>
+              <div id="tab-cash-detail" class="fin-liquidity-list"></div>
+            </article>
+
+            <article class="fin-liquidity-panel">
+              <div class="fin-liquidity-head">
+                <h4>Bancos por banco y moneda</h4>
+                <span>Fuente: POS + Recibos</span>
+              </div>
+              <div class="fin-liquidity-totals">
+                <div><small>Bancos C$</small><strong id="tab-bank-nio">C$ 0.00</strong></div>
+                <div><small>Bancos US$</small><strong id="tab-bank-usd">US$ 0.00</strong></div>
+                <div><small>Total bancos equivalente C$</small><strong id="tab-bank-equivalent">C$ 0.00</strong></div>
+              </div>
+              <div id="tab-bank-detail" class="fin-liquidity-list"></div>
+            </article>
+
+            <article class="fin-liquidity-panel fin-liquidity-panel--summary">
+              <div class="fin-liquidity-head">
+                <h4>Consolidado operativo</h4>
+                <span>Equivalente en C$</span>
+              </div>
+              <div class="fin-liquidity-hero">
+                <small>Movimiento caja + bancos equivalente C$</small>
+                <strong id="tab-liquidity-equivalent">C$ 0.00</strong>
+                <p>Lectura del período filtrado; no recalcula históricos ni altera T/C snapshot guardados.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="fin-subsection fin-tablero-alerts-section">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Alertas del Tablero</h3>
+            <p>Lectura informativa del Tablero operativo. No bloquea ni modifica datos.</p>
+          </header>
+          <div class="fin-report-alerts" id="tab-alerts"></div>
+        </section>
+
+        <section class="fin-subsection">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Gráfico del resultado operativo</h3>
+            <p>Visualiza venta, costos, gastos y utilidad neta del período filtrado.</p>
+          </header>
+          <div class="fin-chart-wrapper">
+            <canvas id="tab-chart" width="720" height="300"></canvas>
+          </div>
+        </section>
+      </section>
+
+      <!-- DIARIO CONTABLE -->
+      <section id="view-diario" class="fin-view">
+        <header class="fin-section-header">
+          <h2>Diario Contable</h2>
+          <p>Registra asientos contables reales con líneas Cuenta / Debe / Haber, T/C snapshot cuando aplica y etiqueta automática.</p>
+        </header>
+
+        <form id="form-diario-contable" class="fin-form fin-journal-form" autocomplete="off">
+          <div class="fin-journal-stage-row">
+            <span class="fin-pill fin-pill--gold">Diario activo</span>
+            <span class="fin-muted">Cabecera, líneas Debe/Haber, T/C snapshot, etiqueta automática y origen manual.</span>
+          </div>
+
+          <section class="fin-journal-card" aria-label="Cabecera del asiento contable">
+            <header class="fin-journal-card-head">
+              <div>
+                <h3>Cabecera del asiento</h3>
+                <p>Datos generales del asiento. La fecha carga con el día actual y puede editarse.</p>
+              </div>
+            </header>
+
+            <div class="fin-form-row fin-journal-header-grid">
+              <label>
+                Fecha
+                <input type="date" id="journal-date">
+              </label>
+
+              <label>
+                Moneda
+                <select id="journal-currency">
+                  <option value="NIO">C$</option>
+                  <option value="USD">US$</option>
+                </select>
+              </label>
+
+              <label id="journal-rate-wrap" class="fin-journal-rate-wrap hidden">
+                T/C desde Moneda
+                <input type="text" id="journal-rate" readonly inputmode="decimal" placeholder="Configurar en Moneda">
+              </label>
+
+              <label class="fin-form-grow">
+                Referencia <span class="fin-muted">(opcional)</span>
+                <input type="text" id="journal-reference" placeholder="Ej: APERTURA-2026, REC-0001, POS-20260601">
+              </label>
+            </div>
+
+            <div class="fin-form-row">
+              <label class="fin-form-grow">
+                Descripción general
+                <input type="text" id="journal-description" placeholder="Ej: Saldo inicial de apertura, compra de inventario, aporte del dueño">
+              </label>
+            </div>
+
+            <p id="journal-currency-hint" class="fin-help">Moneda base: C$. Si selecciona US$, se mostrará el T/C vigente de Configuración → Moneda.</p>
+          </section>
+
+          <section class="fin-journal-card" aria-label="Líneas del asiento contable">
+            <header class="fin-journal-card-head">
+              <div>
+                <h3>Líneas del asiento</h3>
+                <p>Seleccione cuentas posteables activas. Las raíces, agrupadoras e inactivas no aparecen.</p>
+              </div>
+              <button type="button" id="journal-add-line" class="btn-small">+ Agregar línea</button>
+            </header>
+
+            <div id="journal-no-postable-msg" class="fin-journal-warning hidden">
+              No hay cuentas posteables disponibles. Cree subcuentas posteables en el Catálogo de Cuentas para registrar asientos.
+            </div>
+
+            <div id="journal-lines" class="fin-journal-lines" aria-label="Cuenta Debe Haber"></div>
+          </section>
+
+          <section class="fin-journal-card fin-journal-totals-card" aria-label="Totales del asiento contable">
+            <div class="fin-journal-totals">
+              <div>
+                <span>Total Debe</span>
+                <strong id="journal-total-debit">C$ 0.00</strong>
+              </div>
+              <div>
+                <span>Total Haber</span>
+                <strong id="journal-total-credit">C$ 0.00</strong>
+              </div>
+              <div>
+                <span>Diferencia</span>
+                <strong id="journal-difference">C$ 0.00</strong>
+              </div>
+            </div>
+            <div id="journal-equivalent" class="fin-journal-equivalent hidden"></div>
+            <div id="journal-status" class="fin-journal-status">Complete mínimo dos líneas para validar el asiento.</div>
+            <div class="fin-journal-actions">
+              <button type="button" id="journal-clear" class="btn-ghost">Limpiar asiento</button>
+              <button type="button" id="journal-validate" class="btn-primary">Guardar asiento</button>
+            </div>
+          </section>
+        </form>
+
+        <section class="fin-history-panel" aria-label="Historial del Diario Contable">
+          <header class="fin-journal-history-head">
+            <div>
+              <h3>Historial de movimientos</h3>
+              <p>Históricos legacy, POS, compras, recibos y transferencias se conservan abajo sin recalcular.</p>
+            </div>
+          </header>
+        <div class="fin-filters-row fin-filters-row--compact">
+          <label>
+            Tipo
+            <select id="filtro-tipo">
+              <option value="todos">Todos</option>
+              <option value="ingreso">Ingresos</option>
+              <option value="egreso">Egresos</option>
+              <option value="ajuste">Ajustes</option>
+                          <option value="transferencia">Transferencias</option>
+            </select>
+          </label>
+
+          <label>
+            Evento
+            <select id="filtro-evento-diario"></select>
+          </label>
+
+          <label>
+            Origen
+            <select id="filtro-origen">
+              <option value="todos">Todos</option>
+              <option value="Manual">Manual</option>
+              <option value="POS">POS (todo)</option>
+              <option value="POS_CIERRES">POS — Cierres diarios</option>
+              <option value="POS_LEGACY">POS — Legacy histórico</option>
+              <option value="Compra">Compra</option>
+              <option value="Recibo">Recibo</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Legacy">Legacy / histórico</option>
+            </select>
+          </label>
+
+          <label>
+            Proveedor
+            <select id="filtro-proveedor"></select>
+          </label>
+
+          <label>
+            Desde
+            <input type="date" id="diario-desde">
+          </label>
+
+          <label>
+            Hasta
+            <input type="date" id="diario-hasta">
+          </label>
+
+          <div id="diario-presets" class="fin-presets">
+            <button type="button" class="btn-small" data-diario-preset="hoy">Hoy</button>
+            <button type="button" class="btn-small" data-diario-preset="ayer">Ayer</button>
+            <button type="button" class="btn-small" data-diario-preset="7d">Últimos 7</button>
+            <button type="button" class="btn-small" data-diario-preset="mes">Este mes</button>
+            <button type="button" class="btn-small" data-diario-preset="todo">Todo</button>
+          </div>
+        </div>
+
+        <div class="cc-actions" id="diario-actions-bar">
+          <button type="button" id="btn-export-diario" class="fin-btn-export">Exportar Diario a Excel</button>
+          <button type="button" id="btn-import-pos-closures" class="fin-btn-export">Importar cierres POS</button>
+          <span id="import-pos-closures-msg" class="cc-msg"></span>
+        </div>
+
+        <div id="diario-integrity-banner" class="fin-integrity-banner hidden"></div>
+
+        <div class="fin-table-wrapper">
+          <table class="fin-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Descripción</th>
+                <th>Tipo</th>
+                <th>Evento / Ref</th>
+                <th>Proveedor</th>
+                <th>Origen</th>
+                <th>Moneda</th>
+                <th>Debe</th>
+                <th>Haber</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="diario-tbody"></tbody>
+          </table>
+        </div>
+        </section>
+      </section>
+
+      
+
+<!-- COMPRAS (PLANIFICACIÓN / HISTÓRICO, NO CONTABLE) -->
+<section id="view-comprasplan" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Compras</h2>
+    <p>Planifica compras por hacer, guarda histórico y exporta a Excel. Esto es informativo: no genera asientos, no toca Diario.</p>
+  </header>
+
+  <section class="fin-subsection purchase-block">
+    <header class="fin-section-header fin-section-header--sub purchase-header">
+      <div>
+        <h3>Compra Actual</h3>
+        <p>Editor de compras por hacer. Guarda como borrador o envíalo al histórico.</p>
+      </div>
+      <div class="purchase-meta">
+        <span id="pc-updated" class="cc-updated">Actualizado: —</span>
+      </div>
+    </header>
+
+    <div class="purchase-actions">
+      <button type="button" id="pc-save" class="btn-primary">Guardar</button>
+      <button type="button" id="pc-save-history" class="btn-small">Guardar en Histórico</button>
+      <button type="button" id="pc-delete-all" class="btn-danger">Borrar todo</button>
+      <button type="button" id="pc-export" class="fin-btn-export">Exportar Excel</button>
+      <span id="pc-msg" class="cc-msg"></span>
+    </div>
+
+    <div class="purchase-two">
+      <article class="fin-card purchase-card">
+        <div class="purchase-card-head">
+          <h4>COMPRAS PROVEEDORES</h4>
+          <button type="button" id="pc-add-proveedores" class="btn-small">+ Agregar línea</button>
+        </div>
+        <div id="pc-grid-proveedores" class="purchase-grid" aria-label="Compras Proveedores"></div>
+        <div class="purchase-totals">
+          <span>Total sección</span>
+          <strong id="pc-total-proveedores">C$ 0.00</strong>
+        </div>
+      </article>
+
+      <article class="fin-card purchase-card">
+        <div class="purchase-card-head">
+          <h4>COMPRAS VARIAS</h4>
+          <button type="button" id="pc-add-varias" class="btn-small">+ Agregar línea</button>
+        </div>
+        <div id="pc-grid-varias" class="purchase-grid" aria-label="Compras Varias"></div>
+        <div class="purchase-totals">
+          <span>Total sección</span>
+          <strong id="pc-total-varias">C$ 0.00</strong>
+        </div>
+      </article>
+    </div>
+
+    <div class="purchase-notes">
+      <label for="pc-notes">Notas</label>
+      <textarea id="pc-notes" rows="3" placeholder="Notas ligadas a la compra completa (opcional)"></textarea>
+    </div>
+
+    <div class="purchase-summary">
+      <div class="purchase-summary-top">
+        <div>
+          <h4>Total General</h4>
+          <p id="pc-total-general" class="fin-card-number">C$ 0.00</p>
+        </div>
+      </div>
+
+      <div class="purchase-product-summary">
+        <div class="purchase-card-head">
+          <h4>Resumen por Producto</h4>
+        </div>
+        <div class="fin-table-wrapper">
+          <table class="fin-table purchase-mini-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Cantidad total</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="pc-product-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="fin-subsection purchase-block">
+    <header class="fin-section-header fin-section-header--sub">
+      <h3>Histórico de Compras</h3>
+      <p>Snapshots de compras (informativo). Puedes ver, duplicar, exportar o eliminar.</p>
+    </header>
+
+    <div class="fin-filters-row fin-filters-row--compact">
+      <label class="fin-form-grow">
+        Buscar
+        <input type="text" id="ph-search" placeholder="Proveedor, producto o notas…">
+      </label>
+      <button type="button" id="ph-clear" class="btn-small">Limpiar</button>
+    </div>
+
+    <div class="fin-table-wrapper">
+      <table class="fin-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Notas</th>
+            <th>Total</th>
+            <th># Ítems</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="ph-tbody"></tbody>
+      </table>
+    </div>
+
+    <p id="ph-help" class="fin-help"></p>
+  </section>
+
+  <div id="ph-modal" class="fin-modal">
+    <div class="fin-modal-content">
+      <header class="fin-modal-header">
+        <h3>Detalle de compra</h3>
+        <button type="button" id="ph-modal-close" class="btn-close">×</button>
+      </header>
+      <div class="fin-modal-body">
+        <div id="ph-modal-meta" class="fin-detalle-meta"></div>
+
+        <div class="purchase-notes purchase-notes--read">
+          <label>Notas</label>
+          <div id="ph-modal-notes" class="purchase-notes-read"></div>
+        </div>
+
+        <div class="purchase-modal-totals">
+          <div><span>Proveedores</span> <strong id="ph-modal-total-proveedores">C$ 0.00</strong></div>
+          <div><span>Varias</span> <strong id="ph-modal-total-varias">C$ 0.00</strong></div>
+          <div class="strong"><span>Total</span> <strong id="ph-modal-total-general">C$ 0.00</strong></div>
+        </div>
+
+        <div class="purchase-modal-section">
+          <h4>COMPRAS PROVEEDORES</h4>
+          <div class="fin-table-wrapper">
+            <table class="fin-table purchase-mini-table">
+              <thead>
+                <tr>
+                  <th>Proveedor</th>
+                  <th>Producto</th>
+                  <th>Tipo</th>
+                  <th>Cant.</th>
+                  <th>Precio</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="ph-modal-tbody-proveedores"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="purchase-modal-section">
+          <h4>COMPRAS VARIAS</h4>
+          <div class="fin-table-wrapper">
+            <table class="fin-table purchase-mini-table">
+              <thead>
+                <tr>
+                  <th>Proveedor</th>
+                  <th>Producto</th>
+                  <th>Tipo</th>
+                  <th>Cant.</th>
+                  <th>Precio</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="ph-modal-tbody-varias"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPRAS A PROVEEDOR -->
+<section id="view-compras" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Compras a Proveedor</h2>
+    <p>Registra compras pagadas (sin deudas) y consulta un reporte rápido por proveedor.</p>
+  </header>
+
+  <form id="form-compra" class="fin-form">
+    <div class="fin-form-row">
+      <label class="fin-form-grow">
+        Proveedor
+        <select id="compra-proveedor"></select>
+      </label>
+
+      <label>
+        Fecha
+        <input type="date" id="compra-fecha">
+      </label>
+
+      <label>
+        Tipo de compra
+        <select id="compra-tipo">
+          <option value="inventory">Compra a Inventario (Insumos)</option>
+          <option value="expense">Gasto inmediato</option>
+        </select>
+      </label>
+
+      <label class="fin-form-grow compra-financial-account-field">
+        Cuenta financiera de pago
+        <select id="compra-financial-account"></select>
+      </label>
+
+      <label class="compra-medio-legacy hidden" aria-hidden="true">
+        Pago legacy
+        <select id="compra-medio" tabindex="-1">
+          <option value="cash">Caja</option>
+          <option value="bank">Banco</option>
+        </select>
+      </label>
+
+      <label>
+        Monto original
+        <input type="number" id="compra-monto" step="0.01" min="0" inputmode="decimal">
+      </label>
+    </div>
+
+    <div id="compra-financial-meta" class="fin-movement-meta compra-financial-meta">
+      Seleccione una cuenta financiera activa para detectar moneda, T/C y cuenta contable de pago.
+    </div>
+
+    <div class="fin-form-row compra-currency-preview">
+      <label class="fin-form-mini">
+        Moneda
+        <input type="text" id="compra-moneda" readonly placeholder="—">
+      </label>
+      <label class="fin-form-mini">
+        T/C snapshot
+        <input type="text" id="compra-tc" readonly placeholder="—">
+      </label>
+      <label class="fin-form-grow">
+        Equivalente contable C$
+        <input type="text" id="compra-equivalente" readonly placeholder="—">
+      </label>
+    </div>
+
+    <!-- Producto asistido (opcional) por proveedor -->
+    <div id="compra-producto-row" class="fin-form-row hidden">
+      <label class="fin-form-grow">
+        Producto (opcional)
+        <select id="compra-producto" disabled></select>
+        <div id="compra-producto-hint" class="fin-hint"></div>
+      </label>
+
+      <label class="fin-form-mini">
+        Tipo
+        <input type="text" id="compra-prod-tipo" placeholder="—" readonly>
+      </label>
+
+      <label class="fin-form-mini">
+        Precio unitario
+        <input type="number" id="compra-precio-unit" step="0.01" min="0" inputmode="decimal">
+      </label>
+
+      <label class="fin-form-mini">
+        Cantidad
+        <input type="number" id="compra-cantidad" step="0.01" min="0" inputmode="decimal">
+      </label>
+
+      <label class="fin-form-mini">
+        Total
+        <input type="text" id="compra-total" placeholder="" readonly>
+      </label>
+    </div>
+
+    <div class="fin-form-row">
+      <label class="fin-form-grow">
+        Cuenta DEBE
+        <select id="compra-cuenta-debe"></select>
+      </label>
+
+      <label class="fin-form-grow compra-haber-legacy hidden" aria-hidden="true">
+        Cuenta HABER legacy
+        <select id="compra-cuenta-haber" tabindex="-1"></select>
+      </label>
+    </div>
+
+    <div class="fin-form-row">
+      <label class="fin-form-grow">
+        Descripción / concepto
+        <input type="text" id="compra-descripcion" placeholder="Ej: Vino tinto, vodka, jugo, etc.">
+      </label>
+
+      <label class="fin-form-grow">
+        Referencia (factura/recibo)
+        <input type="text" id="compra-referencia" placeholder="Opcional">
+      </label>
+
+      <button type="button" id="compra-guardar" class="btn-primary">
+        Guardar compra
+      </button>
+    </div>
+
+    <p class="fin-help">
+      Aquí no existe “Proveedores por pagar”. Toda compra queda registrada como pagada al momento.
+      La cuenta financiera seleccionada define moneda, cuenta contable de pago y snapshot histórico de T/C si aplica.
+    </p>
+  </form>
+
+  <section class="fin-subsection">
+    <header class="fin-section-header fin-section-header--sub">
+      <h3>Reporte rápido: Compras por Proveedor</h3>
+      <p>Filtra por mes o por rango de fechas. Totales por proveedor con moneda original, equivalente C$ y cuenta financiera de pago.</p>
+    </header>
+
+    <div class="fin-filters-row fin-filters-row--compact">
+      <label>
+        Modo de periodo
+        <select id="compras-modo">
+          <option value="mes">Por mes</option>
+          <option value="rango">Por rango</option>
+        </select>
+      </label>
+
+      <div id="compras-filtros-mes" class="fin-inline-group">
+        <label>
+          Mes
+          <select id="compras-mes"></select>
+        </label>
+        <label>
+          Año
+          <select id="compras-anio"></select>
+        </label>
+      </div>
+
+      <div id="compras-filtros-rango" class="fin-inline-group hidden">
+        <label>
+          Desde
+          <input type="date" id="compras-desde">
+        </label>
+        <label>
+          Hasta
+          <input type="date" id="compras-hasta">
+        </label>
+      </div>
+
+      <label>
+        Proveedor
+        <select id="compras-proveedor"></select>
+      </label>
+    </div>
+
+    <div class="fin-table-wrapper">
+      <table class="fin-table">
+        <thead>
+          <tr>
+            <th>Proveedor</th>
+            <th># compras</th>
+            <th>Total C$</th>
+            <th>Original</th>
+            <th>Cuenta financiera</th>
+          </tr>
+        </thead>
+        <tbody id="compras-tbody"></tbody>
+      </table>
+    </div>
+
+    <p id="compras-ayuda" class="fin-help"></p>
+  </section>
+</section>
+
+
+<!-- RECIBOS -->
+<section id="view-recibos" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Recibos</h2>
+    <p>Flujo oficial multicuenta y multimoneda: BORRADOR → EMITIDO · cuenta financiera de cobro · moneda original · T/C snapshot si aplica.</p>
+  </header>
+
+  <div id="rec-currency-reference" class="fin-currency-reference">
+    <div><strong>Base contable:</strong> <span id="rec-currency-primary">C$ / NIO</span></div>
+    <div><strong>Moneda secundaria:</strong> <span id="rec-currency-secondary">US$ / USD</span></div>
+    <div><strong>Tipo de cambio:</strong> <span id="rec-currency-rate">T/C no configurado</span></div>
+    <div id="rec-currency-note" class="fin-help">Fuente: Configuración → Moneda.</div>
+  </div>
+
+  <!-- LISTA / HISTÓRICO -->
+  <div id="recibos-list">
+    <div class="fin-filters-row fin-filters-row--compact fin-receipts-toolbar">
+      <div class="fin-inline-group">
+        <button type="button" id="rec-new" class="btn-small">+ Nuevo recibo</button>
+        <button type="button" id="rec-refresh" class="btn-small">Actualizar</button>
+      </div>
+
+      <label class="fin-grow">
+        Buscar (N° o Cliente)
+        <input type="text" id="rec-search" placeholder="Ej: 0001 o Juan" autocomplete="off">
+      </label>
+
+      <div class="fin-inline-group">
+        <button type="button" id="rec-filter-toggle" class="btn-small">Filtro</button>
+        <button type="button" id="rec-filter-clear" class="btn-small">Limpiar</button>
+      </div>
+
+      <div id="rec-count" class="fin-muted"></div>
+    </div>
+
+    <div id="rec-filters-panel" class="fin-filters-row fin-filters-row--compact fin-receipts-filters hidden">
+      <label>
+        Estado
+        <select id="rec-filter-status">
+          <option value="all">Todos</option>
+          <option value="DRAFT">BORRADOR</option>
+          <option value="ISSUED">EMITIDO</option>
+          <option value="VOID">ANULADO</option>
+        </select>
+      </label>
+
+      <label>
+        Desde
+        <input type="date" id="rec-filter-from">
+      </label>
+
+      <label>
+        Hasta
+        <input type="date" id="rec-filter-to">
+      </label>
+
+      <label>
+        Pago
+        <select id="rec-filter-pay">
+          <option value="all">Todos</option>
+          <option value="CASH">Efectivo</option>
+          <option value="TRANSFER">Transferencia</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="fin-table-wrapper">
+      <table class="fin-table fin-receipts-table" aria-label="Histórico de recibos">
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Pago / Cuenta</th>
+            <th class="num">Total / Eq.</th>
+            <th>Estado</th>
+            <th class="fin-actions-cell">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="rec-tbody"></tbody>
+      </table>
+    </div>
+
+    <p class="fin-help">Tip: <strong>Ver</strong> siempre. <strong>Editar</strong> solo en <strong>BORRADOR</strong>. <strong>Anular</strong> solo en <strong>EMITIDO</strong>. <strong>Reemitir</strong> en <strong>EMITIDO</strong> o <strong>ANULADO</strong>.</p>
+  </div>
+
+  <!-- DETALLE / EDITOR -->
+  <div id="recibos-editor" class="hidden">
+    <div class="fin-inline-group fin-receipt-editor-head" style="justify-content:space-between; flex-wrap:wrap; gap:10px;">
+      <div>
+        <strong id="rec-editor-title">Editar borrador</strong>
+        <div id="rec-editor-meta" class="fin-help" style="margin:2px 0 0"></div>
+      </div>
+    </div>
+
+    <div id="rec-alert" class="fin-integrity-banner hidden"></div>
+    <p id="rec-mode-hint" class="fin-help" style="margin-top:6px;"></p>
+
+    <form id="rec-form" class="fin-form" autocomplete="off">
+      <input type="hidden" id="rec-id" value="">
+
+      <div class="fin-form-row">
+        <label class="fin-form-grow">
+          Cliente (nombre)
+          <input type="text" id="rec-client" placeholder="Ej: Juan Guadamuz">
+        </label>
+
+        <label>
+          Fecha
+          <input type="date" id="rec-date">
+        </label>
+      </div>
+
+      <div class="fin-form-row">
+        <label class="fin-form-grow">
+          Cuenta financiera de cobro
+          <select id="rec-financial-account">
+            <option value="">Seleccione cuenta financiera…</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="rec-financial-meta" class="fin-movement-meta">Seleccione una cuenta financiera activa para detectar moneda, cuenta contable y equivalente C$.</div>
+
+      <div class="fin-form-row">
+        <label class="fin-form-grow">
+          Clasificación operativa
+          <select id="rec-operational-class">
+            <option value="ADDITIONAL_INCOME">Ingreso Adicional</option>
+            <option value="EXPENSE">Gasto</option>
+            <option value="CASH_IN">Entrada de efectivo / fondo</option>
+            <option value="CASH_OUT">Salida de efectivo / retiro</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="fin-help">Esta clasificación prepara el Tablero operativo: fondos y retiros mueven dinero, pero no se convierten en utilidad ni gasto.</p>
+
+      <div class="fin-form-row">
+        <div class="fin-form-grow">
+          <div class="fin-label">Tipo de pago</div>
+          <div class="fin-seg" role="group" aria-label="Tipo de pago">
+            <button type="button" id="rec-pay-cash" class="fin-seg-btn active" data-pay="CASH">Efectivo</button>
+            <button type="button" id="rec-pay-transfer" class="fin-seg-btn" data-pay="TRANSFER">Transferencia</button>
+          </div>
+        </div>
+
+
+        <label id="rec-bank-wrap" class="fin-form-grow hidden">
+          Banco (solo transferencia)
+          <input type="text" id="rec-bank" placeholder="Ej: BAC, Lafise, Banpro">
+        </label>
+
+
+        <label id="rec-ref-wrap" class="fin-form-grow hidden">
+          Referencia (solo transferencia, opcional)
+          <input type="text" id="rec-ref" placeholder="Ej: #TRX-1234">
+        </label>
+      </div>
+
+      <section class="fin-subsection">
+        <header class="fin-section-header fin-section-header--sub">
+          <h3>Líneas</h3>
+          <p>Agrega o quita líneas. Totales se calculan automáticamente.</p>
+        </header>
+
+        <div class="fin-table-wrapper">
+          <table class="fin-table rec-lines-table" aria-label="Líneas del recibo">
+            <thead>
+              <tr>
+                <th>Ítem</th>
+                <th class="num">Qty</th>
+                <th class="num">Precio</th>
+                <th class="num">Desc/U</th>
+                <th class="num">Total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rec-lines-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="fin-inline-group" style="margin-top:10px; justify-content:space-between; flex-wrap:wrap;">
+          <button type="button" id="rec-add-line" class="btn-small">+ Agregar línea</button>
+
+          <div class="rec-totals rec-totals--multi">
+            <div><span class="fin-muted">Moneda</span> <strong id="rec-currency-label">C$ / NIO</strong></div>
+            <div><span class="fin-muted">Subtotal</span> <strong id="rec-subtotal">C$ 0.00</strong></div>
+            <div><span class="fin-muted">Descuento</span> <strong id="rec-discount">C$ 0.00</strong></div>
+            <div><span class="fin-muted">Total original</span> <strong id="rec-total">C$ 0.00</strong></div>
+            <div><span class="fin-muted">Equiv. C$</span> <strong id="rec-base-total">C$ 0.00</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="fin-form-row" style="justify-content:flex-end;">
+        <div class="fin-actions">
+          <button type="button" id="rec-save" class="btn-ghost">Guardar borrador</button>
+          <button type="button" id="rec-issue" class="btn-primary">Emitir</button>
+          <button type="button" id="rec-print" class="btn-primary hidden">Imprimir/PDF</button>
+          <button type="button" id="rec-cancel" class="btn-ghost">Cancelar</button>
+        </div>
+      </div>
+
+      <p class="fin-help">Regla: todo recibo nuevo requiere <strong>cuenta financiera de cobro</strong>. Si la cuenta es <strong>US$</strong>, el T/C vigente se lee desde <strong>Configuración → Moneda</strong> y queda guardado como snapshot. Si el pago es transferencia, el banco es obligatorio.</p>
+    </form>
+  </div>
+</section>
+
+<!-- CATÁLOGO DE CUENTAS -->
+<section id="view-catalogo" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Catálogo de Cuentas</h2>
+    <p>Catálogo jerárquico base con reglas seguras: raíces fijas, subcuentas con código automático, cuentas agrupadoras/posteables y bloqueos para no dañar históricos.</p>
+  </header>
+
+  <div class="fin-filters-row fin-filters-row--compact fin-catalog-toolbar">
+    <label class="fin-grow">
+      Buscar (código o nombre)
+      <input type="text" id="cat-search" placeholder="Ej: 4100, caja, ventas…" autocomplete="off">
+    </label>
+
+    <div class="fin-inline-group fin-catalog-actions">
+      <button type="button" id="cat-new" class="btn-small" title="Crear subcuenta con código automático">+ Nueva subcuenta</button>
+      <button type="button" id="cat-refresh" class="btn-small">Actualizar</button>
+      <button type="button" id="cat-export" class="btn-small">Exportar Excel</button>
+    </div>
+  </div>
+
+  <p id="cat-help" class="fin-help">
+    El Catálogo inicia con las 7 raíces fijas. Las agrupadoras ordenan y permiten subcuentas; las posteables aceptarán movimientos en el futuro Diario Contable. Las cuentas con movimientos o subcuentas quedan protegidas.
+  </p>
+
+  <section class="fin-account-selector-card" aria-label="Selector contable reutilizable">
+    <div class="fin-account-selector-card-head">
+      <div>
+        <h3>Selector contable</h3>
+        <p>Prueba segura del selector reutilizable para futuras líneas Cuenta / Debe / Haber. No registra movimientos ni modifica el Diario actual.</p>
+      </div>
+      <span class="fin-pill fin-pill--gold">Selector activo</span>
+    </div>
+    <div id="cat-account-selector-test"></div>
+    <p id="cat-account-selector-selected" class="fin-help">Sin cuenta seleccionada.</p>
+  </section>
+
+  <div class="fin-table-wrapper">
+    <table class="fin-table fin-catalog-table" aria-label="Catálogo de cuentas">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Tipo</th>
+          <th>Estado</th>
+          <th>Protegida</th>
+          <th>Usada</th>
+          <th class="fin-actions-cell">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="cat-tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- MODAL: CREAR / EDITAR CUENTA -->
+<div id="cat-modal" class="fin-modal" aria-hidden="true">
+  <div class="fin-modal-content" role="dialog" aria-modal="true" aria-labelledby="cat-modal-title">
+    <div class="fin-modal-header">
+      <div>
+        <strong id="cat-modal-title">Cuenta</strong>
+        <div id="cat-modal-sub" class="fin-help" style="margin:2px 0 0"></div>
+      </div>
+      <button type="button" id="cat-modal-close" class="btn-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="fin-modal-body">
+      <form id="cat-form" class="fin-form fin-form--inmodal" autocomplete="off">
+        <input type="hidden" id="cat-mode" value="new">
+        <input type="hidden" id="cat-edit-code" value="">
+
+        <div class="fin-form-row">
+          <label class="fin-form-grow">
+            Cuenta padre
+            <select id="cat-parent"></select>
+          </label>
+
+          <label>
+            Código sugerido
+            <input type="text" id="cat-code" readonly placeholder="Automático">
+          </label>
+        </div>
+
+        <div class="fin-form-row">
+          <label class="fin-form-grow">
+            Nombre
+            <input type="text" id="cat-name" placeholder="Ej: Caja, Bancos, Banco Lafise C$">
+          </label>
+
+          <label>
+            Tipo
+            <input type="text" id="cat-type-preview" readonly placeholder="—">
+          </label>
+
+          <label>
+            Naturaleza
+            <input type="text" id="cat-nature-preview" readonly placeholder="—">
+          </label>
+        </div>
+
+        <div class="fin-form-row">
+          <label>
+            Clasificación
+            <select id="cat-postable">
+              <option value="postable">Posteable</option>
+              <option value="grouping">Agrupadora</option>
+            </select>
+          </label>
+
+          <div class="fin-actions">
+            <button type="button" id="cat-save" class="btn-primary">Guardar</button>
+            <button type="button" id="cat-cancel" class="btn-ghost">Cancelar</button>
+          </div>
+        </div>
+
+        <p id="cat-form-msg" class="fin-help"></p>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SELECTOR CONTABLE REUTILIZABLE -->
+<div id="account-picker-modal" class="fin-modal fin-account-picker-modal" aria-hidden="true">
+  <div class="fin-modal-content fin-account-picker-content" role="dialog" aria-modal="true" aria-labelledby="account-picker-title">
+    <div class="fin-modal-header">
+      <div>
+        <strong id="account-picker-title">Seleccionar cuenta contable</strong>
+        <div id="account-picker-count" class="fin-help" style="margin:2px 0 0">Solo cuentas activas y posteables</div>
+      </div>
+      <button type="button" id="account-picker-close" class="btn-close" aria-label="Cerrar">×</button>
+    </div>
+    <div class="fin-modal-body">
+      <div class="fin-account-picker-search-row">
+        <label class="fin-form-grow">
+          Buscar cuenta por código o nombre
+          <input type="text" id="account-picker-search" placeholder="Ej: 1211, banco, ventas…" autocomplete="off">
+        </label>
+        <button type="button" id="account-picker-clear" class="btn-small">Limpiar</button>
+      </div>
+      <div id="account-picker-results" class="fin-account-picker-results"></div>
+      <div class="fin-actions fin-account-picker-footer">
+        <button type="button" id="account-picker-cancel" class="btn-ghost">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CAJA CHICA (FÍSICA / INFORMATIVA) -->
+<section id="view-cajachica" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Caja Chica</h2>
+    <p>Conteo físico de efectivo por denominaciones (solo informativo). No genera asientos, no afecta la cuenta contable “Caja”.</p>
+  </header>
+
+  <div class="cc-topbar">
+    <div class="cc-tabs" role="tablist" aria-label="Moneda">
+      <button type="button" class="cc-tab active" data-currency="NIO" aria-selected="true">C$</button>
+      <button type="button" class="cc-tab" data-currency="USD" aria-selected="false">USD</button>
+    </div>
+    <div class="cc-meta">
+      <span id="cc-updated" class="cc-updated">Actualizado: —</span>
+    </div>
+  </div>
+
+  <section class="cc-consolidated-card" aria-label="Resumen consolidado Caja Chica">
+    <div class="cc-consolidated-head">
+      <div>
+        <h3>Resumen consolidado</h3>
+        <p>Vista informativa C$ + USD</p>
+      </div>
+    </div>
+
+    <div class="cc-consolidated-grid">
+      <div class="cc-summary-item">
+        <span>Total C$</span>
+        <strong id="cc-summary-nio">C$ 0.00</strong>
+      </div>
+      <div class="cc-summary-item">
+        <span>Total USD</span>
+        <strong id="cc-summary-usd">US$ 0.00</strong>
+      </div>
+      <div class="cc-summary-item">
+        <span>Total equivalente en C$</span>
+        <strong id="cc-summary-eq-nio">—</strong>
+      </div>
+      <div class="cc-summary-item">
+        <span>Total equivalente en USD</span>
+        <strong id="cc-summary-eq-usd">—</strong>
+      </div>
+      <label class="cc-summary-item cc-summary-rate cc-summary-rate-readonly" for="cc-fx-rate">
+        <span>T/C central</span>
+        <input id="cc-fx-rate" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Configurar en Moneda" value="" aria-label="T/C central desde Configuración Moneda" readonly disabled>
+        <small id="cc-central-fx-note" class="cc-central-fx-note">Fuente: Configuración → Moneda</small>
+      </label>
+      <div class="cc-summary-item">
+        <span>T/C usado en consolidado</span>
+        <strong id="cc-summary-fx-used">—</strong>
+        <small id="cc-summary-fx-source" class="cc-central-fx-note">Sin fuente activa</small>
+      </div>
+      <div class="cc-summary-item cc-summary-item-wide">
+        <span>Última actualización Moneda</span>
+        <strong id="cc-currency-updated-at">Sin registros</strong>
+      </div>
+      <div class="cc-summary-item cc-summary-item-wide">
+        <span>Última Actualización Caja Chica</span>
+        <strong id="cc-summary-last-update">Sin actualizar</strong>
+      </div>
+    </div>
+  </section>
+
+  <div class="fin-table-wrapper cc-table-wrap">
+    <table class="fin-table cc-table" aria-label="Conteo Caja Chica">
+      <thead>
+        <tr>
+          <th>Denominación</th>
+          <th style="width:130px">Cantidad</th>
+          <th>Subtotal</th>
+        </tr>
+      </thead>
+      <tbody id="cc-tbody"></tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2" id="cc-total-label">Total</td>
+          <td><span id="cc-total-prefix">C$</span> <span id="cc-total-value">0.00</span></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="cc-actions">
+    <button type="button" id="cc-save" class="btn-primary cc-btn">Guardar</button>
+    <button type="button" id="cc-reset" class="btn-danger">Reset a cero</button>
+    <button type="button" id="cc-recalc" class="btn-small">Recalcular</button>
+    <span id="cc-msg" class="cc-msg"></span>
+  </div>
+
+  <p class="fin-help">Tip: este snapshot lo puede leer POS manualmente como saldo inicial cuando lo habilitas con “Sincronizar”.</p>
+</section>
+
+<!-- CUENTAS POR COBRAR -->
+<section id="view-cobrar" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Cobrar</h2>
+    <p>Control de cuentas pendientes agrupadas por cliente. Esta etapa es informativa y no genera recibos ni movimientos financieros.</p>
+  </header>
+  <div class="fin-filters-row fin-filters-row--compact cobrar-toolbar">
+    <button type="button" id="cobrar-new" class="btn-primary cobrar-action-btn">＋ Nueva cuenta</button>
+    <label class="fin-grow">Buscar cliente
+      <input type="search" id="cobrar-search" placeholder="Nombre del cliente…" autocomplete="off">
+    </label>
+    <button type="button" id="cobrar-refresh" class="btn-small cobrar-action-btn">↻ Actualizar</button>
+    <div id="cobrar-count" class="fin-muted" aria-live="polite"></div>
+  </div>
+  <div class="fin-table-wrapper cobrar-table-wrap">
+    <table class="fin-table cobrar-summary-table" aria-label="Cuentas por cobrar pendientes">
+      <thead><tr><th>Cliente</th><th>Conceptos pendientes</th><th class="num">Monto pendiente</th><th>Fecha más próxima</th><th>Estado</th><th class="fin-actions-cell">Acciones</th></tr></thead>
+      <tbody id="cobrar-tbody"></tbody>
+    </table>
+  </div>
+  <p class="fin-help">Cada fila consolida todas las partidas pendientes. Use <strong>Cobrar</strong> para seleccionar únicamente las que fueron pagadas.</p>
+  <section id="cobrar-editor" class="cobrar-editor hidden" aria-label="Editor de cuenta por cobrar">
+    <header class="fin-section-header fin-section-header--sub cobrar-editor-head">
+      <div><h3 id="cobrar-editor-title">Nueva cuenta por cobrar</h3><p id="cobrar-editor-help">Seleccione un cliente del catálogo o escriba un nombre manual.</p></div>
+      <button type="button" id="cobrar-close" class="btn-close" aria-label="Cerrar editor">×</button>
+    </header>
+    <form id="cobrar-form" class="fin-form" autocomplete="off">
+      <input type="hidden" id="cobrar-group-key">
+      <div class="fin-form-row"><label class="fin-form-grow">Cliente
+        <input type="text" id="cobrar-client" list="cobrar-client-options" placeholder="Buscar o escribir cliente…" required>
+        <datalist id="cobrar-client-options"></datalist>
+      </label></div>
+      <div class="fin-table-wrapper">
+        <table class="fin-table cobrar-lines-table" aria-label="Partidas pendientes del cliente">
+          <thead><tr><th>Descripción</th><th class="num">Monto</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="cobrar-lines-tbody"></tbody>
+        </table>
+      </div>
+      <div class="cobrar-editor-actions">
+        <button type="button" id="cobrar-add-line" class="btn-small cobrar-action-btn">＋ Agregar partida</button><span class="fin-grow"></span>
+        <button type="button" id="cobrar-cancel" class="btn-ghost cobrar-action-btn">Cancelar</button>
+        <button type="submit" id="cobrar-save" class="btn-primary cobrar-action-btn">Guardar pendientes</button>
+      </div>
+      <p id="cobrar-form-message" class="fin-help" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <details id="cobrar-history" class="cobrar-history">
+    <summary><span>Histórico de cobros</span><strong id="cobrar-history-count">0 partidas pagadas</strong></summary>
+    <div class="fin-table-wrapper cobrar-history-wrap">
+      <table class="fin-table cobrar-history-table" aria-label="Histórico de cuentas cobradas">
+        <thead><tr><th>Fecha de cobro</th><th>Cliente</th><th>Descripción</th><th>Fecha original</th><th class="num">Monto</th><th>Estado</th></tr></thead>
+        <tbody id="cobrar-history-tbody"></tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<!-- CUENTAS POR PAGAR -->
+<section id="view-pagar" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Pagar</h2>
+    <p>Control de obligaciones pendientes agrupadas por proveedor o beneficiario. No genera movimientos financieros ni asientos contables.</p>
+  </header>
+  <div class="fin-filters-row fin-filters-row--compact cobrar-toolbar">
+    <button type="button" id="pagar-new" class="btn-primary cobrar-action-btn">＋ Nueva obligación</button>
+    <label class="fin-grow">Buscar proveedor o beneficiario
+      <input type="search" id="pagar-search" placeholder="Nombre…" autocomplete="off">
+    </label>
+    <button type="button" id="pagar-refresh" class="btn-small cobrar-action-btn">↻ Actualizar</button>
+    <div id="pagar-count" class="fin-muted" aria-live="polite"></div>
+  </div>
+  <div class="fin-table-wrapper cobrar-table-wrap">
+    <table class="fin-table cobrar-summary-table" aria-label="Cuentas por pagar pendientes">
+      <thead><tr><th>Proveedor / Beneficiario</th><th>Conceptos pendientes</th><th class="num">Monto pendiente</th><th>Fecha más próxima</th><th>Estado</th><th class="fin-actions-cell">Acciones</th></tr></thead>
+      <tbody id="pagar-tbody"></tbody>
+    </table>
+  </div>
+  <p class="fin-help">Seleccione un proveedor de Finanzas o escriba un beneficiario manual. Use <strong>Pagar</strong> para marcar obligaciones completas.</p>
+  <section id="pagar-editor" class="cobrar-editor hidden" aria-label="Editor de cuenta por pagar">
+    <header class="fin-section-header fin-section-header--sub cobrar-editor-head">
+      <div><h3 id="pagar-editor-title">Nueva cuenta por pagar</h3><p id="pagar-editor-help">Seleccione un proveedor o escriba un beneficiario manual.</p></div>
+      <button type="button" id="pagar-close" class="btn-close" aria-label="Cerrar editor">×</button>
+    </header>
+    <form id="pagar-form" class="fin-form" autocomplete="off">
+      <input type="hidden" id="pagar-group-key">
+      <div class="fin-form-row"><label class="fin-form-grow">Proveedor / Beneficiario
+        <input type="text" id="pagar-party" list="pagar-party-options" placeholder="Buscar o escribir nombre…" required>
+        <datalist id="pagar-party-options"></datalist>
+      </label></div>
+      <div class="fin-table-wrapper">
+        <table class="fin-table cobrar-lines-table" aria-label="Obligaciones pendientes">
+          <thead><tr><th>Descripción</th><th class="num">Monto</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="pagar-lines-tbody"></tbody>
+        </table>
+      </div>
+      <div class="cobrar-editor-actions">
+        <button type="button" id="pagar-add-line" class="btn-small cobrar-action-btn">＋ Agregar obligación</button><span class="fin-grow"></span>
+        <button type="button" id="pagar-cancel" class="btn-ghost cobrar-action-btn">Cancelar</button>
+        <button type="submit" id="pagar-save" class="btn-primary cobrar-action-btn">Guardar pendientes</button>
+      </div>
+      <p id="pagar-form-message" class="fin-help" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+  <details id="pagar-history" class="cobrar-history">
+    <summary><span>Histórico de pagos</span><strong id="pagar-history-count">0 obligaciones pagadas</strong></summary>
+    <div class="fin-table-wrapper cobrar-history-wrap">
+      <table class="fin-table cobrar-history-table" aria-label="Histórico de cuentas pagadas">
+        <thead><tr><th>Fecha de pago</th><th>Proveedor / Beneficiario</th><th>Descripción</th><th>Fecha original</th><th class="num">Monto</th><th>Estado</th></tr></thead>
+        <tbody id="pagar-history-tbody"></tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+
+<!-- CUENTAS FINANCIERAS (CONFIGURACIÓN MULTIBANCO / MULTIMONEDA) -->
+<section id="view-cuentasfinancieras" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Cuentas Financieras</h2>
+    <p>Mapea cajas operativas y bancos maestros a cuentas contables específicas por moneda. Esta capa no registra movimientos ni recalcula históricos.</p>
+  </header>
+
+  <section class="fa-source-card" aria-label="Fuente de bancos">
+    <div>
+      <h3>Fuente maestra</h3>
+      <p>Los bancos se administran en Gestión Operativa → Catálogos → Bancos. Finanzas solo los lee y los mapea a cuentas contables.</p>
+    </div>
+    <div class="fa-actions">
+      <button type="button" id="fa-refresh" class="btn-small">Revisar base</button>
+      <button type="button" id="fa-go-banks" class="btn-ghost">Ir a Catálogos → Bancos</button>
+    </div>
+  </section>
+
+  <section id="fa-currency-reference" class="fin-currency-reference fin-currency-reference--inside" aria-live="polite">
+    <div class="fin-currency-reference__main">
+      <strong>T/C para Finanzas</strong>
+      <span id="fa-currency-primary">C$ / NIO</span>
+      <span class="fin-currency-sep">·</span>
+      <span id="fa-currency-secondary">US$ / USD</span>
+      <span class="fin-currency-sep">·</span>
+      <span id="fa-currency-rate">T/C no configurado</span>
+    </div>
+    <p id="fa-currency-note">Fuente: Configuración → Moneda. Esta sección solo prepara snapshots futuros; no recalcula históricos.</p>
+  </section>
+
+  <div id="fa-status" class="fin-help">Preparando Cuentas Financieras…</div>
+  <div id="fa-summary" class="fa-summary-grid" aria-label="Resumen de cuentas financieras"></div>
+  <div id="fa-list" class="fa-list" aria-label="Listado de cuentas financieras"></div>
+
+  <p class="fin-help fa-final-note">
+    Cuentas Financieras alimenta Diario manual, Transferencias Internas y Compras a Proveedor. Recibos, Caja Chica y Firebase quedan intactos.
+  </p>
+
+</section>
+
+<!-- TRANSFERENCIAS INTERNAS (MULTICUENTA / MULTIMONEDA) -->
+<section id="view-transferencias" class="fin-view">
+  <header class="fin-section-header">
+    <h2>Transferencias Internas</h2>
+    <p>Mueve dinero entre cuentas financieras sin registrarlo como ingreso ni gasto. Cada transferencia genera DEBE destino / HABER origen en C$.</p>
+  </header>
+
+  <section id="ti-currency-reference" class="fin-currency-reference fin-currency-reference--inside" aria-live="polite">
+    <div class="fin-currency-reference__main">
+      <strong>T/C para transferencias</strong>
+      <span id="ti-currency-primary">C$ / NIO</span>
+      <span class="fin-currency-sep">·</span>
+      <span id="ti-currency-secondary">US$ / USD</span>
+      <span class="fin-currency-sep">·</span>
+      <span id="ti-currency-rate">T/C no configurado</span>
+    </div>
+    <p id="ti-currency-note">Fuente: Configuración → Moneda. El T/C queda guardado como snapshot histórico.</p>
+  </section>
+
+  <div id="ti-status" class="fin-help fa-status-warn">Preparando Transferencias Internas…</div>
+
+  <form id="form-transferencia-interna" class="fin-form ti-form">
+    <div class="fin-form-row">
+      <label>
+        Fecha
+        <input type="date" id="ti-fecha">
+      </label>
+
+      <label class="fin-form-grow">
+        Cuenta financiera origen
+        <select id="ti-origen"></select>
+      </label>
+
+      <label class="fin-form-grow">
+        Cuenta financiera destino
+        <select id="ti-destino"></select>
+      </label>
+    </div>
+
+    <div class="fin-form-row">
+      <label>
+        Moneda origen
+        <input type="text" id="ti-moneda-origen" class="ti-readonly" readonly>
+      </label>
+
+      <label>
+        Moneda destino
+        <input type="text" id="ti-moneda-destino" class="ti-readonly" readonly>
+      </label>
+
+      <label>
+        Monto origen
+        <input type="number" id="ti-monto-origen" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+      </label>
+
+      <label>
+        Monto destino
+        <input type="number" id="ti-monto-destino" step="0.01" min="0" inputmode="decimal" placeholder="Se calcula según moneda">
+      </label>
+    </div>
+
+    <div class="fin-form-row">
+      <label>
+        T/C usado
+        <input type="number" id="ti-tc" step="0.01" min="0" inputmode="decimal" class="ti-readonly" readonly placeholder="Solo si aplica">
+      </label>
+
+      <label>
+        Equivalente contable en C$
+        <input type="text" id="ti-equivalente" class="ti-readonly" readonly placeholder="C$ 0.00">
+      </label>
+
+      <label class="fin-form-grow">
+        Referencia / comprobante
+        <input type="text" id="ti-referencia" placeholder="Transferencia # / comprobante (opcional)">
+      </label>
+    </div>
+
+    <div class="fin-form-row">
+      <label class="fin-form-grow">
+        Descripción / nota
+        <input type="text" id="ti-descripcion" placeholder="Nota opcional de la transferencia">
+      </label>
+
+      <button type="button" id="ti-guardar" class="btn-primary">
+        Guardar transferencia
+      </button>
+    </div>
+
+    <div class="fin-movement-meta" id="ti-meta">
+      Seleccione origen y destino para detectar monedas, T/C y asiento contable.
+    </div>
+
+    <p class="fin-help">
+      Misma moneda: monto origen = monto destino. Con US$: usa T/C de Configuración → Moneda y guarda snapshot. No toca Caja Chica, Compras, Recibos ni Firebase.
+    </p>
+  </form>
+
+  <section class="fin-subsection">
+    <header class="fin-section-header fin-section-header--sub">
+      <h3>Listado de transferencias</h3>
+      <p>Histórico local-first de transferencias internas nuevas. Los asientos también quedan visibles en Diario.</p>
+    </header>
+    <div id="ti-list" class="ti-list" aria-label="Listado de transferencias internas"></div>
+  </section>
+</section>
+
+      <!-- ESTADOS FINANCIEROS -->
+      <section id="view-estados" class="fin-view">
+        <header class="fin-section-header">
+          <h2>Estados Financieros</h2>
+          <p>Estado de Resultados, Balance General, Flujo de Caja y Reportes Contables multicuenta/multimoneda usando los asientos de Finanzas.</p>
+        </header>
+
+        <div class="fin-subtabs">
+          <button type="button" class="fin-subtab-btn active" data-subview="er">Estado de Resultados</button>
+          <button type="button" class="fin-subtab-btn" data-subview="bg">Balance General</button>
+          <button type="button" class="fin-subtab-btn" data-subview="fc">Flujo de Caja</button>
+          <button type="button" class="fin-subtab-btn" data-subview="mayor">Mayor por cuenta</button>
+          <button type="button" class="fin-subtab-btn" data-subview="estado-cuenta">Estado de cuenta</button>
+          <button type="button" class="fin-subtab-btn" data-subview="balanza">Balanza</button>
+          <button type="button" class="fin-subtab-btn" data-subview="libro-diario">Libro Diario</button>
+          <button type="button" class="fin-subtab-btn" data-subview="resumen-moneda">Resumen por moneda</button>
+        </div>
+
+        <!-- Estado de Resultados -->
+        <section id="sub-er" class="fin-subview active">
+          <div class="fin-filters-row">
+            <label>
+              Modo de periodo
+              <select id="er-modo">
+                <option value="mes">Por mes</option>
+                <option value="rango">Por rango de fechas</option>
+              </select>
+            </label>
+
+            <div id="er-filtros-mes" class="fin-inline-group">
+              <label>
+                Mes
+                <select id="er-mes"></select>
+              </label>
+              <label>
+                Año
+                <select id="er-anio"></select>
+              </label>
+            </div>
+
+            <div id="er-filtros-rango" class="fin-inline-group hidden">
+              <label>
+                Desde
+                <input type="date" id="er-desde">
+              </label>
+              <label>
+                Hasta
+                <input type="date" id="er-hasta">
+              </label>
+            </div>
+
+            <label>
+              Evento
+              <select id="er-evento"></select>
+            </label>
+          </div>
+
+          <div class="fin-cards-grid fin-cards-grid--er">
+            <article class="fin-card">
+              <h3>Ingresos (4xxx)</h3>
+              <p id="er-ingresos" class="fin-card-number">C$ 0.00</p>
+            </article>
+
+            <article class="fin-card">
+              <h3>COGS (5100)</h3>
+              <p id="er-costos" class="fin-card-number">C$ 0.00</p>
+            </article>
+
+            <article class="fin-card">
+              <h3>Gastos de operación (6xxx)</h3>
+              <p id="er-gastos" class="fin-card-number">C$ 0.00</p>
+            </article>
+
+            <article class="fin-card fin-card-strong">
+              <h3>Utilidad bruta</h3>
+              <p id="er-bruta" class="fin-card-number">C$ 0.00</p>
+            </article>
+
+            <article class="fin-card fin-card-strong">
+              <h3>Utilidad neta</h3>
+              <p id="er-neta" class="fin-card-number">C$ 0.00</p>
+            </article>
+          </div>
+
+          <!-- Exportar Estado de Resultados -->
+          <button type="button" id="btn-export-er" class="fin-btn-export">
+            Exportar Estado de Resultados a Excel
+          </button>
+
+          <p class="fin-help">
+            Nota: los costos (5xxx) se pueden registrar manualmente. La generación automática de costos de venta desde POS queda para una fase futura segura.
+          </p>
+
+          <!-- Aquí, debajo, el JS inserta:
+               - Rentabilidad por presentación
+               - Comparativo de eventos
+               con sus propios botones de exportar -->
+        </section>
+
+        <!-- Balance General -->
+        <section id="sub-bg" class="fin-subview">
+          <div class="fin-filters-row">
+            <label>
+              Fecha de corte
+              <input type="date" id="bg-fecha">
+            </label>
+          </div>
+
+          <div class="fin-table-wrapper">
+            <table class="fin-table">
+              <thead>
+                <tr>
+                  <th>Grupo</th>
+                  <th>Saldo</th>
+                </tr>
+              </thead>
+              <tbody id="bg-tbody">
+                <tr>
+                  <td>Activos (1xxx)</td>
+                  <td id="bg-activos" class="num">C$ 0.00</td>
+                </tr>
+                <tr>
+                  <td>Pasivos (2xxx)</td>
+                  <td id="bg-pasivos" class="num">C$ 0.00</td>
+                </tr>
+                <tr>
+                  <td>Patrimonio (3xxx)</td>
+                  <td id="bg-patrimonio" class="num">C$ 0.00</td>
+                </tr>
+                <tr class="fin-row-strong">
+                  <td>Activos – Pasivos – Patrimonio</td>
+                  <td id="bg-cuadre" class="num">C$ 0.00</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Exportar Balance General -->
+          <button type="button" id="btn-export-bg" class="fin-btn-export">
+            Exportar Balance General a Excel
+          </button>
+
+          <p class="fin-help">
+            Idealmente el Balance cuadra (Activos = Pasivos + Patrimonio). Se consideran las cuentas 1xxx, 2xxx y 3xxx presentes en los asientos registrados.
+          </p>
+        </section>
+
+        <!-- Flujo de Caja -->
+        <section id="sub-fc" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Flujo de Caja simple</h3>
+            <p>
+              Usa el mismo periodo seleccionado en el Estado de Resultados (mes o rango).
+              Calcula Caja + Banco: saldo inicial, entradas, salidas y saldo final,
+              separando operación vs aportes/retiros del dueño.
+            </p>
+          </header>
+
+          <div class="fin-table-wrapper">
+            <table class="fin-table" id="fc-table">
+              <thead>
+                <tr>
+                  <th>Concepto</th>
+                  <th>Monto</th>
+                </tr>
+              </thead>
+              <tbody id="fc-tbody">
+                <tr>
+                  <td colspan="2">Sin datos de efectivo para el periodo seleccionado.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Exportar Flujo de Caja -->
+          <button type="button" id="btn-export-fc" class="fin-btn-export">
+            Exportar Flujo de Caja a Excel
+          </button>
+        </section>
+
+        <!-- Reportes Contables Multibanco / Multimoneda -->
+        <section id="sub-mayor" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Mayor por cuenta</h3>
+            <p>Consulta movimientos por cuenta contable, con saldos en C$, moneda original y T/C snapshot cuando exista metadata.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-mayor-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label class="fin-form-grow">
+              Cuenta contable
+              <select id="rep-mayor-cuenta"></select>
+            </label>
+            <label>Desde<input type="date" id="rep-mayor-desde"></label>
+            <label>Hasta<input type="date" id="rep-mayor-hasta"></label>
+            <label class="fin-form-grow">Buscar<input type="text" id="rep-mayor-buscar" placeholder="Descripción, referencia, asiento…"></label>
+            <button type="button" id="btn-export-mayor" class="fin-btn-export">Exportar Mayor a Excel</button>
+          </div>
+          <div id="rep-mayor-summary" class="fin-report-summary"></div>
+          <div id="rep-mayor-list" class="fin-report-list" aria-label="Mayor por cuenta"></div>
+        </section>
+
+        <section id="sub-estado-cuenta" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Estado de cuenta financiera</h3>
+            <p>Revisa entradas, salidas y saldo de una caja o banco específico sin reclasificar históricos.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-estado-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label class="fin-form-grow">
+              Cuenta financiera
+              <select id="rep-estado-fa"></select>
+            </label>
+            <label>Desde<input type="date" id="rep-estado-desde"></label>
+            <label>Hasta<input type="date" id="rep-estado-hasta"></label>
+            <label class="fin-form-grow">Buscar<input type="text" id="rep-estado-buscar" placeholder="Descripción, referencia, operación…"></label>
+            <button type="button" id="btn-export-estado" class="fin-btn-export">Exportar Estado de cuenta a Excel</button>
+          </div>
+          <div id="rep-estado-summary" class="fin-report-summary"></div>
+          <div id="rep-estado-list" class="fin-report-list" aria-label="Estado de cuenta financiera"></div>
+        </section>
+
+        <section id="sub-balanza" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Balanza de comprobación</h3>
+            <p>Totales DEBE/HABER por cuenta en moneda contable base C$.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-balanza-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label>Desde<input type="date" id="rep-balanza-desde"></label>
+            <label>Hasta<input type="date" id="rep-balanza-hasta"></label>
+            <label class="fin-form-grow">Buscar cuenta<input type="text" id="rep-balanza-buscar" placeholder="Código o nombre…"></label>
+            <button type="button" id="btn-export-balanza" class="fin-btn-export">Exportar Balanza a Excel</button>
+          </div>
+          <div id="rep-balanza-summary" class="fin-report-summary"></div>
+          <div id="rep-balanza-list" class="fin-report-list" aria-label="Balanza de comprobación"></div>
+        </section>
+
+        <section id="sub-libro-diario" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Libro Diario mejorado</h3>
+            <p>Vista formal por asiento, agrupada para iPad: líneas DEBE/HABER, origen, cuenta financiera y moneda original.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-libro-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label>Desde<input type="date" id="rep-libro-desde"></label>
+            <label>Hasta<input type="date" id="rep-libro-hasta"></label>
+            <label>
+              Origen / operación
+              <select id="rep-libro-origen">
+                <option value="todos">Todos</option>
+                <option value="manual">Registro manual</option>
+                <option value="transferencia">Transferencia interna</option>
+                <option value="compra">Compra a proveedor</option>
+                <option value="recibo">Recibo</option>
+                <option value="pos">Importación POS</option>
+                <option value="legacy">Legacy / histórico</option>
+              </select>
+            </label>
+            <label class="fin-form-grow">Buscar<input type="text" id="rep-libro-buscar" placeholder="Descripción, referencia, cuenta…"></label>
+            <button type="button" id="btn-export-libro" class="fin-btn-export">Exportar Libro Diario a Excel</button>
+          </div>
+          <div id="rep-libro-summary" class="fin-report-summary"></div>
+          <div id="rep-libro-list" class="fin-report-list" aria-label="Libro Diario mejorado"></div>
+        </section>
+
+        <section id="sub-resumen-moneda" class="fin-subview">
+          <header class="fin-section-header fin-section-header--sub">
+            <h3>Resumen por moneda</h3>
+            <p>Actividad financiera separada por moneda original. Los US$ usan el T/C guardado en cada movimiento.</p>
+          </header>
+          <div class="fin-report-alerts" id="rep-moneda-alerts"></div>
+          <div class="fin-filters-row fin-report-filters">
+            <label>Desde<input type="date" id="rep-moneda-desde"></label>
+            <label>Hasta<input type="date" id="rep-moneda-hasta"></label>
+            <button type="button" id="btn-export-moneda" class="fin-btn-export">Exportar Resumen por moneda a Excel</button>
+          </div>
+          <div id="rep-moneda-summary" class="fin-report-summary fin-report-summary--wide"></div>
+          <div id="rep-moneda-list" class="fin-report-list" aria-label="Resumen por moneda"></div>
+        </section>
+
+      </section>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast" class="fin-toast"></div>
+
+
+    <!-- Modal detalle de asiento -->
+    <div id="detalle-modal" class="fin-modal">
+      <div class="fin-modal-content">
+        <header class="fin-modal-header">
+          <h3>Detalle de asiento</h3>
+          <button type="button" id="detalle-cerrar" class="btn-close">×</button>
+        </header>
+        <div class="fin-modal-body">
+          <div id="detalle-meta" class="fin-detalle-meta"></div>
+          <div class="fin-table-wrapper">
+            <table class="fin-table">
+              <thead>
+                <tr>
+                  <th>Cuenta</th>
+                  <th>Nombre</th>
+                  <th>Debe</th>
+                  <th>Haber</th>
+                </tr>
+              </thead>
+              <tbody id="detalle-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Print root (Recibos) -->
+  <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.98&r=1"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.98&r=54"></script>
+  <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=4"></script>
+  <script src="/assets/js/a33-module-guard.js?v=4.20.98&r=5"></script>
+
+  <script src="/assets/js/a33-storage.js?v=4.20.98&r=20"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.98&r=1"></script>
+  <script src="/assets/js/a33-export-currency.js?v=4.20.98&r=1"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+
+  <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+  <script src="script.js?v=4.20.98&r=4"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=1"></script>
+</body>
+</html>

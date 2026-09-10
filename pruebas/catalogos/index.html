@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Suite A33 · Catálogos</title>
+  <meta name="description" content="Catálogos operativos de Suite A33: productos, costos, materia prima, envases, tapas, extras, bancos, clientes y datos maestros." />
+  <meta name="theme-color" content="#7b1818" />
+  <script src="/assets/js/a33-theme.js?v=4.20.98&r=11"></script>
+  <link rel="icon" type="image/png" sizes="192x192" href="../icon-a33-192.png" />
+  <link rel="apple-touch-icon" href="../icon-a33-192.png" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.98&r=13" />
+  <script>
+    (function(){
+      try{
+        var key = 'suite_a33_appearance_preference';
+        var pref = localStorage.getItem(key) || 'dark';
+        if (pref !== 'dark' && pref !== 'light' && pref !== 'auto') pref = 'dark';
+        var resolved = pref;
+        if (pref === 'auto'){
+          resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-a33-theme-preference', pref);
+        document.documentElement.setAttribute('data-theme', resolved);
+      }catch(_){
+        document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.98&r=11" />
+  <link rel="stylesheet" href="../assets/css/a33-module-nav.css?v=4.20.98&r=4" />
+  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.98&r=11" />
+  <link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=24" />
+</head>
+<body>
+  <header class="a33-header" role="banner" data-a33-module="catalogos" data-a33-context="catalogos">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Ir al Menú principal">⌂ Menú principal</a>
+    <div class="a33-title">Catálogos</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.98">v...</div>
+  </header>
+
+  <main class="cat-main" role="main">
+    <section class="cat-card cat-shell" aria-label="Apartados de Catálogos">
+      <div class="cat-tabs" aria-label="Tarjetas de Catálogos">
+        <button class="cat-tab" id="tab-productos" type="button" aria-expanded="false" aria-controls="panel-productos" data-target="productos">
+          <span class="cat-tab-icon">🍷</span>
+          <span>
+            <strong>Productos</strong>
+            <small>Presentaciones y precios base</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-costos" type="button" aria-expanded="false" aria-controls="panel-costos" data-target="costos">
+          <span class="cat-tab-icon">🧾</span>
+          <span>
+            <strong>Costos</strong>
+            <small>Precios y contenido base</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-materia-prima" type="button" aria-expanded="false" aria-controls="panel-materia-prima" data-target="materia-prima">
+          <span class="cat-tab-icon">🧺</span>
+          <span>
+            <strong>Materia Prima</strong>
+            <small>Artículos, unidades y precios</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-envases" type="button" aria-expanded="false" aria-controls="panel-envases" data-target="envases">
+          <span class="cat-tab-icon">🍾</span>
+          <span>
+            <strong>Envases</strong>
+            <small>Botellas dinámicas</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-tapas" type="button" aria-expanded="false" aria-controls="panel-tapas" data-target="tapas">
+          <span class="cat-tab-icon">🟤</span>
+          <span>
+            <strong>Tapas</strong>
+            <small>Tapas y corchos</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-extras" type="button" aria-expanded="false" aria-controls="panel-extras" data-target="extras">
+          <span class="cat-tab-icon">➕</span>
+          <span>
+            <strong>Extras</strong>
+            <small>Complementos operativos</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-bancos" type="button" aria-expanded="false" aria-controls="panel-bancos" data-target="bancos">
+          <span class="cat-tab-icon">🏦</span>
+          <span>
+            <strong>Bancos</strong>
+            <small>Cuentas y entidades</small>
+          </span>
+        </button>
+        <button class="cat-tab" id="tab-clientes" type="button" aria-expanded="false" aria-controls="panel-clientes" data-target="clientes">
+          <span class="cat-tab-icon">👥</span>
+          <span>
+            <strong>Clientes</strong>
+            <small>Directorio maestro</small>
+          </span>
+        </button>
+      </div>
+
+      <div class="cat-panels" hidden aria-hidden="true">
+        <nav class="cat-section-nav" aria-label="Navegación interna de Catálogos">
+          <button class="cat-nav-chip cat-nav-chip--back" data-cat-back type="button">← Catálogos</button>
+          <a class="cat-nav-chip cat-nav-chip--home" href="../index.html" aria-label="Ir al Menú principal">⌂ Menú principal</a>
+        </nav>
+        <section class="cat-panel" id="panel-productos" role="region" aria-labelledby="tab-productos" data-panel="productos" aria-hidden="true" tabindex="-1" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Productos maestros</p>
+              <h2>Fuente maestra de productos</h2>
+              <p>Administra aquí productos, precios actuales, estado, capacidad y campos maestros para Receta, Letra, POS, Envase y Tapa. En esta etapa solo se preparan datos; las conexiones dinámicas vendrán después.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Los cambios aplican hacia adelante.</li>
+              <li>No recalcula ventas, pedidos ni cierres históricos.</li>
+              <li>Duplicados legacy se resuelven por lectura canónica segura.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Productos maestros</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-products" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+              </div>
+            </div>
+
+            <div id="cat-products-status" class="cat-status" role="status" aria-live="polite">Cargando productos…</div>
+            <div id="cat-products-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Nuevo producto</p>
+              <h2>Agregar producto vendible</h2>
+            </div>
+            <div class="cat-product-form">
+              <label>Nombre
+                <input id="cat-new-name" autocomplete="off" placeholder="Ej: Botella especial">
+              </label>
+              <label>Precio de venta (C$)
+                <input id="cat-new-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+              </label>
+              <label>ml por unidad / capacidad
+                <input id="cat-new-capacity" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
+              </label>
+              <label>Costo unitario ref. (C$)
+                <input id="cat-new-unit-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
+              </label>
+              <label>Letra
+                <input id="cat-new-letra" autocomplete="off" autocapitalize="characters" maxlength="4" placeholder="Ej: C">
+              </label>
+              <label>Envase
+                <select id="cat-new-envase">
+                  <option value="">Sin envase</option>
+                </select>
+              </label>
+              <label>Tapa
+                <select id="cat-new-tapa">
+                  <option value="">Sin tapa</option>
+                </select>
+              </label>
+              <label class="cat-physical-cup-field">Vaso físico asociado
+                <select id="cat-new-vaso-fisico">
+                  <option value="">Sin asociación</option>
+                </select>
+                <small>Opcional · usa el ID estable de Inventario Varios.</small>
+              </label>
+              <label class="cat-flag"><input id="cat-new-receta" type="checkbox"> Receta</label>
+              <label class="cat-flag"><input id="cat-new-pos" type="checkbox" checked> POS</label>
+              <label class="cat-flag"><input id="cat-new-active" type="checkbox" checked> Activo</label>
+              <label class="cat-flag"><input id="cat-new-manage" type="checkbox" checked> Manejar inventario</label>
+            </div>
+            <div class="cat-actions-end">
+              <button id="cat-add-product" class="cat-btn cat-btn-ok" type="button">+ Agregar producto</button>
+            </div>
+          </article>
+        </section>
+
+
+        <section class="cat-panel" id="panel-costos" role="region" aria-labelledby="tab-costos" data-panel="costos" aria-hidden="true" tabindex="-1" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Costos maestros</p>
+              <h2>Costos</h2>
+              <p>Control de precios, contenido y costos de producción por producto.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Precio corresponde al costo total de la presentación comprada.</li>
+              <li>ML corresponde al contenido total de esa presentación.</li>
+              <li>Los líquidos se calculan automáticamente desde las recetas reales de Producción.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools cat-costs-card">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Configuración base</p>
+                <h2>Referencias de costos</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-save-costs" class="cat-btn cat-btn-ok" type="button">Guardar</button>
+              </div>
+            </div>
+
+            <div id="cat-costs-status" class="cat-status" role="status" aria-live="polite">Cargando costos…</div>
+            <div id="cat-costs-recipe-status" class="cat-status cat-costs-recipe-status" role="status" aria-live="polite">Leyendo recetas reales…</div>
+
+            <div class="cat-costs-summary" aria-label="Resumen de costos">
+              <div><span id="cat-costs-summary-visible">0</span><small>Productos visibles</small></div>
+              <div><span id="cat-costs-summary-complete">0</span><small>Costo completo</small></div>
+              <div><span id="cat-costs-summary-pending">0</span><small>Información pendiente</small></div>
+              <div><span id="cat-costs-summary-no-recipe">0</span><small>Sin receta legible</small></div>
+            </div>
+
+            <div class="cat-costs-table-wrap">
+              <table class="cat-costs-table" aria-label="Costos completos por producto">
+                <colgroup id="cat-costs-colgroup">
+                  <col class="cat-cost-col-reference">
+                  <col class="cat-cost-col-number">
+                  <col class="cat-cost-col-number">
+                </colgroup>
+                <thead>
+                  <tr id="cat-costs-head-row">
+                    <th scope="col">Referencia</th>
+                    <th scope="col">Precio</th>
+                    <th scope="col">ML</th>
+                  </tr>
+                </thead>
+                <tbody id="cat-costs-body">
+                  <tr data-cost-row="vino">
+                    <th scope="row">Vino</th>
+                    <td><input id="cat-cost-vino-price" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="Precio de Vino"></td>
+                    <td><input id="cat-cost-vino-ml" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="ML de Vino"></td>
+                  </tr>
+                  <tr data-cost-row="vodka">
+                    <th scope="row">Vodka</th>
+                    <td><input id="cat-cost-vodka-price" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="Precio de Vodka"></td>
+                    <td><input id="cat-cost-vodka-ml" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="ML de Vodka"></td>
+                  </tr>
+                  <tr data-cost-row="jugo">
+                    <th scope="row">Jugo</th>
+                    <td><input id="cat-cost-jugo-price" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="Precio de Jugo"></td>
+                    <td><input id="cat-cost-jugo-ml" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="ML de Jugo"></td>
+                  </tr>
+                  <tr data-cost-row="sirope">
+                    <th scope="row">Sirope</th>
+                    <td><input id="cat-cost-sirope-price" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="Precio de Sirope"></td>
+                    <td><input id="cat-cost-sirope-ml" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="ML de Sirope"></td>
+                  </tr>
+                  <tr data-cost-row="agua_pura">
+                    <th scope="row">Agua pura</th>
+                    <td><input id="cat-cost-agua-pura-price" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="Precio de Agua pura"></td>
+                    <td><input id="cat-cost-agua-pura-ml" class="cat-cost-input a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Vacío" aria-label="ML de Agua pura"></td>
+                  </tr>
+                  <tr class="cat-cost-locked" data-cost-row="botella">
+                    <th scope="row">Botella</th>
+                    <td><span aria-label="No aplica Precio general">—</span></td>
+                    <td><span aria-label="No aplica ML">—</span></td>
+                  </tr>
+                  <tr class="cat-cost-locked" data-cost-row="calcomania">
+                    <th scope="row">Calcomanía</th>
+                    <td><span aria-label="No aplica Precio general">—</span></td>
+                    <td><span aria-label="No aplica ML">—</span></td>
+                  </tr>
+                  <tr class="cat-cost-total" data-cost-row="total">
+                    <th scope="row">Total</th>
+                    <td><span aria-label="No aplica">—</span></td>
+                    <td><span aria-label="No aplica">—</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p id="cat-costs-empty" class="cat-costs-empty" role="status" aria-live="polite" hidden>No hay productos activos con Receta disponibles para calcular.</p>
+          </article>
+        </section>
+
+
+        <section class="cat-panel" id="panel-materia-prima" role="region" aria-labelledby="tab-materia-prima" data-panel="materia-prima" aria-hidden="true" tabindex="-1" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Fuente oficial para Compras</p>
+              <h2>Materia Prima</h2>
+              <p>Administra manualmente los artículos, unidades y precios de referencia que utilizará Agenda → Compras. El catálogo inicia vacío y no crea registros desde otros módulos.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Solo los artículos activos estarán disponibles para nuevas Compras.</li>
+              <li>Los cambios aplican hacia adelante; las compras guardarán su propia fotografía.</li>
+              <li>No modifica Inventario, Producción, Finanzas, POS ni costos de recetas.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools cat-raw-material-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Artículos de Materia Prima</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-raw-materials" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+              </div>
+            </div>
+            <div id="cat-raw-materials-status" class="cat-status" role="status" aria-live="polite">Cargando Materia Prima…</div>
+            <div class="cat-raw-material-table-scroll" tabindex="0" aria-label="Listado de Materia Prima">
+              <table class="cat-raw-material-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Nombre</th>
+                    <th scope="col">Categoría</th>
+                    <th scope="col">Unidad</th>
+                    <th scope="col">Precio</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Última actualización</th>
+                    <th scope="col" class="cat-raw-material-actions-head">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="cat-raw-materials-body"></tbody>
+              </table>
+            </div>
+            <p id="cat-raw-materials-empty" class="cat-costs-empty" role="status" aria-live="polite" hidden>Materia Prima está vacía. Agrega el primer artículo manualmente.</p>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Nuevo artículo</p>
+              <h2>Agregar Materia Prima</h2>
+            </div>
+            <div class="cat-product-form cat-raw-material-form">
+              <label>Nombre
+                <input id="cat-raw-material-name" autocomplete="off" maxlength="120" placeholder="Ej: Jugo de naranja">
+              </label>
+              <label>Categoría
+                <input id="cat-raw-material-category" autocomplete="off" maxlength="80" placeholder="Ej: Materia prima">
+              </label>
+              <label>Unidad de compra
+                <select id="cat-raw-material-unit">
+                  <option value="">Seleccionar</option>
+                  <option value="Unidad">Unidad</option>
+                  <option value="Cajas">Cajas</option>
+                  <option value="Litros">Litros</option>
+                  <option value="Galones">Galones</option>
+                </select>
+              </label>
+              <label>Precio de referencia (C$)
+                <input id="cat-raw-material-price" class="a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+              </label>
+              <label class="cat-flag"><input id="cat-raw-material-active" type="checkbox" checked> Activo</label>
+              <label class="cat-field-full">Observación
+                <textarea id="cat-raw-material-note" rows="3" maxlength="300" placeholder="Opcional"></textarea>
+              </label>
+            </div>
+            <small id="cat-raw-material-msg" class="cat-muted cat-edit-msg"></small>
+            <div class="cat-actions-end">
+              <button id="cat-save-raw-material" class="cat-btn cat-btn-ok" type="button">+ Agregar artículo</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="cat-panel" id="panel-envases" role="region" aria-labelledby="tab-envases" data-panel="envases" aria-hidden="true" tabindex="-1" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Envases maestros</p>
+              <h2>Botellas dinámicas</h2>
+              <p>Administra aquí botellas y envases futuros para preparar Producción/Inventario sin tocar todavía calculadoras, lotes, POS ni movimientos operativos.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Catálogo maestro independiente de productos vendibles.</li>
+              <li>Los envases se pueden activar o inactivar sin borrar datos.</li>
+              <li>La asociación producto → envase queda preparada desde Productos.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Envases</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-envases" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+                <button id="cat-restore-envases" class="cat-btn cat-btn-warn" type="button">Restaurar base envases</button>
+              </div>
+            </div>
+            <div id="cat-envases-status" class="cat-status" role="status" aria-live="polite">Cargando envases…</div>
+            <div id="cat-envases-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Envase maestro</p>
+              <h2>Agregar envase</h2>
+            </div>
+            <div class="cat-product-form cat-envase-form">
+              <label>Nombre
+                <input id="cat-envase-name" autocomplete="off" placeholder="Ej: Botella Catrina">
+              </label>
+              <label>Capacidad ml
+                <input id="cat-envase-capacity" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
+              </label>
+              <label class="cat-flag"><input id="cat-envase-active" type="checkbox" checked> Activo</label>
+              <label class="cat-field-full">Observación / nota corta
+                <textarea id="cat-envase-note" rows="3" maxlength="160" placeholder="Opcional"></textarea>
+              </label>
+            </div>
+            <small id="cat-envase-msg" class="cat-muted cat-edit-msg"></small>
+            <div class="cat-actions-end">
+              <button id="cat-cancel-envase" class="cat-btn cat-btn-secondary" type="button" hidden>Cancelar edición</button>
+              <button id="cat-save-envase" class="cat-btn cat-btn-ok" type="button">+ Agregar envase</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="cat-panel" id="panel-tapas" role="region" aria-labelledby="tab-tapas" data-panel="tapas" aria-hidden="true" tabindex="-1" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Tapas maestras</p>
+              <h2>Tapas y corchos dinámicos</h2>
+              <p>Administra aquí tapas, corchos o cierres equivalentes para preparar Producción/Inventario sin descontar todavía existencias; la asociación se define desde Productos.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Catálogo maestro independiente de envases y productos vendibles.</li>
+              <li>Las tapas se pueden activar o inactivar sin borrar datos.</li>
+              <li>La asociación producto → tapa queda preparada desde Productos.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Tapas</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-tapas" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+                <button id="cat-restore-tapas" class="cat-btn cat-btn-warn" type="button">Restaurar base tapas</button>
+              </div>
+            </div>
+            <div id="cat-tapas-status" class="cat-status" role="status" aria-live="polite">Cargando tapas…</div>
+            <div id="cat-tapas-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Tapa maestra</p>
+              <h2>Agregar tapa</h2>
+            </div>
+            <div class="cat-product-form cat-tapa-form">
+              <label>Nombre
+                <input id="cat-tapa-name" autocomplete="off" placeholder="Ej: Corcho Catrina">
+              </label>
+              <label class="cat-flag"><input id="cat-tapa-active" type="checkbox" checked> Activo</label>
+              <label class="cat-field-full">Observación / nota corta
+                <textarea id="cat-tapa-note" rows="3" maxlength="160" placeholder="Opcional"></textarea>
+              </label>
+            </div>
+            <small id="cat-tapa-msg" class="cat-muted cat-edit-msg"></small>
+            <div class="cat-actions-end">
+              <button id="cat-cancel-tapa" class="cat-btn cat-btn-secondary" type="button" hidden>Cancelar edición</button>
+              <button id="cat-save-tapa" class="cat-btn cat-btn-ok" type="button">+ Agregar tapa</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="cat-panel" id="panel-extras" role="region" aria-labelledby="tab-extras" data-panel="extras" aria-hidden="true" tabindex="-1" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Extras maestros</p>
+              <h2>Complementos reutilizables</h2>
+              <p>Administra aquí los extras base. POS puede tomarlos como plantilla para el evento activo, conservando precio y snapshot histórico en cada venta.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Los cambios aplican hacia adelante.</li>
+              <li>No recalcula ventas ni cierres anteriores.</li>
+              <li>No borra extras históricos de eventos pasados.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Extras</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-extras" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+              </div>
+            </div>
+            <div id="cat-extras-status" class="cat-status" role="status" aria-live="polite">Cargando extras…</div>
+            <div id="cat-extras-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Extra maestro</p>
+              <h2>Agregar extra</h2>
+            </div>
+            <div class="cat-product-form">
+              <label>Nombre
+                <input id="cat-extra-name" autocomplete="off" placeholder="Ej: Charcutería">
+              </label>
+              <label>Precio base (C$)
+                <input id="cat-extra-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+              </label>
+              <label>Costo unitario ref. (C$)
+                <input id="cat-extra-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
+              </label>
+              <label>Alerta stock bajo ref.
+                <input id="cat-extra-low" type="number" inputmode="numeric" step="1" min="0" placeholder="5">
+              </label>
+              <label class="cat-flag"><input id="cat-extra-active" type="checkbox" checked> Activo</label>
+            </div>
+            <div class="cat-actions-end">
+              <button id="cat-cancel-extra" class="cat-btn cat-btn-secondary" type="button" hidden>Cancelar edición</button>
+              <button id="cat-save-extra" class="cat-btn cat-btn-ok" type="button">+ Agregar extra</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="cat-panel" id="panel-bancos" role="region" aria-labelledby="tab-bancos" data-panel="bancos" aria-hidden="true" tabindex="-1" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Bancos maestros</p>
+              <h2>Bancos y medios de cobro</h2>
+              <p>Administra aquí bancos/cuentas para transferencias y tarjeta. POS lee esta fuente sin recalcular ventas, cierres ni asientos anteriores.</p>
+            </div>
+            <ul class="cat-list">
+              <li>No inventa saldos ni modifica movimientos bancarios.</li>
+              <li>Activa/inactiva bancos para uso futuro.</li>
+              <li>Conserva compatibilidad con POS y reportes existentes.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Bancos</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-banks" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+                <button id="cat-restore-banks" class="cat-btn cat-btn-warn" type="button">Restaurar base bancaria</button>
+              </div>
+            </div>
+            <div id="cat-banks-status" class="cat-status" role="status" aria-live="polite">Cargando bancos…</div>
+            <div id="cat-banks-list" class="cat-products-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Banco maestro</p>
+              <h2>Agregar banco</h2>
+            </div>
+            <div class="cat-product-form">
+              <label>Nombre del banco
+                <input id="cat-bank-name" autocomplete="off" placeholder="Ej: BAC">
+              </label>
+              <label>Uso
+                <select id="cat-bank-type">
+                  <option value="transferencia" selected>Transferencia</option>
+                  <option value="tarjeta">Tarjeta</option>
+                </select>
+              </label>
+              <label>Moneda
+                <select id="cat-bank-currency">
+                  <option value="NIO" selected>C$ / NIO</option>
+                  <option value="USD">US$ / USD</option>
+                  <option value="MIXED">Mixta</option>
+                </select>
+              </label>
+              <label>Cuenta / referencia
+                <input id="cat-bank-ref" autocomplete="off" placeholder="Opcional">
+              </label>
+              <label>Comisión tarjeta %
+                <input id="cat-bank-commission" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+              </label>
+              <label class="cat-flag"><input id="cat-bank-active" type="checkbox" checked> Activo</label>
+            </div>
+            <div class="cat-actions-end">
+              <button id="cat-cancel-bank" class="cat-btn cat-btn-secondary" type="button" hidden>Cancelar edición</button>
+              <button id="cat-save-bank" class="cat-btn cat-btn-ok" type="button">+ Agregar banco</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="cat-panel" id="panel-clientes" role="region" aria-labelledby="tab-clientes" data-panel="clientes" aria-hidden="true" tabindex="-1" hidden>
+          <article class="cat-panel-card cat-products-intro">
+            <div>
+              <p class="cat-eyebrow">Clientes maestros</p>
+              <h2>Directorio central para POS</h2>
+              <p>Administra aquí clientes usados por POS sin mover ventas históricas. Esta vista usa la misma fuente local de Catálogos/POS para evitar duplicados visuales sin tocar históricos.</p>
+            </div>
+            <ul class="cat-list">
+              <li>Los clientes inactivos se conservan para trazabilidad.</li>
+              <li>No cambia ventas, cierres ni históricos.</li>
+              <li>No crea rutas nuevas ni sincronización Firebase para clientes.</li>
+            </ul>
+          </article>
+
+          <article class="cat-product-tools">
+            <div class="cat-toolbar">
+              <div>
+                <p class="cat-eyebrow">Catálogo actual</p>
+                <h2>Clientes</h2>
+              </div>
+              <div class="cat-toolbar-actions">
+                <button id="cat-refresh-customers" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
+              </div>
+            </div>
+            <div class="cat-search-row">
+              <label>Buscar cliente
+                <input id="cat-customer-search" autocomplete="off" placeholder="Nombre, celular, correo…">
+              </label>
+            </div>
+            <div id="cat-customers-status" class="cat-status" role="status" aria-live="polite">Cargando clientes…</div>
+            <div id="cat-customers-list" class="cat-customers-list"></div>
+          </article>
+
+          <article class="cat-product-form-card">
+            <div>
+              <p class="cat-eyebrow">Cliente maestro</p>
+              <h2>Agregar cliente</h2>
+            </div>
+            <div class="cat-product-form cat-customer-form">
+              <label>Nombre
+                <input id="cat-customer-name" autocomplete="off" placeholder="Nombre del cliente">
+              </label>
+              <label>Celular
+                <input id="cat-customer-cell" autocomplete="off" inputmode="tel" placeholder="Opcional">
+              </label>
+              <label>Correo
+                <input id="cat-customer-email" autocomplete="off" inputmode="email" placeholder="Opcional">
+              </label>
+              <label>Dirección
+                <input id="cat-customer-address" autocomplete="off" placeholder="Opcional">
+              </label>
+              <label class="cat-flag"><input id="cat-customer-active" type="checkbox" checked> Activo</label>
+              <label class="cat-field-full">Notas
+                <textarea id="cat-customer-notes" rows="3" placeholder="Opcional"></textarea>
+              </label>
+            </div>
+            <small id="cat-customer-msg" class="cat-muted cat-edit-msg"></small>
+            <div class="cat-actions-end">
+              <button id="cat-save-customer" class="cat-btn cat-btn-ok" type="button">+ Agregar cliente</button>
+            </div>
+          </article>
+        </section>
+
+      </div>
+    </section>
+  </main>
+
+
+
+  <div id="cat-raw-material-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-raw-material-modal-title">
+      <button id="cat-raw-material-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Materia Prima</p>
+      <h2 id="cat-raw-material-modal-title">Editar artículo</h2>
+      <p id="cat-raw-material-current" class="cat-muted">Artículo actual: —</p>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Las compras guardadas conservarán el nombre, categoría, unidad y precio utilizados.</div>
+      <div class="cat-product-form cat-product-form-modal cat-raw-material-form">
+        <label>Nombre
+          <input id="cat-edit-raw-material-name" autocomplete="off" maxlength="120" placeholder="Nombre">
+        </label>
+        <label>Categoría
+          <input id="cat-edit-raw-material-category" autocomplete="off" maxlength="80" placeholder="Categoría">
+        </label>
+        <label>Unidad de compra
+          <select id="cat-edit-raw-material-unit">
+            <option value="">Seleccionar</option>
+            <option value="Unidad">Unidad</option>
+            <option value="Cajas">Cajas</option>
+            <option value="Litros">Litros</option>
+            <option value="Galones">Galones</option>
+          </select>
+        </label>
+        <label>Precio de referencia (C$)
+          <input id="cat-edit-raw-material-price" class="a33-num" data-a33-num="1" data-a33-default="" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </label>
+        <label class="cat-flag"><input id="cat-edit-raw-material-active" type="checkbox"> Activo</label>
+        <label class="cat-field-full">Observación
+          <textarea id="cat-edit-raw-material-note" rows="3" maxlength="300" placeholder="Opcional"></textarea>
+        </label>
+      </div>
+      <small id="cat-edit-raw-material-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-raw-material-save" class="cat-btn cat-btn-ok" type="button">Guardar cambios</button>
+        <button id="cat-edit-raw-material-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cat-product-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-product-modal-title">
+      <button id="cat-product-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Producto maestro</p>
+      <h2 id="cat-product-modal-title">Editar producto</h2>
+      <p id="cat-product-current" class="cat-muted">Producto actual: —</p>
+      <div id="cat-product-history-note" class="cat-warn" hidden>Este producto puede tener ventas, inventario, lotes o reempaques asociados. Los cambios aplican hacia adelante; la Letra queda protegida cuando exista historial.</div>
+
+      <div class="cat-product-form cat-product-form-modal">
+        <label>Nombre del producto
+          <input id="cat-edit-name" autocomplete="off" placeholder="Nombre">
+        </label>
+        <label>Precio de venta (C$)
+          <input id="cat-edit-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </label>
+        <label>ml por unidad / capacidad
+          <input id="cat-edit-capacity" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Ej: 750">
+        </label>
+        <label>Costo unitario ref. (C$)
+          <input id="cat-edit-unit-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </label>
+        <label>Letra
+          <input id="cat-edit-letra" autocomplete="off" autocapitalize="characters" maxlength="4" placeholder="Ej: C">
+        </label>
+        <label>Envase
+          <select id="cat-edit-envase">
+            <option value="">Sin envase</option>
+          </select>
+        </label>
+        <label>Tapa
+          <select id="cat-edit-tapa">
+            <option value="">Sin tapa</option>
+          </select>
+        </label>
+        <label class="cat-physical-cup-field">Vaso físico asociado
+          <select id="cat-edit-vaso-fisico">
+            <option value="">Sin asociación</option>
+          </select>
+          <small>Opcional · no descuenta inventario en esta etapa.</small>
+        </label>
+        <label class="cat-flag"><input id="cat-edit-receta" type="checkbox"> Receta</label>
+        <label class="cat-flag"><input id="cat-edit-pos" type="checkbox"> POS</label>
+        <label class="cat-flag"><input id="cat-edit-active" type="checkbox"> Activo</label>
+        <label class="cat-flag"><input id="cat-edit-manage" type="checkbox"> Manejar inventario</label>
+      </div>
+      <small id="cat-edit-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-save" class="cat-btn cat-btn-ok" type="button">Guardar</button>
+        <button id="cat-edit-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="cat-envase-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-envase-modal-title">
+      <button id="cat-envase-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Envase maestro</p>
+      <h2 id="cat-envase-modal-title">Editar envase</h2>
+      <p id="cat-envase-current" class="cat-muted">Envase actual: —</p>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Productos y movimientos históricos conservan sus datos guardados.</div>
+
+      <div class="cat-product-form cat-product-form-modal">
+        <label>Nombre
+          <input id="cat-edit-envase-name" autocomplete="off" placeholder="Ej: Botella Catrina">
+        </label>
+        <label>Capacidad ml
+          <input id="cat-edit-envase-capacity" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
+        </label>
+        <label class="cat-flag"><input id="cat-edit-envase-active" type="checkbox"> Activo</label>
+        <label class="cat-field-full">Observación / nota corta
+          <textarea id="cat-edit-envase-note" rows="3" maxlength="160" placeholder="Opcional"></textarea>
+        </label>
+      </div>
+      <small id="cat-edit-envase-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-envase-save" class="cat-btn cat-btn-ok" type="button">Guardar cambios</button>
+        <button id="cat-edit-envase-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cat-tapa-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-tapa-modal-title">
+      <button id="cat-tapa-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Tapa maestra</p>
+      <h2 id="cat-tapa-modal-title">Editar tapa</h2>
+      <p id="cat-tapa-current" class="cat-muted">Tapa actual: —</p>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Productos y movimientos históricos conservan sus datos guardados.</div>
+
+      <div class="cat-product-form cat-product-form-modal">
+        <label>Nombre
+          <input id="cat-edit-tapa-name" autocomplete="off" placeholder="Ej: Corcho Catrina">
+        </label>
+        <label class="cat-flag"><input id="cat-edit-tapa-active" type="checkbox"> Activo</label>
+        <label class="cat-field-full">Observación / nota corta
+          <textarea id="cat-edit-tapa-note" rows="3" maxlength="160" placeholder="Opcional"></textarea>
+        </label>
+      </div>
+      <small id="cat-edit-tapa-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-tapa-save" class="cat-btn cat-btn-ok" type="button">Guardar cambios</button>
+        <button id="cat-edit-tapa-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cat-extra-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-extra-modal-title">
+      <button id="cat-extra-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Extra maestro</p>
+      <h2 id="cat-extra-modal-title">Editar extra</h2>
+      <p id="cat-extra-current" class="cat-muted">Extra actual: —</p>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Ventas y eventos históricos conservan su snapshot.</div>
+
+      <div class="cat-product-form cat-product-form-modal">
+        <label>Nombre
+          <input id="cat-edit-extra-name" autocomplete="off" placeholder="Ej: Charcutería">
+        </label>
+        <label>Precio base (C$)
+          <input id="cat-edit-extra-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </label>
+        <label>Costo unitario ref. (C$)
+          <input id="cat-edit-extra-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
+        </label>
+        <label>Alerta stock bajo ref.
+          <input id="cat-edit-extra-low" type="number" inputmode="numeric" step="1" min="0" placeholder="5">
+        </label>
+        <label class="cat-flag"><input id="cat-edit-extra-active" type="checkbox"> Activo</label>
+      </div>
+      <small id="cat-edit-extra-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-extra-save" class="cat-btn cat-btn-ok" type="button">Guardar cambios</button>
+        <button id="cat-edit-extra-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cat-bank-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-bank-modal-title">
+      <button id="cat-bank-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Banco maestro</p>
+      <h2 id="cat-bank-modal-title">Editar banco</h2>
+      <p id="cat-bank-current" class="cat-muted">Banco actual: —</p>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Movimientos y ventas históricas no se reescriben.</div>
+
+      <div class="cat-product-form cat-product-form-modal">
+        <label>Nombre del banco
+          <input id="cat-edit-bank-name" autocomplete="off" placeholder="Ej: BAC">
+        </label>
+        <label>Uso
+          <select id="cat-edit-bank-type">
+            <option value="transferencia">Transferencia</option>
+            <option value="tarjeta">Tarjeta</option>
+          </select>
+        </label>
+        <label>Moneda
+          <select id="cat-edit-bank-currency">
+            <option value="NIO">C$ / NIO</option>
+            <option value="USD">US$ / USD</option>
+            <option value="MIXED">Mixta</option>
+          </select>
+        </label>
+        <label>Cuenta / referencia
+          <input id="cat-edit-bank-ref" autocomplete="off" placeholder="Opcional">
+        </label>
+        <label>Comisión tarjeta %
+          <input id="cat-edit-bank-commission" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </label>
+        <label class="cat-flag"><input id="cat-edit-bank-active" type="checkbox"> Activo</label>
+      </div>
+      <small id="cat-edit-bank-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-bank-save" class="cat-btn cat-btn-ok" type="button">Guardar cambios</button>
+        <button id="cat-edit-bank-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="cat-customer-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel cat-customer-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-customer-modal-title">
+      <button id="cat-customer-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Cliente maestro</p>
+      <h2 id="cat-customer-modal-title">Editar cliente</h2>
+      <p id="cat-customer-current" class="cat-muted">Cliente actual: —</p>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Ventas históricas conservan su snapshot y no se reescriben.</div>
+
+      <div class="cat-product-form cat-product-form-modal cat-customer-form-modal">
+        <label>Nombre
+          <input id="cat-edit-customer-name" autocomplete="off" placeholder="Nombre del cliente">
+        </label>
+        <label>Celular
+          <input id="cat-edit-customer-cell" autocomplete="off" inputmode="tel" placeholder="Opcional">
+        </label>
+        <label>Correo
+          <input id="cat-edit-customer-email" autocomplete="off" inputmode="email" placeholder="Opcional">
+        </label>
+        <label>Dirección
+          <input id="cat-edit-customer-address" autocomplete="off" placeholder="Opcional">
+        </label>
+        <label class="cat-flag"><input id="cat-edit-customer-active" type="checkbox"> Activo</label>
+        <label class="cat-field-full">Notas
+          <textarea id="cat-edit-customer-notes" rows="3" placeholder="Opcional"></textarea>
+        </label>
+      </div>
+      <small id="cat-edit-customer-msg" class="cat-muted cat-edit-msg"></small>
+      <div class="cat-modal-actions">
+        <button id="cat-edit-customer-save" class="cat-btn cat-btn-ok" type="button">Guardar cambios</button>
+        <button id="cat-edit-customer-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="cat-customer-view-modal" class="cat-modal" aria-hidden="true">
+    <div class="cat-modal-panel cat-customer-view-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-customer-view-title">
+      <button id="cat-customer-view-close" class="cat-modal-close" type="button">Cerrar</button>
+      <p class="cat-eyebrow">Cliente maestro</p>
+      <h2 id="cat-customer-view-title">Detalle del cliente</h2>
+      <div id="cat-view-customer-merged" class="cat-warn" hidden></div>
+      <dl class="cat-customer-view-grid">
+        <div><dt>Nombre</dt><dd id="cat-view-customer-name">—</dd></div>
+        <div><dt>Estado</dt><dd id="cat-view-customer-status">—</dd></div>
+        <div><dt>Celular</dt><dd id="cat-view-customer-cell">—</dd></div>
+        <div><dt>Última compra</dt><dd id="cat-view-customer-last-purchase">Sin compras</dd></div>
+        <div><dt>Correo</dt><dd id="cat-view-customer-email">—</dd></div>
+        <div><dt>Dirección</dt><dd id="cat-view-customer-address">—</dd></div>
+        <div class="cat-customer-view-wide"><dt>Notas</dt><dd id="cat-view-customer-notes">—</dd></div>
+      </dl>
+      <div class="cat-modal-actions">
+        <button id="cat-customer-view-ok" class="cat-btn cat-btn-secondary" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cat-toast" class="cat-toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
+
+  <script src="/assets/js/a33-release.js?v=4.20.98&r=57"></script>
+  <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=4"></script>
+  <script src="/assets/js/a33-module-guard.js?v=4.20.98&r=5"></script>
+  <script src="/assets/js/a33-storage.js?v=4.20.98&r=20"></script>
+  <script src="/assets/js/a33-product-integrity.js?v=4.20.98&r=1"></script>
+  <script src="/assets/js/a33-materials.js?v=4.20.98&r=2"></script>
+  <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+  <script src="script.js?v=4.20.98&r=36"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=11"></script>
+</body>
+</html>

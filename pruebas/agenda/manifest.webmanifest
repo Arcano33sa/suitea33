@@ -1,0 +1,14 @@
+{
+  "name": "Suite A33 · Agenda",
+  "short_name": "A33 Agenda",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#060606",
+  "theme_color": "#7b1818",
+  "lang": "es",
+  "icons": [
+    { "src": "../icon-a33-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "../icon-a33-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

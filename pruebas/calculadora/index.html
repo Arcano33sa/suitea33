@@ -1,0 +1,3595 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Calculadora de Producción - Arcano 33</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <link rel="icon" type="image/png" sizes="32x32" href="logo-icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="logo-icon-192.png" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.98&r=12" />
+  <script src="/assets/js/a33-theme.js?v=4.20.98&r=7"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 1rem;
+      background: #111;
+      color: #f5f5f5;
+    }
+    html, body { overflow-x: hidden; }
+
+    /* iPad-first: mantener caducidad/hebreo/receta visibles y SIN scroll horizontal */
+    .a33-ipad-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    .a33-ipad-grid > .section { min-width: 0; margin-top: 0; }
+
+    @media (min-width: 880px) {
+      .a33-ipad-grid {
+        grid-template-columns: 0.95fr 1.05fr;
+      }
+    }
+
+    .a33-fechas-badges {
+      margin-top: 0.4rem;
+      margin-bottom: 0.25rem;
+      gap: 0.45rem;
+    }
+    .a33-fechas-badges .badge {
+      font-size: 0.76rem;
+      border-color: rgba(221,191,100,0.32);
+      background: rgba(0,0,0,0.22);
+      white-space: normal;
+    }
+
+    .a33-fechas-legacy { display: block; }
+    @media (min-width: 880px) {
+      .a33-fechas-legacy { display: none; }
+    }
+
+    .a33-table-wrap {
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      border-radius: 10px;
+    }
+    .a33-table-wrap--recetas { max-height: min(460px, 62vh); }
+
+    /* Tablas sin overflow-x: compactas y wrap en iPad */
+    @media (max-width: 1024px) {
+      table { table-layout: fixed; }
+      th, td { padding: 0.22rem; }
+      th { white-space: normal; }
+      td, th { min-width: 0; }
+      input[type="number"], input[type="text"], input[type="date"] { min-width: 0; }
+    }
+
+    /* Botón principal en formato pastilla (sin tapar contenido) */
+    .btn-main { border-radius: 999px; padding: 0.6rem 1rem; }
+    .btn-secondary { border-radius: 999px; }
+
+    h1, h2, h3 {
+      margin-top: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-size: 1.5rem;
+      text-align: center;
+    }
+    h2 {
+      font-size: 1.1rem;
+      margin-top: 1.5rem;
+    }
+    h3 {
+      font-size: 0.95rem;
+      margin-top: 0.75rem;
+    }
+    .app-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: #1b1b1b;
+      border-radius: 10px;
+      padding: 1rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      border: 1px solid #333;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 0.85rem;
+      color: #bbb;
+      margin-bottom: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+    }
+    th, td {
+      border: 1px solid #333;
+      padding: 0.35rem;
+      text-align: center;
+    }
+    th {
+      background: #272727;
+      /* Nota:
+         Estas tablas viven dentro de contenedores con max-height + overflow.
+         En iPad/iOS, un `top` grande en headers sticky puede tapar filas de productos.
+         Aquí el sticky es relativo al scroll del contenedor, así que `top: 0` es lo correcto. */
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    input[type="number"],
+    input[type="text"],
+    input[type="date"],
+    textarea {
+      width: 100%;
+      padding: 0.2rem;
+      background: #111;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #f5f5f5;
+      font-size: 0.8rem;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    input[type="number"]:focus,
+    input[type="text"]:focus,
+    input[type="date"]:focus,
+    textarea:focus {
+      outline: none;
+      border-color: #ddbf64;
+      box-shadow: 0 0 0 1px #ddbf64;
+    }
+    .section {
+      margin-top: 1rem;
+    }
+    .hint {
+      font-size: 0.8rem;
+      color: #aaa;
+      margin-top: 0.25rem;
+    }
+    .btn-main {
+      margin-top: 1rem;
+      width: 100%;
+      padding: 0.7rem;
+      border: none;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #7b1818, #ddbf64);
+      color: #111;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .btn-main:hover {
+      filter: brightness(1.05);
+    }
+    .btn-secondary {
+      margin-top: 0.5rem;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #222;
+      color: #eee;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .btn-secondary:hover {
+      background: #2c2c2c;
+    }
+    .inline-input-btn {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .inline-input-btn input {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .btn-pill {
+      padding: 0.28rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid #444;
+      background: #222;
+      color: #eee;
+      font-weight: 600;
+      font-size: 0.78rem;
+      cursor: pointer;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
+    /* Código de lote completo y adaptable: sin scroll horizontal general. */
+    .inline-input-btn input#lote {
+      flex: 1 1 15rem;
+      min-width: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.86rem;
+    }
+    @media (max-width: 560px) {
+      .inline-input-btn input#lote { flex-basis: 100%; }
+      .inline-input-btn .a33-pill-code,
+      .inline-input-btn .btn-pill { min-height: 42px; }
+    }
+    .btn-pill:hover {
+      background: #2c2c2c;
+    }
+    .btn-pill:active {
+      transform: translateY(1px);
+    }
+
+    .results {
+      margin-top: 1rem;
+      padding: 0.7rem;
+      border-radius: 8px;
+      background: #161616;
+      border: 1px solid #333;
+    }
+    .results-title {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .flex-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .a33-currency-note {
+      margin-top: 0.45rem;
+      opacity: 0.85;
+    }
+
+    .badge {
+      padding: 0.3rem 0.6rem;
+      border-radius: 999px;
+      background: #222;
+      border: 1px solid #444;
+      font-size: 0.75rem;
+      color: #eee;
+    }
+    .logo-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .logo-container img {
+      width: 96px;
+      height: auto;
+      border-radius: 16px;
+    }
+    .fechas-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .fechas-row > div {
+      flex: 1 1 140px;
+    }
+    @media (max-width: 768px) {
+      table {
+        font-size: 0.78rem;
+      }
+      th, td {
+        padding: 0.25rem;
+      }
+    }
+  
+    /* Etapa 2: pill de estado de código (compacto, sin scroll horizontal) */
+    .a33-pill-code {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.18rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      white-space: nowrap;
+      border: 1px solid #444;
+      user-select: none;
+    }
+    .a33-pill-sugerido {
+      background: rgba(221, 191, 100, 0.12);
+      color: #ddbf64;
+      border-color: rgba(221, 191, 100, 0.35);
+    }
+    .a33-pill-editado {
+      background: rgba(123, 24, 24, 0.18);
+      color: #f5f5f5;
+      border-color: rgba(221, 191, 100, 0.25);
+    }
+    .a33-pill-ok {
+      background: rgba(221, 191, 100, 0.22);
+      color: #111;
+      border-color: rgba(221, 191, 100, 0.6);
+    }
+
+    /* A33 — Modal compacto (iPad-friendly) */
+    .a33-modal[hidden] { display: none !important; }
+    .a33-modal {
+      position: fixed;
+      inset: 0;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.66);
+      z-index: 9999;
+    }
+    .a33-modal-card {
+      width: 100%;
+      max-width: 520px;
+      background: #1b1b1b;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 0.9rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .a33-modal-text {
+      font-size: 0.92rem;
+      line-height: 1.35;
+      color: #eee;
+      word-break: break-word;
+    }
+    .a33-mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9em;
+      padding: 0 0.15rem;
+    }
+    .a33-modal-actions {
+      margin-top: 0.85rem;
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .a33-btn-primary-pill {
+      border: none;
+      background: linear-gradient(135deg, #7b1818, #ddbf64);
+      color: #111;
+    }
+    .a33-btn-primary-pill:hover { filter: brightness(1.05); }
+
+    /* Checklist Etapa 3: responsive, PWA y hardening final */
+    .a33-production-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.55rem;
+      margin-top: 1rem;
+    }
+    .a33-production-actions .a33-production-action {
+      width: 100%;
+      min-width: 0;
+      min-height: 48px;
+      margin: 0;
+      padding: 0.65rem 0.45rem;
+      border: none;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #7b1818, #ddbf64);
+      color: #111;
+      font-size: 0.86rem;
+      font-weight: 700;
+      line-height: 1.1;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-production-actions .a33-production-action:hover { filter: brightness(1.05); }
+    .a33-production-actions .a33-production-action:active { transform: translateY(1px); }
+    .a33-production-actions .a33-production-action:disabled {
+      opacity: 0.62;
+      cursor: wait;
+      transform: none;
+    }
+
+    .a33-checklist-view[hidden] { display: none !important; }
+    .a33-checklist-view {
+      position: fixed;
+      inset: 0;
+      z-index: 10020;
+      padding: max(0.7rem, env(safe-area-inset-top)) max(0.7rem, env(safe-area-inset-right)) max(0.7rem, env(safe-area-inset-bottom)) max(0.7rem, env(safe-area-inset-left));
+      background: rgba(0,0,0,0.78);
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      overflow: hidden;
+    }
+    body.a33-checklist-open { overflow: hidden; }
+    .a33-checklist-shell {
+      width: min(100%, 1000px);
+      max-height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid var(--a33-border, rgba(221,191,100,0.24));
+      border-radius: 16px;
+      background: var(--a33-surface-3, #1b1b1b);
+      color: var(--a33-text, #f5f5f5);
+      box-shadow: var(--a33-shadow, 0 18px 42px rgba(0,0,0,0.45));
+      padding: 0.9rem;
+    }
+    .a33-checklist-header {
+      position: sticky;
+      top: -0.9rem;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin: -0.9rem -0.9rem 0.85rem;
+      padding: 0.85rem 0.9rem;
+      background: var(--a33-surface-3, #1b1b1b);
+      border-bottom: 1px solid var(--a33-border-soft, #333);
+    }
+    .a33-checklist-header h2 { margin: 0; font-size: 1.18rem; }
+    .a33-checklist-close {
+      min-height: 44px;
+      padding: 0.45rem 0.9rem;
+      border-radius: 999px;
+      border: 1px solid var(--a33-border, #444);
+      background: var(--a33-surface-2, #222);
+      color: var(--a33-text, #eee);
+      font-weight: 700;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-checklist-block {
+      margin-top: 0.8rem;
+      padding: 0.8rem;
+      border: 1px solid var(--a33-border-soft, #333);
+      border-radius: 13px;
+      background: var(--a33-surface-2, #161616);
+      overflow: hidden;
+    }
+    .a33-checklist-block h3 { margin: 0 0 0.55rem; font-size: 1rem; }
+    .a33-checklist-history-disclosure > summary {
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-checklist-history-disclosure[open] > summary { margin-bottom: 0.55rem; }
+    .a33-checklist-history-disclosure > summary:focus-visible {
+      outline: 3px solid var(--a33-focus, #ddbf64);
+      outline-offset: 3px;
+      border-radius: 6px;
+    }
+    .a33-checklist-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+      border-radius: 10px;
+    }
+    .a33-checklist-table {
+      width: 100%;
+      min-width: 560px;
+      margin-top: 0;
+      table-layout: auto;
+    }
+    .a33-checklist-table th,
+    .a33-checklist-table td {
+      vertical-align: middle;
+    }
+    .a33-checklist-history-table {
+      table-layout: fixed;
+    }
+    .a33-checklist-history-table th,
+    .a33-checklist-history-table td {
+      text-align: center;
+    }
+    @media (min-width: 761px) {
+      .a33-checklist-history-table th:nth-child(1),
+      .a33-checklist-history-table td:nth-child(1) { width: 23%; }
+      .a33-checklist-history-table th:nth-child(2),
+      .a33-checklist-history-table td:nth-child(2) { width: 39%; }
+      .a33-checklist-history-table th:nth-child(3),
+      .a33-checklist-history-table td:nth-child(3) { width: 21%; }
+      .a33-checklist-history-table th:nth-child(4),
+      .a33-checklist-history-table td:nth-child(4) { width: 17%; }
+    }
+    .a33-checklist-lot {
+      text-align: center;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .a33-checklist-action-cell { text-align: center; }
+    .a33-checklist-items-table td:nth-child(2) { text-align: left; }
+    .a33-checklist-value { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .a33-checklist-use {
+      min-width: 76px;
+      min-height: 42px;
+      margin: 0;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid rgba(221,191,100,0.48);
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(123,24,24,0.95), rgba(221,191,100,0.95));
+      color: #111;
+      font-weight: 800;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-checklist-empty {
+      margin: 0;
+      padding: 0.7rem;
+      border-radius: 10px;
+      background: rgba(221,191,100,0.08);
+      border: 1px dashed rgba(221,191,100,0.30);
+      color: var(--a33-muted, #bbb);
+      font-size: 0.86rem;
+      text-align: center;
+    }
+    .a33-checklist-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 0 0 0.65rem;
+    }
+    .a33-checklist-operational {
+      display: grid;
+      gap: 0.3rem;
+      margin: 0 0 0.65rem;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--a33-border-soft, #333);
+      border-radius: 10px;
+      background: rgba(221,191,100,0.06);
+      font-size: 0.88rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .a33-checklist-operational-line { margin: 0; }
+    .a33-checklist-check-cell { width: 92px; }
+    .a33-checklist-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      min-width: 48px;
+      height: 48px;
+      margin: 0 auto;
+      border-radius: 12px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .a33-checklist-toggle input {
+      width: 30px;
+      height: 30px;
+      margin: 0;
+      accent-color: #ddbf64;
+      cursor: pointer;
+    }
+    .a33-checklist-item-row { transition: opacity 0.16s ease, background 0.16s ease; }
+    .a33-checklist-item-row.is-complete {
+      background: rgba(159,224,179,0.12);
+      opacity: 0.7;
+    }
+    .a33-checklist-item-row.is-complete .a33-checklist-product {
+      text-decoration: line-through;
+      text-decoration-thickness: 2px;
+    }
+    .a33-checklist-item-row.is-complete .a33-checklist-product::after {
+      content: " ✓";
+      color: var(--a33-success, #9fe0b3);
+      font-weight: 800;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .a33-checklist-history-row.is-active {
+      background: rgba(221,191,100,0.12);
+      box-shadow: inset 3px 0 0 rgba(221,191,100,0.75);
+    }
+    .a33-checklist-status {
+      min-height: 1.25rem;
+      margin-top: 0.55rem;
+      color: var(--a33-muted, #bbb);
+      font-size: 0.8rem;
+      line-height: 1.25;
+      text-align: center;
+    }
+    .a33-checklist-actions {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.55rem;
+      margin-top: 0.75rem;
+    }
+    .a33-checklist-done {
+      min-width: 132px;
+      min-height: 46px;
+      margin: 0;
+      padding: 0.55rem 1.1rem;
+      border: 1px solid rgba(221,191,100,0.62);
+      border-radius: 999px;
+      background: linear-gradient(135deg, #7b1818, #ddbf64);
+      color: #111;
+      font-weight: 900;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .a33-checklist-done:active { transform: translateY(1px); }
+    .a33-checklist-close:focus-visible,
+    .a33-checklist-use:focus-visible,
+    .a33-checklist-done:focus-visible,
+    .a33-checklist-toggle input:focus-visible {
+      outline: 3px solid var(--a33-focus, #ddbf64);
+      outline-offset: 3px;
+    }
+    .a33-checklist-done:disabled {
+      opacity: 0.62;
+      cursor: wait;
+      transform: none;
+    }
+    .a33-checklist-closed-note {
+      margin: 0 0 0.65rem;
+      padding: 0.58rem 0.7rem;
+      border: 1px solid rgba(159,224,179,0.38);
+      border-radius: 10px;
+      background: rgba(159,224,179,0.10);
+      color: var(--a33-success, #9fe0b3);
+      font-size: 0.84rem;
+      font-weight: 800;
+      text-align: center;
+    }
+    .a33-checklist-toggle input:disabled {
+      opacity: 0.82;
+      cursor: not-allowed;
+      filter: saturate(0.85);
+    }
+    .a33-checklist-status[data-tone="success"] { color: var(--a33-success, #9fe0b3); }
+    .a33-checklist-status[data-tone="error"] { color: #ff9b9b; }
+    .a33-checklist-status[data-tone="saving"] { color: #ddbf64; }
+    @media (max-width: 760px) {
+      .a33-checklist-view,
+      .a33-checklist-shell,
+      .a33-checklist-block,
+      .a33-checklist-table-wrap { min-width: 0; max-width: 100%; }
+      .a33-checklist-table-wrap { overflow-x: visible; }
+      .a33-checklist-table {
+        display: block;
+        width: 100%;
+        min-width: 0;
+      }
+      .a33-checklist-table thead { display: none; }
+      .a33-checklist-table tbody { display: grid; gap: 0.55rem; }
+      .a33-checklist-table tr {
+        display: grid;
+        width: 100%;
+        border: 1px solid var(--a33-border-soft, #333);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.018);
+        overflow: hidden;
+      }
+      .a33-checklist-table td {
+        min-width: 0;
+        border: 0;
+        border-bottom: 1px solid var(--a33-border-soft, #333);
+      }
+      .a33-checklist-table td:last-child { border-bottom: 0; }
+      .a33-checklist-table td[data-label]::before {
+        content: attr(data-label);
+        color: var(--a33-muted, #aaa);
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .a33-checklist-history-table tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .a33-checklist-history-table td {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.2rem;
+        padding: 0.58rem 0.62rem;
+        text-align: center;
+      }
+      .a33-checklist-history-table td:nth-child(3),
+      .a33-checklist-history-table td:nth-child(4) { border-bottom: 0; }
+      .a33-checklist-history-table td:nth-child(4) { align-items: stretch; }
+      .a33-checklist-history-table td:nth-child(4)::before { text-align: center; }
+      .a33-checklist-history-table .a33-checklist-use { width: 100%; min-width: 0; }
+      .a33-checklist-items-table tr {
+        grid-template-columns: 70px minmax(0, 1fr);
+        grid-template-areas: "check product" "check volume";
+      }
+      .a33-checklist-items-table td { padding: 0.58rem 0.62rem; }
+      .a33-checklist-items-table .a33-checklist-check-cell {
+        grid-area: check;
+        width: auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-right: 1px solid var(--a33-border-soft, #333);
+        border-bottom: 0;
+        padding: 0.35rem;
+      }
+      .a33-checklist-items-table .a33-checklist-product {
+        grid-area: product;
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        text-align: left;
+      }
+      .a33-checklist-items-table .a33-checklist-value {
+        grid-area: volume;
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        text-align: left;
+        white-space: normal;
+        border-bottom: 0;
+      }
+    }
+    @media (max-height: 520px) and (orientation: landscape) {
+      .a33-checklist-view { padding-block: max(0.35rem, env(safe-area-inset-top)); }
+      .a33-checklist-shell { border-radius: 10px; }
+      .a33-checklist-block { margin-top: 0.55rem; padding: 0.62rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .a33-checklist-item-row { transition: none; }
+      .a33-checklist-use:active,
+      .a33-checklist-done:active { transform: none; }
+    }
+    @media (max-width: 560px) {
+      .a33-production-actions { gap: 0.35rem; }
+      .a33-production-actions .a33-production-action {
+        min-height: 46px;
+        padding-inline: 0.25rem;
+        font-size: 0.78rem;
+      }
+      .a33-checklist-shell { padding: 0.65rem; border-radius: 12px; }
+      .a33-checklist-header { margin: -0.65rem -0.65rem 0.65rem; padding: 0.7rem 0.65rem; top: -0.65rem; }
+      .a33-checklist-block { padding: 0.6rem; }
+      .a33-checklist-history-table tr { grid-template-columns: 1fr; }
+      .a33-checklist-history-table td:nth-child(3) { border-bottom: 1px solid var(--a33-border-soft, #333); }
+    }
+
+  </style>
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=4" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
+</head>
+<body class="calc-body calc-main-body">
+  <header class="a33-header" role="banner" data-a33-module="produccion">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Calculadora</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.98">v...</div>
+  </header>
+
+  <div class="app-container">
+    <div class="logo-container">
+      <img src="logo-icon-192.png" alt="Arcano 33" />
+    </div>
+    <h1>Calculadora de Producción – Arcano 33</h1>
+    <p class="subtitle">
+      Define la receta por presentación y luego indica cuántas vas a producir. La app te suma la materia prima 🔮
+    </p>
+
+    <div class="a33-ipad-grid">
+    <div class="section">
+      <h2>0. Datos del lote</h2>
+      <p class="hint">
+        Escribe el nombre o código del lote y la fecha de producción. La fecha de caducidad se calcula 2 meses después.
+      </p>
+      <div class="fechas-row">
+        <div>
+          <label for="lote">Código de lote</label>
+          <div class="inline-input-btn">
+            <input type="text" id="lote" placeholder="Ej: A33KIS5786-0xx1" autocomplete="off" />
+            <span id="pill-codigo-estado" class="a33-pill-code a33-pill-sugerido">SUGERIDO</span>
+            <button type="button" id="btn-regenerar-codigo" class="btn-pill">Regenerar</button>
+          </div>
+        </div>
+        <div>
+          <label for="fecha-produccion">Fecha de producción</label>
+          <input type="date" id="fecha-produccion" />
+        </div>
+      </div>
+      <div class="a33-fechas-badges flex-row" aria-label="Fechas del lote">
+        <div class="badge" id="badge-caducidad">Caducidad: Calcula para ver…</div>
+        <div class="badge" id="badge-hebreo">Hebreo: Calcula para ver…</div>
+      </div>
+      <p class="hint a33-fechas-legacy" id="texto-caducidad">Fecha de caducidad: —</p>
+      <p class="hint a33-fechas-legacy" id="texto-fecha-hebreo">Fecha hebrea (producción): —</p>
+
+      <h3>Notas del lote</h3>
+      <textarea id="notas" placeholder="Ej: Pedido para evento, sabor clásico, entrega sábado por la tarde..."></textarea>
+    </div>
+
+    <div class="section">
+      <h2>1. Receta base (ml por unidad de cada presentación)</h2>
+      <p class="hint">
+        Aquí pones cuántos ml de <strong>vino, vodka, jugo, sirope y agua pura</strong> lleva 1 unidad de cada presentación.
+      </p>
+      <div class="a33-table-wrap a33-table-wrap--recetas">
+        <table id="recetas-table">
+          <thead>
+            <tr>
+              <th>Presentación</th>
+              <th>Vino (ml)</th>
+              <th>Vodka (ml)</th>
+              <th>Jugo (ml)</th>
+              <th>Sirope (ml)</th>
+              <th>Agua pura (ml)</th>
+              <th>Costo unitario (C$)</th>
+            </tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+      </div>
+      <button id="btn-guardar-receta" class="btn-secondary">Guardar receta en este navegador</button>
+      <p class="hint">Se guarda en el navegador (localStorage). No necesitas cuenta ni internet.</p>
+    </div>
+    </div>
+
+    <div class="section">
+      <h2>2. Plan de producción (unidades a preparar)</h2>
+      <p class="hint">
+        Escribe cuántas unidades harás de cada presentación. Deja en blanco lo que no vayas a hacer.
+      </p>
+      <div class="a33-table-wrap a33-table-wrap--plan">
+        <table id="plan-table">
+          <thead>
+            <tr>
+              <th>Presentación</th>
+              <th>Envase / tapa</th>
+              <th>Unidades a producir</th>
+            </tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="a33-production-actions" aria-label="Acciones de producción">
+      <button id="btn-calcular" class="a33-production-action" type="button">Calcular</button>
+      <button id="btn-guardar-lote" class="a33-production-action" type="button">Guardar Lote</button>
+      <button id="btn-checklist" class="a33-production-action" type="button">Checklist</button>
+    </div>
+    <p id="hint-resultados" class="hint">Resultados: calcula para ver el resumen (materia prima, caducidad y costos).</p>
+
+    <div id="resultados" class="results" style="display:none;">
+      <div class="results-title">3. Totales de materia prima necesaria</div>
+      <div id="resumen-lote"></div>
+      <div id="resumen-fechas"></div>
+      <div id="totales-ingredientes"></div>
+      <div id="resumen-costos"></div>
+
+      <div class="results-title" style="margin-top:0.8rem;">Resumen de volumen final</div>
+      <div id="resumen-volumen"></div>
+
+      <p class="hint">Guardar Lote confirmará Inventario: descontará materias primas, envases y tapas/corchos; aumentará producto terminado y creará el lote.</p>
+      <button id="btn-exportar" class="btn-secondary">Exportar información del lote (TXT)</button>
+      <p class="hint">Se descargará un archivo .txt con el resumen del lote.</p>
+    </div>
+
+    <button id="btn-limpiar" class="btn-secondary">Limpiar cantidades (no borra recetas)</button>
+  </div>
+
+  <!-- Modal: código duplicado (Etapa 3) -->
+  <div id="a33-modal-dup-codigo" class="a33-modal" hidden aria-hidden="true">
+    <div class="a33-modal-card" role="dialog" aria-modal="true" aria-labelledby="a33-modal-dup-text">
+      <div id="a33-modal-dup-text" class="a33-modal-text"></div>
+      <div class="a33-modal-actions">
+        <button id="a33-modal-dup-aplicar" class="btn-pill a33-btn-primary-pill" type="button">Aplicar</button>
+        <button id="a33-modal-dup-cancelar" class="btn-pill" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <section id="a33-checklist-view" class="a33-checklist-view" hidden aria-hidden="true" aria-labelledby="a33-checklist-title">
+    <div class="a33-checklist-shell" role="dialog" aria-modal="true">
+      <div class="a33-checklist-header">
+        <h2 id="a33-checklist-title">Checklist</h2>
+        <button id="btn-cerrar-checklist" class="a33-checklist-close" type="button">Volver</button>
+      </div>
+
+      <div class="a33-checklist-block">
+        <h3>Pendientes</h3>
+        <div id="a33-checklist-pendientes"></div>
+      </div>
+
+      <div class="a33-checklist-block">
+        <h3>Checklist</h3>
+        <div id="a33-checklist-seleccion"></div>
+        <div id="a33-checklist-contenido">
+          <p class="a33-checklist-empty">Selecciona Usar o Ver en un lote para cargar sus ingredientes.</p>
+        </div>
+        <div id="a33-checklist-estado" class="a33-checklist-status" role="status" aria-live="polite"></div>
+      </div>
+
+      <details class="a33-checklist-block a33-checklist-history-disclosure">
+        <summary>Histórico</summary>
+        <div id="a33-checklist-historico"></div>
+      </details>
+    </div>
+  </section>
+
+  <script src="/assets/js/a33-release.js?v=4.20.98&r=57"></script>
+  <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=4"></script>
+  <script src="/assets/js/a33-module-guard.js?v=4.20.98&r=5"></script>
+
+
+
+  <script src="/assets/js/a33-storage.js?v=4.20.98&r=20"></script>
+  <script src="/assets/js/a33-production.js?v=4.20.98&r=5"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.98&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+  <script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
+
+  <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+  <script>
+    const INGREDIENTES = ["vino", "vodka", "jugo", "sirope", "agua"];
+    const A33_PRODUCTOS_DB_NAME = "a33-pos";
+    const A33_PRODUCTOS_STORE = "products";
+    const A33_ENVASES_CATALOG_KEY = "a33_catalog_envases_v1";
+    const A33_TAPAS_CATALOG_KEY = "a33_catalog_tapas_v1";
+    // Etapa 4/8: no existe ninguna presentación operativa fija.
+    // Los símbolos legacy se conservan únicamente dentro de Lotes para lectura histórica.
+    const A33_LEGACY_PRESENTATION_META = Object.freeze({});
+    const A33_ENVASES_CATALOG_FALLBACK = Object.freeze([]);
+    const A33_TAPAS_CATALOG_FALLBACK = Object.freeze([]);
+    let PRESENTACIONES = [];
+    let A33ProductosEstado = { status: "loading", message: "Leyendo Catálogos → Productos…", duplicateLetters: [] };
+
+    function a33HasOwn(obj, key) {
+      return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
+    }
+
+    function a33Bool(value, fallback) {
+      if (typeof value === "boolean") return value;
+      if (typeof value === "number") return value === 1;
+      const raw = String(value ?? "").trim().toLowerCase();
+      if (["true", "1", "si", "sí", "yes", "y"].includes(raw)) return true;
+      if (["false", "0", "no", "n"].includes(raw)) return false;
+      return !!fallback;
+    }
+
+    function a33NormName(value) {
+      return String(value || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    }
+
+    function a33NormKey(value) {
+      return a33NormName(value).replace(/\s+/g, "");
+    }
+
+    function a33LegacyPresentationIdFromName() {
+      return null;
+    }
+
+    function a33NormalizeLetter(value) {
+      return String(value || "").trim().toUpperCase().replace(/\s+/g, "").slice(0, 4);
+    }
+
+    function a33ProductoActivo(product) {
+      const p = product && typeof product === "object" ? product : {};
+      if (a33HasOwn(p, "active")) return a33Bool(p.active, true);
+      if (a33HasOwn(p, "activo")) return a33Bool(p.activo, true);
+      if (a33HasOwn(p, "isActive")) return a33Bool(p.isActive, true);
+      return true;
+    }
+
+    function a33ProductoConReceta(product) {
+      const p = product && typeof product === "object" ? product : {};
+      if (window.A33Production && typeof A33Production.productHasExplicitRecipe === "function") return A33Production.productHasExplicitRecipe(p);
+      if (a33HasOwn(p, "receta")) return p.receta === true || p.receta === 1 || String(p.receta).toLowerCase() === "true";
+      if (a33HasOwn(p, "hasRecipe")) return p.hasRecipe === true || p.hasRecipe === 1 || String(p.hasRecipe).toLowerCase() === "true";
+      if (a33HasOwn(p, "recipe")) return p.recipe === true || (p.recipe && typeof p.recipe === "object");
+      return false;
+    }
+
+    function a33ProductoEnvaseId(product) {
+      const p = product && typeof product === "object" ? product : {};
+      return String(p.envaseId ?? p.bottleId ?? p.packagingEnvaseId ?? "").trim();
+    }
+
+    function a33ProductoTapaId(product) {
+      const p = product && typeof product === "object" ? product : {};
+      return String(p.tapaId ?? p.capId ?? p.corkId ?? p.packagingTapaId ?? "").trim();
+    }
+
+    function a33ReadJsonLocal(key, fallback) {
+      try {
+        if (window.A33Storage && typeof A33Storage.getJSON === "function") {
+          const val = A33Storage.getJSON(key, fallback, "local");
+          return val == null ? fallback : val;
+        }
+      } catch (e) {}
+      try {
+        const raw = window.localStorage ? localStorage.getItem(key) : null;
+        return raw ? JSON.parse(raw) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    function a33ReadEnvasesCatalog() {
+      const raw = a33ReadJsonLocal(A33_ENVASES_CATALOG_KEY, []);
+      return Array.isArray(raw) ? raw : [];
+    }
+
+    function a33ReadTapasCatalog() {
+      const raw = a33ReadJsonLocal(A33_TAPAS_CATALOG_KEY, []);
+      return Array.isArray(raw) ? raw : [];
+    }
+
+    function a33CatalogFindById(list, id) {
+      const key = String(id || "").trim();
+      if (!key) return null;
+      return (Array.isArray(list) ? list : []).find((x) => x && String(x.id || "").trim() === key) || null;
+    }
+
+    function a33CatalogNameById(list, id, fallback) {
+      const row = a33CatalogFindById(list, id);
+      const name = row && String(row.name || row.nombre || "").trim();
+      return name || fallback || String(id || "").trim();
+    }
+
+    function a33EnvaseInventoryKey(product) {
+      return String((product && product.envaseId) || "").trim();
+    }
+
+    function a33TapaInventoryKey(product) {
+      return String((product && product.tapaId) || "").trim();
+    }
+
+    function a33EnvaseDisplayName(product, envases) {
+      const envaseId = String((product && product.envaseId) || "").trim();
+      return envaseId ? a33CatalogNameById(envases, envaseId, envaseId) : "Sin envase";
+    }
+
+    function a33TapaDisplayName(product, tapas) {
+      const tapaId = String((product && product.tapaId) || "").trim();
+      return tapaId ? a33CatalogNameById(tapas, tapaId, tapaId) : "Sin tapa o corcho";
+    }
+
+    function a33PackagingSummary(product) {
+      const envases = a33ReadEnvasesCatalog();
+      const tapas = a33ReadTapasCatalog();
+      const envaseName = a33EnvaseDisplayName(product, envases);
+      const tapaName = a33TapaDisplayName(product, tapas);
+      const missing = [];
+      if (!a33EnvaseInventoryKey(product)) missing.push("falta envase");
+      if (!a33TapaInventoryKey(product)) missing.push("falta tapa");
+      const base = envaseName + " / " + tapaName;
+      return missing.length ? base + " · " + missing.join(" y ") : base;
+    }
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    function a33NumberOrNull(value) {
+      const n = Number(String(value ?? "").replace(",", "."));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }
+
+    function a33CapacityFromName(name) {
+      const s = String(name || "").toLowerCase();
+      const m = s.match(/(\d+(?:[\.,]\d+)?)\s*(ml|mililitros?|l|lt|litros?)/i);
+      if (!m) return null;
+      const n = a33NumberOrNull(m[1]);
+      if (!n) return null;
+      const unit = String(m[2] || "").toLowerCase();
+      return unit.startsWith("l") && n < 100 ? Math.round(n * 1000) : Math.round(n);
+    }
+
+    function a33CapacityFromEnvase(envases, envaseId) {
+      const id = String(envaseId || "").trim();
+      if (!id) return null;
+      const row = (Array.isArray(envases) ? envases : []).find((x) => x && String(x.id || "").trim() === id);
+      if (!row) return null;
+      return a33NumberOrNull(row.capacityMl ?? row.capacidadMl ?? row.capacity ?? row.ml ?? row.volumenMl);
+    }
+
+    function a33ProductCapacityMl(product, legacyMeta, envases) {
+      const p = product && typeof product === "object" ? product : {};
+      return a33NumberOrNull(p.capacityMl ?? p.capacidadMl ?? p.capacity ?? p.capacidad ?? p.volumenMl ?? p.ml)
+        || a33CapacityFromEnvase(envases, a33ProductoEnvaseId(p))
+        || 0;
+    }
+
+    function a33SafePresentationId(product) {
+      if (window.A33Production && typeof A33Production.productIdOf === "function") return String(A33Production.productIdOf(product) || "").trim();
+      return String((product && (product.productId || product.productoId)) || "").trim();
+    }
+
+    function a33ProductCost(product) {
+      const p = product && typeof product === "object" ? product : {};
+      return a33NumberOrNull(p.unitCost ?? p.costoUnitario ?? p.cost ?? p.costo ?? p.referenceCost ?? p.costoReferencial);
+    }
+
+    function a33ProductoToPresentacion(product, envases) {
+      const p = product && typeof product === "object" ? product : {};
+      if (!a33ProductoActivo(p) || !a33ProductoConReceta(p)) return null;
+      const productId = a33SafePresentationId(p);
+      const name = String(p.name || p.nombre || "").trim();
+      if (!productId || !name) return null;
+      const capacidadMl = a33ProductCapacityMl(p, null, envases);
+      return {
+        id: productId,
+        productId,
+        nombre: name,
+        receta: true,
+        letra: a33NormalizeLetter(p.letra ?? p.Letra ?? p.letter ?? p.productionLetter ?? ""),
+        envaseId: a33ProductoEnvaseId(p),
+        tapaId: a33ProductoTapaId(p),
+        capacidadMl,
+        volumenMl: capacidadMl,
+        costoReferencial: a33ProductCost(p),
+        activo: true,
+        legacy: false
+      };
+    }
+
+    function a33SortPresentaciones(a, b) {
+      return String((a && a.nombre) || "").localeCompare(String((b && b.nombre) || ""), "es-NI", { sensitivity: "base" });
+    }
+
+    function a33SerializePresentacionProducto(p) {
+      return {
+        productId: p.productId,
+        id: p.id,
+        nombre: p.nombre,
+        receta: !!p.receta,
+        letra: p.letra || "",
+        envaseId: p.envaseId || "",
+        tapaId: p.tapaId || "",
+        capacidadMl: Number(p.capacidadMl || p.volumenMl || 0) || 0,
+        costoReferencial: p.costoReferencial == null ? null : p.costoReferencial,
+        activo: p.activo !== false,
+        legacy: !!p.legacy
+      };
+    }
+
+    
+    
+    
+    function a33BuildProductionSnapshot(item, cantidad, fechaIso) {
+      const p = item && typeof item === "object" ? item : {};
+      const qty = normQtyInt(cantidad);
+      const letra = a33NormalizeLetter(p.letra || p.Letra || "");
+      const snap = {
+        productId: String(p.productId ?? p.productoId ?? p.id ?? "").trim(),
+        nombre: String(p.nombre || p.name || p.id || "Producto").trim(),
+        nombreSnapshot: String(p.nombre || p.name || p.id || "Producto").trim(),
+        Letra: letra,
+        letra: letra,
+        cantidad: qty,
+        unidades: qty,
+        envaseId: String(p.envaseId || "").trim(),
+        tapaId: String(p.tapaId || "").trim(),
+        recipeSnapshot: (p.recipeSnapshot && typeof p.recipeSnapshot === "object") ? { ...p.recipeSnapshot } : {},
+        recetaSnapshot: (p.recipeSnapshot && typeof p.recipeSnapshot === "object") ? { ...p.recipeSnapshot } : {},
+        fecha: fechaIso || hoyLocalISO()
+      };
+      const costoUnitario = (p.costoUnitario != null && Number.isFinite(Number(p.costoUnitario)))
+        ? Number(p.costoUnitario)
+        : ((p.costoReferencial != null && Number.isFinite(Number(p.costoReferencial))) ? Number(p.costoReferencial) : null);
+      if (costoUnitario != null) {
+        snap.costoUnitario = costoUnitario;
+        snap.costoTotal = costoUnitario * qty;
+      }
+      if (p.costoReferencial != null && Number.isFinite(Number(p.costoReferencial))) snap.costoReferencial = Number(p.costoReferencial);
+      return snap;
+    }
+
+    function a33BuildLoteDynamicOutputItem(item, cantidad, fechaIso, codigoLote) {
+      const snapshot = a33BuildProductionSnapshot(item, cantidad, fechaIso);
+      const code = normalizarCodigoLote(codigoLote || "");
+      const row = {
+        id: item && item.id ? String(item.id) : snapshot.productId,
+        productId: snapshot.productId,
+        nombre: snapshot.nombre,
+        nombreSnapshot: snapshot.nombreSnapshot || snapshot.nombre,
+        unidades: snapshot.unidades,
+        cantidad: snapshot.cantidad,
+        letra: snapshot.letra,
+        Letra: snapshot.Letra,
+        envaseId: snapshot.envaseId,
+        tapaId: snapshot.tapaId,
+        recipeSnapshot: { ...snapshot.recipeSnapshot },
+        recetaSnapshot: { ...snapshot.recipeSnapshot },
+        fecha: snapshot.fecha,
+        codigo: code,
+        lote: code,
+        batchCode: code,
+        legacy: !!(item && item.legacy),
+        snapshotProduccion: snapshot
+      };
+      if (snapshot.costoUnitario != null) row.costoUnitario = snapshot.costoUnitario;
+      if (snapshot.costoReferencial != null) row.costoReferencial = snapshot.costoReferencial;
+      if (snapshot.costoTotal != null) row.costoTotal = snapshot.costoTotal;
+      return row;
+    }
+
+    
+    
+    async function a33ReadCatalogProducts() {
+      if (!window.A33Production || typeof A33Production.loadFabricableProducts !== "function") return null;
+      const result = await A33Production.loadFabricableProducts();
+      return result.ok ? result.items.map((item) => item.catalogProduct || item) : null;
+    }
+
+    async function cargarPresentacionesDinamicasDesdeCatalogos() {
+      PRESENTACIONES = [];
+      A33ProductosEstado = { status: "loading", message: "Leyendo Catálogos → Productos…", duplicateLetters: [] };
+      try {
+        if (!window.A33Production || typeof A33Production.loadFabricableProducts !== "function") throw new Error("No está disponible el contrato central de Producción.");
+        const result = await A33Production.loadFabricableProducts();
+        if (!result.ok) {
+          A33ProductosEstado = { status: "read-error", message: (result.errors || []).join(" ") || "No se pudieron leer los Productos.", duplicateLetters: [] };
+          PRESENTACIONES = [];
+          return;
+        }
+        PRESENTACIONES = result.items.map((item) => ({ ...item, id: item.productId, legacy: false })).sort(a33SortPresentaciones);
+        const duplicateLetters = Array.isArray(result.duplicateLetters) ? result.duplicateLetters : [];
+        A33ProductosEstado = {
+          status: result.status,
+          duplicateLetters,
+          message: duplicateLetters.length
+            ? "Hay Letras repetidas en Catálogos. Podrás calcular, pero el guardado oficial quedará bloqueado hasta corregirlas."
+            : (PRESENTACIONES.length ? "" : "No hay productos activos con Receta en Catálogos → Productos.")
+        };
+      } catch (e) {
+        PRESENTACIONES = [];
+        A33ProductosEstado = { status: "read-error", message: (e && e.message) || "No se pudieron leer los Productos.", duplicateLetters: [] };
+        console.error("No se pudieron leer productos dinámicos con Receta:", e);
+      }
+    }
+
+    const STORAGE_RECETAS_KEY = "arcano33_recetas_v1";
+    const STORAGE_LOTE_KEY = "arcano33_lote_actual";
+    const STORAGE_FECHA_PROD_KEY = "arcano33_fecha_produccion";
+    const STORAGE_NOTAS_KEY = "arcano33_notas_lote";
+
+    // Código de lote oficial: mes/año hebreo + consecutivo comprimido central
+    const STORAGE_LOTE_CODE_MODE_KEY = "arcano33_calc_codigo_mode"; // AUTO | MANUAL
+    const STORAGE_LOTE_SEQ_LAST_KEY = "arcano33_calc_ultimo_consecutivo"; // 4 dígitos (último usado)
+    const STORAGE_LOTE_SEQ_CURRENT_KEY = "arcano33_calc_consecutivo_actual"; // 4 dígitos (auto en curso)
+    let A33CodigoLoteMode = "AUTO";
+    let A33AutoSeq = "";
+    let A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+    let A33SuppressCodigoInput = false;
+    let A33HasCalculoPrevio = false;
+    let A33LastCalculationSignature = "";
+    let A33SuggestedCode = "";
+
+
+
+
+    function setPillEstadoCodigo(state) {
+      const el = document.getElementById("pill-codigo-estado");
+      if (!el) return;
+      const s = String(state || "").toUpperCase();
+      el.classList.remove("a33-pill-sugerido", "a33-pill-editado", "a33-pill-ok");
+      if (s === "OK") {
+        el.textContent = "OK";
+        el.classList.add("a33-pill-ok");
+      } else if (s === "HISTORICO" || s === "HISTÓRICO") {
+        el.textContent = "HISTÓRICO";
+        el.classList.add("a33-pill-editado");
+      } else if (s === "EDITADO") {
+        el.textContent = "EDITADO";
+        el.classList.add("a33-pill-editado");
+      } else {
+        el.textContent = "SUGERIDO";
+        el.classList.add("a33-pill-sugerido");
+      }
+    }
+
+    function normalizarCodigoLote(raw) {
+      const cleaned = String(raw == null ? "" : raw).trim().replace(/\s+/g, "");
+      if (!cleaned) return "";
+      try {
+        const api = window.A33LotCode;
+        const parsed = api && typeof api.validate === "function" ? api.validate(cleaned) : null;
+        return parsed && parsed.ok ? parsed.code : cleaned;
+      } catch (_) {
+        return cleaned;
+      }
+    }
+
+    function codigoLoteIdentityKey(raw) {
+      const code = normalizarCodigoLote(raw);
+      return code ? code.toLocaleUpperCase("es-NI") : "";
+    }
+
+    function codigoLoteData(parsed) {
+      if (!parsed || !parsed.ok) return null;
+      return {
+        schema: 1,
+        format: parsed.format || "",
+        formatVersion: parsed.formatVersion || "",
+        code: parsed.code,
+        consecutiveNumber: Number.isInteger(parsed.consecutiveNumber) ? parsed.consecutiveNumber : null,
+        hebrewMonthCode: parsed.monthCode || "",
+        hebrewYear: parsed.hebrewYear || null,
+        historical: parsed.format === "historical"
+      };
+    }
+
+    function validarCodigoLoteFuerte(raw) {
+      const code = normalizarCodigoLote(raw);
+      const api = window.A33LotCode;
+      if (!api || typeof api.validate !== "function") {
+        return { ok:false, code, seq:null, format:"unknown", msg:"No está disponible el generador oficial del Código de lote. Recarga la app antes de guardar." };
+      }
+      const parsed = api.validate(code);
+      if (!parsed || !parsed.ok) {
+        return {
+          ok:false,
+          code,
+          seq:null,
+          format:"unknown",
+          msg:"Código inválido. Usa el formato nuevo A33MESAAAA-CONSECUTIVO (ej. A33KIS5786-0xx1). Los códigos históricos siguen siendo reconocidos solo para consulta."
+        };
+      }
+      return {
+        ok:true,
+        code:parsed.code,
+        seq:parsed.consecutiveNumber,
+        format:parsed.format,
+        parsed,
+        msg:""
+      };
+    }
+
+    function existeCodigoEnLotes(lotes, codeUpper) {
+      const key = codigoLoteIdentityKey(codeUpper);
+      return (Array.isArray(lotes) ? lotes : []).some((lote) => {
+        const candidate = lote && (lote.codigo || lote.batchCode || lote.code || lote.lote || "");
+        return key && codigoLoteIdentityKey(candidate) === key;
+      });
+    }
+
+    function proponerSiguienteCodigoDisponible(baseCode, lotes) {
+      const used = new Set();
+      (Array.isArray(lotes) ? lotes : []).forEach(l => {
+        const c = normalizarCodigoLote(l && (l.codigo || l.code || l.lote || ""));
+        const n = extraerSeqDeCodigo(c);
+        if (typeof n === "number" && n > 0) used.add(n);
+      });
+      const last = obtenerUltimoConsecutivoNumerico();
+      const base = validarCodigoLoteFuerte(baseCode);
+      let start = last + 1;
+      if (base.ok && typeof base.seq === "number") start = Math.max(start, base.seq + 1);
+      const next = buscarSiguienteDisponible(start, used);
+      const fechaProdIso = ((document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || hoyLocalISO()).trim();
+      const api = window.A33LotCode;
+      if (!api || typeof api.generate !== "function") return "";
+      const generated = api.generate({
+        productionDate: fechaProdIso,
+        hebrewMonth: A33Hebreo && A33Hebreo.hm ? A33Hebreo.hm : undefined,
+        hebrewYear: A33Hebreo && A33Hebreo.hy ? A33Hebreo.hy : undefined,
+        consecutiveNumber: next
+      });
+      return generated && generated.ok ? generated.code : "";
+    }
+
+    function A33ModalDuplicadoCodigo(nextCode) {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById("a33-modal-dup-codigo");
+        const textEl = document.getElementById("a33-modal-dup-text");
+        const btnApply = document.getElementById("a33-modal-dup-aplicar");
+        const btnCancel = document.getElementById("a33-modal-dup-cancelar");
+        const code = normalizarCodigoLote(nextCode);
+
+        // Fallback ultra-simple
+        if (!overlay || !textEl || !btnApply || !btnCancel) {
+          resolve(confirm("Este código ya fue usado. Siguiente disponible: " + code + ". ¿Aplicar?"));
+          return;
+        }
+
+        textEl.innerHTML = "Este código ya fue usado. Siguiente disponible: <span class='a33-mono'>" +
+          escapeHtml(code) + "</span>. ¿Aplicar?";
+
+        const prevOverflow = document.body.style.overflow;
+        overlay.hidden = false;
+        overlay.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+
+        const cleanup = (val) => {
+          overlay.hidden = true;
+          overlay.setAttribute("aria-hidden", "true");
+          document.body.style.overflow = prevOverflow;
+          btnApply.removeEventListener("click", onApply);
+          btnCancel.removeEventListener("click", onCancel);
+          overlay.removeEventListener("click", onOutside);
+          document.removeEventListener("keydown", onKey);
+          resolve(val);
+        };
+
+        const onApply = (e) => { e.preventDefault(); cleanup(true); };
+        const onCancel = (e) => { e.preventDefault(); cleanup(false); };
+        const onOutside = (e) => { if (e.target === overlay) cleanup(false); };
+        const onKey = (e) => { if (e.key === "Escape") cleanup(false); };
+
+        btnApply.addEventListener("click", onApply);
+        btnCancel.addEventListener("click", onCancel);
+        overlay.addEventListener("click", onOutside);
+        document.addEventListener("keydown", onKey);
+
+        setTimeout(() => { try { btnApply.focus(); } catch (e) {} }, 0);
+      });
+    }
+
+
+
+
+    function hoyLocalISO(){
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+
+    
+    
+    
+    
+    
+    
+
+
+    function getNumberValue(id, opts) {
+      const options = opts || {};
+      const el = document.getElementById(id);
+      if (!el) return options.emptyAsNull ? null : 0;
+      const raw0 = (el.value ?? "").toString();
+      const raw = raw0.trim();
+      if (options.emptyAsNull && raw === "") return null;
+      const normalized = raw.replace(",", ".");
+      const v = parseFloat(normalized);
+      if (!Number.isFinite(v)) return options.emptyAsNull ? null : 0;
+      return v;
+    }
+
+    // qty: entero > 0 (normalizar).
+    function normQtyInt(value) {
+      const n = (typeof value === 'number') ? value : parseFloat(String(value ?? '').replace(',', '.'));
+      if (!Number.isFinite(n)) return 0;
+      const q = Math.trunc(n);
+      return q > 0 ? q : 0;
+    }
+    function formatMl(value) {
+      return value.toFixed(0) + " ml";
+    }
+    function formatLitros(valueMl) {
+      const litros = valueMl / 1000;
+      return litros.toFixed(2) + " L";
+    }
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+
+    // --- Moneda central A33 (lectura/formato seguro) ---
+    function getA33CalculadoraCurrencyState(){
+      try{
+        if (window.A33Currency && typeof window.A33Currency.getState === "function"){
+          return window.A33Currency.getState();
+        }
+      }catch(e){ }
+
+      try{
+        const key = (window.A33Currency && window.A33Currency.storageKey) || "suite_a33_currency_settings_v1";
+        let raw = "";
+        if (window.A33Storage && typeof A33Storage.getItem === "function") raw = A33Storage.getItem(key, "local") || "";
+        if (!raw && window.localStorage) raw = window.localStorage.getItem(key) || "";
+        const parsed = raw ? JSON.parse(raw) : {};
+        const rateRaw = String((parsed && parsed.exchangeRate) || "").trim().replace(",", ".");
+        const rateNum = (/^\d+(?:\.\d{1,2})?$/.test(rateRaw) && Number(rateRaw) > 0) ? Number(rateRaw) : null;
+        return {
+          primary: { symbol:"C$", code:"NIO", name:"Córdoba nicaragüense" },
+          secondary: { symbol:"US$", code:"USD", name:"Dólar estadounidense" },
+          exchangeRate: rateNum,
+          hasExchangeRate: !!rateNum,
+          exchangeRateText: rateNum ? ("T/C " + rateNum.toFixed(2)) : "T/C no configurado"
+        };
+      }catch(e){
+        return {
+          primary: { symbol:"C$", code:"NIO", name:"Córdoba nicaragüense" },
+          secondary: { symbol:"US$", code:"USD", name:"Dólar estadounidense" },
+          exchangeRate: null,
+          hasExchangeRate: false,
+          exchangeRateText: "T/C no configurado"
+        };
+      }
+    }
+
+    function formatA33Cordobas(value){
+      try{
+        if (window.A33Currency && typeof window.A33Currency.formatCordobas === "function"){
+          return window.A33Currency.formatCordobas(value);
+        }
+      }catch(e){ }
+      const n = Number(String(value ?? 0).replace(",", "."));
+      const safe = Number.isFinite(n) ? n : 0;
+      const sign = safe < 0 ? "-" : "";
+      const fixed = Math.abs(safe).toFixed(2);
+      const parts = fixed.split(".");
+      const entero = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      return "C$" + sign + entero + "." + (parts[1] || "00");
+    }
+
+    function getA33CurrencyNoteText(){
+      const st = getA33CalculadoraCurrencyState();
+      const primary = st && st.primary ? st.primary : { symbol:"C$", code:"NIO" };
+      const base = "Moneda: " + (primary.symbol || "C$") + " / " + (primary.code || "NIO");
+      return st && st.hasExchangeRate
+        ? base + " · " + (st.exchangeRateText || ("T/C " + Number(st.exchangeRate || 0).toFixed(2)))
+        : base + " · T/C no configurado en Moneda";
+    }
+
+    function buildA33CurrencyNoteHtml(){
+      return "<p class='hint a33-currency-note'>" + escapeHtml(getA33CurrencyNoteText()) + "</p>";
+    }
+
+    function slugify(text) {
+      return text
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .substring(0, 40) || "arcano33";
+    }
+    function formatearFechaBonita(date) {
+      if (!date) return "";
+      const d = date.getDate().toString().padStart(2, "0");
+      const m = (date.getMonth() + 1).toString().padStart(2, "0");
+      const y = date.getFullYear();
+      return d + "/" + m + "/" + y;
+    }
+    function calcularCaducidad(fechaProdStr) {
+      if (!fechaProdStr) return null;
+      const partes = fechaProdStr.split("-");
+      if (partes.length !== 3) return null;
+      const year = parseInt(partes[0], 10);
+      const month = parseInt(partes[1], 10) - 1;
+      const day = parseInt(partes[2], 10);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+      const fecha = new Date(year, month, day);
+      if (isNaN(fecha.getTime())) return null;
+      const cad = new Date(fecha);
+      cad.setMonth(cad.getMonth() + 2);
+      return cad;
+    }
+    function actualizarTextoCaducidad() {
+      const fechaProdInput = document.getElementById("fecha-produccion");
+      const textoCad = document.getElementById("texto-caducidad");
+      const badgeCad = document.getElementById("badge-caducidad");
+      const valor = (fechaProdInput && fechaProdInput.value) ? fechaProdInput.value : "";
+      const cad = calcularCaducidad(valor);
+
+      if (!valor) {
+        if (textoCad) textoCad.textContent = "Fecha de caducidad: —";
+        if (badgeCad) badgeCad.textContent = "Caducidad: Calcula para ver…";
+      } else if (!cad) {
+        if (textoCad) textoCad.textContent = "Fecha de caducidad: (fecha de producción no válida)";
+        if (badgeCad) badgeCad.textContent = "Caducidad: (fecha no válida)";
+      } else {
+        const pretty = formatearFechaBonita(cad);
+        if (textoCad) textoCad.textContent = "Fecha de caducidad: " + pretty;
+        if (badgeCad) badgeCad.textContent = "Caducidad: " + pretty;
+      }
+    }
+    // Etapa 3: Hebreo offline-first (Intl -> cache local -> degradación controlada + fetch opcional no bloqueante)
+    const STORAGE_HEB_CACHE_KEY = "a33_calc_hebrew_cache_v1";
+    const HEB_FETCH_TIMEOUT_MS = 2500;
+    let A33HebreoFetch = { inFlight: false, iso: "", abort: null };
+
+    function leerHebreoCacheObj() {
+      try {
+        const raw = A33Storage.getItem(STORAGE_HEB_CACHE_KEY);
+        const obj = raw ? JSON.parse(raw) : null;
+        if (!obj || typeof obj !== "object") return { v: 1, order: [], items: {} };
+        if (obj.v !== 1 || !obj.items || typeof obj.items !== "object" || !Array.isArray(obj.order)) {
+          return { v: 1, order: [], items: {} };
+        }
+        return obj;
+      } catch (e) {
+        return { v: 1, order: [], items: {} };
+      }
+    }
+
+    function leerHebreoCache(iso) {
+      const key = String(iso || "").trim();
+      if (!key) return null;
+      const cache = leerHebreoCacheObj();
+      const h = cache.items[key];
+      if (h && h.hd && h.hm && h.hy && h.hm3 && h.hy4) return h;
+      return null;
+    }
+
+    function guardarHebreoCache(iso, h) {
+      const key = String(iso || "").trim();
+      if (!key || !h || !h.hd || !h.hm || !h.hy || !h.hm3 || !h.hy4) return;
+      try {
+        const cache = leerHebreoCacheObj();
+        cache.items[key] = h;
+        cache.order = cache.order.filter(x => x !== key);
+        cache.order.push(key);
+        // límite simple para no inflar storage
+        const MAX = 120;
+        while (cache.order.length > MAX) {
+          const old = cache.order.shift();
+          if (old) delete cache.items[old];
+        }
+        A33Storage.setItem(STORAGE_HEB_CACHE_KEY, JSON.stringify(cache));
+      } catch (e) {
+        // silencioso
+      }
+    }
+
+    function obtenerHebreaLocalDesdeFechaISO(iso) {
+      const dt = parseISODateLocal(iso);
+      if (!dt) return null;
+      try {
+        // Safari/iOS suele soportarlo; si no, lanzará RangeError.
+        const fmt = new Intl.DateTimeFormat("en-u-ca-hebrew-nu-latn", { day: "numeric", month: "long", year: "numeric" });
+        const parts = fmt.formatToParts(dt);
+        const hd = (((parts.find(p => p.type === "day") || {}).value || "").match(/\d+/) || [""])[0] || "";
+        const hm = ((parts.find(p => p.type === "month") || {}).value || "").trim();
+        const hy = (((parts.find(p => p.type === "year") || {}).value || "").match(/\d+/) || [""])[0] || "";
+        const hm3 = sanitizeMonth3(hm);
+        const hy4 = hy ? hy.slice(-4) : "";
+        if (hd && hm && hm3.length === 3 && hy4.length === 4) {
+          return { hd, hm, hy: hy4, hm3, hy4 };
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    }
+
+    async function obtenerHebreaOnlineHebcal(iso, signal) {
+      const dt = parseISODateLocal(iso);
+      if (!dt) return null;
+      try {
+        const y = dt.getFullYear();
+        const m = dt.getMonth() + 1;
+        const d = dt.getDate();
+        const url = "https://www.hebcal.com/converter?cfg=json&g2h=1&gy=" + y + "&gm=" + m + "&gd=" + d + "&lang=en";
+        const res = await fetch(url, { signal });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data && typeof data.hd !== "undefined" && data.hm && data.hy) {
+          const hd = (String(data.hd).match(/\d+/) || [""])[0] || "";
+          const hm = String(data.hm || "").trim();
+          const hy = (String(data.hy).match(/\d+/) || [""])[0] || "";
+          const hm3 = sanitizeMonth3(hm);
+          const hy4 = hy ? hy.slice(-4) : "";
+          if (hd && hm && hm3.length === 3 && hy4.length === 4) {
+            return { hd, hm, hy: hy4, hm3, hy4 };
+          }
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    }
+
+    function intentarHebcalBackground(iso) {
+      // NO bloqueante: si llega, actualiza UI + cache. Si no, no pasa nada.
+      const key = String(iso || "").trim();
+      if (!key) return;
+      if (A33HebreoFetch.inFlight && A33HebreoFetch.iso === key) return;
+
+      // cancelar anterior si existe
+      try { if (A33HebreoFetch.abort) A33HebreoFetch.abort.abort(); } catch (e) {}
+
+      const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      A33HebreoFetch = { inFlight: true, iso: key, abort: controller };
+
+      const done = (h) => {
+        A33HebreoFetch.inFlight = false;
+        const prodNow = (document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || "";
+        if (String(prodNow).trim() !== key) return; // el usuario cambió la fecha
+        if (h && h.hd && h.hm && h.hy) {
+          guardarHebreoCache(key, h);
+          A33Hebreo = h;
+          const pretty = h.hd + " " + h.hm + " " + h.hy;
+          const span = document.getElementById("texto-fecha-hebreo");
+          const badgeHeb = document.getElementById("badge-hebreo");
+          if (span) span.textContent = "Fecha hebrea (producción): " + pretty;
+          if (badgeHeb) badgeHeb.textContent = "Hebreo: " + pretty;
+          // si estamos en AUTO, recalculamos el código sugerido sin tocar consecutivo
+          if (A33CodigoLoteMode === "AUTO") {
+            recalcularCodigoLoteAuto({ force: false });
+          }
+        }
+      };
+
+      // timeout duro
+      let t = null;
+      if (controller) {
+        t = setTimeout(() => {
+          try { controller.abort(); } catch (e) {}
+        }, HEB_FETCH_TIMEOUT_MS);
+      }
+
+      obtenerHebreaOnlineHebcal(key, controller ? controller.signal : undefined)
+        .then(h => {
+          if (t) clearTimeout(t);
+          done(h);
+        })
+        .catch(() => {
+          if (t) clearTimeout(t);
+          A33HebreoFetch.inFlight = false;
+        });
+    }
+
+    function actualizarFechaHebrea() {
+      // Deriva SIEMPRE de la fecha de producción.
+      const span = document.getElementById("texto-fecha-hebreo");
+      const badgeHeb = document.getElementById("badge-hebreo");
+      if (!span) return Promise.resolve(null);
+
+      const prod = (document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || "";
+      const iso = String(prod || "").trim();
+
+      // Sin fecha de producción: placeholder claro (no usar "hoy" para no confundir).
+      if (!iso) {
+        A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+        span.textContent = "Fecha hebrea (producción): —";
+        if (badgeHeb) badgeHeb.textContent = "Hebreo: Calcula para ver…";
+        return Promise.resolve(null);
+      }
+
+      // 1) Local (offline-first)
+      const local = obtenerHebreaLocalDesdeFechaISO(iso);
+      if (local && local.hd && local.hm && local.hy) {
+        A33Hebreo = local;
+        guardarHebreoCache(iso, local);
+        const pretty = local.hd + " " + local.hm + " " + local.hy;
+        span.textContent = "Fecha hebrea (producción): " + pretty;
+        if (badgeHeb) badgeHeb.textContent = "Hebreo: " + pretty;
+        return Promise.resolve(local);
+      }
+
+      // 2) Cache local (si ya lo vimos alguna vez)
+      const cached = leerHebreoCache(iso);
+      if (cached && cached.hd && cached.hm && cached.hy) {
+        A33Hebreo = cached;
+        const pretty = cached.hd + " " + cached.hm + " " + cached.hy;
+        span.textContent = "Fecha hebrea (producción): " + pretty;
+        if (badgeHeb) badgeHeb.textContent = "Hebreo: " + pretty;
+        return Promise.resolve(cached);
+      }
+
+      // 3) Degradación controlada: NO romper flujo
+      A33Hebreo = { hd:"", hm:"", hy:"", hm3:"", hy4:"" };
+      span.textContent = "Fecha hebrea (producción): Fecha hebrea no disponible offline";
+      if (badgeHeb) badgeHeb.textContent = "Hebreo: Fecha hebrea no disponible offline";
+
+      // 4) Fetch opcional (no bloqueante) solo si hay red
+      try {
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          intentarHebcalBackground(iso);
+        }
+      } catch (e) {}
+
+      return Promise.resolve(null);
+    }
+
+    function parseISODateLocal(iso) {
+      // Evitar que new Date('YYYY-MM-DD') se interprete como UTC.
+      try {
+        const parts = String(iso || "").split("-");
+        if (parts.length !== 3) return null;
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const d = parseInt(parts[2], 10);
+        if (!y || !m || !d) return null;
+        return new Date(y, m - 1, d);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function pad2(n) {
+      return String(n).padStart(2, "0");
+    }
+    function pad4(n) {
+      return String(n).padStart(4, "0");
+    }
+
+
+    function sanitizeMonth3(name) {
+      const letters = String(name || "").toUpperCase().replace(/[^A-Z]/g, "");
+      return letters.slice(0, 3);
+    }
+
+    // Nota: obtenerHebreaDesdeFechaISO se reemplazó por la estrategia Etapa 3 (local + cache + degradación + fetch no bloqueante).
+
+
+    function extraerSeqDeCodigo(code) {
+      const api = window.A33LotCode;
+      if (api && typeof api.validate === "function") {
+        const parsed = api.validate(code);
+        if (parsed && parsed.ok && typeof parsed.consecutiveNumber === "number") return parsed.consecutiveNumber;
+      }
+      // Sin el recurso central no se interpreta por posiciones rígidas.
+      return null;
+    }
+
+    function leerUltimoConsecutivoKey() {
+      try {
+        const raw = A33Storage.getItem(STORAGE_LOTE_SEQ_LAST_KEY);
+        const n = parseInt(String(raw || "0"), 10) || 0;
+        return Number.isFinite(n) ? n : 0;
+      } catch (e) {
+        return 0;
+      }
+    }
+
+    function obtenerMaxSeqDesdeLotes() {
+      let max = 0;
+      try {
+        const arr = (window.A33Storage && typeof A33Storage.sharedGet === 'function')
+          ? A33Storage.sharedGet("arcano33_lotes", [])
+          : (() => { const raw = A33Storage.getItem("arcano33_lotes"); return raw ? JSON.parse(raw) : []; })();
+        if (!Array.isArray(arr)) return 0;
+        arr.forEach(l => {
+          const c = l && (l.codigo || l.code || l.lote || "");
+          const n = extraerSeqDeCodigo(c);
+          if (typeof n === "number" && n > max) max = n;
+        });
+      } catch (e) {}
+      return max;
+    }
+
+    function obtenerUsedSeqSetDesdeLotes() {
+      const set = new Set();
+      try {
+        const arr = (window.A33Storage && typeof A33Storage.sharedGet === 'function')
+          ? A33Storage.sharedGet("arcano33_lotes", [])
+          : (() => { const raw = A33Storage.getItem("arcano33_lotes"); return raw ? JSON.parse(raw) : []; })();
+        if (!Array.isArray(arr)) return set;
+        arr.forEach(l => {
+          const c = l && (l.codigo || l.code || l.lote || "");
+          const n = extraerSeqDeCodigo(c);
+          if (typeof n === "number" && n > 0) set.add(n);
+        });
+      } catch (e) {}
+      return set;
+    }
+
+    function obtenerUltimoConsecutivoNumerico() {
+      return Math.max(leerUltimoConsecutivoKey(), obtenerMaxSeqDesdeLotes());
+    }
+
+    function buscarSiguienteDisponible(desde, usedSet) {
+      let n = desde;
+      const safeMax = 9999;
+      let loops = 0;
+      while (usedSet && usedSet.has(n) && loops < 11000 && n <= safeMax) {
+        n++;
+        loops++;
+      }
+      if (n > safeMax) {
+        console.warn("Consecutivo excedió 9999; revisa tus lotes.");
+        n = safeMax;
+      }
+      return n;
+    }
+
+    function sugerirSeq4(opts) {
+      const advance = !!(opts && opts.advance);
+      const used = obtenerUsedSeqSetDesdeLotes();
+      const last = obtenerUltimoConsecutivoNumerico();
+      let n = 0;
+      if (/^\d{4}$/.test(String(A33AutoSeq || ""))) {
+        n = parseInt(A33AutoSeq, 10) || 0;
+        if (advance) n++;
+      } else {
+        n = last + 1;
+      }
+      // Nunca quedarnos atrás
+      if (n <= last) n = last + 1;
+      n = buscarSiguienteDisponible(n, used);
+      return pad4(n).slice(-4);
+    }
+
+    function commitConsecutivoDespuesDeGuardar(code, seqHint) {
+      const last = obtenerUltimoConsecutivoNumerico();
+      let usedSeq = (typeof seqHint === "number" && seqHint > 0) ? seqHint : extraerSeqDeCodigo(code);
+
+      // Si por alguna razón no podemos extraer el consecutivo, NO avanzamos el contador.
+      if (!(typeof usedSeq === "number" && usedSeq > 0)) {
+        usedSeq = last;
+      }
+
+      const newLast = Math.max(last, usedSeq);
+      const seq4 = pad4(newLast).slice(-4);
+      try { A33Storage.setItem(STORAGE_LOTE_SEQ_LAST_KEY, seq4); } catch (e) {}
+      // Compatibilidad: se conserva la key anterior, pero solo se actualiza al guardar exitosamente.
+      try { A33Storage.setItem(STORAGE_LOTE_SEQ_CURRENT_KEY, seq4); } catch (e) {}
+      return seq4;
+    }
+
+
+    function setCodigoLoteValue(v) {
+      const loteInput = document.getElementById("lote");
+      if (!loteInput) return;
+      A33SuppressCodigoInput = true;
+      loteInput.value = v || "";
+      // liberar en el siguiente tick para evitar marcar MANUAL por set programático
+      setTimeout(() => { A33SuppressCodigoInput = false; }, 0);
+    }
+
+    function marcarCodigoComoManual() {
+      A33CodigoLoteMode = "MANUAL";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "MANUAL"); } catch (e) {}
+      setPillEstadoCodigo("EDITADO");
+    }
+async function recalcularCodigoLoteAuto(opts) {
+      // PREVIEW: actualiza el código sin comprometer ni persistir avance del consecutivo.
+      const force = !!(opts && (opts.force || opts.forceNewPreview));
+      if (force || !/^\d{4}$/.test(String(A33AutoSeq || ""))) {
+        A33AutoSeq = sugerirSeq4({ advance:false });
+      }
+
+      A33CodigoLoteMode = "AUTO";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
+
+      const fechaProdIso = ((document.getElementById("fecha-produccion") && document.getElementById("fecha-produccion").value) || hoyLocalISO()).trim();
+      const heb = await actualizarFechaHebrea();
+      const heb2 = (heb && heb.hm && heb.hy) ? heb : (leerHebreoCache(fechaProdIso) || null);
+      const api = window.A33LotCode;
+      if (!api || typeof api.generate !== "function") {
+        setCodigoLoteValue("");
+        A33SuggestedCode = "";
+        console.error("No está disponible A33LotCode para generar el Código de lote.");
+        return;
+      }
+
+      const generated = api.generate({
+        productionDate: fechaProdIso,
+        hebrewMonth: heb2 && heb2.hm ? heb2.hm : undefined,
+        hebrewYear: heb2 && heb2.hy ? heb2.hy : undefined,
+        consecutiveNumber: Number(A33AutoSeq)
+      });
+      if (!generated || !generated.ok) {
+        setCodigoLoteValue("");
+        A33SuggestedCode = "";
+        setPillEstadoCodigo("SUGERIDO");
+        console.warn("No se pudo resolver mes/año hebreo para el Código de lote:", generated && generated.error);
+        return;
+      }
+
+      const code = generated.code;
+      setCodigoLoteValue(code);
+      setPillEstadoCodigo("SUGERIDO");
+      A33SuggestedCode = code;
+      try { A33Storage.setItem(STORAGE_LOTE_KEY, code); } catch (e) {}
+    }
+
+
+
+
+// A33 UX: inputs numéricos sin “0” anticipado + auto-select + teclado numérico (iPad/iOS)
+function a33WireNumericInput(el, mode) {
+  if (!el) return;
+  const m = (mode === "numeric") ? "numeric" : "decimal";
+  try {
+    // visualmente vacío si venía con “0”
+    if (String(el.value || "").trim() === "0") el.value = "";
+
+    // teclado numérico (sin romper select-all en iPad/Safari)
+    el.setAttribute("inputmode", m);
+    if (m === "numeric") {
+      el.setAttribute("pattern", "[0-9]*");
+    } else {
+      el.setAttribute("pattern", "[0-9]*[\\.,]?[0-9]*");
+    }
+    el.autocomplete = "off";
+    el.autocapitalize = "off";
+    el.spellcheck = false;
+
+    // sin placeholder “0”
+    el.removeAttribute("placeholder");
+
+    // auto “select all” al corregir (hardening iPad/iOS)
+    const trySelect = () => {
+      const v = (el.value || "").toString().trim();
+      if (v === "") return;
+      try {
+        const len = (el.value || "").length;
+        if (typeof el.setSelectionRange === "function") {
+          el.setSelectionRange(0, len);
+        } else {
+          el.select();
+        }
+      } catch (e) {
+        try { el.select(); } catch (e2) {}
+      }
+    };
+
+    const scheduleSelect = () => {
+      // multi-tick: iOS a veces pisa la selección después del focus/click
+      trySelect();
+      try { requestAnimationFrame(trySelect); } catch (e) {}
+      setTimeout(trySelect, 0);
+      setTimeout(trySelect, 40);
+    };
+
+    el.addEventListener("focus", () => { scheduleSelect(); });
+
+    // Tap dentro del input con valor ⇒ selecciona todo.
+    const onDown = () => { setTimeout(scheduleSelect, 0); };
+    try { el.addEventListener("pointerdown", onDown, { passive: true }); } catch (e) { el.addEventListener("pointerdown", onDown); }
+    try { el.addEventListener("touchstart", onDown, { passive: true }); } catch (e) { el.addEventListener("touchstart", onDown); }
+    try { el.addEventListener("mousedown", onDown, { passive: true }); } catch (e) { el.addEventListener("mousedown", onDown); }
+    el.addEventListener("click", () => { setTimeout(scheduleSelect, 0); });
+  } catch (e) {}
+}
+
+    function construirTablaRecetas() {
+      const tbody = document.querySelector("#recetas-table tbody");
+      tbody.innerHTML = "";
+      if (!PRESENTACIONES.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = INGREDIENTES.length + 2;
+        td.className = "hint";
+        td.style.textAlign = "left";
+        td.textContent = A33ProductosEstado.message || "No hay productos activos con Receta en Catálogos → Productos.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+      PRESENTACIONES.forEach(p => {
+        const tr = document.createElement("tr");
+        const tdNombre = document.createElement("td");
+        tdNombre.textContent = p.nombre;
+        tdNombre.style.textAlign = "left";
+        tr.appendChild(tdNombre);
+        INGREDIENTES.forEach(ing => {
+          const td = document.createElement("td");
+          const input = document.createElement("input");
+          input.type = "text";
+          input.min = "0";
+          input.step = "0.01";
+          input.id = "receta-" + p.id + "-" + ing;
+          a33WireNumericInput(input, "decimal");
+          td.appendChild(input);
+          tr.appendChild(td);
+        });
+        // columna de costo unitario por presentación
+        const tdCosto = document.createElement("td");
+        const inputCosto = document.createElement("input");
+        inputCosto.type = "text";
+        inputCosto.min = "0";
+        inputCosto.step = "0.01";
+        inputCosto.id = "costo-unit-" + p.id;
+        a33WireNumericInput(inputCosto, "decimal");
+        tdCosto.appendChild(inputCosto);
+        tr.appendChild(tdCosto);
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function construirTablaPlan() {
+      const tbody = document.querySelector("#plan-table tbody");
+      tbody.innerHTML = "";
+      if (!PRESENTACIONES.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 3;
+        td.className = "hint";
+        td.style.textAlign = "left";
+        td.textContent = A33ProductosEstado.message || "No hay productos fabricables disponibles.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+      PRESENTACIONES.forEach(p => {
+        const tr = document.createElement("tr");
+        const tdNombre = document.createElement("td");
+        tdNombre.textContent = p.nombre;
+        tdNombre.style.textAlign = "left";
+        tr.appendChild(tdNombre);
+        const tdEmpaque = document.createElement("td");
+        tdEmpaque.className = "hint";
+        tdEmpaque.style.textAlign = "left";
+        tdEmpaque.textContent = a33PackagingSummary(p);
+        tr.appendChild(tdEmpaque);
+        const tdCantidad = document.createElement("td");
+        const input = document.createElement("input");
+        input.type = "text";
+        input.min = "0";
+        input.step = "1";
+        input.id = "plan-" + p.id;
+        a33WireNumericInput(input, "numeric");
+        tdCantidad.appendChild(input);
+        tr.appendChild(tdCantidad);
+        tbody.appendChild(tr);
+      });
+    }
+    function guardarRecetas() {
+      const recetas = {};
+      const costosPresentacion = {};
+      PRESENTACIONES.forEach(p => {
+        recetas[p.id] = {};
+        INGREDIENTES.forEach(ing => {
+          const val = getNumberValue("receta-" + p.id + "-" + ing, { emptyAsNull: true });
+          if (typeof val === "number") {
+            recetas[p.id][ing] = val;
+          } else {
+            // vacío se queda vacío (no persistir 0)
+            delete recetas[p.id][ing];
+          }
+        });
+        const costoUnit = getNumberValue("costo-unit-" + p.id, { emptyAsNull: true });
+        const info = a33SerializePresentacionProducto(p);
+        if (typeof costoUnit === "number") {
+          info.costoUnidad = costoUnit;
+        }
+        costosPresentacion[p.id] = info;
+      });
+      const payload = {
+        version: 3,
+        recetas,
+        costosPresentacion,
+        productos: PRESENTACIONES.map(a33SerializePresentacionProducto)
+      };
+      try{
+        if (window.A33Storage && typeof A33Storage.sharedSet === 'function'){
+          const r = A33Storage.sharedSet(STORAGE_RECETAS_KEY, payload, { source: 'calculadora' });
+          if (r && r.ok === false && r.message){
+            alert(r.message);
+            return;
+          }
+        } else {
+          A33Storage.setItem(STORAGE_RECETAS_KEY, JSON.stringify(payload));
+        }
+      }catch(e){
+        console.warn('No se pudo guardar recetas:', e);
+      }
+      alert("Recetas y costos guardados en este navegador ✅");
+    }
+
+    function cargarRecetas() {
+      // Contrato compartido (anti-pisadas + data vieja segura)
+      try {
+        let data = null;
+        if (window.A33Storage && typeof A33Storage.sharedGet === 'function'){
+          data = A33Storage.sharedGet(STORAGE_RECETAS_KEY, null);
+        } else {
+          const raw = A33Storage.getItem(STORAGE_RECETAS_KEY);
+          data = raw ? JSON.parse(raw) : null;
+        }
+        if (!data) return;
+        const recetas = data && data.recetas ? data.recetas : data;
+        const costosPresentacion = data && data.costosPresentacion ? data.costosPresentacion : null;
+
+        // cargar recetas (ml)
+        PRESENTACIONES.forEach(p => {
+          const rec = (recetas && recetas[p.id]) ? recetas[p.id] : null;
+          INGREDIENTES.forEach(ing => {
+            const input = document.getElementById("receta-" + p.id + "-" + ing);
+            if (!input) return;
+            const val = rec ? rec[ing] : undefined;
+            if (val === null || val === undefined || val === "") {
+              input.value = "";
+            } else if (typeof val === "number") {
+              input.value = String(val);
+            } else if (typeof val === "string") {
+              const t = val.trim();
+              input.value = t === "" ? "" : t;
+            } else {
+              input.value = "";
+            }
+          });
+        });
+
+        // cargar costos por presentación si existen
+        if (costosPresentacion) {
+          PRESENTACIONES.forEach(p => {
+            const info = costosPresentacion[p.id];
+            if (!info) return;
+            const inputCosto = document.getElementById("costo-unit-" + p.id);
+            if (inputCosto) {
+              const v = info ? info.costoUnidad : undefined;
+              if (v === null || v === undefined || v === "") {
+                inputCosto.value = "";
+              } else if (typeof v === "number") {
+                inputCosto.value = String(v);
+              } else if (typeof v === "string") {
+                const t = v.trim();
+                inputCosto.value = t === "" ? "" : t;
+              } else {
+                inputCosto.value = "";
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("Error cargando recetas:", e);
+      }
+    }
+
+    function resetNotasAlEntrar() {
+      const notasInput = document.getElementById("notas");
+      if (!notasInput) return;
+      // UI + estado interno: siempre vacío al entrar (incluye BFCache/pageshow).
+      notasInput.value = "";
+      try { A33Storage.removeItem(STORAGE_NOTAS_KEY); } catch (e) {}
+    }
+
+    function guardarMetaLote() {
+      const loteInput = document.getElementById("lote");
+      const fechaProdInput = document.getElementById("fecha-produccion");
+      if (loteInput) {
+        A33Storage.setItem(STORAGE_LOTE_KEY, loteInput.value || "");
+      }
+      // Persistimos solo el modo (AUTO/MANUAL). El consecutivo se compromete únicamente al guardar lote.
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, A33CodigoLoteMode); } catch (e) {}
+      if (fechaProdInput) {
+        // En Calculadora no se editan registros existentes: no persistimos la fecha entre sesiones.
+        A33Storage.removeItem(STORAGE_FECHA_PROD_KEY);
+      }
+      // Notas NO se persisten entre sesiones.
+      try { A33Storage.removeItem(STORAGE_NOTAS_KEY); } catch (e) {}
+      actualizarTextoCaducidad();
+    }
+    function cargarMetaLote() {
+      const fechaProdInput = document.getElementById("fecha-produccion");
+      if (fechaProdInput) {
+        // Compatibilidad: si quedó una fecha vieja guardada, la limpiamos.
+        A33Storage.removeItem(STORAGE_FECHA_PROD_KEY);
+        fechaProdInput.value = hoyLocalISO();
+      }
+      // Al entrar a Calculadora, Notas siempre empieza vacía (sin tocar otros campos).
+      resetNotasAlEntrar();
+      A33HasCalculoPrevio = false;
+      const hintRes = document.getElementById("hint-resultados");
+      if (hintRes) hintRes.style.display = "block";
+      actualizarTextoCaducidad();
+
+      // Nuevo lote / nueva corrida: AUTO genera código sugerido (preview), sin quemar consecutivo.
+      A33CodigoLoteMode = "AUTO";
+      A33AutoSeq = "";
+      try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (e) {}
+      setCodigoLoteValue("");
+      setPillEstadoCodigo("SUGERIDO");
+      recalcularCodigoLoteAuto({ consumeNewSeq: false });
+    }
+    function calcularDatosLote() {
+      const totalesIngredientes = { vino: 0, vodka: 0, jugo: 0, sirope: 0, agua: 0 };
+      let totalVolumenFinalMl = 0;
+      const unidadesPorPresentacion = [];
+      PRESENTACIONES.forEach(p => {
+        const unidades = normQtyInt(getNumberValue("plan-" + p.id));
+        if (unidades > 0) {
+          const costoUnitario = getNumberValue("costo-unit-" + p.id, { emptyAsNull: true });
+          const recipeSnapshot = {};
+          INGREDIENTES.forEach(ing => {
+            const mlPorUnidad = getNumberValue("receta-" + p.id + "-" + ing);
+            recipeSnapshot[ing] = mlPorUnidad;
+            totalesIngredientes[ing] += unidades * mlPorUnidad;
+          });
+          const producido = {
+            id: p.id,
+            productId: p.productId,
+            nombre: p.nombre,
+            unidades,
+            letra: a33NormalizeLetter(p.letra || p.Letra || ""),
+            envaseId: p.envaseId || "",
+            tapaId: p.tapaId || "",
+            capacidadMl: Number(p.capacidadMl || p.volumenMl || 0) || 0,
+            receta: !!p.receta,
+            recipeSnapshot,
+            recetaSnapshot: { ...recipeSnapshot },
+            legacy: !!p.legacy
+          };
+          if (typeof costoUnitario === "number" && Number.isFinite(costoUnitario)) producido.costoUnitario = costoUnitario;
+          else if (p.costoReferencial != null && Number.isFinite(Number(p.costoReferencial))) producido.costoReferencial = Number(p.costoReferencial);
+          unidadesPorPresentacion.push(producido);
+        }
+        if (unidades <= 0) return;
+        totalVolumenFinalMl += unidades * p.volumenMl;
+      });
+      const loteNombre = (document.getElementById("lote").value || "").trim();
+      const fechaProdStr = document.getElementById("fecha-produccion").value || "";
+      const fechaProd = fechaProdStr ? new Date(fechaProdStr + "T00:00:00") : null;
+      const fechaCad = calcularCaducidad(fechaProdStr);
+      const notas = document.getElementById("notas").value || "";
+      return {
+        totalesIngredientes,
+        totalVolumenFinalMl,
+        unidadesPorPresentacion,
+        loteNombre,
+        fechaProd,
+        fechaProdStr,
+        fechaCad,
+        notas
+      };
+    }
+    function a33CalculationSignature(datos) {
+      const d = datos && typeof datos === "object" ? datos : {};
+      const rows = Array.isArray(d.unidadesPorPresentacion) ? d.unidadesPorPresentacion : [];
+      return JSON.stringify(rows.map((row) => ({
+        productId: String(row.productId || row.id || "").trim(),
+        unidades: Number(row.unidades || row.cantidad || 0),
+        receta: INGREDIENTES.map((ing) => Number((row.recipeSnapshot || row.recetaSnapshot || {})[ing] || 0))
+      })).sort((a, b) => a.productId.localeCompare(b.productId)));
+    }
+
+    function setProductionButtonBusy(btn, busy) {
+      if (!btn) return;
+      if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = btn.textContent || "CONFIRMAR PRODUCCIÓN Y CREAR LOTE";
+      btn.dataset.saving = busy ? "1" : "0";
+      btn.disabled = !!busy;
+      btn.setAttribute("aria-busy", busy ? "true" : "false");
+      btn.textContent = busy ? "PROCESANDO PRODUCCIÓN…" : btn.dataset.defaultLabel;
+    }
+
+    function calcularTotales() {
+      const datos = calcularDatosLote();
+      const resultadosDiv = document.getElementById("resultados");
+      const totalesDiv = document.getElementById("totales-ingredientes");
+      const resumenVolumenDiv = document.getElementById("resumen-volumen");
+      const resumenLoteDiv = document.getElementById("resumen-lote");
+      const resumenFechasDiv = document.getElementById("resumen-fechas");
+
+      const loteNombre = datos.loteNombre;
+      let htmlLote = "";
+      if (loteNombre) {
+        htmlLote = "<div class='flex-row'><div class='badge'>Lote: <strong>" +
+          escapeHtml(loteNombre) +
+          "</strong></div></div>";
+      } else {
+        htmlLote = "<div class='flex-row'><div class='badge'>Lote sin nombre</div></div>";
+      }
+      resumenLoteDiv.innerHTML = htmlLote;
+
+      let htmlFechas = "<div class='flex-row'>";
+      if (datos.fechaProd) {
+        htmlFechas += "<div class='badge'>Producción: <strong>" + formatearFechaBonita(datos.fechaProd) + "</strong></div>";
+      } else {
+        htmlFechas += "<div class='badge'>Producción: —</div>";
+      }
+      if (datos.fechaCad) {
+        htmlFechas += "<div class='badge'>Caducidad: <strong>" + formatearFechaBonita(datos.fechaCad) + "</strong></div>";
+      } else {
+        htmlFechas += "<div class='badge'>Caducidad: —</div>";
+      }
+      if (datos.notas) {
+        htmlFechas += "<div class='badge'>Notas: " + escapeHtml(datos.notas.substring(0, 60)) + (datos.notas.length > 60 ? "..." : "") + "</div>";
+      }
+      htmlFechas += "</div>";
+      resumenFechasDiv.innerHTML = htmlFechas;
+
+      let htmlTotales = "<table><thead><tr><th>Ingrediente</th><th>Total (ml)</th><th>Equivalente (L)</th></tr></thead><tbody>";
+      htmlTotales += "<tr><td style='text-align:left;'>Vino</td><td>" + formatMl(datos.totalesIngredientes.vino) + "</td><td>" + formatLitros(datos.totalesIngredientes.vino) + "</td></tr>";
+      htmlTotales += "<tr><td style='text-align:left;'>Vodka</td><td>" + formatMl(datos.totalesIngredientes.vodka) + "</td><td>" + formatLitros(datos.totalesIngredientes.vodka) + "</td></tr>";
+      htmlTotales += "<tr><td style='text-align:left;'>Jugo</td><td>" + formatMl(datos.totalesIngredientes.jugo) + "</td><td>" + formatLitros(datos.totalesIngredientes.jugo) + "</td></tr>";
+      htmlTotales += "<tr><td style='text-align:left;'>Sirope</td><td>" + formatMl(datos.totalesIngredientes.sirope) + "</td><td>" + formatLitros(datos.totalesIngredientes.sirope) + "</td></tr>";
+      htmlTotales += "<tr><td style='text-align:left;'>Agua pura</td><td>" + formatMl(datos.totalesIngredientes.agua) + "</td><td>" + formatLitros(datos.totalesIngredientes.agua) + "</td></tr>";
+      htmlTotales += "</tbody></table>";
+      totalesDiv.innerHTML = htmlTotales;
+
+
+      const resumenCostosDiv = document.getElementById("resumen-costos");
+      if (resumenCostosDiv) {
+        let costoTotal = 0;
+        const filas = [];
+        datos.unidadesPorPresentacion.forEach(item => {
+          const costoUnit = getNumberValue("costo-unit-" + item.id);
+          if (costoUnit > 0 && item.unidades > 0) {
+            const subtotal = costoUnit * item.unidades;
+            costoTotal += subtotal;
+            filas.push({
+              nombre: item.nombre,
+              unidades: item.unidades,
+              costoUnidad: costoUnit,
+              subtotal
+            });
+          }
+        });
+
+        let htmlCostos = "";
+        if (filas.length) {
+          htmlCostos += "<div class='flex-row'>";
+          htmlCostos += "<div class='badge'>Costo total estimado del lote: <strong>" + formatA33Cordobas(costoTotal) + "</strong></div>";
+          if (datos.totalVolumenFinalMl > 0) {
+            const costoPorLitro = costoTotal / (datos.totalVolumenFinalMl / 1000);
+            htmlCostos += "<div class='badge'>Costo aprox. por litro: <strong>" + formatA33Cordobas(costoPorLitro) + "</strong></div>";
+          }
+          htmlCostos += "</div>";
+
+          htmlCostos += "<table><thead><tr><th>Presentación</th><th>Unidades</th><th>Costo unitario (C$)</th><th>Subtotal (C$)</th></tr></thead><tbody>";
+          filas.forEach(f => {
+            htmlCostos += "<tr>";
+            htmlCostos += "<td style='text-align:left;'>" + escapeHtml(f.nombre) + "</td>";
+            htmlCostos += "<td>" + f.unidades + "</td>";
+            htmlCostos += "<td>" + formatA33Cordobas(f.costoUnidad) + "</td>";
+            htmlCostos += "<td>" + formatA33Cordobas(f.subtotal) + "</td>";
+            htmlCostos += "</tr>";
+          });
+          htmlCostos += "</tbody></table>";
+        } else {
+          htmlCostos = "<p class='hint'>Para ver costos, llena la columna de costo unitario y el plan de producción.</p>";
+        }
+
+        htmlCostos += buildA33CurrencyNoteHtml();
+        resumenCostosDiv.innerHTML = htmlCostos;
+      }
+
+      let htmlResumen = "<div class='flex-row'><div class='badge'>Volumen final teórico: <strong>" +
+        formatLitros(datos.totalVolumenFinalMl) +
+        "</strong></div></div>";
+      resumenVolumenDiv.innerHTML = htmlResumen;
+
+      A33HasCalculoPrevio = true;
+      A33LastCalculationSignature = a33CalculationSignature(datos);
+      resultadosDiv.style.display = "block";
+      const hintRes = document.getElementById("hint-resultados");
+      if (hintRes) hintRes.style.display = "none";
+      guardarMetaLote();
+    }
+    function exportarLote() {
+      const datos = calcularDatosLote();
+      const ahora = new Date();
+      const fechaStr = ahora.toLocaleString("es-NI");
+      let texto = "";
+      const loteNombre = datos.loteNombre || "Lote sin nombre";
+      texto += "Arcano 33 - Resumen de lote\n";
+      texto += "================================\n\n";
+      texto += "Lote: " + loteNombre + "\n";
+      texto += "Fecha de exportación: " + fechaStr + "\n";
+      if (datos.fechaProd) {
+        texto += "Fecha de producción: " + formatearFechaBonita(datos.fechaProd) + "\n";
+      } else {
+        texto += "Fecha de producción: —\n";
+      }
+      if (datos.fechaCad) {
+        texto += "Fecha de caducidad: " + formatearFechaBonita(datos.fechaCad) + "\n";
+      } else {
+        texto += "Fecha de caducidad: —\n";
+      }
+      texto += "\n";
+      texto += "Unidades por presentación:\n";
+      if (datos.unidadesPorPresentacion.length === 0) {
+        texto += "- (sin unidades)\n";
+      } else {
+        datos.unidadesPorPresentacion.forEach(item => {
+          texto += "- " + item.nombre + ": " + item.unidades + " unidad(es)\n";
+        });
+      }
+      texto += "\n";
+      texto += "Totales de materia prima:\n";
+      texto += "- Vino: " + datos.totalesIngredientes.vino.toFixed(0) + " ml (" + formatLitros(datos.totalesIngredientes.vino) + ")\n";
+      texto += "- Vodka: " + datos.totalesIngredientes.vodka.toFixed(0) + " ml (" + formatLitros(datos.totalesIngredientes.vodka) + ")\n";
+      texto += "- Jugo: " + datos.totalesIngredientes.jugo.toFixed(0) + " ml (" + formatLitros(datos.totalesIngredientes.jugo) + ")\n";
+      texto += "- Sirope: " + datos.totalesIngredientes.sirope.toFixed(0) + " ml (" + formatLitros(datos.totalesIngredientes.sirope) + ")\n";
+      texto += "- Agua pura: " + datos.totalesIngredientes.agua.toFixed(0) + " ml (" + formatLitros(datos.totalesIngredientes.agua) + ")\n";
+      texto += "\n";
+      texto += "Volumen final teórico: " + formatLitros(datos.totalVolumenFinalMl) + "\n";
+      if (datos.notas) {
+        texto += "\nNotas del lote:\n" + datos.notas + "\n";
+      }
+      const blob = new Blob([texto], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const slug = slugify(loteNombre);
+      a.download = "lote-" + slug + ".txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    function limpiarCantidades() {
+      PRESENTACIONES.forEach(p => {
+        const el = document.getElementById("plan-" + p.id);
+        if (el) el.value = "";
+      });
+      document.getElementById("resultados").style.display = "none";
+      const hintRes = document.getElementById("hint-resultados");
+      if (hintRes) hintRes.style.display = "block";
+      A33HasCalculoPrevio = false;
+      A33LastCalculationSignature = "";
+    }
+
+    async function guardarCalculoComoLote() {
+      const btn = document.getElementById("btn-guardar-lote");
+      if (btn && btn.dataset.saving === "1") return;
+      if (!A33HasCalculoPrevio) {
+        alert("Primero usa CALCULAR para confirmar los totales antes de guardar.");
+        return;
+      }
+      let datos = null;
+      try {
+        datos = calcularDatosLote();
+      } catch (error) {
+        alert("No se puede confirmar la producción porque no fue posible validar el cálculo. Detalle: " + (error && error.message ? error.message : "Error interno no identificado."));
+        return;
+      }
+      if (!datos.unidadesPorPresentacion.length) {
+        alert("No se puede guardar una producción vacía.");
+        return;
+      }
+      if (!A33LastCalculationSignature || a33CalculationSignature(datos) !== A33LastCalculationSignature) {
+        A33HasCalculoPrevio = false;
+        alert("El cálculo cambió después de usar CALCULAR. Vuelve a calcular antes de confirmar la producción.");
+        return;
+      }
+      if (!window.A33Production || typeof A33Production.commitOfficialProduction !== "function") {
+        alert("No está disponible el contrato seguro de Producción.");
+        return;
+      }
+      setProductionButtonBusy(btn, true);
+      try {
+        const catalog = await A33Production.loadFabricableProducts();
+        if (!catalog.ok) {
+          alert("No se puede confirmar la producción porque no fue posible validar Catálogos → Productos.\n\n" + ((catalog.errors || []).join("\n") || "No se pudieron leer los Productos."));
+          return;
+        }
+        const byId = new Map(catalog.items.map((item) => [String(item.productId), item]));
+        const allById = new Map((Array.isArray(catalog.allProducts) ? catalog.allProducts : []).map((item) => [String((window.A33Products && A33Products.getProductId) ? A33Products.getProductId(item) : (item.productId || item.productoId || "")), item]));
+        const items = [];
+        const validation = [];
+        for (const raw of datos.unidadesPorPresentacion) {
+          const productId = String(raw.productId || "").trim();
+          const rawName = String(raw.nombre || raw.nombreSnapshot || productId || "Producto").trim();
+          if (!productId) {
+            validation.push("El producto ‘" + rawName + "’ no tiene productId válido. Corrígelo en Catálogos → Productos.");
+            continue;
+          }
+          const current = byId.get(productId);
+          if (!current) {
+            const source = allById.get(productId);
+            const sourceName = String((source && (source.name || source.nombre)) || rawName || productId).trim();
+            const sourceActive = !source || (source.deleted !== true && source.active !== false && source.activo !== false && source.isActive !== false);
+            const hasRecipe = !!(source && (source.receta === true || source.receta === 1 || String(source.receta).toLowerCase() === "true" || source.hasRecipe === true || source.hasRecipe === 1 || String(source.hasRecipe).toLowerCase() === "true" || source.recipe === true || (source.recipe && typeof source.recipe === "object")));
+            if (source && !sourceActive) {
+              validation.push("El producto seleccionado ‘" + sourceName + "’ está inactivo. Reactívalo en Catálogos → Productos para realizar una nueva producción.");
+            } else if (source && !hasRecipe) {
+              validation.push("El producto ‘" + sourceName + "’ no tiene Receta activa. Actívala en Catálogos → Productos.");
+            } else {
+              validation.push("El producto ‘" + sourceName + "’ ya no existe como producto fabricable en Catálogos → Productos.");
+            }
+            continue;
+          }
+          const recipeSnapshot = {};
+          INGREDIENTES.forEach((ing) => {
+            const value = getNumberValue("receta-" + productId + "-" + ing, { emptyAsNull:true });
+            recipeSnapshot[ing] = (typeof value === "number" && Number.isFinite(value) && value > 0) ? value : 0;
+          });
+          if (!INGREDIENTES.some((ing) => recipeSnapshot[ing] > 0)) {
+            validation.push("El producto ‘" + current.nombre + "’ tiene Receta activa, pero no tiene cantidades reales configuradas. Corrígela en Calculadora de Producción.");
+            continue;
+          }
+          items.push({ ...raw, ...current, productId, id:productId, cantidad:raw.unidades, unidades:raw.unidades, nombre:current.nombre, nombreSnapshot:current.nombre, recipeSnapshot, recetaSnapshot:{ ...recipeSnapshot }, legacy:false });
+        }
+        if (catalog.duplicateLetters && catalog.duplicateLetters.length) {
+          validation.push("Hay Letras de producción repetidas (" + catalog.duplicateLetters.map((row) => row.letter).join(", ") + "). Corrígelas en Catálogos → Productos.");
+        }
+        if (validation.length) { alert("No se puede confirmar la producción:\n\n" + validation.map((text) => "• " + text).join("\n")); return; }
+
+        const codigoFinal = normalizarCodigoLote((document.getElementById("lote") || {}).value || "");
+        if (!codigoFinal) { alert("El código de lote es obligatorio."); return; }
+        const codigoValidado = validarCodigoLoteFuerte(codigoFinal);
+        if (!codigoValidado.ok) {
+          alert(codigoValidado.msg || "El código de lote no tiene un formato válido.");
+          return;
+        }
+        if (codigoValidado.format !== "new") {
+          alert("Este es un Código de lote histórico y se conserva solo para consulta. Usa REGENERAR para crear un lote nuevo con el formato oficial A33MESAAAA-CONSECUTIVO.");
+          return;
+        }
+        const codigoOficial = codigoValidado.code;
+        if (codigoOficial !== codigoFinal) setCodigoLoteValue(codigoOficial);
+        const seqFinal = codigoValidado.seq;
+
+        const lotesActuales = (window.A33Storage && typeof A33Storage.sharedGet === "function")
+          ? A33Storage.sharedGet("arcano33_lotes", [])
+          : (() => { try { const raw = A33Storage.getItem("arcano33_lotes"); return raw ? JSON.parse(raw) : []; } catch (_) { return []; } })();
+        if (existeCodigoEnLotes(lotesActuales, codigoValidado.code)) {
+          alert("Ya existe un lote con ese Código de lote. No se guardó ni se modificó ningún dato. Usa REGENERAR para obtener el siguiente consecutivo disponible.");
+          return;
+        }
+
+        const lastNow = obtenerUltimoConsecutivoNumerico();
+        const suggestedNow = normalizarCodigoLote(A33SuggestedCode || "");
+        const isSuggestedNow = codigoFinal === suggestedNow;
+        if (A33CodigoLoteMode === "MANUAL" && !isSuggestedNow && typeof seqFinal === "number" && seqFinal <= lastNow) {
+          alert("Código no permitido: va hacia atrás o reutiliza el consecutivo.");
+          return;
+        }
+
+        const codigoGuardado = codigoOficial;
+        const fechaProdIso = datos.fechaProdStr || hoyLocalISO();
+        let caducidadIso = fechaProdIso;
+        try { const cad = calcularCaducidad(fechaProdIso); if (cad) caducidadIso = cad.toISOString().slice(0, 10); } catch (_) { }
+        const stableId = "batch_" + codigoGuardado;
+        const operationId = "production:" + stableId;
+        const notasTrim = String(datos.notas || "").trim();
+        const lotCodeData = codigoLoteData(codigoValidado.parsed);
+        const nuevoLote = {
+          loteId: stableId, id: stableId, batchCode: codigoGuardado, lotCode:codigoGuardado, operationId, productionOperationId:operationId,
+          codigoLoteData: lotCodeData,
+          fecha: fechaProdIso, codigo: codigoGuardado, caducidad: caducidadIso,
+          volTotal: Math.round(datos.totalVolumenFinalMl || 0).toString(),
+          volVino: Math.round(datos.totalesIngredientes.vino || 0).toString(),
+          volVodka: Math.round(datos.totalesIngredientes.vodka || 0).toString(),
+          volJugo: Math.round(datos.totalesIngredientes.jugo || 0).toString(),
+          volSirope: Math.round(datos.totalesIngredientes.sirope || 0).toString(),
+          volAgua: Math.round(datos.totalesIngredientes.agua || 0).toString(),
+          productosProducidos: items.map((item) => ({
+            ...a33BuildLoteDynamicOutputItem(item, item.unidades, fechaProdIso, codigoGuardado),
+            loteId: stableId,
+            loteCodigo: codigoGuardado,
+            operationId,
+            productionOperationId: operationId
+          })),
+          productosProducidosSchema: 2,
+          contratoLotesDinamicos: { schema:2, fuente:"calculadora-produccion", identidad:"productId", campos:["productId","nombreSnapshot","Letra","cantidad","envaseId","tapaId","recipeSnapshot","operationId","loteId","loteCodigo","fecha","codigo","costoUnitario","costoTotal"] },
+          origenProduccion: "Calculadora de Producción",
+          checklistProduccion: {
+            schema: 1,
+            loteId: stableId,
+            loteCodigo: codigoGuardado,
+            items: { vino:false, vodka:false, jugo:false, sirope:false, agua:false },
+            updatedAt: null
+          },
+          ...(notasTrim ? { notas:notasTrim } : {}),
+          createdAt: new Date().toISOString()
+        };
+
+        const result = await A33Production.commitOfficialProduction({
+          operationId, lote:nuevoLote, items, ingredientTotals:datos.totalesIngredientes
+        });
+        if (!result.ok) {
+          const text = result.message || (result.errors && result.errors.length ? result.errors.join("\n") : "");
+          alert(text || "No se pudo confirmar la producción. No se aplicaron cambios.");
+          setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
+          return;
+        }
+
+        setPillEstadoCodigo("OK");
+        if (!result.duplicate) {
+          try {
+            const seq4 = commitConsecutivoDespuesDeGuardar(codigoGuardado, seqFinal);
+            if (/^\d{4}$/.test(String(seq4 || ""))) A33AutoSeq = seq4;
+          } catch (_) { }
+        }
+        alert(result.duplicate
+          ? "La producción ya estaba guardada. No se duplicaron Lote ni Inventario."
+          : "Producción guardada: lote e Inventario confirmados sin duplicados.");
+        a33RefreshChecklistAfterLotSave(result.lote || nuevoLote);
+        limpiarCantidades();
+        const notasInput = document.getElementById("notas");
+        if (notasInput) notasInput.value = "";
+        A33CodigoLoteMode = "AUTO";
+        try { A33Storage.setItem(STORAGE_LOTE_CODE_MODE_KEY, "AUTO"); } catch (_) { }
+        A33AutoSeq = "";
+        recalcularCodigoLoteAuto({ consumeNewSeq:false });
+        guardarMetaLote();
+      } catch (error) {
+        console.error("No se pudo confirmar la producción y crear el lote.", error);
+        alert("No se pudo confirmar la producción. Detalle: " + (error && error.message ? error.message : "Error interno no identificado."));
+        setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
+      } finally {
+        setProductionButtonBusy(btn, false);
+      }
+    }
+    const A33_CHECKLIST_STORAGE_KEY = "arcano33_lotes";
+    const A33_CHECKLIST_SCHEMA = 1;
+    const A33_CHECKLIST_INGREDIENTS = [
+      { key:"vino", label:"Vino", direct:["volVino"] },
+      { key:"vodka", label:"Vodka", direct:["volVodka"] },
+      { key:"jugo", label:"Jugo", direct:["volJugo"] },
+      { key:"sirope", label:"Sirope", direct:["volSirope"] },
+      { key:"agua", label:"Agua pura", direct:["volAgua"] }
+    ];
+    let A33ChecklistLots = [];
+    let A33ChecklistSelectedIndex = -1;
+    let A33ChecklistSelectedIdentity = "";
+    let A33ChecklistClosing = false;
+    let A33ChecklistSelecting = false;
+
+    function a33ChecklistNumber(value) {
+      if (value == null || value === "") return 0;
+      const n = Number(String(value).replace(/,/g, "").trim());
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+
+    function a33ChecklistCanonicalCode(value) {
+      return normalizarCodigoLote(value || "");
+    }
+
+    function a33ChecklistCodeIdentity(value) {
+      const code = a33ChecklistCanonicalCode(value);
+      return code ? "code:" + code.toLocaleUpperCase("es-NI") : "";
+    }
+
+    function a33ChecklistLotIdentityCandidates(lote) {
+      const row = lote && typeof lote === "object" ? lote : {};
+      const code = a33ChecklistCanonicalCode(row.codigo || row.batchCode || row.code || row.lote || "");
+      const candidates = [
+        row.loteId,
+        row.id,
+        row.operationId,
+        row.productionOperationId,
+        code,
+        a33ChecklistCodeIdentity(code)
+      ].map((value) => String(value || "").trim()).filter(Boolean);
+      return Array.from(new Set(candidates));
+    }
+
+    function a33ChecklistLotIdentity(lote) {
+      return a33ChecklistLotIdentityCandidates(lote)[0] || "";
+    }
+
+    function a33ChecklistLotTimestamp(lote) {
+      const values = [lote && lote.createdAt, lote && lote.updatedAt, lote && lote.fecha, lote && lote.fechaProd, lote && lote.fechaProduccion];
+      for (const value of values) {
+        if (!value) continue;
+        const time = new Date(String(value).length === 10 ? String(value) + "T00:00:00" : value).getTime();
+        if (Number.isFinite(time)) return time;
+      }
+      return 0;
+    }
+
+    function a33ChecklistDateText(lote) {
+      const raw = lote && (lote.fecha || lote.fechaProd || lote.fechaProduccion || lote.createdAt);
+      if (!raw) return "—";
+      const d = new Date(String(raw).length === 10 ? String(raw) + "T00:00:00" : raw);
+      if (!Number.isFinite(d.getTime())) return String(raw);
+      return formatearFechaBonita(d);
+    }
+
+    function a33ChecklistLotCode(lote) {
+      return a33ChecklistCanonicalCode(lote && (lote.codigo || lote.batchCode || lote.code || lote.lote)) || "Sin código";
+    }
+
+    function a33ChecklistConsecutiveNumber(lote) {
+      const stored = lote && (lote.codigoLoteData?.consecutiveNumber ?? lote.lotCodeMeta?.consecutiveNumber ?? lote.consecutivoNumerico);
+      const storedNumber = Number(stored);
+      if (Number.isInteger(storedNumber) && storedNumber >= 0) return storedNumber;
+      try {
+        const parsed = window.A33LotCode && typeof window.A33LotCode.validate === "function"
+          ? window.A33LotCode.validate(a33ChecklistLotCode(lote))
+          : null;
+        return parsed && parsed.ok && Number.isInteger(parsed.consecutiveNumber) ? parsed.consecutiveNumber : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function a33ChecklistCompareLots(a, b) {
+      const timeDiff = a33ChecklistLotTimestamp(b) - a33ChecklistLotTimestamp(a);
+      if (timeDiff) return timeDiff;
+      const ca = a33ChecklistConsecutiveNumber(a);
+      const cb = a33ChecklistConsecutiveNumber(b);
+      if (Number.isInteger(ca) && Number.isInteger(cb) && ca !== cb) return cb - ca;
+      return a33ChecklistLotCode(b).localeCompare(a33ChecklistLotCode(a), "es", { numeric:true, sensitivity:"base" });
+    }
+
+    function a33ChecklistProducts(lote) {
+      const rows = lote && Array.isArray(lote.productosProducidos) ? lote.productosProducidos : [];
+      return rows.filter((row) => row && typeof row === "object");
+    }
+
+    function a33ChecklistProductId(row) {
+      const item = row && typeof row === "object" ? row : {};
+      const snapshot = item.snapshotProduccion && typeof item.snapshotProduccion === "object" ? item.snapshotProduccion : {};
+      return String(item.productId || item.productoId || snapshot.productId || snapshot.productoId || item.id || "").trim();
+    }
+
+    function a33ChecklistProductLetter(row) {
+      const item = row && typeof row === "object" ? row : {};
+      const snapshot = item.snapshotProduccion && typeof item.snapshotProduccion === "object" ? item.snapshotProduccion : {};
+      const stored = a33NormalizeLetter(item.Letra || item.letra || snapshot.Letra || snapshot.letra || "");
+      if (stored) return stored;
+      const productId = a33ChecklistProductId(item);
+      if (!productId) return "";
+      const catalogProduct = (Array.isArray(PRESENTACIONES) ? PRESENTACIONES : []).find((product) =>
+        String(product && (product.productId || product.id) || "").trim() === productId
+      );
+      return a33NormalizeLetter(catalogProduct && (catalogProduct.letra || catalogProduct.Letra) || "");
+    }
+
+    function a33ChecklistProductionDetail(lote) {
+      const quantitiesByLetter = new Map();
+      a33ChecklistProducts(lote).forEach((row) => {
+        const quantity = a33ChecklistNumber(row.cantidad != null ? row.cantidad : row.unidades);
+        const letter = a33ChecklistProductLetter(row);
+        if (!(quantity > 0) || !letter) return;
+        quantitiesByLetter.set(letter, (quantitiesByLetter.get(letter) || 0) + quantity);
+      });
+      return Array.from(quantitiesByLetter.entries())
+        .map(([letter, quantity]) => a33ChecklistOperationalNumber(quantity) + letter)
+        .join(", ");
+    }
+
+    function a33ChecklistOperationalNumber(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "0";
+      const normalized = Math.abs(number - Math.round(number)) < 1e-9 ? Math.round(number) : number;
+      return normalized.toLocaleString("es-NI", { maximumFractionDigits:3, useGrouping:false });
+    }
+
+    function a33ChecklistSyrupFormula(syrupMl) {
+      const syrup = a33ChecklistNumber(syrupMl);
+      if (!(syrup > 0)) return null;
+      const factor = syrup / 200;
+      return { waterMl:factor * 175, sugarT:factor };
+    }
+
+    function a33ChecklistEmptyState() {
+      const state = {};
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => { state[item.key] = false; });
+      return state;
+    }
+
+    function a33ChecklistState(lote) {
+      const state = a33ChecklistEmptyState();
+      const raw = lote && lote.checklistProduccion && typeof lote.checklistProduccion === "object" ? lote.checklistProduccion : null;
+      const items = raw && raw.items && typeof raw.items === "object"
+        ? raw.items
+        : (raw && raw.estado && typeof raw.estado === "object" ? raw.estado : (raw || {}));
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => { state[item.key] = items[item.key] === true; });
+      return state;
+    }
+
+    function a33ChecklistIsClosed(lote) {
+      const row = lote && typeof lote === "object" ? lote : {};
+      const raw = row.checklistProduccion && typeof row.checklistProduccion === "object" ? row.checklistProduccion : {};
+      if (raw.cerrado === true || raw.closed === true || raw.hecho === true || row.checklistCerrado === true) return true;
+      const explicitStatus = String(raw.estadoCierre || raw.status || raw.estadoFinal || "").trim().toLocaleUpperCase("es-NI");
+      return ["CERRADO", "CLOSED", "HECHO", "TERMINADO", "COMPLETADO"].includes(explicitStatus);
+    }
+
+    function a33ChecklistPayload(state, updatedAt, lote, closure) {
+      const normalized = a33ChecklistEmptyState();
+      const previous = lote && lote.checklistProduccion && typeof lote.checklistProduccion === "object" ? lote.checklistProduccion : {};
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => { normalized[item.key] = !!(state && state[item.key]); });
+      const payload = {
+        ...previous,
+        schema:A33_CHECKLIST_SCHEMA,
+        loteId:a33ChecklistLotIdentity(lote) || previous.loteId || null,
+        loteCodigo:a33ChecklistLotCode(lote) === "Sin código" ? (previous.loteCodigo || null) : a33ChecklistLotCode(lote),
+        items:normalized,
+        updatedAt:updatedAt || new Date().toISOString()
+      };
+      if (closure === true || a33ChecklistIsClosed(lote)) {
+        const closedAt = previous.cerradoAt || previous.closedAt || new Date().toISOString();
+        payload.cerrado = true;
+        payload.estadoCierre = "CERRADO";
+        payload.cerradoAt = closedAt;
+      }
+      return payload;
+    }
+
+    function a33ChecklistAllComplete(lote, state) {
+      const ingredients = a33ChecklistIngredients(lote);
+      const current = state && typeof state === "object" ? state : a33ChecklistState(lote);
+      return ingredients.length > 0 && ingredients.every((ingredient) => current[ingredient.key] === true);
+    }
+
+    function a33ChecklistFindIndex(list, identity) {
+      const target = String(identity || "").trim();
+      if (!target) return -1;
+      const targetCode = target.startsWith("code:") ? target : a33ChecklistCodeIdentity(target);
+      return (Array.isArray(list) ? list : []).findIndex((lote) => {
+        const candidates = a33ChecklistLotIdentityCandidates(lote);
+        return candidates.includes(target) || (targetCode && candidates.includes(targetCode));
+      });
+    }
+
+    function a33SetChecklistStatus(message, tone) {
+      const el = document.getElementById("a33-checklist-estado");
+      if (!el) return;
+      el.textContent = String(message || "");
+      if (tone) el.dataset.tone = tone;
+      else el.removeAttribute("data-tone");
+    }
+
+    function a33ChecklistIngredients(lote) {
+      const totals = {};
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => { totals[item.key] = 0; });
+      const aggregate = (lote && (lote.ingredientTotals || lote.totalesIngredientes || lote.ingredientesTotales)) || {};
+
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => {
+        let value = 0;
+        for (const field of item.direct) {
+          value = a33ChecklistNumber(lote && lote[field]);
+          if (value > 0) break;
+        }
+        if (!(value > 0)) value = a33ChecklistNumber(aggregate && aggregate[item.key]);
+        totals[item.key] = value;
+      });
+
+      const hasDirect = A33_CHECKLIST_INGREDIENTS.some((item) => totals[item.key] > 0);
+      if (!hasDirect) {
+        a33ChecklistProducts(lote).forEach((row) => {
+          const qty = a33ChecklistNumber(row.cantidad != null ? row.cantidad : row.unidades);
+          const recipe = row.recipeSnapshot || row.recetaSnapshot || (row.snapshotProduccion && (row.snapshotProduccion.recipeSnapshot || row.snapshotProduccion.recetaSnapshot)) || {};
+          if (!(qty > 0) || !recipe || typeof recipe !== "object") return;
+          A33_CHECKLIST_INGREDIENTS.forEach((item) => {
+            totals[item.key] += a33ChecklistNumber(recipe[item.key]) * qty;
+          });
+        });
+      }
+
+      return A33_CHECKLIST_INGREDIENTS
+        .map((item) => ({ key:item.key, label:item.label, volume:totals[item.key] }))
+        .filter((item) => item.volume > 0);
+    }
+
+    function a33ChecklistLotVolumeMl(lote) {
+      const direct = [lote && lote.volTotal, lote && lote.totalVolumenFinalMl, lote && lote.volumenTotalMl, lote && lote.volumenMl];
+      for (const value of direct) {
+        const n = a33ChecklistNumber(value);
+        if (n > 0) return n;
+      }
+
+      let productsTotal = 0;
+      a33ChecklistProducts(lote).forEach((row) => {
+        const qty = a33ChecklistNumber(row.cantidad != null ? row.cantidad : row.unidades);
+        const unitVolume = a33ChecklistNumber(row.volumenMl || row.volumeMl || (row.snapshotProduccion && row.snapshotProduccion.volumenMl));
+        if (qty > 0 && unitVolume > 0) productsTotal += qty * unitVolume;
+      });
+      if (productsTotal > 0) return productsTotal;
+
+      return a33ChecklistIngredients(lote).reduce((sum, item) => sum + item.volume, 0);
+    }
+
+    function a33ChecklistVolumeText(lote) {
+      const ml = a33ChecklistLotVolumeMl(lote);
+      return ml > 0 ? formatLitros(ml) : "—";
+    }
+
+    function a33ReadChecklistLots() {
+      try {
+        const lots = (window.A33Storage && typeof A33Storage.sharedGet === "function")
+          ? A33Storage.sharedGet(A33_CHECKLIST_STORAGE_KEY, [])
+          : (() => {
+              const raw = window.localStorage ? window.localStorage.getItem(A33_CHECKLIST_STORAGE_KEY) : "";
+              return raw ? JSON.parse(raw) : [];
+            })();
+        return (Array.isArray(lots) ? lots : [])
+          .filter((lote) => lote && typeof lote === "object")
+          .slice()
+          .sort(a33ChecklistCompareLots);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function a33WriteChecklistState(identity, state, options) {
+      const opts = options && typeof options === "object" ? options : {};
+      const closing = opts.close === true;
+      const changedKey = String(opts.changedKey || "").trim();
+      const hasChangedKey = A33_CHECKLIST_INGREDIENTS.some((item) => item.key === changedKey);
+      const target = String(identity || "").trim();
+      if (!target) return { ok:false, message:"No se pudo identificar el lote." };
+
+      const prepareLot = (currentLot) => {
+        if (closing && a33ChecklistIsClosed(currentLot)) return { ok:true, alreadyClosed:true, lote:currentLot };
+        const currentState = a33ChecklistState(currentLot);
+        const requestedState = hasChangedKey
+          ? { ...currentState, [changedKey]:opts.changedValue === true }
+          : { ...currentState, ...(state && typeof state === "object" ? state : {}) };
+        if (closing && !a33ChecklistAllComplete(currentLot, requestedState)) {
+          return { ok:false, validation:true, message:"Marca todos los checkbox antes de pulsar Hecho." };
+        }
+        const payload = a33ChecklistPayload(requestedState, null, currentLot, closing);
+        return { ok:true, lote:{ ...currentLot, checklistProduccion:payload } };
+      };
+
+      try {
+        if (window.A33Storage && typeof A33Storage.sharedRead === "function" && typeof A33Storage.sharedReplaceExact === "function") {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            const read = A33Storage.sharedRead(A33_CHECKLIST_STORAGE_KEY, []);
+            const list = Array.isArray(read.data) ? read.data.slice() : [];
+            const index = a33ChecklistFindIndex(list, target);
+            if (index < 0) return { ok:false, message:"El lote ya no está disponible." };
+            const prepared = prepareLot(list[index]);
+            if (!prepared.ok || prepared.alreadyClosed) return prepared;
+            const nextLot = prepared.lote;
+            list[index] = nextLot;
+            const write = A33Storage.sharedReplaceExact(A33_CHECKLIST_STORAGE_KEY, list, {
+              source:closing ? "calculadora-checklist-cierre" : "calculadora-checklist",
+              baseRev:read.meta && typeof read.meta.rev === "number" ? read.meta.rev : null
+            });
+            if (write && write.ok !== false) {
+              const savedList = Array.isArray(write.data) ? write.data : list;
+              const savedIndex = a33ChecklistFindIndex(savedList, target);
+              return { ok:true, lote:savedIndex >= 0 ? savedList[savedIndex] : nextLot };
+            }
+            if (!(write && write.conflict)) return { ok:false, message:(write && write.message) || "No se pudo guardar el checklist." };
+          }
+          return { ok:false, message:"Los lotes cambiaron durante el guardado. Inténtalo nuevamente." };
+        }
+
+        const raw = window.localStorage ? window.localStorage.getItem(A33_CHECKLIST_STORAGE_KEY) : "";
+        const list = raw ? JSON.parse(raw) : [];
+        const index = a33ChecklistFindIndex(list, target);
+        if (index < 0) return { ok:false, message:"El lote ya no está disponible." };
+        const prepared = prepareLot(list[index]);
+        if (!prepared.ok || prepared.alreadyClosed) return prepared;
+        const nextLot = prepared.lote;
+        list[index] = nextLot;
+        window.localStorage.setItem(A33_CHECKLIST_STORAGE_KEY, JSON.stringify(list));
+        return { ok:true, lote:nextLot };
+      } catch (error) {
+        console.error("No se pudo persistir el Checklist de Producción.", error);
+        return { ok:false, message:"No se pudo guardar el checklist en este dispositivo." };
+      }
+    }
+
+    function a33PersistChecklistChange(key, checked) {
+      const lote = A33ChecklistLots[A33ChecklistSelectedIndex];
+      const identity = a33ChecklistLotIdentity(lote);
+      if (!lote || !identity) return false;
+      if (a33ChecklistIsClosed(lote)) {
+        a33SetChecklistStatus("Este checklist ya está cerrado y es solo de consulta.", "error");
+        a33RenderSelectedChecklist(A33ChecklistSelectedIndex, { keepStatus:true });
+        return false;
+      }
+      const previous = a33ChecklistState(lote);
+      const next = { ...previous, [key]:!!checked };
+      a33SetChecklistStatus("Guardando checklist…", "saving");
+      const result = a33WriteChecklistState(identity, next, { changedKey:key, changedValue:!!checked });
+      if (!result.ok) {
+        a33SetChecklistStatus(result.message || "No se pudo guardar el checklist.", "error");
+        a33RenderSelectedChecklist(A33ChecklistSelectedIndex, { keepStatus:true });
+        return false;
+      }
+      const savedLot = result.lote || { ...lote, checklistProduccion:a33ChecklistPayload(next, null, lote) };
+      A33ChecklistLots[A33ChecklistSelectedIndex] = savedLot;
+      a33SetChecklistStatus("Checklist guardado para este lote.", "success");
+      return true;
+    }
+
+    function a33CompleteSelectedChecklist(button) {
+      if (A33ChecklistClosing) return false;
+      const selectedLot = A33ChecklistLots[A33ChecklistSelectedIndex];
+      const identity = a33ChecklistLotIdentity(selectedLot);
+      if (!selectedLot || !identity) {
+        a33SetChecklistStatus("El lote seleccionado ya no está disponible.", "error");
+        return false;
+      }
+      const freshLots = a33ReadChecklistLots();
+      const freshIndex = a33ChecklistFindIndex(freshLots, identity);
+      const lote = freshIndex >= 0 ? freshLots[freshIndex] : null;
+      if (!lote) {
+        a33RenderChecklistHistory({ preserveSelection:false });
+        a33SetChecklistStatus("El lote seleccionado ya no está disponible.", "error");
+        return false;
+      }
+      if (a33ChecklistIsClosed(lote)) {
+        a33RenderChecklistHistory({ selectIdentity:identity });
+        a33SetChecklistStatus("Este checklist ya está cerrado y es solo de consulta.", "error");
+        return false;
+      }
+      A33ChecklistLots = freshLots;
+      A33ChecklistSelectedIndex = freshIndex;
+      A33ChecklistSelectedIdentity = a33ChecklistLotIdentity(lote);
+      const state = a33ChecklistState(lote);
+      if (!a33ChecklistAllComplete(lote, state)) {
+        a33SetChecklistStatus("Marca todos los checkbox antes de pulsar Hecho.", "error");
+        return false;
+      }
+
+      A33ChecklistClosing = true;
+      if (button) {
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+      }
+      a33SetChecklistStatus("Cerrando checklist…", "saving");
+      try {
+        const result = a33WriteChecklistState(identity, state, { close:true });
+        if (!result.ok) {
+          a33SetChecklistStatus(result.message || "No se pudo cerrar el checklist.", "error");
+          return false;
+        }
+        a33RenderChecklistHistory({ selectIdentity:identity });
+        a33SetChecklistStatus(result.alreadyClosed ? "Checklist ya cerrado: vista de consulta." : "Checklist cerrado correctamente.", "success");
+        return true;
+      } catch (error) {
+        console.error("No se pudo cerrar el Checklist de Producción.", error);
+        a33SetChecklistStatus("No se pudo cerrar el checklist. Inténtalo nuevamente.", "error");
+        return false;
+      } finally {
+        A33ChecklistClosing = false;
+        if (button && button.isConnected !== false) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+      }
+    }
+
+    function a33RenderChecklistLotTable(host, lots, mode) {
+      if (!host) return;
+      const rows = Array.isArray(lots) ? lots : [];
+      const isHistory = mode === "history";
+      host.innerHTML = "";
+
+      if (!rows.length) {
+        host.innerHTML = '<p class="a33-checklist-empty">' + (isHistory ? "Aún no hay checklist cerrados." : "No hay checklist pendientes.") + "</p>";
+        return;
+      }
+
+      const wrap = document.createElement("div");
+      wrap.className = "a33-checklist-table-wrap";
+      const table = document.createElement("table");
+      table.className = "a33-checklist-table a33-checklist-history-table";
+      table.innerHTML = "<thead><tr><th>Fecha</th><th>Lote</th><th>Volumen</th><th>Acción</th></tr></thead>";
+      const tbody = document.createElement("tbody");
+
+      rows.forEach((lote) => {
+        const identity = a33ChecklistLotIdentity(lote);
+        const tr = document.createElement("tr");
+        tr.className = "a33-checklist-history-row";
+        tr.dataset.checklistIdentity = identity;
+        tr.dataset.checklistMode = isHistory ? "history" : "pending";
+        const dateTd = document.createElement("td");
+        dateTd.className = "a33-checklist-value";
+        dateTd.dataset.label = "Fecha";
+        dateTd.textContent = a33ChecklistDateText(lote);
+        const lotTd = document.createElement("td");
+        lotTd.className = "a33-checklist-lot";
+        lotTd.dataset.label = "Lote";
+        lotTd.textContent = a33ChecklistLotCode(lote);
+        const volumeTd = document.createElement("td");
+        volumeTd.className = "a33-checklist-value";
+        volumeTd.dataset.label = "Volumen";
+        volumeTd.textContent = a33ChecklistVolumeText(lote);
+        const actionTd = document.createElement("td");
+        actionTd.className = "a33-checklist-action-cell";
+        actionTd.dataset.label = "Acción";
+        const button = document.createElement("button");
+        const actionLabel = isHistory ? "Ver" : "Usar";
+        button.type = "button";
+        button.className = "a33-checklist-use";
+        button.textContent = actionLabel;
+        button.dataset.checklistIdentity = identity;
+        button.dataset.checklistMode = isHistory ? "history" : "pending";
+        button.setAttribute("aria-label", actionLabel + " lote " + a33ChecklistLotCode(lote));
+        actionTd.appendChild(button);
+        tr.append(dateTd, lotTd, volumeTd, actionTd);
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      host.appendChild(wrap);
+    }
+
+    function a33RenderChecklistHistory(options) {
+      const opts = options && typeof options === "object" ? options : {};
+      const pendingHost = document.getElementById("a33-checklist-pendientes");
+      const historyHost = document.getElementById("a33-checklist-historico");
+      if (!pendingHost || !historyHost) return;
+      const preserveIdentity = String(opts.selectIdentity || (opts.preserveSelection ? A33ChecklistSelectedIdentity : "") || "").trim();
+      A33ChecklistLots = a33ReadChecklistLots();
+      A33ChecklistSelectedIndex = -1;
+      A33ChecklistSelectedIdentity = "";
+
+      const selected = document.getElementById("a33-checklist-seleccion");
+      const content = document.getElementById("a33-checklist-contenido");
+      if (selected) selected.innerHTML = "";
+      if (content) content.innerHTML = '<p class="a33-checklist-empty">Selecciona Usar o Ver en un lote para cargar sus ingredientes.</p>';
+      a33SetChecklistStatus("", "");
+
+      const pendingLots = A33ChecklistLots.filter((lote) => !a33ChecklistIsClosed(lote));
+      const historyLots = A33ChecklistLots.filter((lote) => a33ChecklistIsClosed(lote));
+      a33RenderChecklistLotTable(pendingHost, pendingLots, "pending");
+      a33RenderChecklistLotTable(historyHost, historyLots, "history");
+
+      if (!A33ChecklistLots.length && content) {
+        content.innerHTML = '<p class="a33-checklist-empty">Aún no hay lotes disponibles para preparar.</p>';
+      }
+
+      if (preserveIdentity) {
+        const preservedIndex = a33ChecklistFindIndex(A33ChecklistLots, preserveIdentity);
+        if (preservedIndex >= 0) a33RenderSelectedChecklist(preservedIndex);
+      }
+    }
+
+    function a33RenderSelectedChecklist(index, options) {
+      const opts = options && typeof options === "object" ? options : {};
+      const lote = A33ChecklistLots[index];
+      const selected = document.getElementById("a33-checklist-seleccion");
+      const content = document.getElementById("a33-checklist-contenido");
+      if (!lote || !selected || !content) return;
+      A33ChecklistSelectedIndex = index;
+      A33ChecklistSelectedIdentity = a33ChecklistLotIdentity(lote);
+      const ingredients = a33ChecklistIngredients(lote);
+      const state = a33ChecklistState(lote);
+      const isClosed = a33ChecklistIsClosed(lote);
+      const productionDetail = a33ChecklistProductionDetail(lote);
+      const syrupIngredient = ingredients.find((ingredient) => ingredient.key === "sirope");
+      const syrupFormula = a33ChecklistSyrupFormula(syrupIngredient && syrupIngredient.volume);
+
+      document.querySelectorAll(".a33-checklist-history-row").forEach((row) => {
+        row.classList.toggle("is-active", row.dataset.checklistIdentity === A33ChecklistSelectedIdentity);
+      });
+
+      selected.innerHTML = "";
+      const meta = document.createElement("div");
+      meta.className = "a33-checklist-meta";
+      [
+        "Lote: " + a33ChecklistLotCode(lote),
+        "Fecha: " + a33ChecklistDateText(lote),
+        "Volumen: " + a33ChecklistVolumeText(lote)
+      ].forEach((value) => {
+        const badge = document.createElement("div");
+        badge.className = "badge";
+        badge.textContent = value;
+        meta.appendChild(badge);
+      });
+      selected.appendChild(meta);
+      content.innerHTML = "";
+
+      if (productionDetail || syrupFormula) {
+        const operational = document.createElement("div");
+        operational.className = "a33-checklist-operational";
+        if (productionDetail) {
+          const productionLine = document.createElement("p");
+          productionLine.className = "a33-checklist-operational-line";
+          productionLine.textContent = "Producción: " + productionDetail;
+          operational.appendChild(productionLine);
+        }
+        if (syrupFormula) {
+          const waterLine = document.createElement("p");
+          waterLine.className = "a33-checklist-operational-line";
+          waterLine.textContent = "Agua: " + a33ChecklistOperationalNumber(syrupFormula.waterMl) + " ml";
+          const sugarLine = document.createElement("p");
+          sugarLine.className = "a33-checklist-operational-line";
+          sugarLine.textContent = "Azúcar: " + a33ChecklistOperationalNumber(syrupFormula.sugarT) + " t";
+          operational.append(waterLine, sugarLine);
+        }
+        content.appendChild(operational);
+      }
+
+      if (!ingredients.length) {
+        const empty = document.createElement("p");
+        empty.className = "a33-checklist-empty";
+        empty.textContent = "Este lote guardado no contiene detalle de ingredientes disponible para el Checklist.";
+        content.appendChild(empty);
+        if (!opts.keepStatus) a33SetChecklistStatus("", "");
+        return;
+      }
+
+      const wrap = document.createElement("div");
+      wrap.className = "a33-checklist-table-wrap";
+      const table = document.createElement("table");
+      table.className = "a33-checklist-table a33-checklist-items-table";
+      table.innerHTML = "<thead><tr><th>Checklist</th><th>Producto</th><th>Volumen</th></tr></thead>";
+      const tbody = document.createElement("tbody");
+
+      ingredients.forEach((ingredient) => {
+        const tr = document.createElement("tr");
+        tr.className = "a33-checklist-item-row";
+        tr.classList.toggle("is-complete", !!state[ingredient.key]);
+        const checkTd = document.createElement("td");
+        checkTd.className = "a33-checklist-check-cell";
+        checkTd.dataset.label = "Checklist";
+        const label = document.createElement("label");
+        label.className = "a33-checklist-toggle";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = !!state[ingredient.key];
+        checkbox.disabled = isClosed;
+        checkbox.dataset.checklistKey = ingredient.key;
+        checkbox.dataset.checklistLabel = ingredient.label;
+        checkbox.setAttribute("aria-label", isClosed
+          ? "Consultar " + ingredient.label + (checkbox.checked ? " completado" : " pendiente")
+          : (checkbox.checked ? "Desmarcar " : "Marcar ") + ingredient.label + (checkbox.checked ? " como pendiente" : " como completado"));
+        label.appendChild(checkbox);
+        checkTd.appendChild(label);
+        const productTd = document.createElement("td");
+        productTd.className = "a33-checklist-product";
+        productTd.dataset.label = "Producto";
+        productTd.textContent = ingredient.label;
+        const volumeTd = document.createElement("td");
+        volumeTd.className = "a33-checklist-value";
+        volumeTd.dataset.label = "Volumen";
+        volumeTd.textContent = formatMl(ingredient.volume) + " (" + formatLitros(ingredient.volume) + ")";
+        tr.append(checkTd, productTd, volumeTd);
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+
+      if (isClosed) {
+        const closedNote = document.createElement("div");
+        closedNote.className = "a33-checklist-closed-note";
+        closedNote.textContent = "Checklist cerrado · Solo consulta";
+        content.appendChild(closedNote);
+        content.appendChild(wrap);
+      } else {
+        content.appendChild(wrap);
+        const actions = document.createElement("div");
+        actions.className = "a33-checklist-actions";
+        const doneButton = document.createElement("button");
+        doneButton.id = "a33-checklist-hecho";
+        doneButton.type = "button";
+        doneButton.className = "a33-checklist-done";
+        doneButton.textContent = "Hecho";
+        doneButton.setAttribute("aria-label", "Cerrar checklist del lote " + a33ChecklistLotCode(lote));
+        actions.appendChild(doneButton);
+        content.appendChild(actions);
+      }
+
+      if (!opts.keepStatus) a33SetChecklistStatus(isClosed ? "Checklist cerrado: vista de consulta." : "Estado recuperado para este lote.", "success");
+      const firstCheckbox = content.querySelector('input[type="checkbox"]:not(:disabled)');
+      if (firstCheckbox) firstCheckbox.focus({ preventScroll:true });
+      else {
+        const focusTarget = content.querySelector(".a33-checklist-closed-note") || selected;
+        if (focusTarget) {
+          focusTarget.tabIndex = -1;
+          focusTarget.focus({ preventScroll:true });
+        }
+      }
+    }
+
+    function a33RefreshChecklistAfterLotSave(savedLot) {
+      const identity = a33ChecklistLotIdentity(savedLot);
+      a33RenderChecklistHistory({ preserveSelection:true, selectIdentity:identity });
+    }
+
+    function a33OpenChecklist() {
+      const view = document.getElementById("a33-checklist-view");
+      if (!view) return;
+      if (!view.hidden) {
+        const close = document.getElementById("btn-cerrar-checklist");
+        if (close) close.focus({ preventScroll:true });
+        return;
+      }
+      a33RenderChecklistHistory({ preserveSelection:false });
+      view.hidden = false;
+      view.setAttribute("aria-hidden", "false");
+      document.body.classList.add("a33-checklist-open");
+      const close = document.getElementById("btn-cerrar-checklist");
+      if (close) close.focus({ preventScroll:true });
+    }
+
+    function a33CloseChecklist() {
+      const view = document.getElementById("a33-checklist-view");
+      if (!view || view.hidden) return;
+      view.hidden = true;
+      view.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("a33-checklist-open");
+      const trigger = document.getElementById("btn-checklist");
+      if (trigger) trigger.focus({ preventScroll:true });
+    }
+
+function registerCalculadoraServiceWorker() {
+      if (!("serviceWorker" in navigator)) return;
+      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=12")
+        .catch((error) => console.error("SW Calculadora error", error));
+    }
+
+    async function init() {
+      if (window.A33Production && typeof A33Production.recoverPendingTransactions === "function") {
+        try { await A33Production.recoverPendingTransactions(); } catch (e) { console.warn("No se pudo recuperar una producción pendiente.", e); }
+      }
+      await cargarPresentacionesDinamicasDesdeCatalogos();
+      construirTablaRecetas();
+      construirTablaPlan();
+      cargarRecetas();
+      cargarMetaLote();
+      resetNotasAlEntrar();
+      document.getElementById("btn-guardar-receta").addEventListener("click", guardarRecetas);
+      document.getElementById("btn-calcular").addEventListener("click", calcularTotales);
+      document.getElementById("btn-limpiar").addEventListener("click", limpiarCantidades);
+      const btnChecklist = document.getElementById("btn-checklist");
+      const btnCerrarChecklist = document.getElementById("btn-cerrar-checklist");
+      const checklistPendientes = document.getElementById("a33-checklist-pendientes");
+      const checklistHistorico = document.getElementById("a33-checklist-historico");
+      const checklistContenido = document.getElementById("a33-checklist-contenido");
+      if (btnChecklist && btnChecklist.dataset.checklistBound !== "1") {
+        btnChecklist.dataset.checklistBound = "1";
+        btnChecklist.addEventListener("click", a33OpenChecklist);
+      }
+      if (btnCerrarChecklist && btnCerrarChecklist.dataset.checklistBound !== "1") {
+        btnCerrarChecklist.dataset.checklistBound = "1";
+        btnCerrarChecklist.addEventListener("click", a33CloseChecklist);
+      }
+      const handleChecklistSelection = (event) => {
+        const button = event.target && event.target.closest ? event.target.closest("button[data-checklist-identity]") : null;
+        if (!button || button.disabled || button.dataset.checklistBusy === "1" || A33ChecklistSelecting) return;
+        event.preventDefault();
+        const identity = String(button.dataset.checklistIdentity || "").trim();
+        if (!identity) return;
+        A33ChecklistSelecting = true;
+        button.dataset.checklistBusy = "1";
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        try {
+          A33ChecklistLots = a33ReadChecklistLots();
+          const index = a33ChecklistFindIndex(A33ChecklistLots, identity);
+          if (index < 0) {
+            a33RenderChecklistHistory({ preserveSelection:false });
+            a33SetChecklistStatus("El lote seleccionado ya no está disponible.", "error");
+            return;
+          }
+          const requestedHistory = button.dataset.checklistMode === "history";
+          const isClosed = a33ChecklistIsClosed(A33ChecklistLots[index]);
+          if (requestedHistory !== isClosed) {
+            a33RenderChecklistHistory({ selectIdentity:identity });
+            a33SetChecklistStatus(isClosed ? "Checklist cerrado: vista de consulta." : "Checklist pendiente listo para usar.", "success");
+            return;
+          }
+          a33RenderSelectedChecklist(index);
+        } finally {
+          A33ChecklistSelecting = false;
+          if (button && button.isConnected !== false) {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+            delete button.dataset.checklistBusy;
+          }
+        }
+      };
+      if (checklistPendientes && checklistPendientes.dataset.checklistBound !== "1") {
+        checklistPendientes.dataset.checklistBound = "1";
+        checklistPendientes.addEventListener("click", handleChecklistSelection);
+      }
+      if (checklistHistorico && checklistHistorico.dataset.checklistBound !== "1") {
+        checklistHistorico.dataset.checklistBound = "1";
+        checklistHistorico.addEventListener("click", handleChecklistSelection);
+      }
+      if (checklistContenido && checklistContenido.dataset.checklistBound !== "1") {
+        checklistContenido.dataset.checklistBound = "1";
+        checklistContenido.addEventListener("change", (event) => {
+          const checkbox = event.target;
+          if (!checkbox || checkbox.type !== "checkbox" || !checkbox.dataset.checklistKey) return;
+          const selectedLot = A33ChecklistLots[A33ChecklistSelectedIndex];
+          if (a33ChecklistIsClosed(selectedLot)) {
+            a33SetChecklistStatus("Este checklist ya está cerrado y es solo de consulta.", "error");
+            a33RenderSelectedChecklist(A33ChecklistSelectedIndex, { keepStatus:true });
+            return;
+          }
+          const row = checkbox.closest(".a33-checklist-item-row");
+          const saved = a33PersistChecklistChange(checkbox.dataset.checklistKey, checkbox.checked);
+          if (!saved) return;
+          if (row) row.classList.toggle("is-complete", checkbox.checked);
+          checkbox.setAttribute("aria-label", (checkbox.checked ? "Desmarcar " : "Marcar ") + (checkbox.dataset.checklistLabel || "producto") + (checkbox.checked ? " como pendiente" : " como completado"));
+        });
+        checklistContenido.addEventListener("click", (event) => {
+          const button = event.target && event.target.closest ? event.target.closest("#a33-checklist-hecho") : null;
+          if (!button) return;
+          event.preventDefault();
+          a33CompleteSelectedChecklist(button);
+        });
+      }
+      if (!window.__A33ChecklistStorageBound) {
+        window.__A33ChecklistStorageBound = true;
+        window.addEventListener("storage", (event) => {
+          if (!event || event.key !== A33_CHECKLIST_STORAGE_KEY) return;
+          const view = document.getElementById("a33-checklist-view");
+          if (view && !view.hidden && !A33ChecklistClosing && !A33ChecklistSelecting) {
+            a33RenderChecklistHistory({ preserveSelection:true });
+          }
+        });
+      }
+      if (!window.__A33ChecklistKeydownBound) {
+        window.__A33ChecklistKeydownBound = true;
+        document.addEventListener("keydown", (event) => {
+          const view = document.getElementById("a33-checklist-view");
+          if (event.key === "Escape" && view && !view.hidden) a33CloseChecklist();
+        });
+      }
+      const btnGuardarLote = document.getElementById("btn-guardar-lote");
+      if (btnGuardarLote && btnGuardarLote.dataset.productionBound !== "1") {
+        btnGuardarLote.dataset.productionBound = "1";
+        btnGuardarLote.addEventListener("click", guardarCalculoComoLote);
+      }
+      document.getElementById("btn-exportar").addEventListener("click", exportarLote);
+      const loteInput = document.getElementById("lote");
+      const fechaProdInput = document.getElementById("fecha-produccion");
+      const notasInput = document.getElementById("notas");
+      const btnRegenerar = document.getElementById("btn-regenerar-codigo");
+
+      if (btnRegenerar) {
+        btnRegenerar.addEventListener("click", () => {
+          // Regenerar: vuelve a AUTO y recalcula el código sugerido (preview) SIN comprometer consecutivo
+          recalcularCodigoLoteAuto({ consumeNewSeq: false });
+          guardarMetaLote();
+        });
+      }
+
+      if (loteInput) {
+        const onManual = () => {
+          if (A33SuppressCodigoInput) return;
+          marcarCodigoComoManual();
+          guardarMetaLote();
+        };
+        loteInput.addEventListener("input", onManual);
+        loteInput.addEventListener("change", onManual);
+        loteInput.addEventListener("keyup", onManual);
+        loteInput.addEventListener("focus", () => { if (!A33SuppressCodigoInput) setPillEstadoCodigo("EDITADO"); });
+      }
+
+      if (fechaProdInput) {
+        const onFecha = () => {
+          guardarMetaLote();
+          actualizarTextoCaducidad();
+          // Si está en AUTO, recalcula con el MISMO consecutivo (sin consumir otro)
+          if (A33CodigoLoteMode === "AUTO") {
+            recalcularCodigoLoteAuto({ consumeNewSeq: false });
+          } else {
+            // MANUAL: solo actualizamos el hint de fecha hebrea
+            actualizarFechaHebrea();
+          }
+        };
+        fechaProdInput.addEventListener("change", onFecha);
+        fechaProdInput.addEventListener("keyup", onFecha);
+      }
+
+      if (notasInput) {
+        // Notas no se persisten; pero seguimos limpiando key por compatibilidad del flujo
+        notasInput.addEventListener("change", guardarMetaLote);
+        notasInput.addEventListener("keyup", guardarMetaLote);
+      }
+
+      actualizarTextoCaducidad();
+      actualizarFechaHebrea();
+      registerCalculadoraServiceWorker();
+}
+
+    document.addEventListener("DOMContentLoaded", () => {
+      init().catch((err) => {
+        console.error("No se pudo iniciar la Calculadora A33.", err);
+        try { alert("No se pudo iniciar la Calculadora. Revisa consola."); } catch (e) {}
+      });
+    });
+
+    // iOS/Safari puede restaurar el formulario desde BFCache al volver al módulo.
+    // Esto garantiza que Notas se limpie cada vez que 're-entras' a Calculadora.
+    window.addEventListener("pageshow", () => {
+      try { resetNotasAlEntrar(); } catch (e) {}
+    });
+  </script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
+</body>
+</html>

@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Arcano 33 · Planificación de Pedidos</title>
+  <meta name="description" content="Planificación y registro de pedidos y entregas de Sangría Artesanal Premium Arcano 33." />
+  <meta name="theme-color" content="#7b1818" />
+
+  
+<script src="/assets/js/a33-theme.js?v=4.20.98&r=7"></script>
+<link rel="icon" type="image/png" sizes="192x192" href="images/logo.png" />
+  <link rel="apple-touch-icon" href="images/logo.png" />
+  <link rel="manifest" href="manifest.webmanifest?v=4.20.98&r=9" />
+
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=9" />
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=7" />
+  <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=4" />
+<link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
+</head>
+<body>
+  <header class="a33-header" role="banner" data-a33-module="pedidos">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">Planificación de Pedidos</div>
+    <div class="a33-version" data-a33-version="1" data-a33-fallback="v4.20.98">v...</div>
+  </header>
+  <main class="app-main">
+    <section class="card pedidos-mode-switch" aria-label="Tipo de pedido">
+      <div>
+        <h2>Forma de trabajo</h2>
+        <p class="hint">Pedido completo conserva todos sus campos. Pedido rápido es para encargos sencillos.</p>
+      </div>
+      <div class="pedidos-mode-actions" role="group" aria-label="Seleccionar forma de trabajo">
+        <button type="button" class="btn-primary" id="pedido-mode-completo" aria-pressed="true">Pedido completo</button>
+        <button type="button" class="btn-secondary" id="pedido-mode-rapido" aria-pressed="false">Pedido rápido</button>
+      </div>
+    </section>
+
+    <section class="card form-card pedido-completo-view">
+      <h2>Nuevo pedido</h2>
+      <div class="inline-banner" id="archived-mode-banner" hidden></div>
+      <form id="pedido-form">
+        <div class="form-grid">
+          <div class="field">
+            <label for="fechaCreacion">Fecha de Fabricación</label>
+            <input type="date" id="fechaCreacion" name="fechaCreacion" required />
+          </div>
+
+          <div class="field">
+            <label for="fechaEntrega">Fecha de entrega</label>
+            <input type="date" id="fechaEntrega" name="fechaEntrega" required />
+          </div>
+
+          <div class="field">
+            <label for="codigoPedido">Código de pedido</label>
+            <input type="text" id="codigoPedido" name="codigoPedido" placeholder="Se autogenera" readonly />
+          </div>
+
+          <div class="field">
+            <label for="prioridad">Prioridad</label>
+            <select id="prioridad" name="prioridad">
+              <option value="normal">Normal</option>
+              <option value="urgente">Urgente</option>
+              <option value="programado">Programado</option>
+            </select>
+          </div>
+        </div>
+
+        <h3>Datos del cliente</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="clienteSelect">Cliente</label>
+
+            <div class="customer-picker" role="group" aria-label="Selector de cliente">
+              <input type="text" id="clienteBuscar" placeholder="Buscar cliente..." autocomplete="off" inputmode="search" />
+              <select id="clienteSelect" required></select>
+              <button type="button" class="btn-secondary a33-pill-btn" id="clienteNewToggle">+ Crear nuevo</button>
+            </div>
+
+            <div id="clienteNewBox" class="customer-new-box" hidden>
+              <input type="text" id="clienteNewName" placeholder="Nombre del nuevo cliente" autocomplete="off" />
+              <div class="customer-new-actions">
+                <button type="button" class="btn-primary a33-pill-btn" id="clienteNewSave">Guardar</button>
+                <button type="button" class="btn-secondary a33-pill-btn" id="clienteNewCancel">Cancelar</button>
+              </div>
+              <p class="hint hint-small">Se guarda también para POS (misma base de clientes).</p>
+            </div>
+
+            <div id="clienteSelectedStatus" class="hint hint-small" aria-live="polite"></div>
+
+            <!-- Compat: seguimos guardando clienteNombre, pero ahora viene del selector -->
+            <input type="hidden" id="clienteNombre" name="clienteNombre" />
+            <input type="hidden" id="clienteId" name="clienteId" />
+          </div>
+
+          <div class="field">
+            <label for="clienteTipo">Tipo de cliente</label>
+            <select id="clienteTipo" name="clienteTipo">
+              <option value="individual">Individual</option>
+              <option value="bar">Bar</option>
+              <option value="restaurante">Restaurante</option>
+              <option value="evento">Evento</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="clienteTelefono">Teléfono de contacto</label>
+            <input type="tel" id="clienteTelefono" name="clienteTelefono" placeholder="Ej: 8888-0000" />
+          </div>
+
+          <!-- Dirección de entrega: removida de UI (se mantiene hidden para compatibilidad con pedidos viejos) -->
+          <input type="hidden" id="clienteDireccion" name="clienteDireccion" />
+
+          <div class="field" style="grid-column:1/-1;">
+            <label for="clienteReferencia">Referencia de ubicación</label>
+            <textarea id="clienteReferencia" name="clienteReferencia" rows="2" placeholder="Punto de referencia, indicaciones extra (opcional)"></textarea>
+          </div>
+        </div>
+
+        <h3>Detalle del pedido · Productos</h3>
+        <p class="hint">Solo productos activos de Catálogos. Los precios se toman del catálogo actual.</p>
+        <p class="hint hint-small" id="pedidos-products-status" aria-live="polite"></p>
+
+        <div class="presentaciones-wrapper">
+          <table class="mini-table" id="presentaciones-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="price-col">Precio</th>
+                <th class="qty-col">Cantidad</th>
+                <th class="line-total-col">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody id="presentaciones-body">
+              <tr class="pedidos-products-empty">
+                <td colspan="4">Cargando productos activos…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Totales y pagos</h3>
+        <p class="hint hint-small" id="pedidos-currency-note" aria-live="polite">Moneda: C$ / NIO · T/C no configurado en Moneda</p>
+        <div class="form-grid">
+          <div class="field">
+            <label for="envio">Envío (C$)</label>
+            <input type="number" id="envio" name="envio" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="subtotal">Subtotal (C$)</label>
+            <input type="number" id="subtotal" name="subtotal" readonly />
+          </div>
+          <div class="field">
+            <label for="descuento">Descuento (C$)</label>
+            <input type="number" id="descuento" name="descuento" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="totalPagar">Total a pagar (C$)</label>
+            <input type="number" id="totalPagar" name="totalPagar" readonly />
+          </div>
+          <div class="field">
+            <label for="pagoAnticipado">Pago anticipado (C$)</label>
+            <input type="number" id="pagoAnticipado" name="pagoAnticipado" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="saldoPendiente">Saldo pendiente (C$)</label>
+            <input type="number" id="saldoPendiente" name="saldoPendiente" readonly />
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="metodoPago">Método de pago</label>
+            <select id="metodoPago" name="metodoPago">
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="estado">Estado</label>
+            <select id="estado" name="estado">
+              <option value="pendiente">Pendiente</option>
+              <option value="entregado">Entregado</option>
+            </select>
+          </div>
+        </div>
+
+        <h3>Relación con lotes</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="lotesRelacionados">Códigos de lote relacionados</label>
+            <input type="text" id="lotesRelacionados" name="lotesRelacionados" placeholder="Ej: A33-2025-12-01-01, A33-2025-12-02-02" />
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="save-btn">Guardar pedido</button>
+          <button type="button" class="btn-secondary" id="reset-btn">Limpiar formulario</button>
+          <button type="button" class="btn-danger" id="clear-all-btn">Borrar todos</button>
+          <button type="button" class="btn-secondary" id="calc-totals-btn">Calcular totales</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card table-card pedido-completo-view">
+      <div class="table-header">
+        <h2>Pedidos registrados</h2>
+        <div class="table-actions">
+          <input type="search" id="active-search" class="search-input" placeholder="Buscar (cliente, código, fecha, estado)…" autocomplete="off" />
+          <button type="button" class="btn-secondary" id="details-toggle" aria-pressed="false">Detalles</button>
+          <button type="button" class="btn-secondary" id="export-btn">Exportar a Excel</button>
+          <span class="inline-notice" id="export-status" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="pedidos-table">
+          <thead>
+            <tr>
+              <th class="col-date col-hide-ipad">Fecha</th>
+              <th>Código</th>
+              <th>Cliente</th>
+              <th>Entrega</th>
+              <th>Total (C$)</th>
+              <th>Entregado</th>
+              <th class="actions-col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-pager" id="active-pager" hidden>
+        <span class="inline-notice" id="active-count" aria-live="polite"></span>
+        <button type="button" class="btn-secondary" id="active-load-more">Cargar más</button>
+      </div>
+    </section>
+  
+    <section class="card table-card pedido-completo-view" id="archived-section">
+      <div class="table-header">
+        <h2>Histórico <span class="badge" id="archived-count">0</span></h2>
+        <div class="table-actions">
+          <input type="search" id="archived-search" class="search-input" placeholder="Buscar (cliente, código, fecha, estado)…" autocomplete="off" />
+          <button type="button" class="btn-secondary" id="archived-details-toggle" aria-pressed="false">Detalles</button>
+          <span class="inline-notice" id="archived-notice" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="archived-table">
+          <thead>
+            <tr>
+              <th class="col-date col-hide-ipad">Archivado</th>
+              <th class="col-code">Código</th>
+              <th>Cliente</th>
+              <th class="col-date">Entrega</th>
+              <th class="col-status">Estado</th>
+              <th class="col-money">Total (C$)</th>
+              <th class="actions-col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="table-pager" id="archived-pager" hidden>
+        <span class="inline-notice" id="archived-shown" aria-live="polite"></span>
+        <button type="button" class="btn-secondary" id="archived-load-more">Cargar más</button>
+      </div>
+    </section>
+
+    <section class="card quick-order-form-card pedido-rapido-view" hidden>
+      <div class="quick-section-head">
+        <div>
+          <h2 id="quick-order-form-title">Nuevo Pedido rápido</h2>
+          <p class="hint">Planificación únicamente. No afecta inventario, ventas, caja ni finanzas.</p>
+        </div>
+        <span class="badge" id="quick-order-code-preview">Código pendiente</span>
+      </div>
+
+      <form id="quick-order-form">
+        <div class="quick-form-grid">
+          <div class="field quick-field-wide">
+            <label for="quick-customer-search">Cliente</label>
+            <input type="search" id="quick-customer-search" placeholder="Buscar cliente…" autocomplete="off" />
+            <select id="quick-customer-select" required></select>
+            <p class="hint hint-small" id="quick-customer-status">Seleccioná un cliente del catálogo de la Suite.</p>
+          </div>
+          <div class="field">
+            <label for="quick-delivery-date">Fecha de entrega</label>
+            <input type="date" id="quick-delivery-date" required />
+          </div>
+          <div class="field">
+            <label for="quick-priority">Prioridad</label>
+            <select id="quick-priority">
+              <option value="normal">Normal</option>
+              <option value="alta">Alta</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="quick-status">Estado</label>
+            <select id="quick-status">
+              <option value="pendiente">Pendiente</option>
+              <option value="entregado">Entregado</option>
+            </select>
+          </div>
+        </div>
+
+        <h3>Productos</h3>
+        <p class="hint">Para agregar, se muestran únicamente productos activos de Catálogos.</p>
+        <div class="quick-product-adder">
+          <select id="quick-product-select" aria-label="Producto"></select>
+          <input type="number" id="quick-product-quantity" min="1" step="1" value="1" inputmode="numeric" aria-label="Cantidad" />
+          <button type="button" class="btn-secondary" id="quick-product-add">Agregar</button>
+        </div>
+        <div class="quick-product-lines" id="quick-product-lines" aria-live="polite"></div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="quick-save-btn">Guardar Pedido rápido</button>
+          <button type="button" class="btn-secondary" id="quick-reset-btn">Limpiar</button>
+        </div>
+        <p class="inline-notice" id="quick-form-notice" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="card quick-order-list-card pedido-rapido-view" hidden>
+      <div class="table-header">
+        <div>
+          <h2>Pedidos rápidos pendientes <span class="badge" id="quick-pending-count">0</span></h2>
+          <p class="hint">Lista operativa compacta.</p>
+        </div>
+        <div class="table-actions">
+          <input type="search" id="quick-pending-search" class="search-input" placeholder="Buscar cliente, código o producto…" autocomplete="off" />
+          <button type="button" class="btn-secondary" id="quick-export-btn">Exportar a Excel</button>
+        </div>
+      </div>
+      <div class="quick-order-list" id="quick-pending-list"></div>
+      <div class="table-pager" id="quick-pending-pager" hidden>
+        <span class="inline-notice" id="quick-pending-shown"></span>
+        <button type="button" class="btn-secondary" id="quick-pending-more">Cargar más</button>
+      </div>
+    </section>
+
+    <details class="card quick-history pedido-rapido-view" id="quick-history" hidden>
+      <summary>
+        <span>Histórico de Pedidos rápidos</span>
+        <span class="badge" id="quick-history-count">0</span>
+      </summary>
+      <div class="quick-history-tools">
+        <input type="search" id="quick-history-search" class="search-input" placeholder="Buscar en Histórico…" autocomplete="off" />
+      </div>
+      <div class="quick-order-list" id="quick-history-list"></div>
+      <div class="table-pager" id="quick-history-pager" hidden>
+        <span class="inline-notice" id="quick-history-shown"></span>
+        <button type="button" class="btn-secondary" id="quick-history-more">Cargar más</button>
+      </div>
+    </details>
+
+  </main>
+
+
+  <div class="a33-modal-backdrop" id="pedido-detail-modal" hidden role="dialog" aria-modal="true" aria-labelledby="pedido-detail-title">
+    <div class="a33-modal-card pedido-detail-card">
+      <div class="a33-modal-head">
+        <div>
+          <h2 id="pedido-detail-title">Detalle de pedido</h2>
+          <p class="hint hint-small">Resumen limpio con productos guardados por snapshot.</p>
+        </div>
+        <button type="button" class="btn-secondary a33-icon-btn" id="pedido-detail-close" aria-label="Cerrar">×</button>
+      </div>
+
+      <div class="pedido-detail-grid">
+        <div><span>Código</span><strong id="pedido-detail-code"></strong></div>
+        <div><span>Cliente</span><strong id="pedido-detail-client"></strong></div>
+        <div><span>Fabricación</span><strong id="pedido-detail-created"></strong></div>
+        <div><span>Entrega</span><strong id="pedido-detail-delivery"></strong></div>
+        <div><span>Prioridad</span><strong id="pedido-detail-priority"></strong></div>
+        <div><span>Estado</span><strong id="pedido-detail-status"></strong></div>
+        <div><span>Tipo</span><strong id="pedido-detail-type"></strong></div>
+        <div><span>Teléfono</span><strong id="pedido-detail-phone"></strong></div>
+      </div>
+
+      <div class="pedido-detail-block">
+        <h3>Productos</h3>
+        <div class="pedido-detail-table-wrap">
+          <table class="mini-table pedido-detail-products-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Cant.</th>
+                <th>Precio</th>
+                <th>Subtotal</th>
+              </tr>
+            </thead>
+            <tbody id="pedido-detail-products-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="pedido-detail-grid totals-grid">
+        <div><span>Subtotal</span><strong id="pedido-detail-subtotal"></strong></div>
+        <div><span>Descuento</span><strong id="pedido-detail-discount"></strong></div>
+        <div><span>Envío</span><strong id="pedido-detail-shipping"></strong></div>
+        <div><span>Total</span><strong id="pedido-detail-total"></strong></div>
+        <div><span>Método</span><strong id="pedido-detail-method"></strong></div>
+        <div><span>Anticipo</span><strong id="pedido-detail-paid"></strong></div>
+        <div><span>Saldo</span><strong id="pedido-detail-balance"></strong></div>
+      </div>
+
+      <div class="pedido-detail-notes">
+        <p><strong>Referencia:</strong> <span id="pedido-detail-ref"></span></p>
+        <p><strong>Lotes:</strong> <span id="pedido-detail-lots"></span></p>
+      </div>
+
+      <div class="form-actions modal-actions">
+        <button type="button" class="btn-primary" id="pedido-detail-ok">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="app-footer">
+    <p>Arcano 33 · Planificación interna de pedidos y entregas</p>
+  </footer>
+
+  <script src="./vendor/xlsx.full.min.js?v=4.20.98&r=7"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.98&r=54"></script>
+  <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=4"></script>
+  <script src="/assets/js/a33-module-guard.js?v=4.20.98&r=5"></script>
+
+  <script src="/assets/js/a33-storage.js?v=4.20.98&r=21"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.98&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+
+  <script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+  <script src="script.js?v=4.20.98&r=17"></script>
+  <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
+</body>
+</html>

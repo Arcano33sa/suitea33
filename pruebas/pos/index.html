@@ -1,0 +1,1736 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>A33 POS</title>
+<link rel="manifest" href="manifest.webmanifest?v=4.20.98&r=28">
+<link rel="apple-touch-icon" href="logo.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f0f0f"/>
+  <!-- Etapa 4/5 — aplicar Apariencia antes del CSS para evitar parpadeos -->
+<script>
+  (function(){
+    try{
+      var key = 'suite_a33_appearance_preference';
+      var pref = localStorage.getItem(key) || 'dark';
+      if (!/^(dark|light|auto)$/.test(pref)) pref = 'dark';
+      var resolved = pref === 'auto'
+        ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')
+        : pref;
+      document.documentElement.setAttribute('data-a33-theme-preference', pref);
+      document.documentElement.setAttribute('data-theme', resolved);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', resolved === 'light' ? '#f4ead8' : '#060606');
+    }catch(_){
+      document.documentElement.setAttribute('data-a33-theme-preference', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
+<link rel="stylesheet" href="styles.css?v=4.20.98&r=25">
+  <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=13" />
+  <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=4" />
+  <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=13" />
+  <link rel="stylesheet" href="/assets/css/a33-toast.css?v=4.20.98&r=1" />
+  <script src="/assets/js/a33-theme.js?v=4.20.98&r=13"></script>
+</head>
+<body>
+  <header class="a33-header" role="banner" data-a33-module="pos">
+    <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
+    <div class="a33-title">POS · Eventos</div>
+    <div class="a33-right">
+      <div class="a33-version" id="a33-version-text" data-a33-version="1" data-a33-fallback="v4.20.98">v...</div>
+    </div>
+  </header>
+<div id="offlineBar" class="offline">Trabajando sin conexión</div>
+<div class="container">
+
+  <section id="tab-venta" class="tab card">
+    <h2>Vender</h2>
+
+    <div id="sell-day-closed-banner" class="warn a33-guard-banner" style="display:none">
+      <div class="a33-guard-text">
+        <div class="a33-guard-title" id="sell-day-closed-title">Día cerrado</div>
+        <div class="a33-guard-sub" id="sell-day-closed-sub">Para vender aquí, reabrí el día en Resumen.</div>
+      </div>
+      <div class="a33-guard-actions">
+        <button id="btn-go-caja" class="btn-primary btn-pill" type="button">Ir a Resumen</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Evento activo</label>
+        <div class="row">
+          <select id="sale-event">
+            <option value="">— Selecciona evento —</option>
+          </select>
+          <input id="new-event" placeholder="Nuevo evento">
+        </div>
+
+<div class="row">
+  <label>Evento maestro / Grupo</label>
+</div>
+<div class="row">
+  <select id="event-group-select">
+    <option value="">— Selecciona grupo —</option>
+    <option value="__new__">+ Crear nuevo grupo</option>
+  </select>
+  <input id="event-group-new" placeholder="Nombre de nuevo grupo" style="display:none">
+</div>
+<div class="actions">
+  <button type="button" id="btn-manage-groups" class="btn-primary btn-pill">Gestionar grupos</button>
+</div>
+<small class="muted">Usa el mismo nombre de grupo para todos los días del mismo evento maestro. Puedes ocultar grupos antiguos desde “Gestionar grupos”.</small>
+
+        <div class="actions">
+  <button id="btn-add-event" class="btn-ok btn-pill">+ Crear y activar evento</button>
+  <button id="btn-close-event" class="btn-danger btn-pill">Cerrar evento (Corte)</button>
+  <button id="btn-reopen-event" class="btn-ok btn-pill">Reabrir evento</button>
+</div>
+        <div id="event-status" class="info" style="display:none"></div>
+        <div id="no-active-note" class="disabled-note" style="display:none">Sin evento activo. Crea o selecciona uno para comenzar.</div>
+      </div>
+      <div>
+        <label>Fecha</label>
+        <input id="sale-date" type="date">
+        <div class="sale-fx-field" id="sale-exchange-rate-wrap">
+          <label for="sale-exchange-rate">T/C</label>
+          <input id="sale-exchange-rate" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="36.80" autocomplete="off">
+          <small id="sale-exchange-rate-status" class="muted">—</small>
+          <small id="sale-exchange-rate-error" class="warn sale-fx-error" style="display:none"></small>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" id="sell-block">
+      <div>
+        <label>Producto</label>
+        <select id="sale-product"></select>
+        <div id="product-chips" class="chips"></div>
+      </div>
+      <div>
+        <label>Precio (C$)</label>
+        <input id="sale-price" type="number" inputmode="decimal" step="0.01">
+        <div><small class="muted">Stock: <span id="sale-stock">—</span></small></div>
+      </div>
+    </div>
+
+    <div class="row4">
+      <div>
+        <label>Cantidad</label>
+        <div class="stepper">
+          <button id="qty-minus">−</button>
+          <input id="sale-qty" type="number" inputmode="numeric" step="1" value="1" min="1">
+          <button id="qty-plus">+</button>
+        </div>
+      </div>
+      <div>
+        <label>Descuento por unidad (C$)</label>
+        <input id="sale-discount" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" step="0.01" value="0">
+      </div>
+      <div>
+        <label>Método de pago</label>
+        <select id="sale-payment">
+          <option value="efectivo" selected>Efectivo</option>
+          <option value="transferencia">Transferencia</option>
+          <option value="tarjeta">Tarjeta</option>
+          <option value="credito">Crédito cliente</option>
+        </select>
+      </div>
+      <div>
+        <label>Total (C$)</label>
+        <input id="sale-total" type="number" inputmode="decimal" step="0.01" disabled>
+      </div>
+    </div>
+
+    <div id="sale-cash-tender-card" class="card inner sale-cash-tender" style="display:none">
+      <div class="sale-cash-tender-head">
+        <div>
+          <h4>Cobro en efectivo</h4>
+          <small class="muted">Para ventas en efectivo: C$ normal o USD con vuelto en C$.</small>
+        </div>
+        <div class="sale-cash-tender-mode">
+          <label for="sale-cash-mode">Forma de cobro</label>
+          <select id="sale-cash-mode">
+            <option value="nio" selected>C$ solamente</option>
+            <option value="usd_change_nio">USD con vuelto en C$</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="sale-cash-usd-fields" class="sale-cash-usd-fields" style="display:none">
+        <div>
+          <label for="sale-cash-fx-used">T/C usado</label>
+          <input id="sale-cash-fx-used" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" readonly>
+        </div>
+        <div>
+          <label for="sale-cash-usd-received">Monto recibido USD</label>
+          <input id="sale-cash-usd-received" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="10.00" autocomplete="off">
+        </div>
+        <div>
+          <label for="sale-cash-equivalent">Equivalente C$</label>
+          <input id="sale-cash-equivalent" class="a33-num" type="number" inputmode="decimal" step="0.01" readonly>
+        </div>
+        <div>
+          <label for="sale-cash-change">Vuelto C$</label>
+          <input id="sale-cash-change" class="a33-num" type="number" inputmode="decimal" step="0.01" readonly>
+        </div>
+      </div>
+      <small id="sale-cash-tender-status" class="muted sale-cash-tender-status"></small>
+    </div>
+
+
+<!-- Cliente (opcional) · Etapa 2/3: selector POS, administración en Catálogos -->
+<div class="row" id="sale-customer-row">
+  <div class="customer-v2">
+    <div class="customer-v2-field">
+      <label id="sale-customer-label">Cliente</label>
+      <input id="sale-customer" placeholder="Selecciona cliente…" readonly aria-readonly="true">
+      <small class="muted customer-catalog-hint">Los clientes se administran desde Catálogos.</small>
+    </div>
+
+    <div class="customer-v2-actions">
+      <button id="btn-new-customer" class="btn-outline btn-pill btn-pill-mini customer-quick-open" type="button">Nuevo</button>
+      <button id="btn-pick-customer" class="btn-outline btn-pill btn-pill-mini" type="button">Seleccionar</button>
+      <button id="btn-clear-customer" class="btn-outline btn-pill btn-pill-mini" type="button">Limpiar</button>
+      <label class="flag customer-v2-sticky"><input id="sale-customer-sticky" type="checkbox"> Pegajoso</label>
+    </div>
+  </div>
+</div>
+
+    <div class="row" id="sale-bank-row" style="display:none">
+      <div>
+        <label>Banco / medio de cobro</label>
+        <select id="sale-bank">
+          <option value="">— Selecciona banco —</option>
+        </select>
+        <small id="sale-bank-note" class="muted"></small>
+      </div>
+    </div>
+
+    <details class="card">
+      <summary>Más opciones</summary>
+      <div class="row">
+        <div>
+          <label class="flag"><input id="sale-courtesy" type="checkbox"> Cortesía</label>
+          <label class="flag"><input id="sale-return" type="checkbox"> Devolución</label>
+        </div>
+        <div>
+          <label>Cortesía a</label>
+          <div class="courtesy-recipient-control">
+            <input id="sale-courtesy-to" placeholder="Selecciona un cliente" disabled readonly aria-readonly="true">
+            <button id="btn-edit-courtesy-to" class="btn-outline btn-pill btn-pill-mini" type="button" hidden>Editar nombre</button>
+          </div>
+          <small id="sale-courtesy-to-hint" class="muted" hidden>Usa el nombre del cliente seleccionado.</small>
+        </div>
+      </div>
+      <label>Notas (opcional)</label>
+      <textarea id="sale-notes" rows="2" placeholder="ej. promo, ref. de pago, etc."></textarea>
+    </details>
+
+    <div class="row">
+      <button id="btn-add" class="btn-ok">+ Agregar venta</button>
+      <button id="btn-undo" class="btn-warn">↩︎ Deshacer última</button>
+    </div>
+
+
+    <div class="card">
+      <div class="row">
+        <div><strong>Listado del día</strong></div>
+        <div style="text-align:right"><strong>Total día: C$ <span id="day-total">0</span></strong></div>
+      </div>
+      <div class="table-scroll">
+      <table id="tbl-day" class="compact">
+        <thead>
+          <tr>
+            <th>Hora</th><th>Producto</th><th>Cant.</th><th>PU</th><th>Desc</th><th>Total</th><th>Pago</th><th>C</th><th>Dev</th><th>Cliente asociado</th><th>Cortesía a</th><th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-inventario" class="tab card" style="display:none">
+    <h2>Inventario por evento</h2>
+    <div class="row">
+      <div>
+        <label>Evento</label>
+        <select id="inv-event"></select>
+      </div>
+      <div class="actions end">
+  <button id="btn-inv-csv" class="btn-primary btn-pill">CSV Inventario</button>
+  <button id="btn-inv-ref" class="btn-ok btn-pill">Actualizar</button>
+  <button id="btn-inv-from-lote" class="btn-ok btn-pill" type="button">Agregar desde lote</button>
+</div>
+    </div>
+    <div id="lotes-operativos-block" class="lotes-operativos-block">
+      <div class="actions end lotes-operativos-actions">
+        <button id="btn-reverse-assign" class="btn-outline btn-pill btn-pill-mini" type="button">Reversar asignación</button>
+        <button id="btn-create-sobrante" class="btn-outline btn-pill btn-pill-mini" type="button">Crear lote sobrante</button>
+      </div>
+
+      <div id="sobrante-panel" class="sobrante-panel" style="display:none">
+        <div class="sobrante-panel-head">
+          <div>
+            <div class="sobrante-title">Sobrantes → Lote hijo</div>
+            <small class="muted" id="sobrante-hint">Crea un lote DISPONIBLE y cierra el lote original (trazabilidad incluida).</small>
+          </div>
+          <div class="actions end">
+            <button id="btn-sobrante-cancel" class="btn-outline btn-pill btn-pill-mini" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div class="row" style="grid-template-columns:1fr">
+          <div>
+            <label>Lote original</label>
+            <select id="sobrante-lote-select"></select>
+            <small class="muted" id="sobrante-lote-meta"></small>
+          </div>
+        </div>
+
+        <div class="sobrante-grid" aria-label="Cantidades sobrantes por presentación">
+          <div class="sobrante-cell"><label>P</label><input id="sobrante-p" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+          <div class="sobrante-cell"><label>M</label><input id="sobrante-m" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+          <div class="sobrante-cell"><label>D</label><input id="sobrante-d" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+          <div class="sobrante-cell"><label>L</label><input id="sobrante-l" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+          <div class="sobrante-cell"><label>G</label><input id="sobrante-g" type="number" inputmode="numeric" step="1" min="0" value="0"></div>
+        </div>
+
+        <div class="actions end">
+          <button id="btn-sobrante-create" class="btn-ok btn-pill btn-pill-mini" type="button">Crear lote sobrante</button>
+        </div>
+      </div>
+
+      <div id="reverso-panel" class="reverso-panel" style="display:none">
+        <div class="reverso-panel-head">
+          <div>
+            <div class="reverso-title">Reverso de asignación</div>
+            <small class="muted">Devuelve el lote a DISPONIBLE sin borrar historia. Solo se permite si es seguro.</small>
+          </div>
+          <div class="actions end">
+            <button id="btn-reverso-cancel" class="btn-outline btn-pill btn-pill-mini" type="button">Cancelar</button>
+          </div>
+        </div>
+
+        <div class="row" style="grid-template-columns:1fr">
+          <div>
+            <label>Lote asignado</label>
+            <select id="reverso-lote-select"></select>
+            <small class="muted" id="reverso-lote-meta"></small>
+          </div>
+        </div>
+
+        <div class="reverso-grid" aria-label="Resumen de unidades a reversar">
+          <div class="reverso-cell"><label>P</label><span id="reverso-p">0</span></div>
+          <div class="reverso-cell"><label>M</label><span id="reverso-m">0</span></div>
+          <div class="reverso-cell"><label>D</label><span id="reverso-d">0</span></div>
+          <div class="reverso-cell"><label>L</label><span id="reverso-l">0</span></div>
+          <div class="reverso-cell"><label>G</label><span id="reverso-g">0</span></div>
+        </div>
+
+        <div class="warn"><small><b>Regla:</b> si el evento ya tuvo consumo/ventas de esas presentaciones (o fraccionamiento de galones), el reverso se bloquea para evitar inconsistencias.</small></div>
+
+        <div class="actions end">
+          <button id="btn-reverso-do" class="btn-danger btn-pill btn-pill-mini" type="button">Reversar asignación</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="lotes-evento-block" class="lotes-block">
+      <div class="lotes-block-head" role="button" tabindex="0" aria-expanded="false" aria-controls="lotes-evento-content">
+        <div>
+          <h3 style="margin:0">Lotes cargados en este evento <span class="badge" id="lotes-count">0</span></h3>
+          <small class="muted">Se registra cuando usas “Agregar desde lote”.</small>
+        </div>
+        <span class="lotes-toggle-indicator" aria-hidden="true">▾</span>
+      </div>
+
+      <div id="lotes-evento-content" class="lotes-evento-content" hidden>
+        <div class="table-scroll">
+          <table id="tbl-lotes-evento" class="compact">
+            <thead>
+              <tr id="lotes-evento-totals-row" class="lotes-totals-row">
+                <th scope="row" colspan="2">TOTALES</th>
+              </tr>
+              <tr id="lotes-evento-head-row">
+                <th>Código</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="reempaque-block" class="reempaque-block">
+      <div class="reempaque-head">
+        <div>
+          <h3 style="margin:0">Reempaque</h3>
+          <small class="muted">Convierte una presentación existente en otra presentación vendible.</small>
+        </div>
+        <div class="actions end">
+          <button id="btn-toggle-reempaque" class="btn-outline btn-pill btn-pill-mini" type="button" aria-expanded="false">Mostrar Reempaque</button>
+        </div>
+      </div>
+
+      <div id="reempaque-panel" class="reempaque-panel is-collapsed rp-mode-simple">
+        <div class="reempaque-card reempaque-mode-card">
+          <div class="reempaque-title">Modo</div>
+          <div class="reempaque-mode-options" role="radiogroup" aria-label="Modo de Reempaque">
+            <label class="reempaque-mode-pill">
+              <input type="radio" name="rp-mode" value="SIMPLE" checked>
+              <span>Simple</span>
+              <small>1 origen → 1 destino</small>
+            </label>
+            <label class="reempaque-mode-pill">
+              <input type="radio" name="rp-mode" value="MULTIPLE">
+              <span>Múltiple</span>
+              <small>1 origen → varios destinos</small>
+            </label>
+          </div>
+        </div>
+
+        <div class="reempaque-grid">
+          <div class="reempaque-card">
+            <div class="reempaque-title">Origen</div>
+            <label>Producto origen</label>
+            <select id="rp-source-product"></select>
+            <label>Lote origen</label>
+            <select id="rp-source-lot" aria-describedby="rp-source-lot-meta"></select>
+            <small id="rp-source-lot-meta" class="muted">Selecciona evento y producto para resolver el lote.</small>
+            <label>Cantidad origen</label>
+            <input id="rp-source-qty" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 1">
+            <label>Costo unitario origen</label>
+            <input id="rp-source-unit-cost" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Auto o manual">
+            <div class="rp-multi-only">
+              <label>Volumen total origen en ml</label>
+              <input id="rp-source-total-ml-manual" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Auto o manual">
+              <small class="muted">Si el catálogo no tiene ml, indícalo aquí.</small>
+            </div>
+          </div>
+
+          <div id="rp-simple-ui" class="reempaque-card rp-simple-only">
+            <div class="reempaque-title">Destino</div>
+            <label>Producto destino</label>
+            <select id="rp-target-product"></select>
+            <div class="info" style="margin-top:10px">
+              <small>Reempaque solo usa productos activos existentes. Si falta el destino, créalo primero en Gestión Operativa → Catálogos → Productos.</small>
+            </div>
+            <label>Cantidad creada</label>
+            <input id="rp-target-qty" class="a33-num" data-a33-default="0" type="number" inputmode="numeric" min="0" step="1" placeholder="Automático" readonly>
+          </div>
+        </div>
+
+        <div class="reempaque-grid reempaque-grid-3 rp-simple-only">
+          <div class="reempaque-card soft">
+            <div class="reempaque-title">Referencia de conversión</div>
+            <div class="reempaque-kv"><span>Volumen/capacidad origen</span><b id="rp-source-capacity">—</b></div>
+            <div class="reempaque-kv"><span>Volumen/capacidad destino</span><b id="rp-target-capacity">—</b></div>
+            <div class="reempaque-kv"><span>Cantidad sugerida</span><b id="rp-suggested-qty">—</b></div>
+            <div class="reempaque-kv"><span>Unidades por conversión</span><b id="rp-base-units">—</b></div>
+            <div class="reempaque-kv"><span>Extra por merma acumulada</span><b id="rp-extra-units">0</b></div>
+            <div class="reempaque-kv"><span>Total creado</span><b id="rp-total-units">—</b></div>
+            <div class="reempaque-kv"><span>Merma pendiente</span><b id="rp-pending-merma">—</b></div>
+          </div>
+
+          <div class="reempaque-card soft">
+            <div class="reempaque-title">Costos</div>
+            <div id="rp-currency-note" class="reempaque-currency-note" aria-live="polite">Moneda: C$ / NIO · T/C no configurado en Moneda.</div>
+            <label>Costo adicional unitario</label>
+            <input id="rp-extra-cost" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 8">
+            <small class="muted">Se multiplicará por la cantidad destino.</small>
+            <div class="reempaque-kv"><span>Costo adicional unitario</span><b id="rp-cost-additional-unit">C$0.00</b></div>
+            <div class="reempaque-kv"><span>Cantidad destino</span><b id="rp-cost-target-qty">—</b></div>
+            <div class="reempaque-kv"><span>Costo adicional total</span><b id="rp-cost-additional-total">C$0.00</b></div>
+            <div class="reempaque-kv"><span>Costo líquido distribuido</span><b id="rp-cost-liquid-distributed">N/D</b></div>
+            <div class="reempaque-kv"><span>Costo líquido unitario</span><b id="rp-cost-liquid-unit">N/D</b></div>
+            <div class="reempaque-kv"><span>Costo final unitario estimado</span><b id="rp-cost-unit-target">N/D</b></div>
+            <div class="reempaque-kv"><span>Costo final total estimado</span><b id="rp-cost-total-used">N/D</b></div>
+            <div class="reempaque-kv" hidden><span>Costo origen total</span><b id="rp-cost-origin-total">N/D</b></div>
+          </div>
+
+          <div class="reempaque-card soft">
+            <div class="reempaque-title">Notas</div>
+            <textarea id="rp-note" rows="4" placeholder="Nota opcional"></textarea>
+          </div>
+        </div>
+
+        <div id="rp-multiple-ui" class="rp-multi-only">
+          <div class="reempaque-grid reempaque-grid-3">
+            <div class="reempaque-card soft">
+              <div class="reempaque-title">Origen múltiple</div>
+              <div class="reempaque-kv"><span>Producto origen</span><b id="rp-multi-source-name">—</b></div>
+              <div class="reempaque-kv"><span>Cantidad origen</span><b id="rp-multi-source-qty">—</b></div>
+              <div class="reempaque-kv"><span>Volumen total origen</span><b id="rp-multi-source-total-ml">—</b></div>
+              <div class="reempaque-kv"><span>Costo total origen</span><b id="rp-multi-cost-origin-total">N/D</b></div>
+              <div class="reempaque-kv"><span>Costo por ml estimado</span><b id="rp-multi-cost-per-ml">N/D</b></div>
+              <div class="reempaque-kv"><span>Stock disponible</span><b id="rp-multi-source-stock">—</b></div>
+            </div>
+
+            <div class="reempaque-card soft reempaque-destinations-card">
+              <div class="reempaque-title">Destinos</div>
+              <div id="rp-multi-destinations" class="reempaque-destinations-list"></div>
+              <div class="actions end" style="margin-top:8px">
+                <button id="btn-rp-add-destination" class="btn-outline btn-pill btn-pill-mini" type="button">Agregar destino</button>
+              </div>
+            </div>
+
+            <div class="reempaque-card soft">
+              <div class="reempaque-title">Resumen múltiple</div>
+              <div id="rp-multi-currency-note" class="reempaque-currency-note" aria-live="polite">Moneda: C$ / NIO · T/C no configurado en Moneda.</div>
+              <div class="reempaque-kv"><span>Volumen total origen</span><b id="rp-multi-volume-origin">—</b></div>
+              <div class="reempaque-kv"><span>Volumen distribuido</span><b id="rp-multi-volume-distributed">—</b></div>
+              <div class="reempaque-kv"><span>Volumen sobrante/merma</span><b id="rp-multi-volume-left">—</b></div>
+              <div class="reempaque-kv"><span>Costo total origen</span><b id="rp-multi-cost-origin">N/D</b></div>
+              <div class="reempaque-kv"><span>Costo líquido distribuido</span><b id="rp-multi-cost-distributed">N/D</b></div>
+              <div class="reempaque-kv"><span>Costo adicional destinos</span><b id="rp-multi-cost-additional">C$0.00</b></div>
+              <div class="reempaque-kv"><span>Costo final destinos</span><b id="rp-multi-cost-final">N/D</b></div>
+              <div class="reempaque-kv"><span>Costo sobrante/merma</span><b id="rp-multi-cost-left">N/D</b></div>
+              <div id="rp-multi-warning" class="reempaque-warning muted">Sin advertencias.</div>
+            </div>
+          </div>
+
+          <div class="reempaque-grid">
+            <div class="reempaque-card soft">
+              <div class="reempaque-title">Notas</div>
+              <textarea id="rp-note-multi" rows="3" placeholder="Nota opcional"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div id="rp-msg" class="reempaque-msg" aria-live="polite"></div>
+        <div class="actions end reempaque-actions">
+          <button id="btn-register-reempaque" class="btn-ok btn-pill" type="button">Registrar Reempaque</button>
+        </div>
+      </div>
+
+      <div id="reempaque-history" class="reempaque-history" aria-live="polite">
+        <div class="reempaque-history-head">
+          <div>
+            <h4 style="margin:0">Historial de Reempaque</h4>
+            <small class="muted">Últimos movimientos internos del evento seleccionado.</small>
+          </div>
+          <small id="rp-history-count" class="muted">0 registros</small>
+        </div>
+        <div id="rp-history-list" class="reempaque-history-list">
+          <div class="reempaque-empty muted">Selecciona un evento para ver el historial.</div>
+        </div>
+      </div>
+    </div>
+
+    <table id="tbl-inv">
+      <thead>
+        <tr>
+          <th>Producto</th><th>Activo</th><th>Manejar</th><th>Inicial</th><th>Reposición</th><th>Ajuste ±</th><th>Stock</th><th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="info"><small>“Manejar” desactiva inventario para productos que no se controlan aquí. Inicial se guarda por evento. Reposición y Ajuste crean movimientos fechados. <b>Nota:</b> Vasos se alimenta formalmente desde Inventario → Reempaque y se vende como producto normal.</small></div>
+  </section>
+
+  <section id="tab-eventos" class="tab card" style="display:none">
+    <h2>Eventos e historial</h2>
+    <div class="topbar">
+      <select id="filtro-eventos">
+        <option value="todos" selected>Mostrar: Todos</option>
+        <option value="abiertos">Solo abiertos</option>
+        <option value="cerrados">Solo cerrados</option>
+      </select>
+      <select id="filtro-grupo">
+        <option value="">Grupos: Todos</option>
+      </select>
+      <button id="btn-exportar-eventos" class="btn-primary btn-pill">Exportar lista (Excel)</button>
+      <button id="btn-exportar-evento-excel" class="btn-ok btn-pill">Exportar evento activo (Excel)</button>
+    </div>
+    <div class="table-scroll">
+    <table id="tbl-eventos">
+      <thead><tr><th>Evento</th><th>Grupo</th><th>Estado</th><th>Creado</th><th>Cerrado</th><th>Total</th><th>Acciones</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    </div>
+    <div id="cierre-total-card" class="card inner">
+      <h3>Cierre Total por grupo</h3>
+      <p class="muted">Selecciona un grupo arriba y genera un corte consolidado de todos sus eventos diarios.</p>
+      <div class="actions">
+  <button id="btn-cierre-total" class="btn-ok btn-pill">Cierre Total del grupo</button>
+  <button id="btn-cierre-total-excel" class="btn-primary btn-pill">Exportar Cierre Total (Excel)</button>
+</div>
+      <div id="cierre-total-resumen" class="summary"></div>
+      <div id="cierre-total-presentaciones" class="table-wrapper"></div>
+    </div>
+  </section>
+
+  <section id="tab-efectivo" class="tab card" style="display:none">
+    <div class="row" style="align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+      <h2 style="margin:0">Efectivo</h2>
+      <small class="muted">Arqueo del día (por evento)</small>
+    </div>
+
+    <div class="card inner" style="margin-top:10px">
+      <div class="row" style="align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <div>
+          <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;">Estado</label>
+          <span id="cashv2-status-tag" class="tag open">Abierto</span>
+        </div>
+        <div class="muted" style="font-size:12px;">
+          <div>Evento: <b id="cashv2-eventid">—</b></div>
+          <div>Día operativo: <b id="cashv2-daykey">—</b></div>
+        <div>Apertura: <b id="cashv2-opened-at">—</b></div>
+          <div id="cashv2-cashsales-line" style="margin-top:6px;">Ventas en efectivo físicas: <b id="cashv2-cashsales">C$ 0.00</b></div>
+        </div>
+        <div class="actions end" style="gap:8px; align-items:center; flex-wrap:wrap;">
+          <button id="cashv2-btn-hist" class="btn-outline btn-pill" type="button">Histórico</button>
+        </div>
+      </div>
+
+      <div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap; margin-top:10px;">
+        <div style="min-width:240px; flex:1;">
+          <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;" for="cashv2-event-select">Evento (Efectivo)</label>
+          <select id="cashv2-event-select" aria-label="Evento (Efectivo)">
+            <option value="">— Selecciona evento —</option>
+          </select>
+          <small class="muted">Este selector no cambia el evento global del POS.</small>
+          <div id="cashv2-event-badges" class="row" style="gap:6px; margin-top:6px; flex-wrap:wrap;"></div>
+        </div>
+
+        <div style="min-width:220px;">
+          <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;">Efectivo activo</label>
+          <label class="flag"><input id="cashv2-event-enabled" type="checkbox"> Efectivo activo</label>
+          <small id="cashv2-event-enabled-hint" class="muted"></small>
+        </div>
+      </div>
+
+      <div id="cashv2-no-event" class="warn" style="display:none; margin-top:10px"><small>Selecciona un evento para usar Efectivo.</small></div>
+      <div id="cashv2-blocked-note" class="info" style="display:none; margin-top:10px"><small>Efectivo está desactivado o el evento está inactivo. Esto no afecta otros módulos.</small></div>
+      <div id="cashv2-error" class="warn" style="display:none; margin-top:10px"></div>
+
+      
+        <div id="cashv2-multiday-note" class="info" style="display:none; margin-top:10px"><small></small></div>
+        <div id="cashv2-multiday-actions" class="row" style="justify-content:flex-end; gap:8px; margin-top:8px; display:none">
+          <button id="cashv2-btn-open-from-yesterday" class="btn-primary btn-pill" type="button">Abrir hoy con saldo de ayer</button>
+        </div>
+        <div class="info" style="margin-top:10px"><small>Inicio y movimientos listos. Completa el cierre y revisa la diferencia.</small></div>
+    </div>
+  
+
+      
+
+    <div id="cashv2-summary-card" class="card inner cashv2-summary-card" style="margin-top:10px; display:none" aria-live="polite">
+      <div class="cashv2-summary-head">
+        <div>
+          <h3 style="margin:0;">Resumen</h3>
+          <small class="muted">Caja física y cobros bancarios del día seleccionado.</small>
+        </div>
+        <small class="muted cashv2-summary-note">Tarjeta, Transferencia y Comisión son informativos; no alteran Caja física.</small>
+      </div>
+
+      <div class="cashv2-summary-grid">
+        <div class="cashv2-summary-panel">
+          <div class="muted cashv2-summary-title">C$ (NIO)</div>
+          <table class="cashv2-summary-table">
+            <tbody>
+              <tr><td>Saldo inicial</td><td id="cashv2-sum-initial-nio" class="sub">0.00</td></tr>
+              <tr><td>Entradas</td><td id="cashv2-sum-in-nio" class="sub">0.00</td></tr>
+              <tr><td>Cobros</td><td id="cashv2-sum-collections-nio" class="sub">0.00</td></tr>
+              <tr><td>Salidas</td><td id="cashv2-sum-out-nio" class="sub">0.00</td></tr>
+              <tr><td>Ventas en efectivo</td><td id="cashv2-sum-sales-nio" class="sub">0.00</td></tr>
+              <tr><td>Ajuste</td><td id="cashv2-sum-adjust-nio" class="sub">0.00</td></tr>
+              <tr><td>Saldo esperado</td><td id="cashv2-sum-expected-nio" class="sub">0.00</td></tr>
+              <tr><td>Saldo final contado</td><td id="cashv2-sum-final-nio" class="sub">0.00</td></tr>
+              <tr><td><b>Diferencia</b></td><td class="sub"><span id="cashv2-sum-diff-nio" class="pill">0.00</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="cashv2-summary-panel">
+          <div class="muted cashv2-summary-title">USD</div>
+          <table class="cashv2-summary-table">
+            <tbody>
+              <tr><td>Saldo inicial</td><td id="cashv2-sum-initial-usd" class="sub">0.00</td></tr>
+              <tr><td>Entradas</td><td id="cashv2-sum-in-usd" class="sub">0.00</td></tr>
+              <tr><td>Cobros</td><td id="cashv2-sum-collections-usd" class="sub">0.00</td></tr>
+              <tr><td>Salidas</td><td id="cashv2-sum-out-usd" class="sub">0.00</td></tr>
+              <tr><td>Ventas en efectivo</td><td id="cashv2-sum-sales-usd" class="sub">0.00</td></tr>
+              <tr><td>Ajuste</td><td id="cashv2-sum-adjust-usd" class="sub">0.00</td></tr>
+              <tr><td>Saldo esperado</td><td id="cashv2-sum-expected-usd" class="sub">0.00</td></tr>
+              <tr><td>Saldo final contado</td><td id="cashv2-sum-final-usd" class="sub">0.00</td></tr>
+              <tr><td><b>Diferencia</b></td><td class="sub"><span id="cashv2-sum-diff-usd" class="pill">0.00</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="cashv2-summary-panel cashv2-summary-banking">
+          <div class="muted cashv2-summary-title">Cobros bancarios · informativo</div>
+          <table class="cashv2-summary-table">
+            <tbody>
+              <tr><td>Transferencias</td><td id="cashv2-sum-transfer-nio" class="sub">C$ 0.00</td></tr>
+              <tr><td>Tarjeta</td><td id="cashv2-sum-card-nio" class="sub">C$ 0.00</td></tr>
+              <tr><td><b>Comisión bancaria total</b></td><td id="cashv2-sum-card-commission-total" class="sub">C$ 0.00</td></tr>
+            </tbody>
+            <tbody id="cashv2-sum-card-commission-lines" class="cashv2-commission-lines"></tbody>
+          </table>
+          <small id="cashv2-sum-card-commission-note" class="muted cashv2-commission-note"></small>
+        </div>
+      </div>
+    </div>
+
+    <div id="cashv2-fx-card" class="card inner cashv2-fx" style="margin-top:10px; display:none">
+      <div class="row" style="align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin:0;">Tipo de cambio</h3>
+          <small class="muted">USD → C$ (informativo para el evento)</small>
+        </div>
+        <div class="actions end" style="gap:8px; align-items:center; flex-wrap:wrap;">
+          <input id="cashv2-fx-input"
+                 type="number" min="0.01" step="0.01"
+                 inputmode="decimal"
+                 placeholder="0.00"
+                 style="max-width:140px;">
+          <button id="cashv2-btn-save-fx" class="btn-ok btn-pill" type="button">Guardar</button>
+        </div>
+      </div>
+
+      <div id="cashv2-fx-error" class="warn" style="display:none; margin-top:8px"><small></small></div>
+      <small id="cashv2-fx-save-status" class="muted" style="display:block; margin-top:6px;"></small>
+    </div>
+
+<div id="cashv2-initial-card" class="card inner cashv2-initial" style="margin-top:10px; display:none">
+      <div class="row" style="align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin:0;">Inicio</h3>
+          <small class="muted">Saldo inicial por denominaciones (C$ y USD).</small>
+        </div>
+        <div class="actions end" style="gap:8px; align-items:center; flex-wrap:wrap;">
+          <button id="cashv2-btn-save-initial" class="btn-ok btn-pill" type="button">Guardar Inicio</button>
+          <small id="cashv2-initial-save-status" class="muted"></small>
+        </div>
+      </div>
+
+      <div class="row" style="gap:12px; flex-wrap:wrap; margin-top:10px;">
+        <div style="flex:1; min-width:260px;">
+          <div class="muted" style="font-size:12px; margin-bottom:6px;">C$ (NIO)</div>
+          <table id="cashv2-table-initial-nio">
+            <thead><tr><th class="denom">Denom</th><th>Cant</th><th class="sub">Sub</th></tr></thead>
+            <tbody></tbody>
+            <tfoot><tr><td colspan="2">Total</td><td id="cashv2-total-nio" class="sub">0</td></tr></tfoot>
+          </table>
+        </div>
+        <div style="flex:1; min-width:260px;">
+          <div class="muted" style="font-size:12px; margin-bottom:6px;">USD</div>
+          <table id="cashv2-table-initial-usd">
+            <thead><tr><th class="denom">Denom</th><th>Cant</th><th class="sub">Sub</th></tr></thead>
+            <tbody></tbody>
+            <tfoot><tr><td colspan="2">Total</td><td id="cashv2-total-usd" class="sub">0</td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="cashv2-movements-card" class="card inner cashv2-movements" style="margin-top:10px; display:none">
+      <div class="row" style="align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin:0;">Movimientos</h3>
+          <small class="muted">Entrada, Salida y Cobros vinculados al evento activo.</small>
+        </div>
+      </div>
+
+      <!-- Etapa 2/7: bloque visible (sin modal) -->
+      <div class="card inner" style="margin-top:10px; padding:10px;">
+        <div class="row" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:200px;">
+            <div class="muted" style="font-size:12px; margin-bottom:6px;">Fecha</div>
+            <input id="cashv2-move-date-inline" type="date" disabled>
+          </div>
+          <div style="flex:1; min-width:200px;">
+            <div class="muted" style="font-size:12px; margin-bottom:6px;">Tipo</div>
+            <select id="cashv2-move-kind-inline">
+              <option value="CASH_IN">Entrada</option>
+              <option value="EXPENSE">Salida</option>
+              <option value="CREDIT_COLLECTION">Cobros</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="cashv2-credit-collection-wrap" class="cashv2-credit-collection" style="display:none; margin-top:10px;">
+          <div class="muted" style="font-size:12px; margin-bottom:6px;">Venta al crédito pendiente</div>
+          <select id="cashv2-credit-sale-select" aria-label="Venta al crédito pendiente">
+            <option value="">— Selecciona una venta al crédito —</option>
+          </select>
+          <div id="cashv2-credit-sale-empty" class="muted" style="display:none; margin-top:7px;"><small>No hay ventas al crédito pendientes en este evento.</small></div>
+          <div id="cashv2-credit-sale-details" class="cashv2-credit-sale-details" style="display:none; margin-top:8px;" aria-live="polite"></div>
+        </div>
+
+        <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:8px;">
+          <div style="flex:1; min-width:200px;">
+            <div class="muted" style="font-size:12px; margin-bottom:6px;">Moneda</div>
+            <select id="cashv2-move-currency-inline">
+              <option value="NIO">C$</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+          <div style="flex:1; min-width:200px;">
+            <div class="muted" style="font-size:12px; margin-bottom:6px;">Monto</div>
+            <input id="cashv2-move-amount-inline" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00">
+          </div>
+        </div>
+
+        <div style="margin-top:8px;">
+          <div class="muted" style="font-size:12px; margin-bottom:6px;">Descripción</div>
+          <input id="cashv2-move-desc-inline" type="text" maxlength="120" placeholder="Descripción del movimiento">
+        </div>
+
+        <div class="row" style="align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px;">
+          <div id="cashv2-move-inline-error" class="warn" style="display:none"><small></small></div>
+          <div class="actions end" style="gap:8px; align-items:center; flex-wrap:wrap;">
+            <button id="cashv2-btn-add-movement" class="btn-primary btn-pill" type="button">Agregar movimiento</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="muted" style="font-size:12px; margin-top:8px;">
+        Neto movimientos: <b id="cashv2-net-nio">0</b> C$ · <b id="cashv2-net-usd">0</b> USD
+      </div>
+
+      <div id="cashv2-move-empty" class="muted" style="margin-top:10px"><small>Sin movimientos.</small></div>
+      <div id="cashv2-move-list" class="cashv2-move-list" style="margin-top:10px"></div>
+    </div>
+
+    <div id="cashv2-final-card" class="card inner cashv2-final" style="margin-top:10px; display:none">
+      <div class="row" style="align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin:0;">Cierre</h3>
+          <small class="muted">Conteo final por denominaciones + esperado + diferencia (por moneda).</small>
+        </div>
+        <div class="actions end" style="gap:8px; align-items:center; flex-wrap:wrap;">
+          <button id="cashv2-btn-save-final" class="btn-ok btn-pill" type="button">Guardar Final</button>
+          <small id="cashv2-final-save-status" class="muted"></small>
+        </div>
+      </div>
+
+      <div class="row" style="gap:12px; flex-wrap:wrap; margin-top:10px;">
+        <div style="flex:1; min-width:260px;">
+          <div class="muted" style="font-size:12px; margin-bottom:6px;">C$ (NIO)</div>
+          <table id="cashv2-table-final-nio">
+            <thead><tr><th class="denom">Denom</th><th>Cant</th><th class="sub">Sub</th></tr></thead>
+            <tbody></tbody>
+            <tfoot><tr><td colspan="2">Total</td><td id="cashv2-final-total-nio" class="sub">0</td></tr></tfoot>
+          </table>
+        </div>
+        <div style="flex:1; min-width:260px;">
+          <div class="muted" style="font-size:12px; margin-bottom:6px;">USD</div>
+          <table id="cashv2-table-final-usd">
+            <thead><tr><th class="denom">Denom</th><th>Cant</th><th class="sub">Sub</th></tr></thead>
+            <tbody></tbody>
+            <tfoot><tr><td colspan="2">Total</td><td id="cashv2-final-total-usd" class="sub">0</td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="row" style="align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:12px;">
+        <div style="flex:1; min-width:240px;">
+          <div id="cashv2-close-blocker" class="warn" style="display:none"><small>No se puede cerrar: diferencia en C$ y/o USD</small></div>
+          <div id="cashv2-close-closed" class="info" style="display:none"><small><b>Cerrado.</b> <span id="cashv2-closed-at" class="muted"></span></small></div>
+        </div>
+        <div class="actions end" style="gap:8px; align-items:center; flex-wrap:wrap;">
+          <button id="cashv2-btn-admin-reopen" class="btn-warn btn-pill" type="button" style="display:none">Reabrir (Admin)</button>
+          <button id="cashv2-btn-close" class="btn-danger btn-pill" type="button" disabled>Cerrar día</button>
+        </div>
+      </div>
+    </div>
+
+</section>
+
+<section id="tab-resumen" class="tab card" style="display:none">
+    <h2>Resumen</h2>
+    <div class="summary-controls">
+      <div class="summary-controls-left">
+        <label>Período activo</label>
+        <div class="row" style="gap:8px; align-items:center">
+          <input id="summary-period" type="month">
+          <span id="summary-mode-badge" class="tag small open">En vivo</span>
+        </div>
+        <small id="summary-period-hint" class="muted">Filtra el Resumen por mes. Para ver el historial completo, usa el botón “Todo”.</small>
+      </div>
+	      <div class="summary-controls-right actions end">
+	        <button id="btn-summary-export" class="btn-ok btn-pill" type="button">Exportar Excel</button>
+	        <button id="btn-summary-close-period" class="btn-warn btn-pill" type="button">Cerrar período</button>
+	        <button id="btn-summary-all" class="btn-outline btn-pill btn-pill-mini" type="button" title="Ver todo el historial">Todo</button>
+	        <!-- Archivo debe verse como botón (no como link) -->
+	        <button id="btn-summary-archive" class="btn-outline" type="button" title="Ver períodos cerrados">Archivo</button>
+	        <button id="btn-summary-back-live" class="btn-link" type="button" style="display:none">Volver a en vivo</button>
+	      </div>
+    </div>
+
+    <!-- Cierre diario (snapshot oficial por evento + fecha) -->
+    <div class="card" id="summary-daily-close-card">
+      <div class="row" style="align-items:center; justify-content:space-between; gap:10px;">
+        <div>
+          <h3 style="margin:0;">Cierre diario</h3>
+          <small class="muted">Guarda un snapshot por <b>evento + día</b>.</small>
+        </div>
+        <span id="summary-close-status" class="pill">—</span>
+      </div>
+      <div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap; margin-top:10px;">
+        <div style="min-width:220px;">
+	          <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;" for="summary-close-event">Evento activo</label>
+	          <select id="summary-close-event" aria-label="Evento activo">
+	            <option value="">— Selecciona evento —</option>
+	          </select>
+        </div>
+        <div>
+          <label class="muted" style="display:block; font-size:12px; margin-bottom:4px;" for="summary-close-date">Fecha</label>
+          <input id="summary-close-date" type="date">
+        </div>
+        <div class="actions" style="margin-left:auto; gap:8px; flex-wrap:wrap;">
+          <button id="btn-summary-close-day" class="btn-danger btn-pill" type="button">Cerrar día</button>
+          <button id="btn-summary-reopen-day" class="btn-pill" type="button">Reabrir día</button>
+        </div>
+      </div>
+      <div id="summary-close-target" class="warn" style="display:none; margin-top:10px"></div>
+      <div id="summary-close-return" class="info" style="display:none; margin-top:10px"></div>
+      <div id="summary-close-note" class="muted" style="margin-top:8px; display:none;"></div>
+      <div id="summary-close-blocker" class="warn" style="display:none; margin-top:10px"></div>
+
+      <!-- Etapa 8: Snapshot Efectivo v2 (solo lectura) -->
+      <div id="summary-cashv2-card" class="card inner" style="margin-top:10px; display:none">
+        <div class="row" style="align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:700;">Efectivo</div>
+            <small class="muted">Snapshot v2 (evento + día) · solo lectura</small>
+          </div>
+          <span id="summary-cashv2-status-tag" class="tag small">—</span>
+        </div>
+
+        <div id="summary-cashv2-warn" class="warn" style="display:none; margin-top:8px"><small>Efectivo no está cerrado</small></div>
+
+        <div class="row" style="gap:12px; flex-wrap:wrap; margin-top:10px;">
+          <div style="flex:1; min-width:240px;">
+            <div class="muted" style="font-size:12px; margin-bottom:6px;">C$ (NIO)</div>
+            <table class="cashv2-summary-table">
+              <tbody>
+                <tr><td>Inicial</td><td id="summary-cashv2-initial-nio" class="sub">0</td></tr>
+                <tr><td>Neto Movimientos</td><td id="summary-cashv2-net-nio" class="sub">0</td></tr>
+                <tr><td>Esperado</td><td id="summary-cashv2-expected-nio" class="sub">0</td></tr>
+                <tr><td>Final</td><td id="summary-cashv2-final-nio" class="sub">0</td></tr>
+                <tr><td><b>Diferencia</b></td><td class="sub"><span id="summary-cashv2-diff-nio" class="pill">0</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="flex:1; min-width:240px;">
+            <div class="muted" style="font-size:12px; margin-bottom:6px;">USD</div>
+            <table class="cashv2-summary-table">
+              <tbody>
+                <tr><td>Inicial</td><td id="summary-cashv2-initial-usd" class="sub">0</td></tr>
+                <tr><td>Neto Movimientos</td><td id="summary-cashv2-net-usd" class="sub">0</td></tr>
+                <tr><td>Esperado</td><td id="summary-cashv2-expected-usd" class="sub">0</td></tr>
+                <tr><td>Final</td><td id="summary-cashv2-final-usd" class="sub">0</td></tr>
+                <tr><td><b>Diferencia</b></td><td class="sub"><span id="summary-cashv2-diff-usd" class="pill">0</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Etapa 5: Estado técnico de cierre (closureKey/lastClosureKey/lockRecord) -->
+      <details id="summary-close-tech" class="tech-details">
+        <summary>
+          <span class="tech-title">Estado técnico</span>
+          <span class="muted" style="font-size:11px; margin-left:6px;">(closureKey · lastClosureKey · lockRecord)</span>
+        </summary>
+        <div class="tech-grid">
+          <div><b>closureKey:</b> <span id="summary-tech-closurekey" class="tech-mono">—</span></div>
+          <div><b>lastClosureKey:</b> <span id="summary-tech-lastclosurekey" class="tech-mono">—</span></div>
+          <div><b>lockKey:</b> <span id="summary-tech-lockkey" class="tech-mono">—</span></div>
+          <div><b>lastVersion:</b> <span id="summary-tech-version" class="tech-mono">—</span></div>
+        </div>
+        <div class="muted" style="margin-top:6px; font-size:11px;">lockRecord:</div>
+        <pre id="summary-tech-lockrecord" class="tech-mono" style="white-space:pre-wrap; word-break:break-word; margin:6px 0 0 0; max-width:100%;"></pre>
+      </details>
+
+    </div>
+
+    <!-- Resumen · Cliente (filtro) -->
+    <div class="card summary-customer-card">
+      <div class="customer-v2">
+        <div class="customer-v2-field">
+          <label>Cliente <span class="muted">(opcional)</span></label>
+          <input id="summary-customer" placeholder="Selecciona o escribe…">
+          <small class="muted" id="summary-customer-hint">Filtra este resumen por cliente usando historial real.</small>
+        </div>
+
+        <div class="customer-v2-actions">
+          <button id="btn-summary-customer-pick" class="btn-outline btn-pill btn-pill-mini" type="button">Seleccionar</button>
+          <button id="btn-summary-customer-clear" class="btn-outline btn-pill btn-pill-mini" type="button">Limpiar</button>
+          <span id="summary-customer-badge" class="tag small" style="margin-left:0">Sin filtro</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card summary-top">
+      <div class="summary-metrics">
+        <div class="metric">
+          <div class="label">Total general</div>
+          <div class="value">C$ <span id="grand-total">0</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">Total descuento</div>
+          <div class="value">C$ <span id="grand-discount">0</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">Costo estimado</div>
+          <div class="value">C$ <span id="grand-cost">0</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">Utilidad bruta</div>
+          <div class="value">C$ <span id="grand-profit">0</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">Cortesías (Costo real)</div>
+          <div class="value">C$ <span id="grand-courtesy-cost">0</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">Comisiones Tarjeta</div>
+          <div class="value">C$ <span id="grand-card-commission">0</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">Merma final</div>
+          <div class="value">C$ <span id="grand-final-merma">0</span></div>
+        </div>
+        <div class="metric metric-strong">
+          <div class="label">Utilidad después de comisión y merma</div>
+          <div class="value">C$ <span id="grand-profit-after-courtesy">0</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resumen · Clientes (MVP) -->
+    <div class="row">
+      <div class="card customers-card full">
+        <h3>Clientes</h3>
+
+        <div class="customers-kpis">
+          <div><b>Clientes únicos:</b> <span id="summary-customers-unique">0</span></div>
+          <div><b>Ventas con cliente:</b> <span id="summary-sales-with-customer">0</span> <span class="muted">(<span id="summary-sales-with-customer-pct">0</span>%)</span></div>
+        </div>
+
+        <table id="tbl-top-clientes">
+          <thead><tr><th>Cliente</th><th>Vendido</th><th>Compras</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <div class="info"><small>Tip: toca un cliente del Top para filtrar todo el Resumen.</small></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h3>Por evento</h3>
+        <table id="tbl-por-evento">
+          <thead><tr><th>Evento</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Por día</h3>
+        <table id="tbl-por-dia">
+          <thead><tr><th>Fecha</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="row">
+      <div class="card">
+        <h3>Por producto</h3>
+        <table id="tbl-por-prod">
+          <thead><tr><th>Producto</th><th>Vendido</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Por método de pago</h3>
+        <table id="tbl-por-pago">
+          <thead><tr><th>Método</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card full">
+        <h3>Transferencias por banco</h3>
+        <table id="tbl-transfer-bank">
+          <thead><tr><th>Banco</th><th>Total</th><th>#</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card full">
+        <h3>Descuentos</h3>
+        <table id="tbl-discounts-byprod">
+          <thead><tr><th>Producto</th><th>Total descuento</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  
+    <div class="row">
+      <div class="card courtesy-card full">
+            <h3>Cortesías</h3>
+
+            <div class="courtesy-kpis">
+              <div><b>Costo real total:</b> C$ <span id="courtesy-total-cost">0</span></div>
+              <div><b>Cantidad total:</b> <span id="courtesy-total-qty">0</span> <span class="muted">(unidades)</span></div>
+              <div><b>Movimientos:</b> <span id="courtesy-total-tx">0</span></div>
+              <div><b>Valor equivalente en ventas:</b> C$ <span id="courtesy-total-equiv">0</span></div>
+            </div>
+
+            <div class="table-scroll">
+              <table id="tbl-courtesy-byprod">
+                <thead><tr><th>Producto</th><th>Cant.</th><th>Costo total</th><th>Equivalente</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="info"><small>Nota: el “equivalente” es informativo (precio lista si existe). Arriba solo se refleja el impacto real en utilidad.</small></div>
+          </div>
+    
+    </div>
+</section>
+
+  <section id="tab-extras" class="tab card" style="display:none">
+    <h2>Extras y Bancos</h2>
+    <div class="info"><small>Productos, Extras y Bancos maestros se administran en <b>Gestión Operativa → Catálogos</b>. POS usa snapshots seguros para ventas y eventos.</small></div>
+
+    <div class="card" id="extras-card">
+      <h3>✨ Extras por evento</h3>
+      <div class="info"><small>Para vender ítems ad-hoc sin crearlos en Inventario central. Puedes importarlos desde Catálogos o crearlos solo para el evento activo.</small></div>
+
+      <div class="row">
+        <div>
+          <label>Evento activo</label>
+          <div id="extras-event-label" class="info-strong">—</div>
+        </div>
+        <div>
+          <label>Alerta stock bajo (default)</label>
+          <input id="extra-low-default" type="number" inputmode="numeric" step="1" min="0" value="5">
+        </div>
+      </div>
+
+      <div class="card inner master-extra-import" style="margin-top:10px">
+        <h4 style="margin:0 0 8px">Importar desde Catálogos</h4>
+        <div class="row3">
+          <div>
+            <label>Extra maestro</label>
+            <select id="extra-master-select">
+              <option value="">— Selecciona extra maestro —</option>
+            </select>
+          </div>
+          <div>
+            <label>Cantidad inicial</label>
+            <input id="extra-master-stock" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
+          </div>
+          <div style="align-self:end">
+            <label>&nbsp;</label>
+            <button id="btn-import-master-extra" class="btn-ok btn-pill" type="button">Agregar al evento</button>
+          </div>
+        </div>
+        <small id="extra-master-note" class="muted">Se importan como snapshot del evento; las ventas pasadas no cambian.</small>
+      </div>
+
+      <div class="row3">
+        <div>
+          <label>Nombre</label>
+          <input id="extra-name" placeholder="Ej: Charcutería">
+        </div>
+        <div>
+          <label>Cantidad (stock)</label>
+          <input id="extra-stock" type="number" inputmode="numeric" step="1" min="0" placeholder="0">
+        </div>
+        <div>
+          <label>Precio venta (C$)</label>
+          <input id="extra-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Costo unitario (C$)</label>
+          <input id="extra-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
+        </div>
+        <div>
+          <label>Alerta stock bajo (este extra)</label>
+          <input id="extra-low" type="number" inputmode="numeric" step="1" min="0" placeholder="5">
+        </div>
+      </div>
+
+      <div class="actions end">
+        <button id="btn-save-extra" class="btn-ok btn-pill">+ Agregar extra</button>
+        <button id="btn-cancel-extra" class="btn-warn btn-pill" style="display:none">Cancelar edición</button>
+      </div>
+
+      <div id="extras-list"></div>
+      <div class="warn" id="extras-disabled-note" style="display:none"></div>
+    </div>
+
+    <div class="card">
+      <h3>Bancos</h3>
+      <div id="banks-list"></div>
+      <div class="row bank-new-row">
+        <div>
+          <label for="bank-new-name">Banco</label>
+          <input id="bank-new-name" placeholder="Nombre del banco o medio de cobro">
+        </div>
+        <div>
+          <label for="bank-new-type">Tipo</label>
+          <select id="bank-new-type">
+            <option value="transferencia" selected>Transferencia</option>
+            <option value="tarjeta">Tarjeta</option>
+          </select>
+        </div>
+        <div>
+          <label for="bank-new-commission">Comisión %</label>
+          <input id="bank-new-commission" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" value="0" placeholder="0">
+        </div>
+        <div style="align-self:end">
+          <label>&nbsp;</label>
+          <button id="btn-add-bank" class="btn-ok btn-pill">+ Agregar banco</button>
+        </div>
+      </div>
+      <div class="info"><small>Transferencia y Tarjeta se manejan por separado. La comisión solo se muestra aquí.</small></div>
+    </div>
+  </section>
+
+  <section id="tab-calculadora" class="tab card" style="display:none">
+    <h2>Calculadora</h2>
+
+    <div class="calc-grid">
+      <div class="card inner calc-card">
+        <div class="calc-display" aria-label="Pantalla de calculadora">
+          <div id="calc-history" class="calc-history"></div>
+          <div id="calc-output" class="calc-output">0</div>
+        </div>
+
+        <div class="calc-keys" id="calc-keys" aria-label="Teclado numérico">
+          <button type="button" class="util" data-k="C">C</button>
+          <button type="button" class="util" data-k="back">⌫</button>
+          <button type="button" class="op" data-k="/">÷</button>
+          <button type="button" class="op" data-k="*">×</button>
+
+          <button type="button" data-k="7">7</button>
+          <button type="button" data-k="8">8</button>
+          <button type="button" data-k="9">9</button>
+          <button type="button" class="op" data-k="-">−</button>
+
+          <button type="button" data-k="4">4</button>
+          <button type="button" data-k="5">5</button>
+          <button type="button" data-k="6">6</button>
+          <button type="button" class="op" data-k="+">+</button>
+
+          <button type="button" data-k="1">1</button>
+          <button type="button" data-k="2">2</button>
+          <button type="button" data-k="3">3</button>
+          <button type="button" class="eq" data-k="=">=</button>
+
+          <button type="button" class="zero" data-k="0">0</button>
+          <button type="button" data-k=".">.</button>
+        </div>
+      </div>
+
+      <div class="card inner fx-card">
+        <h3 style="margin-top:0">Conversor USD ↔ C$</h3>
+        <div id="fx-meta" class="muted" style="margin-bottom:6px"></div>
+
+        <div class="row">
+          <div>
+            <label for="fx-rate">Tipo de cambio (USD → C$)</label>
+            <input id="fx-rate" type="number" inputmode="decimal" step="0.01" min="0" placeholder="C$ por 1 US$">
+          </div>
+
+        </div>
+
+        <div id="fx-status" class="warn" style="display:none"></div>
+
+        <div class="row">
+          <div>
+            <label for="fx-usd">Monto en US$</label>
+            <input id="fx-usd" type="number" inputmode="decimal" step="0.01" placeholder="ej. 20">
+          </div>
+          <div>
+            <label for="fx-nio">Monto en C$</label>
+            <input id="fx-nio" type="number" inputmode="decimal" step="0.01" placeholder="ej. 740.00">
+          </div>
+        </div>
+
+        <div class="fx-quick" aria-label="Botones rápidos USD">
+          <span class="muted">Rápidos US$:</span>
+          <button type="button" class="btn-mini fx-q" data-usd="1">1</button>
+          <button type="button" class="btn-mini fx-q" data-usd="5">5</button>
+          <button type="button" class="btn-mini fx-q" data-usd="10">10</button>
+          <button type="button" class="btn-mini fx-q" data-usd="20">20</button>
+          <button type="button" class="btn-mini fx-q" data-usd="50">50</button>
+          <button type="button" class="btn-mini fx-q" data-usd="100">100</button>
+          <button type="button" class="btn-mini fx-clear" id="fx-clear" title="Limpiar">Limpiar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="info" style="margin-top:10px">
+      <small><b>Regla:</b> el tipo de cambio usa el T/C único del evento activo. <b>Limpiar</b> solo borra montos.</small>
+    </div>
+  </section>
+
+  <!-- Checklist POS retirado de la interfaz. Datos y compatibilidad legacy se conservan internamente. -->
+
+</div>
+
+<!-- Modal VER evento -->
+<div id="event-view" class="modal">
+  <div class="panel">
+    <button id="ev-close" class="close btn-warn btn-pill">Cerrar</button>
+    <h3 id="ev-title">Evento</h3>
+    <div class="grid">
+      <div class="card" id="ev-meta"></div>
+      <div class="card" id="ev-totals"></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h4>Por día</h4>
+        <table id="ev-byday"><thead><tr><th>Fecha</th><th>Total</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div class="card">
+        <h4>Por producto</h4>
+        <table id="ev-byprod"><thead><tr><th>Producto</th><th>Total</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <h4>Ventas</h4>
+      <div class="scroll">
+        <table id="ev-sales">
+          <thead><tr><th>ID</th><th>Fecha</th><th>Hora</th><th>Producto</th><th>Cant</th><th>PU</th><th>Desc</th><th>Total</th><th>Pago</th><th>C</th><th>Dev</th><th>Cliente asociado</th><th>Cortesía a</th><th>Notas</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal Cerrar Período (Resumen) -->
+<div id="summary-close-modal" class="modal">
+  <div class="panel">
+    <button id="summary-close-cancel" class="close btn-warn btn-pill">Cancelar</button>
+    <h3>Cerrar período</h3>
+    <div class="info"><small>Período: <b><span id="summary-close-period-label"></span></b></small></div>
+
+    <div class="row">
+      <input id="summary-close-name" placeholder="Nombre del cierre (ej: Diciembre 2025)">
+    </div>
+
+    <div class="actions end" style="gap:8px; margin-top:10px">
+  <button id="summary-close-export" class="btn-ok btn-pill" type="button">Exportar Excel (obligatorio)</button>
+  <button id="summary-close-confirm" class="btn-primary btn-pill" type="button" disabled>Cerrar y archivar</button>
+</div>
+
+    <div id="summary-close-error" class="warn" style="display:none; margin-top:10px"></div>
+    <div id="summary-close-status" class="muted"></div>
+    <div class="warn"><small>Regla: sin exportación no hay cierre. Así evitamos “ups… no hice backup”.</small></div>
+  </div>
+</div>
+
+<!-- Modal Archivo de Resúmenes -->
+<div id="summary-archive-modal" class="modal">
+  <div class="panel">
+    <button id="summary-archive-close" class="close btn-warn btn-pill">Cerrar</button>
+    <h3>Archivo de Resúmenes</h3>
+
+    <div class="actions" id="summary-archive-toolbar" style="margin-top:8px">
+      <input id="summary-archive-search" placeholder="Buscar (ej: Diciembre 2025)" style="flex:1 1 260px; width:auto">
+      <button id="summary-archive-refresh" class="btn-pill btn-pill-mini" type="button">Actualizar</button>
+      <button id="summary-archive-consolidated" class="btn-outline btn-pill btn-pill-mini" type="button" title="Ver acumulado (Archivo + Vivo)">CONSOLIDADO</button>
+    </div>
+
+    <div id="summary-archive-view-list">
+      <div class="scroll">
+        <table id="tbl-summary-archives">
+          <thead><tr><th style="width:70px">Seq</th><th>Período</th><th style="width:170px">Fecha cierre</th><th style="width:170px">Acciones</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="info"><small>Los archivos son snapshots (solo lectura). Puedes re-exportar Excel cuando quieras.</small></div>
+    </div>
+
+    <div id="summary-archive-view-consolidated" style="display:none">
+      <div class="warn a33-guard-banner" style="margin-top:10px">
+        <div class="a33-guard-text">
+          <div class="a33-guard-title">CONSOLIDADO (solo lectura)</div>
+          <div class="a33-guard-sub">Vista acumulada: ARCHIVADO + VIVO. No es un período (no se cierra, no se archiva).</div>
+          <div id="summary-consolidated-updated" class="muted small">Actualizado: …</div>
+        </div>
+        <div class="a33-guard-actions">
+          <button id="summary-consolidated-export-gerente" class="btn-pill btn-pill-mini" type="button">Exportar Excel (Gerente)</button>
+          <button id="summary-archive-consolidated-back" class="btn-pill btn-pill-mini" type="button">Volver</button>
+        </div>
+      </div>
+
+      <div class="consolidated-grid">
+        <div class="card consolidated-card">
+          <div class="consolidated-title">ARCHIVADO</div>
+          <div id="summary-consolidated-arch-count" class="muted small">Períodos archivados incluidos: 0</div>
+          <div class="consolidated-kpi">
+            <div class="consolidated-row"><span>Total general</span><b>C$ <span id="summary-consolidated-arch-grand">0</span></b></div>
+            <div class="consolidated-row"><span>Costo estimado</span><b>C$ <span id="summary-consolidated-arch-grandCost">0</span></b></div>
+            <div class="consolidated-row"><span>Utilidad bruta</span><b>C$ <span id="summary-consolidated-arch-grandProfit">0</span></b></div>
+            <div class="consolidated-row"><span>Cortesías (Costo real)</span><b>C$ <span id="summary-consolidated-arch-courtesyCost">0</span></b></div>
+            <div class="consolidated-row"><span>Comisiones Tarjeta</span><b>C$ <span id="summary-consolidated-arch-cardCommissionTotal">0</span></b></div>
+            <div class="consolidated-row"><span>Utilidad después de comisión</span><b>C$ <span id="summary-consolidated-arch-profitAfterCourtesy">0</span></b></div>
+            <div class="consolidated-row consolidated-row-mini"><span>Cortesías (unidades)</span><b><span id="summary-consolidated-arch-courtesyQty">0</span></b></div>
+            <div class="consolidated-row consolidated-row-mini"><span>Cortesías (movimientos)</span><b><span id="summary-consolidated-arch-courtesyTx">0</span></b></div>
+            <div class="consolidated-row consolidated-row-mini"><span>Cortesías (equivalente ventas)</span><b>C$ <span id="summary-consolidated-arch-courtesyEquiv">0</span></b></div>
+          </div>
+        </div>
+        <div class="card consolidated-card">
+          <div class="consolidated-title">VIVO (PERÍODO ABIERTO)</div>
+          <div id="summary-consolidated-live-period" class="muted small">Período: …</div>
+          <div id="summary-consolidated-live-note" class="muted small" style="display:none">Este período ya está archivado: VIVO queda en 0 para evitar doble conteo.</div>
+          <div class="consolidated-kpi">
+            <div class="consolidated-row"><span>Total general</span><b>C$ <span id="summary-consolidated-live-grand">0</span></b></div>
+            <div class="consolidated-row"><span>Costo estimado</span><b>C$ <span id="summary-consolidated-live-grandCost">0</span></b></div>
+            <div class="consolidated-row"><span>Utilidad bruta</span><b>C$ <span id="summary-consolidated-live-grandProfit">0</span></b></div>
+            <div class="consolidated-row"><span>Cortesías (Costo real)</span><b>C$ <span id="summary-consolidated-live-courtesyCost">0</span></b></div>
+            <div class="consolidated-row"><span>Comisiones Tarjeta</span><b>C$ <span id="summary-consolidated-live-cardCommissionTotal">0</span></b></div>
+            <div class="consolidated-row"><span>Utilidad después de comisión</span><b>C$ <span id="summary-consolidated-live-profitAfterCourtesy">0</span></b></div>
+            <div class="consolidated-row consolidated-row-mini"><span>Cortesías (unidades)</span><b><span id="summary-consolidated-live-courtesyQty">0</span></b></div>
+            <div class="consolidated-row consolidated-row-mini"><span>Cortesías (movimientos)</span><b><span id="summary-consolidated-live-courtesyTx">0</span></b></div>
+            <div class="consolidated-row consolidated-row-mini"><span>Cortesías (equivalente ventas)</span><b>C$ <span id="summary-consolidated-live-courtesyEquiv">0</span></b></div>
+          </div>
+        </div>
+        <div class="card consolidated-card">
+          <div class="consolidated-title">CONSOLIDADO (TOTAL)</div>
+          <div class="muted small">ARCHIVADO + VIVO</div>
+          <div class="consolidated-kpi">
+            <div class="consolidated-row"><span>Total general</span><b>C$ <span id="summary-consolidated-total-grand">0</span></b></div>
+            <div class="consolidated-row"><span>Costo estimado</span><b>C$ <span id="summary-consolidated-total-grandCost">0</span></b></div>
+            <div class="consolidated-row"><span>Utilidad bruta</span><b>C$ <span id="summary-consolidated-total-grandProfit">0</span></b></div>
+            <div class="consolidated-row"><span>Cortesías (Costo real)</span><b>C$ <span id="summary-consolidated-total-courtesyCost">0</span></b></div>
+            <div class="consolidated-row"><span>Comisiones Tarjeta</span><b>C$ <span id="summary-consolidated-total-cardCommissionTotal">0</span></b></div>
+            <div class="consolidated-row"><span>Utilidad después de comisión</span><b>C$ <span id="summary-consolidated-total-profitAfterCourtesy">0</span></b></div>
+            <div class="consolidated-row consolidated-row-mini"><span>Cortesías (unidades)</span><b><span id="summary-consolidated-total-courtesyQty">0</span></b></div>
+            <div class="consolidated-row consolidated-row-mini"><span>Cortesías (movimientos)</span><b><span id="summary-consolidated-total-courtesyTx">0</span></b></div>
+            <div class="consolidated-row consolidated-row-mini"><span>Cortesías (equivalente ventas)</span><b>C$ <span id="summary-consolidated-total-courtesyEquiv">0</span></b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info"><small>Nota: VIVO se calcula solo para el período mensual activo (YYYY-MM). Si el período ya está archivado, VIVO no se suma (anti doble conteo).</small></div>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+<!-- Modal Movimiento Efectivo (Efectivo v2) -->
+<div id="cashv2-movement-modal" class="modal">
+  <div class="panel panel-compact">
+    <button id="cashv2-move-cancel" class="close btn-warn btn-pill btn-pill-mini" type="button">Cancelar</button>
+    <h3>Agregar movimiento</h3>
+
+    <div id="cashv2-move-modal-error" class="warn" style="display:none; margin-top:8px"></div>
+
+    <div class="row" style="grid-template-columns:1fr 1fr; gap:10px; align-items:end; margin-top:10px">
+      <div>
+        <label>Tipo</label>
+        <select id="cashv2-move-kind">
+          <option value="CASH_IN">Entrada</option>
+          <option value="EXPENSE">Salida</option>
+          <option value="CREDIT_COLLECTION">Cobros</option>
+        </select>
+      </div>
+      <div id="cashv2-move-adjust-wrap" style="display:none">
+        <label>Ajuste</label>
+        <select id="cashv2-move-adjust-dir">
+          <option value="+">+ Sumar</option>
+          <option value="-">− Restar</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row" style="grid-template-columns:1fr 1fr; gap:10px; align-items:end; margin-top:10px">
+      <div>
+        <label>Moneda</label>
+        <select id="cashv2-move-currency">
+          <option value="NIO">C$ (NIO)</option>
+          <option value="USD">USD</option>
+        </select>
+      </div>
+      <div>
+        <label>Monto</label>
+        <input id="cashv2-move-amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00">
+      </div>
+    </div>
+
+    <div class="row" style="grid-template-columns:1fr; gap:10px; margin-top:10px">
+      <div>
+        <label>Nota (opcional)</label>
+        <input id="cashv2-move-note" placeholder="ej. cambio, transporte…">
+        <small class="muted">Regla: no ventas. Usa Resumen para cierres.</small>
+      </div>
+    </div>
+
+    <div class="actions end" style="gap:8px; margin-top:12px">
+      <button id="cashv2-move-save" class="btn-ok btn-pill" type="button">Guardar</button>
+      <button id="cashv2-move-cancel2" class="btn-outline btn-pill" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+
+
+
+<!-- Modal Reabrir día (Admin) — Efectivo v2 -->
+<div id="cashv2-admin-reopen-modal" class="modal">
+  <div class="panel panel-compact">
+    <button id="cashv2-admin-reopen-cancel" class="close btn-warn btn-pill btn-pill-mini" type="button">Cancelar</button>
+    <h3>Reabrir día (Admin)</h3>
+
+    <div class="warn" style="margin-top:8px"><small>Esto reabre un día cerrado. Se registra auditoría (timestamp + motivo).</small></div>
+
+    <div class="info" style="margin-top:8px"><small>Evento: <b id="cashv2-admin-reopen-ev">—</b> · Día: <b id="cashv2-admin-reopen-day">—</b></small></div>
+
+    <div class="row" style="grid-template-columns:1fr; gap:10px; margin-top:10px">
+      <div>
+        <label>Motivo <span class="muted">(obligatorio)</span></label>
+        <input id="cashv2-admin-reopen-reason" type="text" maxlength="180" placeholder="Ej: corregir conteo, ajuste de caja…">
+      </div>
+      <div>
+        <label>Confirmación</label>
+        <input id="cashv2-admin-reopen-phrase" type="text" maxlength="16" placeholder="Escribe REABRIR" autocapitalize="characters">
+        <small class="muted">Regla: escribe <b>REABRIR</b> para confirmar.</small>
+      </div>
+    </div>
+
+    <div id="cashv2-admin-reopen-error" class="warn" style="display:none; margin-top:10px"></div>
+
+    <div class="actions end" style="gap:8px; margin-top:12px">
+      <button id="cashv2-admin-reopen-confirm" class="btn-danger btn-pill" type="button">Confirmar</button>
+      <button id="cashv2-admin-reopen-cancel2" class="btn-outline btn-pill" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal Histórico Efectivo (Efectivo v2) — Solo lectura -->
+<div id="cashv2-hist-modal" class="modal">
+  <div class="panel panel-compact">
+    <button id="cashv2-hist-close" class="close btn-warn btn-pill btn-pill-mini" type="button">Cerrar</button>
+    <h3>Histórico de Efectivo</h3>
+    <div class="muted" style="margin-top:4px"><small>Solo lectura. Eventos y días ordenados por más reciente.</small></div>
+
+    <div id="cashv2-hist-error" class="warn" style="display:none; margin-top:10px"><small></small></div>
+    <div id="cashv2-hist-empty" class="muted" style="display:none; margin-top:10px"><small>Sin registros.</small></div>
+    <div id="cashv2-hist-list" class="cashv2-hist-list" style="margin-top:10px; max-height:70vh; overflow:auto;"></div>
+
+    <div id="cashv2-hist-detail" class="cashv2-hist-detail" style="display:none; margin-top:10px">
+      <div class="actions" style="justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center">
+        <div class="actions" style="gap:8px; flex-wrap:wrap; align-items:center">
+          <button id="cashv2-hist-back" class="btn-outline btn-pill btn-pill-mini" type="button">← Volver</button>
+          <button id="cashv2-hist-export-day" class="btn-outline btn-pill btn-pill-mini" type="button">Exportar Excel (Día)</button>
+        </div>
+        <div class="cashv2-hist-detail-head">
+          <div class="cashv2-hist-detail-line">
+            <span id="cashv2-hist-detail-day" class="cashv2-hist-daykey">—</span>
+            <span id="cashv2-hist-detail-status" class="pill">—</span>
+          </div>
+          <div class="muted"><small id="cashv2-hist-detail-event">Evento —</small></div>
+        </div>
+      </div>
+
+      <div id="cashv2-hist-detail-nosnap" class="muted" style="display:none; margin-top:10px"><small>Aún no hay cierre/snapshot.</small></div>
+
+      <div id="cashv2-hist-version-box" style="display:none; margin-top:10px">
+        <div class="row" style="grid-template-columns:1fr; gap:6px">
+          <label>Versiones</label>
+          <div id="cashv2-hist-version-buttons" class="cashv2-hist-version-buttons"></div>
+          <div class="muted"><small id="cashv2-hist-version-meta"></small></div>
+        </div>
+      </div>
+
+      <div id="cashv2-hist-detail-scroll" class="cashv2-hist-detail-scroll" style="margin-top:10px; max-height:70vh; overflow:auto;">
+        <div id="cashv2-hist-detail-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Cliente Rápido · POS · Etapa 1/3 -->
+<div id="customer-quick-modal" class="modal" aria-hidden="true" inert role="dialog" aria-modal="true" aria-labelledby="customer-quick-title">
+  <div class="panel panel-compact customer-quick-panel" tabindex="-1">
+    <h3 id="customer-quick-title">Nuevo cliente</h3>
+
+    <form id="customer-quick-form" novalidate>
+      <div class="customer-quick-fields">
+        <div>
+          <label for="customer-quick-name">Nombre</label>
+          <input id="customer-quick-name" name="customerQuickName" type="text" autocomplete="name" maxlength="120" required>
+        </div>
+        <div>
+          <label for="customer-quick-cell">Celular</label>
+          <input id="customer-quick-cell" name="customerQuickCell" type="tel" inputmode="tel" autocomplete="tel" maxlength="40">
+        </div>
+      </div>
+
+      <div id="customer-quick-msg" class="customer-quick-msg" role="alert" aria-live="polite"></div>
+
+      <div class="customer-quick-actions">
+        <button id="customer-quick-create" class="customer-quick-create btn-pill" type="submit">Crear</button>
+        <button id="customer-quick-cancel" class="customer-quick-cancel btn-pill" type="button">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Seleccionar Cliente (Clientes v2) -->
+<div id="customer-picker-modal" class="modal">
+  <div class="panel panel-compact">
+    <button id="customer-picker-close" class="close btn-warn btn-pill btn-pill-mini" type="button">Cerrar</button>
+    <h3>Seleccionar cliente</h3>
+
+    <div class="row" style="grid-template-columns:1fr; gap:10px">
+      <input id="customer-picker-search" placeholder="Buscar cliente…">
+      <small id="customer-picker-count" class="muted"></small>
+    </div>
+
+    <div class="scroll" style="max-height:55vh">
+      <div id="customer-picker-list" class="customer-picker-list"></div>
+    </div>
+
+    <div class="warn"><small>Solo se muestran clientes activos. Para administrar, usa Gestión Operativa → Catálogos → Clientes.</small></div>
+  </div>
+</div>
+
+	<!-- Modal Inventario: Seleccionar lote (solo lectura) -->
+	<div id="inv-lote-selector-modal" class="modal" aria-hidden="true">
+	  <div class="panel" style="max-width:1100px">
+	    <div class="row" style="grid-template-columns:1fr auto auto; align-items:center; gap:10px">
+	      <h3 style="margin:0">Seleccionar lote</h3>
+	      <button id="inv-lote-selector-refresh" class="btn-outline btn-pill btn-pill-mini" type="button" title="Actualizar">Actualizar</button>
+	      <button id="inv-lote-selector-close" class="btn-secondary btn-pill btn-pill-mini" type="button">Cerrar</button>
+	    </div>
+	
+	    
+		<div class="row inv-lote-toolbar" style="grid-template-columns:1fr auto; gap:10px; margin-top:10px; align-items:center">
+		  <input id="inv-lote-selector-search" placeholder="Buscar por código…" autocomplete="off" inputmode="search">
+		  <button id="inv-lote-selector-clear" class="btn-outline btn-pill btn-pill-mini" type="button">Limpiar</button>
+		</div>
+		<div id="inv-lote-selector-msg" class="muted" style="margin-top:6px"></div>
+
+<div class="scroll" style="max-height:65vh; margin-top:10px">
+	      <table id="inv-lote-selector-table" class="compact">
+	        <thead>
+	          <tr>
+	            <th>Lote</th>
+	            <th>Fecha</th>
+	            <th>Contenido</th>
+	            <th>Estado</th>
+	            <th>Acción</th>
+	          </tr>
+	        </thead>
+	        <tbody></tbody>
+	      </table>
+	    </div>
+	
+	    <small class="muted" style="display:block; margin-top:10px">Selecciona un evento y luego toca “Usar” para aplicar un lote DISPONIBLE a ese evento.</small>
+	  </div>
+	</div>
+
+<!-- Modal Confirmación (reutilizable) — Cierres POS -->
+<div id="pos-confirm-modal" class="modal" aria-hidden="true">
+  <div class="panel panel-compact">
+    <h3 id="pos-confirm-title" style="margin-top:0">Confirmación</h3>
+    <div id="pos-confirm-message" class="pos-confirm-message"></div>
+
+    <div class="row" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:14px">
+      <button id="pos-confirm-cancel" class="btn-outline btn-pill" type="button">Cancelar</button>
+      <button id="pos-confirm-confirm" class="btn-danger btn-pill" type="button">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
+<footer></footer>
+<nav class="tabbar">
+  <button data-tab="venta" class="active">Vender</button>
+  <button data-tab="inventario">Inventario</button>
+  <button data-tab="eventos">Eventos</button>
+<button data-tab="efectivo">Efectivo</button>
+<button data-tab="resumen">Resumen</button>
+  <button data-tab="extras">Extras</button>
+  <button data-tab="calculadora">Calculadora</button>
+</nav>
+
+<script src="./vendor/xlsx.full.min.js?v=4.20.98&r=13"></script>
+  <script src="/assets/js/a33-release.js?v=4.20.98&r=57"></script>
+  <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=4"></script>
+  <script src="/assets/js/a33-module-guard.js?v=4.20.98&r=5"></script>
+
+<script src="/assets/js/a33-storage.js?v=4.20.98&r=20"></script>
+  <script src="/assets/js/a33-currency.js?v=4.20.98&r=14"></script>
+  <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+<script src="/assets/js/a33-build.js?v=4.20.98&r=14"></script>
+<script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
+<script>
+  (function(){
+    try{
+      const relObj = (window.A33_RELEASE || {});
+      const v = (relObj && relObj.suiteVersion) ? String(relObj.suiteVersion) : '4.20.98';
+      const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
+      try{ window.A33_VERSION = v; }catch(_){ }
+      try{ window.A33_ASSET_REV = rev; }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m60').toString(); }catch(_){ }
+      try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
+      const verEl = document.getElementById('a33-version-text');
+      const shown = 'v' + v + ' r' + rev;
+      if (verEl) verEl.textContent = shown;
+      const bEl = document.getElementById('pos-build-id');
+      if (bEl) bEl.textContent = 'POS Build: ' + v;
+      const cEl = document.getElementById('pos-sw-cache-id');
+      if (cEl){
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m60')).toString();
+        cEl.textContent = 'SW Cache: ' + cn;
+        cEl.title = cn;
+      }
+    }catch(_){ }
+  })();
+</script>
+
+<script src="/assets/js/a33-toast.js?v=4.20.98&r=1"></script>
+<script src="app.js?v=4.20.98&r=53"></script>
+<script src="/assets/js/a33-input-ux.js?v=4.20.98&r=13"></script>
+<script>
+  (function(){
+    const BUILD = (window.A33_VERSION || '4.20.98').toString();
+    const REV = (window.A33_ASSET_REV || '8').toString();
+    const SW_URL = './sw.js?v=' + encodeURIComponent(BUILD) + '&r=' + encodeURIComponent(REV);
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register(SW_URL).then((reg) => {
+      try{ reg.update(); }catch(_){ }
+    }).catch(()=>{});
+  })();
+</script>
+
+</body>
+</html>
