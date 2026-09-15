@@ -64,7 +64,7 @@ assert.equal(access.evaluateModuleAccess('pos', { user:null, profile:null, permi
 for (const [moduleId, relativeFile] of guardedPages) {
   const html = fs.readFileSync(path.join(root, relativeFile), 'utf8');
   assert(html.includes(`data-a33-module="${moduleId}"`), `${relativeFile} no declara el módulo ${moduleId}.`);
-  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&|&amp;)r=5/.test(html), `${relativeFile} no carga la guarda activa r5.`);
+  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&|&amp;)r=6/.test(html), `${relativeFile} no carga la guarda activa r6.`);
   assert(/a33-module-nav\.js\?v=4\.20\.98(?:&|&amp;)r=4/.test(html), `${relativeFile} no carga la navegación r4.`);
   assert(/a33-module-nav\.css\?v=4\.20\.98(?:&|&amp;)r=4/.test(html), `${relativeFile} no carga los estilos de navegación r4.`);
 }

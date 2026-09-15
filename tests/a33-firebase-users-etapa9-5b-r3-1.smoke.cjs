@@ -34,7 +34,7 @@ assert(
 
 for (const file of guardedPages) {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
-  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&|&amp;)r=5/.test(html), `${file} no carga la guarda r5.`);
+  assert(/a33-module-guard\.js\?v=4\.20\.98(?:&|&amp;)r=6/.test(html), `${file} no carga la guarda r6.`);
 }
 
 console.log('OK — E9.5B-R3.1 inicia sesión y desbloquea directamente el módulo permitido.');

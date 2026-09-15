@@ -18,7 +18,7 @@ assert.equal(new Set(targets).size, 12, 'Las tarjetas deben representar los 12 m
 assert(html.includes('id="a33-home-access"'));
 assert(html.includes('data-a33-home-access-form hidden'));
 assert(html.includes('/assets/css/a33-home-access.css?v=4.20.98&r=1'));
-assert(html.includes('/assets/js/a33-home-access.js?v=4.20.98&r=1'));
+assert(html.includes('/assets/js/a33-home-access.js?v=4.20.98&r=2'));
 
 assert(homeAccess.includes("showPanel('Verificando acceso…'"));
 assert(homeAccess.includes('g.A33Access.evaluateModuleAccess(card.dataset.a33ModuleTarget, current, { enforcementEnabled:true })'));
