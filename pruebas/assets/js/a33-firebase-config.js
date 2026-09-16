@@ -1,7 +1,7 @@
 /*
   Suite A33 — Firebase Settings (Etapa 5/6)
-  Configuración local de credenciales web para integración híbrida con Firebase Realtime Database.
-  Permite guardar estado de prueba técnica y lectura futura del motor híbrido sin sincronizar datos de negocio.
+  Configuración pública predeterminada + ajustes locales para la integración híbrida con Firebase.
+  La API key web identifica la app cliente; la autorización real permanece en Auth, claims y reglas.
 */
 (function(g){
   'use strict';
@@ -18,6 +18,16 @@
     'appId',
     'measurementId'
   ];
+  const PUBLIC_DEFAULT_CREDENTIALS = Object.freeze({
+    apiKey: 'AIzaSyCQpDLJFYncfQ5dLk6igJYfywD9V8K0LRA',
+    authDomain: 'suitea33-b0c34.firebaseapp.com',
+    databaseURL: '',
+    projectId: 'suitea33-b0c34',
+    storageBucket: 'suitea33-b0c34.firebasestorage.app',
+    messagingSenderId: '657807672337',
+    appId: '1:657807672337:web:15da8bbeea23fbc2805db0',
+    measurementId: ''
+  });
 
   function clean(value, maxLen){
     return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, maxLen || 520);
@@ -89,24 +99,15 @@
   function defaults(){
     return {
       version: 3,
-      enabled: false,
-      configured: false,
+      enabled: true,
+      configured: true,
       mode: 'hybrid',
       workspaceId: 'arcano33',
       workspaceName: 'Arcano 33',
       environment: 'production',
       deviceId: ensureDeviceId(),
       deviceName: '',
-      credentials: {
-        apiKey: '',
-        authDomain: '',
-        databaseURL: '',
-        projectId: '',
-        storageBucket: '',
-        messagingSenderId: '',
-        appId: '',
-        measurementId: ''
-      },
+      credentials: Object.assign({}, PUBLIC_DEFAULT_CREDENTIALS),
       lastConnectionTestAt: '',
       lastConnectionStatus: 'not-tested',
       lastConnectionPath: '',
@@ -128,7 +129,7 @@
 
     const out = {
       version: 3,
-      enabled: !!src.enabled,
+      enabled: Object.prototype.hasOwnProperty.call(src, 'enabled') ? !!src.enabled : base.enabled,
       configured: false,
       mode: 'hybrid',
       workspaceId: normalizeWorkspaceId(rawWorkspace),
