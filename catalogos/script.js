@@ -4480,6 +4480,8 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     const renderToken = ++customerRenderTokenCAT;
     try{
       const all = readCustomerCatalogCAT();
+      const downloadButton = byId('cat-download-customers');
+      if (downloadButton) downloadButton.hidden = all.length !== 0;
       await loadCustomerLastPurchaseIndexCAT(all, { force:!!opts.forceLastPurchase });
       if (renderToken !== customerRenderTokenCAT) return;
       const q = normalizeCustomerKeyCAT(byId('cat-customer-search')?.value || '');
@@ -4724,6 +4726,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   function bindCustomerUi(){
+    byId('cat-download-customers')?.addEventListener('click', downloadEmptyCustomersCAT);
     const list = byId('cat-customers-list');
     if (list){
       list.addEventListener('click', async (e)=>{
@@ -4771,11 +4774,56 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     });
   }
 
+  async function downloadEmptyCustomersCAT(){
+    const button = byId('cat-download-customers');
+    const status = byId('cat-download-customers-status');
+    if (button.disabled) return;
+    button.disabled = true;
+    status.textContent = 'Descargando Clientes…';
+    let expired = false;
+    let timer;
+    try{
+      const task = (async () => {
+        const gate = await window.A33ModuleGuard.evaluate('catalogos');
+        if (!gate.allowed) throw new Error('Inicia sesión para descargar Clientes.');
+        const access = window.A33Access.getState();
+        const authorized = () => {
+          const current = window.A33Access.getState();
+          return !expired && !!access.user && current.user?.uid === access.user.uid
+            && current.workspaceId === access.workspaceId
+            && window.A33Access.evaluateModuleAccess('catalogos', current, {enforcementEnabled:true}).allowed;
+        };
+        const app = await window.A33Firebase.initFirebaseApp(window.A33FirebaseSettings.read());
+        return window.A33CatalogDownload.downloadCustomers({
+          authorized,
+          localState: () => [CUSTOMER_CATALOG_KEY, CUSTOMER_DISABLED_KEY, CATALOG_DELETED_KEYS.customers].map(key => localStorage.getItem(key)),
+          read: async () => {
+            const snapshot = await window.firebase.firestore(app).collection('workspaces').doc(access.workspaceId)
+              .collection('modules').doc('catalogos').collection('entities').doc('clientes').collection('records').get({source:'server'});
+            return snapshot.docs.map(doc => doc.data());
+          },
+          save: rows => localStorage.setItem(CUSTOMER_CATALOG_KEY, JSON.stringify(rows))
+        });
+      })();
+      const count = await Promise.race([task, new Promise((_, reject) => {
+        timer = setTimeout(() => { expired = true; reject(new Error('Tiempo de espera agotado. Puedes reintentar.')); }, 20000);
+      })]);
+      status.textContent = count ? `${count} clientes descargados. Los cambios locales todavía no se sincronizan.` : 'No se encontraron clientes para descargar en la nube.';
+      await renderCustomers({forceLastPurchase:true});
+    }catch(error){
+      status.textContent = 'No se completó la descarga. ' + String(error.message || error);
+    }finally{
+      expired = true;
+      clearTimeout(timer);
+      button.disabled = false;
+    }
+  }
+
   async function initCustomers(){
     const list = readCustomerCatalogCAT();
     // Migración local suave: si venía como strings u objetos incompletos, queda objeto estable para POS.
     // Un fallo remoto no debe crear una lista vacía que impida reintentar la descarga.
-    if (!catalogCloudPending || localStorage.getItem(CUSTOMER_CATALOG_KEY) !== null || list.length){
+    if (list.length){
       saveCustomerCatalogCAT(list);
     }
     await loadCustomerLastPurchaseIndexCAT(list, { force:true });

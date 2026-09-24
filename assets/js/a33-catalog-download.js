@@ -43,5 +43,27 @@
     }
     return {added,skipped};
   }
-  g.A33CatalogDownload = Object.freeze({download,records,specs});
+  function canDownloadCustomers(raw){
+    try{
+      return raw.every((value, index) => {
+        if (value === null) return true;
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed.length === 0;
+        return index === 1 && parsed && typeof parsed === 'object' && Object.keys(parsed).length === 0;
+      });
+    }catch(_){ return false; }
+  }
+  async function downloadCustomers(io){
+    const check = () => {
+      if (!io.authorized()) throw new Error('La sesión cambió o no permite descargar Clientes.');
+      if (!canDownloadCustomers(io.localState())) throw new Error('Se conservan los clientes, inactivos o eliminaciones locales. No se descargó ningún cliente.');
+    };
+    check();
+    const rows = records(await io.read());
+    check();
+    // Guardado síncrono inmediatamente después de volver a validar el estado local.
+    if (rows.length) io.save(rows);
+    return rows.length;
+  }
+  g.A33CatalogDownload = Object.freeze({download,records,specs,canDownloadCustomers,downloadCustomers});
 })(typeof globalThis !== 'undefined' ? globalThis : window);
