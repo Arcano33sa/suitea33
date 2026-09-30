@@ -25,13 +25,14 @@ function isLegacySuiteCache(name){
 
 const PRECACHE_URLS = [
   './',
-  './index.html?v=4.20.98&r=14',
+  './index.html?v=4.20.98&r=15',
   './style.css?v=4.20.98&r=10',
-  './script.js?v=4.20.98&r=14',
+  './script.js?v=4.20.98&r=15',
   './manifest.webmanifest?v=4.20.98&r=9',
   './offline.html',
   './images/logo.png',
   '/assets/js/a33-release.js?v=4.20.98&r=54',
+  '/assets/js/a33-e6-download.js?v=4.20.98&r=1',
 
   '/assets/js/a33-input-ux.js?v=4.20.98&r=8',
   '/assets/js/a33-toast.js?v=4.20.98&r=1',
@@ -108,7 +109,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.98&r=14')) ||
+      (await cache.match('./index.html?v=4.20.98&r=15')) ||
       (await cache.match('./index.html')) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||

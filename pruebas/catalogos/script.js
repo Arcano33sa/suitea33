@@ -5284,10 +5284,29 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
         }),
         new Promise((_, reject) => { timer = setTimeout(() => { expired = true; reject(new Error('Tiempo de espera agotado.')); }, 20000); })
       ]);
+      let costsResult = null;
+      let costsError = '';
+      try{
+        costsResult = await window.A33CatalogDownload.downloadCosts({
+          authorized,
+          raw:key => localStorage.getItem(key),
+          read:async type => {
+            const target = type === 'costs' ? ['catalogos','costos'] : ['inventario','recetas'];
+            const snapshot = await firestore.collection('workspaces').doc(workspace).collection('modules').doc(target[0])
+              .collection('entities').doc(target[1]).collection('records').get({source:'server'});
+            return snapshot.docs.map(doc => doc.data());
+          },
+          write:(key,value) => localStorage.setItem(key,value),
+          removeIfSame:(key,value) => { if (localStorage.getItem(key) === value) localStorage.removeItem(key); }
+        });
+      }catch(error){ costsError = String(error.message || error); }
       catalogCloudPending = false;
       const labels = {productos:'Productos',materia_prima:'Materia prima',envases:'Envases',tapas:'Tapas',extras:'Extras',bancos:'Bancos',clientes:'Clientes'};
       const preserved = result.skipped.length ? ' Se conservaron los datos locales de: ' + result.skipped.map(id => labels[id]).join(', ') + '.' : '';
-      notice.textContent = `Carga inicial: ${result.added} registros descargados.${preserved} Costos no está incluido; los cambios locales todavía no se sincronizan.`;
+      const costsDetail = costsError
+        ? ` Costos/Recetas no se completó: ${costsError}`
+        : ` Costos/Recetas: ${costsResult.written} fuente(s) descargada(s)${costsResult.missing ? `; ${costsResult.missing} todavía no existe(n) en Firebase` : ''}.`;
+      notice.textContent = `Carga inicial: ${result.added} registros descargados.${preserved}${costsDetail} Los cambios locales todavía no se sincronizan.`;
     }catch(error){
       notice.textContent = 'No se completó la descarga inicial. Se conservan los datos locales. ' + String(error.message || error) + ' Recarga para reintentar.';
     }finally{ expired = true; clearTimeout(timer); }

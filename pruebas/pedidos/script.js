@@ -3334,6 +3334,7 @@ window.addEventListener('storage', (event) => {
 
 
 document.addEventListener("DOMContentLoaded", async () => {
+  if (window.A33E6Download) await window.A33E6Download.ready('pedidos');
   document.addEventListener('keydown', (event) => {
     try{
       if (event && event.key === 'Escape') closePedidoDetailModalPED();

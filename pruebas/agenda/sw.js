@@ -5,15 +5,16 @@ const REV = self.A33_RELEASE && self.A33_RELEASE.rev != null ? String(self.A33_R
 const CACHE = `a33-v${VERSION}-agenda-r${REV}-m7`;
 const PRECACHE = [
   './',
-  './index.html?v=4.20.98&r=4',
+  './index.html?v=4.20.98&r=5',
   './style.css?v=4.20.98&r=11',
-  './script.js?v=4.20.98&r=16',
-  './purchases.js?v=4.20.98&r=4',
+  './script.js?v=4.20.98&r=17',
+  './purchases.js?v=4.20.98&r=5',
   './manifest.webmanifest?v=4.20.98&r=1',
   './offline.html',
   '../icon-a33-192.png',
   '../icon-a33-512.png',
   '/assets/js/a33-release.js?v=4.20.98&r=54',
+  '/assets/js/a33-e6-download.js?v=4.20.98&r=1',
   '/assets/js/a33-storage.js?v=4.20.98&r=20',
   '/assets/js/a33-materials.js?v=4.20.98&r=2',
   '/assets/js/a33-toast.js?v=4.20.98&r=1',
@@ -39,7 +40,7 @@ self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).then(response => {
       const clone = response.clone(); caches.open(CACHE).then(cache => cache.put(event.request, clone)).catch(()=>{}); return response;
-    }).catch(() => caches.match(event.request).then(hit => hit || caches.match('./index.html?v=4.20.98&r=4')).then(hit => hit || caches.match('./offline.html'))));
+    }).catch(() => caches.match(event.request).then(hit => hit || caches.match('./index.html?v=4.20.98&r=5')).then(hit => hit || caches.match('./offline.html'))));
     return;
   }
   event.respondWith(caches.match(event.request).then(hit => hit || fetch(event.request).then(response => {

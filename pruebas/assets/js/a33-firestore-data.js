@@ -13,7 +13,7 @@
 
   const MODULES = Object.freeze([
     moduleSpec('configuracion', 'Configuración', ['identidad', 'apariencia', 'reportes', 'moneda', 'pwa', 'firebase']),
-    moduleSpec('catalogos', 'Catálogos', ['productos', 'materia_prima', 'envases', 'tapas', 'extras', 'bancos', 'clientes']),
+    moduleSpec('catalogos', 'Catálogos', ['productos', 'materia_prima', 'envases', 'tapas', 'extras', 'bancos', 'clientes', 'costos']),
     moduleSpec('inventario', 'Inventario y Producción', ['existencias', 'movimientos', 'recetas', 'calculadora_produccion', 'calculadora_temporal']),
     moduleSpec('lotes', 'Lotes', ['lotes', 'productos_lote', 'historico']),
     moduleSpec('pos', 'POS y Ventas', ['eventos', 'ventas', 'cierres_diarios', 'efectivo', 'inventario_evento', 'reempaques', 'resumenes']),

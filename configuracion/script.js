@@ -1378,9 +1378,6 @@
 
   let toastTimer = null;
   function showToast(message, ms = 4000){
-    if (window.A33Toast && typeof window.A33Toast.show === 'function') {
-      return window.A33Toast.show(message, undefined, { duration: Math.max(1500, Number(ms) || 4000) });
-    }
     const el = document.getElementById('a33-toast');
     if (!el) {
       try{ alert(message); }catch(_){ }
@@ -3763,7 +3760,9 @@ Los históricos se conservarán. ¿Continuar?`);
 
   const USER_ROLE_META = {
     admin: { label: 'Admin' },
-    usuario: { label: 'Usuario' }
+    ventas: { label: 'Ventas' },
+    finanzas: { label: 'Finanzas' },
+    consulta: { label: 'Consulta' }
   };
   const USER_STATUS_META = {
     active: { label: 'Activo' },
@@ -3825,7 +3824,7 @@ Los históricos se conservarán. ¿Continuar?`);
 
   function normalizeRemoteUser(item){
     const roleMeta = getRoleMetaMap();
-    const role = roleMeta[item?.role] ? item.role : 'usuario';
+    const role = roleMeta[item?.role] ? item.role : 'consulta';
     const status = USER_STATUS_META[item?.status] ? item.status : 'pending';
     return {
       id: String(item?.uid || item?.id || ''),
@@ -3848,7 +3847,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const inactive = list.filter((user) => user.status === 'inactive').length;
     const roleCounts = list.reduce((acc, user) => {
       const roleMeta = getRoleMetaMap();
-      const role = roleMeta[user.role] ? user.role : 'usuario';
+      const role = roleMeta[user.role] ? user.role : 'consulta';
       acc[role] = (acc[role] || 0) + 1;
       return acc;
     }, {});
@@ -3885,7 +3884,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const meta = getRoleMetaMap();
     const html = Object.entries(meta).map(([key, item]) => `<option value="${escapeHtml(key)}">${escapeHtml(item.label || key)}</option>`).join('');
     select.innerHTML = html;
-    const preferred = meta[current] ? current : (meta.admin ? 'admin' : Object.keys(meta)[0] || 'usuario');
+    const preferred = meta[current] ? current : (meta.admin ? 'admin' : Object.keys(meta)[0] || 'consulta');
     select.value = preferred;
   }
 
@@ -3915,7 +3914,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const roleMeta = getRoleMetaMap();
     if (section.roleInput && section.roleInput.value !== 'admin' && roleMeta.admin) section.roleInput.value = 'admin';
     if (section.statusInput) section.statusInput.value = 'active';
-    if (section.saveBtn) section.saveBtn.textContent = buildUsersUiModel().canSimulate ? 'Simular usuario' : 'Guardar usuario';
+    if (section.saveBtn) section.saveBtn.textContent = 'Guardar usuario';
     if (section.formHint) section.formHint.textContent = 'Cuando Functions esté desplegado y tu sesión tenga rol Admin activo, este formulario operará sobre Authentication + Firestore.';
     if (focus && section.nameInput && !section.nameInput.disabled) section.nameInput.focus();
   }
@@ -3930,13 +3929,10 @@ Los históricos se conservarán. ¿Continuar?`);
     section.emailInput.value = user.email;
     populateRoleOptions(section.roleInput);
     const roleMeta = getRoleMetaMap();
-    section.roleInput.value = roleMeta[user.role] ? user.role : 'usuario';
+    section.roleInput.value = roleMeta[user.role] ? user.role : 'consulta';
     section.statusInput.value = USER_STATUS_META[user.status] ? user.status : 'active';
-    const simulation = buildUsersUiModel().canSimulate;
-    section.saveBtn.textContent = simulation ? 'Simular actualización' : 'Actualizar usuario';
-    section.formHint.textContent = simulation
-      ? `Vista previa de ${user.name}; no se modificará su perfil real.`
-      : `Editando perfil real de ${user.name}. Los cambios pasan por Functions + Admin SDK.`;
+    section.saveBtn.textContent = 'Actualizar usuario';
+    section.formHint.textContent = `Editando perfil real de ${user.name}. Los cambios pasan por Functions + Admin SDK.`;
     if (!section.nameInput.disabled) section.nameInput.focus();
   }
 
@@ -4001,7 +3997,6 @@ Los históricos se conservarán. ¿Continuar?`);
     const backendHealth = String(current.backendHealth || 'idle');
     const backendReady = backendHealth === 'ready';
     const canManage = !!current.managementReady;
-    const canSimulate = !canManage && backendHealth === 'spark-manual' && !!current.isAdmin && !!current.profile && current.profile.status === 'active';
     const canBootstrap = !!current.canBootstrap;
     const loading = !!current.loadingProfile;
     const profile = current.profile || null;
@@ -4016,14 +4011,12 @@ Los históricos se conservarán. ¿Continuar?`);
       accessDetail: hasSession
         ? `${roleLabel} · ${statusLabel}`
         : 'Inicia sesión para leer tu perfil y verificar el backend.',
-      backendCurrent: backendHealth === 'spark-manual' ? 'Spark manual' : (backendReady ? 'Listo' : (backendHealth === 'missing' ? 'No desplegado' : backendHealth === 'checking' ? 'Verificando' : 'Pendiente')),
+      backendCurrent: backendReady ? 'Listo' : (backendHealth === 'missing' ? 'No desplegado' : backendHealth === 'checking' ? 'Verificando' : 'Pendiente'),
       backendDetail: String(current.backendMessage || 'Functions todavía no ha sido verificado.'),
       workspaceCurrent: String(current.workspaceId || 'default') || 'default',
       workspaceDetail: 'Preparado para tenant simple sin volver esto un laberinto.',
       storageLabel: 'Firestore canónico',
-      storageCopy: backendHealth === 'spark-manual'
-        ? 'El perfil real vive en Firestore. En Spark, las altas y cambios de usuarios se realizan manualmente desde Firebase.'
-        : 'El perfil real vive en Firestore; las acciones privilegiadas pasan por Functions + Admin SDK.',
+      storageCopy: 'El perfil real vive en Firestore; las acciones privilegiadas pasan por Functions + Admin SDK.',
       permissionsLabel: hasSession
         ? `${roleLabel} · ${Array.isArray(current.permissions) ? current.permissions.length : 0} permisos`
         : 'Sin perfil todavía',
@@ -4039,7 +4032,6 @@ Los históricos se conservarán. ¿Continuar?`);
             ? 'Puedes activar el primer Admin del workspace desde aquí si todavía no existe.'
             : 'Esta base ya deja el backend correcto para la administración privilegiada posterior.'),
       canManage,
-      canSimulate,
       canBootstrap,
       hasSession,
       loading,
@@ -4081,22 +4073,6 @@ Los históricos se conservarán. ¿Continuar?`);
       model.emptyTitle = 'Workspace sin admin';
       model.emptyCopy = 'Usa “Activar admin inicial” para crear el primer perfil administrativo serio.';
       model.disableReason = 'Activa primero el admin inicial del workspace.';
-      return model;
-    }
-
-    if (backendHealth === 'spark-manual'){
-      model.modeBadge = canSimulate ? 'Simulación E9.3' : 'Spark manual';
-      model.sideBadge = profile && current.isAdmin ? 'Admin activo' : 'Perfil pendiente';
-      model.headline = profile
-        ? 'Sesión y permisos activos en Firestore. El plan Spark conserva la administración de usuarios dentro de Firebase.'
-        : 'Plan Spark activo. Falta crear o verificar el perfil del usuario maestro en Firestore.';
-      model.nextLabel = canSimulate ? 'Panel en simulación' : 'Operación Spark';
-      model.nextCopy = canSimulate ? 'Las acciones producen vistas previas locales; cero escrituras y cero llamadas a Functions.' : 'Authentication y Firestore están disponibles sin Functions ni facturación.';
-      model.emptyTitle = profile ? 'Perfil activo' : 'Perfil maestro pendiente';
-      model.emptyCopy = profile
-        ? 'La sesión puede consultar sus permisos. Los cambios de usuarios se hacen desde Firebase.'
-        : 'Crea el perfil maestro manualmente en Firestore para completar el acceso.';
-      model.disableReason = canSimulate ? 'E9.3: este formulario solo simula; no guardará usuarios.' : 'En el plan Spark, administra usuarios manualmente desde Firebase Console.';
       return model;
     }
 
@@ -4146,10 +4122,10 @@ Los históricos se conservarán. ¿Continuar?`);
     if (section.nextCopyEl) section.nextCopyEl.textContent = ui.nextCopy;
     if (section.formHint) section.formHint.textContent = ui.disableReason || 'Backend listo para operar usuarios reales.';
     if (section.bootstrapBtn) section.bootstrapBtn.hidden = !ui.canBootstrap;
-    if (section.newTopBtn) section.newTopBtn.disabled = !(ui.canManage || ui.canSimulate);
-    if (section.emptyCta) section.emptyCta.disabled = !(ui.canManage || ui.canSimulate);
+    if (section.newTopBtn) section.newTopBtn.disabled = !ui.canManage;
+    if (section.emptyCta) section.emptyCta.disabled = !ui.canManage;
 
-    setUserFormEnabled(ui.canManage || ui.canSimulate);
+    setUserFormEnabled(ui.canManage);
     populateRoleOptions(section.roleInput);
 
     if (section.totalEl) section.totalEl.textContent = String(stats.total);
@@ -4171,15 +4147,15 @@ Los históricos se conservarán. ¿Continuar?`);
     if (section.noResultsEl) section.noResultsEl.hidden = !hasUsers || hasFiltered || section.loadingUsers;
 
     const actionCell = (user) => {
-      if (!ui.canManage && !ui.canSimulate) return '<span class="cfg-action-inline-note">Solo lectura</span>';
+      if (!ui.canManage) return '<span class="cfg-action-inline-note">Solo lectura</span>';
       const isSelf = user.uid === accessState()?.user?.uid;
       const canDelete = !isSelf;
       const canToggle = !isSelf;
       return `
         <div class="cfg-user-actions">
-          <button class="cfg-action-btn" type="button" data-user-action="edit" data-user-id="${escapeHtml(user.uid)}">${ui.canSimulate ? 'Simular edición' : 'Editar'}</button>
-          ${canToggle ? `<button class="cfg-action-btn" type="button" data-user-action="toggle" data-user-id="${escapeHtml(user.uid)}">${ui.canSimulate ? 'Simular ' : ''}${user.status === 'active' ? 'desactivar' : 'activar'}</button>` : '<span class="cfg-action-inline-note">Tu propio perfil admin conserva la recuperación.</span>'}
-          ${canDelete ? `<button class="cfg-action-btn cfg-action-btn--danger" type="button" data-user-action="delete" data-user-id="${escapeHtml(user.uid)}">${ui.canSimulate ? 'Simular baja' : 'Borrar'}</button>` : ''}
+          <button class="cfg-action-btn" type="button" data-user-action="edit" data-user-id="${escapeHtml(user.uid)}">Editar</button>
+          ${canToggle ? `<button class="cfg-action-btn" type="button" data-user-action="toggle" data-user-id="${escapeHtml(user.uid)}">${user.status === 'active' ? 'Desactivar' : 'Activar'}</button>` : '<span class="cfg-action-inline-note">Tu propio perfil admin se mantiene activo desde este panel.</span>'}
+          ${canDelete ? `<button class="cfg-action-btn cfg-action-btn--danger" type="button" data-user-action="delete" data-user-id="${escapeHtml(user.uid)}">Borrar</button>` : ''}
         </div>
       `;
     };
@@ -4229,7 +4205,7 @@ Los históricos se conservarán. ¿Continuar?`);
     if (!section || !api) return;
 
     const current = buildUsersUiModel();
-    if (!current.canManage && !current.canSimulate){
+    if (!current.canManage){
       showToast(current.disableReason || 'Tu sesión no puede administrar usuarios todavía.');
       return;
     }
@@ -4238,7 +4214,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const name = normalizeUserName(section.nameInput.value);
     const email = normalizeUserEmail(section.emailInput.value);
     const roleMeta = getRoleMetaMap();
-    const role = roleMeta[section.roleInput.value] ? section.roleInput.value : 'usuario';
+    const role = roleMeta[section.roleInput.value] ? section.roleInput.value : 'consulta';
     const status = USER_STATUS_META[section.statusInput.value] ? section.statusInput.value : 'active';
 
     if (!name || name.length < 2){
@@ -4252,12 +4228,6 @@ Los históricos se conservarán. ¿Continuar?`);
       return;
     }
 
-    if (current.canSimulate){
-      const result = window.A33UsersSimulationE93?.simulate?.({ operation:uid ? 'update' : 'create', user:{ uid, workspaceId:accessState()?.workspaceId, name, email, role, status } }, { access:accessState(), users:section.users });
-      renderUsersSimulationPreviewE93(result);
-      showToast(result?.approved ? 'Vista previa E9.3 correcta; no se guardó información.' : (result?.issues?.[0] || 'La simulación fue rechazada.'));
-      return;
-    }
     section.saveBtn.disabled = true;
     const originalLabel = section.saveBtn.textContent;
     section.saveBtn.textContent = uid ? 'Actualizando…' : 'Creando…';
@@ -4320,14 +4290,6 @@ Los históricos se conservarán. ¿Continuar?`);
       return;
     }
 
-    const ui = buildUsersUiModel();
-    if (ui.canSimulate && (action === 'toggle' || action === 'delete')){
-      const result = window.A33UsersSimulationE93?.simulate?.({ operation:action, user:user }, { access:accessState(), users:section.users });
-      renderUsersSimulationPreviewE93(result);
-      showToast(result?.approved ? `Vista previa de ${action === 'delete' ? 'baja' : 'cambio de estado'} correcta; no se modificó información.` : (result?.issues?.[0] || 'La simulación fue rechazada.'));
-      return;
-    }
-
     if (action === 'toggle'){
       try{
         await api.saveUser({
@@ -4357,103 +4319,6 @@ Los históricos se conservarán. ¿Continuar?`);
         showToast(String(error?.message || error || 'No se pudo borrar el usuario.'));
       }
     }
-  }
-
-  function authState(){
-    const api = window.A33FirebaseAuth;
-    return api && typeof api.getState === 'function' ? api.getState() : { ready:false, status:'disabled', user:null, message:'Firebase está pendiente.' };
-  }
-
-  function renderAuthSection(){
-    const section = window.__cfgAuthSection;
-    if (!section) return;
-    const current = authState();
-    const user = current.user || null;
-    const ready = !!current.ready;
-    const busy = current.status === 'loading' || current.status === 'signing-in';
-    const labels = {
-      disabled:'Firebase pendiente',
-      'not-configured':'Configuración pendiente',
-      loading:'Preparando acceso',
-      ready:'Listo para iniciar',
-      'signing-in':'Verificando',
-      authenticated:'Sesión activa',
-      error:'Revisar acceso'
-    };
-    section.badge.textContent = labels[current.status] || 'Acceso pendiente';
-    section.copy.textContent = user
-      ? `Sesión activa como ${user.displayName || user.email}. El perfil y los permisos se verifican en Firestore.`
-      : String(current.message || 'Primero configuraremos Firebase juntos. Hasta entonces, este acceso permanece cerrado.');
-    section.email.disabled = !ready || !!user || busy;
-    section.password.disabled = !ready || !!user || busy;
-    section.signIn.disabled = !ready || !!user || busy;
-    section.signIn.textContent = busy ? 'Verificando…' : 'Iniciar sesión';
-    section.signOut.hidden = !user;
-    section.signOut.disabled = busy;
-    if (user){
-      section.email.value = user.email || '';
-      section.password.value = '';
-    }
-  }
-
-  async function signInMaster(event){
-    event.preventDefault();
-    const section = window.__cfgAuthSection;
-    const api = window.A33FirebaseAuth;
-    if (!section || !api) return;
-    const email = normalizeUserEmail(section.email.value);
-    const password = String(section.password.value || '');
-    if (!isValidEmail(email)){
-      showToast('Escribe un correo válido.');
-      section.email.focus();
-      return;
-    }
-    if (!password){
-      showToast('Escribe la contraseña de Firebase.');
-      section.password.focus();
-      return;
-    }
-    const toastId = window.A33Toast?.process('Verificando acceso seguro…', { id:'cfg-auth-process' }) || '';
-    try{
-      await api.signIn(email, password);
-      section.password.value = '';
-      window.A33Toast?.replace(toastId, 'Sesión iniciada correctamente.', 'success');
-    }catch(error){
-      section.password.value = '';
-      window.A33Toast?.replace(toastId, String(error?.message || error || 'No se pudo iniciar sesión.'), 'error');
-    }finally{
-      renderAuthSection();
-    }
-  }
-
-  async function signOutMaster(){
-    const api = window.A33FirebaseAuth;
-    if (!api) return;
-    const toastId = window.A33Toast?.process('Cerrando sesión…', { id:'cfg-auth-process' }) || '';
-    try{
-      await api.signOut();
-      window.A33Toast?.replace(toastId, 'Sesión cerrada correctamente.', 'success');
-    }catch(error){
-      window.A33Toast?.replace(toastId, String(error?.message || error || 'No se pudo cerrar la sesión.'), 'error');
-    }
-  }
-
-  function initAuthSection(){
-    const form = document.getElementById('cfg-auth-form');
-    if (!form) return;
-    window.__cfgAuthSection = {
-      form,
-      email:document.getElementById('cfg-auth-email'),
-      password:document.getElementById('cfg-auth-password'),
-      signIn:document.getElementById('cfg-auth-signin'),
-      signOut:document.getElementById('cfg-auth-signout'),
-      badge:document.getElementById('cfg-auth-status-badge'),
-      copy:document.getElementById('cfg-auth-status-copy')
-    };
-    form.addEventListener('submit', signInMaster);
-    window.__cfgAuthSection.signOut.addEventListener('click', signOutMaster);
-    window.addEventListener('a33:auth-state', renderAuthSection);
-    renderAuthSection();
   }
 
   function initUsersSection(){
@@ -4546,539 +4411,6 @@ Los históricos se conservarán. ¿Continuar?`);
     reloadUsersSection({ silent: false }).catch(() => {
       renderUsersSection();
     });
-  }
-
-  function renderSecurityDiagnosticE81(result){
-    const current = accessState() || {};
-    const hasSession = !!current.user;
-    setFirebaseText('cfg-security-e81-source', hasSession ? (current.profile ? 'Perfil canónico visible' : 'Perfil pendiente') : 'Sesión pendiente');
-    setFirebaseText('cfg-security-e81-source-detail', hasSession
-      ? `${current.workspaceId || 'arcano33'} · ${current.roleLabel || 'Sin rol'} · ${current.statusLabel || 'Sin estado'}`
-      : 'Inicia sesión para revisar el workspace canónico.');
-    setFirebaseText('cfg-security-e81-enforcement', current && window.A33ModuleAccess?.isEnabled?.() ? 'Activo' : 'Desactivado');
-    if (!result) return;
-    const incidences = (result.issues?.length || 0);
-    const warnings = (result.warnings?.length || 0);
-    const stateValue = result.readyForE82 ? 'ready' : 'empty';
-    document.getElementById('cfg-security-e81-state')?.setAttribute('data-state', stateValue);
-    document.getElementById('cfg-security-e81-metrics')?.setAttribute('data-state', stateValue);
-    setFirebaseText('cfg-security-e81-users', String(result.userCount || 0));
-    setFirebaseText('cfg-security-e81-users-detail', `${result.activeCount || 0} activo(s) · ${result.inactiveCount || 0} inactivo(s).`);
-    setFirebaseText('cfg-security-e81-admins', String(result.activeAdminCount || 0));
-    setFirebaseText('cfg-security-e81-result', result.readyForE82 ? 'Diagnóstico apto' : 'Revisión requerida');
-    setFirebaseText('cfg-security-e81-result-detail', result.readyForE82
-      ? `${result.moduleCount || 0} módulos y ${result.roleCount || 0} roles revisados; E8.2 puede planificarse.`
-      : `${incidences} incidencia(s) y ${warnings} advertencia(s); E8.2 permanece pendiente.`);
-    setFirebaseText('cfg-security-e81-note', result.readyForE82
-      ? `E8.1 confirmada: ${result.userCount || 0} perfil(es), ${result.activeAdminCount || 0} Admin activo(s) y bloqueo por módulos desactivado.`
-      : ((result.issues && result.issues[0] && result.issues[0].message) || 'El diagnóstico requiere revisión antes de E8.2.'));
-  }
-
-  async function runSecurityDiagnosticE81(){
-    const api = window.A33SecurityDiagnosticE81;
-    if (!api || typeof api.run !== 'function'){
-      showToast('No está disponible el diagnóstico E8.1.');
-      return;
-    }
-    const button = document.getElementById('cfg-security-e81-run');
-    if (button){ button.disabled = true; button.textContent = 'Diagnosticando…'; }
-    const toastId = window.A33Toast?.process('E8.1 en proceso: leyendo perfiles y permisos…') || '';
-    try{
-      const result = await api.run();
-      renderSecurityDiagnosticE81(result);
-      const message = result.readyForE82
-        ? `E8.1 confirmada: ${result.userCount || 0} perfil(es) revisados; E8.2 puede planificarse.`
-        : `E8.1 requiere revisión: ${result.issues?.length || 0} incidencia(s) detectada(s).`;
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE82 ? 'success' : 'warning');
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.1.';
-      setFirebaseText('cfg-security-e81-result', 'No completado');
-      setFirebaseText('cfg-security-e81-result-detail', message);
-      setFirebaseText('cfg-security-e81-note', message);
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
-      else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Diagnosticar E8.1'; }
-    }
-  }
-
-  function initSecurityDiagnosticE81(){
-    const button = document.getElementById('cfg-security-e81-run');
-    if (!button) return;
-    button.addEventListener('click', runSecurityDiagnosticE81);
-    window.addEventListener('a33:access-state', function(){ renderSecurityDiagnosticE81(null); });
-    renderSecurityDiagnosticE81(null);
-  }
-
-  function renderSecuritySimulationRole(result, roleKey, valueId, detailId){
-    const role = result?.roleMatrix?.find((item) => item.key === roleKey);
-    if (!role) return;
-    setFirebaseText(valueId, `${role.label} · ${role.allowedCount}/${result.moduleCount}`);
-    setFirebaseText(detailId, role.deniedCount
-      ? `Permitiría ${role.allowedModules.join(', ') || 'ningún módulo'}; ${role.deniedCount} restringido(s).`
-      : 'Acceso completo a todos los módulos revisados.');
-  }
-
-  function renderSecuritySimulationE82(result){
-    if (!result) return;
-    const stateValue = result.readyForE83 ? 'ready' : 'empty';
-    document.getElementById('cfg-security-e82-state')?.setAttribute('data-state', stateValue);
-    setFirebaseText('cfg-security-e82-source', result.readyForE83 ? 'E8.1 confirmada' : 'E8.1 requiere revisión');
-    setFirebaseText('cfg-security-e82-source-detail', `${result.moduleCount || 0} módulos y ${result.roleCount || 0} roles incluidos.`);
-    setFirebaseText('cfg-security-e82-result', result.readyForE83 ? 'Simulación apta' : 'Revisión requerida');
-    setFirebaseText('cfg-security-e82-result-detail', result.readyForE83
-      ? 'Admin completo y usuario Maestro protegido; E8.3 puede planificarse.'
-      : `${result.issues?.length || 0} bloqueo(s) detectado(s); E8.3 permanece pendiente.`);
-    setFirebaseText('cfg-security-e82-note', result.readyForE83
-      ? 'E8.2 confirmada: la matriz fue simulada sin activar restricciones.'
-      : (result.issues?.[0] || 'La simulación requiere revisión.'));
-    renderSecuritySimulationRole(result, 'admin', 'cfg-security-e82-admin', 'cfg-security-e82-admin-detail');
-    renderSecuritySimulationRole(result, 'ventas', 'cfg-security-e82-sales', 'cfg-security-e82-sales-detail');
-    renderSecuritySimulationRole(result, 'finanzas', 'cfg-security-e82-finance', 'cfg-security-e82-finance-detail');
-    renderSecuritySimulationRole(result, 'consulta', 'cfg-security-e82-readonly', 'cfg-security-e82-readonly-detail');
-  }
-
-  async function runSecuritySimulationE82(){
-    const api = window.A33SecuritySimulationE82;
-    if (!api || typeof api.run !== 'function'){
-      showToast('No está disponible la simulación E8.2.');
-      return;
-    }
-    const button = document.getElementById('cfg-security-e82-run');
-    if (button){ button.disabled = true; button.textContent = 'Simulando…'; }
-    const toastId = window.A33Toast?.process('E8.2 en proceso: calculando accesos por rol…') || '';
-    try{
-      const result = await api.run();
-      renderSecuritySimulationE82(result);
-      const message = result.readyForE83
-        ? `E8.2 confirmada: ${result.roleCount || 0} roles y ${result.moduleCount || 0} módulos simulados; E8.3 puede planificarse.`
-        : `E8.2 requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE83 ? 'success' : 'warning');
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.2.';
-      setFirebaseText('cfg-security-e82-result', 'No completado');
-      setFirebaseText('cfg-security-e82-result-detail', message);
-      setFirebaseText('cfg-security-e82-note', message);
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
-      else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Simular E8.2'; }
-    }
-  }
-
-  function initSecuritySimulationE82(){
-    const button = document.getElementById('cfg-security-e82-run');
-    if (!button) return;
-    button.addEventListener('click', runSecuritySimulationE82);
-  }
-
-  function renderSecurityPreparationE83(result){
-    if (!result) return;
-    const stateValue = result.readyForE84 ? 'ready' : 'empty';
-    document.getElementById('cfg-security-e83-state')?.setAttribute('data-state', stateValue);
-    document.getElementById('cfg-security-e83-metrics')?.setAttribute('data-state', stateValue);
-    setFirebaseText('cfg-security-e83-source', result.readyForE84 ? 'E8.2 confirmada' : 'E8.2 requiere revisión');
-    setFirebaseText('cfg-security-e83-source-detail', `${result.moduleCount || 0} módulos incluidos en la política central.`);
-    setFirebaseText('cfg-security-e83-recovery', result.recoveryReady ? 'Admin Maestro protegido' : 'Recuperación pendiente');
-    setFirebaseText('cfg-security-e83-recovery-detail', result.recoveryReady
-      ? `Acceso de recuperación validado en ${result.moduleCount || 0}/${result.moduleCount || 0} módulos.`
-      : 'La cobertura de recuperación no está completa.');
-    setFirebaseText('cfg-security-e83-result', result.readyForE84 ? 'Política preparada' : 'Revisión requerida');
-    setFirebaseText('cfg-security-e83-result-detail', result.readyForE84
-      ? 'Catálogo alineado y compuerta apagada; E8.4 puede planificarse.'
-      : `${result.issues?.length || 0} bloqueo(s) detectado(s); E8.4 permanece pendiente.`);
-    setFirebaseText('cfg-security-e83-navigation', `${result.navigationCount || 0} módulo(s)`);
-    setFirebaseText('cfg-security-e83-policy', `${result.moduleCount || 0} permiso(s)`);
-    setFirebaseText('cfg-security-e83-gate', result.enforcementEnabled ? 'Activa' : 'Desactivada');
-    setFirebaseText('cfg-security-e83-note', result.readyForE84
-      ? 'E8.3 confirmada: navegación, permisos y recuperación están alineados sin activar restricciones.'
-      : (result.issues?.[0] || 'La política requiere revisión.'));
-  }
-
-  async function runSecurityPreparationE83(){
-    const api = window.A33SecurityPreparationE83;
-    if (!api || typeof api.run !== 'function'){
-      showToast('No está disponible la prevalidación E8.3.');
-      return;
-    }
-    const button = document.getElementById('cfg-security-e83-run');
-    if (button){ button.disabled = true; button.textContent = 'Prevalidando…'; }
-    const toastId = window.A33Toast?.process('E8.3 en proceso: alineando política y recuperación…') || '';
-    try{
-      const result = await api.run();
-      renderSecurityPreparationE83(result);
-      const message = result.readyForE84
-        ? `E8.3 confirmada: ${result.moduleCount || 0} módulos alineados y Admin Maestro protegido; E8.4 puede planificarse.`
-        : `E8.3 requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE84 ? 'success' : 'warning');
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.3.';
-      setFirebaseText('cfg-security-e83-result', 'No completado');
-      setFirebaseText('cfg-security-e83-result-detail', message);
-      setFirebaseText('cfg-security-e83-note', message);
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
-      else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Prevalidar E8.3'; }
-    }
-  }
-
-  function initSecurityPreparationE83(){
-    const button = document.getElementById('cfg-security-e83-run');
-    if (!button) return;
-    button.addEventListener('click', runSecurityPreparationE83);
-  }
-
-  function renderSecurityGuardsE84A(result){
-    if (!result) return;
-    const ready = result.readyForE84B === true;
-    const stateValue = ready ? 'ready' : 'empty';
-    document.getElementById('cfg-security-e84a-state')?.setAttribute('data-state', stateValue);
-    document.getElementById('cfg-security-e84a-metrics')?.setAttribute('data-state', stateValue);
-    setFirebaseText('cfg-security-e84a-source', ready ? 'E8.3 confirmada' : 'E8.3 requiere revisión');
-    setFirebaseText('cfg-security-e84a-source-detail', `${result.pageCount || 0} de 12 páginas canónicas revisadas.`);
-    setFirebaseText('cfg-security-e84a-gate', result.enforcementEnabled ? 'Compuerta activa' : 'Compuerta apagada');
-    setFirebaseText('cfg-security-e84a-result', ready ? 'Guardas preparadas' : 'Revisión requerida');
-    setFirebaseText('cfg-security-e84a-result-detail', ready
-      ? 'Instalación completa y sin bloqueo; E8.4B puede planificarse.'
-      : `${result.issues?.length || 0} bloqueo(s) detectado(s); E8.4B permanece pendiente.`);
-    setFirebaseText('cfg-security-e84a-pages', `${result.pageCount || 0}/12 revisadas`);
-    setFirebaseText('cfg-security-e84a-installed', `${result.installedCount || 0}/12 instaladas`);
-    setFirebaseText('cfg-security-e84a-enforcement', result.enforcementEnabled ? 'Activa' : 'Desactivada');
-    setFirebaseText('cfg-security-e84a-note', ready
-      ? 'E8.4A confirmada: las 12 guardas están preparadas con la compuerta apagada.'
-      : (result.issues?.[0] || 'La instalación requiere revisión.'));
-  }
-
-  async function runSecurityGuardsE84A(){
-    const api = window.A33SecurityGuardsE84A;
-    if (!api || typeof api.run !== 'function'){
-      showToast('No está disponible la validación E8.4A.');
-      return;
-    }
-    const button = document.getElementById('cfg-security-e84a-run');
-    if (button){ button.disabled = true; button.textContent = 'Validando…'; }
-    const toastId = window.A33Toast?.process('E8.4A en proceso: auditando guardas por módulo…') || '';
-    try{
-      const result = await api.run();
-      renderSecurityGuardsE84A(result);
-      const message = result.readyForE84B
-        ? `E8.4A confirmada: ${result.installedCount || 0}/12 guardas preparadas con la compuerta apagada; E8.4B puede planificarse.`
-        : `E8.4A requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE84B ? 'success' : 'warning');
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.4A.';
-      setFirebaseText('cfg-security-e84a-result', 'No completado');
-      setFirebaseText('cfg-security-e84a-result-detail', message);
-      setFirebaseText('cfg-security-e84a-note', message);
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
-      else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Validar guardas E8.4A'; }
-    }
-  }
-
-  function initSecurityGuardsE84A(){
-    const button = document.getElementById('cfg-security-e84a-run');
-    if (!button) return;
-    button.addEventListener('click', runSecurityGuardsE84A);
-  }
-
-  function renderSecurityTestRoleE84B(result, roleKey, valueId, detailId){
-    const role = result?.roleMatrix?.find((item) => item.key === roleKey);
-    if (!role) return;
-    setFirebaseText(valueId, `${role.label} · ${role.allowedCount}/${result.moduleCount}`);
-    setFirebaseText(detailId, role.deniedCount
-      ? `${role.allowedCount} permitido(s) y ${role.deniedCount} restringido(s).`
-      : 'Acceso completo y recuperación protegida.');
-  }
-
-  function renderSecurityTestE84B(result){
-    if (!result) return;
-    const ready = result.readyForE84C === true;
-    const stateValue = ready ? 'ready' : 'empty';
-    document.getElementById('cfg-security-e84b-state')?.setAttribute('data-state', stateValue);
-    document.getElementById('cfg-security-e84b-metrics')?.setAttribute('data-state', stateValue);
-    setFirebaseText('cfg-security-e84b-source', ready ? 'E8.4A confirmada' : 'E8.4A requiere revisión');
-    setFirebaseText('cfg-security-e84b-source-detail', `${result.moduleCount || 0} módulos y ${result.roleCount || 0} roles incluidos.`);
-    setFirebaseText('cfg-security-e84b-gate', result.enforcementEnabled ? 'Compuerta activa' : 'Compuerta apagada');
-    setFirebaseText('cfg-security-e84b-result', ready ? 'Prueba apta' : 'Revisión requerida');
-    setFirebaseText('cfg-security-e84b-result-detail', ready
-      ? `${result.checkCount || 0} controles correctos; E8.4C puede planificarse.`
-      : `${result.issues?.length || 0} bloqueo(s) detectado(s); E8.4C permanece pendiente.`);
-    renderSecurityTestRoleE84B(result, 'admin', 'cfg-security-e84b-admin', 'cfg-security-e84b-admin-detail');
-    renderSecurityTestRoleE84B(result, 'ventas', 'cfg-security-e84b-sales', 'cfg-security-e84b-sales-detail');
-    renderSecurityTestRoleE84B(result, 'finanzas', 'cfg-security-e84b-finance', 'cfg-security-e84b-finance-detail');
-    renderSecurityTestRoleE84B(result, 'consulta', 'cfg-security-e84b-readonly', 'cfg-security-e84b-readonly-detail');
-    setFirebaseText('cfg-security-e84b-unknown', result.unknownRouteBlocked ? 'Bloqueada' : 'No bloqueada');
-    setFirebaseText('cfg-security-e84b-inactive', result.inactiveProfileBlocked ? 'Bloqueado' : 'No bloqueado');
-    setFirebaseText('cfg-security-e84b-enforcement', result.enforcementEnabled ? 'Activa' : 'Desactivada');
-    setFirebaseText('cfg-security-e84b-note', ready
-      ? 'E8.4B confirmada: permisos, restricciones y recuperación fueron simulados sin activar la compuerta.'
-      : (result.issues?.[0] || 'La prueba controlada requiere revisión.'));
-  }
-
-  async function runSecurityTestE84B(){
-    const api = window.A33SecurityTestE84B;
-    if (!api || typeof api.run !== 'function'){
-      showToast('No está disponible la prueba E8.4B.');
-      return;
-    }
-    const button = document.getElementById('cfg-security-e84b-run');
-    if (button){ button.disabled = true; button.textContent = 'Probando…'; }
-    const toastId = window.A33Toast?.process('E8.4B en proceso: simulando guardas y recuperación…') || '';
-    try{
-      const result = await api.run();
-      renderSecurityTestE84B(result);
-      const message = result.readyForE84C
-        ? `E8.4B confirmada: ${result.checkCount || 0} controles correctos con la compuerta apagada; E8.4C puede planificarse.`
-        : `E8.4B requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.readyForE84C ? 'success' : 'warning');
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.4B.';
-      setFirebaseText('cfg-security-e84b-result', 'No completado');
-      setFirebaseText('cfg-security-e84b-result-detail', message);
-      setFirebaseText('cfg-security-e84b-note', message);
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
-      else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Probar guardas E8.4B'; }
-    }
-  }
-
-  function initSecurityTestE84B(){
-    const button = document.getElementById('cfg-security-e84b-run');
-    if (!button) return;
-    button.addEventListener('click', runSecurityTestE84B);
-  }
-
-  function renderSecurityActivationE84C(result){
-    if (!result) return;
-    const complete = result.completed === true;
-    const stateValue = complete ? 'ready' : 'empty';
-    document.getElementById('cfg-security-e84c-state')?.setAttribute('data-state', stateValue);
-    document.getElementById('cfg-security-e84c-metrics')?.setAttribute('data-state', stateValue);
-    setFirebaseText('cfg-security-e84c-recovery', result.adminRecoveryReady ? 'Admin Maestro protegido' : 'Recuperación pendiente');
-    setFirebaseText('cfg-security-e84c-result', complete ? 'Activación correcta' : 'Revisión requerida');
-    setFirebaseText('cfg-security-e84c-result-detail', complete
-      ? 'Menú, acceso directo y recuperación quedaron protegidos.'
-      : `${result.issues?.length || 0} bloqueo(s) detectado(s).`);
-    setFirebaseText('cfg-security-e84c-pages', `${result.activeGuardCount || 0}/12 activas`);
-    setFirebaseText('cfg-security-e84c-checks', `${result.checkCount || 0} verificados`);
-    setFirebaseText('cfg-security-e84c-enforcement', result.enforcementEnabled ? 'Activa' : 'Desactivada');
-    setFirebaseText('cfg-security-e84c-note', complete
-      ? 'E8.4C confirmada: guardas activas, restricciones verificadas y recuperación Maestro disponible.'
-      : (result.issues?.[0] || 'La activación requiere revisión.'));
-  }
-
-  async function runSecurityActivationE84C(){
-    const api = window.A33SecurityActivationE84C;
-    if (!api || typeof api.run !== 'function'){
-      showToast('No está disponible la verificación E8.4C.');
-      return;
-    }
-    const button = document.getElementById('cfg-security-e84c-run');
-    if (button){ button.disabled = true; button.textContent = 'Verificando…'; }
-    const toastId = window.A33Toast?.process('E8.4C en proceso: verificando activación y recuperación…') || '';
-    try{
-      const result = await api.run();
-      renderSecurityActivationE84C(result);
-      const message = result.completed
-        ? `E8.4C confirmada: ${result.activeGuardCount || 0}/12 guardas activas y ${result.checkCount || 0} controles correctos.`
-        : `E8.4C requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.completed ? 'success' : 'warning');
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E8.4C.';
-      setFirebaseText('cfg-security-e84c-result', 'No completado');
-      setFirebaseText('cfg-security-e84c-result-detail', message);
-      setFirebaseText('cfg-security-e84c-note', message);
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
-      else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Verificar activación E8.4C'; }
-    }
-  }
-
-  function initSecurityActivationE84C(){
-    const button = document.getElementById('cfg-security-e84c-run');
-    if (!button) return;
-    button.addEventListener('click', runSecurityActivationE84C);
-  }
-
-  function renderUsersDiagnosticE91(result){
-    if (!result) return;
-    const complete = result.completed === true;
-    const stateValue = complete ? 'ready' : 'empty';
-    document.getElementById('cfg-security-e91-state')?.setAttribute('data-state', stateValue);
-    document.getElementById('cfg-security-e91-metrics')?.setAttribute('data-state', stateValue);
-    setFirebaseText('cfg-security-e91-source', result.guardActive ? 'E8.4C confirmada' : 'E8.4C pendiente');
-    setFirebaseText('cfg-security-e91-source-detail', result.guardActive ? `Workspace ${result.workspaceId || 'sin identificar'} con compuerta activa.` : 'La compuerta activa debe estar confirmada.');
-    setFirebaseText('cfg-security-e91-result', complete ? 'Diagnóstico apto' : 'Revisión requerida');
-    setFirebaseText('cfg-security-e91-result-detail', complete ? 'E9.2 puede planificarse sin activar operaciones privilegiadas.' : `${result.issues?.length || 0} bloqueo(s) detectado(s).`);
-    setFirebaseText('cfg-security-e91-profiles', `${result.profileCount || 0} perfil(es)`);
-    setFirebaseText('cfg-security-e91-profiles-detail', `${result.activeAdminCount || 0} Admin activo(s) visible(s).`);
-    setFirebaseText('cfg-security-e91-contracts', `${result.contractCount || 0}/${result.expectedContractCount || 3} disponibles`);
-    setFirebaseText('cfg-security-e91-management', result.administrationEnabled ? 'Activa' : 'Desactivada');
-    setFirebaseText('cfg-security-e91-note', complete
-      ? 'E9.1 confirmada: perfiles y contratos revisados con la administración real desactivada.'
-      : (result.issues?.[0] || 'El diagnóstico requiere revisión.'));
-  }
-
-  async function runUsersDiagnosticE91(){
-    const api = window.A33UsersDiagnosticE91;
-    if (!api || typeof api.run !== 'function'){
-      showToast('No está disponible el diagnóstico E9.1.');
-      return;
-    }
-    const button = document.getElementById('cfg-security-e91-run');
-    if (button){ button.disabled = true; button.textContent = 'Diagnosticando…'; }
-    const toastId = window.A33Toast?.process('E9.1 en proceso: revisando perfiles y contratos sin ejecutar Functions…') || '';
-    try{
-      const result = await api.run();
-      renderUsersDiagnosticE91(result);
-      const message = result.completed
-        ? `E9.1 confirmada: ${result.profileCount || 0} perfil(es) y ${result.contractCount || 0} contratos revisados; E9.2 puede planificarse.`
-        : `E9.1 requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.completed ? 'success' : 'warning');
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E9.1.';
-      setFirebaseText('cfg-security-e91-result', 'No completado');
-      setFirebaseText('cfg-security-e91-result-detail', message);
-      setFirebaseText('cfg-security-e91-note', message);
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error');
-      else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Diagnosticar E9.1'; }
-    }
-  }
-
-  function initUsersDiagnosticE91(){
-    const button = document.getElementById('cfg-security-e91-run');
-    if (!button) return;
-    button.addEventListener('click', runUsersDiagnosticE91);
-  }
-
-  function renderUsersHardeningE92(result){
-    if (!result) return;
-    const complete = result.completed === true;
-    const stateValue = complete ? 'ready' : 'empty';
-    document.getElementById('cfg-security-e92-state')?.setAttribute('data-state', stateValue);
-    document.getElementById('cfg-security-e92-metrics')?.setAttribute('data-state', stateValue);
-    setFirebaseText('cfg-security-e92-result', complete ? 'Blindaje apto' : 'Revisión requerida');
-    setFirebaseText('cfg-security-e92-result-detail', complete ? 'E9.3 puede planificarse sin activar Functions.' : `${result.issues?.length || 0} bloqueo(s) detectado(s).`);
-    setFirebaseText('cfg-security-e92-safeguards', `${result.safeguardCount || 0}/7 correctos`);
-    setFirebaseText('cfg-security-e92-workspace', result.workspaceId || 'Sin identificar');
-    setFirebaseText('cfg-security-e92-management', result.administrationEnabled ? 'Activa' : 'Desactivada');
-    setFirebaseText('cfg-security-e92-note', complete
-      ? 'E9.2 confirmada: siete blindajes correctos con la administración real desactivada.'
-      : (result.issues?.[0] || 'El blindaje requiere revisión.'));
-  }
-
-  async function runUsersHardeningE92(){
-    const api = window.A33UsersHardeningE92;
-    if (!api || typeof api.run !== 'function') return showToast('No está disponible la validación E9.2.');
-    const button = document.getElementById('cfg-security-e92-run');
-    if (button){ button.disabled = true; button.textContent = 'Validando…'; }
-    const toastId = window.A33Toast?.process('E9.2 en proceso: verificando blindajes locales…') || '';
-    try{
-      const result = await api.run();
-      renderUsersHardeningE92(result);
-      const message = result.completed
-        ? `E9.2 confirmada: ${result.safeguardCount || 0} blindajes correctos; E9.3 puede planificarse.`
-        : `E9.2 requiere revisión: ${result.issues?.length || 0} bloqueo(s) detectado(s).`;
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.completed ? 'success' : 'warning');
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E9.2.';
-      setFirebaseText('cfg-security-e92-result', 'No completado');
-      setFirebaseText('cfg-security-e92-result-detail', message);
-      setFirebaseText('cfg-security-e92-note', message);
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error'); else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Validar blindaje E9.2'; }
-    }
-  }
-
-  function initUsersHardeningE92(){
-    const button = document.getElementById('cfg-security-e92-run');
-    if (button) button.addEventListener('click', runUsersHardeningE92);
-  }
-
-  function renderUsersSimulationPreviewE93(result){
-    if (!result) return;
-    const labels = {create:'Alta',update:'Actualización',toggle:'Cambio de estado',delete:'Baja'};
-    setFirebaseText('cfg-security-e93-preview', `${labels[result.operation] || 'Operación'} ${result.approved ? 'apta' : 'rechazada'}`);
-    setFirebaseText('cfg-security-e93-preview-detail', result.approved ? `${result.target?.email || 'Sin correo'} · vista previa local, sin escrituras.` : (result.issues?.[0] || 'La vista previa requiere revisión.'));
-  }
-
-  function renderUsersSimulationE93(result){
-    if (!result) return;
-    const complete = result.completed === true;
-    const stateValue = complete ? 'ready' : 'empty';
-    document.getElementById('cfg-security-e93-state')?.setAttribute('data-state', stateValue);
-    document.getElementById('cfg-security-e93-metrics')?.setAttribute('data-state', stateValue);
-    setFirebaseText('cfg-security-e93-result', complete ? 'Simulación apta' : 'Revisión requerida');
-    setFirebaseText('cfg-security-e93-result-detail', complete ? 'E9.4 puede planificarse; la administración real sigue apagada.' : `${result.caseCount - result.controlsPassed} control(es) fallido(s).`);
-    setFirebaseText('cfg-security-e93-controls', `${result.controlsPassed || 0}/${result.caseCount || 5} correctos`);
-    setFirebaseText('cfg-security-e93-writes', String(result.writes || 0));
-    setFirebaseText('cfg-security-e93-note', complete ? 'E9.3 confirmada: panel y recuperación simulados sin escrituras ni llamadas a Functions.' : 'La simulación requiere revisión antes de E9.4.');
-  }
-
-  async function runUsersSimulationE93(){
-    const api = window.A33UsersSimulationE93;
-    if (!api || typeof api.run !== 'function') return showToast('No está disponible la simulación E9.3.');
-    const button = document.getElementById('cfg-security-e93-run');
-    if (button){ button.disabled = true; button.textContent = 'Simulando…'; }
-    const toastId = window.A33Toast?.process('E9.3 en proceso: simulando el panel sin escrituras…') || '';
-    try{
-      const result = await api.run();
-      renderUsersSimulationE93(result);
-      const message = result.completed ? `E9.3 confirmada: ${result.controlsPassed || 0} controles simulados sin escrituras; E9.4 puede planificarse.` : `E9.3 requiere revisión: ${(result.caseCount || 0) - (result.controlsPassed || 0)} control(es) fallido(s).`;
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, result.completed ? 'success' : 'warning');
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E9.3.';
-      setFirebaseText('cfg-security-e93-result', 'No completado');
-      setFirebaseText('cfg-security-e93-result-detail', message);
-      setFirebaseText('cfg-security-e93-note', message);
-      if (window.A33Toast) window.A33Toast.replace(toastId, message, 'error'); else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Simular panel E9.3'; }
-    }
-  }
-
-  function initUsersSimulationE93(){
-    const button = document.getElementById('cfg-security-e93-run');
-    if (button) button.addEventListener('click', runUsersSimulationE93);
-  }
-
-  async function runUsersConnectE94A(){
-    const api = window.A33UsersConnectE94A;
-    if (!api || typeof api.run !== 'function') return showToast('No está disponible el conector E9.4A.');
-    const button = document.getElementById('cfg-security-e94a-run');
-    if (button){ button.disabled = true; button.textContent = 'Verificando…'; }
-    try{
-      const result = await api.run();
-      document.getElementById('cfg-security-e94a-state')?.setAttribute('data-state', result.connectorPrepared && result.safeFallback ? 'ready' : 'empty');
-      setFirebaseText('cfg-security-e94a-result', result.connectorPrepared ? 'Conector preparado' : 'Revisión requerida');
-      const healthLabels = {ready:'Functions disponible',missing:'Functions pendiente',error:'Error de conexión',checking:'Verificando'};
-      setFirebaseText('cfg-security-e94a-detail', `${healthLabels[result.backendHealth] || result.backendHealth}; administración real ${result.administrationEnabled ? 'habilitada' : 'apagada'}.`);
-      setFirebaseText('cfg-security-e94a-note', result.connectorPrepared ? 'E9.4A confirmada: el conector aplica fallo seguro; E9.4B puede planificarse.' : (result.issues[0] || 'El conector requiere revisión.'));
-      if (window.A33Toast){
-        if (!result.connectorPrepared) window.A33Toast.error(result.issues[0] || 'E9.4A requiere revisión.');
-        else if (result.administrationEnabled) window.A33Toast.success('E9.4A confirmada: backend administrativo disponible.');
-        else window.A33Toast.warning('E9.4A confirmada: Functions pendiente y administración real apagada.');
-      }else showToast(result.connectorPrepared ? 'E9.4A confirmada con administración real apagada.' : (result.issues[0] || 'E9.4A requiere revisión.'));
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo verificar E9.4A.';
-      setFirebaseText('cfg-security-e94a-result', 'No completado');
-      setFirebaseText('cfg-security-e94a-detail', message);
-      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
-    }finally{
-      if (button){ button.disabled = false; button.textContent = 'Verificar conector E9.4A'; }
-    }
-  }
-
-  function initUsersConnectE94A(){
-    document.getElementById('cfg-security-e94a-run')?.addEventListener('click', runUsersConnectE94A);
   }
 
 
@@ -5872,6 +5204,7 @@ Los históricos se conservarán. ¿Continuar?`);
   const FIREBASE_REQUIRED_WHEN_ENABLED = [
     { key: 'apiKey', label: 'apiKey' },
     { key: 'authDomain', label: 'authDomain' },
+    { key: 'databaseURL', label: 'databaseURL' },
     { key: 'projectId', label: 'projectId' },
     { key: 'appId', label: 'appId' }
   ];
@@ -6241,6 +5574,8 @@ Los históricos se conservarán. ¿Continuar?`);
       normalizeFirebaseWorkspaceId(data.workspaceId || '') &&
       cleanFirebaseText(c.apiKey) &&
       cleanFirebaseText(c.authDomain) &&
+      cleanFirebaseText(c.databaseURL) &&
+      isProbablyFirebaseDatabaseURL(c.databaseURL) &&
       cleanFirebaseText(c.projectId) &&
       cleanFirebaseText(c.appId)
     );
@@ -6411,8 +5746,13 @@ Los históricos se conservarán. ¿Continuar?`);
     const dbValue = cleanFirebaseText(creds.databaseURL, 420);
     if (dbValue && !isProbablyFirebaseDatabaseURL(dbValue)){
       const msg = 'databaseURL no parece una URL válida de Firebase Realtime Database. Ejemplo: https://proyecto-default-rtdb.firebaseio.com';
-      warnings.push(msg);
-      invalidIds.add('cfg-firebase-databaseURL');
+      if (normalized.enabled){
+        errors.push(msg);
+        invalidIds.add('cfg-firebase-databaseURL');
+      } else {
+        warnings.push(msg);
+        invalidIds.add('cfg-firebase-databaseURL');
+      }
     }
 
     if (options.includeConfiguredHint && normalized.enabled && normalized.configured){
@@ -6442,1034 +5782,6 @@ Los históricos se conservarán. ¿Continuar?`);
       list.appendChild(li);
     });
     return validation;
-  }
-
-  function getFirestoreProgressState(){
-    try{
-      if (window.A33FirestoreData && typeof window.A33FirestoreData.readProgress === 'function'){
-        return window.A33FirestoreData.readProgress();
-      }
-    }catch(_){ }
-    return null;
-  }
-
-  function renderFirestoreProgress(state){
-    const engine = window.A33FirestoreData;
-    const progress = state && typeof state === 'object' ? state : getFirestoreProgressState();
-    const grid = document.getElementById('cfg-firestore-module-grid');
-    const track = document.getElementById('cfg-firestore-progress-track');
-    const bar = document.getElementById('cfg-firestore-progress-bar');
-    const label = document.getElementById('cfg-firestore-progress-label');
-    const message = document.getElementById('cfg-firestore-progress-message');
-    const count = document.getElementById('cfg-firestore-progress-count');
-    if (!progress || !engine || !grid) return;
-    const summary = typeof engine.progressSummary === 'function'
-      ? engine.progressSummary(progress)
-      : { total: 9, processed: 0, loaded: 0, percent: 0 };
-    if (label) label.textContent = progress.label || 'Preparación local';
-    if (message) message.textContent = progress.message || 'Contrato Firestore listo. Todavía no se han cargado datos.';
-    if (count) count.textContent = `${summary.loaded || 0} de ${summary.total || 9}`;
-    if (track){
-      track.setAttribute('aria-valuemax', String(summary.total || 9));
-      track.setAttribute('aria-valuenow', String(summary.processed || 0));
-      track.setAttribute('aria-valuetext', `${summary.loaded || 0} de ${summary.total || 9} módulos cargados`);
-    }
-    if (bar) bar.style.width = `${Math.max(0, Math.min(100, Number(summary.percent || 0) || 0))}%`;
-
-    const statusLabels = {
-      pending: 'Pendiente',
-      process: 'En proceso',
-      success: 'Cargado',
-      warning: 'Con aviso',
-      error: 'Error'
-    };
-    grid.replaceChildren();
-    (Array.isArray(progress.modules) ? progress.modules : []).forEach((module) => {
-      const item = document.createElement('article');
-      item.className = 'cfg-firestore-module';
-      item.dataset.module = String(module.id || '');
-      item.dataset.status = statusLabels[module.status] ? module.status : 'pending';
-
-      const head = document.createElement('div');
-      head.className = 'cfg-firestore-module-head';
-      const title = document.createElement('strong');
-      title.textContent = module.label || module.id || 'Módulo';
-      const status = document.createElement('span');
-      status.className = 'cfg-firestore-module-status';
-      status.textContent = statusLabels[module.status] || statusLabels.pending;
-      head.append(title, status);
-
-      const detail = document.createElement('small');
-      const counter = Number(module.total || 0) > 0
-        ? ` · ${Math.max(0, Number(module.processed || 0) || 0)}/${Math.max(0, Number(module.total || 0) || 0)}`
-        : '';
-      detail.textContent = (module.detail || 'Pendiente de configuración e importación.') + counter;
-      item.append(head, detail);
-      grid.appendChild(item);
-    });
-  }
-
-  function formatInitialImportBytes(value){
-    const bytes = Math.max(0, Number(value || 0) || 0);
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  }
-
-  function renderInitialImportState(data, state = ''){
-    const current = data && typeof data === 'object' ? data : null;
-    const box = document.getElementById('cfg-initial-import-state');
-    const upload = document.getElementById('cfg-initial-import-upload');
-    const clear = document.getElementById('cfg-initial-import-clear');
-    if (!box) return;
-    const staged = state === 'staged' || !!(current && current.status === 'staged');
-    const ready = !!current && !staged;
-    box.dataset.state = staged ? 'staged' : (ready ? 'ready' : 'empty');
-    setFirebaseText('cfg-initial-import-file-name', current ? current.fileName : 'Sin seleccionar');
-    setFirebaseText('cfg-initial-import-file-detail', current
-      ? `${formatInitialImportBytes(current.bytes)} limpios · ${current.chunkCount || 0} bloque(s)`
-      : 'Límite 50 MB. Debe ser un respaldo completo de Suite A33.');
-    setFirebaseText('cfg-initial-import-review', staged ? 'Preparado' : (ready ? 'Validado y limpio' : 'Pendiente'));
-    setFirebaseText('cfg-initial-import-review-detail', current
-      ? `${current.summary && current.summary.localKeys || 0} claves locales · ${current.summary && current.summary.databases || 0} bases detectadas`
-      : 'Se excluirán credenciales, sesiones y datos de acceso antes de preparar la carga.');
-    setFirebaseText('cfg-initial-import-destination', staged ? 'Guardado en Firebase' : 'Importación aislada');
-    setFirebaseText('cfg-initial-import-destination-detail', staged
-      ? `ID ${current.importId}. Queda staged y no aplicado.`
-      : 'Estado staged: no reemplaza información operativa.');
-    if (upload) upload.disabled = !ready;
-    if (clear){
-      clear.disabled = !current;
-      clear.textContent = staged ? 'Cerrar resultado' : 'Quitar archivo';
-    }
-  }
-
-  function resetInitialImport(){
-    const input = document.getElementById('cfg-initial-import-file');
-    if (input) input.value = '';
-    if (window.A33FirebaseImport && typeof window.A33FirebaseImport.clearPrepared === 'function'){
-      window.A33FirebaseImport.clearPrepared();
-    }
-    renderInitialImportState(null);
-    setFirebaseText('cfg-initial-import-note', 'La carga solo se ejecuta al confirmarla. E5–E7 aplicarán después cada bloque a su módulo.');
-  }
-
-  async function prepareInitialImportFile(event){
-    const input = event && event.target ? event.target : document.getElementById('cfg-initial-import-file');
-    const file = input && input.files ? input.files[0] : null;
-    if (!file) return;
-    const toastId = window.A33Toast ? window.A33Toast.process('Revisando y limpiando el respaldo JSON…') : '';
-    try{
-      if (!window.A33FirebaseImport || typeof window.A33FirebaseImport.prepareFile !== 'function'){
-        throw new Error('No está disponible el preparador de la E4.');
-      }
-      const result = await window.A33FirebaseImport.prepareFile(file);
-      renderInitialImportState(result, 'ready');
-      setFirebaseText('cfg-initial-import-note', 'Archivo listo. Preparar en Firebase creará una copia aislada y no aplicada.');
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, 'JSON validado y limpiado. Ya podés confirmar la preparación.', 'success');
-        else window.A33Toast.success('JSON validado y limpiado. Ya podés confirmar la preparación.');
-      }
-    }catch(error){
-      resetInitialImport();
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo preparar el respaldo JSON.';
-      setFirebaseText('cfg-initial-import-note', message);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error');
-        else window.A33Toast.error(message);
-      }else showToast(message);
-    }
-  }
-
-  async function uploadInitialImport(){
-    if (!requireFirebaseUnlocked('Preparar carga inicial')) return;
-    const engine = window.A33FirebaseImport;
-    const current = engine && typeof engine.getPrepared === 'function' ? engine.getPrepared() : null;
-    if (!current){
-      const message = 'Primero seleccioná un respaldo JSON válido.';
-      if (window.A33Toast) window.A33Toast.warning(message); else showToast(message);
-      return;
-    }
-    const accepted = window.confirm(
-      `Se preparará “${current.fileName}” en una zona aislada de Firebase.\n\n` +
-      'No se borrarán ni reemplazarán datos, y la carga no se aplicará todavía a los módulos. ¿Continuar?'
-    );
-    if (!accepted){
-      if (window.A33Toast) window.A33Toast.warning('Preparación cancelada. No se envió información.');
-      return;
-    }
-    const btn = document.getElementById('cfg-initial-import-upload');
-    const toastId = window.A33Toast ? window.A33Toast.process('Preparando el respaldo inicial en Firebase…') : '';
-    let completed = false;
-    try{
-      if (btn) btn.disabled = true;
-      const result = await engine.upload();
-      completed = true;
-      renderInitialImportState(result, 'staged');
-      setFirebaseText('cfg-initial-import-note', 'Carga inicial preparada. E5–E7 decidirán cómo aplicar cada bloque; los módulos siguen sin cambios.');
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, 'Carga inicial preparada en Firebase sin aplicar datos.', 'success');
-        else window.A33Toast.success('Carga inicial preparada en Firebase sin aplicar datos.');
-      }
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo preparar la carga inicial en Firebase.';
-      renderInitialImportState(current, 'ready');
-      setFirebaseText('cfg-initial-import-note', message);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error');
-        else window.A33Toast.error(message);
-      }else showToast(message);
-    }finally{
-      if (btn && !completed && engine && engine.getPrepared && engine.getPrepared()) btn.disabled = false;
-    }
-  }
-
-  function initInitialImport(){
-    const engine = window.A33FirebaseImport;
-    const last = engine && typeof engine.readLast === 'function' ? engine.readLast() : null;
-    renderInitialImportState(last, last ? 'staged' : '');
-    const input = document.getElementById('cfg-initial-import-file');
-    const select = document.getElementById('cfg-initial-import-select');
-    const upload = document.getElementById('cfg-initial-import-upload');
-    const clear = document.getElementById('cfg-initial-import-clear');
-    if (select && input) select.addEventListener('click', () => input.click());
-    if (input) input.addEventListener('change', prepareInitialImportFile);
-    if (upload) upload.addEventListener('click', uploadInitialImport);
-    if (clear) clear.addEventListener('click', resetInitialImport);
-    window.addEventListener('a33:initial-import-progress', (event) => {
-      const detail = event && event.detail ? event.detail : {};
-      const processed = Math.max(0, Number(detail.processed || 0) || 0);
-      const total = Math.max(0, Number(detail.total || 0) || 0);
-      if (total) setFirebaseText('cfg-initial-import-note', `Cargando bloque ${processed} de ${total}…`);
-    });
-  }
-
-  function renderApplyE5State(){
-    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
-      ? window.A33FirebaseImport.readLast()
-      : null;
-    const storedResult = window.A33FirebaseApplyE5 && window.A33FirebaseApplyE5.readLast
-      ? window.A33FirebaseApplyE5.readLast()
-      : null;
-    const completed = staged && storedResult
-      && storedResult.importId === staged.importId
-      && storedResult.workspaceId === staged.workspaceId
-      && storedResult.sourceChecksum === staged.checksum
-      ? storedResult
-      : null;
-    const box = document.getElementById('cfg-apply-e5-state');
-    const button = document.getElementById('cfg-apply-e5-run');
-    if (box) box.dataset.state = completed ? 'staged' : (staged ? 'ready' : 'empty');
-    setFirebaseText('cfg-apply-e5-source', staged ? staged.fileName : 'E4 pendiente');
-    setFirebaseText('cfg-apply-e5-source-detail', staged
-      ? `Carga ${staged.importId} preparada y sin aplicar.`
-      : 'Primero debe existir una carga inicial preparada.');
-    setFirebaseText('cfg-apply-e5-result', completed ? 'E5 aplicada' : 'Sin aplicar');
-    setFirebaseText('cfg-apply-e5-result-detail', completed
-      ? `${completed.recordCount || 0} registros · ${formatFirebaseStamp(completed.completedAt)}`
-      : 'La información local no se reemplaza ni se elimina.');
-    if (button) button.disabled = !staged;
-  }
-
-  async function applyStageE5(){
-    if (!requireFirebaseUnlocked('Aplicar E5')) return;
-    const engine = window.A33FirebaseApplyE5;
-    if (!engine || typeof engine.apply !== 'function'){
-      const message = 'No está disponible el motor de aplicación E5.';
-      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
-      return;
-    }
-    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
-      ? window.A33FirebaseImport.readLast()
-      : null;
-    if (!staged){
-      if (window.A33Toast) window.A33Toast.warning('Primero prepará la carga E4.');
-      return;
-    }
-    const accepted = window.confirm(
-      'E5 copiará Configuración, Catálogos y Lotes desde la carga preparada a Firestore.\n\n' +
-      'No borrará ni reemplazará información local y no tocará módulos críticos. ¿Continuar?'
-    );
-    if (!accepted){
-      if (window.A33Toast) window.A33Toast.warning('E5 cancelada. No se escribió información.');
-      return;
-    }
-    const button = document.getElementById('cfg-apply-e5-run');
-    const toastId = window.A33Toast ? window.A33Toast.process('E5 en proceso: verificando la carga preparada…') : '';
-    let appliedResult = null;
-    try{
-      if (button) button.disabled = true;
-      if (window.A33FirestoreData){
-        window.A33FirestoreData.startProgress({ message:'E5: verificando Configuración, Catálogos y Lotes…', toast:false });
-        ['configuracion', 'catalogos', 'lotes'].forEach((moduleId) => {
-          window.A33FirestoreData.setModuleProgress(moduleId, 'process', 'Verificando datos preparados.', { processed:0, total:0 });
-        });
-      }
-      const result = await engine.apply();
-      appliedResult = result;
-      if (window.A33FirestoreData){
-        ['configuracion', 'catalogos', 'lotes'].forEach((moduleId) => {
-          const count = Number(result.counts && result.counts[moduleId] || 0) || 0;
-          window.A33FirestoreData.setModuleProgress(moduleId, count ? 'success' : 'warning', count ? `${count} registro(s) aplicados.` : 'El respaldo no contenía registros para este módulo.', { processed:count, total:count });
-        });
-        window.A33FirestoreData.finishProgress({ message:`E5 completada: ${result.recordCount || 0} registros en 3 módulos; los otros 6 continúan pendientes.`, toast:false });
-      }
-      renderApplyE5State();
-      setFirebaseText('cfg-apply-e5-note', 'E5 completada. Los otros seis módulos permanecen pendientes y sin cambios.');
-      if (window.A33Toast){
-        const message = `E5 confirmada: ${result.recordCount || 0} registros aplicados sin borrar datos locales.`;
-        if (toastId) window.A33Toast.replace(toastId, message, 'success'); else window.A33Toast.success(message);
-      }
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E5.';
-      if (appliedResult){
-        setFirebaseText('cfg-apply-e5-note', 'E5 quedó aplicada en Firestore. Ocurrió un inconveniente solamente al actualizar la pantalla.');
-        if (window.A33Toast){
-          const confirmed = `E5 confirmada: ${appliedResult.recordCount || 0} registros aplicados. Actualizá la pantalla para renovar el estado visual.`;
-          if (toastId) window.A33Toast.replace(toastId, confirmed, 'success'); else window.A33Toast.success(confirmed);
-        }
-        return;
-      }
-      if (window.A33FirestoreData){
-        ['configuracion', 'catalogos', 'lotes'].forEach((moduleId) => {
-          window.A33FirestoreData.setModuleProgress(moduleId, 'error', message, { processed:0, total:0 });
-        });
-        window.A33FirestoreData.finishProgress({ message:`E5 detenida: ${message}`, toast:false });
-      }
-      setFirebaseText('cfg-apply-e5-note', `${message} Si algún bloque alcanzó a guardarse, podés repetir E5: se fusionará sin duplicar registros.`);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
-      }else showToast(message);
-    }finally{
-      try{ renderApplyE5State(); }catch(error){
-        try{ console.warn('E5 aplicada; no se pudo actualizar su estado visual.', error); }catch(_){ }
-      }
-    }
-  }
-
-  function initApplyE5(){
-    renderApplyE5State();
-    const button = document.getElementById('cfg-apply-e5-run');
-    if (button) button.addEventListener('click', applyStageE5);
-    window.addEventListener('a33:initial-import-staged', renderApplyE5State);
-    window.addEventListener('a33:e5-progress', (event) => {
-      const detail = event && event.detail ? event.detail : {};
-      if (detail.total) setFirebaseText('cfg-apply-e5-note', `Aplicando registro ${detail.processed} de ${detail.total}…`);
-    });
-  }
-
-  function getCompletedE5ForCurrentImport(){
-    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
-      ? window.A33FirebaseImport.readLast()
-      : null;
-    const result = window.A33FirebaseApplyE5 && window.A33FirebaseApplyE5.readLast
-      ? window.A33FirebaseApplyE5.readLast()
-      : null;
-    return staged && result
-      && result.importId === staged.importId
-      && result.workspaceId === staged.workspaceId
-      && result.sourceChecksum === staged.checksum
-      ? result
-      : null;
-  }
-
-  function renderApplyE6State(){
-    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
-      ? window.A33FirebaseImport.readLast()
-      : null;
-    const e5 = getCompletedE5ForCurrentImport();
-    const storedResult = window.A33FirebaseApplyE6 && window.A33FirebaseApplyE6.readLast
-      ? window.A33FirebaseApplyE6.readLast()
-      : null;
-    const completed = staged && storedResult
-      && storedResult.importId === staged.importId
-      && storedResult.workspaceId === staged.workspaceId
-      && storedResult.sourceChecksum === staged.checksum
-      ? storedResult
-      : null;
-    const box = document.getElementById('cfg-apply-e6-state');
-    const button = document.getElementById('cfg-apply-e6-run');
-    if (box) box.dataset.state = completed ? 'staged' : (e5 ? 'ready' : 'empty');
-    setFirebaseText('cfg-apply-e6-source', e5 ? 'E5 confirmada' : (staged ? 'E5 pendiente' : 'E4 pendiente'));
-    setFirebaseText('cfg-apply-e6-source-detail', e5
-      ? `Carga ${e5.importId} lista para el segundo bloque.`
-      : (staged ? 'Completá E5 antes de aplicar este bloque.' : 'Primero debe existir una carga E4 preparada.'));
-    setFirebaseText('cfg-apply-e6-result', completed ? 'E6 aplicada' : 'Sin aplicar');
-    setFirebaseText('cfg-apply-e6-result-detail', completed
-      ? `${completed.recordCount || 0} registros · ${formatFirebaseStamp(completed.completedAt)}`
-      : 'Inventario, Pedidos y Agenda permanecen sin cambios remotos.');
-    if (button) button.disabled = !e5;
-    if (typeof renderAnalyzeE7State === 'function') renderAnalyzeE7State();
-  }
-
-  async function applyStageE6(){
-    if (!requireFirebaseUnlocked('Aplicar E6')) return;
-    const engine = window.A33FirebaseApplyE6;
-    if (!engine || typeof engine.apply !== 'function'){
-      const message = 'No está disponible el motor de aplicación E6.';
-      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
-      return;
-    }
-    const e5 = getCompletedE5ForCurrentImport();
-    if (!e5){
-      if (window.A33Toast) window.A33Toast.warning('Primero completá E5 para esta carga E4.');
-      return;
-    }
-    const accepted = window.confirm(
-      'E6 copiará Inventario y Producción, Pedidos y Agenda desde la carga preparada a Firestore.\n\n' +
-      'No borrará información local o remota y no tocará POS, Finanzas ni Seguridad. ¿Continuar?'
-    );
-    if (!accepted){
-      if (window.A33Toast) window.A33Toast.warning('E6 cancelada. No se escribió información.');
-      return;
-    }
-    const button = document.getElementById('cfg-apply-e6-run');
-    const toastId = window.A33Toast ? window.A33Toast.process('E6 en proceso: verificando Inventario, Pedidos y Agenda…') : '';
-    let appliedResult = null;
-    try{
-      if (button) button.disabled = true;
-      if (window.A33FirestoreData){
-        window.A33FirestoreData.startProgress({ message:'E6: verificando Inventario, Pedidos y Agenda…', toast:false });
-        ['configuracion', 'catalogos', 'lotes'].forEach((moduleId) => {
-          const count = Number(e5.counts && e5.counts[moduleId] || 0) || 0;
-          window.A33FirestoreData.setModuleProgress(moduleId, count ? 'success' : 'warning', count ? `${count} registro(s) aplicados en E5.` : 'E5 no contenía registros para este módulo.', { processed:count, total:count });
-        });
-        ['inventario', 'pedidos', 'agenda'].forEach((moduleId) => {
-          window.A33FirestoreData.setModuleProgress(moduleId, 'process', 'Verificando datos preparados.', { processed:0, total:0 });
-        });
-      }
-      const result = await engine.apply();
-      appliedResult = result;
-      if (window.A33FirestoreData){
-        ['inventario', 'pedidos', 'agenda'].forEach((moduleId) => {
-          const count = Number(result.counts && result.counts[moduleId] || 0) || 0;
-          window.A33FirestoreData.setModuleProgress(moduleId, count ? 'success' : 'warning', count ? `${count} registro(s) aplicados.` : 'El respaldo no contenía registros para este módulo.', { processed:count, total:count });
-        });
-        window.A33FirestoreData.finishProgress({ message:`E6 completada: ${result.recordCount || 0} registros en el segundo bloque; POS, Finanzas y Seguridad siguen pendientes.`, toast:false });
-      }
-      renderApplyE6State();
-      setFirebaseText('cfg-apply-e6-note', 'E6 completada. POS, Finanzas y Seguridad permanecen pendientes y sin cambios.');
-      if (window.A33Toast){
-        const message = `E6 confirmada: ${result.recordCount || 0} registros aplicados sin borrar datos.`;
-        if (toastId) window.A33Toast.replace(toastId, message, 'success'); else window.A33Toast.success(message);
-      }
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E6.';
-      if (appliedResult){
-        setFirebaseText('cfg-apply-e6-note', 'E6 quedó aplicada en Firestore. Ocurrió un inconveniente solamente al actualizar la pantalla.');
-        if (window.A33Toast){
-          const confirmed = `E6 confirmada: ${appliedResult.recordCount || 0} registros aplicados. Actualizá la pantalla para renovar el estado visual.`;
-          if (toastId) window.A33Toast.replace(toastId, confirmed, 'success'); else window.A33Toast.success(confirmed);
-        }
-        return;
-      }
-      if (window.A33FirestoreData){
-        ['inventario', 'pedidos', 'agenda'].forEach((moduleId) => {
-          window.A33FirestoreData.setModuleProgress(moduleId, 'error', message, { processed:0, total:0 });
-        });
-        window.A33FirestoreData.finishProgress({ message:`E6 detenida: ${message}`, toast:false });
-      }
-      setFirebaseText('cfg-apply-e6-note', `${message} Podés repetir E6: los identificadores estables evitan duplicados.`);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
-      }else showToast(message);
-    }finally{
-      try{ renderApplyE6State(); }catch(error){
-        try{ console.warn('E6 aplicada; no se pudo actualizar su estado visual.', error); }catch(_){ }
-      }
-    }
-  }
-
-  function initApplyE6(){
-    renderApplyE6State();
-    const button = document.getElementById('cfg-apply-e6-run');
-    if (button) button.addEventListener('click', applyStageE6);
-    window.addEventListener('a33:initial-import-staged', renderApplyE6State);
-    window.addEventListener('a33:e6-progress', (event) => {
-      const detail = event && event.detail ? event.detail : {};
-      if (detail.total) setFirebaseText('cfg-apply-e6-note', `Aplicando registro ${detail.processed} de ${detail.total}…`);
-    });
-  }
-
-  function getCompletedE6ForCurrentImport(){
-    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
-      ? window.A33FirebaseImport.readLast()
-      : null;
-    const result = window.A33FirebaseApplyE6 && window.A33FirebaseApplyE6.readLast
-      ? window.A33FirebaseApplyE6.readLast()
-      : null;
-    return staged && result && result.status === 'completed'
-      && result.importId === staged.importId
-      && result.workspaceId === staged.workspaceId
-      && result.sourceChecksum === staged.checksum
-      ? result
-      : null;
-  }
-
-  function getE7AnalysisForCurrentImport(){
-    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
-      ? window.A33FirebaseImport.readLast()
-      : null;
-    const report = window.A33FirebaseAnalyzeE7 && window.A33FirebaseAnalyzeE7.readLast
-      ? window.A33FirebaseAnalyzeE7.readLast()
-      : null;
-    return staged && report && report.stage === 'E7.1'
-      && report.importId === staged.importId
-      && report.workspaceId === staged.workspaceId
-      && report.sourceChecksum === staged.checksum
-      ? report
-      : null;
-  }
-
-  function renderAnalyzeE7State(){
-    const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
-      ? window.A33FirebaseImport.readLast()
-      : null;
-    const e6 = getCompletedE6ForCurrentImport();
-    const report = getE7AnalysisForCurrentImport();
-    const box = document.getElementById('cfg-analyze-e7-state');
-    const button = document.getElementById('cfg-analyze-e7-run');
-    if (box) box.dataset.state = report ? (report.readyForE72 ? 'staged' : 'ready') : (e6 ? 'ready' : 'empty');
-    setFirebaseText('cfg-analyze-e7-source', e6 ? 'E6 confirmada' : (staged ? 'E6 pendiente' : 'E4 pendiente'));
-    setFirebaseText('cfg-analyze-e7-source-detail', e6
-      ? `Carga ${e6.importId} disponible para diagnóstico de solo lectura.`
-      : (staged ? 'Completá E6 antes de analizar el bloque crítico.' : 'Primero debe existir una carga E4 preparada.'));
-    setFirebaseText('cfg-analyze-e7-result', report
-      ? (report.readyForE72 ? 'Diagnóstico listo' : 'Revisión requerida')
-      : 'Sin analizar');
-    const warningCount = report && Array.isArray(report.warnings) ? report.warnings.length : 0;
-    setFirebaseText('cfg-analyze-e7-result-detail', report
-      ? (report.readyForE72
-        ? `${report.recordCount || 0} registros en ${report.sourceCount || 0} fuentes · listo para revisar E7.2.`
-        : `${warningCount} advertencia(s); E7.2 permanece bloqueada.`)
-      : 'E7.1 no escribe información en Firestore.');
-    if (button) button.disabled = !e6;
-  }
-
-  async function analyzeStageE7(){
-    if (!requireFirebaseUnlocked('Analizar E7.1')) return;
-    const engine = window.A33FirebaseAnalyzeE7;
-    if (!engine || typeof engine.analyze !== 'function'){
-      const message = 'No está disponible el motor de diagnóstico E7.1.';
-      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
-      return;
-    }
-    if (!getCompletedE6ForCurrentImport()){
-      if (window.A33Toast) window.A33Toast.warning('Primero completá E6 para esta carga E4.');
-      return;
-    }
-    const accepted = window.confirm(
-      'E7.1 leerá la carga E4 confirmada para diagnosticar POS y ventas, Finanzas y Caja Chica.\n\n' +
-      'No copiará, modificará ni eliminará datos en Firestore. Seguridad queda excluida. ¿Continuar?'
-    );
-    if (!accepted){
-      if (window.A33Toast) window.A33Toast.warning('E7.1 cancelada. No se modificó información.');
-      return;
-    }
-    const button = document.getElementById('cfg-analyze-e7-run');
-    const toastId = window.A33Toast ? window.A33Toast.process('E7.1 en proceso: analizando el bloque crítico en modo de solo lectura…') : '';
-    try{
-      if (button) button.disabled = true;
-      setFirebaseText('cfg-analyze-e7-note', 'Analizando la carga confirmada sin escribir en Firestore…');
-      const report = await engine.analyze();
-      renderAnalyzeE7State();
-      const message = report.readyForE72
-        ? `E7.1 confirmada: ${report.recordCount || 0} registros revisados; E7.2 puede planificarse.`
-        : `E7.1 requiere revisión: ${Array.isArray(report.warnings) ? report.warnings.length : 0} advertencia(s).`;
-      setFirebaseText('cfg-analyze-e7-note', message);
-      if (window.A33Toast){
-        const type = report.readyForE72 ? 'success' : 'warning';
-        if (toastId) window.A33Toast.replace(toastId, message, type); else window.A33Toast[type](message);
-      }
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar el diagnóstico E7.1.';
-      setFirebaseText('cfg-analyze-e7-note', `${message} No se escribió información en Firestore.`);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
-      }else showToast(message);
-    }finally{
-      renderAnalyzeE7State();
-    }
-  }
-
-  function initAnalyzeE7(){
-    renderAnalyzeE7State();
-    const button = document.getElementById('cfg-analyze-e7-run');
-    if (button) button.addEventListener('click', analyzeStageE7);
-    window.addEventListener('a33:initial-import-staged', renderAnalyzeE7State);
-  }
-
-  function getE72APlanForCurrentImport(){
-    const report = getE7AnalysisForCurrentImport();
-    const plan = window.A33FirebasePlanE72A && window.A33FirebasePlanE72A.readLast
-      ? window.A33FirebasePlanE72A.readLast()
-      : null;
-    return report && plan && plan.stage === 'E7.2A'
-      && plan.schemaVersion === 2
-      && plan.status === 'planned'
-      && plan.importId === report.importId
-      && plan.workspaceId === report.workspaceId
-      && plan.sourceChecksum === report.sourceChecksum
-      ? plan
-      : null;
-  }
-
-  function renderPlanE72AState(){
-    const report = getE7AnalysisForCurrentImport();
-    const ready = !!(report && report.readyForE72);
-    const plan = getE72APlanForCurrentImport();
-    const box = document.getElementById('cfg-plan-e72a-state');
-    const button = document.getElementById('cfg-plan-e72a-run');
-    if (box) box.dataset.state = plan ? 'staged' : (ready ? 'ready' : 'empty');
-    setFirebaseText('cfg-plan-e72a-source', ready ? 'E7.1 confirmada' : 'E7.1 pendiente');
-    setFirebaseText('cfg-plan-e72a-source-detail', ready
-      ? `${report.recordCount || 0} registros diagnosticados y aptos para planificación.`
-      : 'Primero debe existir un diagnóstico E7.1 confirmado y apto.');
-    setFirebaseText('cfg-plan-e72a-result', plan ? 'Plan local listo' : 'Sin planificar');
-    setFirebaseText('cfg-plan-e72a-result-detail', plan
-      ? `${plan.operationCount || 0} operaciones en ${plan.batchCount || 0} lote(s) · ${plan.excludedRecordCount || 0} registro(s) fuera del bloque crítico.`
-      : 'E7.2A no escribe información en Firestore.');
-    setFirebaseText('cfg-plan-e72a-note', plan
-      ? `Plan ${plan.planChecksum || ''} guardado localmente. E7.2B permanece sin ejecutar.`
-      : 'El plan se guarda solo en este navegador y podrá revisarse antes de E7.2B.');
-    if (button) button.disabled = !ready;
-  }
-
-  async function planStageE72A(){
-    if (!requireFirebaseUnlocked('Preparar E7.2A')) return;
-    const engine = window.A33FirebasePlanE72A;
-    if (!engine || typeof engine.plan !== 'function'){
-      const message = 'No está disponible el planificador local E7.2A.';
-      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
-      return;
-    }
-    const report = getE7AnalysisForCurrentImport();
-    if (!report || !report.readyForE72){
-      if (window.A33Toast) window.A33Toast.warning('Primero confirmá un diagnóstico E7.1 apto para esta carga.');
-      return;
-    }
-    const accepted = window.confirm(
-      'E7.2A preparará solamente un plan local para POS y ventas, Finanzas y Caja Chica.\n\n' +
-      'No escribirá, modificará ni eliminará documentos en Firestore. Seguridad queda excluida. ¿Continuar?'
-    );
-    if (!accepted){
-      if (window.A33Toast) window.A33Toast.warning('E7.2A cancelada. No se modificó información.');
-      return;
-    }
-    const button = document.getElementById('cfg-plan-e72a-run');
-    const toastId = window.A33Toast ? window.A33Toast.process('E7.2A en proceso: preparando el plan local…') : '';
-    try{
-      if (button) button.disabled = true;
-      setFirebaseText('cfg-plan-e72a-note', 'Leyendo la carga confirmada para preparar el plan local…');
-      const plan = await engine.plan();
-      renderPlanE72AState();
-      renderValidateE72BState();
-      renderSimulateE72CState();
-      const message = `E7.2A confirmada: ${plan.operationCount || 0} operaciones planificadas en ${plan.batchCount || 0} lote(s), sin escribir en Firestore.`;
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'success'); else window.A33Toast.success(message);
-      }
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo preparar E7.2A.';
-      setFirebaseText('cfg-plan-e72a-note', `${message} No se escribió información en Firestore.`);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
-      }else showToast(message);
-    }finally{
-      renderPlanE72AState();
-    }
-  }
-
-  function initPlanE72A(){
-    renderPlanE72AState();
-    const button = document.getElementById('cfg-plan-e72a-run');
-    if (button) button.addEventListener('click', planStageE72A);
-    window.addEventListener('a33:initial-import-staged', renderPlanE72AState);
-  }
-
-  function getE72BValidationForCurrentPlan(){
-    const plan = getE72APlanForCurrentImport();
-    const result = window.A33FirebaseValidateE72B && window.A33FirebaseValidateE72B.readLast
-      ? window.A33FirebaseValidateE72B.readLast()
-      : null;
-    return plan && result && result.stage === 'E7.2B.2'
-      && result.schemaVersion === 3
-      && result.importId === plan.importId
-      && result.workspaceId === plan.workspaceId
-      && result.sourceChecksum === plan.sourceChecksum
-      && result.planChecksum === plan.planChecksum
-      ? result
-      : null;
-  }
-
-  function renderValidateE72BState(){
-    const plan = getE72APlanForCurrentImport();
-    const result = getE72BValidationForCurrentPlan();
-    const box = document.getElementById('cfg-validate-e72b-state');
-    const duplicateBox = document.getElementById('cfg-validate-e72b-duplicates');
-    const button = document.getElementById('cfg-validate-e72b-run');
-    if (box) box.dataset.state = result ? (result.readyForE72C ? 'staged' : 'ready') : (plan ? 'ready' : 'empty');
-    if (duplicateBox) duplicateBox.dataset.state = result ? (result.readyForE72C ? 'staged' : 'ready') : 'empty';
-    setFirebaseText('cfg-validate-e72b-source', plan ? 'E7.2A confirmada' : 'E7.2A pendiente');
-    setFirebaseText('cfg-validate-e72b-source-detail', plan
-      ? `${plan.operationCount || 0} operaciones en ${plan.batchCount || 0} lote(s) disponibles para prevalidación.`
-      : 'Primero debe existir un plan local E7.2A.');
-    setFirebaseText('cfg-validate-e72b-result', result
-      ? (result.readyForE72C ? 'Prevalidación lista' : 'Revisión requerida')
-      : 'Sin validar');
-    setFirebaseText('cfg-validate-e72b-result-detail', result
-      ? (result.readyForE72C
-        ? `${result.operationCount || 0} operaciones y ${result.checkedTargets || 0} destinos verificados.`
-        : `${Array.isArray(result.errors) ? result.errors.length : 0} bloqueo(s) detectado(s); E7.2C no puede continuar.`)
-      : 'E7.2B no escribe información en Firestore.');
-    setFirebaseText('cfg-validate-e72b-note', result
-      ? (result.readyForE72C
-        ? `Validación ${result.validationChecksum || ''} guardada localmente. E7.2C puede planificarse.`
-        : ((result.errors && result.errors[0]) || 'La prevalidación requiere revisión antes de continuar.'))
-      : 'El resultado se guarda solo en este navegador; E7.2C permanece bloqueada hasta aprobar la validación.');
-    const duplicateGroups = result && Array.isArray(result.duplicateGroups) ? result.duplicateGroups : [];
-    const sourceNames = Array.from(new Set(duplicateGroups.reduce((all, group) => all.concat(Array.isArray(group.sources) ? group.sources : []), []))).sort();
-    setFirebaseText('cfg-validate-e72b-identical', result ? `${result.identicalDuplicateGroupCount || 0} destino(s)` : 'Sin analizar');
-    setFirebaseText('cfg-validate-e72b-identical-detail', result
-      ? `${result.identicalDuplicateOperationCount || 0} operación(es) repetidas con contenido idéntico.`
-      : 'Mismo destino y mismo contenido.');
-    setFirebaseText('cfg-validate-e72b-conflicts', result ? `${result.conflictingDuplicateGroupCount || 0} destino(s)` : 'Sin analizar');
-    setFirebaseText('cfg-validate-e72b-conflicts-detail', result
-      ? `${result.conflictingDuplicateOperationCount || 0} operación(es) repetidas con contenido diferente.`
-      : 'Mismo destino con contenido diferente.');
-    setFirebaseText('cfg-validate-e72b-sources', result ? `${sourceNames.length} fuente(s)` : 'Sin analizar');
-    setFirebaseText('cfg-validate-e72b-sources-detail', result
-      ? (sourceNames.length ? sourceNames.slice(0, 3).join(' · ') + (sourceNames.length > 3 ? ` · +${sourceNames.length - 3}` : '') : 'No se detectaron fuentes duplicadas.')
-      : 'Se mostrarán sin exponer los datos operativos.');
-    if (button) button.disabled = !plan;
-  }
-
-  async function validateStageE72B(){
-    if (!requireFirebaseUnlocked('Validar rutas E7.2B.2')) return;
-    const engine = window.A33FirebaseValidateE72B;
-    if (!engine || typeof engine.validate !== 'function'){
-      const message = 'No está disponible la validación E7.2B.2.';
-      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
-      return;
-    }
-    if (!getE72APlanForCurrentImport()){
-      if (window.A33Toast) window.A33Toast.warning('Primero prepará E7.2A para esta carga.');
-      return;
-    }
-    const accepted = window.confirm(
-      'E7.2B.2 comprobará las rutas refinadas y volverá a clasificar los destinos repetidos.\n\n' +
-      'Solo leerá la carga confirmada; no escribirá ni eliminará documentos en Firestore. ¿Continuar?'
-    );
-    if (!accepted){
-      if (window.A33Toast) window.A33Toast.warning('E7.2B.2 cancelada. No se modificó información.');
-      return;
-    }
-    const button = document.getElementById('cfg-validate-e72b-run');
-    const toastId = window.A33Toast ? window.A33Toast.process('E7.2B.2 en proceso: validando las rutas refinadas…') : '';
-    try{
-      if (button) button.disabled = true;
-      setFirebaseText('cfg-validate-e72b-note', 'Contrastando el plan con la carga confirmada, sin escrituras remotas…');
-      const result = await engine.validate();
-      renderValidateE72BState();
-      renderSimulateE72CState();
-      const message = result.readyForE72C
-        ? `E7.2B.2 confirmada: ${result.identicalDuplicateGroupCount || 0} copia(s) idénticas y 0 conflictos reales; E7.2C puede planificarse.`
-        : `E7.2B.2 requiere revisión: ${result.conflictingDuplicateGroupCount || 0} conflicto(s) reales detectado(s).`;
-      if (window.A33Toast){
-        const type = result.readyForE72C ? 'success' : 'warning';
-        if (toastId) window.A33Toast.replace(toastId, message, type); else window.A33Toast[type](message);
-      }
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E7.2B.2.';
-      setFirebaseText('cfg-validate-e72b-note', `${message} No se escribió información en Firestore.`);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
-      }else showToast(message);
-    }finally{
-      renderValidateE72BState();
-    }
-  }
-
-  function initValidateE72B(){
-    renderValidateE72BState();
-    const button = document.getElementById('cfg-validate-e72b-run');
-    if (button) button.addEventListener('click', validateStageE72B);
-    window.addEventListener('a33:initial-import-staged', renderValidateE72BState);
-  }
-
-  function getE72CSimulationForCurrentValidation(){
-    const validation = getE72BValidationForCurrentPlan();
-    const result = window.A33FirebaseSimulateE72C && window.A33FirebaseSimulateE72C.readLast
-      ? window.A33FirebaseSimulateE72C.readLast()
-      : null;
-    return validation && result && result.stage === 'E7.2C'
-      && result.schemaVersion === 1
-      && result.planChecksum === validation.planChecksum
-      && result.validationChecksum === validation.validationChecksum
-      ? result
-      : null;
-  }
-
-  function renderSimulateE72CState(){
-    const validation = getE72BValidationForCurrentPlan();
-    const ready = !!(validation && validation.readyForE72C);
-    const result = getE72CSimulationForCurrentValidation();
-    const box = document.getElementById('cfg-simulate-e72c-state');
-    const counts = document.getElementById('cfg-simulate-e72c-counts');
-    const button = document.getElementById('cfg-simulate-e72c-run');
-    if (box) box.dataset.state = result ? (result.readyForE72D ? 'staged' : 'ready') : (ready ? 'ready' : 'empty');
-    if (counts) counts.dataset.state = result ? (result.readyForE72D ? 'staged' : 'ready') : 'empty';
-    setFirebaseText('cfg-simulate-e72c-source', ready ? 'E7.2B.2 confirmada' : 'E7.2B.2 pendiente');
-    setFirebaseText('cfg-simulate-e72c-source-detail', ready
-      ? `${validation.operationCount || 0} destinos aprobados para lectura remota.`
-      : 'Primero debe aprobarse la validación de rutas.');
-    setFirebaseText('cfg-simulate-e72c-result', result ? (result.readyForE72D ? 'Simulación apta' : 'Aplicación bloqueada') : 'Sin simular');
-    setFirebaseText('cfg-simulate-e72c-result-detail', result
-      ? `${result.readCount || 0} lectura(s): ${result.differentCount || 0} diferencia(s) y ${result.errorCount || 0} error(es).`
-      : 'E7.2D permanece bloqueada.');
-    setFirebaseText('cfg-simulate-e72c-note', result
-      ? (result.readyForE72D
-        ? `Simulación ${result.simulationChecksum || ''} guardada localmente. E7.2D puede planificarse.`
-        : `La simulación detectó diferencias o errores${result.firstErrorCode ? ` (${result.firstErrorCode})` : ''}; E7.2D no puede continuar.`)
-      : 'La simulación puede consumir hasta una lectura por destino y guarda solo estados y checksums localmente.');
-    setFirebaseText('cfg-simulate-e72c-new', result ? `${result.newCount || 0} destino(s)` : 'Sin analizar');
-    setFirebaseText('cfg-simulate-e72c-identical', result ? `${result.identicalCount || 0} destino(s)` : 'Sin analizar');
-    setFirebaseText('cfg-simulate-e72c-blocked', result ? `${(result.differentCount || 0) + (result.errorCount || 0)} destino(s)` : 'Sin analizar');
-    if (button) button.disabled = !ready;
-  }
-
-  async function simulateStageE72C(){
-    if (!requireFirebaseUnlocked('Simular E7.2C')) return;
-    const engine = window.A33FirebaseSimulateE72C;
-    const validation = getE72BValidationForCurrentPlan();
-    if (!engine || typeof engine.simulate !== 'function'){
-      const message = 'No está disponible el simulador E7.2C.';
-      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
-      return;
-    }
-    if (!validation || !validation.readyForE72C){
-      if (window.A33Toast) window.A33Toast.warning('Primero confirmá E7.2B.2 para este plan.');
-      return;
-    }
-    const accepted = window.confirm(
-      `E7.2C leerá hasta ${validation.operationCount || 0} destinos aprobados en Firestore para compararlos con el plan local.\n\n` +
-      'No creará, modificará ni eliminará documentos. Seguridad permanece excluida. ¿Continuar?'
-    );
-    if (!accepted){
-      if (window.A33Toast) window.A33Toast.warning('E7.2C cancelada. No se modificó información.');
-      return;
-    }
-    const button = document.getElementById('cfg-simulate-e72c-run');
-    const toastId = window.A33Toast ? window.A33Toast.process('E7.2C en proceso: leyendo y comparando destinos remotos…') : '';
-    try{
-      if (button) button.disabled = true;
-      setFirebaseText('cfg-simulate-e72c-note', 'Leyendo únicamente las rutas aprobadas; no se ejecutan escrituras…');
-      const result = await engine.simulate();
-      renderSimulateE72CState();
-      const message = result.readyForE72D
-        ? `E7.2C confirmada: ${result.newCount || 0} nuevo(s), ${result.identicalCount || 0} idéntico(s), sin diferencias ni errores.`
-        : `E7.2C bloqueó la aplicación: ${result.differentCount || 0} diferencia(s) y ${result.errorCount || 0} error(es).`;
-      if (window.A33Toast){
-        const type = result.readyForE72D ? 'success' : 'warning';
-        if (toastId) window.A33Toast.replace(toastId, message, type); else window.A33Toast[type](message);
-      }
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E7.2C.';
-      setFirebaseText('cfg-simulate-e72c-note', `${message} No se escribió información en Firestore.`);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
-      }else showToast(message);
-    }finally{
-      renderSimulateE72CState();
-    }
-  }
-
-  function initSimulateE72C(){
-    renderSimulateE72CState();
-    const button = document.getElementById('cfg-simulate-e72c-run');
-    if (button) button.addEventListener('click', simulateStageE72C);
-    window.addEventListener('a33:initial-import-staged', renderSimulateE72CState);
-  }
-
-  const E72D_RULES_DEPLOYED = true;
-
-  function getE72DResultForCurrentSimulation(){
-    const simulation = getE72CSimulationForCurrentValidation();
-    const result = window.A33FirebaseApplyE72D && window.A33FirebaseApplyE72D.readLast
-      ? window.A33FirebaseApplyE72D.readLast()
-      : null;
-    return simulation && result && result.stage === 'E7.2D'
-      && result.status === 'completed'
-      && result.planChecksum === simulation.planChecksum
-      && result.validationChecksum === simulation.validationChecksum
-      && result.simulationChecksum === simulation.simulationChecksum
-      ? result
-      : null;
-  }
-
-  function renderApplyE72DState(){
-    const simulation = getE72CSimulationForCurrentValidation();
-    const ready = !!(simulation && simulation.readyForE72D);
-    const result = getE72DResultForCurrentSimulation();
-    const box = document.getElementById('cfg-apply-e72d-state');
-    const button = document.getElementById('cfg-apply-e72d-run');
-    if (box) box.dataset.state = result ? 'staged' : (ready && E72D_RULES_DEPLOYED ? 'ready' : 'empty');
-    setFirebaseText('cfg-apply-e72d-source', ready ? 'E7.2C confirmada' : 'E7.2C pendiente');
-    setFirebaseText('cfg-apply-e72d-source-detail', ready
-      ? `${simulation.newCount || 0} destino(s) nuevos y ${simulation.identicalCount || 0} idéntico(s) aprobados.`
-      : 'Primero debe aprobarse la simulación remota.');
-    setFirebaseText('cfg-apply-e72d-result', result ? 'Aplicación completada' : (E72D_RULES_DEPLOYED ? 'Lista para aplicar' : 'Reglas pendientes'));
-    setFirebaseText('cfg-apply-e72d-result-detail', result
-      ? `${result.appliedCount || 0} registro(s) creados en ${result.completedBatches || 0} lote(s).`
-      : (E72D_RULES_DEPLOYED ? 'La ejecución reanudará desde el último checkpoint confirmado.' : 'E7.2D.2 debe desplegar las reglas antes de habilitar la aplicación.'));
-    setFirebaseText('cfg-apply-e72d-note', result
-      ? `E7.2D completada por ${result.completedBy || 'Admin'}; no se sobrescribieron registros.`
-      : (E72D_RULES_DEPLOYED
-        ? 'La aplicación creará únicamente destinos nuevos y registrará un checkpoint por lote.'
-        : 'E7.2D.1 preparada localmente; el botón permanecerá bloqueado hasta desplegar E7.2D.2.'));
-    if (button) button.disabled = !ready || !E72D_RULES_DEPLOYED || !!result;
-  }
-
-  async function applyStageE72D(){
-    if (!E72D_RULES_DEPLOYED){
-      if (window.A33Toast) window.A33Toast.warning('E7.2D.2 debe desplegar las reglas antes de aplicar datos.');
-      return;
-    }
-    if (!requireFirebaseUnlocked('Aplicar E7.2D')) return;
-    const engine = window.A33FirebaseApplyE72D;
-    const simulation = getE72CSimulationForCurrentValidation();
-    if (!engine || typeof engine.apply !== 'function'){
-      const message = 'No está disponible el motor E7.2D.';
-      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
-      return;
-    }
-    if (!simulation || !simulation.readyForE72D){
-      if (window.A33Toast) window.A33Toast.warning('Primero confirmá E7.2C para este plan.');
-      return;
-    }
-    const accepted = window.confirm(
-      `E7.2D creará ${simulation.newCount || 0} registros críticos nuevos en Firestore.\n\n` +
-      'No actualizará ni eliminará rutas existentes. La ejecución usará checkpoints reanudables. ¿Continuar?'
-    );
-    if (!accepted){
-      if (window.A33Toast) window.A33Toast.warning('E7.2D cancelada. No se modificó información.');
-      return;
-    }
-    const button = document.getElementById('cfg-apply-e72d-run');
-    const toastId = window.A33Toast ? window.A33Toast.process('E7.2D en proceso: creando registros críticos por lotes…') : '';
-    try{
-      if (button) button.disabled = true;
-      setFirebaseText('cfg-apply-e72d-note', 'Aplicando lotes con checkpoint atómico; no cierres esta pestaña…');
-      const result = await engine.apply();
-      renderApplyE72DState();
-      const message = `E7.2D confirmada: ${result.appliedCount || 0} registro(s) creados en ${result.completedBatches || 0} lote(s), sin sobrescrituras.`;
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'success'); else window.A33Toast.success(message);
-      }
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E7.2D.';
-      setFirebaseText('cfg-apply-e72d-note', `${message} Podés reanudar desde el último checkpoint confirmado.`);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
-      }else showToast(message);
-    }finally{
-      renderApplyE72DState();
-    }
-  }
-
-  function initApplyE72D(){
-    renderApplyE72DState();
-    const button = document.getElementById('cfg-apply-e72d-run');
-    if (button) button.addEventListener('click', applyStageE72D);
-    window.addEventListener('a33:e72d-progress', function(event){
-      const detail = event && event.detail ? event.detail : {};
-      setFirebaseText('cfg-apply-e72d-note', `E7.2D en proceso: ${detail.processed || 0}/${detail.total || 0} registro(s) confirmados…`);
-    });
-    window.addEventListener('a33:initial-import-staged', renderApplyE72DState);
-  }
-
-  const E72E_EXECUTION_ENABLED = true;
-
-  function getE72EAuditForCurrentApplication(){
-    const application = getE72DResultForCurrentSimulation();
-    const result = window.A33FirebaseAuditE72E && window.A33FirebaseAuditE72E.readLast
-      ? window.A33FirebaseAuditE72E.readLast()
-      : null;
-    return application && result && result.stage === 'E7.2E'
-      && result.planChecksum === application.planChecksum
-      && result.validationChecksum === application.validationChecksum
-      && result.simulationChecksum === application.simulationChecksum
-      ? result
-      : null;
-  }
-
-  function renderAuditE72EState(){
-    const application = getE72DResultForCurrentSimulation();
-    const result = getE72EAuditForCurrentApplication();
-    const ready = !!application;
-    const box = document.getElementById('cfg-audit-e72e-state');
-    const button = document.getElementById('cfg-audit-e72e-run');
-    if (box) box.dataset.state = result ? (result.readyForE72F ? 'staged' : 'ready') : (ready && E72E_EXECUTION_ENABLED ? 'ready' : 'empty');
-    setFirebaseText('cfg-audit-e72e-source', ready ? 'E7.2D confirmada' : 'E7.2D pendiente');
-    setFirebaseText('cfg-audit-e72e-source-detail', ready
-      ? `${application.appliedCount || 0} registro(s) y ${application.completedBatches || 0} lote(s) confirmados.`
-      : 'Primero debe completarse la aplicación crítica.');
-    setFirebaseText('cfg-audit-e72e-result', result ? (result.readyForE72F ? 'Auditoría correcta' : 'Revisión requerida') : 'Sin auditar');
-    setFirebaseText('cfg-audit-e72e-result-detail', result
-      ? `${result.verifiedCount || 0}/${result.expectedCount || 0} verificados; ${(result.missingCount || 0) + (result.differentCount || 0) + (result.invalidContractCount || 0) + (result.errorCount || 0)} incidencia(s).`
-      : (E72E_EXECUTION_ENABLED ? 'Lista para contrastar Firestore en modo solo lectura.' : 'E7.2F habilitará únicamente las lecturas remotas.'));
-    setFirebaseText('cfg-audit-e72e-note', result
-      ? (result.readyForE72F
-        ? `Auditoría ${result.auditChecksum || ''} correcta; el bloque crítico puede cerrarse.`
-        : 'La auditoría detectó faltantes, diferencias, contratos inválidos o errores; no se cierra el bloque.')
-      : (E72E_EXECUTION_ENABLED
-        ? 'La auditoría leerá el checkpoint y cada destino aprobado; no realizará escrituras.'
-        : 'E7.2E preparada localmente; la ejecución permanecerá bloqueada hasta E7.2F.'));
-    if (button) button.disabled = !ready || !E72E_EXECUTION_ENABLED || !!(result && result.readyForE72F);
-  }
-
-  async function auditStageE72E(){
-    if (!E72E_EXECUTION_ENABLED){
-      if (window.A33Toast) window.A33Toast.warning('E7.2F debe habilitar la auditoría remota de solo lectura.');
-      return;
-    }
-    if (!requireFirebaseUnlocked('Auditar E7.2E')) return;
-    const engine = window.A33FirebaseAuditE72E;
-    if (!engine || typeof engine.audit !== 'function'){
-      const message = 'No está disponible el auditor E7.2E.';
-      if (window.A33Toast) window.A33Toast.error(message); else showToast(message);
-      return;
-    }
-    const button = document.getElementById('cfg-audit-e72e-run');
-    const toastId = window.A33Toast ? window.A33Toast.process('E7.2E en proceso: verificando checkpoint y destinos…') : '';
-    try{
-      if (button) button.disabled = true;
-      setFirebaseText('cfg-audit-e72e-note', 'Leyendo Firestore en grupos controlados; no se modificará información…');
-      const result = await engine.audit();
-      renderAuditE72EState();
-      const message = result.readyForE72F
-        ? `E7.2E confirmada: ${result.verifiedCount || 0}/${result.expectedCount || 0} registros verificados sin diferencias.`
-        : `E7.2E requiere revisión: ${(result.missingCount || 0) + (result.differentCount || 0) + (result.invalidContractCount || 0) + (result.errorCount || 0)} incidencia(s).`;
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, result.readyForE72F ? 'success' : 'warning');
-        else if (result.readyForE72F) window.A33Toast.success(message); else window.A33Toast.warning(message);
-      }
-    }catch(error){
-      const message = cleanFirebaseText(error && error.message, 300) || 'No se pudo completar E7.2E.';
-      setFirebaseText('cfg-audit-e72e-note', message);
-      if (window.A33Toast){
-        if (toastId) window.A33Toast.replace(toastId, message, 'error'); else window.A33Toast.error(message);
-      }else showToast(message);
-    }finally{
-      renderAuditE72EState();
-    }
-  }
-
-  function initAuditE72E(){
-    renderAuditE72EState();
-    const button = document.getElementById('cfg-audit-e72e-run');
-    if (button) button.addEventListener('click', auditStageE72E);
-    window.addEventListener('a33:initial-import-staged', renderAuditE72EState);
   }
 
 
@@ -7631,7 +5943,7 @@ Los históricos se conservarán. ¿Continuar?`);
       } else if (data.configured){
         heroCopy.textContent = 'Credenciales web guardadas localmente. Firebase sigue desactivado hasta que lo activés para la prueba técnica.';
       } else if (data.enabled){
-        heroCopy.textContent = 'Firebase está activado localmente, pero faltan las credenciales web principales.';
+        heroCopy.textContent = 'Firebase está activado localmente, pero faltan campos principales o databaseURL válida.';
       } else {
         heroCopy.textContent = 'Firebase está desactivado. La Suite conserva almacenamiento local como prioridad y mantiene syncQueue local en espera.';
       }
@@ -7915,17 +6227,7 @@ Los históricos se conservarán. ¿Continuar?`);
     const form = document.getElementById('cfg-firebase-form');
     if (!form) return;
     renderFirebaseSettings(readFirebaseSettings());
-    renderFirestoreProgress(getFirestoreProgressState());
     initFirebaseLocalLock();
-    initInitialImport();
-    initApplyE5();
-    initApplyE6();
-    initAnalyzeE7();
-    initPlanE72A();
-    initValidateE72B();
-    initSimulateE72C();
-    initApplyE72D();
-    initAuditE72E();
     form.addEventListener('submit', saveFirebaseSettings);
     const saveBtn = document.getElementById('cfg-firebase-save');
     if (saveBtn){
@@ -7972,9 +6274,6 @@ Los históricos se conservarán. ¿Continuar?`);
     window.addEventListener('a33:cloud-sync-status', (event) => {
       renderFirebaseCloudSyncStatus(event && event.detail ? event.detail : null);
     });
-    window.addEventListener('a33:firestore-progress', (event) => {
-      renderFirestoreProgress(event && event.detail ? event.detail : null);
-    });
     window.A33FirebaseConfigLocal = Object.assign({}, window.A33FirebaseConfigLocal || {}, {
       storageKey: FIREBASE_SETTINGS_KEY,
       deviceKey: FIREBASE_DEVICE_KEY,
@@ -7986,9 +6285,7 @@ Los históricos se conservarán. ¿Continuar?`);
       isProbablyDatabaseURL: isProbablyFirebaseDatabaseURL,
       testConnection: testFirebaseConnection,
       syncNow: syncFirebaseNow,
-      getSyncStatus: getFirebaseCloudSyncStatus,
-      getFirestoreProgress: getFirestoreProgressState,
-      renderFirestoreProgress
+      getSyncStatus: getFirebaseCloudSyncStatus
     });
   }
 
@@ -8811,18 +7108,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initReportsSection();
     initCurrencySection();
     initFirebaseSettingsSection();
-    initAuthSection();
     initUsersSection();
-    initSecurityDiagnosticE81();
-    initSecuritySimulationE82();
-    initSecurityPreparationE83();
-    initSecurityGuardsE84A();
-    initSecurityTestE84B();
-    initSecurityActivationE84C();
-    initUsersDiagnosticE91();
-    initUsersHardeningE92();
-    initUsersSimulationE93();
-    initUsersConnectE94A();
     initFirebaseStatus();
     renderBackupImportLog();
 

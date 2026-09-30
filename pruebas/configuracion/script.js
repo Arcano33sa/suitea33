@@ -6773,6 +6773,64 @@ Los históricos se conservarán. ¿Continuar?`);
       : null;
   }
 
+  const COSTS_E2_RULES_DEPLOYED = true;
+
+  function renderApplyCostsE2State(){
+    const staged = window.A33FirebaseImport?.readLast?.() || null;
+    const e5 = getCompletedE5ForCurrentImport();
+    const stored = window.A33FirebaseApplyCostsE2?.readLast?.() || null;
+    const completed = staged && stored && stored.importId === staged.importId
+      && stored.workspaceId === staged.workspaceId && stored.sourceChecksum === staged.checksum ? stored : null;
+    const ready = !!e5 && COSTS_E2_RULES_DEPLOYED;
+    const box = document.getElementById('cfg-apply-costs-e2-state');
+    const button = document.getElementById('cfg-apply-costs-e2-run');
+    if (box) box.dataset.state = completed ? 'staged' : (ready ? 'ready' : 'empty');
+    setFirebaseText('cfg-apply-costs-e2-source', e5 ? 'E5 confirmada' : (staged ? 'E5 pendiente' : 'E4 pendiente'));
+    setFirebaseText('cfg-apply-costs-e2-source-detail', e5 ? `Carga ${e5.importId} lista para Costos.` : 'Primero debe completarse E5 para esta carga.');
+    setFirebaseText('cfg-apply-costs-e2-result', completed ? 'Costos aplicados' : (COSTS_E2_RULES_DEPLOYED ? 'Lista para aplicar' : 'Reglas pendientes'));
+    setFirebaseText('cfg-apply-costs-e2-result-detail', completed
+      ? `${completed.identical ? 'Documento idéntico confirmado' : 'Documento creado'} · ${formatFirebaseStamp(completed.completedAt)}`
+      : 'No se sobrescribirá una configuración remota diferente.');
+    setFirebaseText('cfg-apply-costs-e2-note', completed
+      ? 'Costos E2 completada. Los dispositivos vacíos podrán descargar Costos y Recetas.'
+      : (COSTS_E2_RULES_DEPLOYED ? 'Lista para crear únicamente catalogos/costos/actual.' : 'La ejecución permanecerá bloqueada hasta desplegar las reglas preparadas.'));
+    if (button) button.disabled = !ready || !!completed;
+  }
+
+  async function applyCostsE2(){
+    if (!COSTS_E2_RULES_DEPLOYED){
+      window.A33Toast?.warning?.('Primero deben desplegarse las reglas de Costos E2.');
+      return;
+    }
+    if (!requireFirebaseUnlocked('Aplicar Costos E2')) return;
+    if (!getCompletedE5ForCurrentImport()){
+      window.A33Toast?.warning?.('Primero completá E5 para esta carga E4.');
+      return;
+    }
+    const engine = window.A33FirebaseApplyCostsE2;
+    if (!engine?.apply){ window.A33Toast?.error?.('No está disponible el motor de Costos E2.'); return; }
+    if (!window.confirm('E2 creará únicamente catalogos/costos/actual desde la carga E4. No sobrescribirá un documento diferente. ¿Continuar?')) return;
+    const button=document.getElementById('cfg-apply-costs-e2-run');
+    const toastId=window.A33Toast?.process?.('Costos E2: verificando la carga y el destino remoto…') || '';
+    try{
+      if (button) button.disabled=true;
+      const result=await engine.apply();
+      renderApplyCostsE2State();
+      const message=result.identical ? 'Costos E2 confirmó un documento remoto idéntico.' : 'Costos E2 creó la configuración remota sin sobrescrituras.';
+      if (toastId) window.A33Toast?.replace?.(toastId,message,'success'); else window.A33Toast?.success?.(message);
+    }catch(error){
+      const message=cleanFirebaseText(error?.message,300) || 'No se pudo aplicar Costos E2.';
+      setFirebaseText('cfg-apply-costs-e2-note',message);
+      if (toastId) window.A33Toast?.replace?.(toastId,message,'error'); else window.A33Toast?.error?.(message);
+    }finally{ renderApplyCostsE2State(); }
+  }
+
+  function initApplyCostsE2(){
+    renderApplyCostsE2State();
+    document.getElementById('cfg-apply-costs-e2-run')?.addEventListener('click',applyCostsE2);
+    window.addEventListener('a33:initial-import-staged',renderApplyCostsE2State);
+  }
+
   function renderApplyE6State(){
     const staged = window.A33FirebaseImport && window.A33FirebaseImport.readLast
       ? window.A33FirebaseImport.readLast()
@@ -7920,6 +7978,7 @@ Los históricos se conservarán. ¿Continuar?`);
     initInitialImport();
     initApplyE5();
     initApplyE6();
+    initApplyCostsE2();
     initAnalyzeE7();
     initPlanE72A();
     initValidateE72B();

@@ -360,6 +360,7 @@
     buildPlan:buildPlan,
     apply:apply,
     readLast:readLast,
+    readStaged:readStaged,
     checksum:checksum,
     splitUtf8:splitUtf8
   });

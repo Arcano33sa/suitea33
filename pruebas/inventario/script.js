@@ -2948,6 +2948,8 @@ function registerServiceWorker() {
 document.addEventListener("DOMContentLoaded", async () => {
   setStatus("Cargando…", "info", { sticky: true });
 
+  if (window.A33E6Download) await window.A33E6Download.ready('inventario');
+
   const inv = loadInventario();
   installSmokeHooks(inv);
 

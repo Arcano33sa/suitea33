@@ -8,7 +8,7 @@ service cloud.firestore {
     function tokenWorkspace() {
       return signedIn() && request.auth.token.workspaceId is string && request.auth.token.workspaceId.size() > 0
         ? request.auth.token.workspaceId
-        : 'arcano33';
+        : 'default';
     }
 
     function requesterPath(workspaceId) {
@@ -36,7 +36,6 @@ service cloud.firestore {
     function requesterAgenda(workspaceId) {
       return requesterActiveMember(workspaceId)
         && (requesterData(workspaceId).role == 'admin'
-          || requesterData(workspaceId).role == 'usuario'
           || requesterData(workspaceId).role == 'ventas');
     }
 
@@ -46,7 +45,6 @@ service cloud.firestore {
 
     function validRole(role) {
       return role == 'admin'
-        || role == 'usuario'
         || role == 'ventas'
         || role == 'finanzas'
         || role == 'consulta';
@@ -253,208 +251,6 @@ service cloud.firestore {
         && validStatus(request.resource.data.status);
     }
 
-    function validInitialImport(workspaceId, importId) {
-      return request.resource.data.workspaceId == workspaceId
-        && request.resource.data.importId == importId
-        && request.resource.data.schemaVersion == 1
-        && request.resource.data.kind == 'initial-json'
-        && request.resource.data.status == 'staged'
-        && request.resource.data.applied == false
-        && request.resource.data.sanitized == true
-        && request.resource.data.bytes is int
-        && request.resource.data.bytes > 0
-        && request.resource.data.bytes <= 52428800
-        && request.resource.data.chunkCount is int
-        && request.resource.data.chunkCount >= 1
-        && request.resource.data.chunkCount <= 498
-        && request.resource.data.fileName is string
-        && request.resource.data.fileName.size() >= 1
-        && request.resource.data.fileName.size() <= 180
-        && request.resource.data.checksum is string
-        && request.resource.data.checksum.size() == 8
-        && request.resource.data.summary is map
-        && request.resource.data.createdAt is string
-        && request.resource.data.createdBy == request.auth.uid;
-    }
-
-    function validInitialImportChunk(workspaceId, importId) {
-      return request.resource.data.workspaceId == workspaceId
-        && request.resource.data.importId == importId
-        && request.resource.data.schemaVersion == 1
-        && request.resource.data.index is int
-        && request.resource.data.index >= 0
-        && request.resource.data.total is int
-        && request.resource.data.total >= 1
-        && request.resource.data.total <= 498
-        && request.resource.data.index < request.resource.data.total
-        && request.resource.data.encoding == 'json-utf8'
-        && request.resource.data.checksum is string
-        && request.resource.data.checksum.size() == 8
-        && request.resource.data.bytes is int
-        && request.resource.data.bytes > 0
-        && request.resource.data.bytes <= 400000
-        && request.resource.data.content is string
-        && request.resource.data.content.size() >= 1
-        && request.resource.data.content.size() <= 400000
-        && request.resource.data.createdAt is string
-        && request.resource.data.createdBy == request.auth.uid;
-    }
-
-    function validStage5Module(moduleId) {
-      return moduleId == 'configuracion'
-        || moduleId == 'catalogos'
-        || moduleId == 'lotes';
-    }
-
-    function validStage5Entity(moduleId, entityId) {
-      return (moduleId == 'configuracion' && (entityId == 'identidad' || entityId == 'apariencia' || entityId == 'reportes' || entityId == 'moneda' || entityId == 'pwa'))
-        || (moduleId == 'catalogos' && (entityId == 'productos' || entityId == 'materia_prima' || entityId == 'envases' || entityId == 'tapas' || entityId == 'extras' || entityId == 'bancos' || entityId == 'clientes'))
-        || (moduleId == 'lotes' && (entityId == 'lotes' || entityId == 'productos_lote' || entityId == 'historico'));
-    }
-
-    function validStage5Record(workspaceId, moduleId, entityId, recordId) {
-      return validStage5Module(moduleId)
-        && validStage5Entity(moduleId, entityId)
-        && request.resource.data.contractVersion == 1
-        && request.resource.data.schemaVersion == 1
-        && request.resource.data.workspaceId == workspaceId
-        && request.resource.data.moduleId == moduleId
-        && request.resource.data.entityId == entityId
-        && request.resource.data.recordId == recordId
-        && request.resource.data.payload is map
-        && request.resource.data.createdAt is string
-        && request.resource.data.updatedAt is string
-        && request.resource.data.updatedBy == request.auth.uid
-        && request.resource.data.rev is int
-        && request.resource.data.rev >= 1
-        && request.resource.data.deleted is bool;
-    }
-
-    function validStage5Result(workspaceId, importId) {
-      return request.resource.data.schemaVersion == 1
-        && request.resource.data.stage == 'E5'
-        && request.resource.data.workspaceId == workspaceId
-        && request.resource.data.importId == importId
-        && request.resource.data.status == 'completed'
-        && request.resource.data.modules is list
-        && request.resource.data.modules.size() == 3
-        && request.resource.data.counts is map
-        && request.resource.data.recordCount is int
-        && request.resource.data.recordCount >= 1
-        && request.resource.data.completedAt is string
-        && request.resource.data.completedBy == request.auth.uid;
-    }
-
-    function validStage6Module(moduleId) {
-      return moduleId == 'inventario'
-        || moduleId == 'pedidos'
-        || moduleId == 'agenda';
-    }
-
-    function validStage6Entity(moduleId, entityId) {
-      return (moduleId == 'inventario' && (entityId == 'existencias' || entityId == 'movimientos' || entityId == 'recetas' || entityId == 'calculadora_produccion'))
-        || (moduleId == 'pedidos' && (entityId == 'pedidos' || entityId == 'pedidos_rapidos' || entityId == 'historico'))
-        || (moduleId == 'agenda' && (entityId == 'reuniones' || entityId == 'tareas' || entityId == 'compras'));
-    }
-
-    function validStage6Record(workspaceId, moduleId, entityId, recordId) {
-      return validStage6Module(moduleId)
-        && validStage6Entity(moduleId, entityId)
-        && request.resource.data.contractVersion == 1
-        && request.resource.data.schemaVersion == 1
-        && request.resource.data.workspaceId == workspaceId
-        && request.resource.data.moduleId == moduleId
-        && request.resource.data.entityId == entityId
-        && request.resource.data.recordId == recordId
-        && request.resource.data.payload is map
-        && request.resource.data.createdAt is string
-        && request.resource.data.updatedAt is string
-        && request.resource.data.updatedBy == request.auth.uid
-        && request.resource.data.rev is int
-        && request.resource.data.rev >= 1
-        && request.resource.data.deleted is bool;
-    }
-
-    function validStage6Result(workspaceId, importId) {
-      return request.resource.data.schemaVersion == 1
-        && request.resource.data.stage == 'E6'
-        && request.resource.data.workspaceId == workspaceId
-        && request.resource.data.importId == importId
-        && request.resource.data.status == 'completed'
-        && request.resource.data.modules is list
-        && request.resource.data.modules.size() == 3
-        && request.resource.data.counts is map
-        && request.resource.data.recordCount is int
-        && request.resource.data.recordCount >= 1
-        && request.resource.data.completedAt is string
-        && request.resource.data.completedBy == request.auth.uid;
-    }
-
-    function validStage7ReadModule(moduleId) {
-      return moduleId == 'pos'
-        || moduleId == 'finanzas';
-    }
-
-    function validStage7ReadEntity(moduleId, entityId) {
-      return (moduleId == 'pos' && (entityId == 'eventos' || entityId == 'ventas' || entityId == 'cierres_diarios' || entityId == 'efectivo' || entityId == 'inventario_evento' || entityId == 'reempaques' || entityId == 'resumenes'))
-        || (moduleId == 'finanzas' && (entityId == 'cuentas' || entityId == 'asientos' || entityId == 'lineas_asiento' || entityId == 'recibos' || entityId == 'compras' || entityId == 'caja_chica' || entityId == 'cobrar' || entityId == 'pagar'));
-    }
-
-    function validStage7CreateRecord(workspaceId, moduleId, entityId, recordId) {
-      return validStage7ReadModule(moduleId)
-        && validStage7ReadEntity(moduleId, entityId)
-        && request.resource.data.contractVersion == 1
-        && request.resource.data.schemaVersion == 1
-        && request.resource.data.workspaceId == workspaceId
-        && request.resource.data.moduleId == moduleId
-        && request.resource.data.entityId == entityId
-        && request.resource.data.recordId == recordId
-        && request.resource.data.payload is map
-        && request.resource.data.createdAt is string
-        && request.resource.data.updatedAt is string
-        && request.resource.data.updatedBy == request.auth.uid
-        && request.resource.data.rev == 1
-        && request.resource.data.deleted == false;
-    }
-
-    function validStage72DResult(workspaceId, importId) {
-      return request.resource.data.schemaVersion == 1
-        && request.resource.data.stage == 'E7.2D'
-        && request.resource.data.strategy == 'create-only'
-        && request.resource.data.workspaceId == workspaceId
-        && request.resource.data.importId == importId
-        && request.resource.data.sourceChecksum is string
-        && request.resource.data.sourceChecksum.size() == 8
-        && request.resource.data.planChecksum is string
-        && request.resource.data.planChecksum.size() == 8
-        && request.resource.data.validationChecksum is string
-        && request.resource.data.validationChecksum.size() == 8
-        && request.resource.data.simulationChecksum is string
-        && request.resource.data.simulationChecksum.size() == 8
-        && (request.resource.data.status == 'running' || request.resource.data.status == 'completed')
-        && request.resource.data.totalBatches is int
-        && request.resource.data.totalBatches >= 1
-        && request.resource.data.completedBatches is int
-        && request.resource.data.completedBatches >= 1
-        && request.resource.data.completedBatches <= request.resource.data.totalBatches
-        && request.resource.data.recordCount is int
-        && request.resource.data.recordCount >= 1
-        && request.resource.data.appliedCount is int
-        && request.resource.data.appliedCount >= 1
-        && request.resource.data.appliedCount <= request.resource.data.recordCount
-        && request.resource.data.skippedIdenticalCount is int
-        && request.resource.data.skippedIdenticalCount >= 0
-        && request.resource.data.lastBatchChecksum is string
-        && request.resource.data.lastBatchChecksum.size() == 8
-        && request.resource.data.completedAt is string
-        && request.resource.data.updatedAt is string
-        && request.resource.data.completedBy == request.auth.uid
-        && (request.resource.data.status != 'completed'
-          || (request.resource.data.completedBatches == request.resource.data.totalBatches
-            && request.resource.data.appliedCount == request.resource.data.recordCount
-            && request.resource.data.completedAt.size() >= 10));
-    }
-
     match /workspaces/{workspaceId} {
       allow get: if requesterActiveMember(workspaceId) || (signedIn() && workspaceId == tokenWorkspace());
       allow list: if requesterAdmin(workspaceId);
@@ -477,69 +273,6 @@ service cloud.firestore {
         allow get, list: if requesterAgenda(workspaceId);
         allow create, update: if requesterAgenda(workspaceId) && validAgendaPayload(workspaceId, recordId);
         allow delete: if requesterAgenda(workspaceId);
-      }
-
-      match /imports/{importId} {
-        allow get, list: if requesterAdmin(workspaceId);
-        allow create, update: if requesterAdmin(workspaceId) && validInitialImport(workspaceId, importId);
-        allow delete: if requesterAdmin(workspaceId);
-
-        match /chunks/{chunkId} {
-          allow get, list: if requesterAdmin(workspaceId);
-          allow create, update: if requesterAdmin(workspaceId) && validInitialImportChunk(workspaceId, importId);
-          allow delete: if requesterAdmin(workspaceId);
-        }
-
-        match /applications/e5 {
-          allow get: if requesterAdmin(workspaceId);
-          allow list, delete: if false;
-          allow create, update: if requesterAdmin(workspaceId) && validStage5Result(workspaceId, importId);
-        }
-
-        match /applications/e6 {
-          allow get: if requesterAdmin(workspaceId);
-          allow list, delete: if false;
-          allow create, update: if requesterAdmin(workspaceId) && validStage6Result(workspaceId, importId);
-        }
-
-        match /applications/e72d {
-          allow get: if requesterAdmin(workspaceId);
-          allow list, delete: if false;
-          allow create: if requesterAdmin(workspaceId) && validStage72DResult(workspaceId, importId);
-          allow update: if requesterAdmin(workspaceId)
-            && validStage72DResult(workspaceId, importId)
-            && request.resource.data.sourceChecksum == resource.data.sourceChecksum
-            && request.resource.data.planChecksum == resource.data.planChecksum
-            && request.resource.data.validationChecksum == resource.data.validationChecksum
-            && request.resource.data.simulationChecksum == resource.data.simulationChecksum
-            && request.resource.data.totalBatches == resource.data.totalBatches
-            && request.resource.data.recordCount == resource.data.recordCount
-            && request.resource.data.skippedIdenticalCount == resource.data.skippedIdenticalCount
-            && resource.data.status != 'completed'
-            && request.resource.data.completedBatches == resource.data.completedBatches + 1
-            && request.resource.data.appliedCount > resource.data.appliedCount
-            && request.resource.data.appliedCount - resource.data.appliedCount <= 200;
-        }
-      }
-
-      match /modules/{moduleId}/entities/{entityId}/records/{recordId} {
-        allow get: if (requesterActiveMember(workspaceId)
-          && ((validStage5Module(moduleId) && validStage5Entity(moduleId, entityId))
-            || (validStage6Module(moduleId) && validStage6Entity(moduleId, entityId))))
-          || (requesterAdmin(workspaceId)
-            && validStage7ReadModule(moduleId)
-            && validStage7ReadEntity(moduleId, entityId));
-        allow list: if requesterActiveMember(workspaceId)
-          && ((validStage5Module(moduleId) && validStage5Entity(moduleId, entityId))
-            || (validStage6Module(moduleId) && validStage6Entity(moduleId, entityId)));
-        allow create: if requesterAdmin(workspaceId)
-          && (validStage5Record(workspaceId, moduleId, entityId, recordId)
-            || validStage6Record(workspaceId, moduleId, entityId, recordId)
-            || validStage7CreateRecord(workspaceId, moduleId, entityId, recordId));
-        allow update: if requesterAdmin(workspaceId)
-          && (validStage5Record(workspaceId, moduleId, entityId, recordId)
-            || validStage6Record(workspaceId, moduleId, entityId, recordId));
-        allow delete: if false;
       }
     }
 
