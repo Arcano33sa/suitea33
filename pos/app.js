@@ -15921,6 +15921,8 @@ function refreshGroupSelectFromEvents(evs) {
   const hidden = new Set(getHiddenGroups());
   const groups = (catalog || []).filter(g => g && !hidden.has(g));
 
+  const previousGroup = sel.dataset.posGroupReady === '1' ? sel.value : getLastGroupName();
+  sel.dataset.posGroupReady = '1';
   sel.innerHTML = '';
 
   const optEmpty = document.createElement('option');
@@ -15940,8 +15942,8 @@ function refreshGroupSelectFromEvents(evs) {
   optNew.textContent = '+ Crear nuevo grupo';
   sel.appendChild(optNew);
 
-  const last = getLastGroupName();
-  if (last && groups.includes(last)) {
+  const last = previousGroup;
+  if (last === '__new__' || (last && groups.includes(last))) {
     sel.value = last;
   } else {
     sel.value = '';
@@ -15964,15 +15966,6 @@ async function refreshEventUI(){
   const sel = $('#sale-event');
   const current = await getMeta('currentEventId');
 
-  sel.innerHTML = '<option value="">— Selecciona evento —</option>';
-  for (const ev of evs) {
-    const opt = document.createElement('option'); opt.value = ev.id; 
-    opt.textContent = ev.name + (ev.closedAt ? ' (cerrado)' : '');
-    sel.appendChild(opt);
-  }
-  if (current) sel.value = current;
-  else sel.value = '';
-
   const status = $('#event-status');
   const cur = evs.find(e=> current && e.id == current);
 
@@ -15993,6 +15986,19 @@ async function refreshEventUI(){
   }catch(e){
     console.warn('No se pudo sincronizar grupo desde el evento activo', e);
   }
+  // Vender: el maestro delimita los eventos disponibles; sin maestro no hay opciones.
+  const selectedGroup = ($('#event-group-select').value || '').trim();
+  const saleEvents = selectedGroup && selectedGroup !== '__new__'
+    ? evs.filter(ev => String(ev.groupName || '').trim() === selectedGroup)
+    : [];
+  sel.innerHTML = '<option value="">— Seleccionar evento —</option>';
+  for (const ev of saleEvents) {
+    const opt = document.createElement('option');
+    opt.value = ev.id;
+    opt.textContent = ev.name + (ev.closedAt ? ' (cerrado)' : '');
+    sel.appendChild(opt);
+  }
+  sel.value = current && saleEvents.some(ev => String(ev.id) === String(current)) ? String(current) : '';
   if (cur && cur.closedAt) {
     status.style.display='block';
     status.textContent = `Evento cerrado el ${new Date(cur.closedAt).toLocaleString()}. Puedes reabrirlo o crear/activar otro.`;
@@ -27203,13 +27209,22 @@ async function init(){
   }
 
   if (groupSelect) {
-    groupSelect.addEventListener('change', ()=>{
+    groupSelect.addEventListener('change', async()=>{
       const v = (groupSelect.value || '').trim();
 
       // Persistir selección de grupo para que quede por defecto la próxima vez.
       if (v && v !== '__new__') {
         rememberGroup(v);
       }
+
+      // Cambiar maestro deja el POS sin evento activo hasta una selección explícita.
+      setLastGroupName(v === '__new__' ? '' : v);
+      await resetOperationalStateOnEventSwitchPOS();
+      await setMeta('currentEventId', null);
+      await refreshEventUI();
+      await refreshSaleStockLabel();
+      await renderDay();
+      try{ await renderSummaryDailyCloseCardPOS(); }catch(e){}
 
       const newInput = $('#event-group-new');
       if (!newInput) return;
