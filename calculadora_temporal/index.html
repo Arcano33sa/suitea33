@@ -415,6 +415,40 @@
       color: #111;
     }
     .a33-btn-primary-pill:hover { filter: brightness(1.05); }
+    .a33-production-modal-card { max-width: 620px; }
+    .a33-production-modal-card h2 { margin: 0 0 0.4rem; font-size: 1.18rem; }
+    .a33-production-modal-card label { display: block; margin-top: 0.75rem; }
+    .a33-production-modal-card input { width: 100%; }
+    .a33-production-preview { margin-top: 0.85rem; padding: 0.7rem; border: 1px solid #333; border-radius: 10px; background: rgba(255,255,255,0.025); }
+    .a33-production-preview[hidden] { display: none !important; }
+    .a33-production-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem 0.75rem; }
+    .a33-production-preview-item { display: flex; justify-content: space-between; gap: 0.75rem; padding-bottom: 0.25rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .a33-production-modal-error { min-height: 1.2em; margin-top: 0.45rem; color: #ff9b9b; }
+    .a33-temporal-checklist[hidden] { display: none !important; }
+    .a33-temporal-checklist { position: fixed; inset: 0; z-index: 10020; overflow-y: auto; padding: 1rem; background: #101010; }
+    .a33-temporal-checklist-shell { width: min(920px, 100%); margin: 0 auto; padding: 0.85rem; border: 1px solid #333; border-radius: 14px; background: #171717; }
+    .a33-temporal-checklist-header { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; }
+    .a33-temporal-checklist-header h2 { margin: 0; }
+    .a33-temporal-checklist-block { margin-top: 0.75rem; padding: 0.75rem; border: 1px solid #333; border-radius: 12px; }
+    .a33-temporal-checklist-block h3 { margin: 0 0 0.55rem; }
+    .a33-temporal-checklist-list { display: grid; gap: 0.45rem; }
+    .a33-temporal-checklist-card { display: grid; grid-template-columns: 1fr auto; gap: 0.65rem; align-items: center; padding: 0.65rem; border: 1px solid #3a3a3a; border-radius: 10px; }
+    .a33-temporal-checklist-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .a33-temporal-checklist-items { display: grid; gap: 0.45rem; margin-top: 0.65rem; }
+    .a33-temporal-checklist-item { display: grid; grid-template-columns: auto 1fr auto; gap: 0.65rem; align-items: center; padding: 0.55rem; border-bottom: 1px solid #333; }
+    .a33-temporal-checklist-item.is-complete { opacity: 0.58; }
+    .a33-temporal-checklist-item.is-complete .a33-temporal-checklist-product { text-decoration: line-through; }
+    .a33-temporal-checklist-status { min-height: 1.2em; margin-top: 0.55rem; color: #9fe0b3; }
+    .a33-temporal-checklist-status[data-tone="error"] { color: #ff9b9b; }
+    body.a33-temporal-checklist-open { overflow: hidden; }
+    @media (max-width: 560px) {
+      .a33-production-preview-grid { grid-template-columns: 1fr; }
+      .a33-temporal-checklist { padding: 0.45rem; }
+      .a33-temporal-checklist-shell { padding: 0.6rem; }
+      .a33-temporal-checklist-card { grid-template-columns: 1fr; }
+      .a33-temporal-checklist-item { grid-template-columns: auto 1fr; }
+      .a33-temporal-checklist-item strong { grid-column: 2; }
+    }
 
     .a33-history-list {
       display: grid;
@@ -560,6 +594,8 @@
     <div class="a33-main-actions" role="group" aria-label="Acciones principales de la Calculadora Temporal">
       <button id="btn-calcular" class="btn-main a33-main-action">CALCULAR</button>
       <button id="btn-guardar-lote" class="btn-secondary a33-main-action" disabled aria-disabled="true">GUARDAR</button>
+      <button id="btn-produccion" class="btn-secondary a33-main-action" type="button">PRODUCCIÓN</button>
+      <button id="btn-checklist" class="btn-secondary a33-main-action" type="button">CHECKLIST</button>
       <button id="btn-limpiar" class="btn-secondary a33-main-action a33-danger-action">BORRAR</button>
     </div>
     <p id="hint-resultados" class="hint" style="text-align:center;">Calcula para revisar el resumen y luego guarda el cálculo confirmado dentro de la Temporal.</p>
@@ -596,6 +632,44 @@
       </div>
     </div>
   </div>
+  <div id="a33-modal-produccion" class="a33-modal" hidden aria-hidden="true">
+    <div class="a33-modal-card a33-production-modal-card" role="dialog" aria-modal="true" aria-labelledby="a33-produccion-title">
+      <h2 id="a33-produccion-title">Producción</h2>
+      <p class="hint">Calcula una preparación temporal con la fórmula base de 1,000 ml.</p>
+      <label for="a33-produccion-volumen">Cantidad a preparar (ml)</label>
+      <input id="a33-produccion-volumen" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Ej: 1500" autocomplete="off" />
+      <div id="a33-produccion-error" class="a33-production-modal-error" role="alert"></div>
+      <div id="a33-produccion-preview" class="a33-production-preview" hidden aria-live="polite">
+        <div id="a33-produccion-preview-grid" class="a33-production-preview-grid"></div>
+      </div>
+      <div class="a33-modal-actions">
+        <button id="a33-produccion-cancelar" class="btn-pill" type="button">Cancelar</button>
+        <button id="a33-produccion-guardar" class="btn-pill a33-btn-primary-pill" type="button">Guardar</button>
+      </div>
+    </div>
+  </div>
+  <section id="a33-temporal-checklist" class="a33-temporal-checklist" hidden aria-hidden="true" aria-labelledby="a33-temporal-checklist-title">
+    <div class="a33-temporal-checklist-shell" role="dialog" aria-modal="true">
+      <div class="a33-temporal-checklist-header">
+        <h2 id="a33-temporal-checklist-title">Checklist temporal</h2>
+        <button id="btn-cerrar-checklist" class="btn-pill" type="button">Volver</button>
+      </div>
+      <div class="a33-temporal-checklist-block">
+        <h3>Pendientes</h3>
+        <div id="a33-temporal-checklist-pendientes" class="a33-temporal-checklist-list"></div>
+      </div>
+      <div class="a33-temporal-checklist-block">
+        <h3>Checklist</h3>
+        <div id="a33-temporal-checklist-seleccion"></div>
+        <div id="a33-temporal-checklist-contenido" class="a33-temporal-checklist-items"><p class="hint">Selecciona Usar o Ver.</p></div>
+        <div id="a33-temporal-checklist-estado" class="a33-temporal-checklist-status" role="status" aria-live="polite"></div>
+      </div>
+      <details class="a33-temporal-checklist-block">
+        <summary>Histórico</summary>
+        <div id="a33-temporal-checklist-historico" class="a33-temporal-checklist-list"></div>
+      </details>
+    </div>
+  </section>
   <script src="/assets/js/a33-release.js?v=4.20.98&r=54"></script>
   <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=3"></script>
 
@@ -935,6 +1009,7 @@
     const STORAGE_RECETAS_KEY = "arcano33_temporal_recetas_v1";
     const STORAGE_REGISTROS_KEY = "arcano33_temporal_registros_v2";
     const STORAGE_WORKSPACE_KEY = "arcano33_temporal_workspace_v2";
+    const STORAGE_PRODUCTION_CHECKLIST_KEY = "arcano33_temporal_produccion_checklists_v1";
     const STORAGE_LOTE_KEY = "arcano33_temporal_codigo_sugerido";
     const STORAGE_FECHA_PROD_KEY = "arcano33_temporal_fecha_produccion";
     const STORAGE_NOTAS_KEY = "arcano33_temporal_notas";
@@ -1136,6 +1211,255 @@
       }
       A33Storage.setItem(key, JSON.stringify(value));
       return { ok: true };
+    }
+
+    const A33_TEMPORAL_PRODUCTION_BASE_ML = 1000;
+    const A33_TEMPORAL_PRODUCTION_FORMULA = Object.freeze({ vino:450, vodka:100, jugo:150, sirope:150, agua:150 });
+    const A33_TEMPORAL_PRODUCTION_LABELS = Object.freeze({ vino:"Vino", vodka:"Vodka", jugo:"Jugo", sirope:"Sirope", agua:"Agua pura" });
+    let A33TemporalChecklistSelectedId = "";
+
+    function a33TemporalProductionCalculation(totalMl) {
+      const total = Number(totalMl);
+      if (!Number.isFinite(total) || total <= 0) return null;
+      const factor = total / A33_TEMPORAL_PRODUCTION_BASE_ML;
+      const ingredients = {};
+      INGREDIENTES.forEach((key) => { ingredients[key] = A33_TEMPORAL_PRODUCTION_FORMULA[key] * factor; });
+      return { totalMl:total, ingredients };
+    }
+
+    function a33TemporalProductionNumber(value) {
+      return Number(value).toLocaleString("es-NI", { maximumFractionDigits:2 });
+    }
+
+    function a33RenderTemporalProductionPreview() {
+      const input = document.getElementById("a33-produccion-volumen");
+      const preview = document.getElementById("a33-produccion-preview");
+      const grid = document.getElementById("a33-produccion-preview-grid");
+      const error = document.getElementById("a33-produccion-error");
+      if (!input || !preview || !grid || !error) return null;
+      const calculation = a33TemporalProductionCalculation(input.value);
+      error.textContent = input.value && !calculation ? "Ingresa una cantidad mayor que cero." : "";
+      grid.innerHTML = "";
+      preview.hidden = !calculation;
+      if (!calculation) return null;
+      INGREDIENTES.forEach((key) => {
+        const row = document.createElement("div");
+        row.className = "a33-production-preview-item";
+        const label = document.createElement("span");
+        label.textContent = A33_TEMPORAL_PRODUCTION_LABELS[key];
+        const value = document.createElement("strong");
+        value.textContent = a33TemporalProductionNumber(calculation.ingredients[key]) + " ml";
+        row.append(label, value);
+        grid.appendChild(row);
+      });
+      return calculation;
+    }
+
+    function a33OpenTemporalProductionModal() {
+      const modal = document.getElementById("a33-modal-produccion");
+      const input = document.getElementById("a33-produccion-volumen");
+      if (!modal || !input) return;
+      input.value = "";
+      a33RenderTemporalProductionPreview();
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      input.focus({ preventScroll:true });
+    }
+
+    function a33CloseTemporalProductionModal() {
+      const modal = document.getElementById("a33-modal-produccion");
+      if (!modal || modal.hidden) return;
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      const trigger = document.getElementById("btn-produccion");
+      if (trigger) trigger.focus({ preventScroll:true });
+    }
+
+    function a33TemporalChecklistRecordsWithMeta() {
+      const info = readTemporalDataWithMeta(STORAGE_PRODUCTION_CHECKLIST_KEY, []);
+      return { data:Array.isArray(info.data) ? info.data.filter((row) => row && typeof row === "object") : [], meta:info.meta || { rev:null } };
+    }
+
+    function a33TemporalChecklistState(record) {
+      const source = record && record.items && typeof record.items === "object" ? record.items : {};
+      const state = {};
+      INGREDIENTES.forEach((key) => { state[key] = source[key] === true; });
+      return state;
+    }
+
+    function a33TemporalChecklistClosed(record) {
+      return !!(record && record.closed === true);
+    }
+
+    function a33SetTemporalChecklistStatus(message, tone) {
+      const host = document.getElementById("a33-temporal-checklist-estado");
+      if (!host) return;
+      host.textContent = String(message || "");
+      if (tone) host.dataset.tone = tone;
+      else delete host.dataset.tone;
+    }
+
+    function a33WriteTemporalChecklistRecord(id, updater) {
+      const info = a33TemporalChecklistRecordsWithMeta();
+      const list = info.data.slice();
+      const index = list.findIndex((row) => String(row.id || "") === String(id || ""));
+      if (index < 0) return { ok:false, message:"La producción temporal ya no está disponible." };
+      const next = updater({ ...list[index], items:{ ...a33TemporalChecklistState(list[index]) } });
+      if (!next) return { ok:false, message:"No se pudo preparar el cambio." };
+      list[index] = next;
+      try {
+        writeTemporalData(STORAGE_PRODUCTION_CHECKLIST_KEY, list, {
+          baseRev:info.meta && typeof info.meta.rev === "number" ? info.meta.rev : null,
+          conflictPolicy:"block",
+          source:"calculadora_temporal_checklist"
+        });
+        return { ok:true, record:next };
+      } catch (error) {
+        return { ok:false, message:(error && error.message) || "No se pudo guardar el checklist temporal." };
+      }
+    }
+
+    function a33RenderTemporalChecklistList(host, records, history) {
+      if (!host) return;
+      host.innerHTML = "";
+      if (!records.length) {
+        const empty = document.createElement("p");
+        empty.className = "hint";
+        empty.textContent = history ? "Aún no hay checklist cerrados." : "No hay checklist pendientes.";
+        host.appendChild(empty);
+        return;
+      }
+      records.forEach((record) => {
+        const card = document.createElement("div");
+        card.className = "a33-temporal-checklist-card";
+        const info = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = "Producción · " + a33TemporalProductionNumber(record.totalMl) + " ml";
+        const date = document.createElement("div");
+        date.className = "hint";
+        date.textContent = "Fecha: " + String(record.fecha || "—");
+        info.append(title, date);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn-pill";
+        button.textContent = history ? "Ver" : "Usar";
+        button.dataset.temporalChecklistId = String(record.id || "");
+        card.append(info, button);
+        host.appendChild(card);
+      });
+    }
+
+    function a33RenderTemporalChecklist(options) {
+      const opts = options && typeof options === "object" ? options : {};
+      const records = a33TemporalChecklistRecordsWithMeta().data.slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+      a33RenderTemporalChecklistList(document.getElementById("a33-temporal-checklist-pendientes"), records.filter((row) => !a33TemporalChecklistClosed(row)), false);
+      a33RenderTemporalChecklistList(document.getElementById("a33-temporal-checklist-historico"), records.filter(a33TemporalChecklistClosed), true);
+      const requested = String(opts.selectId || A33TemporalChecklistSelectedId || "");
+      const selected = records.find((row) => String(row.id || "") === requested);
+      if (selected) a33RenderTemporalChecklistSelected(selected);
+      else {
+        A33TemporalChecklistSelectedId = "";
+        const meta = document.getElementById("a33-temporal-checklist-seleccion");
+        const content = document.getElementById("a33-temporal-checklist-contenido");
+        if (meta) meta.innerHTML = "";
+        if (content) content.innerHTML = '<p class="hint">Selecciona Usar o Ver.</p>';
+      }
+    }
+
+    function a33RenderTemporalChecklistSelected(record) {
+      const meta = document.getElementById("a33-temporal-checklist-seleccion");
+      const content = document.getElementById("a33-temporal-checklist-contenido");
+      if (!record || !meta || !content) return;
+      A33TemporalChecklistSelectedId = String(record.id || "");
+      const closed = a33TemporalChecklistClosed(record);
+      const state = a33TemporalChecklistState(record);
+      meta.innerHTML = "";
+      const badges = document.createElement("div");
+      badges.className = "a33-temporal-checklist-meta";
+      ["Producción: " + a33TemporalProductionNumber(record.totalMl) + " ml", "Fecha: " + String(record.fecha || "—"), closed ? "Cerrado" : "Pendiente"].forEach((text) => {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = text;
+        badges.appendChild(badge);
+      });
+      meta.appendChild(badges);
+      content.innerHTML = "";
+      INGREDIENTES.forEach((key) => {
+        const row = document.createElement("label");
+        row.className = "a33-temporal-checklist-item";
+        row.classList.toggle("is-complete", state[key]);
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = state[key];
+        checkbox.disabled = closed;
+        checkbox.dataset.temporalChecklistIngredient = key;
+        const name = document.createElement("span");
+        name.className = "a33-temporal-checklist-product";
+        name.textContent = A33_TEMPORAL_PRODUCTION_LABELS[key];
+        const amount = document.createElement("strong");
+        amount.textContent = a33TemporalProductionNumber(record.ingredients && record.ingredients[key]) + " ml";
+        row.append(checkbox, name, amount);
+        content.appendChild(row);
+      });
+      if (!closed) {
+        const done = document.createElement("button");
+        done.id = "a33-temporal-checklist-hecho";
+        done.type = "button";
+        done.className = "btn-pill a33-btn-primary-pill";
+        done.textContent = "Hecho";
+        content.appendChild(done);
+      }
+      a33SetTemporalChecklistStatus(closed ? "Checklist cerrado: solo consulta." : "Checklist temporal listo.", "");
+    }
+
+    function a33OpenTemporalChecklist(selectId) {
+      const view = document.getElementById("a33-temporal-checklist");
+      if (!view) return;
+      view.hidden = false;
+      view.setAttribute("aria-hidden", "false");
+      document.body.classList.add("a33-temporal-checklist-open");
+      a33RenderTemporalChecklist({ selectId:selectId || "" });
+    }
+
+    function a33CloseTemporalChecklist() {
+      const view = document.getElementById("a33-temporal-checklist");
+      if (!view || view.hidden) return;
+      view.hidden = true;
+      view.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("a33-temporal-checklist-open");
+      const trigger = document.getElementById("btn-checklist");
+      if (trigger) trigger.focus({ preventScroll:true });
+    }
+
+    function a33SaveTemporalProductionChecklist() {
+      const calculation = a33RenderTemporalProductionPreview();
+      const error = document.getElementById("a33-produccion-error");
+      if (!calculation) {
+        if (error) error.textContent = "Ingresa una cantidad mayor que cero.";
+        return false;
+      }
+      const info = a33TemporalChecklistRecordsWithMeta();
+      const now = new Date();
+      const id = "temporal_production_mix_" + now.getTime() + "_" + Math.random().toString(36).slice(2, 8);
+      const record = {
+        id, origenChecklist:"temporal-produccion-1000ml", totalMl:calculation.totalMl,
+        ingredients:{ ...calculation.ingredients }, items:{ vino:false, vodka:false, jugo:false, sirope:false, agua:false },
+        formulaBaseMl:A33_TEMPORAL_PRODUCTION_BASE_ML, formulaSnapshot:{ ...A33_TEMPORAL_PRODUCTION_FORMULA },
+        fecha:hoyLocalISO(), createdAt:now.toISOString(), updatedAt:now.toISOString(), closed:false
+      };
+      try {
+        writeTemporalData(STORAGE_PRODUCTION_CHECKLIST_KEY, [record].concat(info.data), {
+          baseRev:info.meta && typeof info.meta.rev === "number" ? info.meta.rev : null,
+          conflictPolicy:"block",
+          source:"calculadora_temporal_produccion_1000ml"
+        });
+      } catch (saveError) {
+        if (error) error.textContent = (saveError && saveError.message) || "No se pudo guardar en Temporal.";
+        return false;
+      }
+      a33CloseTemporalProductionModal();
+      a33OpenTemporalChecklist(id);
+      return true;
     }
 
     function capturarPlanTemporal() {
@@ -2483,7 +2807,7 @@ function a33WireNumericInput(el, mode) {
 
     function registerTemporalServiceWorker() {
       if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=1")
+      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=2")
         .catch((error) => console.error("SW Calculadora Temporal error", error));
     }
 
@@ -2499,6 +2823,85 @@ function a33WireNumericInput(el, mode) {
       document.getElementById("btn-guardar-receta").addEventListener("click", guardarRecetas);
       document.getElementById("btn-calcular").addEventListener("click", calcularTotales);
       document.getElementById("btn-limpiar").addEventListener("click", limpiarCantidades);
+      const btnProduccion = document.getElementById("btn-produccion");
+      const btnChecklist = document.getElementById("btn-checklist");
+      const btnCerrarChecklist = document.getElementById("btn-cerrar-checklist");
+      const produccionInput = document.getElementById("a33-produccion-volumen");
+      const produccionCancelar = document.getElementById("a33-produccion-cancelar");
+      const produccionGuardar = document.getElementById("a33-produccion-guardar");
+      const checklistPendientes = document.getElementById("a33-temporal-checklist-pendientes");
+      const checklistHistorico = document.getElementById("a33-temporal-checklist-historico");
+      const checklistContenido = document.getElementById("a33-temporal-checklist-contenido");
+      if (btnProduccion) btnProduccion.addEventListener("click", a33OpenTemporalProductionModal);
+      if (btnChecklist) btnChecklist.addEventListener("click", () => a33OpenTemporalChecklist(""));
+      if (btnCerrarChecklist) btnCerrarChecklist.addEventListener("click", a33CloseTemporalChecklist);
+      if (produccionInput) produccionInput.addEventListener("input", a33RenderTemporalProductionPreview);
+      if (produccionCancelar) produccionCancelar.addEventListener("click", a33CloseTemporalProductionModal);
+      if (produccionGuardar) produccionGuardar.addEventListener("click", a33SaveTemporalProductionChecklist);
+      const selectTemporalChecklist = (event) => {
+        const button = event.target && event.target.closest ? event.target.closest("button[data-temporal-checklist-id]") : null;
+        if (!button) return;
+        const id = String(button.dataset.temporalChecklistId || "");
+        const record = a33TemporalChecklistRecordsWithMeta().data.find((row) => String(row.id || "") === id);
+        if (record) a33RenderTemporalChecklistSelected(record);
+      };
+      if (checklistPendientes) checklistPendientes.addEventListener("click", selectTemporalChecklist);
+      if (checklistHistorico) checklistHistorico.addEventListener("click", selectTemporalChecklist);
+      if (checklistContenido) {
+        checklistContenido.addEventListener("change", (event) => {
+          const checkbox = event.target;
+          const key = checkbox && checkbox.dataset ? String(checkbox.dataset.temporalChecklistIngredient || "") : "";
+          if (!INGREDIENTES.includes(key) || !A33TemporalChecklistSelectedId) return;
+          const result = a33WriteTemporalChecklistRecord(A33TemporalChecklistSelectedId, (record) => {
+            if (a33TemporalChecklistClosed(record)) return record;
+            record.items[key] = checkbox.checked === true;
+            record.updatedAt = new Date().toISOString();
+            return record;
+          });
+          if (!result.ok) {
+            a33SetTemporalChecklistStatus(result.message, "error");
+            a33RenderTemporalChecklist({ selectId:A33TemporalChecklistSelectedId });
+            return;
+          }
+          const row = checkbox.closest(".a33-temporal-checklist-item");
+          if (row) row.classList.toggle("is-complete", checkbox.checked);
+          a33SetTemporalChecklistStatus("Checklist temporal guardado.", "");
+        });
+        checklistContenido.addEventListener("click", (event) => {
+          const done = event.target && event.target.closest ? event.target.closest("#a33-temporal-checklist-hecho") : null;
+          if (!done || !A33TemporalChecklistSelectedId) return;
+          const current = a33TemporalChecklistRecordsWithMeta().data.find((row) => String(row.id || "") === A33TemporalChecklistSelectedId);
+          const state = a33TemporalChecklistState(current);
+          if (!current || !INGREDIENTES.every((key) => state[key] === true)) {
+            a33SetTemporalChecklistStatus("Marca todos los checkbox antes de pulsar Hecho.", "error");
+            return;
+          }
+          const result = a33WriteTemporalChecklistRecord(A33TemporalChecklistSelectedId, (record) => {
+            record.closed = true;
+            record.closedAt = new Date().toISOString();
+            record.updatedAt = record.closedAt;
+            return record;
+          });
+          if (!result.ok) {
+            a33SetTemporalChecklistStatus(result.message, "error");
+            return;
+          }
+          a33RenderTemporalChecklist({ selectId:A33TemporalChecklistSelectedId });
+          a33SetTemporalChecklistStatus("Checklist temporal cerrado correctamente.", "");
+        });
+      }
+      document.addEventListener("keydown", (event) => {
+        const modal = document.getElementById("a33-modal-produccion");
+        const checklist = document.getElementById("a33-temporal-checklist");
+        if (event.key === "Escape" && modal && !modal.hidden) a33CloseTemporalProductionModal();
+        else if (event.key === "Escape" && checklist && !checklist.hidden) a33CloseTemporalChecklist();
+      });
+      window.addEventListener("storage", (event) => {
+        if (event && event.key === STORAGE_PRODUCTION_CHECKLIST_KEY) {
+          const checklist = document.getElementById("a33-temporal-checklist");
+          if (checklist && !checklist.hidden) a33RenderTemporalChecklist({ selectId:A33TemporalChecklistSelectedId });
+        }
+      });
       const btnGuardarLote = document.getElementById("btn-guardar-lote");
       if (btnGuardarLote) btnGuardarLote.addEventListener("click", guardarCalculoComoLote);
       const loteInput = document.getElementById("lote");

@@ -370,7 +370,7 @@
     /* Checklist Etapa 3: responsive, PWA y hardening final */
     .a33-production-actions {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 0.55rem;
       margin-top: 1rem;
     }
@@ -397,6 +397,15 @@
       cursor: wait;
       transform: none;
     }
+    .a33-production-modal-card { max-width: 620px; }
+    .a33-production-modal-card h2 { margin: 0 0 0.4rem; font-size: 1.18rem; }
+    .a33-production-modal-card label { display: block; margin-top: 0.75rem; }
+    .a33-production-modal-card input { width: 100%; }
+    .a33-production-preview { margin-top: 0.85rem; padding: 0.7rem; border: 1px solid #333; border-radius: 10px; background: rgba(255,255,255,0.025); }
+    .a33-production-preview[hidden] { display: none !important; }
+    .a33-production-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem 0.75rem; }
+    .a33-production-preview-item { display: flex; justify-content: space-between; gap: 0.75rem; padding-bottom: 0.25rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .a33-production-modal-error { min-height: 1.2em; margin-top: 0.45rem; color: #ff9b9b; }
 
     .a33-checklist-view[hidden] { display: none !important; }
     .a33-checklist-view {
@@ -751,12 +760,13 @@
       .a33-checklist-done:active { transform: none; }
     }
     @media (max-width: 560px) {
-      .a33-production-actions { gap: 0.35rem; }
+      .a33-production-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; }
       .a33-production-actions .a33-production-action {
         min-height: 46px;
         padding-inline: 0.25rem;
         font-size: 0.78rem;
       }
+      .a33-production-preview-grid { grid-template-columns: 1fr; }
       .a33-checklist-shell { padding: 0.65rem; border-radius: 12px; }
       .a33-checklist-header { margin: -0.65rem -0.65rem 0.65rem; padding: 0.7rem 0.65rem; top: -0.65rem; }
       .a33-checklist-block { padding: 0.6rem; }
@@ -866,6 +876,7 @@
     <div class="a33-production-actions" aria-label="Acciones de producción">
       <button id="btn-calcular" class="a33-production-action" type="button">Calcular</button>
       <button id="btn-guardar-lote" class="a33-production-action" type="button">Guardar Lote</button>
+      <button id="btn-produccion" class="a33-production-action" type="button">Producción</button>
       <button id="btn-checklist" class="a33-production-action" type="button">Checklist</button>
     </div>
     <p id="hint-resultados" class="hint">Resultados: calcula para ver el resumen (materia prima, caducidad y costos).</p>
@@ -895,6 +906,23 @@
       <div class="a33-modal-actions">
         <button id="a33-modal-dup-aplicar" class="btn-pill a33-btn-primary-pill" type="button">Aplicar</button>
         <button id="a33-modal-dup-cancelar" class="btn-pill" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="a33-modal-produccion" class="a33-modal" hidden aria-hidden="true">
+    <div class="a33-modal-card a33-production-modal-card" role="dialog" aria-modal="true" aria-labelledby="a33-produccion-title">
+      <h2 id="a33-produccion-title">Producción</h2>
+      <p class="hint">Calcula una preparación con la fórmula base de 1,000 ml.</p>
+      <label for="a33-produccion-volumen">Cantidad a preparar (ml)</label>
+      <input id="a33-produccion-volumen" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Ej: 1500" autocomplete="off" />
+      <div id="a33-produccion-error" class="a33-production-modal-error" role="alert"></div>
+      <div id="a33-produccion-preview" class="a33-production-preview" hidden aria-live="polite">
+        <div id="a33-produccion-preview-grid" class="a33-production-preview-grid"></div>
+      </div>
+      <div class="a33-modal-actions">
+        <button id="a33-produccion-cancelar" class="btn-pill" type="button">Cancelar</button>
+        <button id="a33-produccion-guardar" class="btn-pill a33-btn-primary-pill" type="button">Guardar</button>
       </div>
     </div>
   </div>
@@ -2714,6 +2742,7 @@ function a33WireNumericInput(el, mode) {
       }
     }
     const A33_CHECKLIST_STORAGE_KEY = "arcano33_lotes";
+    const A33_PRODUCTION_CHECKLIST_STORAGE_KEY = "arcano33_produccion_checklists";
     const A33_CHECKLIST_SCHEMA = 1;
     const A33_CHECKLIST_INGREDIENTS = [
       { key:"vino", label:"Vino", direct:["volVino"] },
@@ -2727,6 +2756,124 @@ function a33WireNumericInput(el, mode) {
     let A33ChecklistSelectedIdentity = "";
     let A33ChecklistClosing = false;
     let A33ChecklistSelecting = false;
+    const A33_PRODUCTION_BASE_ML = 1000;
+    const A33_PRODUCTION_FORMULA = { vino:450, vodka:100, jugo:150, sirope:150, agua:150 };
+
+    function a33IsStandaloneProduction(lote) {
+      return !!(lote && lote.origenChecklist === "produccion-1000ml");
+    }
+
+    function a33ProductionCalculation(totalMl) {
+      const total = Number(totalMl);
+      if (!Number.isFinite(total) || total <= 0) return null;
+      const factor = total / A33_PRODUCTION_BASE_ML;
+      const ingredients = {};
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => {
+        ingredients[item.key] = A33_PRODUCTION_FORMULA[item.key] * factor;
+      });
+      return { totalMl:total, ingredients };
+    }
+
+    function a33ProductionNumber(value) {
+      return Number(value).toLocaleString("es-NI", { maximumFractionDigits:2 });
+    }
+
+    function a33RenderProductionPreview() {
+      const input = document.getElementById("a33-produccion-volumen");
+      const preview = document.getElementById("a33-produccion-preview");
+      const grid = document.getElementById("a33-produccion-preview-grid");
+      const error = document.getElementById("a33-produccion-error");
+      if (!input || !preview || !grid || !error) return null;
+      const calculation = a33ProductionCalculation(input.value);
+      error.textContent = input.value && !calculation ? "Ingresa una cantidad mayor que cero." : "";
+      grid.innerHTML = "";
+      preview.hidden = !calculation;
+      if (!calculation) return null;
+      A33_CHECKLIST_INGREDIENTS.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "a33-production-preview-item";
+        const label = document.createElement("span");
+        label.textContent = item.label;
+        const value = document.createElement("strong");
+        value.textContent = a33ProductionNumber(calculation.ingredients[item.key]) + " ml";
+        row.append(label, value);
+        grid.appendChild(row);
+      });
+      return calculation;
+    }
+
+    function a33OpenProductionModal() {
+      const modal = document.getElementById("a33-modal-produccion");
+      const input = document.getElementById("a33-produccion-volumen");
+      if (!modal || !input) return;
+      input.value = "";
+      a33RenderProductionPreview();
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      input.focus({ preventScroll:true });
+    }
+
+    function a33CloseProductionModal() {
+      const modal = document.getElementById("a33-modal-produccion");
+      if (!modal || modal.hidden) return;
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+      const trigger = document.getElementById("btn-produccion");
+      if (trigger) trigger.focus({ preventScroll:true });
+    }
+
+    function a33SaveProductionChecklist() {
+      const calculation = a33RenderProductionPreview();
+      const error = document.getElementById("a33-produccion-error");
+      if (!calculation) {
+        if (error) error.textContent = "Ingresa una cantidad mayor que cero.";
+        return false;
+      }
+      const now = new Date();
+      const id = "production_mix_" + now.getTime() + "_" + Math.random().toString(36).slice(2, 8);
+      const record = {
+        id,
+        loteId:id,
+        codigo:"Producción · " + a33ProductionNumber(calculation.totalMl) + " ml",
+        origenChecklist:"produccion-1000ml",
+        fecha:hoyLocalISO(),
+        createdAt:now.toISOString(),
+        volTotal:calculation.totalMl,
+        volVino:calculation.ingredients.vino,
+        volVodka:calculation.ingredients.vodka,
+        volJugo:calculation.ingredients.jugo,
+        volSirope:calculation.ingredients.sirope,
+        volAgua:calculation.ingredients.agua,
+        formulaBaseMl:A33_PRODUCTION_BASE_ML,
+        formulaSnapshot:{ ...A33_PRODUCTION_FORMULA },
+        checklistProduccion:{ schema:A33_CHECKLIST_SCHEMA, loteId:id, loteCodigo:null, items:a33ChecklistEmptyState(), updatedAt:null }
+      };
+      try {
+        if (window.A33Storage && typeof A33Storage.sharedRead === "function" && typeof A33Storage.sharedReplaceExact === "function") {
+          const read = A33Storage.sharedRead(A33_PRODUCTION_CHECKLIST_STORAGE_KEY, []);
+          const list = Array.isArray(read.data) ? read.data.slice() : [];
+          list.unshift(record);
+          const write = A33Storage.sharedReplaceExact(A33_PRODUCTION_CHECKLIST_STORAGE_KEY, list, {
+            source:"calculadora-produccion-1000ml",
+            baseRev:read.meta && typeof read.meta.rev === "number" ? read.meta.rev : null
+          });
+          if (!write || write.ok === false) throw new Error((write && write.message) || "No se pudo guardar.");
+        } else {
+          const raw = window.localStorage ? window.localStorage.getItem(A33_PRODUCTION_CHECKLIST_STORAGE_KEY) : "";
+          const list = raw ? JSON.parse(raw) : [];
+          list.unshift(record);
+          window.localStorage.setItem(A33_PRODUCTION_CHECKLIST_STORAGE_KEY, JSON.stringify(list));
+        }
+      } catch (saveError) {
+        console.error("No se pudo guardar la producción en Checklist.", saveError);
+        if (error) error.textContent = "No se pudo guardar en este dispositivo.";
+        return false;
+      }
+      a33CloseProductionModal();
+      a33OpenChecklist();
+      a33RenderChecklistHistory({ selectIdentity:id });
+      return true;
+    }
 
     function a33ChecklistNumber(value) {
       if (value == null || value === "") return 0;
@@ -2780,6 +2927,7 @@ function a33WireNumericInput(el, mode) {
     }
 
     function a33ChecklistLotCode(lote) {
+      if (a33IsStandaloneProduction(lote)) return String(lote.codigo || "Producción");
       return a33ChecklistCanonicalCode(lote && (lote.codigo || lote.batchCode || lote.code || lote.lote)) || "Sin código";
     }
 
@@ -2989,7 +3137,13 @@ function a33WireNumericInput(el, mode) {
               const raw = window.localStorage ? window.localStorage.getItem(A33_CHECKLIST_STORAGE_KEY) : "";
               return raw ? JSON.parse(raw) : [];
             })();
-        return (Array.isArray(lots) ? lots : [])
+        const standalone = (window.A33Storage && typeof A33Storage.sharedGet === "function")
+          ? A33Storage.sharedGet(A33_PRODUCTION_CHECKLIST_STORAGE_KEY, [])
+          : (() => {
+              const raw = window.localStorage ? window.localStorage.getItem(A33_PRODUCTION_CHECKLIST_STORAGE_KEY) : "";
+              return raw ? JSON.parse(raw) : [];
+            })();
+        return (Array.isArray(lots) ? lots : []).concat(Array.isArray(standalone) ? standalone : [])
           .filter((lote) => lote && typeof lote === "object")
           .slice()
           .sort(a33ChecklistCompareLots);
@@ -3005,6 +3159,11 @@ function a33WireNumericInput(el, mode) {
       const hasChangedKey = A33_CHECKLIST_INGREDIENTS.some((item) => item.key === changedKey);
       const target = String(identity || "").trim();
       if (!target) return { ok:false, message:"No se pudo identificar el lote." };
+      const currentCombined = a33ReadChecklistLots();
+      const currentTargetIndex = a33ChecklistFindIndex(currentCombined, target);
+      const storageKey = currentTargetIndex >= 0 && a33IsStandaloneProduction(currentCombined[currentTargetIndex])
+        ? A33_PRODUCTION_CHECKLIST_STORAGE_KEY
+        : A33_CHECKLIST_STORAGE_KEY;
 
       const prepareLot = (currentLot) => {
         if (closing && a33ChecklistIsClosed(currentLot)) return { ok:true, alreadyClosed:true, lote:currentLot };
@@ -3022,7 +3181,7 @@ function a33WireNumericInput(el, mode) {
       try {
         if (window.A33Storage && typeof A33Storage.sharedRead === "function" && typeof A33Storage.sharedReplaceExact === "function") {
           for (let attempt = 0; attempt < 3; attempt += 1) {
-            const read = A33Storage.sharedRead(A33_CHECKLIST_STORAGE_KEY, []);
+            const read = A33Storage.sharedRead(storageKey, []);
             const list = Array.isArray(read.data) ? read.data.slice() : [];
             const index = a33ChecklistFindIndex(list, target);
             if (index < 0) return { ok:false, message:"El lote ya no está disponible." };
@@ -3030,7 +3189,7 @@ function a33WireNumericInput(el, mode) {
             if (!prepared.ok || prepared.alreadyClosed) return prepared;
             const nextLot = prepared.lote;
             list[index] = nextLot;
-            const write = A33Storage.sharedReplaceExact(A33_CHECKLIST_STORAGE_KEY, list, {
+            const write = A33Storage.sharedReplaceExact(storageKey, list, {
               source:closing ? "calculadora-checklist-cierre" : "calculadora-checklist",
               baseRev:read.meta && typeof read.meta.rev === "number" ? read.meta.rev : null
             });
@@ -3044,7 +3203,7 @@ function a33WireNumericInput(el, mode) {
           return { ok:false, message:"Los lotes cambiaron durante el guardado. Inténtalo nuevamente." };
         }
 
-        const raw = window.localStorage ? window.localStorage.getItem(A33_CHECKLIST_STORAGE_KEY) : "";
+        const raw = window.localStorage ? window.localStorage.getItem(storageKey) : "";
         const list = raw ? JSON.parse(raw) : [];
         const index = a33ChecklistFindIndex(list, target);
         if (index < 0) return { ok:false, message:"El lote ya no está disponible." };
@@ -3052,7 +3211,7 @@ function a33WireNumericInput(el, mode) {
         if (!prepared.ok || prepared.alreadyClosed) return prepared;
         const nextLot = prepared.lote;
         list[index] = nextLot;
-        window.localStorage.setItem(A33_CHECKLIST_STORAGE_KEY, JSON.stringify(list));
+        window.localStorage.setItem(storageKey, JSON.stringify(list));
         return { ok:true, lote:nextLot };
       } catch (error) {
         console.error("No se pudo persistir el Checklist de Producción.", error);
@@ -3157,7 +3316,7 @@ function a33WireNumericInput(el, mode) {
       wrap.className = "a33-checklist-table-wrap";
       const table = document.createElement("table");
       table.className = "a33-checklist-table a33-checklist-history-table";
-      table.innerHTML = "<thead><tr><th>Fecha</th><th>Lote</th><th>Volumen</th><th>Acción</th></tr></thead>";
+      table.innerHTML = "<thead><tr><th>Fecha</th><th>Producción / Lote</th><th>Volumen</th><th>Acción</th></tr></thead>";
       const tbody = document.createElement("tbody");
 
       rows.forEach((lote) => {
@@ -3172,7 +3331,7 @@ function a33WireNumericInput(el, mode) {
         dateTd.textContent = a33ChecklistDateText(lote);
         const lotTd = document.createElement("td");
         lotTd.className = "a33-checklist-lot";
-        lotTd.dataset.label = "Lote";
+        lotTd.dataset.label = "Producción / Lote";
         lotTd.textContent = a33ChecklistLotCode(lote);
         const volumeTd = document.createElement("td");
         volumeTd.className = "a33-checklist-value";
@@ -3188,7 +3347,7 @@ function a33WireNumericInput(el, mode) {
         button.textContent = actionLabel;
         button.dataset.checklistIdentity = identity;
         button.dataset.checklistMode = isHistory ? "history" : "pending";
-        button.setAttribute("aria-label", actionLabel + " lote " + a33ChecklistLotCode(lote));
+        button.setAttribute("aria-label", actionLabel + " " + (a33IsStandaloneProduction(lote) ? "producción " : "lote ") + a33ChecklistLotCode(lote));
         actionTd.appendChild(button);
         tr.append(dateTd, lotTd, volumeTd, actionTd);
         tbody.appendChild(tr);
@@ -3253,7 +3412,7 @@ function a33WireNumericInput(el, mode) {
       const meta = document.createElement("div");
       meta.className = "a33-checklist-meta";
       [
-        "Lote: " + a33ChecklistLotCode(lote),
+        (a33IsStandaloneProduction(lote) ? "Producción: " : "Lote: ") + a33ChecklistLotCode(lote),
         "Fecha: " + a33ChecklistDateText(lote),
         "Volumen: " + a33ChecklistVolumeText(lote)
       ].forEach((value) => {
@@ -3402,7 +3561,7 @@ function a33WireNumericInput(el, mode) {
 
 function registerCalculadoraServiceWorker() {
       if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=12")
+      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=13")
         .catch((error) => console.error("SW Calculadora error", error));
     }
 
@@ -3419,6 +3578,14 @@ function registerCalculadoraServiceWorker() {
       document.getElementById("btn-guardar-receta").addEventListener("click", guardarRecetas);
       document.getElementById("btn-calcular").addEventListener("click", calcularTotales);
       document.getElementById("btn-limpiar").addEventListener("click", limpiarCantidades);
+      const btnProduccion = document.getElementById("btn-produccion");
+      const produccionInput = document.getElementById("a33-produccion-volumen");
+      const produccionCancelar = document.getElementById("a33-produccion-cancelar");
+      const produccionGuardar = document.getElementById("a33-produccion-guardar");
+      if (btnProduccion) btnProduccion.addEventListener("click", a33OpenProductionModal);
+      if (produccionInput) produccionInput.addEventListener("input", a33RenderProductionPreview);
+      if (produccionCancelar) produccionCancelar.addEventListener("click", a33CloseProductionModal);
+      if (produccionGuardar) produccionGuardar.addEventListener("click", a33SaveProductionChecklist);
       const btnChecklist = document.getElementById("btn-checklist");
       const btnCerrarChecklist = document.getElementById("btn-cerrar-checklist");
       const checklistPendientes = document.getElementById("a33-checklist-pendientes");
@@ -3502,7 +3669,7 @@ function registerCalculadoraServiceWorker() {
       if (!window.__A33ChecklistStorageBound) {
         window.__A33ChecklistStorageBound = true;
         window.addEventListener("storage", (event) => {
-          if (!event || event.key !== A33_CHECKLIST_STORAGE_KEY) return;
+          if (!event || (event.key !== A33_CHECKLIST_STORAGE_KEY && event.key !== A33_PRODUCTION_CHECKLIST_STORAGE_KEY)) return;
           const view = document.getElementById("a33-checklist-view");
           if (view && !view.hidden && !A33ChecklistClosing && !A33ChecklistSelecting) {
             a33RenderChecklistHistory({ preserveSelection:true });
@@ -3514,6 +3681,8 @@ function registerCalculadoraServiceWorker() {
         document.addEventListener("keydown", (event) => {
           const view = document.getElementById("a33-checklist-view");
           if (event.key === "Escape" && view && !view.hidden) a33CloseChecklist();
+          const productionModal = document.getElementById("a33-modal-produccion");
+          if (event.key === "Escape" && productionModal && !productionModal.hidden) a33CloseProductionModal();
         });
       }
       const btnGuardarLote = document.getElementById("btn-guardar-lote");
