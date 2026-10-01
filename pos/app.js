@@ -26817,12 +26817,41 @@ async function exportEventExcel(eventId){
   XLSX.writeFile(wb, `evento_${safeName}.xlsx`);
 }
 
+async function getOpenCashDaysForEventPOS(eventId){
+  const eid = String(eventId == null ? '' : eventId).trim();
+  if (!eid) throw new Error('Evento inválido al validar la caja.');
+
+  const allCashDays = await getAll(CASH_V2_STORE);
+  const openDayKeys = new Set();
+  for (const row of (Array.isArray(allCashDays) ? allCashDays : [])){
+    if (!row || String(row.eventId == null ? '' : row.eventId).trim() !== eid) continue;
+    if (cashV2NormStatus(row.status) !== 'OPEN') continue;
+    const dayKey = safeYMD(row.dayKey || '');
+    openDayKeys.add(dayKey || 'Fecha no disponible');
+  }
+  return Array.from(openDayKeys).sort((a,b)=> String(a).localeCompare(String(b)));
+}
+
 // --- Close / Reopen / Activate / Delete ---
 async function closeEvent(eventId){
   const events = await getAll('events');
   const ev = events.find(e=>e.id===eventId);
   if (!ev){ alert('Evento no encontrado'); return; }
   if (ev.closedAt){ alert('Este evento ya está cerrado.'); return; }
+
+  let openCashDays = [];
+  try{
+    openCashDays = await getOpenCashDaysForEventPOS(eventId);
+  }catch(err){
+    console.error('getOpenCashDaysForEventPOS error', err);
+    alert('No se pudo verificar el estado de la caja. El evento permanece abierto.');
+    return;
+  }
+  if (openCashDays.length){
+    const detail = openCashDays.map(dayKey=>`\u2022 ${dayKey}`).join('\n');
+    alert(`No se puede cerrar el evento porque tiene caja abierta en:\n\n${detail}\n\nCierra la caja de cada fecha antes de cerrar el evento.`);
+    return;
+  }
 
   // Confirmación obligatoria antes de cerrar (anti-error humano)
   {
