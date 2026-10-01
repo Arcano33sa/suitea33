@@ -19800,37 +19800,95 @@ async function getPresentationProductIdMapPOS(){
   return map;
 }
 
-async function prefillSobranteQtySuggestPOS(eventId){
-  const ids = await getPresentationProductIdMapPOS();
-  const out = { P:0, M:0, D:0, L:0, G:0 };
-  for (const k of Object.keys(out)){
-    const pid = ids[k];
-    if (pid == null) continue;
-    try{
-      const st = await computeStock(eventId, pid);
-      const n = Number(st || 0);
-      out[k] = n > 0 ? Math.floor(n) : 0;
-    }catch(_){ }
-  }
-  return out;
+let sobranteRenderSequencePOS = 0;
+
+function sobranteProductRowsPOS(parent, eventId){
+  const snapshot = sobranteUsageSnapshotPOS(parent, eventId);
+  const rows = snapshot && Array.isArray(snapshot.availabilityProducts) && snapshot.availabilityProducts.length
+    ? snapshot.availabilityProducts : lotesPOSContractRowsPOS(parent);
+  if (rows.length) return rows;
+  // Lotes históricos que solo conservan las cinco cantidades originales.
+  return Object.entries({P:'pulso',M:'media',D:'djeba',L:'litro',G:'galon'})
+    .filter(([,field]) => Number(parent && parent[field]) > 0)
+    .map(([letter,field]) => ({Letra:letter,nombreSnapshot:letter,cantidadProducida:Number(parent[field])}));
 }
 
-function setSobranteInputsPOS(vals){
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(Math.max(0, Number(v || 0)) | 0); };
-  set('sobrante-p', vals.P);
-  set('sobrante-m', vals.M);
-  set('sobrante-d', vals.D);
-  set('sobrante-l', vals.L);
-  set('sobrante-g', vals.G);
+function sobranteRowIdentityPOS(row, index){
+  // Una identidad histórica explícita nunca se reasigna por coincidencia de letra.
+  const rawId = String(row.productId ?? row.productoId ?? '').trim();
+  const identity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:!rawId });
+  const productId = String((identity.ok && identity.stableId) || rawId).trim();
+  const letter = String(row.Letra || row.letra || (identity.ok && identity.letter) || '').trim().toUpperCase();
+  const name = String(row.nombreSnapshot || row.productNameSnapshot || row.productName || row.nombre || row.name || (identity.ok && identity.name) || productId || letter).trim();
+  return {identity,productId,letter,name,key:productId ? 'PID:' + productId : 'LET:' + letter};
+}
+
+async function renderSobranteProductsPOS(eventId){
+  const sequence = ++sobranteRenderSequencePOS;
+  const grid = document.getElementById('sobrante-products');
+  const sel = document.getElementById('sobrante-lote-select');
+  const button = document.getElementById('btn-sobrante-create');
+  if (!grid || !sel) return;
+  const parentId = String(sel.value || '');
+  grid.replaceChildren();
+  grid.dataset.parentId = '';
+  if (button) button.disabled = true;
+  try{
+    await syncLotsUsageForEvent(eventId);
+    const products = await getAll('products');
+    if (sequence !== sobranteRenderSequencePOS || String(sel.value) !== parentId) return;
+    const parent = readLotesLS_POS().find(l => l && String(l.id) === parentId);
+    if (!parent) throw new Error('Lote original no encontrado');
+    const index = buildProductIdentityIndexPOS(products);
+    const snapshot = sobranteUsageSnapshotPOS(parent, eventId);
+    const seen = new Set();
+    for (const row of sobranteProductRowsPOS(parent, eventId)){
+      const ref = sobranteRowIdentityPOS(row, index);
+      if ((!ref.productId && !ref.letter) || seen.has(ref.key)) continue;
+      seen.add(ref.key);
+      const available = sobranteSnapshotQtyPOS(snapshot, ref.productId, ref.letter, row.cantidadDisponible ?? row.remaining ?? row.cantidadProducida ?? row.cantidad ?? row.unidades ?? row.qty);
+      const cell = document.createElement('div');
+      cell.className = 'sobrante-cell';
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.id = 'sobrante-product-' + seen.size;
+      label.htmlFor = input.id;
+      label.textContent = ref.name + (ref.letter && ref.name !== ref.letter ? ' · ' + ref.letter : '');
+      input.type = 'number';
+      input.min = '0';
+      input.max = String(available);
+      input.step = '1';
+      input.inputMode = 'numeric';
+      input.value = String(Math.floor(available));
+      input.dataset.sobranteKey = ref.key;
+      const hint = document.createElement('small');
+      hint.className = 'muted';
+      hint.textContent = 'Disponible: ' + available;
+      cell.append(label, input, hint);
+      grid.appendChild(cell);
+    }
+    grid.dataset.parentId = parentId;
+    if (!seen.size) grid.textContent = 'Este lote no tiene productos disponibles para registrar sobrantes.';
+    if (button) button.disabled = !seen.size;
+  }catch(error){
+    if (sequence !== sobranteRenderSequencePOS) return;
+    grid.textContent = 'No se pudo consultar la disponibilidad del lote. Vuelve a abrir el panel.';
+    console.warn('Sobrantes: disponibilidad no disponible', error);
+  }
 }
 
 function getSobranteInputsPOS(){
-  const get = (id) => {
-    const el = document.getElementById(id);
-    const n = parseInt(el && el.value ? el.value : '0', 10);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  };
-  return { P:get('sobrante-p'), M:get('sobrante-m'), D:get('sobrante-d'), L:get('sobrante-l'), G:get('sobrante-g') };
+  const grid = document.getElementById('sobrante-products');
+  const sel = document.getElementById('sobrante-lote-select');
+  if (!grid || !sel || grid.dataset.parentId !== String(sel.value)) throw new Error('Espera a que se carguen los productos del lote.');
+  const quantities = {};
+  for (const input of grid.querySelectorAll('input[data-sobrante-key]')){
+    const raw = input.value.trim();
+    const value = Number(raw);
+    if (!raw || !Number.isSafeInteger(value) || value < 0) throw new Error('Usa cantidades enteras mayores o iguales a cero.');
+    quantities[input.dataset.sobranteKey] = value;
+  }
+  return quantities;
 }
 
 
@@ -19893,7 +19951,7 @@ async function refreshSobranteUIForEventPOS(eventId){
   // meta del select + listener
   try{
     updateSobranteMetaPOS();
-    sel.onchange = () => { try{ updateSobranteMetaPOS(); }catch(_){ } };
+    sel.onchange = async () => { updateSobranteMetaPOS(); await renderSobranteProductsPOS(eventId); };
   }catch(_){ }
 }
 
@@ -19921,19 +19979,14 @@ async function openSobrantePanelPOS(){
     return;
   }
 
-  // Sugerir cantidades basado en stock actual del evento
-  try{
-    const suggest = await prefillSobranteQtySuggestPOS(evId);
-    setSobranteInputsPOS(suggest);
-  }catch(e){
-    setSobranteInputsPOS({P:0,M:0,D:0,L:0,G:0});
-  }
+  await renderSobranteProductsPOS(evId);
 
   panel.style.display = 'block';
 }
 
 async function closeSobrantePanelPOS(){
   const panel = document.getElementById('sobrante-panel');
+  ++sobranteRenderSequencePOS;
   if (panel) panel.style.display = 'none';
 }
 
@@ -19966,10 +20019,10 @@ function sobranteSnapshotQtyPOS(snapshot, productId, letter, fallback){
   return sobranteQtyPOS(fallback);
 }
 
-function buildSobranteTransferItemsPOS(parent, eventId, legacyQty, products){
+function buildSobranteTransferItemsPOS(parent, eventId, legacyQty, products, manualByKey){
   const snapshot = sobranteUsageSnapshotPOS(parent, eventId);
   const snapshotRows = snapshot && Array.isArray(snapshot.availabilityProducts) ? snapshot.availabilityProducts : [];
-  const baseRows = snapshotRows.length ? snapshotRows : lotesPOSContractRowsPOS(parent);
+  const baseRows = manualByKey ? sobranteProductRowsPOS(parent, eventId) : (snapshotRows.length ? snapshotRows : lotesPOSContractRowsPOS(parent));
   const index = buildProductIdentityIndexPOS(products || []);
   const legacyLetters = new Set(['P','M','D','L','G']);
   const byIdentity = new Map();
@@ -19977,10 +20030,11 @@ function buildSobranteTransferItemsPOS(parent, eventId, legacyQty, products){
 
   const addRow = (row, forcedQty, source) => {
     if (!row || typeof row !== 'object') return;
-    const identity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
-    const productId = String((identity.ok && identity.stableId) || row.productId || row.productoId || '').trim();
-    const letter = String((identity.ok && identity.letter) || row.Letra || row.letra || '').trim().toUpperCase();
-    const name = String((identity.ok && identity.name) || row.nombreSnapshot || row.productName || row.nombre || row.name || productId || letter).trim();
+    const ref = manualByKey ? sobranteRowIdentityPOS(row, index) : null;
+    const identity = ref ? ref.identity : resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
+    const productId = ref ? ref.productId : String((identity.ok && identity.stableId) || row.productId || row.productoId || '').trim();
+    const letter = ref ? ref.letter : String((identity.ok && identity.letter) || row.Letra || row.letra || '').trim().toUpperCase();
+    const name = ref ? ref.name : String((identity.ok && identity.name) || row.nombreSnapshot || row.productName || row.nombre || row.name || productId || letter).trim();
     if (!productId && !letter) return;
     const available = sobranteSnapshotQtyPOS(snapshot, productId, letter, row.cantidadDisponible ?? row.remaining ?? row.cantidadProducida ?? row.cantidad ?? row.unidades ?? row.qty);
     const desired = forcedQty == null ? available : sobranteQtyPOS(forcedQty);
@@ -20014,13 +20068,24 @@ function buildSobranteTransferItemsPOS(parent, eventId, legacyQty, products){
   };
 
   for (const row of baseRows){
+    if (manualByKey){
+      const ref = sobranteRowIdentityPOS(row, index);
+      if (byIdentity.has(ref.key)) continue;
+      const value = manualByKey[ref.key];
+      if (!Number.isSafeInteger(value) || value < 0){
+        errors.push(`${ref.name}: cantidad inválida o producto pendiente de cargar.`);
+        continue;
+      }
+      addRow(row, value, 'sobrante_manual_dinamico');
+      continue;
+    }
     const identity = resolveCatalogProductIdentityPOS(row, index, { allowLegacy:true });
     const letter = String((identity.ok && identity.letter) || row.Letra || row.letra || '').trim().toUpperCase();
     const forced = legacyLetters.has(letter) ? sobranteQtyPOS(legacyQty && legacyQty[letter]) : null;
     addRow(row, forced, legacyLetters.has(letter) ? 'sobrante_manual' : 'sobrante_automatico_dinamico');
   }
 
-  for (const letter of legacyLetters){
+  for (const letter of manualByKey ? [] : legacyLetters){
     const desired = sobranteQtyPOS(legacyQty && legacyQty[letter]);
     if (!(desired > 0)) continue;
     const already = Array.from(byIdentity.values()).some(row => String(row.Letra || '').toUpperCase() === letter);
@@ -20090,10 +20155,14 @@ async function createSobranteLotPOS(){
   const parentId = sel && sel.value ? sel.value : '';
   if (!parentId) return posNotify('Selecciona un lote original');
 
-  const qty = getSobranteInputsPOS();
+  let manualByKey;
+  try{ manualByKey = getSobranteInputsPOS(); }
+  catch(error){ posNotify(error.message); return; }
+  const qty = {P:0,M:0,D:0,L:0,G:0};
 
   // Recalcular primero para usar el disponible real después de ventas, reempaques y ajustes.
-  try{ await syncLotsUsageForEvent(evId); }catch(_){ }
+  try{ await syncLotsUsageForEvent(evId); }
+  catch(error){ posNotify('No se pudo actualizar la disponibilidad del lote. Intenta nuevamente.'); return; }
   const allLotes = readLotesLS_POS();
   const parent = allLotes.find(l => l && String(l.id) === String(parentId));
   if (!parent){
@@ -20120,11 +20189,16 @@ async function createSobranteLotPOS(){
   const ev = evs.find(e => e && Number(e.id) === Number(evId)) || null;
   const evName = ev ? (ev.name || '') : '';
   const products = await getAll('products').catch(()=>[]);
-  const transfer = buildSobranteTransferItemsPOS(parent, evId, qty, products);
+  const transfer = buildSobranteTransferItemsPOS(parent, evId, qty, products, manualByKey);
   if (!transfer.ok){
     const detail = transfer.errors && transfer.errors.length ? ('\n\n' + transfer.errors.map(text => '• ' + text).join('\n')) : '';
     posNotify('No se pudo crear el lote hijo con cantidades consistentes.' + detail);
     return;
+  }
+
+  for (const item of transfer.items){
+    const letter = String(item.Letra || '').toUpperCase();
+    if (Object.prototype.hasOwnProperty.call(qty, letter)) qty[letter] += sobranteQtyPOS(item.cantidad);
   }
 
   const nowIso = new Date().toISOString();
