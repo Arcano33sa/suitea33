@@ -77,7 +77,7 @@ vm.runInContext(`${helperBlock}\nthis.getOpenCashDaysForEventPOS=getOpenCashDays
   const guardPos = closeBlock.indexOf('await getOpenCashDaysForEventPOS(eventId)');
   const confirmPos = closeBlock.indexOf('showConfirmClosePOS');
   const mermaPos = closeBlock.indexOf('reempaqueFinalizeMermaForEventPOS');
-  const exportPos = closeBlock.indexOf('await generateCorteCSV(eventId)');
+  const exportPos = closeBlock.indexOf('await generateCorteCSV(eventId, { closedAtIso })');
   assert.ok(guardPos >= 0, 'El cierre no consulta cajas abiertas');
   assert.ok(guardPos < confirmPos, 'La validación debe ocurrir antes de confirmar el cierre');
   assert.ok(guardPos < mermaPos, 'La validación debe ocurrir antes de finalizar merma');

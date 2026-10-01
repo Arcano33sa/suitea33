@@ -4782,7 +4782,7 @@ function cashV2HistExcelBuildSheetsFromSnapshots(snapshotTuples){
     const dk = safeYMD(it && it.dayKey);
     const v = Math.trunc(Number(it && it.v));
     const snap = (it && it.snap) ? it.snap : null;
-    if (!eid || !dk || !snap || !Number.isFinite(v) || v <= 0) continue;
+    if (!eid || !dk || !snap || !Number.isFinite(v) || v < 0) continue;
 
     // Resumen
     try{ resumen.push(cashV2HistExcelSnapToSummaryRow(eid, dk, v, snap)); }catch(_){ }
@@ -26376,7 +26376,7 @@ async function renderEventos(){
         <button class="act-ver" data-id="${ev.id}">VER</button>
         <button class="act-activar" data-id="${ev.id}">Activar</button>
         ${ev.closedAt?'<button class="act-reabrir" data-id="'+ev.id+'">Reabrir</button>':'<button class="act-cerrar" data-id="'+ev.id+'">Cerrar</button>'}
-        <button class="act-corte" data-id="${ev.id}">CSV Corte</button>
+        <button class="act-corte" data-id="${ev.id}">Excel cierre</button>
         <button class="act-ventas" data-id="${ev.id}">CSV Ventas</button>
         <button class="act-inv" data-id="${ev.id}">CSV Inv</button>
         <button class="act-eliminar btn-danger" data-id="${ev.id}">Eliminar</button>
@@ -26594,227 +26594,337 @@ function buildCorteSummaryRows(eName, sales, mermaFinalCost=0){
   const neto = cobrado;
   return {efectivo, trans, tarjeta, credito, descuentos, cortesiasU, cortesiasVal, devolU, devolVal, bruto, cobrado, neto, ventaNeta, costoVentas, costoCortesias, mermaFinalCosto, costoTotal, utilidadBruta, utilidadDespuesCortesias, comisionTarjetaTotal, comisionesTarjeta:cardCommissions.byLabel, commissionUndeterminedCount:cardCommissions.undeterminedCount, utilidadDespuesComision, utilidadDespuesMerma};
 }
-async function generateCorteCSV(eventId){
-  const events = await getAll('events');
-  const ev = events.find(e=>e.id===eventId);
-  if (!ev){ alert('Evento no encontrado'); return; }
-  const sales = (await getAll('sales')).filter(s=>s.eventId===eventId);
-  const banks = await getAllBanksSafe();
-  const bankMap = new Map();
-  for (const b of banks){ if (b && b.id != null) bankMap.set(Number(b.id), b.name || ''); }
-
-  // Transferencias por banco
-  const transferByBank = new Map();
-  for (const s of sales){
-    if (normalizePaymentMethodPOS(s.payment || '') !== 'transferencia') continue;
-    const label = getSaleBankLabel(s, bankMap);
-    const cur = transferByBank.get(label) || { total: 0, count: 0 };
-    cur.total += Number(s.total || 0);
-    cur.count += 1;
-    transferByBank.set(label, cur);
+function cashV2EventExportSnapshotFromRecordPOS(record){
+  const rec = (record && typeof record === 'object') ? record : {};
+  let nums = null;
+  try{ nums = cashV2ComputeCloseNumbers(rec, { preferDom:false }); }catch(_){ nums = null; }
+  const nN = (nums && nums.NIO) ? nums.NIO : { expected:0, diff:0 };
+  const nU = (nums && nums.USD) ? nums.USD : { expected:0, diff:0 };
+  const movN = [];
+  const movU = [];
+  for (const movement of (Array.isArray(rec.movements) ? rec.movements : [])){
+    const normalized = cashV2HistNormalizeMove(movement);
+    if (normalized.currency === 'USD') movU.push(normalized);
+    else movN.push(normalized);
   }
-  const finalMerma = await reempaqueGetFinalMermaTotalsPOS(eventId, { includeProvisional:true });
-  const sum = buildCorteSummaryRows(ev.name, sales, finalMerma.cost);
-  const rows = [];
-  rows.push(['Corte de evento', ev.name]);
-  rows.push(['Generado', new Date().toLocaleString()]);
-  rows.push([]);
-  rows.push(['Resumen de cobros']);
-  rows.push(['Efectivo', sum.efectivo.toFixed(2)]);
-  rows.push(['Transferencia', sum.trans.toFixed(2)]);
-  rows.push(['Tarjeta', sum.tarjeta.toFixed(2)]);
-  rows.push(['Crédito cliente', sum.credito.toFixed(2)]);
-  rows.push(['Cobrado (sin crédito cliente)', sum.cobrado.toFixed(2)]);
-  if (transferByBank.size){
-    rows.push([]);
-    rows.push(['Transferencias por banco']);
-    rows.push(['Banco','Total C$','Transacciones']);
-    const entries = Array.from(transferByBank.entries())
-      .sort((a,b)=> (b[1].total || 0) - (a[1].total || 0));
-    for (const [label, obj] of entries){
-      rows.push([label, (obj.total || 0).toFixed(2), obj.count || 0]);
+  return {
+    schema:1,
+    eventId:String(rec.eventId == null ? '' : rec.eventId),
+    dayKey:safeYMD(rec.dayKey || ''),
+    v:0,
+    ts:Number(rec.closeTs) || Number(rec.meta && rec.meta.closedAt) || 0,
+    source:'CLOSED_RECORD_FALLBACK',
+    data:{
+      NIO:{
+        initial:cashV2HistPickCounts(rec.initial && rec.initial.NIO),
+        movements:movN,
+        cashSalesC$:cashV2Round2Money(rec.cashSalesC || 0),
+        expected:cashV2Round2Money(nN.expected || 0),
+        finalCount:cashV2HistPickCounts(rec.final && rec.final.NIO),
+        diff:cashV2Round2Money(nN.diff || 0)
+      },
+      USD:{
+        initial:cashV2HistPickCounts(rec.initial && rec.initial.USD),
+        movements:movU,
+        cashSalesUSD:cashV2Round2Money(rec.cashSalesUSD || 0),
+        expected:cashV2Round2Money(nU.expected || 0),
+        finalCount:cashV2HistPickCounts(rec.final && rec.final.USD),
+        diff:cashV2Round2Money(nU.diff || 0)
+      },
+      meta:{
+        openTs:Number(cashV2DeriveOpenTs(rec)) || null,
+        closeTs:Number(cashV2DeriveCloseTs(rec)) || null,
+        eventId:String(rec.eventId == null ? '' : rec.eventId),
+        dayKey:safeYMD(rec.dayKey || ''),
+        audit:Array.isArray(rec.audit) ? rec.audit : []
+      }
+    }
+  };
+}
+
+async function buildEventCashExportSheetsPOS(eventId){
+  const eid = String(eventId == null ? '' : eventId).trim();
+  const cashRowsAll = await getAll(CASH_V2_STORE);
+  const cashRows = (Array.isArray(cashRowsAll) ? cashRowsAll : [])
+    .filter(row=> row && String(row.eventId == null ? '' : row.eventId).trim() === eid);
+  const openRows = cashRows.filter(row=> cashV2NormStatus(row.status) === 'OPEN');
+  if (openRows.length) throw new Error('El evento tiene caja abierta. Cierra la caja antes de generar el cierre.');
+
+  const cashByDay = new Map();
+  for (const row of cashRows){
+    const dayKey = safeYMD(row.dayKey || '');
+    if (!dayKey || cashV2NormStatus(row.status) !== 'CLOSED') continue;
+    const previous = cashByDay.get(dayKey);
+    if (!previous || cashV2DeriveCloseTs(row) >= cashV2DeriveCloseTs(previous)) cashByDay.set(dayKey, row);
+  }
+
+  let historyDays = [];
+  try{ historyDays = await listHistDaysForEvent(eid); }catch(_){ historyDays = []; }
+  const dayKeys = new Set(Array.from(cashByDay.keys()));
+  for (const day of (Array.isArray(historyDays) ? historyDays : [])){
+    const dayKey = safeYMD(day && day.dayKey);
+    if (dayKey) dayKeys.add(dayKey);
+  }
+
+  const officialTuples = [];
+  const allSnapshotTuples = [];
+  for (const dayKey of Array.from(dayKeys).sort()){
+    let versions = [];
+    try{ versions = await listSnapshots(eid, dayKey); }catch(_){ versions = []; }
+    const validVersions = (Array.isArray(versions) ? versions : [])
+      .map(value=>Math.trunc(Number(value)))
+      .filter(value=>Number.isFinite(value) && value > 0)
+      .sort((a,b)=>a-b);
+    for (const version of validVersions){
+      const snap = await loadSnapshot(eid, dayKey, version);
+      if (snap) allSnapshotTuples.push({ eventId:eid, dayKey, v:version, snap });
+    }
+    const official = allSnapshotTuples
+      .filter(item=>item.dayKey === dayKey)
+      .sort((a,b)=>b.v-a.v)[0];
+    if (official){
+      officialTuples.push(official);
+      continue;
+    }
+    const closedRecord = cashByDay.get(dayKey);
+    if (closedRecord){
+      officialTuples.push({ eventId:eid, dayKey, v:0, snap:cashV2EventExportSnapshotFromRecordPOS(closedRecord) });
     }
   }
-  rows.push([]);
-  rows.push(['Ajustes']);
-  rows.push(['Descuentos aplicados (C$)', sum.descuentos.toFixed(2)]);
-  rows.push(['Cortesías (unid.)', sum.cortesiasU]);
-  rows.push(['Cortesías valor ref. (C$)', sum.cortesiasVal.toFixed(2)]);
-  rows.push(['Costo real de cortesías (C$)', sum.costoCortesias.toFixed(2)]);
-  rows.push(['Costos de ventas (C$)', sum.costoVentas.toFixed(2)]);
-  rows.push(['Merma final del evento (ml)', finalMerma.ml.toFixed(4)]);
-  rows.push(['Costo Merma final (C$)', sum.mermaFinalCosto.toFixed(2)]);
-  rows.push(['Costos totales (C$)', sum.costoTotal.toFixed(2)]);
-  rows.push(['Utilidad bruta (C$)', sum.utilidadBruta.toFixed(2)]);
-  rows.push(['Utilidad después de cortesías (C$)', sum.utilidadDespuesCortesias.toFixed(2)]);
-  rows.push(['Comisiones Tarjeta (C$)', sum.comisionTarjetaTotal.toFixed(2)]);
-  for (const item of (sum.comisionesTarjeta || [])) rows.push([item.label, Number(item.total || 0).toFixed(2)]);
-  if (sum.commissionUndeterminedCount) rows.push(['Comisión no determinada', `${sum.commissionUndeterminedCount} venta(s)`]);
-  rows.push(['Utilidad después de comisión (C$)', sum.utilidadDespuesComision.toFixed(2)]);
-  rows.push(['Utilidad después de comisión y merma (C$)', sum.utilidadDespuesMerma.toFixed(2)]);
-  rows.push(['Devoluciones (unid.)', sum.devolU]);
-  rows.push(['Devoluciones (C$)', sum.devolVal.toFixed(2)]);
-  rows.push([]);
-  rows.push(['Ventas brutas ref. (aprox.)', sum.bruto.toFixed(2)]);
-  rows.push(['Neto cobrado', sum.neto.toFixed(2)]);
-  rows.push([]);
-  rows.push(['Detalle de ventas']);
-  rows.push(['id','fecha','hora','producto','codigo_lote','cant','PU','desc_C$','total','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','comision_pct_snapshot','comision_C$','etiqueta_comision','utilidad_antes_comision_C$','utilidad_despues_comision_C$','cortesia','devolucion','cortesia_a','notas','cliente']);
-  for (const s of sales){
-    const bank = isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '';
-    const tp = getSaleCashTenderPartsPOS(s);
-    rows.push([s.id, s.date, getSaleTimeTextPOS(s), uiProductNamePOS(getSaleProductNameSnapshotPOS(s)), lotCodeExcelCellPOS(getSaleLotCodePOS(s)), s.qty, getSaleUnitPriceSnapshotPOS(s), getSaleDiscountTotalPOS(s), s.total, getSaleCostUnitSnapshotPOS(s), getSaleLineCostSnapshotPOS(s), getPaymentMethodLabelPOS(s.payment), tp.fx || '', tp.usd || '', tp.change || '', tp.equivalent || '', bank, readFiniteSaleSnapshotNumberPOS(s,'commissionPctSnapshot') ?? '', readFiniteSaleSnapshotNumberPOS(s,'commissionAmountSnapshot') ?? '', s.commissionLabelSnapshot || '', readFiniteSaleSnapshotNumberPOS(s,'utilidadAntesComision') ?? '', readFiniteSaleSnapshotNumberPOS(s,'utilidadDespuesComision') ?? '', s.courtesy?1:0, s.isReturn?1:0, getSaleCourtesyRecipientSnapshotPOS(s), s.notes||'', getSaleCustomerSnapshotNamePOS(s)]);
+
+  if (!officialTuples.length){
+    return [
+      { name:'Caja_Resumen', rows:[['Estado','Evento sin registros de caja']] },
+      { name:'Caja_Movimientos', rows:[['eventId','dayKey','version','moneda','tipo','monto','fecha_hora','nota','id']] },
+      { name:'Caja_Conteo', rows:[['eventId','dayKey','version','moneda','momento','denominacion','cantidad','subtotal','total']] },
+      { name:'Caja_Auditoria', rows:[['eventId','dayKey','version','fecha_hora','tipo','accion','motivo','oficial']] }
+    ];
   }
-  const safeName = ev.name.replace(/[^a-z0-9_\- ]/gi,'_');
-  downloadExcel(`corte_${safeName}.xlsx`, 'Corte', rows);
+
+  const officialBuilt = cashV2HistExcelBuildSheetsFromSnapshots(officialTuples);
+  const summaryRows = officialBuilt.sheets.find(sheet=>sheet.name === 'Resumen').rows;
+  const movementRows = officialBuilt.sheets.find(sheet=>sheet.name === 'Movimientos').rows;
+  const countRows = officialBuilt.sheets.find(sheet=>sheet.name === 'Conteo').rows;
+  const officialKeys = new Set(officialTuples.map(item=>`${item.dayKey}|${item.v}`));
+  const auditRows = [['eventId','dayKey','version','fecha_hora','tipo','accion','motivo','oficial']];
+  for (const item of allSnapshotTuples){
+    const snapAt = item.snap && item.snap.ts ? fmtDateTimePOS(cashV2HistSafeTs(item.snap.ts)) : '';
+    const official = officialKeys.has(`${item.dayKey}|${item.v}`) ? 'SI' : 'NO';
+    auditRows.push([eid,item.dayKey,item.v,snapAt,'VERSION_CIERRE','','',official]);
+    const audit = item.snap && item.snap.data && item.snap.data.meta && Array.isArray(item.snap.data.meta.audit)
+      ? item.snap.data.meta.audit : [];
+    for (const entry of audit){
+      const ts = entry && entry.ts ? fmtDateTimePOS(cashV2HistSafeTs(entry.ts)) : '';
+      auditRows.push([eid,item.dayKey,item.v,ts,'ACCION',String(entry && entry.action || ''),String(entry && entry.reason || ''),official]);
+    }
+  }
+  for (const item of officialTuples.filter(tuple=>tuple.snap && tuple.snap.source === 'CLOSED_RECORD_FALLBACK')){
+    const snapAt = item.snap && item.snap.ts ? fmtDateTimePOS(cashV2HistSafeTs(item.snap.ts)) : '';
+    auditRows.push([eid,item.dayKey,'',snapAt,'RESPALDO_HISTORICO','Registro cerrado sin snapshot versionado','', 'SI']);
+  }
+
+  return [
+    { name:'Caja_Resumen', rows:summaryRows },
+    { name:'Caja_Movimientos', rows:movementRows },
+    { name:'Caja_Conteo', rows:countRows },
+    { name:'Caja_Auditoria', rows:auditRows }
+  ];
+}
+
+function eventInventoryProductForRefPOS(products, ref){
+  const raw = String(ref == null ? '' : ref).trim();
+  if (!raw) return null;
+  return (products || []).find(product=>
+    String(catalogProductInternalIdPOS(product) || '') === raw ||
+    String(catalogProductStableIdPOS(product) || '') === raw
+  ) || null;
+}
+
+async function buildEventInventoryExportSheetsPOS(eventId, sales){
+  const products = await getAll('products');
+  const inventoryAll = await getAll('inventory');
+  const entries = (Array.isArray(inventoryAll) ? inventoryAll : [])
+    .filter(entry=>entry && String(entry.eventId == null ? '' : entry.eventId) === String(eventId));
+  const productKeys = new Set();
+  for (const product of (products || [])){
+    const hasEntry = (entries || []).some(entry=>entry && eventInventoryProductForRefPOS([product], entry.productId));
+    const hasSale = (sales || []).some(sale=>saleMatchesCatalogProductPOS(sale, product));
+    if (hasEntry || hasSale) productKeys.add(String(catalogProductStableIdPOS(product) || catalogProductInternalIdPOS(product) || ''));
+  }
+  for (const entry of (entries || [])){
+    if (!eventInventoryProductForRefPOS(products, entry && entry.productId)) productKeys.add(`legacy:${String(entry && entry.productId || '')}`);
+  }
+  for (const sale of (sales || [])){
+    const ref = String(saleProductIdForInventoryPOS(sale) || sale.productId || '').trim();
+    if (ref && !eventInventoryProductForRefPOS(products, ref)) productKeys.add(`legacy:${ref}`);
+  }
+
+  const summaryRows = [['producto','producto_id','manejar_inventario','inicial','reposiciones','ajustes','vendido','existencia_final']];
+  for (const key of productKeys){
+    const legacy = key.startsWith('legacy:');
+    const rawRef = legacy ? key.slice(7) : key;
+    const product = legacy ? null : (findCatalogProductByStableIdPOS(products, rawRef) || eventInventoryProductForRefPOS(products, rawRef));
+    const relatedEntries = (entries || []).filter(entry=>{
+      if (!entry) return false;
+      if (product) return !!eventInventoryProductForRefPOS([product], entry.productId);
+      return String(entry.productId == null ? '' : entry.productId).trim() === rawRef;
+    });
+    const relatedSales = product
+      ? (sales || []).filter(sale=>saleMatchesCatalogProductPOS(sale, product))
+      : (sales || []).filter(sale=>String(saleProductIdForInventoryPOS(sale) || sale.productId || '').trim() === rawRef);
+    const sumType = type=>relatedEntries.filter(entry=>entry.type === type).reduce((total,entry)=>total + (Number(entry.qty) || 0),0);
+    const initial = sumType('init');
+    const restocks = sumType('restock');
+    const adjustments = sumType('adjust');
+    const sold = relatedSales.reduce((total,sale)=>total + (Number(sale.qty) || 0),0);
+    const name = (product && (product.name || product.nombre)) ||
+      (relatedEntries.find(entry=>entry.productName) || {}).productName ||
+      (relatedSales[0] ? getSaleProductNameSnapshotPOS(relatedSales[0]) : '') ||
+      `Producto histórico ${rawRef || '—'}`;
+    summaryRows.push([
+      name,
+      product ? (catalogProductStableIdPOS(product) || catalogProductInternalIdPOS(product) || rawRef) : rawRef,
+      product ? (product.manageStock !== false ? 1 : 0) : '',
+      initial,
+      restocks,
+      adjustments,
+      sold,
+      initial + restocks + adjustments - sold
+    ]);
+  }
+
+  const movementRows = [['fecha_hora','id','producto','producto_id','tipo','cantidad','notas','origen','codigo_lote','reempaque_id','rol_reempaque']];
+  const sortedEntries = (entries || []).slice().sort((a,b)=>String(a && (a.time || a.createdAt) || '').localeCompare(String(b && (b.time || b.createdAt) || '')));
+  for (const entry of sortedEntries){
+    const product = eventInventoryProductForRefPOS(products, entry && entry.productId);
+    movementRows.push([
+      entry.time || entry.createdAt || '',
+      entry.id == null ? '' : entry.id,
+      entry.productName || (product && (product.name || product.nombre)) || `Producto histórico ${String(entry.productId || '—')}`,
+      (product && (catalogProductStableIdPOS(product) || catalogProductInternalIdPOS(product))) || entry.productId || '',
+      entry.type || '',
+      Number(entry.qty) || 0,
+      entry.notes || '',
+      entry.source || entry.sourceType || '',
+      lotCodeExcelCellPOS(entry.loteCodigo || entry.lotCode || ''),
+      entry.reempaqueId || '',
+      entry.reempaqueRole || ''
+    ]);
+  }
+  return [
+    { name:'Inventario_Resumen', rows:summaryRows },
+    { name:'Inventario_Movimientos', rows:movementRows }
+  ];
+}
+
+function buildEventSalesExportRowsPOS(sales, bankMap){
+  const rows = [['N°','id','fecha','hora','producto','codigo_lote','cantidad','PU_C$','descuento_C$','total_C$','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','comision_pct_snapshot','comision_C$','etiqueta_comision','utilidad_antes_comision_C$','utilidad_despues_comision_C$','cortesia','devolucion','cortesia_a','notas','cliente']];
+  for (const sale of (sales || [])){
+    const tender = getSaleCashTenderPartsPOS(sale);
+    rows.push([
+      getSaleSeqDisplayPOS(sale), sale.id, sale.date || '', getSaleTimeTextPOS(sale) || '',
+      getSaleProductNameSnapshotPOS(sale) || '', lotCodeExcelCellPOS(getSaleLotCodePOS(sale)), Number(sale.qty) || 0,
+      getSaleUnitPriceSnapshotPOS(sale) || 0, getSaleDiscountTotalPOS(sale) || 0, sale.total || 0,
+      getSaleCostUnitSnapshotPOS(sale) || 0, getSaleLineCostSnapshotPOS(sale) || 0, getPaymentMethodLabelPOS(sale.payment),
+      tender.fx || '', tender.usd || '', tender.change || '', tender.equivalent || '',
+      isBankPaymentMethodPOS(sale.payment) ? getSaleBankLabel(sale, bankMap) : '',
+      readFiniteSaleSnapshotNumberPOS(sale,'commissionPctSnapshot') ?? '', readFiniteSaleSnapshotNumberPOS(sale,'commissionAmountSnapshot') ?? '',
+      sale.commissionLabelSnapshot || '', readFiniteSaleSnapshotNumberPOS(sale,'utilidadAntesComision') ?? '',
+      readFiniteSaleSnapshotNumberPOS(sale,'utilidadDespuesComision') ?? '', sale.courtesy ? 1 : 0, sale.isReturn ? 1 : 0,
+      getSaleCourtesyRecipientSnapshotPOS(sale), sale.notes || '', getSaleCustomerSnapshotNamePOS(sale)
+    ]);
+  }
+  return rows;
+}
+
+async function buildEventClosureSheetsPOS(eventId, options={}){
+  if (typeof XLSX === 'undefined') throw new Error('No se pudo generar el archivo de Excel (librería XLSX no cargada).');
+  const events = await getAll('events');
+  const ev = (events || []).find(event=>event && String(event.id) === String(eventId));
+  if (!ev) throw new Error('Evento no encontrado.');
+  const sales = (await getAll('sales')).filter(sale=>sale && String(sale.eventId) === String(eventId));
+  try{ await backfillSaleSeqIdsForEventPOS(eventId, ev, sales); }catch(err){ console.warn('backfillSaleSeqIdsForEventPOS (cierre) failed', err); }
+  const banks = await getAllBanksSafe();
+  const bankMap = new Map();
+  for (const bank of banks){ if (bank && bank.id != null) bankMap.set(Number(bank.id), bank.name || ''); }
+  const transferByBank = new Map();
+  for (const sale of sales){
+    if (normalizePaymentMethodPOS(sale.payment || '') !== 'transferencia') continue;
+    const label = getSaleBankLabel(sale, bankMap);
+    const current = transferByBank.get(label) || { total:0, count:0 };
+    current.total += Number(sale.total || 0);
+    current.count += 1;
+    transferByBank.set(label, current);
+  }
+  const finalMerma = await reempaqueGetFinalMermaTotalsPOS(eventId, { includeProvisional:true });
+  const summary = buildCorteSummaryRows(ev.name, sales, finalMerma.cost);
+  const closedAtIso = options.closedAtIso || ev.closedAt || '';
+  const summaryRows = [
+    ['Evento',ev.name || ''], ['ID',ev.id], ['Estado',closedAtIso ? 'Cerrado' : 'Abierto'],
+    ['Creado',ev.createdAt ? new Date(ev.createdAt).toLocaleString() : ''],
+    ['Cerrado',closedAtIso ? new Date(closedAtIso).toLocaleString() : ''], [],
+    ['Resumen de ventas'], ['Venta neta C$',summary.ventaNeta], ['Descuentos C$',summary.descuentos],
+    ['Cortesías (unid.)',summary.cortesiasU], ['Cortesías valor comercial C$',summary.cortesiasVal],
+    ['Costo real de cortesías C$',summary.costoCortesias], ['Costos de ventas C$',summary.costoVentas],
+    ['Merma final del evento ml',finalMerma.ml], ['Costo Merma final C$',summary.mermaFinalCosto],
+    ['Costos totales C$',summary.costoTotal], ['Utilidad bruta C$',summary.utilidadBruta],
+    ['Utilidad después de cortesías C$',summary.utilidadDespuesCortesias], ['Comisiones Tarjeta C$',summary.comisionTarjetaTotal]
+  ];
+  for (const item of (summary.comisionesTarjeta || [])) summaryRows.push([item.label,item.total || 0]);
+  if (summary.commissionUndeterminedCount) summaryRows.push(['Comisión no determinada',`${summary.commissionUndeterminedCount} venta(s)`]);
+  summaryRows.push(['Utilidad después de comisión C$',summary.utilidadDespuesComision]);
+  summaryRows.push(['Utilidad después de comisión y merma C$',summary.utilidadDespuesMerma]);
+  const lotCodes = [];
+  for (const sale of sales){
+    const code = getSaleLotCodePOS(sale);
+    if (code && !lotCodes.some(item=>lotCodeKeyPOS(item) === lotCodeKeyPOS(code))) lotCodes.push(code);
+  }
+  summaryRows.push(['Códigos de lote',lotCodeExcelCellPOS(lotCodes.join(' + '))],[],['Cobros por forma de pago']);
+  const byPay = sales.reduce((map,sale)=>{
+    if (sale.courtesy || sale.isCourtesy) return map;
+    const payment = normalizePaymentMethodPOS(sale.payment || '') || 'desconocido';
+    map[payment] = (map[payment] || 0) + Number(sale.total || 0);
+    return map;
+  },{});
+  summaryRows.push(['Efectivo C$',byPay.efectivo || 0],['Transferencia C$',byPay.transferencia || 0],['Tarjeta C$',byPay.tarjeta || 0],['Crédito cliente C$',byPay.credito || 0]);
+  if (transferByBank.size){
+    summaryRows.push([],['Transferencias por banco'],['Banco','Total C$','Transacciones']);
+    for (const [label,value] of Array.from(transferByBank.entries()).sort((a,b)=>b[1].total-a[1].total)) summaryRows.push([label,value.total,value.count]);
+  }
+
+  const cashSheets = await buildEventCashExportSheetsPOS(eventId);
+  const inventorySheets = await buildEventInventoryExportSheetsPOS(eventId, sales);
+  const sheets = [{ name:'Resumen_Evento', rows:summaryRows }]
+    .concat(cashSheets, inventorySheets, [{ name:'Ventas_Detalle', rows:buildEventSalesExportRowsPOS(sales, bankMap) }]);
+  const reempaqueRows = await reempaqueBuildExportRowsPOS(eventId);
+  if (reempaqueRows.length > 1) sheets.push({ name:'Reempaque', rows:reempaqueRows });
+  return { ev, sales, sheets, closedAtIso };
+}
+
+async function exportEventClosureWorkbookPOS(eventId, options={}){
+  const result = await buildEventClosureSheetsPOS(eventId, options);
+  const workbook = XLSX.utils.book_new();
+  for (const sheet of result.sheets){
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(sheet.rows || []), String(sheet.name || 'Hoja').slice(0,31));
+  }
+  const safeName = String(result.ev.name || 'evento').replace(/[^a-z0-9_\- ]/gi,'_');
+  const filename = options.filename || `cierre_evento_${safeName}.xlsx`;
+  XLSX.writeFile(workbook, filename);
+  return { ...result, filename };
+}
+
+async function generateCorteCSV(eventId, options={}){
+  return exportEventClosureWorkbookPOS(eventId, options);
 }
 
 async function exportEventExcel(eventId){
-  if (typeof XLSX === 'undefined'){
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
-    return;
+  try{
+    return await exportEventClosureWorkbookPOS(eventId);
+  }catch(err){
+    console.error('exportEventExcel error', err);
+    alert('No se pudo generar el Excel del evento.\n\nDetalle: ' + humanizeError(err));
+    return null;
   }
-
-  const events = await getAll('events');
-  const ev = events.find(e=>e.id===eventId);
-  if (!ev){
-    alert('Evento no encontrado');
-    return;
-  }
-
-  const allSales = await getAll('sales');
-  const sales = allSales.filter(s=>s.eventId===eventId);
-
-  // Asegurar N° consecutivo por evento antes de exportar (persistente)
-  try{ await backfillSaleSeqIdsForEventPOS(eventId, ev, sales); }catch(e){ console.warn('backfillSaleSeqIdsForEventPOS (export) failed', e); }
-
-  const banks = await getAllBanksSafe();
-  const bankMap = new Map();
-  for (const b of banks){ if (b && b.id != null) bankMap.set(Number(b.id), b.name || ''); }
-  const transferByBank = new Map();
-  for (const s of sales){
-    if (normalizePaymentMethodPOS(s.payment || '') !== 'transferencia') continue;
-    const label = getSaleBankLabel(s, bankMap);
-    const cur = transferByBank.get(label) || { total: 0, count: 0 };
-    cur.total += Number(s.total || 0);
-    cur.count += 1;
-    transferByBank.set(label, cur);
-  }
-
-  // --- Hoja 1: Resumen del evento ---
-  const resumenRows = [];
-  resumenRows.push(['Evento', ev.name || '']);
-  resumenRows.push(['ID', ev.id]);
-  resumenRows.push(['Estado', ev.closedAt ? 'Cerrado' : 'Abierto']);
-  resumenRows.push(['Creado', ev.createdAt ? new Date(ev.createdAt).toLocaleString() : '']);
-  resumenRows.push(['Cerrado', ev.closedAt ? new Date(ev.closedAt).toLocaleString() : '']);
-  resumenRows.push([]);
-
-  const finalMerma = await reempaqueGetFinalMermaTotalsPOS(eventId, { includeProvisional:true });
-  const eventSummary = buildCorteSummaryRows(ev.name, sales, finalMerma.cost);
-  const totalVentas = eventSummary.ventaNeta;
-  resumenRows.push(['Resumen de ventas']);
-  resumenRows.push(['Venta neta C$', totalVentas]);
-  resumenRows.push(['Descuentos C$', eventSummary.descuentos]);
-  resumenRows.push(['Cortesías (unid.)', eventSummary.cortesiasU]);
-  resumenRows.push(['Cortesías valor comercial C$', eventSummary.cortesiasVal]);
-  resumenRows.push(['Costo real de cortesías C$', eventSummary.costoCortesias]);
-  resumenRows.push(['Costos de ventas C$', eventSummary.costoVentas]);
-  resumenRows.push(['Merma final del evento ml', finalMerma.ml]);
-  resumenRows.push(['Costo Merma final C$', eventSummary.mermaFinalCosto]);
-  resumenRows.push(['Costos totales C$', eventSummary.costoTotal]);
-  resumenRows.push(['Utilidad bruta C$', eventSummary.utilidadBruta]);
-  resumenRows.push(['Utilidad después de cortesías C$', eventSummary.utilidadDespuesCortesias]);
-  resumenRows.push(['Comisiones Tarjeta C$', eventSummary.comisionTarjetaTotal]);
-  for (const item of (eventSummary.comisionesTarjeta || [])) resumenRows.push([item.label, item.total || 0]);
-  if (eventSummary.commissionUndeterminedCount) resumenRows.push(['Comisión no determinada', `${eventSummary.commissionUndeterminedCount} venta(s)`]);
-  resumenRows.push(['Utilidad después de comisión C$', eventSummary.utilidadDespuesComision]);
-  resumenRows.push(['Utilidad después de comisión y merma C$', eventSummary.utilidadDespuesMerma]);
-  const eventLotCodes = [];
-  for (const sale of sales){
-    const code = getSaleLotCodePOS(sale);
-    if (code && !eventLotCodes.some((item) => lotCodeKeyPOS(item) === lotCodeKeyPOS(code))) eventLotCodes.push(code);
-  }
-  resumenRows.push(['Códigos de lote', lotCodeExcelCellPOS(eventLotCodes.join(' + '))]);
-
-  const byPay = sales.reduce((m,s)=>{
-    const pay = normalizePaymentMethodPOS(s.payment || '') || 'desconocido';
-    m[pay] = (m[pay] || 0) + (s.total || 0);
-    return m;
-  },{});
-  resumenRows.push([]);
-  resumenRows.push(['Cobros por forma de pago']);
-  resumenRows.push(['Efectivo C$', byPay.efectivo || 0]);
-  resumenRows.push(['Transferencia C$', byPay.transferencia || 0]);
-  resumenRows.push(['Tarjeta C$', byPay.tarjeta || 0]);
-  resumenRows.push(['Crédito cliente C$', byPay.credito || 0]);
-
-  if (transferByBank.size){
-    resumenRows.push([]);
-    resumenRows.push(['Transferencias por banco']);
-    resumenRows.push(['Banco','Total C$','Transacciones']);
-    const entries = Array.from(transferByBank.entries())
-      .sort((a,b)=> (b[1].total || 0) - (a[1].total || 0));
-    for (const [label, obj] of entries){
-      resumenRows.push([label, (obj.total || 0), obj.count || 0]);
-    }
-  }
-
-  const wb = XLSX.utils.book_new();
-  const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
-  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen_Evento');
-
-  // --- Hoja 3 opcional: Ventas_Detalle ---
-  const ventasRows = [];
-  ventasRows.push(['N°','id','fecha','hora','producto','codigo_lote','cantidad','PU_C$','descuento_C$','total_C$','costo_unit_C$','costo_total_C$','pago','T/C usado','USD recibido','Vuelto C$','Equivalente C$','banco','comision_pct_snapshot','comision_C$','etiqueta_comision','utilidad_antes_comision_C$','utilidad_despues_comision_C$','cortesia','devolucion','cortesia_a','notas','cliente']);
-  for (const s of sales){
-    const qty = Number(s.qty || 0);
-    const costUnit = getSaleCostUnitSnapshotPOS(s);
-    const costTotal = getSaleLineCostSnapshotPOS(s);
-    ventasRows.push([
-      getSaleSeqDisplayPOS(s),
-      s.id,
-      s.date || '',
-      getSaleTimeTextPOS(s) || '',
-      getSaleProductNameSnapshotPOS(s) || '',
-      lotCodeExcelCellPOS(getSaleLotCodePOS(s)),
-      qty || 0,
-      getSaleUnitPriceSnapshotPOS(s) || 0,
-      getSaleDiscountTotalPOS(s) || 0,
-      s.total || 0,
-      costUnit || 0,
-      costTotal || 0,
-      getPaymentMethodLabelPOS(s.payment),
-      getSaleCashTenderPartsPOS(s).fx || '',
-      getSaleCashTenderPartsPOS(s).usd || '',
-      getSaleCashTenderPartsPOS(s).change || '',
-      getSaleCashTenderPartsPOS(s).equivalent || '',
-      isBankPaymentMethodPOS(s.payment) ? getSaleBankLabel(s, bankMap) : '',
-      readFiniteSaleSnapshotNumberPOS(s,'commissionPctSnapshot') ?? '',
-      readFiniteSaleSnapshotNumberPOS(s,'commissionAmountSnapshot') ?? '',
-      s.commissionLabelSnapshot || '',
-      readFiniteSaleSnapshotNumberPOS(s,'utilidadAntesComision') ?? '',
-      readFiniteSaleSnapshotNumberPOS(s,'utilidadDespuesComision') ?? '',
-      s.courtesy ? 1 : 0,
-      s.isReturn ? 1 : 0,
-      getSaleCourtesyRecipientSnapshotPOS(s),
-      s.notes || '',
-      getSaleCustomerSnapshotNamePOS(s)
-    ]);
-  }
-  const wsVentas = XLSX.utils.aoa_to_sheet(ventasRows);
-  wsVentas['!cols'] = ventasRows[0].map((h) => ({ wch: /lote/i.test(String(h || '')) ? 25 : 16 }));
-  XLSX.utils.book_append_sheet(wb, wsVentas, 'Ventas_Detalle');
-
-  const rpRows = await reempaqueBuildExportRowsPOS(eventId);
-  if (rpRows.length > 1){
-    const wsReempaque = XLSX.utils.aoa_to_sheet(rpRows);
-    wsReempaque['!cols'] = rpRows[0].map((h) => ({ wch: /lote/i.test(String(h || '')) ? 25 : 18 }));
-    XLSX.utils.book_append_sheet(wb, wsReempaque, 'Reempaque');
-  }
-
-  const safeName = (ev.name || 'evento').replace(/[^a-z0-9_\- ]/gi,'_');
-  XLSX.writeFile(wb, `evento_${safeName}.xlsx`);
 }
 
 async function getOpenCashDaysForEventPOS(eventId){
@@ -26875,23 +26985,18 @@ async function closeEvent(eventId){
     return;
   }
 
-  // Corte (Excel). Si falla, permitir cerrar de todas formas.
+  // El Excel integral es parte obligatoria del cierre.
+  const closedAtIso = new Date().toISOString();
   try{
-    await generateCorteCSV(eventId);
+    await generateCorteCSV(eventId, { closedAtIso });
   } catch(err){
     console.error('generateCorteCSV error', err);
-    const ok = await showConfirmClosePOS({
-      title: 'Corte falló',
-      message: 'No se pudo generar el Corte (Excel) por un error.\n\n¿Cerrar el evento de todas formas?\n(Podrás exportar después desde Eventos: “Exportar (Excel)” o “CSV Corte”.)'
-    });
-    if (!ok){
-      try{ await reempaqueRollbackFinalMermaForEventPOS(finalMerma); }catch(rollbackErr){ console.error('rollback merma provisional', rollbackErr); }
-      return;
-    }
+    try{ await reempaqueRollbackFinalMermaForEventPOS(finalMerma); }catch(rollbackErr){ console.error('rollback merma provisional', rollbackErr); }
+    alert('No se pudo generar el Excel de cierre. El evento permanece abierto.\n\nDetalle: ' + humanizeError(err));
+    return;
   }
 
   // Etapa 2C: NO mutar estado del evento hasta confirmar persistencia.
-  const closedAtIso = new Date().toISOString();
   const evUpdated = Object.assign({}, ev, { closedAt: closedAtIso });
   try{
     await put('events', evUpdated);
@@ -27602,7 +27707,13 @@ async function exportEventosExcel(){
       });
       setBtnSavingStatePOS(btn, false);
     }
-    else if (btn.classList.contains('act-corte')) await generateCorteCSV(id);
+    else if (btn.classList.contains('act-corte')){
+      try{ await generateCorteCSV(id); }
+      catch(err){
+        console.error('generateCorteCSV manual error', err);
+        alert('No se pudo generar el Excel del evento.\n\nDetalle: ' + humanizeError(err));
+      }
+    }
     else if (btn.classList.contains('act-ventas')) await exportEventSalesCSV(id);
     else if (btn.classList.contains('act-inv')) await generateInventoryCSV(id);
     else if (btn.classList.contains('act-eliminar')) await deleteEvent(id);
