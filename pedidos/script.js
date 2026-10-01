@@ -259,11 +259,13 @@ function setSavingState(on, label){
     _setAllButtonsDisabled(true);
     if (sb) sb.textContent = label || 'Guardando…';
     showArchivedNotice(label || 'Guardando…');
+    window.A33Notice.show(label || 'Guardando…', 'process');
   } else {
     if (!A33Saving.active) return;
     if (sb && A33Saving.saveBtnText) sb.textContent = A33Saving.saveBtnText;
     _setAllButtonsDisabled(false);
     A33Saving.active = false;
+    window.A33Notice.finish();
   }
 }
 
@@ -2453,7 +2455,7 @@ async function deletePedido(id) {
   if (!res || !res.ok){
     const msg = (res && res.message) ? res.message : 'No se pudo archivar el pedido.';
     showArchivedNotice(msg);
-    alert(msg);
+    window.A33Notice.alert(msg);
     return;
   }
 
@@ -2511,7 +2513,7 @@ async function deleteArchivedPedido(id){
   if (!res || !res.ok){
     const msg = (res && res.message) ? res.message : 'No se pudo borrar del Histórico.';
     showArchivedNotice(msg);
-    alert(msg);
+    window.A33Notice.alert(msg);
     return;
   }
 
@@ -2528,6 +2530,7 @@ let quickPendingLimit = QUICK_ORDER_PAGE_SIZE;
 let quickHistoryLimit = QUICK_ORDER_PAGE_SIZE;
 
 function setQuickOrderNoticePED(message, kind){
+    window.A33Notice.show(message, kind);
   const el = $('quick-form-notice');
   if (!el) return;
   el.textContent = String(message || '');
@@ -2742,7 +2745,7 @@ function setQuickOrderDeliveredPED(id, delivered){
     updatedAt:now
   }));
   if (!result || !result.ok){
-    alert((result && result.message) || 'No se pudo actualizar el Pedido rápido.');
+    window.A33Notice.alert((result && result.message) || 'No se pudo actualizar el Pedido rápido.');
     return;
   }
   if (String(quickOrderEditingId) === String(id)) resetQuickOrderFormPED();
@@ -2756,7 +2759,7 @@ function deleteQuickOrderPED(id){
   if (!confirm(`¿Borrar definitivamente ${order.codigo || 'este Pedido rápido'}?\n\nEsta acción no se puede deshacer.`)) return;
   const result = saveQuickOrdersPED(records.filter((item) => String(item.id) !== String(id)));
   if (!result || !result.ok){
-    alert((result && result.message) || 'No se pudo borrar el Pedido rápido.');
+    window.A33Notice.alert((result && result.message) || 'No se pudo borrar el Pedido rápido.');
     return;
   }
   if (String(quickOrderEditingId) === String(id)) resetQuickOrderFormPED();
@@ -2796,7 +2799,7 @@ function exportQuickOrderCalendarPED(id){
   const order = loadQuickOrdersPED().find((item) => String(item.id) === String(id));
   if (!order) return;
   const content = createQuickOrderICSPED(order);
-  if (!content){ alert('No se pudo generar el calendario. Revisá la fecha de entrega.'); return; }
+  if (!content){ window.A33Notice.alert('No se pudo generar el calendario. Revisá la fecha de entrega.'); return; }
   const blob = new Blob([content], { type:'text/calendar;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -3069,7 +3072,7 @@ function exportPedidoToCalendar(id) {
 
   const ics = createICSEventFromPedido(p);
   if (!ics) {
-    alert("No se pudo generar el evento de calendario. Revisá que el pedido tenga fecha de entrega.");
+    window.A33Notice.alert("No se pudo generar el evento de calendario. Revisá que el pedido tenga fecha de entrega.");
     return;
   }
 
@@ -3095,7 +3098,7 @@ function exportPedidoToCalendar(id) {
 async function exportToCSV() {
   const btn = $("export-btn");
   const statusEl = $("export-status");
-  const setStatus = (t) => { if (statusEl) statusEl.textContent = String(t || ""); };
+  const setStatus = (t) => { window.A33Notice.show(t); if (statusEl) statusEl.textContent = String(t || ""); };
 
   try{
     if (btn && btn.dataset && btn.dataset.busy === '1') return;
@@ -3106,14 +3109,14 @@ async function exportToCSV() {
   const pedidosRapidos = loadQuickOrdersPED();
   if (pedidos.length === 0 && pedidosRapidos.length === 0) {
     setStatus('');
-    alert("No hay pedidos para exportar.");
+    window.A33Notice.alert("No hay pedidos para exportar.");
     try{ if (btn && btn.dataset) btn.dataset.busy = '0'; }catch(_){ }
     return;
   }
 
   if (typeof XLSX === "undefined") {
     setStatus('Falló');
-    alert("No se pudo generar el archivo de Excel (librería XLSX no cargada).");
+    window.A33Notice.alert("No se pudo generar el archivo de Excel (librería XLSX no cargada).");
     try{ if (btn && btn.dataset) btn.dataset.busy = '0'; }catch(_){ }
     return;
   }
@@ -3314,7 +3317,7 @@ async function exportToCSV() {
   }catch(e){
     console.error('Export falló', e);
     setStatus('Falló');
-    alert('No se pudo exportar. Probá de nuevo o recargá la página.');
+    window.A33Notice.alert('No se pudo exportar. Probá de nuevo o recargá la página.');
   }finally{
     if (btn){
       btn.disabled = false;
@@ -3387,7 +3390,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const name = input ? input.value : '';
       const res = addNewCustomerToPosCatalog(name);
       if (!res || !res.ok){
-        alert('Escribí un nombre válido para crear el cliente.');
+        window.A33Notice.alert('Escribí un nombre válido para crear el cliente.');
         return;
       }
 
@@ -3397,7 +3400,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       toggleNewCustomerBox(false);
 
       if (res.existed && res.isActive === false){
-        alert('Ese cliente ya existía, pero está inactivo en POS. Se usará igual en este pedido.');
+        window.A33Notice.alert('Ese cliente ya existía, pero está inactivo en POS. Se usará igual en este pedido.');
       }
     });
   }
@@ -3608,13 +3611,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!res || !res.ok){
       const msg = (res && res.message) ? res.message : 'No se pudo guardar el pedido.';
       showArchivedNotice(msg);
-      alert(msg);
+      window.A33Notice.alert(msg);
       return;
     }
 
     renderTable();
     clearForm();
-    alert("Pedido guardado correctamente.");
+    window.A33Notice.alert("Pedido guardado correctamente.");
   });
 
   $("reset-btn").addEventListener("click", () => clearForm());
@@ -3640,7 +3643,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!res || !res.ok){
       const msg = (res && res.message) ? res.message : 'No se pudo borrar.';
       showArchivedNotice(msg);
-      alert(msg);
+      window.A33Notice.alert(msg);
       return;
     }
 
@@ -3729,7 +3732,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=2').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=3').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

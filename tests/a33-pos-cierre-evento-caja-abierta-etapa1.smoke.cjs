@@ -95,7 +95,7 @@ vm.runInContext(`${helperBlock}\nthis.getOpenCashDaysForEventPOS=getOpenCashDays
     },
     cashV2NormStatus: sandbox.cashV2NormStatus,
     safeYMD: sandbox.safeYMD,
-    alert(message){ alerts.push(String(message)); },
+    posNotify(message){ alerts.push(String(message)); },
     async showConfirmClosePOS(){ confirmCalls += 1; return true; },
     console, Array, Error, Set, String
   };

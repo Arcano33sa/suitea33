@@ -50,8 +50,8 @@ assert.strictEqual(result.ingredients.sirope, 225);
 assert.strictEqual(result.ingredients.agua, 225);
 assert.strictEqual(context.__calculate(0), null);
 
-assert.ok(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.98&r=2")'), 'Registro SW temporal no actualizado');
-assert.ok(sw.includes("const MODULE_CACHE_REV = '3';"), 'Cache temporal no incrementado');
-assert.ok(sw.includes("'./index.html?v=4.20.98&r=9'"), 'Precache temporal no apunta al HTML nuevo');
+assert.ok(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.98&r=4")'), 'Registro SW temporal no actualizado');
+assert.ok(sw.includes("const MODULE_CACHE_REV = '5';"), 'Cache temporal no incrementado');
+assert.ok(sw.includes("'./index.html?v=4.20.98&r=11'"), 'Precache temporal no apunta al HTML nuevo');
 
 console.log('PASS a33-calculadora-temporal-produccion-1000ml-etapa2: fórmula, checklist, aislamiento y caché cubiertos');

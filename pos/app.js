@@ -1992,6 +1992,7 @@ function cashV2InitInitialUIOnce(){
         cashV2ApplyInitialToDom(saved.initial);
         try{ cashV2UpdateCloseSummary(saved); }catch(_){ }
         try{ cashV2UpdateCloseEligibility(saved); }catch(_){ }
+        window.A33Notice.show('Conteo inicial de caja guardado.', 'success');
         const st = document.getElementById('cashv2-initial-save-status');
         if (st){
           st.textContent = 'Guardado';
@@ -1999,6 +2000,7 @@ function cashV2InitInitialUIOnce(){
         }
       }catch(err){
         console.error('[A33][CASHv2] initial save error', err);
+        window.A33Notice.show('No se pudo guardar el conteo inicial de caja.', 'error');
         const st = document.getElementById('cashv2-initial-save-status');
         if (st){ st.textContent = 'Error'; setTimeout(()=>{ try{ st.textContent = ''; }catch(_){ } }, 2600); }
       }
@@ -3026,6 +3028,7 @@ function cashV2InitMovementsUIOnce(){
   const elErrSmall = elErr ? elErr.querySelector('small') : null;
 
   function showErr(msg){
+    if (msg) window.A33Notice.show(msg, 'error');
     if (!elErr) return;
     if (!msg){
       try{ elErr.style.display = 'none'; }catch(_){ }
@@ -3218,6 +3221,7 @@ function cashV2InitFinalUIOnce(){
         cashV2ApplyFinalToDom(saved.final);
         try{ cashV2UpdateCloseSummary(saved); }catch(_){ }
         try{ cashV2UpdateCloseEligibility(saved); }catch(_){ }
+        window.A33Notice.show('Conteo final de caja guardado.', 'success');
         const st = document.getElementById('cashv2-final-save-status');
         if (st){
           st.textContent = 'Guardado';
@@ -3225,6 +3229,7 @@ function cashV2InitFinalUIOnce(){
         }
       }catch(err){
         console.error('[A33][CASHv2] final save error', err);
+        window.A33Notice.show('No se pudo guardar el conteo final de caja.', 'error');
         const st = document.getElementById('cashv2-final-save-status');
         if (st){ st.textContent = 'Error'; setTimeout(()=>{ try{ st.textContent = ''; }catch(_){ } }, 2600); }
       }
@@ -3767,6 +3772,7 @@ function cashV2InitCloseUIOnce(){
 
 // --- POS: Efectivo v2 — Reapertura ADMIN con auditoría — Etapa 5/5
 function cashV2SetAdminReopenError(msg){
+  if (msg) window.A33Notice.show(msg, 'error');
   const el = document.getElementById('cashv2-admin-reopen-error');
   if (!el) return;
   try{ el.style.whiteSpace = 'pre-line'; }catch(_){ }
@@ -5543,7 +5549,7 @@ function notifyFinanzasBridge(msg, { force = false } = {}) {
     if (!force && finanzasBridgeWarned) return;
     finanzasBridgeWarned = true;
     if (typeof toast === 'function') toast(msg);
-    else alert(msg);
+    else posNotify(msg);
   } catch (e) {
     console.warn('No se pudo notificar problema POS→Finanzas', e);
   }
@@ -8723,7 +8729,7 @@ function confirmProceedSaleWithoutCustomerPOS(){
   if (!isNoCustomerSelectedForSalePOS()) return true;
   const courtesy = document.getElementById('sale-courtesy');
   if (courtesy && courtesy.checked){
-    alert('Selecciona un cliente para registrar la cortesía.');
+    posNotify('Selecciona un cliente para registrar la cortesía.');
     return false;
   }
   return confirm('No hay cliente seleccionado. ¿Registrar esta venta sin cliente?');
@@ -9029,6 +9035,7 @@ function isCustomerQuickOpenPOS(){
 }
 
 function setCustomerQuickMessagePOS(message, kind){
+  if (message) window.A33Notice.show(message, kind === 'ok' ? 'success' : kind);
   const el = document.getElementById('customer-quick-msg');
   if (!el) return;
   el.textContent = String(message || '');
@@ -11907,42 +11914,15 @@ async function seedMissingDefaults(force=false, options={}){
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 function fmt(n){ return (n||0).toLocaleString('es-NI', {minimumFractionDigits:2, maximumFractionDigits:2}); }
-let toastTimerId = null;
-function showToast(msg, type='ok', durationMs=5000){
-  const t = document.getElementById('toast');
-  if (!t) return;
-  // Accesibilidad
-  if (!t.hasAttribute('role')) t.setAttribute('role','status');
-  if (!t.hasAttribute('aria-live')) t.setAttribute('aria-live','polite');
-  if (!t.hasAttribute('aria-atomic')) t.setAttribute('aria-atomic','true');
-
-  const d = Math.max(800, Number(durationMs || 0) || 0);
-
-  // Limpiar timeout previo si hay otro toast en curso
-  if (toastTimerId){
-    clearTimeout(toastTimerId);
-    toastTimerId = null;
-  }
-
-  // Reset clases de tipo
-  t.classList.remove('ok','error');
-  t.classList.add(type === 'error' ? 'error' : 'ok');
-
-  t.textContent = String(msg || '');
-  t.style.setProperty('--toast-duration', d + 'ms');
-
-  // Reiniciar animación
-  t.classList.remove('show');
-  void t.offsetWidth; // force reflow
-  t.classList.add('show');
-
-  toastTimerId = setTimeout(()=>{
-    t.classList.remove('show');
-  }, d);
+// Adaptador POS: conserva las firmas antiguas; los tiempos son uniformes.
+function posNoticeType(msg, type){
+  return window.A33Notice.resolve(msg, type);
 }
-
-// Compat: toasts rápidos existentes
-function toast(msg){ showToast(msg, 'ok', 1800); }
+function showToast(msg, type, durationMs){
+  return window.A33Notice.show(msg, type);
+}
+function toast(msg){ return showToast(msg); }
+function posNotify(msg){ return window.A33Notice.alert(msg); }
 
 // --- Helpers POS: hora/orden robustos (para listas y export)
 function pad2POS(n){
@@ -12164,9 +12144,8 @@ function humanizeError(err){
 
 
 
-// --- Persistencia robusta (Etapa 1): alertas bloqueantes + atomicidad en flujos críticos
+// --- Persistencia robusta: avisos de error + atomicidad en flujos críticos
 function posBlockingAlert(msg){
-  try{ alert(msg); }catch(_){ }
   try{ if (typeof showToast === 'function') showToast(msg, 'error', 7000); }catch(_){ }
 }
 
@@ -12222,7 +12201,7 @@ function setBtnSavingStatePOS(btn, saving, label){
 async function runWithSavingLockPOS({ key, btnIds, labelSaving, busyToast, onError, fn }){
   const lockKey = String(key || 'save');
   if (__A33_SAVE_LOCKS_POS.has(lockKey)){
-    try{ if (busyToast) showToast(busyToast, 'error', 2500); }catch(_){ }
+    try{ if (busyToast) showToast(busyToast, 'process'); }catch(_){ }
     return;
   }
 
@@ -12233,6 +12212,7 @@ async function runWithSavingLockPOS({ key, btnIds, labelSaving, busyToast, onErr
   // Bloquear y mostrar estado
   for (const b of btns) setBtnSavingStatePOS(b, true, labelSaving || 'Guardando…');
 
+  showToast(labelSaving || 'Guardando…', 'process');
   try{
     await (fn ? fn() : Promise.resolve());
   }catch(err){
@@ -12241,6 +12221,7 @@ async function runWithSavingLockPOS({ key, btnIds, labelSaving, busyToast, onErr
       else showPersistFailPOS(lockKey, err);
     }catch(_){ }
   }finally{
+    window.A33Notice.finish();
     for (const b of btns) setBtnSavingStatePOS(b, false);
     __A33_SAVE_LOCKS_POS.delete(lockKey);
   }
@@ -13205,7 +13186,7 @@ async function closeDailyPOS({ event, dateKey, source }){
     key = makeDailyClosureKeyPOS(eventId, dk, version);
     const dup = await getDailyClosureByKeyPOS(key);
     if (dup){
-      try{ if (typeof showToast === 'function') showToast('Cierre ya guardado (duplicado bloqueado).', 'error', 4500); else alert('Cierre ya guardado (duplicado bloqueado).'); }catch(_){ try{ alert('Cierre ya guardado (duplicado bloqueado).'); }catch(__){ } }
+      try{ if (typeof showToast === 'function') showToast('Cierre ya guardado (duplicado bloqueado).', 'error', 4500); else posNotify('Cierre ya guardado (duplicado bloqueado).'); }catch(_){ try{ posNotify('Cierre ya guardado (duplicado bloqueado).'); }catch(__){ } }
       return { already:true, lock: await getDayLockRecordPOS(eventId, dk), closure: dup, duplicate:true };
     }
 
@@ -13975,6 +13956,7 @@ function productEditGetUnitCostPOS(product){
 }
 
 function productEditSetMsgPOS(msg, kind=''){
+  if (msg) window.A33Notice.show(msg, kind === 'ok' ? 'success' : kind);
   const el = document.getElementById('product-edit-msg');
   if (!el) return;
   el.textContent = msg || '';
@@ -14293,10 +14275,10 @@ document.addEventListener('click', async (e)=>{
     const name = String(row?.querySelector('.bank-edit-name')?.value || '').trim();
     const type = normalizeBankTypePOS(row?.querySelector('.bank-edit-type')?.value || 'transferencia');
     const commissionPct = type === 'tarjeta' ? normalizeBankCommissionPOS(row?.querySelector('.bank-edit-commission')?.value || 0) : 0;
-    if (!name){ alert('Nombre del banco'); return; }
+    if (!name){ posNotify('Nombre del banco'); return; }
 
     const dup = banks.find(x => Number(x.id) !== id && normBankName(x?.name) === normBankName(name) && getBankTypePOS(x) === type);
-    if (dup){ alert('Ya existe un banco con ese nombre y tipo.'); return; }
+    if (dup){ posNotify('Ya existe un banco con ese nombre y tipo.'); return; }
 
     b.name = name;
     b.type = type;
@@ -16352,16 +16334,16 @@ async function renderMasterExtrasImportPOS(ev){
 
 async function importMasterExtraToEventPOS(){
   const ev = await getActiveEventPOS();
-  if (!ev){ alert('Activa un evento para importar un Extra maestro.'); return; }
+  if (!ev){ posNotify('Activa un evento para importar un Extra maestro.'); return; }
   const sel = document.getElementById('extra-master-select');
   const stockEl = document.getElementById('extra-master-stock');
   const masterId = parseInt(String(sel?.value || '0'), 10);
-  if (!masterId){ alert('Selecciona un Extra maestro.'); return; }
+  if (!masterId){ posNotify('Selecciona un Extra maestro.'); return; }
   const stock = Number(String(stockEl?.value || '').replace(',', '.'));
-  if (!Number.isFinite(stock) || stock < 0){ alert('Cantidad inicial inválida.'); return; }
+  if (!Number.isFinite(stock) || stock < 0){ posNotify('Cantidad inicial inválida.'); return; }
   const masters = (await getAllMasterExtrasSafePOS()).map(normalizeMasterExtraPOS).filter(Boolean);
   const master = masters.find(x => Number(x.id) === Number(masterId));
-  if (!master || master.active === false){ alert('Extra maestro no disponible.'); return; }
+  if (!master || master.active === false){ posNotify('Extra maestro no disponible.'); return; }
 
   ensureEventExtraSeqPOS(ev);
   const extras = sanitizeExtrasPOS(ev.extras);
@@ -16464,7 +16446,7 @@ async function renderExtrasUI(){
 async function onSaveExtraPOS(){
   const ev = await getActiveEventPOS();
   if (!ev){
-    alert('Debes activar un evento para crear Extras.');
+    posNotify('Debes activar un evento para crear Extras.');
     return;
   }
 
@@ -16475,10 +16457,10 @@ async function onSaveExtraPOS(){
   const lowDefault = safeInt(document.getElementById('extra-low-default')?.value, 5);
   const lowStockAlert = safeInt(document.getElementById('extra-low')?.value, lowDefault);
 
-  if (!name){ alert('Nombre de Extra es obligatorio'); return; }
-  if (!Number.isFinite(stock) || stock < 0){ alert('Stock/Cantidad debe ser 0 o mayor'); return; }
-  if (!Number.isFinite(unitCost) || unitCost < 0){ alert('Costo unitario es obligatorio (>= 0)'); return; }
-  if (!Number.isFinite(unitPrice) || unitPrice <= 0){ alert('Precio unitario es obligatorio (> 0)'); return; }
+  if (!name){ posNotify('Nombre de Extra es obligatorio'); return; }
+  if (!Number.isFinite(stock) || stock < 0){ posNotify('Stock/Cantidad debe ser 0 o mayor'); return; }
+  if (!Number.isFinite(unitCost) || unitCost < 0){ posNotify('Costo unitario es obligatorio (>= 0)'); return; }
+  if (!Number.isFinite(unitPrice) || unitPrice <= 0){ posNotify('Precio unitario es obligatorio (> 0)'); return; }
 
   ensureEventExtraSeqPOS(ev);
   const extras = sanitizeExtrasPOS(ev.extras);
@@ -16488,7 +16470,7 @@ async function onSaveExtraPOS(){
   if (editingExtraIdPOS){
     const x = extras.find(z => Number(z.id) === Number(editingExtraIdPOS));
     if (!x){
-      alert('No se encontró el Extra a editar (posible cambio de evento).');
+      posNotify('No se encontró el Extra a editar (posible cambio de evento).');
       resetExtraFormPOS();
       await renderExtrasUI();
       return;
@@ -16561,7 +16543,7 @@ async function onExtrasListClickPOS(e){
     const raw = prompt(`Agregar stock a "${x.name}". Cantidad a sumar:`, '0');
     if (raw == null) return;
     const add = parseFloat(raw);
-    if (!Number.isFinite(add) || add <= 0){ alert('Cantidad no válida'); return; }
+    if (!Number.isFinite(add) || add <= 0){ posNotify('Cantidad no válida'); return; }
     x.stock = Number(x.stock || 0) + add;
     x.updatedAt = new Date().toISOString();
     ev.extras = extras;
@@ -19289,7 +19271,7 @@ async function revertCupConsumptionFromSalePOS(sale){
 	  const modal = document.getElementById(modalId);
 	  const tbody = document.querySelector('#inv-lote-selector-table tbody');
 	  if (!modal || !tbody){
-	    alert('No se pudo abrir el selector de lotes (UI incompleta).');
+	    posNotify('No se pudo abrir el selector de lotes (UI incompleta).');
 	    return;
 	  }
 	  const evSel = document.getElementById('inv-event');
@@ -19921,12 +19903,12 @@ async function openSobrantePanelPOS(){
   if (!panel) return;
 
   const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
-  if (!evId) return alert('Selecciona un evento');
+  if (!evId) return posNotify('Selecciona un evento');
 
   // Validar evento (si está abierto, permitir pero advertir)
   const evs = await getAll('events');
   const ev = evs.find(e => e && Number(e.id) === Number(evId)) || null;
-  if (!ev){ alert('Evento no encontrado'); return; }
+  if (!ev){ posNotify('Evento no encontrado'); return; }
   if (!ev.closedAt){
     const ok = confirm('Este evento aún está ABIERTO.\n\n¿Crear lote sobrante de todas formas? (Recomendado al final del evento)');
     if (!ok) return;
@@ -19935,7 +19917,7 @@ async function openSobrantePanelPOS(){
   await refreshSobranteUIForEventPOS(evId);
 
   if (btn && btn.disabled){
-    alert('No hay lotes EN_EVENTO disponibles para crear sobrante (o ya se creó el sobrante).');
+    posNotify('No hay lotes EN_EVENTO disponibles para crear sobrante (o ya se creó el sobrante).');
     return;
   }
 
@@ -20102,11 +20084,11 @@ function subtractSobranteFromParentSnapshotPOS(parent, eventId, transferItems){
 
 async function createSobranteLotPOS(){
   const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
-  if (!evId) return alert('Selecciona un evento');
+  if (!evId) return posNotify('Selecciona un evento');
 
   const sel = document.getElementById('sobrante-lote-select');
   const parentId = sel && sel.value ? sel.value : '';
-  if (!parentId) return alert('Selecciona un lote original');
+  if (!parentId) return posNotify('Selecciona un lote original');
 
   const qty = getSobranteInputsPOS();
 
@@ -20115,22 +20097,22 @@ async function createSobranteLotPOS(){
   const allLotes = readLotesLS_POS();
   const parent = allLotes.find(l => l && String(l.id) === String(parentId));
   if (!parent){
-    alert('No se encontró el lote original en Control de Lotes.');
+    posNotify('No se encontró el lote original en Control de Lotes.');
     return;
   }
 
   const st = effectiveLoteStatusPOS(parent);
   if (st === 'CERRADO'){
-    alert('Este lote ya está CERRADO.');
+    posNotify('Este lote ya está CERRADO.');
     return;
   }
   if (Number(parent.assignedEventId || 0) !== Number(evId || 0)){
-    alert('Este lote no corresponde al evento seleccionado.');
+    posNotify('Este lote no corresponde al evento seleccionado.');
     return;
   }
 
   if (parent.sobranteLotId || lotHasSobranteChildPOS(allLotes, parent.id, evId)){
-    alert('Ya existe un lote sobrante creado para este lote original (doble sobrante prevenido).');
+    posNotify('Ya existe un lote sobrante creado para este lote original (doble sobrante prevenido).');
     return;
   }
 
@@ -20141,7 +20123,7 @@ async function createSobranteLotPOS(){
   const transfer = buildSobranteTransferItemsPOS(parent, evId, qty, products);
   if (!transfer.ok){
     const detail = transfer.errors && transfer.errors.length ? ('\n\n' + transfer.errors.map(text => '• ' + text).join('\n')) : '';
-    alert('No se pudo crear el lote hijo con cantidades consistentes.' + detail);
+    posNotify('No se pudo crear el lote hijo con cantidades consistentes.' + detail);
     return;
   }
 
@@ -20472,7 +20454,7 @@ function closeReversoPanelPOS(){
 
 async function reverseAssignSelectedLotePOS(){
   const evId = parseInt((document.getElementById('inv-event') && document.getElementById('inv-event').value) || '0', 10);
-  if (!evId) return alert('Selecciona un evento.');
+  if (!evId) return posNotify('Selecciona un evento.');
 
   const sel = document.getElementById('reverso-lote-select');
   const meta = document.getElementById('reverso-lote-meta');
@@ -20480,25 +20462,25 @@ async function reverseAssignSelectedLotePOS(){
 
   const lotes = readLotesLS_POS();
   const idx = lotes.findIndex(l => l && String(l.id) === String(sel.value));
-  if (idx < 0) return alert('No se encontró el lote seleccionado.');
+  if (idx < 0) return posNotify('No se encontró el lote seleccionado.');
   const lote = lotes[idx];
 
   if (effectiveLoteStatusPOS(lote) !== 'EN_EVENTO' || Number(lote.assignedEventId) !== Number(evId)){
-    alert('Este lote ya no está EN_EVENTO en el evento actual.');
+    posNotify('Este lote ya no está EN_EVENTO en el evento actual.');
     await refreshReversoUIForEventPOS(evId);
     return;
   }
 
   const group = await getRestockGroupForLotePOS(evId, lote);
   if (!group){
-    alert('No se encontró la carga de inventario de este lote en el evento.');
+    posNotify('No se encontró la carga de inventario de este lote en el evento.');
     return;
   }
 
   const sum = await summarizeRestockGroupPOS(group);
   const chk = await validateReverseAssignPOS(evId, group, sum.sumsByPid, sum.hasGallon);
   if (!chk.ok){
-    alert('Reverso bloqueado: ' + chk.reason);
+    posNotify('Reverso bloqueado: ' + chk.reason);
     if (meta) meta.textContent = 'Bloqueado: ' + chk.reason;
     return;
   }
@@ -20658,6 +20640,7 @@ function reempaqueUpdateCurrencyNotePOS(){
 }
 
 function reempaqueSetMsgPOS(msg, type){
+  if (msg) window.A33Notice.show(msg, type === 'ok' ? 'success' : type);
   const el = document.getElementById('rp-msg');
   if (!el) return;
   el.textContent = String(msg || '');
@@ -21626,7 +21609,6 @@ async function registrarReempaqueMultipleUiPOS(){
     await reempaqueRefreshUiPOS();
     const successSummary = reempaqueMultipleSuccessSummaryPOS(record);
     reempaqueSetMsgPOS(successSummary, 'ok');
-    toast(record.cantidadExtraMerma > 0 ? successSummary : 'Reempaque múltiple registrado');
     return record;
   }catch(err){
     if (!movementCompleted && createdTargetsForRollback.length){
@@ -22049,7 +22031,6 @@ async function registrarReempaqueUiPOS(){
     try{ await refreshSaleStockLabel(); }catch(_){ }
     const successSummary = reempaqueSuccessSummaryPOS(record);
     reempaqueSetMsgPOS('Reempaque registrado. ' + successSummary, 'ok');
-    toast(record.cantidadExtraMerma > 0 ? `+${record.cantidadExtraMerma} ${reempaquePluralProductNamePOS(record.targetProductName, record.cantidadExtraMerma)} extra por merma acumulada` : 'Reempaque registrado');
     return record;
   }catch(err){
     console.error('No se pudo registrar Reempaque', err);
@@ -22143,7 +22124,7 @@ document.addEventListener('click', async (e)=>{
     const evId = parseInt($('#inv-event').value||'0',10);
     const tr = e.target.closest('tr');
     const qty = parseInt(tr.querySelector('.inv-repo').value||'0',10);
-    if (!(qty>0)) { alert('Ingresa una reposición > 0'); return; }
+    if (!(qty>0)) { posNotify('Ingresa una reposición > 0'); return; }
     await addRestock(evId, pid, qty);
     tr.querySelector('.inv-repo').value='';
     await renderInventario(); await refreshSaleStockLabel();
@@ -22154,7 +22135,7 @@ document.addEventListener('click', async (e)=>{
     const evId = parseInt($('#inv-event').value||'0',10);
     const tr = e.target.closest('tr');
     const qty = parseInt(tr.querySelector('.inv-ajuste').value||'0',10);
-    if (!qty) { alert('Ingresa un ajuste (positivo o negativo)'); return; }
+    if (!qty) { posNotify('Ingresa un ajuste (positivo o negativo)'); return; }
     await addAdjust(evId, pid, qty, 'Ajuste manual');
     tr.querySelector('.inv-ajuste').value='';
     await renderInventario(); await refreshSaleStockLabel();
@@ -24278,6 +24259,7 @@ function showConfirmClosePOS({ title, message } = {}){
 }
 
 function setClosePeriodErrorPOS(msg){
+  if (msg) window.A33Notice.show(msg, 'error');
   const el = document.getElementById('summary-close-error');
   if (!el) return;
   el.style.whiteSpace = 'pre-wrap';
@@ -25168,7 +25150,7 @@ function renderSummaryArchivesTablePOS(list){
         await renderSummary();
       }catch(err){
         console.error('ver snapshot', err);
-        alert('No se pudo abrir el snapshot: ' + humanizeError(err));
+        posNotify('No se pudo abrir el snapshot: ' + humanizeError(err));
       }
     });
 
@@ -25187,7 +25169,7 @@ function renderSummaryArchivesTablePOS(list){
         showToast('Excel re-exportado.', 'ok', 2500);
       }catch(err){
         console.error('re-export', err);
-        alert('No se pudo re-exportar el Excel: ' + humanizeError(err));
+        posNotify('No se pudo re-exportar el Excel: ' + humanizeError(err));
       }
     });
 
@@ -26163,7 +26145,7 @@ function bindSummaryPeriodCloseAndArchivePOS(){
 
   const btnMainExport = document.getElementById('btn-summary-export');
   if (btnMainExport){
-    btnMainExport.addEventListener('click', ()=>{ onSummaryExportExcelPOS().catch(err=>{ console.error(err); alert('No se pudo exportar: ' + humanizeError(err)); }); });
+    btnMainExport.addEventListener('click', ()=>{ onSummaryExportExcelPOS().catch(err=>{ console.error(err); posNotify('No se pudo exportar: ' + humanizeError(err)); }); });
   }
 
   const btnClosePeriod = document.getElementById('btn-summary-close-period');
@@ -26266,7 +26248,7 @@ function downloadCSV(name, rows){
 
 function downloadExcel(filename, sheetName, rows){
   if (typeof XLSX === 'undefined'){
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
+    posNotify('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
     return;
   }
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -26279,7 +26261,7 @@ function downloadExcel(filename, sheetName, rows){
 
 async function generateInventoryCSV(eventId){
   if (typeof XLSX === 'undefined'){
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
+    posNotify('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
     return;
   }
   const prods = await getAll('products');
@@ -26928,7 +26910,7 @@ async function exportEventExcel(eventId){
     return await exportEventClosureWorkbookPOS(eventId);
   }catch(err){
     console.error('exportEventExcel error', err);
-    alert('No se pudo generar el Excel del evento.\n\nDetalle: ' + humanizeError(err));
+    posNotify('No se pudo generar el Excel del evento.\n\nDetalle: ' + humanizeError(err));
     return null;
   }
 }
@@ -26952,20 +26934,20 @@ async function getOpenCashDaysForEventPOS(eventId){
 async function closeEvent(eventId){
   const events = await getAll('events');
   const ev = events.find(e=>e.id===eventId);
-  if (!ev){ alert('Evento no encontrado'); return; }
-  if (ev.closedAt){ alert('Este evento ya está cerrado.'); return; }
+  if (!ev){ posNotify('Evento no encontrado'); return; }
+  if (ev.closedAt){ posNotify('Este evento ya está cerrado.'); return; }
 
   let openCashDays = [];
   try{
     openCashDays = await getOpenCashDaysForEventPOS(eventId);
   }catch(err){
     console.error('getOpenCashDaysForEventPOS error', err);
-    alert('No se pudo verificar el estado de la caja. El evento permanece abierto.');
+    posNotify('No se pudo verificar el estado de la caja. El evento permanece abierto.');
     return;
   }
   if (openCashDays.length){
     const detail = openCashDays.map(dayKey=>`\u2022 ${dayKey}`).join('\n');
-    alert(`No se puede cerrar el evento porque tiene caja abierta en:\n\n${detail}\n\nCierra la caja de cada fecha antes de cerrar el evento.`);
+    posNotify(`No se puede cerrar el evento porque tiene caja abierta en:\n\n${detail}\n\nCierra la caja de cada fecha antes de cerrar el evento.`);
     return;
   }
 
@@ -26987,7 +26969,7 @@ async function closeEvent(eventId){
     });
   }catch(err){
     console.error('reempaqueFinalizeMermaForEventPOS error', err);
-    alert('No se pudo cerrar de forma segura la merma recuperable. El evento permanece abierto.');
+    posNotify('No se pudo cerrar de forma segura la merma recuperable. El evento permanece abierto.');
     return;
   }
 
@@ -26998,7 +26980,7 @@ async function closeEvent(eventId){
   } catch(err){
     console.error('generateCorteCSV error', err);
     try{ await reempaqueRollbackFinalMermaForEventPOS(finalMerma); }catch(rollbackErr){ console.error('rollback merma provisional', rollbackErr); }
-    alert('No se pudo generar el Excel de cierre. El evento permanece abierto.\n\nDetalle: ' + humanizeError(err));
+    posNotify('No se pudo generar el Excel de cierre. El evento permanece abierto.\n\nDetalle: ' + humanizeError(err));
     return;
   }
 
@@ -27030,7 +27012,7 @@ async function closeEvent(eventId){
 async function reopenEvent(eventId){
   const events = await getAll('events');
   const ev = events.find(e=>e.id===eventId);
-  if (!ev){ alert('Evento no encontrado'); return; }
+  if (!ev){ posNotify('Evento no encontrado'); return; }
   ev.closedAt = null;
   await put('events', ev);
   // Etapa 2: limpiar cliente al cambiar evento
@@ -27052,7 +27034,7 @@ async function activateEvent(eventId){
 async function deleteEvent(eventId){
   const events = await getAll('events');
   const ev = events.find(e=>e.id===eventId);
-  if (!ev){ alert('Evento no encontrado'); return; }
+  if (!ev){ posNotify('Evento no encontrado'); return; }
   const msg = '¿Eliminar evento "'+ev.name+'"? Se borrarán sus ventas e inventario. Esta acción NO se puede deshacer.';
   if (!confirm(msg)) return;
   const eventSales = (await getAll('sales')).filter(s=>s && s.eventId===eventId);
@@ -27065,7 +27047,7 @@ async function deleteEvent(eventId){
     }
   }catch(error){
     physicalCupTickets.forEach(removePhysicalCupRestoreTicketPOS);
-    alert((error && error.message) || 'No se pudo preparar el reverso seguro de Vasos físicos. El evento no fue eliminado.');
+    posNotify((error && error.message) || 'No se pudo preparar el reverso seguro de Vasos físicos. El evento no fue eliminado.');
     return;
   }
 
@@ -27105,7 +27087,7 @@ async function init(){
   try{
     await openDB();
   }catch(err){
-    alert('No se pudo abrir la base de datos del POS. Revisa permisos de almacenamiento del navegador.');
+    posNotify('No se pudo abrir la base de datos del POS. Revisa permisos de almacenamiento del navegador.');
     console.error('INIT openDB ERROR', { name: err && err.name, message: err && err.message, code: err && err.code, phase: err && err.phase, blocked: err && err.blocked, upgradeNeeded: err && err.upgradeNeeded, err });
     return;
   }
@@ -27273,7 +27255,7 @@ async function init(){
       const catalog = ensureGroupCatalogFromEventsPOS(evs);
       const visible = (catalog || []).filter(g => g && !hidden.has(g));
       if (!visible.length) {
-        alert('No hay grupos disponibles para gestionar.');
+        posNotify('No hay grupos disponibles para gestionar.');
         return;
       }
       const msg = 'Grupos actuales:\n' + visible.map((g,i)=> `${i+1}. ${g}`).join('\n') +
@@ -27282,13 +27264,13 @@ async function init(){
       if (!choice) return;
       const idxNum = parseInt(choice, 10);
       if (!idxNum || idxNum < 1 || idxNum > visible.length) {
-        alert('Selección no válida');
+        posNotify('Selección no válida');
         return;
       }
       hidden.add(visible[idxNum-1]);
       setHiddenGroups(Array.from(hidden));
       await refreshEventUI();
-      alert('Grupo ocultado. Ya no aparecerá para nuevos eventos, pero sigue existiendo en el historial.');
+      posNotify('Grupo ocultado. Ya no aparecerá para nuevos eventos, pero sigue existiendo en el historial.');
     });
   }
   $('#btn-add-event').addEventListener('click', async()=>{
@@ -27309,7 +27291,7 @@ async function init(){
   }
 
   if (!name) {
-    alert('Escribe un nombre de evento');
+    posNotify('Escribe un nombre de evento');
     return;
   }
 
@@ -27348,12 +27330,12 @@ async function init(){
         const id = parseInt($('#sale-event').value||'0',10);
         const current = await getMeta('currentEventId');
         const useId = id || current;
-        if (!useId) { alert('Selecciona un evento'); return; }
+        if (!useId) { posNotify('Selecciona un evento'); return; }
         await closeEvent(parseInt(useId,10));
       }
     });
   });
-  $('#btn-reopen-event').addEventListener('click', async()=>{ const val = $('#sale-event').value; const id = parseInt(val||'0',10); if (!id) return alert('Selecciona un evento cerrado'); await reopenEvent(id); });
+  $('#btn-reopen-event').addEventListener('click', async()=>{ const val = $('#sale-event').value; const id = parseInt(val||'0',10); if (!id) return posNotify('Selecciona un evento cerrado'); await reopenEvent(id); });
 
   $('#sale-product').addEventListener('change', async()=>{
     await setSalePriceFromSelectionPOS();
@@ -27468,7 +27450,7 @@ async function init(){
   $('#btn-undo').addEventListener('click', async ()=>{
     const curId = await getMeta('currentEventId');
     if (!curId) {
-      alert('No hay evento activo.');
+      posNotify('No hay evento activo.');
       return;
     }
     const d = $('#sale-date').value;
@@ -27476,14 +27458,14 @@ async function init(){
     // Candado: si sección está activada y el día está cerrado, NO permitir cambios de ventas
     try{
       const ev = await getEventByIdPOS(curId);
-      if (!ev || ev.closedAt){ alert('No hay un evento activo válido.'); return; }
+      if (!ev || ev.closedAt){ posNotify('No hay un evento activo válido.'); return; }
       if (!(await guardSellDayOpenOrToastPOS(ev, d))) return;
     }catch(e){}
 
     const allSales = await getAll('sales');
     const filtered = allSales.filter(s => s.eventId === curId && s.date === d);
     if (!filtered.length) {
-      alert('No hay ventas para deshacer en este día.');
+      posNotify('No hay ventas para deshacer en este día.');
       return;
     }
     const last = filtered.sort((a,b)=> a.id - b.id)[filtered.length - 1];
@@ -27502,7 +27484,7 @@ async function init(){
     await refreshSaleStockLabel();
     await renderInventario();
     if (delRes && delRes.warnings && delRes.warnings.length){
-      alert('Venta eliminada, pero con avisos:\n\n- ' + delRes.warnings.join('\n- '));
+      posNotify('Venta eliminada, pero con avisos:\n\n- ' + delRes.warnings.join('\n- '));
     }
     toast('Venta eliminada');
 
@@ -27527,20 +27509,20 @@ async function init(){
     const id = Number(rawId);
 
     if (!Number.isFinite(id)){
-      alert('No pude identificar la venta a eliminar (id inválido). Recarga el POS y vuelve a intentar.');
+      posNotify('No pude identificar la venta a eliminar (id inválido). Recarga el POS y vuelve a intentar.');
       return;
     }
 
     const saleToDelete = (await getAll('sales')).find(s=>s.id===id) || null;
     if (!saleToDelete){
-      alert('No pude cargar la venta a eliminar. Recarga el POS y vuelve a intentar.');
+      posNotify('No pude cargar la venta a eliminar. Recarga el POS y vuelve a intentar.');
       return;
     }
 
     // Candado: si sección está activada y el día está cerrado, NO permitir cambios de ventas
     try{
       const ev = await getEventByIdPOS(saleToDelete.eventId);
-      if (!ev || ev.closedAt){ alert('No hay un evento activo válido.'); return; }
+      if (!ev || ev.closedAt){ posNotify('No hay un evento activo válido.'); return; }
       if (!(await guardSellDayOpenOrToastPOS(ev, saleToDelete.date))) return;
     }catch(e){}
 
@@ -27572,7 +27554,7 @@ async function init(){
       }
 
       if (delRes && delRes.warnings && delRes.warnings.length){
-        alert('Venta eliminada, pero con avisos:\n\n- ' + delRes.warnings.join('\n- '));
+        posNotify('Venta eliminada, pero con avisos:\n\n- ' + delRes.warnings.join('\n- '));
       }
 
       toast('Venta eliminada');
@@ -27590,7 +27572,7 @@ async function init(){
 
     }catch(err){
       console.error('Error eliminando la venta', err);
-      alert('No se pudo eliminar la venta.\n\nDetalle: ' + humanizeError(err));
+      posNotify('No se pudo eliminar la venta.\n\nDetalle: ' + humanizeError(err));
     }finally{
       btn.disabled = false;
       btn.textContent = prevText || 'Eliminar';
@@ -27622,7 +27604,7 @@ async function init(){
       const typeEl = document.getElementById('bank-new-type');
       const commissionEl = document.getElementById('bank-new-commission');
       const raw = (input?.value || '').trim();
-      if (!raw){ alert('Nombre del banco'); return; }
+      if (!raw){ posNotify('Nombre del banco'); return; }
 
       const type = normalizeBankTypePOS(typeEl?.value || 'transferencia');
       const commissionPct = type === 'tarjeta' ? normalizeBankCommissionPOS(commissionEl?.value || 0) : 0;
@@ -27644,7 +27626,7 @@ async function init(){
           }
           return;
         }
-        alert('Ese banco ya existe con ese tipo.');
+        posNotify('Ese banco ya existe con ese tipo.');
         return;
       }
 
@@ -27700,7 +27682,7 @@ async function exportEventosExcel(){
   $('#btn-exportar-evento-excel').addEventListener('click', async()=>{
     const evId = await getMeta('currentEventId');
     if (!evId){
-      alert('Debes activar un evento en la pestaña Vender antes de exportar a Excel.');
+      posNotify('Debes activar un evento en la pestaña Vender antes de exportar a Excel.');
       return;
     }
     await exportEventExcel(evId);
@@ -27726,7 +27708,7 @@ async function exportEventosExcel(){
       try{ await generateCorteCSV(id); }
       catch(err){
         console.error('generateCorteCSV manual error', err);
-        alert('No se pudo generar el Excel del evento.\n\nDetalle: ' + humanizeError(err));
+        posNotify('No se pudo generar el Excel del evento.\n\nDetalle: ' + humanizeError(err));
       }
     }
     else if (btn.classList.contains('act-ventas')) await exportEventSalesCSV(id);
@@ -27742,7 +27724,7 @@ async function exportEventosExcel(){
   // Inventario tab
   $('#inv-event').addEventListener('change', renderInventario);
   $('#btn-inv-ref').addEventListener('click', renderInventario);
-  $('#btn-inv-csv').addEventListener('click', async()=>{ const id = parseInt($('#inv-event').value||'0',10); if (!id) return alert('Selecciona un evento'); await generateInventoryCSV(id); });
+  $('#btn-inv-csv').addEventListener('click', async()=>{ const id = parseInt($('#inv-event').value||'0',10); if (!id) return posNotify('Selecciona un evento'); await generateInventoryCSV(id); });
   const btnFromLote = document.getElementById('btn-inv-from-lote');
 	  try{ setupInvLoteSelectorModalPOS(); }catch(_){ }
 	  if (btnFromLote) btnFromLote.addEventListener('click', openInvLoteSelectorModalPOS);
@@ -27840,7 +27822,7 @@ function recomputeTotal(){
 
 async function addSale(){
   const curId = await getMeta('currentEventId');
-  if (!curId){ alert('Selecciona un evento'); return; }
+  if (!curId){ posNotify('Selecciona un evento'); return; }
   const date = $('#sale-date').value;
   const selVal = String($('#sale-product')?.value || '').trim();
   const parsed = parseSelectedSellItemValue(selVal);
@@ -27856,8 +27838,8 @@ async function addSale(){
   const discStr = ($('#sale-discount') ? $('#sale-discount').value : '');
   const discTrim = String(discStr ?? '').trim();
   const discParsed = parseNumPOS(discStr, 0);
-  if (discTrim && !Number.isFinite(discParsed)) { alert('Descuento inválido'); return; }
-  if (Number.isFinite(discParsed) && discParsed < 0) { alert('Descuento inválido'); return; }
+  if (discTrim && !Number.isFinite(discParsed)) { posNotify('Descuento inválido'); return; }
+  if (Number.isFinite(discParsed) && discParsed < 0) { posNotify('Descuento inválido'); return; }
   const discountPerUnit = Math.max(0, Number.isFinite(discParsed) ? discParsed : 0);
   const payment = normalizePaymentMethodPOS($('#sale-payment').value || 'efectivo');
   const courtesy = $('#sale-courtesy').checked;
@@ -27868,11 +27850,11 @@ async function addSale(){
   const customerName = (customerResolved && customerResolved.id && customerResolved.displayName) ? customerResolved.displayName : '';
   const courtesyTo = courtesy ? getCourtesyRecipientForSalePOS(customerName) : '';
   const notes = $('#sale-notes').value || '';
-  if (!date || !selectedProductId || !qty) { alert('Completa fecha, producto y cantidad'); return; }
+  if (!date || !selectedProductId || !qty) { posNotify('Completa fecha, producto y cantidad'); return; }
 
   // Regla final: descuento por unidad NO puede superar el precio unitario (si no es cortesía)
   if (!courtesy && Number.isFinite(price) && discountPerUnit > price + 1e-9) {
-    alert('Descuento por unidad no puede ser mayor que el precio unitario');
+    posNotify('Descuento por unidad no puede ser mayor que el precio unitario');
     return;
   }
 
@@ -27889,19 +27871,19 @@ async function addSale(){
     const activeBanks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
     const label = getPaymentMethodLabelPOS(payment);
     if (!activeBanks.length){
-      alert(`No hay bancos activos tipo ${label}. Agregá uno en Catálogos → Bancos.`);
+      posNotify(`No hay bancos activos tipo ${label}. Agregá uno en Catálogos → Bancos.`);
       return;
     }
     const sel = document.getElementById('sale-bank');
     const raw = sel ? String(sel.value || '').trim() : '';
     const id = parseInt(raw || '0', 10);
     if (!id){
-      alert(`Selecciona el banco para ${label}.`);
+      posNotify(`Selecciona el banco para ${label}.`);
       return;
     }
     const found = activeBanks.find(b => Number(b.id) === id);
     if (!found){
-      alert(`Selecciona un banco activo tipo ${label}.`);
+      posNotify(`Selecciona un banco activo tipo ${label}.`);
       return;
     }
     bankId = id;
@@ -27912,7 +27894,7 @@ async function addSale(){
 
   const events = await getAll('events');
   const event = events.find(e=>e.id===curId);
-  if (!event || event.closedAt){ alert('Este evento está cerrado. Reábrelo o activa otro.'); return; }
+  if (!event || event.closedAt){ posNotify('Este evento está cerrado. Reábrelo o activa otro.'); return; }
 
   // Candado: si sección está activada y el día está cerrado, NO permitir ventas
   if (!(await guardSellDayOpenOrToastPOS(event, date))) return;
@@ -27920,18 +27902,18 @@ async function addSale(){
   const products = await getAll('products');
   const prod = findCatalogProductByStableIdPOS(products, selectedProductId);
   if (!prod){
-    alert('Producto no encontrado. Actualiza el selector de POS y vuelve a intentar.');
+    posNotify('Producto no encontrado. Actualiza el selector de POS y vuelve a intentar.');
     await refreshProductSelect({ keepSelection:false });
     return;
   }
   if (!productSellableInPOS(prod)){
-    alert('Este producto ya no está activo o no está marcado para POS en Catálogos. No se guardó la venta.');
+    posNotify('Este producto ya no está activo o no está marcado para POS en Catálogos. No se guardó la venta.');
     await refreshProductSelect({ keepSelection:false });
     return;
   }
   const productSnap = buildSaleProductSnapshotPOS(prod, price);
   if (!productSnap.productId || !productSnap.productName){
-    alert('Producto inválido: falta ID estable o nombre. Revisa Catálogos.');
+    posNotify('Producto inválido: falta ID estable o nombre. Revisa Catálogos.');
     return;
   }
   const productName = productSnap.productName;
@@ -27941,7 +27923,7 @@ async function addSale(){
     const lotGuard = await guardLotAvailabilityBeforeSalePOS(curId, productName, qty, productSnap.productId, prod);
     if (lotGuard && lotGuard.presKey){
       if (!lotGuard.ok){
-        alert(lotGuard.msg || 'No hay lotes asignados a este evento para vender esta presentación.');
+        posNotify(lotGuard.msg || 'No hay lotes asignados a este evento para vender esta presentación.');
         return;
       }
       if (lotGuard.warn){
@@ -28008,7 +27990,7 @@ async function addSale(){
   const tenderCheck = validateSaleCashTenderPOS({ payment, total, courtesy, isReturn });
   if (!tenderCheck.ok){
     try{ updateSaleCashTenderComputedPOS(); }catch(_){ }
-    alert(tenderCheck.msg || 'Revisa el cobro en efectivo.');
+    posNotify(tenderCheck.msg || 'Revisa el cobro en efectivo.');
     return;
   }
 
@@ -28094,9 +28076,9 @@ async function addSale(){
 
   // Validación mínima (bloqueante antes de guardar)
   const vMin = validateSaleMinimalPOS(saleRecord);
-  if (!vMin.ok){ alert(vMin.msg); return; }
+  if (!vMin.ok){ posNotify(vMin.msg); return; }
   const vCardCommission = validateSaleCardCommissionSnapshotPOS(saleRecord);
-  if (!vCardCommission.ok){ alert(vCardCommission.msg); return; }
+  if (!vCardCommission.ok){ posNotify(vCardCommission.msg); return; }
 
   // Etapa 2D: UID estable por intento + dedupe conservador (antes de insertar)
   try{
@@ -28113,7 +28095,7 @@ async function addSale(){
       }catch(error){ console.warn('No se pudo conciliar Vaso físico en reintento de venta', error); }
       clearPendingSaleUidPOS();
       try{ await renderDay(); await renderSummary(); }catch(_){ }
-      try{ if (typeof showToast === 'function') showToast('Venta ya guardada (duplicado bloqueado).', 'error', 4500); else alert('Venta ya guardada (duplicado bloqueado).'); }catch(_){ try{ alert('Venta ya guardada (duplicado bloqueado).'); }catch(__){ } }
+      try{ if (typeof showToast === 'function') showToast('Venta ya guardada (duplicado bloqueado).', 'error', 4500); else posNotify('Venta ya guardada (duplicado bloqueado).'); }catch(_){ try{ posNotify('Venta ya guardada (duplicado bloqueado).'); }catch(__){ } }
       return;
     }
   }catch(_){ }
@@ -28213,10 +28195,10 @@ async function addSale(){
 
 async function addExtraSale(extraId){
   const curId = await getMeta('currentEventId');
-  if (!curId){ alert('Selecciona un evento'); return; }
+  if (!curId){ posNotify('Selecciona un evento'); return; }
 
   const ev = await getEventByIdPOS(curId);
-  if (!ev || ev.closedAt){ alert('No hay un evento activo válido'); return; }
+  if (!ev || ev.closedAt){ posNotify('No hay un evento activo válido'); return; }
 
   const date = $('#sale-date').value;
   const qtyIn = parseFloat($('#sale-qty').value||'0');
@@ -28232,7 +28214,7 @@ async function addExtraSale(extraId){
   const courtesyTo = courtesy ? getCourtesyRecipientForSalePOS(customerName) : '';
   const notes = $('#sale-notes').value || '';
 
-  if (!date || !qty) { alert('Completa fecha y cantidad'); return; }
+  if (!date || !qty) { posNotify('Completa fecha y cantidad'); return; }
 
   // Etapa 1: confirmación si no hay cliente seleccionado
   if (!confirmProceedSaleWithoutCustomerPOS()) return;
@@ -28252,19 +28234,19 @@ async function addExtraSale(extraId){
     const activeBanks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
     const label = getPaymentMethodLabelPOS(payment);
     if (!activeBanks.length){
-      alert(`No hay bancos activos tipo ${label}. Agregá uno en Catálogos → Bancos.`);
+      posNotify(`No hay bancos activos tipo ${label}. Agregá uno en Catálogos → Bancos.`);
       return;
     }
     const sel = document.getElementById('sale-bank');
     const raw = sel ? String(sel.value || '').trim() : '';
     const id = parseInt(raw || '0', 10);
     if (!id){
-      alert(`Selecciona el banco para ${label}.`);
+      posNotify(`Selecciona el banco para ${label}.`);
       return;
     }
     const found = activeBanks.find(b => Number(b.id) === id);
     if (!found){
-      alert(`Selecciona un banco activo tipo ${label}.`);
+      posNotify(`Selecciona un banco activo tipo ${label}.`);
       return;
     }
     bankId = id;
@@ -28276,7 +28258,7 @@ async function addExtraSale(extraId){
   const extras = sanitizeExtrasPOS(ev.extras).filter(x=>x && x.active!==false);
   const extra = extras.find(x=>Number(x.id)===Number(extraId));
   if (!extra){
-    alert('Extra no encontrado.');
+    posNotify('Extra no encontrado.');
     await renderExtrasUI();
     await refreshProductSelect({ keepSelection:true });
     return;
@@ -28312,7 +28294,7 @@ async function addExtraSale(extraId){
         }
       }
       if ((Number(extra.stock)||0) < finalQty) {
-        alert('Stock insuficiente. Agregá stock y volvé a intentar.');
+        posNotify('Stock insuficiente. Agregá stock y volvé a intentar.');
         await renderExtrasUI();
         await refreshSaleStockLabel();
         return;
@@ -28355,7 +28337,7 @@ async function addExtraSale(extraId){
     // Revertir stock en memoria: aún no se ha persistido.
     try{ extra.stock = (Number(extra.stock)||0) + finalQty; }catch(_){ }
     try{ updateSaleCashTenderComputedPOS(); }catch(_){ }
-    alert(tenderCheck.msg || 'Revisa el cobro en efectivo.');
+    posNotify(tenderCheck.msg || 'Revisa el cobro en efectivo.');
     return;
   }
 
@@ -28425,9 +28407,9 @@ async function addExtraSale(extraId){
 
   // Validación mínima (bloqueante antes de guardar)
   const vMin = validateSaleMinimalPOS(saleRecord);
-  if (!vMin.ok){ alert(vMin.msg); return; }
+  if (!vMin.ok){ posNotify(vMin.msg); return; }
   const vCardCommission = validateSaleCardCommissionSnapshotPOS(saleRecord);
-  if (!vCardCommission.ok){ alert(vCardCommission.msg); return; }
+  if (!vCardCommission.ok){ posNotify(vCardCommission.msg); return; }
 
   // Etapa 2D: UID estable por intento + dedupe conservador (antes de insertar)
   try{
@@ -28441,7 +28423,7 @@ async function addExtraSale(extraId){
       clearPendingSaleUidPOS();
       try{ await renderDay(); await renderSummary(); }catch(_){ }
       try{ await renderExtrasUI(); await refreshProductSelect({ keepSelection:true }); await refreshSaleStockLabel(); }catch(_){ }
-      try{ if (typeof showToast === 'function') showToast('Venta ya guardada (duplicado bloqueado).', 'error', 4500); else alert('Venta ya guardada (duplicado bloqueado).'); }catch(_){ try{ alert('Venta ya guardada (duplicado bloqueado).'); }catch(__){ } }
+      try{ if (typeof showToast === 'function') showToast('Venta ya guardada (duplicado bloqueado).', 'error', 4500); else posNotify('Venta ya guardada (duplicado bloqueado).'); }catch(_){ try{ posNotify('Venta ya guardada (duplicado bloqueado).'); }catch(__){ } }
       return;
     }
   }catch(_){ }
@@ -28510,12 +28492,12 @@ async function addExtraSale(extraId){
 async function getCierreTotalGrupoData(){
   const groupSelect = $('#filtro-grupo');
   if (!groupSelect){
-    alert('No se encontró el filtro de grupo en la pestaña de eventos.');
+    posNotify('No se encontró el filtro de grupo en la pestaña de eventos.');
     return null;
   }
   const groupVal = groupSelect.value || '';
   if (!groupVal){
-    alert('Selecciona un grupo en la lista "Grupos" para generar el cierre total.');
+    posNotify('Selecciona un grupo en la lista "Grupos" para generar el cierre total.');
     return null;
   }
 
@@ -28530,7 +28512,7 @@ async function getCierreTotalGrupoData(){
     groupLabel = groupVal;
   }
   if (!selectedEvents.length){
-    alert('No hay eventos para ese grupo.');
+    posNotify('No hay eventos para ese grupo.');
     return null;
   }
 
@@ -28706,7 +28688,7 @@ async function exportCierreTotalGrupoExcel(){
   if (!data) return;
 
   if (typeof XLSX === 'undefined'){
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
+    posNotify('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
     return;
   }
 

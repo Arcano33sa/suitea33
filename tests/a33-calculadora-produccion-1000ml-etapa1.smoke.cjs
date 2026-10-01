@@ -18,9 +18,9 @@ assert.ok(html.includes('const A33_PRODUCTION_CHECKLIST_STORAGE_KEY = "arcano33_
 assert.ok(html.includes('origenChecklist:"produccion-1000ml"'), 'Falta identidad de producción independiente');
 assert.ok(html.includes('formulaSnapshot:{ ...A33_PRODUCTION_FORMULA }'), 'Falta snapshot histórico de fórmula');
 assert.ok(!html.slice(html.indexOf('function a33SaveProductionChecklist()'), html.indexOf('function a33ChecklistNumber')).includes('commitOfficialProduction'), 'Guardar no debe crear producción oficial');
-assert.ok(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.98&r=13")'), 'Registro SW no actualizado');
-assert.ok(sw.includes("const MODULE_CACHE_REV = '14';"), 'Cache del módulo no incrementado');
-assert.ok(sw.includes("'./index.html?v=4.20.98&r=22'"), 'Precache no apunta al HTML nuevo');
+assert.ok(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.98&r=15")'), 'Registro SW no actualizado');
+assert.ok(sw.includes("const MODULE_CACHE_REV = '16';"), 'Cache del módulo no incrementado');
+assert.ok(sw.includes("'./index.html?v=4.20.98&r=24'"), 'Precache no apunta al HTML nuevo');
 
 const start = html.indexOf('    const A33_CHECKLIST_STORAGE_KEY = "arcano33_lotes";');
 const end = html.indexOf('    function a33ChecklistNumber(value)', start);
@@ -52,7 +52,7 @@ const localStorage = {
   getItem(key){ return stored.has(key) ? stored.get(key) : null; },
   setItem(key, value){ stored.set(key, String(value)); }
 };
-const windowObj = { localStorage, A33Storage:null };
+const windowObj = { localStorage, A33Storage:null, A33Notice:{show(){}} };
 const code = html.slice(start, end) + '\n;globalThis.__calculate=a33ProductionCalculation;globalThis.__save=a33SaveProductionChecklist;';
 const context = vm.createContext({
   console, Date, Math, Number, String, Object, Array, Set, Map, JSON, Intl,

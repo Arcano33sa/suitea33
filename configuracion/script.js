@@ -1047,6 +1047,7 @@
     if (pwaRuntime.checking || pwaRuntime.applying) return;
 
     pwaRuntime.checking = true;
+    showToast('Buscando actualización…');
     pwaRuntime.updateAvailable = false;
     pwaStorageSet(PWA_KEYS.lastCheck, formatPwaDateForStorage(new Date()));
     pwaStorageSet(PWA_KEYS.status, PWA_STATUS.checking);
@@ -1070,7 +1071,7 @@
     }catch(err){
       pwaRuntime.updateAvailable = false;
       pwaStorageSet(PWA_KEYS.status, PWA_STATUS.searchError);
-      showToast(err && err.message ? err.message : 'Error al buscar actualización.');
+      window.A33Notice.show(err && err.message ? err.message : 'Error al buscar actualización.', 'error');
     }finally{
       pwaRuntime.checking = false;
       renderPwaSection();
@@ -1081,6 +1082,7 @@
     if (pwaRuntime.checking || pwaRuntime.applying) return;
 
     pwaRuntime.applying = true;
+    showToast('Aplicando actualización…');
     pwaStorageSet(PWA_KEYS.status, PWA_STATUS.applying);
     renderPwaSection();
 
@@ -1102,7 +1104,7 @@
     }catch(err){
       pwaRuntime.updateAvailable = true;
       pwaStorageSet(PWA_KEYS.status, PWA_STATUS.applyError);
-      showToast(err && err.message ? err.message : 'Error al aplicar actualización.');
+      window.A33Notice.show(err && err.message ? err.message : 'Error al aplicar actualización.', 'error');
     }finally{
       pwaRuntime.applying = false;
       renderPwaSection();
@@ -1319,6 +1321,13 @@
   }
 
   function showModal({ title, bodyHtml, primaryText, onPrimary, secondaryText, onSecondary, cancelText, onCancel, disableCancel, disablePrimary }){
+    const resultType = /error/i.test(title || '') ? 'error' : (/exitosa|correctamente/i.test(title || '') ? 'success' : (/importando|exportando|preparando/i.test(title || '') ? 'process' : ''));
+    if (!resultType) window.A33Notice.finish();
+    if (resultType){
+      const summary = document.createElement('div');
+      summary.innerHTML = bodyHtml || '';
+      window.A33Notice.show((title || '') + ': ' + (summary.textContent || ''), resultType);
+    }
     const modal = document.getElementById('backup-modal');
     const titleEl = document.getElementById('backup-modal-title');
     const bodyEl = document.getElementById('backup-modal-body');
@@ -1376,19 +1385,8 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  let toastTimer = null;
   function showToast(message, ms = 4000){
-    const el = document.getElementById('a33-toast');
-    if (!el) {
-      try{ alert(message); }catch(_){ }
-      return;
-    }
-    el.textContent = String(message || '');
-    el.classList.add('show');
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      try{ el.classList.remove('show'); }catch(_){ }
-    }, Math.max(1500, Number(ms) || 4000));
+    return window.A33Notice.show(message);
   }
 
   function buildBackupFilename(){
@@ -2408,6 +2406,7 @@
   }
 
   async function handleCustomExport(){
+    window.A33Notice.show('Preparando respaldo…', 'process');
     showModal({
       title: 'Exportar JSON personalizado',
       bodyHtml: buildCustomExportModalHtml(),
@@ -3483,6 +3482,7 @@
   }
 
   async function handleExport(){
+    window.A33Notice.show('Preparando respaldo…', 'process');
     showModal({
       title: 'Resumen del respaldo',
       bodyHtml: '<div class="muted">Generando resumen...</div>',
@@ -3884,6 +3884,7 @@ Los históricos se conservarán. ¿Continuar?`);
   }
 
   function setIdentityStatus(message){
+    if (message && !/cargad[oa]|empiezan vacíos|preferencias listas|no está configurado/i.test(message)) window.A33Notice.show(message);
     const el = document.getElementById('cfg-identity-status');
     if (el) el.textContent = String(message || '');
   }
@@ -4067,18 +4068,17 @@ Los históricos se conservarán. ¿Continuar?`);
   }
 
   function saveIdentityFromForm(event){
+    window.A33Notice.show('Guardando configuración…', 'process');
     if (event && typeof event.preventDefault === 'function') event.preventDefault();
     const data = collectIdentityForm();
     const ok = writeIdentityStorage(data);
     if (!ok){
       setIdentityStatus('No se pudo guardar la Identidad en este navegador.');
-      showToast('No se pudo guardar Identidad.');
       return;
     }
     populateIdentityForm(data);
     if (typeof renderReportsIdentityReference === 'function') renderReportsIdentityReference(data);
     setIdentityStatus(`Identidad guardada localmente: ${formatPwaTimestamp(data.updatedAt)}.`);
-    showToast('Identidad guardada.');
   }
 
   function initIdentitySection(){
@@ -4295,7 +4295,7 @@ Los históricos se conservarán. ¿Continuar?`);
         const pref = normalizeAppearancePreference(option.dataset.themePref);
         const ok = writeAppearancePreference(pref);
         applyAppearanceTheme(pref, { render: true, notify: true });
-        showToast(ok ? `Apariencia: ${getAppearancePreferenceLabel(pref)}.` : 'No se pudo guardar Apariencia en este navegador.');
+        window.A33Notice.show(ok ? `Apariencia guardada: ${getAppearancePreferenceLabel(pref)}.` : 'No se pudo guardar Apariencia en este navegador.', ok ? 'success' : 'error');
       });
       option.addEventListener('keydown', (event) => {
         const idx = options.indexOf(option);
@@ -4590,6 +4590,7 @@ Los históricos se conservarán. ¿Continuar?`);
   }
 
   function setReportsStatus(message){
+    if (message && !/cargad[oa]|empiezan vacíos|preferencias listas|no está configurado/i.test(message)) window.A33Notice.show(message);
     const el = document.getElementById('cfg-reports-status');
     if (el) el.textContent = String(message || '');
   }
@@ -4880,13 +4881,13 @@ Los históricos se conservarán. ¿Continuar?`);
   }
 
   function saveReportsPreferences(event){
+    window.A33Notice.show('Guardando configuración…', 'process');
     if (event && typeof event.preventDefault === 'function') event.preventDefault();
     const data = collectReportsPreferencesFromForm();
     const ok = writeReportsPreferences(data);
     if (!ok){
       setReportsStatus('No se pudo guardar Reportes en este navegador.');
       setReportsBadge('Error local');
-      showToast('No se pudo guardar Reportes.');
       return;
     }
     applyReportsPreferencesToForm(data);
@@ -4894,7 +4895,6 @@ Los históricos se conservarán. ¿Continuar?`);
     renderReportsCurrencyReference();
     setReportsStatus(`Preferencias de Reportes guardadas: ${formatPwaTimestamp(data.updatedAt)}.`);
     setReportsBadge('Guardado local');
-    showToast('Preferencias de Reportes guardadas.');
   }
 
   function markReportsDirty(){
@@ -5075,6 +5075,7 @@ Los históricos se conservarán. ¿Continuar?`);
   }
 
   function setCurrencyStatus(message, state){
+    if (message && !/cargad[oa]|empiezan vacíos|preferencias listas|no está configurado/i.test(message)) window.A33Notice.show(message, state);
     const el = document.getElementById('cfg-currency-status');
     if (!el) return;
     el.textContent = String(message || '');
@@ -5169,13 +5170,13 @@ Los históricos se conservarán. ¿Continuar?`);
   }
 
   function saveCurrencySettings(event){
+    window.A33Notice.show('Guardando configuración…', 'process');
     if (event && typeof event.preventDefault === 'function') event.preventDefault();
     const input = document.getElementById('cfg-currency-rate-input');
     const validation = validateCurrencyRate(input ? input.value : '');
     if (!validation.ok){
       setCurrencyStatus(validation.message, 'error');
       setCurrencyBadge('Error local');
-      showToast(validation.message);
       return;
     }
     const data = normalizeCurrencySettings({
@@ -5187,14 +5188,12 @@ Los históricos se conservarán. ¿Continuar?`);
     if (!ok){
       setCurrencyStatus('No se pudo guardar Moneda en este navegador.', 'error');
       setCurrencyBadge('Error local');
-      showToast('No se pudo guardar Moneda.');
       return;
     }
     renderCurrencySettings(data, { silent: true });
     renderReportsCurrencyReference();
     setCurrencyStatus(`Moneda guardada correctamente: T/C ${validation.value}.`, 'ok');
     setCurrencyBadge('Motor seguro');
-    showToast('Moneda guardada correctamente.');
   }
 
   function initCurrencySection(){

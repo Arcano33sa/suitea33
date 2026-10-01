@@ -30,6 +30,7 @@
     }
   })();
 </script>
+<link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
 <link rel="stylesheet" href="styles.css?v=4.20.98&r=25">
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=13" />
   <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=3" />
@@ -1669,7 +1670,7 @@
   </div>
 </div>
 
-<div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">Hecho</div>
+
 <footer></footer>
 <nav class="tabbar">
   <button data-tab="venta" class="active">Vender</button>
@@ -1698,7 +1699,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m56').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m59').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1707,7 +1708,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m56')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m59')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1715,7 +1716,9 @@
   })();
 </script>
 
-<script src="app.js?v=4.20.98&r=52"></script>
+<script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
+<script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+<script src="app.js?v=4.20.98&r=54"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=13"></script>
 <script>
   (function(){

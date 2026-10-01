@@ -296,7 +296,14 @@
       updatedAt: new Date().toISOString(),
       records: Array.isArray(records) ? records : []
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    window.A33Notice.show('Guardando compra…', 'process');
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      window.A33Notice.show('Compra guardada correctamente.', 'success');
+    }catch(error){
+      window.A33Notice.show('No se pudo guardar la compra. Revisa el almacenamiento del navegador.', 'error');
+      throw error;
+    }
     try{ window.dispatchEvent(new CustomEvent('a33:agenda-records-changed', { detail:{ source:'compras', storageKey:STORAGE_KEY } })); }catch(_){ }
   }
 
@@ -392,6 +399,7 @@
       refs.addBtn.disabled = true;
       refs.saveBtn.disabled = true;
       refs.formStatus.textContent = 'No se pudo cargar Materia Prima. Revisa Catálogos y vuelve a abrir Compras.';
+      window.A33Notice.alert(refs.formStatus.textContent);
     }
   }
 
@@ -569,6 +577,7 @@
       existing.quantity = round2(Number(existing.quantity || 0) + validated.quantity);
       existing.subtotal = round2(Number(existing.priceUsed || 0) * existing.quantity);
       refs.formStatus.textContent = existing.name + ' se actualizó a ' + formatNumber(existing.quantity) + ' ' + existing.unit + '.';
+      window.A33Notice.alert(refs.formStatus.textContent);
     } else {
       const item = normalizePurchaseItem({
         draftId: createId('itm'),
@@ -583,6 +592,7 @@
       }, {});
       state.draftItems.push(item);
       refs.formStatus.textContent = item.name + ' fue agregado a la compra.';
+      window.A33Notice.alert(refs.formStatus.textContent);
     }
     state.editingDraftId = '';
     clearArticleInputs(settings.focus !== false);
@@ -625,6 +635,7 @@
     item.subtotal = round2(item.priceUsed * quantity);
     state.editingDraftId = '';
     refs.formStatus.textContent = 'Cantidad de ' + item.name + ' actualizada.';
+    window.A33Notice.alert(refs.formStatus.textContent);
     renderDraftItems();
     return true;
   }
@@ -634,6 +645,7 @@
     state.draftItems = state.draftItems.filter(function(row){ return row.draftId !== id; });
     if (state.editingDraftId === id) state.editingDraftId = '';
     refs.formStatus.textContent = item ? (item.name + ' fue quitado de la compra.') : 'Artículo quitado.';
+    window.A33Notice.alert(refs.formStatus.textContent);
     renderDraftItems();
   }
 
@@ -739,6 +751,7 @@
     }
     if (!state.draftItems.length) {
       refs.formStatus.textContent = 'Agrega al menos un artículo antes de guardar la compra.';
+      window.A33Notice.alert(refs.formStatus.textContent);
       if (!refs.material.disabled) refs.material.focus();
       return null;
     }
@@ -770,6 +783,7 @@
     if (state.saving) return false;
     if (pendingArticleInputs() && !addDraftItem({ focus:false, report:true })) {
       refs.formStatus.textContent = 'Completa correctamente el último artículo antes de guardar.';
+      window.A33Notice.alert(refs.formStatus.textContent);
       return false;
     }
     const validated = validateGeneral();
@@ -812,6 +826,7 @@
     }catch(error){
       console.error('Agenda Compras · Guardar', error);
       refs.formStatus.textContent = 'No se pudo guardar la compra. La preparación se conserva para intentarlo nuevamente.';
+      window.A33Notice.alert(refs.formStatus.textContent);
       return false;
     }finally{
       window.setTimeout(function(){
@@ -1178,21 +1193,27 @@
     const groups = pendingGroups();
     if (!date || !groups.has(date)) {
       refs.calendarStatus.textContent = 'Selecciona una Fecha necesaria con compras pendientes.';
+      window.A33Notice.alert(refs.calendarStatus.textContent);
       return false;
     }
+    window.A33Notice.show('Generando calendario…', 'process');
     const single = new Map([[date,groups.get(date)]]);
     downloadText(buildCalendar(single), 'Compras_Arcano_33_' + date.split('-').reverse().join('-') + '.ics');
     refs.calendarStatus.textContent = 'Calendario exportado: ' + formatDate(date) + ' · ' + groups.get(date).length + ' compra(s).';
+    window.A33Notice.alert(refs.calendarStatus.textContent);
     return true;
   }
   function exportAll(){
     const groups = pendingGroups();
     if (!groups.size) {
       refs.calendarStatus.textContent = 'No hay compras pendientes con Fecha necesaria para exportar.';
+      window.A33Notice.alert(refs.calendarStatus.textContent);
       return false;
     }
+    window.A33Notice.show('Generando calendario…', 'process');
     downloadText(buildCalendar(groups), 'Compras_Arcano_33_Todas.ics');
     refs.calendarStatus.textContent = 'Calendario exportado con ' + groups.size + ' evento(s), uno por Fecha necesaria.';
+    window.A33Notice.alert(refs.calendarStatus.textContent);
     return true;
   }
 
@@ -1245,7 +1266,7 @@
       render();
     });
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=4').catch(function(error){
+      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=5').catch(function(error){
         console.warn('Agenda SW no disponible', error);
       });
     }

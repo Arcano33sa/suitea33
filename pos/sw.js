@@ -13,7 +13,7 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '1'; // POS cache bump local — Cierre Parte 4 Final
 
 const MODULE = 'pos';
-const MODULE_CACHE_REV = '57';
+const MODULE_CACHE_REV = '59';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -24,10 +24,13 @@ function isLegacySuiteCache(name){
 
 
 const PRECACHE_URLS = [
+  '/assets/js/a33-notify-bridge.js?v=4.20.98&r=2',
+  '/assets/js/a33-notify.js?v=4.20.98&r=1',
+  '/assets/css/a33-notify.css?v=4.20.98&r=1',
   './',
-  './index.html?v=4.20.98&r=35',
+  './index.html?v=4.20.98&r=37',
   './styles.css?v=4.20.98&r=25',
-  './app.js?v=4.20.98&r=52',
+  './app.js?v=4.20.98&r=54',
   './manifest.webmanifest?v=4.20.98&r=28',
   './offline.html',
   './logo.png',
@@ -110,7 +113,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.98&r=35')) ||
+      (await cache.match('./index.html?v=4.20.98&r=37')) ||
       (await cache.match('./index.html', { ignoreSearch: true })) ||
       (await cache.match('./offline.html')) ||
       (await cache.match('./')) ||

@@ -494,6 +494,9 @@
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=7" />
   <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=3" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
+<script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
+<script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
 </head>
 <body class="calc-body calc-temporal-body">
   <header class="a33-header" role="banner" data-a33-module="temporal">
@@ -1292,6 +1295,7 @@
     }
 
     function a33SetTemporalChecklistStatus(message, tone) {
+      if (message && tone) window.A33Notice.show(message, tone === 'saving' ? 'process' : tone);
       const host = document.getElementById("a33-temporal-checklist-estado");
       if (!host) return;
       host.textContent = String(message || "");
@@ -1435,6 +1439,7 @@
       const calculation = a33RenderTemporalProductionPreview();
       const error = document.getElementById("a33-produccion-error");
       if (!calculation) {
+        window.A33Notice.show("Ingresa una cantidad mayor que cero.", "pending");
         if (error) error.textContent = "Ingresa una cantidad mayor que cero.";
         return false;
       }
@@ -1447,6 +1452,7 @@
         formulaBaseMl:A33_TEMPORAL_PRODUCTION_BASE_ML, formulaSnapshot:{ ...A33_TEMPORAL_PRODUCTION_FORMULA },
         fecha:hoyLocalISO(), createdAt:now.toISOString(), updatedAt:now.toISOString(), closed:false
       };
+      window.A33Notice.show("Guardando en Checklist…", "process");
       try {
         writeTemporalData(STORAGE_PRODUCTION_CHECKLIST_KEY, [record].concat(info.data), {
           baseRev:info.meta && typeof info.meta.rev === "number" ? info.meta.rev : null,
@@ -1454,9 +1460,11 @@
           source:"calculadora_temporal_produccion_1000ml"
         });
       } catch (saveError) {
+        window.A33Notice.show("No se pudo guardar en Checklist.", "error");
         if (error) error.textContent = (saveError && saveError.message) || "No se pudo guardar en Temporal.";
         return false;
       }
+      window.A33Notice.show("Producción guardada en Checklist.", "success");
       a33CloseTemporalProductionModal();
       a33OpenTemporalChecklist(id);
       return true;
@@ -1932,7 +1940,7 @@
       const reg = registros.find(item => item.id === id);
       if (!reg) {
         fijarHistorialTemporalActivo("");
-        alert("No se encontró ese cálculo temporal.");
+        window.A33Notice.alert("No se encontró ese cálculo temporal.");
         return;
       }
       if (reg.recipeSnapshot) aplicarPayloadRecetasEnUI(reg.recipeSnapshot);
@@ -1971,7 +1979,7 @@
       try {
         writeTemporalData(STORAGE_REGISTROS_KEY, next, { baseRev: info.meta && typeof info.meta.rev === 'number' ? info.meta.rev : null, conflictPolicy: 'block' });
       } catch (e) {
-        alert((e && e.message) ? e.message : 'No se pudo eliminar el cálculo temporal.');
+        window.A33Notice.show((e && e.message) ? e.message : 'No se pudo eliminar el cálculo temporal.', 'error');
         return;
       }
       renderTemporalHistory();
@@ -2596,12 +2604,15 @@ function a33WireNumericInput(el, mode) {
     }
     function guardarRecetas() {
       const payload = capturarPayloadRecetasDesdeUI();
+      window.A33Notice.show("Guardando recetas y costos…", "process");
       try {
         writeTemporalData(STORAGE_RECETAS_KEY, payload);
       } catch (e) {
         console.warn('No se pudo guardar recetas:', e);
+        window.A33Notice.show('No se pudo guardar recetas y costos en este navegador.', 'error');
+        return;
       }
-      alert("Recetas y costos guardados en este navegador ✅");
+      window.A33Notice.show("Recetas y costos guardados en este navegador ✅", "success");
     }
 
     function cargarRecetas() {
@@ -2706,21 +2717,22 @@ function a33WireNumericInput(el, mode) {
 
     async function guardarCalculoComoLote() {
       const datos = serializarDatosCalculo(calcularDatosLote());
+      window.A33Notice.show('Guardando cálculo temporal…', 'process');
 
       if (!A33HasCalculoPrevio) {
-        alert("Primero usa CALCULAR para confirmar el resumen temporal antes de guardar.");
+        window.A33Notice.alert("Primero usa CALCULAR para confirmar el resumen temporal antes de guardar.");
         actualizarEstadoBotonGuardar(datos);
         return;
       }
 
       if (!datos.unidadesPorPresentacion.length) {
-        alert("No se puede guardar un cálculo vacío. Indica unidades en el plan y vuelve a calcular.");
+        window.A33Notice.alert("No se puede guardar un cálculo vacío. Indica unidades en el plan y vuelve a calcular.");
         actualizarEstadoBotonGuardar(datos);
         return;
       }
 
       if (!actualizarEstadoBotonGuardar(datos)) {
-        alert("GUARDAR solo se habilita cuando existe un cálculo temporal válido.");
+        window.A33Notice.alert("GUARDAR solo se habilita cuando existe un cálculo temporal válido.");
         return;
       }
 
@@ -2732,12 +2744,12 @@ function a33WireNumericInput(el, mode) {
       const rawCodigo = loteInput ? loteInput.value : '';
       let v = validarCodigoLoteFuerte(rawCodigo);
       if (!v.ok) {
-        alert(v.msg || 'Código inválido.');
+        window.A33Notice.alert(v.msg || 'Código inválido.');
         return;
       }
 
       if (v.format !== 'new') {
-        alert('Este Código de lote pertenece al histórico y no se puede reutilizar. Pulsa REGENERAR para crear un registro nuevo con el formato oficial A33MESAAAA-CONSECUTIVO.');
+        window.A33Notice.alert('Este Código de lote pertenece al histórico y no se puede reutilizar. Pulsa REGENERAR para crear un registro nuevo con el formato oficial A33MESAAAA-CONSECUTIVO.');
         return;
       }
 
@@ -2747,7 +2759,7 @@ function a33WireNumericInput(el, mode) {
 
       const yaExiste = registros.some(reg => normalizarCodigoLote(reg && reg.codigo) === normalizarCodigoLote(codigoFinal));
       if (yaExiste) {
-        alert('Ya existe un registro temporal con ese Código de lote. No se sobrescribió ni se duplicó. Pulsa REGENERAR para obtener el siguiente consecutivo disponible.');
+        window.A33Notice.alert('Ya existe un registro temporal con ese Código de lote. No se sobrescribió ni se duplicó. Pulsa REGENERAR para obtener el siguiente consecutivo disponible.');
         return;
       }
 
@@ -2755,7 +2767,7 @@ function a33WireNumericInput(el, mode) {
       const suggestedNow = normalizarCodigoLote(A33SuggestedCode || '');
       const isSuggestedNow = (normalizarCodigoLote(codigoFinal) === suggestedNow);
       if (A33CodigoLoteMode === 'MANUAL' && !isSuggestedNow && typeof seqFinal === 'number' && seqFinal <= lastNow) {
-        alert('Código no permitido: va hacia atrás o implica reutilización del consecutivo. Usa el sugerido o uno más adelante.');
+        window.A33Notice.alert('Código no permitido: va hacia atrás o implica reutilización del consecutivo. Usa el sugerido o uno más adelante.');
         return;
       }
 
@@ -2777,7 +2789,7 @@ function a33WireNumericInput(el, mode) {
 
       const idx = registros.findIndex(item => item.id === registro.id || normalizarCodigoLote(item.codigo) === normalizarCodigoLote(registro.codigo));
       if (idx >= 0) {
-        alert('Ese código ya existe dentro del historial temporal. Usa el siguiente sugerido o elimina el registro anterior si ya no lo necesitas.');
+        window.A33Notice.alert('Ese código ya existe dentro del historial temporal. Usa el siguiente sugerido o elimina el registro anterior si ya no lo necesitas.');
         setPillEstadoCodigo(A33CodigoLoteMode === 'HISTORICAL' ? 'HISTORICO' : (A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO'));
         return;
       }
@@ -2787,7 +2799,7 @@ function a33WireNumericInput(el, mode) {
       try {
         writeTemporalData(STORAGE_REGISTROS_KEY, registros, { baseRev: baseRevRegistros, conflictPolicy: 'block' });
       } catch (e) {
-        alert((e && e.message) ? e.message : 'No se pudo guardar el cálculo temporal en el navegador.');
+        window.A33Notice.show((e && e.message) ? e.message : 'No se pudo guardar el cálculo temporal en el navegador.', 'error');
         setPillEstadoCodigo(A33CodigoLoteMode === 'HISTORICAL' ? 'HISTORICO' : (A33CodigoLoteMode === 'MANUAL' ? 'EDITADO' : 'SUGERIDO'));
         return;
       }
@@ -2802,12 +2814,12 @@ function a33WireNumericInput(el, mode) {
 
       renderTemporalHistory();
       limpiarDespuesDeGuardarCalculoTemporal();
-      alert('Cálculo temporal guardado correctamente en el historial propio de este módulo. No se creó ningún lote oficial.');
+      window.A33Notice.alert('Cálculo temporal guardado correctamente en el historial propio de este módulo. No se creó ningún lote oficial.');
     }
 
     function registerTemporalServiceWorker() {
       if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=2")
+      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=4")
         .catch((error) => console.error("SW Calculadora Temporal error", error));
     }
 
@@ -2852,6 +2864,7 @@ function a33WireNumericInput(el, mode) {
           const checkbox = event.target;
           const key = checkbox && checkbox.dataset ? String(checkbox.dataset.temporalChecklistIngredient || "") : "";
           if (!INGREDIENTES.includes(key) || !A33TemporalChecklistSelectedId) return;
+          window.A33Notice.show("Guardando checklist temporal…", "process");
           const result = a33WriteTemporalChecklistRecord(A33TemporalChecklistSelectedId, (record) => {
             if (a33TemporalChecklistClosed(record)) return record;
             record.items[key] = checkbox.checked === true;
@@ -2865,7 +2878,7 @@ function a33WireNumericInput(el, mode) {
           }
           const row = checkbox.closest(".a33-temporal-checklist-item");
           if (row) row.classList.toggle("is-complete", checkbox.checked);
-          a33SetTemporalChecklistStatus("Checklist temporal guardado.", "");
+          a33SetTemporalChecklistStatus("Checklist temporal guardado.", "success");
         });
         checklistContenido.addEventListener("click", (event) => {
           const done = event.target && event.target.closest ? event.target.closest("#a33-temporal-checklist-hecho") : null;
@@ -2876,6 +2889,7 @@ function a33WireNumericInput(el, mode) {
             a33SetTemporalChecklistStatus("Marca todos los checkbox antes de pulsar Hecho.", "error");
             return;
           }
+          window.A33Notice.show("Guardando checklist temporal…", "process");
           const result = a33WriteTemporalChecklistRecord(A33TemporalChecklistSelectedId, (record) => {
             record.closed = true;
             record.closedAt = new Date().toISOString();
@@ -2887,7 +2901,7 @@ function a33WireNumericInput(el, mode) {
             return;
           }
           a33RenderTemporalChecklist({ selectId:A33TemporalChecklistSelectedId });
-          a33SetTemporalChecklistStatus("Checklist temporal cerrado correctamente.", "");
+          a33SetTemporalChecklistStatus("Checklist temporal cerrado correctamente.", "success");
         });
       }
       document.addEventListener("keydown", (event) => {
@@ -2990,7 +3004,7 @@ function a33WireNumericInput(el, mode) {
     document.addEventListener("DOMContentLoaded", () => {
       init().catch((err) => {
         console.error("No se pudo iniciar la Calculadora A33.", err);
-        try { alert("No se pudo iniciar la Calculadora. Revisa consola."); } catch (e) {}
+        try { window.A33Notice.alert("No se pudo iniciar la Calculadora. Revisa consola."); } catch (e) {}
       });
     });
 

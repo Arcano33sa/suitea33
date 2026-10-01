@@ -8,14 +8,17 @@ const SW_REV = self.A33_RELEASE && self.A33_RELEASE.rev != null
   ? String(self.A33_RELEASE.rev)
   : '1';
 const MODULE = 'centro-mando';
-const MODULE_CACHE_REV = '7';
+const MODULE_CACHE_REV = '9';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 const PRECACHE_URLS = [
+  '/assets/js/a33-notify.js?v=4.20.98&r=1',
+  '/assets/js/a33-notify-bridge.js?v=4.20.98&r=2',
+  '/assets/css/a33-notify.css?v=4.20.98&r=1',
   './',
-  './index.html?v=4.20.98&r=23',
+  './index.html?v=4.20.98&r=25',
   './style.css?v=4.20.98&r=19',
-  './app.js?v=4.20.98&r=23',
+  './app.js?v=4.20.98&r=24',
   './manifest.webmanifest?v=4.20.98&r=6',
   './offline.html',
   '../icon-a33-192.png',
@@ -82,7 +85,7 @@ async function networkFirst(request){
     return response;
   }catch(_){
     return (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.98&r=23')) ||
+      (await cache.match('./index.html?v=4.20.98&r=25')) ||
       (await cache.match('./index.html',{ignoreSearch:true})) ||
       (await cache.match('./offline.html')) ||
       new Response('Offline',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});

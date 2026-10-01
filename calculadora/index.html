@@ -778,6 +778,9 @@
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=7" />
   <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=3" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
+<script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
+<script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
 </head>
 <body class="calc-body calc-main-body">
   <header class="a33-header" role="banner" data-a33-module="produccion">
@@ -2198,11 +2201,12 @@ function a33WireNumericInput(el, mode) {
         costosPresentacion,
         productos: PRESENTACIONES.map(a33SerializePresentacionProducto)
       };
+      window.A33Notice.show("Guardando recetas y costos…", "process");
       try{
         if (window.A33Storage && typeof A33Storage.sharedSet === 'function'){
           const r = A33Storage.sharedSet(STORAGE_RECETAS_KEY, payload, { source: 'calculadora' });
-          if (r && r.ok === false && r.message){
-            alert(r.message);
+          if (!r || r.ok === false){
+            window.A33Notice.show((r && r.message) || 'No se pudo guardar recetas y costos.', 'error');
             return;
           }
         } else {
@@ -2210,8 +2214,10 @@ function a33WireNumericInput(el, mode) {
         }
       }catch(e){
         console.warn('No se pudo guardar recetas:', e);
+        window.A33Notice.show('No se pudo guardar recetas y costos en este navegador.', 'error');
+        return;
       }
-      alert("Recetas y costos guardados en este navegador ✅");
+      window.A33Notice.show("Recetas y costos guardados en este navegador ✅", "success");
     }
 
     function cargarRecetas() {
@@ -2562,34 +2568,35 @@ function a33WireNumericInput(el, mode) {
       const btn = document.getElementById("btn-guardar-lote");
       if (btn && btn.dataset.saving === "1") return;
       if (!A33HasCalculoPrevio) {
-        alert("Primero usa CALCULAR para confirmar los totales antes de guardar.");
+        window.A33Notice.alert("Primero usa CALCULAR para confirmar los totales antes de guardar.");
         return;
       }
       let datos = null;
       try {
         datos = calcularDatosLote();
       } catch (error) {
-        alert("No se puede confirmar la producción porque no fue posible validar el cálculo. Detalle: " + (error && error.message ? error.message : "Error interno no identificado."));
+        window.A33Notice.alert("No se puede confirmar la producción porque no fue posible validar el cálculo. Detalle: " + (error && error.message ? error.message : "Error interno no identificado."));
         return;
       }
       if (!datos.unidadesPorPresentacion.length) {
-        alert("No se puede guardar una producción vacía.");
+        window.A33Notice.alert("No se puede guardar una producción vacía.");
         return;
       }
       if (!A33LastCalculationSignature || a33CalculationSignature(datos) !== A33LastCalculationSignature) {
         A33HasCalculoPrevio = false;
-        alert("El cálculo cambió después de usar CALCULAR. Vuelve a calcular antes de confirmar la producción.");
+        window.A33Notice.alert("El cálculo cambió después de usar CALCULAR. Vuelve a calcular antes de confirmar la producción.");
         return;
       }
       if (!window.A33Production || typeof A33Production.commitOfficialProduction !== "function") {
-        alert("No está disponible el contrato seguro de Producción.");
+        window.A33Notice.alert("No está disponible el contrato seguro de Producción.");
         return;
       }
       setProductionButtonBusy(btn, true);
+      window.A33Notice.show('Guardando producción…', 'process');
       try {
         const catalog = await A33Production.loadFabricableProducts();
         if (!catalog.ok) {
-          alert("No se puede confirmar la producción porque no fue posible validar Catálogos → Productos.\n\n" + ((catalog.errors || []).join("\n") || "No se pudieron leer los Productos."));
+          window.A33Notice.alert("No se puede confirmar la producción porque no fue posible validar Catálogos → Productos.\n\n" + ((catalog.errors || []).join("\n") || "No se pudieron leer los Productos."));
           return;
         }
         const byId = new Map(catalog.items.map((item) => [String(item.productId), item]));
@@ -2632,17 +2639,17 @@ function a33WireNumericInput(el, mode) {
         if (catalog.duplicateLetters && catalog.duplicateLetters.length) {
           validation.push("Hay Letras de producción repetidas (" + catalog.duplicateLetters.map((row) => row.letter).join(", ") + "). Corrígelas en Catálogos → Productos.");
         }
-        if (validation.length) { alert("No se puede confirmar la producción:\n\n" + validation.map((text) => "• " + text).join("\n")); return; }
+        if (validation.length) { window.A33Notice.alert("No se puede confirmar la producción:\n\n" + validation.map((text) => "• " + text).join("\n")); return; }
 
         const codigoFinal = normalizarCodigoLote((document.getElementById("lote") || {}).value || "");
-        if (!codigoFinal) { alert("El código de lote es obligatorio."); return; }
+        if (!codigoFinal) { window.A33Notice.alert("El código de lote es obligatorio."); return; }
         const codigoValidado = validarCodigoLoteFuerte(codigoFinal);
         if (!codigoValidado.ok) {
-          alert(codigoValidado.msg || "El código de lote no tiene un formato válido.");
+          window.A33Notice.alert(codigoValidado.msg || "El código de lote no tiene un formato válido.");
           return;
         }
         if (codigoValidado.format !== "new") {
-          alert("Este es un Código de lote histórico y se conserva solo para consulta. Usa REGENERAR para crear un lote nuevo con el formato oficial A33MESAAAA-CONSECUTIVO.");
+          window.A33Notice.alert("Este es un Código de lote histórico y se conserva solo para consulta. Usa REGENERAR para crear un lote nuevo con el formato oficial A33MESAAAA-CONSECUTIVO.");
           return;
         }
         const codigoOficial = codigoValidado.code;
@@ -2653,7 +2660,7 @@ function a33WireNumericInput(el, mode) {
           ? A33Storage.sharedGet("arcano33_lotes", [])
           : (() => { try { const raw = A33Storage.getItem("arcano33_lotes"); return raw ? JSON.parse(raw) : []; } catch (_) { return []; } })();
         if (existeCodigoEnLotes(lotesActuales, codigoValidado.code)) {
-          alert("Ya existe un lote con ese Código de lote. No se guardó ni se modificó ningún dato. Usa REGENERAR para obtener el siguiente consecutivo disponible.");
+          window.A33Notice.alert("Ya existe un lote con ese Código de lote. No se guardó ni se modificó ningún dato. Usa REGENERAR para obtener el siguiente consecutivo disponible.");
           return;
         }
 
@@ -2661,7 +2668,7 @@ function a33WireNumericInput(el, mode) {
         const suggestedNow = normalizarCodigoLote(A33SuggestedCode || "");
         const isSuggestedNow = codigoFinal === suggestedNow;
         if (A33CodigoLoteMode === "MANUAL" && !isSuggestedNow && typeof seqFinal === "number" && seqFinal <= lastNow) {
-          alert("Código no permitido: va hacia atrás o reutiliza el consecutivo.");
+          window.A33Notice.alert("Código no permitido: va hacia atrás o reutiliza el consecutivo.");
           return;
         }
 
@@ -2709,7 +2716,7 @@ function a33WireNumericInput(el, mode) {
         });
         if (!result.ok) {
           const text = result.message || (result.errors && result.errors.length ? result.errors.join("\n") : "");
-          alert(text || "No se pudo confirmar la producción. No se aplicaron cambios.");
+          window.A33Notice.alert(text || "No se pudo confirmar la producción. No se aplicaron cambios.");
           setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
           return;
         }
@@ -2721,7 +2728,7 @@ function a33WireNumericInput(el, mode) {
             if (/^\d{4}$/.test(String(seq4 || ""))) A33AutoSeq = seq4;
           } catch (_) { }
         }
-        alert(result.duplicate
+        window.A33Notice.alert(result.duplicate
           ? "La producción ya estaba guardada. No se duplicaron Lote ni Inventario."
           : "Producción guardada: lote e Inventario confirmados sin duplicados.");
         a33RefreshChecklistAfterLotSave(result.lote || nuevoLote);
@@ -2735,9 +2742,10 @@ function a33WireNumericInput(el, mode) {
         guardarMetaLote();
       } catch (error) {
         console.error("No se pudo confirmar la producción y crear el lote.", error);
-        alert("No se pudo confirmar la producción. Detalle: " + (error && error.message ? error.message : "Error interno no identificado."));
+        window.A33Notice.alert("No se pudo confirmar la producción. Detalle: " + (error && error.message ? error.message : "Error interno no identificado."));
         setPillEstadoCodigo(A33CodigoLoteMode === "MANUAL" ? "EDITADO" : "SUGERIDO");
       } finally {
+        window.A33Notice.finish();
         setProductionButtonBusy(btn, false);
       }
     }
@@ -2826,6 +2834,7 @@ function a33WireNumericInput(el, mode) {
       const calculation = a33RenderProductionPreview();
       const error = document.getElementById("a33-produccion-error");
       if (!calculation) {
+        window.A33Notice.show("Ingresa una cantidad mayor que cero.", "pending");
         if (error) error.textContent = "Ingresa una cantidad mayor que cero.";
         return false;
       }
@@ -2848,6 +2857,7 @@ function a33WireNumericInput(el, mode) {
         formulaSnapshot:{ ...A33_PRODUCTION_FORMULA },
         checklistProduccion:{ schema:A33_CHECKLIST_SCHEMA, loteId:id, loteCodigo:null, items:a33ChecklistEmptyState(), updatedAt:null }
       };
+      window.A33Notice.show("Guardando en Checklist…", "process");
       try {
         if (window.A33Storage && typeof A33Storage.sharedRead === "function" && typeof A33Storage.sharedReplaceExact === "function") {
           const read = A33Storage.sharedRead(A33_PRODUCTION_CHECKLIST_STORAGE_KEY, []);
@@ -2865,10 +2875,12 @@ function a33WireNumericInput(el, mode) {
           window.localStorage.setItem(A33_PRODUCTION_CHECKLIST_STORAGE_KEY, JSON.stringify(list));
         }
       } catch (saveError) {
+        window.A33Notice.show("No se pudo guardar en Checklist.", "error");
         console.error("No se pudo guardar la producción en Checklist.", saveError);
         if (error) error.textContent = "No se pudo guardar en este dispositivo.";
         return false;
       }
+      window.A33Notice.show("Producción guardada en Checklist.", "success");
       a33CloseProductionModal();
       a33OpenChecklist();
       a33RenderChecklistHistory({ selectIdentity:id });
@@ -3067,6 +3079,7 @@ function a33WireNumericInput(el, mode) {
     }
 
     function a33SetChecklistStatus(message, tone) {
+      if (message && tone) window.A33Notice.show(message, tone === 'saving' ? 'process' : tone);
       const el = document.getElementById("a33-checklist-estado");
       if (!el) return;
       el.textContent = String(message || "");
@@ -3561,7 +3574,7 @@ function a33WireNumericInput(el, mode) {
 
 function registerCalculadoraServiceWorker() {
       if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=13")
+      navigator.serviceWorker.register("./sw.js?v=4.20.98&r=15")
         .catch((error) => console.error("SW Calculadora error", error));
     }
 
@@ -3746,7 +3759,7 @@ function registerCalculadoraServiceWorker() {
     document.addEventListener("DOMContentLoaded", () => {
       init().catch((err) => {
         console.error("No se pudo iniciar la Calculadora A33.", err);
-        try { alert("No se pudo iniciar la Calculadora. Revisa consola."); } catch (e) {}
+        try { window.A33Notice.alert("No se pudo iniciar la Calculadora. Revisa consola."); } catch (e) {}
       });
     });
 

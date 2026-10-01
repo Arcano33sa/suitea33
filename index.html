@@ -558,6 +558,9 @@
 
 </style>
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
+<link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
+<script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
+<script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
 </head>
 <body>
 
@@ -1305,16 +1308,8 @@
     }
 
     // --- Toast ---
-    let __toastTimer = null;
     function showToast(message, ms=4000){
-      const el = document.getElementById('a33-toast');
-      if (!el) { try{ alert(message); }catch(_){ } return; }
-      el.textContent = String(message || '');
-      el.classList.add('show');
-      if (__toastTimer) clearTimeout(__toastTimer);
-      __toastTimer = setTimeout(() => {
-        try{ el.classList.remove('show'); }catch(_){ }
-      }, Math.max(1500, Number(ms) || 4000));
+      return window.A33Notice.show(message);
     }
 
     // --- Calculadora (ONLY) : export + reset blindado ---

@@ -1211,7 +1211,14 @@
       records: state.records.map(normalizeRecord)
     };
 
-    getStorage().setItem(AGENDA_BOOT.storageKey, JSON.stringify(payload));
+    window.A33Notice.show('Guardando Agenda…', 'process');
+    try{
+      getStorage().setItem(AGENDA_BOOT.storageKey, JSON.stringify(payload));
+      window.A33Notice.show('Agenda guardada correctamente.', 'success');
+    }catch(error){
+      window.A33Notice.show('No se pudo guardar Agenda. Revisa el almacenamiento del navegador.', 'error');
+      throw error;
+    }
   }
 
   function priorityRank(value){
@@ -1522,9 +1529,10 @@
   function exportRecordToCalendar(record){
     if (!record) return;
 
+    window.A33Notice.show('Generando calendario…', 'process');
     const ics = buildAgendaCalendarEvent(record);
     if (!ics) {
-      window.alert('No se pudo generar el evento de calendario. Revisá que el registro tenga una fecha válida.');
+      window.A33Notice.alert('No se pudo generar el evento de calendario. Revisá que el registro tenga una fecha válida.');
       return;
     }
 
@@ -1540,6 +1548,7 @@
 
     document.body.appendChild(link);
     link.click();
+    window.A33Notice.show('Calendario exportado correctamente.', 'success');
     setTimeout(function(){
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
@@ -1702,6 +1711,7 @@
 
   function invalidateField(input, message){
     if (!input || typeof input.reportValidity !== 'function') return false;
+    window.A33Notice.alert(message);
     input.setCustomValidity(message);
     input.reportValidity();
     bindFieldErrorReset(input);

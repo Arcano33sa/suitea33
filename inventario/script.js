@@ -483,7 +483,7 @@ function renderInventoryCurrencyReference(){
 // ------------------------------
 
 function safeAlert(msg){
-  try{ alert(String(msg || 'Error')); }catch(_){ console.error(String(msg || 'Error')); }
+  try{ window.A33Notice.alert(String(msg || 'Error')); }catch(_){ console.error(String(msg || 'Error')); }
 }
 
 // ------------------------------
@@ -1325,24 +1325,8 @@ function debounce(fn, waitMs) {
   };
 }
 
-function setStatus(text, kind = "info", { sticky = false, timeoutMs = 2200 } = {}) {
-  const el = $("inv-status");
-  if (!el) return;
-  const msg = String(text || "");
-  el.textContent = msg;
-  el.classList.remove("inv-status--info", "inv-status--ok", "inv-status--warn", "inv-status--error");
-  el.classList.add(`inv-status--${kind}`);
-
-  if (!sticky && msg) {
-    setTimeout(() => {
-      // limpiar solo si no cambió
-      if (el.textContent === msg) {
-        el.textContent = "";
-        el.classList.remove("inv-status--info", "inv-status--ok", "inv-status--warn", "inv-status--error");
-        el.classList.add("inv-status--info");
-      }
-    }, timeoutMs);
-  }
+function setStatus(text, kind = 'info', options = {}) {
+  return window.A33Notice.show(text, kind);
 }
 
 function applyView(section) {
@@ -2940,7 +2924,7 @@ function installSmokeHooks(inv){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.98&r=1")
+      .register("./sw.js?v=4.20.98&r=2")
       .catch((err) => console.error("SW error", err));
   }
 }

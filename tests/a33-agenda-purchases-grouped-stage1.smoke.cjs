@@ -150,6 +150,7 @@ const windowObj = {
   document,
   localStorage,
   crypto:{ randomUUID(){ uuidCounter += 1; return uuidCounter.toString(16).padStart(8,'0') + '-1234-1234-1234-123456789abc'; } },
+  A33Notice:{show(){},alert(){}},
   A33Materials:{ listActive: async()=>materials.map(x=>({...x})) },
   addEventListener(type,handler){ (windowListeners[type] ||= []).push(handler); },
   dispatchEvent(event){ (windowListeners[event.type] || []).forEach(fn=>fn(event)); },

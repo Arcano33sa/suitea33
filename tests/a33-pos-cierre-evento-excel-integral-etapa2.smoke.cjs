@@ -44,7 +44,7 @@ function between(source, startToken, endToken){
     async reempaqueRollbackFinalMermaForEventPOS(){ rollbackCalls += 1; },
     async put(){ eventWrites += 1; },
     humanizeError:error=>error.message,
-    alert(){}, console:{error(){},warn(){},log(){}}, Date, Object, Error, String, Array
+    posNotify(){}, console:{error(){},warn(){},log(){}}, Date, Object, Error, String, Array
   };
   vm.createContext(closeSandbox);
   vm.runInContext(`${closeBlock}\nthis.closeEvent=closeEvent;`, closeSandbox);

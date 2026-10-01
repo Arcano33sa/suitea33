@@ -497,6 +497,7 @@
 
 
   function setCostsStatus(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-costs-status');
     if (!el) return;
     el.textContent = message || '';
@@ -642,6 +643,7 @@
   }
 
   function saveCosts(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     const checked = readCostsForm();
     if (!checked.ok){
       setCostsStatus(checked.message, 'warn');
@@ -653,7 +655,7 @@
       renderCostsState(saved);
       scheduleCostsProductsRefresh();
       setCostsStatus('Costos guardados correctamente.', 'ok');
-      toast('Costos guardados correctamente');
+
     }catch(err){
       try{ console.error('[Suite A33] Costos: no se pudo guardar.', err); }catch(_){ }
       setCostsStatus('No se pudieron guardar los costos en este dispositivo.', 'warn');
@@ -709,6 +711,7 @@
   }
 
   function setCostsRecipeStatus(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-costs-recipe-status');
     if (!el) return;
     el.textContent = message || '';
@@ -1323,7 +1326,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=8').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=9').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -2094,6 +2097,7 @@
   }
 
   function setStatus(message, kind){
+    if (message && ['error','process'].includes(window.A33Notice.resolve(message, kind))) window.A33Notice.show(message, kind);
     const el = byId('cat-products-status');
     if (!el) return;
     el.textContent = message || '';
@@ -2101,12 +2105,7 @@
   }
 
   function toast(message){
-    const el = byId('cat-toast');
-    if (!el) return;
-    el.textContent = message || 'Hecho';
-    el.classList.add('show');
-    clearTimeout(toast._t);
-    toast._t = setTimeout(()=>el.classList.remove('show'), 2200);
+    return window.A33Notice.show(message);
   }
 
   function warnCatalogDeleteError(context, err){
@@ -2115,6 +2114,7 @@
   }
 
   function setEditMsg(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-edit-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -2323,11 +2323,12 @@
   }
 
   async function addProduct(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     const data = readProductForm('cat-new');
-    if (!data.ok){ alert(data.msg); return; }
+    if (!data.ok){ window.A33Notice.alert(data.msg); return; }
     const all = await getAll('products');
     const dupLetter = data.receta ? findDuplicateRecipeLetter(all || [], data.letra, null) : null;
-    if (dupLetter){ alert(`La Letra ${data.letra} ya está asignada a ${dupLetter.name || 'otro producto'} con Receta. Corrige antes de guardar.`); return; }
+    if (dupLetter){ window.A33Notice.alert(`La Letra ${data.letra} ya está asignada a ${dupLetter.name || 'otro producto'} con Receta. Corrige antes de guardar.`); return; }
     if (data.receta && (!data.envaseId || !data.tapaId)){
       const ok = confirm('Este producto tiene Receta, pero todavía no tiene Envase y/o Tapa. Se guardará como incompleto para producción futura. ¿Continuar?');
       if (!ok) return;
@@ -2370,7 +2371,7 @@
       toast('Producto agregado');
     }catch(err){
       console.error(err);
-      alert('No se pudo agregar el producto. Revisa los datos e intenta nuevamente.');
+      window.A33Notice.alert('No se pudo agregar el producto. Revisa los datos e intenta nuevamente.');
     }
   }
 
@@ -2422,6 +2423,7 @@
   }
 
   async function saveProduct(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     if (!currentEditId){ setEditMsg('Producto inválido.', 'warn'); return; }
     const all = await getAll('products');
     const product = findProductByProductId(all || [], currentEditId);
@@ -2515,6 +2517,7 @@
   }
 
   function setStatusById(id, message, kind){
+    if (message && ['error','process'].includes(window.A33Notice.resolve(message, kind))) window.A33Notice.show(message, kind);
     const el = byId(id);
     if (!el) return;
     el.textContent = message || '';
@@ -2583,6 +2586,7 @@
   }
 
   function setExtraEditMsg(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-edit-extra-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -2671,6 +2675,7 @@
   }
 
   async function saveExtraEditMaster(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     if (!currentExtraEditId){ setExtraEditMsg('No hay extra seleccionado.', 'warn'); return; }
     const data = readExtraEditForm();
     if (!data.ok){ setExtraEditMsg(data.msg, 'warn'); return; }
@@ -2740,17 +2745,18 @@
   }
 
   async function saveExtraMaster(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     const data = readExtraForm();
-    if (!data.ok){ alert(data.msg); return; }
+    if (!data.ok){ window.A33Notice.alert(data.msg); return; }
     const wasEdit = !!currentExtraEditId;
     const dup = await ensureNoDuplicateExtraName(data.name, currentExtraEditId);
-    if (dup){ alert('Ya existe un extra con ese nombre. Edita o activa el existente para evitar duplicados.'); return; }
+    if (dup){ window.A33Notice.alert('Ya existe un extra con ese nombre. Edita o activa el existente para evitar duplicados.'); return; }
     const now = new Date().toISOString();
     let row = null;
     if (currentExtraEditId){
       const all = await getAll('extras');
       row = (all || []).find(x => Number(x && x.id) === Number(currentExtraEditId));
-      if (!row){ alert('El extra ya no existe.'); resetExtraForm(); await renderExtras(); return; }
+      if (!row){ window.A33Notice.alert('El extra ya no existe.'); resetExtraForm(); await renderExtras(); return; }
     } else {
       row = { createdAt:now };
     }
@@ -2829,6 +2835,7 @@
   }
 
   function setBankEditMsg(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-edit-bank-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -2912,6 +2919,7 @@
   }
 
   async function saveBankEditMaster(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     if (!currentBankEditId){ setBankEditMsg('No hay banco seleccionado.', 'warn'); return; }
     const data = readBankEditForm();
     if (!data.ok){ setBankEditMsg(data.msg, 'warn'); return; }
@@ -2985,17 +2993,18 @@
   }
 
   async function saveBankMaster(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     const data = readBankForm();
-    if (!data.ok){ alert(data.msg); return; }
+    if (!data.ok){ window.A33Notice.alert(data.msg); return; }
     const wasEdit = !!currentBankEditId;
     const dup = await ensureNoDuplicateBank(data.name, data.type, currentBankEditId);
-    if (dup){ alert('Ya existe un banco con ese nombre y tipo. Edita o activa el existente.'); return; }
+    if (dup){ window.A33Notice.alert('Ya existe un banco con ese nombre y tipo. Edita o activa el existente.'); return; }
     const now = new Date().toISOString();
     let row = null;
     if (currentBankEditId){
       const all = await getAll('banks');
       row = (all || []).find(b => Number(b && b.id) === Number(currentBankEditId));
-      if (!row){ alert('El banco ya no existe.'); resetBankForm(); await renderBanks(); return; }
+      if (!row){ window.A33Notice.alert('El banco ya no existe.'); resetBankForm(); await renderBanks(); return; }
     } else {
       row = { createdAt:now };
     }
@@ -3215,6 +3224,7 @@
   }
 
   function setEnvaseMsg(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-envase-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -3222,6 +3232,7 @@
   }
 
   function setEnvaseEditMsg(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-edit-envase-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -3300,6 +3311,7 @@
   }
 
   async function saveEnvaseEditMaster(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     if (!currentEnvaseEditId){ setEnvaseEditMsg('No hay envase seleccionado.', 'warn'); return; }
     const data = readEnvaseEditForm();
     if (!data.ok){ setEnvaseEditMsg(data.msg, 'warn'); return; }
@@ -3376,6 +3388,7 @@
   }
 
   async function saveEnvaseMaster(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     const data = readEnvaseForm();
     if (!data.ok){ setEnvaseMsg(data.msg, 'warn'); return; }
     const duplicate = ensureNoDuplicateEnvaseName(data.name, currentEnvaseEditId);
@@ -3620,6 +3633,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
   }
 
   function setTapaMsg(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-tapa-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -3627,6 +3641,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
   }
 
   function setTapaEditMsg(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-edit-tapa-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -3690,6 +3705,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
   }
 
   async function saveTapaEditMaster(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     if (!currentTapaEditId){ setTapaEditMsg('No hay tapa seleccionada.', 'warn'); return; }
     const data = readTapaEditForm();
     if (!data.ok){ setTapaEditMsg(data.msg, 'warn'); return; }
@@ -3763,6 +3779,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
   }
 
   async function saveTapaMaster(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     const data = readTapaForm();
     if (!data.ok){ setTapaMsg(data.msg, 'warn'); return; }
     const duplicate = ensureNoDuplicateTapaName(data.name, currentTapaEditId);
@@ -4139,6 +4156,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
   }
 
   function setCustomerMsgCAT(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-customer-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -4575,6 +4593,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
   }
 
   async function saveCustomerMaster(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     const data = readCustomerFormCAT();
     if (!data.ok){ setCurrentCustomerMsgCAT(data.msg, 'warn'); return; }
     const list = readCustomerCatalogCAT();
@@ -4678,6 +4697,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   function setEditCustomerMsgCAT(message, kind){
+    window.A33Notice.show(message, kind);
     const el = byId('cat-edit-customer-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -4685,6 +4705,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   function setCurrentCustomerMsgCAT(message, kind){
+    window.A33Notice.show(message, kind);
     if (currentCustomerEditId) setEditCustomerMsgCAT(message, kind);
     else setCustomerMsgCAT(message, kind);
   }
@@ -4824,6 +4845,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   function setRawMaterialMsg(message, kind, edit){
+    window.A33Notice.show(message, kind);
     const el = byId(edit ? 'cat-edit-raw-material-msg' : 'cat-raw-material-msg');
     if (!el) return;
     el.textContent = message || '';
@@ -4907,6 +4929,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   async function createRawMaterial(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     if (rawMaterialCreateBusy) return;
     rawMaterialCreateBusy = true;
     const button = byId('cat-save-raw-material');
@@ -4976,6 +4999,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   async function saveRawMaterialEdit(){
+    window.A33Notice.show('Guardando Catálogos…', 'process');
     if (rawMaterialEditBusy || currentRawMaterialEditId == null) return;
     rawMaterialEditBusy = true;
     const button = byId('cat-edit-raw-material-save');
@@ -5073,12 +5097,12 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
         if (del){ await deleteBankMaster(del.dataset.id); return; }
       });
     }
-    byId('cat-save-extra')?.addEventListener('click', ()=>saveExtraMaster().catch(err=>{ console.error(err); alert('No se pudo guardar el extra.'); }));
+    byId('cat-save-extra')?.addEventListener('click', ()=>saveExtraMaster().catch(err=>{ console.error(err); window.A33Notice.alert('No se pudo guardar el extra.'); }));
     byId('cat-edit-extra-save')?.addEventListener('click', ()=>saveExtraEditMaster().catch(err=>{ console.error(err); setExtraEditMsg('No se pudo guardar el extra.', 'warn'); }));
     bindDismissibleModalCAT('cat-extra-modal', ['cat-extra-close','cat-edit-extra-cancel'], closeExtraModalCAT);
     byId('cat-cancel-extra')?.addEventListener('click', resetExtraForm);
     byId('cat-refresh-extras')?.addEventListener('click', async ()=>{ await seedExtrasFromEventSnapshots(); await renderExtras(); toast('Extras actualizados'); });
-    byId('cat-save-bank')?.addEventListener('click', ()=>saveBankMaster().catch(err=>{ console.error(err); alert('No se pudo guardar el banco.'); }));
+    byId('cat-save-bank')?.addEventListener('click', ()=>saveBankMaster().catch(err=>{ console.error(err); window.A33Notice.alert('No se pudo guardar el banco.'); }));
     byId('cat-edit-bank-save')?.addEventListener('click', ()=>saveBankEditMaster().catch(err=>{ console.error(err); setBankEditMsg('No se pudo guardar el banco.', 'warn'); }));
     bindDismissibleModalCAT('cat-bank-modal', ['cat-bank-close','cat-edit-bank-cancel'], closeBankModalCAT);
     byId('cat-cancel-bank')?.addEventListener('click', resetBankForm);
@@ -5127,7 +5151,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
         }
       });
     });
-    byId('cat-add-product')?.addEventListener('click', ()=>addProduct().catch(err=>{ console.error(err); alert('No se pudo agregar el producto.'); }));
+    byId('cat-add-product')?.addEventListener('click', ()=>addProduct().catch(err=>{ console.error(err); window.A33Notice.alert('No se pudo agregar el producto.'); }));
     byId('cat-refresh-products')?.addEventListener('click', ()=>initProducts({ skipSeed:true }).catch(err=>{ console.error(err); setStatus('No se pudo actualizar.', 'warn'); }));
     byId('cat-product-close')?.addEventListener('click', closeProductModal);
     byId('cat-edit-cancel')?.addEventListener('click', closeProductModal);

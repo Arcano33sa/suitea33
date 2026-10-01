@@ -2,13 +2,16 @@
 try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=54'); } catch (_) {}
 const VERSION = self.A33_RELEASE && self.A33_RELEASE.suiteVersion ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const REV = self.A33_RELEASE && self.A33_RELEASE.rev != null ? String(self.A33_RELEASE.rev) : '1';
-const CACHE = `a33-v${VERSION}-agenda-r${REV}-m5`;
+const CACHE = `a33-v${VERSION}-agenda-r${REV}-m7`;
 const PRECACHE = [
+  '/assets/js/a33-notify.js?v=4.20.98&r=1',
+  '/assets/js/a33-notify-bridge.js?v=4.20.98&r=2',
+  '/assets/css/a33-notify.css?v=4.20.98&r=1',
   './',
-  './index.html?v=4.20.98&r=4',
+  './index.html?v=4.20.98&r=6',
   './style.css?v=4.20.98&r=11',
-  './script.js?v=4.20.98&r=16',
-  './purchases.js?v=4.20.98&r=4',
+  './script.js?v=4.20.98&r=17',
+  './purchases.js?v=4.20.98&r=5',
   './manifest.webmanifest?v=4.20.98&r=1',
   './offline.html',
   '../icon-a33-192.png',
@@ -37,7 +40,7 @@ self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).then(response => {
       const clone = response.clone(); caches.open(CACHE).then(cache => cache.put(event.request, clone)).catch(()=>{}); return response;
-    }).catch(() => caches.match(event.request).then(hit => hit || caches.match('./index.html?v=4.20.98&r=4')).then(hit => hit || caches.match('./offline.html'))));
+    }).catch(() => caches.match(event.request).then(hit => hit || caches.match('./index.html?v=4.20.98&r=6')).then(hit => hit || caches.match('./offline.html'))));
     return;
   }
   event.respondWith(caches.match(event.request).then(hit => hit || fetch(event.request).then(response => {

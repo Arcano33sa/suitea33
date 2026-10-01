@@ -222,6 +222,7 @@ const window = {
   localStorage,
   indexedDB,
   A33Storage:null,
+  A33Notice:{show(){}},
   location:{ href:'http://localhost/centro-mando/index.html' },
   addEventListener(){},
   __A33_CDM_STAGE2:null

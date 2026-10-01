@@ -59,7 +59,7 @@ function openFinDB() {
     // Si hay otra pestaña con la DB abierta en versión vieja, el upgrade puede quedar bloqueado.
     req.onblocked = () => {
       console.warn('IndexedDB upgrade bloqueado: otra pestaña mantiene una conexión abierta.');
-      alert('Finanzas necesita actualizar su base de datos, pero está bloqueado por otra pestaña.\n\nCierra otras pestañas/ventanas de la Suite A33 y recarga.');
+      window.A33Notice.alert('Finanzas necesita actualizar su base de datos, pero está bloqueado por otra pestaña.\n\nCierra otras pestañas/ventanas de la Suite A33 y recarga.');
     };
 
     req.onupgradeneeded = (e) => {
@@ -181,7 +181,7 @@ function openFinDB() {
       finDB.onversionchange = () => {
         try { finDB.close(); } catch (e) {}
         finDB = null;
-        alert('Se detectó una actualización de Finanzas en otra pestaña.\nCierra esta pestaña y vuelve a abrir Finanzas.');
+        window.A33Notice.alert('Se detectó una actualización de Finanzas en otra pestaña.\nCierra esta pestaña y vuelve a abrir Finanzas.');
       };
 
       resolve(finDB);
@@ -197,7 +197,7 @@ function openFinDB() {
           finDB.onversionchange = () => {
             try { finDB.close(); } catch (e) {}
             finDB = null;
-            alert('Se detectó una actualización de Finanzas en otra pestaña.\nCierra esta pestaña y vuelve a abrir Finanzas.');
+            window.A33Notice.alert('Se detectó una actualización de Finanzas en otra pestaña.\nCierra esta pestaña y vuelve a abrir Finanzas.');
           };
 
           // Si por alguna razón falta la store de recibos, hacer un upgrade mínimo (version + 1).
@@ -210,7 +210,7 @@ function openFinDB() {
               const req3 = indexedDB.open(FIN_DB_NAME, currentVersion + 1);
               req3.onblocked = () => {
                 console.warn('Upgrade (receipts) bloqueado por otra pestaña.');
-                alert('Finanzas necesita actualizar su base de datos (Recibos), pero está bloqueado por otra pestaña.\n\nCierra otras pestañas/ventanas de la Suite A33 y recarga.');
+                window.A33Notice.alert('Finanzas necesita actualizar su base de datos (Recibos), pero está bloqueado por otra pestaña.\n\nCierra otras pestañas/ventanas de la Suite A33 y recarga.');
               };
               req3.onupgradeneeded = (ev) => {
                 const db2 = ev.target.result;
@@ -227,7 +227,7 @@ function openFinDB() {
                 finDB.onversionchange = () => {
                   try { finDB.close(); } catch (e) {}
                   finDB = null;
-                  alert('Se detectó una actualización de Finanzas en otra pestaña.\nCierra esta pestaña y vuelve a abrir Finanzas.');
+                  window.A33Notice.alert('Se detectó una actualización de Finanzas en otra pestaña.\nCierra esta pestaña y vuelve a abrir Finanzas.');
                 };
 
                 resolve(finDB);
@@ -5802,7 +5802,8 @@ function ccNormalizeSnapshot(obj) {
   return out;
 }
 
-function ccSetMsg(text) {
+function ccSetMsg(text, kind) {
+  window.A33Notice.show(text, kind);
   const el = document.getElementById('cc-msg');
   if (el) el.textContent = text || '';
 }
@@ -6238,24 +6239,35 @@ async function ccSaveSnapshot() {
     ? ccBuildConsolidatedFromCurrent(now, fxRate)
     : previousConsolidated;
 
+  let primarySaved = false;
+  let backupSaved = false;
+  window.A33Notice.show('Guardando Caja Chica…', 'process');
   try {
     await finPut('settings', { id: CC_STORAGE_KEY, data: ccSnapshot });
+    primarySaved = true;
   } catch (err) {
   }
 
   try {
     localStorage.setItem(CC_STORAGE_KEY, JSON.stringify(ccSnapshot));
+    backupSaved = true;
   } catch (_) {}
 
   const upd = document.getElementById('cc-updated');
   if (upd) upd.textContent = `Actualizado: ${ccSnapshot.updatedAtDisplay}`;
   ccUpdateConsolidatedSummary();
 
-  showToast('Caja Chica guardada');
-  if (fxRate) {
-    ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay} · T/C desde Moneda ${fxRate.toFixed(2)}`);
+  if (!primarySaved || !backupSaved){
+    const warning = primarySaved || backupSaved
+      ? 'Caja Chica guardada parcialmente. Una de sus copias locales no pudo actualizarse.'
+      : 'No se pudo guardar Caja Chica en este dispositivo.';
+    ccSetMsg(warning, primarySaved || backupSaved ? 'pending' : 'error');
   } else {
-    ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay} · consolidado no recalculado; configure el T/C en Configuración → Moneda`);
+    if (fxRate) {
+      ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay} · T/C desde Moneda ${fxRate.toFixed(2)}`);
+    } else {
+      ccSetMsg(`Guardado: ${ccSnapshot.updatedAtDisplay} · consolidado no recalculado; configure el T/C en Configuración → Moneda`);
+    }
   }
 }
 
@@ -6486,39 +6498,41 @@ async function cobrarSave(event) {
   const message = document.getElementById('cobrar-form-message');
   if (cobrarEditorMode === 'collect') {
     const selected = Array.from(document.querySelectorAll('#cobrar-lines-tbody tr')).filter(row => row.querySelector('.cobrar-payment-check')?.checked);
-    if (!selected.length) { message.textContent = 'Seleccione al menos una partida pagada.'; return; }
+    if (!selected.length) { message.textContent = 'Seleccione al menos una partida pagada.'; window.A33Notice.alert(message.textContent); return; }
     const nowPaid = new Date().toISOString();
     const batchId = cobrarId();
     for (const row of selected) {
       const item = cobrarItems.find(entry => entry.id === cobrarText(row.dataset.id, 100));
       if (!item || item.status !== 'PENDING') continue;
+      window.A33Notice.show('Guardando cobro…', 'process');
       await finPut('receivableItems', { ...item, status: 'PAID', paidAtISO: nowPaid, paymentBatchId: batchId, updatedAtISO: nowPaid });
     }
-    await cobrarLoad(); cobrarCloseEditor(); return;
+    await cobrarLoad(); cobrarCloseEditor(); window.A33Notice.show('Cobro registrado correctamente.', 'success'); return;
   }
-  if (!customerName) { message.textContent = 'Ingrese o seleccione un cliente.'; return; }
+  if (!customerName) { message.textContent = 'Ingrese o seleccione un cliente.'; window.A33Notice.alert(message.textContent); return; }
   const master = cobrarCustomers.find(row => cobrarKey(row.name) === cobrarKey(customerName));
   const groupKey = existingGroupKey || (master?.id ? `customer:${master.id}` : `manual:${cobrarKey(customerName)}`);
-  if (!existingGroupKey && cobrarGroups().some(group => group.key === groupKey)) { message.textContent = 'Ese cliente ya tiene un registro. Use Editar para agregar nuevas partidas.'; return; }
+  if (!existingGroupKey && cobrarGroups().some(group => group.key === groupKey)) { message.textContent = 'Ese cliente ya tiene un registro. Use Editar para agregar nuevas partidas.'; window.A33Notice.alert(message.textContent); return; }
   const prepared = [];
   for (const row of document.querySelectorAll('#cobrar-lines-tbody tr')) {
     const description = cobrarText(row.querySelector('.cobrar-line-description')?.value, 300);
     const amount = Number(row.querySelector('.cobrar-line-amount')?.value || 0);
     const dueDate = cobrarText(row.querySelector('.cobrar-line-date')?.value, 10);
-    if (!description || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { message.textContent = 'Complete descripción, monto mayor que cero y fecha en todas las partidas.'; return; }
+    if (!description || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { message.textContent = 'Complete descripción, monto mayor que cero y fecha en todas las partidas.'; window.A33Notice.alert(message.textContent); return; }
     prepared.push({ row, description, amount: Math.round(amount * 100) / 100, dueDate });
   }
-  if (!prepared.length) { message.textContent = 'Agregue al menos una partida.'; return; }
+  if (!prepared.length) { message.textContent = 'Agregue al menos una partida.'; window.A33Notice.alert(message.textContent); return; }
   const now = new Date().toISOString();
   for (const part of prepared) {
     const existingId = cobrarText(part.row.dataset.id, 100);
     const existing = cobrarItems.find(item => item.id === existingId);
+    window.A33Notice.show('Guardando cuenta por cobrar…', 'process');
     await finPut('receivableItems', { ...(existing || {}), id: existingId || cobrarId(), groupKey,
       customerId: master?.id || existing?.customerId || '', customerName, customerSource: master ? 'CATALOG' : 'MANUAL',
       description: part.description, amount: part.amount, dueDate: part.dueDate, status: 'PENDING',
       createdAtISO: existing?.createdAtISO || now, updatedAtISO: now });
   }
-  await cobrarLoad(); cobrarCloseEditor();
+  await cobrarLoad(); cobrarCloseEditor(); window.A33Notice.show('Cuenta por cobrar guardada correctamente.', 'success');
 }
 
 function setupCobrarUI() {
@@ -6528,7 +6542,7 @@ function setupCobrarUI() {
   document.getElementById('cobrar-add-line')?.addEventListener('click', () => document.getElementById('cobrar-lines-tbody')?.insertAdjacentHTML('beforeend', cobrarLineRow({}, false, true)));
   document.getElementById('cobrar-close')?.addEventListener('click', cobrarCloseEditor);
   document.getElementById('cobrar-cancel')?.addEventListener('click', cobrarCloseEditor);
-  document.getElementById('cobrar-form')?.addEventListener('submit', event => cobrarSave(event).catch(err => { console.error(err); document.getElementById('cobrar-form-message').textContent = 'No se pudo guardar la cuenta.'; }));
+  document.getElementById('cobrar-form')?.addEventListener('submit', event => cobrarSave(event).catch(err => { console.error(err); document.getElementById('cobrar-form-message').textContent = 'No se pudo guardar la cuenta.'; window.A33Notice.show('No se pudo guardar la cuenta.', 'error'); }));
   document.getElementById('cobrar-lines-tbody')?.addEventListener('click', event => event.target.closest('.cobrar-remove-line')?.closest('tr')?.remove());
   document.getElementById('cobrar-tbody')?.addEventListener('click', event => {
     const view = event.target.closest('.cobrar-view'); const edit = event.target.closest('.cobrar-edit'); const collect = event.target.closest('.cobrar-collect');
@@ -6652,38 +6666,40 @@ async function pagarSave(event) {
   const message = document.getElementById('pagar-form-message');
   if (pagarEditorMode === 'collect') {
     const selected = Array.from(document.querySelectorAll('#pagar-lines-tbody tr')).filter(row => row.querySelector('.pagar-payment-check')?.checked);
-    if (!selected.length) { message.textContent = 'Seleccione al menos una obligación pagada.'; return; }
+    if (!selected.length) { message.textContent = 'Seleccione al menos una obligación pagada.'; window.A33Notice.alert(message.textContent); return; }
     const nowPaid = new Date().toISOString(); const batchId = cobrarId();
     for (const row of selected) {
       const item = pagarItems.find(entry => entry.id === cobrarText(row.dataset.id, 100));
       if (!item || item.status !== 'PENDING') continue;
+      window.A33Notice.show('Guardando pago…', 'process');
       await finPut('payableItems', { ...item, status: 'PAID', paidAtISO: nowPaid, paymentBatchId: batchId, updatedAtISO: nowPaid });
     }
-    await pagarLoad(); pagarCloseEditor(); return;
+    await pagarLoad(); pagarCloseEditor(); window.A33Notice.show('Pago registrado correctamente.', 'success'); return;
   }
-  if (!partyName) { message.textContent = 'Ingrese o seleccione un proveedor o beneficiario.'; return; }
+  if (!partyName) { message.textContent = 'Ingrese o seleccione un proveedor o beneficiario.'; window.A33Notice.alert(message.textContent); return; }
   const master = pagarParties.find(row => cobrarKey(row.name) === cobrarKey(partyName));
   const groupKey = existingGroupKey || (master?.id ? `supplier:${master.id}` : `manual:${cobrarKey(partyName)}`);
-  if (!existingGroupKey && pagarGroups().some(group => group.key === groupKey)) { message.textContent = 'Ese proveedor o beneficiario ya tiene un registro. Use Editar para agregar obligaciones.'; return; }
+  if (!existingGroupKey && pagarGroups().some(group => group.key === groupKey)) { message.textContent = 'Ese proveedor o beneficiario ya tiene un registro. Use Editar para agregar obligaciones.'; window.A33Notice.alert(message.textContent); return; }
   const prepared = [];
   for (const row of document.querySelectorAll('#pagar-lines-tbody tr')) {
     const description = cobrarText(row.querySelector('.pagar-line-description')?.value, 300);
     const amount = Number(row.querySelector('.pagar-line-amount')?.value || 0);
     const dueDate = cobrarText(row.querySelector('.pagar-line-date')?.value, 10);
-    if (!description || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { message.textContent = 'Complete descripción, monto mayor que cero y fecha en todas las obligaciones.'; return; }
+    if (!description || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { message.textContent = 'Complete descripción, monto mayor que cero y fecha en todas las obligaciones.'; window.A33Notice.alert(message.textContent); return; }
     prepared.push({ row, description, amount: Math.round(amount * 100) / 100, dueDate });
   }
-  if (!prepared.length) { message.textContent = 'Agregue al menos una obligación.'; return; }
+  if (!prepared.length) { message.textContent = 'Agregue al menos una obligación.'; window.A33Notice.alert(message.textContent); return; }
   const now = new Date().toISOString();
   for (const part of prepared) {
     const existingId = cobrarText(part.row.dataset.id, 100);
     const existing = pagarItems.find(item => item.id === existingId);
+    window.A33Notice.show('Guardando cuenta por pagar…', 'process');
     await finPut('payableItems', { ...(existing || {}), id: existingId || cobrarId(), groupKey,
       supplierId: master?.id || existing?.supplierId || '', partyName, partySource: master ? 'SUPPLIER' : 'MANUAL',
       description: part.description, amount: part.amount, dueDate: part.dueDate, status: 'PENDING',
       createdAtISO: existing?.createdAtISO || now, updatedAtISO: now });
   }
-  await pagarLoad(); pagarCloseEditor();
+  await pagarLoad(); pagarCloseEditor(); window.A33Notice.show('Cuenta por pagar guardada correctamente.', 'success');
 }
 
 function setupPagarUI() {
@@ -6693,7 +6709,7 @@ function setupPagarUI() {
   document.getElementById('pagar-add-line')?.addEventListener('click', () => document.getElementById('pagar-lines-tbody')?.insertAdjacentHTML('beforeend', pagarLineRow({}, false, true)));
   document.getElementById('pagar-close')?.addEventListener('click', pagarCloseEditor);
   document.getElementById('pagar-cancel')?.addEventListener('click', pagarCloseEditor);
-  document.getElementById('pagar-form')?.addEventListener('submit', event => pagarSave(event).catch(err => { console.error(err); document.getElementById('pagar-form-message').textContent = 'No se pudo guardar la obligación.'; }));
+  document.getElementById('pagar-form')?.addEventListener('submit', event => pagarSave(event).catch(err => { console.error(err); document.getElementById('pagar-form-message').textContent = 'No se pudo guardar la obligación.'; window.A33Notice.show('No se pudo guardar la obligación.', 'error'); }));
   document.getElementById('pagar-lines-tbody')?.addEventListener('click', event => event.target.closest('.pagar-remove-line')?.closest('tr')?.remove());
   document.getElementById('pagar-tbody')?.addEventListener('click', event => {
     const view = event.target.closest('.pagar-view'); const edit = event.target.closest('.pagar-edit'); const collect = event.target.closest('.pagar-collect');
@@ -8116,7 +8132,7 @@ function renderFlujoCaja(data) {
 
 async function exportDiarioExcel() {
   if (typeof XLSX === 'undefined') {
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
     return;
   }
   if (!finCachedData) {
@@ -8124,7 +8140,7 @@ async function exportDiarioExcel() {
   }
   const data = finCachedData;
   if (!data || !Array.isArray(data.entries) || !data.entries.length) {
-    alert('No hay movimientos en el Diario para exportar.');
+    window.A33Notice.alert('No hay movimientos en el Diario para exportar.');
     return;
   }
 
@@ -8177,7 +8193,7 @@ async function exportDiarioExcel() {
   if (approxCount > EXCEL_WARN_ROWS) {
     const warn = `Exportación grande (~${approxCount} filas) puede tardar o colgar Safari en iPad.\n\n`;
     if (!diarioDesde && !diarioHasta) {
-      alert(warn + 'Selecciona un rango de fechas (Desde/Hasta) antes de exportar.');
+      window.A33Notice.alert(warn + 'Selecciona un rango de fechas (Desde/Hasta) antes de exportar.');
       return;
     }
     const ok = confirm(warn + '¿Deseas continuar de todas formas?');
@@ -8332,7 +8348,7 @@ async function exportDiarioExcel() {
 
 async function exportEstadoResultadosExcel() {
   if (typeof XLSX === 'undefined') {
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
     return;
   }
   if (!finCachedData) {
@@ -8340,7 +8356,7 @@ async function exportEstadoResultadosExcel() {
   }
   const data = finCachedData;
   if (!data || !Array.isArray(data.entries) || !data.entries.length) {
-    alert('No hay datos contables para exportar el Estado de Resultados.');
+    window.A33Notice.alert('No hay datos contables para exportar el Estado de Resultados.');
     return;
   }
 
@@ -8417,7 +8433,7 @@ async function exportEstadoResultadosExcel() {
 
 async function exportBalanceGeneralExcel() {
   if (typeof XLSX === 'undefined') {
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
     return;
   }
   if (!finCachedData) {
@@ -8425,7 +8441,7 @@ async function exportBalanceGeneralExcel() {
   }
   const data = finCachedData;
   if (!data || !Array.isArray(data.entries) || !data.entries.length) {
-    alert('No hay datos contables para exportar el Balance General.');
+    window.A33Notice.alert('No hay datos contables para exportar el Balance General.');
     return;
   }
 
@@ -8457,7 +8473,7 @@ async function exportBalanceGeneralExcel() {
 
 async function exportFlujoCajaExcel() {
   if (typeof XLSX === 'undefined') {
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
     return;
   }
   if (!finCachedData) {
@@ -8465,13 +8481,13 @@ async function exportFlujoCajaExcel() {
   }
   const data = finCachedData;
   if (!data || !Array.isArray(data.entries) || !data.entries.length) {
-    alert('No hay datos contables para exportar el Flujo de Caja.');
+    window.A33Notice.alert('No hay datos contables para exportar el Flujo de Caja.');
     return;
   }
 
   const r = calcFlujoCaja(data);
   if (!r) {
-    alert('Selecciona un periodo válido para exportar el Flujo de Caja.');
+    window.A33Notice.alert('Selecciona un periodo válido para exportar el Flujo de Caja.');
     return;
   }
 
@@ -8502,11 +8518,7 @@ async function exportFlujoCajaExcel() {
 /* ---------- UI: helpers ---------- */
 
 function showToast(msg) {
-  const el = $('#toast');
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2000);
+  return window.A33Notice.show(msg);
 }
 
 function fillMonthYearSelects() {
@@ -9379,10 +9391,11 @@ async function createInternalTransferWithJournalAtomic(transfer, entry, lines) {
 }
 
 async function guardarTransferenciaInterna() {
+  window.A33Notice.show('Guardando Finanzas…', 'process');
   if (!finCachedData) await refreshAllFin();
   const rows = finGetActiveFinancialAccountsForTransfers(finCachedData);
   if (rows.length < 2) {
-    alert('Configure al menos dos cuentas financieras activas para registrar transferencias internas.');
+    window.A33Notice.alert('Configure al menos dos cuentas financieras activas para registrar transferencias internas.');
     return;
   }
 
@@ -9394,27 +9407,27 @@ async function guardarTransferenciaInterna() {
   const amountDestRaw = document.getElementById('ti-monto-destino')?.value || '';
   const rateRaw = document.getElementById('ti-tc')?.value || '';
 
-  if (!fecha) { alert('Ingresa la fecha de la transferencia.'); return; }
-  if (!origin) { alert('Selecciona la cuenta financiera origen.'); return; }
-  if (!dest) { alert('Selecciona la cuenta financiera destino.'); return; }
-  if (finGetFinancialAccountId(origin) === finGetFinancialAccountId(dest)) { alert('La cuenta origen y destino no pueden ser la misma.'); return; }
+  if (!fecha) { window.A33Notice.alert('Ingresa la fecha de la transferencia.'); return; }
+  if (!origin) { window.A33Notice.alert('Selecciona la cuenta financiera origen.'); return; }
+  if (!dest) { window.A33Notice.alert('Selecciona la cuenta financiera destino.'); return; }
+  if (finGetFinancialAccountId(origin) === finGetFinancialAccountId(dest)) { window.A33Notice.alert('La cuenta origen y destino no pueden ser la misma.'); return; }
 
   const originCode = finNormalizeAccountCode(origin.cuentaContableCodigo || '');
   const destCode = finNormalizeAccountCode(dest.cuentaContableCodigo || '');
   const accountsMap = finCachedData && finCachedData.accountsMap ? finCachedData.accountsMap : new Map();
-  if (!originCode || !accountsMap.get(originCode)) { alert('La cuenta origen no tiene una cuenta contable válida asociada.'); return; }
-  if (!destCode || !accountsMap.get(destCode)) { alert('La cuenta destino no tiene una cuenta contable válida asociada.'); return; }
+  if (!originCode || !accountsMap.get(originCode)) { window.A33Notice.alert('La cuenta origen no tiene una cuenta contable válida asociada.'); return; }
+  if (!destCode || !accountsMap.get(destCode)) { window.A33Notice.alert('La cuenta destino no tiene una cuenta contable válida asociada.'); return; }
 
   const calc = finBuildTransferCalculation({ origin, dest, amountOriginRaw, amountDestRaw, explicitRate: rateRaw });
   if (!calc.ok) {
-    alert(calc.warningMessage || 'Revise los datos de la transferencia.');
+    window.A33Notice.alert(calc.warningMessage || 'Revise los datos de la transferencia.');
     return;
   }
 
   const totalDebe = finRoundCurrency2(calc.equivalenteNIO);
   const totalHaber = finRoundCurrency2(calc.equivalenteNIO);
   if (!(Number.isFinite(totalDebe) && totalDebe > 0) || Math.abs(totalDebe - totalHaber) > 0.005) {
-    alert('El asiento no cuadra. No se guardó la transferencia.');
+    window.A33Notice.alert('El asiento no cuadra. No se guardó la transferencia.');
     return;
   }
 
@@ -9490,7 +9503,7 @@ async function guardarTransferenciaInterna() {
     await createInternalTransferWithJournalAtomic(transfer, entry, lines);
   } catch (err) {
     console.error('Error guardando transferencia interna', err);
-    alert('No se pudo guardar la transferencia interna.');
+    window.A33Notice.alert('No se pudo guardar la transferencia interna.');
     return;
   }
 
@@ -9574,7 +9587,7 @@ function setupInternalTransfersUI() {
     btn.addEventListener('click', () => {
       guardarTransferenciaInterna().catch(err => {
         console.error('Error guardando transferencia interna', err);
-        alert('No se pudo guardar la transferencia interna.');
+        window.A33Notice.alert('No se pudo guardar la transferencia interna.');
       });
     });
   }
@@ -11871,7 +11884,7 @@ function renderAccountingReports(data) {
 
 function finExportReportWorkbook(sheetName, rows, filename, title) {
   if (typeof XLSX === 'undefined') {
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
     return;
   }
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -11884,7 +11897,7 @@ function finExportReportWorkbook(sheetName, rows, filename, title) {
 async function exportMayorReportExcel() {
   if (!finCachedData) await refreshAllFin();
   const r = finBuildMayorReport(finCachedData);
-  if (!r.rows.length) return alert('No hay datos para exportar el Mayor por cuenta.');
+  if (!r.rows.length) return window.A33Notice.alert('No hay datos para exportar el Mayor por cuenta.');
   const rows = [['Mayor por cuenta'], ['Cuenta', `${r.accountCode} ${r.accountName}`], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], [], ['Fecha', 'Asiento', 'Descripción', 'Referencia', 'Contraparte', 'Debe C$', 'Haber C$', 'Saldo C$', 'Moneda original', 'Monto original', 'T/C usado', 'Equivalente C$']];
   for (const x of r.rows) rows.push([x.date, x.id || '', x.desc, x.ref, x.contraparte, x.debe, x.haber, x.saldo, x.meta.originalCurrency, x.meta.originalAmount ?? '', x.meta.exchangeRateUsed ?? '', x.meta.baseAmountNio ?? '']);
   finExportReportWorkbook('Mayor', rows, `finanzas_mayor_${r.accountCode || 'cuenta'}_${todayStr()}.xlsx`, 'Mayor por cuenta');
@@ -11894,7 +11907,7 @@ async function exportMayorReportExcel() {
 async function exportEstadoCuentaReportExcel() {
   if (!finCachedData) await refreshAllFin();
   const r = finBuildEstadoCuentaReport(finCachedData);
-  if (!r.rows.length) return alert('No hay datos para exportar el Estado de cuenta.');
+  if (!r.rows.length) return window.A33Notice.alert('No hay datos para exportar el Estado de cuenta.');
   const rows = [['Estado de cuenta financiera'], ['Cuenta financiera', r.fa ? finReportFinancialAccountName(r.fa) : ''], ['Cuenta contable', r.accountCode || ''], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], [], ['Fecha', 'Asiento', 'Operación', 'Descripción', 'Referencia', 'Entrada original', 'Salida original', 'Saldo original', 'Entrada C$', 'Salida C$', 'Saldo C$', 'Moneda', 'Monto original', 'T/C usado']];
   for (const x of r.rows) rows.push([x.date, x.id || '', x.source, x.desc, x.ref, x.entradaPrincipal ?? '', x.salidaPrincipal ?? '', x.saldoPrincipal ?? '', x.entradaBase, x.salidaBase, x.saldoBase, x.meta.originalCurrency, x.meta.originalAmount ?? '', x.meta.exchangeRateUsed ?? '']);
   finExportReportWorkbook('EstadoCuenta', rows, `finanzas_estado_cuenta_${r.accountCode || 'cuenta'}_${todayStr()}.xlsx`, 'Estado de cuenta financiera');
@@ -11904,7 +11917,7 @@ async function exportEstadoCuentaReportExcel() {
 async function exportBalanzaReportExcel() {
   if (!finCachedData) await refreshAllFin();
   const r = finBuildBalanzaReport(finCachedData);
-  if (!r.rows.length) return alert('No hay datos para exportar la Balanza.');
+  if (!r.rows.length) return window.A33Notice.alert('No hay datos para exportar la Balanza.');
   const rows = [['Balanza de comprobación'], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], ['Total DEBE', r.totalDebe], ['Total HABER', r.totalHaber], ['Diferencia', r.diff], [], ['Código', 'Cuenta', 'Total DEBE C$', 'Total HABER C$', 'Saldo deudor C$', 'Saldo acreedor C$']];
   for (const x of r.rows) rows.push([x.code, x.name, x.debe, x.haber, x.saldoDeudor, x.saldoAcreedor]);
   finExportReportWorkbook('Balanza', rows, `finanzas_balanza_${todayStr()}.xlsx`, 'Balanza de comprobación');
@@ -11914,7 +11927,7 @@ async function exportBalanzaReportExcel() {
 async function exportLibroReportExcel() {
   if (!finCachedData) await refreshAllFin();
   const r = finBuildLibroReport(finCachedData);
-  if (!r.rows.length) return alert('No hay datos para exportar el Libro Diario.');
+  if (!r.rows.length) return window.A33Notice.alert('No hay datos para exportar el Libro Diario.');
   const rows = [['Libro Diario mejorado'], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], [], ['Fecha', 'Asiento', 'Origen', 'Descripción', 'Referencia', 'Cuenta', 'Nombre cuenta', 'Debe C$', 'Haber C$', 'Moneda original', 'Monto original', 'T/C usado', 'Cuenta financiera']];
   for (const e of r.rows) {
     for (const l of e.lines) {
@@ -11929,7 +11942,7 @@ async function exportLibroReportExcel() {
 async function exportResumenMonedaReportExcel() {
   if (!finCachedData) await refreshAllFin();
   const r = finBuildResumenMonedaReport(finCachedData);
-  if (!r.rows.length) return alert('No hay datos para exportar el Resumen por moneda.');
+  if (!r.rows.length) return window.A33Notice.alert('No hay datos para exportar el Resumen por moneda.');
   const rows = [['Resumen por moneda'], ['Periodo', `${r.desde || 'Inicio'} a ${r.hasta || 'Hoy'}`], ['Exportado', finFormatCurrencyTimestamp(new Date().toISOString())], [], ['Moneda', 'Entradas originales', 'Salidas originales', 'Eq. entradas C$', 'Eq. salidas C$', 'Movimientos'], ['NIO', r.totals.NIO.entradas, r.totals.NIO.salidas, r.totals.NIO.equivalenteEntradas, r.totals.NIO.equivalenteSalidas, r.totals.NIO.movimientos], ['USD', r.totals.USD.entradas, r.totals.USD.salidas, r.totals.USD.equivalenteEntradas, r.totals.USD.equivalenteSalidas, r.totals.USD.movimientos], ['Total general equivalente C$', r.totalGeneralEq], [], ['Fecha', 'Cuenta', 'Nombre cuenta', 'Descripción', 'Moneda', 'Monto original', 'Equivalente C$', 'T/C usado']];
   for (const x of r.rows) rows.push([x.date, x.code, x.accountName, x.desc, x.cur, x.origAmt, x.baseAmt, x.meta.exchangeRateUsed ?? '']);
   finExportReportWorkbook('ResumenMoneda', rows, `finanzas_resumen_moneda_${todayStr()}.xlsx`, 'Resumen por moneda');
@@ -11954,7 +11967,7 @@ function setupAccountingReportsUI() {
   });
   const bind = (id, fn) => {
     const btn = document.getElementById(id);
-    if (btn) btn.addEventListener('click', (ev) => { ev.preventDefault(); fn().catch(err => { console.error('Error exportando reporte contable', err); alert('No se pudo exportar el reporte a Excel.'); }); });
+    if (btn) btn.addEventListener('click', (ev) => { ev.preventDefault(); fn().catch(err => { console.error('Error exportando reporte contable', err); window.A33Notice.alert('No se pudo exportar el reporte a Excel.'); }); });
   };
   bind('btn-export-mayor', exportMayorReportExcel);
   bind('btn-export-estado', exportEstadoCuentaReportExcel);
@@ -12038,6 +12051,7 @@ function renderBalanceGeneral(data) {
 /* ---------- Guardar movimiento manual ---------- */
 
 async function guardarMovimientoManual() {
+  window.A33Notice.show('Guardando Finanzas…', 'process');
   if (!finCachedData) {
     await refreshAllFin();
   }
@@ -12067,23 +12081,23 @@ async function guardarMovimientoManual() {
   const originalAmount = finParseCurrencyAmount(montoRaw);
 
   if (!fecha) {
-    alert('Ingresa la fecha del movimiento.');
+    window.A33Notice.alert('Ingresa la fecha del movimiento.');
     return;
   }
   if (tipo === 'transferencia') {
-    alert('Use la sección Transferencias Internas para registrar movimientos entre cuentas financieras.');
+    window.A33Notice.alert('Use la sección Transferencias Internas para registrar movimientos entre cuentas financieras.');
     return;
   }
   if (!financialAccount) {
-    alert('Configure al menos una cuenta financiera activa antes de registrar movimientos.');
+    window.A33Notice.alert('Configure al menos una cuenta financiera activa antes de registrar movimientos.');
     return;
   }
   if (!cuentaCode) {
-    alert('Selecciona la cuenta contable contraparte.');
+    window.A33Notice.alert('Selecciona la cuenta contable contraparte.');
     return;
   }
   if (!(Number.isFinite(originalAmount) && originalAmount > 0)) {
-    alert('El monto original debe ser mayor que cero.');
+    window.A33Notice.alert('El monto original debe ser mayor que cero.');
     return;
   }
 
@@ -12091,28 +12105,28 @@ async function guardarMovimientoManual() {
   const financialAccountRecord = financialCode && finCachedData.accountsMap ? finCachedData.accountsMap.get(financialCode) : null;
   const counterpartAccount = finCachedData.accountsMap ? finCachedData.accountsMap.get(cuentaCode) : null;
   if (!financialCode || !financialAccountRecord) {
-    alert('La cuenta financiera seleccionada no tiene una cuenta contable válida asociada. Revise Cuentas Financieras.');
+    window.A33Notice.alert('La cuenta financiera seleccionada no tiene una cuenta contable válida asociada. Revise Cuentas Financieras.');
     return;
   }
   if (!counterpartAccount) {
-    alert('La cuenta contable contraparte no existe.');
+    window.A33Notice.alert('La cuenta contable contraparte no existe.');
     return;
   }
   if (cuentaCode === financialCode) {
-    alert('La cuenta contable contraparte no puede ser la misma cuenta financiera.');
+    window.A33Notice.alert('La cuenta contable contraparte no puede ser la misma cuenta financiera.');
     return;
   }
 
   const financialCurrency = finNormalizeCurrencyCode(financialAccount.moneda || financialAccount.financialAccountCurrency || 'NIO');
   const snapshot = finBuildExchangeRateSnapshot({ currency: financialCurrency, amount: originalAmount });
   if (!snapshot.ok || !Number.isFinite(Number(snapshot.equivalenteNIO)) || Number(snapshot.equivalenteNIO) <= 0) {
-    alert(snapshot.warningMessage || FIN_CURRENCY_WARNING_MESSAGE);
+    window.A33Notice.alert(snapshot.warningMessage || FIN_CURRENCY_WARNING_MESSAGE);
     return;
   }
 
   const baseAmountNio = finRoundCurrency2(snapshot.equivalenteNIO);
   if (!Number.isFinite(baseAmountNio) || baseAmountNio <= 0) {
-    alert('El equivalente contable en C$ es inválido.');
+    window.A33Notice.alert('El equivalente contable en C$ es inválido.');
     return;
   }
 
@@ -12133,7 +12147,7 @@ async function guardarMovimientoManual() {
   const totalDebe = finRoundCurrency2(baseAmountNio);
   const totalHaber = finRoundCurrency2(baseAmountNio);
   if (Math.abs(Number(totalDebe) - Number(totalHaber)) > 0.005) {
-    alert('El asiento no cuadra. No se guardó el movimiento.');
+    window.A33Notice.alert('El asiento no cuadra. No se guardó el movimiento.');
     return;
   }
 
@@ -12175,7 +12189,7 @@ async function guardarMovimientoManual() {
     await createJournalEntryWithLinesAtomic(entry, lines);
   } catch (err) {
     console.error('Error en guardado atómico del movimiento', err);
-    alert('No se pudo guardar el movimiento (guardado atómico falló).');
+    window.A33Notice.alert('No se pudo guardar el movimiento (guardado atómico falló).');
     return;
   }
 
@@ -12215,6 +12229,7 @@ function finJournalGetExchangeRate() {
 }
 
 function finJournalSetMessage(text, kind = '') {
+    window.A33Notice.show(text, kind);
   const el = document.getElementById('journal-status');
   if (!el) return;
   el.textContent = text || '';
@@ -12482,6 +12497,7 @@ function finJournalValidateForSave() {
 }
 
 async function finJournalSaveEntry() {
+  window.A33Notice.show('Guardando Finanzas…', 'process');
   if (finJournalSaving) return;
   if (!finCachedData) await refreshAllFin();
   const validation = finJournalValidateForSave();
@@ -13136,7 +13152,7 @@ function provExitEditStateBecauseSupplierMissing(message) {
   } catch (_) {}
 
   try { showToast(msg); } catch (_) {}
-  try { alert(msg); } catch (_) {}
+
 
   // Limpieza fuerte de estado/UI (evita crashes en siguientes clicks)
   try { resetProveedorForm(); } catch (_) {
@@ -13330,8 +13346,9 @@ function provApplyEditStateFromCache() {
 }
 
 async function provSaveProductFromEditor() {
+  window.A33Notice.show('Guardando Finanzas…', 'process');
   if (!currentSupplierEditId) {
-    alert('Primero selecciona un proveedor (Editar).');
+    window.A33Notice.alert('Primero selecciona un proveedor (Editar).');
     return;
   }
 
@@ -13350,11 +13367,11 @@ async function provSaveProductFromEditor() {
   const editId = (eidEl?.value || '').trim();
 
   if (!nombre) {
-    alert('El nombre del producto es obligatorio.');
+    window.A33Notice.alert('El nombre del producto es obligatorio.');
     return;
   }
   if (!(tipo === 'CAJAS' || tipo === 'UNIDADES')) {
-    alert('Selecciona el tipo (CAJAS o UNIDADES).');
+    window.A33Notice.alert('Selecciona el tipo (CAJAS o UNIDADES).');
     return;
   }
 
@@ -13370,7 +13387,7 @@ async function provSaveProductFromEditor() {
 
   const sid = Number(currentSupplierEditId);
   if (!Number.isFinite(sid) || sid <= 0) {
-    alert('Proveedor inválido.');
+    window.A33Notice.alert('Proveedor inválido.');
     return;
   }
 
@@ -13503,7 +13520,7 @@ async function guardarProveedor(opts) {
   const nota = (notaEl?.value || '').trim();
 
   if (!nombre) {
-    alert('El nombre del proveedor es obligatorio.');
+    window.A33Notice.alert('El nombre del proveedor es obligatorio.');
     return;
   }
 
@@ -13594,7 +13611,7 @@ function setupProveedoresUI() {
     btnGuardar.addEventListener('click', () => {
       guardarProveedor().catch(err => {
         console.error('Error guardando proveedor', err);
-        alert('No se pudo guardar el proveedor.');
+        window.A33Notice.alert('No se pudo guardar el proveedor.');
       });
     });
   }
@@ -13603,7 +13620,7 @@ function setupProveedoresUI() {
     btnGuardarAddProd.addEventListener('click', () => {
       guardarProveedor({ quickAdd: true }).catch(err => {
         console.error('Error guardando proveedor (alta rápida)', err);
-        alert('No se pudo guardar el proveedor.');
+        window.A33Notice.alert('No se pudo guardar el proveedor.');
       });
     });
   }
@@ -13617,7 +13634,7 @@ function setupProveedoresUI() {
   if (prodAdd) {
     prodAdd.addEventListener('click', () => {
       if (!currentSupplierEditId) {
-        alert('Primero selecciona un proveedor (Editar).');
+        window.A33Notice.alert('Primero selecciona un proveedor (Editar).');
         return;
       }
       // Hardening: si el proveedor ya no existe (por borrado externo), salir limpio.
@@ -13640,7 +13657,7 @@ function setupProveedoresUI() {
     prodSave.addEventListener('click', () => {
       provSaveProductFromEditor().catch(err => {
         console.error('Error guardando producto proveedor', err);
-        alert('No se pudo guardar el producto.');
+        window.A33Notice.alert('No se pudo guardar el producto.');
       });
     });
   }
@@ -13676,7 +13693,7 @@ function setupProveedoresUI() {
         const pid = String(delBtn.dataset.pid || '').trim();
         provDeleteProduct(pid).catch(err => {
           console.error('Error eliminando producto proveedor', err);
-          alert('No se pudo eliminar el producto.');
+          window.A33Notice.alert('No se pudo eliminar el producto.');
         });
       }
     });
@@ -13726,7 +13743,7 @@ function setupProveedoresUI() {
         }
         eliminarProveedor(id).catch(err => {
           console.error('Error eliminando proveedor', err);
-          alert('No se pudo eliminar el proveedor.');
+          window.A33Notice.alert('No se pudo eliminar el proveedor.');
         });
       }
     });
@@ -14551,7 +14568,7 @@ function catMakeFileStamp(d) {
 
 function catBuildCatalogWorkbook(data) {
   if (typeof XLSX === 'undefined') {
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
     return null;
   }
 
@@ -14665,7 +14682,7 @@ async function catExportCatalogExcel() {
     showToast('Catálogo exportado a Excel');
   } catch (err) {
     console.error('Error exportando Catálogo a Excel', err);
-    alert('Ocurrió un error exportando el Catálogo a Excel.');
+    window.A33Notice.alert('Ocurrió un error exportando el Catálogo a Excel.');
   }
 }
 
@@ -14684,6 +14701,7 @@ function closeCatModal() {
 }
 
 function setCatFormMessage(msg, isError = false) {
+    window.A33Notice.show(msg, isError ? 'pending' : undefined);
   const el = document.getElementById('cat-form-msg');
   if (!el) return;
   el.textContent = msg || '';
@@ -14755,6 +14773,7 @@ function setCatModalMode(mode, acc = null, parentCodeForNew = '') {
 }
 
 async function saveCatAccount() {
+  window.A33Notice.show('Guardando Finanzas…', 'process');
   if (!finCachedData) await refreshAllFin();
 
   const mode = document.getElementById('cat-mode')?.value || 'new';
@@ -14954,7 +14973,7 @@ function setupCatalogoUI() {
         await refreshAllFin();
       })().catch(err => {
         console.error('Error refrescando Finanzas', err);
-        alert('No se pudo actualizar Finanzas.');
+        window.A33Notice.alert('No se pudo actualizar Finanzas.');
       });
     });
   }
@@ -14975,7 +14994,7 @@ function setupCatalogoUI() {
         setTimeout(() => document.getElementById('cat-name')?.focus(), 0);
       })().catch(err => {
         console.error('Error abriendo nueva cuenta del catálogo', err);
-        alert('No se pudo abrir el formulario de cuenta. Presione Actualizar y vuelva a intentar.');
+        window.A33Notice.alert('No se pudo abrir el formulario de cuenta. Presione Actualizar y vuelva a intentar.');
       });
     });
   }
@@ -15021,7 +15040,7 @@ function setupCatalogoUI() {
         const code = String(tog.dataset.code || '');
         toggleCatAccount(code).catch(err => {
           console.error('Error activando/inactivando cuenta', err);
-          alert('No se pudo actualizar la cuenta.');
+          window.A33Notice.alert('No se pudo actualizar la cuenta.');
         });
         return;
       }
@@ -15030,7 +15049,7 @@ function setupCatalogoUI() {
         const code = String(del.dataset.code || '');
         deleteCatAccount(code).catch(err => {
           console.error('Error borrando cuenta', err);
-          alert('No se pudo borrar la cuenta.');
+          window.A33Notice.alert('No se pudo borrar la cuenta.');
         });
       }
     });
@@ -15060,7 +15079,7 @@ function setupCatalogoUI() {
       closeDetalleModal();
       try { compraStartEditFromEntryId(id); } catch (err) {
         console.error('No se pudo cargar compra para editar', err);
-        alert('No se pudo abrir la compra para editar.');
+        window.A33Notice.alert('No se pudo abrir la compra para editar.');
       }
     });
   }
@@ -15845,6 +15864,7 @@ function compraBuildPurchaseFinancialSnapshot(row, originalAmount, baseAmountNio
 }
 
 async function guardarCompraProveedor() {
+  window.A33Notice.show('Guardando Finanzas…', 'process');
   if (!finCachedData) await refreshAllFin();
 
   const supplierIdStr = document.getElementById('compra-proveedor')?.value || '';
@@ -15870,7 +15890,7 @@ async function guardarCompraProveedor() {
   const monto = total;
 
   if (!supplierIdStr) {
-    alert('Selecciona un proveedor.');
+    window.A33Notice.alert('Selecciona un proveedor.');
     return;
   }
   const supplierId = Number(supplierIdStr);
@@ -15878,38 +15898,38 @@ async function guardarCompraProveedor() {
   const supplierName = (supplierObj && supplierObj.nombre) ? supplierObj.nombre : `Proveedor ${supplierId}`;
 
   if (!fecha) {
-    alert('Ingresa la fecha.');
+    window.A33Notice.alert('Ingresa la fecha.');
     return;
   }
   if (!(monto > 0)) {
-    alert('El total debe ser mayor que cero.');
+    window.A33Notice.alert('El total debe ser mayor que cero.');
     return;
   }
   if (!debeCode) {
-    alert('Selecciona la cuenta DEBE.');
+    window.A33Notice.alert('Selecciona la cuenta DEBE.');
     return;
   }
   if (!financialRows.length) {
-    alert('Configure al menos una cuenta financiera activa antes de registrar compras.');
+    window.A33Notice.alert('Configure al menos una cuenta financiera activa antes de registrar compras.');
     return;
   }
   if (!financialAccount) {
-    alert('Selecciona la cuenta financiera de pago.');
+    window.A33Notice.alert('Selecciona la cuenta financiera de pago.');
     return;
   }
   if (financialAccount.activa === false) {
-    alert('La cuenta financiera seleccionada está inactiva.');
+    window.A33Notice.alert('La cuenta financiera seleccionada está inactiva.');
     return;
   }
 
   const financialCode = finNormalizeAccountCode(financialAccount.cuentaContableCodigo || financialAccount.financialAccountAccountingCode || '');
   const financialAccountRecord = financialCode && finCachedData.accountsMap ? finCachedData.accountsMap.get(financialCode) : null;
   if (!financialCode || !financialAccountRecord) {
-    alert('La cuenta financiera seleccionada no tiene una cuenta contable válida asociada. Revise Cuentas Financieras.');
+    window.A33Notice.alert('La cuenta financiera seleccionada no tiene una cuenta contable válida asociada. Revise Cuentas Financieras.');
     return;
   }
   if (String(debeCode) === String(financialCode)) {
-    alert('La cuenta DEBE no puede ser la misma cuenta financiera de pago.');
+    window.A33Notice.alert('La cuenta DEBE no puede ser la misma cuenta financiera de pago.');
     return;
   }
 
@@ -15917,12 +15937,12 @@ async function guardarCompraProveedor() {
   const financialCurrency = finNormalizeCurrencyCode(financialAccount.moneda || financialAccount.financialAccountCurrency || 'NIO');
   const exchangeSnapshot = finBuildExchangeRateSnapshot({ currency: financialCurrency, amount: monto });
   if (!exchangeSnapshot || exchangeSnapshot.ok === false) {
-    alert(financialCurrency === 'USD' ? FIN_PURCHASE_WARNING_MESSAGE : (exchangeSnapshot && exchangeSnapshot.warningMessage) || 'El equivalente contable en C$ es inválido.');
+    window.A33Notice.alert(financialCurrency === 'USD' ? FIN_PURCHASE_WARNING_MESSAGE : (exchangeSnapshot && exchangeSnapshot.warningMessage) || 'El equivalente contable en C$ es inválido.');
     return;
   }
   const baseAmountNio = finRoundCurrency2(exchangeSnapshot.equivalenteNIO);
   if (!(Number.isFinite(baseAmountNio) && baseAmountNio > 0)) {
-    alert('El equivalente contable en C$ es inválido.');
+    window.A33Notice.alert('El equivalente contable en C$ es inválido.');
     return;
   }
   const purchaseFinancialSnapshot = compraBuildPurchaseFinancialSnapshot(financialAccount, monto, baseAmountNio, exchangeSnapshot);
@@ -16070,7 +16090,7 @@ async function guardarCompraProveedor() {
     }
   } catch (err) {
     console.error('Error en guardado atómico de compra', err);
-    alert('No se pudo guardar la compra (guardado atómico falló).');
+    window.A33Notice.alert('No se pudo guardar la compra (guardado atómico falló).');
     return;
   }
 
@@ -16239,7 +16259,7 @@ function setupComprasUI() {
     btnGuardar.addEventListener('click', () => {
       guardarCompraProveedor().catch(err => {
         console.error('Error guardando compra proveedor', err);
-        alert('No se pudo guardar la compra.');
+        window.A33Notice.alert('No se pudo guardar la compra.');
       });
     });
   }
@@ -16534,6 +16554,7 @@ function pcSetUpdatedUI() {
 }
 
 function pcSetMsg(msg) {
+    window.A33Notice.show(msg);
   const el = document.getElementById('pc-msg');
   if (!el) return;
   el.textContent = msg || '';
@@ -17294,7 +17315,7 @@ function pcMakeFileStamp(isoOrDate) {
 
 function pcBuildWorkbook(payload) {
   if (typeof XLSX === 'undefined') {
-    alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+    window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
     return null;
   }
 
@@ -17414,6 +17435,7 @@ async function pcAutoSaveDraftSilent() {
 }
 
 async function pcSaveDraft() {
+  window.A33Notice.show('Guardando Finanzas…', 'process');
   if (!pcCurrent) pcCurrent = pcBuildEmptyCurrent();
 
   const notesEl = document.getElementById('pc-notes');
@@ -17431,6 +17453,7 @@ async function pcSaveDraft() {
 }
 
 async function pcSaveToHistory() {
+  window.A33Notice.show('Guardando Finanzas…', 'process');
   if (!pcCurrent || !pcHistory) return;
 
   // snapshot del editor
@@ -18214,6 +18237,7 @@ function rcRenderList(){
 }
 
 function rcShowAlert(msg, kind='info'){
+    window.A33Notice.show(msg, kind);
   const el = document.getElementById('rec-alert');
   if (!el) return;
   if (!msg) {
@@ -18595,6 +18619,8 @@ function rcValidateCurrent(opts={}){
 }
 
 function rcSetSaving(on){
+  if (on) window.A33Notice.show("Guardando recibo…", "process");
+  else window.A33Notice.finish();
   rcSaving = Boolean(on);
   const btnSave = document.getElementById('rec-save');
   const btnIssue = document.getElementById('rec-issue');
@@ -18709,7 +18735,7 @@ async function rcVoidReceiptById(id){
   if (!found) return;
   const st = String(found.status || 'DRAFT');
   if (st !== 'ISSUED') {
-    alert('Solo se puede anular un recibo EMITIDO.');
+    window.A33Notice.alert('Solo se puede anular un recibo EMITIDO.');
     return;
   }
 
@@ -18718,7 +18744,7 @@ async function rcVoidReceiptById(id){
 
   const motivo = String(prompt('Motivo de anulación (obligatorio):') || '').trim();
   if (!motivo) {
-    alert('Motivo obligatorio.');
+    window.A33Notice.alert('Motivo obligatorio.');
     return;
   }
 
@@ -18744,7 +18770,7 @@ async function rcVoidReceiptById(id){
     }
   } catch (err) {
     console.error('Error anulando recibo', err);
-    alert('No se pudo anular el recibo.');
+    window.A33Notice.alert('No se pudo anular el recibo.');
   }
 }
 
@@ -18753,7 +18779,7 @@ function rcReemitReceiptById(id){
   if (!found) return;
   const st = String(found.status || 'DRAFT');
   if (!(st === 'ISSUED' || st === 'VOID')) {
-    alert('Reemitir solo aplica a recibos EMITIDOS o ANULADOS.');
+    window.A33Notice.alert('Reemitir solo aplica a recibos EMITIDOS o ANULADOS.');
     return;
   }
 
@@ -18918,13 +18944,13 @@ function rcPrintReceipt(receipt){
   if (!receipt) return;
   const st = String(receipt.status || 'DRAFT');
   if (!(st === 'ISSUED' || st === 'VOID')) {
-    alert('Solo se puede imprimir un recibo EMITIDO o ANULADO.');
+    window.A33Notice.alert('Solo se puede imprimir un recibo EMITIDO o ANULADO.');
     return;
   }
 
   const num4 = rcNumber4(receipt.number);
   if (!num4) {
-    alert('Este recibo no tiene número.');
+    window.A33Notice.alert('Este recibo no tiene número.');
     return;
   }
 
@@ -18972,14 +18998,14 @@ async function rcPrintReceiptById(id){
   try {
     const raw = await finGet('receipts', id);
     if (!raw) {
-      alert('No se encontró el recibo en la base local.');
+      window.A33Notice.alert('No se encontró el recibo en la base local.');
       return;
     }
     const r = rcNormalizeReceipt(raw);
     rcPrintReceipt(r);
   } catch (e) {
     console.error('Error imprimiendo recibo', e);
-    alert('No se pudo preparar la impresión.');
+    window.A33Notice.alert('No se pudo preparar la impresión.');
   }
 }
 
@@ -19011,6 +19037,7 @@ async function rcSaveCurrent(){
     rcToggleEditor(false);
     rcCurrent = null;
     rcShowAlert('');
+    window.A33Notice.show('Recibo guardado correctamente.', 'success');
     return true;
   } catch (err) {
     console.error('Error guardando recibo', err);
@@ -19612,10 +19639,11 @@ async function renderFinancialAccountsView() {
 }
 
 async function finSaveFinancialAccountFromUI(id) {
+  window.A33Notice.show('Guardando Finanzas…', 'process');
   await openFinDB();
   const row = await finGet('financialAccounts', id);
   if (!row) {
-    alert('La cuenta financiera ya no existe.');
+    window.A33Notice.alert('La cuenta financiera ya no existe.');
     await renderFinancialAccountsView();
     return;
   }
@@ -19624,7 +19652,7 @@ async function finSaveFinancialAccountFromUI(id) {
   const code = finNormalizeAccountCode(select ? select.value : '');
   const acc = code ? await finGet('accounts', code) : null;
   if (!acc) {
-    alert('Selecciona una cuenta contable existente antes de guardar. Aquí no hacemos magia negra contable, todavía.');
+    window.A33Notice.alert('Selecciona una cuenta contable existente antes de guardar. Aquí no hacemos magia negra contable, todavía.');
     return;
   }
   row.cuentaContableCodigo = code;
@@ -19652,7 +19680,7 @@ function setupFinancialAccountsUI() {
         showToast('Cuentas Financieras revisadas');
       } catch (err) {
         console.error('Error revisando Cuentas Financieras', err);
-        alert('No se pudieron revisar las Cuentas Financieras.');
+        window.A33Notice.alert('No se pudieron revisar las Cuentas Financieras.');
       }
     });
   }
@@ -19673,7 +19701,7 @@ function setupFinancialAccountsUI() {
       if (!id) return;
       finSaveFinancialAccountFromUI(id).catch(err => {
         console.error('Error guardando cuenta financiera', err);
-        alert('No se pudo guardar la cuenta financiera.');
+        window.A33Notice.alert('No se pudo guardar la cuenta financiera.');
       });
     });
   }
@@ -19919,7 +19947,7 @@ function setupFilterListeners() {
     btnGuardar.addEventListener('click', () => {
       guardarMovimientoManual().catch(err => {
         console.error('Error guardando movimiento', err);
-        alert('No se pudo guardar el movimiento en Finanzas.');
+        window.A33Notice.alert('No se pudo guardar el movimiento en Finanzas.');
       });
     });
   }
@@ -20991,7 +21019,7 @@ async function createPosDailyCloseReversal(prevImport, reversingClosure, data) {
 async function importPosDailyClosuresToFinanzas() {
   const btn = document.getElementById('btn-import-pos-closures');
   const msg = document.getElementById('import-pos-closures-msg');
-  const setMsg = (t) => { if (msg) msg.textContent = (t || '').toString(); };
+  const setMsg = (t) => { window.A33Notice.show(t); if (msg) msg.textContent = (t || '').toString(); };
 
   try {
     if (btn) btn.disabled = true;
@@ -21276,7 +21304,7 @@ function setupExportButtons() {
       ev.preventDefault();
       exportEstadoResultadosExcel().catch(err => {
         console.error('Error exportando ER a Excel', err);
-        alert('Ocurrió un error exportando el Estado de Resultados a Excel.');
+        window.A33Notice.alert('Ocurrió un error exportando el Estado de Resultados a Excel.');
       });
     });
   }
@@ -21287,7 +21315,7 @@ function setupExportButtons() {
       ev.preventDefault();
       exportBalanceGeneralExcel().catch(err => {
         console.error('Error exportando BG a Excel', err);
-        alert('Ocurrió un error exportando el Balance General a Excel.');
+        window.A33Notice.alert('Ocurrió un error exportando el Balance General a Excel.');
       });
     });
   }
@@ -21298,7 +21326,7 @@ function setupExportButtons() {
       ev.preventDefault();
       exportFlujoCajaExcel().catch(err => {
         console.error('Error exportando Flujo de Caja a Excel', err);
-        alert('Ocurrió un error exportando el Flujo de Caja a Excel.');
+        window.A33Notice.alert('Ocurrió un error exportando el Flujo de Caja a Excel.');
       });
     });
   }
@@ -21344,7 +21372,7 @@ async function initFinanzas() {
     const n = err && err.name ? String(err.name) : '';
     const m = err && err.message ? String(err.message) : '';
     const detalle = (n || m) ? `\n\nDetalle: ${n}${m ? `: ${m}` : ''}` : '';
-    alert('No se pudo inicializar el módulo de Finanzas.' + detalle);
+    window.A33Notice.alert('No se pudo inicializar el módulo de Finanzas.' + detalle);
   }
 }
 

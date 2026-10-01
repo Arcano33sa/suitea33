@@ -1716,9 +1716,10 @@ function rebuildHorasEventOptions(filteredSales){
   function downloadExcel(filename, sheetName, rows){
     if (!rows || !rows.length) return;
     if (typeof XLSX === 'undefined'){
-      alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
+      window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
       return;
     }
+    window.A33Notice.show('Generando Excel…', 'process');
     const ws = XLSX.utils.aoa_to_sheet(rows);
     const header = Array.isArray(rows[0]) ? rows[0] : [];
     ws['!cols'] = header.map((h) => ({ wch: /lote/i.test(String(h == null ? '' : h)) ? 25 : 17 }));
@@ -1732,7 +1733,13 @@ function rebuildHorasEventOptions(filteredSales){
         });
       }
     }catch(_){ }
-    XLSX.writeFile(wb, filename);
+    try{
+      XLSX.writeFile(wb, filename);
+      window.A33Notice.show('Excel exportado correctamente.', 'success');
+    }catch(error){
+      window.A33Notice.show('No se pudo exportar el Excel.', 'error');
+      throw error;
+    }
   }
 
 }
@@ -1740,7 +1747,7 @@ function rebuildHorasEventOptions(filteredSales){
   function exportResumenCsv(){
     const filtered = lastFilteredSales || [];
     if (!filtered.length){
-      alert('No hay datos en el rango seleccionado para exportar.');
+      window.A33Notice.alert('No hay datos en el rango seleccionado para exportar.');
       return;
     }
 
@@ -1820,7 +1827,7 @@ function rebuildHorasEventOptions(filteredSales){
   function exportEventosCsv(){
     const stats = lastEventStats;
     if (!stats || !Array.isArray(stats.rows) || !stats.rows.length){
-      alert('No hay datos de eventos en el rango seleccionado.');
+      window.A33Notice.alert('No hay datos de eventos en el rango seleccionado.');
       return;
     }
 
@@ -1857,7 +1864,7 @@ function rebuildHorasEventOptions(filteredSales){
   function exportPresentacionesCsv(){
     const stats = lastPresStats;
     if (!stats || !Array.isArray(stats.rows) || !stats.rows.length){
-      alert('No hay datos de presentaciones en el rango seleccionado.');
+      window.A33Notice.alert('No hay datos de presentaciones en el rango seleccionado.');
       return;
     }
 

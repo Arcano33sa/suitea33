@@ -98,13 +98,7 @@ function formatMoney(value){
 }
 
 function showToast(message, kind){
-  const el = $('cmdToast');
-  if (!el) return;
-  el.textContent = text(message) || 'Listo';
-  el.className = 'cmd-toast' + (kind === 'ok' ? ' is-ok' : kind === 'error' ? ' is-error' : '');
-  el.hidden = false;
-  clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(()=>{ el.hidden = true; }, kind === 'error' ? 5000 : 3200);
+  return window.A33Notice.show(message, kind);
 }
 
 function safeJsonParse(raw, fallback){
@@ -541,6 +535,7 @@ async function activateVisualizedEventInPos(){
 
   const button = $('btnConfirmUsePos');
   if (button) button.disabled = true;
+  showToast('Activando evento en POS…', 'process');
   const written = await setMetaValue('currentEventId', id);
   const verified = written ? Number(await getMetaValue('currentEventId')) === id : false;
   if (button) button.disabled = false;
@@ -1957,7 +1952,7 @@ function refreshAppearance(){
 function registerCentroMandoServiceWorker(){
   try{
     if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
-    const swUrl = './sw.js?v=4.20.98&r=6';
+    const swUrl = './sw.js?v=4.20.98&r=7';
     navigator.serviceWorker.register(swUrl, { scope:'./', updateViaCache:'none' })
       .then((registration)=>{
         try{ registration.update(); }catch(_){ }

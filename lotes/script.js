@@ -1031,16 +1031,16 @@ function buildProducedItemsFromForm(baseData){
     const letter = normalizeProductLetter(input.dataset.loteLetter || '');
     const catalog = getCatalogProductById(productId);
     if (!catalog || catalog.productId !== productId || catalog.Letra !== letter){
-      alert('El producto seleccionado ya no coincide con Catálogos. Actualiza la vista e intenta nuevamente.');
+      window.A33Notice.alert('El producto seleccionado ya no coincide con Catálogos. Actualiza la vista e intenta nuevamente.');
       return null;
     }
     const parsed = parseLoteQuantityInput(input.value, `${catalog.nombre} (${letter})`);
-    if (!parsed.ok){ alert(parsed.message); return null; }
+    if (!parsed.ok){ window.A33Notice.alert(parsed.message); return null; }
     if (parsed.value > 0){
-      if (seen.has(productId)){ alert('Producto duplicado en el formulario: ' + catalog.nombre); return null; }
+      if (seen.has(productId)){ window.A33Notice.alert('Producto duplicado en el formulario: ' + catalog.nombre); return null; }
       seen.add(productId);
       const item = getProductSnapshotForLote(catalog, parsed.value, fechaIso, codigoLote, 'lotes-manual');
-      if (!item){ alert('No se pudo validar productId y Letra de ' + catalog.nombre + '.'); return null; }
+      if (!item){ window.A33Notice.alert('No se pudo validar productId y Letra de ' + catalog.nombre + '.'); return null; }
       items.push(item);
     }
   }
@@ -1252,6 +1252,7 @@ function debounce(fn, delayMs){
 }
 
 function setExportHint(msg, isError){
+    window.A33Notice.show(msg, isError ? 'error' : undefined);
   const el = $("export-hint");
   if (!el) return;
   el.textContent = msg ? String(msg) : "";
@@ -1468,7 +1469,7 @@ function saveLotes(data) {
     if (window.A33Storage && typeof A33Storage.sharedSet === 'function') {
       const r = A33Storage.sharedSet(STORAGE_KEY, data, { source: 'lotes' });
       if (r && r.ok === false) {
-        if (r.message) alert(r.message);
+        if (r.message) window.A33Notice.alert(r.message);
         return false;
       }
       return true;
@@ -1479,13 +1480,13 @@ function saveLotes(data) {
   try {
     const ok = A33Storage.setItem(STORAGE_KEY, JSON.stringify(data));
     if (!ok) {
-      alert('No se pudo guardar el lote. Revisa espacio disponible o permisos del navegador.');
+      window.A33Notice.alert('No se pudo guardar el lote. Revisa espacio disponible o permisos del navegador.');
       return false;
     }
     return true;
   } catch (e) {
     console.error('Error guardando lotes (fallback)', e);
-    alert('No se pudo guardar el lote.');
+    window.A33Notice.alert('No se pudo guardar el lote.');
     return false;
   }
 }
@@ -2122,7 +2123,7 @@ function readFormData() {
   const batchCode = canonicalBatchCode(codigo);
 
   if (!fecha || !codigo) {
-    alert("Fecha y código de lote son obligatorios.");
+    window.A33Notice.alert("Fecha y código de lote son obligatorios.");
     return null;
   }
 
@@ -2152,7 +2153,7 @@ function readFormData() {
   if (productosProducidos === null) return null;
   data.productosProducidos = productosProducidos;
   if (!productosProducidos.length){
-    alert('Indica al menos un producto fabricable de Catálogos para guardar el lote.');
+    window.A33Notice.alert('Indica al menos un producto fabricable de Catálogos para guardar el lote.');
     return null;
   }
   if (productosProducidos.length){
@@ -2797,7 +2798,7 @@ function exportToCSV() {
 
   const lotes = loadLotes();
   if (!lotes.length) {
-    alert("No hay lotes para exportar.");
+    window.A33Notice.alert("No hay lotes para exportar.");
     return;
   }
 
@@ -2814,7 +2815,7 @@ function exportToCSV() {
 
   try {
     if (typeof XLSX === "undefined") {
-      alert("No se pudo exportar: la librería XLSX no está disponible en esta instalación.");
+      window.A33Notice.alert("No se pudo exportar: la librería XLSX no está disponible en esta instalación.");
       setExportHint("Error al exportar (XLSX no disponible).", true);
       return;
     }
@@ -2889,7 +2890,7 @@ function exportToCSV() {
     }, 1200);
   } catch (err) {
     console.error('Export error', err);
-    alert("Error al exportar. Intenta de nuevo.");
+    window.A33Notice.alert("Error al exportar. Intenta de nuevo.");
     setExportHint("Error al exportar.", true);
   } finally {
     isExporting = false;
@@ -3096,7 +3097,7 @@ function renderHistoryModal(){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.98&r=2")
+      .register("./sw.js?v=4.20.98&r=3")
       .catch((err) => console.error("SW error", err));
   }
 }
@@ -3133,6 +3134,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const saveBtn = $("save-btn");
     const prevLabel = saveBtn ? saveBtn.textContent : "";
     isSavingLote = true;
+    window.A33Notice.show('Guardando lote…', 'process');
     if (saveBtn) {
       saveBtn.disabled = true;
       saveBtn.textContent = "Guardando...";
@@ -3146,16 +3148,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Todo lote nuevo es una producción oficial: validación completa + Inventario + lote en una operación idempotente.
       if (!editingId){
         if (!window.A33Production || typeof A33Production.commitOfficialProduction !== 'function'){
-          alert('No está disponible el contrato seguro de Producción.');
+          window.A33Notice.alert('No está disponible el contrato seguro de Producción.');
           return;
         }
         const currentCatalog = await A33Production.loadFabricableProducts();
         if (!currentCatalog.ok){
-          alert((currentCatalog.errors || []).join('\n') || 'No se pudieron validar los Productos de Catálogos.');
+          window.A33Notice.alert((currentCatalog.errors || []).join('\n') || 'No se pudieron validar los Productos de Catálogos.');
           return;
         }
         if (currentCatalog.duplicateLetters && currentCatalog.duplicateLetters.length){
-          alert('Corrige Letras repetidas en Catálogos: ' + currentCatalog.duplicateLetters.map((row) => row.letter).join(', ') + '.');
+          window.A33Notice.alert('Corrige Letras repetidas en Catálogos: ' + currentCatalog.duplicateLetters.map((row) => row.letter).join(', ') + '.');
           return;
         }
         const byId = new Map(currentCatalog.items.map((item) => [String(item.productId), item]));
@@ -3163,12 +3165,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         for (const raw of formData.productosProducidos){
           const current = byId.get(String(raw.productId || ''));
           if (!current){
-            alert((raw.nombreSnapshot || raw.productId || 'Producto') + ': ya no está activo con Receta en Catálogos.');
+            window.A33Notice.alert((raw.nombreSnapshot || raw.productId || 'Producto') + ': ya no está activo con Receta en Catálogos.');
             return;
           }
           const recipeSnapshot = (current.recipeSnapshot && typeof current.recipeSnapshot === 'object') ? { ...current.recipeSnapshot } : {};
           if (!window.A33Production.recipeHasAmounts(recipeSnapshot)){
-            alert(current.nombre + ': la Receta está habilitada, pero no tiene cantidades reales configuradas.');
+            window.A33Notice.alert(current.nombre + ': la Receta está habilitada, pero no tiene cantidades reales configuradas.');
             return;
           }
           officialItems.push({ ...raw, ...current, productId:current.productId, id:current.productId, cantidad:normalizeQtyValue(raw.cantidad), unidades:normalizeQtyValue(raw.cantidad), nombre:current.nombre, nombreSnapshot:current.nombre, recipeSnapshot, recetaSnapshot:{ ...recipeSnapshot }, legacy:false });
@@ -3198,13 +3200,13 @@ document.addEventListener("DOMContentLoaded", async () => {
           }
         });
         if (!result.ok){
-          alert((result.errors && result.errors.length ? result.errors.join('\n') : result.message) || 'No se pudo guardar la producción.');
+          window.A33Notice.alert((result.errors && result.errors.length ? result.errors.join('\n') : result.message) || 'No se pudo guardar la producción.');
           return;
         }
         renderTable({ reset:true, forceRefresh:true });
         clearForm();
         savedOk = true;
-        alert(result.duplicate ? 'La producción ya existía. No se duplicaron movimientos.' : 'Producción guardada con Inventario y Lote confirmados.');
+        window.A33Notice.alert(result.duplicate ? 'La producción ya existía. No se duplicaron movimientos.' : 'Producción guardada con Inventario y Lote confirmados.');
         return;
       }
 
@@ -3220,7 +3222,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // Una producción ya aplicada a Inventario no puede cambiar cantidades, insumos, fecha ni código desde Lotes.
       if (cur && (cur.operationId || cur.productionOperationId) && productionCriticalSignature(cur) !== productionCriticalSignature(data)){
-        alert('Este lote ya fue aplicado a Inventario. Solo puedes editar Notas o Caducidad; las cantidades e insumos no se pueden reaplicar ni duplicar.');
+        window.A33Notice.alert('Este lote ya fue aplicado a Inventario. Solo puedes editar Notas o Caducidad; las cantidades e insumos no se pueden reaplicar ni duplicar.');
         return;
       }
 
@@ -3237,7 +3239,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (index >= 0 && editingCtx && String(editingCtx.id) === String(data.id)) {
         const nowFp = nonEditableFingerprint(cur);
         if (editingCtx.fingerprint && nowFp && editingCtx.fingerprint !== nowFp) {
-          alert('Conflicto: este lote cambió desde otro módulo/pestaña. Recarga la página y vuelve a intentar (para evitar pisar cambios).');
+          window.A33Notice.alert('Conflicto: este lote cambió desde otro módulo/pestaña. Recarga la página y vuelve a intentar (para evitar pisar cambios).');
           return;
         }
       }
@@ -3253,7 +3255,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       if (dup) {
         const shown = (dup?.codigo || dup?.batchCode || '').toString();
-        alert(`Duplicado bloqueado: ya existe un lote con el mismo código/identidad (${shown}).`);
+        window.A33Notice.alert(`Duplicado bloqueado: ya existe un lote con el mismo código/identidad (${shown}).`);
         return;
       }
 
@@ -3286,8 +3288,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderTable({ reset: true, forceRefresh: true });
       clearForm();
       savedOk = true;
+      window.A33Notice.show('Lote actualizado correctamente.', 'success');
     } finally {
       isSavingLote = false;
+      window.A33Notice.finish();
       if (saveBtn) {
         saveBtn.disabled = false;
         saveBtn.textContent = savedOk ? "Guardar lote" : (prevLabel || (editingId ? "Actualizar lote" : "Guardar lote"));
@@ -3357,7 +3361,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             `Confirmación fuerte: escribe el CÓDIGO del lote para borrar:\n\n${code}`
           );
           if ((typed || '').toString().trim() !== code) {
-            alert('Borrado cancelado: el código no coincide.');
+            window.A33Notice.alert('Borrado cancelado: el código no coincide.');
             return;
           }
         } else {
@@ -3423,7 +3427,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 ${code}`
           );
           if ((typed || '').toString().trim() !== code) {
-            alert('Borrado cancelado: el código no coincide.');
+            window.A33Notice.alert('Borrado cancelado: el código no coincide.');
             return;
           }
         } else {
