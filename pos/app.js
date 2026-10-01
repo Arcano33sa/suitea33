@@ -9089,6 +9089,7 @@ function closeCustomerQuickPOS({ returnFocus = true, force = false } = {}){
   }
 
   customerQuickLifecyclePOS += 1;
+  if (purchaseModalStatePOS) document.getElementById('purchase-modal').inert = false;
   modal.style.display = 'none';
   modal.setAttribute('aria-hidden', 'true');
   modal.setAttribute('inert', '');
@@ -9112,6 +9113,7 @@ function openCustomerQuickPOS(){
   try{ if (isCustomerPickerOpenPOS()) closeCustomerPickerPOS(); }catch(_){ }
   customerQuickLifecyclePOS += 1;
   customerQuickLastFocusPOS = document.activeElement || document.getElementById('btn-new-customer');
+  if (purchaseModalStatePOS) document.getElementById('purchase-modal').inert = true;
   resetCustomerQuickFormPOS();
   modal.removeAttribute('inert');
   modal.style.display = 'flex';
@@ -9357,6 +9359,10 @@ function isCustomerPickerOpenPOS(){
 }
 
 function closeCustomerPickerPOS(){
+  if (purchaseModalStatePOS){
+    document.getElementById('purchase-modal').inert = false;
+    document.getElementById('btn-pick-customer')?.focus();
+  }
   const modal = document.getElementById('customer-picker-modal');
   if (modal) modal.style.display = 'none';
   // Si el picker fue abierto con callback (ej. Resumen), lo limpiamos al cerrar.
@@ -9396,7 +9402,7 @@ function renderCustomerPickerListPOS(){
 
       setCustomerSelectionUI_POS(c);
       // El último cliente se guarda siempre; el modo pegajoso decide si se limpia tras la venta.
-      persistCustomerLastPOS(c.name);
+      if (!purchaseModalStatePOS) persistCustomerLastPOS(c.name);
       closeCustomerPickerPOS();
     });
     wrap.appendChild(btn);
@@ -9417,6 +9423,7 @@ function openCustomerPickerPOS(onSelect){
   if (search) search.value = '';
 
   renderCustomerPickerListPOS();
+  if (purchaseModalStatePOS) document.getElementById('purchase-modal').inert = true;
   modal.style.display = 'flex';
 
   setTimeout(()=>{ try{ document.getElementById('customer-picker-search')?.focus(); }catch(_){ } }, 40);
@@ -9923,6 +9930,7 @@ function initCustomerUXPOS(){
   syncCourtesyRecipientUI_POS({ resetManual:true });
 
   sticky.addEventListener('change', ()=>{
+    if (purchaseModalStatePOS) return;
     persistCustomerStickyStatePOS();
     if (sticky.checked){
       persistCustomerLastPOS(inp.value || '');
@@ -9935,7 +9943,7 @@ function initCustomerUXPOS(){
     const r = resolveCustomerIdForSalePOS(raw, null);
     if (r && r.id){
       setCustomerSelectionUI_POS({ id: String(r.id), name: r.displayName || raw });
-      if (isCustomerStickyPOS()) persistCustomerLastPOS(r.displayName || raw);
+      if (!purchaseModalStatePOS && isCustomerStickyPOS()) persistCustomerLastPOS(r.displayName || raw);
     } else {
       if (inp.dataset) delete inp.dataset.customerId;
     }
@@ -9947,17 +9955,17 @@ function initCustomerUXPOS(){
     const r = resolveCustomerIdForSalePOS(raw, getCustomerIdHintFromUI_POS());
     if (r && r.id){
       setCustomerSelectionUI_POS({ id: String(r.id), name: r.displayName || raw });
-      if (isCustomerStickyPOS()) persistCustomerLastPOS(r.displayName || raw);
+      if (!purchaseModalStatePOS && isCustomerStickyPOS()) persistCustomerLastPOS(r.displayName || raw);
     } else {
       clearCustomerSelectionUI_POS();
-      persistCustomerLastPOS('');
+      if (!purchaseModalStatePOS) persistCustomerLastPOS('');
     }
   });
 
   if (clearBtn){
     clearBtn.addEventListener('click', ()=>{
       clearCustomerSelectionUI_POS();
-      persistCustomerLastPOS('');
+      if (!purchaseModalStatePOS) persistCustomerLastPOS('');
       try{ pickBtn ? pickBtn.focus() : inp.focus(); }catch(_){ }
     });
   }
@@ -12756,6 +12764,201 @@ async function saveSaleAndEventAtomicPOS({ saleRecord, eventUpdated }){
   });
 }
 
+// Compras multiproducto — Etapa 1. Guardado compartido con el modal de Etapa 2.
+// Conserva sales por producto; purchaseUid une las líneas sin migrar históricos.
+function purchaseFingerprintPOS(records){
+  return JSON.stringify(records.map(s => [s.eventId, s.date, s.productId, s.extraId, s.qty,
+    s.unitPrice, s.discountPerUnit, s.courtesy, s.isReturn, s.customerId,
+    s.customerName, s.payment, s.bankId, s.notes, s.cashExpectedDelta,
+    s.fxUsed, s.receivedUSD, s.changeNIO]));
+}
+
+function applyPurchaseTenderPOS(records, tender){
+  if (!tender) return;
+  if (tender.cashTenderMode !== 'USD_CHANGE_NIO'){
+    for (const record of records){
+      applySaleCashTenderToRecordPOS(record, {
+        ...tender,
+        cashExpectedDelta:{ NIO:record.total, USD:0 },
+        cashBreakdown:{ ...tender.cashBreakdown, totalNIO:record.total,
+          receivedNIO:record.total, expectedBoxByCurrency:{ NIO:record.total, USD:0 } }
+      });
+    }
+    return;
+  }
+  // El recibo USD y el vuelto pertenecen a la compra: se contabilizan una sola vez.
+  const owner = records.find(s => !s.courtesy && s.total > 0);
+  if (!owner) throw new Error('El cobro USD requiere un total mayor que cero.');
+  for (const record of records){
+    applySaleCashTenderToRecordPOS(record, record === owner ? tender : {
+      cashTenderMode:'PURCHASE_ALLOCATION', cashTenderLabel:'Cobro en la compra',
+      cashPaymentCurrency:'USD', cashExpectedDelta:{ NIO:0, USD:0 },
+      cashBreakdown:{ mode:'PURCHASE_ALLOCATION', totalNIO:record.total,
+        receivedUSD:0, changeNIO:0, expectedBoxByCurrency:{ NIO:0, USD:0 } }
+    });
+    record.purchaseTenderOwner = record === owner;
+  }
+}
+
+async function savePurchaseAndEventAtomicPOS({ records, purchaseUid, expectedSalesSnapshot, expectedExtrasSnapshot }){
+  if (!Array.isArray(records) || !records.length || !String(purchaseUid || '').trim()){
+    throw new Error('Compra vacía o sin identificador de intento.');
+  }
+  const lines = records.map(s => ({ ...s }));
+  const first = lines[0];
+  for (const line of lines){
+    if (line.id != null || line.eventId !== first.eventId || line.date !== first.date ||
+        line.customerId !== first.customerId || line.customerName !== first.customerName ||
+        line.payment !== first.payment || line.bankId !== first.bankId ||
+        !!line.isReturn !== !!first.isReturn || line.notes !== first.notes){
+      throw new Error('Los productos deben pertenecer a una misma compra.');
+    }
+    const check = validateSaleMinimalPOS(line);
+    if (!check.ok) throw new Error(check.msg);
+    const card = validateSaleCardCommissionSnapshotPOS(line);
+    if (!card.ok) throw new Error(card.msg);
+  }
+  const fingerprint = purchaseFingerprintPOS(lines);
+  const total = round2(lines.reduce((sum,s) => sum + s.total, 0));
+  if (!db) await openDB();
+  return await new Promise((resolve,reject) => {
+    let tr;
+    let result;
+    let failure;
+    const abort = error => { failure = error; try{ tr.abort(); }catch(_){ reject(error); } };
+    try{
+      tr = db.transaction(['sales','events','dayLocks'], 'readwrite');
+      const sales = tr.objectStore('sales');
+      const events = tr.objectStore('events');
+      tr.onabort = () => reject(failure || tr.error || new Error('Compra abortada; no se guardó ningún producto.'));
+      tr.onerror = () => { failure = failure || tr.error; };
+      tr.oncomplete = () => {
+        if (!result.duplicate && first.payment === 'credito'){
+          try{ notifyCreditStateChangedPOS({ eventId:first.eventId, reason:'purchase' }); }catch(_){ }
+        }
+        resolve(result);
+      };
+      const eventReq = events.get(first.eventId);
+      eventReq.onerror = () => abort(eventReq.error);
+      eventReq.onsuccess = () => {
+        const event = eventReq.result;
+        if (!event || event.closedAt){ abort(new Error('El evento está cerrado o no existe.')); return; }
+        const lockReq = tr.objectStore('dayLocks').get(makeDayLockKeyPOS(first.eventId, first.date));
+        lockReq.onerror = () => abort(lockReq.error);
+        lockReq.onsuccess = () => {
+          if (lockReq.result && lockReq.result.isClosed){ abort(new Error('El día está cerrado.')); return; }
+          const allReq = sales.getAll();
+          allReq.onerror = () => abort(allReq.error);
+          allReq.onsuccess = () => {
+            try{
+              const all = allReq.result || [];
+              const existing = all.filter(s => s.purchaseUid === purchaseUid);
+              if (existing.length){
+                if (existing.length !== lines.length || existing.some(s => s.purchaseFingerprint !== fingerprint)){
+                  throw new Error('El intento de compra ya existe con otros datos.');
+                }
+                result = { records:existing, total, purchaseUid, duplicate:true };
+                return;
+              }
+              if (expectedSalesSnapshot !== JSON.stringify(all.filter(s => s.eventId === first.eventId))){
+                throw new Error('Las ventas cambiaron durante la preparación. Reintenta para verificar stock y lotes.');
+              }
+              if (expectedExtrasSnapshot != null && expectedExtrasSnapshot !== JSON.stringify(event.extras || [])) throw new Error('Los extras cambiaron. Reintenta la compra.');
+              let updated = { ...event, extras:structuredClone(event.extras || []) };
+              for (const line of lines.filter(s => s.isExtra)){
+                const extra = updated.extras.find(x => Number(x.id) === Number(line.extraId));
+                if (!extra || extra.active === false || (line.qty > 0 && Number(extra.stock || 0) < line.qty)) throw new Error('Extra no disponible o sin stock.');
+                extra.stock = Number(extra.stock || 0) - line.qty;
+                extra.updatedAt = Date.now();
+              }
+              const eventSales = all.filter(s => s.eventId === first.eventId);
+              lines.forEach((line,index) => {
+                const seq = reserveSaleSeqInMemoryPOS(updated, line, eventSales);
+                if (seq.nextSeq == null) throw new Error('No se pudo reservar el número de venta.');
+                updated = seq.eventUpdated;
+                Object.assign(line, { purchaseUid, purchaseFingerprint:fingerprint,
+                  purchaseLineIndex:index, purchaseLineCount:lines.length, purchaseTotal:total,
+                  uid:purchaseUid + ':' + index });
+                const req = sales.add(line);
+                req.onsuccess = () => { line.id = req.result; };
+                req.onerror = () => abort(req.error);
+              });
+              const req = events.put(updated);
+              req.onerror = () => abort(req.error);
+              result = { records:lines, total, purchaseUid, duplicate:false };
+            }catch(error){ abort(error); }
+          };
+        };
+      };
+    }catch(error){ if (tr) abort(error); else reject(error); }
+  });
+}
+
+let purchaseSavingPOS = false;
+async function savePurchasePOS(draft){
+  if (purchaseSavingPOS) throw new Error('Ya se está guardando una compra.');
+  purchaseSavingPOS = true;
+  try{
+    if (!draft || !Array.isArray(draft.items) || !draft.items.length || typeof draft.purchaseUid !== 'string' || !draft.purchaseUid.trim()){
+      throw new Error('Agrega productos a la compra y un identificador de intento.');
+    }
+    const payment = normalizePaymentMethodPOS(draft.payment || 'efectivo');
+    if (!['efectivo','transferencia','tarjeta','credito'].includes(payment)) throw new Error('Método de pago inválido.');
+    const expectedSalesSnapshot = JSON.stringify((await getAll('sales')).filter(s => s.eventId === draft.eventId));
+    const purchaseEvent = await getEventByIdPOS(draft.eventId);
+    const expectedExtrasSnapshot = JSON.stringify(purchaseEvent?.extras || []);
+    const seen = new Set();
+    const records = [];
+    // Una línea por producto evita consumir dos veces el mismo saldo FIFO al preparar.
+    for (const item of draft.items){
+      const productId = String(item.productId || '').trim();
+      const itemKey = item.extraId ? ('extra:' + item.extraId) : ('product:' + productId);
+      if ((!productId && !item.extraId) || seen.has(itemKey)) throw new Error('Consolida cada producto en una sola línea.');
+      seen.add(itemKey);
+      const discount = parseNumPOS(item.discountPerUnit ?? 0, 0);
+      if (!Number.isFinite(discount) || discount < 0) throw new Error('Descuento inválido.');
+      if (draft.isReturn && item.courtesy) throw new Error('La devolución debe registrarse separada de las cortesías.');
+      const record = await addSale({ __a33PurchaseDraft:true, eventId:draft.eventId,
+        date:draft.date, productId, extraId:item.extraId, qty:item.qty, unitPrice:item.unitPrice,
+        discountPerUnit:item.discountPerUnit ?? 0, courtesy:!!item.courtesy,
+        isReturn:!!draft.isReturn, payment, bankId:draft.bankId,
+        courtesyTo:item.courtesyTo || draft.courtesyTo, customerId:draft.customerId, customerName:draft.customerName || '', notes:draft.notes || '' });
+      if (!record) throw new Error('No se guardó la compra: revisa los productos y sus validaciones.');
+      if (payment === 'credito' && !record.customerId) throw new Error('Selecciona un cliente para vender a crédito.');
+      records.push(record);
+    }
+    if (!records[0].customerId){
+      if (records.some(s => s.courtesy)) throw new Error('Selecciona un cliente para registrar la cortesía.');
+      if (!confirm('No hay cliente seleccionado. ¿Registrar esta compra sin cliente?')) return { cancelled:true, records:[] };
+    }
+    const total = round2(records.reduce((sum,s) => sum + s.total, 0));
+    const cash = validateSaleCashTenderPOS({ payment, total,
+      courtesy:records.every(s => s.courtesy), isReturn:!!draft.isReturn });
+    if (!cash.ok) throw new Error(cash.msg);
+    applyPurchaseTenderPOS(records, cash.tender);
+    const result = await savePurchaseAndEventAtomicPOS({ records, purchaseUid:draft.purchaseUid, expectedSalesSnapshot, expectedExtrasSnapshot });
+    result.warnings = [];
+    if (!result.duplicate){
+      for (const sale of result.records){
+        try{ bumpConsolSalesRevPOS(periodKeyFromDatePOS(sale.date)); clearConsolLiveCachePOS(periodKeyFromDatePOS(sale.date)); }catch(_){ }
+        try{ applyFinishedFromSalePOS(sale, +1); }catch(error){ result.warnings.push({ saleId:sale.id, area:'inventario', message:String(error.message || error) }); }
+        try{
+          const cup = await ensurePhysicalCupConsumptionForSalePOS(sale);
+          if (cup && (cup.ok === false || cup.reason === 'item_missing')) result.warnings.push({ saleId:sale.id, area:'vaso', message:cup.reason || 'Consumo pendiente' });
+        }catch(error){ result.warnings.push({ saleId:sale.id, area:'vaso', message:String(error.message || error) }); }
+        try{ await createJournalEntryForSalePOS(sale); }catch(error){ result.warnings.push({ saleId:sale.id, area:'finanzas', message:String(error.message || error) }); }
+      }
+      if (result.records.some(saleTouchesLotsPOS)){
+        try{
+          const lots = await queueLotsUsageSyncPOS(draft.eventId);
+          if (lots && lots.ok === false) result.warnings.push({ area:'lotes', message:'Uso FIFO pendiente' });
+        }catch(error){ result.warnings.push({ area:'lotes', message:String(error.message || error) }); }
+      }
+    }
+    return result;
+  }finally{ purchaseSavingPOS = false; }
+}
+
 // Guardar cierre diario + candado (dailyClosures + dayLocks) en una sola transacción
 async function saveDailyClosureAndLockAtomicPOS({ closureRecord, lockKey, lockPatch, eventId, dateKey }){
   if (!db) await openDB();
@@ -13341,7 +13544,7 @@ function setSellControlsDisabledPOS(disabled){
   const ids = [
     'sale-product','sale-price','sale-qty','qty-minus','qty-plus','sale-discount',
     'sale-payment','sale-bank','sale-courtesy','sale-return','sale-customer','sale-courtesy-to','sale-notes',
-    'btn-edit-courtesy-to','btn-add','btn-add-sticky','btn-undo'
+    'btn-edit-courtesy-to','btn-add','btn-add-sticky','btn-undo','purchase-save'
   ];
   for (const id of ids){
     const el = document.getElementById(id);
@@ -13836,6 +14039,7 @@ async function refreshSaleBankSelect(){
 
   row.style.display = 'block';
   const banks = (await getAllBanksSafe()).filter(b => isBankForPaymentPOS(b, payment));
+  if (payment !== normalizePaymentMethodPOS(document.getElementById('sale-payment')?.value || 'efectivo')) return;
   banks.sort((a,b)=> String(a.name||'').localeCompare(String(b.name||''), 'es-NI', { sensitivity:'base' }));
 
   // Mantener selección si aún existe dentro del tipo seleccionado
@@ -22383,7 +22587,7 @@ async function renderDay(){
         <td>${s.isReturn?'✓':''}</td>
         <td>${escapeHtml(getSaleCustomerTableDisplayPOS(s))}</td>
         <td>${escapeHtml(getSaleCourtesyRecipientSnapshotPOS(s))}</td>
-        <td><button data-id="${s.id}" title="Eliminar venta" class="btn-danger btn-mini del-sale">Eliminar</button></td>`;
+        <td><button ${s.purchaseUid ? 'disabled title="Usa VENDER → devolución para revertir la compra"' : 'title="Eliminar venta"'} data-id="${s.id}" class="btn-danger btn-mini del-sale">Eliminar</button></td>`;
       tbody.appendChild(tr);
     }
     $('#day-total').textContent = fmt(total);
@@ -27460,8 +27664,8 @@ async function init(){
   $('#sale-return').addEventListener('change', recomputeTotal);
   $('#sale-payment').addEventListener('change', async ()=>{
     // Cliente ahora es opcional para cualquier método de pago
-    await refreshSaleBankSelect();
     try{ refreshSaleCashTenderUiPOS({ forceFx:true }); }catch(_){ }
+    await refreshSaleBankSelect();
   });
   $('#sale-date').addEventListener('change', async()=>{
     await renderDay();
@@ -27494,28 +27698,12 @@ async function init(){
     });
   }
 
-  $('#btn-add').addEventListener('click', ()=>{
-    runWithSavingLockPOS({
-      key: 'venta',
-      btnIds: ['btn-add','btn-add-sticky'],
-      labelSaving: 'Guardando…',
-      busyToast: 'Guardando venta…',
-      onError: (err)=> showPersistFailPOS('venta', err),
-      fn: addSale
-    });
-  });
+  setupPurchaseModalPOS();
+  $('#btn-add').addEventListener('click', ()=> openPurchaseModalPOS().catch(error=>posNotify(error.message)));
   const stickyBtn = $('#btn-add-sticky');
-  if (stickyBtn) {
-    stickyBtn.addEventListener('click', ()=>{
-      runWithSavingLockPOS({
-        key: 'venta',
-        btnIds: ['btn-add','btn-add-sticky'],
-        labelSaving: 'Guardando…',
-        busyToast: 'Guardando venta…',
-        onError: (err)=> showPersistFailPOS('venta', err),
-        fn: addSale
-      });
-    });
+  if (stickyBtn){
+    stickyBtn.textContent = 'VENDER';
+    stickyBtn.addEventListener('click', ()=> openPurchaseModalPOS().catch(error=>posNotify(error.message)));
   }
 
   // Flujo legacy de vasos desactivado: Vender solo vende stock existente.
@@ -27543,6 +27731,7 @@ async function init(){
       return;
     }
     const last = filtered.sort((a,b)=> a.id - b.id)[filtered.length - 1];
+    if (last.purchaseUid){ posNotify('Esta venta pertenece a una compra con varios productos. Registra una devolución desde VENDER para revertir los productos.'); return; }
     if (!confirm('¿Eliminar la última venta registrada?')) return;
     const delRes = await del('sales', last.id);
 
@@ -27600,6 +27789,7 @@ async function init(){
       if (!(await guardSellDayOpenOrToastPOS(ev, saleToDelete.date))) return;
     }catch(e){}
 
+    if (saleToDelete.purchaseUid){ posNotify('Esta venta pertenece a una compra. Registra una devolución desde VENDER para conservar el cobro compartido.'); return; }
     if (!confirm('¿Eliminar esta venta?')) return;
 
     const prevText = btn.textContent;
@@ -27830,6 +28020,285 @@ async function exportEventosExcel(){
 
 }
 
+// Modal de compra — Etapa 2. El borrador vive solamente en memoria.
+let purchaseModalStatePOS = null;
+let purchaseOpeningPOS = false;
+
+function setPurchaseMessagePOS(message){
+  const el = document.getElementById('purchase-error');
+  el.textContent = message || '';
+  el.hidden = !message;
+  if (message) el.focus();
+}
+
+function purchaseLineTotalPOS(item, isReturn){
+  const qty = parseNumPOS(item.qty, NaN);
+  const price = parseNumPOS(item.unitPrice, NaN);
+  const discount = parseNumPOS(item.discountPerUnit, 0);
+  if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price < 0 ||
+      !Number.isFinite(discount) || discount < 0 || (!item.courtesy && discount > price)) return null;
+  const subtotal = round2(price * qty);
+  const total = item.courtesy ? 0 : round2(subtotal - round2(discount * qty));
+  return isReturn ? -total : total;
+}
+
+function recomputePurchaseTotalPOS(){
+  const state = purchaseModalStatePOS;
+  if (!state) return;
+  const isReturn = document.getElementById('sale-return').checked;
+  let total = 0;
+  let invalid = false;
+  for (const item of state.items){
+    const amount = purchaseLineTotalPOS(item, isReturn);
+    if (amount == null) invalid = true;
+    else total = round2(total + amount);
+    const el = document.getElementById('purchase-line-total-' + item.index);
+    if (el) el.textContent = amount == null ? 'Revisa los valores' : 'C$ ' + fmt(amount);
+  }
+  document.getElementById('sale-total').value = total.toFixed(2);
+  document.getElementById('purchase-total-display').textContent = total.toFixed(2);
+  document.getElementById('purchase-title').textContent = isReturn ? 'Nueva devolución' : 'Nueva compra';
+  const save = document.getElementById('purchase-save');
+  save.disabled = state.busy || !state.items.length || invalid || document.getElementById('tab-venta').classList.contains('sell-locked');
+  save.textContent = state.busy ? 'Guardando…' : 'Guardar';
+  updateSaleCashTenderComputedPOS();
+}
+
+async function loadPurchaseCatalogPOS(event){
+  const hidden = await getHiddenProductIdsPOS();
+  const products = posCanonicalProductsForSale((await getAll('products')).filter(p => p && !hidden.has(p.id)));
+  const names = posDuplicateNameCounts(products);
+  const catalog = await Promise.all(products.map(async product => ({
+    key:'product:' + catalogProductStableIdPOS(product), productId:catalogProductStableIdPOS(product),
+    name:posProductDisplayLabel(product,names), unitPrice:Number(product.price),
+    stock:productManageStockForSalePOS(product,true) ? await computeStock(event.id, product) : null
+  })));
+  for (const extra of sanitizeExtrasPOS(event.extras).filter(x => x.active !== false)){
+    catalog.push({ key:'extra:' + extra.id, extraId:extra.id, name:extra.name,
+      unitPrice:extra.unitPrice, stock:extra.stock, isExtra:true });
+  }
+  return catalog;
+}
+
+function renderPurchaseCatalogPOS(){
+  const state = purchaseModalStatePOS;
+  if (!state) return;
+  const wrap = document.getElementById('purchase-products');
+  const search = normalizeCustomerKeyPOS(document.getElementById('purchase-search').value);
+  const filtered = state.catalog.filter(item => !search || normalizeCustomerKeyPOS(item.name).includes(search));
+  wrap.replaceChildren();
+  if (!filtered.length){
+    const empty = document.createElement('p'); empty.className = 'muted';
+    empty.textContent = 'No hay productos disponibles para esta búsqueda.'; wrap.appendChild(empty); return;
+  }
+  for (const product of filtered){
+    const card = document.createElement('div'); card.className = 'purchase-product';
+    const info = document.createElement('div');
+    const name = document.createElement('strong'); name.textContent = product.name;
+    const detail = document.createElement('small'); detail.className = 'muted';
+    detail.textContent = 'C$ ' + fmt(product.unitPrice) + ' · Stock: ' + (product.stock == null ? 'Sin control de stock' : product.stock) + (product.isExtra ? ' · Extra' : '');
+    info.append(name,detail);
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'btn-outline btn-pill btn-pill-mini';
+    add.textContent = 'Agregar'; add.setAttribute('aria-label','Agregar ' + product.name);
+    add.disabled = state.busy;
+    add.addEventListener('click',()=>{
+      if (!purchaseModalStatePOS || state.busy) return;
+      const item = state.items.find(x => x.key === product.key);
+      if (item) item.qty = Math.max(1, parseNumPOS(item.qty,1)) + 1;
+      else state.items.push({ ...product, index:state.nextIndex++, qty:1, discountPerUnit:0, courtesy:false });
+      setPurchaseMessagePOS(''); renderPurchaseItemsPOS();
+    });
+    card.append(info,add); wrap.appendChild(card);
+  }
+}
+
+function renderPurchaseItemsPOS(){
+  const state = purchaseModalStatePOS;
+  if (!state) return;
+  const wrap = document.getElementById('purchase-items'); wrap.replaceChildren();
+  const courtesyWrap = document.getElementById('purchase-courtesy-options'); courtesyWrap.replaceChildren();
+  const isReturn = document.getElementById('sale-return').checked;
+  if (!state.items.length){
+    const empty = document.createElement('p'); empty.className = 'muted purchase-empty';
+    empty.textContent = 'Agrega los productos que llevará el cliente.'; wrap.appendChild(empty);
+  }
+  for (const item of state.items){
+    const row = document.createElement('div'); row.className = 'purchase-item';
+    const head = document.createElement('div'); head.className = 'purchase-item-head';
+    const title = document.createElement('strong'); title.textContent = item.name;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn-outline btn-pill btn-pill-mini';
+    remove.textContent = 'Quitar'; remove.setAttribute('aria-label','Quitar ' + item.name);
+    remove.addEventListener('click',()=>{ state.items = state.items.filter(x => x.index !== item.index); renderPurchaseItemsPOS(); });
+    head.append(title,remove);
+    const fields = document.createElement('div'); fields.className = 'purchase-item-fields';
+    for (const [field,labelText,step,min] of [['qty','Cantidad','1','1'],['unitPrice','Precio (C$)','0.01','0'],['discountPerUnit','Descuento por unidad (C$)','0.01','0']]){
+      const label = document.createElement('label'); label.textContent = labelText;
+      const input = document.createElement('input'); input.type = 'number'; input.inputMode = field === 'qty' ? 'numeric' : 'decimal';
+      input.id = 'purchase-' + field + '-' + item.index; input.value = item[field]; input.step = step; input.min = min;
+      input.disabled = (field === 'discountPerUnit' && item.courtesy) || (field === 'unitPrice' && item.isExtra);
+      input.setAttribute('aria-label',labelText + ' de ' + item.name);
+      input.addEventListener('input',()=>{
+        item[field] = input.value;
+        toggleInvalidBorderPOS(input,purchaseLineTotalPOS(item,isReturn) == null);
+        recomputePurchaseTotalPOS();
+      });
+      label.appendChild(input); fields.appendChild(label);
+    }
+    const foot = document.createElement('div'); foot.className = 'purchase-item-foot';
+    const stock = document.createElement('small'); stock.className = 'muted';
+    stock.textContent = 'Stock: ' + (item.stock == null ? 'Sin control de stock' : item.stock);
+    const amount = document.createElement('strong'); amount.id = 'purchase-line-total-' + item.index;
+    foot.append(stock,amount); row.append(head,fields,foot); wrap.appendChild(row);
+    const option = document.createElement('label'); option.className = 'flag purchase-courtesy-option';
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = item.courtesy; checkbox.disabled = isReturn;
+    checkbox.addEventListener('change',()=>{
+      item.courtesy = checkbox.checked;
+      if (item.courtesy) item.discountPerUnit = 0;
+      renderPurchaseItemsPOS();
+    });
+    option.append(checkbox,document.createTextNode('Cortesía: ' + item.name)); courtesyWrap.appendChild(option);
+  }
+  recomputePurchaseTotalPOS();
+}
+
+function purchaseBackgroundInertPOS(active){
+  for (const selector of ['.a33-header','.container','.tabbar','footer']){
+    const el = document.querySelector(selector);
+    if (el) el.inert = active;
+  }
+  document.body.classList.toggle('purchase-modal-open',active);
+}
+
+async function openPurchaseModalPOS(){
+  if (purchaseModalStatePOS || purchaseOpeningPOS) return;
+  purchaseOpeningPOS = true;
+  try{
+    const event = await getActiveEventPOS();
+    const date = document.getElementById('sale-date').value;
+    if (!event || !date) throw new Error('Selecciona un evento activo y una fecha.');
+    if (!(await guardSellDayOpenOrToastPOS(event,date))) return;
+    const catalog = await loadPurchaseCatalogPOS(event);
+    const customer = document.getElementById('sale-customer');
+    purchaseModalStatePOS = { eventId:event.id, date, catalog, items:[], nextIndex:0,
+      purchaseUid:genSaleUidPOS(), busy:false, lastFocus:document.activeElement,
+      priorCustomer:{ name:customer.value, id:customer.dataset.customerId || '', sticky:isCustomerStickyPOS() } };
+    document.getElementById('sale-payment').value = 'efectivo';
+    document.getElementById('sale-return').checked = false;
+    document.getElementById('sale-courtesy').checked = false;
+    document.getElementById('sale-notes').value = '';
+    document.getElementById('purchase-more-options').open = false;
+    document.getElementById('purchase-search').value = '';
+    document.getElementById('purchase-context').textContent = (event.name || 'Evento') + ' · ' + date;
+    await refreshSaleBankSelect(); resetSaleCashTenderPOS(); setPurchaseMessagePOS('');
+    const modal = document.getElementById('purchase-modal'); modal.inert = false;
+    modal.setAttribute('aria-hidden','false'); modal.style.display = 'flex';
+    purchaseBackgroundInertPOS(true);
+    renderPurchaseCatalogPOS(); renderPurchaseItemsPOS();
+    document.getElementById('purchase-search').focus();
+  }catch(error){
+    if (purchaseModalStatePOS) closePurchaseModalPOS();
+    throw error;
+  }finally{ purchaseOpeningPOS = false; }
+}
+
+function closePurchaseModalPOS({ committed = false } = {}){
+  const state = purchaseModalStatePOS;
+  if (!state || state.busy) return;
+  if (!committed){
+    setCustomerSelectionUI_POS({name:state.priorCustomer.name,id:state.priorCustomer.id});
+    document.getElementById('sale-customer-sticky').checked = state.priorCustomer.sticky;
+  }
+  closeCustomerPickerPOS();
+  const modal = document.getElementById('purchase-modal');
+  modal.style.display = 'none'; modal.inert = true; modal.setAttribute('aria-hidden','true');
+  purchaseModalStatePOS = null;
+  document.getElementById('sale-return').checked = false;
+  document.getElementById('sale-notes').value = '';
+  document.getElementById('sale-payment').value = 'efectivo';
+  resetSaleCashTenderPOS(); purchaseBackgroundInertPOS(false);
+  if (state.lastFocus?.isConnected) state.lastFocus.focus();
+}
+
+function setPurchaseBusyPOS(busy){
+  const state = purchaseModalStatePOS;
+  if (!state) return;
+  state.busy = busy;
+  const modal = document.getElementById('purchase-modal'); modal.setAttribute('aria-busy',String(busy));
+  if (busy){
+    state.disabledControls = Array.from(modal.querySelectorAll('input,select,textarea,button')).map(el => [el,el.disabled]);
+    for (const [el] of state.disabledControls) el.disabled = true;
+  } else {
+    for (const [el,disabled] of state.disabledControls || []) el.disabled = disabled;
+  }
+  document.getElementById('purchase-save').textContent = busy ? 'Guardando…' : 'Guardar';
+}
+
+async function submitPurchaseModalPOS(){
+  const state = purchaseModalStatePOS;
+  if (!state || state.busy) return;
+  if (!state.items.length) { setPurchaseMessagePOS('Agrega al menos un producto.'); return; }
+  const isReturn = document.getElementById('sale-return').checked;
+  if (state.items.some(item => purchaseLineTotalPOS(item,isReturn) == null)){
+    setPurchaseMessagePOS('Revisa cantidades, precios y descuentos.'); return;
+  }
+  const draft = { purchaseUid:state.purchaseUid, eventId:state.eventId, date:state.date,
+    items:state.items.map(item => ({ productId:item.productId, extraId:item.extraId,
+      qty:parseNumPOS(item.qty), unitPrice:parseNumPOS(item.unitPrice), discountPerUnit:parseNumPOS(item.discountPerUnit), courtesy:item.courtesy })),
+    payment:document.getElementById('sale-payment').value, bankId:document.getElementById('sale-bank').value,
+    customerName:getCustomerNameFromUI_POS(), customerId:getCustomerIdHintFromUI_POS(),
+    notes:document.getElementById('sale-notes').value, isReturn };
+  setPurchaseMessagePOS(''); setPurchaseBusyPOS(true);
+  let result;
+  try{ result = await savePurchasePOS(draft); }
+  catch(error){ setPurchaseMessagePOS(error.message || 'No se pudo guardar la compra.'); }
+  finally{ setPurchaseBusyPOS(false); }
+  if (!result || result.cancelled){ recomputePurchaseTotalPOS(); return; }
+  // A partir de aquí la compra ya está guardada: un error al refrescar no permite reinsertarla.
+  try{
+    afterSaleCustomerHousekeepingPOS(result.records[0].customerName,result.records[0].customerId);
+    persistCustomerStickyStatePOS();
+  }catch(error){ result.warnings.push({area:'cliente',message:'Compra guardada; recarga para actualizar la selección del cliente.'}); }
+  closePurchaseModalPOS({committed:true});
+  try{
+    await renderDay(); await renderSummary(); await renderInventario(); await renderExtrasUI();
+    await refreshProductSelect({keepSelection:true});
+  }catch(error){ console.error('Compra guardada; falló el refresco',error); result.warnings.push({area:'pantalla',message:'Recarga para actualizar los listados.'}); }
+  toast(isReturn ? 'Devolución guardada' : 'Compra guardada');
+  if (result.warnings?.length){
+    posBlockingAlert('Compra guardada, con avisos:\n\n' + result.warnings.map(w => w.area + ': ' + w.message).join('\n'));
+  }
+}
+
+function setupPurchaseModalPOS(){
+  const modal = document.getElementById('purchase-modal');
+  if (!modal || modal.dataset.bound === '1') return;
+  modal.dataset.bound = '1';
+  document.getElementById('purchase-cancel').addEventListener('click',()=>closePurchaseModalPOS());
+  document.getElementById('purchase-save').addEventListener('click',()=>submitPurchaseModalPOS().catch(error=>posNotify(error.message)));
+  document.getElementById('purchase-search').addEventListener('input',renderPurchaseCatalogPOS);
+  document.getElementById('sale-return').addEventListener('change',()=>{
+    if (!purchaseModalStatePOS) return;
+    if (document.getElementById('sale-return').checked){
+      for (const item of purchaseModalStatePOS.items) item.courtesy = false;
+      resetSaleCashTenderPOS();
+    }
+    renderPurchaseItemsPOS();
+  });
+  document.addEventListener('keydown',event=>{
+    const state = purchaseModalStatePOS;
+    if (!state) return;
+    // Los selectores de cliente tienen su propio manejo de foco y Escape.
+    if (isCustomerQuickOpenPOS() || isCustomerPickerOpenPOS()) return;
+    if (event.key === 'Escape'){ event.preventDefault(); event.stopImmediatePropagation(); closePurchaseModalPOS(); return; }
+    if (event.key !== 'Tab') return;
+    const controls = Array.from(modal.querySelectorAll('button,input,select,textarea,[tabindex="0"]')).filter(el => !el.disabled && el.offsetParent !== null);
+    const first = controls[0], last = controls[controls.length-1];
+    if (!first) { event.preventDefault(); modal.querySelector('.panel').focus(); return; }
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))){ event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))){ event.preventDefault(); first.focus(); }
+  },true);
+}
+
 // Totales y ventas
 function parseNumPOS(v, fallback=0){
   const s = String(v ?? '').trim();
@@ -27843,6 +28312,7 @@ function toggleInvalidBorderPOS(el, isBad){
 }
 
 function recomputeTotal(){
+  if (purchaseModalStatePOS){ recomputePurchaseTotalPOS(); return; }
   const priceEl = $('#sale-price');
   const qtyEl = $('#sale-qty');
   const discEl = $('#sale-discount');
@@ -27895,35 +28365,41 @@ function recomputeTotal(){
 }
 
 async function addSale(){
+  const purchaseDraft = arguments[0]?.__a33PurchaseDraft === true ? arguments[0] : null;
   const curId = await getMeta('currentEventId');
   if (!curId){ posNotify('Selecciona un evento'); return; }
-  const date = $('#sale-date').value;
-  const selVal = String($('#sale-product')?.value || '').trim();
+  if (purchaseDraft && curId !== purchaseDraft.eventId) throw new Error('El evento activo cambió.');
+  const date = (purchaseDraft ? purchaseDraft.date : $('#sale-date').value);
+  if (purchaseDraft && purchaseDraft.extraId) return await addExtraSale(purchaseDraft.extraId, purchaseDraft);
+  const selVal = String(purchaseDraft ? ('product:' + encodeURIComponent(purchaseDraft.productId)) : ($('#sale-product')?.value || '')).trim();
   const parsed = parseSelectedSellItemValue(selVal);
   if (parsed && parsed.kind === 'extra'){
+    if (purchaseDraft) throw new Error('El borrador requiere un producto de Catálogos.');
     await addExtraSale(parsed.id);
     return;
   }
   const selectedProductId = (parsed && parsed.kind === 'product') ? parsed.productId : '';
-  const qtyRaw = parseNumPOS($('#sale-qty').value, 0);
+  const qtyRaw = parseNumPOS(purchaseDraft ? purchaseDraft.qty : $('#sale-qty').value, 0);
+  if (purchaseDraft && (!Number.isFinite(qtyRaw) || qtyRaw <= 0)) throw new Error('Cantidad inválida.');
   const qty = Math.abs(qtyRaw);
-  const priceRaw = parseNumPOS($('#sale-price').value, 0);
+  const priceRaw = parseNumPOS(purchaseDraft ? purchaseDraft.unitPrice : $('#sale-price').value, 0);
+  if (purchaseDraft && (!Number.isFinite(priceRaw) || priceRaw < 0 || purchaseDraft.unitPrice == null || purchaseDraft.unitPrice === '')) throw new Error('Precio inválido.');
   const price = round2(priceRaw);
-  const discStr = ($('#sale-discount') ? $('#sale-discount').value : '');
+  const discStr = (purchaseDraft ? purchaseDraft.discountPerUnit : ($('#sale-discount') ? $('#sale-discount').value : ''));
   const discTrim = String(discStr ?? '').trim();
   const discParsed = parseNumPOS(discStr, 0);
   if (discTrim && !Number.isFinite(discParsed)) { posNotify('Descuento inválido'); return; }
   if (Number.isFinite(discParsed) && discParsed < 0) { posNotify('Descuento inválido'); return; }
   const discountPerUnit = Math.max(0, Number.isFinite(discParsed) ? discParsed : 0);
-  const payment = normalizePaymentMethodPOS($('#sale-payment').value || 'efectivo');
-  const courtesy = $('#sale-courtesy').checked;
-  const isReturn = $('#sale-return').checked;
-  const customerInputName = getCustomerNameFromUI_POS();
-  const customerResolved = resolveCustomerIdForSalePOS(customerInputName, getCustomerIdHintFromUI_POS());
+  const payment = normalizePaymentMethodPOS((purchaseDraft ? purchaseDraft.payment : $('#sale-payment').value) || 'efectivo');
+  const courtesy = (purchaseDraft ? !!purchaseDraft.courtesy : $('#sale-courtesy').checked);
+  const isReturn = (purchaseDraft ? !!purchaseDraft.isReturn : $('#sale-return').checked);
+  const customerInputName = (purchaseDraft ? purchaseDraft.customerName : getCustomerNameFromUI_POS());
+  const customerResolved = resolveCustomerIdForSalePOS(customerInputName, (purchaseDraft ? purchaseDraft.customerId : getCustomerIdHintFromUI_POS()));
   const customerId = (customerResolved && customerResolved.id) ? customerResolved.id : null;
   const customerName = (customerResolved && customerResolved.id && customerResolved.displayName) ? customerResolved.displayName : '';
-  const courtesyTo = courtesy ? getCourtesyRecipientForSalePOS(customerName) : '';
-  const notes = $('#sale-notes').value || '';
+  const courtesyTo = courtesy ? (purchaseDraft ? (purchaseDraft.courtesyTo || customerName) : getCourtesyRecipientForSalePOS(customerName)) : '';
+  const notes = (purchaseDraft ? purchaseDraft.notes : $('#sale-notes').value) || '';
   if (!date || !selectedProductId || !qty) { posNotify('Completa fecha, producto y cantidad'); return; }
 
   // Regla final: descuento por unidad NO puede superar el precio unitario (si no es cortesía)
@@ -27934,7 +28410,7 @@ async function addSale(){
 
 
   // Etapa 1: confirmación si no hay cliente seleccionado
-  if (!confirmProceedSaleWithoutCustomerPOS()) return;
+  if (!purchaseDraft && !confirmProceedSaleWithoutCustomerPOS()) return;
 
   // Banco obligatorio para Transferencia y Tarjeta
   let bankId = null;
@@ -27949,7 +28425,7 @@ async function addSale(){
       return;
     }
     const sel = document.getElementById('sale-bank');
-    const raw = sel ? String(sel.value || '').trim() : '';
+    const raw = purchaseDraft ? String(purchaseDraft.bankId || '') : (sel ? String(sel.value || '').trim() : '');
     const id = parseInt(raw || '0', 10);
     if (!id){
       posNotify(`Selecciona el banco para ${label}.`);
@@ -27977,12 +28453,12 @@ async function addSale(){
   const prod = findCatalogProductByStableIdPOS(products, selectedProductId);
   if (!prod){
     posNotify('Producto no encontrado. Actualiza el selector de POS y vuelve a intentar.');
-    await refreshProductSelect({ keepSelection:false });
+    if (!purchaseDraft) await refreshProductSelect({ keepSelection:false });
     return;
   }
   if (!productSellableInPOS(prod)){
     posNotify('Este producto ya no está activo o no está marcado para POS en Catálogos. No se guardó la venta.');
-    await refreshProductSelect({ keepSelection:false });
+    if (!purchaseDraft) await refreshProductSelect({ keepSelection:false });
     return;
   }
   const productSnap = buildSaleProductSnapshotPOS(prod, price);
@@ -28061,7 +28537,7 @@ async function addSale(){
   });
   applySaleCardCommissionSnapshotPOS(economicSnapshot, cardCommissionSnapshot);
 
-  const tenderCheck = validateSaleCashTenderPOS({ payment, total, courtesy, isReturn });
+  const tenderCheck = (purchaseDraft ? { ok:true, tender:null } : validateSaleCashTenderPOS({ payment, total, courtesy, isReturn }));
   if (!tenderCheck.ok){
     try{ updateSaleCashTenderComputedPOS(); }catch(_){ }
     posNotify(tenderCheck.msg || 'Revisa el cobro en efectivo.');
@@ -28153,6 +28629,9 @@ async function addSale(){
   if (!vMin.ok){ posNotify(vMin.msg); return; }
   const vCardCommission = validateSaleCardCommissionSnapshotPOS(saleRecord);
   if (!vCardCommission.ok){ posNotify(vCardCommission.msg); return; }
+
+  // Etapa 1: preparar sin persistencia ni efectos secundarios para la compra completa.
+  if (purchaseDraft) return saleRecord;
 
   // Etapa 2D: UID estable por intento + dedupe conservador (antes de insertar)
   try{
@@ -28268,30 +28747,33 @@ async function addSale(){
 
 
 async function addExtraSale(extraId){
+  const purchaseDraft = arguments[1]?.__a33PurchaseDraft === true ? arguments[1] : null;
   const curId = await getMeta('currentEventId');
   if (!curId){ posNotify('Selecciona un evento'); return; }
 
   const ev = await getEventByIdPOS(curId);
   if (!ev || ev.closedAt){ posNotify('No hay un evento activo válido'); return; }
 
-  const date = $('#sale-date').value;
-  const qtyIn = parseFloat($('#sale-qty').value||'0');
+  if (purchaseDraft && curId !== purchaseDraft.eventId) throw new Error('El evento activo cambió.');
+  const date = (purchaseDraft ? purchaseDraft.date : $('#sale-date').value);
+  const qtyIn = parseNumPOS(purchaseDraft ? purchaseDraft.qty : $('#sale-qty').value, 0);
+  if (purchaseDraft && (!Number.isFinite(qtyIn) || qtyIn <= 0)) throw new Error('Cantidad inválida.');
   const qty = Math.abs(qtyIn);
-  const discountPerUnit = Math.max(0, parseFloat($('#sale-discount').value||'0'));
-  const payment = normalizePaymentMethodPOS($('#sale-payment').value || 'efectivo');
-  const courtesy = $('#sale-courtesy').checked;
-  const isReturn = $('#sale-return').checked;
-  const customerInputName = getCustomerNameFromUI_POS();
-  const customerResolved = resolveCustomerIdForSalePOS(customerInputName, getCustomerIdHintFromUI_POS());
+  const discountPerUnit = Math.max(0, parseNumPOS(purchaseDraft ? purchaseDraft.discountPerUnit : $('#sale-discount').value, 0));
+  const payment = normalizePaymentMethodPOS((purchaseDraft ? purchaseDraft.payment : $('#sale-payment').value) || 'efectivo');
+  const courtesy = (purchaseDraft ? !!purchaseDraft.courtesy : $('#sale-courtesy').checked);
+  const isReturn = (purchaseDraft ? !!purchaseDraft.isReturn : $('#sale-return').checked);
+  const customerInputName = (purchaseDraft ? purchaseDraft.customerName : getCustomerNameFromUI_POS());
+  const customerResolved = resolveCustomerIdForSalePOS(customerInputName, (purchaseDraft ? purchaseDraft.customerId : getCustomerIdHintFromUI_POS()));
   const customerId = (customerResolved && customerResolved.id) ? customerResolved.id : null;
   const customerName = (customerResolved && customerResolved.id && customerResolved.displayName) ? customerResolved.displayName : '';
-  const courtesyTo = courtesy ? getCourtesyRecipientForSalePOS(customerName) : '';
-  const notes = $('#sale-notes').value || '';
+  const courtesyTo = courtesy ? (purchaseDraft ? (purchaseDraft.courtesyTo || customerName) : getCourtesyRecipientForSalePOS(customerName)) : '';
+  const notes = (purchaseDraft ? purchaseDraft.notes : $('#sale-notes').value) || '';
 
   if (!date || !qty) { posNotify('Completa fecha y cantidad'); return; }
 
   // Etapa 1: confirmación si no hay cliente seleccionado
-  if (!confirmProceedSaleWithoutCustomerPOS()) return;
+  if (!purchaseDraft && !confirmProceedSaleWithoutCustomerPOS()) return;
 
   // Candado: si el día está cerrado (sección o Resumen), NO permitir ventas
   if (!(await guardSellDayOpenOrToastPOS(ev, date))) return;
@@ -28312,7 +28794,7 @@ async function addExtraSale(extraId){
       return;
     }
     const sel = document.getElementById('sale-bank');
-    const raw = sel ? String(sel.value || '').trim() : '';
+    const raw = purchaseDraft ? String(purchaseDraft.bankId || '') : (sel ? String(sel.value || '').trim() : '');
     const id = parseInt(raw || '0', 10);
     if (!id){
       posNotify(`Selecciona el banco para ${label}.`);
@@ -28333,8 +28815,7 @@ async function addExtraSale(extraId){
   const extra = extras.find(x=>Number(x.id)===Number(extraId));
   if (!extra){
     posNotify('Extra no encontrado.');
-    await renderExtrasUI();
-    await refreshProductSelect({ keepSelection:true });
+    if (!purchaseDraft){ await renderExtrasUI(); await refreshProductSelect({ keepSelection:true }); }
     return;
   }
 
@@ -28352,6 +28833,7 @@ async function addExtraSale(extraId){
   // Validar stock (para ventas normales y cortesías)
   if (finalQty > 0) {
     const stockNow = Number(extra.stock)||0;
+    if (purchaseDraft && stockNow < finalQty) throw new Error('Stock insuficiente de ' + extra.name + '. Agrega stock en Extras antes de vender.');
     if (stockNow < finalQty) {
       const want = confirm(
         'Stock insuficiente para "' + extra.name + '".\n\n' +
@@ -28377,9 +28859,9 @@ async function addExtraSale(extraId){
   }
 
   // Descontar / revertir stock
-  extra.stock = (Number(extra.stock)||0) - finalQty;
+  if (!purchaseDraft) extra.stock = (Number(extra.stock)||0) - finalQty;
   extra.updatedAt = Date.now();
-  ev.extras = extras;
+  if (!purchaseDraft) ev.extras = extras;
   // Nota: persistencia de stock+venta se hace atómica (events+sales) para evitar estados a medias
 
   // Construir venta (costo congelado)
@@ -28406,7 +28888,7 @@ async function addExtraSale(extraId){
   });
   applySaleCardCommissionSnapshotPOS(economicSnapshot, cardCommissionSnapshot);
 
-  const tenderCheck = validateSaleCashTenderPOS({ payment, total, courtesy, isReturn });
+  const tenderCheck = (purchaseDraft ? { ok:true, tender:null } : validateSaleCashTenderPOS({ payment, total, courtesy, isReturn }));
   if (!tenderCheck.ok){
     // Revertir stock en memoria: aún no se ha persistido.
     try{ extra.stock = (Number(extra.stock)||0) + finalQty; }catch(_){ }
@@ -28416,7 +28898,7 @@ async function addExtraSale(extraId){
   }
 
   const saleRecord = {
-    id: Date.now(),
+    ...(purchaseDraft ? {} : { id:Date.now() }),
     eventId: curId,
     eventName: ev.name,
     date,
@@ -28438,7 +28920,7 @@ async function addExtraSale(extraId){
     unitPrice,
     unitPriceSnapshot: unitPrice,
     discount,
-    discountPerUnit,
+    discountPerUnit: (purchaseDraft && courtesy) ? 0 : discountPerUnit,
     total,
     payment,
     bankId,
@@ -28484,6 +28966,8 @@ async function addExtraSale(extraId){
   if (!vMin.ok){ posNotify(vMin.msg); return; }
   const vCardCommission = validateSaleCardCommissionSnapshotPOS(saleRecord);
   if (!vCardCommission.ok){ posNotify(vCardCommission.msg); return; }
+
+  if (purchaseDraft) return saleRecord;
 
   // Etapa 2D: UID estable por intento + dedupe conservador (antes de insertar)
   try{

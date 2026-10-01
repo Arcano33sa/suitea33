@@ -31,7 +31,7 @@
   })();
 </script>
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
-<link rel="stylesheet" href="styles.css?v=4.20.98&r=25">
+<link rel="stylesheet" href="styles.css?v=4.20.98&r=26">
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=13" />
   <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=3" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=13" />
@@ -106,134 +106,8 @@
       </div>
     </div>
 
-    <div class="row" id="sell-block">
-      <div>
-        <label>Producto</label>
-        <select id="sale-product"></select>
-        <div id="product-chips" class="chips"></div>
-      </div>
-      <div>
-        <label>Precio (C$)</label>
-        <input id="sale-price" type="number" inputmode="decimal" step="0.01">
-        <div><small class="muted">Stock: <span id="sale-stock">—</span></small></div>
-      </div>
-    </div>
-
-    <div class="row4">
-      <div>
-        <label>Cantidad</label>
-        <div class="stepper">
-          <button id="qty-minus">−</button>
-          <input id="sale-qty" type="number" inputmode="numeric" step="1" value="1" min="1">
-          <button id="qty-plus">+</button>
-        </div>
-      </div>
-      <div>
-        <label>Descuento por unidad (C$)</label>
-        <input id="sale-discount" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" step="0.01" value="0">
-      </div>
-      <div>
-        <label>Método de pago</label>
-        <select id="sale-payment">
-          <option value="efectivo" selected>Efectivo</option>
-          <option value="transferencia">Transferencia</option>
-          <option value="tarjeta">Tarjeta</option>
-          <option value="credito">Crédito cliente</option>
-        </select>
-      </div>
-      <div>
-        <label>Total (C$)</label>
-        <input id="sale-total" type="number" inputmode="decimal" step="0.01" disabled>
-      </div>
-    </div>
-
-    <div id="sale-cash-tender-card" class="card inner sale-cash-tender" style="display:none">
-      <div class="sale-cash-tender-head">
-        <div>
-          <h4>Cobro en efectivo</h4>
-          <small class="muted">Para ventas en efectivo: C$ normal o USD con vuelto en C$.</small>
-        </div>
-        <div class="sale-cash-tender-mode">
-          <label for="sale-cash-mode">Forma de cobro</label>
-          <select id="sale-cash-mode">
-            <option value="nio" selected>C$ solamente</option>
-            <option value="usd_change_nio">USD con vuelto en C$</option>
-          </select>
-        </div>
-      </div>
-
-      <div id="sale-cash-usd-fields" class="sale-cash-usd-fields" style="display:none">
-        <div>
-          <label for="sale-cash-fx-used">T/C usado</label>
-          <input id="sale-cash-fx-used" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" readonly>
-        </div>
-        <div>
-          <label for="sale-cash-usd-received">Monto recibido USD</label>
-          <input id="sale-cash-usd-received" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="10.00" autocomplete="off">
-        </div>
-        <div>
-          <label for="sale-cash-equivalent">Equivalente C$</label>
-          <input id="sale-cash-equivalent" class="a33-num" type="number" inputmode="decimal" step="0.01" readonly>
-        </div>
-        <div>
-          <label for="sale-cash-change">Vuelto C$</label>
-          <input id="sale-cash-change" class="a33-num" type="number" inputmode="decimal" step="0.01" readonly>
-        </div>
-      </div>
-      <small id="sale-cash-tender-status" class="muted sale-cash-tender-status"></small>
-    </div>
-
-
-<!-- Cliente (opcional) · Etapa 2/3: selector POS, administración en Catálogos -->
-<div class="row" id="sale-customer-row">
-  <div class="customer-v2">
-    <div class="customer-v2-field">
-      <label id="sale-customer-label">Cliente</label>
-      <input id="sale-customer" placeholder="Selecciona cliente…" readonly aria-readonly="true">
-      <small class="muted customer-catalog-hint">Los clientes se administran desde Catálogos.</small>
-    </div>
-
-    <div class="customer-v2-actions">
-      <button id="btn-new-customer" class="btn-outline btn-pill btn-pill-mini customer-quick-open" type="button">Nuevo</button>
-      <button id="btn-pick-customer" class="btn-outline btn-pill btn-pill-mini" type="button">Seleccionar</button>
-      <button id="btn-clear-customer" class="btn-outline btn-pill btn-pill-mini" type="button">Limpiar</button>
-      <label class="flag customer-v2-sticky"><input id="sale-customer-sticky" type="checkbox"> Pegajoso</label>
-    </div>
-  </div>
-</div>
-
-    <div class="row" id="sale-bank-row" style="display:none">
-      <div>
-        <label>Banco / medio de cobro</label>
-        <select id="sale-bank">
-          <option value="">— Selecciona banco —</option>
-        </select>
-        <small id="sale-bank-note" class="muted"></small>
-      </div>
-    </div>
-
-    <details class="card">
-      <summary>Más opciones</summary>
-      <div class="row">
-        <div>
-          <label class="flag"><input id="sale-courtesy" type="checkbox"> Cortesía</label>
-          <label class="flag"><input id="sale-return" type="checkbox"> Devolución</label>
-        </div>
-        <div>
-          <label>Cortesía a</label>
-          <div class="courtesy-recipient-control">
-            <input id="sale-courtesy-to" placeholder="Selecciona un cliente" disabled readonly aria-readonly="true">
-            <button id="btn-edit-courtesy-to" class="btn-outline btn-pill btn-pill-mini" type="button" hidden>Editar nombre</button>
-          </div>
-          <small id="sale-courtesy-to-hint" class="muted" hidden>Usa el nombre del cliente seleccionado.</small>
-        </div>
-      </div>
-      <label>Notas (opcional)</label>
-      <textarea id="sale-notes" rows="2" placeholder="ej. promo, ref. de pago, etc."></textarea>
-    </details>
-
     <div class="row">
-      <button id="btn-add" class="btn-ok">+ Agregar venta</button>
+      <button id="btn-add" class="btn-ok purchase-open" type="button">VENDER</button>
       <button id="btn-undo" class="btn-warn">↩︎ Deshacer última</button>
     </div>
 
@@ -1570,6 +1444,168 @@
   </div>
 </div>
 
+<!-- Compra completa: mismo cliente y cobro para todos los productos. -->
+<div id="purchase-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="purchase-title" aria-hidden="true" inert>
+  <div class="panel purchase-panel" tabindex="-1">
+    <div class="purchase-heading">
+      <h3 id="purchase-title">Nueva compra</h3>
+      <small id="purchase-context" class="muted"></small>
+    </div>
+    <div id="purchase-error" class="warn purchase-message" role="alert" tabindex="-1" hidden></div>
+    <div class="purchase-layout">
+      <section class="purchase-catalog" aria-labelledby="purchase-products-title">
+        <h4 id="purchase-products-title">Productos disponibles</h4>
+        <label for="purchase-search" class="sr-only">Buscar producto</label>
+        <input id="purchase-search" type="search" placeholder="Buscar producto…" autocomplete="off">
+        <div id="purchase-products" class="purchase-products"></div>
+      </section>
+      <section class="purchase-order" aria-labelledby="purchase-items-title">
+        <h4 id="purchase-items-title">Productos de la compra</h4>
+        <div id="purchase-items" class="purchase-items"></div>
+<!-- Cliente (opcional) · Etapa 2/3: selector POS, administración en Catálogos -->
+<div class="row" id="sale-customer-row">
+  <div class="customer-v2">
+    <div class="customer-v2-field">
+      <label id="sale-customer-label">Cliente</label>
+      <input id="sale-customer" placeholder="Selecciona cliente…" readonly aria-readonly="true">
+      <small class="muted customer-catalog-hint">Los clientes se administran desde Catálogos.</small>
+    </div>
+
+    <div class="customer-v2-actions">
+      <button id="btn-new-customer" class="btn-outline btn-pill btn-pill-mini customer-quick-open" type="button">Nuevo</button>
+      <button id="btn-pick-customer" class="btn-outline btn-pill btn-pill-mini" type="button">Seleccionar</button>
+      <button id="btn-clear-customer" class="btn-outline btn-pill btn-pill-mini" type="button">Limpiar</button>
+      <label class="flag customer-v2-sticky"><input id="sale-customer-sticky" type="checkbox"> Pegajoso</label>
+    </div>
+  </div>
+</div>
+
+    <div class="row purchase-payment-row">
+      <div>
+        <label>Método de pago</label>
+        <select id="sale-payment">
+          <option value="efectivo" selected>Efectivo</option>
+          <option value="transferencia">Transferencia</option>
+          <option value="tarjeta">Tarjeta</option>
+          <option value="credito">Crédito cliente</option>
+        </select>
+      </div>
+      <div>
+        <label>Total (C$)</label>
+        <input id="sale-total" type="number" inputmode="decimal" step="0.01" disabled>
+      </div>
+    </div>
+
+    <div id="sale-cash-tender-card" class="card inner sale-cash-tender" style="display:none">
+      <div class="sale-cash-tender-head">
+        <div>
+          <h4>Cobro en efectivo</h4>
+          <small class="muted">Para ventas en efectivo: C$ normal o USD con vuelto en C$.</small>
+        </div>
+        <div class="sale-cash-tender-mode">
+          <label for="sale-cash-mode">Forma de cobro</label>
+          <select id="sale-cash-mode">
+            <option value="nio" selected>C$ solamente</option>
+            <option value="usd_change_nio">USD con vuelto en C$</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="sale-cash-usd-fields" class="sale-cash-usd-fields" style="display:none">
+        <div>
+          <label for="sale-cash-fx-used">T/C usado</label>
+          <input id="sale-cash-fx-used" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" readonly>
+        </div>
+        <div>
+          <label for="sale-cash-usd-received">Monto recibido USD</label>
+          <input id="sale-cash-usd-received" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="10.00" autocomplete="off">
+        </div>
+        <div>
+          <label for="sale-cash-equivalent">Equivalente C$</label>
+          <input id="sale-cash-equivalent" class="a33-num" type="number" inputmode="decimal" step="0.01" readonly>
+        </div>
+        <div>
+          <label for="sale-cash-change">Vuelto C$</label>
+          <input id="sale-cash-change" class="a33-num" type="number" inputmode="decimal" step="0.01" readonly>
+        </div>
+      </div>
+      <small id="sale-cash-tender-status" class="muted sale-cash-tender-status"></small>
+    </div>
+
+
+    <div class="row" id="sale-bank-row" style="display:none">
+      <div>
+        <label>Banco / medio de cobro</label>
+        <select id="sale-bank">
+          <option value="">— Selecciona banco —</option>
+        </select>
+        <small id="sale-bank-note" class="muted"></small>
+      </div>
+    </div>
+
+    <details id="purchase-more-options" class="card">
+      <summary>Más opciones</summary>
+      <div id="purchase-courtesy-options"></div>
+      <div class="row">
+        <div>
+          <label class="flag" hidden><input id="sale-courtesy" type="checkbox"> Cortesía</label>
+          <label class="flag"><input id="sale-return" type="checkbox"> Registrar devolución (operación separada)</label>
+        </div>
+        <div hidden>
+          <label>Cortesía a</label>
+          <div class="courtesy-recipient-control">
+            <input id="sale-courtesy-to" placeholder="Selecciona un cliente" disabled readonly aria-readonly="true">
+            <button id="btn-edit-courtesy-to" class="btn-outline btn-pill btn-pill-mini" type="button" hidden>Editar nombre</button>
+          </div>
+          <small id="sale-courtesy-to-hint" class="muted" hidden>Usa el nombre del cliente seleccionado.</small>
+        </div>
+      </div>
+      <label>Notas (opcional)</label>
+      <textarea id="sale-notes" rows="2" placeholder="ej. promo, ref. de pago, etc."></textarea>
+    </details>
+
+
+      </section>
+    </div>
+    <div class="purchase-footer">
+      <div class="purchase-grand-total">Total: C$ <strong id="purchase-total-display" aria-live="polite">0.00</strong></div>
+      <div class="purchase-actions">
+        <button id="purchase-save" class="btn-ok btn-pill" type="button">Guardar</button>
+        <button id="purchase-cancel" class="btn-outline btn-pill" type="button">Cancelar</button>
+      </div>
+    </div>
+    <div hidden aria-hidden="true">
+    <div class="row" id="sell-block">
+      <div>
+        <label>Producto</label>
+        <select id="sale-product"></select>
+        <div id="product-chips" class="chips"></div>
+      </div>
+      <div>
+        <label>Precio (C$)</label>
+        <input id="sale-price" type="number" inputmode="decimal" step="0.01">
+        <div><small class="muted">Stock: <span id="sale-stock">—</span></small></div>
+      </div>
+    </div>
+
+    <div class="row4">
+      <div>
+        <label>Cantidad</label>
+        <div class="stepper">
+          <button id="qty-minus">−</button>
+          <input id="sale-qty" type="number" inputmode="numeric" step="1" value="1" min="1">
+          <button id="qty-plus">+</button>
+        </div>
+      </div>
+      <div>
+        <label>Descuento por unidad (C$)</label>
+        <input id="sale-discount" class="a33-num" data-a33-default="0" type="number" inputmode="decimal" step="0.01" value="0">
+      </div>
+    </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Cliente Rápido · POS · Etapa 1/3 -->
 <div id="customer-quick-modal" class="modal" aria-hidden="true" inert role="dialog" aria-modal="true" aria-labelledby="customer-quick-title">
   <div class="panel panel-compact customer-quick-panel" tabindex="-1">
@@ -1693,7 +1729,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m59').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m60').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1702,7 +1738,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m59')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m60')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1712,7 +1748,7 @@
 
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
-<script src="app.js?v=4.20.98&r=54"></script>
+<script src="app.js?v=4.20.98&r=55"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=13"></script>
 <script>
   (function(){
