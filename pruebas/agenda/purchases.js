@@ -272,68 +272,6 @@
     };
   }
 
-  function serializePurchaseRecordForFirebase(source, context){
-    const record = normalizePurchaseRecord(source);
-    const options = context && typeof context === 'object' ? context : {};
-    const workspaceId = clean(options.workspaceId || record.workspaceId || 'default',120) || 'default';
-    const createdAt = clean(record.createdAt,80) || new Date().toISOString();
-    const updatedAt = clean(record.updatedAt || record.createdAt,80) || createdAt;
-    const items = record.purchaseGroup.items.map(function(item){
-      const normalized = cloneItem(item);
-      return {
-        draftId:clean(normalized.draftId,180),
-        materialId:clean(normalized.materialId,160),
-        name:clean(normalized.name,120),
-        category:clean(normalized.category,80),
-        unit:normalizeUnit(normalized.unit),
-        priceUsed:Number(normalized.priceUsed || 0),
-        quantity:Number(normalized.quantity || 0),
-        subtotal:Number(normalized.subtotal || 0),
-        snapshot:{
-          materialId:clean(normalized.snapshot && normalized.snapshot.materialId,160),
-          name:clean(normalized.snapshot && normalized.snapshot.name,120),
-          category:clean(normalized.snapshot && normalized.snapshot.category,80),
-          unit:normalizeUnit(normalized.snapshot && normalized.snapshot.unit),
-          priceUsed:Number(normalized.snapshot && normalized.snapshot.priceUsed || 0),
-          capturedAt:clean(normalized.snapshot && normalized.snapshot.capturedAt,80)
-        }
-      };
-    });
-    const safe = {
-      id:record.id,
-      workspaceId,
-      subject:clean(record.subject,120),
-      type:'compra',
-      client:'',
-      clientId:'',
-      modality:'',
-      date:record.date,
-      time:'',
-      status:record.status,
-      priority:record.priority,
-      notes:clean(record.notes,1200),
-      createdAt,
-      updatedAt,
-      createdAtMs:safeEpoch(createdAt),
-      updatedAtMs:safeEpoch(updatedAt),
-      createdBy:clean(options.createdBy || record.createdBy,120),
-      updatedBy:clean(options.updatedBy || record.updatedBy,120),
-      schemaVersion:SCHEMA_VERSION,
-      pedido:emptyPedidoForPurchase(),
-      purchase:aggregatePurchase(items,{createdAt:createdAt}),
-      purchaseGroup:{
-        version:GROUP_VERSION,
-        itemCount:items.length,
-        totalGeneral:groupTotal(items),
-        items
-      }
-    };
-    return jsonSafeClone(safe);
-  }
-
-  function deserializePurchaseRecordFromFirebase(source){
-    return normalizePurchaseRecord(jsonSafeClone(source) || source || {});
-  }
 
   function readStore(){
     let raw = '';
@@ -1294,7 +1232,6 @@
   }
 
   async function bootstrap(){
-    if (window.A33E6Download) await window.A33E6Download.ready('agenda');
     setRefs();
     if (!refs.form) return;
     bind();
@@ -1308,7 +1245,7 @@
       render();
     });
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=4').catch(function(error){
+      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=5').catch(function(error){
         console.warn('Agenda SW no disponible', error);
       });
     }
@@ -1331,9 +1268,6 @@
         };
       },
       normalizePurchaseRecord: normalizePurchaseRecord,
-      serializeForFirebase: serializePurchaseRecordForFirebase,
-      deserializeFromFirebase: deserializePurchaseRecordFromFirebase,
-      firebaseCollection: 'agendaRecords',
       storageKey: STORAGE_KEY,
       schemaVersion: SCHEMA_VERSION
     });

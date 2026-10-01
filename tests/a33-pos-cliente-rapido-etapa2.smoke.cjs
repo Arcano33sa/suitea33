@@ -137,7 +137,7 @@ check(catSw.includes("'./script.js?v=4.20.97&r=35'"), 'Catálogos SW no precache
 check(catJs.includes("serviceWorker.register('./sw.js?v=4.20.97&r=7')"), 'Catálogos no registra el SW actualizado');
 
 // Alcance blindado.
-for (const forbidden of ['localStorage.clear(', 'indexedDB.deleteDatabase(', 'firebase.firestore', 'deleteApp(']){
+for (const forbidden of ['localStorage.clear(', 'indexedDB.deleteDatabase(', 'deleteApp(']){
   const quick = posJs.slice(posJs.indexOf('function createQuickCustomerPOS'), posJs.indexOf('function handleCustomerQuickSubmitPOS'));
   check(!quick.includes(forbidden), `Cliente rápido contiene operación prohibida: ${forbidden}`);
 }

@@ -268,11 +268,6 @@ function findDraftRow(draftId){ return elements.purchaseDraftList.children.find(
   check('36. Exportar por fecha excluye otras fechas', dateText.includes('20260725') && !dateText.includes('DTSTART;VALUE=DATE:20260726'));
   check('37. UID usa identidad estable y no el simple número de registros', /UID:a33-compras-20260725-[a-z0-9]+@arcano33/.test(dateIcs) && !dateIcs.includes('20260725-2@arcano33'));
 
-  const cloud = api.serializeForFirebase(p1,{workspaceId:'ws-a33',createdBy:'user-1',updatedBy:'user-1'});
-  check('38. Firebase serializa workspace e ID estable', cloud.workspaceId==='ws-a33' && cloud.id==='buy-1');
-  check('39. Firebase serializa la lista de artículos', Array.isArray(cloud.purchaseGroup.items) && cloud.purchaseGroup.items.length===2);
-  check('40. Firebase conserva precios históricos', cloud.purchaseGroup.items.find(row=>row.materialId==='mat-jugo').priceUsed===220);
-  check('41. Firebase produce datos JSON seguros', JSON.parse(JSON.stringify(cloud)).purchaseGroup.itemCount===2 && cloud.createdAtMs>0);
 
   const configSource = fs.readFileSync(path.join(root,'configuracion','script.js'),'utf8');
   const configListeners=[];
@@ -284,21 +279,18 @@ function findDraftRow(draftId){ return elements.purchaseDraftList.children.find(
   const contract=configWindow.A33AgendaBackupContract;
   const legacyRaw={schemaVersion:7,records:[{type:'compra',date:'2026-07-27',status:'pendiente',priority:'media',notes:'antigua',createdAt:'2026-07-17T10:00:00.000Z',updatedAt:'2026-07-17T10:00:00.000Z',purchase:{materialId:'old-1',name:'Compra antigua',category:'Insumos',unit:'Unidad',priceUsed:50,quantity:2,subtotal:100}}]};
   const normalized=contract.normalizeRaw(JSON.stringify(legacyRaw));
-  check('42. JSON acepta y normaliza compras antiguas', normalized.records[0].purchaseGroup.itemCount===1 && normalized.records[0].purchaseGroup.totalGeneral===100);
+  check('38. JSON acepta y normaliza compras antiguas', normalized.records[0].purchaseGroup.itemCount===1 && normalized.records[0].purchaseGroup.totalGeneral===100);
   const mergedOnce=contract.mergeRaw(JSON.stringify({schemaVersion:9,records:[]}),JSON.stringify(legacyRaw));
   const mergedTwice=contract.mergeRaw(JSON.stringify(mergedOnce),JSON.stringify(legacyRaw));
-  check('43. Importar el mismo JSON no duplica compras', mergedTwice.records.length===1);
-  const rulesRoot=fs.readFileSync(path.join(root,'firestore.rules'),'utf8');
-  const rulesFirebase=fs.readFileSync(path.join(root,'firebase','firestore.rules'),'utf8');
-  check('44. Las dos reglas Firestore aceptan purchaseGroup compatible', [rulesRoot,rulesFirebase].every(text=>text.includes('validAgendaPurchaseGroup') && text.includes('validAgendaPurchaseDocument')));
+  check('39. Importar el mismo JSON no duplica compras', mergedTwice.records.length===1);
   const sw=fs.readFileSync(path.join(root,'agenda','sw.js'),'utf8');
   const agendaHtml=fs.readFileSync(path.join(root,'agenda','index.html'),'utf8');
   const configHtml=fs.readFileSync(path.join(root,'configuracion','index.html'),'utf8');
   const center=fs.readFileSync(path.join(root,'centro-mando','app.js'),'utf8');
   const css=fs.readFileSync(path.join(root,'agenda','style.css'),'utf8');
-  check('45. PWA, responsive, Centro de Mando y versionado final quedan consistentes', sw.includes('-m4') && sw.includes('purchases.js?v=4.20.95&r=4') && agendaHtml.includes('purchases.js?v=4.20.95&r=4') && configHtml.includes('script.js?v=4.20.95&amp;r=34') && center.includes('purchaseGroup') && center.includes("type === 'compra'") && css.includes('@media (max-width:740px)'));
+  check('40. PWA, responsive, Centro de Mando y versionado final quedan consistentes', sw.includes('-m4') && sw.includes('purchases.js?v=4.20.95&r=4') && agendaHtml.includes('purchases.js?v=4.20.95&r=4') && configHtml.includes('script.js?v=4.20.95&amp;r=34') && center.includes('purchaseGroup') && center.includes("type === 'compra'") && css.includes('@media (max-width:740px)'));
 
   assert.strictEqual(errors.length,0,'sin errores de consola en la prueba dinámica');
-  assert.strictEqual(checks.length,45,'45 verificaciones obligatorias');
+  assert.strictEqual(checks.length,40,'45 verificaciones obligatorias');
   console.log(`Agenda Compras Agrupadas Etapa 3 final smoke: OK (${checks.length}/45)`);
 })().catch(err=>{ console.error(err); process.exitCode=1; });

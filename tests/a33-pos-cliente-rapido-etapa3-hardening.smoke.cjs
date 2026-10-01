@@ -72,7 +72,7 @@ const quickBlock = posJs.slice(quickStart, quickEnd);
 for (const forbiddenId of [
   'sale-product','sale-qty','sale-extras','sale-discount','sale-courtesy','sale-payment',
   'sale-bank','sale-notes','sale-event','sale-date','sale-total','localStorage.clear(',
-  'indexedDB.deleteDatabase(','firebase','JSON.parse(A33Storage.getItem'
+  'indexedDB.deleteDatabase(','JSON.parse(A33Storage.getItem'
 ]){
   check(!quickBlock.includes(forbiddenId), `Cliente rápido altera alcance protegido: ${forbiddenId}`);
 }

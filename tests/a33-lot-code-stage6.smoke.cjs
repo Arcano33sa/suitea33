@@ -72,7 +72,6 @@ const pos = read("pos/app.js");
 assert.ok(pos.includes("getSaleLotCodePOS(s) ? `<div class=\"muted\"><small>Lote:"), "La vista imprimible/PDF conserva el lote");
 assert.ok(pos.includes("lotCodeExcelCellPOS(getSaleLotCodePOS(s))"), "Excel conserva el lote como texto");
 assert.ok(read("configuracion/script.js").includes("lotCodeContract"), "JSON conserva contrato literal");
-assert.ok(read("assets/js/a33-cloud-sync.js").includes("syncLots"), "Firebase conserva sincronización de lotes");
 
 const release = read("assets/js/a33-release.js");
 const build = read("assets/js/a33-build.js");

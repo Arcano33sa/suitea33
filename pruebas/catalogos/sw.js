@@ -6,7 +6,7 @@ try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=57'); } catch (e) {}
 const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
 const MODULE = 'catalogos';
-const MODULE_CACHE_REV = '43';
+const MODULE_CACHE_REV = '44';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -21,7 +21,6 @@ const PRECACHE_URLS = [
   './index.html?v=4.20.98&r=33',
   './style.css?v=4.20.98&r=24',
   './script.js?v=4.20.98&r=39',
-  '/assets/js/a33-catalog-download.js?v=4.20.98&r=3',
   './manifest.webmanifest?v=4.20.98&r=13',
   './offline.html',
   '../icon-a33-192.png',

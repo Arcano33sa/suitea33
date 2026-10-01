@@ -2940,7 +2940,7 @@ function installSmokeHooks(inv){
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
-      .register("./sw.js?v=4.20.98&r=1")
+      .register("./sw.js?v=4.20.98&r=2")
       .catch((err) => console.error("SW error", err));
   }
 }
@@ -2948,7 +2948,6 @@ function registerServiceWorker() {
 document.addEventListener("DOMContentLoaded", async () => {
   setStatus("Cargando…", "info", { sticky: true });
 
-  if (window.A33E6Download) await window.A33E6Download.ready('inventario');
 
   const inv = loadInventario();
   installSmokeHooks(inv);

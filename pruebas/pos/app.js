@@ -11143,8 +11143,6 @@ function bindPhysicalCupReconciliationHooksPOS(){
   try{ window.addEventListener('online', run); }catch(_){ }
   try{ window.addEventListener('focus', run); }catch(_){ }
   try{ window.addEventListener('storage', run); }catch(_){ }
-  try{ window.addEventListener('a33:cloud-sync-status', run); }catch(_){ }
-  try{ window.addEventListener('a33:firebase-status', run); }catch(_){ }
 }
 
 try{
@@ -26832,15 +26830,6 @@ async function exportEventExcel(eventId){
   XLSX.writeFile(wb, `evento_${safeName}.xlsx`);
 }
 
-// --- Cierres protegidos por rol (E9.5B-R2) ---
-function canManageProtectedClosuresPOS(accessOverride){
-  const access = accessOverride && typeof accessOverride === 'object'
-    ? accessOverride
-    : (window.A33Access && typeof window.A33Access.getState === 'function' ? window.A33Access.getState() : null);
-  const profile = access && access.profile && typeof access.profile === 'object' ? access.profile : null;
-  const role = String((access && access.role) || (profile && profile.role) || '').trim().toLowerCase();
-  return !!(access && access.user && profile && profile.status === 'active' && role === 'admin');
-}
 
 function requireProtectedClosurePOS(actionLabel, accessOverride){
   if (canManageProtectedClosuresPOS(accessOverride)) return true;

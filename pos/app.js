@@ -11143,8 +11143,6 @@ function bindPhysicalCupReconciliationHooksPOS(){
   try{ window.addEventListener('online', run); }catch(_){ }
   try{ window.addEventListener('focus', run); }catch(_){ }
   try{ window.addEventListener('storage', run); }catch(_){ }
-  try{ window.addEventListener('a33:cloud-sync-status', run); }catch(_){ }
-  try{ window.addEventListener('a33:firebase-status', run); }catch(_){ }
 }
 
 try{

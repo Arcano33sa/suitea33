@@ -13,7 +13,7 @@ const SW_REV = (self.A33_RELEASE && (self.A33_RELEASE.rev !== undefined && self.
   : '1';
 
 const MODULE = 'inventario';
-const MODULE_CACHE_REV = '23';
+const MODULE_CACHE_REV = '24';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -32,7 +32,6 @@ const PRECACHE_URLS = [
   './offline.html',
   './images/logo.png',
   '/assets/js/a33-release.js?v=4.20.98&r=54',
-  '/assets/js/a33-e6-download.js?v=4.20.98&r=1',
 
   '/assets/js/a33-input-ux.js?v=4.20.98&r=8',
   '/assets/js/a33-toast.js?v=4.20.98&r=1',

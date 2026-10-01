@@ -12,7 +12,7 @@ const script = fs.readFileSync(path.join(root, 'catalogos/script.js'), 'utf8');
 const sw = fs.readFileSync(path.join(root, 'catalogos/sw.js'), 'utf8');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'catalogos/manifest.webmanifest'), 'utf8'));
 const storage = fs.readFileSync(path.join(root, 'assets/js/a33-storage.js'), 'utf8');
-const backup = fs.readFileSync(path.join(root, 'inline_0.js'), 'utf8');
+const backup = fs.readFileSync(path.join(root, 'configuracion', 'script.js'), 'utf8');
 const inventoryScript = fs.readFileSync(path.join(root, 'inventario/script.js'), 'utf8');
 const posScript = fs.readFileSync(path.join(root, 'pos/app.js'), 'utf8');
 
@@ -114,7 +114,7 @@ assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=33', 'Manifest 
 assert.ok(!script.includes('localStorage.clear('), 'Se agregó borrado global de localStorage');
 assert.ok(!script.includes('indexedDB.deleteDatabase('), 'Se agregó borrado de IndexedDB');
 
-for (const dir of ['pos','inventario','lotes','calculadora','calculadora_temporal','finanzas','firebase']){
+for (const dir of ['pos','inventario','lotes','calculadora','calculadora_temporal','finanzas']){
   assert.ok(fs.existsSync(path.join(root, dir)), `Falta módulo ${dir}`);
 }
 

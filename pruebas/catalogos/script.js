@@ -10,7 +10,6 @@
 
 
   let db = null;
-  let catalogCloudPending = false;
   let currentEditId = null;
   let currentExtraEditId = null;
   let currentBankEditId = null;
@@ -1324,7 +1323,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=8').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=9').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -2809,7 +2808,6 @@
   }
 
   async function ensureBanksDefaultsCatalog(force){
-    if (catalogCloudPending && !force) return;
     if (force) clearCatalogDeleted('banks');
     const banks = await getAll('banks');
     const defaults = ['BAC','BANPRO','LAFISE','BDF'].map(name => ({ name, isActive:true, active:true, type:'transferencia', currency:'NIO', accountReference:'', commissionPct:0 }));
@@ -3165,7 +3163,6 @@
     const explicitRestore = force === true;
     const existedBefore = catalogStorageKeyExists(ENVASES_CATALOG_KEY);
     const list = readEnvaseCatalog();
-    if (catalogCloudPending && !explicitRestore) return list;
 
     // Compatibilidad controlada: semilla automática solo en la primera existencia real de la clave.
     // Una lista vacía guardada por el usuario se respeta y nunca se repuebla sola.
@@ -3574,7 +3571,6 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     const explicitRestore = force === true;
     const existedBefore = catalogStorageKeyExists(TAPAS_CATALOG_KEY);
     const list = readTapaCatalog();
-    if (catalogCloudPending && !explicitRestore) return list;
 
     // Igual que Envases: una clave existente, incluso con [], expresa decisión del usuario.
     if (!explicitRestore && existedBefore) return list;
@@ -4726,7 +4722,6 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   function bindCustomerUi(){
-    byId('cat-download-customers')?.addEventListener('click', downloadEmptyCustomersCAT);
     const list = byId('cat-customers-list');
     if (list){
       list.addEventListener('click', async (e)=>{
@@ -4774,50 +4769,6 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     });
   }
 
-  async function downloadEmptyCustomersCAT(){
-    const button = byId('cat-download-customers');
-    const status = byId('cat-download-customers-status');
-    if (button.disabled) return;
-    button.disabled = true;
-    status.textContent = 'Descargando Clientes…';
-    let expired = false;
-    let timer;
-    try{
-      const task = (async () => {
-        const gate = await window.A33ModuleGuard.evaluate('catalogos');
-        if (!gate.allowed) throw new Error('Inicia sesión para descargar Clientes.');
-        const access = window.A33Access.getState();
-        const authorized = () => {
-          const current = window.A33Access.getState();
-          return !expired && !!access.user && current.user?.uid === access.user.uid
-            && current.workspaceId === access.workspaceId
-            && window.A33Access.evaluateModuleAccess('catalogos', current, {enforcementEnabled:true}).allowed;
-        };
-        const app = await window.A33Firebase.initFirebaseApp(window.A33FirebaseSettings.read());
-        return window.A33CatalogDownload.downloadCustomers({
-          authorized,
-          localState: () => [CUSTOMER_CATALOG_KEY, CUSTOMER_DISABLED_KEY, CATALOG_DELETED_KEYS.customers].map(key => localStorage.getItem(key)),
-          read: async () => {
-            const snapshot = await window.firebase.firestore(app).collection('workspaces').doc(access.workspaceId)
-              .collection('modules').doc('catalogos').collection('entities').doc('clientes').collection('records').get({source:'server'});
-            return snapshot.docs.map(doc => doc.data());
-          },
-          save: rows => localStorage.setItem(CUSTOMER_CATALOG_KEY, JSON.stringify(rows))
-        });
-      })();
-      const count = await Promise.race([task, new Promise((_, reject) => {
-        timer = setTimeout(() => { expired = true; reject(new Error('Tiempo de espera agotado. Puedes reintentar.')); }, 20000);
-      })]);
-      status.textContent = count ? `${count} clientes descargados. Los cambios locales todavía no se sincronizan.` : 'No se encontraron clientes para descargar en la nube.';
-      await renderCustomers({forceLastPurchase:true});
-    }catch(error){
-      status.textContent = 'No se completó la descarga. ' + String(error.message || error);
-    }finally{
-      expired = true;
-      clearTimeout(timer);
-      button.disabled = false;
-    }
-  }
 
   async function initCustomers(){
     const list = readCustomerCatalogCAT();
@@ -5221,99 +5172,8 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     await renderProducts();
   }
 
-  async function downloadInitialCatalogs(){
-    const notice = byId('cat-cloud-status');
-    catalogCloudPending = true;
-    notice.textContent = 'Comprobando catálogos en la nube…';
-    let expired = false;
-    let timer;
-    try{
-      const gate = await Promise.race([
-        window.A33ModuleGuard.evaluate('catalogos'),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Tiempo de espera agotado.')), 15000); })
-      ]);
-      clearTimeout(timer);
-      if (!gate.allowed) throw new Error('Inicia sesión y vuelve a abrir Catálogos.');
-      const access = window.A33Access.getState();
-      const uid = access.user.uid;
-      const workspace = access.workspaceId;
-      const authorized = () => !expired && window.A33Access.getState().user?.uid === uid
-        && window.A33Access.getState().workspaceId === workspace
-        && window.A33Access.evaluateModuleAccess('catalogos', window.A33Access.getState(), {enforcementEnabled:true}).allowed;
-      const app = await window.A33Firebase.initFirebaseApp(window.A33FirebaseSettings.read());
-      const firestore = window.firebase.firestore(app);
-      await openDB();
-      const hasLocal = async spec => {
-        if (readCatalogDeletedKeys(spec.kind).size) return true;
-        if (spec.kind === 'products' && (localStorage.getItem('a33_catalog_deleted_products_v1') || localStorage.getItem('a33_catalog_deleted_product_ids_v2'))) return true;
-        if (spec.kind === 'customers' && localStorage.getItem(CUSTOMER_DISABLED_KEY)) return true;
-        if (spec.key){
-          // Las listas vacías guardadas también pueden ser decisiones del usuario.
-          return localStorage.getItem(spec.key) !== null;
-        }
-        return (await getAll(spec.store)).length > 0;
-      };
-      const result = await Promise.race([
-        window.A33CatalogDownload.download({
-          authorized, hasLocal,
-          read: async spec => {
-            const snapshot = await firestore.collection('workspaces').doc(workspace).collection('modules').doc('catalogos').collection('entities').doc(spec.entity).collection('records').get({source:'server'});
-            return snapshot.docs.map(doc => doc.data());
-          },
-          insertIfEmpty: async (spec, rows) => {
-            if (!rows.length || !authorized()) return 0;
-            if (spec.key){
-              if (localStorage.getItem(spec.key) !== null) return 0;
-              localStorage.setItem(spec.key, JSON.stringify(rows));
-              return rows.length;
-            }
-            return new Promise((resolve, reject) => {
-              const tx = db.transaction(spec.store, 'readwrite');
-              const store = tx.objectStore(spec.store);
-              let added = 0;
-              const count = store.count();
-              count.onsuccess = () => {
-                if (count.result || !authorized()) return;
-                rows.forEach(row => store.add(row));
-                added = rows.length;
-              };
-              tx.oncomplete = () => resolve(added);
-              tx.onabort = tx.onerror = () => reject(tx.error || new Error('No se pudo guardar el catálogo local.'));
-            });
-          }
-        }),
-        new Promise((_, reject) => { timer = setTimeout(() => { expired = true; reject(new Error('Tiempo de espera agotado.')); }, 20000); })
-      ]);
-      let costsResult = null;
-      let costsError = '';
-      try{
-        costsResult = await window.A33CatalogDownload.downloadCosts({
-          authorized,
-          raw:key => localStorage.getItem(key),
-          read:async type => {
-            const target = type === 'costs' ? ['catalogos','costos'] : ['inventario','recetas'];
-            const snapshot = await firestore.collection('workspaces').doc(workspace).collection('modules').doc(target[0])
-              .collection('entities').doc(target[1]).collection('records').get({source:'server'});
-            return snapshot.docs.map(doc => doc.data());
-          },
-          write:(key,value) => localStorage.setItem(key,value),
-          removeIfSame:(key,value) => { if (localStorage.getItem(key) === value) localStorage.removeItem(key); }
-        });
-      }catch(error){ costsError = String(error.message || error); }
-      catalogCloudPending = false;
-      const labels = {productos:'Productos',materia_prima:'Materia prima',envases:'Envases',tapas:'Tapas',extras:'Extras',bancos:'Bancos',clientes:'Clientes'};
-      const preserved = result.skipped.length ? ' Se conservaron los datos locales de: ' + result.skipped.map(id => labels[id]).join(', ') + '.' : '';
-      const costsDetail = costsError
-        ? ` Costos/Recetas no se completó: ${costsError}`
-        : ` Costos/Recetas: ${costsResult.written} fuente(s) descargada(s)${costsResult.missing ? `; ${costsResult.missing} todavía no existe(n) en Firebase` : ''}.`;
-      notice.textContent = `Carga inicial: ${result.added} registros descargados.${preserved}${costsDetail} Los cambios locales todavía no se sincronizan.`;
-    }catch(error){
-      notice.textContent = 'No se completó la descarga inicial. Se conservan los datos locales. ' + String(error.message || error) + ' Recarga para reintentar.';
-    }finally{ expired = true; clearTimeout(timer); }
-  }
 
   document.addEventListener('DOMContentLoaded', async () => {
-    await downloadInitialCatalogs();
     bindCatalogNavigation();
     bindCatalogModalHardening();
     bindProductUi();

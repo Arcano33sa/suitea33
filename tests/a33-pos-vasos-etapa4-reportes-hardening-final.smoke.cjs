@@ -11,7 +11,6 @@ const html = fs.readFileSync(path.join(root, 'pos/index.html'), 'utf8');
 const sw = fs.readFileSync(path.join(root, 'pos/sw.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'pos/styles.css'), 'utf8');
 const backup = fs.readFileSync(path.join(root, 'configuracion/script.js'), 'utf8');
-const cloud = fs.readFileSync(path.join(root, 'assets/js/a33-cloud-sync.js'), 'utf8');
 const storage = fs.readFileSync(path.join(root, 'assets/js/a33-storage.js'), 'utf8');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'pos/manifest.webmanifest'), 'utf8'));
 
@@ -218,15 +217,13 @@ vm.runInContext(`${physicalBlock}\nthis.api={ensurePhysicalCupConsumptionForSale
   assert.ok(app.includes('if (sale && isCupSaleRecord(sale))'), 'Reverso legacy perdió su guardia exclusiva');
   assert.ok(app.includes('if (!sale || !isCupSaleRecord(sale)) return;'), 'FIFO legacy puede ejecutarse en venta moderna');
 
-  // 7) JSON/Firebase: bloques completos, IDs y asociación intactos; ventas/inventario no se sincronizan por Firebase.
+  // 7) JSON local: bloques completos, IDs y asociación intactos.
   assert.ok(backup.includes('async function buildFullBackup()'), 'Falta respaldo completo');
   assert.ok(backup.includes('indexedDB: cleanIndexed.data') && backup.includes('localStorage: fullLocalStorage'), 'El respaldo no conserva IndexedDB + localStorage completos');
   assert.ok(backup.includes('remapProductReferences'), 'Importación no protege referencias productId');
   assert.ok(backup.includes('Los datos no incluidos se conservaron'), 'Importación parcial no declara conservación');
   assert.ok(storage.includes('const out = productClone(src) || {};'), 'Normalización de Productos no preserva campos íntegros');
   assert.ok(!/delete out\.vasoFisicoId/.test(storage), 'Normalización elimina asociación vasoFisicoId');
-  assert.ok(cloud.includes("{ id: 'productos', store: 'products'"), 'Firebase no sincroniza Productos');
-  assert.ok(cloud.includes("excluded: ['ventas', 'eventos', 'caja_chica', 'cierres', 'finanzas', 'asientos', 'recibos', 'inventario_evento', 'reempaques_historicos', 'pedidos_historicos', 'saldos']"), 'Firebase cambió alcance local-first y puede repetir movimientos');
 
   // 8) PWA/offline y responsive.
   assert.ok(html.includes('app.js?v=4.20.97&r=48'), 'HTML no carga app Etapa 4');

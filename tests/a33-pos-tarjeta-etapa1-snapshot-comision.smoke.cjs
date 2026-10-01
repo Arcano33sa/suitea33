@@ -10,7 +10,6 @@ const app = fs.readFileSync(path.join(root, 'pos/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'pos/index.html'), 'utf8');
 const sw = fs.readFileSync(path.join(root, 'pos/sw.js'), 'utf8');
 const backup = fs.readFileSync(path.join(root, 'configuracion/script.js'), 'utf8');
-const cloud = fs.readFileSync(path.join(root, 'assets/js/a33-cloud-sync.js'), 'utf8');
 
 function between(source, startToken, endToken){
   const start = source.indexOf(startToken);
@@ -106,9 +105,6 @@ assert.ok(backup.includes('indexedDB: cleanIndexed.data'), 'JSON no conserva Ind
 assert.ok(!/put\(['\"](?:commissions|comisiones)['\"]|add\(['\"](?:commissions|comisiones)['\"]/.test(app), 'Se creó store/movimiento independiente de comisión');
 assert.ok(app.includes("await del('sales', id)"), 'Reverso/borrado dejó de eliminar el registro completo de venta');
 
-// Firebase conserva alcance actual local-first para ventas: no se crea colección paralela ni duplicación.
-assert.ok(cloud.includes('Ventas, Finanzas y Caja Chica permanecen locales.'), 'Se alteró alcance Firebase de ventas');
-assert.ok(!/collection[^\n]*(commission|comision)|commission[^\n]*collection/i.test(cloud), 'Se creó colección Firebase paralela de comisión');
 
 // 9) Cache POS actualizado porque app.js cambió.
 assert.ok(html.includes("-pos-r'+rev+'-m53"), 'HTML no expone cache POS m53');

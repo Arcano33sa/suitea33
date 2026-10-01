@@ -3334,7 +3334,6 @@ window.addEventListener('storage', (event) => {
 
 
 document.addEventListener("DOMContentLoaded", async () => {
-  if (window.A33E6Download) await window.A33E6Download.ready('pedidos');
   document.addEventListener('keydown', (event) => {
     try{
       if (event && event.key === 'Escape') closePedidoDetailModalPED();
@@ -3730,7 +3729,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function registerServiceWorker() {
   try {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=2').catch((err) => {
+    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=3').catch((err) => {
       console.warn('Pedidos: no se pudo registrar el Service Worker', err);
     });
   } catch (err) {

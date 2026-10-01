@@ -34,8 +34,6 @@ assert.ok(app.includes('const cupResult = await ensurePhysicalCupConsumptionForS
 assert.ok(app.includes("await runStep('reconcilePhysicalCupConsumptions', reconcilePendingPhysicalCupConsumptionsPOS);"), 'Falta reconciliación al iniciar');
 assert.ok(app.includes("window.addEventListener('online', run)"), 'Falta reconciliación tras reconexión');
 assert.ok(app.includes("window.addEventListener('focus', run)"), 'Falta reconciliación tras recarga/foco');
-assert.ok(app.includes("window.addEventListener('a33:cloud-sync-status', run)"), 'Falta reconciliación tras sync Firebase');
-assert.ok(app.includes("window.addEventListener('a33:firebase-status', run)"), 'Falta reconciliación tras cambio Firebase');
 assert.ok(!physicalBlock.includes('normName('), 'La identificación depende del nombre');
 assert.ok(!physicalBlock.includes("includes('vaso')"), 'La identificación infiere Vaso por nombre');
 assert.ok(!physicalBlock.includes('CAP_ITEM_VASOS12OZ_ID'), 'La lógica nueva usa Tapas Auto legacy');
@@ -186,7 +184,7 @@ vm.runInContext(physicalBlock + `\nthis.api={
   assert.strictEqual(r.reason, 'not_consumable_sale');
   assert.strictEqual(inventory.varios.find(x=>x.id==='vf-1').stock, beforeSkip);
 
-  // Recarga/JSON/Firebase: reconciliar registros con snapshot no duplica los ya aplicados.
+  // Recarga/JSON: reconciliar registros con snapshot no duplica los ya aplicados.
   const pending = {id:9, uid:'sale-9', eventId:7, qty:1, courtesy:false, isReturn:false, productSnapshot:{vasoFisicoId:'vf-1'}};
   sales.set(9, clone(pending));
   const jsonRoundtrip = JSON.parse(JSON.stringify({inventory, sales:Array.from(sales.values())}));
@@ -197,7 +195,7 @@ vm.runInContext(physicalBlock + `\nthis.api={
   assert.strictEqual(inventory.varios.find(x=>x.id==='vf-1').stock, stockBeforeReconcile - 1, 'Reconciliación no aplicó pendiente exactamente una vez');
   const movCount = inventory.movimientos.length;
   await api.reconcilePendingPhysicalCupConsumptionsPOS();
-  assert.strictEqual(inventory.movimientos.length, movCount, 'Recarga/Firebase duplicó movimientos');
+  assert.strictEqual(inventory.movimientos.length, movCount, 'Recarga duplicó movimientos');
 
   // PWA coordinada para el módulo POS.
   assert.ok(html.includes('app.js?v=4.20.97&r=46'), 'HTML no carga app.js Etapa 2');

@@ -2574,7 +2574,6 @@
   }
 
   async function bootstrap(){
-    if (window.A33E6Download) await window.A33E6Download.ready('agenda');
     setRefs();
     loadRecords();
     loadClientCatalog();

@@ -166,7 +166,7 @@ for (const token of [
   'async function renderInventario',
   'async function renderLotesCargadosEvento'
 ]) assert.ok(app.includes(token), `Regresión lógica: falta ${token}`);
-for (const dir of ['calculadora', 'calculadora_temporal', 'lotes', 'inventario', 'firebase']){
+for (const dir of ['calculadora', 'calculadora_temporal', 'lotes', 'inventario']){
   assert.ok(fs.existsSync(path.join(root, dir)), `Falta módulo ${dir}`);
 }
 

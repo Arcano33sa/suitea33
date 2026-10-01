@@ -79,7 +79,7 @@ function buildLotesCtx(items, fallback = {}){
   vm.runInContext(extractFunction(pos, 'setLotAvailabilityStatePOS'), ctx);
   const lote = { status:'EN_EVENTO' };
   ctx.setLotAvailabilityStatePOS(lote, { availabilityProducts:[{cantidadBase:3,cantidadDisponible:0}] }, '2026-07-23T14:00:00Z');
-  assert.strictEqual(lote.availabilityState, 'VENDIDO', 'POS no persistió el estado VENDIDO para JSON/Firebase');
+  assert.strictEqual(lote.availabilityState, 'VENDIDO', 'POS no persistió el estado VENDIDO para JSON');
   assert.strictEqual(lote.availabilityUpdatedAt, '2026-07-23T14:00:00.000Z', 'POS no persistió timestamp válido');
   ctx.setLotAvailabilityStatePOS(lote, { availabilityProducts:[{cantidadBase:3,cantidadDisponible:1}] }, '2026-07-23T14:05:00Z');
   assert.strictEqual(lote.availabilityState, 'PARCIAL', 'Una reversión/ajuste positivo no restauró PARCIAL');
@@ -101,4 +101,4 @@ assert(posIndex.includes('app.js?v=4.20.95&r=34'), 'POS index no tiene cache-bus
 assert(posSw.includes("MODULE_CACHE_REV = '38'"), 'Service Worker POS no fue incrementado');
 assert(posSw.includes("'./app.js?v=4.20.95&r=34'"), 'Service Worker POS no precachea la persistencia automática');
 
-console.log('OK — 19/19: estados automáticos, verde VENDIDO, consistencia, persistencia JSON/Firebase, responsive y PWA.');
+console.log('OK — 19/19: estados automáticos, verde VENDIDO, consistencia, persistencia JSON, responsive y PWA.');
