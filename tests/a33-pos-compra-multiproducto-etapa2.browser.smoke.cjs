@@ -61,6 +61,14 @@ let browser;
   assert.equal(await page.evaluate(async()=>computeStock(9100,(await getAll('products')).find(p=>p.productId==='test-a'))),10);
   // Compra normal: varios productos + extra, descuento por unidad y cliente común.
   await open();await add('Prueba A');await add('Prueba B');await add('Extra Prueba');
+  assert.equal(await page.locator('#purchase-discountPerUnit-0').inputValue(),'');
+  for (const [field,value] of [['qty','2'],['unitPrice','100'],['discountPerUnit','5']]){
+    const input=page.locator('#purchase-'+field+'-0');
+    await input.fill(value);await input.click();await page.keyboard.type('3');
+    assert.equal(await input.inputValue(),'3');
+    await input.click();await page.keyboard.type(value);
+    assert.equal(await input.inputValue(),value);
+  }
   await page.locator('#purchase-qty-0').fill('2');await page.locator('#purchase-discountPerUnit-0').fill('5');
   assert.equal(await page.locator('#purchase-total-display').textContent(),'260.00');
   await pick();await page.locator('#purchase-more-options summary').click();await page.locator('#sale-notes').fill('Compra de prueba');

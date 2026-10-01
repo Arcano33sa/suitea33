@@ -28105,7 +28105,7 @@ function renderPurchaseCatalogPOS(){
       if (!purchaseModalStatePOS || state.busy) return;
       const item = state.items.find(x => x.key === product.key);
       if (item) item.qty = Math.max(1, parseNumPOS(item.qty,1)) + 1;
-      else state.items.push({ ...product, index:state.nextIndex++, qty:1, discountPerUnit:0, courtesy:false });
+      else state.items.push({ ...product, index:state.nextIndex++, qty:1, discountPerUnit:'', courtesy:false });
       setPurchaseMessagePOS(''); renderPurchaseItemsPOS();
     });
     card.append(info,add); wrap.appendChild(card);
@@ -28137,6 +28137,9 @@ function renderPurchaseItemsPOS(){
       input.id = 'purchase-' + field + '-' + item.index; input.value = item[field]; input.step = step; input.min = min;
       input.disabled = (field === 'discountPerUnit' && item.courtesy) || (field === 'unitPrice' && item.isExtra);
       input.setAttribute('aria-label',labelText + ' de ' + item.name);
+      const selectValue = ()=>{ if (input.value !== '') input.select(); };
+      input.addEventListener('focus',selectValue);
+      input.addEventListener('click',selectValue);
       input.addEventListener('input',()=>{
         item[field] = input.value;
         toggleInvalidBorderPOS(input,purchaseLineTotalPOS(item,isReturn) == null);
@@ -28153,7 +28156,7 @@ function renderPurchaseItemsPOS(){
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = item.courtesy; checkbox.disabled = isReturn;
     checkbox.addEventListener('change',()=>{
       item.courtesy = checkbox.checked;
-      if (item.courtesy) item.discountPerUnit = 0;
+      if (item.courtesy) item.discountPerUnit = '';
       renderPurchaseItemsPOS();
     });
     option.append(checkbox,document.createTextNode('Cortesía: ' + item.name)); courtesyWrap.appendChild(option);
