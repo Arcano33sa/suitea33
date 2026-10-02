@@ -9369,6 +9369,8 @@ function closeCustomerPickerPOS(){
   try{ window.__A33_CUSTOMER_PICKER_ONSELECT = null; }catch(_){ }
 }
 
+const customerPickerExpandedGroupsPOS = new Set();
+
 function renderCustomerPickerListPOS(){
   const wrap = document.getElementById('customer-picker-list');
   const search = document.getElementById('customer-picker-search');
@@ -9386,26 +9388,72 @@ function renderCustomerPickerListPOS(){
     return;
   }
 
+  const groups = new Map();
   for (const c of filtered){
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'customer-picker-item';
-    btn.textContent = c.name;
-    btn.addEventListener('click', ()=>{
-      const cb = (typeof window !== 'undefined') ? window.__A33_CUSTOMER_PICKER_ONSELECT : null;
-      if (typeof cb === 'function'){
-        try{ cb(c); }catch(err){ console.warn('customer picker onSelect error', err); }
-        try{ window.__A33_CUSTOMER_PICKER_ONSELECT = null; }catch(_){ }
-        closeCustomerPickerPOS();
-        return;
-      }
+    const first = normalizeCustomerKeyPOS(c.name).charAt(0).toUpperCase();
+    const letter = /^[A-Z0-9]$/.test(first) ? first : '#';
+    if (!groups.has(letter)) groups.set(letter, []);
+    groups.get(letter).push(c);
+  }
+  const letters = Array.from(groups.keys()).sort((a,b)=>{
+    if (a === '#') return 1;
+    if (b === '#') return -1;
+    const ad = /^\d$/.test(a);
+    const bd = /^\d$/.test(b);
+    if (ad !== bd) return ad ? 1 : -1;
+    return a.localeCompare(b, 'es-NI', { sensitivity:'base', numeric:true });
+  });
 
-      setCustomerSelectionUI_POS(c);
-      // El último cliente se guarda siempre; el modo pegajoso decide si se limpia tras la venta.
-      if (!purchaseModalStatePOS) persistCustomerLastPOS(c.name);
-      closeCustomerPickerPOS();
+  for (const letter of letters){
+    const customers = groups.get(letter).slice().sort((a,b)=>
+      normalizeCustomerKeyPOS(a.name).localeCompare(normalizeCustomerKeyPOS(b.name), 'es-NI', { sensitivity:'base', numeric:true })
+    );
+    const group = document.createElement('details');
+    group.className = 'customer-picker-group';
+    group.open = !!q || customerPickerExpandedGroupsPOS.has(letter);
+    group.addEventListener('toggle', ()=>{
+      // Los eventos toggle pendientes de un render anterior no alteran el estado.
+      if (!group.isConnected || q || normalizeCustomerKeyPOS(search ? search.value : '')) return;
+      if (group.open) customerPickerExpandedGroupsPOS.add(letter);
+      else customerPickerExpandedGroupsPOS.delete(letter);
     });
-    wrap.appendChild(btn);
+    const summary = document.createElement('summary');
+    summary.className = 'customer-picker-group-summary';
+    const label = document.createElement('strong');
+    label.textContent = letter;
+    const quantity = document.createElement('span');
+    quantity.textContent = customers.length + ' cliente' + (customers.length === 1 ? '' : 's');
+    const chevron = document.createElement('span');
+    chevron.className = 'customer-picker-group-chevron';
+    chevron.textContent = '⌄';
+    chevron.setAttribute('aria-hidden', 'true');
+    summary.append(label, quantity, chevron);
+    group.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'customer-picker-group-body';
+    for (const c of customers){
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'customer-picker-item';
+      btn.textContent = c.name;
+      btn.addEventListener('click', ()=>{
+        const cb = (typeof window !== 'undefined') ? window.__A33_CUSTOMER_PICKER_ONSELECT : null;
+        if (typeof cb === 'function'){
+          try{ cb(c); }catch(err){ console.warn('customer picker onSelect error', err); }
+          try{ window.__A33_CUSTOMER_PICKER_ONSELECT = null; }catch(_){ }
+          closeCustomerPickerPOS();
+          return;
+        }
+
+        setCustomerSelectionUI_POS(c);
+        // El último cliente se guarda siempre; el modo pegajoso decide si se limpia tras la venta.
+        if (!purchaseModalStatePOS) persistCustomerLastPOS(c.name);
+        closeCustomerPickerPOS();
+      });
+      body.appendChild(btn);
+    }
+    group.appendChild(body);
+    wrap.appendChild(group);
   }
 
   if (count) count.textContent = filtered.length + ' cliente' + (filtered.length === 1 ? '' : 's');
