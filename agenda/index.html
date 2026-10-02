@@ -22,6 +22,174 @@
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+
+<style id="agenda-e62-visual">
+/* E6.2: presentación exclusiva de Reuniones y Tareas. */
+html body #agendaOperationalView { --agenda-text:var(--a33-text); --agenda-muted:var(--a33-muted); }
+html body #agendaOperationalView [hidden] { display:none!important; }
+html body #agendaOperationalView .agenda-card,
+html body #agendaOperationalView .agenda-record { background:var(--a33-surface); border:1px solid var(--a33-border); box-shadow:none; }
+html body #agendaOperationalView .agenda-hero { padding:24px; gap:24px; }
+html body #agendaOperationalView .agenda-hero-side { gap:10px; }
+html body #agendaOperationalView .agenda-mini-stat { background:var(--a33-surface-2); border:1px solid var(--a33-border-soft); padding:12px; min-width:0; }
+html body #agendaOperationalView .agenda-workspace { grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:20px; align-items:start; }
+html body #agendaOperationalView .agenda-panel { grid-column:auto; min-width:0; padding:22px; }
+html body #agendaOperationalView .agenda-panel-head { padding-bottom:16px; border-bottom:1px solid var(--a33-border-soft); margin-bottom:20px; }
+html body #agendaOperationalView .agenda-form-grid { gap:16px; }
+html body #agendaOperationalView .agenda-form-section { grid-column:1/-1; margin:10px 0 0; padding-top:18px; border-top:1px solid var(--a33-border-soft); font-size:14px; color:var(--a33-text); }
+html body #agendaOperationalView .agenda-form-section:first-child { border:0; padding:0; margin:0; }
+html body #agendaOperationalView .agenda-field input,
+html body #agendaOperationalView .agenda-field select,
+html body #agendaOperationalView .agenda-field textarea { background:var(--a33-surface-3); color:var(--a33-text); border-color:var(--a33-border); font-size:16px; min-height:46px; border-radius:12px; min-width:0; }
+html body #agendaOperationalView .agenda-field input[readonly] { background:var(--a33-surface-2); color:var(--a33-text); }
+html body #agendaOperationalView input::placeholder,
+html body #agendaOperationalView textarea::placeholder { color:var(--a33-muted); }
+html body #agendaOperationalView .agenda-field span,
+html body #agendaOperationalView .agenda-field-note,
+html body #agendaOperationalView .agenda-helper,
+html body #agendaOperationalView .agenda-toolbar-copy span,
+html body #agendaOperationalView .agenda-record-foot,
+html body #agendaOperationalView .agenda-record-preview { color:var(--a33-muted); }
+html body #agendaOperationalView .agenda-form-meta { background:transparent; border:0; border-top:1px solid var(--a33-border-soft); border-radius:0; padding:16px 0 0; font-size:12px; overflow-wrap:anywhere; }
+html body #agendaOperationalView .agenda-form-actions { gap:10px; }
+html body #agendaOperationalView #agendaSaveBtn { margin-left:auto; }
+html body #agendaOperationalView .agenda-btn,
+html body #agendaOperationalView .agenda-inline-btn,
+html body #agendaOperationalView .agenda-filter-chip,
+html body #agendaOperationalView .agenda-back-btn { min-height:44px; }
+html body #agendaOperationalView .agenda-inline-btn--calendar { min-width:44px; width:44px; flex-basis:44px; }
+html body #agendaOperationalView .agenda-btn--ghost,
+html body #agendaOperationalView .agenda-inline-btn,
+html body #agendaOperationalView .agenda-filter-chip { background:var(--a33-surface-2); color:var(--a33-text); border:1px solid var(--a33-border); }
+html body #agendaOperationalView .agenda-btn--danger,
+html body #agendaOperationalView .agenda-inline-btn--danger,
+html body #agendaOperationalView .agenda-inline-btn--cancel { color:var(--a33-danger); background:var(--a33-surface-2); border-color:var(--a33-border); }
+html body #agendaOperationalView .agenda-filter-chip.is-active { background:var(--a33-red,#7b1818); color:#fff7e3; box-shadow:none; border-color:var(--a33-red,#7b1818); }
+html body #agendaOperationalView .agenda-toolbar { background:var(--a33-surface-2); border-color:var(--a33-border-soft); align-items:flex-start; padding:16px; }
+html body #agendaOperationalView .agenda-toolbar-filters { justify-content:flex-start; }
+html body #agendaOperationalView .agenda-pending-pulse { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+html body #agendaOperationalView .agenda-pulse-chip { justify-content:flex-start; border-radius:12px; padding:10px 12px; }
+html body #agendaOperationalView .agenda-pulse-chip,
+html body #agendaOperationalView .agenda-chip,
+html body #agendaOperationalView .agenda-status,
+html body #agendaOperationalView .agenda-date-pill,
+html body #agendaOperationalView .agenda-badge,
+html body #agendaOperationalView .agenda-toggle-pill { background:var(--a33-surface-2); color:var(--a33-text); border:1px solid var(--a33-border-soft); white-space:normal; overflow-wrap:anywhere; }
+html body #agendaOperationalView .agenda-date-pill { font-size:14px; border-color:var(--a33-border); }
+html body #agendaOperationalView .agenda-status--pendiente { border-color:var(--a33-border); font-weight:800; }
+html body #agendaOperationalView .agenda-pulse-chip.is-alert,
+html body #agendaOperationalView .agenda-status--cancelado,
+html body #agendaOperationalView .agenda-chip--timing-overdue { color:var(--a33-danger); }
+html body #agendaOperationalView .agenda-record { padding:20px; }
+html body #agendaOperationalView .agenda-record.is-active { border-color:var(--a33-gold); box-shadow:inset 4px 0 var(--a33-gold); }
+html body #agendaOperationalView .agenda-record-top { display:flex; flex-direction:column; gap:16px; }
+html body #agendaOperationalView .agenda-record-copy { width:100%; }
+html body #agendaOperationalView .agenda-record-copy h3 { font-size:18px; line-height:1.4; overflow-wrap:anywhere; }
+html body #agendaOperationalView .agenda-record-meta { gap:7px; }
+html body #agendaOperationalView .agenda-record-actions { width:100%; justify-content:flex-start; padding-top:14px; border-top:1px solid var(--a33-border-soft); }
+html body #agendaOperationalView .agenda-record-actions-group--destroy { margin-left:auto; }
+html body #agendaOperationalView .agenda-record-foot { border-color:var(--a33-border-soft); font-size:12px; }
+html body #agendaOperationalView .agenda-toggle-card,
+html body #agendaOperationalView .agenda-pedido-panel,
+html body #agendaOperationalView .agenda-empty { background:var(--a33-surface-2); border-color:var(--a33-border); }
+html body #agendaOperationalView .agenda-toggle-card[aria-pressed="true"] { border-color:var(--a33-gold); box-shadow:inset 4px 0 var(--a33-gold); }
+html body #agendaOperationalView #agendaPedidoTotal { font-weight:800; }
+html body #agendaOperationalView :is(button,input,select,textarea,.agenda-record):focus-visible { outline:3px solid var(--a33-gold); outline-offset:3px; }
+@media(max-width:1100px) {
+ html body #agendaOperationalView .agenda-workspace { grid-template-columns:minmax(0,1fr); }
+}
+@media(max-width:600px) {
+ html body #agendaOperationalView .agenda-panel,
+ html body #agendaOperationalView .agenda-hero { padding:16px; }
+ html body #agendaOperationalView .agenda-form-grid { grid-template-columns:minmax(0,1fr); }
+ html body #agendaOperationalView .agenda-hero-side { width:100%; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+ html body #agendaOperationalView .agenda-mini-stat:last-child { grid-column:1/-1; }
+ html body #agendaOperationalView .agenda-toggle-card { align-items:flex-start; flex-direction:column; }
+ html body #agendaOperationalView .agenda-record { padding:16px; }
+ html body #agendaOperationalView .agenda-panel-head { flex-wrap:wrap; }
+ html body #agendaOperationalView #agendaSaveBtn { width:100%; margin:0; }
+ html body #agendaOperationalView .agenda-record-actions-group--destroy { margin:0; }
+}
+</style>
+
+<style id="agenda-e63-visual">
+/* E6.3: presentación exclusiva de Compras, sin alterar su lógica. */
+html body #agendaPurchasesView { --agenda-text:var(--a33-text); --agenda-muted:var(--a33-muted); }
+html body #agendaPurchasesView [hidden] { display:none!important; }
+html body #agendaPurchasesView .agenda-card,
+html body #agendaPurchasesView .agenda-record { background:var(--a33-surface); border:1px solid var(--a33-border); box-shadow:none; }
+html body #agendaPurchasesView .purchase-hero { grid-template-columns:minmax(0,1fr); gap:20px; }
+html body #agendaPurchasesView .purchase-budget { background:var(--a33-surface-2); border-color:var(--a33-border); }
+html body #agendaPurchasesView .purchase-budget-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+html body #agendaPurchasesView .purchase-budget-grid > div { background:var(--a33-surface); border-color:var(--a33-border-soft); }
+html body #agendaPurchasesView .purchase-budget-grid strong { white-space:normal; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+html body #agendaPurchasesView .purchase-workspace { grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:20px; }
+html body #agendaPurchasesView .agenda-panel { min-width:0; padding:22px; }
+html body #agendaPurchasesView .agenda-panel-head { padding-bottom:16px; border-bottom:1px solid var(--a33-border-soft); margin-bottom:20px; flex-wrap:wrap; }
+html body #agendaPurchasesView .agenda-form-grid { gap:16px; }
+html body #agendaPurchasesView .purchase-form-section { grid-column:1/-1; margin:10px 0 0; padding-top:18px; border-top:1px solid var(--a33-border-soft); font-size:14px; color:var(--a33-text); }
+html body #agendaPurchasesView .purchase-form-section:first-child { border:0; margin:0; padding:0; }
+html body #agendaPurchasesView :is(input,select,textarea) { background:var(--a33-surface-3); color:var(--a33-text); border-color:var(--a33-border); border-radius:12px; font-size:16px; min-height:46px; min-width:0; }
+html body #agendaPurchasesView input[readonly] { background:var(--a33-surface-2); color:var(--a33-text); }
+html body #agendaPurchasesView :is(input,textarea)::placeholder { color:var(--a33-muted); }
+html body #agendaPurchasesView :is(.agenda-field span,.agenda-field-note,.agenda-helper,.agenda-toolbar-copy span,.agenda-record-foot,.purchase-record-details,.purchase-draft-name small,.purchase-detail-name small) { color:var(--a33-muted); }
+html body #agendaPurchasesView .agenda-form-meta { background:transparent; border:0; border-top:1px solid var(--a33-border-soft); border-radius:0; padding:16px 0 0; font-size:12px; overflow-wrap:anywhere; }
+html body #agendaPurchasesView :is(.agenda-btn,.agenda-inline-btn,.agenda-filter-chip,.agenda-back-btn) { min-height:44px; }
+html body #agendaPurchasesView :is(.agenda-btn--ghost,.agenda-inline-btn,.agenda-filter-chip) { color:var(--a33-text); background:var(--a33-surface-2); border:1px solid var(--a33-border); }
+html body #agendaPurchasesView :is(.agenda-btn--danger,.agenda-inline-btn--danger,.agenda-inline-btn--cancel,.purchase-draft-action--danger) { color:var(--a33-danger); }
+html body #agendaPurchasesView .agenda-filter-chip.is-active { color:#fff7e3; background:var(--a33-red,#7b1818); border-color:var(--a33-red,#7b1818); box-shadow:none; }
+html body #agendaPurchasesView :is(.agenda-toolbar,.purchase-draft-panel,.purchase-full-detail,.purchase-materials-empty,.agenda-empty) { background:var(--a33-surface-2); border-color:var(--a33-border); }
+html body #agendaPurchasesView .agenda-toolbar-filters { justify-content:flex-start; }
+html body #agendaPurchasesView :is(.agenda-chip,.agenda-status,.agenda-badge) { background:var(--a33-surface-2); color:var(--a33-text); border:1px solid var(--a33-border-soft); white-space:normal; overflow-wrap:anywhere; }
+html body #agendaPurchasesView .agenda-status--cancelado { color:var(--a33-danger); }
+html body #agendaPurchasesView .purchase-money-chip { font-size:14px; font-weight:800; border-color:var(--a33-border); }
+html body #agendaPurchasesView #purchaseSaveBtn { margin-left:auto; }
+html body #agendaPurchasesView .purchase-draft-row { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-areas:"name name" "quantity unit" "price subtotal" "actions actions"; gap:12px; padding:14px; background:var(--a33-surface); border-color:var(--a33-border-soft); }
+html body #agendaPurchasesView :is(.purchase-draft-name strong,.purchase-draft-name small,.purchase-detail-name strong,.purchase-detail-name small) { white-space:normal; overflow-wrap:anywhere; overflow:visible; }
+html body #agendaPurchasesView .purchase-draft-name strong { font-size:14px; }
+html body #agendaPurchasesView .purchase-draft-cell { white-space:normal; display:block; overflow-wrap:anywhere; }
+html body #agendaPurchasesView .purchase-draft-cell::before { display:block; margin-bottom:4px; font-size:11px; }
+html body #agendaPurchasesView .purchase-draft-actions { justify-content:flex-end; border-top:1px solid var(--a33-border-soft); padding-top:10px; }
+html body #agendaPurchasesView .purchase-draft-action { width:44px; height:44px; background:var(--a33-surface-2); color:var(--a33-text); border-color:var(--a33-border); }
+html body #agendaPurchasesView .purchase-draft-action--danger { color:var(--a33-danger); }
+html body #agendaPurchasesView :is(#purchaseSubtotal,.purchase-draft-total strong) { color:var(--a33-text); font-weight:800; font-variant-numeric:tabular-nums; }
+html body #agendaPurchasesView .purchase-draft-total { background:var(--a33-surface); border:1px solid var(--a33-border); border-radius:12px; padding:14px; flex-wrap:wrap; }
+html body #agendaPurchasesView .purchase-draft-total strong { font-size:20px; white-space:normal; overflow-wrap:anywhere; }
+html body #agendaPurchasesView .purchase-list { max-height:none; overflow:visible; padding:0; }
+html body #agendaPurchasesView .agenda-record { padding:20px; }
+html body #agendaPurchasesView .agenda-record.is-active { border-color:var(--a33-gold); box-shadow:inset 4px 0 var(--a33-gold); }
+html body #agendaPurchasesView .agenda-record-top { display:flex; flex-direction:column; gap:16px; }
+html body #agendaPurchasesView .agenda-record-copy { width:100%; }
+html body #agendaPurchasesView .agenda-record-copy h3 { font-size:18px; line-height:1.4; overflow-wrap:anywhere; }
+html body #agendaPurchasesView .agenda-record-actions { width:100%; justify-content:flex-start; padding-top:14px; border-top:1px solid var(--a33-border-soft); }
+html body #agendaPurchasesView .agenda-record-actions-group:last-child { margin-left:auto; }
+html body #agendaPurchasesView .purchase-record-details :is(span,b) { white-space:normal; overflow-wrap:anywhere; }
+html body #agendaPurchasesView .purchase-record-details { grid-template-columns:minmax(0,1fr); }
+html body #agendaPurchasesView .purchase-detail-row { grid-template-columns:repeat(3,minmax(0,1fr)); background:var(--a33-surface); border-color:var(--a33-border-soft); }
+html body #agendaPurchasesView .purchase-detail-name { grid-column:1/-1; }
+html body #agendaPurchasesView .purchase-detail-subtotal { color:var(--a33-text); }
+html body #agendaPurchasesView .purchase-detail-cell::before { color:var(--a33-muted); font-size:11px; }
+html body #agendaPurchasesView .purchase-detail-nowrap { white-space:normal; overflow-wrap:anywhere; }
+html body #agendaPurchasesView .purchase-full-detail-head { flex-wrap:wrap; }
+html body #agendaPurchasesView .purchase-full-detail-head span { white-space:normal; }
+html body #agendaPurchasesView .agenda-record-foot { border-color:var(--a33-border-soft); font-size:12px; }
+html body #agendaPurchasesView .purchase-calendar-actions { grid-template-columns:minmax(0,1fr) auto auto; margin:18px 0 12px; }
+html body #agendaPurchasesView :is(button,input,select,textarea,a,.agenda-record):focus-visible { outline:3px solid var(--a33-gold); outline-offset:3px; }
+@media(max-width:1100px) {
+ html body #agendaPurchasesView .purchase-workspace { grid-template-columns:minmax(0,1fr); }
+}
+@media(max-width:740px) {
+ html body #agendaPurchasesView .purchase-budget-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ html body #agendaPurchasesView .purchase-calendar-actions { grid-template-columns:minmax(0,1fr); }
+}
+@media(max-width:600px) {
+ html body #agendaPurchasesView :is(.agenda-panel,.purchase-hero,.agenda-record) { padding:16px; }
+ html body #agendaPurchasesView .agenda-form-grid { grid-template-columns:minmax(0,1fr); }
+ html body #agendaPurchasesView #purchaseSaveBtn { width:100%; margin:0; }
+ html body #agendaPurchasesView .purchase-detail-row { grid-template-columns:minmax(0,1fr); }
+ html body #agendaPurchasesView .agenda-record-actions-group:last-child { margin:0; }
+}
+</style>
 </head>
 <body>
   <header class="a33-header" role="banner" data-a33-module="agenda" data-a33-context="agenda">
@@ -118,6 +286,7 @@
             </fieldset>
 
             <div class="agenda-form-grid">
+              <h3 class="agenda-form-section">Datos principales</h3>
               <label class="agenda-field agenda-field--full">
                 <span id="agendaSubjectLabel">Asunto</span>
                 <input id="agendaSubject" name="subject" type="text" maxlength="120" placeholder="Ej. Seguimiento con cliente / Reunión de propuesta" autocomplete="off" required />
@@ -129,7 +298,7 @@
                   <option value="">Cargando clientes…</option>
                 </select>
                 <div class="agenda-client-new" id="agendaClientNewWrap" hidden>
-                  <input id="agendaClientNew" name="clientNew" type="text" maxlength="120" placeholder="Escribe el nombre del cliente nuevo" autocomplete="off" />
+                  <input id="agendaClientNew" aria-label="Nombre del nuevo cliente" name="clientNew" type="text" maxlength="120" placeholder="Escribe el nombre del cliente nuevo" autocomplete="off" />
                   <small class="agenda-field-note">Al guardar la reunión, este cliente también se agregará a Catálogos → Clientes.</small>
                 </div>
                 <input id="agendaClient" name="client" type="hidden" required />
@@ -145,13 +314,14 @@
                 </select>
               </label>
 
+              <h3 class="agenda-form-section">Fecha y seguimiento</h3>
               <label class="agenda-field">
                 <span>Fecha</span>
                 <input id="agendaDate" name="date" type="date" required />
               </label>
 
               <label class="agenda-field">
-                <span>Hora</span>
+                <span>Hora (opcional)</span>
                 <input id="agendaTime" name="time" type="time" />
               </label>
 
@@ -177,7 +347,7 @@
                 <button type="button" class="agenda-toggle-card" id="agendaPedidoToggle" aria-pressed="false" aria-controls="agendaPedidoPanel">
                   <span class="agenda-toggle-copy">
                     <strong>Agregar Pedido</strong>
-                    <small>Actívalo solo cuando esta reunión realmente necesite un pedido relacionado.</small>
+                    <small>Opcional: añade productos y fecha de entrega a esta reunión.</small>
                   </span>
                   <span class="agenda-toggle-pill" id="agendaPedidoTogglePill">Apagado</span>
                 </button>
@@ -225,8 +395,9 @@
                 </div>
               </section>
 
+              <h3 class="agenda-form-section">Notas</h3>
               <label class="agenda-field agenda-field--full">
-                <span>Notas</span>
+                <span>Observaciones</span>
                 <textarea id="agendaNotes" name="notes" rows="5" maxlength="1200" placeholder="Notas breves de la reunión."></textarea>
               </label>
             </div>
@@ -326,6 +497,7 @@
 
           <form id="purchaseForm" class="agenda-form" novalidate>
             <div class="agenda-form-grid">
+              <h3 class="purchase-form-section">Preparar artículo</h3>
               <label class="agenda-field agenda-field--full">
                 <span>Artículo</span>
                 <select id="purchaseMaterial" required>
@@ -354,6 +526,7 @@
                 <span>Subtotal</span>
                 <input id="purchaseSubtotal" type="text" readonly placeholder="Se calcula automáticamente" />
               </label>
+              <h3 class="purchase-form-section">Datos de la compra</h3>
               <label class="agenda-field">
                 <span>Fecha necesaria</span>
                 <input id="purchaseDate" type="date" required />
@@ -387,7 +560,7 @@
             <section class="purchase-draft-panel" id="purchaseDraftPanel" aria-labelledby="purchaseDraftTitle">
               <div class="purchase-draft-head">
                 <div>
-                  <p class="agenda-eyebrow">Preparación temporal</p>
+                  <p class="agenda-eyebrow">Compra en preparación</p>
                   <h3 id="purchaseDraftTitle">Artículos agregados</h3>
                 </div>
                 <span class="agenda-badge agenda-badge--soft" id="purchaseDraftCount">0 artículos</span>

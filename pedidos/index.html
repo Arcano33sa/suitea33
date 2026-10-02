@@ -20,8 +20,107 @@
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+
+  <style>
+    /* E6.1: presentación local de Pedidos; conserva tema y navegación compartidos. */
+    html body.pedidos-visual .app-main { width: 100%; max-width: 1180px; margin: 0 auto; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; padding: 1.25rem; }
+    html body.pedidos-visual .card { min-width: 0; background: var(--a33-surface-3); border: 1px solid var(--a33-border); color: var(--a33-text); box-shadow: var(--a33-shadow); }
+    .pedidos-visual .pedidos-mode-switch h1 { margin: 0 0 0.4rem; font-size: 1.6rem; }
+    .pedidos-visual .card h2 { font-size: 1.2rem; }
+    html body.pedidos-visual .hint, html body.pedidos-visual .inline-notice { color: var(--a33-muted); font-size: 0.88rem; line-height: 1.5; }
+    .pedidos-visual .pedido-form-block { margin: 1rem 0; padding: 1rem; border: 1px solid var(--a33-border-soft); border-radius: 14px; background: var(--a33-surface-2); }
+    html body.pedidos-visual .pedido-form-block h3 { margin: 0 0 0.8rem; color: var(--a33-text); font-size: 1rem; }
+    .pedidos-visual .form-grid, .pedidos-visual .quick-form-grid { gap: 1rem; }
+    html body.pedidos-visual label { color: var(--a33-text); font-size: 0.9rem; line-height: 1.4; }
+    .pedidos-visual .field { min-width: 0; gap: 0.4rem; }
+    html body.pedidos-visual input:not([type="hidden"]), html body.pedidos-visual select, html body.pedidos-visual textarea { min-width: 0; min-height: 44px; max-width: 100%; padding: 0.6rem; font-size: 1rem; background: var(--a33-surface); color: var(--a33-text); border: 1px solid var(--a33-border); border-radius: 9px; }
+    .pedidos-visual .customer-picker { gap: 0.65rem; }
+    html body.pedidos-visual .customer-picker input, html body.pedidos-visual .customer-picker select { min-width: 0; flex-basis: 100%; width: 100%; }
+    html body.pedidos-visual .customer-new-box { background: var(--a33-surface); border-color: var(--a33-border); padding: 0.8rem; }
+    html body.pedidos-visual input[readonly] { background: var(--a33-surface-3); color: var(--a33-muted); }
+    html body.pedidos-visual .pedido-total-field { padding: 0.8rem; border: 1px solid var(--a33-gold); border-radius: 12px; background: var(--a33-surface); }
+    html body.pedidos-visual .pedido-total-field input { color: var(--a33-text); font-weight: 700; font-size: 1.15rem; border-color: transparent; }
+    html body.pedidos-visual button { min-height: 44px; padding: 0.55rem 0.85rem; font-size: 0.9rem; border-radius: 10px; touch-action: manipulation; white-space: normal; }
+    html body.pedidos-visual .btn-primary { background: var(--a33-red); color: #fff8ea; border-color: var(--a33-red); box-shadow: none; }
+    html body.pedidos-visual .btn-secondary { background: var(--a33-surface-2); color: var(--a33-text); border-color: var(--a33-border); }
+    html body.pedidos-visual .btn-danger { background: var(--a33-surface); color: var(--a33-danger); border-color: var(--a33-danger); }
+    html body.pedidos-visual .pedidos-mode-actions button[aria-pressed="true"] { background: var(--a33-red); color: #fff8ea; border: 2px solid var(--a33-gold); }
+    .pedidos-visual .pedidos-mode-actions { min-width: 280px; flex-shrink: 0; }
+    .pedidos-visual .pedidos-mode-actions button { flex: 1; }
+    .pedidos-visual [hidden] { display: none !important; }
+    .pedidos-visual button:focus-visible, .pedidos-visual input:focus-visible, .pedidos-visual select:focus-visible, .pedidos-visual textarea:focus-visible, .pedidos-visual summary:focus-visible { outline: 3px solid var(--a33-gold); outline-offset: 3px; }
+    .pedidos-visual .form-actions { gap: 0.75rem; margin-top: 1.25rem; }
+    .pedidos-visual .pedido-maintenance { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--a33-border-soft); display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+    .pedidos-visual .pedido-maintenance p { margin: 0; }
+    .pedidos-visual .table-header { align-items: flex-start; flex-wrap: wrap; gap: 0.85rem; }
+    .pedidos-visual .table-actions { gap: 0.65rem; }
+    html body.pedidos-visual .table-wrapper, html body.pedidos-visual .presentaciones-wrapper { background: var(--a33-surface); border-color: var(--a33-border-soft); }
+    html body.pedidos-visual table { font-size: 0.9rem; }
+    html body.pedidos-visual th { background: var(--a33-surface-2); color: var(--a33-muted); font-size: 0.78rem; line-height: 1.4; }
+    html body.pedidos-visual .presentaciones-wrapper .mini-table th { background: var(--a33-surface-2); color: var(--a33-muted); }
+    html body.pedidos-visual th, html body.pedidos-visual td { padding: 0.65rem 0.5rem; border-color: var(--a33-border-soft); }
+    html body.pedidos-visual .actions-col, html body.pedidos-visual td.actions-cell { width: 210px; }
+    html body.pedidos-visual .actions-cell { flex-wrap: wrap; gap: 0.4rem; }
+    html body.pedidos-visual .a33-icon-btn { width: 44px; height: 44px; min-width: 44px; padding: 0; }
+    .pedidos-visual .quick-order-card, .pedidos-visual .quick-product-line { background: var(--a33-surface); border-color: var(--a33-border-soft); padding: 0.85rem; }
+    .pedidos-visual .quick-order-card { border-left-color: var(--a33-gold); }
+    .pedidos-visual .quick-order-card.is-high { border-left-color: var(--a33-danger); }
+    html body.pedidos-visual .quick-order-products, html body.pedidos-visual .quick-order-meta { color: var(--a33-muted); line-height: 1.5; font-size: 0.88rem; }
+    .pedidos-visual .cell-clamp { display: block; -webkit-line-clamp: unset; }
+    .pedidos-visual .quick-order-actions { padding-top: 0.7rem; border-top: 1px solid var(--a33-border-soft); }
+    .pedidos-visual .quick-history summary { min-height: 44px; gap: 0.75rem; }
+    .pedidos-visual .quick-history summary::after { content: "+"; color: var(--a33-gold); }
+    .pedidos-visual .quick-history[open] summary::after { content: "−"; }
+    html body.pedidos-visual .badge { font-size: 0.82rem; line-height: 1.5; padding: 0.2rem 0.55rem; white-space: normal; }
+    html body.pedidos-visual .pedido-detail-card { background: var(--a33-surface-3); color: var(--a33-text); border-color: var(--a33-border); }
+    .pedidos-visual .pedido-detail-grid > div, .pedidos-visual .pedido-detail-block, .pedidos-visual .pedido-detail-notes { background: var(--a33-surface); border-color: var(--a33-border-soft); padding: 0.85rem; }
+    html body.pedidos-visual .pedido-detail-grid span { color: var(--a33-muted); font-size: 0.8rem; }
+    .pedidos-visual .pedido-detail-grid strong { font-size: 1rem; }
+    .pedidos-visual #pedido-detail-total, .pedidos-visual #pedido-detail-balance { color: var(--a33-gold); font-size: 1.15rem; }
+    @media (min-width: 601px) and (max-width: 1024px) {
+      html body.pedidos-visual #pedidos-table .actions-col, html body.pedidos-visual #pedidos-table .actions-cell, html body.pedidos-visual #archived-table .actions-col, html body.pedidos-visual #archived-table .actions-cell { width: 124px; }
+    }
+    @media (max-width: 600px) {
+      html body.pedidos-visual .app-main { padding: 0.65rem; }
+      html body.pedidos-visual .card { padding: 0.85rem; }
+      .pedidos-visual .pedido-form-block { padding: 0.8rem; }
+      .pedidos-visual .pedidos-mode-actions { min-width: 0; width: 100%; }
+      .pedidos-visual .table-actions, .pedidos-visual .table-actions .search-input { width: 100%; }
+      html body.pedidos-visual .table-wrapper { border: 0; overflow: visible; }
+      .pedidos-visual #pedidos-table, .pedidos-visual #archived-table { display: block; }
+      .pedidos-visual #pedidos-table thead, .pedidos-visual #archived-table thead, .pedidos-visual #presentaciones-table thead, .pedidos-visual .pedido-detail-products-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+      .pedidos-visual #pedidos-table tbody, .pedidos-visual #archived-table tbody { display: grid; gap: 0.85rem; }
+      .pedidos-visual #pedidos-table tr, .pedidos-visual #archived-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--a33-border); border-radius: 12px; background: var(--a33-surface); overflow: hidden; }
+      html body.pedidos-visual #pedidos-table td, html body.pedidos-visual #archived-table td { width: auto; min-width: 0; overflow-wrap: anywhere; }
+      .pedidos-visual #pedidos-table td::before, .pedidos-visual #archived-table td::before { display: block; font-size: 0.78rem; font-weight: 600; color: var(--a33-muted); margin-bottom: 0.25rem; }
+      .pedidos-visual #pedidos-table td:nth-child(1)::before { content: "Fabricación"; }
+      .pedidos-visual #archived-table td:nth-child(1)::before { content: "Archivado"; }
+      .pedidos-visual #pedidos-table td:nth-child(2)::before, .pedidos-visual #archived-table td:nth-child(2)::before { content: "Código"; }
+      .pedidos-visual #pedidos-table td:nth-child(3)::before, .pedidos-visual #archived-table td:nth-child(3)::before { content: "Cliente"; }
+      .pedidos-visual #pedidos-table td:nth-child(4)::before, .pedidos-visual #archived-table td:nth-child(4)::before { content: "Entrega"; }
+      .pedidos-visual #pedidos-table td:nth-child(5)::before, .pedidos-visual #archived-table td:nth-child(6)::before { content: "Total (C$)"; }
+      .pedidos-visual #pedidos-table td:nth-child(6)::before { content: "Entregado"; }
+      .pedidos-visual #archived-table td:nth-child(5)::before { content: "Estado"; }
+      html body.pedidos-visual #pedidos-table td.actions-cell, html body.pedidos-visual #archived-table td.actions-cell { grid-column: 1 / -1; width: auto; justify-content: flex-start; }
+      .pedidos-visual td[colspan] { grid-column: 1 / -1; }
+      .pedidos-visual #pedidos-table td[colspan]::before, .pedidos-visual #archived-table td[colspan]::before { content: none; }
+      .pedidos-visual .cell-clamp { display: block; }
+      .pedidos-visual #presentaciones-table tbody, .pedidos-visual .pedido-detail-products-table tbody { display: grid; gap: 0.75rem; }
+      .pedidos-visual #presentaciones-table tr, .pedidos-visual .pedido-detail-products-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--a33-border-soft); }
+      html body.pedidos-visual #presentaciones-table td, html body.pedidos-visual .pedido-detail-products-table td { width: auto; min-width: 0; text-align: left; }
+      .pedidos-visual #presentaciones-table td:first-child, .pedidos-visual .pedido-detail-products-table td:first-child { grid-column: 1 / -1; font-weight: 600; }
+      .pedidos-visual #presentaciones-table td:nth-child(2)::before, .pedidos-visual .pedido-detail-products-table td:nth-child(3)::before { content: "Precio"; display: block; color: var(--a33-muted); font-size: 0.78rem; margin-bottom: 0.35rem; }
+      .pedidos-visual #presentaciones-table td:nth-child(3)::before, .pedidos-visual .pedido-detail-products-table td:nth-child(2)::before { content: "Cantidad"; display: block; color: var(--a33-muted); font-size: 0.78rem; margin-bottom: 0.35rem; }
+      .pedidos-visual #presentaciones-table td:nth-child(4)::before, .pedidos-visual .pedido-detail-products-table td:nth-child(4)::before { content: "Subtotal"; display: block; color: var(--a33-muted); font-size: 0.78rem; margin-bottom: 0.35rem; }
+      .pedidos-visual .quick-product-line { grid-template-columns: minmax(0, 1fr) 76px; }
+      .pedidos-visual .quick-product-line button { grid-column: 1 / -1; }
+      .pedidos-visual .pedido-maintenance { align-items: flex-start; flex-direction: column; }
+      .pedidos-visual .quick-section-head { flex-direction: column; gap: 0.65rem; }
+      .pedidos-visual #quick-order-code-preview { white-space: nowrap; }
+    }
+  </style>
 </head>
-<body>
+<body class="pedidos-visual">
   <header class="a33-header" role="banner" data-a33-module="pedidos">
     <a class="a33-btn-menu" href="../index.html" aria-label="Volver al Menú principal">← Menú principal</a>
     <div class="a33-title">Planificación de Pedidos</div>
@@ -30,8 +129,8 @@
   <main class="app-main">
     <section class="card pedidos-mode-switch" aria-label="Tipo de pedido">
       <div>
-        <h2>Forma de trabajo</h2>
-        <p class="hint">Pedido completo conserva todos sus campos. Pedido rápido es para encargos sencillos.</p>
+        <h1>Pedidos</h1>
+        <p class="hint">Elige Pedido completo para gestionar productos y pagos, o Pedido rápido para planificar un encargo sencillo.</p>
       </div>
       <div class="pedidos-mode-actions" role="group" aria-label="Seleccionar forma de trabajo">
         <button type="button" class="btn-primary" id="pedido-mode-completo" aria-pressed="true">Pedido completo</button>
@@ -43,6 +142,7 @@
       <h2>Nuevo pedido</h2>
       <div class="inline-banner" id="archived-mode-banner" hidden></div>
       <form id="pedido-form">
+        <section class="pedido-form-block" aria-label="Fechas y prioridad"><h3>Fechas y prioridad</h3>
         <div class="form-grid">
           <div class="field">
             <label for="fechaCreacion">Fecha de Fabricación</label>
@@ -69,19 +169,21 @@
           </div>
         </div>
 
+        </section>
+        <section class="pedido-form-block" aria-label="Datos del cliente">
         <h3>Datos del cliente</h3>
         <div class="form-grid">
           <div class="field">
             <label for="clienteSelect">Cliente</label>
 
             <div class="customer-picker" role="group" aria-label="Selector de cliente">
-              <input type="text" id="clienteBuscar" placeholder="Buscar cliente..." autocomplete="off" inputmode="search" />
+              <input type="text" id="clienteBuscar" aria-label="Buscar cliente" placeholder="Buscar cliente..." autocomplete="off" inputmode="search" />
               <select id="clienteSelect" required></select>
               <button type="button" class="btn-secondary a33-pill-btn" id="clienteNewToggle">+ Crear nuevo</button>
             </div>
 
             <div id="clienteNewBox" class="customer-new-box" hidden>
-              <input type="text" id="clienteNewName" placeholder="Nombre del nuevo cliente" autocomplete="off" />
+              <input type="text" id="clienteNewName" aria-label="Nombre del nuevo cliente" placeholder="Nombre del nuevo cliente" autocomplete="off" />
               <div class="customer-new-actions">
                 <button type="button" class="btn-primary a33-pill-btn" id="clienteNewSave">Guardar</button>
                 <button type="button" class="btn-secondary a33-pill-btn" id="clienteNewCancel">Cancelar</button>
@@ -120,6 +222,8 @@
           </div>
         </div>
 
+        </section>
+        <section class="pedido-form-block" aria-label="Detalle del pedido · Productos">
         <h3>Detalle del pedido · Productos</h3>
         <p class="hint">Solo productos activos de Catálogos. Los precios se toman del catálogo actual.</p>
         <p class="hint hint-small" id="pedidos-products-status" aria-live="polite"></p>
@@ -142,6 +246,8 @@
           </table>
         </div>
 
+        </section>
+        <section class="pedido-form-block" aria-label="Totales y pagos">
         <h3>Totales y pagos</h3>
         <p class="hint hint-small" id="pedidos-currency-note" aria-live="polite">Moneda: C$ / NIO · T/C no configurado en Moneda</p>
         <div class="form-grid">
@@ -157,7 +263,7 @@
             <label for="descuento">Descuento (C$)</label>
             <input type="number" id="descuento" name="descuento" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
-          <div class="field">
+          <div class="field pedido-total-field">
             <label for="totalPagar">Total a pagar (C$)</label>
             <input type="number" id="totalPagar" name="totalPagar" readonly />
           </div>
@@ -165,7 +271,7 @@
             <label for="pagoAnticipado">Pago anticipado (C$)</label>
             <input type="number" id="pagoAnticipado" name="pagoAnticipado" min="0" step="0.01" value="0" class="a33-num" data-a33-default="0" inputmode="decimal">
           </div>
-          <div class="field">
+          <div class="field pedido-total-field">
             <label for="saldoPendiente">Saldo pendiente (C$)</label>
             <input type="number" id="saldoPendiente" name="saldoPendiente" readonly />
           </div>
@@ -191,6 +297,8 @@
           </div>
         </div>
 
+        </section>
+        <section class="pedido-form-block" aria-label="Relación con lotes">
         <h3>Relación con lotes</h3>
         <div class="form-grid">
           <div class="field">
@@ -199,20 +307,21 @@
           </div>
         </div>
 
+        </section>
         <div class="form-actions">
           <button type="submit" class="btn-primary" id="save-btn">Guardar pedido</button>
           <button type="button" class="btn-secondary" id="reset-btn">Limpiar formulario</button>
-          <button type="button" class="btn-danger" id="clear-all-btn">Borrar todos</button>
           <button type="button" class="btn-secondary" id="calc-totals-btn">Calcular totales</button>
         </div>
       </form>
+      <div class="pedido-maintenance"><p class="hint">Administración de pedidos registrados</p><button type="button" class="btn-danger" id="clear-all-btn">Borrar todos</button></div>
     </section>
 
     <section class="card table-card pedido-completo-view">
       <div class="table-header">
         <h2>Pedidos registrados</h2>
         <div class="table-actions">
-          <input type="search" id="active-search" class="search-input" placeholder="Buscar (cliente, código, fecha, estado)…" autocomplete="off" />
+          <input type="search" id="active-search" aria-label="Buscar en pedidos registrados" class="search-input" placeholder="Buscar (cliente, código, fecha, estado)…" autocomplete="off" />
           <button type="button" class="btn-secondary" id="details-toggle" aria-pressed="false">Detalles</button>
           <button type="button" class="btn-secondary" id="export-btn">Exportar a Excel</button>
           <span class="inline-notice" id="export-status" aria-live="polite"></span>
@@ -220,7 +329,7 @@
       </div>
 
       <div class="table-wrapper">
-        <table id="pedidos-table">
+        <table id="pedidos-table" aria-label="Pedidos registrados">
           <thead>
             <tr>
               <th class="col-date col-hide-ipad">Fecha</th>
@@ -248,14 +357,14 @@
       <div class="table-header">
         <h2>Histórico <span class="badge" id="archived-count">0</span></h2>
         <div class="table-actions">
-          <input type="search" id="archived-search" class="search-input" placeholder="Buscar (cliente, código, fecha, estado)…" autocomplete="off" />
+          <input type="search" id="archived-search" aria-label="Buscar en histórico de pedidos" class="search-input" placeholder="Buscar (cliente, código, fecha, estado)…" autocomplete="off" />
           <button type="button" class="btn-secondary" id="archived-details-toggle" aria-pressed="false">Detalles</button>
           <span class="inline-notice" id="archived-notice" aria-live="polite"></span>
         </div>
       </div>
 
       <div class="table-wrapper">
-        <table id="archived-table">
+        <table id="archived-table" aria-label="Histórico de pedidos">
           <thead>
             <tr>
               <th class="col-date col-hide-ipad">Archivado</th>
@@ -290,8 +399,8 @@
         <div class="quick-form-grid">
           <div class="field quick-field-wide">
             <label for="quick-customer-search">Cliente</label>
-            <input type="search" id="quick-customer-search" placeholder="Buscar cliente…" autocomplete="off" />
-            <select id="quick-customer-select" required></select>
+            <input type="search" id="quick-customer-search" aria-label="Buscar cliente para pedido rápido" placeholder="Buscar cliente…" autocomplete="off" />
+            <select id="quick-customer-select" aria-label="Cliente del pedido rápido" required></select>
             <p class="hint hint-small" id="quick-customer-status">Seleccioná un cliente del catálogo de la Suite.</p>
           </div>
           <div class="field">
@@ -338,7 +447,7 @@
           <p class="hint">Lista operativa compacta.</p>
         </div>
         <div class="table-actions">
-          <input type="search" id="quick-pending-search" class="search-input" placeholder="Buscar cliente, código o producto…" autocomplete="off" />
+          <input type="search" id="quick-pending-search" aria-label="Buscar pedidos rápidos pendientes" class="search-input" placeholder="Buscar cliente, código o producto…" autocomplete="off" />
           <button type="button" class="btn-secondary" id="quick-export-btn">Exportar a Excel</button>
         </div>
       </div>
@@ -355,7 +464,7 @@
         <span class="badge" id="quick-history-count">0</span>
       </summary>
       <div class="quick-history-tools">
-        <input type="search" id="quick-history-search" class="search-input" placeholder="Buscar en Histórico…" autocomplete="off" />
+        <input type="search" id="quick-history-search" aria-label="Buscar en histórico de pedidos rápidos" class="search-input" placeholder="Buscar en Histórico…" autocomplete="off" />
       </div>
       <div class="quick-order-list" id="quick-history-list"></div>
       <div class="table-pager" id="quick-history-pager" hidden>
@@ -372,7 +481,7 @@
       <div class="a33-modal-head">
         <div>
           <h2 id="pedido-detail-title">Detalle de pedido</h2>
-          <p class="hint hint-small">Resumen limpio con productos guardados por snapshot.</p>
+          <p class="hint hint-small">Productos y precios conservados al guardar el pedido.</p>
         </div>
         <button type="button" class="btn-secondary a33-icon-btn" id="pedido-detail-close" aria-label="Cerrar">×</button>
       </div>
