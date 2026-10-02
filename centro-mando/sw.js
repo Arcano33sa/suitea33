@@ -8,7 +8,7 @@ const SW_REV = self.A33_RELEASE && self.A33_RELEASE.rev != null
   ? String(self.A33_RELEASE.rev)
   : '1';
 const MODULE = 'centro-mando';
-const MODULE_CACHE_REV = '9';
+const MODULE_CACHE_REV = '10';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 const PRECACHE_URLS = [
@@ -24,7 +24,7 @@ const PRECACHE_URLS = [
   '../icon-a33-192.png',
   '../icon-a33-512.png',
   '/assets/js/a33-release.js?v=4.20.98&r=54',
-  '/assets/js/a33-storage.js?v=4.20.98&r=21',
+  '/assets/js/a33-storage.js?v=4.20.98&r=22',
   '/assets/js/a33-currency.js?v=4.20.98&r=14',
   '/assets/js/a33-theme.js?v=4.20.98&r=7',
   '/assets/js/a33-module-nav.js?v=4.20.98&r=3',
@@ -57,7 +57,7 @@ self.addEventListener('install',(event)=>{
   event.waitUntil((async()=>{
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(PRECACHE_URLS);
-    try{ await self.skipWaiting(); }catch(_){ }
+    try{ if (!self.registration.active) await self.skipWaiting(); }catch(_){ }
   })());
 });
 

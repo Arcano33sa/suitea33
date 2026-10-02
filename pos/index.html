@@ -1745,10 +1745,10 @@
   <script src="/assets/js/a33-release.js?v=4.20.98&r=57"></script>
   <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=3"></script>
 
-<script src="/assets/js/a33-storage.js?v=4.20.98&r=20"></script>
+<script src="/assets/js/a33-storage.js?v=4.20.98&r=22"></script>
   <script src="/assets/js/a33-currency.js?v=4.20.98&r=14"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
-<script src="/assets/js/a33-build.js?v=4.20.98&r=14"></script>
+<script src="/assets/js/a33-build.js?v=4.20.98&r=15"></script>
 <script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
 <script>
   (function(){
@@ -1758,7 +1758,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m60').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m61').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1767,7 +1767,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m60')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m61')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }

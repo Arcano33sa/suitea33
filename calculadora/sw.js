@@ -4,7 +4,7 @@ try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=57'); } catch (e) {}
 const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
 const MODULE = 'calculadora';
-const MODULE_CACHE_REV = '16';
+const MODULE_CACHE_REV = '17';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 const PRECACHE_URLS = [
@@ -17,7 +17,7 @@ const PRECACHE_URLS = [
   './logo-icon-192.png',
   './logo-icon-512.png',
   '/assets/js/a33-release.js?v=4.20.98&r=57',
-  '/assets/js/a33-storage.js?v=4.20.98&r=20',
+  '/assets/js/a33-storage.js?v=4.20.98&r=22',
   '/assets/js/a33-production.js?v=4.20.98&r=5',
   '/assets/js/a33-lot-code.js?v=4.20.98&r=6',
   '/assets/js/a33-currency.js?v=4.20.98&r=14',
@@ -46,7 +46,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(PRECACHE_URLS);
-    await self.skipWaiting();
+    if (!self.registration.active) await self.skipWaiting();
   })());
 });
 
@@ -55,7 +55,7 @@ self.addEventListener('activate', (event) => {
     const keys = await caches.keys();
     const victims = keys.filter((name) => {
       const value = String(name || '').toLowerCase();
-      const sameModule = value.startsWith('a33-') && value.includes(`-${MODULE}`) && value !== CACHE_NAME.toLowerCase();
+      const sameModule = value.startsWith('a33-') && /-calculadora-r[0-9]+(?:-|$)/.test(value) && value !== CACHE_NAME.toLowerCase();
       const legacy = (value.startsWith('a33-') || value.startsWith('arcano33-')) && value.includes('calculadora_a33');
       return sameModule || legacy;
     });

@@ -46,7 +46,10 @@
     '/pos/sw.js',
     '/inventario/sw.js',
     '/lotes/sw.js',
-    '/pedidos/sw.js'
+    '/pedidos/sw.js',
+    '/agenda/sw.js',
+    '/centro-mando/sw.js',
+    '/calculadora_temporal/sw.js'
   ];
   const ACTIVE_A33_CACHE_HINTS = [
     '-calculadora-',
@@ -54,7 +57,11 @@
     '-pos-',
     '-inventario-',
     '-lotes-',
-    '-pedidos-'
+    '-pedidos-',
+    '-agenda-',
+    '-centro-mando-',
+    '-calculadora-temporal-',
+    '-calculadora_temporal-'
   ];
 
   function hasSuitePrefix(key){
@@ -106,10 +113,11 @@
   function isRetiredGateCacheName(name){
     const s = String(name || '').toLowerCase().trim();
     if (!s) return false;
-    if (isRetiredGateHint(s)) return true;
+    if (isKnownActiveA33CacheName(s)) return false;
     const isA33Cache = s.startsWith('a33-') || s.startsWith('arcano33-');
     if (!isA33Cache) return false;
-    return !isKnownActiveA33CacheName(s);
+    // Lo desconocido se conserva: no es evidencia de un componente retirado.
+    return isRetiredGateHint(s);
   }
 
   function isKnownActiveA33ServiceWorker(reg){
@@ -137,12 +145,9 @@
       const scriptPath = scriptUrl ? String(scriptUrl.pathname || '').toLowerCase() : '';
       const scopePath = scopeUrl ? String(scopeUrl.pathname || '').toLowerCase() : '';
       const joined = scriptPath + ' ' + scopePath;
-      const suspicious = isRetiredGateHint(joined);
-      if (suspicious) return true;
       if (isKnownActiveA33ServiceWorker(reg)) return false;
-      const looksSuite = joined.includes('/pruebas/') || joined.includes('a33') || joined.includes('arcano') || joined.includes('suite');
-      const isGenericSw = scriptPath.endsWith('/sw.js') || scopePath.endsWith('/');
-      return looksSuite && isGenericSw;
+      // No retirar registros solo por estar bajo /pruebas/ o pertenecer a Suite.
+      return isRetiredGateHint(joined);
     }catch(_){
       return false;
     }

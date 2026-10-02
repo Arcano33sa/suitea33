@@ -4,7 +4,7 @@ try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=54'); } catch (e) {}
 const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
 const MODULE = 'calculadora-temporal';
-const MODULE_CACHE_REV = '5';
+const MODULE_CACHE_REV = '6';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 const PRECACHE_URLS = [
   '/assets/js/a33-notify.js?v=4.20.98&r=1',
@@ -16,7 +16,8 @@ const PRECACHE_URLS = [
   './logo-icon-192.png',
   './logo-icon-512.png',
   '/assets/js/a33-release.js?v=4.20.98&r=54',
-  '/assets/js/a33-storage.js?v=4.20.98&r=20',
+  '/assets/js/a33-production.js?v=4.20.98&r=3',
+  '/assets/js/a33-storage.js?v=4.20.98&r=22',
   '/assets/js/a33-lot-code.js?v=4.20.98&r=6',
   '/assets/js/a33-currency.js?v=4.20.98&r=14',
   '/assets/js/a33-presentations.js?v=4.20.98&r=15',
@@ -41,7 +42,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(PRECACHE_URLS);
-    await self.skipWaiting();
+    if (!self.registration.active) await self.skipWaiting();
   })());
 });
 self.addEventListener('activate', (event) => {

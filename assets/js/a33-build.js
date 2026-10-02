@@ -1,4 +1,4 @@
-/* Suite A33 — Build meta (fuente unica de verdad)
+/* Suite A33 — Build meta (compatibilidad; versión global desde A33_RELEASE)
    - VERSION: numero de version visible en UI.
    - REV: revision de cache para forzar limpieza cuando haya "fantasmas".
    - NO meter logica de negocio aqui. Solo metadatos de build.
@@ -6,11 +6,13 @@
 (function(global){
   'use strict';
 
-  const VERSION = '4.20.98';
-  const REV = '2'; // subir cuando haya que forzar limpiar caches sin cambiar VERSION
+  const release = global.A33_RELEASE || {};
+  const VERSION = String(release.suiteVersion || '4.20.98');
+  const REV = String(release.rev != null ? release.rev : '5'); // revisión global; distinta de la revisión de cada recurso
 
   const MODULE_REVISIONS = Object.freeze({
-    calculadora:'10', catalogos:'34', inventario:'18', lotes:'21', pedidos:'19', pos:'34'
+    calculadora:'17', catalogos:'44', inventario:'24', lotes:'28', pedidos:'24', pos:'61',
+    agenda:'8', 'centro-mando':'10', 'calculadora-temporal':'6'
   });
 
   function cacheName(module){

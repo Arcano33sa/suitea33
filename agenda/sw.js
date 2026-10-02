@@ -2,7 +2,7 @@
 try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=54'); } catch (_) {}
 const VERSION = self.A33_RELEASE && self.A33_RELEASE.suiteVersion ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const REV = self.A33_RELEASE && self.A33_RELEASE.rev != null ? String(self.A33_RELEASE.rev) : '1';
-const CACHE = `a33-v${VERSION}-agenda-r${REV}-m7`;
+const CACHE = `a33-v${VERSION}-agenda-r${REV}-m8`;
 const PRECACHE = [
   '/assets/js/a33-notify.js?v=4.20.98&r=1',
   '/assets/js/a33-notify-bridge.js?v=4.20.98&r=2',
@@ -17,7 +17,7 @@ const PRECACHE = [
   '../icon-a33-192.png',
   '../icon-a33-512.png',
   '/assets/js/a33-release.js?v=4.20.98&r=54',
-  '/assets/js/a33-storage.js?v=4.20.98&r=20',
+  '/assets/js/a33-storage.js?v=4.20.98&r=22',
   '/assets/js/a33-materials.js?v=4.20.98&r=2',
   '/assets/js/a33-theme.js?v=4.20.98&r=7',
   '/assets/js/a33-module-nav.js?v=4.20.98&r=3',
@@ -25,7 +25,10 @@ const PRECACHE = [
   '/assets/css/a33-module-nav.css?v=4.20.98&r=3',
   '/assets/css/a33-theme.css?v=4.20.98&r=7'
 ];
-self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(PRECACHE)).then(() => self.skipWaiting())));
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') event.waitUntil(self.skipWaiting());
+});
+self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(PRECACHE)).then(() => { if (!self.registration.active) return self.skipWaiting(); })));
 self.addEventListener('activate', event => event.waitUntil((async()=>{
   const keys = await caches.keys();
   await Promise.all(keys.filter(key => key.includes('-agenda-') && key !== CACHE).map(key => caches.delete(key)));

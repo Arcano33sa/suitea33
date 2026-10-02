@@ -6,13 +6,13 @@ try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=57'); } catch (e) {}
 const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
 const MODULE = 'catalogos';
-const MODULE_CACHE_REV = '43';
+const MODULE_CACHE_REV = '44';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
   const value = String(name || '').toLowerCase();
   if (!(value.startsWith('a33-') || value.startsWith('arcano33-'))) return false;
-  return value.includes('centro_mando') || value.includes('centro-mando') || value.includes('calculadora_a33');
+  return value.includes('centro_mando') || value.includes('calculadora_a33');
 }
 
 
@@ -29,7 +29,7 @@ const PRECACHE_URLS = [
   '../icon-a33-192.png',
   '../icon-a33-512.png',
   '/assets/js/a33-release.js?v=4.20.98&r=57',
-  '/assets/js/a33-storage.js?v=4.20.98&r=20',
+  '/assets/js/a33-storage.js?v=4.20.98&r=22',
   '/assets/js/a33-product-integrity.js?v=4.20.98&r=1',
   '/assets/js/a33-materials.js?v=4.20.98&r=2',
   '/assets/js/a33-input-ux.js?v=4.20.98&r=11',
@@ -68,7 +68,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(PRECACHE_URLS.filter(Boolean));
-    try{ self.skipWaiting(); }catch(_){ }
+    try{ if (!self.registration.active) await self.skipWaiting(); }catch(_){ }
   })());
 });
 
