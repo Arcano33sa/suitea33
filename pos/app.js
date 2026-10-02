@@ -11374,7 +11374,7 @@ async function renderCentralFinishedPOS(){
       if (!productId || seen.has(productId)) return;
       seen.add(productId);
       const label = String(product.name || product.nombre || ('Producto ' + productId)).trim();
-      defs.push({ id:productId, label, legacy:false });
+      defs.push({ id:productId, label, capacityMl:productDisplayCapacityPOS(product), legacy:false });
     });
   }catch(_){ }
 
@@ -11410,7 +11410,7 @@ async function renderCentralFinishedPOS(){
     });
   });
 
-  defs.sort((a,b) => String(a.label || '').localeCompare(String(b.label || ''), 'es-NI', { sensitivity:'base' }));
+  defs.sort(compareProductDisplayPOS);
   if (!defs.length){
     const tr = document.createElement('tr');
     tr.innerHTML = '<td colspan="2"><small class="muted">No hay Productos registrados en Catálogos.</small></td>';
@@ -14379,6 +14379,34 @@ function posProductDisplayLabel(product, duplicateNames){
   return `${name} · ${productId.slice(-6)}`;
 }
 
+function productDisplayCapacityPOS(product){
+  const p = product && typeof product === 'object' ? product : {};
+  for (const value of [p.capacityMl,p.capacidadMl,p.capacity,p.capacidad,p.volumeMl,p.volumenMl,p.ml,p.mililitros,p.sizeMl]){
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  try{
+    const rows = JSON.parse(localStorage.getItem('a33_catalog_envases_v1') || '[]');
+    const id = String(p.envaseId ?? p.envase_id ?? p.bottleId ?? '').trim();
+    const envase = id && Array.isArray(rows) ? rows.find(row => row && String(row.id || '').trim() === id) : null;
+    if (envase){
+      for (const value of [envase.capacityMl,envase.capacidadMl,envase.ml,envase.volumeMl,envase.capacidad]){
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+    }
+  }catch(_){ }
+  const match = String(p.name || p.nombre || p.label || p.productNameSnapshot || '').match(/(\d+(?:[.,]\d+)?)\s*ml\b/i);
+  const capacity = match ? Number(match[1].replace(',','.')) : 0;
+  return capacity > 0 ? capacity : Infinity;
+}
+
+function compareProductDisplayPOS(a,b){
+  const ca = productDisplayCapacityPOS(a), cb = productDisplayCapacityPOS(b);
+  if (ca !== cb) return ca < cb ? -1 : 1;
+  return String(a && (a.name || a.nombre || a.label || a.productNameSnapshot) || '').localeCompare(String(b && (b.name || b.nombre || b.label || b.productNameSnapshot) || ''),'es-NI',{sensitivity:'base'});
+}
+
 // Chips de productos (activos + POS marcado desde Catálogos)
 async function renderProductChips(){
   const chips = $('#product-chips'); if (!chips) return;
@@ -14388,15 +14416,7 @@ async function renderProductChips(){
   let list = posCanonicalProductsForSale((await getAll('products')).filter(p=>p && !hiddenIds.has(p.id)));
   const duplicateNames = posDuplicateNameCounts(list);
 
-  // Orden con prioridad de Arcano 33
-  const priority = ['pulso','media','djeba','litro','galon','galón','galon 3750','galón 3750','galon 3800','galón 3800'];
-  list.sort((a,b)=>{
-    const ia = priority.findIndex(x=>normName(a.name).includes(x));
-    const ib = priority.findIndex(x=>normName(b.name).includes(x));
-    const pa = ia===-1?999:ia; const pb = ib===-1?999:ib;
-    if (pa!==pb) return pa-pb;
-    return a.name.localeCompare(b.name, 'es');
-  });
+  list.sort(compareProductDisplayPOS);
 
   const current = await getMeta('currentEventId');
   const evs = await getAll('events');
@@ -16314,7 +16334,7 @@ async function refreshProductSelect(opts){
 
   const hiddenIds = await getHiddenProductIdsPOS();
   const all = await getAll('products');
-  const list = posCanonicalProductsForSale(all.filter(p => p && !hiddenIds.has(p.id)));
+  const list = posCanonicalProductsForSale(all.filter(p => p && !hiddenIds.has(p.id))).sort(compareProductDisplayPOS);
   const duplicateNames = posDuplicateNameCounts(list);
 
   const sel = $('#sale-product');
@@ -21004,19 +21024,7 @@ async function reempaqueSelectableProductsPOS(){
   const all = await getAll('products').catch(()=>[]);
   return (Array.isArray(all) ? all : [])
     .filter(p => p && p.id != null && p.active !== false && p.deleted !== true)
-    .sort((a,b)=>{
-      const rank = (name)=>{
-        const k = (typeof mapProductNameToFinishedId === 'function') ? mapProductNameToFinishedId(name || '') : '';
-        const order = { pulso:1, media:2, djeba:3, litro:4, galon:5 };
-        return order[k || ''] || 99;
-      };
-      const ra = rank(a && a.name);
-      const rb = rank(b && b.name);
-      if (ra !== rb) return ra - rb;
-      const byName = String(a.name || '').localeCompare(String(b.name || ''), 'es-NI', { sensitivity:'base' });
-      if (byName) return byName;
-      return String(a.productId || a.id || '').localeCompare(String(b.productId || b.id || ''));
-    });
+    .sort(compareProductDisplayPOS);
 }
 
 function reempaqueFindProductPOS(products, id){
@@ -22407,7 +22415,7 @@ async function renderInventario(){
   // UI: Reempaque genérico (movimiento interno de inventario; no ventas ni caja)
   try{ await reempaqueRefreshUiPOS(); }catch(e){ console.warn('reempaqueRefreshUiPOS error', e); }
 
-  const prods = await getAll('products');
+  const prods = (await getAll('products')).slice().sort(compareProductDisplayPOS);
   const hiddenIds = await getHiddenProductIdsPOS();
   for (const p of prods){
     if (hiddenIds.has(p.id)) continue;
@@ -28114,11 +28122,11 @@ function recomputePurchaseTotalPOS(){
 
 async function loadPurchaseCatalogPOS(event){
   const hidden = await getHiddenProductIdsPOS();
-  const products = posCanonicalProductsForSale((await getAll('products')).filter(p => p && !hidden.has(p.id)));
+  const products = posCanonicalProductsForSale((await getAll('products')).filter(p => p && !hidden.has(p.id))).sort(compareProductDisplayPOS);
   const names = posDuplicateNameCounts(products);
   const catalog = await Promise.all(products.map(async product => ({
     key:'product:' + catalogProductStableIdPOS(product), productId:catalogProductStableIdPOS(product),
-    name:posProductDisplayLabel(product,names), unitPrice:Number(product.price),
+    name:posProductDisplayLabel(product,names), capacityMl:productDisplayCapacityPOS(product), unitPrice:Number(product.price),
     stock:productManageStockForSalePOS(product,true) ? await computeStock(event.id, product) : null
   })));
   for (const extra of sanitizeExtrasPOS(event.extras).filter(x => x.active !== false)){
@@ -28170,7 +28178,7 @@ function renderPurchaseItemsPOS(){
     const empty = document.createElement('p'); empty.className = 'muted purchase-empty';
     empty.textContent = 'Agrega los productos que llevará el cliente.'; wrap.appendChild(empty);
   }
-  for (const item of state.items){
+  for (const item of state.items.slice().sort((a,b) => Number(!!a.isExtra) - Number(!!b.isExtra) || (a.isExtra ? 0 : compareProductDisplayPOS(a,b)))){
     const row = document.createElement('div'); row.className = 'purchase-item';
     const head = document.createElement('div'); head.className = 'purchase-item-head';
     const title = document.createElement('strong'); title.textContent = item.name;

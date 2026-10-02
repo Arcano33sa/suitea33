@@ -219,6 +219,34 @@
     return String(source.productId ?? source.productoId ?? source.catalogProductId ?? '').trim();
   }
 
+function productDisplayCapacityAGENDA(product){
+  const p = product && typeof product === 'object' ? product : {};
+  for (const value of [p.capacityMl,p.capacidadMl,p.capacity,p.capacidad,p.volumeMl,p.volumenMl,p.ml,p.mililitros,p.sizeMl]){
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  try{
+    const rows = JSON.parse(localStorage.getItem('a33_catalog_envases_v1') || '[]');
+    const id = String(p.envaseId ?? p.envase_id ?? p.bottleId ?? '').trim();
+    const envase = id && Array.isArray(rows) ? rows.find(row => row && String(row.id || '').trim() === id) : null;
+    if (envase){
+      for (const value of [envase.capacityMl,envase.capacidadMl,envase.ml,envase.volumeMl,envase.capacidad]){
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+    }
+  }catch(_){ }
+  const match = String(p.name || p.nombre || p.label || p.productNameSnapshot || '').match(/(\d+(?:[.,]\d+)?)\s*ml\b/i);
+  const capacity = match ? Number(match[1].replace(',','.')) : 0;
+  return capacity > 0 ? capacity : Infinity;
+}
+
+function compareProductDisplayAGENDA(a,b){
+  const ca = productDisplayCapacityAGENDA(a), cb = productDisplayCapacityAGENDA(b);
+  if (ca !== cb) return ca < cb ? -1 : 1;
+  return String(a && (a.name || a.nombre || a.label || a.productNameSnapshot) || '').localeCompare(String(b && (b.name || b.nombre || b.label || b.productNameSnapshot) || ''),'es-NI',{sensitivity:'base'});
+}
+
   function sanitizeProductCatalogItem(item){
     const source = item && typeof item === 'object' ? item : {};
     const productId = agendaProductId(source);
@@ -232,6 +260,7 @@
     return {
       id: productId,
       productId,
+      capacityMl: productDisplayCapacityAGENDA(source),
       internalId: Number.isFinite(internalId) && internalId > 0 ? internalId : null,
       name,
       price: price == null ? 0 : price,
@@ -265,6 +294,8 @@
         : item.name;
     });
     return normalized.sort(function(a, b){
+      const capacityOrder = compareProductDisplayAGENDA(a,b);
+      if (capacityOrder) return capacityOrder;
       const byName = a.name.localeCompare(b.name, 'es', { sensitivity:'base' });
       return byName || a.productId.localeCompare(b.productId);
     });

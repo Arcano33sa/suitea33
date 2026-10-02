@@ -1055,7 +1055,13 @@
     }
 
     function a33SortPresentaciones(a, b) {
-      return String((a && a.nombre) || "").localeCompare(String((b && b.nombre) || ""), "es-NI", { sensitivity: "base", numeric: true });
+      const capacity = (p) => {
+        const value = Number(p && (p.capacidadMl ?? p.volumenMl));
+        return Number.isFinite(value) && value > 0 ? value : Infinity;
+      };
+      const ca = capacity(a), cb = capacity(b);
+      if (ca !== cb) return ca < cb ? -1 : 1;
+      return String((a && a.nombre) || "").localeCompare(String((b && b.nombre) || ""), "es-NI", { sensitivity: "base" });
     }
 
     function a33SerializePresentacionProducto(p) {

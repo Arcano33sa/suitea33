@@ -888,7 +888,41 @@ function productToPedidoItemPED(product){
   };
 }
 
+function productDisplayCapacityPED(product){
+  const p = product && typeof product === 'object' ? product : {};
+  for (const value of [p.capacityMl,p.capacidadMl,p.capacity,p.capacidad,p.volumeMl,p.volumenMl,p.ml,p.mililitros,p.sizeMl]){
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  try{
+    const rows = JSON.parse(localStorage.getItem('a33_catalog_envases_v1') || '[]');
+    const id = String(p.envaseId ?? p.envase_id ?? p.bottleId ?? '').trim();
+    const envase = id && Array.isArray(rows) ? rows.find(row => row && String(row.id || '').trim() === id) : null;
+    if (envase){
+      for (const value of [envase.capacityMl,envase.capacidadMl,envase.ml,envase.volumeMl,envase.capacidad]){
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+    }
+  }catch(_){ }
+  const match = String(p.name || p.nombre || p.label || p.productNameSnapshot || '').match(/(\d+(?:[.,]\d+)?)\s*ml\b/i);
+  const capacity = match ? Number(match[1].replace(',','.')) : 0;
+  return capacity > 0 ? capacity : Infinity;
+}
+
+function compareProductDisplayPED(a,b){
+  const source = (item) => {
+    const current = PRESENTACIONES.find(p => p.productId && p.productId === (item && item.productId));
+    return { ...(current && current.rawProduct || {}), ...(item && item.productSnapshot || {}), ...(item || {}) };
+  };
+  const ca = productDisplayCapacityPED(source(a)), cb = productDisplayCapacityPED(source(b));
+  if (ca !== cb) return ca < cb ? -1 : 1;
+  return String(a && (a.name || a.nombre || a.label || a.productNameSnapshot) || '').localeCompare(String(b && (b.name || b.nombre || b.label || b.productNameSnapshot) || ''),'es-NI',{sensitivity:'base'});
+}
+
 function sortPedidoProductItemsPED(a, b){
+  const capacityOrder = compareProductDisplayPED({ ...(a && a.rawProduct || {}), name:a && a.label }, { ...(b && b.rawProduct || {}), name:b && b.label });
+  if (capacityOrder) return capacityOrder;
   const byName = String((a && a.label) || '').localeCompare(String((b && b.label) || ''), 'es-NI', { sensitivity:'base' });
   if (byName) return byName;
   return String((a && a.productId) || '').localeCompare(String((b && b.productId) || ''));
@@ -1509,7 +1543,7 @@ function openPedidoDetailModalPED(p, source){
   setTextPED('pedido-detail-balance', formatA33Cordobas(t.saldo));
   setTextPED('pedido-detail-status', estado === 'entregado' ? 'Entregado' : 'Pendiente');
 
-  renderPedidoDetailModalProductRowsPED(t.lines);
+  renderPedidoDetailModalProductRowsPED(t.lines.slice().sort(compareProductDisplayPED));
 
   const closeBtn = $('pedido-detail-close');
   if (closeBtn) closeBtn.onclick = closePedidoDetailModalPED;
@@ -2635,7 +2669,10 @@ function renderQuickProductLinesPED(){
     renderQuickProductSelectPED();
     return;
   }
-  quickOrderItemsDraft.forEach((item, index) => {
+  quickOrderItemsDraft.map((item,index) => ({item,index})).sort((a,b) => compareProductDisplayPED(
+    { ...(a.item.productSnapshot || {}), name:a.item.productNameSnapshot },
+    { ...(b.item.productSnapshot || {}), name:b.item.productNameSnapshot }
+  )).forEach(({item,index}) => {
     const row = document.createElement('div');
     row.className = 'quick-product-line';
     const name = document.createElement('strong');
@@ -2824,7 +2861,7 @@ function createQuickOrderCardPED(order, historical){
   main.append(title, status);
   const products = document.createElement('p');
   products.className = 'quick-order-products';
-  products.textContent = quickOrderProductSummaryPED(order) || 'Sin productos';
+  products.textContent = quickOrderProductSummaryPED({ ...order, items:(order.items || []).slice().sort((a,b) => compareProductDisplayPED({ ...(a.productSnapshot || {}), name:a.productNameSnapshot }, { ...(b.productSnapshot || {}), name:b.productNameSnapshot })) }) || 'Sin productos';
   const meta = document.createElement('div');
   meta.className = 'quick-order-meta';
   meta.textContent = order.codigo || '';

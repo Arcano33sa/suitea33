@@ -309,6 +309,17 @@ async function readCatalogProductsForLotes(){
 }
 
 function sortCatalogItemsForLotes(a,b){
+  const capacity = (item) => {
+    const p = item && typeof item === 'object' ? item : {};
+    const snapshot = p.snapshotProduccion && typeof p.snapshotProduccion === 'object' ? p.snapshotProduccion : {};
+    for (const value of [p.capacidadMl,p.capacityMl,p.volumenMl,p.volumeMl,snapshot.capacidadMl,snapshot.volumenMl]){
+      const n = Number(value);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return Infinity;
+  };
+  const ca = capacity(a), cb = capacity(b);
+  if (ca !== cb) return ca < cb ? -1 : 1;
   const byName = String((a && a.nombre) || '').localeCompare(String((b && b.nombre) || ''), 'es-NI', { sensitivity:'base' });
   if (byName !== 0) return byName;
   return normalizeProductLetter(a && (a.Letra || a.letra)).localeCompare(normalizeProductLetter(b && (b.Letra || b.letra)), 'es-NI');

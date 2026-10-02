@@ -1255,6 +1255,12 @@
     }
 
     function a33SortPresentaciones(a, b) {
+      const capacity = (p) => {
+        const value = Number(p && (p.capacidadMl ?? p.volumenMl));
+        return Number.isFinite(value) && value > 0 ? value : Infinity;
+      };
+      const ca = capacity(a), cb = capacity(b);
+      if (ca !== cb) return ca < cb ? -1 : 1;
       return String((a && a.nombre) || "").localeCompare(String((b && b.nombre) || ""), "es-NI", { sensitivity: "base" });
     }
 
@@ -3052,7 +3058,16 @@ function a33WireNumericInput(el, mode) {
 
     function a33ChecklistProducts(lote) {
       const rows = lote && Array.isArray(lote.productosProducidos) ? lote.productosProducidos : [];
-      return rows.filter((row) => row && typeof row === "object");
+      return rows.filter((row) => row && typeof row === "object").sort((a, b) => {
+        const display = (row) => {
+          const snapshot = row.snapshotProduccion && typeof row.snapshotProduccion === "object" ? row.snapshotProduccion : {};
+          return {
+            nombre: row.nombreSnapshot || row.nombre || snapshot.nombreSnapshot || snapshot.nombre || "",
+            capacidadMl: row.capacidadMl ?? row.volumenMl ?? row.volumeMl ?? snapshot.capacidadMl ?? snapshot.volumenMl
+          };
+        };
+        return a33SortPresentaciones(display(a), display(b));
+      });
     }
 
     function a33ChecklistProductId(row) {

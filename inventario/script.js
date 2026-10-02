@@ -289,6 +289,34 @@ function explicitLegacyFinishedKey(inv, productId){
   }) || '';
 }
 
+function productDisplayCapacityINV(product){
+  const p = product && typeof product === 'object' ? product : {};
+  for (const value of [p.capacityMl,p.capacidadMl,p.capacity,p.capacidad,p.volumeMl,p.volumenMl,p.ml,p.mililitros,p.sizeMl]){
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  try{
+    const rows = JSON.parse(localStorage.getItem('a33_catalog_envases_v1') || '[]');
+    const id = String(p.envaseId ?? p.envase_id ?? p.bottleId ?? '').trim();
+    const envase = id && Array.isArray(rows) ? rows.find(row => row && String(row.id || '').trim() === id) : null;
+    if (envase){
+      for (const value of [envase.capacityMl,envase.capacidadMl,envase.ml,envase.volumeMl,envase.capacidad]){
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+    }
+  }catch(_){ }
+  const match = String(p.name || p.nombre || p.label || p.productNameSnapshot || '').match(/(\d+(?:[.,]\d+)?)\s*ml\b/i);
+  const capacity = match ? Number(match[1].replace(',','.')) : 0;
+  return capacity > 0 ? capacity : Infinity;
+}
+
+function compareProductDisplayINV(a,b){
+  const ca = productDisplayCapacityINV(a), cb = productDisplayCapacityINV(b);
+  if (ca !== cb) return ca < cb ? -1 : 1;
+  return String(a && (a.name || a.nombre || a.label || a.productNameSnapshot) || '').localeCompare(String(b && (b.name || b.nombre || b.label || b.productNameSnapshot) || ''),'es-NI',{sensitivity:'base'});
+}
+
 function buildFinishedDefs(inv){
   const defs = [];
   const catalogIds = new Set();
@@ -306,6 +334,7 @@ function buildFinishedDefs(inv){
     defs.push({
       id:productId,
       productId,
+      capacityMl:productDisplayCapacityINV(product),
       nombre:active ? baseName : `${baseName} (inactivo · histórico)`,
       active,
       operational:active,
@@ -325,6 +354,7 @@ function buildFinishedDefs(inv){
       id:`historical:${productId}`,
       productId,
       nombre:legacyInventoryName({}, productId, row, 'borrado/inactivo · histórico'),
+      capacityMl:productDisplayCapacityINV(row),
       active:false,
       operational:false,
       historical:true,
@@ -343,6 +373,7 @@ function buildFinishedDefs(inv){
       id:`legacy:${legacyKey}`,
       legacyKey,
       nombre:legacyInventoryName(LEGACY_FINISHED_LABELS, legacyKey, row, 'legacy · histórico'),
+      capacityMl:productDisplayCapacityINV(row),
       active:false,
       operational:false,
       historical:true,
@@ -355,7 +386,7 @@ function buildFinishedDefs(inv){
 
   return defs.sort((a, b) => {
     if (!!a.operational !== !!b.operational) return a.operational ? -1 : 1;
-    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es-NI', { sensitivity:'base' });
+    return compareProductDisplayINV(a,b);
   });
 }
 
@@ -2829,7 +2860,8 @@ function renderProductosTerminados(inv) {
   INV_FINISHED_DEFS = buildFinishedDefs(inv);
   pruneInventoryRowCache('finished', INV_FINISHED_DEFS);
   INV_FINISHED_DEFS.forEach((def) => {
-    ensureFinishedRow(tbody, def);
+    const row = ensureFinishedRow(tbody, def);
+    if (row && row.tr) tbody.appendChild(row.tr);
     updateFinishedRow(inv, def.id);
   });
   applyView("finished");

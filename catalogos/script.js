@@ -1898,15 +1898,22 @@
     return Array.from(groups.values());
   }
 
-  function sortProducts(a,b){
-    const aa = (a && a.active === false) ? 1 : 0;
-    const bb = (b && b.active === false) ? 1 : 0;
-    if (aa !== bb) return aa - bb;
-    const order = { pulso:1, media:2, djeba:3, litro:4, galon:5 };
-    const oa = order[mapProductNameToFinishedId(a && a.name) || ''] || 99;
-    const ob = order[mapProductNameToFinishedId(b && b.name) || ''] || 99;
-    if (oa !== ob) return oa - ob;
-    return String((a && a.name) || '').localeCompare(String((b && b.name) || ''), 'es-NI', { sensitivity:'base' });
+  function productDisplayCapacityMl(product, envases){
+    const p = product && typeof product === 'object' ? product : {};
+    for (const value of [p.capacityMl, p.capacidadMl, p.capacity, p.capacidad, p.volumeMl, p.volumenMl, p.ml, p.mililitros, p.sizeMl]){
+      const n = Number(value);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    const envase = (envases || []).find(row => row && String(row.id || '').trim() === productEnvaseId(p));
+    const capacity = envaseCapacity(envase);
+    return capacity > 0 ? capacity : getCapacity(p);
+  }
+
+  function sortProducts(a,b,envases){
+    const ca = productDisplayCapacityMl(a, envases) || Infinity;
+    const cb = productDisplayCapacityMl(b, envases) || Infinity;
+    if (ca !== cb) return ca < cb ? -1 : 1;
+    return String((a && (a.name || a.nombre)) || '').localeCompare(String((b && (b.name || b.nombre)) || ''), 'es-NI', { sensitivity:'base' });
   }
 
   function applyCatalogSchema(database, transaction){
@@ -2209,9 +2216,9 @@
         const productId = productStableId(p);
         try{ return !(window.A33ProductIntegrity && productId && window.A33ProductIntegrity.isTombstoned(productId)); }catch(_){ return true; }
       });
-      const list = all.slice().sort(sortProducts);
-      const activePosProducts = all.filter(p => p && p.active !== false && productPosEnabled(p));
       const envases = ensureEnvasesDefaults(false);
+      const list = all.slice().sort((a,b) => sortProducts(a,b,envases));
+      const activePosProducts = all.filter(p => p && p.active !== false && productPosEnabled(p));
       const tapas = ensureTapasDefaults(false);
       const inventoryVarios = inventoryVariosRowsForProducts();
       const duplicateLetters = getDuplicateRecipeLetters(all || []);
