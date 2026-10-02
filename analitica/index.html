@@ -36,7 +36,7 @@
       <div class="panel-head">
         <div>
           <h2>Analítica de Ventas</h2>
-          <p class="hint">Visualiza el comportamiento de tus ventas por periodo, evento y presentación. Esta vista es solo de lectura y utiliza los datos registrados en A33 POS en este mismo navegador.</p>
+          <p class="hint">Consulta ventas, rentabilidad y actividad del periodo. Los datos provienen del POS de este navegador.</p>
         </div>
       </div>
 
@@ -44,7 +44,7 @@
         No se pudo leer la base de datos de ventas. Asegúrate de haber utilizado antes el módulo A33 POS en este navegador.
       </p>
 
-      <section class="analytics-filters">
+      <section class="analytics-filters" aria-label="Periodo de análisis">
         <div class="field">
           <label for="period-select">Periodo</label>
           <select id="period-select">
@@ -60,9 +60,9 @@
         <div class="field field-inline" id="custom-range" style="display:none;">
           <label>Rango personalizado</label>
           <div class="range-inputs">
-            <input type="date" id="date-from" />
+            <input type="date" id="date-from" aria-label="Fecha inicial" />
             <span>→</span>
-            <input type="date" id="date-to" />
+            <input type="date" id="date-to" aria-label="Fecha final" />
           </div>
         </div>
       </section>
@@ -78,12 +78,39 @@
 
       <!-- TAB RESUMEN -->
       <section class="tab-content active" id="tab-resumen">
-        <div class="kpi-grid">
+        <section class="analytics-kpi-group analytics-kpi-results" aria-labelledby="analytics-results-title">
+          <h3 id="analytics-results-title" class="analytics-group-title">Resultados</h3>
+          <div class="kpi-grid">
           <article class="kpi-card">
             <p class="kpi-label">Ventas totales</p>
             <p class="kpi-value" id="kpi-total-ventas">C$ 0.00</p>
           </article>
 
+          <article class="kpi-card">
+            <p class="kpi-label">Utilidad total</p>
+            <p class="kpi-value" id="kpi-total-utilidad">C$ 0.00</p>
+          </article>
+          </div>
+        </section>
+
+        <section class="analytics-kpi-group analytics-kpi-profit" aria-labelledby="analytics-profit-title">
+          <h3 id="analytics-profit-title" class="analytics-group-title">Costo y margen</h3>
+          <div class="kpi-grid">
+          <article class="kpi-card">
+            <p class="kpi-label">Costo total</p>
+            <p class="kpi-value" id="kpi-total-costo">C$ 0.00</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Margen global</p>
+            <p class="kpi-value" id="kpi-margen-global">0.0%</p>
+          </article>
+          </div>
+        </section>
+
+        <section class="analytics-kpi-group analytics-kpi-activity" aria-labelledby="analytics-activity-title">
+          <h3 id="analytics-activity-title" class="analytics-group-title">Actividad del periodo</h3>
+          <div class="kpi-grid">
           <article class="kpi-card">
             <p class="kpi-label">Unidades vendidas</p>
             <p class="kpi-value" id="kpi-total-botellas">0</p>
@@ -101,27 +128,13 @@
           </article>
 
           <article class="kpi-card">
-            <p class="kpi-label">Costo total</p>
-            <p class="kpi-value" id="kpi-total-costo">C$ 0.00</p>
-          </article>
-
-          <article class="kpi-card">
-            <p class="kpi-label">Utilidad total</p>
-            <p class="kpi-value" id="kpi-total-utilidad">C$ 0.00</p>
-          </article>
-
-          <article class="kpi-card">
-            <p class="kpi-label">Margen global</p>
-            <p class="kpi-value" id="kpi-margen-global">0.0%</p>
-          </article>
-
-          <article class="kpi-card">
             <p class="kpi-label">Cortesías (valor lista)</p>
             <p class="kpi-value" id="kpi-cortesias-total">C$ 0.00</p>
             <p class="kpi-sub" id="kpi-cortesias-sub">Unidades 0 · Costo C$ 0.00</p>
             <p class="kpi-sub" id="kpi-cortesias-nivel">🟢 Bajo (0.0%)</p>
           </article>
-        </div>
+          </div>
+        </section>
 
         <section class="card analytics-lot-summary-card" aria-labelledby="analytics-lot-summary-title">
           <div class="card-head"><h3 id="analytics-lot-summary-title">Códigos de lote del período</h3></div>
@@ -134,7 +147,7 @@
               <h3>Ventas por mes</h3>
             </div>
             <div class="chart-wrap">
-              <canvas id="chart-mensual-ventas"></canvas>
+              <canvas id="chart-mensual-ventas" role="img" aria-label="Ventas por mes. Consulte los valores en la tabla de detalle."></canvas>
             </div>
             <p class="hint small">Importe total de ventas netas por mes, considerando devoluciones y cortesías.</p>
           </section>
@@ -204,7 +217,7 @@
               <h3>Top eventos por ventas</h3>
             </div>
             <div class="chart-wrap chart-wrap--tall">
-              <canvas id="chart-eventos-ventas"></canvas>
+              <canvas id="chart-eventos-ventas" role="img" aria-label="Eventos por ventas. Consulte los valores en la tabla de detalle."></canvas>
             </div>
             <p class="hint small">Solo se muestran los eventos con ventas dentro del periodo.</p>
 
@@ -214,7 +227,7 @@
               <h3>Top eventos por utilidad</h3>
             </div>
             <div class="chart-wrap chart-wrap--tall">
-              <canvas id="chart-eventos-utilidad"></canvas>
+              <canvas id="chart-eventos-utilidad" role="img" aria-label="Eventos por utilidad. Consulte los valores en la tabla de detalle."></canvas>
             </div>
             <p class="hint small">Comparativo de utilidad total por evento en el periodo.</p>
           </section>
@@ -258,7 +271,7 @@
       <!-- TAB PRESENTACIONES -->
       <section class="tab-content" id="tab-presentaciones">
         <p class="hint small" style="margin-bottom:0.6rem;">
-          Comparativo dinámico por producto, conservando identidades históricas sin reactivar el catálogo.
+          Compara productos vendidos en el periodo, incluidos los productos históricos.
         </p>
 
         <div class="analytics-layout">
@@ -267,7 +280,7 @@
               <h3>Ventas por producto</h3>
             </div>
             <div class="chart-wrap">
-              <canvas id="chart-pres-ventas"></canvas>
+              <canvas id="chart-pres-ventas" role="img" aria-label="Ventas por producto. Consulte los valores en la tabla de detalle."></canvas>
             </div>
             <p class="hint small">Incluye unidades vendidas y cortesías; devoluciones restan del total.</p>
 
@@ -277,7 +290,7 @@
               <h3>Margen unitario por producto</h3>
             </div>
             <div class="chart-wrap">
-              <canvas id="chart-pres-margen"></canvas>
+              <canvas id="chart-pres-margen" role="img" aria-label="Margen por producto. Consulte los valores en la tabla de detalle."></canvas>
             </div>
             <p class="hint small">Muestra el margen porcentual promedio por unidad en cada presentación.</p>
           </section>
@@ -294,7 +307,7 @@
                     <th>Código de lote</th>
                     <th>Unidades netas</th>
                     <th>Precio unitario prom. (C$)</th>
-                    <th>Costo unitario snapshot (C$)</th>
+                    <th>Costo unitario registrado (C$)</th>
                     <th>Utilidad unitaria (C$)</th>
                     <th>Margen unitario %</th>
                     <th>Ventas totales (C$)</th>
@@ -326,7 +339,7 @@
           </div>
 
           <div class="field small" style="max-width:220px;">
-            <label for="clientes-dormidos-days">Dormidos si no compra desde</label>
+            <label for="clientes-dormidos-days">Considerar dormido después de</label>
             <select id="clientes-dormidos-days">
               <option value="14">14 días</option>
               <option value="30">30 días</option>
@@ -338,13 +351,13 @@
           </div>
         </div>
 
-        <p class="hint small" id="clientes-resumen">Sin datos.</p>
+        <p class="hint small" id="clientes-resumen" aria-live="polite">Sin datos.</p>
 
         <div class="clientes-layout">
           <section class="card clientes-list-card">
             <div class="card-head">
-              <h3>Listado</h3>
-              <span class="hint small" id="clientes-count"></span>
+              <h3>Clientes del periodo</h3>
+              <span class="hint small" id="clientes-count" aria-live="polite"></span>
             </div>
             <ul id="clientes-list" class="clientes-list"></ul>
             <p class="hint small" id="clientes-empty" style="display:none;">Sin datos de clientes en el periodo.</p>
@@ -390,8 +403,9 @@
                 </div>
               </div>
 
+              <h4 class="cliente-history-title">Historial de compras</h4>
               <div class="table-wrapper" style="margin-top:0.75rem;">
-                <table class="analytics-table">
+                <table class="analytics-table" aria-label="Historial del cliente seleccionado">
                   <thead>
                     <tr>
                       <th>Fecha</th>
@@ -415,7 +429,7 @@
               <span class="hint small" id="reco-updated">Actualizado: —</span>
             </div>
           </div>
-          <p class="hint small">Basado en ventas reales. Se guarda en localStorage para que otros módulos (ej. Centro de Mando) lo consuman.</p>
+          <p class="hint small">Basadas en las ventas registradas. También están disponibles en Centro de Mando.</p>
           <ul id="clientes-recos-preview" class="recs-list"></ul>
           <p class="hint small" id="clientes-recos-empty" style="display:none;">Sin recomendaciones por ahora.</p>
         </section>
@@ -477,7 +491,7 @@
           </div>
 
           <div class="chart-wrap">
-            <canvas id="chart-horas-ventas"></canvas>
+            <canvas id="chart-horas-ventas" role="img" aria-label="Ventas por hora. Consulte los valores en la tabla de detalle."></canvas>
           </div>
 
           <p class="hint small" id="resumen-horas-pico">Aún no hay datos suficientes para este rango.</p>

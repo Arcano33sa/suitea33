@@ -2023,6 +2023,8 @@ function rebuildHorasEventOptions(filteredSales){
 
     ensureTooltip(canvas);
 
+    const hasData = dataValues.some(v => typeof v === 'number' && Math.abs(v) > 0.0001);
+    canvas.style.minWidth = hasData ? '560px' : '0';
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, Math.floor(rect.width || canvas.clientWidth || 520));
     const height = Math.max(1, Math.floor(rect.height || canvas.clientHeight || 320));
@@ -2033,20 +2035,19 @@ function rebuildHorasEventOptions(filteredSales){
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const hasData = dataValues.some(v => typeof v === 'number' && Math.abs(v) > 0.0001);
     if (!hasData){
       HOVER_CACHE.set(canvasId, []);
-      ctx.fillStyle = 'rgba(254,254,254,0.72)';
-      ctx.font = '600 18px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+      ctx.fillStyle = getCssVar('--a33-muted', '#bfb9aa');
+      ctx.font = '600 15px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Sin datos para graficar en este rango', width/2, height/2);
       return;
     }
 
-    const gold = getCssVar('--color-accent-soft', '#ddbf64');
-    const text = getCssVar('--color-text', 'rgba(254,254,254,0.92)');
-    const muted = getCssVar('--color-text-muted', 'rgba(254,254,254,0.68)');
-    const grid = 'rgba(254,254,254,0.09)';
+    const gold = getCssVar('--a33-gold', '#ddbf64');
+    const text = getCssVar('--a33-text', 'rgba(254,254,254,0.92)');
+    const muted = getCssVar('--a33-muted', 'rgba(254,254,254,0.68)');
+    const grid = getCssVar('--a33-border-soft', 'rgba(254,254,254,0.12)');
 
     const maxVal = Math.max(...dataValues, 0);
     const minVal = Math.min(...dataValues, 0);
@@ -2061,15 +2062,16 @@ function rebuildHorasEventOptions(filteredSales){
 
     let margin = { top: 14, right: 14, bottom: 38, left: 56 };
     if (useHorizontal){
-      const longest = dataLabels.reduce((m, s) => Math.max(m, String(s||'').length), 0);
-      margin.left = Math.min(190, Math.max(90, 8 * longest));
+      ctx.font = '17px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+      const labelWidth = dataLabels.reduce((m, label) => Math.max(m, ctx.measureText(String(label || '')).width), 0);
+      margin.left = Math.min(220, Math.max(90, Math.ceil(labelWidth) + 20));
       margin.bottom = 30;
     }
 
     const chartW = Math.max(10, width - margin.left - margin.right);
     const chartH = Math.max(10, height - margin.top - margin.bottom);
 
-    ctx.fillStyle = 'rgba(255,255,255,0.015)';
+    ctx.fillStyle = getCssVar('--a33-surface-2', '#161616');
     roundedRectPath(ctx, margin.left, margin.top, chartW, chartH, 14);
     ctx.fill();
 
@@ -2106,7 +2108,7 @@ function rebuildHorasEventOptions(filteredSales){
       }
     }
 
-    ctx.strokeStyle = 'rgba(221,191,100,0.22)';
+    ctx.strokeStyle = grid;
     ctx.lineWidth = 1.2;
 
     const bars = [];
@@ -2142,7 +2144,7 @@ function rebuildHorasEventOptions(filteredSales){
           grad.addColorStop(1, 'rgba(221,191,100,0.14)');
         }
         ctx.fillStyle = grad;
-        ctx.strokeStyle = isNeg ? 'rgba(123,24,24,0.85)' : 'rgba(221,191,100,0.85)';
+        ctx.strokeStyle = isNeg ? getCssVar('--a33-danger', '#ba4545') : gold;
         ctx.lineWidth = 1.2;
 
         roundedRectPath(ctx, x, y, barW, Math.max(1, h), 10);
@@ -2196,7 +2198,7 @@ function rebuildHorasEventOptions(filteredSales){
           grad.addColorStop(1, 'rgba(221,191,100,0.14)');
         }
         ctx.fillStyle = grad;
-        ctx.strokeStyle = isNeg ? 'rgba(123,24,24,0.85)' : 'rgba(221,191,100,0.85)';
+        ctx.strokeStyle = isNeg ? getCssVar('--a33-danger', '#ba4545') : gold;
         ctx.lineWidth = 1.2;
 
         roundedRectPath(ctx, x, y, Math.max(1, w), barH, 10);
@@ -2223,6 +2225,10 @@ function rebuildHorasEventOptions(filteredSales){
 
 
 
+
+  // Redibujar los gráficos visibles cuando cambia el tema compartido.
+  new MutationObserver(() => requestAnimationFrame(redrawVisibleCharts))
+    .observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
 
   // --- Clientes (MVP) + cache de recomendaciones ---
 
@@ -2694,14 +2700,16 @@ function rebuildHorasEventOptions(filteredSales){
       const active = (selectedClientKey === c.key) ? 'active' : '';
       return `
         <li class="cliente-row ${active}" data-client="${escapeHtml(c.key)}">
-          <div class="cliente-main">
-            <div class="cliente-name">${escapeHtml(c.name)}</div>
-            <div class="cliente-meta">Última compra: ${escapeHtml(last)}</div>
-          </div>
-          <div class="cliente-side">
-            <div class="cliente-meta">${formatCurrency(c.totalNet || 0)}</div>
+          <button type="button" class="cliente-select" aria-pressed="${active ? 'true' : 'false'}">
+          <span class="cliente-main">
+            <span class="cliente-name">${escapeHtml(c.name)}</span>
+            <span class="cliente-meta">Última compra: ${escapeHtml(last)}</span>
+          </span>
+          <span class="cliente-side">
+            <span class="cliente-meta">${formatCurrency(c.totalNet || 0)}</span>
             ${dormChip}
-          </div>
+          </span>
+          </button>
         </li>
       `;
     }).join('');
@@ -2755,6 +2763,13 @@ function rebuildHorasEventOptions(filteredSales){
       detail.style.display = 'none';
       return;
     }
+
+    document.querySelectorAll('#clientes-list .cliente-row').forEach(row => {
+      const selected = row.dataset.client === key;
+      row.classList.toggle('active', selected);
+      const button = row.querySelector('.cliente-select');
+      if (button) button.setAttribute('aria-pressed', String(selected));
+    });
 
     nameEl.textContent = c.name;
     empty.style.display = 'none';
