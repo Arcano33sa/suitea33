@@ -617,13 +617,14 @@ function computeRemainingTotals(visibleLotes){
   if (!Array.isArray(visibleLotes) || !visibleLotes.length) return totals;
 
   for (const lote of visibleLotes){
-    const byLetter = getLoteQuantitiesByLetter(lote);
-    Object.keys(byLetter).forEach((k) => {
-      const key = normalizeProductLetter(k);
-      if (!key) return;
+    // El resumen comparte la disponibilidad de las tarjetas: respeta cierres,
+    // ventas y transferencias, sin volver a sumar cantidades históricas.
+    for (const item of getLoteAvailabilityIndicatorItems(lote, true)){
+      const key = normalizeProductLetter(item.letra || item.Letra);
+      if (!key) continue;
       if (totals[key] == null) totals[key] = 0;
-      totals[key] += byLetter[k] || 0;
-    });
+      totals[key] += normalizeQtyValue(item.cantidadDisponible);
+    }
   }
   return totals;
 }
