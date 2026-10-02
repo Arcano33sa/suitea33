@@ -5132,22 +5132,22 @@ Los históricos se conservarán. ¿Continuar?`);
     const previewNote = document.getElementById('cfg-currency-preview-note');
     if (previewNote){
       previewNote.textContent = currencyState.hasExchangeRate
-        ? 'Vista previa activa usando el motor central de Moneda.'
+        ? 'Vista previa con el tipo de cambio guardado.'
         : 'Configurá un T/C válido para activar la vista previa.';
     }
 
     const heroCopy = document.getElementById('cfg-currency-hero-copy');
     if (heroCopy){
       heroCopy.textContent = currencyState.hasExchangeRate
-        ? 'El último tipo de cambio quedó guardado localmente y disponible en el motor central. La conexión con módulos reales queda para etapas posteriores.'
-        : 'Este apartado lee una estructura segura de Moneda. Sin T/C configurado, el motor no hace conversiones silenciosas ni rompe la Suite.';
+        ? 'Tipo de cambio guardado en este navegador. Aún no se aplica a las operaciones de otros módulos.'
+        : 'No hay tipo de cambio guardado. Ingresa un valor para activar la vista previa.';
     }
 
     if (currencyState.hasExchangeRate){
-      setCurrencyBadge('Motor seguro');
+      setCurrencyBadge('Guardado');
       if (!options.silent) setCurrencyStatus(`T/C cargado: ${rateText}. Última actualización: ${formatPwaTimestamp(data.updatedAt)}.`, 'ok');
     } else {
-      setCurrencyBadge('Base segura');
+      setCurrencyBadge('Sin configurar');
       if (!options.silent) setCurrencyStatus('El T/C no está configurado. El motor central queda en estado seguro.');
     }
   }

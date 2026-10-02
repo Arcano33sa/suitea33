@@ -39,6 +39,99 @@
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+
+<style id="configuracion-e73-visual">
+/* E7.3: Identidad, Apariencia, Reportes y Moneda. */
+html body .cfg-e73 { --cfg-text:var(--a33-text); --cfg-muted:var(--a33-muted); }
+html body .cfg-e73 [hidden] { display:none!important; }
+html body .cfg-e73 .cfg-view-grid { grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:20px; align-items:start; }
+html body .cfg-e73 .cfg-panel { grid-column:auto; min-width:0; padding:24px; }
+html body .cfg-e73 :is(.cfg-card,.cfg-report-card,.cfg-currency-card) { background:var(--a33-surface); color:var(--a33-text); border-color:var(--a33-border); box-shadow:none; }
+html body .cfg-e73 .cfg-panel-head { padding-bottom:16px; border-bottom:1px solid var(--a33-border-soft); margin-bottom:20px; flex-wrap:wrap; }
+html body .cfg-e73 :is(.cfg-identity-grid,.cfg-reports-form,.cfg-currency-form) { gap:18px; }
+html body .cfg-e73 .cfg-form-section { grid-column:1/-1; margin:8px 0 0; padding-top:18px; border-top:1px solid var(--a33-border-soft); color:var(--a33-text); font-size:15px; }
+html body .cfg-e73 .cfg-form-section:first-child { margin:0; padding:0; border:0; }
+html body .cfg-e73 :is(input:not([type="checkbox"]):not([type="file"]),select,textarea) { background:var(--a33-surface-3); color:var(--a33-text); border-color:var(--a33-border); border-radius:12px; min-height:46px; font-size:16px; }
+html body .cfg-e73 :is(input,textarea)::placeholder { color:var(--a33-muted); }
+html body .cfg-e73 :is(.cfg-logo-shell,.cfg-identity-summary-hero,.cfg-appearance-status,.cfg-reports-hero,.cfg-currency-hero,.cfg-report-option,.cfg-report-format-item,.cfg-report-module,.cfg-currency-info-grid div,.cfg-currency-preview-item,.cfg-currency-last-update,.cfg-report-final-note,.cfg-report-lockbox,.cfg-form-hint) { background:var(--a33-surface-2); border-color:var(--a33-border-soft); }
+html body .cfg-e73 :is(.cfg-btn,.cfg-report-format-chip,.cfg-nav-chip) { min-height:44px; }
+html body .cfg-e73 .cfg-btn-primary { background:var(--a33-red,#7b1818); color:#fff7e3; box-shadow:none; }
+html body .cfg-e73 .cfg-btn-ghost { background:var(--a33-surface-2); color:var(--a33-text); border-color:var(--a33-border); }
+html body .cfg-e73 :is(.cfg-field span,.cfg-report-field span,.cfg-badge,.cfg-report-format-chip,.cfg-theme-option-copy strong) { color:var(--a33-text); }
+html body .cfg-e73 .cfg-badge { background:var(--a33-surface-2); border-color:var(--a33-border); white-space:normal; }
+html body .cfg-e73 .cfg-theme-selector { grid-template-columns:minmax(0,1fr); gap:12px; }
+html body .cfg-e73 .cfg-theme-option { grid-template-columns:120px minmax(0,1fr); align-items:center; min-height:0; background:var(--a33-surface-2); border-color:var(--a33-border); }
+html body .cfg-e73 .cfg-theme-preview { min-height:90px; }
+html body .cfg-e73 .cfg-theme-option[aria-checked="true"] { border-color:var(--a33-gold); box-shadow:inset 4px 0 var(--a33-gold); }
+html body .cfg-e73 :is(.cfg-form-actions,.cfg-reports-actions,.cfg-currency-actions) { border-top:1px solid var(--a33-border-soft); padding-top:18px; margin-top:20px; display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+html body .cfg-e73 :is(.cfg-report-option,.cfg-report-format-chip) { border-radius:12px; }
+html body .cfg-e73 .cfg-report-option { padding:14px; min-height:48px; }
+html body .cfg-e73 .cfg-report-option input { flex-shrink:0; }
+html body .cfg-e73 .cfg-report-card-head { align-items:flex-start; }
+html body .cfg-e73 .cfg-report-module-head { flex-wrap:wrap; }
+html body .cfg-e73 .cfg-report-module-head span { text-align:left; }
+html body .cfg-e73 .cfg-currency-info-grid { grid-template-columns:minmax(0,1fr); }
+html body .cfg-e73 .cfg-currency-preview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+html body .cfg-e73 :is(.cfg-currency-info-grid strong,.cfg-currency-preview-grid strong,.cfg-identity-summary-list dd) { color:var(--a33-text); overflow-wrap:anywhere; white-space:normal; }
+html body .cfg-e73 :is(button,input,select,textarea,summary):focus-visible { outline:3px solid var(--a33-gold); outline-offset:3px; }
+@media(max-width:1100px) {
+ html body .cfg-e73 .cfg-view-grid { grid-template-columns:minmax(0,1fr); }
+}
+@media(max-width:600px) {
+ html body .cfg-e73 .cfg-panel { padding:16px; }
+ html body .cfg-e73 :is(.cfg-identity-grid,.cfg-report-options,.cfg-report-module-grid,.cfg-currency-rate-grid,.cfg-currency-preview-grid,.cfg-report-format-grid) { grid-template-columns:minmax(0,1fr); }
+ html body .cfg-e73 .cfg-theme-option { grid-template-columns:90px minmax(0,1fr); padding:12px; }
+ html body .cfg-e73 :is(.cfg-form-actions,.cfg-reports-actions,.cfg-currency-actions) .cfg-btn { width:100%; }
+}
+</style>
+
+<style id="configuracion-e74-visual">
+/* E7.4: presentación de Actualizaciones, Respaldo y sus ventanas. */
+html body .cfg-e74 { --cfg-text:var(--a33-text); --cfg-muted:var(--a33-muted); }
+html body .cfg-e74 [hidden] { display:none!important; }
+html body .cfg-e74 .cfg-view-grid { grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:20px; align-items:start; }
+html body .cfg-e74 .cfg-panel { grid-column:auto; padding:24px; min-width:0; }
+html body .cfg-e74 .cfg-card { background:var(--a33-surface); border-color:var(--a33-border); box-shadow:none; }
+html body .cfg-e74 .cfg-panel-head { border-bottom:1px solid var(--a33-border-soft); padding-bottom:16px; margin-bottom:20px; flex-wrap:wrap; }
+html body .cfg-e74 :is(.cfg-status-card,.cfg-note-card,.cfg-backup-import-log-card,.cfg-backup-action-block) { background:var(--a33-surface-2); border:1px solid var(--a33-border-soft); border-radius:16px; padding:16px; }
+html body .cfg-e74 .cfg-pwa-dashboard { grid-template-columns:minmax(0,1fr); gap:12px; }
+html body .cfg-e74 .cfg-pwa-stat { min-height:0; }
+html body .cfg-e74 .cfg-status-card strong { color:var(--a33-text); overflow-wrap:anywhere; }
+html body .cfg-e74 .cfg-status-copy { margin-bottom:0; }
+html body .cfg-e74 .cfg-note-grid { grid-template-columns:minmax(0,1fr); }
+html body .cfg-e74 .cfg-badge { background:var(--a33-surface-2); border-color:var(--a33-border); color:var(--a33-text); white-space:normal; }
+html body .cfg-e74 .cfg-backup-action-block { margin:16px 0; }
+html body .cfg-e74 .cfg-backup-action-block h3 { margin:0 0 8px; font-size:17px; color:var(--a33-text); }
+html body .cfg-e74 .cfg-backup-action-block p { margin:0 0 14px; color:var(--a33-muted); line-height:1.6; }
+html body .cfg-e74 .cfg-backup-action-block--import { border-color:var(--a33-border); }
+html body .cfg-e74 .cfg-actions { flex-wrap:wrap; gap:12px; }
+html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) .cfg-btn { min-height:44px; }
+html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) .cfg-btn-primary { background:var(--a33-red,#7b1818); color:#fff7e3; box-shadow:none; }
+html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) .cfg-btn-ghost { background:var(--a33-surface-2); color:var(--a33-text); border-color:var(--a33-border); }
+html body :is(#backup-modal,#cfg-pos-events-modal) { z-index:2000; --cfg-text:var(--a33-text); --cfg-muted:var(--a33-muted); }
+html body #cfg-pos-events-modal { z-index:2100; }
+html body :is(#backup-modal,#cfg-pos-events-modal) .modal-card { background:var(--a33-surface); color:var(--a33-text); border-color:var(--a33-border); max-height:calc(100dvh - 32px); display:flex; flex-direction:column; min-width:0; }
+html body :is(#backup-modal,#cfg-pos-events-modal) .modal-title { line-height:1.4; overflow-wrap:anywhere; flex-shrink:0; }
+html body :is(#backup-modal,#cfg-pos-events-modal) .modal-body { min-height:0; max-height:60dvh; overflow:auto; color:var(--a33-text); font-size:14px; }
+html body :is(#backup-modal,#cfg-pos-events-modal) .modal-actions { border-top:1px solid var(--a33-border-soft); padding-top:14px; gap:10px; flex-shrink:0; }
+html body :is(#backup-modal,#cfg-pos-events-modal) :is(input:not([type="checkbox"]):not([type="radio"]),select) { background:var(--a33-surface-3); color:var(--a33-text); border-color:var(--a33-border); min-height:44px; font-size:16px; }
+html body :is(#backup-modal,#cfg-pos-events-modal) :is(.cfg-custom-export-group,.cfg-custom-export-subitem,.cfg-backup-dependency-box,.cfg-product-audit-note,.cfg-product-audit-detail) { background:var(--a33-surface-2); border-color:var(--a33-border-soft); color:var(--a33-text); }
+html body :is(#backup-modal,#cfg-pos-events-modal) :is(.cfg-custom-export-row,.cfg-custom-export-subitem,summary) { min-height:44px; }
+html body #backup-modal .cfg-product-audit-table th { background:var(--a33-surface-2); color:var(--a33-text); }
+html body #backup-modal .cfg-product-audit-actions { white-space:normal; }
+html body .cfg-e74 .cfg-backup-import-table th { background:var(--a33-surface-2); color:var(--a33-text); }
+html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,select,summary,[tabindex="0"]):focus-visible { outline:3px solid var(--a33-gold); outline-offset:3px; }
+@media(max-width:1100px) {
+ html body .cfg-e74 .cfg-view-grid { grid-template-columns:minmax(0,1fr); }
+}
+@media(max-width:600px) {
+ html body .cfg-e74 .cfg-panel { padding:16px; }
+ html body .cfg-e74 .cfg-actions .cfg-btn { width:100%; }
+ html body :is(#backup-modal,#cfg-pos-events-modal) { padding:12px; }
+ html body :is(#backup-modal,#cfg-pos-events-modal) .modal-card { padding:16px; }
+ html body :is(#backup-modal,#cfg-pos-events-modal) .modal-actions .cfg-btn { flex:1 1 120px; }
+}
+</style>
 </head>
 <body>
 <header class="a33-header" role="banner" data-a33-module="configuracion" data-a33-context="configuracion">
@@ -60,7 +153,7 @@
 
 
 
-<section aria-hidden="true" aria-labelledby="cfg-tab-pwa" class="cfg-panel-view" data-panel="pwa" hidden="" id="cfg-panel-pwa" role="tabpanel">
+<section aria-hidden="true" aria-labelledby="cfg-tab-pwa" class="cfg-panel-view cfg-e74" data-panel="pwa" hidden="" id="cfg-panel-pwa" role="tabpanel">
 <div aria-label="Navegación del apartado" class="cfg-section-nav">
 <button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
 <a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
@@ -70,16 +163,16 @@
 <div class="cfg-panel-head">
 <div>
 <p class="cfg-eyebrow">Primer apartado</p>
-<h2 id="cfg-pwa-title">PWA</h2>
+<h2 id="cfg-pwa-title">Actualizaciones</h2>
 </div>
 <span class="cfg-badge">Motor central</span>
 </div>
-<p class="cfg-copy">Actualización y control de la versión instalada de la Suite. Este apartado ejecuta la búsqueda central de Service Workers registrados, guarda la última búsqueda, detecta si hay actualización pendiente y permite aplicarla de forma controlada.</p>
+<p class="cfg-copy">Consulta si hay una actualización disponible para la Suite. Podrás aplicarla cuando la búsqueda la detecte.</p>
 <div aria-label="Estado PWA de la Suite" class="cfg-pwa-dashboard">
 <article class="cfg-status-card cfg-pwa-stat">
 <span class="cfg-status-label">Estado</span>
 <strong id="cfg-pwa-status">Sin revisar</strong>
-<p class="cfg-status-copy">Estado central de revisión PWA.</p>
+<p class="cfg-status-copy">Resultado de la revisión de actualizaciones.</p>
 </article>
 <article class="cfg-status-card cfg-pwa-stat">
 <span class="cfg-status-label">Última búsqueda</span>
@@ -100,7 +193,7 @@
 <div class="cfg-panel-head cfg-panel-head--stack">
 <div>
 <p class="cfg-eyebrow">Actualizaciones</p>
-<h2 id="cfg-pwa-side-title">Motor central</h2>
+<h2 id="cfg-pwa-side-title">Versión instalada</h2>
 </div>
 <span class="cfg-badge cfg-badge--soft">Centralizado</span>
 </div>
@@ -111,7 +204,7 @@
 </ul>
 </aside>
 </div>
-</section><section aria-hidden="true" aria-labelledby="cfg-tab-identity" class="cfg-panel-view" data-panel="identity" hidden="" id="cfg-panel-identity" role="tabpanel">
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-identity" class="cfg-panel-view cfg-e73" data-panel="identity" hidden="" id="cfg-panel-identity" role="tabpanel">
 <div aria-label="Navegación del apartado" class="cfg-section-nav">
 <button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
 <a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
@@ -125,9 +218,10 @@
 </div>
 <span class="cfg-badge cfg-badge--soft">Guardado local</span>
 </div>
-<p class="cfg-copy">Datos generales de identidad del negocio y de la Suite. En esta fase se guardan localmente para conservarse al recargar la app, sin alimentar reportes, PDFs, POS, Finanzas ni otros módulos.</p>
+<p class="cfg-copy">Datos del negocio y de la Suite guardados en este navegador. Aún no se aplican a reportes ni a otros módulos.</p>
 <form aria-label="Formulario de Identidad" class="cfg-identity-form" id="cfg-identity-form" novalidate="">
 <div class="cfg-identity-grid">
+<h3 class="cfg-form-section">Datos del negocio</h3>
 <label class="cfg-field">
 <span>Nombre comercial</span>
 <input autocomplete="organization" class="cfg-input" id="cfg-identity-commercial-name" maxlength="120" placeholder="Ingrese el nombre comercial" type="text"/>
@@ -140,6 +234,7 @@
 <span>RUC / identificación fiscal</span>
 <input class="cfg-input" id="cfg-identity-tax-id" maxlength="60" placeholder="Ingrese identificación fiscal" type="text"/>
 </label>
+<h3 class="cfg-form-section">Contacto</h3>
 <label class="cfg-field">
 <span>Teléfono</span>
 <input autocomplete="tel" class="cfg-input" id="cfg-identity-phone" inputmode="tel" maxlength="40" placeholder="Ingrese teléfono" type="tel"/>
@@ -156,6 +251,7 @@
 <span>Dirección</span>
 <textarea class="cfg-input cfg-textarea" id="cfg-identity-address" maxlength="240" placeholder="Ingrese dirección" rows="3"></textarea>
 </label>
+<h3 class="cfg-form-section">Presentación de la marca</h3>
 <label class="cfg-field">
 <span>Nombre de la Suite</span>
 <input class="cfg-input" id="cfg-identity-suite-name" maxlength="120" placeholder="Ingrese nombre de la Suite" type="text"/>
@@ -208,7 +304,7 @@
 <p id="cfg-identity-summary-tagline">La identidad aparecerá aquí cuando guardés los datos.</p>
 </div>
 </div>
-<div class="cfg-identity-summary-empty" id="cfg-identity-summary-empty">Aún no hay datos guardados. La tarjeta está lista; solo falta alimentar al dragón.</div>
+<div class="cfg-identity-summary-empty" id="cfg-identity-summary-empty">Aún no hay datos guardados. Completa el formulario y presiona Guardar.</div>
 <dl class="cfg-identity-summary-list" id="cfg-identity-summary-list">
 <div><dt>Nombre comercial</dt><dd id="cfg-identity-summary-commercial-name">—</dd></div>
 <div><dt>Nombre legal</dt><dd id="cfg-identity-summary-legal-name">—</dd></div>
@@ -225,11 +321,11 @@
 <strong id="cfg-identity-summary-updated">Sin registros</strong>
 </div>
 <div class="cfg-identity-summary-note">
-<p>Este resumen solo vive en Configuración → Identidad. No alimenta reportes, PDFs, POS, Finanzas ni otros módulos todavía.</p>
+<p>Resumen de los datos guardados. Aún no se aplica a reportes ni a otros módulos.</p>
 </div>
 </aside>
 </div>
-</section><section aria-hidden="true" aria-labelledby="cfg-tab-appearance" class="cfg-panel-view" data-panel="appearance" hidden="" id="cfg-panel-appearance" role="tabpanel">
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-appearance" class="cfg-panel-view cfg-e73" data-panel="appearance" hidden="" id="cfg-panel-appearance" role="tabpanel">
 <div aria-label="Navegación del apartado" class="cfg-section-nav">
 <button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
 <a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
@@ -258,7 +354,7 @@
 </span>
 <span class="cfg-theme-option-copy">
 <strong>Oscuro</strong>
-<small>Modo A33 clásico, negro premium con acentos dorados y rojo A33.</small>
+<small>Fondo oscuro con acentos dorados y rojo A33.</small>
 </span>
 </button>
 <button aria-checked="false" class="cfg-theme-option" data-theme-pref="light" role="radio" type="button">
@@ -269,7 +365,7 @@
 </span>
 <span class="cfg-theme-option-copy">
 <strong>Claro</strong>
-<small>Crema premium, texto oscuro y acentos A33. Nada de blanco quirúrgico.</small>
+<small>Fondo crema, texto oscuro y acentos A33.</small>
 </span>
 </button>
 <button aria-checked="false" class="cfg-theme-option" data-theme-pref="auto" role="radio" type="button">
@@ -285,7 +381,7 @@
 </span>
 </button>
 </div>
-<p class="cfg-inline-note cfg-theme-save-note">La selección se guarda automáticamente al tocar una opción. Sin botón adicional: un toque y listo.</p>
+<p class="cfg-inline-note cfg-theme-save-note">El tema se aplica y se guarda automáticamente al seleccionar una opción.</p>
 </article>
 <aside aria-labelledby="appearance-side-title" class="cfg-card cfg-panel cfg-side-panel">
 <div class="cfg-panel-head cfg-panel-head--stack">
@@ -310,7 +406,7 @@
 </ul>
 </aside>
 </div>
-</section><section aria-hidden="true" aria-labelledby="cfg-tab-reports" class="cfg-panel-view" data-panel="reports" hidden="" id="cfg-panel-reports" role="tabpanel">
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-reports" class="cfg-panel-view cfg-e73" data-panel="reports" hidden="" id="cfg-panel-reports" role="tabpanel">
 <div aria-label="Navegación del apartado" class="cfg-section-nav">
 <button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
 <a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
@@ -382,7 +478,7 @@
 <span class="cfg-report-icon">◷</span>
 <div>
 <h3 id="reports-format-title">Formato general</h3>
-<p>Estándar protegido para toda la base futura de reportes. Sin selector por ahora: menos invento, más orden.</p>
+<p>Formato fijo para las preferencias de reportes futuros.</p>
 </div>
 </div>
 <div class="cfg-report-format-grid" aria-label="Formato general fijo de reportes">
@@ -531,7 +627,7 @@
 <span class="cfg-report-icon">◈</span>
 <div>
 <h3 id="reports-preview-title">Vista previa</h3>
-<p>Preferencia futura para revisar reportes antes de exportar. Queda activada por defecto, sin implementar motor real todavía.</p>
+<p>Preferencia para reportes futuros, activada por defecto. Esta sección no genera archivos.</p>
 </div>
 </div>
 <div class="cfg-report-options cfg-report-options--single" aria-label="Preferencia futura de vista previa">
@@ -540,7 +636,7 @@
 </section>
 <div class="cfg-report-final-note" aria-label="Cierre funcional de Reportes">
 <strong>Aplicación futura por módulos</strong>
-<p>Reportes actualmente guarda preferencias generales y lee Moneda como referencia segura. La aplicación real en POS, Finanzas, Inventario y otros módulos se hará en etapas específicas para evitar romper partes sensibles.</p>
+<p>Estas preferencias quedan guardadas. Aún no modifican reportes ni exportaciones de otros módulos.</p>
 </div>
 <div class="cfg-actions cfg-reports-actions">
 <button class="cfg-btn cfg-btn-primary" id="cfg-reports-save" type="submit">Guardar preferencias</button>
@@ -557,11 +653,11 @@
 <span class="cfg-badge cfg-badge--soft" id="cfg-reports-side-badge">Base local</span>
 </div>
 <ul class="cfg-list">
-<li>Guarda preferencias de Reportes en una clave aislada.</li>
+<li>Conserva las preferencias en este navegador.</li>
 <li>Lee Identidad solo como referencia compacta.</li>
 <li>Lee Moneda como referencia segura: C$ / NIO, US$ / USD, T/C y última actualización.</li>
 <li>Mantiene fecha DD/MM/AAAA y fecha-hora DD/MM/AAAA HH:mm.</li>
-<li>Prepara nombre base de archivos usando Identidad o fallback SuiteA33.</li>
+<li>Usa el nombre comercial como referencia; si está vacío, propone SuiteA33.</li>
 <li>Protege Finanzas como Excel exclusivo, sin CSV ni TXT.</li>
 <li>Guarda privacidad sensible: costos, utilidad y comisiones internas.</li>
 <li>Prepara preferencias POS: descuentos, cortesías, transferencias y método de pago.</li>
@@ -571,11 +667,11 @@
 </ul>
 <div class="cfg-report-lockbox">
 <strong>Regla de oro</strong>
-<p>Reportes queda funcional para guardar preferencias generales, sin abrir todavía la puerta de los módulos delicados. Candado puesto; llave guardada.</p>
+<p>Guardar preferencias no cambia los reportes ni las exportaciones actuales.</p>
 </div>
 </aside>
 </div>
-</section><section aria-hidden="true" aria-labelledby="cfg-tab-currency" class="cfg-panel-view" data-panel="currency" hidden="" id="cfg-panel-currency" role="tabpanel">
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-currency" class="cfg-panel-view cfg-e73" data-panel="currency" hidden="" id="cfg-panel-currency" role="tabpanel">
 <div aria-label="Navegación del apartado" class="cfg-section-nav">
 <button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
 <a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
@@ -654,7 +750,7 @@
 <span class="cfg-report-icon">◈</span>
 <div>
 <h3 id="cfg-currency-preview-title">Vista previa monetaria</h3>
-<p>Ejemplo visual del formato base. Es solo referencia de Configuración en esta etapa.</p>
+<p>Ejemplo del formato monetario. No modifica montos de otros módulos.</p>
 </div>
 </div>
 <div class="cfg-currency-preview-grid" aria-label="Vista previa de moneda">
@@ -664,8 +760,8 @@
 </div>
 </section>
 <div class="cfg-report-final-note cfg-currency-safe-note" aria-label="Alcance protegido de Moneda">
-<strong>Alcance de esta etapa</strong>
-<p>Moneda queda funcional para guardar el último T/C, sin conectar todavía POS, Ventas, Caja Chica, Finanzas, Reportes reales, Inventario, Reempaque, Calculadora ni Agenda/Pedidos.</p>
+<strong>Uso actual</strong>
+<p>Conserva el último tipo de cambio. Aún no se aplica a las operaciones ni a los reportes reales de otros módulos.</p>
 </div>
 <div class="cfg-actions cfg-currency-actions">
 <button class="cfg-btn cfg-btn-primary" id="cfg-currency-save" type="submit">Guardar</button>
@@ -694,11 +790,11 @@
 </ul>
 <div class="cfg-report-lockbox cfg-currency-lockbox">
 <strong>Regla de seguridad</strong>
-<p>Esta etapa prepara la llave; todavía no abre la bóveda de POS ni Finanzas. Paso firme, sin patinar en córdobas.</p>
+<p>El tipo de cambio guardado aún no se aplica a las operaciones de POS ni Finanzas.</p>
 </div>
 </aside>
 </div>
-</section><section aria-hidden="true" aria-labelledby="cfg-tab-backup" class="cfg-panel-view" data-panel="backup" hidden="" id="cfg-panel-backup" role="tabpanel">
+</section><section aria-hidden="true" aria-labelledby="cfg-tab-backup" class="cfg-panel-view cfg-e74" data-panel="backup" hidden="" id="cfg-panel-backup" role="tabpanel">
 <div aria-label="Navegación del apartado" class="cfg-section-nav">
 <button class="cfg-nav-chip cfg-nav-chip--back" data-cfg-back="" type="button">← Configuración</button>
 <a aria-label="Ir al Menú principal" class="cfg-nav-chip cfg-nav-chip--home" href="../index.html">⌂ Menú principal</a>
@@ -713,16 +809,32 @@
 <span class="cfg-badge">JSON local</span>
 </div>
 <p class="cfg-copy">Exporta o importa respaldos completos de la Suite A33. También puedes generar e importar JSON personalizados por módulos, submódulos y eventos POS sin borrar datos no incluidos.</p>
+<section class="cfg-backup-action-block" aria-labelledby="cfg-backup-export-title">
+<h3 id="cfg-backup-export-title">Exportar una copia</h3>
+<p>Guarda toda la Suite o selecciona los módulos y eventos que necesitas.</p>
 <div class="cfg-actions">
 <button class="cfg-btn cfg-btn-primary" id="cfg-export-backup" type="button">Exportar respaldo completo</button>
 <button class="cfg-btn cfg-btn-ghost" id="cfg-export-custom-backup" type="button">Exportar respaldo personalizado</button>
+</div>
+</section>
+<section class="cfg-backup-action-block cfg-backup-action-block--import" aria-labelledby="cfg-backup-import-title">
+<h3 id="cfg-backup-import-title">Importar un respaldo</h3>
+<p>Revisa el archivo y las advertencias antes de confirmar. Exporta una copia de los datos actuales primero.</p>
+<div class="cfg-actions">
 <button class="cfg-btn cfg-btn-ghost" id="cfg-import-backup" type="button">Importar JSON</button>
+</div>
+</section>
+<section class="cfg-backup-action-block" aria-labelledby="cfg-backup-audit-title">
+<h3 id="cfg-backup-audit-title">Revisar productos</h3>
+<p>Consulta el estado del catálogo. Las acciones de inactivar y eliminar requieren confirmación.</p>
+<div class="cfg-actions">
 <button class="cfg-btn cfg-btn-ghost" id="cfg-audit-products" type="button">Auditar Productos</button>
 </div>
+</section>
 <div class="cfg-note-grid">
 <div class="cfg-note-card">
 <strong>Qué hace</strong>
-<p>Exporta un archivo completo o personalizado con localStorage e IndexedDB de la Suite detectados en este navegador.</p>
+<p>Incluye los datos de la Suite disponibles en este navegador, en el formato de respaldo existente.</p>
 </div>
 <div class="cfg-note-card">
 <strong>Qué no cambia</strong>
@@ -730,7 +842,7 @@
 </div>
 <div class="cfg-note-card">
 <strong>Cuidado</strong>
-<p>Al importar un respaldo completo se reemplaza todo; al importar uno parcial se fusionan solo las secciones incluidas. Mejor exportar antes; drama evitado.</p>
+<p>Al importar un respaldo completo se reemplazan los bloques incluidos; los ausentes se conservan. Un respaldo parcial fusiona las secciones incluidas. Exporta una copia antes de importar.</p>
 </div>
 </div>
 <div class="cfg-backup-import-log-card">

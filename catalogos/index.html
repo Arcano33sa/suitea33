@@ -35,6 +35,139 @@
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+
+<style id="catalogos-e71-visual">
+/* E7.1: solo catálogos comerciales y sus ventanas de edición. */
+html body .cat-e71 { --cat-text:var(--a33-text); --cat-muted:var(--a33-muted); }
+html body .cat-e71 [hidden] { display:none!important; }
+html body .cat-e71 :is(.cat-panel-card,.cat-product-tools,.cat-product-form-card,.cat-modal-panel,.cat-product-card) { background:var(--a33-surface); color:var(--a33-text); border-color:var(--a33-border); box-shadow:none; }
+html body .cat-e71 .cat-products-intro { grid-template-columns:minmax(0,1fr); gap:10px; padding:22px; }
+html body .cat-e71 .cat-products-intro p { line-height:1.6; }
+html body .cat-e71 .cat-list { display:flex; flex-wrap:wrap; gap:8px 24px; padding-left:18px; color:var(--a33-muted); font-size:13px; }
+html body .cat-e71 :is(.cat-product-tools,.cat-product-form-card) { padding:22px; }
+html body .cat-e71 .cat-toolbar { gap:16px; flex-wrap:wrap; padding-bottom:16px; border-bottom:1px solid var(--a33-border-soft); }
+html body .cat-e71 .cat-product-form { gap:16px; }
+html body .cat-e71 .cat-form-section { grid-column:1/-1; margin:8px 0 0; padding-top:16px; border-top:1px solid var(--a33-border-soft); font-size:14px; color:var(--a33-text); }
+html body .cat-e71 .cat-form-section:first-child { border:0; margin:0; padding:0; }
+html body .cat-e71 .cat-product-form :is(input:not([type="checkbox"]),select,textarea) { background:var(--a33-surface-3); color:var(--a33-text); border-color:var(--a33-border); min-height:46px; font-size:16px; border-radius:12px; }
+html body .cat-e71 :is(input,textarea)::placeholder { color:var(--a33-muted); }
+html body .cat-e71 .cat-flag { min-height:44px; background:var(--a33-surface-2); border:1px solid var(--a33-border-soft); border-radius:12px; padding:10px 12px; color:var(--a33-text); }
+html body .cat-e71 .cat-flag input { flex-shrink:0; }
+html body .cat-e71 :is(.cat-btn,.cat-modal-close) { min-height:44px; font-size:14px; }
+html body .cat-e71 .cat-btn { color:var(--a33-text); background:var(--a33-surface-2); border-color:var(--a33-border); box-shadow:none; }
+html body .cat-e71 .cat-btn-ok { background:var(--a33-red,#7b1818); color:#fff7e3; border-color:var(--a33-red,#7b1818); }
+html body .cat-e71 .cat-btn-danger { color:var(--a33-danger); background:transparent; }
+html body .cat-e71 .cat-btn-warn { background:var(--a33-surface-2); color:var(--a33-text); border-style:dashed; }
+html body .cat-e71 :is(.cat-status,.cat-product-meta div,.cat-customer-view-grid > div) { background:var(--a33-surface-2); border-color:var(--a33-border-soft); }
+html body .cat-e71 .cat-product-card { grid-template-columns:minmax(0,1fr); padding:20px; gap:16px; }
+html body .cat-e71 .cat-product-card.is-inactive { opacity:1; border-style:dashed; }
+html body .cat-e71 .cat-product-title-row strong { width:100%; line-height:1.4; font-size:18px; }
+html body .cat-e71 .cat-product-meta { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+html body .cat-e71 .cat-product-meta b { overflow-wrap:anywhere; }
+html body .cat-e71 .cat-product-actions { justify-content:flex-start; border-top:1px solid var(--a33-border-soft); padding-top:14px; }
+html body .cat-e71 .cat-product-actions .cat-btn-danger { margin-left:auto; }
+html body .cat-e71 .cat-product-warning { border-radius:12px; line-height:1.5; }
+html body .cat-e71 .cat-pill { min-height:30px; }
+html body .cat-e71.cat-modal { z-index:2000; }
+html body .cat-e71 .cat-customer-name-cell > span:first-child { max-width:none; white-space:normal; overflow:visible; overflow-wrap:anywhere; }
+html body .cat-e71 .cat-modal-panel { padding:24px; max-height:calc(100dvh - 32px); }
+html body .cat-e71 .cat-modal-close { background:var(--a33-surface-2); color:var(--a33-text); border-color:var(--a33-border); margin:0 0 12px 12px; }
+html body .cat-e71 .cat-modal-actions { flex-direction:row-reverse; justify-content:flex-start; padding-top:16px; border-top:1px solid var(--a33-border-soft); }
+html body .cat-e71 .cat-icon-btn { width:44px; height:44px; background:var(--a33-surface-2); color:var(--a33-text); border-color:var(--a33-border); }
+html body .cat-e71 .cat-icon-danger { color:var(--a33-danger); }
+html body .cat-e71 #cat-customer-search { min-height:46px; font-size:16px; background:var(--a33-surface-3); color:var(--a33-text); border-color:var(--a33-border); }
+html body .cat-e71 .cat-customer-table :is(th,td) { color:var(--a33-text); border-color:var(--a33-border-soft); }
+html body .cat-e71 .cat-customer-table th { background:var(--a33-surface-2); }
+html body .cat-e71 .cat-customer-table tbody tr.is-inactive { opacity:1; }
+html body .cat-e71 :is(button,input,select,textarea,.cat-customer-table-scroll):focus-visible { outline:3px solid var(--a33-gold); outline-offset:3px; }
+@media(max-width:740px) {
+ html body .cat-e71 .cat-product-meta { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ html body .cat-e71 .cat-customer-table { min-width:0; display:block; }
+ html body .cat-e71 .cat-customer-table thead { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); }
+ html body .cat-e71 .cat-customer-table tbody { display:block; }
+ html body .cat-e71 .cat-customer-table tr { display:grid; gap:10px; padding:14px 0; border-bottom:1px solid var(--a33-border-soft); }
+ html body .cat-e71 .cat-customer-table td { display:block; padding:0; border:0; white-space:normal; text-align:left!important; }
+ html body .cat-e71 .cat-customer-table td::before { display:block; font-size:12px; font-weight:600; color:var(--a33-muted); margin-bottom:4px; }
+ html body .cat-e71 .cat-customer-table td:nth-child(1)::before { content:"Nombre"; }
+ html body .cat-e71 .cat-customer-table td:nth-child(2)::before { content:"Estado"; }
+ html body .cat-e71 .cat-customer-table td:nth-child(3)::before { content:"Celular"; }
+ html body .cat-e71 .cat-customer-table td:nth-child(4)::before { content:"Última compra"; }
+ html body .cat-e71 .cat-customer-table td:nth-child(5)::before { content:"Acciones"; }
+ html body .cat-e71 .cat-icon-actions { display:flex; justify-content:flex-start; flex-wrap:wrap; }
+
+ html body .cat-e71 :is(.cat-products-intro,.cat-product-tools,.cat-product-form-card,.cat-product-card,.cat-modal-panel) { padding:16px; }
+ html body .cat-e71 .cat-product-actions .cat-btn-danger { margin:0; }
+}
+@media(max-width:600px) {
+ html body .cat-e71 .cat-product-form { grid-template-columns:minmax(0,1fr); }
+ html body .cat-e71 .cat-actions-end .cat-btn { width:100%; }
+}
+</style>
+
+<style id="catalogos-e72-visual">
+/* E7.2: Costos y Materia Prima; presentación sin cambios de cálculo. */
+html body .cat-e72 { --cat-text:var(--a33-text); --cat-muted:var(--a33-muted); }
+html body .cat-e72 [hidden] { display:none!important; }
+html body .cat-e72 :is(.cat-panel-card,.cat-product-tools,.cat-product-form-card,.cat-modal-panel) { background:var(--a33-surface); color:var(--a33-text); border-color:var(--a33-border); box-shadow:none; padding:22px; }
+html body .cat-e72 .cat-products-intro { grid-template-columns:minmax(0,1fr); gap:10px; }
+html body .cat-e72 .cat-products-intro p { line-height:1.6; }
+html body .cat-e72 .cat-list { display:flex; flex-wrap:wrap; gap:8px 24px; padding-left:18px; font-size:13px; color:var(--a33-muted); }
+html body .cat-e72 .cat-toolbar { gap:16px; flex-wrap:wrap; padding-bottom:16px; border-bottom:1px solid var(--a33-border-soft); }
+html body .cat-e72 .cat-product-form { gap:16px; }
+html body .cat-e72 :is(input:not([type="checkbox"]),select,textarea) { background:var(--a33-surface-3); color:var(--a33-text); border-color:var(--a33-border); font-size:16px; min-height:46px; border-radius:12px; }
+html body .cat-e72 :is(input,textarea)::placeholder { color:var(--a33-muted); }
+html body .cat-e72 .cat-flag { min-height:44px; background:var(--a33-surface-2); border:1px solid var(--a33-border-soft); border-radius:12px; padding:10px 12px; color:var(--a33-text); }
+html body .cat-e72 :is(.cat-btn,.cat-modal-close) { min-height:44px; font-size:14px; background:var(--a33-surface-2); color:var(--a33-text); border-color:var(--a33-border); box-shadow:none; }
+html body .cat-e72 .cat-btn-ok { background:var(--a33-red,#7b1818); color:#fff7e3; border-color:var(--a33-red,#7b1818); }
+html body .cat-e72 .cat-icon-btn { width:44px; height:44px; background:var(--a33-surface-2); color:var(--a33-text); border-color:var(--a33-border); }
+html body .cat-e72 .cat-icon-danger { color:var(--a33-danger); }
+html body .cat-e72 :is(.cat-status,.cat-costs-summary > div,.cat-costs-table-wrap,.cat-raw-material-table-scroll) { background:var(--a33-surface-2); border-color:var(--a33-border); }
+html body .cat-e72 .cat-costs-summary { gap:12px; margin:18px 0; }
+html body .cat-e72 .cat-costs-summary > div { text-align:left; padding:14px; }
+html body .cat-e72 .cat-costs-summary span { color:var(--a33-text); font-size:22px; }
+html body .cat-e72 .cat-costs-summary small { font-size:12px; line-height:1.4; }
+html body .cat-e72 .cat-costs-table :is(th,td) { border-color:var(--a33-border-soft); }
+html body .cat-e72 .cat-costs-table thead th { background:var(--a33-surface-2); color:var(--a33-text); }
+html body .cat-e72 .cat-costs-table tbody th { background:var(--a33-surface); }
+html body .cat-e72 .cat-costs-table tbody td { background:var(--a33-surface-3); }
+html body .cat-e72 .cat-cost-col-product { width:170px; }
+html body .cat-e72 .cat-cost-product-name { white-space:normal; overflow-wrap:anywhere; line-height:1.4; }
+html body .cat-e72 .cat-cost-total :is(th,td) { border-top:2px solid var(--a33-border); background:var(--a33-surface-2); }
+html body .cat-e72 .cat-cost-total-value.is-complete { color:var(--a33-text); font-size:16px; }
+html body .cat-e72 .cat-raw-material-table :is(th,td) { color:var(--a33-text); border-color:var(--a33-border-soft); }
+html body .cat-e72 .cat-raw-material-table th { background:var(--a33-surface-2); }
+html body .cat-e72 .cat-raw-material-table tbody tr.is-inactive { opacity:1; }
+html body .cat-e72 .cat-raw-material-name { max-width:none; white-space:normal; overflow:visible; overflow-wrap:anywhere; min-width:160px; }
+html body .cat-e72.cat-modal { z-index:2000; }
+html body .cat-e72 .cat-modal-panel { max-height:calc(100dvh - 32px); }
+html body .cat-e72 .cat-modal-actions { flex-direction:row-reverse; justify-content:flex-start; padding-top:16px; border-top:1px solid var(--a33-border-soft); }
+html body .cat-e72 :is(button,input,select,textarea,.cat-costs-table-wrap,.cat-raw-material-table-scroll):focus-visible { outline:3px solid var(--a33-gold); outline-offset:3px; }
+@media(max-width:740px) {
+ html body .cat-e72 :is(.cat-panel-card,.cat-product-tools,.cat-product-form-card,.cat-modal-panel) { padding:16px; }
+ html body .cat-e72 .cat-costs-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ html body .cat-e72 .cat-cost-col-reference { width:112px; }
+ html body .cat-e72 .cat-costs-table tr > *:is(:nth-child(2),:nth-child(3)) { position:static; box-shadow:none; }
+ html body .cat-e72 .cat-costs-table :is(th,td) { padding:10px 8px; }
+ html body .cat-e72 .cat-raw-material-table { min-width:0; display:block; }
+ html body .cat-e72 .cat-raw-material-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+ html body .cat-e72 .cat-raw-material-table tbody { display:block; }
+ html body .cat-e72 .cat-raw-material-table tr { display:grid; gap:10px; padding:14px; border-bottom:1px solid var(--a33-border-soft); }
+ html body .cat-e72 .cat-raw-material-table td { display:block; padding:0; border:0; white-space:normal; text-align:left!important; }
+ html body .cat-e72 .cat-raw-material-table td::before { display:block; color:var(--a33-muted); font-size:12px; margin-bottom:4px; }
+ html body .cat-e72 .cat-raw-material-table td:nth-child(1)::before { content:"Nombre"; }
+ html body .cat-e72 .cat-raw-material-table td:nth-child(2)::before { content:"Categoría"; }
+ html body .cat-e72 .cat-raw-material-table td:nth-child(3)::before { content:"Unidad"; }
+ html body .cat-e72 .cat-raw-material-table td:nth-child(4)::before { content:"Precio de referencia"; }
+ html body .cat-e72 .cat-raw-material-table td:nth-child(5)::before { content:"Estado"; }
+ html body .cat-e72 .cat-raw-material-table td:nth-child(6)::before { content:"Última actualización"; }
+ html body .cat-e72 .cat-raw-material-table td:nth-child(7)::before { content:"Acciones"; }
+ html body .cat-e72 .cat-icon-actions { display:flex; justify-content:flex-start; flex-wrap:wrap; }
+}
+@media(max-width:600px) {
+ html body .cat-e72 .cat-product-form { grid-template-columns:minmax(0,1fr); }
+ html body .cat-e72 .cat-actions-end .cat-btn { width:100%; }
+}
+</style>
 </head>
 <body>
   <header class="a33-header" role="banner" data-a33-module="catalogos" data-a33-context="catalogos">
@@ -109,17 +242,17 @@
           <button class="cat-nav-chip cat-nav-chip--back" data-cat-back type="button">← Catálogos</button>
           <a class="cat-nav-chip cat-nav-chip--home" href="../index.html" aria-label="Ir al Menú principal">⌂ Menú principal</a>
         </nav>
-        <section class="cat-panel" id="panel-productos" role="region" aria-labelledby="tab-productos" data-panel="productos" aria-hidden="true" tabindex="-1" hidden>
+        <section class="cat-panel cat-e71" id="panel-productos" role="region" aria-labelledby="tab-productos" data-panel="productos" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Productos maestros</p>
               <h2>Fuente maestra de productos</h2>
-              <p>Administra aquí productos, precios actuales, estado, capacidad y campos maestros para Receta, Letra, POS, Envase y Tapa. En esta etapa solo se preparan datos; las conexiones dinámicas vendrán después.</p>
+              <p>Administra productos, precios, capacidad y asociaciones con envases y tapas.</p>
             </div>
             <ul class="cat-list">
               <li>Los cambios aplican hacia adelante.</li>
               <li>No recalcula ventas, pedidos ni cierres históricos.</li>
-              <li>Duplicados legacy se resuelven por lectura canónica segura.</li>
+              <li>Conserva las referencias de productos históricos.</li>
             </ul>
           </article>
 
@@ -144,6 +277,7 @@
               <h2>Agregar producto vendible</h2>
             </div>
             <div class="cat-product-form">
+              <h3 class="cat-form-section">Presentación y precio</h3>
               <label>Nombre
                 <input id="cat-new-name" autocomplete="off" placeholder="Ej: Botella especial">
               </label>
@@ -156,6 +290,7 @@
               <label>Costo unitario ref. (C$)
                 <input id="cat-new-unit-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Opcional">
               </label>
+              <h3 class="cat-form-section">Asociaciones</h3>
               <label>Letra
                 <input id="cat-new-letra" autocomplete="off" autocapitalize="characters" maxlength="4" placeholder="Ej: C">
               </label>
@@ -173,8 +308,9 @@
                 <select id="cat-new-vaso-fisico">
                   <option value="">Sin asociación</option>
                 </select>
-                <small>Opcional · usa el ID estable de Inventario Varios.</small>
+                <small>Opcional · selecciona un vaso de Inventario Varios.</small>
               </label>
+              <h3 class="cat-form-section">Uso y estado</h3>
               <label class="cat-flag"><input id="cat-new-receta" type="checkbox"> Receta</label>
               <label class="cat-flag"><input id="cat-new-pos" type="checkbox" checked> POS</label>
               <label class="cat-flag"><input id="cat-new-active" type="checkbox" checked> Activo</label>
@@ -187,7 +323,7 @@
         </section>
 
 
-        <section class="cat-panel" id="panel-costos" role="region" aria-labelledby="tab-costos" data-panel="costos" aria-hidden="true" tabindex="-1" hidden>
+        <section class="cat-panel cat-e72" id="panel-costos" role="region" aria-labelledby="tab-costos" data-panel="costos" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Costos maestros</p>
@@ -222,7 +358,8 @@
               <div><span id="cat-costs-summary-no-recipe">0</span><small>Sin receta legible</small></div>
             </div>
 
-            <div class="cat-costs-table-wrap">
+            <p class="cat-muted">Ingresa el precio de la presentación comprada y su contenido en ml. Los costos por producto se calculan desde sus recetas. Desliza la tabla para ver todas las columnas.</p>
+            <div class="cat-costs-table-wrap" tabindex="0" role="region" aria-label="Tabla desplazable de costos por producto">
               <table class="cat-costs-table" aria-label="Costos completos por producto">
                 <colgroup id="cat-costs-colgroup">
                   <col class="cat-cost-col-reference">
@@ -232,8 +369,8 @@
                 <thead>
                   <tr id="cat-costs-head-row">
                     <th scope="col">Referencia</th>
-                    <th scope="col">Precio</th>
-                    <th scope="col">ML</th>
+                    <th scope="col">Precio (C$)</th>
+                    <th scope="col">Contenido (ml)</th>
                   </tr>
                 </thead>
                 <tbody id="cat-costs-body">
@@ -285,16 +422,16 @@
         </section>
 
 
-        <section class="cat-panel" id="panel-materia-prima" role="region" aria-labelledby="tab-materia-prima" data-panel="materia-prima" aria-hidden="true" tabindex="-1" hidden>
+        <section class="cat-panel cat-e72" id="panel-materia-prima" role="region" aria-labelledby="tab-materia-prima" data-panel="materia-prima" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Fuente oficial para Compras</p>
               <h2>Materia Prima</h2>
-              <p>Administra manualmente los artículos, unidades y precios de referencia que utilizará Agenda → Compras. El catálogo inicia vacío y no crea registros desde otros módulos.</p>
+              <p>Administra artículos, unidades y precios de referencia para Agenda → Compras.</p>
             </div>
             <ul class="cat-list">
               <li>Solo los artículos activos estarán disponibles para nuevas Compras.</li>
-              <li>Los cambios aplican hacia adelante; las compras guardarán su propia fotografía.</li>
+              <li>Las compras guardadas conservan sus nombres, unidades y precios históricos.</li>
               <li>No modifica Inventario, Producción, Finanzas, POS ni costos de recetas.</li>
             </ul>
           </article>
@@ -365,12 +502,12 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-envases" role="region" aria-labelledby="tab-envases" data-panel="envases" aria-hidden="true" tabindex="-1" hidden>
+        <section class="cat-panel cat-e71" id="panel-envases" role="region" aria-labelledby="tab-envases" data-panel="envases" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Envases maestros</p>
               <h2>Botellas dinámicas</h2>
-              <p>Administra aquí botellas y envases futuros para preparar Producción/Inventario sin tocar todavía calculadoras, lotes, POS ni movimientos operativos.</p>
+              <p>Administra nombres, capacidades y estado de los envases.</p>
             </div>
             <ul class="cat-list">
               <li>Catálogo maestro independiente de productos vendibles.</li>
@@ -419,12 +556,12 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-tapas" role="region" aria-labelledby="tab-tapas" data-panel="tapas" aria-hidden="true" tabindex="-1" hidden>
+        <section class="cat-panel cat-e71" id="panel-tapas" role="region" aria-labelledby="tab-tapas" data-panel="tapas" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Tapas maestras</p>
               <h2>Tapas y corchos dinámicos</h2>
-              <p>Administra aquí tapas, corchos o cierres equivalentes para preparar Producción/Inventario sin descontar todavía existencias; la asociación se define desde Productos.</p>
+              <p>Administra tapas y corchos. Asócialos a cada presentación desde Productos.</p>
             </div>
             <ul class="cat-list">
               <li>Catálogo maestro independiente de envases y productos vendibles.</li>
@@ -470,12 +607,12 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-extras" role="region" aria-labelledby="tab-extras" data-panel="extras" aria-hidden="true" tabindex="-1" hidden>
+        <section class="cat-panel cat-e71" id="panel-extras" role="region" aria-labelledby="tab-extras" data-panel="extras" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Extras maestros</p>
               <h2>Complementos reutilizables</h2>
-              <p>Administra aquí los extras base. POS puede tomarlos como plantilla para el evento activo, conservando precio y snapshot histórico en cada venta.</p>
+              <p>Administra aquí los extras base. POS puede tomarlos como plantilla para el evento activo, conservando el precio y los datos guardados en cada venta.</p>
             </div>
             <ul class="cat-list">
               <li>Los cambios aplican hacia adelante.</li>
@@ -525,7 +662,7 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-bancos" role="region" aria-labelledby="tab-bancos" data-panel="bancos" aria-hidden="true" tabindex="-1" hidden>
+        <section class="cat-panel cat-e71" id="panel-bancos" role="region" aria-labelledby="tab-bancos" data-panel="bancos" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Bancos maestros</p>
@@ -591,17 +728,17 @@
           </article>
         </section>
 
-        <section class="cat-panel" id="panel-clientes" role="region" aria-labelledby="tab-clientes" data-panel="clientes" aria-hidden="true" tabindex="-1" hidden>
+        <section class="cat-panel cat-e71" id="panel-clientes" role="region" aria-labelledby="tab-clientes" data-panel="clientes" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>
               <p class="cat-eyebrow">Clientes maestros</p>
               <h2>Directorio central para POS</h2>
-              <p>Administra aquí clientes usados por POS sin mover ventas históricas. Esta vista usa la misma fuente local de Catálogos/POS para evitar duplicados visuales sin tocar históricos.</p>
+              <p>Administra el directorio de clientes de POS. Los cambios conservan las ventas históricas.</p>
             </div>
             <ul class="cat-list">
               <li>Los clientes inactivos se conservan para trazabilidad.</li>
               <li>No cambia ventas, cierres ni históricos.</li>
-              <li>No crea rutas nuevas ni sincronización remota para clientes.</li>
+              <li>Los datos se guardan en este navegador.</li>
             </ul>
           </article>
 
@@ -660,7 +797,7 @@
 
 
 
-  <div id="cat-raw-material-modal" class="cat-modal" aria-hidden="true">
+  <div id="cat-raw-material-modal" class="cat-modal cat-e72" aria-hidden="true">
     <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-raw-material-modal-title">
       <button id="cat-raw-material-close" class="cat-modal-close" type="button">Cerrar</button>
       <p class="cat-eyebrow">Materia Prima</p>
@@ -699,7 +836,7 @@
     </div>
   </div>
 
-  <div id="cat-product-modal" class="cat-modal" aria-hidden="true">
+  <div id="cat-product-modal" class="cat-modal cat-e71" aria-hidden="true">
     <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-product-modal-title">
       <button id="cat-product-close" class="cat-modal-close" type="button">Cerrar</button>
       <p class="cat-eyebrow">Producto maestro</p>
@@ -708,6 +845,7 @@
       <div id="cat-product-history-note" class="cat-warn" hidden>Este producto puede tener ventas, inventario, lotes o reempaques asociados. Los cambios aplican hacia adelante; la Letra queda protegida cuando exista historial.</div>
 
       <div class="cat-product-form cat-product-form-modal">
+        <h3 class="cat-form-section">Presentación y precio</h3>
         <label>Nombre del producto
           <input id="cat-edit-name" autocomplete="off" placeholder="Nombre">
         </label>
@@ -720,6 +858,7 @@
         <label>Costo unitario ref. (C$)
           <input id="cat-edit-unit-cost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
         </label>
+        <h3 class="cat-form-section">Asociaciones</h3>
         <label>Letra
           <input id="cat-edit-letra" autocomplete="off" autocapitalize="characters" maxlength="4" placeholder="Ej: C">
         </label>
@@ -739,6 +878,7 @@
           </select>
           <small>Opcional · no descuenta inventario en esta etapa.</small>
         </label>
+        <h3 class="cat-form-section">Uso y estado</h3>
         <label class="cat-flag"><input id="cat-edit-receta" type="checkbox"> Receta</label>
         <label class="cat-flag"><input id="cat-edit-pos" type="checkbox"> POS</label>
         <label class="cat-flag"><input id="cat-edit-active" type="checkbox"> Activo</label>
@@ -753,7 +893,7 @@
   </div>
 
 
-  <div id="cat-envase-modal" class="cat-modal" aria-hidden="true">
+  <div id="cat-envase-modal" class="cat-modal cat-e71" aria-hidden="true">
     <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-envase-modal-title">
       <button id="cat-envase-close" class="cat-modal-close" type="button">Cerrar</button>
       <p class="cat-eyebrow">Envase maestro</p>
@@ -781,7 +921,7 @@
     </div>
   </div>
 
-  <div id="cat-tapa-modal" class="cat-modal" aria-hidden="true">
+  <div id="cat-tapa-modal" class="cat-modal cat-e71" aria-hidden="true">
     <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-tapa-modal-title">
       <button id="cat-tapa-close" class="cat-modal-close" type="button">Cerrar</button>
       <p class="cat-eyebrow">Tapa maestra</p>
@@ -806,7 +946,7 @@
     </div>
   </div>
 
-  <div id="cat-extra-modal" class="cat-modal" aria-hidden="true">
+  <div id="cat-extra-modal" class="cat-modal cat-e71" aria-hidden="true">
     <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-extra-modal-title">
       <button id="cat-extra-close" class="cat-modal-close" type="button">Cerrar</button>
       <p class="cat-eyebrow">Extra maestro</p>
@@ -837,7 +977,7 @@
     </div>
   </div>
 
-  <div id="cat-bank-modal" class="cat-modal" aria-hidden="true">
+  <div id="cat-bank-modal" class="cat-modal cat-e71" aria-hidden="true">
     <div class="cat-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-bank-modal-title">
       <button id="cat-bank-close" class="cat-modal-close" type="button">Cerrar</button>
       <p class="cat-eyebrow">Banco maestro</p>
@@ -879,13 +1019,13 @@
   </div>
 
 
-  <div id="cat-customer-modal" class="cat-modal" aria-hidden="true">
+  <div id="cat-customer-modal" class="cat-modal cat-e71" aria-hidden="true">
     <div class="cat-modal-panel cat-customer-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-customer-modal-title">
       <button id="cat-customer-close" class="cat-modal-close" type="button">Cerrar</button>
       <p class="cat-eyebrow">Cliente maestro</p>
       <h2 id="cat-customer-modal-title">Editar cliente</h2>
       <p id="cat-customer-current" class="cat-muted">Cliente actual: —</p>
-      <div class="cat-warn">Los cambios aplican hacia adelante. Ventas históricas conservan su snapshot y no se reescriben.</div>
+      <div class="cat-warn">Los cambios aplican hacia adelante. Las ventas históricas conservan sus datos y no se reescriben.</div>
 
       <div class="cat-product-form cat-product-form-modal cat-customer-form-modal">
         <label>Nombre
@@ -914,7 +1054,7 @@
   </div>
 
 
-  <div id="cat-customer-view-modal" class="cat-modal" aria-hidden="true">
+  <div id="cat-customer-view-modal" class="cat-modal cat-e71" aria-hidden="true">
     <div class="cat-modal-panel cat-customer-view-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cat-customer-view-title">
       <button id="cat-customer-view-close" class="cat-modal-close" type="button">Cerrar</button>
       <p class="cat-eyebrow">Cliente maestro</p>
