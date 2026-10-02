@@ -19,6 +19,27 @@
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+
+<style id="cmd-e82-visual">
+.cmd-main{max-width:1320px;gap:22px;}
+.cmd-block-title{line-height:1.35;}
+.cmd-block-head .cmd-muted{max-width:70ch;}
+.cmd-operational-status strong{white-space:normal;overflow-wrap:anywhere;line-height:1.4;}
+.cmd-operational-status article:last-child{border-left:4px solid var(--cmd-ok);}
+.cmd-use-pos{padding:16px;border:1px solid var(--cmd-border);border-radius:14px;background:var(--cmd-surface);}
+.cmd-use-pos .cmd-muted{margin-top:8px;}
+.cmd-metric-value{font-variant-numeric:tabular-nums;overflow-wrap:anywhere;line-height:1.3;}
+.cmd-compact-metric strong,.cmd-inventory-grid b{font-variant-numeric:tabular-nums;}
+#attentionBlock{border-color:var(--cmd-border-strong);}
+.cmd-attention-item small,.cmd-operational-item small,.cmd-inventory-risk small{line-height:1.5;}
+.cmd-category-head{flex-wrap:wrap;gap:10px;}
+.cmd-btn,.cmd-pill-btn,.cmd-category-link,.cmd-icon-action,.cmd-picker-btn,.cmd-icon-btn{min-height:44px;}
+.cmd-subsection-head{flex-wrap:wrap;gap:8px;}
+.cmd-modal{z-index:2200;}
+#btnConfirmUsePos{background:var(--cmd-primary-bottom);color:#fff;border-color:var(--cmd-primary-bottom);}
+.cmd-modal-body strong{overflow-wrap:anywhere;line-height:1.4;padding:14px;border-radius:12px;background:var(--cmd-gold-soft);border:1px solid var(--cmd-border);}
+@media(max-width:560px){.cmd-block-head{flex-wrap:wrap;gap:12px;}.cmd-block-head>.cmd-pill-btn{width:100%;}.cmd-main{gap:16px;}.cmd-use-pos{padding:12px;}.cmd-modal-actions .cmd-btn{white-space:normal;}}
+</style>
 </head>
 <body>
   <header class="a33-header" role="banner" data-a33-module="centro-mando">
@@ -35,8 +56,8 @@
     <section class="cmd-block cmd-operational" id="operationalHeader" aria-labelledby="operationalTitle">
       <div class="cmd-block-head">
         <div>
-          <h1 class="cmd-block-title" id="operationalTitle">Encabezado operativo</h1>
-          <p class="cmd-muted">La visualización de Centro de Mando es independiente del evento activo del POS.</p>
+          <h1 class="cmd-block-title" id="operationalTitle">Evento y contexto</h1>
+          <p class="cmd-muted">Consulta un evento o el resumen global. Visualizar otro evento no cambia el activo en POS.</p>
         </div>
       </div>
 
@@ -46,11 +67,11 @@
           <strong id="operationalDate">—</strong>
         </article>
         <article>
-          <span>Estado de visualización</span>
+          <span>Vista actual</span>
           <strong id="visualModeState">—</strong>
         </article>
         <article>
-          <span>Activo en POS</span>
+          <span>Evento activo en POS</span>
           <strong id="posActiveEventName">—</strong>
         </article>
       </div>
@@ -68,7 +89,7 @@
 
         <div class="cmd-use-pos" id="usePosArea">
           <button class="cmd-btn cmd-btn-primary" id="btnUseInPOS" type="button" disabled>Usar en POS</button>
-          <div class="cmd-muted" id="usePosHint">Solo esta acción puede cambiar el evento activo del POS.</div>
+          <div class="cmd-muted" id="usePosHint">Cambiar el evento activo en POS requiere tu confirmación.</div>
         </div>
       </div>
     </section>
@@ -116,7 +137,7 @@
       <div class="cmd-block-head cmd-attention-head">
         <div>
           <h2 class="cmd-block-title" id="attentionTitle">Atención requerida</h2>
-          <p class="cmd-muted">Alertas operativas reales, priorizadas y sin duplicados.</p>
+          <p class="cmd-muted">Revisa primero las alertas que requieren una acción.</p>
         </div>
         <span class="cmd-alert-count" id="attentionCount" aria-label="Cantidad de alertas">0</span>
       </div>
@@ -151,7 +172,7 @@
 
       <div class="cmd-subsection-head">
         <h3>Pedidos más urgentes</h3>
-        <span class="cmd-muted">Máximo 3</span>
+        <span class="cmd-muted">Hasta 3 pendientes</span>
       </div>
       <div class="cmd-urgent-list" id="ordersUrgentList"></div>
       <div class="cmd-list-more" id="ordersMoreWrap" hidden>
@@ -222,8 +243,8 @@
         <article class="is-warning"><span>Cerca del mínimo</span><b id="inventoryNear">—</b></article>
       </div>
       <div class="cmd-subsection-head cmd-inventory-subhead">
-        <h3>Elementos principales</h3>
-        <span class="cmd-muted">Máximo 3</span>
+        <h3>Existencias que requieren atención</h3>
+        <span class="cmd-muted">Hasta 3 elementos</span>
       </div>
       <div class="cmd-inventory-risk-list" id="inventoryRiskList"></div>
       <div class="cmd-empty-line cmd-all-clear" id="inventoryAllClear" hidden>Inventario: Todo en orden ✅</div>
@@ -244,19 +265,19 @@
 
   <div class="cmd-modal" id="usePosModal" hidden>
     <div class="cmd-modal-overlay" data-close-use-pos="1"></div>
-    <div class="cmd-modal-card" role="dialog" aria-modal="true" aria-labelledby="usePosModalTitle">
+    <div class="cmd-modal-card" role="dialog" aria-modal="true" aria-labelledby="usePosModalTitle" aria-describedby="usePosExplanation">
       <div class="cmd-modal-head">
-        <h2 id="usePosModalTitle">Confirmar evento activo</h2>
+        <h2 id="usePosModalTitle">Cambiar evento activo en POS</h2>
         <button class="cmd-icon-btn" type="button" data-close-use-pos="1" aria-label="Cerrar">✕</button>
       </div>
       <div class="cmd-modal-body">
-        <p>Se cambiará el evento activo del POS a:</p>
+        <p id="usePosExplanation">Al confirmar, POS utilizará este evento para trabajar:</p>
         <strong id="usePosTargetName">—</strong>
         <p class="cmd-muted" id="usePosCurrentName">Actualmente: —</p>
       </div>
       <div class="cmd-modal-actions">
         <button class="cmd-btn" id="btnCancelUsePos" type="button">Cancelar</button>
-        <button class="cmd-btn cmd-btn-primary" id="btnConfirmUsePos" type="button">Confirmar y usar</button>
+        <button class="cmd-btn cmd-btn-primary" id="btnConfirmUsePos" type="button">Confirmar cambio</button>
       </div>
     </div>
   </div>

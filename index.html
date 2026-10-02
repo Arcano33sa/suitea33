@@ -561,6 +561,24 @@
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+<style id="menu-e81-visual">
+#home-view .menu-section + .menu-section{margin-top:2rem;}
+#home-view .menu-title{font-size:1.05rem;letter-spacing:.025em;color:var(--text);}
+#home-view .grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;}
+#home-view .card{display:flex;flex-direction:column;gap:.6rem;min-width:0;}
+#home-view .pill{align-self:flex-start;}
+#home-view .card h2{margin:0;line-height:1.35;}
+#home-view .card p{margin:0;line-height:1.55;}
+#home-view .footer-row{margin-top:auto;padding-top:.5rem;gap:.65rem;flex-wrap:wrap;line-height:1.4;}
+#home-view .link-btn{margin-left:auto;min-height:44px;padding:.65rem 1rem;text-decoration:none;font-size:.9rem;white-space:nowrap;}
+#home-view .card:focus-within{border-color:var(--accent);}
+#home-view .link-btn:focus-visible{outline:3px solid var(--accent);outline-offset:4px;}
+#home-view .menu-featured{border:2px solid var(--accent);}
+@media(min-width:1000px){#home-view .menu-section:first-of-type .grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:800px){#home-view .grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:520px){#home-view .grid{grid-template-columns:minmax(0,1fr);}}
+@media(prefers-reduced-motion:reduce){#home-view .card,#home-view .card::before{transition:none;}#home-view .card:hover{transform:none;}}
+</style>
 </head>
 <body>
 
@@ -576,159 +594,135 @@
     <main>
       <div id="home-view">
       <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.35rem;">
-        Selecciona un módulo para trabajar. Puedes fijar esta Suite en la pantalla de inicio de tu teléfono para acceder más rápido.
+        Selecciona una tarea o abre Centro de Mando para revisar los pendientes.
       </p>
 
-      <section class="menu-section">
-        <h2 class="menu-title">Suite A33 Hecha por El Alquimista</h2>
-        <div class="grid">
-        <article class="card" data-link="calculadora/index.html">
-          <div class="pill"><span>🧪</span><span>Producción</span></div>
-          <h2>Calculadora de Producción</h2>
-          <p>Define cantidades de los productos activos con Receta y obtén la materia prima y volumen final.</p>
-          <div class="footer-row">
-            <span>Basado en recetas A33.</span>
-            <button class="link-btn"><span>Ir</span> →</button>
-          </div>
-        </article>
-
-        <article class="card" data-link="lotes/index.html">
-          <div class="pill"><span>📦</span><span>Lotes</span></div>
-          <h2>Control de Lotes</h2>
-          <p>Registra cada lote producido con fechas, volúmenes y presentaciones. Exporta CSV y consulta historial.</p>
-          <div class="footer-row">
-            <span>Seguimiento interno.</span>
-            <button class="link-btn"><span>Ir</span> →</button>
-          </div>
-        </article>
-        <article class="card" data-link="inventario/index.html">
-          <div class="pill"><span>📊</span><span>Inventario</span></div>
-          <h2>Inventario</h2>
-          <p>Control de insumos líquidos y botellas por presentación, con alertas internas.</p>
-          <div class="footer-row">
-            <span>Se ajusta con la producción.</span>
-            <button class="link-btn"><span>Ir</span> →</button>
-          </div>
-        </article>
-
-        <article class="card" data-link="pos/index.html">
+<section class="menu-section" aria-labelledby="menu-group-0"><h2 class="menu-title" id="menu-group-0">Operación diaria</h2><div class="grid">
+<article class="card menu-featured" id="card-centro-mando" data-link="centro-mando/index.html">
+            <div class="pill"><span>🧭</span><span>Centro</span></div>
+            <h2>Centro de Mando</h2>
+            <p>Consulta ventas, pendientes y alertas para decidir qué atender primero.</p>
+            <div class="footer-row">
+              <span>Resumen y accesos operativos.</span>
+              <a class="link-btn" href="centro-mando/index.html" aria-label="Abrir Centro de Mando">Abrir →</a>
+            </div>
+          </article>
+<article class="card" data-link="pos/index.html">
           <div class="pill"><span>🧾</span><span>Ventas</span></div>
           <h2>A33 POS · Eventos</h2>
           <p>Registra ventas por evento, manejo de inventario y métodos de pago. Funciona offline.</p>
           <div class="footer-row">
             <span>Incluye descuentos por unidad.</span>
-            <button class="link-btn"><span>Ir</span> →</button>
+            <a class="link-btn" href="pos/index.html" aria-label="Abrir A33 POS · Eventos">Abrir →</a>
           </div>
         </article>
-        <article class="card" data-link="analitica/index.html">
-          <div class="pill"><span>📈</span><span>Analítica</span></div>
-          <h2>Analítica de Ventas</h2>
-          <p>Resumen mensual, comparativo por evento y por presentación, en solo lectura desde el POS.</p>
-          <div class="footer-row">
-            <span>No modifica datos, solo analiza.</span>
-            <button class="link-btn"><span>Ir</span> →</button>
-          </div>
-        </article>
-        <article class="card" data-link="pedidos/index.html">
+<article class="card" data-link="pedidos/index.html">
           <div class="pill"><span>📅</span><span>Pedidos</span></div>
           <h2>Planificación de Pedidos</h2>
           <p>Registra pedidos de clientes, totales a pagar y marca cuándo han sido entregados.</p>
           <div class="footer-row">
             <span>Enlace opcional a lotes.</span>
-            <button class="link-btn"><span>Ir</span> →</button>
+            <a class="link-btn" href="pedidos/index.html" aria-label="Abrir Planificación de Pedidos">Abrir →</a>
           </div>
         </article>
-
-      </div>
-      </section>
-
-      <section class="menu-section">
-        <h2 class="menu-title">Gestión Operativa</h2>
-        <div class="grid">
-          <article class="card" data-link="finanzas/index.html#tab=tablero">
-            <div class="pill"><span>📊</span><span>Finanzas</span></div>
-            <h2>Tablero Finanzas</h2>
-            <p>Centro operativo de ventas, caja, bancos, gastos, ingresos adicionales y utilidad por período o evento.</p>
-            <div class="footer-row">
-              <span>Vista operativa.</span>
-              <button class="link-btn"><span>Ir</span> →</button>
-            </div>
-          </article>
-
-          <article class="card" data-link="finanzas/index.html#tab=cajachica">
-            <div class="pill"><span>💵</span><span>Caja Chica</span></div>
-            <h2>Caja Chica</h2>
-            <p>Control rápido del efectivo físico en C$ y USD.</p>
-            <div class="footer-row">
-              <span>Acceso directo operativo.</span>
-              <button class="link-btn"><span>Ir</span> →</button>
-            </div>
-          </article>
-
-          <article class="card" data-link="catalogos/index.html">
-            <div class="pill"><span>🗂️</span><span>Datos maestros</span></div>
-            <h2>Catálogos</h2>
-            <p>Productos, envases, tapas, extras, bancos y clientes que alimentan la Suite.</p>
-            <div class="footer-row">
-              <span>Base operativa central.</span>
-              <button class="link-btn"><span>Ir</span> →</button>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      
-      <section class="menu-section">
-        <h2 class="menu-title">NÚCLEO A33</h2>
-        <div class="grid support-grid" id="support-grid">
-
-          <article class="card" id="card-config-hub" data-link="configuracion/index.html">
-            <div class="pill"><span>⚙️</span><span>Configuración</span></div>
-            <h2>Configuración</h2>
-            <p>Ajustes, respaldo y opciones generales de la Suite.</p>
-            <div class="footer-row">
-              <span>Organización general</span>
-              <button class="link-btn secondary"><span>Abrir</span> →</button>
-            </div>
-          </article>
-
-          <article class="card" id="card-centro-mando" data-link="centro-mando/index.html">
-            <div class="pill"><span>🧭</span><span>Centro</span></div>
-            <h2>Centro de Mando</h2>
-            <p>Radar ligero por evento: Efectivo, ventas, top productos e inventario crítico.</p>
-            <div class="footer-row">
-              <span>Evento enfocado + accesos rápidos.</span>
-              <button class="link-btn secondary"><span>Abrir</span> →</button>
-            </div>
-          </article>
-
-          <article class="card" id="card-calculadora-temporal-home" data-link="calculadora_temporal/index.html">
-            <div class="pill"><span>⏳</span><span>Temporal</span></div>
-            <h2>Calculadora Temporal</h2>
-            <p>Espacio aislado para pruebas, corridas temporales y cálculos propios sin tocar Producción, Lotes ni datos operativos reales.</p>
-            <div class="footer-row">
-              <span>Persistencia separada del mundo real.</span>
-              <button class="link-btn secondary"><span>Abrir</span> →</button>
-            </div>
-          </article>
-
-          <article class="card" id="card-agenda-home" data-link="agenda/index.html">
+<article class="card" id="card-agenda-home" data-link="agenda/index.html">
             <div class="pill"><span>🗓️</span><span>Agenda</span></div>
             <h2>Agenda</h2>
             <p>Organiza reuniones, tareas y compras planificadas con presupuesto, estados y exportación al Calendario.</p>
             <div class="footer-row">
               <span>Reuniones, Tareas y Compras separadas.</span>
-              <button class="link-btn secondary"><span>Abrir</span> →</button>
+              <a class="link-btn" href="agenda/index.html" aria-label="Abrir Agenda">Abrir →</a>
             </div>
           </article>
-
-          <!-- Elementos ocultos (reuso de handlers existentes) -->
-          <button id="card-export-backup" class="hidden" type="button" aria-hidden="true"></button>
-          <button id="card-import-backup" class="hidden" type="button" aria-hidden="true"></button>
-
-        </div>
-      </section>
-
+</div></section>
+<section class="menu-section" aria-labelledby="menu-group-1"><h2 class="menu-title" id="menu-group-1">Producción y existencias</h2><div class="grid">
+<article class="card" data-link="calculadora/index.html">
+          <div class="pill"><span>🧪</span><span>Producción</span></div>
+          <h2>Calculadora de Producción</h2>
+          <p>Define cantidades de los productos activos con Receta y obtén la materia prima y volumen final.</p>
+          <div class="footer-row">
+            <span>Basado en recetas A33.</span>
+            <a class="link-btn" href="calculadora/index.html" aria-label="Abrir Calculadora de Producción">Abrir →</a>
+          </div>
+        </article>
+<article class="card" data-link="lotes/index.html">
+          <div class="pill"><span>📦</span><span>Lotes</span></div>
+          <h2>Control de Lotes</h2>
+          <p>Registra cada lote producido con fechas, volúmenes y presentaciones. Exporta CSV y consulta historial.</p>
+          <div class="footer-row">
+            <span>Seguimiento interno.</span>
+            <a class="link-btn" href="lotes/index.html" aria-label="Abrir Control de Lotes">Abrir →</a>
+          </div>
+        </article>
+<article class="card" data-link="inventario/index.html">
+          <div class="pill"><span>📊</span><span>Inventario</span></div>
+          <h2>Inventario</h2>
+          <p>Control de insumos líquidos y botellas por presentación, con alertas internas.</p>
+          <div class="footer-row">
+            <span>Se ajusta con la producción.</span>
+            <a class="link-btn" href="inventario/index.html" aria-label="Abrir Inventario">Abrir →</a>
+          </div>
+        </article>
+</div></section>
+<section class="menu-section" aria-labelledby="menu-group-2"><h2 class="menu-title" id="menu-group-2">Gestión y análisis</h2><div class="grid">
+<article class="card" data-link="finanzas/index.html#tab=tablero">
+            <div class="pill"><span>📊</span><span>Finanzas</span></div>
+            <h2>Tablero Finanzas</h2>
+            <p>Centro operativo de ventas, caja, bancos, gastos, ingresos adicionales y utilidad por período o evento.</p>
+            <div class="footer-row">
+              <span>Vista operativa.</span>
+              <a class="link-btn" href="finanzas/index.html#tab=tablero" aria-label="Abrir Tablero Finanzas">Abrir →</a>
+            </div>
+          </article>
+<article class="card" data-link="finanzas/index.html#tab=cajachica">
+            <div class="pill"><span>💵</span><span>Caja Chica</span></div>
+            <h2>Caja Chica</h2>
+            <p>Control rápido del efectivo físico en C$ y USD.</p>
+            <div class="footer-row">
+              <span>Acceso directo operativo.</span>
+              <a class="link-btn" href="finanzas/index.html#tab=cajachica" aria-label="Abrir Caja Chica">Abrir →</a>
+            </div>
+          </article>
+<article class="card" data-link="analitica/index.html">
+          <div class="pill"><span>📈</span><span>Analítica</span></div>
+          <h2>Analítica de Ventas</h2>
+          <p>Resumen mensual, comparativo por evento y por presentación, en solo lectura desde el POS.</p>
+          <div class="footer-row">
+            <span>No modifica datos, solo analiza.</span>
+            <a class="link-btn" href="analitica/index.html" aria-label="Abrir Analítica de Ventas">Abrir →</a>
+          </div>
+        </article>
+<article class="card" data-link="catalogos/index.html">
+            <div class="pill"><span>🗂️</span><span>Datos maestros</span></div>
+            <h2>Catálogos</h2>
+            <p>Productos, envases, tapas, extras, bancos y clientes que alimentan la Suite.</p>
+            <div class="footer-row">
+              <span>Base operativa central.</span>
+              <a class="link-btn" href="catalogos/index.html" aria-label="Abrir Catálogos">Abrir →</a>
+            </div>
+          </article>
+</div></section>
+<section class="menu-section" aria-labelledby="menu-group-3"><h2 class="menu-title" id="menu-group-3">Herramientas y configuración</h2><div class="grid">
+<article class="card" id="card-calculadora-temporal-home" data-link="calculadora_temporal/index.html">
+            <div class="pill"><span>⏳</span><span>Temporal</span></div>
+            <h2>Calculadora Temporal</h2>
+            <p>Prueba cálculos y planes en un espacio separado de la producción operativa.</p>
+            <div class="footer-row">
+              <span>Planificación temporal.</span>
+              <a class="link-btn" href="calculadora_temporal/index.html" aria-label="Abrir Calculadora Temporal">Abrir →</a>
+            </div>
+          </article>
+<article class="card" id="card-config-hub" data-link="configuracion/index.html">
+            <div class="pill"><span>⚙️</span><span>Configuración</span></div>
+            <h2>Configuración</h2>
+            <p>Ajustes, respaldo y opciones generales de la Suite.</p>
+            <div class="footer-row">
+              <span>Organización general</span>
+              <a class="link-btn" href="configuracion/index.html" aria-label="Abrir Configuración">Abrir →</a>
+            </div>
+          </article>
+</div></section>
+<button id="card-export-backup" class="hidden" type="button" aria-hidden="true"></button><button id="card-import-backup" class="hidden" type="button" aria-hidden="true"></button>
       </div>
 
       <section id="config-view" class="hidden" aria-label="Configuración">
@@ -1759,7 +1753,8 @@
     document.addEventListener('DOMContentLoaded', () => {
       // Navegación: tarjetas del menú principal
       document.querySelectorAll('[data-link]').forEach(card => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', (event) => {
+          if (event.target.closest('a[href]')) return;
           const href = card.getAttribute('data-link');
           if (href) window.location.href = href;
         });

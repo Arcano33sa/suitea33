@@ -248,3 +248,14 @@ html[data-theme="light"] .a33-module-link.is-current{
   .a33-module-toggle,
   .a33-module-link{ transition:none; }
 }
+
+/* E8.3 — foco y controles consistentes en la navegación compartida. */
+.a33-context-bar{padding-top:2px;padding-bottom:2px;}
+.a33-context-back{min-height:44px;flex-shrink:0;}
+.a33-module-toggle:focus-visible,
+.a33-module-link:focus-visible,
+.a33-context-back:focus-visible{outline:3px solid #ddbf64;outline-offset:2px;}
+html[data-theme="light"] .a33-module-toggle:focus-visible,
+html[data-theme="light"] .a33-module-link:focus-visible,
+html[data-theme="light"] .a33-context-back:focus-visible{outline-color:#7b1818;}
+@media (prefers-reduced-motion:reduce){.a33-module-link:hover{transform:none;}}
