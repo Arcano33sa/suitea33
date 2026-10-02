@@ -55,8 +55,8 @@
       <!-- TABLERO FINANZAS -->
       <section id="view-tablero" class="fin-view active">
         <header class="fin-section-header">
-          <h2>Tablero Finanzas Operativo</h2>
-          <p>Resultados y movimiento de dinero por período/evento, alimentado por POS, Caja/Efectivo y Recibos.</p>
+          <h2>Tablero Finanzas</h2>
+          <p>Resultados y movimiento de dinero del mes o evento seleccionado.</p>
         </header>
 
         <div class="fin-dashboard-band" aria-label="Filtros y referencia monetaria del Tablero operativo">
@@ -83,93 +83,97 @@
           </div>
 
           <div class="fin-dashboard-fx" aria-label="Tipo de cambio vigente">
-            <span>Moneda</span>
+            <span>Tipo de cambio vigente</span>
             <strong id="tab-fx-rate">T/C vigente —</strong>
             <small id="tab-fx-updated">Última actualización: —</small>
           </div>
         </div>
 
-        <div class="fin-cards-grid fin-cards-grid--tablero fin-operational-kpis">
-          <article class="fin-card">
-            <h3>Venta Total</h3>
-            <p id="tab-venta-total" class="fin-card-number">C$ 0.00</p>
-          </article>
+        <section class="fin-dashboard-group" aria-labelledby="tab-results-title">
+          <h3 id="tab-results-title" class="fin-dashboard-group-title">Resultados</h3>
+          <div class="fin-cards-grid fin-cards-grid--tablero fin-operational-kpis fin-dashboard-highlights">
+            <article class="fin-card fin-card-strong fin-kpi-priority">
+              <h3>Venta Neta</h3>
+              <p id="tab-venta-neta" class="fin-card-number">C$ 0.00</p>
+            </article>
+            <article class="fin-card fin-card-strong fin-kpi-priority">
+              <h3>Utilidad Neta</h3>
+              <p id="tab-utilidad-neta" class="fin-card-number">C$ 0.00</p>
+              <small id="tab-comisiones-tarjeta-total" class="fin-muted">Comisiones Tarjeta: C$ 0.00</small>
+              <div id="tab-comisiones-tarjeta-detalle" class="fin-muted"></div>
+            </article>
+          </div>
+          <div class="fin-cards-grid fin-cards-grid--tablero fin-operational-kpis">
+            <article class="fin-card">
+              <h3>Venta Total</h3>
+              <p id="tab-venta-total" class="fin-card-number">C$ 0.00</p>
+            </article>
+            <article class="fin-card">
+              <h3>Descuentos</h3>
+              <p id="tab-descuentos" class="fin-card-number">C$ 0.00</p>
+            </article>
+            <article class="fin-card">
+              <h3>Cortesías</h3>
+              <p id="tab-cortesias" class="fin-card-number">C$ 0.00</p>
+              <small id="tab-cortesias-costo" class="fin-muted">Costo real: C$ 0.00</small>
+            </article>
+            <article class="fin-card">
+              <h3>Costos de ventas</h3>
+              <p id="tab-costos" class="fin-card-number">C$ 0.00</p>
+              <small id="tab-merma-final" class="fin-muted">Merma final: C$ 0.00</small>
+              <small id="tab-costos-total" class="fin-muted">Total con cortesías y merma: C$ 0.00</small>
+            </article>
+            <article class="fin-card fin-card-strong">
+              <h3>Utilidad Bruta</h3>
+              <p id="tab-utilidad-bruta" class="fin-card-number">C$ 0.00</p>
+            </article>
+            <article class="fin-card">
+              <h3>Ingresos Adicionales</h3>
+              <p id="tab-ingresos-adicionales" class="fin-card-number">C$ 0.00</p>
+            </article>
+            <article class="fin-card">
+              <h3>Gastos</h3>
+              <p id="tab-gastos" class="fin-card-number">C$ 0.00</p>
+            </article>
+          </div>
+        </section>
 
-          <article class="fin-card">
-            <h3>Descuentos</h3>
-            <p id="tab-descuentos" class="fin-card-number">C$ 0.00</p>
-          </article>
+        <section class="fin-dashboard-group" aria-labelledby="tab-money-title">
+          <h3 id="tab-money-title" class="fin-dashboard-group-title">Movimiento de dinero</h3>
+          <div class="fin-cards-grid fin-cards-grid--tablero fin-operational-kpis fin-dashboard-money">
+            <article class="fin-card fin-card-strong fin-kpi-priority">
+              <h3>Flujo de Caja</h3>
+              <p id="tab-flujo-caja" class="fin-card-number">C$ 0.00</p>
+            </article>
+            <article class="fin-card">
+              <h3>Caja del período</h3>
+              <p id="tab-caja-periodo" class="fin-card-number">C$ 0.00</p>
+            </article>
+            <article class="fin-card">
+              <h3>Bancos del período</h3>
+              <p id="tab-bancos-periodo" class="fin-card-number">C$ 0.00</p>
+            </article>
+          </div>
+        </section>
 
-          <article class="fin-card">
-            <h3>Cortesías</h3>
-            <p id="tab-cortesias" class="fin-card-number">C$ 0.00</p>
-            <small id="tab-cortesias-costo" class="fin-muted">Costo real: C$ 0.00</small>
-          </article>
+        <section class="fin-dashboard-group" aria-labelledby="tab-indicators-title">
+          <h3 id="tab-indicators-title" class="fin-dashboard-group-title">Indicadores complementarios</h3>
+          <div class="fin-cards-grid fin-cards-grid--tablero fin-operational-kpis fin-dashboard-indicators">
+            <article class="fin-card">
+              <h3>Margen Bruto</h3>
+              <p id="tab-margen-bruto" class="fin-card-number">0%</p>
+            </article>
+            <article class="fin-card">
+              <h3>Margen Neto</h3>
+              <p id="tab-margen-neto" class="fin-card-number">0%</p>
+            </article>
+            <article class="fin-card">
+              <h3>Número de eventos</h3>
+              <p id="tab-num-eventos" class="fin-card-number">0</p>
+            </article>
+          </div>
+        </section>
 
-          <article class="fin-card fin-card-strong">
-            <h3>Venta Neta</h3>
-            <p id="tab-venta-neta" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Costos de ventas</h3>
-            <p id="tab-costos" class="fin-card-number">C$ 0.00</p>
-            <small id="tab-merma-final" class="fin-muted">Merma final: C$ 0.00</small>
-            <small id="tab-costos-total" class="fin-muted">Total con cortesías y merma: C$ 0.00</small>
-          </article>
-
-          <article class="fin-card fin-card-strong">
-            <h3>Utilidad Bruta</h3>
-            <p id="tab-utilidad-bruta" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Ingresos Adicionales</h3>
-            <p id="tab-ingresos-adicionales" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Gastos</h3>
-            <p id="tab-gastos" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card fin-card-strong">
-            <h3>Utilidad Neta</h3>
-            <p id="tab-utilidad-neta" class="fin-card-number">C$ 0.00</p>
-            <small id="tab-comisiones-tarjeta-total" class="fin-muted">Comisiones Tarjeta: C$ 0.00</small>
-            <div id="tab-comisiones-tarjeta-detalle" class="fin-muted"></div>
-          </article>
-
-          <article class="fin-card">
-            <h3>Margen Bruto</h3>
-            <p id="tab-margen-bruto" class="fin-card-number">0%</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Margen Neto</h3>
-            <p id="tab-margen-neto" class="fin-card-number">0%</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Número de eventos</h3>
-            <p id="tab-num-eventos" class="fin-card-number">0</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Flujo de Caja</h3>
-            <p id="tab-flujo-caja" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Caja del período</h3>
-            <p id="tab-caja-periodo" class="fin-card-number">C$ 0.00</p>
-          </article>
-
-          <article class="fin-card">
-            <h3>Bancos del período</h3>
-            <p id="tab-bancos-periodo" class="fin-card-number">C$ 0.00</p>
-          </article>
-        </div>
 
         <section class="fin-subsection fin-tablero-liquidity-section">
           <header class="fin-section-header fin-section-header--sub">
@@ -212,7 +216,7 @@
               <div class="fin-liquidity-hero">
                 <small>Movimiento caja + bancos equivalente C$</small>
                 <strong id="tab-liquidity-equivalent">C$ 0.00</strong>
-                <p>Lectura del período filtrado; no recalcula históricos ni altera T/C snapshot guardados.</p>
+                <p>Movimiento del período seleccionado, con los tipos de cambio guardados en cada operación.</p>
               </div>
             </article>
           </div>
@@ -220,8 +224,8 @@
 
         <section class="fin-subsection fin-tablero-alerts-section">
           <header class="fin-section-header fin-section-header--sub">
-            <h3>Alertas del Tablero</h3>
-            <p>Lectura informativa del Tablero operativo. No bloquea ni modifica datos.</p>
+            <h3>Alertas del período</h3>
+            <p>Observaciones sobre la información del período seleccionado.</p>
           </header>
           <div class="fin-report-alerts" id="tab-alerts"></div>
         </section>
@@ -802,7 +806,7 @@
 <section id="view-recibos" class="fin-view">
   <header class="fin-section-header">
     <h2>Recibos</h2>
-    <p>Flujo oficial multicuenta y multimoneda: BORRADOR → EMITIDO · cuenta financiera de cobro · moneda original · T/C snapshot si aplica.</p>
+    <p>Crea borradores, emite recibos y consulta su histórico. Cada recibo conserva su cuenta de cobro, moneda y tipo de cambio.</p>
   </header>
 
   <div id="rec-currency-reference" class="fin-currency-reference">
@@ -816,21 +820,21 @@
   <div id="recibos-list">
     <div class="fin-filters-row fin-filters-row--compact fin-receipts-toolbar">
       <div class="fin-inline-group">
-        <button type="button" id="rec-new" class="btn-small">+ Nuevo recibo</button>
+        <button type="button" id="rec-new" class="btn-primary">+ Nuevo recibo</button>
         <button type="button" id="rec-refresh" class="btn-small">Actualizar</button>
       </div>
 
       <label class="fin-grow">
-        Buscar (N° o Cliente)
+        Buscar por número o cliente
         <input type="text" id="rec-search" placeholder="Ej: 0001 o Juan" autocomplete="off">
       </label>
 
       <div class="fin-inline-group">
-        <button type="button" id="rec-filter-toggle" class="btn-small">Filtro</button>
+        <button type="button" id="rec-filter-toggle" class="btn-small">Filtros</button>
         <button type="button" id="rec-filter-clear" class="btn-small">Limpiar</button>
       </div>
 
-      <div id="rec-count" class="fin-muted"></div>
+      <div id="rec-count" class="fin-muted" aria-live="polite"></div>
     </div>
 
     <div id="rec-filters-panel" class="fin-filters-row fin-filters-row--compact fin-receipts-filters hidden">
@@ -872,7 +876,7 @@
             <th>Fecha</th>
             <th>Cliente</th>
             <th>Pago / Cuenta</th>
-            <th class="num">Total / Eq.</th>
+            <th class="num">Total / Equivalente</th>
             <th>Estado</th>
             <th class="fin-actions-cell">Acciones</th>
           </tr>
@@ -899,6 +903,8 @@
     <form id="rec-form" class="fin-form" autocomplete="off">
       <input type="hidden" id="rec-id" value="">
 
+      <section class="rec-editor-section" aria-labelledby="rec-client-heading">
+        <h3 id="rec-client-heading">Cliente y fecha</h3>
       <div class="fin-form-row">
         <label class="fin-form-grow">
           Cliente (nombre)
@@ -911,6 +917,9 @@
         </label>
       </div>
 
+      </section>
+      <section class="rec-editor-section" aria-labelledby="rec-payment-heading">
+        <h3 id="rec-payment-heading">Cuenta y cobro</h3>
       <div class="fin-form-row">
         <label class="fin-form-grow">
           Cuenta financiera de cobro
@@ -958,9 +967,10 @@
         </label>
       </div>
 
-      <section class="fin-subsection">
+      </section>
+      <section class="fin-subsection rec-editor-section" aria-labelledby="rec-lines-heading">
         <header class="fin-section-header fin-section-header--sub">
-          <h3>Líneas</h3>
+          <h3 id="rec-lines-heading">Líneas y totales</h3>
           <p>Agrega o quita líneas. Totales se calculan automáticamente.</p>
         </header>
 
@@ -969,9 +979,9 @@
             <thead>
               <tr>
                 <th>Ítem</th>
-                <th class="num">Qty</th>
-                <th class="num">Precio</th>
-                <th class="num">Desc/U</th>
+                <th class="num">Cantidad</th>
+                <th class="num">Precio unitario</th>
+                <th class="num">Descuento por unidad</th>
                 <th class="num">Total</th>
                 <th></th>
               </tr>
@@ -988,12 +998,12 @@
             <div><span class="fin-muted">Subtotal</span> <strong id="rec-subtotal">C$ 0.00</strong></div>
             <div><span class="fin-muted">Descuento</span> <strong id="rec-discount">C$ 0.00</strong></div>
             <div><span class="fin-muted">Total original</span> <strong id="rec-total">C$ 0.00</strong></div>
-            <div><span class="fin-muted">Equiv. C$</span> <strong id="rec-base-total">C$ 0.00</strong></div>
+            <div><span class="fin-muted">Equivalente C$</span> <strong id="rec-base-total">C$ 0.00</strong></div>
           </div>
         </div>
       </section>
 
-      <div class="fin-form-row" style="justify-content:flex-end;">
+      <div class="fin-form-row rec-editor-actions" style="justify-content:flex-end;">
         <div class="fin-actions">
           <button type="button" id="rec-save" class="btn-ghost">Guardar borrador</button>
           <button type="button" id="rec-issue" class="btn-primary">Emitir</button>
@@ -1002,7 +1012,7 @@
         </div>
       </div>
 
-      <p class="fin-help">Regla: todo recibo nuevo requiere <strong>cuenta financiera de cobro</strong>. Si la cuenta es <strong>US$</strong>, el T/C vigente se lee desde <strong>Configuración → Moneda</strong> y queda guardado como snapshot. Si el pago es transferencia, el banco es obligatorio.</p>
+      <p class="fin-help">Regla: todo recibo nuevo requiere <strong>cuenta financiera de cobro</strong>. Si la cuenta es <strong>US$</strong>, el T/C vigente se lee desde <strong>Configuración → Moneda</strong> y queda guardado en el recibo. Si el pago es transferencia, el banco es obligatorio.</p>
     </form>
   </div>
 </section>
@@ -1153,7 +1163,7 @@
 </div>
 
 <!-- CAJA CHICA (FÍSICA / INFORMATIVA) -->
-<section id="view-cajachica" class="fin-view">
+<section id="view-cajachica" class="fin-view fin-ledger-visual">
   <header class="fin-section-header">
     <h2>Caja Chica</h2>
     <p>Conteo físico de efectivo por denominaciones (solo informativo). No genera asientos, no afecta la cuenta contable “Caja”.</p>
@@ -1177,7 +1187,7 @@
       </div>
     </div>
 
-    <div class="cc-consolidated-grid">
+    <div class="cc-consolidated-grid cc-totals-grid">
       <div class="cc-summary-item">
         <span>Total C$</span>
         <strong id="cc-summary-nio">C$ 0.00</strong>
@@ -1194,6 +1204,9 @@
         <span>Total equivalente en USD</span>
         <strong id="cc-summary-eq-usd">—</strong>
       </div>
+    </div>
+    <div class="cc-reference-heading"><h4>Tipo de cambio y actualizaciones</h4></div>
+    <div class="cc-consolidated-grid cc-reference-grid">
       <label class="cc-summary-item cc-summary-rate cc-summary-rate-readonly" for="cc-fx-rate">
         <span>T/C central</span>
         <input id="cc-fx-rate" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Configurar en Moneda" value="" aria-label="T/C central desde Configuración Moneda" readonly disabled>
@@ -1209,7 +1222,7 @@
         <strong id="cc-currency-updated-at">Sin registros</strong>
       </div>
       <div class="cc-summary-item cc-summary-item-wide">
-        <span>Última Actualización Caja Chica</span>
+        <span>Última actualización Caja Chica</span>
         <strong id="cc-summary-last-update">Sin actualizar</strong>
       </div>
     </div>
@@ -1236,7 +1249,7 @@
 
   <div class="cc-actions">
     <button type="button" id="cc-save" class="btn-primary cc-btn">Guardar</button>
-    <button type="button" id="cc-reset" class="btn-danger">Reset a cero</button>
+    <button type="button" id="cc-reset" class="btn-danger">Restablecer a cero</button>
     <button type="button" id="cc-recalc" class="btn-small">Recalcular</button>
     <span id="cc-msg" class="cc-msg"></span>
   </div>
@@ -1245,7 +1258,7 @@
 </section>
 
 <!-- CUENTAS POR COBRAR -->
-<section id="view-cobrar" class="fin-view">
+<section id="view-cobrar" class="fin-view fin-ledger-visual">
   <header class="fin-section-header">
     <h2>Cobrar</h2>
     <p>Control de cuentas pendientes agrupadas por cliente. Esta etapa es informativa y no genera recibos ni movimientos financieros.</p>
@@ -1303,7 +1316,7 @@
 </section>
 
 <!-- CUENTAS POR PAGAR -->
-<section id="view-pagar" class="fin-view">
+<section id="view-pagar" class="fin-view fin-ledger-visual">
   <header class="fin-section-header">
     <h2>Pagar</h2>
     <p>Control de obligaciones pendientes agrupadas por proveedor o beneficiario. No genera movimientos financieros ni asientos contables.</p>
