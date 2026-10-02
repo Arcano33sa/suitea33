@@ -923,3 +923,86 @@ html[data-theme="light"] .inv-currency-note.is-warn{
 .inv-table tr.is-historical button {
   cursor: not-allowed;
 }
+
+/* Mejora visual Inventario E4A: lectura de existencias, sin cambios operacionales. */
+.inv-currency-card{padding:12px 16px!important;background:var(--a33-surface-2);border-color:var(--a33-border-soft);box-shadow:none}
+.inv-currency-card h2{font-size:17px;line-height:1.4;margin-bottom:6px;letter-spacing:0}
+.inv-currency-card .hint{font-size:13px;line-height:1.5;color:var(--a33-muted)}
+.inv-currency-card .inv-currency-grid{gap:8px;margin-top:12px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.inv-currency-card .inv-currency-item{padding:10px 12px;background:var(--a33-surface);border-color:var(--a33-border-soft);box-shadow:none}
+.inv-currency-card .inv-currency-item :is(span,small){font-size:12px;line-height:1.5;color:var(--a33-muted)}
+.inv-currency-card .inv-currency-item strong{font-size:14px;line-height:1.5;color:var(--a33-text)}
+.inv-currency-card .inv-currency-note{padding:8px 10px;font-size:13px;line-height:1.5;color:var(--a33-muted);background:var(--a33-surface);border-color:var(--a33-border)}
+.inv-stock-visual{background:var(--a33-surface-2);border-color:var(--a33-border-soft);box-shadow:none;min-width:0}
+.inv-stock-visual h2{font-size:20px;line-height:1.4;letter-spacing:0;margin-bottom:8px}
+.inv-stock-visual :is(.hint,.legend){color:var(--a33-muted);font-size:14px;line-height:1.5}
+.inv-stock-visual .table-wrapper{background:var(--a33-surface);border-color:var(--a33-border-soft);max-width:100%}
+.inv-stock-visual .inv-table{color:var(--a33-text);background:var(--a33-surface)}
+.inv-stock-visual .inv-table th{padding:12px;font-size:12px;letter-spacing:0;text-transform:none;line-height:1.5;color:var(--a33-muted);background:var(--a33-surface-2);border-color:var(--a33-border-soft)}
+.inv-stock-visual .inv-table td{padding:12px;font-size:14px;line-height:1.5;border-color:var(--a33-border-soft);font-variant-numeric:tabular-nums}
+.inv-stock-visual .inv-table td:first-child{font-weight:650;white-space:normal;overflow-wrap:anywhere}
+.inv-stock-visual .inv-table td:nth-child(2){font-size:20px;font-weight:750}
+.inv-stock-visual .inv-table td:nth-child(2) input{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--a33-text);background:var(--a33-surface);border-color:var(--a33-border)}
+.inv-stock-visual .status-chip{font-size:13px;line-height:1.5;padding:5px 9px;white-space:normal;color:var(--a33-text);background:var(--a33-surface);border-color:var(--a33-border)}
+.inv-stock-visual .status-ok{border-color:var(--a33-success)}
+.inv-stock-visual .status-warn{border-color:var(--a33-gold)}
+.inv-stock-visual .status-critical{border-color:var(--a33-danger,#ba4545)}
+.inv-stock-visual .inv-table tr.is-historical{opacity:1}
+.inv-stock-visual .inv-table tr.is-historical td:first-child{color:var(--a33-muted)}
+.inv-stock-visual .empty-state{color:var(--a33-muted);line-height:1.5;font-size:14px}
+@media(max-width:920px){.inv-currency-card .inv-currency-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){
+ .inv-stock-visual .table-wrapper{background:transparent}
+ .inv-stock-visual .inv-table{background:transparent}
+ .inv-stock-visual .inv-table tr{background:var(--a33-surface);border-color:var(--a33-border-soft)}
+ .inv-stock-visual .inv-table td{gap:12px;padding:12px}
+ .inv-stock-visual .inv-table td::before{color:var(--a33-muted);font-size:13px;font-weight:500;line-height:1.5;white-space:normal}
+ .inv-stock-visual .inv-table td:first-child{padding-bottom:14px;border-bottom:1px solid var(--a33-border-soft)}
+ .inv-stock-visual .inv-table td:nth-child(2) input{min-width:0;max-width:54%}
+ .inv-currency-card .inv-currency-badge{width:auto}
+}
+
+/* Mejora visual Inventario E4B: ajustes y Varios. */
+:is(.inv-stock-visual,.inv-adjust-visual) :is(input,button):focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
+:is(.inv-stock-visual,.inv-adjust-visual) :is(input,button){min-height:44px}
+.inv-stock-visual .inv-actions{gap:10px}
+.inv-stock-visual .inv-actions .btn{min-width:44px;padding:8px;box-shadow:none}
+.inv-stock-visual input{font-size:16px;color:var(--a33-text);background:var(--a33-surface);border-color:var(--a33-border)}
+.inv-stock-visual .inv-destructive-action{padding-left:14px;border-left:1px solid var(--a33-border-soft)}
+#inv-finished-clear{font-size:13px;background:var(--a33-surface);color:var(--a33-danger,#ba4545);border-color:var(--a33-danger,#ba4545);box-shadow:none}
+#inv-varios-section{background:var(--a33-surface-2);border-color:var(--a33-border-soft);box-shadow:none;min-width:0}
+#inv-varios-section h2{font-size:20px;line-height:1.4;letter-spacing:0}
+#inv-varios-section :is(.hint,.legend,.empty-state){font-size:14px;line-height:1.5;color:var(--a33-muted)}
+#inv-varios-section .table-actions{gap:12px;flex-wrap:wrap}
+#inv-varios-section #inv-varios-search{flex:1 1 200px;max-width:100%;width:100%;font-size:16px}
+#inv-varios-section input{font-size:16px;color:var(--a33-text);background:var(--a33-surface);border-color:var(--a33-border)}
+#inv-varios-section .table-wrapper{max-width:100%;overflow-x:auto;background:var(--a33-surface);border-color:var(--a33-border-soft)}
+#inv-varios-section .inv-table{min-width:680px;color:var(--a33-text);background:var(--a33-surface)}
+#inv-varios-section .inv-table th{padding:12px;font-size:12px;line-height:1.5;letter-spacing:0;text-transform:none;color:var(--a33-muted);background:var(--a33-surface-2)}
+#inv-varios-section .inv-table td{padding:12px;font-size:14px;line-height:1.5;border-color:var(--a33-border-soft)}
+#inv-varios-section .varios-stock-wrap{grid-template-columns:44px minmax(64px,1fr) 44px;gap:8px}
+#inv-varios-section .varios-delta-btn{width:44px;min-width:44px;font-size:20px;color:var(--a33-text);background:var(--a33-surface-2);border-color:var(--a33-border)}
+#inv-varios-section .varios-stock{font-weight:750;font-variant-numeric:tabular-nums}
+#inv-varios-section .varios-delete-btn{color:var(--a33-danger,#ba4545);background:var(--a33-surface);border-color:var(--a33-danger,#ba4545);box-shadow:none}
+#inv-varios-section .status-chip{font-size:13px;line-height:1.5;white-space:normal;color:var(--a33-text);background:var(--a33-surface);border-color:var(--a33-border)}
+#inv-varios-section .status-ok{border-color:var(--a33-success)}
+#inv-varios-section .status-warn{border-color:var(--a33-gold)}
+#inv-varios-section .status-critical{border-color:var(--a33-danger,#ba4545)}
+#a33-modal-cantidad .a33-modal-card{max-width:min(480px,calc(100vw - 24px));padding:20px;background:var(--a33-surface);color:var(--a33-text);border-color:var(--a33-border)}
+#a33-modal-cantidad .a33-modal-title{font-size:20px;line-height:1.4;color:var(--a33-text)}
+#a33-modal-cantidad :is(.a33-modal-text,.a33-modal-label){font-size:15px;line-height:1.5;color:var(--a33-muted)}
+#a33-modal-cantidad .a33-modal-input{min-height:52px;font-size:24px;background:var(--a33-surface-2);color:var(--a33-text);border-color:var(--a33-border)}
+#a33-modal-cantidad .a33-modal-actions{gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--a33-border-soft)}
+#a33-modal-cantidad button{min-height:44px;font-size:15px;flex:1}
+#a33-modal-cantidad :is(button,input):focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
+@media(max-width:640px){
+ #inv-varios-section .table-wrapper{background:transparent;overflow:visible}
+ #inv-varios-section .inv-table{min-width:0;background:transparent}
+ #inv-varios-section .inv-table tr{background:var(--a33-surface);border-color:var(--a33-border-soft)}
+ #inv-varios-section .inv-table td::before{font-size:13px;color:var(--a33-muted)}
+ #inv-varios-section .inv-table td:first-child input{min-width:0;max-width:65%}
+ #inv-varios-section .inv-table td:nth-child(2){flex-wrap:wrap}
+ #inv-varios-section .varios-stock-wrap{min-width:0;max-width:100%}
+ .inv-stock-visual .inv-actions{width:auto}
+ .inv-stock-visual .inv-destructive-action{padding:12px 0 0;border-left:0;border-top:1px solid var(--a33-border-soft)}
+}

@@ -1073,3 +1073,77 @@ tr:nth-child(even) td {
     grid-template-columns: 1fr;
   }
 }
+
+/* Mejora visual Lotes E4C: registro y consulta. */
+.lotes-visual .card{min-width:0;background:var(--a33-surface-2);border-color:var(--a33-border-soft);box-shadow:none}
+.lotes-visual h2{font-size:24px;line-height:1.4;letter-spacing:0}
+.lotes-visual .lote-form-section{padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid var(--a33-border-soft)}
+.lotes-visual .lote-form-section h3{font-size:17px;line-height:1.5;letter-spacing:0;margin:0 0 12px;color:var(--a33-text)}
+.lotes-visual :is(label,.dynamic-products-head p){font-size:14px;line-height:1.5;color:var(--a33-muted)}
+.lotes-visual :is(input,textarea){font-size:16px;min-height:44px;color:var(--a33-text);background:var(--a33-surface);border-color:var(--a33-border)}
+.lotes-visual :is(input,textarea,button):focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
+.lotes-visual .dynamic-products-section{padding:14px;background:var(--a33-surface);border-color:var(--a33-border-soft)}
+.lotes-visual .dynamic-products-head h3{font-size:14px;color:var(--a33-muted)}
+.lotes-visual .dynamic-product-field label{white-space:normal;overflow-wrap:anywhere}
+.lotes-visual .btn{min-height:44px;line-height:1.4;box-shadow:none}
+.lotes-visual .form-actions{gap:12px;flex-wrap:wrap;padding-top:4px}
+.lotes-visual #save-btn{font-size:16px;padding:12px 20px}
+.lotes-visual .table-actions{gap:10px;flex-wrap:wrap}
+.lotes-visual #clear-all-btn{margin-left:12px;background:var(--a33-surface);color:var(--a33-danger);border-color:var(--a33-danger)}
+.lotes-visual .list-controls{padding:14px;background:var(--a33-surface);border:1px solid var(--a33-border-soft);border-radius:14px;gap:12px}
+.lotes-visual #list-search{min-width:0;flex:1 1 240px}
+.lotes-visual .list-meta{font-size:13px;line-height:1.5;color:var(--a33-muted)}
+.lotes-visual :is(.totals-bar,.catalog-products-bar){background:var(--a33-surface);border-color:var(--a33-border-soft);padding:14px;gap:12px}
+.lotes-visual .totals-label{font-size:14px;line-height:1.5;color:var(--a33-text);letter-spacing:0}
+.lotes-visual :is(.totals-chip,.catalog-product-chip){background:var(--a33-surface-2);color:var(--a33-text);border-color:var(--a33-border);line-height:1.5}
+.lotes-visual .totals-chip-val{font-size:20px;color:var(--a33-gold);font-variant-numeric:tabular-nums}
+.lotes-visual .catalog-products-status{font-size:13px;line-height:1.5;color:var(--a33-muted)}
+.lotes-visual .table-wrapper{max-width:100%;overflow-x:auto;background:var(--a33-surface);border-color:var(--a33-border-soft)}
+.lotes-visual .table-lotes{min-width:850px;background:var(--a33-surface);color:var(--a33-text)}
+.lotes-visual .table-lotes th{padding:12px;font-size:12px;line-height:1.5;letter-spacing:0;text-transform:none;background:var(--a33-surface-2);color:var(--a33-muted)}
+.lotes-visual .table-lotes td{padding:12px;font-size:14px;line-height:1.5;border-color:var(--a33-border-soft);font-variant-numeric:tabular-nums}
+.lotes-visual .table-lotes :is(th,td):last-child{min-width:240px;width:240px}
+.lotes-visual .table-lotes .acciones{gap:8px;flex-wrap:wrap}
+.lotes-visual .btn.icon{width:auto;min-width:64px;padding:8px 12px;border-radius:10px;font-size:14px}
+.lotes-visual .lote-card{padding:16px;background:var(--a33-surface);border-color:var(--a33-border-soft);box-shadow:none}
+.lotes-visual .lote-card-code{font-size:16px;font-weight:750;white-space:normal;overflow-wrap:anywhere;color:var(--a33-text)}
+.lotes-visual .lote-card-date{font-size:13px;line-height:1.5;color:var(--a33-muted)}
+.lotes-visual .lote-card :is(.chip,.badge){font-size:12px;line-height:1.5;color:var(--a33-text);background:var(--a33-surface-2);border-color:var(--a33-border)}
+.lotes-visual .chip--available{border-color:var(--a33-success)}
+.lotes-visual .chip--in-event{border-color:var(--a33-gold)}
+.lotes-visual .lote-card-actions{gap:10px;padding-top:14px;margin-top:14px;border-top:1px solid var(--a33-border-soft)}
+.lotes-visual .lote-card-actions .danger{margin-left:auto}
+@media(max-width:540px){.lotes-visual #clear-all-btn{margin-left:0}.lotes-visual .form-actions .btn{flex:1 1 150px}.lotes-visual .lote-card{padding:12px}}
+.lotes-visual .table-lotes td:nth-child(2){overflow-wrap:anywhere;word-break:break-word;line-height:1.5}
+.lotes-visual .mini-kpi{padding:10px;background:var(--a33-surface-2);border-color:var(--a33-border-soft)}
+.lotes-visual .mini-kpi-key{font-size:12px;line-height:1.5;color:var(--a33-muted);letter-spacing:0}
+.lotes-visual .mini-kpi-val{font-size:18px;line-height:1.5;color:var(--a33-text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.lotes-visual .qty-stack{line-height:1.5}
+.lotes-visual .qty-stack .qty-remaining{color:var(--a33-gold)}
+.lotes-visual .lote-card-grid{gap:8px}
+@media(max-width:540px){.lotes-visual .lote-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Mejora visual Lotes E4D: detalle e histórico. */
+#history-modal .modal__panel{background:var(--a33-surface);color:var(--a33-text);border-color:var(--a33-border);width:min(860px,calc(100vw - 24px))}
+#history-modal .modal__header{border-color:var(--a33-border-soft);gap:12px}
+#history-modal .modal__header h3{font-size:20px;line-height:1.4;letter-spacing:0}
+#history-modal :is(button,input){min-height:44px;font-size:15px}
+#history-modal .modal__close{width:44px;min-width:44px}
+#history-modal #history-search{width:100%;min-width:0;background:var(--a33-surface-2);color:var(--a33-text);border-color:var(--a33-border);font-size:16px}
+#history-modal .modal__meta{font-size:13px;line-height:1.5;color:var(--a33-muted)}
+#history-modal .history-item{padding:14px;background:var(--a33-surface-2);border-color:var(--a33-border-soft);gap:12px}
+#history-modal .history-code{font-size:15px;line-height:1.5;white-space:normal;overflow-wrap:anywhere;color:var(--a33-text)}
+#history-modal .history-meta-line{font-size:13px;line-height:1.5;color:var(--a33-muted);gap:8px}
+#history-modal .chip{font-size:12px;line-height:1.5;color:var(--a33-text);background:var(--a33-surface);border-color:var(--a33-border)}
+#history-modal .history-actions .btn{width:auto;min-width:64px;padding:8px 12px;background:var(--a33-surface);color:var(--a33-text);border-color:var(--a33-border)}
+#lote-detail-dialog{width:min(720px,calc(100vw - 24px));max-height:90vh;padding:0;background:var(--a33-surface);color:var(--a33-text);border:1px solid var(--a33-border);border-radius:18px;overflow:auto}
+#lote-detail-dialog::backdrop{background:rgba(0,0,0,.65);backdrop-filter:blur(4px)}
+#lote-detail-dialog .lote-detail-header{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;background:var(--a33-surface);border-bottom:1px solid var(--a33-border-soft);z-index:1}
+#lote-detail-dialog h3{font-size:20px;line-height:1.4;letter-spacing:0;margin:0}
+#lote-detail-dialog button{min-height:44px;font-size:15px;padding:10px 14px;background:var(--a33-surface-2);color:var(--a33-text);border-color:var(--a33-border)}
+#lote-detail-body{padding:16px;display:grid;gap:16px}
+#lote-detail-dialog .lote-detail-section{padding:14px;background:var(--a33-surface-2);border:1px solid var(--a33-border-soft);border-radius:12px;min-width:0}
+#lote-detail-dialog h4{font-size:16px;line-height:1.5;color:var(--a33-gold);letter-spacing:0;margin:0 0 12px}
+#lote-detail-dialog p{font-size:15px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;font-variant-numeric:tabular-nums}
+:is(#history-modal,#lote-detail-dialog) :is(button,input):focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
+@media(max-width:540px){#history-modal .history-item{grid-template-columns:minmax(0,1fr)}#history-modal .history-actions{justify-content:flex-start}#lote-detail-dialog .lote-detail-header{padding:12px}#lote-detail-body{padding:12px}}

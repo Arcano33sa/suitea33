@@ -1845,6 +1845,7 @@ function ensureVariosRow(tbody, it){
   btnMinus.type = "button";
   btnMinus.className = "btn secondary btn-mini varios-delta-btn";
   btnMinus.textContent = "−";
+  btnMinus.setAttribute("aria-label", "Reducir stock en una unidad");
   btnMinus.dataset.action = "varios-delta";
   btnMinus.dataset.delta = "-1";
   btnMinus.dataset.id = id;
@@ -1861,6 +1862,7 @@ function ensureVariosRow(tbody, it){
   btnPlus.type = "button";
   btnPlus.className = "btn secondary btn-mini varios-delta-btn";
   btnPlus.textContent = "+";
+  btnPlus.setAttribute("aria-label", "Aumentar stock en una unidad");
   btnPlus.dataset.action = "varios-delta";
   btnPlus.dataset.delta = "1";
   btnPlus.dataset.id = id;

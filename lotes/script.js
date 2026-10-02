@@ -2078,7 +2078,7 @@ function showLoteDetails(lote) {
     lines.push("Notas:");
     lines.push(lote.notas);
   }
-  alert(lines.join("\n"));
+  openLoteDetailModal('Detalle de lote', lines);
 }
 
 function clearForm() {
@@ -2381,7 +2381,7 @@ function buildLoteRow(lote){
 
   const viewBtn = document.createElement("button");
   viewBtn.type = "button";
-  viewBtn.textContent = "👁";
+  viewBtn.textContent = "Ver";
   viewBtn.title = "Ver";
   viewBtn.setAttribute("aria-label", "Ver");
   viewBtn.className = "btn icon";
@@ -2390,7 +2390,7 @@ function buildLoteRow(lote){
 
   const editBtn = document.createElement("button");
   editBtn.type = "button";
-  editBtn.textContent = "✎";
+  editBtn.textContent = "Editar";
   editBtn.title = "Editar";
   editBtn.setAttribute("aria-label", "Editar");
   editBtn.className = "btn secondary icon";
@@ -2399,7 +2399,7 @@ function buildLoteRow(lote){
 
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
-  deleteBtn.textContent = "🗑";
+  deleteBtn.textContent = "Borrar";
   deleteBtn.title = "Borrar";
   deleteBtn.setAttribute("aria-label", "Borrar");
   deleteBtn.className = "btn danger icon";
@@ -2597,9 +2597,9 @@ function buildLoteCard(lote){
     return b;
   };
 
-  actions.appendChild(mkBtn('👁','Ver','btn icon','view'));
-  actions.appendChild(mkBtn('✎','Editar','btn secondary icon','edit'));
-  actions.appendChild(mkBtn('🗑','Borrar','btn danger icon','delete'));
+  actions.appendChild(mkBtn('Ver','Ver','btn icon','view'));
+  actions.appendChild(mkBtn('Editar','Editar','btn secondary icon','edit'));
+  actions.appendChild(mkBtn('Borrar','Borrar','btn danger icon','delete'));
 
   card.appendChild(actions);
 
@@ -2906,6 +2906,44 @@ function exportToCSV() {
 // Histórico (Etapa 5)
 // ================================
 
+// Presentación de solo lectura: conserva las mismas líneas de detalle.
+let loteDetailPreviousFocus = null;
+let historyPreviousFocus = null;
+function openLoteDetailModal(title, lines){
+  const dialog = $('lote-detail-dialog');
+  const body = $('lote-detail-body');
+  if (!dialog || !body) return;
+  loteDetailPreviousFocus = document.activeElement;
+  $('lote-detail-title').textContent = title;
+  body.replaceChildren();
+  let section;
+  const startSection = (heading) => {
+    section = document.createElement('section');
+    section.className = 'lote-detail-section';
+    const h = document.createElement('h4');
+    h.textContent = heading;
+    section.appendChild(h);
+    body.appendChild(section);
+  };
+  startSection('Identificación y trazabilidad');
+  const headings = new Set(['Volúmenes (ml):','Productos del lote:','Salida POS preparada:','Notas:','Uso por evento (snapshot):']);
+  let datesStarted = false;
+  for (const raw of lines){
+    const line = String(raw);
+    if (!line.trim()) continue;
+    if (headings.has(line)) { startSection(line); continue; }
+    if (!datesStarted && line.startsWith('Fecha de elaboración:')) {
+      startSection('Fechas');
+      datesStarted = true;
+    }
+    const p = document.createElement('p');
+    p.textContent = line;
+    section.appendChild(p);
+  }
+  dialog.showModal();
+  $('lote-detail-close').focus();
+}
+
 function isHistoryModalOpen(){
   const m = $("history-modal");
   return !!(m && m.classList.contains('is-open'));
@@ -2914,6 +2952,7 @@ function isHistoryModalOpen(){
 function openHistoryModal(){
   const modal = $("history-modal");
   if (!modal) return;
+  historyPreviousFocus = document.activeElement;
   modal.classList.add('is-open');
   modal.setAttribute('aria-hidden', 'false');
   renderHistoryModal();
@@ -2929,6 +2968,7 @@ function closeHistoryModal(){
   if (!modal) return;
   modal.classList.remove('is-open');
   modal.setAttribute('aria-hidden', 'true');
+  if (historyPreviousFocus && historyPreviousFocus.isConnected) historyPreviousFocus.focus();
 }
 
 function archiveSortTs(a){
@@ -2987,7 +3027,7 @@ function showArchivedDetails(arch){
     }
   }
 
-  alert(lines.join('\n'));
+  openLoteDetailModal('Detalle de lote archivado', lines);
 }
 
 function renderHistoryModal(){
@@ -3082,7 +3122,7 @@ function renderHistoryModal(){
     viewBtn.className = 'btn secondary icon';
     viewBtn.title = 'Ver';
     viewBtn.setAttribute('aria-label', 'Ver');
-    viewBtn.textContent = '👁';
+    viewBtn.textContent = 'Ver';
     viewBtn.addEventListener('click', () => showArchivedDetails(arch));
 
     actions.appendChild(viewBtn);
@@ -3456,6 +3496,12 @@ ${code}`
   $("export-btn").addEventListener("click", () => exportToCSV());
 
   // Histórico (Etapa 5)
+  const detailDialog = $('lote-detail-dialog');
+  $('lote-detail-close')?.addEventListener('click', () => detailDialog.close());
+  detailDialog?.addEventListener('close', () => {
+    if (loteDetailPreviousFocus && loteDetailPreviousFocus.isConnected) loteDetailPreviousFocus.focus();
+  });
+
   const histBtn = $("history-btn");
   if (histBtn) histBtn.addEventListener('click', () => openHistoryModal());
 
@@ -3478,6 +3524,13 @@ ${code}`
   }
 
   document.addEventListener('keydown', (e) => {
+    if ($('lote-detail-dialog')?.open) return;
+    if (e.key === 'Tab' && isHistoryModalOpen()) {
+      const controls = [...$('history-modal').querySelectorAll('button,input')].filter(el => !el.disabled && el.getClientRects().length);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+    }
     if (e.key === 'Escape' && isHistoryModalOpen()) {
       closeHistoryModal();
     }
