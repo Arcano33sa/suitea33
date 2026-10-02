@@ -497,6 +497,102 @@
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+  <style>
+    /* E5.2: presentación local de Calculadora Temporal; usa el tema compartido. */
+    html body.calc-temporal-body { padding: 1rem; color: var(--a33-text); }
+    html body.calc-temporal-body .app-container { max-width: 1180px; background: var(--a33-surface-3); border: 1px solid var(--a33-border); border-radius: 18px; padding: clamp(0.85rem, 2vw, 1.5rem); box-shadow: var(--a33-shadow); }
+    .calc-temporal-body .logo-container img { width: 64px; }
+    .calc-temporal-body h1 { font-size: clamp(1.35rem, 3vw, 1.85rem); }
+    .calc-temporal-body .subtitle { max-width: 660px; margin: 0.5rem auto 1.5rem; line-height: 1.55; }
+    html body.calc-temporal-body .section, html body.calc-temporal-body .results { padding: 1rem; background: var(--a33-surface-2); border: 1px solid var(--a33-border-soft); border-radius: 14px; box-shadow: none; }
+    .calc-temporal-body .section h2 { margin: 0 0 0.5rem; }
+    html body.calc-temporal-body .hint, html body.calc-temporal-body .subtitle { color: var(--a33-muted); line-height: 1.5; font-size: 0.88rem; }
+    .calc-temporal-body label { display: inline-block; margin-bottom: 0.35rem; font-size: 0.9rem; font-weight: 600; }
+    .calc-temporal-body .fechas-row { gap: 0.85rem; }
+    .calc-temporal-body .fechas-row > div:first-child { flex-basis: 250px; }
+    html body.calc-temporal-body input[type="text"], html body.calc-temporal-body input[type="date"], html body.calc-temporal-body input[type="number"], html body.calc-temporal-body textarea { min-height: 44px; padding: 0.6rem; font-size: 1rem; background: var(--a33-surface); border: 1px solid var(--a33-border); color: var(--a33-text); border-radius: 8px; }
+    .calc-temporal-body textarea { min-height: 90px; }
+    html body.calc-temporal-body button { min-height: 44px; touch-action: manipulation; }
+    html body.calc-temporal-body .btn-secondary, html body.calc-temporal-body .btn-pill { background: var(--a33-surface-3); color: var(--a33-text); border: 1px solid var(--a33-border); border-radius: 10px; padding: 0.55rem 0.8rem; font-size: 0.88rem; }
+    html body.calc-temporal-body button:focus-visible, html body.calc-temporal-body input:focus-visible, html body.calc-temporal-body textarea:focus-visible { outline: 3px solid var(--a33-gold); outline-offset: 3px; }
+    html body.calc-temporal-body table { table-layout: auto; font-size: 0.9rem; }
+    html body.calc-temporal-body th { background: var(--a33-surface-3); color: var(--a33-text); font-size: 0.8rem; line-height: 1.4; }
+    html body.calc-temporal-body th, html body.calc-temporal-body td { border-color: var(--a33-border-soft); padding: 0.6rem 0.45rem; overflow-wrap: anywhere; }
+    .calc-temporal-body #recetas-table { table-layout: fixed; }
+    .calc-temporal-body #recetas-table th:first-child { width: 23%; }
+    .calc-temporal-body #plan-table th:first-child { width: 38%; }
+    .calc-temporal-body #plan-table th:last-child { width: 25%; }
+    .calc-temporal-body .a33-table-wrap--recetas { max-height: min(560px, 70vh); }
+    .calc-temporal-body .a33-ipad-grid { grid-template-columns: 1fr; }
+    .calc-temporal-body .a33-main-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.65rem; margin-top: 1.25rem; }
+    html body.calc-temporal-body .a33-main-action { border: 1px solid var(--a33-border); background: var(--a33-surface-2); color: var(--a33-text); border-radius: 12px; font-size: 0.95rem; }
+    html body.calc-temporal-body #btn-calcular, html body.calc-temporal-body #a33-produccion-guardar, html body.calc-temporal-body .a33-btn-primary-pill { background: var(--a33-red); color: #fff8ea; border-color: var(--a33-red); }
+    html body.calc-temporal-body #btn-guardar-lote { border: 2px solid var(--a33-gold); }
+    .calc-temporal-body .a33-action-help { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
+    .calc-temporal-body .a33-action-help p { margin: 0; }
+    .calc-temporal-body .a33-action-help strong { color: var(--a33-text); }
+    .calc-temporal-body .results h2 { margin: 0 0 0.6rem; font-size: 1.2rem; }
+    .calc-temporal-body .a33-results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+    .calc-temporal-body .a33-result-block { min-width: 0; padding: 0.85rem; border: 1px solid var(--a33-border-soft); border-radius: 12px; background: var(--a33-surface); }
+    .calc-temporal-body .a33-result-block h3 { margin: 0 0 0.6rem; }
+    .calc-temporal-body .a33-result-block--costs { grid-column: 1 / -1; }
+    html body.calc-temporal-body .badge { background: var(--a33-surface-3); color: var(--a33-text); border-color: var(--a33-border); font-size: 0.85rem; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
+    .calc-temporal-body #resumen-volumen .badge { width: 100%; padding: 1rem; font-size: 1rem; border-radius: 12px; }
+    .calc-temporal-body #resumen-costos td:not(:first-child) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .calc-temporal-body .a33-clear-row { border-top: 1px solid var(--a33-border-soft); padding-top: 1rem; margin-top: 1.25rem; }
+    html body.calc-temporal-body .a33-modal-card { background: var(--a33-surface-3); color: var(--a33-text); border-color: var(--a33-border); max-height: calc(100dvh - 2rem); overflow-y: auto; padding: 1.25rem; }
+    .calc-temporal-body .a33-production-preview { background: var(--a33-surface); border-color: var(--a33-border-soft); }
+    .calc-temporal-body .a33-production-preview-item { padding: 0.5rem 0; border-color: var(--a33-border-soft); flex-wrap: wrap; }
+    @media (min-width: 1100px) { .calc-temporal-body .a33-ipad-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); } }
+    @media (max-width: 600px) {
+      html body.calc-temporal-body { padding: 0.5rem; }
+      html body.calc-temporal-body .section, html body.calc-temporal-body .results { padding: 0.8rem; }
+      .calc-temporal-body .a33-action-help, .calc-temporal-body .a33-results-grid { grid-template-columns: 1fr; }
+      .calc-temporal-body #recetas-table, .calc-temporal-body #plan-table { display: block; }
+      .calc-temporal-body #recetas-table thead, .calc-temporal-body #plan-table thead { display: none; }
+      .calc-temporal-body #recetas-table tbody, .calc-temporal-body #plan-table tbody { display: grid; gap: 0.85rem; }
+      .calc-temporal-body #recetas-table tr, .calc-temporal-body #plan-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--a33-border); border-radius: 12px; overflow: hidden; }
+      html body.calc-temporal-body #recetas-table td, html body.calc-temporal-body #plan-table td { min-width: 0; border: 0; padding: 0.6rem; text-align: left; }
+      .calc-temporal-body #recetas-table td:first-child, .calc-temporal-body #plan-table td:first-child, .calc-temporal-body td[colspan] { grid-column: 1 / -1; font-weight: 700; background: var(--a33-surface-3); }
+      .calc-temporal-body #recetas-table td[data-label]::before, .calc-temporal-body #plan-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 0.35rem; font-size: 0.8rem; color: var(--a33-muted); }
+      .calc-temporal-body .a33-table-wrap--recetas { max-height: none; }
+      .calc-temporal-body .a33-main-actions { gap: 0.65rem; }
+      html body.calc-temporal-body #resumen-costos td { padding: 0.55rem 0.25rem; font-size: 0.8rem; }
+    }
+
+    .calc-temporal-body .a33-isolation-note { margin: 0 0 1.25rem; padding: 0.8rem 1rem; border-left: 3px solid var(--a33-gold); border-radius: 10px; background: var(--a33-surface-2); color: var(--a33-text); font-size: 0.9rem; line-height: 1.5; }
+    html body.calc-temporal-body .a33-main-actions .a33-main-action { width: 100%; min-width: 0; margin: 0; text-transform: none; letter-spacing: normal; }
+    html body.calc-temporal-body #btn-guardar-lote.a33-save-ready { background: var(--a33-surface-3); color: var(--a33-text); border: 2px solid var(--a33-success); box-shadow: none; }
+    html body.calc-temporal-body #btn-limpiar, html body.calc-temporal-body .a33-history-actions [data-a33-delete] { color: var(--a33-danger); background: var(--a33-surface); border-color: var(--a33-danger); }
+    html body.calc-temporal-body .a33-history-card { background: var(--a33-surface); border: 1px solid var(--a33-border-soft); box-shadow: none; padding: 1rem; }
+    html body.calc-temporal-body .a33-history-title { color: var(--a33-text); font-size: 1rem; }
+    html body.calc-temporal-body .a33-history-body { color: var(--a33-muted); font-size: 0.9rem; line-height: 1.55; }
+    .calc-temporal-body .a33-history-actions { border-top: 1px solid var(--a33-border-soft); padding-top: 0.75rem; margin-top: 0.85rem; gap: 0.75rem; }
+    html body.calc-temporal-body .a33-history-actions [data-a33-load], html body.calc-temporal-body #a33-temporal-checklist-hecho { background: var(--a33-red); color: #fff8ea; border-color: var(--a33-red); }
+    html body.calc-temporal-body .a33-temporal-checklist { background: rgba(0,0,0,0.78); color: var(--a33-text); padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left)); }
+    .calc-temporal-body .a33-temporal-checklist-shell { background: var(--a33-surface-3); border-color: var(--a33-border); box-shadow: var(--a33-shadow); padding: 1rem; }
+    .calc-temporal-body .a33-temporal-checklist-header { position: sticky; top: -0.75rem; z-index: 2; background: var(--a33-surface-3); border-bottom: 1px solid var(--a33-border-soft); padding: 0.75rem 0; }
+    .calc-temporal-body .a33-temporal-checklist-header .hint { margin: 0.3rem 0 0; }
+    .calc-temporal-body .a33-temporal-checklist-block { background: var(--a33-surface-2); border-color: var(--a33-border-soft); padding: 0.9rem; }
+    .calc-temporal-body .a33-temporal-checklist-card { background: var(--a33-surface); border-color: var(--a33-border-soft); padding: 0.8rem; }
+    .calc-temporal-body .a33-temporal-checklist-item { display: grid; min-height: 60px; padding: 0.65rem; border: 1px solid var(--a33-border-soft); border-radius: 10px; background: var(--a33-surface); cursor: pointer; margin: 0; }
+    .calc-temporal-body .a33-temporal-checklist-item input { width: 28px; height: 28px; margin: 0.4rem; accent-color: var(--a33-gold); }
+    .calc-temporal-body .a33-temporal-checklist-item.is-complete { opacity: 0.8; }
+    .calc-temporal-body .a33-temporal-checklist-item strong { font-variant-numeric: tabular-nums; }
+    .calc-temporal-body .a33-temporal-checklist-meta { margin-bottom: 0.65rem; }
+    .calc-temporal-body .a33-temporal-checklist-status { color: var(--a33-success); font-size: 0.9rem; line-height: 1.5; }
+    .calc-temporal-body .a33-production-modal-error, .calc-temporal-body .a33-temporal-checklist-status[data-tone="error"] { color: var(--a33-danger); }
+    .calc-temporal-body details.a33-temporal-checklist-block > summary { min-height: 44px; cursor: pointer; font-weight: 700; padding: 0.4rem 0; }
+    .calc-temporal-body details.a33-temporal-checklist-block > summary:focus-visible { outline: 3px solid var(--a33-gold); outline-offset: 3px; }
+    .calc-temporal-body details.a33-temporal-checklist-block[open] > summary { margin-bottom: 0.65rem; }
+    @media (max-width: 600px) {
+      .calc-temporal-body .a33-main-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .calc-temporal-body .a33-temporal-checklist-shell { padding: 0.65rem; }
+      .calc-temporal-body .a33-temporal-checklist-card { grid-template-columns: 1fr; }
+      .calc-temporal-body .a33-temporal-checklist-item { grid-template-columns: auto minmax(0, 1fr); }
+      .calc-temporal-body .a33-temporal-checklist-item strong { grid-column: 2; }
+    }
+  </style>
 </head>
 <body class="calc-body calc-temporal-body">
   <header class="a33-header" role="banner" data-a33-module="temporal">
@@ -511,13 +607,13 @@
     </div>
     <h1>Calculadora Temporal – Arcano 33</h1>
     <p class="subtitle">
-      Clon aislado para pruebas y corridas temporales. Calcula materia prima sin tocar Producción, Lotes, Inventario, POS ni Finanzas reales.
+      Planifica cantidades de prueba y revisa materia prima, volumen y costos.
     </p>
-    <p class="hint" style="text-align:center;color:#ddbf64;margin-top:-0.25rem;margin-bottom:1rem;">Módulo aislado: esta copia vive en su propio espacio temporal y no escribe en datos operativos reales.</p>
+    <p class="a33-isolation-note"><strong>Espacio temporal.</strong> Las recetas, cálculos y checklist que guardes aquí permanecen en este módulo. No crean lotes oficiales ni modifican inventario, POS o Finanzas.</p>
 
     <div class="a33-ipad-grid">
     <div class="section">
-      <h2>0. Datos temporales del cálculo</h2>
+      <h2>Datos del cálculo temporal</h2>
       <p class="hint">
         Escribe una referencia temporal interna y la fecha base del cálculo. La fecha de caducidad se calcula 2 meses después solo como apoyo visual.
       </p>
@@ -543,17 +639,17 @@
       <p class="hint a33-fechas-legacy" id="texto-caducidad">Fecha de caducidad: —</p>
       <p class="hint a33-fechas-legacy" id="texto-fecha-hebreo">Fecha hebrea (producción): —</p>
 
-      <h3>Notas del cálculo temporal</h3>
+      <h3><label for="notas">Notas del cálculo temporal</label></h3>
       <textarea id="notas" placeholder="Ej: Pedido para evento, sabor clásico, entrega sábado por la tarde..."></textarea>
     </div>
 
     <div class="section">
-      <h2>1. Receta base (ml por unidad de cada presentación)</h2>
+      <h2>Receta por presentación</h2>
       <p class="hint">
         Aquí pones cuántos ml de <strong>vino, vodka, jugo, sirope y agua pura</strong> lleva 1 unidad de cada presentación.
       </p>
       <div class="a33-table-wrap a33-table-wrap--recetas">
-        <table id="recetas-table">
+        <table id="recetas-table" aria-label="Recetas temporales por presentación, ingredientes en ml y costo unitario">
           <thead>
             <tr>
               <th>Presentación</th>
@@ -575,12 +671,12 @@
     </div>
 
     <div class="section">
-      <h2>2. Plan temporal (unidades a preparar)</h2>
+      <h2>Plan temporal</h2>
       <p class="hint">
         Escribe cuántas unidades quieres simular o preparar de cada presentación. Deja en blanco lo que no vayas a usar en este cálculo temporal.
       </p>
       <div class="a33-table-wrap a33-table-wrap--plan">
-        <table id="plan-table">
+        <table id="plan-table" aria-label="Unidades a simular por presentación y empaque">
           <thead>
             <tr>
               <th>Presentación</th>
@@ -595,30 +691,34 @@
     </div>
 
     <div class="a33-main-actions" role="group" aria-label="Acciones principales de la Calculadora Temporal">
-      <button id="btn-calcular" class="btn-main a33-main-action">CALCULAR</button>
-      <button id="btn-guardar-lote" class="btn-secondary a33-main-action" disabled aria-disabled="true">GUARDAR</button>
-      <button id="btn-produccion" class="btn-secondary a33-main-action" type="button">PRODUCCIÓN</button>
-      <button id="btn-checklist" class="btn-secondary a33-main-action" type="button">CHECKLIST</button>
-      <button id="btn-limpiar" class="btn-secondary a33-main-action a33-danger-action">BORRAR</button>
+      <button id="btn-calcular" class="btn-main a33-main-action">Calcular</button>
+      <button id="btn-guardar-lote" class="btn-secondary a33-main-action" disabled aria-disabled="true">Guardar cálculo</button>
+      <button id="btn-produccion" class="btn-secondary a33-main-action" type="button">Producción</button>
+      <button id="btn-checklist" class="btn-secondary a33-main-action" type="button">Checklist</button>
+    </div>
+    <div class="a33-action-help">
+      <p class="hint"><strong>Guardar cálculo:</strong> conserva el resultado en el historial temporal.</p>
+      <p class="hint"><strong>Producción:</strong> prepara por volumen y guarda en el Checklist temporal.</p>
     </div>
     <p id="hint-resultados" class="hint" style="text-align:center;">Calcula para revisar el resumen y luego guarda el cálculo confirmado dentro de la Temporal.</p>
 
     <div id="resultados" class="results" style="display:none;">
-      <div class="results-title">3. Totales de materia prima necesaria (temporal)</div>
+      <h2>Resultados del cálculo temporal</h2>
       <div id="resumen-lote"></div>
       <div id="resumen-fechas"></div>
-      <div id="totales-ingredientes"></div>
-      <div id="resumen-costos"></div>
-
-      <div class="results-title" style="margin-top:0.8rem;">Resumen temporal de volumen final</div>
-      <div id="resumen-volumen"></div>
+      <div class="a33-results-grid">
+        <section class="a33-result-block"><h3>Materia prima necesaria</h3><div id="totales-ingredientes"></div></section>
+        <section class="a33-result-block"><h3>Volumen final</h3><div id="resumen-volumen"></div></section>
+        <section class="a33-result-block a33-result-block--costs"><h3>Costos estimados</h3><div id="resumen-costos"></div></section>
+      </div>
 
       <p class="hint">Este resumen pertenece solo a la Calculadora Temporal. GUARDAR confirma el cálculo dentro de este módulo y no crea un lote oficial.</p>
     </div>
 
 
+    <div class="a33-clear-row"><button id="btn-limpiar" class="btn-secondary a33-danger-action">Limpiar cantidades</button><p class="hint">Limpia el plan y sus resultados; conserva las recetas y el historial guardado.</p></div>
     <div class="section">
-      <h2>4. Historial temporal guardado</h2>
+      <h2>Historial temporal guardado</h2>
       <p class="hint">Los cálculos guardados aquí viven solo dentro de esta Calculadora Temporal. No crean registros oficiales ni aparecen en Producción.</p>
       <div id="temporal-history-empty" class="hint a33-history-empty">Todavía no hay cálculos guardados en este navegador.</div>
       <div id="temporal-history-list" class="a33-history-list" aria-live="polite"></div>
@@ -638,7 +738,7 @@
   <div id="a33-modal-produccion" class="a33-modal" hidden aria-hidden="true">
     <div class="a33-modal-card a33-production-modal-card" role="dialog" aria-modal="true" aria-labelledby="a33-produccion-title">
       <h2 id="a33-produccion-title">Producción</h2>
-      <p class="hint">Calcula una preparación temporal con la fórmula base de 1,000 ml.</p>
+      <p class="hint">Calcula una preparación temporal con la fórmula base de 1,000 ml. Guardar la añade al Checklist de este módulo.</p>
       <label for="a33-produccion-volumen">Cantidad a preparar (ml)</label>
       <input id="a33-produccion-volumen" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Ej: 1500" autocomplete="off" />
       <div id="a33-produccion-error" class="a33-production-modal-error" role="alert"></div>
@@ -654,7 +754,7 @@
   <section id="a33-temporal-checklist" class="a33-temporal-checklist" hidden aria-hidden="true" aria-labelledby="a33-temporal-checklist-title">
     <div class="a33-temporal-checklist-shell" role="dialog" aria-modal="true">
       <div class="a33-temporal-checklist-header">
-        <h2 id="a33-temporal-checklist-title">Checklist temporal</h2>
+        <div><h2 id="a33-temporal-checklist-title">Checklist temporal</h2><p class="hint">Preparaciones pendientes e histórico de consulta.</p></div>
         <button id="btn-cerrar-checklist" class="btn-pill" type="button">Volver</button>
       </div>
       <div class="a33-temporal-checklist-block">
@@ -2546,6 +2646,9 @@ function a33WireNumericInput(el, mode) {
           input.min = "0";
           input.step = "0.01";
           input.id = "receta-" + p.id + "-" + ing;
+          const etiqueta = (ing === "agua" ? "Agua pura" : ing.charAt(0).toUpperCase() + ing.slice(1)) + " (ml)";
+          td.dataset.label = etiqueta;
+          input.setAttribute("aria-label", etiqueta + " · " + p.nombre);
           a33WireNumericInput(input, "decimal");
           td.appendChild(input);
           tr.appendChild(td);
@@ -2557,6 +2660,8 @@ function a33WireNumericInput(el, mode) {
         inputCosto.min = "0";
         inputCosto.step = "0.01";
         inputCosto.id = "costo-unit-" + p.id;
+        tdCosto.dataset.label = "Costo unitario (C$)";
+        inputCosto.setAttribute("aria-label", "Costo unitario (C$) · " + p.nombre);
         a33WireNumericInput(inputCosto, "decimal");
         tdCosto.appendChild(inputCosto);
         tr.appendChild(tdCosto);
@@ -2587,6 +2692,7 @@ function a33WireNumericInput(el, mode) {
         tr.appendChild(tdNombre);
         const tdEmpaque = document.createElement("td");
         tdEmpaque.className = "hint";
+        tdEmpaque.dataset.label = "Envase / tapa";
         tdEmpaque.style.textAlign = "left";
         tdEmpaque.textContent = a33PackagingSummary(p);
         tr.appendChild(tdEmpaque);
@@ -2596,6 +2702,8 @@ function a33WireNumericInput(el, mode) {
         input.min = "0";
         input.step = "1";
         input.id = "plan-" + p.id;
+        tdCantidad.dataset.label = "Unidades a simular";
+        input.setAttribute("aria-label", "Unidades a simular · " + p.nombre);
         a33WireNumericInput(input, "numeric");
         tdCantidad.appendChild(input);
         tr.appendChild(tdCantidad);
