@@ -2209,6 +2209,41 @@
     return false;
   }
 
+  const expandedCatalogCards = new Set();
+
+  function prepareExpandableCatalogCard(card, key, usefulText){
+    const titleRow = card.querySelector('.cat-product-title-row');
+    const title = titleRow && titleRow.querySelector('strong');
+    if (!title) return;
+    const summary = document.createElement('summary');
+    summary.className = 'cat-item-summary';
+    const heading = document.createElement('span');
+    heading.className = 'cat-item-heading';
+    heading.appendChild(title);
+    const state = titleRow.querySelector('.cat-pill');
+    if (state) heading.appendChild(state);
+    if (usefulText){
+      const useful = document.createElement('span');
+      useful.className = 'cat-item-useful';
+      useful.textContent = usefulText;
+      heading.appendChild(useful);
+    }
+    const warning = titleRow.querySelector('.cat-pill.warn');
+    if (warning) heading.appendChild(warning);
+    const chevron = document.createElement('span');
+    chevron.className = 'cat-item-chevron';
+    chevron.setAttribute('aria-hidden','true');
+    chevron.textContent = '⌄';
+    summary.append(heading,chevron);
+    card.insertBefore(summary,card.firstChild);
+    card.classList.add('cat-item-expandable');
+    card.open = expandedCatalogCards.has(key);
+    card.addEventListener('toggle',()=>{
+      if (card.open) expandedCatalogCards.add(key);
+      else expandedCatalogCards.delete(key);
+    });
+  }
+
   async function renderProducts(){
     try{
       const allRaw = await getAll('products');
@@ -2247,7 +2282,7 @@
         const vasoFisicoLabel = vasoFisicoId ? (vasoFisicoName || `No encontrado · ${vasoFisicoId}`) : '—';
         const issues = productProductionIssues(p, envases, tapas, duplicateLetters);
         const contract = productDataContractSnapshot(p);
-        const card = document.createElement('div');
+        const card = document.createElement('details');
         card.className = 'cat-product-card' + (active ? '' : ' is-inactive') + (pos ? ' is-canonical' : '') + (issues.length ? ' is-incomplete' : '');
         card.innerHTML = `
           <div class="cat-product-main">
@@ -2279,6 +2314,7 @@
             <button class="cat-btn cat-btn-danger cat-delete-product" data-product-id="${escapeHtml(productStableId(p))}" type="button">Borrar</button>
           </div>
         `;
+        prepareExpandableCatalogCard(card, 'renderProducts:' + productStableId(p), displayMl(cap));
         wrap.appendChild(card);
       }
       await renderCostsProductColumns();
@@ -2721,7 +2757,7 @@
       setStatusById('cat-extras-status', `${list.length} extra(s) maestro(s) · ${activeCount} activo(s).`, 'ok');
       for (const x of list){
         const active = activeBool(x && x.active);
-        const card = document.createElement('div');
+        const card = document.createElement('details');
         card.className = 'cat-product-card' + (active ? '' : ' is-inactive');
         card.innerHTML = `
           <div class="cat-product-main">
@@ -2743,6 +2779,7 @@
             <button class="cat-btn cat-btn-danger cat-delete-extra" data-id="${escapeHtml(String(x.id))}" type="button">Borrar</button>
           </div>
         `;
+        prepareExpandableCatalogCard(card, 'renderExtras:' + String(x.id), displayMoney(getExtraPrice(x)));
         wrap.appendChild(card);
       }
     }catch(err){
@@ -2969,7 +3006,7 @@
         const active = bankActive(b);
         const type = normalizeBankType(b && (b.type || b.bankType));
         const commission = type === 'tarjeta' ? round2(b.commissionPct ?? b.commission ?? b.feePct ?? 0) : 0;
-        const card = document.createElement('div');
+        const card = document.createElement('details');
         card.className = 'cat-product-card' + (active ? '' : ' is-inactive');
         card.innerHTML = `
           <div class="cat-product-main">
@@ -2991,6 +3028,7 @@
             <button class="cat-btn cat-btn-danger cat-delete-bank" data-id="${escapeHtml(String(b.id))}" type="button">Borrar</button>
           </div>
         `;
+        prepareExpandableCatalogCard(card, 'renderBanks:' + String(b.id), bankTypeLabel(type) + ' · ' + bankCurrencyLabel(b.currency));
         wrap.appendChild(card);
       }
     }catch(err){
@@ -3364,7 +3402,7 @@
         const active = envaseActive(x);
         const cap = envaseCapacity(x);
         const note = String(x.note || x.nota || '').trim();
-        const card = document.createElement('div');
+        const card = document.createElement('details');
         card.className = 'cat-product-card cat-envase-card' + (active ? '' : ' is-inactive');
         card.innerHTML = `
           <div class="cat-product-main">
@@ -3386,6 +3424,7 @@
             <button class="cat-btn cat-btn-danger cat-delete-envase" data-id="${escapeHtml(String(x.id))}" type="button">Borrar</button>
           </div>
         `;
+        prepareExpandableCatalogCard(card, 'renderEnvases:' + String(x.id), displayMl(cap));
         wrap.appendChild(card);
       }
     }catch(err){
@@ -3755,7 +3794,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
       for (const x of list){
         const active = tapaActive(x);
         const note = String(x.note || x.nota || '').trim();
-        const card = document.createElement('div');
+        const card = document.createElement('details');
         card.className = 'cat-product-card cat-tapa-card' + (active ? '' : ' is-inactive');
         card.innerHTML = `
           <div class="cat-product-main">
@@ -3777,6 +3816,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
             <button class="cat-btn cat-btn-danger cat-delete-tapa" data-id="${escapeHtml(String(x.id))}" type="button">Borrar</button>
           </div>
         `;
+        prepareExpandableCatalogCard(card, 'renderTapas:' + String(x.id), 'Tapa / Corcho');
         wrap.appendChild(card);
       }
     }catch(err){
