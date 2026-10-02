@@ -136,6 +136,21 @@ function legacyInventoryName(labels, id, row, suffix){
   return suffix ? `${base} (${suffix})` : base;
 }
 
+function historicalBottleName(inv, id, row){
+  const explicit = String((row && (row.name || row.nombre || row.nombreSnapshot)) || '').trim();
+  if (explicit) return explicit;
+  const movements = Array.isArray(inv && inv.movimientos) ? inv.movimientos : [];
+  for (let i = movements.length - 1; i >= 0; i--){
+    const mov = movements[i];
+    if (String(mov && (mov.itemId || mov.idItem) || '').trim() !== String(id)) continue;
+    const type = normalizeInvText(mov.tipoItem || mov.itemType || mov.kind || '');
+    if (type && type !== 'envase') continue;
+    const name = String(mov.nombreSnapshot || '').trim();
+    if (name) return name;
+  }
+  return legacyInventoryName(LEGACY_ENVASE_LABELS, id, row, '');
+}
+
 function buildBottleDefs(inv){
   const defs = [];
   const catalogRows = readCatalogRowsForInventario(ENVASES_CATALOG_KEY, { includeInactive:true });
@@ -161,7 +176,7 @@ function buildBottleDefs(inv){
     const row = inv.bottles[id];
     defs.push({
       id,
-      nombre:legacyInventoryName(LEGACY_ENVASE_LABELS, id, row, 'legacy · histórico'),
+      nombre:historicalBottleName(inv, id, row),
       active:false,
       operational:false,
       historical:true,
@@ -1337,7 +1352,7 @@ function applyView(section) {
   const page = INV_UI.pages[section] || 1;
   const limit = INV_UI.pageSize * page;
 
-  const defs = getDefsForSection(section);
+  const defs = getDefsForSection(section).filter((def) => section !== 'bottles' || def.operational !== false);
 
   cache.forEach((row) => {
     if (row && row.tr) row.tr.hidden = true;
@@ -2154,12 +2169,37 @@ function renderBotellas(inv) {
   const tbody = $("inv-botellas-body");
   if (!tbody) return;
   ensureDynamicCatalogInventoryInPlace(inv);
-  pruneInventoryRowCache('bottles', INV_BOTTLE_DEFS);
-  INV_BOTTLE_DEFS.forEach((def) => {
+  const activeDefs = INV_BOTTLE_DEFS.filter((def) => def.operational !== false);
+  pruneInventoryRowCache('bottles', activeDefs);
+  activeDefs.forEach((def) => {
     ensureBottleRow(tbody, def);
     updateBottleRow(inv, def.id);
   });
   applyView("bottles");
+  renderHistoricalBottles(inv);
+}
+
+function renderHistoricalBottles(inv){
+  const panel = $('inv-botellas-history');
+  const body = $('inv-botellas-history-body');
+  if (!panel || !body) return;
+  const defs = INV_BOTTLE_DEFS.filter((def) => def.operational === false);
+  body.textContent = '';
+  panel.hidden = !defs.length;
+  for (const def of defs){
+    const tr = document.createElement('tr');
+    tr.dataset.rowId = def.id;
+    const values = [def.nombre.replace(/ \(inactivo · histórico\)$/, ''),
+      String(parseNumber(inv.bottles[def.id]?.stock) || 0),
+      def.catalogId ? 'Inactivo' : 'Fuera del catálogo'];
+    const labels = ['Presentación', 'Stock guardado (unid.)', 'Estado'];
+    values.forEach((value, index) => {
+      const td = tdLabel(document.createElement('td'), labels[index]);
+      td.textContent = value;
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  }
 }
 
 function renderCaps(inv) {

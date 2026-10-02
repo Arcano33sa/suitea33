@@ -120,6 +120,16 @@
       <p class="legend">
         Alerta cuando una presentación tenga <strong>10 botellas o menos</strong> en inventario.
       </p>
+      <details id="inv-botellas-history" class="inv-bottle-history" hidden>
+        <summary>Envases fuera del catálogo</summary>
+        <p class="hint">Registros inactivos o retirados del catálogo. El stock guardado se conserva para consulta histórica.</p>
+        <div class="table-wrapper">
+          <table class="inv-table">
+            <thead><tr><th>Presentación</th><th>Stock guardado (unid.)</th><th>Estado</th></tr></thead>
+            <tbody id="inv-botellas-history-body"></tbody>
+          </table>
+        </div>
+      </details>
     </section>
 
     <section class="card table-card inv-stock-visual">
