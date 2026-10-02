@@ -61,76 +61,74 @@
       </div>
     </div>
 
-    <div class="row">
+    <div class="sale-context">
       <div>
-        <label>Evento activo</label>
-        <div class="row">
-          <select id="sale-event">
-            <option value="">— Seleccionar evento —</option>
-          </select>
-          <input id="new-event" placeholder="Nuevo evento">
-        </div>
-
-<div class="row">
-  <label>Evento maestro / Grupo</label>
-</div>
-<div class="row">
-  <select id="event-group-select">
-    <option value="">— Selecciona grupo —</option>
-    <option value="__new__">+ Crear nuevo grupo</option>
-  </select>
-  <input id="event-group-new" placeholder="Nombre de nuevo grupo" style="display:none">
-</div>
-<div class="actions">
-  <button type="button" id="btn-manage-groups" class="btn-primary btn-pill">Gestionar grupos</button>
-</div>
-<small class="muted">Usa el mismo nombre de grupo para todos los días del mismo evento maestro. Puedes ocultar grupos antiguos desde “Gestionar grupos”.</small>
-
-        <div class="actions">
-  <button id="btn-add-event" class="btn-ok btn-pill">+ Crear y activar evento</button>
-  <button id="btn-close-event" class="btn-danger btn-pill">Cerrar evento (Corte)</button>
-  <button id="btn-reopen-event" class="btn-ok btn-pill">Reabrir evento</button>
-</div>
-        <div id="event-status" class="info" style="display:none"></div>
-        <div id="no-active-note" class="disabled-note" style="display:none">Sin evento activo. Crea o selecciona uno para comenzar.</div>
+        <label for="event-group-select">Evento maestro / Grupo</label>
+        <select id="event-group-select">
+          <option value="">— Selecciona grupo —</option>
+          <option value="__new__">+ Crear nuevo grupo</option>
+        </select>
+        <input id="event-group-new" placeholder="Nombre de nuevo grupo" aria-label="Nombre de nuevo grupo" style="display:none">
       </div>
       <div>
-        <label>Fecha</label>
+        <label for="sale-event">Evento activo</label>
+        <select id="sale-event"><option value="">— Seleccionar evento —</option></select>
+      </div>
+      <div>
+        <label for="sale-date">Fecha</label>
         <input id="sale-date" type="date">
-        <div class="sale-fx-field" id="sale-exchange-rate-wrap">
-          <label for="sale-exchange-rate">T/C</label>
-          <input id="sale-exchange-rate" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="36.80" autocomplete="off">
-          <small id="sale-exchange-rate-status" class="muted">—</small>
-          <small id="sale-exchange-rate-error" class="warn sale-fx-error" style="display:none"></small>
-        </div>
+      </div>
+      <div class="sale-fx-field" id="sale-exchange-rate-wrap">
+        <label for="sale-exchange-rate">Tipo de cambio</label>
+        <input id="sale-exchange-rate" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="36.80" autocomplete="off">
+        <small id="sale-exchange-rate-status" class="muted">—</small>
+        <small id="sale-exchange-rate-error" class="warn sale-fx-error" style="display:none"></small>
       </div>
     </div>
+    <div id="event-status" class="info" style="display:none"></div>
+    <div id="no-active-note" class="disabled-note" style="display:none">Sin evento activo. Crea o selecciona uno para comenzar.</div>
 
-    <div class="row">
+    <div class="sale-main-actions">
       <button id="btn-add" class="btn-ok purchase-open" type="button">VENDER</button>
-      <button id="btn-undo" class="btn-warn">↩︎ Deshacer última</button>
+      <button id="btn-undo" class="btn-outline">↩︎ Deshacer última</button>
     </div>
 
 
-    <div class="card">
-      <div class="row">
-        <div><strong>Listado del día</strong></div>
-        <div style="text-align:right"><strong>Total día: C$ <span id="day-total">0</span></strong></div>
+    <div class="card sale-day-card">
+      <div class="sale-day-heading">
+        <h3>Listado del día</h3>
+        <div class="sale-day-total"><span>Total del día</span><strong>C$ <span id="day-total">0</span></strong></div>
       </div>
       <div class="table-scroll">
       <table id="tbl-day" class="compact">
         <thead>
           <tr>
-            <th>Hora</th><th>Producto</th><th>Cant.</th><th>PU</th><th>Desc</th><th>Total</th><th>Pago</th><th>C</th><th>Dev</th><th>Cliente asociado</th><th>Cortesía a</th><th></th>
+            <th>Hora</th><th>Producto</th><th>Cantidad</th><th>Precio unitario</th><th>Descuento</th><th>Total</th><th>Pago</th><th>Cortesía</th><th>Devolución</th><th>Cliente asociado</th><th>Cortesía a</th><th>Acciones</th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
       </div>
     </div>
+    <section class="sale-event-admin" aria-labelledby="sale-event-admin-title">
+      <h3 id="sale-event-admin-title">Administración del evento</h3>
+      <div class="sale-event-create">
+        <div>
+          <label for="new-event">Nuevo evento</label>
+          <input id="new-event" placeholder="Nombre del evento">
+        </div>
+        <button id="btn-add-event" class="btn-ok btn-pill">+ Crear y activar evento</button>
+      </div>
+      <p class="muted sale-admin-hint">Usa el grupo seleccionado arriba para reunir los días del mismo evento maestro.</p>
+      <div class="actions">
+        <button type="button" id="btn-manage-groups" class="btn-outline btn-pill">Gestionar grupos</button>
+        <button id="btn-close-event" class="btn-danger btn-pill">Cerrar evento (Corte)</button>
+        <button id="btn-reopen-event" class="btn-ok btn-pill">Reabrir evento</button>
+      </div>
+    </section>
   </section>
 
-  <section id="tab-inventario" class="tab card" style="display:none">
+  <section id="tab-inventario" class="tab card pos-visual" style="display:none">
     <h2>Inventario por evento</h2>
     <div class="row">
       <div>
@@ -138,7 +136,7 @@
         <select id="inv-event"></select>
       </div>
       <div class="actions end">
-  <button id="btn-inv-csv" class="btn-primary btn-pill">CSV Inventario</button>
+  <button id="btn-inv-csv" class="btn-outline btn-pill">CSV Inventario</button>
   <button id="btn-inv-ref" class="btn-ok btn-pill">Actualizar</button>
   <button id="btn-inv-from-lote" class="btn-ok btn-pill" type="button">Agregar desde lote</button>
 </div>
@@ -393,7 +391,8 @@
       </div>
     </div>
 
-    <table id="tbl-inv">
+    <div class="pos-table-scroll">
+<table id="tbl-inv">
       <thead>
         <tr>
           <th>Producto</th><th>Activo</th><th>Manejar</th><th>Inicial</th><th>Reposición</th><th>Ajuste ±</th><th>Stock</th><th>Acciones</th>
@@ -401,22 +400,23 @@
       </thead>
       <tbody></tbody>
     </table>
+</div>
     <div class="info"><small>“Manejar” desactiva inventario para productos que no se controlan aquí. Inicial se guarda por evento. Reposición y Ajuste crean movimientos fechados. <b>Nota:</b> Vasos se alimenta formalmente desde Inventario → Reempaque y se vende como producto normal.</small></div>
   </section>
 
-  <section id="tab-eventos" class="tab card" style="display:none">
+  <section id="tab-eventos" class="tab card pos-visual" style="display:none">
     <h2>Eventos e historial</h2>
     <div class="topbar">
-      <select id="filtro-eventos">
+      <select id="filtro-eventos" aria-label="Filtrar eventos por estado">
         <option value="todos" selected>Mostrar: Todos</option>
         <option value="abiertos">Solo abiertos</option>
         <option value="cerrados">Solo cerrados</option>
       </select>
-      <select id="filtro-grupo">
+      <select id="filtro-grupo" aria-label="Filtrar eventos por grupo">
         <option value="">Grupos: Todos</option>
       </select>
-      <button id="btn-exportar-eventos" class="btn-primary btn-pill">Exportar lista (Excel)</button>
-      <button id="btn-exportar-evento-excel" class="btn-ok btn-pill">Exportar evento activo (Excel)</button>
+      <button id="btn-exportar-eventos" class="btn-outline btn-pill">Exportar lista (Excel)</button>
+      <button id="btn-exportar-evento-excel" class="btn-outline btn-pill">Exportar evento activo (Excel)</button>
     </div>
     <div class="table-scroll">
     <table id="tbl-eventos">
@@ -429,14 +429,14 @@
       <p class="muted">Selecciona un grupo arriba y genera un corte consolidado de todos sus eventos diarios.</p>
       <div class="actions">
   <button id="btn-cierre-total" class="btn-ok btn-pill">Cierre Total del grupo</button>
-  <button id="btn-cierre-total-excel" class="btn-primary btn-pill">Exportar Cierre Total (Excel)</button>
+  <button id="btn-cierre-total-excel" class="btn-outline btn-pill">Exportar Cierre Total (Excel)</button>
 </div>
       <div id="cierre-total-resumen" class="summary"></div>
       <div id="cierre-total-presentaciones" class="table-wrapper"></div>
     </div>
   </section>
 
-  <section id="tab-efectivo" class="tab card" style="display:none">
+  <section id="tab-efectivo" class="tab card pos-visual" style="display:none">
     <div class="row" style="align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;">
       <h2 style="margin:0">Efectivo</h2>
       <small class="muted">Arqueo del día (por evento)</small>
@@ -557,7 +557,7 @@
           <small class="muted">USD → C$ (informativo para el evento)</small>
         </div>
         <div class="actions end" style="gap:8px; align-items:center; flex-wrap:wrap;">
-          <input id="cashv2-fx-input"
+          <input id="cashv2-fx-input" aria-label="Tipo de cambio del evento"
                  type="number" min="0.01" step="0.01"
                  inputmode="decimal"
                  placeholder="0.00"
@@ -586,7 +586,7 @@
         <div style="flex:1; min-width:260px;">
           <div class="muted" style="font-size:12px; margin-bottom:6px;">C$ (NIO)</div>
           <table id="cashv2-table-initial-nio">
-            <thead><tr><th class="denom">Denom</th><th>Cant</th><th class="sub">Sub</th></tr></thead>
+            <thead><tr><th class="denom">Valor</th><th>Cantidad</th><th class="sub">Subtotal</th></tr></thead>
             <tbody></tbody>
             <tfoot><tr><td colspan="2">Total</td><td id="cashv2-total-nio" class="sub">0</td></tr></tfoot>
           </table>
@@ -594,7 +594,7 @@
         <div style="flex:1; min-width:260px;">
           <div class="muted" style="font-size:12px; margin-bottom:6px;">USD</div>
           <table id="cashv2-table-initial-usd">
-            <thead><tr><th class="denom">Denom</th><th>Cant</th><th class="sub">Sub</th></tr></thead>
+            <thead><tr><th class="denom">Valor</th><th>Cantidad</th><th class="sub">Subtotal</th></tr></thead>
             <tbody></tbody>
             <tfoot><tr><td colspan="2">Total</td><td id="cashv2-total-usd" class="sub">0</td></tr></tfoot>
           </table>
@@ -687,7 +687,7 @@
         <div style="flex:1; min-width:260px;">
           <div class="muted" style="font-size:12px; margin-bottom:6px;">C$ (NIO)</div>
           <table id="cashv2-table-final-nio">
-            <thead><tr><th class="denom">Denom</th><th>Cant</th><th class="sub">Sub</th></tr></thead>
+            <thead><tr><th class="denom">Valor</th><th>Cantidad</th><th class="sub">Subtotal</th></tr></thead>
             <tbody></tbody>
             <tfoot><tr><td colspan="2">Total</td><td id="cashv2-final-total-nio" class="sub">0</td></tr></tfoot>
           </table>
@@ -695,7 +695,7 @@
         <div style="flex:1; min-width:260px;">
           <div class="muted" style="font-size:12px; margin-bottom:6px;">USD</div>
           <table id="cashv2-table-final-usd">
-            <thead><tr><th class="denom">Denom</th><th>Cant</th><th class="sub">Sub</th></tr></thead>
+            <thead><tr><th class="denom">Valor</th><th>Cantidad</th><th class="sub">Subtotal</th></tr></thead>
             <tbody></tbody>
             <tfoot><tr><td colspan="2">Total</td><td id="cashv2-final-total-usd" class="sub">0</td></tr></tfoot>
           </table>
@@ -716,11 +716,11 @@
 
 </section>
 
-<section id="tab-resumen" class="tab card" style="display:none">
+<section id="tab-resumen" class="tab card pos-visual" style="display:none">
     <h2>Resumen</h2>
     <div class="summary-controls">
       <div class="summary-controls-left">
-        <label>Período activo</label>
+        <label for="summary-period">Período activo</label>
         <div class="row" style="gap:8px; align-items:center">
           <input id="summary-period" type="month">
           <span id="summary-mode-badge" class="tag small open">En vivo</span>
@@ -728,7 +728,7 @@
         <small id="summary-period-hint" class="muted">Filtra el Resumen por mes. Para ver el historial completo, usa el botón “Todo”.</small>
       </div>
 	      <div class="summary-controls-right actions end">
-	        <button id="btn-summary-export" class="btn-ok btn-pill" type="button">Exportar Excel</button>
+	        <button id="btn-summary-export" class="btn-outline btn-pill" type="button">Exportar Excel</button>
 	        <button id="btn-summary-close-period" class="btn-warn btn-pill" type="button">Cerrar período</button>
 	        <button id="btn-summary-all" class="btn-outline btn-pill btn-pill-mini" type="button" title="Ver todo el historial">Todo</button>
 	        <!-- Archivo debe verse como botón (no como link) -->
@@ -890,10 +890,12 @@
           <div><b>Ventas con cliente:</b> <span id="summary-sales-with-customer">0</span> <span class="muted">(<span id="summary-sales-with-customer-pct">0</span>%)</span></div>
         </div>
 
-        <table id="tbl-top-clientes">
+        <div class="pos-table-scroll">
+<table id="tbl-top-clientes">
           <thead><tr><th>Cliente</th><th>Vendido</th><th>Compras</th></tr></thead>
           <tbody></tbody>
         </table>
+</div>
 
         <div class="info"><small>Tip: toca un cliente del Top para filtrar todo el Resumen.</small></div>
       </div>
@@ -902,53 +904,65 @@
     <div class="row">
       <div class="card">
         <h3>Por evento</h3>
-        <table id="tbl-por-evento">
+        <div class="pos-table-scroll">
+<table id="tbl-por-evento">
           <thead><tr><th>Evento</th><th>Total</th></tr></thead>
           <tbody></tbody>
         </table>
+</div>
       </div>
       <div class="card">
         <h3>Por día</h3>
-        <table id="tbl-por-dia">
+        <div class="pos-table-scroll">
+<table id="tbl-por-dia">
           <thead><tr><th>Fecha</th><th>Total</th></tr></thead>
           <tbody></tbody>
         </table>
+</div>
       </div>
     </div>
     <div class="row">
       <div class="card">
         <h3>Por producto</h3>
-        <table id="tbl-por-prod">
+        <div class="pos-table-scroll">
+<table id="tbl-por-prod">
           <thead><tr><th>Producto</th><th>Vendido</th><th>Total</th></tr></thead>
           <tbody></tbody>
         </table>
+</div>
       </div>
       <div class="card">
         <h3>Por método de pago</h3>
-        <table id="tbl-por-pago">
+        <div class="pos-table-scroll">
+<table id="tbl-por-pago">
           <thead><tr><th>Método</th><th>Total</th></tr></thead>
           <tbody></tbody>
         </table>
+</div>
       </div>
     </div>
 
     <div class="row">
       <div class="card full">
         <h3>Transferencias por banco</h3>
-        <table id="tbl-transfer-bank">
+        <div class="pos-table-scroll">
+<table id="tbl-transfer-bank">
           <thead><tr><th>Banco</th><th>Total</th><th>#</th></tr></thead>
           <tbody></tbody>
         </table>
+</div>
       </div>
     </div>
 
     <div class="row">
       <div class="card full">
         <h3>Descuentos</h3>
-        <table id="tbl-discounts-byprod">
+        <div class="pos-table-scroll">
+<table id="tbl-discounts-byprod">
           <thead><tr><th>Producto</th><th>Total descuento</th></tr></thead>
           <tbody></tbody>
         </table>
+</div>
       </div>
     </div>
   
@@ -964,10 +978,12 @@
             </div>
 
             <div class="table-scroll">
-              <table id="tbl-courtesy-byprod">
+              <div class="pos-table-scroll">
+<table id="tbl-courtesy-byprod">
                 <thead><tr><th>Producto</th><th>Cant.</th><th>Costo total</th><th>Equivalente</th></tr></thead>
                 <tbody></tbody>
               </table>
+</div>
             </div>
 
             <div class="info"><small>Nota: el “equivalente” es informativo (precio lista si existe). Arriba solo se refleja el impacto real en utilidad.</small></div>
@@ -976,7 +992,7 @@
     </div>
 </section>
 
-  <section id="tab-extras" class="tab card" style="display:none">
+  <section id="tab-extras" class="tab card pos-visual" style="display:none">
     <h2>Extras y Bancos</h2>
     <div class="info"><small>Productos, Extras y Bancos maestros se administran en <b>Gestión Operativa → Catálogos</b>. POS usa snapshots seguros para ventas y eventos.</small></div>
 
@@ -1044,7 +1060,7 @@
 
       <div class="actions end">
         <button id="btn-save-extra" class="btn-ok btn-pill">+ Agregar extra</button>
-        <button id="btn-cancel-extra" class="btn-warn btn-pill" style="display:none">Cancelar edición</button>
+        <button id="btn-cancel-extra" class="btn-outline btn-pill" style="display:none">Cancelar edición</button>
       </div>
 
       <div id="extras-list"></div>
@@ -1079,7 +1095,7 @@
     </div>
   </section>
 
-  <section id="tab-calculadora" class="tab card" style="display:none">
+  <section id="tab-calculadora" class="tab card pos-visual" style="display:none">
     <h2>Calculadora</h2>
 
     <div class="calc-grid">
@@ -1163,9 +1179,9 @@
 </div>
 
 <!-- Modal VER evento -->
-<div id="event-view" class="modal">
+<div id="event-view" class="modal pos-visual">
   <div class="panel">
-    <button id="ev-close" class="close btn-warn btn-pill">Cerrar</button>
+    <button id="ev-close" class="close btn-outline btn-pill">Cerrar</button>
     <h3 id="ev-title">Evento</h3>
     <div class="grid">
       <div class="card" id="ev-meta"></div>
@@ -1174,11 +1190,15 @@
     <div class="grid">
       <div class="card">
         <h4>Por día</h4>
-        <table id="ev-byday"><thead><tr><th>Fecha</th><th>Total</th></tr></thead><tbody></tbody></table>
+        <div class="pos-table-scroll">
+<table id="ev-byday"><thead><tr><th>Fecha</th><th>Total</th></tr></thead><tbody></tbody></table>
+</div>
       </div>
       <div class="card">
         <h4>Por producto</h4>
-        <table id="ev-byprod"><thead><tr><th>Producto</th><th>Total</th></tr></thead><tbody></tbody></table>
+        <div class="pos-table-scroll">
+<table id="ev-byprod"><thead><tr><th>Producto</th><th>Total</th></tr></thead><tbody></tbody></table>
+</div>
       </div>
     </div>
     <div class="card">
@@ -1195,9 +1215,9 @@
 
 
 <!-- Modal Cerrar Período (Resumen) -->
-<div id="summary-close-modal" class="modal">
+<div id="summary-close-modal" class="modal pos-visual">
   <div class="panel">
-    <button id="summary-close-cancel" class="close btn-warn btn-pill">Cancelar</button>
+    <button id="summary-close-cancel" class="close btn-outline btn-pill">Cancelar</button>
     <h3>Cerrar período</h3>
     <div class="info"><small>Período: <b><span id="summary-close-period-label"></span></b></small></div>
 
@@ -1217,9 +1237,9 @@
 </div>
 
 <!-- Modal Archivo de Resúmenes -->
-<div id="summary-archive-modal" class="modal">
+<div id="summary-archive-modal" class="modal pos-visual">
   <div class="panel">
-    <button id="summary-archive-close" class="close btn-warn btn-pill">Cerrar</button>
+    <button id="summary-archive-close" class="close btn-outline btn-pill">Cerrar</button>
     <h3>Archivo de Resúmenes</h3>
 
     <div class="actions" id="summary-archive-toolbar" style="margin-top:8px">
@@ -1312,9 +1332,9 @@
 
 
 <!-- Modal Movimiento Efectivo (Efectivo v2) -->
-<div id="cashv2-movement-modal" class="modal">
+<div id="cashv2-movement-modal" class="modal pos-visual">
   <div class="panel panel-compact">
-    <button id="cashv2-move-cancel" class="close btn-warn btn-pill btn-pill-mini" type="button">Cancelar</button>
+    <button id="cashv2-move-cancel" class="close btn-outline btn-pill" type="button">Cancelar</button>
     <h3>Agregar movimiento</h3>
 
     <div id="cashv2-move-modal-error" class="warn" style="display:none; margin-top:8px"></div>
@@ -1370,9 +1390,9 @@
 
 
 <!-- Modal Reabrir día (Admin) — Efectivo v2 -->
-<div id="cashv2-admin-reopen-modal" class="modal">
+<div id="cashv2-admin-reopen-modal" class="modal pos-visual">
   <div class="panel panel-compact">
-    <button id="cashv2-admin-reopen-cancel" class="close btn-warn btn-pill btn-pill-mini" type="button">Cancelar</button>
+    <button id="cashv2-admin-reopen-cancel" class="close btn-outline btn-pill" type="button">Cancelar</button>
     <h3>Reabrir día (Admin)</h3>
 
     <div class="warn" style="margin-top:8px"><small>Esto reabre un día cerrado. Se registra auditoría (timestamp + motivo).</small></div>
@@ -1402,9 +1422,9 @@
 
 
 <!-- Modal Histórico Efectivo (Efectivo v2) — Solo lectura -->
-<div id="cashv2-hist-modal" class="modal">
+<div id="cashv2-hist-modal" class="modal pos-visual">
   <div class="panel panel-compact">
-    <button id="cashv2-hist-close" class="close btn-warn btn-pill btn-pill-mini" type="button">Cerrar</button>
+    <button id="cashv2-hist-close" class="close btn-outline btn-pill" type="button">Cerrar</button>
     <h3>Histórico de Efectivo</h3>
     <div class="muted" style="margin-top:4px"><small>Solo lectura. Eventos y días ordenados por más reciente.</small></div>
 
@@ -1463,10 +1483,12 @@
         <h4 id="purchase-items-title">Productos de la compra</h4>
         <div id="purchase-items" class="purchase-items"></div>
 <!-- Cliente (opcional) · Etapa 2/3: selector POS, administración en Catálogos -->
+<section class="purchase-customer-section" aria-labelledby="purchase-customer-title">
+<h4 id="purchase-customer-title">Cliente</h4>
 <div class="row" id="sale-customer-row">
   <div class="customer-v2">
     <div class="customer-v2-field">
-      <label id="sale-customer-label">Cliente</label>
+      <label id="sale-customer-label" for="sale-customer">Cliente asociado</label>
       <input id="sale-customer" placeholder="Selecciona cliente…" readonly aria-readonly="true">
       <small class="muted customer-catalog-hint">Los clientes se administran desde Catálogos.</small>
     </div>
@@ -1480,9 +1502,12 @@
   </div>
 </div>
 
+    </section>
+    <section class="purchase-payment-section" aria-labelledby="purchase-payment-title">
+    <h4 id="purchase-payment-title">Cobro</h4>
     <div class="row purchase-payment-row">
       <div>
-        <label>Método de pago</label>
+        <label for="sale-payment">Método de pago</label>
         <select id="sale-payment">
           <option value="efectivo" selected>Efectivo</option>
           <option value="transferencia">Transferencia</option>
@@ -1491,7 +1516,7 @@
         </select>
       </div>
       <div>
-        <label>Total (C$)</label>
+        <label for="sale-total">Importe de la compra (C$)</label>
         <input id="sale-total" type="number" inputmode="decimal" step="0.01" disabled>
       </div>
     </div>
@@ -1543,6 +1568,7 @@
       </div>
     </div>
 
+    </section>
     <details id="purchase-more-options" class="card">
       <summary>Más opciones</summary>
       <div id="purchase-courtesy-options"></div>
@@ -1560,7 +1586,7 @@
           <small id="sale-courtesy-to-hint" class="muted" hidden>Usa el nombre del cliente seleccionado.</small>
         </div>
       </div>
-      <label>Notas (opcional)</label>
+      <label for="sale-notes">Notas (opcional)</label>
       <textarea id="sale-notes" rows="2" placeholder="ej. promo, ref. de pago, etc."></textarea>
     </details>
 
@@ -1568,7 +1594,7 @@
       </section>
     </div>
     <div class="purchase-footer">
-      <div class="purchase-grand-total">Total: C$ <strong id="purchase-total-display" aria-live="polite">0.00</strong></div>
+      <div class="purchase-grand-total"><span>Total de la compra</span><div>C$ <strong id="purchase-total-display" aria-live="polite">0.00</strong></div></div>
       <div class="purchase-actions">
         <button id="purchase-save" class="btn-ok btn-pill" type="button">Guardar</button>
         <button id="purchase-cancel" class="btn-outline btn-pill" type="button">Cancelar</button>
@@ -1618,7 +1644,7 @@
           <input id="customer-quick-name" name="customerQuickName" type="text" autocomplete="name" maxlength="120" required>
         </div>
         <div>
-          <label for="customer-quick-cell">Celular</label>
+          <label for="customer-quick-cell">Celular (opcional)</label>
           <input id="customer-quick-cell" name="customerQuickCell" type="tel" inputmode="tel" autocomplete="tel" maxlength="40">
         </div>
       </div>
@@ -1635,12 +1661,15 @@
 
 <!-- Modal Seleccionar Cliente (Clientes v2) -->
 <div id="customer-picker-modal" class="modal">
-  <div class="panel panel-compact">
-    <button id="customer-picker-close" class="close btn-warn btn-pill btn-pill-mini" type="button">Cerrar</button>
-    <h3>Seleccionar cliente</h3>
+  <div class="panel panel-compact customer-picker-panel">
+    <div class="customer-picker-heading">
+      <h3>Seleccionar cliente</h3>
+      <button id="customer-picker-close" class="btn-outline btn-pill" type="button">Cerrar</button>
+    </div>
 
     <div class="row" style="grid-template-columns:1fr; gap:10px">
-      <input id="customer-picker-search" placeholder="Buscar cliente…">
+      <label for="customer-picker-search">Buscar cliente</label>
+      <input id="customer-picker-search" placeholder="Nombre del cliente…">
       <small id="customer-picker-count" class="muted"></small>
     </div>
 
@@ -1648,12 +1677,12 @@
       <div id="customer-picker-list" class="customer-picker-list"></div>
     </div>
 
-    <div class="warn"><small>Solo se muestran clientes activos. Para administrar, usa Gestión Operativa → Catálogos → Clientes.</small></div>
+    <p class="muted customer-picker-hint">Solo clientes activos. Adminístralos en Catálogos → Clientes.</p>
   </div>
 </div>
 
 	<!-- Modal Inventario: Seleccionar lote (solo lectura) -->
-	<div id="inv-lote-selector-modal" class="modal" aria-hidden="true">
+	<div id="inv-lote-selector-modal" class="modal pos-visual" aria-hidden="true">
 	  <div class="panel" style="max-width:1100px">
 	    <div class="row" style="grid-template-columns:1fr auto auto; align-items:center; gap:10px">
 	      <h3 style="margin:0">Seleccionar lote</h3>
@@ -1688,7 +1717,7 @@
 	</div>
 
 <!-- Modal Confirmación (reutilizable) — Cierres POS -->
-<div id="pos-confirm-modal" class="modal" aria-hidden="true">
+<div id="pos-confirm-modal" class="modal pos-visual" aria-hidden="true">
   <div class="panel panel-compact">
     <h3 id="pos-confirm-title" style="margin-top:0">Confirmación</h3>
     <div id="pos-confirm-message" class="pos-confirm-message"></div>

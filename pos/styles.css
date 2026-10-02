@@ -1995,3 +1995,167 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
   .purchase-actions{width:100%}
   .purchase-actions button{flex:1}
 }
+
+/* Etapa visual POS 1A: contexto, venta y administración delimitados. */
+#tab-venta .sale-context{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) minmax(145px,.8fr) minmax(125px,.65fr);gap:16px;align-items:start}
+#tab-venta .sale-context>div{min-width:0}
+#tab-venta .sale-fx-field{margin-top:0}
+#tab-venta .sale-fx-field label{margin-top:8px}
+#tab-venta .sale-context small{display:block;margin-top:6px;line-height:1.4}
+#tab-venta .sale-main-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:22px 0}
+#tab-venta .sale-main-actions button{width:auto;min-height:48px}
+#tab-venta #btn-add{flex:1 1 240px;max-width:480px}
+#tab-venta #btn-undo{font-size:14px;box-shadow:none}
+#tab-venta .sale-day-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+#tab-venta .sale-day-heading h3{margin:0;font-size:18px}
+#tab-venta .sale-day-total{display:flex;flex-direction:column;gap:4px;text-align:right}
+#tab-venta .sale-day-total>span{font-size:13px;color:var(--a33-muted)}
+#tab-venta .sale-day-total>strong{font-size:24px;font-variant-numeric:tabular-nums;color:var(--a33-gold)}
+#tab-venta #tbl-day th{padding:12px;font-size:12px;color:var(--a33-muted);font-weight:600}
+#tab-venta #tbl-day td{padding:12px;vertical-align:top}
+#tab-venta #tbl-day td:nth-child(2){min-width:150px;max-width:260px;white-space:normal}
+#tab-venta #tbl-day :is(th,td):nth-child(n+3):nth-child(-n+6){text-align:right;font-variant-numeric:tabular-nums}
+#tab-venta #tbl-day td:nth-child(6){font-weight:800}
+#tab-venta #tbl-day tbody tr:hover td{background:var(--a33-surface-3)}
+#tab-venta .sale-event-admin{margin-top:24px;padding-top:20px;border-top:1px solid var(--a33-border-soft)}
+#tab-venta .sale-event-admin h3{margin:0 0 12px;font-size:16px}
+#tab-venta .sale-event-create{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+#tab-venta .sale-event-create>div{flex:1 1 240px;max-width:480px;min-width:0}
+#tab-venta .sale-event-create>button{min-height:44px}
+#tab-venta .sale-admin-hint{font-size:13px;line-height:1.5;margin:12px 0}
+#tab-venta .sale-event-admin .actions button{min-height:44px;box-shadow:none}
+#tab-venta :is(button,input,select):focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
+@media(max-width:1000px){#tab-venta .sale-context{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:540px){
+  #tab-venta .sale-context{gap:10px}
+  #tab-venta .sale-context>div:nth-child(-n+2){grid-column:1/-1}
+  #tab-venta .sale-main-actions{align-items:stretch}
+  #tab-venta #btn-add{max-width:none}
+  #tab-venta .sale-day-total>strong{font-size:22px}
+  #tab-venta .sale-event-create>div{max-width:none;flex-basis:100%}
+}
+
+/* Etapa visual POS 1B: jerarquía de la compra y modales de clientes. */
+#purchase-modal .purchase-heading{align-items:flex-start;padding-bottom:16px;border-bottom:1px solid var(--a33-border-soft)}
+#purchase-modal .purchase-heading h3{margin:0;font-size:22px}
+#purchase-modal .purchase-heading small{line-height:1.5;overflow-wrap:anywhere}
+#purchase-modal .purchase-layout{gap:20px;grid-template-columns:minmax(240px,.85fr) minmax(0,1.4fr)}
+#purchase-modal .purchase-catalog{padding:16px;background:var(--a33-surface);border:1px solid var(--a33-border-soft);border-radius:14px}
+#purchase-modal .purchase-order>h4{font-size:16px;margin-top:2px}
+#purchase-modal .purchase-product{background:var(--a33-surface-2)}
+#purchase-modal .purchase-item{padding:16px;border-color:var(--a33-border)}
+#purchase-modal .purchase-item-head strong{font-size:16px}
+#purchase-modal .purchase-item-foot{padding-top:10px;border-top:1px solid var(--a33-border-soft)}
+#purchase-modal .purchase-item-foot>strong{font-size:19px;color:var(--a33-gold);font-variant-numeric:tabular-nums}
+#purchase-modal .purchase-item-fields{grid-template-columns:.75fr 1fr 1.3fr;gap:12px}
+#purchase-modal :is(.purchase-customer-section,.purchase-payment-section){margin-top:20px;padding-top:18px;border-top:1px solid var(--a33-border-soft)}
+#purchase-modal .purchase-layout h4{font-size:16px;font-weight:750}
+#purchase-modal .customer-v2-field{min-width:0}
+#purchase-modal .customer-v2-actions{gap:8px 10px}
+#purchase-modal .customer-v2-sticky{min-height:44px}
+#purchase-modal .customer-catalog-hint{font-size:12px;line-height:1.5}
+#purchase-modal #sale-total{font-weight:700;font-variant-numeric:tabular-nums}
+#purchase-modal #sale-cash-tender-card{box-shadow:none;margin:16px 0;border-color:var(--a33-border-soft)}
+#purchase-modal #purchase-more-options{box-shadow:none;background:var(--a33-surface);margin-top:20px}
+#purchase-modal #purchase-more-options summary{cursor:pointer;min-height:32px;font-weight:650;line-height:1.5}
+#purchase-modal .purchase-footer{padding:16px 0 12px;border-top:1px solid var(--a33-border);box-shadow:0 -8px 16px var(--a33-surface-2)}
+#purchase-modal .purchase-grand-total>span{display:block;font-size:13px;color:var(--a33-muted);margin-bottom:4px}
+#purchase-modal .purchase-grand-total>div{font-size:26px;color:var(--a33-gold);font-weight:800;font-variant-numeric:tabular-nums}
+#purchase-modal .purchase-actions button{min-width:112px;min-height:46px}
+#purchase-modal :is(.btn-outline,.purchase-product button){min-height:44px;box-shadow:none}
+:is(#purchase-modal,#customer-picker-modal,#customer-quick-modal) :is(button,input,select,textarea,summary):focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
+#customer-picker-modal{padding:16px}
+#customer-picker-modal .customer-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--a33-border-soft);margin-bottom:14px}
+#customer-picker-modal .customer-picker-heading h3{margin:0;font-size:20px}
+#customer-picker-modal .customer-picker-heading button{min-height:44px;box-shadow:none}
+#customer-picker-modal .customer-picker-group{background:var(--a33-surface-2);color:var(--a33-text);border-color:var(--a33-border)}
+#customer-picker-modal .customer-picker-group-summary strong{color:var(--a33-gold)}
+#customer-picker-modal .customer-picker-group-summary{min-height:48px}
+#customer-picker-modal .customer-picker-item{min-height:44px;line-height:1.4;overflow-wrap:anywhere;background:var(--a33-surface-3);color:var(--a33-text);border-color:var(--a33-border-soft)}
+#customer-picker-modal .customer-picker-hint{font-size:13px;line-height:1.5;margin:16px 0 0}
+#customer-quick-modal .customer-quick-panel h3{margin:0 0 16px;padding-bottom:14px;border-bottom:1px solid var(--a33-border-soft);font-size:20px}
+#customer-quick-modal .customer-quick-cancel{background:var(--a33-surface-2);color:var(--a33-text);border-color:var(--a33-border);box-shadow:none;font-weight:650}
+#customer-quick-modal .customer-quick-actions{padding-top:14px;border-top:1px solid var(--a33-border-soft)}
+@media(max-width:900px){#purchase-modal .purchase-layout{grid-template-columns:1fr}#purchase-modal .purchase-catalog{position:static}#purchase-modal .purchase-products{max-height:25vh}}
+@media(max-width:540px){
+  #purchase-modal .purchase-catalog,#purchase-modal .purchase-item{padding:12px}
+  #purchase-modal .purchase-item-fields{grid-template-columns:1fr 1fr}
+  #purchase-modal .purchase-item-fields label:last-child{grid-column:1/-1}
+  #purchase-modal .purchase-payment-row{grid-template-columns:1fr}
+  #purchase-modal .purchase-grand-total>div{font-size:24px}
+  #customer-picker-modal{padding:10px}
+  #customer-picker-modal .customer-picker-heading{align-items:flex-start}
+}
+
+/* Etapa visual POS 1C: consistencia limitada a las otras pestañas y modales. */
+.pos-visual{--pos-section-gap:20px}
+.pos-visual>h2{margin-top:4px;margin-bottom:20px;font-size:24px}
+.pos-visual h3{font-size:18px;line-height:1.4}
+.pos-visual h4{font-size:15px;line-height:1.4}
+.pos-visual .card{border-color:var(--a33-border-soft);margin-top:18px;margin-bottom:18px}
+.pos-visual label{line-height:1.4}
+.pos-visual small{line-height:1.5}
+.pos-visual :is(button,input,select,textarea,summary):focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
+.pos-visual .actions{gap:10px;padding-top:8px}
+.pos-visual :is(.actions,.topbar) button{min-height:44px;box-shadow:none;line-height:1.3}
+.pos-visual .actions .btn-pill-mini{padding:8px 12px}
+.pos-visual .btn-outline{color:var(--a33-text);background:var(--a33-surface-2);border-color:var(--a33-border)}
+.pos-visual :is(.table-scroll,.pos-table-scroll){max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.pos-visual .pos-table-scroll{margin-top:10px;border:1px solid var(--a33-border-soft);border-radius:12px}
+.pos-visual .pos-table-scroll table{margin-top:0;min-width:420px}
+.pos-visual :is(th,td){padding:11px 12px;border-color:var(--a33-border-soft)}
+.pos-visual th{font-size:12px;font-weight:650;color:var(--a33-muted);background:var(--a33-surface-2)}
+.pos-visual td{font-variant-numeric:tabular-nums}
+.pos-visual .topbar{padding:14px;background:var(--a33-surface-2);border:1px solid var(--a33-border-soft);border-radius:14px;margin-bottom:16px}
+#tab-inventario .lotes-operativos-actions{margin:12px 0;padding-top:14px;border-top:1px solid var(--a33-border-soft)}
+#tab-inventario #tbl-inv{min-width:1080px}
+#tab-inventario #tbl-inv td.actions{min-width:280px;gap:8px}
+#tab-inventario #tbl-inv td:first-child{min-width:160px;max-width:260px;white-space:normal}
+#tab-eventos #cierre-total-card{margin-top:24px;border-color:var(--a33-border)}
+#tab-efectivo .card> .row:first-child{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--a33-border-soft)}
+#tab-efectivo .cashv2-summary-title{font-size:14px;font-weight:700;color:var(--a33-text);margin-bottom:10px}
+#tab-efectivo .cashv2-summary-table{background:var(--a33-surface-2);border-color:var(--a33-border-soft)}
+#tab-efectivo .cashv2-summary-table td:first-child{white-space:normal}
+#tab-efectivo .cashv2-summary-panel:not(.cashv2-summary-banking) tr:nth-last-child(-n+3) td{font-weight:750;border-top:1px solid var(--a33-border)}
+#tab-efectivo .cashv2-summary-panel:not(.cashv2-summary-banking) tr:nth-last-child(3) td.sub{font-size:18px;color:var(--a33-gold)}
+#tab-efectivo :is(.cashv2-initial,.cashv2-final) tfoot td{font-size:17px;color:var(--a33-gold);border-top:1px solid var(--a33-border)}
+#tab-efectivo .cashv2-denom-input{min-height:44px;font-size:16px}
+#tab-efectivo #cashv2-btn-close{margin-left:8px}
+#tab-resumen .summary-controls{padding:16px;background:var(--a33-surface-2);border:1px solid var(--a33-border-soft);border-radius:14px;gap:20px}
+#tab-resumen .summary-controls-left{min-width:0}
+#tab-resumen .summary-controls-right{padding-top:12px;border-top:1px solid var(--a33-border-soft)}
+#tab-resumen #btn-summary-close-period{margin-left:8px}
+#tab-resumen .summary-metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+#tab-resumen .metric{padding:16px;background:var(--a33-surface-2);border-color:var(--a33-border-soft)}
+#tab-resumen .metric .label{line-height:1.5}
+#tab-resumen .metric .value{font-size:22px;overflow-wrap:anywhere}
+#tab-resumen :is(.metric:first-child,.metric-strong){border-color:var(--a33-border);box-shadow:none}
+#tab-resumen :is(.metric:first-child,.metric-strong) .value{color:var(--a33-gold);font-size:25px}
+#tab-resumen .summary-customer-card{padding:16px}
+#tab-resumen .customer-v2-field{min-width:0}
+#tab-extras .row3,#tab-extras .row{margin-bottom:14px}
+#tab-extras .master-extra-import{padding:16px}
+#tab-calculadora .calc-output{font-variant-numeric:tabular-nums}
+#tab-calculadora .calc-keys button{min-height:48px}
+.modal.pos-visual{padding:16px;overscroll-behavior:contain}
+.modal.pos-visual .panel{background:var(--a33-surface-2);color:var(--a33-text);border-color:var(--a33-border);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);padding:20px;overscroll-behavior:contain}
+.modal.pos-visual .close{width:auto;min-height:44px;margin:0 0 12px 16px;box-shadow:none}
+.modal.pos-visual .panel>h3{min-height:44px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--a33-border-soft);font-size:20px}
+.modal.pos-visual .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.modal.pos-visual .grid>*{min-width:0}
+@media(max-width:1000px){#tab-resumen .summary-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){
+ .pos-visual :is(.row,.row3,.row4){grid-template-columns:minmax(0,1fr)!important;gap:12px}
+ .pos-visual :is(.row,.row3,.row4)>div{min-width:0!important}
+ .pos-visual .actions.end{justify-content:flex-start}
+ .modal.pos-visual .grid{grid-template-columns:minmax(0,1fr)}
+ #tab-resumen .summary-controls-right{justify-content:flex-start}
+ #tab-efectivo .cashv2-move-row{flex-wrap:wrap}
+ #tab-efectivo .cashv2-move-note{white-space:normal;overflow-wrap:anywhere}
+}
+@media(max-width:420px){
+ #tab-resumen .summary-metrics{grid-template-columns:minmax(0,1fr)}
+ .modal.pos-visual{padding:10px}
+ .modal.pos-visual .panel{padding:14px;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px)}
+ .pos-visual :is(th,td){padding:9px 8px}
+}
