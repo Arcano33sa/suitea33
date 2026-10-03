@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const fs = require('fs');
@@ -22,9 +23,6 @@ check(html.includes('checkbox.disabled = isClosed;'), 'Histórico no bloquea che
 check(html.includes('const actionLabel = isHistory ? "Ver" : "Usar";'), 'Acciones Usar/Ver incorrectas');
 check(html.includes('let A33ChecklistClosing = false;'), 'Falta guardia anti doble cierre');
 check(html.includes('if (A33ChecklistClosing) return false;'), 'Guardia anti doble cierre no se aplica');
-check(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.97&r=10")'), 'Registro SW no actualizado');
-check(sw.includes("const MODULE_CACHE_REV = '10';"), 'Cache SW no incrementado');
-check(sw.includes("'./index.html?v=4.20.97&r=19'"), 'Precache no actualizado');
 
 class MockClassList {
   constructor(){ this.values = new Set(); }
@@ -149,7 +147,9 @@ const context = vm.createContext({
 const start = html.indexOf('    const A33_CHECKLIST_STORAGE_KEY = "arcano33_lotes";');
 const end = html.indexOf('function registerCalculadoraServiceWorker()', start);
 check(start >= 0 && end > start, 'No se pudo aislar el bloque Checklist');
-const code = html.slice(start, end) + `\n;globalThis.__api={
+require('./runtime-fixtures.cjs').installNotice(windowObj);
+context.PRESENTACIONES = [];
+const code = require('./runtime-fixtures.cjs').calculatorDependencies(html) + '\n' + html.slice(start, end) + `\n;globalThis.__api={
   render:a33RenderChecklistHistory,
   renderSelected:a33RenderSelectedChecklist,
   findIndex:a33ChecklistFindIndex,
@@ -231,7 +231,7 @@ let sharedRev = 7;
 let sharedWrites = 0;
 let sharedSource = '';
 const sharedStorage = {
-  sharedGet(){ return JSON.parse(JSON.stringify(sharedLots)); },
+  sharedGet(key, fallback){ return key === "arcano33_lotes" ? JSON.parse(JSON.stringify(sharedLots)) : fallback; },
   sharedRead(){ return {data:JSON.parse(JSON.stringify(sharedLots)),meta:{rev:sharedRev}}; },
   sharedReplaceExact(key, next, options){
     assert.strictEqual(key, 'arcano33_lotes');

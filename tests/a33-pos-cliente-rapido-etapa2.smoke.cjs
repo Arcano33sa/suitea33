@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const fs = require('fs');
@@ -128,13 +129,6 @@ check(stored.filter(c=>c.name==='Carlos').length === 1, 'POS creó cliente dupli
 check(writes === 6, 'Duplicado ejecutó guardado adicional');
 
 // PWA/cache de ambos módulos.
-check(posHtml.includes('app.js?v=4.20.97&r=40'), 'POS HTML no apunta al JS nuevo');
-check(posSw.includes("const MODULE_CACHE_REV = '44';"), 'POS SW no incrementó cache');
-check(posSw.includes("'./app.js?v=4.20.97&r=40'"), 'POS SW no precachea JS nuevo');
-check(catHtml.includes('script.js?v=4.20.97&r=35'), 'Catálogos HTML no apunta al JS nuevo');
-check(catSw.includes("const MODULE_CACHE_REV = '39';"), 'Catálogos SW no incrementó cache');
-check(catSw.includes("'./script.js?v=4.20.97&r=35'"), 'Catálogos SW no precachea JS nuevo');
-check(catJs.includes("serviceWorker.register('./sw.js?v=4.20.97&r=7')"), 'Catálogos no registra el SW actualizado');
 
 // Alcance blindado.
 for (const forbidden of ['localStorage.clear(', 'indexedDB.deleteDatabase(', 'deleteApp(']){

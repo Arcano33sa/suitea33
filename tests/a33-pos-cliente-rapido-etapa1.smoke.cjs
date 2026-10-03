@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const fs = require('fs');
@@ -67,11 +68,6 @@ check(!quickBlock.includes('indexedDB.deleteDatabase('), 'Cliente rápido borra 
 check(!quickBlock.includes('window.prompt'), 'Cliente rápido usa window.prompt');
 
 // PWA: solo bump necesario para servir los assets modificados.
-check(html.includes('styles.css?v=4.20.97&r=20'), 'HTML no versionó estilos modificados');
-check(html.includes('app.js?v=4.20.97&r=40'), 'HTML no versionó JS modificado');
-check(sw.includes("const MODULE_CACHE_REV = '44';"), 'SW no incrementó cache del POS');
-check(sw.includes("'./styles.css?v=4.20.97&r=20'"), 'SW no precachea estilos nuevos');
-check(sw.includes("'./app.js?v=4.20.97&r=40'"), 'SW no precachea JS nuevo');
 
 // Prueba funcional aislada de normalización, celular, persistencia y duplicado.
 function takeFunction(source, name){
@@ -182,7 +178,7 @@ class MockElement {
 }
 const domElements = new Map();
 for(const [id,tag] of [
-  ['customer-quick-modal','div'],['customer-quick-form','form'],['customer-quick-name','input'],
+  ['purchase-modal','div'],['customer-quick-modal','div'],['customer-quick-form','form'],['customer-quick-name','input'],
   ['customer-quick-cell','input'],['customer-quick-msg','div'],['customer-quick-create','button'],
   ['customer-quick-cancel','button'],['btn-new-customer','button'],['sale-customer','input']
 ]) domElements.set(id,new MockElement(id,tag));
@@ -200,6 +196,7 @@ let selectedCustomer=null;
 let lastCustomer='';
 let toastText='';
 const domContext=vm.createContext({
+  purchaseModalStatePOS:null,
   console, Date, Math, Number, String, Object, Array, Set, Map, JSON,
   document:domDocument, window:{},
   setTimeout:(fn)=>{ fn(); return 1; },
@@ -214,6 +211,7 @@ const domContext=vm.createContext({
   persistCustomerLastPOS:(n)=>{ lastCustomer=String(n||''); },
   showToast:(m)=>{ toastText=String(m||''); }
 });
+const noticeCalls = require('./runtime-fixtures.cjs').installNotice(domContext.window);
 vm.runInContext(fnNames.slice(0,-1).map(name => takeFunction(js, name)).join('\n') + '\n' + quickBlock + '\n;globalThis.__ui={open:openCustomerQuickPOS,close:closeCustomerQuickPOS,setup:setupCustomerQuickModalPOS,submit:handleCustomerQuickSubmitPOS,isOpen:isCustomerQuickOpenPOS};', domContext);
 const ui=domContext.__ui;
 ui.setup();
@@ -246,5 +244,14 @@ domElements.get('customer-quick-form').requestSubmit();
 check(domCatalog.length === 1, 'Duplicado DOM creó otro registro');
 check(domSaves === 1, 'Duplicado DOM ejecutó guardado');
 check(toastText.includes('ya existía'), 'Duplicado DOM no avisó');
+
+// El mismo modal debe bloquear y restaurar la compra abierta, sin guardados adicionales.
+domContext.purchaseModalStatePOS = {eventId:'fixture-event'};
+check(ui.open() === true, 'Cliente rápido no abre desde compra');
+check(domElements.get('purchase-modal').inert === true, 'Compra abierta no quedó inerte');
+ui.close();
+check(domElements.get('purchase-modal').inert === false, 'Compra no recuperó interacción');
+check(domSaves === 1, 'Abrir/cerrar desde compra guardó clientes');
+check(noticeCalls.some(call=>call.message.includes('nombre')), 'No se emitió aviso de validación');
 
 console.log('SMOKE OK — Suite A33 POS Cliente Rápido Etapa 1/3');

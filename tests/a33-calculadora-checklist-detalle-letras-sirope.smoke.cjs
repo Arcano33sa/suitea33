@@ -25,7 +25,7 @@ const context = vm.createContext({
   ],
   a33NormalizeLetter:(value)=>String(value || '').trim().toUpperCase().replace(/\s+/g, '').slice(0, 4)
 });
-vm.runInContext(helpers + `\n;globalThis.__api={
+vm.runInContext(require('./runtime-fixtures.cjs').calculatorDependencies(html) + '\n' + helpers + `\n;globalThis.__api={
   detail:a33ChecklistProductionDetail,
   formula:a33ChecklistSyrupFormula
 };`, context, {filename:'calculadora-checklist-detalle.js'});

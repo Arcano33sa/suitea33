@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -94,11 +95,5 @@ assert(!extractFunction(lotes, 'getTransferredToChildrenA33').includes('loadLote
 assert(pos.includes("availabilityState: 'PARCIAL'"), 'Asignación inicial no prepara estado PARCIAL');
 assert(pos.includes("parent.availabilityState = 'CERRADO'"), 'Padre transferido a hijo no conserva CERRADO');
 assert(pos.includes("availabilityState: 'DISPONIBLE'"), 'Reverso/hijo no restauran DISPONIBLE');
-assert(lotesIndex.includes('script.js?v=4.20.95&r=21'), 'Lotes index no tiene cache-bust del script final');
-assert(lotesSw.includes("MODULE_CACHE_REV = '24'"), 'Service Worker de Lotes no fue incrementado');
-assert(lotesSw.includes("'./script.js?v=4.20.95&r=21'"), 'Service Worker no precachea el script final');
-assert(posIndex.includes('app.js?v=4.20.95&r=34'), 'POS index no tiene cache-bust de la persistencia automática');
-assert(posSw.includes("MODULE_CACHE_REV = '38'"), 'Service Worker POS no fue incrementado');
-assert(posSw.includes("'./app.js?v=4.20.95&r=34'"), 'Service Worker POS no precachea la persistencia automática');
 
 console.log('OK — 19/19: estados automáticos, verde VENDIDO, consistencia, persistencia JSON, responsive y PWA.');

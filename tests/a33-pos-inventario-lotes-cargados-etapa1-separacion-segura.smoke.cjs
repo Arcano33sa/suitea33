@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const fs = require('fs');
@@ -56,12 +57,6 @@ assert.ok(css.includes('#lotes-evento-content[hidden]{display:none!important}'),
 assert.ok(css.includes('.lotes-block-head[aria-expanded="true"] .lotes-toggle-indicator'), 'El indicador no refleja apertura');
 assert.ok(css.includes('.lotes-operativos-block'), 'Falta estilo del bloque operativo separado');
 
-assert.ok(sw.includes("const MODULE_CACHE_REV = '49';"), 'No se actualizó caché POS');
-assert.ok(sw.includes("'./styles.css?v=4.20.97&r=24'"), 'Precache CSS no coordinado');
-assert.ok(sw.includes("'./app.js?v=4.20.97&r=45'"), 'Precache JS no coordinado');
-assert.ok(html.includes('styles.css?v=4.20.97&r=24'), 'HTML no apunta al CSS actualizado');
-assert.ok(html.includes('app.js?v=4.20.97&r=45'), 'HTML no apunta al JS actualizado');
-assert.ok(html.includes("pos-r'+rev+'-m49"), 'Diagnóstico de caché HTML no coordinado');
 
 assert.ok(!app.includes('localStorage.clear('), 'Se agregó borrado global de localStorage');
 assert.ok(!app.includes('indexedDB.deleteDatabase('), 'Se agregó borrado de IndexedDB');

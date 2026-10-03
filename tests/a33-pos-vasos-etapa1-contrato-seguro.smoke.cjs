@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const assert = require('assert');
@@ -99,16 +100,6 @@ assert.ok(posScript.includes('async function reverseAssignSelectedLotePOS'), 'Re
 assert.ok(posScript.includes('async function createSobranteLotPOS'), 'Crear lote sobrante desapareció');
 
 // PWA coordinada únicamente en Catálogos.
-assert.ok(html.includes('style.css?v=4.20.97&r=24'), 'HTML no carga CSS vigente');
-assert.ok(html.includes('script.js?v=4.20.97&r=36'), 'HTML no carga JS vigente');
-assert.ok(html.includes('manifest.webmanifest?v=4.20.97&r=13'), 'HTML no carga manifest vigente');
-assert.ok(script.includes("serviceWorker.register('./sw.js?v=4.20.97&r=8')"), 'Registro SW no fue actualizado');
-assert.ok(sw.includes("const MODULE_CACHE_REV = '40';"), 'Cache de Catálogos no fue incrementada');
-assert.ok(sw.includes("'./index.html?v=4.20.97&r=33'"), 'SW no precachea HTML vigente');
-assert.ok(sw.includes("'./style.css?v=4.20.97&r=24'"), 'SW no precachea CSS vigente');
-assert.ok(sw.includes("'./script.js?v=4.20.97&r=36'"), 'SW no precachea JS vigente');
-assert.ok(sw.includes("'./manifest.webmanifest?v=4.20.97&r=13'"), 'SW no precachea manifest vigente');
-assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=33', 'Manifest no abre el HTML vigente');
 
 // No se agregaron operaciones destructivas globales.
 assert.ok(!script.includes('localStorage.clear('), 'Se agregó borrado global de localStorage');

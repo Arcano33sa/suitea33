@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const fs = require('fs');
@@ -121,16 +122,6 @@ assert.ok(css.includes('@media (max-width:560px)'), 'Falta ajuste móvil');
 assert.ok(css.includes('body{overflow-x:hidden}'), 'Se perdió el blindaje contra scroll general');
 
 // PWA coordinada.
-assert.ok(sw.includes("const MODULE_CACHE_REV = '49';"), 'No se incrementó caché POS');
-assert.ok(sw.includes("'./index.html?v=4.20.97&r=32'"), 'Precache HTML no coordinado');
-assert.ok(sw.includes("'./styles.css?v=4.20.97&r=24'"), 'Precache CSS no coordinado');
-assert.ok(sw.includes("'./app.js?v=4.20.97&r=45'"), 'Precache JS no coordinado');
-assert.ok(sw.includes("'./manifest.webmanifest?v=4.20.97&r=25'"), 'Precache manifest no coordinado');
-assert.ok(html.includes('styles.css?v=4.20.97&r=24'), 'HTML no apunta al CSS nuevo');
-assert.ok(html.includes('app.js?v=4.20.97&r=45'), 'HTML no apunta al JS nuevo');
-assert.ok(html.includes('manifest.webmanifest?v=4.20.97&r=25'), 'HTML no apunta al manifest nuevo');
-assert.ok(html.includes("pos-r'+rev+'-m49"), 'Diagnóstico de caché no coordinado');
-assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=32', 'start_url PWA no coordinado');
 
 // Sin borrados destructivos.
 assert.ok(!app.includes('localStorage.clear('), 'Se agregó borrado global de localStorage');

@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const fs = require('fs');
@@ -31,11 +32,11 @@ const vm = require('vm');
   const source = sw.slice(start, end);
   const cachedIndex = { kind:'cached-index' };
   const sandbox = {
-    CACHE_NAME:'a33-v4.20.97-pos-r5-m49',
+    CACHE_NAME:'test-pos-offline',
     fetch:async()=>{ throw new Error('offline'); },
     caches:{
       open:async()=>({
-        match:async key => String(key) === './index.html?v=4.20.97&r=32' ? cachedIndex : null,
+        match:async key => String(key) === require('./publication-contract.cjs').precache(sw).find(url => url.startsWith('./index.html?')) ? cachedIndex : null,
         put:async()=>true
       })
     },
@@ -48,9 +49,7 @@ const vm = require('vm');
   const result = await sandbox.handleNavigate({url:'https://suitea33.test/pos/inventario'});
   assert.strictEqual(result, cachedIndex, 'La navegación offline no recupera el índice precacheado');
 
-  assert.ok(sw.includes("const MODULE_CACHE_REV = '49';"), 'Cache rev POS incorrecto');
   assert.ok(sw.includes("cache.match('./offline.html')"), 'Falta fallback offline.html');
-  assert.ok(sw.includes("cache.match('./index.html?v=4.20.97&r=32')"), 'Falta fallback al índice vigente');
   assert.ok(sw.includes('event.request.mode === \'navigate\''), 'Las navegaciones no pasan por handleNavigate');
 
   console.log('SMOKE OK — POS Inventario — Lotes cargados Etapa 3 — PWA y fallback offline');

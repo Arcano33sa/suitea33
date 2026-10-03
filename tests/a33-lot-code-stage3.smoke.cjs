@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 "use strict";
 
 const assert = require("assert");
@@ -22,11 +23,10 @@ function functionBody(source, name, nextName) {
   return source.slice(start, end > start ? end : source.length);
 }
 
-assert.ok(lotesHtml.includes('/assets/js/a33-lot-code.js?v=4.20.95&r=6'), "Lotes debe cargar el generador central");
+assert.ok(lotesHtml.includes('/assets/js/a33-lot-code.js'), "Lotes debe cargar el generador central");
 assert.ok(lotesHtml.indexOf('a33-lot-code.js') < lotesHtml.indexOf('a33-production.js'), "Lotes debe cargar el código de lote antes de Producción");
 const lotesCacheRev = Number((lotesSw.match(/MODULE_CACHE_REV\s*=\s*'([0-9]+)'/) || [])[1]);
-assert.ok(Number.isFinite(lotesCacheRev) && lotesCacheRev >= 21, "Lotes debe conservar o renovar su caché PWA");
-assert.ok(lotesSw.includes('a33-lot-code.js?v=4.20.95&r=6'), "Lotes debe precachear el generador central");
+assert.ok(lotesSw.includes('a33-lot-code.js'), "Lotes debe precachear el generador central");
 
 const canonical = functionBody(lotesJs, "canonicalBatchCode", "batchCodeIdentityKey");
 assert.ok(canonical.includes("parseBatchCode"), "Lotes debe canonizar por componentes");
@@ -80,7 +80,7 @@ const checklistRows = [
 ];
 let checklistRev = 0;
 const checklistStorage = {
-  sharedGet() { return JSON.parse(JSON.stringify(checklistRows)); },
+  sharedGet(key, fallback) { return key === "arcano33_lotes" ? JSON.parse(JSON.stringify(checklistRows)) : fallback; },
   sharedRead() { return { data:JSON.parse(JSON.stringify(checklistRows)), meta:{ rev:checklistRev } }; },
   sharedReplaceExact(_key, next, options) {
     assert.strictEqual(options.baseRev, checklistRev);
@@ -92,6 +92,7 @@ const checklistStorage = {
 const checklistContext = {
   console, Date, Intl, String, Number, Array, Set, JSON, Object,
   A33_CHECKLIST_STORAGE_KEY:"arcano33_lotes",
+  A33_PRODUCTION_CHECKLIST_STORAGE_KEY:"arcano33_produccion_checklists",
   A33_CHECKLIST_SCHEMA:1,
   A33_CHECKLIST_INGREDIENTS:[
     { key:"vino", label:"Vino", direct:["volVino"] },
@@ -125,7 +126,8 @@ const checklistFunctions = [
   functionBody(calculadora, "a33ReadChecklistLots", "a33WriteChecklistState"),
   functionBody(calculadora, "a33WriteChecklistState", "a33PersistChecklistChange")
 ].join("\n");
-vm.runInContext(checklistFunctions, checklistContext);
+checklistContext.PRESENTACIONES = [];
+vm.runInContext(require('./runtime-fixtures.cjs').calculatorDependencies(calculadora) + '\n' + checklistFunctions, checklistContext);
 
 assert.strictEqual(checklistContext.a33ChecklistLotCode(checklistRows[1]), "A33AV5786-0xx1", "Checklist debe mostrar x minúsculas");
 assert.strictEqual(checklistContext.a33ChecklistFindIndex(checklistRows, "A33AV5786-0XX1"), 1, "Búsqueda exacta debe tolerar X/x");

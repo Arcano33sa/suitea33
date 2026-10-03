@@ -1,0 +1,606 @@
+{
+  "schemaVersion": 1,
+  "tests": [
+    {
+      "file": "a33-agenda-purchases-grouped-stage1-hardening.smoke.cjs",
+      "classification": "vigente",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-agenda-purchases-grouped-stage1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-agenda-purchases-grouped-stage3-final.smoke.cjs",
+      "classification": "por_verificar",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
+      "lastResult": "FALLIDA",
+      "group": "funcional",
+      "observation": "AssertionError [ERR_ASSERTION]: 40. Responsive y Centro de Mando conservan integración de compras"
+    },
+    {
+      "file": "a33-agenda-purchases-stage3.smoke.cjs",
+      "classification": "alias",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Entrada alternativa; no añade cobertura independiente.",
+      "aliasOf": "a33-agenda-purchases-grouped-stage3-final.smoke.cjs",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-agenda-stage3-hardening.smoke.cjs",
+      "classification": "alias",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Entrada alternativa; no añade cobertura independiente.",
+      "aliasOf": "a33-agenda-purchases-grouped-stage3-final.smoke.cjs",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-avisos-etapa2.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": true,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-avisos-etapa3.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-calculadora-checklist-detalle-letras-sirope.smoke.cjs",
+      "classification": "por_verificar",
+      "mode": "vm",
+      "versionLiterals": true,
+      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
+      "lastResult": "FALLIDA",
+      "observation": "AssertionError [ERR_ASSERTION]: Registro SW no actualizado",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-calculadora-checklist-etapa1-pendientes-historico.smoke.cjs",
+      "classification": "por_verificar",
+      "mode": "vm",
+      "versionLiterals": true,
+      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
+      "lastResult": "FALLIDA",
+      "observation": "AssertionError [ERR_ASSERTION]: Orden visual Checklist incorrecto",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-calculadora-checklist-etapa2-boton-hecho-consulta.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-calculadora-checklist-etapa3-hardening-final.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-calculadora-checklist-historico-desplegable.smoke.cjs",
+      "classification": "vigente",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-calculadora-produccion-1000ml-etapa1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-calculadora-temporal-produccion-1000ml-etapa2.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-catalogos-modal-edit-hardening.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-catalogos-vistas-independientes-etapa1.smoke.cjs",
+      "classification": "por_verificar",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
+      "lastResult": "FALLIDA",
+      "observation": "AssertionError [ERR_ASSERTION]: Falta marcador de historial",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-cdm-etapa1-runtime.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-cdm-etapa1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-cdm-etapa2.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-cdm-etapa3.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-cdm-etapa4.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-cdm-etapa5.smoke.cjs",
+      "classification": "vigente",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-cdm-selector-global-evento-fix.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-inventario-envases-historicos.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-lot-code-calculators.smoke.cjs",
+      "classification": "vigente",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-lot-code-stage3.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-lot-code-stage5.smoke.cjs",
+      "classification": "por_verificar",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
+      "lastResult": "FALLIDA",
+      "group": "funcional",
+      "observation": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:"
+    },
+    {
+      "file": "a33-lot-code-stage6.smoke.cjs",
+      "classification": "por_verificar",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
+      "lastResult": "FALLIDA",
+      "group": "funcional",
+      "observation": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:"
+    },
+    {
+      "file": "a33-lot-code.smoke.cjs",
+      "classification": "vigente",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-lotes-disponibilidad-etapa2.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-lotes-disponibilidad-etapa3-final.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-lotes-resumen-disponibilidad.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-rapidos-etapa1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-rapidos-etapa2.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-rapidos-etapa3-cdm.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-rapidos-etapa4-json-pwa.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-avisos-etapa1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-cierre-evento-caja-abierta-etapa1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-cierre-evento-excel-integral-etapa2.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-cliente-rapido-etapa1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-cliente-rapido-etapa2.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-cliente-rapido-etapa3-hardening.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-compra-multiproducto-etapa1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-compra-multiproducto-etapa2.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-efectivo-etapa1-creditos.smoke.cjs",
+      "classification": "alias",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Entrada alternativa; no añade cobertura independiente.",
+      "aliasOf": "a33-pos-efectivo-etapa2-blindaje.smoke.cjs",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-efectivo-etapa2-blindaje.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-efectivo-etapa3-cdm-creditos.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-efectivo-etapa3-resumen-superior.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-inventario-agregar-desde-lote-contenido-letras.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-inventario-lotes-cargados-etapa1-separacion-segura.smoke.cjs",
+      "classification": "vigente",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-inventario-lotes-cargados-etapa2-letras-dinamicas.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-inventario-lotes-cargados-etapa3-pwa-offline.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-inventario-lotes-cargados-etapa3-totales-hardening-final.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-sobrante-productos-dinamicos-etapa1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-tarjeta-etapa1-snapshot-comision.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-tarjeta-etapa2-integracion-reportes.smoke.cjs",
+      "classification": "por_verificar",
+      "mode": "vm",
+      "versionLiterals": true,
+      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
+      "lastResult": "FALLIDA",
+      "observation": "AssertionError [ERR_ASSERTION]: Falta integración Finanzas: totals.utilidadBruta - totals.costoCortesias - totals.comisionesTarjeta + totals.ingresosAdicionales - totals.gastos",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-vasos-etapa1-contrato-seguro.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-vasos-etapa2-descuento-venta-cortesia.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-vasos-etapa4-reportes-hardening-final.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-vender-eventos-por-maestro-etapa1.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pwa-e1-componentes-vigentes.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": true,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pwa-e2-offline.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": true,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pwa-e3-activacion-controlada.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": true,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pwa-e4-resultados.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-publicacion-coherencia.smoke.cjs",
+      "classification": "vigente",
+      "mode": "static",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "group": "publicacion",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-flujos-principales-e24.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    }
+  ]
+}

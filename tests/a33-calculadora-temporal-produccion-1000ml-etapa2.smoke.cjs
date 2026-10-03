@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const fs = require('fs');
@@ -50,8 +51,5 @@ assert.strictEqual(result.ingredients.sirope, 225);
 assert.strictEqual(result.ingredients.agua, 225);
 assert.strictEqual(context.__calculate(0), null);
 
-assert.ok(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.98&r=4")'), 'Registro SW temporal no actualizado');
-assert.ok(sw.includes("const MODULE_CACHE_REV = '5';"), 'Cache temporal no incrementado');
-assert.ok(sw.includes("'./index.html?v=4.20.98&r=11'"), 'Precache temporal no apunta al HTML nuevo');
 
 console.log('PASS a33-calculadora-temporal-produccion-1000ml-etapa2: fórmula, checklist, aislamiento y caché cubiertos');

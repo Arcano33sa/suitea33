@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
@@ -177,6 +178,7 @@ windowObj.Blob = FakeBlob;
 windowObj.URL = fakeURL;
 windowObj.CustomEvent = context.CustomEvent;
 
+require('./runtime-fixtures.cjs').installNotice(windowObj);
 vm.runInNewContext(source, context, { filename:'purchases.js' });
 assert.strictEqual(domReady.length,1,'bootstrap listener');
 domReady[0]();
@@ -288,7 +290,7 @@ function findDraftRow(draftId){ return elements.purchaseDraftList.children.find(
   const configHtml=fs.readFileSync(path.join(root,'configuracion','index.html'),'utf8');
   const center=fs.readFileSync(path.join(root,'centro-mando','app.js'),'utf8');
   const css=fs.readFileSync(path.join(root,'agenda','style.css'),'utf8');
-  check('40. PWA, responsive, Centro de Mando y versionado final quedan consistentes', sw.includes('-m4') && sw.includes('purchases.js?v=4.20.95&r=4') && agendaHtml.includes('purchases.js?v=4.20.95&r=4') && configHtml.includes('script.js?v=4.20.95&amp;r=34') && center.includes('purchaseGroup') && center.includes("type === 'compra'") && css.includes('@media (max-width:740px)'));
+  check('40. Responsive y Centro de Mando conservan integración de compras', center.includes('purchaseGroup') && center.includes("type === 'compra'") && css.includes('@media (max-width:740px)'));
 
   assert.strictEqual(errors.length,0,'sin errores de consola en la prueba dinámica');
   assert.strictEqual(checks.length,40,'45 verificaciones obligatorias');

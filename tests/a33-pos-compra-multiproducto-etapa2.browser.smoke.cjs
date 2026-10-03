@@ -45,7 +45,7 @@ let browser;
   const sell=page.getByRole('button',{name:'VENDER',exact:true});
   const modal=page.locator('#purchase-modal');
   const add=async name=>page.getByRole('button',{name:'Agregar '+name,exact:true}).click();
-  const pick=async()=>{await page.locator('#btn-pick-customer').click();await page.getByRole('button',{name:'Cliente Prueba',exact:true}).click();};
+  const pick=async()=>{await page.locator('#btn-pick-customer').click();await page.locator('#customer-picker-search').fill('Cliente Prueba');await page.getByRole('button',{name:'Cliente Prueba',exact:true}).click();};
   const sales=()=>page.evaluate(()=>getAll('sales'));
   const open=async()=>{await sell.click();await modal.waitFor({state:'visible'});};
   const save=async()=>{await page.locator('#purchase-save').click();await modal.waitFor({state:'hidden'});};

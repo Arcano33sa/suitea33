@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
@@ -49,7 +50,7 @@ vm.runInContext(lock,context);
  await context.runWithSavingLockPOS({key:'venta',fn:async()=>{throw Error('Fallo');},onError:()=>{errorSeen=true;context.showToast('No se pudo guardar','error');}});
  assert(errorSeen);assert(!region().children.some(n=>n.className==='a33-notice is-process'));
  const html=read('pos/index.html'),sw=read('pos/sw.js');
- for(const asset of ['assets/js/a33-notify.js?v=4.20.98&r=1','assets/css/a33-notify.css?v=4.20.98&r=1','app.js?v=4.20.98&r=54']){assert(html.includes(asset));assert(sw.includes(asset));}
+ for(const asset of ['assets/js/a33-notify.js','assets/css/a33-notify.css','app.js']){assert(html.includes(asset));assert(sw.includes(asset));}
  assert(html.indexOf('a33-notify.js')<html.indexOf('src="app.js'));
  assert(!/(?<![\w.])(?:window\.)?alert\(/.test(app));assert(app.includes('confirm('));assert(app.includes('prompt('));
  console.log('PASS: estados, tiempos, texto seguro, sustitución, ventas, errores y precaché POS');

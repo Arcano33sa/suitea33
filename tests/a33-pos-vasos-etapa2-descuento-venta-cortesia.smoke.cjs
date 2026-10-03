@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const assert = require('assert');
@@ -198,14 +199,6 @@ vm.runInContext(physicalBlock + `\nthis.api={
   assert.strictEqual(inventory.movimientos.length, movCount, 'Recarga duplicó movimientos');
 
   // PWA coordinada para el módulo POS.
-  assert.ok(html.includes('app.js?v=4.20.97&r=46'), 'HTML no carga app.js Etapa 2');
-  assert.ok(html.includes('manifest.webmanifest?v=4.20.97&r=26'), 'HTML no carga manifest vigente');
-  assert.ok(html.includes("-pos-r'+rev+'-m50"), 'HTML no expone cache POS m50');
-  assert.ok(sw.includes("const MODULE_CACHE_REV = '50';"), 'SW no incrementó cache POS');
-  assert.ok(sw.includes("'./index.html?v=4.20.97&r=33'"), 'SW no precachea HTML vigente');
-  assert.ok(sw.includes("'./app.js?v=4.20.97&r=46'"), 'SW no precachea JS vigente');
-  assert.ok(sw.includes("'./manifest.webmanifest?v=4.20.97&r=26'"), 'SW no precachea manifest vigente');
-  assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=33');
 
   // Navegación offline: el SW vigente recupera el índice precacheado.
   const urlsMatch = sw.match(/const PRECACHE_URLS = \[([\s\S]*?)\];/);
@@ -224,10 +217,10 @@ vm.runInContext(physicalBlock + `\nthis.api={
   assert.ok(navStart >= 0 && navEnd > navStart, 'No se pudo aislar handleNavigate');
   const cachedIndex = {kind:'cached-index-etapa2'};
   const swSandbox = {
-    CACHE_NAME:'a33-v4.20.97-pos-r1-m50',
+    CACHE_NAME:'test-pos-offline',
     fetch:async()=>{ throw new Error('offline'); },
     caches:{open:async()=>({
-      match:async key => String(key) === './index.html?v=4.20.97&r=33' ? cachedIndex : null,
+      match:async key => String(key) === require('./publication-contract.cjs').precache(sw).find(url => url.startsWith('./index.html?')) ? cachedIndex : null,
       put:async()=>true
     })},
     Response:class Response {

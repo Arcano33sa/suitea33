@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 "use strict";
 
 const assert = require("assert");
@@ -25,7 +26,7 @@ const configHtml = fs.readFileSync(path.join(root, "configuracion/index.html"), 
 assert.ok(config.includes("lotCodeContract"), "JSON debe declarar preservación literal del lote");
 assert.ok(config.includes("backupLotIdentityKey"), "Importación parcial debe deduplicar X/x sin reescribir");
 assert.ok(config.includes("lotCodeLiteral:true"), "Validación JSON debe aceptar formatos históricos y nuevos");
-assert.ok(configHtml.includes("a33-lot-code.js?v=4.20.95&amp;r=6"));
+assert.ok(configHtml.includes("a33-lot-code.js"));
 assert.ok(configHtml.includes("Configuración, Catálogos y Lotes"));
 
 const lotes = fs.readFileSync(path.join(root, "lotes/script.js"), "utf8");
@@ -46,13 +47,13 @@ const analyticsHtml = fs.readFileSync(path.join(root, "analitica/index.html"), "
 assert.ok(analytics.includes("saleLotCodesAnalytics"));
 assert.ok(analytics.includes("analyticsLotExcelCell"));
 assert.ok(analyticsHtml.includes("<th>Código de lote</th>"));
-assert.ok(analyticsHtml.includes("a33-lot-code.js?v=4.20.95&r=6"));
+assert.ok(analyticsHtml.includes("a33-lot-code.js"));
 
 const center = fs.readFileSync(path.join(root, "centro-mando/app.js"), "utf8");
 const centerHtml = fs.readFileSync(path.join(root, "centro-mando/index.html"), "utf8");
 assert.ok(center.includes("__cmdLatestLotForEvent"));
 assert.ok(center.includes("mkSec('lote', 'Último lote'"));
-assert.ok(centerHtml.includes("a33-lot-code.js?v=4.20.95&r=6"));
+assert.ok(centerHtml.includes("a33-lot-code.js"));
 
 
 console.log("A33 lot code stage 5 local smoke: OK");

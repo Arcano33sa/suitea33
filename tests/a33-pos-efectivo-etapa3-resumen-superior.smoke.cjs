@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const assert = require('assert');
@@ -93,15 +94,6 @@ vm.runInContext(`${helper}\nthis.fn=cashV2ComputeBankingSummaryPOS;`, sandbox);
   assert.ok(!css.includes('.cashv2-summary-card{overflow-x:auto'));
 
   // 6) PWA cache bump coherente.
-  assert.ok(html.includes("-pos-r'+rev+'-m55"));
-  assert.ok(html.includes('styles.css?v=4.20.97&r=25'));
-  assert.ok(html.includes('manifest.webmanifest?v=4.20.97&r=27'));
-  assert.ok(fs.readFileSync(path.join(root, 'pos/manifest.webmanifest'), 'utf8').includes('./index.html?v=4.20.97&r=34'));
-  assert.ok(html.includes('app.js?v=4.20.97&r=51'));
-  assert.ok(sw.includes("const MODULE_CACHE_REV = '55';"));
-  assert.ok(sw.includes("'./styles.css?v=4.20.97&r=25'"));
-  assert.ok(sw.includes("'./manifest.webmanifest?v=4.20.97&r=27'"));
-  assert.ok(sw.includes("'./app.js?v=4.20.97&r=51'"));
 
   console.log('SMOKE OK — Suite A33 — POS Efectivo — Etapa 3/5 — Resumen superior y comisiones');
 })().catch(err=>{ console.error(err); process.exit(1); });

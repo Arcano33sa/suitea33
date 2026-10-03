@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const assert = require('assert');
@@ -107,10 +108,6 @@ assert.ok(app.includes("await del('sales', id)"), 'Reverso/borrado dejó de elim
 
 
 // 9) Cache POS actualizado porque app.js cambió.
-assert.ok(html.includes("-pos-r'+rev+'-m53"), 'HTML no expone cache POS m53');
-assert.ok(html.includes('app.js?v=4.20.97&r=49'), 'HTML no carga app.js revisado');
-assert.ok(sw.includes("const MODULE_CACHE_REV = '53';"), 'SW no incrementó cache POS');
-assert.ok(sw.includes("'./app.js?v=4.20.97&r=49'"), 'SW no precachea app.js revisado');
 
 // 10) Regresión estructural crítica.
 for (const token of [

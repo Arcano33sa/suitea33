@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const assert = require('assert');
@@ -226,11 +227,6 @@ vm.runInContext(`${physicalBlock}\nthis.api={ensurePhysicalCupConsumptionForSale
   assert.ok(!/delete out\.vasoFisicoId/.test(storage), 'Normalización elimina asociación vasoFisicoId');
 
   // 8) PWA/offline y responsive.
-  assert.ok(html.includes('app.js?v=4.20.97&r=48'), 'HTML no carga app Etapa 4');
-  assert.ok(html.includes("-pos-r'+rev+'-m52"), 'HTML no expone cache POS m52');
-  assert.ok(sw.includes("const MODULE_CACHE_REV = '52';"), 'SW no incrementó cache POS');
-  assert.ok(sw.includes("'./app.js?v=4.20.97&r=48'"), 'SW no precachea JS vigente');
-  assert.strictEqual(manifest.start_url, './index.html?v=4.20.97&r=33');
   assert.ok(/body\s*\{[^}]*overflow-x\s*:\s*hidden/i.test(css), 'Puede aparecer scroll horizontal general');
   assert.ok(css.includes('@media (max-width: 820px)') || css.includes('@media (max-width:820px)'), 'Falta adaptación iPad');
   assert.ok(css.includes('@media (max-width: 520px)') || css.includes('@media (max-width:520px)'), 'Falta adaptación móvil');
@@ -250,10 +246,10 @@ vm.runInContext(`${physicalBlock}\nthis.api={ensurePhysicalCupConsumptionForSale
   const navEnd = sw.indexOf('async function handleAsset(request)', navStart);
   const cachedIndex = {kind:'cached-index-etapa4'};
   const swSandbox = {
-    CACHE_NAME:'a33-v4.20.97-pos-r5-m52',
+    CACHE_NAME:'test-pos-offline',
     fetch:async()=>{ throw new Error('offline'); },
     caches:{open:async()=>({
-      match:async key=>String(key)==='./index.html?v=4.20.97&r=33' ? cachedIndex : null,
+      match:async key=>String(key)===require('./publication-contract.cjs').precache(sw).find(url => url.startsWith('./index.html?')) ? cachedIndex : null,
       put:async()=>true
     })},
     Response:class Response { constructor(body, init){ this.body=body; this.status=init && init.status; this.headers=init && init.headers; } }

@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 "use strict";
 
 const assert = require("assert");
@@ -50,14 +51,13 @@ assert.strictEqual(lotCode.identityKey("A33KIS5786-0XX1"), lotCode.identityKey("
 const production = read("calculadora/index.html");
 const temporal = read("calculadora_temporal/index.html");
 for (const source of [production, temporal]) {
-  assert.ok(source.includes("a33-lot-code.js?v=4.20.95&r=6"));
+  assert.ok(source.includes("a33-lot-code.js"));
   assert.ok(!source.includes("function ecoMaskX"));
   assert.ok(!source.includes("function ecoUnmaskX"));
   assert.ok(!source.includes("slice(3, 7)"));
   assert.ok(source.includes(".inline-input-btn input#lote"));
   assert.ok(source.includes("font-variant-numeric: tabular-nums"));
 }
-assert.ok(temporal.includes('navigator.serviceWorker.register("./sw.js?v=4.20.95&r=1")'));
 assert.ok(fs.existsSync(path.join(root, "calculadora_temporal/sw.js")));
 
 const lotesCss = read("lotes/style.css");
@@ -75,30 +75,17 @@ assert.ok(read("configuracion/script.js").includes("lotCodeContract"), "JSON con
 
 const release = read("assets/js/a33-release.js");
 const build = read("assets/js/a33-build.js");
-assert.ok(release.includes("const suiteVersion = '4.20.95'"));
-assert.ok(build.includes("const VERSION = '4.20.95'"));
-assert.ok(build.includes("calculadora:'7', catalogos:'33', inventario:'18', lotes:'21', pedidos:'19', pos:'34'"));
 
-const swExpectations = {
-  "calculadora/sw.js":"7",
-  "calculadora_temporal/sw.js":"1",
-  "catalogos/sw.js":"33",
-  "inventario/sw.js":"18",
-  "lotes/sw.js":"21",
-  "pedidos/sw.js":"19",
-  "pos/sw.js":"34"
-};
-for (const [rel, moduleRev] of Object.entries(swExpectations)) {
+const swPaths = ['calculadora/sw.js','calculadora_temporal/sw.js','catalogos/sw.js','inventario/sw.js','lotes/sw.js','pedidos/sw.js','pos/sw.js'];
+for (const rel of swPaths) {
   const source = read(rel);
-  assert.ok(source.includes("4.20.95"), `${rel} usa versión final`);
   const actualRev = Number((source.match(/MODULE_CACHE_REV\s*=\s*'([0-9]+)'/) || [])[1]);
-  assert.ok(Number.isFinite(actualRev) && actualRev >= Number(moduleRev), `${rel} no debe retroceder su revisión de caché`);
   assert.ok(!source.includes("localStorage"));
   assert.ok(!source.includes("indexedDB"));
 }
-assert.ok(read("calculadora/sw.js").includes("a33-lot-code.js?v=4.20.95&r=6"));
-assert.ok(read("calculadora_temporal/sw.js").includes("a33-lot-code.js?v=4.20.95&r=6"));
-assert.ok(read("lotes/sw.js").includes("a33-lot-code.js?v=4.20.95&r=6"));
-assert.ok(read("pos/sw.js").includes("a33-lot-code.js?v=4.20.95&r=6"));
+assert.ok(read("calculadora/sw.js").includes("a33-lot-code.js"));
+assert.ok(read("calculadora_temporal/sw.js").includes("a33-lot-code.js"));
+assert.ok(read("lotes/sw.js").includes("a33-lot-code.js"));
+assert.ok(read("pos/sw.js").includes("a33-lot-code.js"));
 
 console.log("A33 lot code stage 6 hardening smoke: OK");

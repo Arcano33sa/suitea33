@@ -1,3 +1,4 @@
+// Coherencia de versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 'use strict';
 
 const fs = require('fs');
@@ -25,18 +26,6 @@ check(html.includes('checkbox.disabled = isClosed;'), 'Histórico no bloquea che
 check(html.includes('const actionLabel = isHistory ? "Ver" : "Usar";'), 'Acciones Usar/Ver incorrectas');
 check(html.includes('let A33ChecklistClosing = false;'), 'Falta guardia anti doble cierre');
 check(html.includes('if (A33ChecklistClosing) return false;'), 'Guardia anti doble cierre no se aplica');
-check(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.97&r=10")'), 'Registro SW no actualizado');
-check(sw.includes("const MODULE_CACHE_REV = '10';"), 'Cache SW no incrementado');
-check(sw.includes("'./index.html?v=4.20.97&r=19'"), 'Precache no actualizado');
-check(html.includes('manifest.webmanifest?v=4.20.97&r=12'), 'Manifest no fue versionado');
-check(manifest.includes('"start_url": "./index.html?v=4.20.97&r=14"'), 'Start URL PWA no fue versionada');
-check(sw.includes("'./manifest.webmanifest?v=4.20.97&r=12'"), 'Manifest no está coherente en precache');
-check(sw.includes("a33-release.js?v=4.20.97&r=55"), 'Release no está coherente en SW');
-check(html.includes('a33-release.js?v=4.20.97&r=55'), 'Release no está coherente en HTML');
-check(release.includes("const rev = 2;"), 'Release global no avanzó a r2');
-check(release.includes("const lastResort = '4.20.97 r2';"), 'Fallback visible no avanzó a r2');
-check(build.includes("const REV = '2';"), 'Build global no avanzó a r2');
-check(build.includes("calculadora:'10'"), 'Build de Calculadora no avanzó a m10');
 check(html.includes('let A33ChecklistSelecting = false;'), 'Falta guardia anti doble selección');
 check(html.includes('button.dataset.checklistBusy === "1"'), 'Falta guardia anti doble toque Usar/Ver');
 check(html.includes('button[data-checklist-identity]'), 'La selección no está limitada a botones operativos');
@@ -175,7 +164,9 @@ const context = vm.createContext({
 const start = html.indexOf('    const A33_CHECKLIST_STORAGE_KEY = "arcano33_lotes";');
 const end = html.indexOf('function registerCalculadoraServiceWorker()', start);
 check(start >= 0 && end > start, 'No se pudo aislar el bloque Checklist');
-const code = html.slice(start, end) + `\n;globalThis.__api={
+require('./runtime-fixtures.cjs').installNotice(windowObj);
+context.PRESENTACIONES = [];
+const code = require('./runtime-fixtures.cjs').calculatorDependencies(html) + '\n' + html.slice(start, end) + `\n;globalThis.__api={
   render:a33RenderChecklistHistory,
   renderSelected:a33RenderSelectedChecklist,
   findIndex:a33ChecklistFindIndex,
@@ -292,7 +283,7 @@ let sharedRev = 7;
 let sharedWrites = 0;
 let sharedSource = '';
 const sharedStorage = {
-  sharedGet(){ return JSON.parse(JSON.stringify(sharedLots)); },
+  sharedGet(key, fallback){ return key === "arcano33_lotes" ? JSON.parse(JSON.stringify(sharedLots)) : fallback; },
   sharedRead(){ return {data:JSON.parse(JSON.stringify(sharedLots)),meta:{rev:sharedRev}}; },
   sharedReplaceExact(key, next, options){
     assert.strictEqual(key, 'arcano33_lotes');
