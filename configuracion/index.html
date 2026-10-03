@@ -810,6 +810,10 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <span class="cfg-badge">JSON local</span>
 </div>
 <p class="cfg-copy">Exporta o importa respaldos completos de la Suite A33. También puedes generar e importar JSON personalizados por módulos, submódulos y eventos POS sin borrar datos no incluidos.</p>
+<section class="cfg-backup-action-block" aria-labelledby="cfg-backup-last-export-title">
+<h3 id="cfg-backup-last-export-title">Última descarga de respaldo solicitada</h3>
+<div id="cfg-backup-last-export" role="status" aria-live="polite"></div>
+</section>
 <section class="cfg-backup-action-block" aria-labelledby="cfg-backup-export-title">
 <h3 id="cfg-backup-export-title">Exportar una copia</h3>
 <p>Guarda toda la Suite o selecciona los módulos y eventos que necesitas.</p>
@@ -823,6 +827,13 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <p>Revisa el archivo y las advertencias antes de confirmar. Exporta una copia de los datos actuales primero.</p>
 <div class="cfg-actions">
 <button class="cfg-btn cfg-btn-ghost" id="cfg-import-backup" type="button">Importar JSON</button>
+</div>
+</section>
+<section class="cfg-backup-action-block" aria-labelledby="cfg-storage-diagnostic-title">
+<h3 id="cfg-storage-diagnostic-title">Diagnóstico de almacenamiento</h3>
+<p>Consulta disponibilidad, registros y cuota estimada sin modificar datos.</p>
+<div class="cfg-actions">
+<button class="cfg-btn cfg-btn-ghost" id="cfg-storage-diagnostic" type="button">Revisar almacenamiento</button>
 </div>
 </section>
 <section class="cfg-backup-action-block" aria-labelledby="cfg-backup-audit-title">

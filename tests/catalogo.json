@@ -601,6 +601,114 @@
       "reason": "Ejecución aprobada en E2.4; cobertura limitada a los escenarios declarados.",
       "group": "funcional",
       "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e31-lecturas-completas.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E3.1: prueba dirigida aprobada de integridad de lectura y bloqueo de descarga.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e31-exportacion.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E3.1: prueba dirigida aprobada de integridad de lectura y bloqueo de descarga.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e32-cobertura.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E3.2: cobertura personalizada y avisos de dependencias.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e32-personalizado.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E3.2: cobertura personalizada y avisos de dependencias.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e33-validacion.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E3.3: validación previa y conservación de bloques ausentes.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e33-importacion.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E3.3: validación previa y conservación de bloques ausentes.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e34-fallos-escritura.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E3.4: detección de escritura y respaldo previo para recuperación.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e34-recuperacion.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E3.4: detección de escritura y respaldo previo para recuperación.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e35-diagnostico.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E3.5: diagnóstico de almacenamiento de solo lectura.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e35-diagnostico.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E3.5: diagnóstico de almacenamiento de solo lectura.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e36-antiguedad.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E3.6: fecha, tipo y antigüedad de descarga solicitada.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-backup-e36-antiguedad.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E3.6: fecha, tipo y antigüedad de descarga solicitada.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
     }
   ]
 }

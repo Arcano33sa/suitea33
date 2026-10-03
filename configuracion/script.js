@@ -2,6 +2,9 @@
   'use strict';
 
   const BACKUP_APP_NAME = 'Suite A33';
+  const LAST_EXPORT_KEY = 'suite_a33_backup_last_export_v1';
+  let lastExportSession = null;
+  let lastExportWriteFailed = false;
   const SUITE_LS_PREFIXES = ['arcano33_', 'a33_', 'suite_a33_', 'a33.'];
   const COSTS_BACKUP_KEY = 'a33_catalogos_costos_v1';
   const COSTS_BACKUP_SCHEMA_VERSION = 2;
@@ -456,6 +459,7 @@
     const out = {};
     for (const [k, v] of Object.entries(src)){
       if (!isSuiteLocalStorageKey(k)) continue;
+      if (k === LAST_EXPORT_KEY) continue; // Seguimiento propio de este navegador, no transferible.
       if (isRetiredGateStorageKey(k)) continue;
       if (k === AGENDA_BACKUP_KEY){
         const agenda = parseAgendaBackupBlock({ [AGENDA_BACKUP_KEY]:v });
@@ -1077,17 +1081,123 @@
     });
   }
 
-  async function safeListIndexedDBDatabases(){
-    if (indexedDB.databases){
+  async function storageDiagnosticWait(promise){
+    let timer;
+    try{
+      return await Promise.race([promise, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('La consulta no respondió en 10 segundos.')), 10000);
+      })]);
+    }finally{ clearTimeout(timer); }
+  }
+
+  async function diagnoseStorageDatabase(name){
+    const db = await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error, value) => {
+        if (settled){ if (value) value.close(); return; }
+        settled = true;
+        clearTimeout(timer);
+        error ? reject(error) : resolve(value);
+      };
+      const timer = setTimeout(() => finish(new Error('La apertura no respondió en 10 segundos.')), 10000);
+      let request;
+      try{ request = indexedDB.open(name); }
+      catch(error){ finish(error); return; }
+      request.onupgradeneeded = () => { try{ request.transaction.abort(); }catch(_){ } };
+      request.onblocked = () => finish(new Error('Apertura bloqueada por otra conexión.'));
+      request.onerror = () => finish(request.error || new Error('No se pudo abrir la base.'));
+      request.onsuccess = () => finish(null, request.result);
+    });
+    const report = { name, version:db.version, stores:[] };
+    try{
+      for (const name of Array.from(db.objectStoreNames)){
+        let tx;
+        try{
+          tx = db.transaction(name, 'readonly');
+          const completed = txDone(tx);
+          completed.catch(() => {});
+          const [count] = await storageDiagnosticWait(Promise.all([reqToPromise(tx.objectStore(name).count()), completed]));
+          report.stores.push({ name, status:'ok', count });
+        }catch(error){ try{ tx?.abort(); }catch(_){ } report.stores.push({ name, status:'error', message:String(error?.message || error) }); }
+      }
+    }finally{ db.close(); }
+    return report;
+  }
+
+  async function diagnoseStorage(){
+    const report = { checkedAt:new Date().toISOString(), localStorage:{}, indexedDB:{}, capacity:{}, persistence:{} };
+    try{
+      const snapshot = getSuiteLocalStorageSnapshot();
+      // Aproximación UTF-16; no equivale al uso de cuota calculado por el navegador.
+      const bytes = Object.entries(snapshot.data).reduce((total, [key, value]) => total + 2 * (key.length + value.length), 0);
+      report.localStorage = { status:'ok', keys:snapshot.keys.length, estimatedBytes:bytes };
+    }catch(error){ report.localStorage = { status:'error', message:String(error?.message || error) }; }
+    try{
+      const listed = await storageDiagnosticWait(safeListIndexedDBDatabases());
+      const names = Array.from(new Set(listed.map(item => item.name).filter(name => isSuiteDbName(name) && !isRetiredGateDbName(name))));
+      const databases = [];
+      for (const name of names){
+        try{ databases.push(await diagnoseStorageDatabase(name)); }
+        catch(error){ databases.push({ name, status:'error', message:String(error?.message || error), stores:[] }); }
+      }
+      report.indexedDB = { status:databases.some(db => db.status === 'error' || db.stores.some(store => store.status === 'error')) ? 'error' : 'ok', databases };
+    }catch(error){ report.indexedDB = { status:typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function' ? 'unavailable' : 'error', message:String(error?.message || error), databases:[] }; }
+    const storage = window.navigator && window.navigator.storage;
+    for (const [field, method] of [['capacity','estimate'], ['persistence','persisted']]){
+      if (!storage || typeof storage[method] !== 'function'){
+        report[field] = { status:'unavailable', message:'El navegador no ofrece esta comprobación.' };
+        continue;
+      }
       try{
-        const list = await indexedDB.databases();
-        if (Array.isArray(list)) return list.filter((d) => d && d.name);
-      }catch(_){ }
+        const value = await storageDiagnosticWait(storage[method]());
+        if (field === 'capacity'){
+          if (!value || !Number.isFinite(value.usage) || !Number.isFinite(value.quota) || value.usage < 0 || value.quota <= 0) throw new Error('Estimación no disponible o inválida.');
+          report[field] = { status:'ok', usage:value.usage, quota:value.quota };
+        } else {
+          if (typeof value !== 'boolean') throw new Error('Respuesta de persistencia inválida.');
+          report[field] = { status:'ok', persisted:value };
+        }
+      }catch(error){ report[field] = { status:'error', message:String(error?.message || error) }; }
     }
-    return [
-      { name: 'a33-pos' },
-      { name: 'finanzasDB' }
-    ];
+    return report;
+  }
+
+  function storageDiagnosticHtml(report){
+    const label = (item) => item.status === 'ok' ? 'Lectura disponible' : item.status === 'unavailable' ? 'No comprobable' : 'Error de lectura';
+    const ls = report.localStorage;
+    const idb = report.indexedDB;
+    const capacity = report.capacity;
+    const persistence = report.persistence;
+    const databases = idb.databases.map(db => `<li><b>${escapeHtml(db.name)}</b> ${db.status === 'error' ? escapeHtml(db.message) : `(versión ${escapeHtml(db.version)})`}<ul>${db.stores.map(store => `<li>${escapeHtml(store.name)}: ${store.status === 'ok' ? `${store.count} registros` : escapeHtml(store.message)}</li>`).join('')}</ul></li>`).join('');
+    return `<div><b>Comprobado:</b> ${escapeHtml(new Date(report.checkedAt).toLocaleString())}</div>
+      <p><b>localStorage:</b> ${label(ls)}. ${ls.status === 'ok' ? `${ls.keys} claves de la Suite; tamaño aproximado ${escapeHtml(formatBytes(ls.estimatedBytes))}.` : escapeHtml(ls.message)}</p>
+      <p><b>IndexedDB:</b> ${label(idb)}. ${idb.message ? escapeHtml(idb.message) : `${idb.databases.length} bases de la Suite detectadas.`}</p><ul>${databases}</ul>
+      <p><b>Cuota del sitio:</b> ${capacity.status === 'ok' ? `${escapeHtml(formatBytes(capacity.usage))} usados de ${escapeHtml(formatBytes(capacity.quota))} estimados.` : `${label(capacity)}. ${escapeHtml(capacity.message)}`}</p>
+      <p><b>Persistencia:</b> ${persistence.status === 'ok' ? persistence.persisted ? 'Concedida por el navegador.' : 'No concedida; el navegador puede liberar almacenamiento bajo presión.' : `${label(persistence)}. ${escapeHtml(persistence.message)}`}</p>
+      <div class="small-note">Consulta de solo lectura. La cuota corresponde al sitio completo, no solo a la Suite. No verifica escrituras, integridad funcional ni disponibilidad de un respaldo. Conservá copias descargadas.</div>`;
+  }
+
+  async function handleStorageDiagnostic(){
+    showModal({ title:'Diagnóstico de almacenamiento', bodyHtml:'<div>Consultando almacenamiento…</div>', disablePrimary:true, disableCancel:true });
+    try{
+      const report = await diagnoseStorage();
+      showModal({ title:'Diagnóstico de almacenamiento', bodyHtml:storageDiagnosticHtml(report), primaryText:'Cerrar', onPrimary:hideModal, disableCancel:true });
+    }catch(error){
+      showModal({ title:'Diagnóstico no completado', bodyHtml:escapeHtml(error?.message || error), primaryText:'Cerrar', onPrimary:hideModal, disableCancel:true });
+    }
+  }
+
+  async function safeListIndexedDBDatabases(){
+    if (typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function'){
+      throw new Error('IndexedDB: este navegador no permite enumerar las bases de datos; no se puede verificar un respaldo completo.');
+    }
+    try{
+      const list = await indexedDB.databases();
+      if (!Array.isArray(list)) throw new Error('La lista recibida no es válida.');
+      return list.filter((d) => d && d.name);
+    }catch(error){
+      throw new Error('IndexedDB: no se pudo consultar la lista de bases de datos. ' + String(error?.message || error));
+    }
   }
 
   function openExistingDB(dbName){
@@ -1123,61 +1233,83 @@
 
   async function snapshotDatabase(dbName){
     const db = await openExistingDB(dbName);
-    const snapshot = {
-      name: dbName,
-      version: db.version,
-      stores: {}
-    };
-
-    const storeNames = Array.from(db.objectStoreNames || []);
-    for (const storeName of storeNames){
-      const tx = db.transaction(storeName, 'readonly');
-      const store = tx.objectStore(storeName);
-
-      const schema = {
-        keyPath: store.keyPath ?? null,
-        autoIncrement: !!store.autoIncrement,
-        indices: []
+    try{
+      const snapshot = {
+        name: dbName,
+        version: db.version,
+        stores: {}
       };
 
-      try{
-        const indexNames = Array.from(store.indexNames || []);
-        for (const idxName of indexNames){
-          const idx = store.index(idxName);
-          schema.indices.push({
-            name: idxName,
-            keyPath: idx.keyPath ?? null,
-            unique: !!idx.unique,
-            multiEntry: !!idx.multiEntry
-          });
+      const storeNames = Array.from(db.objectStoreNames || []);
+      for (const storeName of storeNames){
+        const tx = db.transaction(storeName, 'readonly');
+        const completed = txDone(tx);
+        // La lectura puede fallar antes de esperar el cierre de la transacción.
+        completed.catch(() => {});
+        const store = tx.objectStore(storeName);
+
+        const schema = {
+          keyPath: store.keyPath ?? null,
+          autoIncrement: !!store.autoIncrement,
+          indices: []
+        };
+
+        try{
+          const indexNames = Array.from(store.indexNames || []);
+          for (const idxName of indexNames){
+            const idx = store.index(idxName);
+            schema.indices.push({
+              name: idxName,
+              keyPath: idx.keyPath ?? null,
+              unique: !!idx.unique,
+              multiEntry: !!idx.multiEntry
+            });
+          }
+        }catch(error){
+          throw new Error(`${dbName} / ${storeName}: no se pudo leer el esquema. ${String(error?.message || error)}`);
         }
-      }catch(_){ }
 
-      const records = await getAllFromStore(store);
-      await txDone(tx);
+        let records;
+        try{
+          records = await getAllFromStore(store);
+          await completed;
+        }catch(error){
+          throw new Error(`${dbName} / ${storeName}: no se pudo completar la lectura. ${String(error?.message || error)}`);
+        }
 
-      snapshot.stores[storeName] = {
-        count: Array.isArray(records) ? records.length : 0,
-        schema,
-        records: Array.isArray(records) ? records : []
-      };
+        snapshot.stores[storeName] = {
+          count: Array.isArray(records) ? records.length : 0,
+          schema,
+          records: Array.isArray(records) ? records : []
+        };
+      }
+
+      return snapshot;
+    }finally{
+      try{ db.close(); }catch(_){ }
     }
-
-    try{ db.close(); }catch(_){ }
-    return snapshot;
   }
 
   function getSuiteLocalStorageSnapshot(){
     const out = {};
     const keys = [];
-    const storage = window.A33Storage;
-    const allKeys = storage.keys({ scope: 'local' });
-    for (const k of allKeys){
-      if (!k) continue;
+    // Lectura directa: A33Storage devuelve null/lista vacía cuando falla el acceso.
+    let storage, length;
+    try{ storage = window.localStorage; length = storage.length; }
+    catch(error){ throw new Error('localStorage: no se pudo consultar el almacenamiento. ' + String(error?.message || error)); }
+    for (let index = 0; index < length; index++){
+      let k;
+      try{ k = storage.key(index); }
+      catch(error){ throw new Error(`localStorage: no se pudo leer la clave ${index + 1}. ${String(error?.message || error)}`); }
+      if (k === null) throw new Error('localStorage: la lista de claves cambió o no se pudo leer; vuelve a preparar el respaldo.');
       if (!isSuiteLocalStorageKey(k)) continue;
       if (isRetiredGateStorageKey(k)) continue;
+      let value;
+      try{ value = storage.getItem(k); }
+      catch(error){ throw new Error(`localStorage / ${k}: no se pudo leer. ${String(error?.message || error)}`); }
+      if (value === null) throw new Error(`localStorage / ${k}: la clave dejó de estar disponible; vuelve a preparar el respaldo.`);
       keys.push(k);
-      out[k] = storage.getItem(k);
+      out[k] = value;
     }
     keys.sort();
     return { data: out, keys, count: keys.length };
@@ -1306,6 +1438,45 @@
     if (modal) modal.style.display = 'none';
   }
 
+  function backupExportAge(preparedAt, now = Date.now()){
+    const elapsed = now - new Date(preparedAt).getTime();
+    if (!Number.isFinite(elapsed)) return 'No disponible';
+    if (elapsed < 0) return 'Fecha futura; revisá el reloj del dispositivo';
+    const minutes = Math.floor(elapsed / 60000);
+    if (minutes < 1) return 'Menos de un minuto';
+    if (minutes < 60) return `${minutes} minuto(s)`;
+    if (minutes < 1440) return `${Math.floor(minutes / 60)} hora(s)`;
+    return `${Math.floor(minutes / 1440)} día(s)`;
+  }
+
+  function renderLastBackupExport(){
+    const node = document.getElementById('cfg-backup-last-export');
+    if (!node) return;
+    let record = lastExportSession;
+    try{
+      if (!record){
+        const raw = window.localStorage.getItem(LAST_EXPORT_KEY);
+        if (!raw){ node.textContent = 'Sin descargas registradas en este navegador. Los respaldos anteriores a este registro no tienen fecha comprobable.'; return; }
+        record = JSON.parse(raw);
+      }
+      if (!record || record.schemaVersion !== 1 || !['full','partial','recovery'].includes(record.type) || typeof record.preparedAt !== 'string' || typeof record.requestedAt !== 'string' || !Number.isFinite(new Date(record.preparedAt).getTime()) || !Number.isFinite(new Date(record.requestedAt).getTime()) || typeof record.filename !== 'string') throw new Error('Registro inválido');
+      const type = { full:'Completo', partial:'Personalizado parcial', recovery:'Completo previo a importación' }[record.type];
+      node.innerHTML = `<div><b>Tipo:</b> ${type}</div><div><b>Contenido preparado:</b> ${escapeHtml(new Date(record.preparedAt).toLocaleString())}</div><div><b>Antigüedad del contenido:</b> ${escapeHtml(backupExportAge(record.preparedAt))}</div><div><b>Descarga solicitada:</b> ${escapeHtml(new Date(record.requestedAt).toLocaleString())}</div><div><b>Archivo:</b> ${escapeHtml(record.filename)}</div><p class="small-note">Solicitud de descarga; verificá que el archivo esté guardado. Un respaldo parcial cubre solo lo seleccionado.</p>${lastExportWriteFailed ? '<p class="badge-warn">No se pudo guardar este registro. Solo estará disponible durante esta sesión.</p>' : ''}`;
+    }catch(_){ node.textContent = 'Registro no comprobable: no se pudo leer o validar la información de la última descarga.'; }
+  }
+
+  function downloadBackup(filename, content, type, preparedAt){
+    // Registrar después de solicitar la descarga: preparar o cancelar no cambia la fecha.
+    downloadTextFile(filename, content);
+    const record = { schemaVersion:1, type, preparedAt, requestedAt:new Date().toISOString(), filename };
+    lastExportSession = record;
+    try{
+      writeImportStorage(LAST_EXPORT_KEY, JSON.stringify(record));
+      lastExportWriteFailed = false;
+    }catch(_){ lastExportWriteFailed = true; }
+    renderLastBackupExport();
+  }
+
   function downloadTextFile(filename, content){
     const blob = new Blob([content], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1372,7 +1543,7 @@
         { id: 'tapasDisponibles', label: 'Tapas / Corchos disponibles', keyNeedles: ['arcano33_inventario'] },
         { id: 'movimientosInventario', label: 'Movimientos de inventario', keyNeedles: ['arcano33_inventario'] },
         { id: 'recetas', label: 'Recetas', keyNeedles: ['arcano33_recetas_v1'] },
-        { id: 'calculadoraProduccion', label: 'Calculadora de Producción', keyNeedles: ['arcano33_lote_actual', 'arcano33_fecha_produccion', 'arcano33_notas_lote', 'arcano33_calc_', 'a33_calc_hebrew'] },
+        { id: 'calculadoraProduccion', label: 'Calculadora de Producción', keyNeedles: ['arcano33_lote_actual', 'arcano33_fecha_produccion', 'arcano33_notas_lote', 'arcano33_produccion_checklists', 'arcano33_calc_', 'a33_calc_hebrew'] },
         { id: 'calculadoraTemporal', label: 'Calculadora Temporal', keyNeedles: ['arcano33_temporal_', 'a33_calc_temporal_hebrew'] }
       ]
     },
@@ -1395,6 +1566,7 @@
         { id: 'cierresDiarios', label: 'Cierres diarios', stores: [{ db: 'a33-pos', store: 'dailyClosures' }, { db: 'a33-pos', store: 'dayLocks' }] },
         { id: 'cajaEfectivoPos', label: 'Caja / Efectivo POS', stores: [{ db: 'a33-pos', store: 'cashV2' }, { db: 'a33-pos', store: 'cashv2hist' }, { db: 'a33-pos', store: 'cashv2snap' }], keyNeedles: ['a33.ef2'] },
         { id: 'reempaques', label: 'Reempaques', stores: [{ db: 'a33-pos', store: 'reempaques' }] },
+        { id: 'preferenciasPos', label: 'Preferencias POS / secuencia de históricos', stores: [{ db: 'a33-pos', store: 'meta' }] },
         { id: 'historicosResumenes', label: 'Históricos / resúmenes', stores: [{ db: 'a33-pos', store: 'summaryArchives' }, { db: 'a33-pos', store: 'posRemindersIndex' }], keyNeedles: ['pos_summary'] }
       ]
     },
@@ -1404,10 +1576,13 @@
       parts: [
         { id: 'recibos', label: 'Recibos', stores: [{ db: 'finanzasDB', store: 'receipts' }] },
         { id: 'importacionesPos', label: 'Importaciones POS', stores: [{ db: 'finanzasDB', store: 'posDailyCloseImports' }] },
-        { id: 'tableroOperativo', label: 'Tablero / datos operativos', keyNeedles: ['finanzas_tablero', 'finance_dashboard', 'cat_usage_cache'] },
-        { id: 'bancosCuentas', label: 'Bancos / cuentas financieras', stores: [{ db: 'finanzasDB', store: 'accounts' }], keyNeedles: ['finanzas_bancos', 'cuentas_financieras'] },
+        { id: 'tableroOperativo', label: 'Tablero / datos operativos', keyNeedles: ['finanzas_tablero', 'finance_dashboard', 'cat_usage_cache', 'a33_fin_accounts_usage_cache_v1'] },
+        { id: 'bancosCuentas', label: 'Bancos / cuentas financieras', stores: [{ db: 'finanzasDB', store: 'accounts' }, { db: 'finanzasDB', store: 'financialAccounts' }], keyNeedles: ['finanzas_bancos', 'cuentas_financieras'] },
         { id: 'configuracionFinanciera', label: 'Configuración financiera', stores: [{ db: 'finanzasDB', store: 'settings' }], keyNeedles: ['finanzas_config', 'suite_a33_currency'] },
-        { id: 'movimientosFinancieros', label: 'Movimientos financieros existentes', stores: [{ db: 'finanzasDB', store: 'journalEntries' }, { db: 'finanzasDB', store: 'journalLines' }] }
+        { id: 'proveedores', label: 'Proveedores', stores: [{ db: 'finanzasDB', store: 'suppliers' }] },
+        { id: 'cuentasPorCobrar', label: 'Cuentas por cobrar', stores: [{ db: 'finanzasDB', store: 'receivableItems' }] },
+        { id: 'cuentasPorPagar', label: 'Cuentas por pagar', stores: [{ db: 'finanzasDB', store: 'payableItems' }] },
+        { id: 'movimientosFinancieros', label: 'Movimientos financieros existentes', stores: [{ db: 'finanzasDB', store: 'journalEntries' }, { db: 'finanzasDB', store: 'journalLines' }, { db: 'finanzasDB', store: 'internalTransfers' }] }
       ]
     },
     {
@@ -1415,7 +1590,7 @@
       label: 'Agenda / Compras / Pedidos',
       parts: [
         { id: 'agenda', label: 'Agenda (Reuniones, Tareas y Compras)', keyNeedles: ['agenda', 'a33_agenda', 'suite_a33_agenda'] },
-        { id: 'pedidos', label: 'Pedidos completos y rápidos', keyNeedles: ['arcano33_pedidos', 'arcano33_pedidos_archived', QUICK_ORDERS_BACKUP_KEY] }
+        { id: 'pedidos', label: 'Pedidos completos y rápidos', keyNeedles: ['arcano33_pedidos', 'arcano33_pedidos_archived', QUICK_ORDERS_BACKUP_KEY, 'a33_pedidos_draft_v1'] }
       ]
     }
   ];
@@ -1451,7 +1626,7 @@
     const hasProduccion = selectionHasAny(selection, 'inventario', ['recetas', 'calculadoraProduccion', 'calculadoraTemporal']);
     const hasInventarioBase = selectionHasAny(selection, 'inventario', ['productoTerminado', 'envasesDisponibles', 'tapasDisponibles', 'movimientosInventario']);
     const hasCatalogEnvasesTapas = selectionHasAny(selection, 'catalogos', ['envases', 'tapas']);
-    const hasAgenda = selectionHasPart(selection, 'agendaPedidos', 'agenda');
+    const hasAgenda = selectionHasPart(selection, 'agenda', 'agenda');
     const hasMateriaPrima = selectionHasPart(selection, 'catalogos', 'materiaPrima');
 
     if (hasPosVentas && !hasProducts){
@@ -1474,6 +1649,25 @@
     }
     if (hasAgenda && !hasMateriaPrima){
       warnings.push('Agenda incluye Compras con su precio histórico, pero para crear compras nuevas en el otro dispositivo conviene incluir Catálogos → Materia Prima.');
+    }
+    if (hasInventarioBase){
+      warnings.push('Las opciones de Inventario comparten un único registro: cualquiera incluye todas las existencias y movimientos guardados en Inventario.');
+    }
+    if (selectionHasPart(selection, 'inventario', 'calculadoraProduccion') && !hasLotes){
+      warnings.push('Calculadora de Producción incluye sus listas de seguimiento, pero los lotes y sus listas históricas requieren seleccionar Lotes.');
+    }
+    if (selectionHasPart(selection, 'pos', 'eventos')){
+      warnings.push('Eventos no incluye las preferencias compartidas de POS. Para trasladar el evento activo y la secuencia de históricos, seleccioná Preferencias POS / secuencia de históricos.');
+    }
+    const hasFinanceMovements = selectionHasAny(selection, 'finanzas', ['recibos', 'importacionesPos', 'movimientosFinancieros', 'cuentasPorCobrar', 'cuentasPorPagar']);
+    if (hasFinanceMovements && !selectionHasPart(selection, 'finanzas', 'bancosCuentas')){
+      warnings.push('Los movimientos de Finanzas pueden referenciar cuentas contables y financieras. Conviene incluir Finanzas → Bancos / cuentas financieras.');
+    }
+    if (selectionHasAny(selection, 'finanzas', ['recibos', 'cuentasPorPagar']) && !selectionHasPart(selection, 'finanzas', 'proveedores')){
+      warnings.push('Recibos y cuentas por pagar pueden referenciar proveedores. Conviene incluir Finanzas → Proveedores.');
+    }
+    if (selectionHasPart(selection, 'finanzas', 'importacionesPos') && !selectionHasPart(selection, 'finanzas', 'movimientosFinancieros')){
+      warnings.push('Importaciones POS contiene el seguimiento de cierres importados; sus asientos requieren Finanzas → Movimientos financieros existentes.');
     }
     return Array.from(new Set(warnings));
   }
@@ -2372,9 +2566,9 @@
             bodyHtml: buildCustomSummaryHtml(result),
             primaryText: 'Descargar personalizado',
             onPrimary: async () => {
-              downloadTextFile(buildCustomBackupFilename(), result.jsonString);
+              downloadBackup(buildCustomBackupFilename(), result.jsonString, 'partial', result.backup.meta.exportedAt);
               hideModal();
-              showToast('Respaldo personalizado descargado.');
+              showToast('Descarga de respaldo personalizado solicitada. Verificá que el archivo esté guardado.');
             },
             cancelText: 'Cancelar',
             onCancel: hideModal
@@ -2403,6 +2597,7 @@
     const dataIndexedDB = {};
     const dbVersions = {};
     const dbSchemas = {};
+    const readFailures = [];
 
     for (const d of suiteDbList){
       try{
@@ -2418,11 +2613,19 @@
           dbSchemas[d.name][storeName] = s.schema || {};
         }
       }catch(e){
-        console.warn('No se pudo leer DB', d.name, e);
+        readFailures.push(`${d.name}: ${String(e?.message || e)}`);
       }
     }
 
-    const lsSnap = getSuiteLocalStorageSnapshot();
+    let lsSnap;
+    try{ lsSnap = getSuiteLocalStorageSnapshot(); }
+    catch(error){ readFailures.push(String(error?.message || error)); }
+    if (readFailures.length){
+      const error = new Error('No se generó el respaldo: hay lecturas incompletas. ' + readFailures.join(' · '));
+      error.code = 'A33_BACKUP_READ_INCOMPLETE';
+      error.readFailures = readFailures;
+      throw error;
+    }
     const cleanIndexed = sanitizeIndexedDbPayload(dataIndexedDB, dbSchemas, dbVersions);
 
     const fullLocalStorage = sanitizeSuiteLocalStorageMap(lsSnap.data);
@@ -2496,13 +2699,64 @@
   }
 
   function validateBackupStructure(obj){
-    if (!obj || typeof obj !== 'object') return { ok: false, reason: 'Archivo inválido (no es un objeto JSON).' };
-    if (!obj.meta || typeof obj.meta !== 'object') return { ok: false, reason: 'Falta meta.' };
-    if (!obj.data || typeof obj.data !== 'object') return { ok: false, reason: 'Falta data.' };
+    const isMap = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+    const invalid = (path, expected) => ({ ok:false, reason:`${path}: se esperaba ${expected}.` });
+    if (!isMap(obj)) return invalid('Archivo', 'un objeto JSON');
+    if (!isMap(obj.meta)) return invalid('meta', 'un objeto');
+    if (!isMap(obj.data)) return invalid('data', 'un objeto');
     const appName = obj.meta.appName || obj.meta.app || '';
-    if (appName !== BACKUP_APP_NAME) return { ok: false, reason: `appName inválido: se esperaba "${BACKUP_APP_NAME}".` };
-    if (!obj.data.indexedDB || typeof obj.data.indexedDB !== 'object') return { ok: false, reason: 'Falta data.indexedDB.' };
-    if (!obj.data.localStorage || typeof obj.data.localStorage !== 'object') return { ok: false, reason: 'Falta data.localStorage.' };
+    if (appName !== BACKUP_APP_NAME) return { ok:false, reason:`appName inválido: se esperaba "${BACKUP_APP_NAME}".` };
+    if (!isMap(obj.data.indexedDB)) return invalid('data.indexedDB', 'un objeto');
+    if (!isMap(obj.data.localStorage)) return invalid('data.localStorage', 'un objeto');
+    for (const [dbName, stores] of Object.entries(obj.data.indexedDB)){
+      if (!isSuiteDbName(dbName) || isRetiredGateDbName(dbName)) continue;
+      if (!isMap(stores)) return invalid(`indexedDB / ${dbName}`, 'un objeto de almacenes');
+      for (const [storeName, records] of Object.entries(stores)){
+        if (isRetiredGateStoreName(storeName)) continue;
+        const location = `indexedDB / ${dbName} / ${storeName}`;
+        if (!Array.isArray(records)) return invalid(location, 'una lista de registros');
+        for (let i = 0; i < records.length; i++){
+          if (!isMap(records[i])) return invalid(`${location} / registro ${i + 1}`, 'un objeto');
+        }
+      }
+    }
+    // Los metadatos de esquema son opcionales en archivos históricos.
+    for (const field of ['dbVersions', 'dbSchemas']){
+      const map = obj.meta[field];
+      if (map === undefined) continue;
+      if (!isMap(map)) return invalid(`meta.${field}`, 'un objeto');
+      for (const [dbName, value] of Object.entries(map)){
+        if (!isSuiteDbName(dbName) || isRetiredGateDbName(dbName)) continue;
+        if (field === 'dbVersions'){
+          if (!['number', 'string'].includes(typeof value) || !Number.isSafeInteger(Number(value)) || Number(value) < 1) return invalid(`meta.dbVersions / ${dbName}`, 'una versión entera positiva');
+          continue;
+        }
+        if (!isMap(value)) return invalid(`meta.dbSchemas / ${dbName}`, 'un objeto de esquemas');
+        for (const [storeName, schema] of Object.entries(value)){
+          if (isRetiredGateStoreName(storeName)) continue;
+          const location = `meta.dbSchemas / ${dbName} / ${storeName}`;
+          if (!isMap(schema)) return invalid(location, 'un objeto');
+          if (schema.indices !== undefined && (!Array.isArray(schema.indices) || schema.indices.some(index => !isMap(index)))) return invalid(`${location} / indices`, 'una lista de objetos');
+          if (schema.keyPath !== undefined && schema.keyPath !== null && typeof schema.keyPath !== 'string' && !(Array.isArray(schema.keyPath) && schema.keyPath.every(key => typeof key === 'string'))) return invalid(`${location} / keyPath`, 'texto, lista de textos o null');
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(obj.data.localStorage)){
+      if (!isSuiteLocalStorageKey(key) || isRetiredGateStorageKey(key)) continue;
+      if ([COSTS_BACKUP_KEY, AGENDA_BACKUP_KEY, QUICK_ORDERS_BACKUP_KEY].includes(key)) continue;
+      if (typeof value !== 'string') return invalid(`localStorage / ${key}`, 'texto serializado');
+    }
+    if (Object.prototype.hasOwnProperty.call(obj.data.localStorage, QUICK_ORDERS_BACKUP_KEY)){
+      let rows = obj.data.localStorage[QUICK_ORDERS_BACKUP_KEY];
+      if (typeof rows === 'string'){
+        try{ rows = JSON.parse(rows); }
+        catch(_){ return invalid(`localStorage / ${QUICK_ORDERS_BACKUP_KEY}`, 'JSON válido'); }
+      }
+      if (!Array.isArray(rows)) return invalid(`localStorage / ${QUICK_ORDERS_BACKUP_KEY}`, 'una lista de pedidos');
+      for (let i = 0; i < rows.length; i++){
+        if (!isMap(rows[i]) || !normalizeQuickOrderBackupRecord(rows[i])) return invalid(`localStorage / ${QUICK_ORDERS_BACKUP_KEY} / registro ${i + 1}`, 'un pedido válido');
+      }
+    }
     const costsValidation = parseCostsBackupBlock(obj.data.localStorage);
     if (!costsValidation.ok) return { ok:false, reason:costsValidation.reason || 'Bloque Costos inválido.' };
     const agendaValidation = parseAgendaBackupBlock(obj.data.localStorage);
@@ -2758,6 +3012,8 @@
     if (!db || !db.objectStoreNames.contains('products')) return state;
     try{
       const tx = db.transaction('products', 'readonly');
+      const completed = txDone(tx);
+      completed.catch(() => {});
       const store = tx.objectStore('products');
       await new Promise((resolve, reject) => {
         const req = store.openCursor();
@@ -2772,41 +3028,34 @@
           cursor.continue();
         };
       });
-      await txDone(tx);
-    }catch(_){ }
+      await completed;
+    }catch(error){ throw new Error(`Lectura previa a fusión: ${error?.message || error}`); }
     return state;
   }
 
   async function restoreDatabase(dbName, dbPayload, dbVersions, dbSchemas){
-    const schemaByStore = dbSchemas?.[dbName] || {};
-    const version = dbVersions?.[dbName] || 1;
-
     const db = await openDBForPartialMerge(dbName, dbPayload, dbVersions, dbSchemas);
-
-    const stores = dbPayload && typeof dbPayload === 'object'
-      ? Object.entries(dbPayload)
-      : [];
-
-    for (const [storeName, records] of stores){
-      if (!db.objectStoreNames.contains(storeName)) continue;
-
-      const arr = Array.isArray(records) ? records : [];
-      const tx = db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-
-      try{ store.clear(); }catch(_){ }
-      for (const rec of arr){
+    try{
+      for (const [storeName, records] of Object.entries(dbPayload)){
+        if (!db.objectStoreNames.contains(storeName)) throw new Error(`${dbName} / ${storeName}: almacén no disponible.`);
+        const tx = db.transaction(storeName, 'readwrite');
+        const completed = txDone(tx);
+        completed.catch(() => {});
         try{
-          const row = (dbName === 'a33-pos' && storeName === 'products')
-            ? normalizeImportedProductRecord(rec, '')
-            : rec;
-          store.put(row);
-        }catch(_){ }
+          const store = tx.objectStore(storeName);
+          store.clear();
+          for (const rec of records){
+            store.put(dbName === 'a33-pos' && storeName === 'products' ? normalizeImportedProductRecord(rec, '') : rec);
+          }
+          await completed;
+        }catch(error){
+          try{ tx.abort(); }catch(_){ }
+          throw new Error(`${dbName} / ${storeName}: ${error?.message || error}`);
+        }
       }
-      await txDone(tx);
+    }finally{
+      try{ db.close(); }catch(_){ }
     }
-
-    try{ db.close(); }catch(_){ }
   }
 
   function normalizeRecordToken(value){
@@ -2934,6 +3183,8 @@
     if (!db || !db.objectStoreNames.contains(storeName)) return map;
     try{
       const tx = db.transaction(storeName, 'readonly');
+      const completed = txDone(tx);
+      completed.catch(() => {});
       const store = tx.objectStore(storeName);
       await new Promise((resolve, reject) => {
         const req = store.openCursor();
@@ -2946,8 +3197,8 @@
           cursor.continue();
         };
       });
-      await txDone(tx);
-    }catch(_){ }
+      await completed;
+    }catch(error){ throw new Error(`Lectura previa a fusión: ${error?.message || error}`); }
     return map;
   }
 
@@ -2957,82 +3208,88 @@
     const schemaByStore = dbSchemas?.[dbName] || {};
     const stats = { stores: 0, records: 0, skipped: 0 };
 
-    for (const [storeName, records] of Object.entries(payload)){
-      if (!db.objectStoreNames.contains(storeName)) continue;
-      const arr = Array.isArray(records) ? records : [];
-      if (!arr.length) continue;
-      const schema = schemaByStore?.[storeName] || {};
-      let stableKeyMap = new Map();
-      let usesKeyPath = true;
-      try{
-        const probeTx = db.transaction(storeName, 'readonly');
-        usesKeyPath = !!probeTx.objectStore(storeName).keyPath;
-        try{ probeTx.abort(); }catch(_){ }
-      }catch(_){ usesKeyPath = true; }
-      if (!usesKeyPath) stableKeyMap = await readStoreStableKeyMap(db, storeName, schema);
-      const productIdentityState = (dbName === 'a33-pos' && storeName === 'products')
-        ? await readProductIdentityState(db)
-        : null;
-      const reservedProductIds = productIdentityState
-        ? new Set(productIdentityState.byProductId.keys())
-        : null;
-
-      const tx = db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-      const runtimeKeyPath = store.keyPath;
-      stats.stores++;
-
-      for (const rec of arr){
-        if (!rec || typeof rec !== 'object') { stats.skipped++; continue; }
+    try{
+      for (const [storeName, records] of Object.entries(payload)){
+        if (!db.objectStoreNames.contains(storeName)) throw new Error(`${dbName} / ${storeName}: almacén no disponible.`);
+        const arr = Array.isArray(records) ? records : [];
+        if (!arr.length) continue;
+        const schema = schemaByStore?.[storeName] || {};
+        let stableKeyMap = new Map();
+        let usesKeyPath = true;
         try{
-          let incoming = cloneJsonSafe(rec);
-          if (productIdentityState){
-            incoming = normalizeImportedProductRecord(incoming, '');
-            const productId = String(incoming.productId || '').trim();
-            const existing = productIdentityState.byProductId.get(productId);
-            if (existing){
-              incoming.id = existing.key;
-            } else {
-              if (reservedProductIds.has(productId)) { stats.skipped++; continue; }
-              reservedProductIds.add(productId);
-              if (!incoming.origin) incoming.origin = 'importacion';
-              if (incoming.id != null){
-                const legacyOwner = productIdentityState.byLegacyId.get(String(incoming.id));
-                if (legacyOwner && legacyOwner !== productId) delete incoming.id;
+          const probeTx = db.transaction(storeName, 'readonly');
+          usesKeyPath = !!probeTx.objectStore(storeName).keyPath;
+          try{ probeTx.abort(); }catch(_){ }
+        }catch(_){ usesKeyPath = true; }
+        if (!usesKeyPath) stableKeyMap = await readStoreStableKeyMap(db, storeName, schema);
+        const productIdentityState = (dbName === 'a33-pos' && storeName === 'products')
+          ? await readProductIdentityState(db)
+          : null;
+        const reservedProductIds = productIdentityState
+          ? new Set(productIdentityState.byProductId.keys())
+          : null;
+
+        const tx = db.transaction(storeName, 'readwrite');
+        const completed = txDone(tx);
+        completed.catch(() => {});
+        try{
+          const store = tx.objectStore(storeName);
+          const runtimeKeyPath = store.keyPath;
+          stats.stores++;
+
+          for (const rec of arr){
+            if (!rec || typeof rec !== 'object') { throw new Error('Registro sin identidad válida para fusión.'); }
+            try{
+              let incoming = cloneJsonSafe(rec);
+              if (productIdentityState){
+                incoming = normalizeImportedProductRecord(incoming, '');
+                const productId = String(incoming.productId || '').trim();
+                const existing = productIdentityState.byProductId.get(productId);
+                if (existing){
+                  incoming.id = existing.key;
+                } else {
+                  if (reservedProductIds.has(productId)) { stats.skipped++; continue; }
+                  reservedProductIds.add(productId);
+                  if (!incoming.origin) incoming.origin = 'importacion';
+                  if (incoming.id != null){
+                    const legacyOwner = productIdentityState.byLegacyId.get(String(incoming.id));
+                    if (legacyOwner && legacyOwner !== productId) delete incoming.id;
+                  }
+                }
               }
-            }
+              if (runtimeKeyPath){
+                if (!hasStoreKeyPathValue(incoming, runtimeKeyPath)) {
+                  if (!(productIdentityState && store.autoIncrement)) { throw new Error('Registro sin identidad válida para fusión.'); }
+                }
+                const req = store.put(incoming);
+                if (productIdentityState){
+                  const productId = String(incoming.productId || '').trim();
+                  req.onsuccess = () => {
+                    const key = req.result;
+                    productIdentityState.byProductId.set(productId, { key, row:incoming });
+                    productIdentityState.byLegacyId.set(String(key), productId);
+                  };
+                }
+                stats.records++;
+              } else {
+                const id = getStableRecordId(incoming, schema, storeName);
+                if (!id) { throw new Error('Registro sin identidad válida para fusión.'); }
+                const existingKey = stableKeyMap.has(id) ? stableKeyMap.get(id) : id;
+                store.put(incoming, existingKey);
+                stableKeyMap.set(id, existingKey);
+                stats.records++;
+              }
+            }catch(error){ throw new Error(`${dbName} / ${storeName}: ${error?.message || error}`); }
           }
-          if (runtimeKeyPath){
-            if (!hasStoreKeyPathValue(incoming, runtimeKeyPath)) {
-              if (!(productIdentityState && store.autoIncrement)) { stats.skipped++; continue; }
-            }
-            const req = store.put(incoming);
-            if (productIdentityState){
-              const productId = String(incoming.productId || '').trim();
-              req.onsuccess = () => {
-                const key = req.result;
-                productIdentityState.byProductId.set(productId, { key, row:incoming });
-                productIdentityState.byLegacyId.set(String(key), productId);
-              };
-            }
-            stats.records++;
-          } else {
-            const id = getStableRecordId(incoming, schema, storeName);
-            if (!id) { stats.skipped++; continue; }
-            const existingKey = stableKeyMap.has(id) ? stableKeyMap.get(id) : id;
-            store.put(incoming, existingKey);
-            stableKeyMap.set(id, existingKey);
-            stats.records++;
-          }
-        }catch(_){
-          stats.skipped++;
+          await completed;
+        }catch(error){
+          try{ tx.abort(); }catch(_){ }
+          throw new Error(`${dbName} / ${storeName}: ${error?.message || error}`);
         }
       }
-      await txDone(tx);
-    }
 
-    try{ db.close(); }catch(_){ }
-    return stats;
+      return stats;
+    }finally{ try{ db.close(); }catch(_){ } }
   }
 
   function tryParseJsonValue(value){
@@ -3089,12 +3346,25 @@
     return incoming;
   }
 
+  function readImportStorage(key){
+    try{ return window.localStorage.getItem(key); }
+    catch(error){ throw new Error(`localStorage / ${key}: ${error?.message || error}`); }
+  }
+
+  function writeImportStorage(key, value){
+    try{
+      const text = String(value ?? '');
+      if (window.A33Storage.setItem(key, text) === false) throw new Error('Escritura rechazada (espacio o acceso al almacenamiento).');
+      if (window.localStorage.getItem(key) !== text) throw new Error('La lectura de verificación no coincide con lo escrito.');
+    }catch(error){ throw new Error(`localStorage / ${key}: ${error?.message || error}`); }
+  }
+
   function mergeLocalStorageValue(key, incomingRaw){
     if (String(key || '') === QUICK_ORDERS_BACKUP_KEY){
       try{
-        const currentRaw = window.A33Storage.getItem(key) || '[]';
+        const currentRaw = readImportStorage(key) || '[]';
         const merged = mergeQuickOrdersBackupValues(currentRaw,incomingRaw);
-        window.A33Storage.setItem(key,JSON.stringify(merged));
+        writeImportStorage(key,JSON.stringify(merged));
         return true;
       }catch(error){
         console.warn('Pedidos rápidos no pudieron fusionarse durante la importación.',error);
@@ -3103,9 +3373,9 @@
     }
     if (String(key || '') === AGENDA_BACKUP_KEY){
       try{
-        const currentRaw = window.A33Storage.getItem(key) || JSON.stringify({ schemaVersion:AGENDA_BACKUP_SCHEMA_VERSION,records:[] });
+        const currentRaw = readImportStorage(key) || JSON.stringify({ schemaVersion:AGENDA_BACKUP_SCHEMA_VERSION,records:[] });
         const merged = mergeAgendaBackupValues(currentRaw,incomingRaw);
-        window.A33Storage.setItem(key,JSON.stringify(merged));
+        writeImportStorage(key,JSON.stringify(merged));
         return true;
       }catch(error){
         console.warn('Agenda no pudo fusionarse durante la importación.',error);
@@ -3117,17 +3387,17 @@
       let incoming = [];
       try{ incoming = typeof incomingRaw === 'string' ? JSON.parse(incomingRaw || '[]') : incomingRaw; }catch(_){ incoming = []; }
       const merged = window.A33ProductIntegrity.mergeTombstones(current, Array.isArray(incoming) ? incoming : []);
-      window.A33ProductIntegrity.writeTombstones(merged);
+      writeImportStorage(key, JSON.stringify(merged));
       return true;
     }
-    const currentRaw = window.A33Storage.getItem(key);
+    const currentRaw = readImportStorage(key);
     const cur = tryParseJsonValue(currentRaw);
     const inc = tryParseJsonValue(String(incomingRaw ?? ''));
     if (cur.ok && inc.ok && cur.value !== undefined && inc.value !== undefined){
       const merged = mergeJsonValue(cur.value, inc.value, key);
-      try{ window.A33Storage.setItem(key, JSON.stringify(merged)); return true; }catch(_){ }
+      writeImportStorage(key, JSON.stringify(merged)); return true;
     }
-    try{ window.A33Storage.setItem(key, String(incomingRaw ?? '')); return true; }catch(_){ return false; }
+    try{ writeImportStorage(key, String(incomingRaw ?? '')); return true; }catch(_){ return false; }
   }
 
   function dateCandidateToIso(value){
@@ -3309,25 +3579,9 @@
     return `Conflicto de productId detectado. La importación fue detenida sin modificar datos. ${detail}`;
   }
 
-  async function resetLegacyRawMaterialsWhenMissing(dbPayload){
-    const posPayload = dbPayload && typeof dbPayload === 'object' ? dbPayload['a33-pos'] : null;
-    if (posPayload && typeof posPayload === 'object' && Object.prototype.hasOwnProperty.call(posPayload, 'rawMaterials')) return false;
-    let db = null;
-    try{
-      db = await openExistingDB('a33-pos');
-      if (!db.objectStoreNames.contains('rawMaterials')) return false;
-      const tx = db.transaction('rawMaterials', 'readwrite');
-      tx.objectStore('rawMaterials').clear();
-      await txDone(tx);
-      return true;
-    }catch(_){
-      return false;
-    }finally{
-      try{ db?.close(); }catch(_){ }
-    }
-  }
-
   async function performFullImport(obj){
+    const validation = validateBackupStructure(obj);
+    if (!validation.ok) throw new Error(validation.reason);
     const cleanObj = sanitizeBackupObject(obj);
     const incomingLocalStorage = cleanObj?.data?.localStorage || {};
     const dbPayload = cleanObj?.data?.indexedDB || {};
@@ -3339,21 +3593,22 @@
     for (const dbName of fileSuite){
       await restoreDatabase(dbName, dbPayload[dbName], dbVersions, dbSchemas);
     }
-    // Compatibilidad con respaldos anteriores a Materia Prima: el nuevo catálogo
-    // queda en su estado inicial vacío, sin inventar ni precargar artículos.
-    const rawMaterialsDefaulted = await resetLegacyRawMaterialsWhenMissing(dbPayload);
+    // Materia Prima ausente se conserva, también en respaldos históricos.
+    const rawMaterialsDefaulted = false;
 
     const incoming = sanitizeSuiteLocalStorageMap(incomingLocalStorage);
     for (const [k, v] of Object.entries(incoming)){
       if (!isSuiteLocalStorageKey(k) || isRetiredGateStorageKey(k)) continue;
-      if (k === 'a33_catalog_deleted_product_ids_v2') mergeLocalStorageValue(k, v);
+      if (k === 'a33_catalog_deleted_product_ids_v2'){
+        if (!mergeLocalStorageValue(k, v)) throw new Error(`localStorage / ${k}: no se pudo fusionar.`);
+      }
       else if (k === QUICK_ORDERS_BACKUP_KEY){
-        window.A33Storage.setItem(k,JSON.stringify(normalizeQuickOrdersBackupValue(v)));
+        writeImportStorage(k,JSON.stringify(normalizeQuickOrdersBackupValue(v)));
       }
       else if (k === AGENDA_BACKUP_KEY){
         const normalizedAgenda = agendaNormalizePayloadValue(v);
-        window.A33Storage.setItem(k,JSON.stringify(normalizedAgenda));
-      } else window.A33Storage.setItem(k, String(v ?? ''));
+        writeImportStorage(k,JSON.stringify(normalizedAgenda));
+      } else writeImportStorage(k, String(v ?? ''));
     }
     if (window.A33ProductIntegrity && typeof window.A33ProductIntegrity.applyTombstonesToCatalog === 'function'){
       await window.A33ProductIntegrity.applyTombstonesToCatalog({ source:'importacion_completa' });
@@ -3370,6 +3625,8 @@
   }
 
   async function performPartialImport(obj){
+    const validation = validateBackupStructure(obj);
+    if (!validation.ok) throw new Error(validation.reason);
     const cleanObj = sanitizeBackupObject(obj);
     const dbPayload = cleanObj?.data?.indexedDB || {};
     const dbVersions = cleanObj?.meta?.dbVersions || {};
@@ -3385,7 +3642,8 @@
     for (const [k, v] of Object.entries(incoming)){
       if (!isSuiteLocalStorageKey(k)) continue;
       if (isRetiredGateStorageKey(k)) continue;
-      if (mergeLocalStorageValue(k, v)) result.localStorageKeys++;
+      if (!mergeLocalStorageValue(k, v)) throw new Error(`localStorage / ${k}: no se pudo fusionar.`);
+      result.localStorageKeys++;
     }
     if (window.A33ProductIntegrity && typeof window.A33ProductIntegrity.applyTombstonesToCatalog === 'function'){
       result.tombstonesApplied = await window.A33ProductIntegrity.applyTombstonesToCatalog({ source:'importacion_parcial' });
@@ -3395,6 +3653,8 @@
   }
 
   async function performImport(obj){
+    const validation = validateBackupStructure(obj);
+    if (!validation.ok) throw new Error(validation.reason);
     const prepared = await prepareBackupProductsForImport(obj);
     if (prepared.conflicts && prepared.conflicts.length){
       const error = new Error(productConflictMessage(prepared.conflicts));
@@ -3459,9 +3719,9 @@
         bodyHtml: summaryHtml,
         primaryText: 'Descargar respaldo',
         onPrimary: async () => {
-          downloadTextFile(buildBackupFilename(), jsonString);
+          downloadBackup(buildBackupFilename(), jsonString, 'full', backup.meta.exportedAt);
           hideModal();
-          showToast('Respaldo descargado.');
+          showToast('Descarga de respaldo solicitada. Verificá que el archivo esté guardado.');
         },
         cancelText: 'Cancelar',
         onCancel: hideModal
@@ -3528,29 +3788,58 @@
             disablePrimary: true
           });
 
+          const applyImport = async (recovery) => {
+            try{
+              const result = await performImport(obj);
+              registerBackupImport(file.name, obj, kind, result);
+              const okText = partial
+                ? '<div>✅ Respaldo parcial importado correctamente.</div><div class="small-note">Los datos no incluidos se conservaron. Recomendado: recargar para que todos los módulos lean los cambios.</div>'
+                : '<div>✅ Respaldo completo importado correctamente por bloques.</div><div class="small-note">Los bloques ausentes se conservaron. Recomendado: recargar para que todos los módulos lean los nuevos datos.</div>';
+              showModal({
+                title: 'Importación exitosa',
+                bodyHtml: okText,
+                primaryText: 'Recargar ahora',
+                onPrimary: () => location.reload(),
+                cancelText: 'Más tarde',
+                onCancel: hideModal
+              });
+            }catch(err){
+              showModal({
+                title: 'Error de importación',
+                bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(err?.message || err)}</div><div class="small-note">La importación puede haber aplicado bloques anteriores al fallo. Conservá el respaldo previo y cerrá otras pestañas antes de revisar la recuperación. No se restauraron datos automáticamente.</div>`,
+                primaryText: 'Descargar respaldo previo',
+                onPrimary: () => downloadBackup(recovery.filename, recovery.jsonString, 'recovery', recovery.preparedAt),
+                cancelText: 'Cerrar',
+                onCancel: hideModal
+              });
+            }
+          };
           try{
-            const result = await performImport(obj);
-            registerBackupImport(file.name, obj, kind, result);
-            const okText = partial
-              ? '<div>✅ Respaldo parcial importado correctamente.</div><div class="small-note">Los datos no incluidos se conservaron. Recomendado: recargar para que todos los módulos lean los cambios.</div>'
-              : '<div>✅ Respaldo completo importado correctamente por bloques.</div><div class="small-note">Los bloques ausentes se conservaron. Recomendado: recargar para que todos los módulos lean los nuevos datos.</div>';
+            const snapshot = await buildFullBackup();
+            const recovery = { jsonString:snapshot.jsonString, preparedAt:snapshot.backup.meta.exportedAt, filename:'suitea33-previo-importacion-' + Date.now() + '.json' };
             showModal({
-              title: 'Importación exitosa',
-              bodyHtml: okText,
-              primaryText: 'Recargar ahora',
-              onPrimary: () => location.reload(),
-              cancelText: 'Más tarde',
-              onCancel: hideModal
+              title:'Respaldo previo a importación',
+              bodyHtml:'<div>Antes de importar, descargá una copia completa del estado actual.</div><div class="small-note">Comprobá que el archivo se guardó. Esta aplicación confirma la solicitud de descarga, pero no puede comprobar el guardado final en disco.</div>',
+              primaryText:'Descargar respaldo previo',
+              onPrimary:() => {
+                downloadBackup(recovery.filename, recovery.jsonString, 'recovery', recovery.preparedAt);
+                showModal({
+                  title:'Confirmar respaldo previo',
+                  bodyHtml:'<div>Verificá que el respaldo previo está guardado y cerrá las demás pestañas de Suite A33 antes de continuar.</div>',
+                  primaryText:'Continuar importación',
+                  onPrimary:async() => {
+                    showModal({ title:'Importando...', bodyHtml:`<div>${escapeHtml(workingText)}</div>`, disableCancel:true, disablePrimary:true });
+                    await applyImport(recovery);
+                  },
+                  cancelText:'Cancelar', onCancel:hideModal
+                });
+              },
+              cancelText:'Cancelar', onCancel:hideModal
             });
-          }catch(err){
-            showModal({
-              title: 'Error de importación',
-              bodyHtml: `<div class="badge-warn">⚠️ ${escapeHtml(err?.message || err)}</div><div class="small-note">Tip: cierra otras pestañas de la Suite y vuelve a intentar.</div>`,
-              primaryText: 'Cerrar',
-              onPrimary: hideModal,
-              disableCancel: true
-            });
+          }catch(error){
+            showModal({title:'Importación bloqueada',bodyHtml:`<div class="badge-warn">No se pudo preparar el respaldo previo. No se inició la importación. ${escapeHtml(error?.message || error)}</div>`,primaryText:'Cerrar',onPrimary:hideModal,disableCancel:true});
           }
+
         },
         cancelText: 'Cancelar',
         onCancel: hideModal
@@ -5184,10 +5473,17 @@ Los históricos se conservarán. ¿Continuar?`);
     initReportsSection();
     initCurrencySection();
     renderBackupImportLog();
+    renderLastBackupExport();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) renderLastBackupExport(); });
+    window.addEventListener('storage', event => { if (event.key === LAST_EXPORT_KEY || event.key === null){ lastExportSession = null; lastExportWriteFailed = false; renderLastBackupExport(); } });
 
+    const backupTab = document.getElementById('cfg-tab-backup');
+    if (backupTab) backupTab.addEventListener('click', renderLastBackupExport);
     const exportBtn = document.getElementById('cfg-export-backup');
     const customExportBtn = document.getElementById('cfg-export-custom-backup');
     const importBtn = document.getElementById('cfg-import-backup');
+    const diagnosticBtn = document.getElementById('cfg-storage-diagnostic');
+    if (diagnosticBtn) diagnosticBtn.addEventListener('click', handleStorageDiagnostic);
     const auditBtn = document.getElementById('cfg-audit-products');
     const fileInput = document.getElementById('backup-file-input');
 
