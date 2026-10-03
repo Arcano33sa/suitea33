@@ -89,6 +89,8 @@
           </div>
         </div>
 
+        <div id="tab-read-status" class="fin-report-alert warn hidden" role="alert" hidden></div>
+
         <section class="fin-dashboard-group" aria-labelledby="tab-results-title">
           <h3 id="tab-results-title" class="fin-dashboard-group-title">Resultados</h3>
           <div class="fin-cards-grid fin-cards-grid--tablero fin-operational-kpis fin-dashboard-highlights">
@@ -1838,7 +1840,7 @@
   <!-- Print root (Recibos) -->
   <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.98&r=1"></script>
+  <script src="../pos/vendor/xlsx.full.min.js?v=4.20.98&r=13"></script>
   <script src="/assets/js/a33-release.js?v=4.20.98&r=54"></script>
   <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=3"></script>
 
@@ -1847,7 +1849,12 @@
   <script src="/assets/js/a33-export-currency.js?v=4.20.98&r=1"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
 
-  <script src="script.js?v=4.20.98&r=5"></script>
+  <script src="script.js?v=4.20.98&r=6"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=1"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=2').catch(error => console.warn('Finanzas SW no disponible', error));
+  }
+</script>
 </body>
 </html>

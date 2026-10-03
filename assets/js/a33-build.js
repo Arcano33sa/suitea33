@@ -12,7 +12,7 @@
 
   const MODULE_REVISIONS = Object.freeze({
     calculadora:'17', catalogos:'44', inventario:'24', lotes:'28', pedidos:'24', pos:'61',
-    agenda:'8', 'centro-mando':'10', 'calculadora-temporal':'6'
+    agenda:'8', 'centro-mando':'10', 'calculadora-temporal':'6', finanzas:'2', analitica:'3'
   });
 
   function cacheName(module){

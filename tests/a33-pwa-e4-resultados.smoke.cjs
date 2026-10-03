@@ -18,9 +18,9 @@ function harness(regs){
  return {api:context.api,data,items,button};
 }
 (async()=>{
- let h=harness([]);await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.noRegistered);assert.equal(h.items.length,9);
+ let h=harness([]);await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.noRegistered);assert.equal(h.items.length,11);
  const unknown=registration('desconocido');h=harness([registration('pos'),unknown,registration('centro_mando')]);assert.equal((await h.api.getSuitePwaRegistrations()).length,1);await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialSearch);assert(h.items.some(x=>x.startsWith('POS: Sin actualización')));
- const ids=['pos','inventario','lotes','pedidos','catalogos','calculadora','agenda','centro-mando','calculadora_temporal'];
+ const ids=['pos','inventario','lotes','pedidos','catalogos','calculadora','agenda','centro-mando','calculadora_temporal','finanzas','analitica'];
  h=harness(ids.map(id=>registration(id)));await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.current);
  const broken=registration('pos');broken.update=async()=>{throw new Error('sin conexión');};h=harness([broken,registration('pedidos',worker())]);await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialSearch);assert.equal(h.button.textContent,'Aplicar actualización');assert(h.items.some(x=>x.includes('sin conexión')));h.api.pwaRuntime.updateAvailable=false;h.api.initPwaSection();assert.equal(h.button.textContent,'Aplicar actualización');
  const installing=registration('pos');installing.installing=worker('installing');h=harness([installing]);const summary=await h.api.checkSuitePwaUpdates();assert.equal(summary.available,false);assert.equal(summary.results[0].status,'installing');

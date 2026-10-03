@@ -78,6 +78,7 @@
 
       <!-- TAB RESUMEN -->
       <section class="tab-content active" id="tab-resumen">
+        <p id="analytics-result-scope" class="hint small" aria-live="polite"></p>
         <section class="analytics-kpi-group analytics-kpi-results" aria-labelledby="analytics-results-title">
           <h3 id="analytics-results-title" class="analytics-group-title">Resultados</h3>
           <div class="kpi-grid">
@@ -87,8 +88,32 @@
           </article>
 
           <article class="kpi-card">
-            <p class="kpi-label">Utilidad total</p>
+            <p class="kpi-label">Utilidad después de cortesías</p>
             <p class="kpi-value" id="kpi-total-utilidad">C$ 0.00</p>
+          </article>
+          <article class="kpi-card">
+            <p class="kpi-label">Utilidad bruta</p>
+            <p class="kpi-value" id="kpi-utilidad-bruta">C$ 0.00</p>
+          </article>
+          <article class="kpi-card">
+            <p class="kpi-label">Comisiones determinadas</p>
+            <p class="kpi-value" id="kpi-comisiones">C$ 0.00</p>
+            <p class="kpi-sub" id="kpi-comisiones-estado">0 comisión(es) no determinada(s)</p>
+            <p class="kpi-sub" id="kpi-comisiones-detalle"></p>
+          </article>
+          <article class="kpi-card">
+            <p class="kpi-label">Utilidad después de comisión</p>
+            <p class="kpi-value" id="kpi-utilidad-despues-comision">C$ 0.00</p>
+          </article>
+          <article class="kpi-card">
+            <p class="kpi-label">Merma final confirmada</p>
+            <p class="kpi-value" id="kpi-merma-final">C$ 0.00</p>
+            <p class="kpi-sub" id="kpi-merma-final-ml">0.00 ml</p>
+            <p class="kpi-sub" id="kpi-merma-estado" aria-live="polite"></p>
+          </article>
+          <article class="kpi-card">
+            <p class="kpi-label">Utilidad después de comisión y merma</p>
+            <p class="kpi-value" id="kpi-utilidad-despues-merma">C$ 0.00</p>
           </article>
           </div>
         </section>
@@ -97,8 +122,13 @@
           <h3 id="analytics-profit-title" class="analytics-group-title">Costo y margen</h3>
           <div class="kpi-grid">
           <article class="kpi-card">
-            <p class="kpi-label">Costo total</p>
+            <p class="kpi-label">Costo de ventas y cortesías</p>
             <p class="kpi-value" id="kpi-total-costo">C$ 0.00</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Costo de ventas</p>
+            <p class="kpi-value" id="kpi-costos-ventas">C$ 0.00</p>
           </article>
 
           <article class="kpi-card">
@@ -163,7 +193,7 @@
                     <th>Mes</th>
                     <th>Ventas (C$)</th>
                     <th>Costo (C$)</th>
-                    <th>Utilidad (C$)</th>
+                    <th>Utilidad después de cortesías (C$)</th>
                     <th>Margen %</th>
                     <th># Eventos</th>
                     <th>Ticket prom.</th>
@@ -171,6 +201,12 @@
                     <th>Cortesías valor (C$)</th>
                     <th>Cortesías costo (C$)</th>
                     <th>Cortesías %</th>
+                    <th>Utilidad bruta (C$)</th>
+                    <th>Comisiones determinadas (C$)</th>
+                    <th>Comisiones no determinadas</th>
+                    <th>Utilidad después de comisión (C$)</th>
+                    <th>Merma final (C$)</th>
+                    <th>Utilidad después de comisión y merma (C$)</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-resumen-mensual"></tbody>
@@ -182,6 +218,7 @@
         <section class="card recs-card">
           <div class="card-head">
             <h3>Rentabilidad del periodo</h3>
+            <p class="hint small">Según utilidad después de cortesías, antes de comisión.</p>
           </div>
           <p class="hint small" id="kpi-top-contribucion">Mayor contribución: —</p>
           <p class="hint small" id="kpi-top-margen">Mejor margen: —</p>
@@ -197,7 +234,7 @@
       <!-- TAB EVENTOS -->
       <section class="tab-content" id="tab-eventos">
         <div class="tab-top">
-          <p class="hint small">Ranking de eventos según las ventas registradas en el periodo seleccionado.</p>
+          <p class="hint small">Detalle de ventas y merma final confirmada por evento en el periodo seleccionado.</p>
 
           <div class="field" style="max-width:240px;">
             <label for="orden-eventos">Ordenar por</label>
@@ -205,7 +242,7 @@
               <option value="ventas">Ventas (C$)</option>
               <option value="botellas">Unidades</option>
               <option value="ticket">Ticket promedio</option>
-              <option value="utilidad">Utilidad (C$)</option>
+              <option value="utilidad">Utilidad después de cortesías</option>
               <option value="margen">Margen %</option>
             </select>
           </div>
@@ -219,7 +256,7 @@
             <div class="chart-wrap chart-wrap--tall">
               <canvas id="chart-eventos-ventas" role="img" aria-label="Eventos por ventas. Consulte los valores en la tabla de detalle."></canvas>
             </div>
-            <p class="hint small">Solo se muestran los eventos con ventas dentro del periodo.</p>
+            <p class="hint small">Incluye eventos con ventas o merma final confirmada dentro del periodo.</p>
 
             <hr class="chart-separator" />
 
@@ -229,7 +266,7 @@
             <div class="chart-wrap chart-wrap--tall">
               <canvas id="chart-eventos-utilidad" role="img" aria-label="Eventos por utilidad. Consulte los valores en la tabla de detalle."></canvas>
             </div>
-            <p class="hint small">Comparativo de utilidad total por evento en el periodo.</p>
+            <p class="hint small">Utilidad después de cortesías, antes de comisión, por evento.</p>
           </section>
 
           <div class="card table-card">
@@ -245,7 +282,7 @@
                     <th>Estado</th>
                     <th>Ventas (C$)</th>
                     <th>Costo (C$)</th>
-                    <th>Utilidad (C$)</th>
+                    <th>Utilidad después de cortesías (C$)</th>
                     <th>Margen %</th>
                     <th>Unidades</th>
                     <th>Ticket prom.</th>
@@ -255,6 +292,12 @@
                     <th>Cortesías costo (C$)</th>
                     <th>Cortesías %</th>
                     <th>Semáforo cortesías</th>
+                    <th>Utilidad bruta (C$)</th>
+                    <th>Comisiones determinadas (C$)</th>
+                    <th>Comisiones no determinadas</th>
+                    <th>Utilidad después de comisión (C$)</th>
+                    <th>Merma final (C$)</th>
+                    <th>Utilidad después de comisión y merma (C$)</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-eventos"></tbody>
@@ -271,7 +314,7 @@
       <!-- TAB PRESENTACIONES -->
       <section class="tab-content" id="tab-presentaciones">
         <p class="hint small" style="margin-bottom:0.6rem;">
-          Compara productos vendidos en el periodo, incluidos los productos históricos.
+          Compara productos vendidos en el periodo, incluidos los productos históricos. La merma final pertenece al evento y no se reparte entre productos. Los márgenes y recomendaciones conservan la utilidad después de cortesías, antes de comisión.
         </p>
 
         <div class="analytics-layout">
@@ -316,6 +359,11 @@
                     <th>Cortesías valor (C$)</th>
                     <th>Cortesías costo (C$)</th>
                     <th>Cortesías %</th>
+                    <th>Utilidad bruta (C$)</th>
+                    <th>Utilidad después de cortesías (C$)</th>
+                    <th>Comisiones determinadas (C$)</th>
+                    <th>Comisiones no determinadas</th>
+                    <th>Utilidad después de comisión (C$)</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-presentaciones"></tbody>
@@ -573,7 +621,7 @@
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=4.20.98&r=7"></script>
+  <script src="../pos/vendor/xlsx.full.min.js?v=4.20.98&r=13"></script>
   <script src="/assets/js/a33-release.js?v=4.20.98&r=54"></script>
   <script src="/assets/js/a33-module-nav.js?v=4.20.98&r=3"></script>
 
@@ -583,7 +631,12 @@
   <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
   <script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
 
-  <script src="script.js?v=4.20.98&r=11"></script>
+  <script src="script.js?v=4.20.98&r=13"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=3').catch(error => console.warn('Analítica SW no disponible', error));
+  }
+</script>
 </body>
 </html>

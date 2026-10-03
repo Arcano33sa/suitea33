@@ -57,8 +57,8 @@ async function main(){
     await page.locator('#cfg-tab-pwa').click();
     await page.locator('#cfg-pwa-check').click();
     await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='No hay módulos PWA registrados');
-    assert.equal(await page.locator('#cfg-pwa-report li').count(),9);
-    await page.reload();assert.equal(await page.locator('#cfg-pwa-report li').count(),9);
+    assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
+    await page.reload();assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
     if(!await page.locator('#cfg-pwa-check').isVisible()) await page.locator('#cfg-tab-pwa').click();
     await page.evaluate(async()=>{window.testReg=await navigator.serviceWorker.register('/pos/sw.js',{scope:'/pos/'});});
     await page.waitForFunction(()=>window.testReg.active && window.testReg.active.state==='activated');

@@ -626,7 +626,8 @@
     ['pos', 'POS'], ['inventario', 'Inventario'], ['lotes', 'Lotes'],
     ['pedidos', 'Pedidos'], ['catalogos', 'Catálogos'], ['calculadora', 'Calculadora'],
     ['agenda', 'Agenda'], ['centro-mando', 'Centro de Mando'],
-    ['calculadora_temporal', 'Calculadora Temporal']
+    ['calculadora_temporal', 'Calculadora Temporal'],
+    ['finanzas', 'Finanzas'], ['analitica', 'Analítica']
   ];
 
   function getPwaModule(reg){

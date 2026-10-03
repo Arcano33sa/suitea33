@@ -364,7 +364,13 @@ function getAllPosSales() {
       resolve([]);
       return;
     }
-    const req = store.getAll();
+    let req;
+    try { req = store.getAll(); }
+    catch (err) {
+      console.warn('No se pudo iniciar la lectura de ventas POS', err);
+      resolve([]);
+      return;
+    }
     req.onsuccess = () => resolve(req.result || []);
     req.onerror = () => {
       console.warn('No se pudieron leer las ventas del POS', req.error);
@@ -513,10 +519,10 @@ function getAllPosReempaquesSafe() {
   });
 }
 
-async function refreshPosEventsCache() {
+async function refreshPosEventsCache(snapshotEvents) {
   // Lee a33-pos (si existe) y construye mapa + lista de eventos abiertos para el dropdown.
   try {
-    const events = await getAllPosEventsSafe();
+    const events = Array.isArray(snapshotEvents) ? snapshotEvents : await getAllPosEventsSafe();
     const map = new Map();
     for (const ev of (Array.isArray(events) ? events : [])) {
       if (!ev) continue;
@@ -3476,21 +3482,119 @@ async function finReadPosOperationalSourcesSafe() {
     cashV2: [],
     reempaques: [],
     warnings: [],
+    readStatus: {},
+    missingStores: [],
     readAtISO: new Date().toISOString()
   };
-  try { out.sales = await getAllPosSales(); }
-  catch (err) { out.warnings.push('No se pudo leer POS.sales'); out.ok = false; }
-  try { out.events = await getAllPosEventsSafe(); }
-  catch (err) { out.warnings.push('No se pudo leer POS.events'); out.ok = false; }
-  try { out.banks = await getAllPosBanksSafe(); }
-  catch (err) { out.warnings.push('No se pudo leer POS.banks'); out.ok = false; }
-  try { out.dailyClosures = await getAllPosDailyClosuresSafe(); }
-  catch (err) { out.warnings.push('No se pudo leer POS.dailyClosures'); out.ok = false; }
-  try { out.cashV2 = await getAllPosCashV2Safe(); }
-  catch (err) { out.warnings.push('No se pudo leer POS.cashV2'); out.ok = false; }
-  try { out.reempaques = await getAllPosReempaquesSafe(); }
-  catch (err) { out.warnings.push('No se pudo leer POS.reempaques'); out.ok = false; }
+  let connection = null;
+  try {
+    connection = await finOpenPosDashboardReadonly();
+    if (!connection) {
+      out.databaseAbsent = true;
+      for (const name of FIN_POS_OPERATIONAL_STORES) out.readStatus[name] = 'database_absent';
+      return out;
+    }
+    // Lectores históricos de Finanzas podían dejar una base POS sin almacenes.
+    if (connection.objectStoreNames.length === 0) {
+      out.databaseUninitialized = true;
+      for (const name of FIN_POS_OPERATIONAL_STORES) out.readStatus[name] = 'uninitialized';
+      return out;
+    }
+    for (const name of FIN_POS_OPERATIONAL_STORES) {
+      if (!connection.objectStoreNames.contains(name)) {
+        out.readStatus[name] = 'missing';
+        out.missingStores.push(name);
+        if (name === 'sales' || name === 'events') {
+          out.ok = false;
+          out.warnings.push(`Falta el almacén a33-pos.${name}`);
+        }
+        continue;
+      }
+      try {
+        out[name] = await finReadDashboardRows(connection, name);
+        out.readStatus[name] = out[name].length ? 'read' : 'empty';
+      } catch (err) {
+        out.readStatus[name] = 'error';
+        out.ok = false;
+        out.warnings.push(`No se pudo leer a33-pos.${name}: ${String(err && err.message || err)}`);
+      }
+    }
+  } catch (err) {
+    out.ok = false;
+    out.warnings.push(`No se pudo abrir a33-pos: ${String(err && err.message || err)}`);
+    for (const name of FIN_POS_OPERATIONAL_STORES) out.readStatus[name] = 'error';
+  } finally {
+    if (connection) connection.close();
+  }
   return out;
+}
+
+// Conexión independiente: no crea una base POS nueva ni cambia su versión/esquema.
+function finOpenPosDashboardReadonly() {
+  return new Promise((resolve, reject) => {
+    let request;
+    let absent = false;
+    let settled = false;
+    const fail = error => { settled = true; reject(error || new Error('Apertura POS fallida')); };
+    try { request = indexedDB.open(POS_DB_NAME); }
+    catch (error) { fail(error); return; }
+    request.onupgradeneeded = () => {
+      // Sin versión solicitada, onupgradeneeded implica una base inexistente.
+      absent = true;
+      request.transaction.abort();
+    };
+    request.onblocked = () => fail(new Error('Apertura de a33-pos bloqueada por otra pestaña'));
+    request.onerror = () => {
+      if (absent && !settled) { settled = true; resolve(null); }
+      else fail(request.error);
+    };
+    request.onsuccess = () => {
+      const connection = request.result;
+      if (settled) { connection.close(); return; }
+      settled = true;
+      connection.onversionchange = () => connection.close();
+      resolve(connection);
+    };
+  });
+}
+
+// No publica filas hasta completarse la transacción, incluso si getAll ya tuvo éxito.
+function finReadDashboardRows(connection, name) {
+  return new Promise((resolve, reject) => {
+    let rows;
+    try {
+      const transaction = connection.transaction(name, 'readonly');
+      const request = transaction.objectStore(name).getAll();
+      request.onsuccess = () => { rows = request.result; };
+      request.onerror = () => reject(request.error || new Error('Lectura fallida'));
+      transaction.onabort = () => reject(transaction.error || new Error('Transacción abortada'));
+      transaction.onerror = () => reject(transaction.error || new Error('Transacción fallida'));
+      transaction.oncomplete = () => {
+        if (!Array.isArray(rows)) reject(new Error('Resultado de lectura inválido'));
+        else resolve(rows);
+      };
+    } catch (error) { reject(error); }
+  });
+}
+
+function finDashboardReadIntegrity(data) {
+  const safe = data || {};
+  const issues = Array.isArray(safe.dashboardReadIssues) ? safe.dashboardReadIssues.slice() : [];
+  const sources = safe.posSources || {};
+  if (sources.ok === false || (sources.warnings && sources.warnings.length)) {
+    issues.push(...(sources.warnings && sources.warnings.length ? sources.warnings : ['Lectura POS incompleta']));
+  }
+  return { incomplete: issues.length > 0, issues, missingStores: sources.missingStores || [], databaseAbsent: !!sources.databaseAbsent, databaseUninitialized: !!sources.databaseUninitialized };
+}
+
+function finRenderDashboardReadStatus(integrity) {
+  const host = document.getElementById('tab-read-status');
+  if (!host) return;
+  host.hidden = !integrity.incomplete;
+  host.classList.toggle('hidden', !integrity.incomplete);
+  host.textContent = integrity.incomplete
+    ? `Lectura incompleta. Los importes mostrados son parciales; no confirman el resultado del período. ${integrity.issues.join(' · ')}. Vuelve a cargar Finanzas cuando la fuente esté disponible.`
+    : '';
 }
 
 const FIN_OPERATIONAL_CLASS_STAGE = 'finanzas_tablero_operativo_etapa_5_5';
@@ -7017,14 +7121,29 @@ function getAccountDisplayNameByCode(code, accountsMap, lineForFallback) {
 
 async function getAllFinData() {
   await openFinDB();
+  const dashboardReadIssues = [];
+  const dashboardMissingSources = [];
+  async function readStore(name, optional = false) {
+    if (optional && !finDB.objectStoreNames.contains(name)) {
+      dashboardMissingSources.push(`finanzasDB.${name}`);
+      return [];
+    }
+    try { return await finReadDashboardRows(finDB, name); }
+    catch (err) {
+      const message = `No se pudo leer finanzasDB.${name}: ${String(err && err.message || err)}`;
+      if (!optional) throw new Error(message);
+      dashboardReadIssues.push(message);
+      return [];
+    }
+  }
   const [accounts, entries, lines, financialAccounts, internalTransfers, receipts, posSources] = await Promise.all([
-    finGetAll('accounts'),
-    finGetAll('journalEntries'),
-    finGetAll('journalLines'),
-    finGetAll('financialAccounts').catch(() => []),
-    finGetAll('internalTransfers').catch(() => []),
-    finGetAll('receipts').catch(() => []),
-    finReadPosOperationalSourcesSafe().catch(() => ({ sales: [], events: [], banks: [], dailyClosures: [], cashV2: [], reempaques: [], warnings: ['No se pudieron leer fuentes POS'] }))
+    readStore('accounts'),
+    readStore('journalEntries'),
+    readStore('journalLines'),
+    readStore('financialAccounts', true),
+    readStore('internalTransfers', true),
+    readStore('receipts', true),
+    finReadPosOperationalSourcesSafe().catch(() => ({ ok:false, sales: [], events: [], banks: [], dailyClosures: [], cashV2: [], reempaques: [], warnings: ['No se pudieron leer fuentes POS'] }))
   ]);
 
   let suppliers = [];
@@ -7127,6 +7246,8 @@ async function getAllFinData() {
     internalTransfers: Array.isArray(internalTransfers) ? internalTransfers : [],
     receipts: Array.isArray(receipts) ? receipts : [],
     posSources: posSources || { sales: [], events: [], banks: [], dailyClosures: [], cashV2: [], reempaques: [], warnings: [] },
+    dashboardReadIssues,
+    dashboardMissingSources,
     posSales: Array.isArray(posSources && posSources.sales) ? posSources.sales : [],
     posEvents: Array.isArray(posSources && posSources.events) ? posSources.events : [],
     posBanks: Array.isArray(posSources && posSources.banks) ? posSources.banks : [],
@@ -9971,12 +10092,14 @@ function finDashboardFinalizeTotals(totals) {
 
 function calcTableroClasificadoForFilter(data, filtros) {
   const safeData = data || {};
+  const readIntegrity = finDashboardReadIntegrity(safeData);
   const eventFilter = String(filtros && filtros.evento || 'ALL').trim() || 'ALL';
   const sales = Array.isArray(safeData.posSales) ? safeData.posSales : [];
   const closures = Array.isArray(safeData.posDailyClosures) ? safeData.posDailyClosures : [];
   const reempaques = Array.isArray(safeData.posReempaques) ? safeData.posReempaques : [];
 
   const totals = {
+    readIntegrity,
     stage: FIN_OPERATIONAL_DASHBOARD_STAGE,
     ventaTotal: 0,
     descuentos: 0,
@@ -10107,7 +10230,17 @@ function calcTableroClasificadoForFilter(data, filtros) {
     alerts: []
   };
 
-  if (!totals.stats.posSales && !totals.stats.closureFallback && !totals.stats.posFinalMerma && !totals.stats.manualRows) {
+  if (readIntegrity.incomplete) {
+    totals.alerts.push({ kind:'warn', text:`Lectura incompleta: ${readIntegrity.issues.join(' · ')}. Los importes son parciales.` });
+  }
+  if (readIntegrity.databaseAbsent || readIntegrity.databaseUninitialized) {
+    totals.alerts.push({ text:'POS aún no tiene una base con almacenes inicializados en este navegador.' });
+  }
+  if (readIntegrity.missingStores.length || (safeData.dashboardMissingSources || []).length) {
+    const missing = readIntegrity.missingStores.map(name => `a33-pos.${name}`).concat(safeData.dashboardMissingSources || []);
+    totals.alerts.push({ text:`Almacenes ausentes en esta base (compatibilidad con esquemas anteriores): ${missing.join(', ')}.` });
+  }
+  if (!readIntegrity.incomplete && !totals.stats.posSales && !totals.stats.closureFallback && !totals.stats.posFinalMerma && !(manualTotals.rows || []).length) {
     totals.alerts.push({ text: 'No hay datos operativos para el filtro seleccionado.' });
   }
   if (totals.stats.closureFallback) {
@@ -10370,6 +10503,8 @@ function renderTablero(data) {
     hasta: end,
     evento: eventFilter
   });
+
+  finRenderDashboardReadStatus(result.readIntegrity);
 
   finSetText('tab-venta-total', finFormatCordobas(result.ventaTotal));
   finSetText('tab-descuentos', finFormatCordobas(result.descuentos));
@@ -20010,11 +20145,15 @@ function finSafeRenderBlock(label, fn) {
 }
 
 async function refreshAllFin() {
-  finCachedData = await getAllFinData();
+  try { finCachedData = await getAllFinData(); }
+  catch (err) {
+    finRenderDashboardReadStatus({ incomplete:true, issues:[`No se pudo actualizar Finanzas: ${String(err && err.message || err)}. Los valores visibles no fueron actualizados`] });
+    throw err;
+  }
   const data = finCachedData;
 
   // Evento (POS): refrescar lista de eventos activos para dropdown y resolución live por ID.
-  await refreshPosEventsCache();
+  await refreshPosEventsCache(data.posEvents);
   populateMovimientoEventoSelect();
   updateEventFilters(data);
   updateSupplierSelects(data);

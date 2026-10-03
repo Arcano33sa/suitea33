@@ -11,6 +11,8 @@
 
   let db = null;
   let sales = [];
+  let mermaRows = [];
+  let mermaReadStatus = 'pending';
   let events = [];
   let products = [];
   let costosPresentacion = null;
@@ -199,6 +201,7 @@
       events = Array.isArray(e) ? e : [];
       products = Array.isArray(p) ? p : [];
 
+      await readFinalMermaAnalytics();
       loadCostosPresentacion();
       recompute();
     } catch (err) {
@@ -241,6 +244,79 @@
         reject(err);
       }
     });
+  }
+
+  // Fuente adicional de solo lectura: no crear ni migrar almacenes históricos.
+  async function readFinalMermaAnalytics(){
+    mermaRows = [];
+    if (!db.objectStoreNames.contains('reempaques')) { mermaReadStatus = 'legacy'; return; }
+    try {
+      mermaRows = await new Promise((resolve, reject) => {
+        const tx = db.transaction('reempaques', 'readonly');
+        let rows;
+        tx.oncomplete = () => Array.isArray(rows) ? resolve(rows) : reject(new Error('Resultado inválido'));
+        tx.onerror = tx.onabort = () => reject(tx.error || new Error('Lectura interrumpida'));
+        const req = tx.objectStore('reempaques').getAll();
+        req.onsuccess = () => { rows = req.result; };
+        req.onerror = () => reject(req.error || new Error('Lectura fallida'));
+      });
+      mermaReadStatus = 'read';
+    } catch (error) {
+      mermaReadStatus = 'error';
+      console.warn('Analítica: merma final no disponible', error);
+    }
+  }
+
+  function mermaDateAnalytics(row){
+    for (const value of [row.dateISO,row.fecha,row.date,row.dayKey,row.dateKey,row.createdAtISO,row.createdAt]){
+      if (value == null || value === '') continue;
+      if (typeof value !== 'number' && /^\d{4}-\d{2}-\d{2}/.test(String(value).trim())) return String(value).trim().slice(0,10);
+      const date = new Date(value);
+      if (Number.isFinite(date.getTime())) return date.toISOString().slice(0,10);
+    }
+    return '';
+  }
+
+  function selectedMermaAnalytics(range = getCurrentRange()){
+    return mermaRows.filter(row => row && (row.tipo === 'REEMPAQUE_MERMA_FINAL_EVENTO' || row.isFinalEventMerma === true)
+      && row.provisionalClose !== true && row.anulado !== true && row.cancelled !== true && String(row.estado || '').toUpperCase() !== 'ANULADO'
+      && ((!range.from && !range.to) || saleInRange({date:mermaDateAnalytics(row)}, range)));
+  }
+
+  function mermaValuesAnalytics(row){
+    const rawCost = row.costoMermaFinal ?? row.finalMermaCost ?? row.economicCost;
+    const cost = Number(rawCost);
+    const ml = Number(row.mermaFinalMl ?? row.finalMermaMl);
+    return { cost:Math.max(0, Number.isFinite(cost) ? cost : 0), ml:Math.max(0, Number.isFinite(ml) ? ml : 0),
+      uncertain:rawCost == null || rawCost === '' || !Number.isFinite(cost) || row.costReliable === false };
+  }
+
+  function withFinalMermaAnalytics(result, rows){
+    let mermaCost = 0, mermaMl = 0, mermaUncertainCount = 0;
+    for (const row of rows){
+      const values = mermaValuesAnalytics(row);
+      mermaCost = Math.round((mermaCost + values.cost) * 100) / 100;
+      mermaMl = Math.round((mermaMl + values.ml) * 100) / 100;
+      if (values.uncertain) mermaUncertainCount++;
+    }
+    const mermaPartial = mermaReadStatus === 'error' || mermaReadStatus === 'pending' || mermaUncertainCount > 0;
+    return {...result, mermaCost, mermaMl, mermaUncertainCount, mermaPartial,
+      profitAfterMerma:analyticsRoundMoney(result.profitAfterCommission - mermaCost)};
+  }
+
+  function profitAfterMermaTextAnalytics(result){
+    return formatCurrency(result.profitAfterMerma) + (result.mermaPartial || result.commissionUndeterminedCount ? ' (parcial)' : '');
+  }
+
+  function mermaExportRowsAnalytics(){
+    const rows = [['ID','Fecha económica','Evento','Merma final (ml)','Costo merma final (C$)','Estado del costo']];
+    for (const row of selectedMermaAnalytics()){
+      const values = mermaValuesAnalytics(row);
+      const event = events.find(event => String(event.id) === String(row.eventId));
+      rows.push([row.id == null ? '' : String(row.id),mermaDateAnalytics(row),row.eventName || (event && event.name) || String(row.eventId || 'Sin evento'),values.ml,values.cost,values.uncertain ? 'No determinado o no fiable' : 'Registrado']);
+    }
+    rows.push([],['Fuente','a33-pos.reempaques'],['Lectura',mermaReadStatus],['Regla','Solo merma final confirmada; fecha registrada; sin reparto entre productos']);
+    return rows;
   }
 
   // --- UI helpers ---
@@ -591,6 +667,82 @@
     return { unitCost: cost.unitCost, finalQty, revenue, lineCost, lineProfit, costSource: cost.source };
   }
 
+  function analyticsRoundMoney(value){
+    const number = Number(value);
+    return Math.round(((Number.isFinite(number) ? number : 0) + Number.EPSILON) * 100) / 100;
+  }
+
+  function buildEconomicResults(rows){
+    let revenue = 0, paidCost = 0, courtesyCost = 0, profitAfterCourtesy = 0;
+    let commissionTotal = 0, commissionUndeterminedCount = 0, extraDecimalsCount = 0;
+    const commissionDetails = new Map();
+    for (const sale of (rows || [])){
+      const metrics = computeLineMetrics(sale);
+      revenue += metrics.revenue;
+      profitAfterCourtesy += metrics.lineProfit;
+      const courtesy = !!(sale && (sale.courtesy || sale.isCourtesy));
+      if (courtesy) courtesyCost += metrics.lineCost;
+      else paidCost += metrics.lineCost;
+      // Mantiene los cálculos históricos; identifica posibles diferencias de redondeo.
+      if (Math.abs(metrics.lineCost - analyticsRoundMoney(metrics.lineCost)) > 1e-9 ||
+          Math.abs(metrics.unitCost - analyticsRoundMoney(metrics.unitCost)) > 1e-9 ||
+          Math.abs(metrics.revenue - analyticsRoundMoney(metrics.revenue)) > 1e-9) extraDecimalsCount++;
+      let payment = String(sale && sale.payment || '').trim().toLowerCase();
+      try { payment = payment.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (_) {}
+      payment = payment.replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (courtesy || (payment !== 'tarjeta' && payment !== 'card')) continue;
+      const raw = sale.commissionAmountSnapshot;
+      const amount = raw == null || raw === '' ? null : Number(raw);
+      const label = String(sale.commissionLabelSnapshot || '').trim();
+      if (amount == null || !Number.isFinite(amount) || !label || String(sale.commissionSnapshotStatus || '').trim() === 'no_determinada'){
+        commissionUndeterminedCount++;
+        continue;
+      }
+      const value = analyticsRoundMoney(amount);
+      commissionTotal = analyticsRoundMoney(commissionTotal + value);
+      const detail = commissionDetails.get(label) || { label, total:0, count:0 };
+      detail.total = analyticsRoundMoney(detail.total + value);
+      detail.count++;
+      commissionDetails.set(label, detail);
+    }
+    return {
+      revenue, paidCost, courtesyCost, grossProfit:revenue - paidCost, profitAfterCourtesy,
+      commissionTotal, commissionUndeterminedCount, extraDecimalsCount,
+      profitAfterCommission:analyticsRoundMoney(profitAfterCourtesy - commissionTotal),
+      commissionDetails:Array.from(commissionDetails.values()).sort((a,b) => a.label.localeCompare(b.label, 'es-NI'))
+    };
+  }
+
+  function analyticsResultStatus(result){
+    return result.commissionUndeterminedCount ? 'Parcial: hay comisiones no determinadas' : 'Comisiones determinadas';
+  }
+
+  function analyticsProfitAfterCommission(result){
+    return formatCurrency(result.profitAfterCommission) + (result.commissionUndeterminedCount ? ' (parcial)' : '');
+  }
+
+  function analyticsRangeLabel(){
+    const range = getCurrentRange();
+    const dateText = date => date ? `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}` : '';
+    return range.from || range.to ? `${dateText(range.from) || 'Sin inicio'} → ${dateText(range.to) || 'Sin fin'}` : 'Todo el histórico';
+  }
+
+  function analyticsScopeRows(){
+    const results = buildEconomicResults(lastFilteredSales);
+    return [
+      ['Referencia', 'Valor'], ['Fuente', 'Ventas individuales del POS de este navegador'],
+      ['Período', analyticsRangeLabel()], ['Ventas', 'Total neto guardado en cada venta; Finanzas usa bruto y descuentos guardados, que pueden diferir en históricos incompletos'], ['Costos', 'Campos guardados en las ventas; cálculos históricos conservados'],
+      ['Comisiones', 'Importes y etiquetas guardados en cada venta; no se usan tasas actuales'],
+      ['Comisiones no determinadas', results.commissionUndeterminedCount], ['Resultado después de comisión', analyticsResultStatus(results)],
+      ['Registros con decimales adicionales', results.extraDecimalsCount],
+      ['Merma final', 'reempaques: confirmada, no anulada, por fecha económica registrada; no se reparte entre productos'],
+      ['Lectura de merma', mermaReadStatus],
+      ['Costos de merma no determinados o no fiables', withFinalMermaAnalytics(results, selectedMermaAnalytics()).mermaUncertainCount],
+      ['Estado después de merma', withFinalMermaAnalytics(results, selectedMermaAnalytics()).mermaPartial || results.commissionUndeterminedCount ? 'Parcial' : 'Determinado'],
+      ['Alcance', 'No incluye cierres como fuente alternativa, ingresos adicionales ni gastos de Finanzas; productos muestran utilidad antes de merma']
+    ];
+  }
+
   // --- Construcción de agregados ---
 
   function buildPresentationStats(filteredSales){
@@ -610,10 +762,11 @@
           historicalOnly: identity.historicalOnly,
           legacy: identity.legacy,
           unidades:0, ventas:0, costo:0, profit:0,
-          courtesyUnits:0, courtesyValue:0, courtesyCost:0, lotCodes:[]
+          courtesyUnits:0, courtesyValue:0, courtesyCost:0, lotCodes:[], resultSales:[]
         });
       }
       const agg = byIdentity.get(identity.key);
+      agg.resultSales.push(sale);
       // Con productId se agrupa por identidad; nunca se fusiona por nombre.
       if (identity.productId && !agg.productId) agg.productId = identity.productId;
       agg.unidades += finalQty;
@@ -633,12 +786,15 @@
     });
 
     const rows = Array.from(byIdentity.values()).map((agg) => {
+      const economicResults = buildEconomicResults(agg.resultSales);
+      const { resultSales, ...values } = agg;
       const unidades = agg.unidades;
       const unitPrice = unidades ? (agg.ventas / unidades) : 0;
       const unitCost = unidades ? (agg.costo / unidades) : 0;
       const utilUnit = unitPrice - unitCost;
       return {
-        ...agg,
+        ...values,
+        economicResults,
         unitPrice,
         unitCost,
         utilUnit,
@@ -678,10 +834,11 @@
           courtesyCost: 0,
           closedAt: null,
           eventNameFull: null,
-          lotCodes: []
+          lotCodes: [], resultSales:[]
         });
       }
       const bucket = byEvent.get(eventId);
+      bucket.resultSales.push(s);
       bucket.ventas += revenue;
       bucket.costo += lineCost;
       bucket.profit += lineProfit;
@@ -703,6 +860,13 @@
       }
     }
 
+    const finalRows = selectedMermaAnalytics();
+    for (const row of finalRows){
+      const id = row.eventId != null ? row.eventId : 'sin-evento';
+      const existing = Array.from(byEvent.values()).find(event => String(event.id) === String(id));
+      if (!existing) byEvent.set(id, {id,name:row.eventName || 'General',ventas:0,costo:0,profit:0,ventasPagadas:0,ticketsPagados:0,botellas:0,courtesyUnits:0,courtesyValue:0,courtesyCost:0,closedAt:null,eventNameFull:null,lotCodes:[],resultSales:[]});
+    }
+
     // Enriquecer con info de estado desde events[]
     for (const ev of events || []){
       const id = ev.id;
@@ -717,6 +881,8 @@
     const rows = Array.from(byEvent.values());
     // Precalcular margen y % cortesías para cada evento
     for (const ev of rows){
+      ev.economicResults = withFinalMermaAnalytics(buildEconomicResults(ev.resultSales), finalRows.filter(row => Array.from(byEvent.values()).find(event => String(event.id) === String(row.eventId != null ? row.eventId : 'sin-evento')) === ev));
+      delete ev.resultSales;
       ev.margin = ev.ventas ? (ev.profit / ev.ventas * 100) : 0;
       const cv = ev.courtesyValue || 0;
       ev.cortesiasPerc = cv ? (cv / (ev.ventas + cv) * 100) : 0;
@@ -794,9 +960,10 @@
       if (!byMonth.has(monthKey)) byMonth.set(monthKey, {
         ventas:0, costo:0, profit:0, events:new Set(), products:new Map(),
         courtesyUnits:0, courtesyValue:0, courtesyCost:0,
-        sumTicketsPagados:0, countTicketsPagados:0
+        sumTicketsPagados:0, countTicketsPagados:0, resultSales:[]
       });
       const bucket = byMonth.get(monthKey);
+      bucket.resultSales.push(sale);
       const identity = saleProductIdentity(sale, index);
       const metrics = computeLineMetrics(sale);
       bucket.ventas += metrics.revenue;
@@ -842,6 +1009,23 @@
 
     if (kpiTotalCosto) kpiTotalCosto.textContent = formatCurrency(totalCosto);
     if (kpiTotalUtilidad) kpiTotalUtilidad.textContent = formatCurrency(totalProfit);
+    const economicResults = withFinalMermaAnalytics(buildEconomicResults(filteredSales), selectedMermaAnalytics());
+    for (const [id, value] of [
+      ['kpi-utilidad-bruta', formatCurrency(economicResults.grossProfit)],
+      ['kpi-merma-final', mermaReadStatus === 'error' ? 'No disponible' : formatCurrency(economicResults.mermaCost) + (economicResults.mermaUncertainCount ? ' (parcial)' : '')],
+      ['kpi-merma-final-ml', mermaReadStatus === 'error' ? 'Lectura no completada' : `${economicResults.mermaMl.toFixed(2)} ml`],
+      ['kpi-utilidad-despues-merma', profitAfterMermaTextAnalytics(economicResults)],
+      ['kpi-merma-estado', mermaReadStatus === 'error' ? 'Lectura de merma fallida: resultado parcial' : mermaReadStatus === 'legacy' ? 'Esquema histórico sin almacén de merma' : `${economicResults.mermaUncertainCount} costo(s) no determinado(s) o no fiable(s)`],
+      ['kpi-costos-ventas', formatCurrency(economicResults.paidCost)],
+      ['kpi-comisiones', formatCurrency(economicResults.commissionTotal)],
+      ['kpi-utilidad-despues-comision', analyticsProfitAfterCommission(economicResults)],
+      ['kpi-comisiones-estado', `${economicResults.commissionUndeterminedCount} comisión(es) no determinada(s)`],
+      ['kpi-comisiones-detalle', economicResults.commissionDetails.map(item => `${item.label}: ${formatCurrency(item.total)}`).join(' · ') || 'Sin comisiones determinadas en el período'],
+      ['analytics-result-scope', `Ventas individuales del POS · ${analyticsRangeLabel()}. La utilidad después de cortesías conserva el cálculo anterior. El resultado después de comisión resta solo importes determinados. La merma final confirmada se descuenta por su fecha registrada, sin reparto entre productos. No incluye movimientos adicionales de Finanzas. Finanzas también puede usar cierres sin ventas individuales y reconstruye ventas netas con bruto y descuentos guardados; compara el mismo período y fuentes.${economicResults.extraDecimalsCount ? ` Hay ${economicResults.extraDecimalsCount} registro(s) con decimales adicionales: pueden diferir por redondeo entre módulos; se conservan sus cálculos históricos.` : ''}`]
+    ]){
+      const element = document.getElementById(id);
+      if (element) element.textContent = value;
+    }
     const margenGlobal = totalVentas ? totalProfit / totalVentas * 100 : 0;
     if (kpiMargenGlobal) kpiMargenGlobal.textContent = formatPercent(margenGlobal);
     const courtesyRatioGlobal = courtesyValueTotal ? courtesyValueTotal / (totalVentas + courtesyValueTotal) * 100 : 0;
@@ -850,14 +1034,19 @@
     if (kpiCortesiasSub) kpiCortesiasSub.textContent = `Unidades ${courtesyUnitsAbsTotal} · Costo ${formatCurrency(courtesyCostTotal)}`;
     if (kpiCortesiasNivel) kpiCortesiasNivel.textContent = `${courtesyLevelGlobal.label} (${formatPercent(courtesyRatioGlobal)})`;
 
+    for (const row of selectedMermaAnalytics()){
+      const key = mermaDateAnalytics(row).slice(0,7) || 'sin-fecha';
+      if (!byMonth.has(key)) byMonth.set(key,{ventas:0,costo:0,profit:0,events:new Set(),products:new Map(),courtesyUnits:0,courtesyValue:0,courtesyCost:0,sumTicketsPagados:0,countTicketsPagados:0,resultSales:[]});
+    }
     const productColumns = (presStats && Array.isArray(presStats.rows) ? presStats.rows : []).filter(row => totalProducts.has(row.id));
     const head = document.getElementById('resumen-mensual-head');
     if (head){
       head.innerHTML = [
-        '<th>Mes</th>','<th>Ventas (C$)</th>','<th>Costo (C$)</th>','<th>Utilidad (C$)</th>','<th>Margen %</th>',
+        '<th>Mes</th>','<th>Ventas (C$)</th>','<th>Costo (C$)</th>','<th>Utilidad después de cortesías (C$)</th>','<th>Margen %</th>',
         ...productColumns.map(row => '<th>' + escapeHtml(row.label) + '</th>'),
         '<th># Eventos</th>','<th>Ticket prom.</th>','<th>Cortesías (unid.)</th>',
-        '<th>Cortesías valor (C$)</th>','<th>Cortesías costo (C$)</th>','<th>Cortesías %</th>'
+        '<th>Cortesías valor (C$)</th>','<th>Cortesías costo (C$)</th>','<th>Cortesías %</th>',
+        '<th>Utilidad bruta (C$)</th>','<th>Comisiones determinadas (C$)</th>','<th>Comisiones no determinadas</th>','<th>Utilidad después de comisión (C$)</th>','<th>Merma final (C$)</th>','<th>Utilidad después de comisión y merma (C$)</th>'
       ].join('');
     }
 
@@ -865,13 +1054,14 @@
     const labels = [], values = [];
     for (const monthKey of Array.from(byMonth.keys()).sort()){
       const bucket = byMonth.get(monthKey);
-      labels.push(formatMonthKey(monthKey)); values.push(bucket.ventas);
+      const result = withFinalMermaAnalytics(buildEconomicResults(bucket.resultSales), selectedMermaAnalytics().filter(row => (mermaDateAnalytics(row).slice(0,7) || 'sin-fecha') === monthKey));
+      labels.push((monthKey === 'sin-fecha' ? 'Sin fecha' : formatMonthKey(monthKey))); values.push(bucket.ventas);
       const ticketProm = bucket.countTicketsPagados ? bucket.sumTicketsPagados / bucket.countTicketsPagados : 0;
       const margen = bucket.ventas ? bucket.profit / bucket.ventas * 100 : 0;
       const cortesiasPct = bucket.courtesyValue ? bucket.courtesyValue / (bucket.ventas + bucket.courtesyValue) * 100 : 0;
       const tr = document.createElement('tr');
       tr.innerHTML = [
-        '<td>' + formatMonthKey(monthKey) + '</td>',
+        '<td>' + (monthKey === 'sin-fecha' ? 'Sin fecha' : formatMonthKey(monthKey)) + '</td>',
         '<td>' + formatCurrency(bucket.ventas) + '</td>',
         '<td>' + formatCurrency(bucket.costo) + '</td>',
         '<td>' + formatCurrency(bucket.profit) + '</td>',
@@ -882,13 +1072,19 @@
         '<td>' + bucket.courtesyUnits + '</td>',
         '<td>' + formatCurrency(bucket.courtesyValue) + '</td>',
         '<td>' + formatCurrency(bucket.courtesyCost) + '</td>',
-        '<td>' + formatPercent(cortesiasPct) + '</td>'
+        '<td>' + formatPercent(cortesiasPct) + '</td>',
+        '<td>' + formatCurrency(result.grossProfit) + '</td>',
+        '<td>' + formatCurrency(result.commissionTotal) + '</td>',
+        '<td>' + result.commissionUndeterminedCount + '</td>',
+        '<td>' + analyticsProfitAfterCommission(result) + '</td>',
+        '<td>' + formatCurrency(result.mermaCost) + '</td>',
+        '<td>' + profitAfterMermaTextAnalytics(result) + '</td>'
       ].join('');
       tbody.appendChild(tr);
     }
     drawBarChart('chart-mensual-ventas', labels, values, { maxBars:12 });
 
-    const resumenStats = { totalVentas,totalCosto,totalProfit,margenGlobal,courtesyUnitsAbsTotal,courtesyValueTotal,courtesyCostTotal,courtesyRatioGlobal };
+    const resumenStats = { totalVentas,totalCosto,totalProfit,margenGlobal,courtesyUnitsAbsTotal,courtesyValueTotal,courtesyCostTotal,courtesyRatioGlobal,economicResults };
     lastResumenStats = resumenStats;
     updateTopProductsKpis(presStats, resumenStats);
     updateRecomendaciones(presStats, eventStats, resumenStats);
@@ -1111,7 +1307,13 @@
         '<td>' + formatCurrency(ev.courtesyValue || 0) + '</td>',
         '<td>' + formatCurrency(ev.courtesyCost || 0) + '</td>',
         '<td>' + formatPercent(cortesiasPerc) + '</td>',
-        '<td>' + lvl.label + '</td>'
+        '<td>' + lvl.label + '</td>',
+        '<td>' + formatCurrency(ev.economicResults.grossProfit) + '</td>',
+        '<td>' + formatCurrency(ev.economicResults.commissionTotal) + '</td>',
+        '<td>' + ev.economicResults.commissionUndeterminedCount + '</td>',
+        '<td>' + analyticsProfitAfterCommission(ev.economicResults) + '</td>',
+        '<td>' + formatCurrency(ev.economicResults.mermaCost) + '</td>',
+        '<td>' + profitAfterMermaTextAnalytics(ev.economicResults) + '</td>'
       ].join('');
       tbody.appendChild(tr);
     }
@@ -1176,7 +1378,12 @@
         '<td>' + (row.courtesyUnits || 0) + '</td>',
         '<td>' + formatCurrency(row.courtesyValue || 0) + '</td>',
         '<td>' + formatCurrency(row.courtesyCost || 0) + '</td>',
-        '<td>' + formatPercent(row.cortesiasPerc || 0) + '</td>'
+        '<td>' + formatPercent(row.cortesiasPerc || 0) + '</td>',
+        '<td>' + formatCurrency(row.economicResults.grossProfit) + '</td>',
+        '<td>' + formatCurrency(row.economicResults.profitAfterCourtesy) + '</td>',
+        '<td>' + formatCurrency(row.economicResults.commissionTotal) + '</td>',
+        '<td>' + row.economicResults.commissionUndeterminedCount + '</td>',
+        '<td>' + analyticsProfitAfterCommission(row.economicResults) + '</td>'
       ].join('');
       tbody.appendChild(tr);
 
@@ -1711,7 +1918,7 @@ function rebuildHorasEventOptions(filteredSales){
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 0);
-  
+  }
 
   function downloadExcel(filename, sheetName, rows){
     if (!rows || !rows.length) return;
@@ -1725,6 +1932,8 @@ function rebuildHorasEventOptions(filteredSales){
     ws['!cols'] = header.map((h) => ({ wch: /lote/i.test(String(h == null ? '' : h)) ? 25 : 17 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Hoja1');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(analyticsScopeRows()), 'Alcance');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mermaExportRowsAnalytics()), 'Merma final');
     try{
       if (window.A33ExportCurrency && typeof window.A33ExportCurrency.appendWorkbookMetadataSheet === 'function'){
         window.A33ExportCurrency.appendWorkbookMetadataSheet(wb, XLSX, {
@@ -1742,11 +1951,9 @@ function rebuildHorasEventOptions(filteredSales){
     }
   }
 
-}
-
   function exportResumenCsv(){
     const filtered = lastFilteredSales || [];
-    if (!filtered.length){
+    if (!filtered.length && !selectedMermaAnalytics().length){
       window.A33Notice.alert('No hay datos en el rango seleccionado para exportar.');
       return;
     }
@@ -1801,23 +2008,39 @@ function rebuildHorasEventOptions(filteredSales){
     const exportLotCodes = [];
     filtered.forEach((sale) => mergeLotCodesAnalytics(exportLotCodes, saleLotCodesAnalytics(sale)));
     rows.push(['KPI', 'Códigos de lote', analyticsLotExcelCell(exportLotCodes)]);
+    const economicResults = withFinalMermaAnalytics(buildEconomicResults(filtered), selectedMermaAnalytics());
+    rows.push(['KPI', 'Costo de ventas', analyticsRoundMoney(economicResults.paidCost)]);
+    rows.push(['KPI', 'Utilidad bruta', analyticsRoundMoney(economicResults.grossProfit)]);
+    rows.push(['KPI', 'Utilidad después de cortesías', analyticsRoundMoney(economicResults.profitAfterCourtesy)]);
+    rows.push(['KPI', 'Comisiones determinadas', economicResults.commissionTotal]);
+    rows.push(['KPI', 'Comisiones no determinadas', economicResults.commissionUndeterminedCount]);
+    rows.push(['KPI', 'Utilidad después de comisión', economicResults.profitAfterCommission]);
+    rows.push(['KPI', 'Estado después de comisión', analyticsResultStatus(economicResults)]);
+    rows.push(['KPI','Merma final (C$)',economicResults.mermaCost],['KPI','Merma final (ml)',economicResults.mermaMl],['KPI','Utilidad después de comisión y merma',economicResults.profitAfterMerma],['KPI','Estado después de merma',economicResults.mermaPartial || economicResults.commissionUndeterminedCount ? 'Parcial' : 'Determinado']);
+    for (const row of selectedMermaAnalytics()){
+      const key = mermaDateAnalytics(row).slice(0,7) || 'sin-fecha';
+      if (!byMonth.has(key)) byMonth.set(key,{ventas:0,costo:0,profit:0,courtesyUnits:0,courtesyValue:0,courtesyCost:0});
+    }
 
     rows.push([]);
-    rows.push(['Mes', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
+    rows.push(['Mes', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)', 'Utilidad bruta (C$)', 'Comisiones determinadas (C$)', 'Comisiones no determinadas', 'Utilidad después de comisión (C$)', 'Estado después de comisión', 'Merma final (C$)', 'Utilidad después de comisión y merma (C$)', 'Estado después de merma']);
 
     const keys = Array.from(byMonth.keys()).sort();
     for (const key of keys){
       const bucket = byMonth.get(key);
+      const result = withFinalMermaAnalytics(buildEconomicResults(filtered.filter(s => String(s.date || '').startsWith(key + '-'))), selectedMermaAnalytics().filter(row => (mermaDateAnalytics(row).slice(0,7) || 'sin-fecha') === key));
       const margen = bucket.ventas ? (bucket.profit / bucket.ventas * 100) : 0;
       rows.push([
-        formatMonthKey(key),
+        key === 'sin-fecha' ? 'Sin fecha' : formatMonthKey(key),
         bucket.ventas.toFixed(2),
         bucket.costo.toFixed(2),
         bucket.profit.toFixed(2),
         margen.toFixed(2),
         bucket.courtesyUnits,
         bucket.courtesyValue.toFixed(2),
-        bucket.courtesyCost.toFixed(2)
+        bucket.courtesyCost.toFixed(2),
+        analyticsRoundMoney(result.grossProfit), result.commissionTotal, result.commissionUndeterminedCount,
+        result.profitAfterCommission, analyticsResultStatus(result), result.mermaCost, result.profitAfterMerma, result.mermaPartial || result.commissionUndeterminedCount ? 'Parcial' : 'Determinado'
       ]);
     }
 
@@ -1832,7 +2055,7 @@ function rebuildHorasEventOptions(filteredSales){
     }
 
     const rows = [];
-    rows.push(['Evento', 'Código de lote', 'Estado', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Unidades', 'Ticket promedio', '% del total', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
+    rows.push(['Evento', 'Código de lote', 'Estado', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Unidades', 'Ticket promedio', '% del total', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)', 'Costo de ventas (C$)', 'Utilidad bruta (C$)', 'Utilidad después de cortesías (C$)', 'Comisiones determinadas (C$)', 'Comisiones no determinadas', 'Utilidad después de comisión (C$)', 'Estado después de comisión', 'Merma final (C$)', 'Utilidad después de comisión y merma (C$)', 'Estado después de merma']);
     const totalVentas = stats.totalVentasPeriodo || 0;
 
     for (const ev of stats.rows){
@@ -1854,7 +2077,10 @@ function rebuildHorasEventOptions(filteredSales){
         perc.toFixed(2),
         ev.courtesyUnits || 0,
         Number(ev.courtesyValue || 0).toFixed(2),
-        Number(ev.courtesyCost || 0).toFixed(2)
+        Number(ev.courtesyCost || 0).toFixed(2),
+        analyticsRoundMoney(ev.economicResults.paidCost), analyticsRoundMoney(ev.economicResults.grossProfit),
+        analyticsRoundMoney(ev.economicResults.profitAfterCourtesy), ev.economicResults.commissionTotal,
+        ev.economicResults.commissionUndeterminedCount, ev.economicResults.profitAfterCommission, analyticsResultStatus(ev.economicResults), ev.economicResults.mermaCost, ev.economicResults.profitAfterMerma, ev.economicResults.mermaPartial || ev.economicResults.commissionUndeterminedCount ? 'Parcial' : 'Determinado'
       ]);
     }
 
@@ -1869,7 +2095,7 @@ function rebuildHorasEventOptions(filteredSales){
     }
 
     const rows = [];
-    rows.push(['Producto', 'Código de lote', 'productId / clave histórica', 'Estado', 'Unidades netas', 'Precio unitario prom. (C$)', 'Costo unitario snapshot (C$)', 'Utilidad unitaria (C$)', 'Margen unitario %', 'Ventas totales (C$)', '% de ventas', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)']);
+    rows.push(['Producto', 'Código de lote', 'productId / clave histórica', 'Estado', 'Unidades netas', 'Precio unitario prom. (C$)', 'Costo unitario snapshot (C$)', 'Utilidad unitaria (C$)', 'Margen unitario %', 'Ventas totales (C$)', '% de ventas', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)', 'Costo de ventas (C$)', 'Utilidad bruta (C$)', 'Utilidad después de cortesías (C$)', 'Comisiones determinadas (C$)', 'Comisiones no determinadas', 'Utilidad después de comisión (C$)', 'Estado después de comisión']);
     const totalVentas = stats.totalVentas || 0;
 
     for (const row of stats.rows){
@@ -1888,7 +2114,10 @@ function rebuildHorasEventOptions(filteredSales){
         perc.toFixed(2),
         Number(row.courtesyUnits || 0),
         Number(row.courtesyValue || 0).toFixed(2),
-        Number(row.courtesyCost || 0).toFixed(2)
+        Number(row.courtesyCost || 0).toFixed(2),
+        analyticsRoundMoney(row.economicResults.paidCost), analyticsRoundMoney(row.economicResults.grossProfit),
+        analyticsRoundMoney(row.economicResults.profitAfterCourtesy), row.economicResults.commissionTotal,
+        row.economicResults.commissionUndeterminedCount, row.economicResults.profitAfterCommission, analyticsResultStatus(row.economicResults)
       ]);
     }
 

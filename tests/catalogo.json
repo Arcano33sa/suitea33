@@ -2,6 +2,105 @@
   "schemaVersion": 1,
   "tests": [
     {
+      "file": "a33-e47-conciliacion-integrada.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E4.7: mismas fuentes persistidas para POS, Finanzas y Analítica; conciliación y diferencias de alcance, XLSX offline y datos intactos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-analitica-e46-merma.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E4.6: merma final confirmada, períodos/eventos sin ventas, lectura y costos parciales, conciliación y XLSX sin repartir entre productos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-analitica-e46-merma.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E4.6: merma final confirmada, períodos/eventos sin ventas, lectura y costos parciales, conciliación y XLSX sin repartir entre productos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-analitica-e45-resultados.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E4.5: resultados y comisiones históricas, conciliación, períodos, XLSX y compatibilidad sin modificar datos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-analitica-e45-resultados.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E4.5: resultados y comisiones históricas, conciliación, períodos, XLSX y compatibilidad sin modificar datos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-finanzas-e44-lecturas.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E4.4: avisos reales, esquema previo compatible, errores POS/financieros, aborto tardío y recuperación con datos aislados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-finanzas-e44-lecturas.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E4.4: fuentes vacías/legacy, fallos de lectura y apertura, aborto tardío y advertencia del tablero.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-exportaciones-e43-workers.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E4.3: precache, metadatos, activación controlada, instalación fallida y aislamiento de nuevos workers.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-exportaciones-e43-apertura-offline.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E4.3: apertura, recarga, pestaña nueva y exportaciones offline de Finanzas y Analítica; almacenamiento y caché ajena preservados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-exportaciones-e42-xlsx-local.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E4.2: XLSX local, exportaciones con red desconectada y archivos verificados en Chrome temporal.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-analitica-e41-exportaciones.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E4.1: tres botones de exportación con XLSX real en memoria, contenido y avisos controlados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
       "file": "a33-agenda-purchases-grouped-stage1-hardening.smoke.cjs",
       "classification": "vigente",
       "mode": "static",

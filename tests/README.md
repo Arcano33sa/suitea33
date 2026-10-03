@@ -1,5 +1,25 @@
 # Pruebas de Suite A33
 
+## Lecturas del tablero financiero — E4.4
+
+`node tests/run-suite.cjs --test a33-finanzas-e44-lecturas.smoke.cjs` verifica fuentes vacías, ausencia de base POS, base sin inicializar, almacenes opcionales ausentes, fallos de apertura/lectura, resultados inválidos y aborto posterior al éxito de `getAll`. Comprueba que el tablero marque resultados parciales y no confunda una lectura fallida con ausencia de registros.
+
+`node tests/run-suite.cjs --browser --test a33-finanzas-e44-lecturas.browser.smoke.cjs --timeout-ms 60000` verifica avisos visibles y recuperación en Chrome, errores POS/recibos/carga principal, un esquema POS anterior y registros intactos. Los fallos y abortos se inyectan únicamente en un origen y contexto temporal. Consulta [informe E4.4](RESULTADOS_ETAPA4_4.md).
+
+## Apertura offline — E4.3
+
+`node tests/run-suite.cjs --test a33-exportaciones-e43-workers.smoke.cjs` comprueba recursos/precache, nombres de caché/build, activación inicial, espera de actualizaciones, fallo de instalación y aislamiento.
+
+`node tests/run-suite.cjs --browser --test a33-exportaciones-e43-apertura-offline.browser.smoke.cjs --timeout-ms 60000` prepara Finanzas y Analítica en Chrome temporal, espera activación/control del SW, desconecta la red y verifica recarga, entrada desde una pestaña nueva, exportaciones y conservación de registros y caché ajena. Simula una actualización y mantiene ambos módulos abiertos para comprobar que no se activa sola y aparece en Configuración. El reporte PWA reconoce ahora once módulos. No usa datos reales ni aplica la actualización; no acredita instalación como app o todos los flujos financieros. Consulta [informe E4.3](RESULTADOS_ETAPA4_3.md).
+
+## XLSX local — E4.2
+
+`node tests/run-suite.cjs --browser --test a33-exportaciones-e42-xlsx-local.browser.smoke.cjs --timeout-ms 60000` verifica en Chrome temporal que Finanzas y Analítica carguen la copia local de XLSX existente en POS. Bloquea las solicitudes externas y desconecta la red después de cargar cada módulo. Descarga y lee los tres Excel de Analítica y un archivo del generador de reportes financiero, comprobando contenido. La fuente Google opcional existente permanece bloqueada. No acredita todas las exportaciones financieras ni apertura/recarga offline, pendiente de E4.3. Consulta [informe E4.2](RESULTADOS_ETAPA4_2.md).
+
+## Exportaciones de Analítica — E4.1
+
+`node tests/run-suite.cjs --test a33-analitica-e41-exportaciones.smoke.cjs` ejecuta el script completo de Analítica en VM, conecta los tres botones mediante un DOM simulado y genera/lee XLSX reales en memoria con la copia existente de POS. Comprueba importes de venta, cortesía y devolución, identidad de producto, lotes como texto, ausencia de datos y librería no disponible. No abre un navegador ni utiliza almacenamiento real. La carga local/offline de XLSX en la aplicación queda para E4.2. Consulta [informe E4.1](RESULTADOS_ETAPA4_1.md).
+
 No se necesitan dependencias nuevas. Usa Node disponible en tu entorno (`node` en los ejemplos). El ejecutor usa el mismo binario Node para cada proceso y trabaja desde la raíz del proyecto.
 
 ## Catálogo y ejecución
@@ -101,3 +121,21 @@ Comprueban el formato histórico completo/parcial y el bloqueo ante fallos de en
 - `a33-backup-e36-antiguedad.smoke.cjs`: fecha/tipo tras descarga solicitada, edad del contenido, ausencia de actualización al preparar, fallo del registro y exclusión del seguimiento de exportación/importación.
 - `a33-backup-e36-antiguedad.browser.smoke.cjs`: descarga completa/parcial real, cancelación, recarga, cambio entre pestañas y registro inválido.
 - Resultados y continuidad del bloque de protección de datos: [RESULTADOS_ETAPA3_6.md](RESULTADOS_ETAPA3_6.md).
+
+### Analítica ampliada — E4.5
+
+- `a33-analitica-e45-resultados.smoke.cjs`: resultados, comisión POS y conciliación Finanzas con el mismo período y fuentes; cortesías, devoluciones, desconocidas, históricos incompletos, agrupaciones y XLSX real.
+- `a33-analitica-e45-resultados.browser.smoke.cjs`: Chrome con almacenamiento temporal, fechas inclusivas, KPI, tablas en escritorio/móvil y tres exportaciones sin conexión.
+- Alcance, resultados y límites: [RESULTADOS_ETAPA4_5.md](RESULTADOS_ETAPA4_5.md).
+
+### Analítica y merma final — E4.6
+
+- `a33-analitica-e46-merma.smoke.cjs`: merma final confirmada, conciliación con Finanzas, exclusiones, fechas inclusivas, eventos sin ventas, IDs históricos, errores de lectura y costos inciertos.
+- `a33-analitica-e46-merma.browser.smoke.cjs`: KPI/tablas y tres XLSX offline en Chrome; períodos sin ventas y lectura fallida con almacenamiento temporal intacto.
+- Alcance y límites: [RESULTADOS_ETAPA4_6.md](RESULTADOS_ETAPA4_6.md).
+
+### Cierre integrado — E4.7
+
+- `a33-e47-conciliacion-integrada.browser.smoke.cjs`: páginas reales de Finanzas/Analítica y funciones vigentes de reporte POS sobre las mismas fuentes persistidas, con snapshots y tasas actuales diferentes. Verifica conciliación, diferencias por fuentes adicionales/cierres, tres XLSX de Analítica y exportación real de Balanza offline, comisiones desconocidas y período solo con merma.
+- Cierre: 86 pruebas únicas ejecutadas en dos tandas, 79 aprobadas y los mismos siete fallos históricos; 15 pruebas de navegador aprobadas, sin omisiones ni bloqueos. La batería completa no está totalmente aprobada.
+- [Informe y límites E4.7](RESULTADOS_ETAPA4_7.md), [registro completo de ejecuciones](RESULTADOS_ETAPA4_7.json).
