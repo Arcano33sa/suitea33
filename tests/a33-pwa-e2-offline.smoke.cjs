@@ -31,6 +31,7 @@ async function main(){
  const playwright=require(process.env.A33_PLAYWRIGHT_PATH || '/Users/juanguadamuz/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
  const activationTest=process.argv.includes('--activation');
  const updated=new Set();
+ const failedWorkers=new Set();
  const types={'.html':'text/html','.js':'application/javascript','.css':'text/css','.webmanifest':'application/manifest+json','.png':'image/png'};
  const server=http.createServer((req,res)=>{
   const url=new URL(req.url,'http://localhost');
@@ -40,6 +41,7 @@ async function main(){
   if(!fs.existsSync(file)){res.writeHead(404);res.end();return;}
   res.setHeader('Content-Type',types[path.extname(file)]||'application/octet-stream');res.setHeader('Cache-Control','no-store');let body=fs.readFileSync(file);
   const module=url.pathname.split('/')[1];
+  if(url.pathname.endsWith('/sw.js')&&failedWorkers.has(module)){res.writeHead(503);res.end();return;}
   if(url.pathname.endsWith('/sw.js')&&updated.has(module)){
    body=Buffer.from(body.toString().replace(/(MODULE_CACHE_REV = ')(\d+)/,(_,prefix,rev)=>prefix+(Number(rev)+1)).replace('-m8`','-m9`')+'\n// actualización de prueba E3\n');
   }
@@ -56,17 +58,82 @@ async function main(){
     const page=await context.newPage();await page.goto(origin+'/configuracion/index.html');
     await page.locator('#cfg-tab-pwa').click();
     await page.locator('#cfg-pwa-check').click();
-    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='No hay módulos PWA registrados');
+    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Revisión completa: sin actualizaciones pendientes');
     assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
+    assert.equal(await page.evaluate(async()=> (await navigator.serviceWorker.getRegistrations()).length),11);
+    assert.equal(await page.locator('#cfg-pwa-apply').isDisabled(),true);
+    assert.equal(await page.locator('#cfg-pwa-delivery').textContent(),'4.20.98 · PWA-E3');
     await page.reload();assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
     if(!await page.locator('#cfg-pwa-check').isVisible()) await page.locator('#cfg-tab-pwa').click();
     await page.evaluate(async()=>{window.testReg=await navigator.serviceWorker.register('/pos/sw.js',{scope:'/pos/'});});
     await page.waitForFunction(()=>window.testReg.active && window.testReg.active.state==='activated');
     await page.locator('#cfg-pwa-check').click();
-    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Búsqueda incompleta');
+    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Revisión completa: sin actualizaciones pendientes');
     assert((await page.locator('#cfg-pwa-report').textContent()).includes('POS: Sin actualización pendiente'));
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
-    console.log('PASS navegador: Configuración, cero registros, reporte persistente, búsqueda parcial real y ancho móvil.');
+    console.log('PASS navegador: Configuración prepara once módulos, conserva el reporte, separa botones y respeta el ancho móvil.');
+    const modulePage=await context.newPage();
+    await modulePage.goto(origin+'/pos/__pwa_test.html');
+    await modulePage.evaluate(()=>localStorage.setItem('a33_test_draft','conservar'));
+    updated.add('pos');
+    await page.locator('#cfg-pwa-check').click();
+    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Actualización disponible');
+    assert.equal(await page.locator('#cfg-pwa-check').textContent(),'Buscar actualizaciones');
+    assert.equal(await page.locator('#cfg-pwa-apply').isDisabled(),false);
+    if(process.argv.includes('--reopen-report')){
+     await page.evaluate(async()=>{window.beforeAutomatic=(await navigator.serviceWorker.getRegistration(new URL('../pos/',location.href).href)).active;});
+     await modulePage.close();
+     await page.waitForFunction(async()=>{const reg=await navigator.serviceWorker.getRegistration(new URL('../pos/',location.href).href);return !reg.waiting&&reg.active!==window.beforeAutomatic&&reg.active.state==='activated';});
+     // Mantener Configuración viva hasta que reciba el evento observado.
+     await page.waitForFunction(()=>!!localStorage.getItem('suite_a33_pwa_automatic_activation_v1'));
+     const unconfirmed=process.argv.includes('--unconfirmed-evidence');
+     if(unconfirmed){
+      // Simular un reporte histórico sin prueba de activación, solo en este perfil temporal.
+      await page.evaluate(()=>{
+       localStorage.removeItem('suite_a33_pwa_automatic_activation_v1');localStorage.removeItem('suite_a33_pwa_activation_notice_v1');
+       const report=JSON.parse(localStorage.getItem('suite_a33_pwa_report_v1'));report.results.find(row=>row.id==='pos').status='available';
+       localStorage.setItem('suite_a33_pwa_report_v1',JSON.stringify(report));localStorage.setItem('suite_a33_pwa_update_status','Actualización disponible');localStorage.setItem('suite_a33_pwa_last_update_at','01/01/2020 00:00');
+      });
+     }
+     await page.close();
+     const reopened=await context.newPage();await reopened.goto(origin+'/configuracion/index.html');
+     await reopened.locator('#cfg-tab-pwa').click();
+     const expectedStatus=unconfirmed?'No hay actualización pendiente':'Activación automática confirmada';
+     try{await reopened.waitForFunction(expected=>document.getElementById('cfg-pwa-status').textContent===expected,expectedStatus,{timeout:10000});}catch(error){console.error(await reopened.evaluate(()=>({status:document.getElementById('cfg-pwa-status').textContent,automatic:localStorage.getItem('suite_a33_pwa_automatic_activation_v1'),notice:localStorage.getItem('suite_a33_pwa_activation_notice_v1'),report:localStorage.getItem('suite_a33_pwa_report_v1')})));throw error;}
+     const actual={status:await reopened.locator('#cfg-pwa-status').textContent(),applyEnabled:await reopened.locator('#cfg-pwa-apply').isEnabled(),lastUpdate:await reopened.locator('#cfg-pwa-last-update').textContent()};
+     console.log('REAPERTURA '+(unconfirmed?'sin evidencia guardada':'tras activación observada')+': '+JSON.stringify(actual));
+     assert.equal(actual.applyEnabled,false,'Al reabrir no debe ofrecer aplicar una actualización que ya está activa');
+     assert.equal(actual.status,expectedStatus);assert.notEqual(actual.lastUpdate,'Sin registros');if(unconfirmed)assert.equal(actual.lastUpdate,'01/01/2020 00:00');assert.equal(await reopened.locator('#cfg-pwa-activation-notice').isVisible(),true);await reopened.reload();await reopened.locator('#cfg-tab-pwa').click();await reopened.waitForFunction(expected=>document.getElementById('cfg-pwa-status').textContent===expected,expectedStatus);assert.equal(await reopened.locator('#cfg-pwa-last-update').textContent(),actual.lastUpdate);
+     return;
+    }
+    page.once('dialog',dialog=>dialog.accept());
+    await page.locator('#cfg-pwa-apply').click();
+    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Activación confirmada');
+    assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
+    assert.notEqual(await page.locator('#cfg-pwa-last-update').textContent(),'Sin registros');
+    assert.equal(await modulePage.evaluate(()=>localStorage.getItem('a33_test_draft')),'conservar');
+    const lastUpdate=await page.locator('#cfg-pwa-last-update').textContent();
+    failedWorkers.add('analitica');
+    await page.locator('#cfg-pwa-check').click();
+    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='No se pudo verificar toda la Suite');
+    assert.equal(await page.locator('#cfg-pwa-last-update').textContent(),lastUpdate);
+    assert.equal(await page.locator('#cfg-pwa-apply').isDisabled(),true);
+    failedWorkers.delete('analitica');
+    await page.locator('#cfg-pwa-check').click();
+    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Revisión completa: sin actualizaciones pendientes');
+    const lastCheck=await page.locator('#cfg-pwa-last-check').textContent();
+    await context.setOffline(true);
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Revisión completa: sin actualizaciones pendientes');
+    assert.equal(await page.locator('#cfg-pwa-check').isEnabled(),true);
+    assert.equal(await page.locator('#cfg-pwa-apply').isDisabled(),true);
+    assert.equal(await page.locator('#cfg-pwa-last-update').textContent(),lastUpdate);
+    assert.equal(await page.locator('#cfg-pwa-last-check').textContent(),lastCheck);
+    await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(()=>document.getElementById('cfg-pwa-check').disabled===false);
+    await page.setViewportSize({width:834,height:1194});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+    console.log('PASS navegador: búsqueda no activa el POS abierto; botón único confirma activación; conserva datos; fallo de red queda incompleto; ancho de iPad.');
    }finally{await context.close();}
    return;
   }

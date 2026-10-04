@@ -172,7 +172,9 @@ let browser;
     throw error;
   }
   assert.strictEqual(await config.locator('#cfg-pwa-report li').count(), 11);
-  assert.strictEqual(await config.locator('#cfg-pwa-check').textContent(), 'Aplicar actualización');
+  assert.strictEqual(await config.locator('#cfg-pwa-check').textContent(), 'Buscar actualizaciones');
+  assert.strictEqual(await config.locator('#cfg-pwa-apply').textContent(), 'Actualizar Suite');
+  assert.strictEqual(await config.locator('#cfg-pwa-apply').isEnabled(), true);
   assert.deepStrictEqual(errors, [], 'Errores de página: ' + JSON.stringify(errors));
   console.log('APROBADA E4.3 Chrome: apertura y recarga offline, nueva pestaña, exportaciones, datos y caché ajena intactos; actualizaciones esperan y aparecen en Configuración.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); server.close(); });

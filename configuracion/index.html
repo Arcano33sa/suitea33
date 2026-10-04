@@ -182,12 +182,13 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <article class="cfg-status-card cfg-pwa-stat">
 <span class="cfg-status-label">Última actualización</span>
 <strong id="cfg-pwa-last-update">Sin registros</strong>
-<p class="cfg-status-copy">Última activación confirmada desde el botón. No registra activaciones automáticas.</p>
+<p class="cfg-status-copy">Última activación confirmada mediante el botón o por observación directa. Se conserva si hay pendientes sin verificar.</p>
 <span class="cfg-status-label">Entrega de esta pantalla</span>
-<strong id="cfg-pwa-delivery">4.20.98 · PWA-E1</strong>
+<strong id="cfg-pwa-delivery">4.20.98 · PWA-E3</strong>
 <p class="cfg-status-copy">Compara este identificador con la entrega publicada. No confirma la versión de todos los módulos.</p>
 </article>
 </div>
+<p id="cfg-pwa-activation-notice" class="cfg-copy" role="status" hidden></p>
 <details>
 <summary>Detalles técnicos por módulo</summary>
 <ul id="cfg-pwa-report" aria-label="Resultado por módulo" aria-live="polite"></ul>
@@ -206,7 +207,7 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <span class="cfg-badge cfg-badge--soft">Centralizado</span>
 </div>
 <ul class="cfg-list">
-<li>Busca actualizaciones disponibles para la Suite.</li>
+<li>Busca actualizaciones y prepara los módulos faltantes desde aquí, con conexión.</li>
 <li>Permite aplicar una actualización pendiente de forma controlada.</li>
 <li>Muestra última búsqueda, última actualización y estado actual.</li>
 </ul>
@@ -911,6 +912,6 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <script src="../assets/js/a33-export-currency.js?v=4.20.98&amp;r=2"></script>
 <script src="../assets/js/a33-lot-code.js?v=4.20.98&amp;r=6"></script>
 <script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=15"></script>
-<script src="script.js?v=4.20.98&amp;r=40"></script>
+<script src="script.js?v=4.20.98&amp;r=42"></script>
 </body>
 </html>
