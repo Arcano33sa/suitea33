@@ -182,12 +182,19 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <article class="cfg-status-card cfg-pwa-stat">
 <span class="cfg-status-label">Última actualización</span>
 <strong id="cfg-pwa-last-update">Sin registros</strong>
-<p class="cfg-status-copy">Solo cambia cuando se aplique correctamente una actualización.</p>
+<p class="cfg-status-copy">Última activación confirmada desde el botón. No registra activaciones automáticas.</p>
+<span class="cfg-status-label">Entrega de esta pantalla</span>
+<strong id="cfg-pwa-delivery">4.20.98 · PWA-E1</strong>
+<p class="cfg-status-copy">Compara este identificador con la entrega publicada. No confirma la versión de todos los módulos.</p>
 </article>
 </div>
+<details>
+<summary>Detalles técnicos por módulo</summary>
 <ul id="cfg-pwa-report" aria-label="Resultado por módulo" aria-live="polite"></ul>
+</details>
 <div class="cfg-actions cfg-actions--pwa">
 <button class="cfg-btn cfg-btn-primary" id="cfg-pwa-check" type="button">Buscar actualizaciones</button>
+<button class="cfg-btn cfg-btn-primary" id="cfg-pwa-apply" type="button" disabled>Actualizar Suite</button>
 </div>
 </article>
 <aside aria-labelledby="cfg-pwa-side-title" class="cfg-card cfg-panel cfg-side-panel">
@@ -904,6 +911,6 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <script src="../assets/js/a33-export-currency.js?v=4.20.98&amp;r=2"></script>
 <script src="../assets/js/a33-lot-code.js?v=4.20.98&amp;r=6"></script>
 <script src="../assets/js/a33-module-access.js?v=4.20.98&amp;r=15"></script>
-<script src="script.js?v=4.20.98&amp;r=39"></script>
+<script src="script.js?v=4.20.98&amp;r=40"></script>
 </body>
 </html>

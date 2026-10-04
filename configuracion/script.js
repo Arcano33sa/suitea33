@@ -611,9 +611,9 @@
   const PWA_STATUS = {
     idle: 'Sin revisar',
     checking: 'Buscando actualizaciones...',
-    current: 'Sin actualizaciones en los módulos revisados',
-    noRegistered: 'No hay módulos PWA registrados',
-    partialSearch: 'Búsqueda incompleta',
+    current: 'Revisión completa: sin actualizaciones pendientes',
+    noRegistered: 'No se pudo verificar: abre los módulos con conexión',
+    partialSearch: 'No se pudo verificar toda la Suite',
     partialApply: 'Actualización parcial',
     available: 'Actualización disponible',
     applying: 'Aplicando actualización...',
@@ -714,6 +714,9 @@
     if (s === 'Suite actualizada' || s === 'Suite actualizada / No se encontraron actualizaciones') return PWA_STATUS.current;
     if (s === 'Error al buscar actualizaciones') return PWA_STATUS.searchError;
     if (s === 'Búsqueda registrada') return PWA_STATUS.idle;
+    if (s === 'Sin actualizaciones en los módulos revisados') return PWA_STATUS.current;
+    if (s === 'No hay módulos PWA registrados') return PWA_STATUS.noRegistered;
+    if (s === 'Búsqueda incompleta') return PWA_STATUS.partialSearch;
     return s;
   }
 
@@ -951,15 +954,20 @@
       }
     }
 
+    const available = pwaRuntime.updateAvailable || isPwaUpdateAvailableStatus(status);
+    const busy = !!(pwaRuntime.checking || pwaRuntime.applying);
     if (btn){
-      const available = pwaRuntime.updateAvailable || isPwaUpdateAvailableStatus(status);
-      const busy = !!(pwaRuntime.checking || pwaRuntime.applying);
-      btn.textContent = pwaRuntime.applying ? 'Aplicando...' : (pwaRuntime.checking ? 'Buscando...' : (available ? 'Aplicar actualización' : 'Buscar actualizaciones'));
+      btn.textContent = pwaRuntime.checking ? 'Buscando...' : 'Buscar actualizaciones';
       btn.disabled = busy;
-      btn.setAttribute('data-pwa-action', available ? 'apply' : 'check');
-      btn.classList.toggle('cfg-btn-pwa-apply', !!available && !busy);
+      btn.setAttribute('data-pwa-action', 'check');
       btn.classList.toggle('cfg-btn-pwa-checking', !!pwaRuntime.checking);
-      btn.classList.toggle('cfg-btn-pwa-applying', !!pwaRuntime.applying);
+    }
+    const applyBtn = document.getElementById('cfg-pwa-apply');
+    if (applyBtn){
+      applyBtn.textContent = pwaRuntime.applying ? 'Actualizando...' : 'Actualizar Suite';
+      applyBtn.disabled = busy || !available;
+      applyBtn.classList.toggle('cfg-btn-pwa-apply', available && !busy);
+      applyBtn.classList.toggle('cfg-btn-pwa-applying', !!pwaRuntime.applying);
     }
   }
 
@@ -1058,14 +1066,9 @@
     }
     renderPwaSection();
     const btn = document.getElementById('cfg-pwa-check');
-    if (!btn) return;
-    btn.addEventListener('click', () => {
-      if (btn.getAttribute('data-pwa-action') === 'apply'){
-        handlePwaApply();
-        return;
-      }
-      handlePwaCheck();
-    });
+    if (btn) btn.addEventListener('click', handlePwaCheck);
+    const applyBtn = document.getElementById('cfg-pwa-apply');
+    if (applyBtn) applyBtn.addEventListener('click', handlePwaApply);
   }
 
   function reqToPromise(req){
