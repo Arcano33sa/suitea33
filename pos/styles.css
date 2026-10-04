@@ -2036,29 +2036,29 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
 }
 
 /* Etapa visual POS 1B: jerarquía de la compra y modales de clientes. */
-#purchase-modal .purchase-heading{align-items:flex-start;padding-bottom:16px;border-bottom:1px solid var(--a33-border-soft)}
+#purchase-modal .purchase-heading{align-items:flex-start;padding-bottom:10px;border-bottom:1px solid var(--a33-border-soft)}
 #purchase-modal .purchase-heading h3{margin:0;font-size:22px}
 #purchase-modal .purchase-heading small{line-height:1.5;overflow-wrap:anywhere}
-#purchase-modal .purchase-layout{gap:20px;grid-template-columns:minmax(240px,.85fr) minmax(0,1.4fr)}
-#purchase-modal .purchase-catalog{padding:16px;background:var(--a33-surface);border:1px solid var(--a33-border-soft);border-radius:14px}
+#purchase-modal .purchase-layout{gap:12px;grid-template-columns:minmax(220px,.7fr) minmax(0,1.3fr)}
+#purchase-modal .purchase-catalog{padding:10px;background:var(--a33-surface);border:1px solid var(--a33-border-soft);border-radius:14px}
 #purchase-modal .purchase-order>h4{font-size:16px;margin-top:2px}
 #purchase-modal .purchase-product{background:var(--a33-surface-2)}
-#purchase-modal .purchase-item{padding:16px;border-color:var(--a33-border)}
+#purchase-modal .purchase-item{padding:10px;border-color:var(--a33-border)}
 #purchase-modal .purchase-item-head strong{font-size:16px}
-#purchase-modal .purchase-item-foot{padding-top:10px;border-top:1px solid var(--a33-border-soft)}
-#purchase-modal .purchase-item-foot>strong{font-size:19px;color:var(--a33-gold);font-variant-numeric:tabular-nums}
-#purchase-modal .purchase-item-fields{grid-template-columns:.75fr 1fr 1.3fr;gap:12px}
-#purchase-modal :is(.purchase-customer-section,.purchase-payment-section){margin-top:20px;padding-top:18px;border-top:1px solid var(--a33-border-soft)}
+#purchase-modal .purchase-item-foot{padding-top:6px;border-top:1px solid var(--a33-border-soft)}
+#purchase-modal .purchase-item-foot>strong{font-size:17px;color:var(--a33-gold);font-variant-numeric:tabular-nums}
+#purchase-modal .purchase-item-fields{grid-template-columns:.7fr 1fr 1.2fr;gap:8px;margin:6px 0}
+#purchase-modal :is(.purchase-customer-section,.purchase-payment-section){margin-top:12px;padding-top:10px;border-top:1px solid var(--a33-border-soft)}
 #purchase-modal .purchase-layout h4{font-size:16px;font-weight:750}
 #purchase-modal .customer-v2-field{min-width:0}
 #purchase-modal .customer-v2-actions{gap:8px 10px}
 #purchase-modal .customer-v2-sticky{min-height:44px}
 #purchase-modal .customer-catalog-hint{font-size:12px;line-height:1.5}
 #purchase-modal #sale-total{font-weight:700;font-variant-numeric:tabular-nums}
-#purchase-modal #sale-cash-tender-card{box-shadow:none;margin:16px 0;border-color:var(--a33-border-soft)}
-#purchase-modal #purchase-more-options{box-shadow:none;background:var(--a33-surface);margin-top:20px}
+#purchase-modal #sale-cash-tender-card{box-shadow:none;margin:8px 0;padding:10px;border-color:var(--a33-border-soft)}
+#purchase-modal #purchase-more-options{box-shadow:none;background:var(--a33-surface);margin-top:10px;padding:10px}
 #purchase-modal #purchase-more-options summary{cursor:pointer;min-height:32px;font-weight:650;line-height:1.5}
-#purchase-modal .purchase-footer{padding:16px 0 12px;border-top:1px solid var(--a33-border);box-shadow:0 -8px 16px var(--a33-surface-2)}
+#purchase-modal .purchase-footer{margin-top:12px;padding:10px 0 8px;border-top:1px solid var(--a33-border);box-shadow:0 -8px 16px var(--a33-surface-2)}
 #purchase-modal .purchase-grand-total>span{display:block;font-size:13px;color:var(--a33-muted);margin-bottom:4px}
 #purchase-modal .purchase-grand-total>div{font-size:26px;color:var(--a33-gold);font-weight:800;font-variant-numeric:tabular-nums}
 #purchase-modal .purchase-actions button{min-width:112px;min-height:46px}
@@ -2076,7 +2076,21 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
 #customer-quick-modal .customer-quick-panel h3{margin:0 0 16px;padding-bottom:14px;border-bottom:1px solid var(--a33-border-soft);font-size:20px}
 #customer-quick-modal .customer-quick-cancel{background:var(--a33-surface-2);color:var(--a33-text);border-color:var(--a33-border);box-shadow:none;font-weight:650}
 #customer-quick-modal .customer-quick-actions{padding-top:14px;border-top:1px solid var(--a33-border-soft)}
-@media(max-width:900px){#purchase-modal .purchase-layout{grid-template-columns:1fr}#purchase-modal .purchase-catalog{position:static}#purchase-modal .purchase-products{max-height:25vh}}
+/* Modal compacto: dos columnas en tablet y listas con desplazamiento propio. */
+#purchase-modal .purchase-products{margin-top:0;max-height:min(36vh,380px);max-height:min(36dvh,380px);gap:6px}
+#purchase-modal .purchase-product{padding:8px;gap:6px}
+#purchase-modal .purchase-product button{min-width:44px;padding:0;font-size:24px}
+#purchase-modal .purchase-product small{margin-top:2px;font-size:12px}
+#purchase-modal .purchase-items{max-height:min(36vh,380px);max-height:min(36dvh,380px);overflow:auto;overscroll-behavior:contain;gap:6px;margin-bottom:0}
+#purchase-modal .purchase-customer-section h4,#purchase-modal .purchase-payment-section h4{margin:0 0 6px}
+#purchase-modal #sale-customer-row{margin-bottom:0}
+#purchase-modal .purchase-item-fields input{font-size:16px}
+#purchase-modal .sale-cash-tender-head h4{margin-bottom:4px}
+@media(max-width:639px){
+  #purchase-modal .purchase-layout{grid-template-columns:1fr;gap:10px}
+  #purchase-modal .purchase-catalog{position:static}
+  #purchase-modal .purchase-products{max-height:25vh;max-height:25dvh}
+}
 @media(max-width:540px){
   #purchase-modal .purchase-catalog,#purchase-modal .purchase-item{padding:12px}
   #purchase-modal .purchase-item-fields{grid-template-columns:1fr 1fr}

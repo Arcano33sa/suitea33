@@ -49,13 +49,14 @@ let browser;
   const sales=()=>page.evaluate(()=>getAll('sales'));
   const open=async()=>{await sell.click();await modal.waitFor({state:'visible'});};
   const save=async()=>{await page.locator('#purchase-save').click();await modal.waitFor({state:'hidden'});};
-  // Botón verde, catálogo habilitado, búsqueda y cancelación sin ventas ni stock.
+  // Botón verde, catálogo habilitado, foco y cancelación sin ventas ni stock.
   assert.equal(await sell.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(29, 185, 84)');
   await open();assert.equal(await page.locator('#purchase-save').isDisabled(),true);
   assert.equal(await page.locator('#purchase-title').evaluate(el=>{const r=el.getBoundingClientRect();return document.elementFromPoint(r.left+4,r.top+4)===el;}),true);
   assert.equal(await page.getByRole('button',{name:'Agregar No disponible',exact:true}).count(),0);
-  await page.locator('#purchase-search').fill('Prueba A');assert.equal(await page.locator('.purchase-product').count(),1);
-  await add('Prueba A');await page.locator('#purchase-search').fill('');await add('Prueba B');
+  assert.equal(await page.locator('#purchase-search').count(),0);
+  assert.equal(await page.locator('#purchase-products button').first().evaluate(el=>el===document.activeElement),true);
+  await add('Prueba A');await add('Prueba B');
   await pick();await page.locator('#purchase-cancel').click();assert.equal((await sales()).length,0);
   assert.equal(await page.evaluate(()=>document.getElementById('sale-customer').value),'');
   assert.equal(await page.evaluate(async()=>computeStock(9100,(await getAll('products')).find(p=>p.productId==='test-a'))),10);
@@ -77,6 +78,9 @@ let browser;
   await page.screenshot({path:path.join(os.tmpdir(),'a33-pos-compra-e2-desktop.png'),fullPage:true});
   for(const [width,height,label] of [[768,1024,'tablet'],[390,844,'mobile']]){
     await page.setViewportSize({width,height});
+    const columns=await page.locator('.purchase-layout').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
+    assert.equal(columns,width>=640?2:1);
+    assert.equal(await page.locator('#purchase-save').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight;}),true);
     assert.equal(await modal.evaluate(el=>el.scrollWidth<=el.clientWidth),true);
     assert.equal(await page.locator('.purchase-panel').evaluate(el=>el.scrollWidth<=el.clientWidth),true);
     await page.locator('.purchase-panel').evaluate(el=>{el.scrollTop=0;});

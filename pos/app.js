@@ -28141,12 +28141,11 @@ function renderPurchaseCatalogPOS(){
   const state = purchaseModalStatePOS;
   if (!state) return;
   const wrap = document.getElementById('purchase-products');
-  const search = normalizeCustomerKeyPOS(document.getElementById('purchase-search').value);
-  const filtered = state.catalog.filter(item => !search || normalizeCustomerKeyPOS(item.name).includes(search));
+  const filtered = state.catalog;
   wrap.replaceChildren();
   if (!filtered.length){
     const empty = document.createElement('p'); empty.className = 'muted';
-    empty.textContent = 'No hay productos disponibles para esta búsqueda.'; wrap.appendChild(empty); return;
+    empty.textContent = 'No hay productos disponibles.'; wrap.appendChild(empty); return;
   }
   for (const product of filtered){
     const card = document.createElement('div'); card.className = 'purchase-product';
@@ -28156,7 +28155,7 @@ function renderPurchaseCatalogPOS(){
     detail.textContent = 'C$ ' + fmt(product.unitPrice) + ' · Stock: ' + (product.stock == null ? 'Sin control de stock' : product.stock) + (product.isExtra ? ' · Extra' : '');
     info.append(name,detail);
     const add = document.createElement('button'); add.type = 'button'; add.className = 'btn-outline btn-pill btn-pill-mini';
-    add.textContent = 'Agregar'; add.setAttribute('aria-label','Agregar ' + product.name);
+    add.textContent = '+'; add.setAttribute('aria-label','Agregar ' + product.name);
     add.disabled = state.busy;
     add.addEventListener('click',()=>{
       if (!purchaseModalStatePOS || state.busy) return;
@@ -28189,7 +28188,7 @@ function renderPurchaseItemsPOS(){
     head.append(title,remove);
     const fields = document.createElement('div'); fields.className = 'purchase-item-fields';
     for (const [field,labelText,step,min] of [['qty','Cantidad','1','1'],['unitPrice','Precio (C$)','0.01','0'],['discountPerUnit','Descuento por unidad (C$)','0.01','0']]){
-      const label = document.createElement('label'); label.textContent = labelText;
+      const label = document.createElement('label'); label.textContent = field === 'discountPerUnit' ? 'Desc./unidad (C$)' : labelText;
       const input = document.createElement('input'); input.type = 'number'; input.inputMode = field === 'qty' ? 'numeric' : 'decimal';
       input.id = 'purchase-' + field + '-' + item.index; input.value = item[field]; input.step = step; input.min = min;
       input.disabled = (field === 'discountPerUnit' && item.courtesy) || (field === 'unitPrice' && item.isExtra);
@@ -28247,7 +28246,6 @@ async function openPurchaseModalPOS({recovery=false}={}){
     document.getElementById('sale-courtesy').checked = false;
     document.getElementById('sale-notes').value = '';
     document.getElementById('purchase-more-options').open = false;
-    document.getElementById('purchase-search').value = '';
     document.getElementById('purchase-context').textContent = (event.name || 'Evento') + ' · ' + date;
     await refreshSaleBankSelect(); resetSaleCashTenderPOS(); setPurchaseMessagePOS('');
     const draftWarning=document.getElementById('purchase-draft-warning');if(draftWarning){draftWarning.hidden=true;draftWarning.textContent='';}
@@ -28255,7 +28253,7 @@ async function openPurchaseModalPOS({recovery=false}={}){
     modal.setAttribute('aria-hidden','false'); modal.style.display = 'flex';
     purchaseBackgroundInertPOS(true);
     renderPurchaseCatalogPOS(); renderPurchaseItemsPOS();
-    document.getElementById('purchase-search').focus();
+    (document.querySelector('#purchase-products button') || modal.querySelector('.purchase-panel')).focus();
   }catch(error){
     if (purchaseModalStatePOS) closePurchaseModalPOS();
     throw error;
@@ -28355,7 +28353,6 @@ function setupPurchaseModalPOS(){
   bindPurchaseDraftLifecyclePOS();
   document.getElementById('purchase-cancel').addEventListener('click',()=>closePurchaseModalPOS());
   document.getElementById('purchase-save').addEventListener('click',()=>submitPurchaseModalPOS().catch(error=>posNotify(error.message)));
-  document.getElementById('purchase-search').addEventListener('input',renderPurchaseCatalogPOS);
   document.getElementById('sale-return').addEventListener('change',()=>{
     if (!purchaseModalStatePOS) return;
     if (document.getElementById('sale-return').checked){
@@ -29759,7 +29756,7 @@ document.addEventListener('DOMContentLoaded', init);
 
 // E5.4: copias provisionales de compra, separadas de sales e inventario.
 const PURCHASE_DRAFT_PREFIX_POS = 'a33_pos_purchase_draft_v1_';
-const PURCHASE_DRAFT_FIELDS_POS = ['sale-payment','sale-bank','sale-notes','sale-cash-mode','sale-cash-usd-received','purchase-search'];
+const PURCHASE_DRAFT_FIELDS_POS = ['sale-payment','sale-bank','sale-notes','sale-cash-mode','sale-cash-usd-received'];
 function purchaseDraftStatusPOS(message){
   const el=document.getElementById('purchase-draft-status');if(el)el.textContent=message;
 }
