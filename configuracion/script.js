@@ -106,7 +106,8 @@
     const code = quickOrderBackupClean(source.codigo,40).toUpperCase();
     const identity = [code,deliveryDate,customerId,customerName,items.map((item) => item.productId + ':' + item.cantidad).join('|')].join('|');
     const id = quickOrderBackupClean(source.id,200) || ('pr_legacy_' + agendaHash(identity));
-    const status = quickOrderBackupClean(source.estado,30).toLowerCase() === 'entregado' || source.entregado === true ? 'entregado' : 'pendiente';
+    const state = quickOrderBackupClean(source.estado,30).toLowerCase();
+    const status = ['en_preparacion','listo','cancelado'].includes(state) ? state : (state === 'entregado' || source.entregado === true ? 'entregado' : 'pendiente');
     const createdAt = quickOrderBackupTimestamp(source.createdAt);
     const updatedAt = quickOrderBackupTimestamp(source.updatedAt) || createdAt;
     return {

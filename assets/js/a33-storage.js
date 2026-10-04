@@ -721,7 +721,8 @@
         .replace(/\s+/g, ' ').trim();
       out.fechaEntrega = String(out.fechaEntrega ?? out.deliveryDate ?? out.fechaEntregaPedido ?? '').slice(0, 10);
       out.prioridad = String(out.prioridad || '').toLowerCase() === 'alta' ? 'alta' : 'normal';
-      out.estado = String(out.estado || '').toLowerCase() === 'entregado' || out.entregado === true ? 'entregado' : 'pendiente';
+      const state = String(out.estado || '').trim().toLowerCase();
+      out.estado = ['en_preparacion','listo','cancelado'].includes(state) ? state : (state === 'entregado' || out.entregado === true ? 'entregado' : 'pendiente');
       out.entregado = out.estado === 'entregado';
       out.createdAt = coerceInt(out.createdAt, 0, 'arcano33_pedidos_rapidos_v1[' + index + '].createdAt');
       out.updatedAt = coerceInt(out.updatedAt, out.createdAt || 0, 'arcano33_pedidos_rapidos_v1[' + index + '].updatedAt');

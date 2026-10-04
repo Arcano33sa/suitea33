@@ -1,3 +1,12 @@
+function getPedidoEstado(p){
+  const raw = String(p && (p.estado || (p.entregado ? 'entregado' : 'pendiente')) || 'pendiente').trim().toLowerCase();
+  return ['pendiente','en_preparacion','listo','entregado','cancelado'].includes(raw) ? raw : 'pendiente';
+}
+
+function pedidoEstadoLabelPED(value){
+  return {pendiente:'Pendiente',en_preparacion:'En preparación',listo:'Listo',entregado:'Entregado',cancelado:'Cancelado'}[value] || 'Pendiente';
+}
+
 const STORAGE_KEY_PEDIDOS = "arcano33_pedidos";
 const STORAGE_KEY_PEDIDOS_ARCHIVED = "arcano33_pedidos_archived";
 const STORAGE_KEY_PEDIDOS_RAPIDOS = "arcano33_pedidos_rapidos_v1";
@@ -94,7 +103,8 @@ function normalizeQuickOrderPED(raw){
   const fechaEntrega = String(source.fechaEntrega ?? source.deliveryDate ?? source.fechaEntregaPedido ?? '').slice(0, 10);
   const customerId = String(source.customerId ?? source.clienteId ?? customer.id ?? '').trim();
   const customerName = normalizeQuickOrderTextPED(source.customerName ?? source.clienteNombre ?? source.cliente ?? customer.name ?? customer.nombre ?? '');
-  const estado = String(source.estado || '').toLowerCase() === 'entregado' || source.entregado === true ? 'entregado' : 'pendiente';
+  const rawState = String(source.estado || '').trim().toLowerCase();
+  const estado = ['en_preparacion','listo','cancelado'].includes(rawState) ? rawState : (rawState === 'entregado' || source.entregado === true ? 'entregado' : 'pendiente');
   const createdAt = Number(source.createdAt || 0);
   const updatedAt = Number(source.updatedAt || createdAt || 0);
   const identity = [source.codigo || '', fechaEntrega, customerId, customerName, JSON.stringify(items)].join('|');
@@ -128,7 +138,7 @@ function validateQuickOrderPED(raw){
   if (!order.customerName) errors.push('Cliente obligatorio.');
   if (!isExactQuickOrderDatePED(order.fechaEntrega)) errors.push('Fecha de entrega inválida.');
   if (!['normal','alta'].includes(rawPriority)) errors.push('Prioridad inválida.');
-  if (!['pendiente','entregado'].includes(rawState)) errors.push('Estado inválido.');
+  if (!['pendiente','en_preparacion','listo','entregado','cancelado'].includes(rawState)) errors.push('Estado inválido.');
   if (!order.items.length) errors.push('Agregá al menos un producto.');
 
   const seen = new Set();
@@ -401,8 +411,8 @@ function coercePedidoForRead(p){
 
   // Prioridad / estado
   out.prioridad = out.prioridad || 'normal';
-  const estado = out.estado || (out.entregado ? 'entregado' : 'pendiente');
-  out.estado = (String(estado).toLowerCase() === 'entregado') ? 'entregado' : 'pendiente';
+  out.estado = getPedidoEstado(out);
+  out.entregado = out.estado === 'entregado';
 
   // ID estable para legacy
   if (out.id == null || out.id === '') out.id = getFallbackPedidoId(out);
@@ -592,7 +602,7 @@ function buildPedidoSearchHaystack(p){
     const productText = getPedidoDetailProductLinesPED(p, getPriceSnapshotFromPedido(p))
       .map((item) => [item.label, item.qty].join(' '))
       .join(' ');
-    const extra = [p && p.clienteTelefono, p && p.clienteTipo, productText, p && p.lotesRelacionados].filter(Boolean).join(' ');
+    const extra = [p && p.clienteTelefono, p && p.clienteTipo, productText, p && p.lotesRelacionados, pedidoLotesResumenPED(p)].filter(Boolean).join(' ');
     return normalizeCustomerKey([cliente, codigo, estado, fechas, extra].join(' '));
   }catch(_){
     return '';
@@ -1558,7 +1568,9 @@ function openPedidoDetailModalPED(p, source){
   setTextPED('pedido-detail-method', p && p.metodoPago ? p.metodoPago : '');
   setTextPED('pedido-detail-paid', formatA33Cordobas(t.pagoAnt));
   setTextPED('pedido-detail-balance', formatA33Cordobas(t.saldo));
-  setTextPED('pedido-detail-status', estado === 'entregado' ? 'Entregado' : 'Pendiente');
+  setTextPED('pedido-detail-status', pedidoEstadoLabelPED(estado));
+  setTextPED('pedido-detail-entregas', pedidoEntregasResumenPED(p, 'completo'));
+  setTextPED('pedido-detail-linked-lots', pedidoLotesResumenPED(p));
 
   renderPedidoDetailModalProductRowsPED(t.lines.slice().sort(compareProductDisplayPED));
 
@@ -2115,8 +2127,7 @@ function populateForm(pedido) {
   $("saldoPendiente").value = typeof pedido.saldoPendiente === "number" ? pedido.saldoPendiente.toFixed(2) : "";
   $("metodoPago").value = pedido.metodoPago || "efectivo";
 
-  const estado = pedido.estado || (pedido.entregado ? 'entregado' : 'pendiente');
-  if ($('estado')) $('estado').value = (estado === 'entregado') ? 'entregado' : 'pendiente';
+  if ($('estado')) $('estado').value = getPedidoEstado(pedido);
 
   currentPriceSnapshot = getPriceSnapshotFromPedido(pedido);
 
@@ -2130,6 +2141,7 @@ function populateForm(pedido) {
 }
 
 function renderTable() {
+  refreshPedidoDemandaIfOpenPED();
   const table = $("pedidos-table");
   if (!table) return;
   const tbody = table.querySelector("tbody");
@@ -2208,8 +2220,7 @@ function renderTable() {
 
     const entregadoTd = document.createElement("td");
     entregadoTd.className = "col-status";
-    const delivered = (p && (p.estado === 'entregado')) || !!p.entregado;
-    entregadoTd.textContent = delivered ? "Sí" : "No";
+    entregadoTd.textContent = pedidoEstadoLabelPED(getPedidoEstado(p)) + ' · ' + pedidoEntregasResumenPED(p, 'completo');
     tr.appendChild(entregadoTd);
 
     const accionesTd = document.createElement("td");
@@ -2250,16 +2261,13 @@ function renderTable() {
     accionesTd.appendChild(verBtn);
     accionesTd.appendChild(calBtn);
     accionesTd.appendChild(editarBtn);
+    accionesTd.appendChild(createPedidoEntregasButtonPED(p.id, 'completo'));
+    accionesTd.appendChild(createPedidoLotesButtonPED(p.id, 'completo'));
     accionesTd.appendChild(borrarBtn);
     tr.appendChild(accionesTd);
 
     tbody.appendChild(tr);
   });
-}
-
-function getPedidoEstado(p){
-  const e = (p && (p.estado || (p.entregado ? 'entregado' : 'pendiente'))) || 'pendiente';
-  return (String(e).toLowerCase() === 'entregado') ? 'entregado' : 'pendiente';
 }
 
 function renderArchivedTable() {
@@ -2342,7 +2350,7 @@ function renderArchivedTable() {
     const estado = getPedidoEstado(p);
     const pill = document.createElement("span");
     pill.className = "badge " + (estado === "entregado" ? "ok" : "warn");
-    pill.textContent = (estado === "entregado") ? "Entregado" : "Pendiente";
+    pill.textContent = pedidoEstadoLabelPED(estado);
     estadoTd.appendChild(pill);
     tr.appendChild(estadoTd);
 
@@ -2447,7 +2455,7 @@ function verPedido(id, source) {
   lines.push(`  Método: ${p.metodoPago || ""}`);
   lines.push(`  Pago anticipado: ${formatA33Cordobas(t.pagoAnt)}`);
   lines.push(`  Saldo pendiente: ${formatA33Cordobas(t.saldo)}`);
-  lines.push(`  Estado: ${estado === 'entregado' ? 'Entregado' : 'Pendiente'}`);
+  lines.push(`  Estado: ${pedidoEstadoLabelPED(estado)}`);
   if (p.lotesRelacionados) lines.push(`Lotes relacionados: ${p.lotesRelacionados}`);
 
   alert(lines.join("\n"));
@@ -2607,6 +2615,8 @@ function quickOrderSearchTextPED(order){
     order && order.customerName,
     order && order.fechaEntrega,
     order && order.prioridad,
+    pedidoEstadoLabelPED(getPedidoEstado(order)),
+    pedidoLotesResumenPED(order),
     quickOrderProductSummaryPED(order)
   ].filter(Boolean).join(' '));
 }
@@ -2846,6 +2856,8 @@ function createQuickOrderICSPED(order){
   const description = [
     `Código: ${order.codigo || ''}`,
     `Cliente: ${order.customerName || ''}`,
+    `Estado: ${pedidoEstadoLabelPED(getPedidoEstado(order))}`,
+    pedidoLotesResumenPED(order),
     `Fecha de entrega: ${formatDate(date)}`,
     `Prioridad: ${order.prioridad === 'alta' ? 'Alta' : 'Normal'}`,
     'Productos:',
@@ -2885,21 +2897,23 @@ function createQuickOrderCardPED(order, historical){
   title.className = 'quick-order-title';
   title.textContent = `${order.customerName} · ${formatDate(order.fechaEntrega)} · ${order.prioridad === 'alta' ? 'Alta' : 'Normal'}`;
   const status = document.createElement('span');
-  status.className = 'badge ' + (historical ? 'ok' : 'warn');
-  status.textContent = historical ? 'Entregado' : 'Pendiente';
+  status.className = 'badge ' + (order.estado === 'entregado' ? 'ok' : 'warn');
+  status.textContent = pedidoEstadoLabelPED(getPedidoEstado(order));
   main.append(title, status);
   const products = document.createElement('p');
   products.className = 'quick-order-products';
   products.textContent = quickOrderProductSummaryPED({ ...order, items:(order.items || []).slice().sort((a,b) => compareProductDisplayPED({ ...(a.productSnapshot || {}), name:a.productNameSnapshot }, { ...(b.productSnapshot || {}), name:b.productNameSnapshot })) }) || 'Sin productos';
   const meta = document.createElement('div');
   meta.className = 'quick-order-meta';
-  meta.textContent = order.codigo || '';
+  meta.textContent = (order.codigo || '') + ' · ' + pedidoEntregasResumenPED(order, 'rapido') + ' · ' + pedidoLotesResumenPED(order);
   const actions = document.createElement('div');
   actions.className = 'quick-order-actions';
   const calendar = document.createElement('button');
   calendar.type = 'button'; calendar.className = 'btn-secondary'; calendar.textContent = '📅 Calendario';
   calendar.addEventListener('click', () => exportQuickOrderCalendarPED(order.id));
   actions.appendChild(calendar);
+  actions.appendChild(createPedidoEntregasButtonPED(order.id, 'rapido'));
+  actions.appendChild(createPedidoLotesButtonPED(order.id, 'rapido'));
   if (historical){
     const reopen = document.createElement('button');
     reopen.type = 'button'; reopen.className = 'btn-primary'; reopen.textContent = 'Reabrir';
@@ -2933,7 +2947,7 @@ function renderQuickOrderCollectionPED(records, historical){
   if (!shown.length){
     const empty = document.createElement('div');
     empty.className = 'quick-order-empty';
-    empty.textContent = query ? 'No hay resultados.' : (historical ? 'No hay Pedidos rápidos entregados.' : 'No hay Pedidos rápidos pendientes.');
+    empty.textContent = query ? 'No hay resultados.' : (historical ? 'No hay Pedidos rápidos entregados o cancelados.' : 'No hay Pedidos rápidos pendientes.');
     host.appendChild(empty);
   } else shown.forEach((order) => host.appendChild(createQuickOrderCardPED(order, historical)));
   const pager = $(historical ? 'quick-history-pager' : 'quick-pending-pager');
@@ -2945,9 +2959,10 @@ function renderQuickOrderCollectionPED(records, historical){
 }
 
 function renderQuickOrdersPED(){
+  refreshPedidoDemandaIfOpenPED();
   const records = loadQuickOrdersPED();
-  const pending = records.filter((order) => order.estado === 'pendiente').sort((a,b) => String(a.fechaEntrega).localeCompare(String(b.fechaEntrega)));
-  const historical = records.filter((order) => order.estado === 'entregado').sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+  const pending = records.filter((order) => ['pendiente','en_preparacion','listo'].includes(order.estado)).sort((a,b) => String(a.fechaEntrega).localeCompare(String(b.fechaEntrega)));
+  const historical = records.filter((order) => ['entregado','cancelado'].includes(order.estado)).sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
   if ($('quick-pending-count')) $('quick-pending-count').textContent = String(pending.length);
   if ($('quick-history-count')) $('quick-history-count').textContent = String(historical.length);
   renderQuickOrderCollectionPED(pending, false);
@@ -3038,6 +3053,9 @@ function initQuickOrdersUI_PED(){
       deliveredAt:stateValue === 'entregado' ? (existing && existing.deliveredAt || new Date(now).toISOString()) : '',
       items:quickOrderItemsDraft.map((item) => ({ ...item, productSnapshot:{ ...(item.productSnapshot || {}) } }))
     };
+    const deliveryError = validarEntregasPedidoPED(candidate, 'rapido');
+    if (deliveryError){ setQuickOrderNoticePED(deliveryError, 'warn'); return; }
+    if (!pedidoLotesRegistroValidoPED(candidate)){ setQuickOrderNoticePED('El registro de vínculos con lotes no es válido. Se conservó el pedido.', 'warn'); return; }
     const validation = validateQuickOrderPED(candidate);
     if (!validation.ok){ setQuickOrderNoticePED(validation.message, 'warn'); return; }
     const index = records.findIndex((order) => String(order.id) === String(validation.data.id));
@@ -3086,6 +3104,8 @@ function createICSEventFromPedido(p) {
 
   const descLines = [];
   descLines.push(`Código: ${p.codigo || ""}`);
+  descLines.push(`Estado: ${pedidoEstadoLabelPED(getPedidoEstado(p))}`);
+  descLines.push(pedidoLotesResumenPED(p));
   descLines.push(`Cliente: ${clienteLabel2 || ""}`);
   if (p.clienteTelefono) descLines.push(`Teléfono: ${p.clienteTelefono}`);
   if (p.clienteTipo) descLines.push(`Tipo: ${p.clienteTipo}`);
@@ -3229,7 +3249,8 @@ async function exportToCSV() {
       "Monto pagado",
       "Saldo pendiente",
       "Lotes relacionados",
-      "Entregado"
+      "Entregado",
+      "Estado"
     ];
 
     const numOrEmpty = (v) => (typeof v === "number" && Number.isFinite(v) ? Number(v.toFixed(2)) : "");
@@ -3257,7 +3278,7 @@ async function exportToCSV() {
     const headers = [...baseHeaders, ...dynamicHeaders, ...tailHeaders];
 
     const rows = pedidos.map((p, pedidoIndex) => {
-      const delivered = (p && (p.estado === 'entregado')) || !!p.entregado;
+      const delivered = getPedidoEstado(p) === 'entregado';
       const detail = detailsByPedido.get(String(p.id ?? pedidoIndex)) || getPedidoTotalsForDisplayPED(p);
       const subPres = (typeof p.subtotalPresentaciones === 'number') ? p.subtotalPresentaciones
         : (typeof p.subtotal === 'number' ? p.subtotal : detail.subtotal);
@@ -3303,7 +3324,8 @@ async function exportToCSV() {
         numOrEmpty(detail.pagoAnt),
         numOrEmpty(detail.saldo),
         (p.lotesRelacionados || "").replace(/\r?\n/g, " "),
-        delivered ? "Sí" : "No"
+        delivered ? "Sí" : "No",
+        pedidoEstadoLabelPED(getPedidoEstado(p))
       ];
     });
 
@@ -3343,6 +3365,28 @@ async function exportToCSV() {
     });
 
     const wb = XLSX.utils.book_new();
+    const deliveryRows = [];
+    [['Completo', pedidos, 'completo'], ['Rápido', pedidosRapidos, 'rapido']].forEach(([tipo, records, mode]) => {
+      records.forEach(order => pedidoEntregasLineasPED(order, mode).forEach(line => {
+        deliveryRows.push([tipo, order.codigo || '', order.id || '', pedidoEstadoLabelPED(getPedidoEstado(order)), line.key, line.label, line.qty,
+          line.registered && line.valid ? line.delivered : '', line.registered && line.valid ? line.qty - line.delivered : '',
+          line.valid ? (line.registered ? 'Registrado' : 'Sin registro de cantidades') : 'Revisar registro']);
+      }));
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Tipo', 'Código', 'ID pedido', 'Estado', 'Identidad producto', 'Producto', 'Pedido', 'Entregado acumulado', 'Pendiente', 'Registro'], ...deliveryRows]), 'Entregas');
+
+    const lotCatalog = readPedidoLotesCatalogPED();
+    const linkedRows = [];
+    [['Completo', pedidos], ['Rápido', pedidosRapidos]].forEach(([tipo, records]) => records.forEach(order => {
+      if (!pedidoLotesRegistroValidoPED(order)){
+        linkedRows.push([tipo, order.codigo || '', order.id || '', '', '', '', '', 'Revisar registro', String(order.lotesRelacionados || '')]);return;
+      }
+      (order.lotesVinculados?.lotes || []).forEach(ref => {
+        const match = pedidoLotesResolverPED(ref, lotCatalog.rows);
+        linkedRows.push([tipo, order.codigo || '', order.id || '', ref.key, ref.codigoSnapshot, match.row ? pedidoLoteCodigoPED(match.row) : '', ref.fechaSnapshot || '', lotCatalog.error ? 'Lectura no disponible' : match.status, String(order.lotesRelacionados || '')]);
+      });
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Tipo', 'Código pedido', 'ID pedido', 'Identidad lote', 'Código al vincular', 'Código actual', 'Fecha al vincular', 'Referencia', 'Texto histórico'], ...linkedRows]), 'Lotes vinculados');
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     ws['!cols'] = headers.map((h) => ({ wch: Math.min(42, Math.max(12, String(h).length + 2)) }));
     XLSX.utils.book_append_sheet(wb, ws, "Pedidos");
@@ -3359,7 +3403,7 @@ async function exportToCSV() {
       order.customerId || '',
       formatDate(order.fechaEntrega),
       order.prioridad === 'alta' ? 'Alta' : 'Normal',
-      order.estado === 'entregado' ? 'Entregado' : 'Pendiente',
+      pedidoEstadoLabelPED(getPedidoEstado(order)),
       quickOrderProductSummaryPED(order),
       (order.items || []).reduce((sum, item) => sum + (Number(item.cantidad || 0) || 0), 0),
       order.createdAt ? new Date(order.createdAt).toISOString() : '',
@@ -3376,7 +3420,7 @@ async function exportToCSV() {
       (order.items || []).forEach((item) => {
         quickDetailRows.push([
           order.id || '', order.codigo || '', order.customerName || '', formatDate(order.fechaEntrega),
-          order.estado === 'entregado' ? 'Entregado' : 'Pendiente', item.productId || '',
+          pedidoEstadoLabelPED(getPedidoEstado(order)), item.productId || '',
           item.productNameSnapshot || '', Number(item.cantidad || 0) || 0
         ]);
       });
@@ -3415,13 +3459,18 @@ window.addEventListener('storage', (event) => {
 document.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener('keydown', (event) => {
     try{
-      if (event && event.key === 'Escape') closePedidoDetailModalPED();
+      if (event && event.key === 'Escape'){
+        if (pedidoLotesEditorPED) closePedidoLotesPED();
+        else if (pedidoEntregasEditorPED) closePedidoEntregasPED();
+        else closePedidoDetailModalPED();
+      }
     }catch(_){ }
   });
   await refreshPedidosProductCatalog(true);
   clearForm();
   renderPedidosCurrencyReference();
   initQuickOrdersUI_PED();
+  initPedidoDemandaPED();
 
   // --- Cliente (desde POS) ---
   try{
@@ -3589,6 +3638,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       const estado = $("estado") ? $("estado").value : 'pendiente';
+      if (!['pendiente','en_preparacion','listo','entregado','cancelado'].includes(estado)) return {ok:false,message:'Estado de pedido inválido. Revisá el formulario.'};
       const entregado = (estado === 'entregado');
 
       // Legacy: aproximar estado de pago a partir del anticipo
@@ -3605,7 +3655,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (exCreated && isFinite(exCreated)) createdAt = exCreated;
       }catch(_){ }
 
+      const deliveryBase = pedidosNow.find(p => String(p.id) === String(id));
       const pedido = {
+        ...(deliveryBase && Object.prototype.hasOwnProperty.call(deliveryBase, 'entregasAcumuladas') ? {entregasAcumuladas:deliveryBase.entregasAcumuladas} : {}),
+        ...(deliveryBase && Object.prototype.hasOwnProperty.call(deliveryBase, 'lotesVinculados') ? {lotesVinculados:deliveryBase.lotesVinculados} : {}),
         id,
         createdAt,
         updatedAt: nowMs,
@@ -3670,6 +3723,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         lotesRelacionados: $("lotesRelacionados").value.trim(),
       };
+
+      const deliveryError = validarEntregasPedidoPED(pedido, 'completo');
+      if (deliveryError) return {ok:false,message:deliveryError};
+      if (!pedidoLotesRegistroValidoPED(pedido)) return {ok:false,message:'El registro de vínculos con lotes no es válido. Se conservó el pedido.'};
 
       // Mantener snapshot actual en memoria (fallback si POS no está disponible)
       currentPriceSnapshot = { ...(totales.unitPricesUsed || {}) };
@@ -3824,6 +3881,391 @@ function registerServiceWorker() {
     console.warn('Pedidos: error al registrar Service Worker', err);
   }
 }
+
+// E6.2: seguimiento acumulado independiente del estado, los precios y el inventario.
+let pedidoEntregasEditorPED = null;
+function pedidoEntregasProductosPED(order, mode){
+  return mode === 'rapido'
+    ? (order.items || []).map((item,index) => ({key:item.productId ? 'product:' + item.productId : 'historical:' + index + ':' + djb2Hash(item.productNameSnapshot || ''), label:item.productNameSnapshot || 'Producto', qty:Number(item.cantidad)}))
+    : getPedidoDetailProductLinesPED(order, getPriceSnapshotFromPedido(order)).map((item,index) => ({key:item.identityKey || 'historical:' + index + ':' + djb2Hash(item.label), label:item.label, qty:Number(item.qty)}));
+}
+function pedidoEntregasRegistroValidoPED(order){
+  if (!Object.prototype.hasOwnProperty.call(order, 'entregasAcumuladas')) return true;
+  const record = order.entregasAcumuladas;
+  if (!record || record.schemaVersion !== 1 || !Array.isArray(record.productos)) return false;
+  const seen = new Set();
+  return record.productos.every(row => {
+    if (!row || typeof row.key !== 'string' || !row.key || seen.has(row.key) || typeof row.cantidad !== 'number' || !Number.isFinite(row.cantidad) || row.cantidad < 0) return false;
+    seen.add(row.key); return true;
+  });
+}
+function pedidoEntregasLineasPED(order, mode){
+  const valid = pedidoEntregasRegistroValidoPED(order);
+  const registered = Object.prototype.hasOwnProperty.call(order, 'entregasAcumuladas');
+  const quantities = new Map(valid && registered ? order.entregasAcumuladas.productos.map(row => [row.key,row.cantidad]) : []);
+  return pedidoEntregasProductosPED(order, mode).map(line => ({...line, registered, delivered:quantities.get(line.key) ?? 0, valid:valid && (quantities.get(line.key) ?? 0) <= line.qty}));
+}
+function validarEntregasPedidoPED(order, mode){
+  if (!pedidoEntregasRegistroValidoPED(order)) return 'El registro de cantidades entregadas no es válido. Conservá el pedido y revisá sus datos antes de guardar.';
+  const lines = pedidoEntregasLineasPED(order, mode);
+  if (lines.some(line => !line.valid)) return 'No se puede pedir menos de lo ya entregado. Revisá las cantidades acumuladas antes de guardar.';
+  const keys = new Set(lines.map(line => line.key));
+  if ((order.entregasAcumuladas?.productos || []).some(row => row.cantidad > 0 && !keys.has(row.key))) return 'No se puede quitar o cambiar la identidad de un producto con cantidades entregadas. Revisá primero su entrega acumulada.';
+  return '';
+}
+function pedidoEntregasResumenPED(order, mode){
+  const error = validarEntregasPedidoPED(order, mode);
+  if (error) return 'Revisar cantidades entregadas';
+  if (!Object.prototype.hasOwnProperty.call(order, 'entregasAcumuladas')) return 'Sin registro de cantidades';
+  const lines = pedidoEntregasLineasPED(order, mode);
+  const qty = lines.reduce((sum,line) => sum + line.qty,0);
+  const delivered = lines.reduce((sum,line) => sum + line.delivered,0);
+  return `Entregado ${delivered} de ${qty} · Pendiente ${qty - delivered}`;
+}
+function createPedidoEntregasButtonPED(id, mode){
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'btn-secondary'; button.textContent = 'Cantidades entregadas';
+  button.addEventListener('click', () => openPedidoEntregasPED(id, mode));
+  return button;
+}
+function closePedidoEntregasPED(){
+  if (pedidoEntregasEditorPED?.dirty && !confirm('Hay cantidades sin guardar. ¿Cerrar y descartar estos cambios?')) return;
+  $('pedido-entregas-modal').hidden = true;
+  pedidoEntregasEditorPED = null;
+  document.body.classList.remove('a33-modal-open');
+}
+function openPedidoEntregasPED(id, mode){
+  if (pedidoEntregasEditorPED?.dirty){ if (!confirm('Hay cantidades sin guardar. ¿Descartar estos cambios y abrir otro pedido?')) return; }
+  const order = (mode === 'rapido' ? loadQuickOrdersPED() : loadPedidos()).find(row => String(row.id) === String(id));
+  if (!order) return;
+  const lines = pedidoEntregasLineasPED(order, mode);
+  pedidoEntregasEditorPED = {id, mode, base:JSON.parse(JSON.stringify(order)), dirty:false};
+  const host = $('pedido-entregas-lines'); host.replaceChildren();
+  $('pedido-entregas-title').textContent = 'Cantidades entregadas · ' + (order.codigo || 'Pedido');
+  lines.forEach(line => {
+    const row = document.createElement('label'); row.className = 'form-group';
+    const name = document.createElement('span'); name.textContent = `${line.label} · Pedido: ${line.qty}`;
+    const input = document.createElement('input'); input.type = 'number'; input.min = '0'; input.max = String(line.qty); input.step = mode === 'rapido' ? '1' : 'any';
+    input.value = line.valid ? String(line.delivered) : ''; input.dataset.deliveryKey = line.key; input.setAttribute('aria-label','Entregado acumulado de ' + line.label);
+    const pending = document.createElement('span'); pending.dataset.deliveryPending = line.key;
+    const refresh = () => {const raw=input.value;const number=Number(raw);pending.textContent=raw.trim() && Number.isFinite(number) && number>=0 && number<=line.qty ? `Pendiente: ${line.qty-number}` : 'Revisá la cantidad';};
+    input.addEventListener('input', () => {pedidoEntregasEditorPED.dirty = true;refresh();}); refresh();
+    row.append(name,input,pending);host.appendChild(row);
+  });
+  const error = validarEntregasPedidoPED(order, mode);
+  $('pedido-entregas-notice').textContent = error || (order.entregasAcumuladas ? pedidoEntregasResumenPED(order, mode) : 'Sin cantidades registradas. El estado del pedido no determina cuánto se entregó.');
+  $('pedido-entregas-save').disabled = !!error || !lines.length;
+  $('pedido-entregas-form').onsubmit = savePedidoEntregasPED;
+  $('pedido-entregas-close').onclick = closePedidoEntregasPED;
+  $('pedido-entregas-modal').hidden = false;document.body.classList.add('a33-modal-open');
+  host.querySelector('input')?.focus();
+}
+function savePedidoEntregasPED(event){
+  event?.preventDefault();
+  const editor = pedidoEntregasEditorPED;
+  if (!editor) return;
+  const notice = $('pedido-entregas-notice');
+  const records = editor.mode === 'rapido' ? loadQuickOrdersPED() : loadPedidos();
+  const index = records.findIndex(row => String(row.id) === String(editor.id));
+  const fingerprint = window.A33Storage && A33Storage.recordFingerprint;
+  if (index < 0 || !fingerprint || fingerprint(records[index]) !== fingerprint(editor.base)){
+    notice.textContent = 'Este pedido cambió o fue eliminado. Las cantidades pendientes se conservan; cerrá y abrí el pedido vigente para revisarlo.';return;
+  }
+  const lines = pedidoEntregasProductosPED(editor.base, editor.mode);
+  const inputs = Array.from($('pedido-entregas-lines').querySelectorAll('input[data-delivery-key]'));
+  const cantidades = inputs.map(input => ({key:input.dataset.deliveryKey,cantidad:Number(input.value)}));
+  if (inputs.length !== lines.length || inputs.some((input,i) => !input.value.trim() || input.dataset.deliveryKey !== lines[i].key || !Number.isFinite(cantidades[i].cantidad) || cantidades[i].cantidad<0 || cantidades[i].cantidad>lines[i].qty || (editor.mode === 'rapido' && !Number.isInteger(cantidades[i].cantidad)))){
+    notice.textContent = 'Cada cantidad entregada debe estar entre cero y lo pedido, sin campos vacíos. En Pedido rápido debe ser entera.';return;
+  }
+  const updated = {...records[index], entregasAcumuladas:{schemaVersion:1,productos:cantidades,updatedAt:Date.now()}, updatedAt:Date.now()};
+  const error = validarEntregasPedidoPED(updated, editor.mode);
+  if (error){notice.textContent=error;return;}
+  records[index] = updated;
+  const result = editor.mode === 'rapido' ? saveQuickOrdersPED(records,[editor.id]) : {ok:savePedidos(records,[editor.id])};
+  if (!result || !result.ok){notice.textContent=result?.message || 'No se pudo confirmar el guardado. Las cantidades pendientes se conservan.';return;}
+  const persisted = (editor.mode === 'rapido' ? loadQuickOrdersPED() : loadPedidos()).find(row => String(row.id) === String(editor.id));
+  if (!persisted || fingerprint(persisted.entregasAcumuladas) !== fingerprint(updated.entregasAcumuladas)){
+    notice.textContent='No se pudo comprobar el guardado. Las cantidades pendientes se conservan.';return;
+  }
+  pedidoEntregasEditorPED = {...editor,base:JSON.parse(JSON.stringify(persisted)),dirty:false};
+  notice.textContent='Cantidades guardadas ✓ · ' + pedidoEntregasResumenPED(persisted, editor.mode);
+  renderTable();renderQuickOrdersPED();
+}
+window.addEventListener('beforeunload', event => {
+  if (!pedidoEntregasEditorPED?.dirty) return;
+  event.preventDefault();event.returnValue='';
+});
+
+
+
+// E6.3: referencias informativas a lotes completos, sin conversión del texto histórico.
+let pedidoLotesEditorPED = null;
+function pedidoLoteCodigoPED(row){ return String(row?.codigo || row?.batchCode || row?.code || '').trim(); }
+function pedidoLoteIdentidadesPED(row){
+  const ids = [row?.loteId,row?.id,row?.operationId,row?.productionOperationId,row?.batchId].map(value => String(value ?? '').trim()).filter(Boolean);
+  const codes = [row?.codigo,row?.batchCode,row?.code].map(value => String(value ?? '').trim()).filter(Boolean);
+  return Array.from(new Set([...ids.map(id => 'id:' + id), ...codes.map(code => 'code:' + code)]));
+}
+function readPedidoLotesCatalogPED(){
+  try{
+    const raw = localStorage.getItem('arcano33_lotes');
+    const rows = raw == null ? [] : JSON.parse(raw);
+    if (!Array.isArray(rows) || rows.some(row => !row || typeof row !== 'object' || Array.isArray(row))) throw new Error('Colección de lotes incompleta');
+    return {rows,error:''};
+  }catch(_){return {rows:[],error:'No se pudieron leer los lotes. Los vínculos existentes se conservan; cerrá y volvé a abrir para reintentar.'};}
+}
+function pedidoLotesRegistroValidoPED(order){
+  if (!Object.prototype.hasOwnProperty.call(order, 'lotesVinculados')) return true;
+  const record = order.lotesVinculados;
+  if (!record || record.schemaVersion !== 1 || !Array.isArray(record.lotes)) return false;
+  const seen = new Set();
+  return record.lotes.every(ref => {
+    if (!ref || typeof ref.key !== 'string' || !ref.key || !Array.isArray(ref.identidades) || !ref.identidades.length || new Set(ref.identidades).size !== ref.identidades.length || !ref.identidades.includes(ref.key) || typeof ref.codigoSnapshot !== 'string' || ref.identidades.some(id => typeof id !== 'string' || !id || seen.has(id))) return false;
+    for (const id of ref.identidades) seen.add(id);
+    return true;
+  });
+}
+function pedidoLotesResolverPED(ref, rows){
+  const candidates = rows.filter(row => pedidoLoteIdentidadesPED(row).some(id => ref.identidades.includes(id)));
+  return candidates.length === 1 ? {row:candidates[0],status:'Localizado'} : {row:null,status:candidates.length ? 'Identidad ambigua' : 'No localizado'};
+}
+function pedidoLoteReferenciaPED(row){
+  const identidades = pedidoLoteIdentidadesPED(row);
+  return identidades.length ? {key:identidades[0],identidades,codigoSnapshot:pedidoLoteCodigoPED(row),fechaSnapshot:String(row.fecha || row.fechaProduccion || row.fechaCreacion || '')} : null;
+}
+function pedidoLotesResumenPED(order){
+  if (!pedidoLotesRegistroValidoPED(order)) return 'Lotes vinculados: revisar registro';
+  const refs = order.lotesVinculados?.lotes || [];
+  return refs.length ? 'Lotes vinculados: ' + refs.map(ref => ref.codigoSnapshot || ref.key).join(', ') : 'Sin lotes vinculados';
+}
+function createPedidoLotesButtonPED(id, mode){
+  const button = document.createElement('button');button.type='button';button.className='btn-secondary';button.textContent='Vincular lotes';
+  button.addEventListener('click', () => openPedidoLotesPED(id, mode));return button;
+}
+function renderPedidoLotesEditorPED(){
+  const editor = pedidoLotesEditorPED;if (!editor) return;
+  const host = $('pedido-lotes-list');host.replaceChildren();
+  editor.refs.forEach((ref,index) => {
+    const result = pedidoLotesResolverPED(ref, editor.catalog.rows);
+    const row = document.createElement('li');
+    const text = document.createElement('span');
+    const current = result.row ? pedidoLoteCodigoPED(result.row) : '';
+    text.textContent = (ref.codigoSnapshot || ref.key) + (current && current !== ref.codigoSnapshot ? ' · Código actual: ' + current : '') + ' · ' + (editor.catalog.error ? 'Lectura no disponible' : result.status);
+    const remove = document.createElement('button');remove.type='button';remove.className='btn-secondary';remove.textContent='Quitar vínculo';remove.disabled=!!editor.error;
+    remove.addEventListener('click', () => {editor.refs.splice(index,1);editor.dirty=true;renderPedidoLotesEditorPED();});row.append(text,remove);host.appendChild(row);
+  });
+  const select = $('pedido-lotes-select');select.replaceChildren();
+  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Seleccionar lote…';select.appendChild(placeholder);
+  editor.options=[];
+  editor.catalog.rows.forEach(row => {
+    const ref=pedidoLoteReferenciaPED(row);
+    if (!ref || pedidoLotesResolverPED(ref,editor.catalog.rows).status !== 'Localizado' || editor.refs.some(old => old.identidades.some(id => ref.identidades.includes(id)))) return;
+    const option=document.createElement('option');option.value=String(editor.options.length);option.textContent=(ref.codigoSnapshot || ref.key) + (ref.fechaSnapshot ? ' · ' + ref.fechaSnapshot : '');editor.options.push(ref);select.appendChild(option);
+  });
+  select.disabled=!!editor.error;$('pedido-lotes-add').disabled=!!editor.error || !editor.options.length;
+  $('pedido-lotes-save').disabled=!!editor.error;
+}
+function openPedidoLotesPED(id, mode){
+  if (pedidoLotesEditorPED?.dirty && !confirm('Hay vínculos sin guardar. ¿Descartar esos cambios?')) return;
+  const order=(mode==='rapido'?loadQuickOrdersPED():loadPedidos()).find(row => String(row.id)===String(id));if (!order) return;
+  const catalog=readPedidoLotesCatalogPED();
+  const invalid=!pedidoLotesRegistroValidoPED(order);
+  const error=invalid ? 'El registro de vínculos no es válido. Se conserva sin modificar; revisá los datos antes de continuar.' : catalog.error;
+  pedidoLotesEditorPED={id,mode,base:JSON.parse(JSON.stringify(order)),refs:invalid?[]:JSON.parse(JSON.stringify(order.lotesVinculados?.lotes || [])),catalog,error,dirty:false};
+  $('pedido-lotes-title').textContent='Lotes vinculados · ' + (order.codigo || 'Pedido');
+  $('pedido-lotes-legacy').textContent=order.lotesRelacionados ? 'Texto histórico conservado: ' + order.lotesRelacionados : 'Sin texto histórico de lotes.';
+  $('pedido-lotes-notice').textContent=error || 'Solo se ofrecen lotes con identidad única. Los vínculos anteriores no se eliminan si falta el lote.';
+  $('pedido-lotes-add').onclick=()=>{
+    const value=$('pedido-lotes-select').value;if(value==='')return;
+    const ref=pedidoLotesEditorPED.options[Number(value)];if(!ref)return;
+    pedidoLotesEditorPED.refs.push(JSON.parse(JSON.stringify(ref)));pedidoLotesEditorPED.dirty=true;renderPedidoLotesEditorPED();
+  };
+  $('pedido-lotes-save').onclick=savePedidoLotesPED;$('pedido-lotes-close').onclick=closePedidoLotesPED;
+  renderPedidoLotesEditorPED();$('pedido-lotes-modal').hidden=false;document.body.classList.add('a33-modal-open');$('pedido-lotes-select').focus();
+}
+function closePedidoLotesPED(){
+  if(pedidoLotesEditorPED?.dirty && !confirm('Hay vínculos sin guardar. ¿Cerrar y descartar esos cambios?'))return;
+  $('pedido-lotes-modal').hidden=true;pedidoLotesEditorPED=null;document.body.classList.remove('a33-modal-open');
+}
+function savePedidoLotesPED(){
+  const editor=pedidoLotesEditorPED;if(!editor || editor.error)return;
+  const notice=$('pedido-lotes-notice');
+  const records=editor.mode==='rapido'?loadQuickOrdersPED():loadPedidos();
+  const index=records.findIndex(row => String(row.id)===String(editor.id));const fingerprint=window.A33Storage && A33Storage.recordFingerprint;
+  if(index<0 || !fingerprint || fingerprint(records[index])!==fingerprint(editor.base)){notice.textContent='Este pedido cambió o fue eliminado. Los vínculos pendientes se conservan; cerrá y abrí el pedido vigente para revisarlo.';return;}
+  const catalog=readPedidoLotesCatalogPED();if(catalog.error){notice.textContent=catalog.error;return;}
+  const previous=editor.base.lotesVinculados?.lotes || [];
+  if(editor.refs.some(ref => !previous.some(old => old.key===ref.key) && pedidoLotesResolverPED(ref,catalog.rows).status!=='Localizado')){
+    notice.textContent='Un lote seleccionado dejó de localizarse de forma única. Se conservan los vínculos pendientes; cerrá y revisá el catálogo vigente.';return;
+  }
+  const now=Date.now();const updated={...records[index],lotesVinculados:{schemaVersion:1,lotes:JSON.parse(JSON.stringify(editor.refs)),updatedAt:now},updatedAt:now};
+  if(!pedidoLotesRegistroValidoPED(updated)){notice.textContent='Los vínculos no tienen identidades válidas y únicas. No se guardaron cambios.';return;}
+  records[index]=updated;
+  const result=editor.mode==='rapido'?saveQuickOrdersPED(records,[editor.id]):{ok:savePedidos(records,[editor.id])};
+  if(!result || !result.ok){notice.textContent=result?.message || 'No se pudo confirmar el guardado. Los vínculos pendientes se conservan.';return;}
+  const persisted=(editor.mode==='rapido'?loadQuickOrdersPED():loadPedidos()).find(row => String(row.id)===String(editor.id));
+  if(!persisted || fingerprint(persisted.lotesVinculados)!==fingerprint(updated.lotesVinculados)){notice.textContent='No se pudo comprobar el guardado. Los vínculos pendientes se conservan.';return;}
+  pedidoLotesEditorPED={...editor,base:JSON.parse(JSON.stringify(persisted)),catalog,dirty:false};renderPedidoLotesEditorPED();notice.textContent='Vínculos guardados ✓';renderTable();renderQuickOrdersPED();
+}
+window.addEventListener('beforeunload', event => {if(pedidoLotesEditorPED?.dirty){event.preventDefault();event.returnValue='';}});
+
+
+// E6.4: demanda de solo lectura; distingue saldo registrado y estimación sin acumulado.
+function pedidoDemandaCantidadOriginalPED(item,mode){
+  const value=mode==='rapido' ? (item.cantidad ?? item.qty ?? item.quantity ?? item.unidades) : (item.qty ?? item.cantidad ?? item.quantity ?? item.unidades ?? 0);
+  return Number(mode==='completo' ? String(value).replace(',', '.') : value);
+}
+function readPedidoDemandaSourcePED(){
+  const result={completo:[],rapido:[],issues:{completo:[],rapido:[]},error:''};
+  for(const [mode,key,label] of [['completo',STORAGE_KEY_PEDIDOS,'Pedidos completos'],['rapido',STORAGE_KEY_PEDIDOS_RAPIDOS,'Pedidos rápidos']]){
+    try{
+      const raw=localStorage.getItem(key);const parsed=raw==null?[]:JSON.parse(raw);
+      if(!Array.isArray(parsed) || parsed.some(row=>!row || typeof row!=='object' || Array.isArray(row)))throw new Error('Colección incompleta');
+      result.issues[mode]=parsed.map(order=>{
+        const items=mode==='rapido'?([order.items,order.productosPedido,order.pedidoItems,order.productos].find(Array.isArray) || []):getPedidoProductItemsArray(order);
+        if(items.some(item=>!item || typeof item!=='object' || Array.isArray(item) || !Number.isFinite(pedidoDemandaCantidadOriginalPED(item,mode)) || pedidoDemandaCantidadOriginalPED(item,mode)<=0))return 'Productos o cantidades incompletos en el registro original.';
+        if(mode==='completo' && !items.length && LEGACY_PRESENTACIONES.some(pres=>{const value=order[pres.qtyId];return value!=null && value!=='' && (!Number.isFinite(Number(String(value).replace(',', '.'))) || Number(String(value).replace(',', '.'))<0);}))return 'Cantidad histórica inválida en el registro original.';
+        return '';
+      });
+      result[mode]=mode==='rapido'?parsed.map(normalizeQuickOrderPED):normalizePedidosList(parsed);
+    }catch(_){result.error='No se pudo leer '+label+'. No se puede calcular una demanda completa.';return result;}
+  }
+  return result;
+}
+function buildPedidoDemandaPED(source,filter={}){
+  const result={rows:[],sources:[],review:[],excluded:0,totalRegistrado:0,totalEstimado:0,total:0,error:source.error || ''};
+  if(result.error)return result;
+  const desde=String(filter.desde || ''),hasta=String(filter.hasta || '');
+  if((desde && !isExactQuickOrderDatePED(desde)) || (hasta && !isExactQuickOrderDatePED(hasta)) || (desde && hasta && desde>hasta)){
+    result.error='Revisá el período: las fechas deben ser válidas y Desde no puede ser posterior a Hasta.';return result;
+  }
+  const groups=new Map();
+  for(const mode of ['completo','rapido']){
+    const records=source[mode] || [];const counts=new Map();
+    records.forEach(order=>{const id=String(order.id);counts.set(id,(counts.get(id)||0)+1);});
+    records.forEach((order,index)=>{
+      if(!['pendiente','en_preparacion','listo'].includes(getPedidoEstado(order))){result.excluded++;return;}
+      const date=String(order.fechaEntrega || '').slice(0,10);
+      const code=String(order.codigo || order.id || 'Pedido');
+      const type=mode==='rapido'?'Rápido':'Completo';
+      const review=reason=>result.review.push({tipo:type,codigo:code,id:String(order.id),fecha:date,motivo:reason});
+      if(!isExactQuickOrderDatePED(date)){review('Fecha de entrega ausente o inválida; no incluida en el total.');return;}
+      if((desde && date<desde) || (hasta && date>hasta))return;
+      if(counts.get(String(order.id))>1){review('Identidad de pedido duplicada; no incluida en el total.');return;}
+      if(source.issues?.[mode]?.[index]){review(source.issues[mode][index]+' No incluido en el total.');return;}
+      const error=validarEntregasPedidoPED(order,mode);
+      if(error){review(error+' No incluido en el total.');return;}
+      const lines=pedidoEntregasLineasPED(order,mode);
+      if(!lines.length || lines.some(line=>!Number.isFinite(line.qty) || line.qty<=0 || (mode==='rapido' && !Number.isInteger(line.qty)))){
+        review('Productos o cantidades incompletos; no incluidos en el total.');return;
+      }
+      const products=mode==='rapido'?order.items:getPedidoDetailProductLinesPED(order,getPriceSnapshotFromPedido(order));
+      lines.forEach((line,lineIndex)=>{
+        const productId=String(products[lineIndex]?.productId || '').trim();
+        // Sin productId no se fusionan familias, nombres ni fotografías de pedidos diferentes.
+        const identity=productId?'product:'+productId:'historical:'+mode+':'+index+':'+line.key;
+        const key=JSON.stringify([date,identity]);
+        const registered=line.registered && order.entregasAcumuladas.productos.some(ref=>ref.key===line.key);
+        const pending=line.qty-(registered?line.delivered:0);
+        let group=groups.get(key);
+        if(!group){group={fecha:date,productId,identity,label:line.label,labels:new Set(),registrado:0,estimado:0,total:0,pedidos:new Set(),historico:!productId};groups.set(key,group);}
+        group.labels.add(line.label);group.pedidos.add(mode+':'+index);
+        if(registered)group.registrado+=pending;else group.estimado+=pending;
+        group.total+=pending;
+        result.sources.push({tipo:type,codigo:code,id:String(order.id),fecha:date,estado:pedidoEstadoLabelPED(getPedidoEstado(order)),productId,identity,label:line.label,pedido:line.qty,entregado:registered?line.delivered:null,pendiente:pending,registro:registered?'Con registro de entregas':'Estimado: sin registro de entregas',historico:!productId});
+      });
+    });
+  }
+  result.rows=Array.from(groups.values()).map(group=>({...group,label:Array.from(group.labels).join(' / '),labels:undefined,pedidos:group.pedidos.size})).sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.label.localeCompare(b.label)||a.identity.localeCompare(b.identity));
+  result.rows.forEach(row=>{result.totalRegistrado+=row.registrado;result.totalEstimado+=row.estimado;});result.total=result.totalRegistrado+result.totalEstimado;
+  return result;
+}
+function getPedidoDemandaPED(){
+  return buildPedidoDemandaPED(readPedidoDemandaSourcePED(),{desde:$('pedido-demanda-desde')?.value || '',hasta:$('pedido-demanda-hasta')?.value || ''});
+}
+// E6.5: saldo central informativo; no suma snapshots de Lotes ni saldos POS.
+function readPedidoDisponibilidadPED(){
+  try{
+    const raw=localStorage.getItem('arcano33_inventario');
+    if(raw===null)return {stocks:null,error:'Inventario central ausente.'};
+    const data=JSON.parse(raw);
+    if(!data || typeof data!=='object' || Array.isArray(data) || !data.finishedByProductId || typeof data.finishedByProductId!=='object' || Array.isArray(data.finishedByProductId))return {stocks:null,error:'Inventario sin saldos identificados verificables.'};
+    return {stocks:data.finishedByProductId,error:''};
+  }catch(_){return {stocks:null,error:'No se pudo leer el Inventario central.'};}
+}
+function buildPedidoDisponibilidadPED(demand,inventory){
+  if(demand.error)return [];
+  const groups=new Map();
+  for(const row of demand.rows){
+    let group=groups.get(row.identity);
+    if(!group){group={productId:row.productId,identity:row.identity,label:row.label,registrado:0,estimado:0,total:0};groups.set(row.identity,group);}
+    group.registrado+=row.registrado;group.estimado+=row.estimado;group.total+=row.total;
+  }
+  return Array.from(groups.values()).map(row=>{
+    const entry=row.productId && inventory.stocks && Object.prototype.hasOwnProperty.call(inventory.stocks,row.productId)?inventory.stocks[row.productId]:null;
+    const raw=entry && typeof entry==='object' && !Array.isArray(entry)?entry.stock:null;
+    const stock=typeof raw==='number'?raw:(typeof raw==='string' && raw.trim()?Number(raw):NaN);
+    const valid=Number.isFinite(stock) && (!entry.productId || String(entry.productId)===row.productId);
+    const reason=!row.productId?'Producto histórico sin identidad verificable.':inventory.error || (!valid?'Saldo ausente o inválido para este producto.':'Saldo central actual; comparación informativa.');
+    return {...row,stock:valid?stock:null,difference:valid?stock-row.total:null,reason};
+  });
+}
+function renderPedidoDisponibilidadPED(demand){
+  const host=$('pedido-disponibilidad-body');if(!host)return;
+  host.replaceChildren();
+  if(demand.error)return;
+  const rows=buildPedidoDisponibilidadPED(demand,readPedidoDisponibilidadPED());
+  for(const row of rows){
+    const tr=document.createElement('tr');
+    for(const value of [row.label,row.registrado,row.estimado,row.total,row.stock===null?'Sin confirmar':row.stock,row.difference===null?'Sin confirmar':row.difference,row.reason]){
+      const td=document.createElement('td');td.textContent=String(value);tr.appendChild(td);
+    }
+    host.appendChild(tr);
+  }
+  if(!rows.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=7;td.textContent='No hay demanda calculable para comparar.';tr.appendChild(td);host.appendChild(tr);}
+}
+function renderPedidoDemandaPED(){
+  const host=$('pedido-demanda-body');if(!host)return;
+  const data=getPedidoDemandaPED();renderPedidoDisponibilidadPED(data);host.replaceChildren();$('pedido-demanda-sources').replaceChildren();$('pedido-demanda-review').replaceChildren();
+  $('pedido-demanda-export').disabled=!!data.error;
+  if(data.error){$('pedido-demanda-status').textContent=data.error;return;}
+  $('pedido-demanda-status').textContent=`Total informativo: ${data.total} · Pendiente con registro: ${data.totalRegistrado} · Estimado sin registro: ${data.totalEstimado}. ${data.review.length} pedidos para revisión no incluidos en el total. Todas las fechas si no se indica un período.`;
+  data.rows.forEach(row=>{
+    const tr=document.createElement('tr');
+    [formatDate(row.fecha),row.label+(row.historico?' · Histórico sin vínculo al catálogo':''),row.registrado,row.estimado,row.total,row.pedidos].forEach(value=>{const td=document.createElement('td');td.textContent=String(value);tr.appendChild(td);});host.appendChild(tr);
+  });
+  if(!data.rows.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=6;td.textContent='No hay demanda calculable en este período.';tr.appendChild(td);host.appendChild(tr);}
+  for(const [id,rows,describe] of [['pedido-demanda-sources',data.sources,row=>`${row.tipo} ${row.codigo} · ${formatDate(row.fecha)} · ${row.label}: pendiente ${row.pendiente} · ${row.registro}`],['pedido-demanda-review',data.review,row=>`${row.tipo} ${row.codigo} · ${row.motivo}`]]){
+    const list=$(id);rows.forEach(row=>{const li=document.createElement('li');li.textContent=describe(row);list.appendChild(li);});
+    if(!rows.length){const li=document.createElement('li');li.textContent=id==='pedido-demanda-sources'?'Sin pedidos considerados.':'Sin incidencias de revisión.';list.appendChild(li);}
+  }
+}
+function refreshPedidoDemandaIfOpenPED(){if($('pedido-demanda-panel')?.open)renderPedidoDemandaPED();}
+function exportPedidoDemandaPED(){
+  const data=getPedidoDemandaPED();const status=$('pedido-demanda-status');
+  if(data.error){renderPedidoDemandaPED();return;}
+  if(typeof XLSX==='undefined'){status.textContent='No se pudo generar Excel: librería XLSX no disponible.';return;}
+  try{
+    const wb=XLSX.utils.book_new();
+    const add=(name,rows)=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),name);
+    add('Demanda',[['Fecha entrega','Producto','productId / identidad histórica','Pendiente con registro','Estimado sin registro','Total informativo','Pedidos','Identidad'],...data.rows.map(row=>[row.fecha,row.label,row.productId || row.identity,row.registrado,row.estimado,row.total,row.pedidos,row.historico?'Histórico sin productId':'Producto identificado'])]);
+    add('Pedidos considerados',[['Tipo','Código pedido','ID pedido','Fecha entrega','Estado','Producto','Identidad','Cantidad pedida','Entregado acumulado','Pendiente','Origen del cálculo'],...data.sources.map(row=>[row.tipo,row.codigo,row.id,row.fecha,row.estado,row.label,row.productId || row.identity,row.pedido,row.entregado===null?'':row.entregado,row.pendiente,row.registro])]);
+    add('Revisión',[['Tipo','Código pedido','ID pedido','Fecha entrega','Motivo'],...data.review.map(row=>[row.tipo,row.codigo,row.id,row.fecha,row.motivo])]);
+    add('Período',[['Desde','Hasta','Regla'],[$('pedido-demanda-desde')?.value || 'Todas',$('pedido-demanda-hasta')?.value || 'Todas','Activos Pendiente / En preparación / Listo. Sin registro: estimación completa. Sin reservas.']]);
+    const availability=buildPedidoDisponibilidadPED(data,readPedidoDisponibilidadPED());
+    add('Disponibilidad',[['Producto','productId / identidad histórica','Pendiente con registro','Estimado sin registro','Demanda del período','Saldo actual Inventario','Diferencia saldo menos demanda','Verificación','Fuente / observación'],...availability.map(row=>[row.label,row.productId || row.identity,row.registrado,row.estimado,row.total,row.stock===null?'':row.stock,row.difference===null?'':row.difference,row.stock===null?'Sin confirmar':'Saldo identificado',row.reason])]);
+    add('Contexto disponibilidad',[['Consulta solicitada','Fuente','Regla','Límite'],[new Date().toISOString(),'Inventario central: productos terminados por identidad','Saldo actual una vez por producto para todo el período. Incluye estimaciones. No suma Lotes/POS. No reserva ni descuenta.','No garantiza disponibilidad futura. Pedidos para revisión excluidos; lecturas no atómicas entre pestañas.']]);
+    XLSX.writeFile(wb,'demanda_pedidos.xlsx');status.textContent='Exportación de demanda solicitada. '+data.review.length+' pedidos para revisión no incluidos en el total.';
+  }catch(_){status.textContent='No se pudo generar la exportación de demanda. No se modificaron los pedidos.';}
+}
+function initPedidoDemandaPED(){
+  const panel=$('pedido-demanda-panel');if(!panel)return;
+  panel.addEventListener('toggle',()=>{if(panel.open)renderPedidoDemandaPED();});
+  $('pedido-demanda-refresh').addEventListener('click',renderPedidoDemandaPED);
+  for(const id of ['pedido-demanda-desde','pedido-demanda-hasta'])$(id).addEventListener('change',renderPedidoDemandaPED);
+  $('pedido-demanda-export').addEventListener('click',exportPedidoDemandaPED);
+}
+window.addEventListener('storage',event=>{if(event.key===null || [STORAGE_KEY_PEDIDOS,STORAGE_KEY_PEDIDOS_RAPIDOS,'arcano33_inventario'].includes(event.key))refreshPedidoDemandaIfOpenPED();});
 
 // E5.3: borradores de formularios, separados de los pedidos registrados.
 const PED_FORM_DRAFT_PREFIX = 'a33_pedidos_form_draft_v1_';

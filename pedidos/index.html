@@ -99,7 +99,7 @@
       .pedidos-visual #pedidos-table td:nth-child(3)::before, .pedidos-visual #archived-table td:nth-child(3)::before { content: "Cliente"; }
       .pedidos-visual #pedidos-table td:nth-child(4)::before, .pedidos-visual #archived-table td:nth-child(4)::before { content: "Entrega"; }
       .pedidos-visual #pedidos-table td:nth-child(5)::before, .pedidos-visual #archived-table td:nth-child(6)::before { content: "Total (C$)"; }
-      .pedidos-visual #pedidos-table td:nth-child(6)::before { content: "Entregado"; }
+      .pedidos-visual #pedidos-table td:nth-child(6)::before { content: "Estado"; }
       .pedidos-visual #archived-table td:nth-child(5)::before { content: "Estado"; }
       html body.pedidos-visual #pedidos-table td.actions-cell, html body.pedidos-visual #archived-table td.actions-cell { grid-column: 1 / -1; width: auto; justify-content: flex-start; }
       .pedidos-visual td[colspan] { grid-column: 1 / -1; }
@@ -299,7 +299,10 @@
             <label for="estado">Estado</label>
             <select id="estado" name="estado">
               <option value="pendiente">Pendiente</option>
+              <option value="en_preparacion">En preparación</option>
+              <option value="listo">Listo</option>
               <option value="entregado">Entregado</option>
+              <option value="cancelado">Cancelado</option>
             </select>
           </div>
         </div>
@@ -309,7 +312,7 @@
         <h3>Relación con lotes</h3>
         <div class="form-grid">
           <div class="field">
-            <label for="lotesRelacionados">Códigos de lote relacionados</label>
+            <label for="lotesRelacionados">Códigos de lote relacionados (texto)</label>
             <input type="text" id="lotesRelacionados" name="lotesRelacionados" placeholder="Ej: A33-2025-12-01-01, A33-2025-12-02-02" />
           </div>
         </div>
@@ -344,7 +347,7 @@
               <th>Cliente</th>
               <th>Entrega</th>
               <th>Total (C$)</th>
-              <th>Entregado</th>
+              <th>Estado</th>
               <th class="actions-col">Acciones</th>
             </tr>
           </thead>
@@ -425,7 +428,10 @@
             <label for="quick-status">Estado</label>
             <select id="quick-status">
               <option value="pendiente">Pendiente</option>
+              <option value="en_preparacion">En preparación</option>
+              <option value="listo">Listo</option>
               <option value="entregado">Entregado</option>
+              <option value="cancelado">Cancelado</option>
             </select>
           </div>
         </div>
@@ -480,6 +486,38 @@
       </div>
     </details>
 
+    <details class="card" id="pedido-demanda-panel">
+      <summary>Demanda informativa por producto y fecha</summary>
+      <p class="hint">Pendiente, En preparación y Listo de ambos tipos de pedido. Sin registro de entregas, la cantidad completa se cuenta como estimación. No reserva existencias.</p>
+      <div class="form-grid">
+        <div class="field"><label for="pedido-demanda-desde">Entrega desde</label><input type="date" id="pedido-demanda-desde" /></div>
+        <div class="field"><label for="pedido-demanda-hasta">Entrega hasta</label><input type="date" id="pedido-demanda-hasta" /></div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="pedido-demanda-refresh">Actualizar demanda</button>
+        <button type="button" class="btn-secondary" id="pedido-demanda-export">Exportar demanda a Excel</button>
+      </div>
+      <p id="pedido-demanda-status" role="status"></p>
+      <div class="pedido-detail-table-wrap">
+        <table class="mini-table">
+          <thead><tr><th>Entrega</th><th>Producto</th><th>Pendiente con registro</th><th>Estimado sin registro</th><th>Total informativo</th><th>Pedidos</th></tr></thead>
+          <tbody id="pedido-demanda-body"></tbody>
+        </table>
+      </div>
+      <h3>Disponibilidad informativa del período</h3>
+      <p class="hint">Saldo actual de productos terminados en Inventario, comparado una sola vez por producto con toda la demanda seleccionada. Diferencia = saldo menos demanda, incluidas las estimaciones. No garantiza disponibilidad futura, no reserva ni descuenta existencias. Los saldos de Lotes y POS no se suman. Los pedidos para revisión no están incluidos.</p>
+      <div class="pedido-detail-table-wrap">
+        <table class="mini-table">
+          <thead><tr><th>Producto</th><th>Pendiente con registro</th><th>Estimado sin registro</th><th>Demanda del período</th><th>Saldo actual</th><th>Diferencia</th><th>Fuente / observación</th></tr></thead>
+          <tbody id="pedido-disponibilidad-body"></tbody>
+        </table>
+      </div>
+      <h3>Pedidos considerados</h3>
+      <ul id="pedido-demanda-sources"></ul>
+      <h3>Para revisión</h3>
+      <ul id="pedido-demanda-review"></ul>
+    </details>
+
   </main>
 
 
@@ -521,6 +559,9 @@
         </div>
       </div>
 
+      <p id="pedido-detail-entregas"></p>
+      <p id="pedido-detail-linked-lots"></p>
+
       <div class="pedido-detail-grid totals-grid">
         <div><span>Subtotal</span><strong id="pedido-detail-subtotal"></strong></div>
         <div><span>Descuento</span><strong id="pedido-detail-discount"></strong></div>
@@ -538,6 +579,40 @@
 
       <div class="form-actions modal-actions">
         <button type="button" class="btn-primary" id="pedido-detail-ok">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pedido-entregas-modal" class="a33-modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="pedido-entregas-title">
+    <div class="a33-modal-card pedido-detail-card">
+      <h2 id="pedido-entregas-title">Cantidades entregadas</h2>
+      <p>Registrá el total acumulado entregado de cada producto. El estado del pedido se cambia por separado.</p>
+      <form id="pedido-entregas-form">
+        <div id="pedido-entregas-lines"></div>
+        <p id="pedido-entregas-notice" role="status"></p>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="pedido-entregas-save">Guardar cantidades</button>
+          <button type="button" class="btn-secondary" id="pedido-entregas-close">Cerrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="pedido-lotes-modal" class="a33-modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="pedido-lotes-title">
+    <div class="a33-modal-card pedido-detail-card">
+      <h2 id="pedido-lotes-title">Lotes vinculados</h2>
+      <p>Estos vínculos son informativos. No asignan cantidades ni reservan existencias.</p>
+      <p id="pedido-lotes-legacy"></p>
+      <div class="field">
+        <label for="pedido-lotes-select">Seleccionar lote</label>
+        <select id="pedido-lotes-select"></select>
+        <button type="button" class="btn-secondary" id="pedido-lotes-add">Vincular lote</button>
+      </div>
+      <ul id="pedido-lotes-list"></ul>
+      <p id="pedido-lotes-notice" role="status"></p>
+      <div class="form-actions">
+        <button type="button" class="btn-primary" id="pedido-lotes-save">Guardar vínculos</button>
+        <button type="button" class="btn-secondary" id="pedido-lotes-close">Cerrar</button>
       </div>
     </div>
   </div>

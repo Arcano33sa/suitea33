@@ -936,6 +936,105 @@
       "reason": "E5.8: formularios reales, mismo registro y cambios independientes en varias pestañas.",
       "group": "funcional",
       "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-pedidos-estados-e61.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E6.1: cinco estados de seguimiento, compatibilidad histórica y lectores; sin movimientos de inventario.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-estados-e61.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E6.1: cinco estados de seguimiento, compatibilidad histórica y lectores; sin movimientos de inventario.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-entregas-e62.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E6.2: entregas acumuladas por producto, estados manuales, conservación histórica, límites y conflictos sin afectar inventario ni ventas.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-entregas-e62.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E6.2: entregas acumuladas por producto, estados manuales, conservación histórica, límites y conflictos sin afectar inventario ni ventas.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-lotes-e63.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E6.3: vínculos informativos a lotes completos, identidades históricas, lectura sin escritura, persistencia, respaldo y conflictos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-lotes-e63.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E6.3: vínculos informativos a lotes completos, identidades históricas, lectura sin escritura, persistencia, respaldo y conflictos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-demanda-e64.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E6.4: demanda informativa por fecha/producto, saldos registrados, estimaciones identificadas, exclusiones, revisión y exportación de solo lectura.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-demanda-e64.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E6.4: demanda informativa por fecha/producto, saldos registrados, estimaciones identificadas, exclusiones, revisión y exportación de solo lectura.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-disponibilidad-e65.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E6.5: comparación informativa con saldo central por producto, lectura sin escritura y datos no verificables.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-disponibilidad-e65.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E6.5: comparación informativa con saldo central por producto, lectura sin escritura y datos no verificables.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-integracion-e66.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E6.6: exportación integrada de disponibilidad sin conexión, valores no verificables y conservación de hojas anteriores.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
     }
   ]
 }

@@ -892,6 +892,8 @@ function addCalendarDaysYmd(value, days){
 
 function normalizeOrderStatus(row){
   const status = text(row && (row.estado ?? row.status)).toLowerCase();
+  if (['en_preparacion','listo'].includes(status)) return 'pending';
+  if (status === 'cancelado') return 'closed';
   if (row && (row.entregado === true || row.completed === true || row.done === true || row.cancelled === true || row.canceled === true)) return 'closed';
   if (['entregado','cerrado','completado','completed','done','hecho','cancelado','cancelled','canceled'].includes(status)) return 'closed';
   return 'pending';
