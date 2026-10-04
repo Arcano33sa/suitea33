@@ -18,6 +18,7 @@ const PRECACHE_URLS = [
   '/assets/js/a33-release.js?v=4.20.98&r=54',
   '/assets/js/a33-production.js?v=4.20.98&r=3',
   '/assets/js/a33-storage.js?v=4.20.98&r=22',
+  '/assets/js/a33-catalog-costs.js?v=4.20.98&r=1',
   '/assets/js/a33-lot-code.js?v=4.20.98&r=6',
   '/assets/js/a33-currency.js?v=4.20.98&r=14',
   '/assets/js/a33-presentations.js?v=4.20.98&r=15',

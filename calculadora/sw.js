@@ -18,6 +18,7 @@ const PRECACHE_URLS = [
   './logo-icon-512.png',
   '/assets/js/a33-release.js?v=4.20.98&r=57',
   '/assets/js/a33-storage.js?v=4.20.98&r=22',
+  '/assets/js/a33-catalog-costs.js?v=4.20.98&r=1',
   '/assets/js/a33-production.js?v=4.20.98&r=5',
   '/assets/js/a33-lot-code.js?v=4.20.98&r=6',
   '/assets/js/a33-currency.js?v=4.20.98&r=14',

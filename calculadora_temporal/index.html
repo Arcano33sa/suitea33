@@ -666,7 +666,7 @@
         </table>
       </div>
       <button id="btn-guardar-receta" class="btn-secondary">Guardar receta temporal en este navegador</button>
-      <p class="hint">La lista se alimenta desde Catálogos/Producción. Lo que guardes aquí queda solo en Temporal y no mueve inventario.</p>
+      <p class="hint">El costo unitario es obligatorio y proviene de Catálogos → Costos. Completa y guarda allí los costos pendientes. Las recetas temporales quedan solo en Temporal y no mueven inventario.</p>
     </div>
     </div>
 
@@ -780,6 +780,7 @@
 
   <script src="/assets/js/a33-storage.js?v=4.20.98&r=22"></script>
   <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+  <script src="/assets/js/a33-catalog-costs.js?v=4.20.98&r=1"></script>
   <script src="/assets/js/a33-production.js?v=4.20.98&r=3"></script>
   <script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
 
@@ -1585,6 +1586,8 @@
     }
 
     function capturarPayloadRecetasDesdeUI() {
+      const previous = readTemporalData(STORAGE_RECETAS_KEY, null);
+      const costs = window.A33CatalogCosts.refreshInputs(PRESENTACIONES);
       const recetas = {};
       const costosPresentacion = {};
       PRESENTACIONES.forEach(p => {
@@ -1593,9 +1596,9 @@
           const val = getNumberValue('receta-' + p.id + '-' + ing, { emptyAsNull: true });
           if (typeof val === 'number') recetas[p.id][ing] = val;
         });
-        const costoUnit = getNumberValue('costo-unit-' + p.id, { emptyAsNull: true });
-        const info = a33SerializePresentacionProducto(p);
-        if (typeof costoUnit === 'number') info.costoUnidad = costoUnit;
+        const info = { ...((previous && previous.costosPresentacion && previous.costosPresentacion[p.id]) || {}), ...a33SerializePresentacionProducto(p) };
+        const cost = costs.get(String(p.productId || p.id));
+        if (cost && cost.status === 'complete') info.costoUnidad = cost.total;
         costosPresentacion[p.id] = info;
       });
       return { version: 3, recetas, costosPresentacion, productos: PRESENTACIONES.map(a33SerializePresentacionProducto) };
@@ -1603,7 +1606,6 @@
 
     function aplicarPayloadRecetasEnUI(payload) {
       const data = payload && payload.recetas ? payload.recetas : payload;
-      const costosPresentacion = payload && payload.costosPresentacion ? payload.costosPresentacion : null;
       PRESENTACIONES.forEach(p => {
         const rec = (data && data[p.id]) ? data[p.id] : null;
         INGREDIENTES.forEach(ing => {
@@ -1612,12 +1614,8 @@
           const val = rec ? rec[ing] : undefined;
           input.value = (val === null || val === undefined || val === '') ? '' : String(val);
         });
-        const costoInput = document.getElementById('costo-unit-' + p.id);
-        if (costoInput) {
-          const costo = costosPresentacion && costosPresentacion[p.id] ? costosPresentacion[p.id].costoUnidad : undefined;
-          costoInput.value = (costo === null || costo === undefined || costo === '') ? '' : String(costo);
-        }
       });
+      window.A33CatalogCosts.refreshInputs(PRESENTACIONES);
     }
 
     function aplicarPlanTemporal(plan) {
@@ -1641,6 +1639,7 @@
         fechaCadStr = cad ? cad.toISOString().slice(0, 10) : '';
       }
       return {
+        costosPendientes: Array.isArray(datos && datos.costosPendientes) ? datos.costosPendientes.slice() : [],
         totalesIngredientes: Object.assign({ vino: 0, vodka: 0, jugo: 0, sirope: 0, agua: 0 }, (datos && datos.totalesIngredientes) || {}),
         totalVolumenFinalMl: safeNumber(datos && datos.totalVolumenFinalMl),
         unidadesPorPresentacion: Array.isArray(datos && datos.unidadesPorPresentacion)
@@ -1668,7 +1667,7 @@
 
     function tieneCalculoTemporalValido(datosLike) {
       const datos = serializarDatosCalculo(datosLike || calcularDatosLote());
-      if (!datos.unidadesPorPresentacion.length) return false;
+      if (!datos.unidadesPorPresentacion.length || datos.costosPendientes.length) return false;
       if (!String(datos.fechaProdStr || '').trim()) return false;
       const loteInput = document.getElementById('lote');
       const codigo = (loteInput && loteInput.value) ? loteInput.value : datos.loteNombre;
@@ -1690,8 +1689,9 @@
       let costoTotal = 0;
       const filas = [];
       (datos.unidadesPorPresentacion || []).forEach(item => {
-        const costoUnit = getNumberValue('costo-unit-' + item.id);
-        if (costoUnit > 0 && item.unidades > 0) {
+        const rawCost = item.costoUnitario ?? item.costoReferencial;
+        const costoUnit = rawCost === null || rawCost === undefined || rawCost === '' ? null : Number(rawCost);
+        if (costoUnit !== null && Number.isFinite(costoUnit) && costoUnit >= 0 && item.unidades > 0) {
           const subtotal = costoUnit * item.unidades;
           costoTotal += subtotal;
           filas.push({ nombre: item.nombre, unidades: item.unidades, costoUnidad: costoUnit, subtotal });
@@ -1767,6 +1767,13 @@
         fechaCadStr: item.fechaCaducidad || (item.resultados && item.resultados.fechaCadStr) || '',
         notas: item.notas || (item.resultados && item.resultados.notas) || ''
       }));
+      // El costo histórico se lee de su propio snapshot, nunca del formulario actual.
+      resultados.unidadesPorPresentacion.forEach((row) => {
+        if (row.costoUnitario != null) return;
+        const saved = a33CostValueFromPayload(item.recipeSnapshot, row.id);
+        const value = a33NumberOrNull(saved);
+        if (value !== null) row.costoUnitario = value;
+      });
       return {
         id: String(item.id || ('temporal_' + codigo)).trim(),
         codigo,
@@ -1903,7 +1910,7 @@
         htmlCostos += '</tbody></table>';
         resumenCostosDiv.innerHTML = htmlCostos;
       } else {
-        resumenCostosDiv.innerHTML = "<p class='hint'>Para ver costos, llena la columna de costo unitario y el plan de producción.</p>";
+        resumenCostosDiv.innerHTML = "<p class='hint'>Para ver costos, completa y guarda Catálogos → Costos e indica unidades en el plan.</p>";
       }
       resumenVolumenDiv.innerHTML = "<div class='flex-row'><div class='badge'>Volumen final teórico: <strong>" + formatLitros(datos.totalVolumenFinalMl) + "</strong></div><div class='badge'>Temporal: no afecta inventario</div></div>";
       resultadosDiv.style.display = 'block';
@@ -2666,6 +2673,9 @@ function a33WireNumericInput(el, mode) {
         inputCosto.min = "0";
         inputCosto.step = "0.01";
         inputCosto.id = "costo-unit-" + p.id;
+        inputCosto.readOnly = true;
+        inputCosto.setAttribute("aria-readonly", "true");
+        inputCosto.placeholder = "Pendiente";
         tdCosto.dataset.label = "Costo unitario (C$)";
         inputCosto.setAttribute("aria-label", "Costo unitario (C$) · " + p.nombre);
         a33WireNumericInput(inputCosto, "decimal");
@@ -2738,6 +2748,8 @@ function a33WireNumericInput(el, mode) {
         aplicarPayloadRecetasEnUI(seed);
       } catch (e) {
         console.warn("Error cargando recetas temporales/dinámicas:", e);
+      } finally {
+        window.A33CatalogCosts.refreshInputs(PRESENTACIONES);
       }
     }
 
@@ -2768,14 +2780,23 @@ function a33WireNumericInput(el, mode) {
         recalcularCodigoLoteAuto({ consumeNewSeq: false });
       }
     }
+    function validarCostosCatalogo(datos){
+      if (!(datos.costosPendientes || []).length) return true;
+      window.A33Notice.alert("Completa y guarda el costo en Catálogos → Costos antes de calcular o guardar:\n\n" + datos.costosPendientes.join("\n"));
+      return false;
+    }
+
     function calcularDatosLote() {
+      const costosCatalogo = window.A33CatalogCosts.refreshInputs(PRESENTACIONES);
+      const costosPendientes = window.A33CatalogCosts.validatePlan(PRESENTACIONES, costosCatalogo, (p) => normQtyInt(getNumberValue("plan-" + p.id)));
       const totalesIngredientes = { vino: 0, vodka: 0, jugo: 0, sirope: 0, agua: 0 };
       let totalVolumenFinalMl = 0;
       const unidadesPorPresentacion = [];
       PRESENTACIONES.forEach(p => {
         const unidades = normQtyInt(getNumberValue("plan-" + p.id));
         if (unidades > 0) {
-          const costoUnitario = getNumberValue("costo-unit-" + p.id, { emptyAsNull: true });
+          const costo = costosCatalogo.get(String(p.productId || p.id));
+          const costoUnitario = costo && costo.status === "complete" ? costo.total : null;
           const producido = {
             id: p.id,
             productId: p.productId,
@@ -2789,7 +2810,7 @@ function a33WireNumericInput(el, mode) {
             legacy: !!p.legacy
           };
           if (typeof costoUnitario === "number" && Number.isFinite(costoUnitario)) producido.costoUnitario = costoUnitario;
-          else if (p.costoReferencial != null && Number.isFinite(Number(p.costoReferencial))) producido.costoReferencial = Number(p.costoReferencial);
+
           unidadesPorPresentacion.push(producido);
         }
         if (unidades <= 0) return;
@@ -2805,6 +2826,7 @@ function a33WireNumericInput(el, mode) {
       const fechaCad = calcularCaducidad(fechaProdStr);
       const notas = document.getElementById("notas").value || "";
       return {
+        costosPendientes,
         totalesIngredientes,
         totalVolumenFinalMl,
         unidadesPorPresentacion,
@@ -2817,6 +2839,7 @@ function a33WireNumericInput(el, mode) {
     }
     function calcularTotales() {
       const datos = serializarDatosCalculo(calcularDatosLote());
+      if (!validarCostosCatalogo(datos)) { A33HasCalculoPrevio = false; actualizarEstadoBotonGuardar(datos); return; }
       renderResultadosDesdeDatos(datos);
       guardarMetaLote(datos);
     }
@@ -2831,6 +2854,7 @@ function a33WireNumericInput(el, mode) {
 
     async function guardarCalculoComoLote() {
       const datos = serializarDatosCalculo(calcularDatosLote());
+      if (!validarCostosCatalogo(datos)) { A33HasCalculoPrevio = false; actualizarEstadoBotonGuardar(datos); return; }
       window.A33Notice.show('Guardando cálculo temporal…', 'process');
 
       if (!A33HasCalculoPrevio) {
@@ -2847,6 +2871,15 @@ function a33WireNumericInput(el, mode) {
 
       if (!actualizarEstadoBotonGuardar(datos)) {
         window.A33Notice.alert("GUARDAR solo se habilita cuando existe un cálculo temporal válido.");
+        return;
+      }
+
+      const previousResult = readTemporalData(STORAGE_WORKSPACE_KEY, null)?.result;
+      const costSignature = (result) => JSON.stringify(((result && result.unidadesPorPresentacion) || []).map((row) => [row.productId || row.id, row.unidades, row.costoUnitario]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+      if (!previousResult || costSignature(previousResult) !== costSignature(datos)) {
+        A33HasCalculoPrevio = false;
+        actualizarEstadoBotonGuardar(datos);
+        window.A33Notice.alert("El costo o el plan cambió. Vuelve a CALCULAR antes de guardar el cálculo temporal.");
         return;
       }
 
@@ -2944,6 +2977,7 @@ function a33WireNumericInput(el, mode) {
       construirTablaPlan();
       cargarRecetas();
       cargarMetaLote();
+      window.A33CatalogCosts.watch(PRESENTACIONES, () => { A33HasCalculoPrevio = false; actualizarEstadoBotonGuardar(null); });
       renderTemporalHistory();
       resetNotasAlEntrar();
       document.getElementById("btn-guardar-receta").addEventListener("click", guardarRecetas);

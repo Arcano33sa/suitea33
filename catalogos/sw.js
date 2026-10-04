@@ -30,6 +30,7 @@ const PRECACHE_URLS = [
   '../icon-a33-512.png',
   '/assets/js/a33-release.js?v=4.20.98&r=57',
   '/assets/js/a33-storage.js?v=4.20.98&r=22',
+  '/assets/js/a33-catalog-costs.js?v=4.20.98&r=1',
   '/assets/js/a33-product-integrity.js?v=4.20.98&r=1',
   '/assets/js/a33-materials.js?v=4.20.98&r=2',
   '/assets/js/a33-input-ux.js?v=4.20.98&r=11',

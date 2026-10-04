@@ -736,12 +736,6 @@
     return value === null || value === undefined ? '' : String(value).trim();
   }
 
-  function costsRecipeNumber(value){
-    if (value === null || value === undefined || String(value).trim() === '') return 0;
-    const n = Number(String(value).trim().replace(',', '.'));
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  }
-
   function costsRecipeLooksLike(value){
     if (!costsPlainObject(value)) return false;
     const keys = Object.keys(value).map(costsLookupKey);
@@ -857,46 +851,6 @@
     return { status:'no_recipe', productId, reason:'no_exact_productId_recipe' };
   }
 
-  function costsIngredientValueFromObject(container, aliases){
-    if (!costsPlainObject(container)) return { found:false, value:0 };
-    const aliasKeys = aliases.map(costsLookupKey);
-    for (const alias of aliases){
-      if (Object.prototype.hasOwnProperty.call(container, alias)){
-        const value = costsRecipeNumber(container[alias]);
-        return { found:true, value, invalid:value === null };
-      }
-    }
-    for (const [key, raw] of Object.entries(container)){
-      if (!aliasKeys.includes(costsLookupKey(key))) continue;
-      const value = costsRecipeNumber(raw);
-      return { found:true, value, invalid:value === null };
-    }
-    return { found:false, value:0 };
-  }
-
-  function costsIngredientMl(recipe, liquidKey){
-    const aliases = COST_RECIPE_INGREDIENT_KEYS[liquidKey] || [liquidKey];
-    const direct = costsIngredientValueFromObject(recipe, aliases);
-    if (direct.found) return direct;
-
-    const nestedKeys = new Set(['ingredientes','ingredients','liquidos','liquids','receta','recipe']);
-    for (const [nestedKey, nested] of Object.entries(costsPlainObject(recipe) ? recipe : {})){
-      if (!nestedKeys.has(costsLookupKey(nestedKey))) continue;
-      const nestedObject = costsIngredientValueFromObject(nested, aliases);
-      if (nestedObject.found) return nestedObject;
-      if (Array.isArray(nested)){
-        for (const row of nested){
-          if (!costsPlainObject(row)) continue;
-          const rowId = costsLookupKey(row.id ?? row.key ?? row.codigo ?? row.ingrediente ?? row.name ?? row.nombre ?? row.tipo);
-          if (!aliases.map(costsLookupKey).includes(rowId)) continue;
-          const value = costsRecipeNumber(row.ml ?? row.cantidad ?? row.quantity ?? row.value ?? row.amount ?? row.volumenMl);
-          return { found:true, value, invalid:value === null };
-        }
-      }
-    }
-    return { found:false, value:0, invalid:false };
-  }
-
   const COSTS_MONEY_FORMATTER = new Intl.NumberFormat('es-NI', {
     minimumFractionDigits:2,
     maximumFractionDigits:2
@@ -917,56 +871,7 @@
   }
 
   function calculateCostsForProduct(resolution, costsState){
-    if (!resolution || resolution.status === 'no_recipe'){
-      return { status:'no_recipe', total:0, liquidCosts:{}, missing:['receta'] };
-    }
-    if (resolution.status === 'unresolved'){
-      return { status:'unresolved', total:0, liquidCosts:{}, missing:['relación de receta'] };
-    }
-
-    const liquidCosts = {};
-    const missing = [];
-    let total = 0;
-    COST_LIQUIDS.forEach((row) => {
-      const ingredient = costsIngredientMl(resolution.recipe, row.key);
-      if (ingredient.invalid){
-        liquidCosts[row.key] = { status:'invalid_recipe', cost:null, usedMl:null };
-        missing.push(`receta ${row.label}`);
-        return;
-      }
-      const liquid = costsState && costsState.liquids ? costsState.liquids[row.key] : null;
-      const price = liquid ? finiteNonNegativeOrNull(liquid.price) : null;
-      const purchasedMl = liquid ? finiteNonNegativeOrNull(liquid.ml) : null;
-      if (price === null || purchasedMl === null || !(purchasedMl > 0)){
-        liquidCosts[row.key] = { status:'pending', cost:null, usedMl:ingredient.value || 0 };
-        missing.push(row.label);
-        return;
-      }
-      const usedMl = ingredient.value || 0;
-      const costPerMl = price / purchasedMl;
-      const cost = costPerMl * usedMl;
-      if (!Number.isFinite(cost) || cost < 0){
-        liquidCosts[row.key] = { status:'invalid', cost:null, usedMl };
-        missing.push(row.label);
-        return;
-      }
-      liquidCosts[row.key] = { status:'ok', cost, usedMl, price, purchasedMl, costPerMl };
-      total += cost;
-    });
-
-    const consumables = costsConsumableItem(costsState, resolution.productId);
-    if (consumables.botella === null) missing.push('Botella');
-    else total += consumables.botella;
-    if (consumables.calcomania === null) missing.push('Calcomanía');
-    else total += consumables.calcomania;
-
-    return {
-      status:missing.length ? 'pending' : 'complete',
-      total:Number.isFinite(total) && total >= 0 ? total : 0,
-      liquidCosts,
-      consumables,
-      missing
-    };
+    return window.A33CatalogCosts.calculate(resolution, costsState);
   }
 
   function renderCostsLiquidCell(td, rowKey, productName, calculation){
@@ -1231,6 +1136,12 @@
         if (key) duplicateHeaderCounts.set(key, (duplicateHeaderCounts.get(key) || 0) + 1);
       });
       const envases = readEnvaseCatalog();
+      // Orden visual de Costos; conserva el orden operativo en capacidades iguales.
+      products.sort((a, b) => {
+        const aMl = costsProductCapacityMl(a, envases);
+        const bMl = costsProductCapacityMl(b, envases);
+        return (aMl > 0 ? aMl : Infinity) - (bMl > 0 ? bMl : Infinity) || 0;
+      });
       const recipeData = readCostsRecipesPayload();
       const costsState = readCostsState();
       let linkedCount = 0;
