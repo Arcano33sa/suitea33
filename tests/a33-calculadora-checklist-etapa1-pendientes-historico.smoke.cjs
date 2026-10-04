@@ -7,25 +7,24 @@ const assert = require('assert');
 
 const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'calculadora/index.html'), 'utf8');
-const sw = fs.readFileSync(path.join(root, 'calculadora/sw.js'), 'utf8');
+// Versiones y precache se verifican en a33-publicacion-coherencia.smoke.cjs.
 
 const pendingPos = html.indexOf('<h3>Pendientes</h3>');
-const historyPos = html.indexOf('<h3>Histórico</h3>');
+const historyPos = html.indexOf('<summary>Histórico</summary>');
 const selectedPos = html.indexOf('id="a33-checklist-seleccion"');
-assert(pendingPos >= 0 && historyPos > pendingPos && selectedPos > historyPos, 'Orden visual Checklist incorrecto');
+assert(pendingPos >= 0 && selectedPos > pendingPos && historyPos > selectedPos, 'Orden visual Checklist incorrecto');
 assert(html.includes('id="a33-checklist-pendientes"'), 'Falta host Pendientes');
 assert(html.includes('id="a33-checklist-historico"'), 'Falta host Histórico');
 assert(html.includes('function a33ChecklistIsClosed(lote)'), 'Falta clasificación explícita de cierre');
 assert(html.includes('const pendingLots = A33ChecklistLots.filter((lote) => !a33ChecklistIsClosed(lote));'), 'Pendientes no filtra por cierre explícito');
 assert(html.includes('const historyLots = A33ChecklistLots.filter((lote) => a33ChecklistIsClosed(lote));'), 'Histórico no filtra por cierre explícito');
 assert(html.includes('const actionLabel = isHistory ? "Ver" : "Usar";'), 'Acciones Usar/Ver no están separadas');
-assert(!html.includes('button.textContent = "Hecho"'), 'Etapa 1 no debe implementar botón Hecho');
+assert(html.includes('doneButton.textContent = "Hecho";'), 'El pendiente debe permitir cierre explícito con Hecho');
+assert(html.includes('<details class="a33-checklist-block a33-checklist-history-disclosure">'), 'Histórico debe iniciar plegado');
 assert(html.includes('.a33-checklist-history-table th,') && html.includes('text-align: center;'), 'Falta centrado de tabla');
 assert(html.includes('.a33-checklist-lot') && html.includes('overflow-wrap: anywhere;'), 'Lotes largos no están blindados');
 assert(html.includes('@media (max-width: 760px)'), 'Falta responsive iPad/móvil');
-assert(html.includes('navigator.serviceWorker.register("./sw.js?v=4.20.97&r=10")'), 'Registro SW del módulo no fue actualizado');
-assert(sw.includes("const MODULE_CACHE_REV = '10';"), 'Cache de Calculadora no fue incrementado');
-assert(sw.includes("'./index.html?v=4.20.97&r=19'"), 'Precache no apunta al HTML nuevo');
+
 
 class MockClassList {
   constructor(owner){ this.owner = owner; this.values = new Set(); }
@@ -133,7 +132,9 @@ const context = vm.createContext({
 const start = html.indexOf('    const A33_CHECKLIST_STORAGE_KEY = "arcano33_lotes";');
 const end = html.indexOf('function registerCalculadoraServiceWorker()', start);
 assert(start >= 0 && end > start, 'No se pudo aislar el bloque Checklist');
-const checklistCode = html.slice(start, end) + `\n;globalThis.__checklistApi={
+require('./runtime-fixtures.cjs').installNotice(windowObj);
+context.PRESENTACIONES = [];
+const checklistCode = require('./runtime-fixtures.cjs').calculatorDependencies(html) + '\n' + html.slice(start, end) + `\n;globalThis.__checklistApi={
   render:a33RenderChecklistHistory,
   renderSelected:a33RenderSelectedChecklist,
   isClosed:a33ChecklistIsClosed,
@@ -157,9 +158,13 @@ let checks = elements.get('a33-checklist-contenido').querySelectorAll('input[typ
 assert(checks.length > 0 && checks.every((input)=>input.disabled), 'Ver histórico debe ser solo consulta');
 assert.strictEqual(elements.get('a33-checklist-estado').textContent, 'Checklist cerrado: vista de consulta.', 'Estado histórico incorrecto');
 
+assert(!buttonsIn('a33-checklist-contenido').includes('Hecho'), 'Un histórico no debe ofrecer cierre nuevamente');
+
 const pendingIndex = api.findIndex(loaded, 'P-1');
 api.renderSelected(pendingIndex);
 checks = elements.get('a33-checklist-contenido').querySelectorAll('input[type="checkbox"]');
 assert(checks.length > 0 && checks.every((input)=>!input.disabled), 'Usar pendiente debe conservar checkbox editables');
 
-console.log('PASS a33-calculadora-checklist-etapa1: 27/27 controles cubiertos');
+assert(buttonsIn('a33-checklist-contenido').includes('Hecho'), 'El pendiente debe mostrar Hecho');
+assert.deepStrictEqual(api.getLots().map(lote=>lote.codigo),['A33JUL2026-0001','A33JUL2026-0002','A33JUL2026-0003'],'Consultar no reescribe códigos históricos');
+console.log('PASS Checklist: orden vigente, clasificación explícita, Usar/Ver, histórico de consulta y pendiente editable con Hecho; sin escrituras');

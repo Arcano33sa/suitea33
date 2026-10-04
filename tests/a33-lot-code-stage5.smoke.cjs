@@ -27,7 +27,16 @@ assert.ok(config.includes("lotCodeContract"), "JSON debe declarar preservación 
 assert.ok(config.includes("backupLotIdentityKey"), "Importación parcial debe deduplicar X/x sin reescribir");
 assert.ok(config.includes("lotCodeLiteral:true"), "Validación JSON debe aceptar formatos históricos y nuevos");
 assert.ok(configHtml.includes("a33-lot-code.js"));
-assert.ok(configHtml.includes("Configuración, Catálogos y Lotes"));
+// El contrato es la identidad literal del respaldo, no una frase de la portada.
+const backupHelpers = config.slice(config.indexOf('  function backupLotCodeLiteral('), config.indexOf('  function getStableRecordId('));
+const backupContext = vm.createContext({window:{A33LotCode:lotCode},firstPresentValue:(row,keys)=>keys.map(k=>row[k]).find(v=>v!=null && String(v).trim()) || ''});
+vm.runInContext(backupHelpers,backupContext);
+assert.strictEqual(backupContext.backupLotIdentityKey('A33KIS5786-0XX1'),backupContext.backupLotIdentityKey(NEW_CODE));
+for(const code of [NEW_CODE,HIST_CODE]){
+  const row={codigoLote:code,metadata:{historical:true}};const before=JSON.stringify(row);
+  assert.strictEqual(backupContext.backupLotCodeLiteral(row),code);
+  assert.strictEqual(JSON.stringify(row),before,'Consultar identidad no reescribe el respaldo');
+}
 
 const lotes = fs.readFileSync(path.join(root, "lotes/script.js"), "utf8");
 assert.ok(lotes.includes("batchCodeSearchTerms"));
@@ -49,11 +58,11 @@ assert.ok(analytics.includes("analyticsLotExcelCell"));
 assert.ok(analyticsHtml.includes("<th>Código de lote</th>"));
 assert.ok(analyticsHtml.includes("a33-lot-code.js"));
 
-const center = fs.readFileSync(path.join(root, "centro-mando/app.js"), "utf8");
-const centerHtml = fs.readFileSync(path.join(root, "centro-mando/index.html"), "utf8");
-assert.ok(center.includes("__cmdLatestLotForEvent"));
-assert.ok(center.includes("mkSec('lote', 'Último lote'"));
-assert.ok(centerHtml.includes("a33-lot-code.js"));
+// La antigua tarjeta «Último lote» de Centro de Mando ya no forma parte de
+// su interfaz. Se comprueba la exportación de la ruta vigente de Lotes.
+const exportHelper=lotes.slice(lotes.indexOf('function batchCodeExcelText('),lotes.indexOf('function batchCodeMetadata('));
+const exportContext=vm.createContext({window:{A33LotCode:lotCode}});vm.runInContext(exportHelper,exportContext);
+for(const code of [NEW_CODE,HIST_CODE]) assert.deepStrictEqual(JSON.parse(JSON.stringify(exportContext.batchCodeExcelText(code))),{t:'s',v:code,z:'@'});
 
 
 console.log("A33 lot code stage 5 local smoke: OK");

@@ -290,9 +290,23 @@ function findDraftRow(draftId){ return elements.purchaseDraftList.children.find(
   const configHtml=fs.readFileSync(path.join(root,'configuracion','index.html'),'utf8');
   const center=fs.readFileSync(path.join(root,'centro-mando','app.js'),'utf8');
   const css=fs.readFileSync(path.join(root,'agenda','style.css'),'utf8');
-  check('40. Responsive y Centro de Mando conservan integración de compras', center.includes('purchaseGroup') && center.includes("type === 'compra'") && css.includes('@media (max-width:740px)'));
+  const centerHelpers = center.slice(center.indexOf('function normalizeAgendaType('), center.indexOf('function agendaUrgencySort('));
+  const centerContext = vm.createContext({text:value=>String(value ?? '').trim()});
+  vm.runInContext(centerHelpers, centerContext, {filename:'centro-mando/agenda-helpers.js'});
+  assert.strictEqual(centerContext.normalizeAgendaType('compra'), 'purchase');
+  assert.strictEqual(centerContext.normalizeAgendaType('purchase'), 'purchase');
+  assert.strictEqual(centerContext.normalizeAgendaType('tarea'), 'task');
+  const centerPurchaseFixture = {type:'compra', date:'2026-10-04', purchaseGroup:{items:[{name:'Vino'},{name:'Tapas'}],totalGeneral:450}};
+  const originalGrouped = JSON.stringify(centerPurchaseFixture);
+  assert.deepStrictEqual(Array.from(centerContext.agendaPurchaseItems(centerPurchaseFixture)), ['Vino','Tapas']);
+  assert.strictEqual(centerContext.agendaPurchaseTotal(centerPurchaseFixture),450);
+  assert.strictEqual(centerContext.agendaDateFor(centerPurchaseFixture,centerContext.normalizeAgendaType(centerPurchaseFixture.type)),'2026-10-04');
+  assert.deepStrictEqual(Array.from(centerContext.agendaPurchaseItems({purchase:{name:'Histórica',subtotal:90}})),['Histórica']);
+  assert.strictEqual(centerContext.agendaPurchaseTotal({purchase:{name:'Histórica',subtotal:90}}),90);
+  assert.strictEqual(JSON.stringify(centerPurchaseFixture),originalGrouped,'Centro de Mando no modifica la compra consultada');
+  check('40. Responsive y Centro de Mando conservan integración de compras', /@media\s*\(max-width:\s*740px\)/.test(css));
 
   assert.strictEqual(errors.length,0,'sin errores de consola en la prueba dinámica');
-  assert.strictEqual(checks.length,40,'45 verificaciones obligatorias');
-  console.log(`Agenda Compras Agrupadas Etapa 3 final smoke: OK (${checks.length}/45)`);
+  assert.strictEqual(checks.length,40,'40 verificaciones obligatorias');
+  console.log(`Agenda Compras Agrupadas Etapa 3 final smoke: OK (${checks.length}/40)`);
 })().catch(err=>{ console.error(err); process.exitCode=1; });

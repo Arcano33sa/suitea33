@@ -25,7 +25,7 @@ assert(!html.includes('class="cat-panel is-active"'), 'Quedó un panel activo al
 assert(!source.includes('activateTabFromUrl'), 'Quedó la navegación antigua por pestañas');
 assert(!source.includes('function bindTabs('), 'Quedó el binding antiguo de pestañas');
 assert(!source.includes('window.open('), 'No se permiten pestañas nuevas');
-assert(source.includes("const CATALOG_HISTORY_MARKER = 'a33-catalogos-vistas-v1'"), 'Falta marcador de historial');
+assert(/const CATALOG_HISTORY_MARKER = '[^']+'/.test(source), 'Falta marcador de historial');
 assert(source.includes("window.addEventListener('popstate', syncCatalogNavigationFromHistory)"), 'Falta blindaje de Atrás');
 assert(source.includes("window.history.pushState(getCatalogHistoryState('section', key)"), 'Falta entrada de historial por apartado');
 assert(source.includes('if (catalogNavigationBound) return;'), 'Falta blindaje de listeners duplicados');
@@ -65,6 +65,7 @@ class FakeElement {
   }
   getAttribute(name){ return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null; }
   setAttribute(name, value){ this.attrs[name] = String(value); }
+  removeAttribute(name){ delete this.attrs[name]; }
   addEventListener(type, handler){ (this.listeners[type] ||= []).push(handler); }
   dispatchEvent(event){
     const evt = event || {};
@@ -143,7 +144,7 @@ const historyStub = {
   pushCount:0,
   replaceState(state, _title, url){
     this.state = state;
-    historyEntries[historyEntries.length - 1] = { state, url };
+    historyEntries[Math.max(0,historyEntries.length - 1)] = { state, url };
     const hashIndex = String(url || '').indexOf('#');
     locationStub.hash = hashIndex >= 0 ? String(url).slice(hashIndex) : '';
   },
@@ -155,9 +156,9 @@ const historyStub = {
     locationStub.hash = hashIndex >= 0 ? String(url).slice(hashIndex) : '';
   },
   back(){
-    this.state = { a33Navigation:'a33-catalogos-vistas-v1', view:'overview', section:'' };
+    this.state = historyEntries[0].state;
     locationStub.hash = '';
-    (windowListeners.popstate || []).forEach((handler) => handler({ state:this.state }));
+    (windowListeners.popstate || []).forEach((handler) => handler({ type:'popstate', state:this.state }));
   }
 };
 
@@ -176,7 +177,9 @@ const windowStub = {
   addEventListener(type, handler){ (windowListeners[type] ||= []).push(handler); },
   scrollTo(){},
   setTimeout,
-  clearTimeout
+  clearTimeout,
+  requestAnimationFrame:fn=>fn(),
+  scrollY:0
 };
 windowStub.window = windowStub;
 windowStub.globalThis = windowStub;
@@ -187,6 +190,7 @@ const instrumented = source.replace(/\}\)\(\);\s*$/, `
     openCatalogSection,
     showCatalogOverview,
     syncCatalogNavigationFromHistory,
+    historyState: getCatalogHistoryState,
     currentSection: () => catalogCurrentSection
   };
 })();`);
@@ -242,10 +246,16 @@ assert.strictEqual(cardsWrap.hidden, false, 'Volver no mostró las tarjetas');
 assert.strictEqual(panelsWrap.hidden, true, 'Volver dejó paneles visibles');
 
 api.syncCatalogNavigationFromHistory({
-  state:{ a33Navigation:'a33-catalogos-vistas-v1', view:'section', section:'clientes' }
+  type:'popstate', state:api.historyState('section','clientes')
 });
 assert.strictEqual(api.currentSection(), 'clientes', 'Popstate no abrió Clientes');
 assert.strictEqual(panels[7].hidden, false, 'Clientes no quedó visible por historial');
 assert.strictEqual(panels.filter((panel) => !panel.hidden).length, 1, 'Popstate superpuso paneles');
+
+// Una entrada anterior se resuelve mediante su URL, sin imponer el marcador antiguo.
+locationStub.hash='#bancos';
+api.syncCatalogNavigationFromHistory({type:'popstate',state:{a33Navigation:'a33-catalogos-vistas-v1',view:'section',section:'clientes'}});
+assert.strictEqual(api.currentSection(),'bancos','Una entrada anterior debe respetar la sección de la URL');
+assert.strictEqual(panels.filter(panel=>!panel.hidden).length,1,'Historial anterior superpuso paneles');
 
 console.log('OK a33-catalogos-vistas-independientes-etapa1.smoke');

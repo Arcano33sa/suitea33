@@ -8,7 +8,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'pos/app.js'), 'utf8');
 const posHtml = fs.readFileSync(path.join(root, 'pos/index.html'), 'utf8');
-const posSw = fs.readFileSync(path.join(root, 'pos/sw.js'), 'utf8');
+// Versiones y precache: a33-publicacion-coherencia.smoke.cjs.
 const fin = fs.readFileSync(path.join(root, 'finanzas/script.js'), 'utf8');
 const finHtml = fs.readFileSync(path.join(root, 'finanzas/index.html'), 'utf8');
 const backup = fs.readFileSync(path.join(root, 'configuracion/script.js'), 'utf8');
@@ -164,7 +164,6 @@ let backfill = null;
 
   for (const token of [
     'totals.comisionesTarjeta = n2(totals.comisionesTarjeta + value)',
-    'totals.utilidadBruta - totals.costoCortesias - totals.comisionesTarjeta + totals.ingresosAdicionales - totals.gastos',
     'comisionTarjetaTotal',
     'comisionesTarjetaDetalle',
     'tab-comisiones-tarjeta-detalle'
@@ -176,12 +175,47 @@ let backfill = null;
   assert.ok(backup.includes('indexedDB: cleanIndexed.data'));
   assert.ok(!/put\(['"](?:commissions|comisiones)['"]|add\(['"](?:commissions|comisiones)['"]/.test(app), 'Se creó store paralelo de comisión');
 
-  // 8) PWA/cache corresponde a app.js modificada.
-  assert.ok(posHtml.includes("-pos-r'+rev+'-m54"));
-  assert.ok(posHtml.includes('app.js?v=4.20.97&r=50'));
-  assert.ok(posSw.includes("const MODULE_CACHE_REV = '54';"));
-  assert.ok(posSw.includes("'./app.js?v=4.20.97&r=50'"));
-  assert.ok(finHtml.includes('script.js?v=4.20.97&r=4'));
+  // 8) Resultado económico vigente: comisión y merma se descuentan una vez,
+  // manteniendo separados venta, costo comercial y movimientos de dinero.
+  const dashboardSandbox = {
+    console, Array, Date, Set, Map, Number, String, Math, n0, n2, normStr,
+    finDashboardReadIntegrity:()=>({incomplete:false,missingStores:[],issues:[]}),
+    getPosEventNameLiveById:()=>'', FIN_OPERATIONAL_DASHBOARD_STAGE:'test',
+    finDashboardSafePct:(a,b)=>b?a/b*100:0,
+    // Fuentes manuales aisladas y comunes a ambos cálculos; no se prueba aquí su clasificación.
+    finBuildOperationalManualTotals:()=>({rows:[],sourceCounts:{},ingresosAdicionales:80,gastos:30})
+  };
+  vm.createContext(dashboardSandbox);
+  vm.runInContext(between(fin,'function finDashboardDate(record)','function renderTableroAlerts(result)'),dashboardSandbox);
+  const rows=[
+    {...modern,id:'sale-card',date:'2026-10-04',eventId:1},
+    {id:'sale-courtesy',date:'2026-10-04',eventId:1,payment:'efectivo',courtesy:true,total:0,lineCost:50,qty:1,unitPrice:100}
+  ];
+  const waste=[
+    {id:'waste',tipo:'REEMPAQUE_MERMA_FINAL_EVENTO',date:'2026-10-04',eventId:1,costoMermaFinal:25,mermaFinalMl:100},
+    {id:'outside',tipo:'REEMPAQUE_MERMA_FINAL_EVENTO',date:'2026-11-01',eventId:1,costoMermaFinal:999},
+    {id:'cancelled',tipo:'REEMPAQUE_MERMA_FINAL_EVENTO',date:'2026-10-04',eventId:1,costoMermaFinal:999,cancelled:true}
+  ];
+  const before=JSON.stringify({rows,waste});
+  const filter={desde:'2026-10-01',hasta:'2026-10-31'};
+  const calculate=dashboardSandbox.calcTableroClasificadoForFilter;
+  const without=calculate({posSales:rows,posReempaques:[]},filter);
+  const withWaste=calculate({posSales:rows,posReempaques:waste},filter);
+  assert.strictEqual(withWaste.ventaNeta,3190);
+  assert.strictEqual(withWaste.costosVentas,1000);
+  assert.strictEqual(withWaste.costoCortesias,50);
+  assert.strictEqual(withWaste.comisionesTarjeta,223.30);
+  assert.strictEqual(withWaste.mermaFinal,25);
+  assert.strictEqual(withWaste.ingresosAdicionales,80);
+  assert.strictEqual(withWaste.gastos,30);
+  assert.strictEqual(withWaste.utilidadNeta,1941.70);
+  assert.strictEqual(without.utilidadNeta,1966.70);
+  assert.strictEqual(n2(without.utilidadNeta-withWaste.utilidadNeta),25,'Merma se resta una sola vez');
+  assert.strictEqual(withWaste.costosTotales,1075);
+  for(const key of ['ventaTotal','ventaNeta','costosVentas','costoCortesias','comisionesTarjeta','gastos','cajaPeriodo','bancosPeriodo','flujoCaja']){
+    assert.strictEqual(withWaste[key],without[key],`Merma alteró ${key}`);
+  }
+  assert.strictEqual(JSON.stringify({rows,waste}),before,'Calcular resultados no reescribe las fuentes');
 
   console.log('SMOKE OK — Suite A33 — POS Tarjeta — Etapa 2/5 — Resumen, Finanzas, cierre, reportes, Excel, JSON y backfill');
 })().catch(err=>{ console.error(err); process.exit(1); });

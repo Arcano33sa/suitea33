@@ -66,7 +66,14 @@ assert.ok(lotCodeCss.includes("overflow-wrap: anywhere"));
 assert.ok(lotCodeCss.includes("word-break: break-word"));
 assert.ok(!lotCodeCss.includes("text-overflow: ellipsis"));
 assert.ok(read("analitica/style.css").includes(".analytics-lot-code"));
-assert.ok(read("centro-mando/style.css").includes('.cmd-gsec[data-sec="lote"] .cmd-gsec-v'));
+// El selector pertenecía a una tarjeta retirada de Centro de Mando.
+// El código visible vigente de Analítica debe conservar el ajuste de texto.
+const analyticsCss=read("analitica/style.css");
+const codeRule=analyticsCss.match(/\.analytics-lot-code\s*\{([^}]+)\}/);
+assert.ok(codeRule,'Falta estilo del código de lote visible en Analítica');
+assert.match(codeRule[1],/overflow-wrap:\s*anywhere/);
+assert.match(codeRule[1],/word-break:\s*break-word/);
+assert.ok(!/text-overflow:\s*ellipsis/.test(codeRule[1]),'El código no debe truncarse');
 
 const pos = read("pos/app.js");
 assert.ok(pos.includes("getSaleLotCodePOS(s) ? `<div class=\"muted\"><small>Lote:"), "La vista imprimible/PDF conserva el lote");

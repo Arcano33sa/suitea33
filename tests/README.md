@@ -146,3 +146,23 @@ Comprueban el formato histórico completo/parcial y el bloqueo ante fallos de en
 - E5.1 verifica fallos de datos/revisión y confirmación parcial; E5.2 verifica pendientes y reintento de Checklist; E5.3–E5.6 verifican recuperación explícita sin registrar operaciones, fuentes conservadas y validaciones vigentes; E5.7–E5.8 verifican escritores, registros modificados/eliminados y cambios independientes.
 - Las pruebas usan almacenamiento en memoria u orígenes/contextos temporales. La prueba de Checklist monta controles temporales porque su pantalla heredada no está presente en el HTML vigente; no demuestra un recorrido visible de esa pantalla.
 - Resultados, alcance y limitaciones: [RESULTADOS_ETAPA5_9.md](RESULTADOS_ETAPA5_9.md). Registro completo: [RESULTADOS_ETAPA5_9.json](RESULTADOS_ETAPA5_9.json).
+
+### Revisión de errores — E1: contratos estructurales
+
+- Agenda, Catálogos y lot-code E5/E6 se verifican contra funciones y rutas vigentes, preservando históricos; no se exige una revisión antigua del marcador ni una tarjeta retirada de Centro de Mando.
+- Regresión local: 75 aprobadas y tres pendientes de Calculadora/comisiones. Smoke de Centro de Mando y Chrome de flujos principales aprobados; 21 pruebas adicionales de navegador no se repitieron.
+- [Informe y límites](RESULTADOS_ERRORES_E1.md), [resultados de ejecución](RESULTADOS_ERRORES_E1.json). Los informes anteriores se conservan como evidencia histórica.
+
+### Revisión de errores — E2: Checklist de Calculadora
+
+- Letras/sirope y pendientes/histórico verifican sus contratos actuales; las revisiones históricas exactas se sustituyen por la comprobación separada de coherencia vigente de publicación.
+- Clasificación explícita, Hecho solo para pendientes, consulta histórica y conservación de códigos; dependencias reales en el simulador. Chrome verifica cierre y recarga.
+- Regresión local: 77 aprobadas y un fallo de tarjeta/reportes pendiente de E3. Las otras 21 pruebas de navegador no se repitieron.
+- [Informe y límites](RESULTADOS_ERRORES_E2.md), [resultados](RESULTADOS_ERRORES_E2.json). E1 y sus informes se conservan.
+
+### Revisión de errores — E3: comisiones y cierre completo
+
+- La prueba de tarjeta/reportes conserva snapshots y backfill e incorpora resultados numéricos del cálculo vigente de Finanzas con merma, cortesías, ingresos y gastos; versiones/publicación se comprueban por separado.
+- Cierre conjunto E1–E3: **101 pruebas aprobadas, incluidas 22 de navegador; ninguna fallida, omitida, inconclusa, bloqueada o histórica excluida**. Tres aliases deduplicados.
+- Los siete fallos anteriores eran expectativas/simuladores desfasados y ahora verifican contratos vigentes. No se modificaron fórmulas ni aplicación; los informes previos se conservan.
+- [Informe y límites](RESULTADOS_ERRORES_E3.md), [ejecución completa](RESULTADOS_ERRORES_E3.json).

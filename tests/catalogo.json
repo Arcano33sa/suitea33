@@ -219,13 +219,12 @@
     },
     {
       "file": "a33-agenda-purchases-grouped-stage3-final.smoke.cjs",
-      "classification": "por_verificar",
+      "classification": "vigente",
       "mode": "vm",
       "versionLiterals": false,
-      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
-      "lastResult": "FALLIDA",
-      "group": "funcional",
-      "observation": "AssertionError [ERR_ASSERTION]: 40. Responsive y Centro de Mando conservan integración de compras"
+      "reason": "Errores E1: compras agrupadas/históricas y normalización vigente de Centro de Mando, sin exigir un literal antiguo.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
     },
     {
       "file": "a33-agenda-purchases-stage3.smoke.cjs",
@@ -265,22 +264,20 @@
     },
     {
       "file": "a33-calculadora-checklist-detalle-letras-sirope.smoke.cjs",
-      "classification": "por_verificar",
+      "classification": "vigente",
       "mode": "vm",
-      "versionLiterals": true,
-      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
-      "lastResult": "FALLIDA",
-      "observation": "AssertionError [ERR_ASSERTION]: Registro SW no actualizado",
+      "versionLiterals": false,
+      "reason": "Errores E2: contrato vigente de Checklist, datos históricos y funciones informativas; publicación comprobada por separado.",
+      "lastResult": "APROBADA",
       "group": "funcional"
     },
     {
       "file": "a33-calculadora-checklist-etapa1-pendientes-historico.smoke.cjs",
-      "classification": "por_verificar",
+      "classification": "vigente",
       "mode": "vm",
-      "versionLiterals": true,
-      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
-      "lastResult": "FALLIDA",
-      "observation": "AssertionError [ERR_ASSERTION]: Orden visual Checklist incorrecto",
+      "versionLiterals": false,
+      "reason": "Errores E2: contrato vigente de Checklist, datos históricos y funciones informativas; publicación comprobada por separado.",
+      "lastResult": "APROBADA",
       "group": "funcional"
     },
     {
@@ -339,12 +336,11 @@
     },
     {
       "file": "a33-catalogos-vistas-independientes-etapa1.smoke.cjs",
-      "classification": "por_verificar",
+      "classification": "vigente",
       "mode": "vm",
       "versionLiterals": false,
-      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
-      "lastResult": "FALLIDA",
-      "observation": "AssertionError [ERR_ASSERTION]: Falta marcador de historial",
+      "reason": "Errores E1: navegación vigente, Atrás, marcador generado e historial anterior mediante URL; simulador completo.",
+      "lastResult": "APROBADA",
       "group": "funcional"
     },
     {
@@ -439,23 +435,21 @@
     },
     {
       "file": "a33-lot-code-stage5.smoke.cjs",
-      "classification": "por_verificar",
-      "mode": "static",
+      "classification": "vigente",
+      "mode": "vm",
       "versionLiterals": false,
-      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
-      "lastResult": "FALLIDA",
-      "group": "funcional",
-      "observation": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:"
+      "reason": "Errores E1: identidad de respaldo y exportación Lotes, literales históricos/nuevos; sin tarjeta retirada de Centro de Mando.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
     },
     {
       "file": "a33-lot-code-stage6.smoke.cjs",
-      "classification": "por_verificar",
+      "classification": "vigente",
       "mode": "static",
       "versionLiterals": false,
-      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
-      "lastResult": "FALLIDA",
-      "group": "funcional",
-      "observation": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:"
+      "reason": "Errores E1: contratos de códigos y estilos vigentes Lotes/Analítica; sin selector de tarjeta retirada.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
     },
     {
       "file": "a33-lot-code.smoke.cjs",
@@ -702,12 +696,11 @@
     },
     {
       "file": "a33-pos-tarjeta-etapa2-integracion-reportes.smoke.cjs",
-      "classification": "por_verificar",
+      "classification": "vigente",
       "mode": "vm",
-      "versionLiterals": true,
-      "reason": "E2.4: expectativa histórica/textual conservada; requiere revalidación del contrato antes de cambiarla.",
-      "lastResult": "FALLIDA",
-      "observation": "AssertionError [ERR_ASSERTION]: Falta integración Finanzas: totals.utilidadBruta - totals.costoCortesias - totals.comisionesTarjeta + totals.ingresosAdicionales - totals.gastos",
+      "versionLiterals": false,
+      "reason": "Errores E3: snapshots de comisión, backfill histórico y resultado económico vigente con merma; publicación comprobada por separado.",
+      "lastResult": "APROBADA",
       "group": "funcional"
     },
     {
