@@ -139,3 +139,10 @@ Comprueban el formato histórico completo/parcial y el bloqueo ante fallos de en
 - `a33-e47-conciliacion-integrada.browser.smoke.cjs`: páginas reales de Finanzas/Analítica y funciones vigentes de reporte POS sobre las mismas fuentes persistidas, con snapshots y tasas actuales diferentes. Verifica conciliación, diferencias por fuentes adicionales/cierres, tres XLSX de Analítica y exportación real de Balanza offline, comisiones desconocidas y período solo con merma.
 - Cierre: 86 pruebas únicas ejecutadas en dos tandas, 79 aprobadas y los mismos siete fallos históricos; 15 pruebas de navegador aprobadas, sin omisiones ni bloqueos. La batería completa no está totalmente aprobada.
 - [Informe y límites E4.7](RESULTADOS_ETAPA4_7.md), [registro completo de ejecuciones](RESULTADOS_ETAPA4_7.json).
+
+### Guardado seguro — E5.9
+
+- Cierre integrado de E5.1–E5.8 mediante el catálogo funcional completo, incluidas sus pruebas de navegador y las regresiones de otros módulos.
+- E5.1 verifica fallos de datos/revisión y confirmación parcial; E5.2 verifica pendientes y reintento de Checklist; E5.3–E5.6 verifican recuperación explícita sin registrar operaciones, fuentes conservadas y validaciones vigentes; E5.7–E5.8 verifican escritores, registros modificados/eliminados y cambios independientes.
+- Las pruebas usan almacenamiento en memoria u orígenes/contextos temporales. La prueba de Checklist monta controles temporales porque su pantalla heredada no está presente en el HTML vigente; no demuestra un recorrido visible de esa pantalla.
+- Resultados, alcance y limitaciones: [RESULTADOS_ETAPA5_9.md](RESULTADOS_ETAPA5_9.md). Registro completo: [RESULTADOS_ETAPA5_9.json](RESULTADOS_ETAPA5_9.json).

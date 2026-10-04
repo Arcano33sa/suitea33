@@ -2,6 +2,105 @@
   "schemaVersion": 1,
   "tests": [
     {
+      "file": "a33-agenda-borradores-e56.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E5.6: recuperación explícita de formularios Agenda y compras agrupadas, campos crudos, identidad, fallos conservadores y fotografía histórica.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-agenda-borradores-e56.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E5.6: recuperación explícita de formularios Agenda y compras agrupadas, campos crudos, identidad, fallos conservadores y fotografía histórica.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-finanzas-recibos-e55.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E5.5: recibos pendientes recuperables, comparación de versión/estado y consecutivos atómicos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-finanzas-recibos-e55.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E5.5: recibos pendientes recuperables, comparación de versión/estado y consecutivos atómicos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-borradores-e54.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E5.4: compras provisionales recuperables, campos e identidad, validación de contexto y catálogo, datos intactos al recuperar y reintento sin duplicados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-borradores-e54.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E5.4: compras provisionales recuperables, campos e identidad, validación de contexto y catálogo, datos intactos al recuperar y reintento sin duplicados.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-borradores-e53.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E5.3: borradores completos y rápidos, recuperación explícita, fallo de escritura, identidad, precios históricos y conflictos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pedidos-borradores-e53.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E5.3: borradores completos y rápidos, recuperación explícita, fallo de escritura, identidad, precios históricos y conflictos.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-checklist-e52.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E5.2: texto pendiente conservado ante fallos, reintento y confirmación de transacción, con almacenamiento aislado.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-pos-checklist-e52.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E5.2: texto pendiente conservado ante fallos, reintento y confirmación de transacción, con almacenamiento aislado.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
+      "file": "a33-guardado-seguro-e51.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E5.1: fallos de datos y revisiones, guardado parcial y conservación de conflictos/fusión; almacenamiento aislado.",
+      "lastResult": "APROBADA",
+      "group": "funcional"
+    },
+    {
       "file": "a33-e47-conciliacion-integrada.browser.smoke.cjs",
       "classification": "vigente",
       "mode": "browser",
@@ -806,6 +905,42 @@
       "mode": "browser",
       "versionLiterals": false,
       "reason": "E3.6: fecha, tipo y antigüedad de descarga solicitada.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-agenda-escritores-e57.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E5.7: coordinación de los dos escritores de registros de Agenda.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-agenda-escritores-e57.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E5.7: coordinación de los dos escritores de registros de Agenda.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-conflictos-registros-e58.smoke.cjs",
+      "classification": "vigente",
+      "mode": "vm",
+      "versionLiterals": false,
+      "reason": "E5.8: conflictos del mismo registro y fusión de cambios independientes en Agenda, Pedidos, Lotes y clientes.",
+      "group": "funcional",
+      "lastResult": "APROBADA"
+    },
+    {
+      "file": "a33-conflictos-registros-e58.browser.smoke.cjs",
+      "classification": "vigente",
+      "mode": "browser",
+      "versionLiterals": false,
+      "reason": "E5.8: formularios reales, mismo registro y cambios independientes en varias pestañas.",
       "group": "funcional",
       "lastResult": "APROBADA"
     }

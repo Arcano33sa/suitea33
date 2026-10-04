@@ -803,6 +803,52 @@
     return out;
   }
 
+  // E5.8: comparación estable y fusión de cambios en registros independientes.
+  function recordFingerprint(value){
+    return JSON.stringify(value,(key,item)=>item && typeof item==='object' && !Array.isArray(item)
+      ? Object.keys(item).sort().reduce((out,k)=>{out[k]=item[k];return out;},Object.create(null)) : item);
+  }
+  function duplicateRecordIds(rows){
+    const seen=new Set();
+    for (const row of rows){
+      const id=row && row.id!=null?String(row.id).trim():'';
+      if (!id) continue;
+      if (seen.has(id)) return true;
+      seen.add(id);
+    }
+    return false;
+  }
+  function cloneRecordBase(value){ return value == null ? value : JSON.parse(JSON.stringify(value)); }
+  function mergeRecordChanges(base,current,next,recordId,recordIds){
+    // Las filas antiguas sin id/código siguen siendo comparables sin inventar datos persistidos.
+    const getId=row=>recordId(row)?'id:'+recordId(row):'legacy:'+recordFingerprint(row);
+    const index = rows => {
+      const map=new Map();
+      for (const row of rows){
+        const id=getId(row);
+        if (!id || map.has(id)) throw new Error('Identificadores incompletos o duplicados. No se puede fusionar de forma segura.');
+        map.set(id,row);
+      }
+      return map;
+    };
+    const b=index(base), c=index(current), n=index(next);
+    const selected=Array.isArray(recordIds)?new Set(recordIds.map(id=>'id:'+String(id))):null;
+    const out=current.slice();
+    for (const id of new Set([...b.keys(),...n.keys()])){
+      const original=b.get(id), proposed=n.get(id), live=c.get(id);
+      if (selected && !selected.has(id)) continue;
+      if (recordFingerprint(original)===recordFingerprint(proposed) || recordFingerprint(proposed)===recordFingerprint(live)) continue;
+      if (recordFingerprint(original)!==recordFingerprint(live)){
+        throw new Error('Conflicto: el registro '+id+' cambió o fue eliminado. Tus cambios pendientes se conservan; revisa la versión vigente.');
+      }
+      const at=out.findIndex(row=>getId(row)===id);
+      if (!n.has(id)) { if (at>=0) out.splice(at,1); }
+      else if (at>=0) out[at]=isPlainObject(live) && isPlainObject(proposed)?{...live,...proposed}:proposed;
+      else out.push(proposed);
+    }
+    return out;
+  }
+
   const SHARED_CONTRACTS = {
     'arcano33_inventario': {
       expected: 'object',
@@ -879,7 +925,10 @@
       writer: (meta && meta.writer) ? String(meta.writer) : ''
     };
     try{ getStore(scope).setItem(mk, JSON.stringify(out)); return out; }
-    catch(_){ return out; }
+    catch(err){
+      logOnce('meta-write:' + key, 'No se pudo guardar la revisión de', key, err);
+      return null;
+    }
   }
 
   // ------------------------------
@@ -1353,11 +1402,14 @@
       }
 
       // Guardar rev “de lectura” para anti-pisadas en esta pestaña
-      try{ this._sharedState[key] = { rev: meta.rev, updatedAt: meta.updatedAt, writer: meta.writer, readAt: Date.now() }; }
+      try{ this._sharedState[key] = { rev: meta.rev, updatedAt: meta.updatedAt, writer: meta.writer, readAt: Date.now(), snapshot:Array.isArray(data)?cloneRecordBase(data):undefined }; }
       catch(_){ }
 
       return { data, meta };
     },
+
+    recordFingerprint,
+    sharedGetBase(key){return cloneRecordBase(this._sharedState && this._sharedState[key] && this._sharedState[key].snapshot);},
 
     sharedGet(key, fallback=null, scope='local'){
       return this.sharedRead(key, fallback, scope).data;
@@ -1409,12 +1461,17 @@
 
       const nextRev = coerceInt(metaNow.rev, 0) + 1;
       const metaWritten = writeMeta(key, { rev:nextRev, updatedAt:nowIso(), writer:source || '' }, scope);
-      try{ this._sharedState[key] = { rev:metaWritten.rev, updatedAt:metaWritten.updatedAt, writer:metaWritten.writer, readAt:Date.now() }; }
+      if (!metaWritten){
+        try{ delete this._sharedState[key]; }catch(_){ }
+        return { ok:false, data:normalized, meta:metaNow, conflict:false, dataWritten:true, revisionWritten:false,
+          message:'Los datos se escribieron, pero no se pudo guardar su revisión. Guardado incompleto: comprobá los datos antes de reintentar.' };
+      }
+      try{ this._sharedState[key] = { rev:metaWritten.rev, updatedAt:metaWritten.updatedAt, writer:metaWritten.writer, readAt:Date.now(), snapshot:Array.isArray(normalized)?cloneRecordBase(normalized):undefined }; }
       catch(_){ }
       return { ok:true, data:normalized, meta:metaWritten, conflict:false, message:'' };
     },
 
-    sharedSet(key, next, { scope='local', source='', baseRev=null, conflictPolicy='merge' } = {}){
+    sharedSet(key, next, { scope='local', source='', baseRev=null, conflictPolicy='merge', baseData, recordIds } = {}){
       const contract = SHARED_CONTRACTS[key];
       if (!contract){
         const ok = this.setJSON(key, next, scope);
@@ -1427,7 +1484,17 @@
       const conflict = (typeof expectedBase === 'number' && expectedBase !== curMeta.rev);
 
       // Leer actual (normalizado)
-      const cur = this.sharedRead(key, null, scope).data;
+      let cur;
+      if (contract.expected==='array'){
+        // No sustituir la base del escritor con una lectura realizada durante el guardado.
+        try{
+          const raw=getStore(scope).getItem(key);
+          const parsed=raw===null?[]:JSON.parse(raw);
+          if (!Array.isArray(parsed)) throw new Error('Formato de lista inválido.');
+          if (duplicateRecordIds(parsed)) return {ok:false,data:null,meta:curMeta,conflict:true,message:'Identificadores duplicados en la lista vigente. No se ha guardado; revisa los registros.'};
+          cur=contract.normalize(parsed);
+        }catch(error){ return {ok:false,data:null,meta:curMeta,conflict:false,message:'No se pudo leer la lista vigente. No se ha guardado.'}; }
+      }else cur=this.sharedRead(key, null, scope).data;
 
       // Normalizar next
       let nextNorm = next;
@@ -1435,6 +1502,7 @@
         logOnce('write-type:' + key, 'Intento de guardar tipo inválido en', key, '->', contract.expected);
         return { ok:false, data: cur, meta: curMeta, conflict:false, message:'Formato inválido para guardar.' };
       }
+      if (contract.expected==='array' && duplicateRecordIds(nextNorm)) return {ok:false,data:cur,meta:curMeta,conflict:true,message:'Identificadores duplicados en los cambios pendientes. No se ha guardado.'};
       if (typeof contract.normalize === 'function'){
         try{ nextNorm = contract.normalize(nextNorm); }
         catch(err){
@@ -1454,7 +1522,19 @@
       let finalData = nextNorm;
       let usedMerge = false;
 
-      if (contract.mode === 'merge'){
+      if (contract.expected==='array'){
+        const original=baseData!==undefined?baseData:state && state.snapshot;
+        if (metaNow.rev!==curMeta.rev || (!Array.isArray(original) && hardConflict)){
+          return {ok:false,data:cur,meta:metaNow,conflict:true,message:'Conflicto: no se puede comprobar la versión original. Los cambios pendientes se conservan.'};
+        }
+        try{
+          const base=Array.isArray(original)?contract.normalize(cloneRecordBase(original)):cur;
+          // Sin id estable en el histórico, comparar la lista completa antes de migrar esas filas.
+          const selected=base.every(row=>row && row.id!=null && String(row.id).trim())?recordIds:undefined;
+          finalData=mergeRecordChanges(base,cur,nextNorm,contract.getId || getIdGeneric,selected);
+          usedMerge=recordFingerprint(finalData)!==recordFingerprint(nextNorm);
+        }catch(error){ return {ok:false,data:cur,meta:metaNow,conflict:true,message:error.message}; }
+      } else if (contract.mode === 'merge'){
         // Siempre merge para no pisar campos de otros módulos
         try{
           finalData = (typeof contract.merge === 'function') ? contract.merge(cur, nextNorm) : deepMergeKeep(cur, nextNorm);
@@ -1514,9 +1594,14 @@
 
       const nextRev = coerceInt(metaNow.rev, 0) + 1;
       const metaWritten = writeMeta(key, { rev: nextRev, updatedAt: nowIso(), writer: source || '' }, scope);
+      if (!metaWritten){
+        try{ delete this._sharedState[key]; }catch(_){ }
+        return { ok:false, data:finalData, meta:metaNow, conflict:hardConflict, dataWritten:true, revisionWritten:false,
+          message:'Los datos se escribieron, pero no se pudo guardar su revisión. Guardado incompleto: comprobá los datos antes de reintentar.' };
+      }
 
       // Actualizar estado local
-      try{ this._sharedState[key] = { rev: metaWritten.rev, updatedAt: metaWritten.updatedAt, writer: metaWritten.writer, readAt: Date.now() }; }
+      try{ this._sharedState[key] = { rev: metaWritten.rev, updatedAt: metaWritten.updatedAt, writer: metaWritten.writer, readAt: Date.now(), snapshot:Array.isArray(finalData)?cloneRecordBase(finalData):undefined }; }
       catch(_){ }
 
       if (hardConflict && usedMerge){

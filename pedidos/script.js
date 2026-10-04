@@ -5,6 +5,18 @@ const PEDIDO_RAPIDO_SCHEMA_VERSION = 1;
 let viewingArchivedId = null;
 let editingId = null;
 let editingBaseUpdatedAt = null;
+let editingBaseRecordPED = null;
+
+// E5.8: la versión pertenece al formulario abierto, no a una lectura posterior de la tabla.
+function pedidoEditorConflictPED(mode,records){
+  const id=mode==='rapido'?quickOrderEditingId:editingId;
+  if (id==null || id==='') return '';
+  const base=mode==='rapido'?quickOrderBaseRecordPED:editingBaseRecordPED;
+  const current=records.find(row=>String(row.id)===String(id));
+  const fp=window.A33Storage && A33Storage.recordFingerprint;
+  if (!base || !current || !fp || fp(base)!==fp(current)) return 'Este pedido cambió o fue eliminado. Los cambios pendientes se conservan; abre el pedido vigente para revisarlo.';
+  return '';
+}
 
 // --- Identidad estable del pedido (anti-duplicados por reintentos) ---
 const PEDIDOS_DRAFT_KEY = 'a33_pedidos_draft_v1';
@@ -144,10 +156,10 @@ function loadQuickOrdersPED(){
   return [];
 }
 
-function saveQuickOrdersPED(records){
+function saveQuickOrdersPED(records,recordIds){
   const rows = (Array.isArray(records) ? records : []).map(normalizeQuickOrderPED).filter(Boolean);
   if (!(window.A33Storage && typeof A33Storage.sharedSet === 'function')) return { ok:false, data:rows, message:'A33Storage no disponible.' };
-  return A33Storage.sharedSet(STORAGE_KEY_PEDIDOS_RAPIDOS, rows, { source:'pedidos-rapidos' });
+  return A33Storage.sharedSet(STORAGE_KEY_PEDIDOS_RAPIDOS, rows, { source:'pedidos-rapidos', recordIds });
 }
 
 window.A33PedidosRapidosModel = Object.freeze({
@@ -608,12 +620,12 @@ function loadPedidos() {
   }
 }
 
-function savePedidos(list) {
+function savePedidos(list,recordIds) {
   const arr = Array.isArray(list) ? list : [];
 
   try {
     if (window.A33Storage && typeof A33Storage.sharedSet === 'function') {
-      const r = A33Storage.sharedSet(STORAGE_KEY_PEDIDOS, arr, { source: 'pedidos' });
+      const r = A33Storage.sharedSet(STORAGE_KEY_PEDIDOS, arr, { source: 'pedidos', recordIds });
       if (!r || !r.ok) {
         console.warn('No se pudo guardar pedidos', r);
         showArchivedNotice((r && r.message) ? r.message : 'No se pudo guardar (conflicto). Recarga e intenta de nuevo.');
@@ -623,10 +635,15 @@ function savePedidos(list) {
     }
   } catch (e) {
     console.warn('Error guardando pedidos (sharedSet)', e);
+    showArchivedNotice('No se pudo confirmar el guardado de pedidos. Comprobá los datos antes de reintentar.');
+    return false;
   }
 
   try {
-    A33Storage.setItem(STORAGE_KEY_PEDIDOS, JSON.stringify(arr));
+    if (!A33Storage.setItem(STORAGE_KEY_PEDIDOS, JSON.stringify(arr))){
+      showArchivedNotice('No se pudo guardar pedidos en este navegador.');
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('Error guardando pedidos', e);
@@ -1610,7 +1627,7 @@ function writePosCustomersRaw(arr){
       }
       return true;
     }
-  }catch(_){ }
+  }catch(_){ return false; }
 
   try{
     if (window.A33Storage && typeof A33Storage.setJSON === 'function'){
@@ -2014,7 +2031,8 @@ async function calcularTotalesDesdeFormulario() {
   };
 }
 
-function clearForm() {
+function clearForm(options = {}) {
+  if(!discardCurrentPedidoDraftPED('completo', options.discard === true))return false;
   $("pedido-form").reset();
 
   // restaurar valores por defecto numéricos
@@ -2035,6 +2053,7 @@ function clearForm() {
   $("saldoPendiente").value = "";
   editingId = null;
   editingBaseUpdatedAt = null;
+  editingBaseRecordPED = null;
   try{ ensureDraftPedidoId(true); }catch(_){ }
   currentPriceSnapshot = {};
 
@@ -2059,6 +2078,7 @@ function clearForm() {
 }
 
 function populateForm(pedido) {
+  if(!discardCurrentPedidoDraftPED('completo',false))return false;
   $("fechaCreacion").value = formatDate(pedido.fechaCreacion);
   $("fechaEntrega").value = formatDate(pedido.fechaEntrega);
   $("codigoPedido").value = pedido.codigo || "";
@@ -2103,6 +2123,7 @@ function populateForm(pedido) {
   $("lotesRelacionados").value = pedido.lotesRelacionados || "";
 
   editingId = pedido.id;
+  editingBaseRecordPED=JSON.parse(JSON.stringify(pedido));
   $("save-btn").textContent = "Actualizar pedido";
   editingBaseUpdatedAt = (pedido && typeof pedido.updatedAt === 'number') ? pedido.updatedAt : null;
   try{ clearDraftPedido(); }catch(_){ }
@@ -2350,10 +2371,11 @@ function renderArchivedTable() {
     cargarBtn.setAttribute("aria-label", "Cargar como nuevo");
     cargarBtn.addEventListener("click", () => {
       try{
+        if(populateForm(p) === false)return;
         viewingArchivedId = p.id;
-        populateForm(p);
         // Guardar desde un archivado debe crear uno nuevo (no editar)
         editingId = null;
+        editingBaseRecordPED = null;
         editingBaseUpdatedAt = null;
         try{ ensureDraftPedidoId(true); }catch(_){ }
         const sb = $("save-btn");
@@ -2470,7 +2492,7 @@ async function deletePedido(id) {
     const newPedidos = Array.isArray(pedidos) ? [...pedidos] : [];
     newPedidos.splice(idx, 1);
 
-    const okAct = savePedidos(newPedidos);
+    const okAct = savePedidos(newPedidos,[id]);
     if (!okAct) {
       // intentar rollback del histórico
       try { saveArchivedPedidos(archived); } catch(_){ }
@@ -2560,6 +2582,7 @@ const QUICK_ORDER_PAGE_SIZE = 30;
 let quickOrderItemsDraft = [];
 let quickOrderEditingId = null;
 let quickOrderEditingUpdatedAt = null;
+let quickOrderBaseRecordPED = null;
 let quickPendingLimit = QUICK_ORDER_PAGE_SIZE;
 let quickHistoryLimit = QUICK_ORDER_PAGE_SIZE;
 
@@ -2682,6 +2705,7 @@ function renderQuickProductLinesPED(){
     quantity.min = '1';
     quantity.step = '1';
     quantity.value = String(item.cantidad || 1);
+    quantity.dataset.draftIndex = String(index);
     quantity.setAttribute('aria-label', 'Cantidad de ' + (item.productNameSnapshot || 'producto'));
     quantity.addEventListener('change', () => {
       const value = Number(quantity.value);
@@ -2721,10 +2745,13 @@ function updateQuickCodePreviewPED(){
   }
 }
 
-function resetQuickOrderFormPED(){
+function resetQuickOrderFormPED(options = {}){
+  if(!discardCurrentPedidoDraftPED('rapido',options.discard === true))return false;
+  quickOrderDraftIdPED = null;
   quickOrderItemsDraft = [];
   quickOrderEditingId = null;
   quickOrderEditingUpdatedAt = null;
+  quickOrderBaseRecordPED = null;
   const form = $('quick-order-form');
   if (form) form.reset();
   const today = new Date().toISOString().slice(0, 10);
@@ -2742,9 +2769,11 @@ function resetQuickOrderFormPED(){
 }
 
 function editQuickOrderPED(id){
+  if(!discardCurrentPedidoDraftPED('rapido',false))return false;
   const order = loadQuickOrdersPED().find((item) => String(item.id) === String(id));
   if (!order) return;
   quickOrderEditingId = order.id;
+  quickOrderBaseRecordPED=JSON.parse(JSON.stringify(order));
   quickOrderEditingUpdatedAt = Number(order.updatedAt || 0);
   quickOrderItemsDraft = order.items.map((item) => ({ ...item, productSnapshot:{ ...(item.productSnapshot || {}) } }));
   renderQuickCustomerSelectPED('', '');
@@ -2767,7 +2796,7 @@ function mutateQuickOrderPED(id, updater){
   const updated = updater({ ...records[index], items:records[index].items.map((item) => ({ ...item })) });
   if (!updated) return { ok:false, message:'Operación cancelada.' };
   records[index] = updated;
-  return saveQuickOrdersPED(records);
+  return saveQuickOrdersPED(records,[id]);
 }
 
 function setQuickOrderDeliveredPED(id, delivered){
@@ -2794,7 +2823,7 @@ function deleteQuickOrderPED(id){
   const order = records.find((item) => String(item.id) === String(id));
   if (!order) return;
   if (!confirm(`¿Borrar definitivamente ${order.codigo || 'este Pedido rápido'}?\n\nEsta acción no se puede deshacer.`)) return;
-  const result = saveQuickOrdersPED(records.filter((item) => String(item.id) !== String(id)));
+  const result = saveQuickOrdersPED(records.filter((item) => String(item.id) !== String(id)),[id]);
   if (!result || !result.ok){
     window.A33Notice.alert((result && result.message) || 'No se pudo borrar el Pedido rápido.');
     return;
@@ -2975,7 +3004,17 @@ function initQuickOrdersUI_PED(){
   $('quick-export-btn')?.addEventListener('click', () => { try{ exportToCSV(); }catch(_){ } });
   $('quick-order-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
+    const conflict = recoveredPedidoConflictPED('rapido');
+    if(conflict){setQuickOrderNoticePED(conflict,'warn');return;}
+    // Recuperar texto escrito antes de change también debe conservar su cantidad al guardar.
+    const lineInputs=Array.from(document.querySelectorAll('#quick-product-lines input[data-draft-index]'));
+    if(lineInputs.some(el=>!String(el.value).trim() || !Number.isInteger(Number(el.value)) || Number(el.value)<1)){
+      setQuickOrderNoticePED('Cada cantidad debe ser un entero mayor o igual a 1.','warn');return;
+    }
+    for(const el of lineInputs){const item=quickOrderItemsDraft[Number(el.dataset.draftIndex)];if(item)item.cantidad=Number(el.value);}
     const records = loadQuickOrdersPED();
+    const editorConflict=pedidoEditorConflictPED('rapido',records);
+    if (editorConflict){persistPedidoFormDraftPED('rapido');setQuickOrderNoticePED(editorConflict,'warn');return;}
     const customer = getQuickCustomerPED();
     const existing = quickOrderEditingId ? records.find((order) => String(order.id) === String(quickOrderEditingId)) : null;
     if (existing && Number(existing.updatedAt || 0) !== Number(quickOrderEditingUpdatedAt || 0)){
@@ -2986,7 +3025,7 @@ function initQuickOrdersUI_PED(){
     const stateValue = $('quick-status') ? $('quick-status').value : 'pendiente';
     const candidate = {
       ...(existing || {}),
-      id:existing ? existing.id : createQuickOrderIdPED(now),
+      id:existing ? existing.id : (quickOrderDraftIdPED || (quickOrderDraftIdPED=createQuickOrderIdPED(now))),
       codigo:existing ? existing.codigo : generateQuickOrderCodePED($('quick-delivery-date').value, records),
       createdAt:existing ? existing.createdAt : now,
       updatedAt:now,
@@ -3003,9 +3042,9 @@ function initQuickOrdersUI_PED(){
     if (!validation.ok){ setQuickOrderNoticePED(validation.message, 'warn'); return; }
     const index = records.findIndex((order) => String(order.id) === String(validation.data.id));
     if (index >= 0) records[index] = validation.data; else records.push(validation.data);
-    const result = saveQuickOrdersPED(records);
+    const result = saveQuickOrdersPED(records,[validation.data.id]);
     if (!result || !result.ok){ setQuickOrderNoticePED((result && result.message) || 'No se pudo guardar.', 'warn'); return; }
-    resetQuickOrderFormPED();
+    resetQuickOrderFormPED({discard:true});
     renderQuickOrdersPED();
     setQuickOrderNoticePED('Pedido rápido guardado ✓', 'ok');
   });
@@ -3455,6 +3494,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("pedido-form").addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    const conflict = recoveredPedidoConflictPED('completo');
+    if(conflict){showArchivedNotice(conflict);return;}
     const res = await withSavingLock('Guardando…', async () => {
       // Cliente seleccionado/creado (viene del catálogo POS)
       const customer = getCustomerFromUI();
@@ -3511,11 +3552,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       const v = validatePedidoBeforeSave(payload);
       if (!v.ok) return v;
 
+      const recoveryConflict = recoveredPedidoConflictPED('completo');
+      if(recoveryConflict)return {ok:false,message:recoveryConflict};
+
       // ID estable: para pedidos nuevos usamos un draftId (idempotente en reintentos/recargas)
       let id = (editingId != null && editingId !== '') ? editingId : ensureDraftPedidoId(false);
 
       // Dedupe por código (reintentos): si ya existe un pedido con este código, no crear duplicado
       const pedidosNow = loadPedidos();
+      const editorConflict=pedidoEditorConflictPED('completo',pedidosNow);
+      if (editorConflict) return {ok:false,message:editorConflict};
       const codigoKey = normalizeCodigoKey(codigo);
       const existingByCodigo = (codigoKey ? pedidosNow.find(p => normalizeCodigoKey(p && p.codigo) === codigoKey) : null);
 
@@ -3634,7 +3680,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (idx >= 0) updated[idx] = pedido;
       else updated.push(pedido);
 
-      const ok = savePedidos(updated);
+      const ok = savePedidos(updated,[pedido.id]);
       if (!ok) {
         return { ok:false, message:'No se pudo guardar. No se limpió el formulario.' };
       }
@@ -3646,6 +3692,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     if (!res || !res.ok){
+      persistPedidoFormDraftPED('completo');
       const msg = (res && res.message) ? res.message : 'No se pudo guardar el pedido.';
       showArchivedNotice(msg);
       window.A33Notice.alert(msg);
@@ -3653,7 +3700,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     renderTable();
-    clearForm();
+    clearForm({discard:true});
     window.A33Notice.alert("Pedido guardado correctamente.");
   });
 
@@ -3689,7 +3736,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     showArchivedNotice("Borrado ✓");
   });
   $("calc-totals-btn").addEventListener("click", async () => {
-    try { await calcularTotalesDesdeFormulario(); } catch {}
+    try { await calcularTotalesDesdeFormulario(); pedFormDraftState.completo.dirty=true;persistPedidoFormDraftPED('completo'); } catch {}
   });
 
   // Auto-actualizar totales al cambiar envío/descuento/anticipo.
@@ -3762,6 +3809,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (detBtn2) detBtn2.addEventListener('click', toggleDetails);
   setDetailsMode(false);
 
+  initPedidoFormDraftsPED();
   registerServiceWorker();
 });
 
@@ -3775,4 +3823,158 @@ function registerServiceWorker() {
   } catch (err) {
     console.warn('Pedidos: error al registrar Service Worker', err);
   }
+}
+
+// E5.3: borradores de formularios, separados de los pedidos registrados.
+const PED_FORM_DRAFT_PREFIX = 'a33_pedidos_form_draft_v1_';
+const PED_FORM_FIELDS = {
+  completo:['fechaCreacion','fechaEntrega','codigoPedido','prioridad','clienteBuscar','clienteNombre','clienteId','clienteTipo','clienteTelefono','clienteDireccion','clienteReferencia','clienteNewName','envio','descuento','pagoAnticipado','subtotal','totalPagar','saldoPendiente','metodoPago','estado','lotesRelacionados'],
+  rapido:['quick-customer-search','quick-delivery-date','quick-priority','quick-status','quick-product-select','quick-product-quantity']
+};
+const pedFormDraftState = { ready:false, restoring:false, instance:Date.now().toString(36)+'_'+Math.random().toString(36).slice(2), completo:{dirty:false}, rapido:{dirty:false} };
+let quickOrderDraftIdPED = null;
+function pedidoDraftKeyPED(mode){ return PED_FORM_DRAFT_PREFIX+pedFormDraftState.instance+'_'+mode; }
+function pedidoDraftStatusPED(message){ const el=$('pedido-draft-status');if(el)el.textContent=message; }
+function capturePedidoFormDraftPED(mode){
+  const fields={};for(const id of PED_FORM_FIELDS[mode]){if($(id))fields[id]=String($(id).value || '');}
+  const common={schemaVersion:1,mode,updatedAt:Date.now(),fields};
+  if(mode==='rapido'){
+    if(!quickOrderDraftIdPED)quickOrderDraftIdPED=createQuickOrderIdPED(Date.now());
+    return {...common,editingId:quickOrderEditingId,baseRecord:typeof quickOrderBaseRecordPED!=='undefined'?quickOrderBaseRecordPED:null,baseUpdatedAt:quickOrderEditingUpdatedAt,draftId:quickOrderDraftIdPED,customer:getQuickCustomerPED(),items:quickOrderItemsDraft,lineQuantities:Array.from(document.querySelectorAll('#quick-product-lines input[data-draft-index]')).map(el=>({index:Number(el.dataset.draftIndex),raw:el.value}))};
+  }
+  return {...common,editingId,baseRecord:typeof editingBaseRecordPED!=='undefined'?editingBaseRecordPED:null,archivedSourceId:viewingArchivedId,baseUpdatedAt:editingBaseUpdatedAt,draftId:ensureDraftPedidoId(false),customer:getCustomerFromUI(),priceSnapshot:currentPriceSnapshot,
+    historical:currentHistoricalPedidoItemsPED,products:PRESENTACIONES.map(p=>({productId:p.productId,key:p.key,label:p.label,price:p.price,legacyKey:p.legacyKey || '',rawProduct:p.rawProduct || {},rawQty:String($(p.qtyId)?.value || '')}))};
+}
+function persistPedidoFormDraftPED(mode){
+  if(!pedFormDraftState.ready || pedFormDraftState.restoring || !pedFormDraftState[mode].dirty)return true;
+  try{
+    const payload=JSON.stringify(capturePedidoFormDraftPED(mode));
+    if(!A33Storage.setItem(pedidoDraftKeyPED(mode),payload,'local'))throw new Error('Storage bloqueado o lleno');
+    pedFormDraftState[mode].failed=false;
+    pedidoDraftStatusPED(pedFormDraftState.completo.failed || pedFormDraftState.rapido.failed
+      ? 'Una modalidad tiene cambios cuyo borrador no se pudo guardar. Conservá esta pestaña abierta y reintentá.'
+      : 'Borrador local actualizado. El pedido todavía no está guardado.');return true;
+  }catch(err){
+    pedFormDraftState[mode].failed=true;
+    pedidoDraftStatusPED('No se pudo guardar el borrador. Conservá esta pestaña abierta y volvé a editar para reintentar.');return false;
+  }
+}
+function discardCurrentPedidoDraftPED(mode, approved){
+  const state=pedFormDraftState[mode];
+  if(pedFormDraftState.ready && state.dirty && !approved && !confirm('¿Descartar los cambios pendientes de este formulario?'))return false;
+  if(pedFormDraftState.ready){
+    try{if(!A33Storage.removeItem(pedidoDraftKeyPED(mode),'local'))throw new Error('No se pudo quitar el borrador');}
+    catch(_){pedidoDraftStatusPED('El formulario se limpió, pero su copia local no se pudo quitar. Sigue disponible en los borradores.');}
+  }
+  state.dirty=false;state.failed=false;state.recovered=false;state.editingId=null;state.baseUpdatedAt=null;state.draftId=null;
+  return true;
+}
+function validatePedidoFormDraftPED(value){
+  if(!value || value.schemaVersion!==1 || !PED_FORM_FIELDS[value.mode] || !value.fields || Array.isArray(value.fields))return false;
+  if(!Number.isFinite(value.updatedAt) || typeof value.draftId!=='string' || !value.draftId)return false;
+  if(!Object.values(value.fields).every(v=>typeof v==='string'))return false;
+  if(value.editingId!=null && !['string','number'].includes(typeof value.editingId))return false;
+  if(value.baseRecord!=null && (typeof value.baseRecord!=='object' || Array.isArray(value.baseRecord) || String(value.baseRecord.id)!==String(value.editingId)))return false;
+  if(value.baseUpdatedAt!=null && !Number.isFinite(value.baseUpdatedAt))return false;
+  if(!value.customer || typeof value.customer.name!=='string')return false;
+  if(value.mode==='rapido')return Array.isArray(value.items) && value.items.every(i=>i && typeof i.productId==='string' && Number.isInteger(i.cantidad) && i.cantidad>0) && Array.isArray(value.lineQuantities) && value.lineQuantities.every(q=>q && Number.isInteger(q.index) && q.index>=0 && q.index<value.items.length && typeof q.raw==='string');
+  return Array.isArray(value.historical) && value.historical.every(i=>i && typeof i==='object') && value.priceSnapshot && typeof value.priceSnapshot==='object'
+    && Array.isArray(value.products) && value.products.every(p=>p && typeof p.rawQty==='string' && typeof p.key==='string' && typeof p.label==='string' && Number.isFinite(p.price));
+}
+function recoveredPedidoConflictPED(mode){
+  const state=pedFormDraftState[mode];if(!state.recovered)return '';
+  const records=mode==='rapido'?loadQuickOrdersPED():loadPedidos();
+  if(state.editingId!=null){
+    const record=records.find(p=>String(p.id)===String(state.editingId));
+    const version=record && (mode==='rapido'?Number(record.updatedAt || 0):(typeof record.updatedAt==='number'?record.updatedAt:null));
+    if(!record || version!==state.baseUpdatedAt)return 'El pedido original cambió o ya no está disponible. Los cambios recuperados se conservan; revisá el pedido vigente antes de guardar.';
+  }else if(records.some(p=>String(p.id)===String(state.draftId))){
+    return 'Este borrador corresponde a un pedido ya registrado. Revisá ese pedido antes de guardar para evitar duplicados.';
+  }
+  return '';
+}
+function restorePedidoFormDraftPED(record){
+  if(!validatePedidoFormDraftPED(record)){pedidoDraftStatusPED('Borrador incompatible o incompleto. Se conserva sin aplicar.');return false;}
+  const mode=record.mode;
+  // Un producto desaparecido con cantidad inválida no puede convertirse en una línea histórica.
+  if(mode==='completo' && record.products.some(p=>p.rawQty && !PRESENTACIONES.some(c=>c.key===p.key && c.label===p.label && c.price===p.price) && (!Number.isInteger(Number(p.rawQty)) || Number(p.rawQty)<0))){
+    pedidoDraftStatusPED('Hay una cantidad inválida de un producto que cambió. El borrador se conserva sin aplicar.');return false;
+  }
+  if(!discardCurrentPedidoDraftPED(mode,false))return false;
+  pedFormDraftState.restoring=true;
+  try{
+    if(mode==='completo'){
+      currentHistoricalPedidoItemsPED=JSON.parse(JSON.stringify(record.historical));
+      for(const p of record.products){
+        if(!PRESENTACIONES.some(c=>c.key===p.key && c.label===p.label && c.price===p.price) && Number(p.rawQty)>0){
+          currentHistoricalPedidoItemsPED.push(normalizePedidoItemForStoragePED({productId:p.productId,productKey:p.key,productName:p.label,qty:Number(p.rawQty),unitPriceSnapshot:p.price,productSnapshot:p.rawProduct,legacyKey:p.legacyKey,source:'snapshot'}));
+        }
+      }
+      renderPedidosProductRows(PRESENTACIONES);
+      for(const p of PRESENTACIONES){const saved=record.products.find(c=>c.key===p.key && c.label===p.label && c.price===p.price);if($(p.qtyId))$(p.qtyId).value=saved?saved.rawQty:'0';}
+      currentPriceSnapshot={...record.priceSnapshot};editingId=record.editingId;editingBaseRecordPED=record.baseRecord?JSON.parse(JSON.stringify(record.baseRecord)):null;editingBaseUpdatedAt=record.baseUpdatedAt;draftPedidoId=record.draftId;
+      renderCustomerSelect('');setCustomerSelection(record.customer);
+      if(record.customer.id && !Array.from($('clienteSelect').options).some(o=>o.value==='id:'+record.customer.id)){
+        const option=document.createElement('option');option.value='id:'+record.customer.id;
+        option.dataset.id=record.customer.id;option.dataset.name=record.customer.name;option.textContent=record.customer.name+' (recuperado)';
+        $('clienteSelect').appendChild(option);$('clienteSelect').value=option.value;
+      }
+      viewingArchivedId=record.archivedSourceId || null;
+      showArchivedModeBanner(viewingArchivedId?'Viendo pedido archivado (Histórico). Guardar creará un pedido activo nuevo.':'');
+      $('save-btn').textContent=editingId!=null?'Actualizar pedido':'Guardar pedido';
+    }else{
+      quickOrderItemsDraft=JSON.parse(JSON.stringify(record.items));quickOrderEditingId=record.editingId;quickOrderBaseRecordPED=record.baseRecord?JSON.parse(JSON.stringify(record.baseRecord)):null;quickOrderEditingUpdatedAt=record.baseUpdatedAt;quickOrderDraftIdPED=record.draftId;
+      renderQuickCustomerSelectPED('','');ensureQuickHistoricalCustomerPED({customerId:record.customer.id,customerName:record.customer.name});renderQuickProductLinesPED();
+      for(const q of record.lineQuantities){const el=document.querySelector('#quick-product-lines input[data-draft-index="'+q.index+'"]');if(el)el.value=q.raw;
+        if(Number.isInteger(Number(q.raw)) && Number(q.raw)>=1)quickOrderItemsDraft[q.index].cantidad=Number(q.raw);}
+      $('quick-save-btn').textContent=quickOrderEditingId!=null?'Actualizar Pedido rápido':'Guardar Pedido rápido';
+    }
+    for(const id of PED_FORM_FIELDS[mode]){if($(id) && hasOwnPED(record.fields,id))$(id).value=record.fields[id];}
+    const state=pedFormDraftState[mode];Object.assign(state,{dirty:true,recovered:true,editingId:record.editingId,baseUpdatedAt:record.baseUpdatedAt,draftId:record.draftId});
+    if(mode==='completo')toggleNewCustomerBox(!!record.fields.clienteNewName);
+    setPedidoModePED(mode);
+  }finally{pedFormDraftState.restoring=false;}
+  const ok=persistPedidoFormDraftPED(mode);
+  const conflict=recoveredPedidoConflictPED(mode);
+  if(ok)pedidoDraftStatusPED(conflict || 'Formulario recuperado. Revisá los datos antes de guardar. La copia de origen se conserva hasta que elijas Descartar.');
+  return true;
+}
+function renderPedidoFormDraftsPED(){
+  const list=$('pedido-draft-list');if(!list)return;list.replaceChildren();
+  try{
+    const keys=[];for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key && key.startsWith(PED_FORM_DRAFT_PREFIX))keys.push(key);}
+    for(const key of keys.sort()){
+      const raw=localStorage.getItem(key);let record;try{record=JSON.parse(raw);}catch(_){}
+      const row=document.createElement('div');row.className='form-actions';
+      const label=document.createElement('span');const valid=validatePedidoFormDraftPED(record);
+      label.textContent=valid?`${record.mode==='rapido'?'Pedido rápido':'Pedido completo'} · ${record.customer.name || 'Sin cliente'} · ${new Date(record.updatedAt).toLocaleString('es-NI')}`:'Borrador incompatible: se conserva';
+      const recover=document.createElement('button');recover.type='button';recover.className='btn-secondary';recover.textContent='Recuperar';recover.disabled=!valid;
+      recover.addEventListener('click',()=>{try{const latest=JSON.parse(localStorage.getItem(key));restorePedidoFormDraftPED(latest);}catch(_){pedidoDraftStatusPED('No se pudo leer el borrador. Se conserva sin aplicar.');}});
+      const discard=document.createElement('button');discard.type='button';discard.className='btn-secondary';discard.textContent='Descartar';
+      discard.addEventListener('click',()=>{
+        if(!confirm('¿Descartar únicamente esta copia del borrador? El formulario abierto y los pedidos registrados se conservan.'))return;
+        if(!A33Storage.removeItem(key,'local')){pedidoDraftStatusPED('No se pudo descartar el borrador.');return;}
+        renderPedidoFormDraftsPED();
+      });row.append(label,recover,discard);list.appendChild(row);
+    }
+    if(!keys.length)list.textContent='No hay copias pendientes para recuperar.';
+  }catch(_){pedidoDraftStatusPED('No se pudieron leer los borradores. No se ha eliminado ninguna copia.');}
+}
+function initPedidoFormDraftsPED(){
+  pedFormDraftState.ready=true;
+  for(const [mode,id] of [['completo','pedido-form'],['rapido','quick-order-form']]){
+    const form=$(id);if(!form)continue;
+    const changed=()=>{pedFormDraftState[mode].dirty=true;persistPedidoFormDraftPED(mode);};
+    form.addEventListener('input',changed);form.addEventListener('change',changed);
+    // Incluir selección/creación de cliente y cambios de líneas mediante botones.
+    form.addEventListener('click',e=>{const button=e.target.closest('button');if(!button || button.type==='submit' || ['reset-btn','quick-reset-btn','calc-totals-btn'].includes(button.id))return;queueMicrotask(changed);});
+  }
+  $('pedido-draft-refresh')?.addEventListener('click',renderPedidoFormDraftsPED);
+  window.addEventListener('beforeunload',e=>{
+    if(!pedFormDraftState.completo.dirty && !pedFormDraftState.rapido.dirty)return;
+    persistPedidoFormDraftPED('completo');persistPedidoFormDraftPED('rapido');e.preventDefault();e.returnValue='';
+  });
+  window.addEventListener('pagehide',()=>{persistPedidoFormDraftPED('completo');persistPedidoFormDraftPED('rapido');});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){persistPedidoFormDraftPED('completo');persistPedidoFormDraftPED('rapido');}});
+  renderPedidoFormDraftsPED();
 }

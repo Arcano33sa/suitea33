@@ -8315,6 +8315,7 @@ function saveCustomerCatalogPOS(list){
   const safe = Array.isArray(list) ? list : [];
   try{
     if (window.A33Storage && typeof A33Storage.sharedRead === 'function' && typeof A33Storage.sharedSet === 'function'){
+      const baseData=typeof A33Storage.sharedGetBase==='function'?A33Storage.sharedGetBase(CUSTOMER_CATALOG_KEY):undefined;
       const r0 = A33Storage.sharedRead(CUSTOMER_CATALOG_KEY, [], 'local');
       const cur = (r0 && Array.isArray(r0.data)) ? r0.data : [];
       const baseRev = (r0 && r0.meta && typeof r0.meta.rev === 'number') ? r0.meta.rev : null;
@@ -8323,7 +8324,7 @@ function saveCustomerCatalogPOS(list){
       const merged = mergeCustomerCatalogByIdKeepPOS(cur, safe);
       const sorted = sortCustomerObjectsAZ_POS(merged);
 
-      const r = A33Storage.sharedSet(CUSTOMER_CATALOG_KEY, sorted, { source: 'pos', baseRev });
+      const r = A33Storage.sharedSet(CUSTOMER_CATALOG_KEY, sorted, { source: 'pos', baseRev, baseData });
       if (!r || !r.ok){
         try{ showToast((r && r.message) ? r.message : 'Conflicto al guardar clientes. Recargá e intentá de nuevo.', 'error', 4200); }catch(_){ }
         return false;
@@ -8501,6 +8502,7 @@ function setCustomerSelectionUI_POS(customer){
     else delete inp.dataset.customerId;
   }
   syncCourtesyRecipientUI_POS({ resetManual: true });
+  if(purchaseModalStatePOS)persistPurchaseDraftPOS({changed:true});
 }
 
 function clearCustomerSelectionUI_POS(){
@@ -8509,6 +8511,7 @@ function clearCustomerSelectionUI_POS(){
   inp.value = '';
   if (inp.dataset) delete inp.dataset.customerId;
   syncCourtesyRecipientUI_POS({ resetManual: true });
+  if(purchaseModalStatePOS)persistPurchaseDraftPOS({changed:true});
 }
 
 function getSaleCustomerSnapshotNamePOS(s){
@@ -8767,7 +8770,7 @@ function ensureCustomerInCatalogPOS(name, preferredId){
       }
 
       const sorted = sortCustomerObjectsAZ_POS(list);
-      saveCustomerCatalogPOS(sorted);
+      if (!saveCustomerCatalogPOS(sorted)) return {ok:false,reason:'save'};
       syncDisabledLegacyFromCatalogPOS(sorted);
       return { ok:true, id: String(existing.id) };
     }
@@ -8795,7 +8798,7 @@ function ensureCustomerInCatalogPOS(name, preferredId){
 
   list.push(obj);
   const sorted = sortCustomerObjectsAZ_POS(list);
-  saveCustomerCatalogPOS(sorted);
+  if (!saveCustomerCatalogPOS(sorted)) return {ok:false,reason:'save'};
   syncDisabledLegacyFromCatalogPOS(sorted);
   refreshCustomerUI_POS();
 
@@ -8844,7 +8847,7 @@ function addCustomerToCatalogPOS(name, preferredId){
   });
 
   const sorted = sortCustomerObjectsAZ_POS(list);
-  saveCustomerCatalogPOS(sorted);
+  if (!saveCustomerCatalogPOS(sorted)) return {ok:false,reason:'save'};
   syncDisabledLegacyFromCatalogPOS(sorted);
   refreshCustomerUI_POS();
 
@@ -8868,7 +8871,7 @@ function setCustomerActiveByIdPOS(id, isActive){
   c.isActive = !!isActive;
   c.updatedAt = Date.now();
   const sorted = sortCustomerObjectsAZ_POS(list);
-  saveCustomerCatalogPOS(sorted);
+  if (!saveCustomerCatalogPOS(sorted)) return {ok:false,reason:'save'};
   syncDisabledLegacyFromCatalogPOS(sorted);
   refreshCustomerUI_POS();
 }
@@ -8922,7 +8925,7 @@ function editCustomerNamePOS(customerId, newName, reason){
   c.updatedAt = Date.now();
 
   const sorted = sortCustomerObjectsAZ_POS(list);
-  saveCustomerCatalogPOS(sorted);
+  if (!saveCustomerCatalogPOS(sorted)) return {ok:false,reason:'save'};
   syncDisabledLegacyFromCatalogPOS(sorted);
   refreshCustomerUI_POS();
 
@@ -8998,7 +9001,7 @@ function mergeCustomersPOS(sourceId, destId, reason){
   dest.updatedAt = now;
 
   const sorted = sortCustomerObjectsAZ_POS(list);
-  saveCustomerCatalogPOS(sorted);
+  if (!saveCustomerCatalogPOS(sorted)) return {ok:false,reason:'save'};
   syncDisabledLegacyFromCatalogPOS(sorted);
   refreshCustomerUI_POS();
 
@@ -14866,7 +14869,7 @@ function _getChecklistDraftStorePOS(){
   if (!window.__A33_CHECKLIST_DRAFT){
     window.__A33_CHECKLIST_DRAFT = {
       eventId: null,
-      q: Object.create(null),          // key: section::id -> rawText
+      q: Object.create(null),          // key: event|section::id -> edición pendiente
       lastQueued: Object.create(null), // evitar re-encolar el mismo valor
       lastSaved: Object.create(null),  // last persisted (para evitar writes)
       t: null,
@@ -14887,99 +14890,92 @@ function queueChecklistTextSavePOS(sectionKey, id, rawText, opts){
   const o = (opts || {});
   if (!sectionKey || !id) return;
   const d = _getChecklistDraftStorePOS();
-  const key = String(sectionKey) + '::' + String(id);
+  const eventId = d.eventId;
+  const key = String(eventId || '') + '|' + String(sectionKey) + '::' + String(id);
   const raw = (rawText == null ? '' : String(rawText));
-
-  // Evitar escrituras excesivas: solo encolar si cambió vs último encolado
   if (d.lastQueued[key] === raw && !o.force) return;
   d.lastQueued[key] = raw;
-  d.q[key] = raw;
-
-  // Debounce razonable (iPad): guarda mientras escribe, y además se fuerza en blur/navegación
+  d.q[key] = { eventId, sectionKey:String(sectionKey), id:String(id), raw };
   if (d.t) clearTimeout(d.t);
   const wait = (typeof o.wait === 'number') ? o.wait : 280;
-  d.t = setTimeout(()=>{ flushChecklistTextQueuePOS({ reason: 'debounce' }).catch(()=>{}); }, Math.max(120, wait));
+  d.t = setTimeout(()=>{ flushChecklistTextQueuePOS({ reason:'debounce' }).catch(()=>{}); }, Math.max(120, wait));
+}
+
+// Leer y modificar el evento en la misma transacción; confirmar al completar,
+// no al recibir el éxito de una solicitud que todavía puede abortarse.
+function saveChecklistTextBatchPOS(eventId, entries){
+  return new Promise((resolve, reject)=>{
+    let tr;
+    const saved = Object.create(null);
+    try{
+      tr = db.transaction(['events'], 'readwrite');
+      const store = tr.objectStore('events');
+      let failure = null;
+      tr.oncomplete = ()=>resolve(saved);
+      tr.onerror = ()=>reject(failure || tr.error || new Error('No se pudo guardar el Checklist.'));
+      tr.onabort = ()=>reject(failure || tr.error || new Error('Guardado del Checklist abortado.'));
+      const req = store.get(eventId);
+      req.onsuccess = ()=>{
+        try{
+          const ev = req.result;
+          if (!ev) throw new Error('No se encontró el evento del Checklist pendiente.');
+          const template = normalizeChecklistTemplatePOS(ev.checklistTemplate);
+          let changed = false;
+          for (const [key, entry] of entries){
+            const arr = Array.isArray(template[entry.sectionKey]) ? template[entry.sectionKey] : [];
+            const item = arr.find(x=>String(x.id)===entry.id);
+            if (!item) throw new Error('No se encontró un ítem del Checklist pendiente.');
+            const next = _normalizeChecklistTextPOS(entry.raw, item.text);
+            if (String(item.text || '') !== next){ item.text = next; changed = true; }
+            saved[key] = next;
+          }
+          if (changed){ ev.checklistTemplate = template; store.put(ev); }
+        }catch(err){ failure = err; try{ tr.abort(); }catch(_){ reject(err); } }
+      };
+    }catch(err){
+      if (tr){ try{ tr.abort(); }catch(_){} }
+      reject(err);
+    }
+  });
 }
 
 async function flushChecklistTextQueuePOS(opts){
-  const o = (opts || {});
   const d = _getChecklistDraftStorePOS();
-
-  // Nada que hacer
-  const keys = Object.keys(d.q);
-  if (!keys.length) return;
-
-  // Evitar flush concurrente
-  if (d.flushing) return;
+  if (d.flushing) return false;
+  const entries = Object.entries(d.q);
+  if (!entries.length) return true;
   d.flushing = true;
-
+  if (d.t){ clearTimeout(d.t); d.t = null; }
+  let failed = false;
   try{
-    if (d.t){ clearTimeout(d.t); d.t = null; }
-
-    const evId = (d.eventId != null) ? parseInt(d.eventId, 10) : null;
-    let eventId = (evId && Number.isFinite(evId)) ? evId : null;
-
-    if (!eventId){
-      try{
-        const cur = await getMeta('currentEventId');
-        const curId = (cur === null || cur === undefined || cur === '') ? null : parseInt(cur, 10);
-        if (curId && Number.isFinite(curId)) eventId = curId;
-      }catch(_e){}
+    const groups = new Map();
+    for (const pair of entries){
+      const eventId = Number(pair[1].eventId);
+      if (!Number.isFinite(eventId) || eventId <= 0) throw new Error('Checklist pendiente sin evento identificado.');
+      if (!groups.has(eventId)) groups.set(eventId, []);
+      groups.get(eventId).push(pair);
     }
-
-    if (!eventId){
-      // Sin evento: limpiar cola para no envenenar futuras sesiones
-      d.q = Object.create(null);
-      return;
-    }
-
-    const ev = await getEventByIdPOS(eventId);
-    if (!ev){
-      d.q = Object.create(null);
-      return;
-    }
-
-    // ensureChecklistDataPOS garantiza la plantilla base
-    const dayKey = safeYMD(getSaleDayKeyPOS());
-    const { template } = ensureChecklistDataPOS(ev, dayKey);
-
-    let changed = false;
-
-    for (const k of keys){
-      const raw = d.q[k];
-      const parts = String(k).split('::');
-      const sectionKey = parts[0] || '';
-      const id = parts.slice(1).join('::'); // por si acaso
-      if (!sectionKey || !id) continue;
-
-      const arr = Array.isArray(template[sectionKey]) ? template[sectionKey] : [];
-      const it = arr.find(x=>String(x.id)===String(id));
-      if (!it) continue;
-
-      const next = _normalizeChecklistTextPOS(raw, it.text);
-      const lastSavedKey = String(eventId) + '|' + k;
-
-      // Evitar write si no cambió
-      if (String(it.text || '') !== String(next)){
-        it.text = next;
-        template[sectionKey] = arr;
-        changed = true;
+    for (const [eventId, batch] of groups){
+      const saved = await saveChecklistTextBatchPOS(eventId, batch);
+      for (const [key, entry] of batch){
+        d.lastSaved[key] = saved[key];
+        // Una edición recibida mientras se guardaba sigue pendiente.
+        if (d.q[key] === entry) delete d.q[key];
       }
-
-      d.lastSaved[lastSavedKey] = next;
     }
-
-    // Limpiar cola antes del put para no repetir si ocurre render rápido
-    d.q = Object.create(null);
-
-    if (changed){
-      ev.checklistTemplate = template;
-      await put('events', ev);
-    }
+    return Object.keys(d.q).length === 0;
   }catch(err){
+    failed = true;
     console.error('Checklist flush error', err);
+    try{ showToast('No se pudo guardar el texto del Checklist. Los cambios siguen pendientes en esta pestaña; volvé a editar o salí del campo para reintentar. No cierres ni recargues.', 'error', 9000); }catch(_){}
+    return false;
   }finally{
     d.flushing = false;
+    // Si hubo nuevas ediciones durante el guardado, procesarlas sin perderlas.
+    // Ante un fallo se espera un reintento del usuario o del ciclo de vida.
+    if (!failed && Object.keys(d.q).length && !d.t){
+      d.t = setTimeout(()=>{ flushChecklistTextQueuePOS({ reason:'pending' }).catch(()=>{}); }, 280);
+    }
   }
 }
 
@@ -15729,7 +15725,11 @@ async function renderChecklistTab(){
     // Render columnas
     for (const sec of CHECKLIST_SECTIONS_POS){
       const listEl = document.getElementById(sec.listId);
-      renderChecklistSectionPOS(sec.key, listEl, template[sec.key] || [], checkedSet);
+      const items = (template[sec.key] || []).map(item=>{
+        const pending = _getChecklistDraftStorePOS().q[String(currentId) + '|' + sec.key + '::' + String(item.id)];
+        return pending ? { ...item, text:pending.raw } : item;
+      });
+      renderChecklistSectionPOS(sec.key, listEl, items, checkedSet);
     }
 
     const notes = document.getElementById('checklist-notes');
@@ -28076,9 +28076,10 @@ async function exportEventosExcel(){
 
 }
 
-// Modal de compra — Etapa 2. El borrador vive solamente en memoria.
+// Modal de compra — copias provisionales recuperables (E5.4).
 let purchaseModalStatePOS = null;
 let purchaseOpeningPOS = false;
+let purchaseRecoveringPOS = false;
 
 function setPurchaseMessagePOS(message){
   const el = document.getElementById('purchase-error');
@@ -28162,7 +28163,7 @@ function renderPurchaseCatalogPOS(){
       const item = state.items.find(x => x.key === product.key);
       if (item) item.qty = Math.max(1, parseNumPOS(item.qty,1)) + 1;
       else state.items.push({ ...product, index:state.nextIndex++, qty:1, discountPerUnit:'', courtesy:false });
-      setPurchaseMessagePOS(''); renderPurchaseItemsPOS();
+      setPurchaseMessagePOS(''); renderPurchaseItemsPOS();persistPurchaseDraftPOS({changed:true});
     });
     card.append(info,add); wrap.appendChild(card);
   }
@@ -28184,7 +28185,7 @@ function renderPurchaseItemsPOS(){
     const title = document.createElement('strong'); title.textContent = item.name;
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn-outline btn-pill btn-pill-mini';
     remove.textContent = 'Quitar'; remove.setAttribute('aria-label','Quitar ' + item.name);
-    remove.addEventListener('click',()=>{ state.items = state.items.filter(x => x.index !== item.index); renderPurchaseItemsPOS(); });
+    remove.addEventListener('click',()=>{ state.items = state.items.filter(x => x.index !== item.index); renderPurchaseItemsPOS();persistPurchaseDraftPOS({changed:true}); });
     head.append(title,remove);
     const fields = document.createElement('div'); fields.className = 'purchase-item-fields';
     for (const [field,labelText,step,min] of [['qty','Cantidad','1','1'],['unitPrice','Precio (C$)','0.01','0'],['discountPerUnit','Descuento por unidad (C$)','0.01','0']]){
@@ -28228,8 +28229,8 @@ function purchaseBackgroundInertPOS(active){
   document.body.classList.toggle('purchase-modal-open',active);
 }
 
-async function openPurchaseModalPOS(){
-  if (purchaseModalStatePOS || purchaseOpeningPOS) return;
+async function openPurchaseModalPOS({recovery=false}={}){
+  if (purchaseModalStatePOS || purchaseOpeningPOS || (purchaseRecoveringPOS && !recovery)) return;
   purchaseOpeningPOS = true;
   try{
     const event = await getActiveEventPOS();
@@ -28239,7 +28240,7 @@ async function openPurchaseModalPOS(){
     const catalog = await loadPurchaseCatalogPOS(event);
     const customer = document.getElementById('sale-customer');
     purchaseModalStatePOS = { eventId:event.id, date, catalog, items:[], nextIndex:0,
-      purchaseUid:genSaleUidPOS(), busy:false, lastFocus:document.activeElement,
+      purchaseUid:genSaleUidPOS(), draftKey:PURCHASE_DRAFT_PREFIX_POS+genSaleUidPOS(), draftDirty:false, busy:false, lastFocus:document.activeElement,
       priorCustomer:{ name:customer.value, id:customer.dataset.customerId || '', sticky:isCustomerStickyPOS() } };
     document.getElementById('sale-payment').value = 'efectivo';
     document.getElementById('sale-return').checked = false;
@@ -28249,6 +28250,7 @@ async function openPurchaseModalPOS(){
     document.getElementById('purchase-search').value = '';
     document.getElementById('purchase-context').textContent = (event.name || 'Evento') + ' · ' + date;
     await refreshSaleBankSelect(); resetSaleCashTenderPOS(); setPurchaseMessagePOS('');
+    const draftWarning=document.getElementById('purchase-draft-warning');if(draftWarning){draftWarning.hidden=true;draftWarning.textContent='';}
     const modal = document.getElementById('purchase-modal'); modal.inert = false;
     modal.setAttribute('aria-hidden','false'); modal.style.display = 'flex';
     purchaseBackgroundInertPOS(true);
@@ -28260,9 +28262,17 @@ async function openPurchaseModalPOS(){
   }finally{ purchaseOpeningPOS = false; }
 }
 
-function closePurchaseModalPOS({ committed = false } = {}){
+function closePurchaseModalPOS({ committed = false, discardVolatile = false } = {}){
   const state = purchaseModalStatePOS;
   if (!state || state.busy) return;
+  if(!committed && !discardVolatile && !persistPurchaseDraftPOS() && !confirm('No se pudo conservar la edición más reciente. ¿Cerrar de todos modos y perder los cambios que no se guardaron?'))return;
+  if(committed){
+    state.committed=true;
+    try{
+      if(!A33Storage.removeItem(state.draftKey,'local'))throw new Error('No se pudo quitar la copia');
+    }catch(_){purchaseDraftStatusPOS('Compra registrada; su copia local no pudo quitarse. Revisá el listado antes de descartarla.');}
+  }else if(state.draftDirty)purchaseDraftStatusPOS(state.draftFailed?'La edición más reciente no se conservó. Revisá las copias disponibles.':'Compra sin registrar. Su copia local está disponible para recuperación.');
+  state.closing=true;
   if (!committed){
     setCustomerSelectionUI_POS({name:state.priorCustomer.name,id:state.priorCustomer.id});
     document.getElementById('sale-customer-sticky').checked = state.priorCustomer.sticky;
@@ -28306,12 +28316,22 @@ async function submitPurchaseModalPOS(){
     payment:document.getElementById('sale-payment').value, bankId:document.getElementById('sale-bank').value,
     customerName:getCustomerNameFromUI_POS(), customerId:getCustomerIdHintFromUI_POS(),
     notes:document.getElementById('sale-notes').value, isReturn };
+  persistPurchaseDraftPOS();
   setPurchaseMessagePOS(''); setPurchaseBusyPOS(true);
   let result;
-  try{ result = await savePurchasePOS(draft); }
+  try{
+    if(state.recovered){
+      const event=await checkPurchaseRecoveryContextPOS(draft);
+      const catalog=await loadPurchaseCatalogPOS(event);
+      const problem=recoveredPurchaseCatalogProblemPOS(state.items,catalog);
+      if(problem)throw new Error(problem);
+    }
+    result = await savePurchasePOS(draft);
+  }
   catch(error){ setPurchaseMessagePOS(error.message || 'No se pudo guardar la compra.'); }
   finally{ setPurchaseBusyPOS(false); }
   if (!result || result.cancelled){ recomputePurchaseTotalPOS(); return; }
+  state.committed=true;
   // A partir de aquí la compra ya está guardada: un error al refrescar no permite reinsertarla.
   try{
     afterSaleCustomerHousekeepingPOS(result.records[0].customerName,result.records[0].customerId);
@@ -28332,6 +28352,7 @@ function setupPurchaseModalPOS(){
   const modal = document.getElementById('purchase-modal');
   if (!modal || modal.dataset.bound === '1') return;
   modal.dataset.bound = '1';
+  bindPurchaseDraftLifecyclePOS();
   document.getElementById('purchase-cancel').addEventListener('click',()=>closePurchaseModalPOS());
   document.getElementById('purchase-save').addEventListener('click',()=>submitPurchaseModalPOS().catch(error=>posNotify(error.message)));
   document.getElementById('purchase-search').addEventListener('input',renderPurchaseCatalogPOS);
@@ -29735,3 +29756,133 @@ async function onOpenPosCalculatorTab(){
 
 
 document.addEventListener('DOMContentLoaded', init);
+
+// E5.4: copias provisionales de compra, separadas de sales e inventario.
+const PURCHASE_DRAFT_PREFIX_POS = 'a33_pos_purchase_draft_v1_';
+const PURCHASE_DRAFT_FIELDS_POS = ['sale-payment','sale-bank','sale-notes','sale-cash-mode','sale-cash-usd-received','purchase-search'];
+function purchaseDraftStatusPOS(message){
+  const el=document.getElementById('purchase-draft-status');if(el)el.textContent=message;
+}
+function capturePurchaseDraftPOS(){
+  const state=purchaseModalStatePOS;if(!state)return null;
+  const fields={};for(const id of PURCHASE_DRAFT_FIELDS_POS)fields[id]=document.getElementById(id)?.value || '';
+  return {schemaVersion:1,updatedAt:Date.now(),purchaseUid:state.purchaseUid,eventId:state.eventId,date:state.date,fields,
+    customer:{name:getCustomerNameFromUI_POS(),id:getCustomerIdHintFromUI_POS() || ''},
+    isReturn:document.getElementById('sale-return').checked,sticky:document.getElementById('sale-customer-sticky').checked,
+    moreOpen:document.getElementById('purchase-more-options').open,exchangeRate:posCurrencyCentralExchangeRatePOS(),
+    items:state.items.map(item=>({key:item.key,productId:item.productId || '',extraId:item.extraId ?? null,isExtra:!!item.isExtra,name:item.name,
+      qty:String(item.qty ?? ''),unitPrice:String(item.unitPrice ?? ''),discountPerUnit:String(item.discountPerUnit ?? ''),courtesy:!!item.courtesy}))};
+}
+function persistPurchaseDraftPOS({changed=false}={}){
+  const state=purchaseModalStatePOS;
+  if(!state || state.restoring || state.closing || state.committed)return true;
+  if(changed)state.draftDirty=true;
+  if(!state.draftDirty)return true;
+  try{
+    const payload=JSON.stringify(capturePurchaseDraftPOS());
+    if(!A33Storage.setItem(state.draftKey,payload,'local'))throw new Error('Storage bloqueado o lleno');
+    state.draftFailed=false;purchaseDraftStatusPOS('Compra provisional conservada en este navegador; todavía no está registrada.');
+    const warning=document.getElementById('purchase-draft-warning');if(warning){warning.hidden=true;warning.textContent='';}return true;
+  }catch(err){
+    state.draftFailed=true;
+    const message='No se pudo conservar la compra provisional. Mantené esta pestaña abierta y volvé a editar para reintentar.';
+    purchaseDraftStatusPOS(message);const warning=document.getElementById('purchase-draft-warning');if(warning){warning.textContent=message;warning.hidden=false;}return false;
+  }
+}
+function validatePurchaseDraftPOS(record){
+  if(!record || record.schemaVersion!==1 || !Number.isFinite(record.updatedAt) || !Number.isInteger(record.eventId) || record.eventId<=0)return false;
+  if(typeof record.purchaseUid!=='string' || !record.purchaseUid || typeof record.date!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(record.date))return false;
+  if(!record.fields || !PURCHASE_DRAFT_FIELDS_POS.every(id=>typeof record.fields[id]==='string'))return false;
+  if(!['efectivo','transferencia','tarjeta','credito'].includes(record.fields['sale-payment']))return false;
+  if(!['nio','usd_change_nio'].includes(record.fields['sale-cash-mode']))return false;
+  if(!record.customer || typeof record.customer.name!=='string' || typeof record.customer.id!=='string' || typeof record.isReturn!=='boolean' || typeof record.sticky!=='boolean')return false;
+  if(!Array.isArray(record.items))return false;
+  const keys=new Set();
+  return record.items.every(item=>{
+    if(!item || typeof item.key!=='string' || keys.has(item.key) || typeof item.name!=='string' || typeof item.productId!=='string' || typeof item.courtesy!=='boolean' || typeof item.isExtra!=='boolean')return false;
+    if(!['qty','unitPrice','discountPerUnit'].every(k=>typeof item[k]==='string'))return false;
+    const identity=item.isExtra?'extra:'+item.extraId:'product:'+item.productId;
+    if(item.key!==identity || (item.isExtra ? !Number.isInteger(item.extraId) || item.extraId<=0 : !item.productId))return false;
+    keys.add(item.key);return true;
+  });
+}
+async function checkPurchaseRecoveryContextPOS(record){
+  const event=await getActiveEventPOS();
+  if(!event || event.id!==record.eventId || document.getElementById('sale-date').value!==record.date){
+    throw new Error('Seleccioná el evento '+record.eventId+' y la fecha '+record.date+' del borrador antes de recuperarlo. El evento debe estar abierto.');
+  }
+  if(!(await guardSellDayOpenOrToastPOS(event,record.date)))throw new Error('El día del borrador está cerrado. La copia se conserva.');
+  if((await getAll('sales')).some(s=>s.purchaseUid===record.purchaseUid))throw new Error('Esta compra ya fue registrada. La copia se conserva; revisá el listado antes de descartarla.');
+  return event;
+}
+function recoveredPurchaseCatalogProblemPOS(items,catalog){
+  for(const item of items){
+    const current=catalog.find(p=>p.key===item.key);
+    if(!current)return 'Un producto o extra ya no está disponible: '+item.name+'. Quitá esa línea y revisá el catálogo vigente.';
+    if(item.isExtra && Number(item.unitPrice)!==Number(current.unitPrice))return 'El precio del extra cambió: '+item.name+'. Quitá esa línea y agregala desde el catálogo vigente.';
+  }
+  return '';
+}
+async function restorePurchaseDraftPOS(record){
+  if(!validatePurchaseDraftPOS(record)){purchaseDraftStatusPOS('Copia incompatible o incompleta. Se conserva sin aplicar.');return false;}
+  if(purchaseModalStatePOS || purchaseOpeningPOS || purchaseRecoveringPOS){purchaseDraftStatusPOS('Cerrá la compra abierta antes de recuperar otra copia.');return false;}
+  purchaseRecoveringPOS=true;let opened=false;
+  try{
+    await checkPurchaseRecoveryContextPOS(record);
+    await openPurchaseModalPOS({recovery:true});
+    opened=!!purchaseModalStatePOS;
+    const state=purchaseModalStatePOS;if(!state)return false;
+    if(state.eventId!==record.eventId || state.date!==record.date)throw new Error('El evento o la fecha cambiaron durante la recuperación.');
+    setPurchaseBusyPOS(true);state.restoring=true;state.recovered=true;state.purchaseUid=record.purchaseUid;
+    state.items=record.items.map((item,index)=>({...state.catalog.find(p=>p.key===item.key),...item,index}));state.nextIndex=state.items.length;
+    for(const id of PURCHASE_DRAFT_FIELDS_POS)if(id!=='sale-bank')document.getElementById(id).value=record.fields[id];
+    document.getElementById('sale-return').checked=record.isReturn;
+    document.getElementById('sale-customer-sticky').checked=record.sticky;
+    document.getElementById('purchase-more-options').open=!!record.moreOpen;
+    setCustomerSelectionUI_POS(record.customer);
+    await refreshSaleBankSelect();
+    const bank=document.getElementById('sale-bank');
+    const bankMissing=record.fields['sale-bank'] && !Array.from(bank.options).some(o=>o.value===record.fields['sale-bank']);
+    if(!bankMissing)bank.value=record.fields['sale-bank'];
+    setPurchaseBusyPOS(false);refreshSaleCashTenderUiPOS();renderPurchaseCatalogPOS();renderPurchaseItemsPOS();
+    state.restoring=false;
+    const problem=recoveredPurchaseCatalogProblemPOS(state.items,state.catalog);
+    const fxChanged=record.exchangeRate!==posCurrencyCentralExchangeRatePOS() && record.fields['sale-cash-mode']==='usd_change_nio';
+    const message=problem || (bankMissing?'El banco guardado ya no está disponible. Seleccioná uno vigente antes de guardar.':fxChanged?'El T/C cambió. Se aplica el T/C vigente; revisá el cobro y el vuelto antes de guardar.':'Compra recuperada. Revisá los datos antes de guardar; la copia de origen se conserva.');
+    persistPurchaseDraftPOS({changed:true});setPurchaseMessagePOS(message);return true;
+  }catch(err){
+    if(opened && purchaseModalStatePOS){setPurchaseBusyPOS(false);purchaseModalStatePOS.restoring=false;closePurchaseModalPOS({discardVolatile:true});}
+    purchaseDraftStatusPOS(err.message || 'No se pudo recuperar la compra. La copia se conserva.');return false;
+  }finally{purchaseRecoveringPOS=false;}
+}
+function renderPurchaseDraftsPOS(){
+  const list=document.getElementById('purchase-draft-list');if(!list)return;list.replaceChildren();
+  try{
+    const keys=[];for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key?.startsWith(PURCHASE_DRAFT_PREFIX_POS))keys.push(key);}
+    for(const key of keys.sort()){
+      let record;try{record=JSON.parse(localStorage.getItem(key));}catch(_){}
+      const row=document.createElement('div');row.className='row';const label=document.createElement('span');const valid=validatePurchaseDraftPOS(record);
+      label.textContent=valid?`${record.customer.name || 'Sin cliente'} · Evento ${record.eventId} · ${record.date} · ${new Date(record.updatedAt).toLocaleString('es-NI')}`:'Copia incompatible: se conserva';
+      const recover=document.createElement('button');recover.type='button';recover.className='btn-outline';recover.textContent='Recuperar';recover.disabled=!valid;
+      recover.addEventListener('click',async()=>{try{await restorePurchaseDraftPOS(JSON.parse(localStorage.getItem(key)));}catch(_){purchaseDraftStatusPOS('No se pudo leer la copia; se conserva.');}});
+      const discard=document.createElement('button');discard.type='button';discard.className='btn-outline';discard.textContent='Descartar';
+      discard.addEventListener('click',()=>{if(!confirm('¿Descartar únicamente esta copia provisional? No se modifican ventas, caja ni existencias.'))return;
+        if(!A33Storage.removeItem(key,'local')){purchaseDraftStatusPOS('No se pudo descartar la copia.');return;}renderPurchaseDraftsPOS();});
+      row.append(label,recover,discard);list.appendChild(row);
+    }
+    if(!keys.length)list.textContent='No hay compras provisionales para recuperar.';
+  }catch(_){purchaseDraftStatusPOS('No se pudieron leer las copias provisionales. Se conservan.');}
+}
+function bindPurchaseDraftLifecyclePOS(){
+  document.getElementById('purchase-draft-refresh')?.addEventListener('click',renderPurchaseDraftsPOS);
+  const modal=document.getElementById('purchase-modal');
+  modal.addEventListener('input',()=>persistPurchaseDraftPOS({changed:true}));
+  modal.addEventListener('change',()=>persistPurchaseDraftPOS({changed:true}));
+  window.addEventListener('beforeunload',event=>{
+    const state=purchaseModalStatePOS;if(!state?.draftDirty || state.committed)return;
+    persistPurchaseDraftPOS();event.preventDefault();event.returnValue='';
+  });
+  window.addEventListener('pagehide',()=>persistPurchaseDraftPOS());
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')persistPurchaseDraftPOS();});
+  renderPurchaseDraftsPOS();
+}

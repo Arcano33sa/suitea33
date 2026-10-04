@@ -16,6 +16,8 @@
   let currentEnvaseEditId = null;
   let currentTapaEditId = null;
   let currentCustomerEditId = null;
+  let currentCustomerEditBase = null;
+  const customerRecordBasesCAT=new WeakMap();
   let currentCustomerViewId = null;
   let currentRawMaterialEditId = null;
   let rawMaterialCreateBusy = false;
@@ -4129,7 +4131,9 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
       if (window.A33Storage && typeof A33Storage.sharedGet === 'function') raw = A33Storage.sharedGet(CUSTOMER_CATALOG_KEY, [], 'local');
       else raw = readJSONLocalCAT(CUSTOMER_CATALOG_KEY, []);
     }catch(_){ raw = readJSONLocalCAT(CUSTOMER_CATALOG_KEY, []); }
-    return normalizeCustomersCatalogCAT(raw);
+    const normalized=normalizeCustomersCatalogCAT(raw);
+    normalized.forEach(row=>{const base=raw.find(item=>item && String(item.id)===String(row.id));if(base)customerRecordBasesCAT.set(row,JSON.parse(JSON.stringify(base)));});
+    return normalized;
   }
 
   function mergeCustomersByIdCAT(current, next){
@@ -4147,24 +4151,25 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     return sortCustomersCAT(order.map(id => map.get(id)).filter(Boolean));
   }
 
-  function saveCustomerCatalogCAT(list){
+  function saveCustomerCatalogCAT(list,recordIds){
     const safe = normalizeCustomersCatalogCAT(Array.isArray(list) ? list : []);
     let ok = false;
     try{
       if (window.A33Storage && typeof A33Storage.sharedRead === 'function' && typeof A33Storage.sharedSet === 'function'){
+        const baseData=typeof A33Storage.sharedGetBase==='function'?A33Storage.sharedGetBase(CUSTOMER_CATALOG_KEY):undefined;
         const r0 = A33Storage.sharedRead(CUSTOMER_CATALOG_KEY, [], 'local');
         const cur = normalizeCustomersCatalogCAT(r0 && Array.isArray(r0.data) ? r0.data : []);
         const baseRev = (r0 && r0.meta && typeof r0.meta.rev === 'number') ? r0.meta.rev : null;
         const merged = mergeCustomersByIdCAT(cur, safe);
-        const r = A33Storage.sharedSet(CUSTOMER_CATALOG_KEY, merged, { source:'catalogos_clientes', baseRev });
+        const r = A33Storage.sharedSet(CUSTOMER_CATALOG_KEY, merged, { source:'catalogos_clientes', baseRev, baseData, recordIds });
         ok = !!(r && r.ok);
       } else if (window.A33Storage && typeof A33Storage.sharedSet === 'function'){
-        const r = A33Storage.sharedSet(CUSTOMER_CATALOG_KEY, safe, { source:'catalogos_clientes' });
+        const r = A33Storage.sharedSet(CUSTOMER_CATALOG_KEY, safe, { source:'catalogos_clientes', recordIds });
         ok = !!(r && r.ok);
       } else {
         ok = writeJSONLocalCAT(CUSTOMER_CATALOG_KEY, safe);
       }
-    }catch(_){ ok = writeJSONLocalCAT(CUSTOMER_CATALOG_KEY, safe); }
+    }catch(_){ ok = false; }
     if (ok) syncCustomerDisabledLegacyCAT(safe);
     return ok;
   }
@@ -4174,9 +4179,10 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     let ok = false;
     try{
       if (window.A33Storage && typeof A33Storage.sharedRead === 'function' && typeof A33Storage.sharedSet === 'function'){
+        const baseData=typeof A33Storage.sharedGetBase==='function'?A33Storage.sharedGetBase(CUSTOMER_CATALOG_KEY):undefined;
         const r0 = A33Storage.sharedRead(CUSTOMER_CATALOG_KEY, [], 'local');
         const baseRev = (r0 && r0.meta && typeof r0.meta.rev === 'number') ? r0.meta.rev : null;
-        const r = A33Storage.sharedSet(CUSTOMER_CATALOG_KEY, safe, { source:'catalogos_clientes_delete', baseRev });
+        const r = A33Storage.sharedSet(CUSTOMER_CATALOG_KEY, safe, { source:'catalogos_clientes_delete', baseRev, baseData });
         ok = !!(r && r.ok);
       } else if (window.A33Storage && typeof A33Storage.sharedSet === 'function'){
         const r = A33Storage.sharedSet(CUSTOMER_CATALOG_KEY, safe, { source:'catalogos_clientes_delete' });
@@ -4184,7 +4190,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
       } else {
         ok = writeJSONLocalCAT(CUSTOMER_CATALOG_KEY, safe);
       }
-    }catch(_){ ok = writeJSONLocalCAT(CUSTOMER_CATALOG_KEY, safe); }
+    }catch(_){ ok = false; }
     if (ok) syncCustomerDisabledLegacyCAT(safe);
     return ok;
   }
@@ -4224,6 +4230,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
   function fillCustomerFormCAT(customer){
     if (!customer) return;
     currentCustomerEditId = String(customer.id || '');
+    currentCustomerEditBase=customerRecordBasesCAT.get(customer) || null;
     const fields = {
       'cat-edit-customer-name': customer.name || '',
       'cat-edit-customer-cell': getCustomerCellularCAT(customer),
@@ -4653,7 +4660,9 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     const isEdit = !!currentCustomerEditId;
     if (isEdit){
       row = list.find(c => c && String(c.id) === String(currentCustomerEditId));
-      if (!row){ setCurrentCustomerMsgCAT('El cliente ya no existe. Actualiza e intenta de nuevo.', 'warn'); resetCustomerFormCAT(); await renderCustomers(); return; }
+      if (!row){ setCurrentCustomerMsgCAT('El cliente ya no existe. Tu edición se conserva; revisa el catálogo vigente.', 'warn'); return; }
+      const fp=window.A33Storage && A33Storage.recordFingerprint;
+      if (!currentCustomerEditBase || !fp || fp(currentCustomerEditBase)!==fp(customerRecordBasesCAT.get(row))){setCurrentCustomerMsgCAT('Este cliente cambió. Tu edición se conserva; abre la versión vigente para revisarla.','warn');return;}
       if (row.mergedIntoId){ setCurrentCustomerMsgCAT('Este cliente está fusionado. Administra el destino final.', 'warn'); return; }
       const oldName = sanitizeCustomerName(row.name || '');
       previousName = oldName;
@@ -4694,7 +4703,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     row.schemaVersion = CUSTOMER_SCHEMA_VERSION;
     row.updatedFrom = 'catalogos_clientes';
 
-    const ok = saveCustomerCatalogCAT(list);
+    const ok = saveCustomerCatalogCAT(list,[row.id]);
     if (!ok){ setCurrentCustomerMsgCAT('No se pudo guardar. Revisa almacenamiento local.', 'warn'); return; }
     customerExpandedGroupsCAT.add(customerGroupLetterCAT(data.name));
     const nameChanged = !isEdit || normalizeCustomerKeyCAT(previousName) !== data.normalizedName;
@@ -4717,7 +4726,7 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     row.active = next;
     row.updatedAt = Date.now();
     row.updatedFrom = 'catalogos_clientes_toggle';
-    const ok = saveCustomerCatalogCAT(list);
+    const ok = saveCustomerCatalogCAT(list,[row.id]);
     if (!ok){ toast('No se pudo guardar'); return; }
     await renderCustomers();
     toast(next ? 'Cliente activado' : 'Cliente inactivado');
@@ -4771,6 +4780,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     modal.classList.remove('show');
     modal.setAttribute('aria-hidden', 'true');
     currentCustomerEditId = null;
+    currentCustomerEditBase = null;
     setEditCustomerMsgCAT('', '');
     try{ document.body.classList.remove('cat-modal-open'); }catch(_){ }
   }

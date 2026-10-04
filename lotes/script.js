@@ -1476,10 +1476,10 @@ function saveArchivedLotes(data){
   A33Storage.setItem(ARCHIVE_KEY, JSON.stringify(data));
 }
 
-function saveLotes(data) {
+function saveLotes(data,recordIds) {
   try {
     if (window.A33Storage && typeof A33Storage.sharedSet === 'function') {
-      const r = A33Storage.sharedSet(STORAGE_KEY, data, { source: 'lotes' });
+      const r = A33Storage.sharedSet(STORAGE_KEY, data, { source: 'lotes', recordIds });
       if (r && r.ok === false) {
         if (r.message) window.A33Notice.alert(r.message);
         return false;
@@ -1487,7 +1487,9 @@ function saveLotes(data) {
       return true;
     }
   } catch (e) {
-    console.warn('saveLotes (shared) falló, usando fallback:', e);
+    console.warn('saveLotes (shared) falló:', e);
+    window.A33Notice.alert('No se pudo comprobar el guardado del lote. La edición se conserva.');
+    return false;
   }
   try {
     const ok = A33Storage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -2222,10 +2224,10 @@ function populateForm(lote) {
       id: String(lote.id),
       metaRev: meta && typeof meta.rev === 'number' ? meta.rev : 0,
       metaUpdatedAt: meta && meta.updatedAt ? String(meta.updatedAt) : null,
-      fingerprint: nonEditableFingerprint(lote)
+      baseRecord:JSON.parse(JSON.stringify(lote)), fingerprint: nonEditableFingerprint(lote)
     };
   } catch (_){
-    editingCtx = { id: String(lote.id), metaRev: 0, metaUpdatedAt: null, fingerprint: nonEditableFingerprint(lote) };
+    editingCtx = { id: String(lote.id), metaRev: 0, metaUpdatedAt: null, baseRecord:JSON.parse(JSON.stringify(lote)), fingerprint: nonEditableFingerprint(lote) };
   }
   $("save-btn").textContent = "Actualizar lote";
 }
@@ -3271,6 +3273,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const index = lotes.findIndex((l) => String(l?.id) === String(data.id));
       const cur = index >= 0 ? lotes[index] : null;
+      if (editingId && (!cur || !editingCtx || !editingCtx.baseRecord || !A33Storage.recordFingerprint ||
+        A33Storage.recordFingerprint(editingCtx.baseRecord)!==A33Storage.recordFingerprint(cur))){
+        window.A33Notice.alert('Este lote cambió o fue eliminado. La edición se conserva; abre la versión vigente para revisarla.');
+        return;
+      }
 
       // Una producción ya aplicada a Inventario no puede cambiar cantidades, insumos, fecha ni código desde Lotes.
       if (cur && (cur.operationId || cur.productionOperationId) && productionCriticalSignature(cur) !== productionCriticalSignature(data)){
@@ -3334,7 +3341,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         lotes.push(nuevo);
       }
 
-      const ok = saveLotes(lotes);
+      const ok = saveLotes(lotes,[data.id]);
       if (!ok) return;
 
       renderTable({ reset: true, forceRefresh: true });
@@ -3421,11 +3428,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         // Etapa 5: archivar snapshot antes de removerlo de activos
+        const live=loadLotes().find(item=>String(item.id)===String(lote.id));
+        if (!live || !A33Storage.recordFingerprint || A33Storage.recordFingerprint(live)!==A33Storage.recordFingerprint(lote)){
+          window.A33Notice.alert('Este lote cambió o fue eliminado. Revisa la versión vigente antes de eliminarlo.');return;
+        }
         const deletedAtIso = new Date().toISOString();
         try { archiveLote(lote, deletedAtIso); } catch (e){ console.warn('No se pudo archivar lote', e); }
 
         const current = loadLotes().filter((l) => String(l.id) !== String(lote.id));
-        saveLotes(current);
+        if (!saveLotes(current,[lote.id])) return;
         if (editingId === lote.id) clearForm();
         renderTable({ reset: true, forceRefresh: true });
 
@@ -3486,11 +3497,15 @@ ${code}`
           if (!confirm(`¿Borrar el lote ${code}?`)) return;
         }
 
+        const live=loadLotes().find(item=>String(item.id)===String(lote.id));
+        if (!live || !A33Storage.recordFingerprint || A33Storage.recordFingerprint(live)!==A33Storage.recordFingerprint(lote)){
+          window.A33Notice.alert('Este lote cambió o fue eliminado. Revisa la versión vigente antes de eliminarlo.');return;
+        }
         const deletedAtIso = new Date().toISOString();
         try { archiveLote(lote, deletedAtIso); } catch (e){ console.warn('No se pudo archivar lote', e); }
 
         const current = loadLotes().filter((l) => String(l.id) !== String(lote.id));
-        saveLotes(current);
+        if (!saveLotes(current,[lote.id])) return;
         if (editingId === lote.id) clearForm();
         renderTable({ reset: true, forceRefresh: true });
 

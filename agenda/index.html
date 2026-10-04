@@ -199,6 +199,20 @@ html body #agendaPurchasesView :is(button,input,select,textarea,a,.agenda-record
   </header>
 
   <main class="agenda-main" role="main">
+    <details class="agenda-panel" id="agendaPendingPanel">
+      <summary>Formularios pendientes de Reunión y Tarea</summary>
+      <p data-pending-status aria-live="polite"></p>
+      <p data-pending-warning role="alert" hidden></p>
+      <button class="agenda-btn agenda-btn--ghost" type="button" data-pending-refresh>Actualizar copias</button>
+      <div data-pending-list></div>
+    </details>
+    <details class="agenda-panel" id="purchasePendingPanel">
+      <summary>Compras pendientes de guardar</summary>
+      <p data-pending-status aria-live="polite"></p>
+      <p data-pending-warning role="alert" hidden></p>
+      <button class="agenda-btn agenda-btn--ghost" type="button" data-pending-refresh>Actualizar copias</button>
+      <div data-pending-list></div>
+    </details>
     <section class="agenda-view agenda-home-view" id="agendaHomeView" aria-labelledby="agenda-home-title">
       <article class="agenda-card agenda-home-hero">
         <span class="agenda-kicker">Núcleo A33</span>

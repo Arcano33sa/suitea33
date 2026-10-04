@@ -17733,6 +17733,10 @@ let rcCurrent = null;       // recibo activo (view/edit)
 let rcPaymentType = 'CASH'; // estado UI
 let rcEditorMode = 'edit';  // 'edit' | 'view'
 let rcSaving = false;
+let rcRawRows = new Map();
+let rcEditBase;
+let rcDraftKey = null;
+let rcDraftDirty = false;
 
 // Histórico: buscar / filtros
 let rcQuery = '';
@@ -18142,6 +18146,193 @@ function rcSuggestedPdfName(receipt){
   return parts.join(' ').replace(/\s+/g,' ').trim();
 }
 
+// E5.5: el formulario pendiente es independiente del recibo confirmado.
+const RC_PENDING_PREFIX = 'a33_fin_receipt_draft_v1_';
+const RC_PENDING_FIELDS = ['rec-client','rec-date','rec-bank','rec-ref','rec-financial-account','rec-operational-class'];
+function rcClone(value){ return value === undefined ? undefined : JSON.parse(JSON.stringify(value)); }
+function rcFingerprint(value){
+  return JSON.stringify(value, (key, item) => item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.keys(item).sort().reduce((out, k) => { out[k] = item[k]; return out; }, Object.create(null)) : item);
+}
+function rcCommitReceipt(candidate, expected, action){
+  return new Promise((resolve, reject) => {
+    if (expected === undefined) { reject(new Error('No se conoce la versión original. Actualice la lista y abra nuevamente el recibo.')); return; }
+    let tx, result, failure;
+    const fail = error => { failure = error; try { tx.abort(); } catch (_) { reject(error); } };
+    try {
+      tx = finDB.transaction('receipts', 'readwrite');
+      tx.oncomplete = () => resolve(result);
+      tx.onabort = () => reject(failure || tx.error || new Error('La transacción del recibo fue abortada. Los cambios siguen pendientes.'));
+      tx.onerror = () => { failure = failure || tx.error; };
+      const store = tx.objectStore('receipts');
+      const request = store.getAll();
+      request.onerror = () => { failure = request.error; };
+      request.onsuccess = () => {
+        try {
+          const rows = request.result || [];
+          const matches = rows.filter(row => String(row.receiptId) === String(candidate.receiptId));
+          const current = matches[0];
+          if (matches.length > 1 || (expected === null ? !!current : !current || rcFingerprint(current) !== rcFingerprint(expected))) {
+            throw new Error('El recibo cambió, ya se guardó o dejó de existir en otra pestaña. Se conservan sus cambios pendientes; actualice la lista y revise la versión vigente.');
+          }
+          const priorStatus = String(current && current.status || 'DRAFT');
+          const nextStatus = {save:'DRAFT',issue:'ISSUED',void:'VOID'}[action];
+          if (!nextStatus || candidate.status !== nextStatus || priorStatus !== (action === 'void' ? 'ISSUED' : 'DRAFT') || (action === 'void' && !current)) {
+            throw new Error('El estado del recibo no permite esta operación. Actualice la lista.');
+          }
+          result = {...current, ...rcClone(candidate)};
+          // Conservar el tipo histórico de la clave y metadata no mostrada por el editor.
+          if (current) result.receiptId = current.receiptId;
+          if (action === 'issue') {
+            let max = 0;
+            for (const row of rows) {
+              const n = parseInt(String(row.number == null ? '' : row.number).trim(), 10);
+              if (Number.isFinite(n) && n > max) max = n;
+            }
+            const next = max + 1;
+            result.number = next <= 9999 ? String(next).padStart(4, '0') : String(next);
+          } else if (current) result.number = current.number;
+          else result.number = null;
+          const put = store.put(result);
+          put.onerror = () => { failure = put.error; };
+        } catch (error) { fail(error); }
+      };
+    } catch (error) { if (tx) fail(error); else reject(error); }
+  });
+}
+function rcBeginPending(base){
+  rcEditBase = rcClone(base);
+  rcDraftKey = RC_PENDING_PREFIX + rcMakeId();
+  rcDraftDirty = false;
+  rcPendingMessage('');
+}
+function rcPendingMessage(message){
+  const el = document.getElementById('rec-pending-warning');
+  if (el) { el.textContent = message; el.hidden = !message; }
+}
+function rcPendingEnvelope(){
+  const fields = {};
+  for (const id of RC_PENDING_FIELDS) { const el = document.getElementById(id); fields[id] = el ? el.value : ''; }
+  const rawLines = Array.from(document.querySelectorAll('#rec-lines-tbody tr')).map(tr => {
+    const row = {};
+    for (const input of tr.querySelectorAll('input[data-f]')) row[input.dataset.f] = input.value;
+    return row;
+  });
+  return {schemaVersion:1, updatedAt:new Date().toISOString(), receipt:rcClone(rcCurrent), baseKnown:rcEditBase !== undefined, base:rcClone(rcEditBase), fields, rawLines};
+}
+function rcValidPending(record){
+  return !!(record && record.schemaVersion === 1 && record.receipt && typeof record.receipt.receiptId === 'string' && record.receipt.receiptId
+    && record.receipt.status === 'DRAFT' && Array.isArray(record.receipt.lines) && record.receipt.lines.length
+    && record.receipt.lines.every(line => line && typeof line.itemName === 'string' && ['qty','unitPrice','discountPerUnit'].every(field => typeof line[field] === 'number' && Number.isFinite(line[field])))
+    && typeof record.baseKnown === 'boolean' && (!record.baseKnown || record.base === null || (record.base && String(record.base.receiptId) === record.receipt.receiptId && String(record.base.status || 'DRAFT') === 'DRAFT'))
+    && record.fields && RC_PENDING_FIELDS.every(id => typeof record.fields[id] === 'string')
+    && Array.isArray(record.rawLines) && record.rawLines.length === record.receipt.lines.length
+    && record.rawLines.every(row => ['itemName','qty','unitPrice','discountPerUnit'].every(field => typeof row[field] === 'string')));
+}
+function rcPersistPending(changed=false){
+  if (!rcCurrent || rcEditorMode !== 'edit' || rcCurrent.status !== 'DRAFT' || !rcDraftKey) return true;
+  if (changed) rcDraftDirty = true;
+  if (!rcDraftDirty) return true;
+  try {
+    localStorage.setItem(rcDraftKey, JSON.stringify(rcPendingEnvelope()));
+    rcPendingMessage('');
+    return true;
+  } catch (_) {
+    rcPendingMessage('No se pudo conservar la última edición. Mantenga este formulario abierto o guarde el borrador; la copia anterior se conserva.');
+    return false;
+  }
+}
+function rcLeavePending(){
+  if (rcSaving) return false;
+  const kept = rcPersistPending();
+  rcRenderPending();
+  return kept || confirm('No se pudo guardar la última edición pendiente. ¿Cerrar de todas formas y perder esos cambios?');
+}
+function rcFinishPending(){
+  rcDraftDirty = false;
+  const key = rcDraftKey;
+  rcDraftKey = null;
+  try { if (key) localStorage.removeItem(key); }
+  catch (_) { rcPendingMessage('El recibo quedó confirmado, pero no se pudo quitar su copia pendiente. No la vuelva a registrar; revísela en la lista.'); }
+  rcRenderPending();
+}
+function rcReadPending(){
+  const rows = [];
+  for (let i=0; i<localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith(RC_PENDING_PREFIX)) continue;
+    let record;
+    try { record = JSON.parse(localStorage.getItem(key)); } catch (_) {}
+    rows.push({key, record, valid:rcValidPending(record)});
+  }
+  return rows;
+}
+function rcRecoverPending(key){
+  if (!rcLeavePending()) return;
+  let record;
+  try { record = JSON.parse(localStorage.getItem(key)); } catch (_) {}
+  if (!rcValidPending(record)) { rcPendingMessage('La copia no tiene una estructura reconocida. Se conserva para su revisión.'); return; }
+  rcBeginPending(record.baseKnown ? record.base : undefined);
+  rcCurrent = rcNormalizeReceipt(record.receipt);
+  rcEditorMode = 'edit';
+  rcToggleEditor(true);
+  rcFillEditor();
+  for (const id of RC_PENDING_FIELDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const value = record.fields[id];
+    if (id === 'rec-financial-account' && value && !Array.from(el.options).some(opt => opt.value === value)) {
+      const option = document.createElement('option'); option.value = value; option.textContent = 'Cuenta anterior no disponible: revise la selección'; el.appendChild(option);
+    }
+    el.value = value;
+  }
+  Array.from(document.querySelectorAll('#rec-lines-tbody tr')).forEach((tr, i) => {
+    for (const input of tr.querySelectorAll('input[data-f]')) input.value = record.rawLines[i][input.dataset.f];
+  });
+  rcSyncFinancialAccountUI();
+  rcPersistPending(true);
+  rcShowAlert('Cambios recuperados sin guardar ni emitir el recibo. Se conserva la copia original. Al guardar se comprobará la versión vigente y se aplicarán las validaciones actuales.', 'info');
+  rcRenderPending();
+}
+function rcRenderPending(){
+  const list = document.getElementById('rec-pending-list');
+  if (!list) return;
+  list.replaceChildren();
+  try {
+    const rows = rcReadPending();
+    const status = document.getElementById('rec-pending-status');
+    if (status) status.textContent = rows.length ? `${rows.length} copia(s) pendiente(s). Recuperar no guarda ni emite recibos.` : 'Sin copias pendientes.';
+    for (const row of rows) {
+      const el = document.createElement('div');
+      const label = document.createElement('span');
+      label.textContent = row.valid ? `${row.record.receipt.clientName || 'Sin cliente'} · ${row.record.updatedAt || ''} ` : 'Copia no reconocida · ';
+      el.appendChild(label);
+      const recover = document.createElement('button'); recover.type = 'button'; recover.className = 'btn-secondary'; recover.textContent = 'Recuperar'; recover.disabled = !row.valid; recover.onclick = () => rcRecoverPending(row.key); el.appendChild(recover);
+      const discard = document.createElement('button'); discard.type = 'button'; discard.className = 'btn-secondary'; discard.textContent = 'Descartar';
+      discard.onclick = () => {
+        if (rcSaving || !confirm('¿Descartar esta copia pendiente? El recibo registrado y las otras copias se conservan.')) return;
+        try { localStorage.removeItem(row.key); rcRenderPending(); } catch (_) { rcPendingMessage('No se pudo descartar la copia.'); }
+      }; el.appendChild(discard); list.appendChild(el);
+    }
+  } catch (_) { const status = document.getElementById('rec-pending-status'); if (status) status.textContent = 'No se pudieron leer las copias pendientes.'; }
+}
+function rcSetupPendingUI(){
+  const editor = document.getElementById('recibos-editor');
+  if (!editor || editor.dataset.pendingBound) return;
+  editor.dataset.pendingBound = '1';
+  for (const event of ['input','change']) editor.addEventListener(event, () => rcPersistPending(true));
+  editor.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (button && (['rec-pay-cash','rec-pay-transfer','rec-add-line'].includes(button.id) || button.dataset.act === 'del')) rcPersistPending(true);
+  });
+  const refresh = document.getElementById('rec-pending-refresh'); if (refresh) refresh.onclick = rcRenderPending;
+  window.addEventListener('beforeunload', event => { if (rcDraftDirty && rcCurrent && rcEditorMode === 'edit') { rcPersistPending(); event.preventDefault(); event.returnValue = ''; } });
+  window.addEventListener('pagehide', () => rcPersistPending());
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') rcPersistPending(); });
+  window.addEventListener('storage', event => { if (event.key && event.key.startsWith(RC_PENDING_PREFIX)) rcRenderPending(); });
+  rcRenderPending();
+}
+
 function rcNextConsecutive4(){
   let max = 0;
   for (const r of (rcList || [])) {
@@ -18236,6 +18427,7 @@ function rcNormalizeReceipt(r){
 async function rcLoadAll(){
   try {
     const arr = await finGetAll('receipts');
+    rcRawRows = new Map((arr || []).map(row => [String(row.receiptId), rcClone(row)]));
     rcList = (arr || []).map(rcNormalizeReceipt);
     rcList.sort((a,b) => {
       const da = a.dateISO || '';
@@ -18626,6 +18818,8 @@ function rcFillEditor(){
 }
 
 function rcNewDraft(){
+  if (!rcLeavePending()) return;
+  rcBeginPending(null);
   const now = new Date();
   const dateISO = rcTodayISO();
   rcCurrent = rcNormalizeReceipt({
@@ -18659,6 +18853,7 @@ function rcNewDraft(){
 }
 
 function rcOpenReceiptById(id, mode){
+  if (!rcLeavePending()) return;
   const found = rcList.find(r => r.receiptId === id);
   if (!found) return;
 
@@ -18666,6 +18861,7 @@ function rcOpenReceiptById(id, mode){
   const want = (mode === 'edit') ? 'edit' : 'view';
   rcEditorMode = (want === 'edit' && st === 'DRAFT') ? 'edit' : 'view';
 
+  rcBeginPending(rcRawRows.has(String(id)) ? rcRawRows.get(String(id)) : undefined);
   rcCurrent = rcNormalizeReceipt(found);
   rcToggleEditor(true);
   rcFillEditor();
@@ -18818,54 +19014,32 @@ async function rcIssueCurrent(){
   }
 
   rcSetSaving(true);
+  let committed = false;
   try {
-    // Asegurar histórico cargado para consecutivo correcto
-    await rcLoadAll();
-
     const now = new Date();
-    const nowISO = now.toISOString();
-    const todayISO = rcTodayISO();
-
-    rcCurrent.number = rcNextConsecutive4();
-    rcCurrent.status = 'ISSUED';
-    rcCurrent.issuedAt = nowISO;
-    rcCurrent.updatedAt = nowISO;
-
-    // Fecha automática (sellada)
-    rcCurrent.dateISO = todayISO;
-    rcCurrent.dateDisplay = rcLongDateDisplay(now);
-
-    // Pago/referencia/banco sellados (normalizar)
-    if (rcCurrent.paymentType === 'CASH') { rcCurrent.paymentBank = ''; rcCurrent.paymentRef = ''; }
-    if (rcCurrent.paymentType === 'TRANSFER') {
-      rcCurrent.paymentBank = String(rcCurrent.paymentBank || '').trim();
-      rcCurrent.paymentRef = String(rcCurrent.paymentRef || '').trim();
-    }
-
-    rcRecalc(rcCurrent);
-
-    await finPut('receipts', rcCurrent);
-
-    const saved = await finGet('receipts', rcCurrent.receiptId);
-    if (!saved) throw new Error('No se confirmó el emitido en IndexedDB.');
-
+    const candidate = rcClone(rcCurrent);
+    Object.assign(candidate, {status:'ISSUED', issuedAt:now.toISOString(), updatedAt:now.toISOString(), dateISO:rcTodayISO(), dateDisplay:rcLongDateDisplay(now)});
+    const saved = await rcCommitReceipt(candidate, rcEditBase, 'issue');
+    committed = true;
+    rcCurrent = rcNormalizeReceipt(saved);
+    rcEditBase = rcClone(saved);
+    rcFinishPending();
+    rcEditorMode = 'view';
     await rcLoadAll();
     rcRenderList();
-
-    rcEditorMode = 'view';
     rcFillEditor();
     rcShowAlert(`Recibo emitido. N° ${rcCurrent.number}.`, 'info');
     return true;
   } catch (err) {
-    console.error('Error emitiendo recibo', err);
-    rcShowAlert('No se pudo emitir el recibo.', 'error');
-    return false;
-  } finally {
-    rcSetSaving(false);
-  }
+    if (!committed) rcPersistPending(true);
+    rcShowAlert(committed ? 'El recibo quedó emitido. Actualice la vista para consultar el resultado.' : err.message || 'No se pudo emitir el recibo.', 'error');
+    return committed;
+  } finally { rcSetSaving(false); }
 }
 
 async function rcVoidReceiptById(id){
+  if (rcSaving) return;
+  const expected = rcRawRows.has(String(id)) ? rcClone(rcRawRows.get(String(id))) : undefined;
   const found = rcList.find(r => r.receiptId === id);
   if (!found) return;
   const st = String(found.status || 'DRAFT');
@@ -18890,7 +19064,7 @@ async function rcVoidReceiptById(id){
     r.voidReason = motivo;
     r.voidedAt = nowISO;
     r.updatedAt = nowISO;
-    await finPut('receipts', r);
+    const saved = await rcCommitReceipt(r, expected, 'void');
 
     // refrescar lista
     await rcLoadAll();
@@ -18898,18 +19072,20 @@ async function rcVoidReceiptById(id){
 
     // si está abierto en editor, refrescar
     if (rcCurrent && rcCurrent.receiptId === id) {
-      rcCurrent = rcNormalizeReceipt(r);
+      rcCurrent = rcNormalizeReceipt(saved);
+      rcEditBase = rcClone(saved);
       rcEditorMode = 'view';
       rcFillEditor();
       rcShowAlert('Recibo anulado.', 'info');
     }
   } catch (err) {
     console.error('Error anulando recibo', err);
-    window.A33Notice.alert('No se pudo anular el recibo.');
+    window.A33Notice.alert(err.message || 'No se pudo anular el recibo.');
   }
 }
 
 function rcReemitReceiptById(id){
+  if (rcSaving) return;
   const found = rcList.find(r => r.receiptId === id);
   if (!found) return;
   const st = String(found.status || 'DRAFT');
@@ -18921,6 +19097,8 @@ function rcReemitReceiptById(id){
   const num = (found.number == null || found.number === '') ? '—' : String(found.number);
   if (!confirm(`¿Reemitir el recibo N° ${num}?\n\nSe creará un NUEVO BORRADOR copiado. El original se conserva en histórico.`)) return;
 
+  if (!rcLeavePending()) return;
+  rcBeginPending(null);
   const base = rcNormalizeReceipt(found);
   const now = new Date();
   const nowISO = now.toISOString();
@@ -18964,6 +19142,8 @@ function rcReemitReceiptById(id){
   rcEditorMode = 'edit';
   rcToggleEditor(true);
   rcFillEditor();
+  rcPersistPending(true);
+  rcRenderPending();
 }
 
 function rcFmtMoneyPrint(v){
@@ -19155,32 +19335,27 @@ async function rcSaveCurrent(){
   }
 
   rcSetSaving(true);
-
+  let committed = false;
   try {
-    const nowISO = new Date().toISOString();
-    rcCurrent.updatedAt = nowISO;
-    rcCurrent.dateDisplay = rcDateDisplayFromISO(rcCurrent.dateISO);
-
-    await finPut('receipts', rcCurrent);
-
-    // Confirmar persistencia antes de cerrar
-    const saved = await finGet('receipts', rcCurrent.receiptId);
-    if (!saved) throw new Error('No se confirmó el guardado en IndexedDB.');
-
+    const candidate = rcClone(rcCurrent);
+    candidate.updatedAt = new Date().toISOString();
+    candidate.dateDisplay = rcDateDisplayFromISO(candidate.dateISO);
+    const saved = await rcCommitReceipt(candidate, rcEditBase, 'save');
+    committed = true;
+    rcEditBase = rcClone(saved);
+    rcFinishPending();
+    rcCurrent = null;
+    rcToggleEditor(false);
     await rcLoadAll();
     rcRenderList();
-    rcToggleEditor(false);
-    rcCurrent = null;
     rcShowAlert('');
     window.A33Notice.show('Recibo guardado correctamente.', 'success');
     return true;
   } catch (err) {
-    console.error('Error guardando recibo', err);
-    rcShowAlert('No se pudo guardar el borrador.', 'error');
-    return false;
-  } finally {
-    rcSetSaving(false);
-  }
+    if (!committed) rcPersistPending(true);
+    rcShowAlert(committed ? 'El recibo quedó guardado. Actualice la lista para consultarlo.' : err.message || 'No se pudo guardar el borrador.', 'error');
+    return committed;
+  } finally { rcSetSaving(false); }
 }
 
 async function rcEnterView(force=false){
@@ -19418,11 +19593,12 @@ function setupRecibosUI(){
   });
 
   if (btnCancel) btnCancel.addEventListener('click', () => {
-    if (rcSaving) return;
+    if (!rcLeavePending()) return;
     rcCurrent = null;
     rcShowAlert('');
     rcToggleEditor(false);
   });
+  rcSetupPendingUI();
 }
 
 // Helpers de escape básicos para evitar inyección en tablas

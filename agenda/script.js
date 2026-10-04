@@ -1,3 +1,149 @@
+// E5.6: copias de formularios independientes de los registros de Agenda.
+(function(){
+  'use strict';
+  const controllers = [];
+  const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
+  function fingerprint(value){
+    return JSON.stringify(value, (key,item) => item && typeof item === 'object' && !Array.isArray(item)
+      ? Object.keys(item).sort().reduce((out,k) => { out[k]=item[k]; return out; },Object.create(null)) : item);
+  }
+  function readRecord(id){
+    const raw = window.localStorage.getItem('a33_agenda_records_v1');
+    if (!raw) return null;
+    const payload = JSON.parse(raw);
+    const records = Array.isArray(payload) ? payload : payload && payload.records;
+    if (!Array.isArray(records)) throw new Error('No se reconoce la lista de Agenda. La copia pendiente se conserva.');
+    const matches = records.filter(row => row && String(row.id) === String(id));
+    if (matches.length > 1) throw new Error('El identificador del registro es ambiguo. Revise Agenda antes de recuperar.');
+    return matches[0] || null;
+  }
+  function canLeaveAll(){ return controllers.every(controller => controller.leave()); }
+  function create(options){
+    const panel = document.getElementById(options.panel);
+    if (!panel) return null;
+    const prefix = options.prefix;
+    const list = panel.querySelector('[data-pending-list]');
+    const status = panel.querySelector('[data-pending-status]');
+    const warning = panel.querySelector('[data-pending-warning]');
+    let key=null, meta=null, dirty=false, active=false, recovering=false, recovered=false, blockedRecovery=false;
+    const fields = () => Object.fromEntries(options.fields.map(id => [id,document.getElementById(id).value]));
+    function message(text){ warning.textContent=text; warning.hidden=!text;if(text)panel.open=true; }
+    function begin(type,id,base){
+      key=prefix+options.makeId(); dirty=false; active=true; recovered=false;blockedRecovery=false;
+      meta={type,id:id || options.makeId(),mode:id?'edit':'new',baseKnown:true,base:null};
+      if (id) {
+        try { meta.base=clone(arguments.length>=3 ? base : readRecord(id)); meta.baseKnown=!!meta.base && String(meta.base.id)===String(id); }
+        catch (_) { meta.baseKnown=false; }
+      }
+      message('');
+    }
+    function valid(record){
+      return !!(record && record.schemaVersion===1 && record.kind===options.kind && record.meta
+        && options.types.includes(record.meta.type) && ['new','edit'].includes(record.meta.mode)
+        && typeof record.meta.id==='string' && record.meta.id && typeof record.meta.baseKnown==='boolean'
+        && (record.meta.mode==='new' ? record.meta.base===null : !record.meta.baseKnown || record.meta.base && String(record.meta.base.id)===record.meta.id)
+        && record.fields && options.fields.every(id => typeof record.fields[id]==='string') && options.valid(record.data,record.meta));
+    }
+    function persist(changed=false){
+      if (!active || !meta || recovering) return true;
+      if (changed) dirty=true;
+      if (!dirty) return true;
+      try {
+        const payload={schemaVersion:1,kind:options.kind,updatedAt:new Date().toISOString(),meta:clone(meta),fields:fields(),data:options.snapshot()};
+        window.localStorage.setItem(key,JSON.stringify(payload)); if (!blockedRecovery) message(''); return true;
+      } catch (_) {
+        message('No se pudo conservar la última edición. Mantenga el formulario abierto; la copia anterior se conserva.'); return false;
+      }
+    }
+    function leave(){
+      if (recovering) return false;
+      if (!active) return true;
+      if (options.busy()) return false;
+      const kept=persist(); render();
+      if (!kept && !window.confirm('No se pudo guardar la última edición pendiente. ¿Salir de todas formas y perder esos cambios?')) return false;
+      active=false; return true;
+    }
+    function check(metaToCheck){
+      if (!metaToCheck.baseKnown) throw new Error('No se conoce la versión original. La copia se conserva; abra el registro vigente desde Agenda.');
+      const current=readRecord(metaToCheck.id);
+      if (metaToCheck.mode==='new') {
+        if (current) throw new Error('Este formulario ya fue registrado. Revise el registro de Agenda; la copia original se conserva.');
+      } else if (!current || fingerprint(current)!==fingerprint(metaToCheck.base)) {
+        throw new Error('El registro cambió o dejó de existir. La copia se conserva; abra la versión vigente para revisarla.');
+      }
+    }
+    function beforeSave(){
+      if (recovering || blockedRecovery) return false;
+      try { if (meta) check(meta); return true; }
+      catch (error) { blockedRecovery=true;message(error.message); return false; }
+    }
+    function confirmed(){
+      active=false;dirty=false;
+      const old=key;key=null;
+      try { if (old) window.localStorage.removeItem(old); }
+      catch (_) { message('El registro quedó guardado, pero su copia pendiente sigue disponible. No lo vuelva a registrar.'); }
+      render();
+    }
+    async function recover(sourceKey){
+      if (recovering || options.busy() || !options.ready()) { message('Espere a que termine la carga o el guardado del formulario.'); return; }
+      let record;
+      try {
+        record=JSON.parse(window.localStorage.getItem(sourceKey));
+        if (!valid(record)) throw new Error('La copia no tiene una estructura reconocida. Se conserva sin aplicarla.');
+        check(record.meta);
+      } catch(error) { message(error.message); return; }
+      if (!canLeaveAll()) return;
+      recovering=true;
+      try {
+        await options.restore(record);
+        // La lectura del catálogo puede ser asíncrona: comprobar otra vez antes de aceptar la recuperación.
+        check(record.meta);
+        key=prefix+options.makeId();meta=clone(record.meta);dirty=true;active=true;recovered=true;blockedRecovery=false;
+        message('');
+        status.textContent='Formulario recuperado sin registrar. La copia original se conserva; revise los datos antes de guardar.';
+      } catch(error) {
+        key=prefix+options.makeId();meta=clone(record.meta);dirty=true;active=true;recovered=true;blockedRecovery=true;message(error.message);
+      }
+      finally { recovering=false; }
+      if (active) persist();
+    }
+    function render(){
+      list.innerHTML='';
+      try {
+        const rows=[];
+        const storage=window.localStorage;
+        for (let i=0;i<storage.length;i++) {
+          const candidate=storage.key(i);if (!candidate || !candidate.startsWith(prefix)) continue;
+          let record;try {record=JSON.parse(storage.getItem(candidate));}catch(_){}
+          rows.push({key:candidate,record,valid:valid(record)});
+        }
+        status.textContent=rows.length?`${rows.length} copia(s) pendiente(s). Recuperar no registra datos.`:'Sin copias pendientes.';
+        for (const row of rows) {
+          const el=document.createElement('div');el.dataset.pendingKey=row.key;const label=document.createElement('span');
+          label.textContent=row.valid?options.label(row.record)+' · '+(row.record.updatedAt || '')+' ':'Copia no reconocida · ';
+          el.appendChild(label);
+          const restore=document.createElement('button');restore.type='button';restore.className='agenda-btn agenda-btn--ghost';restore.textContent='Recuperar';restore.disabled=!row.valid;restore.onclick=()=>recover(row.key);el.appendChild(restore);
+          const discard=document.createElement('button');discard.type='button';discard.className='agenda-btn agenda-btn--ghost';discard.textContent='Descartar';
+          discard.onclick=()=>{
+            if (recovering || options.busy() || !window.confirm('¿Descartar esta copia pendiente? Los registros guardados y las otras copias se conservan.')) return;
+            try {storage.removeItem(row.key);render();}catch(_){message('No se pudo descartar la copia.');}
+          };el.appendChild(discard);list.appendChild(el);
+        }
+      } catch (_) {status.textContent='No se pudieron leer las copias pendientes.';}
+    }
+    const controller={begin,persist,leave,beforeSave,confirmed,recover,render,valid,message,get id(){return meta && meta.id;},get expected(){return meta && meta.mode==='edit'?clone(meta.base):undefined;},get recovering(){return recovering;}};
+    controllers.push(controller);
+    for (const event of ['input','change']) options.form.addEventListener(event,()=>persist(true));
+    panel.querySelector('[data-pending-refresh]').onclick=render;
+    window.addEventListener('beforeunload',event=>{if(active&&dirty){persist();event.preventDefault();event.returnValue='';}});
+    window.addEventListener('pagehide',()=>persist());
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')persist();});
+    window.addEventListener('storage',event=>{if(event.key && event.key.startsWith(prefix))render();});
+    render();return controller;
+  }
+  window.A33AgendaPending={create,canLeaveAll,readRecord};
+})();
+
 (function(){
   'use strict';
 
@@ -91,6 +237,37 @@
   };
 
   const refs = {};
+
+  // E5.6: captura cruda de Reunión/Tarea; reutiliza las opciones históricas existentes.
+  const recordBases=new WeakMap();
+  let formPending=null;
+  let agendaReady=false;
+  function setupFormPending(){
+    if (!window.A33AgendaPending) return;
+    window.A33AgendaPending.showPurchases=()=>{state.activeSection='compra';state.currentId=null;setAgendaView('compra');};
+    const fields=['agendaSubject','agendaClientSelect','agendaClientNew','agendaClient','agendaModality','agendaDate','agendaTime','agendaStatus','agendaPriority','agendaNotes','agendaPedidoProduct','agendaPedidoDelivery','agendaPedidoPrice','agendaPedidoQuantity'];
+    formPending=window.A33AgendaPending.create({kind:'form',prefix:'a33_agenda_form_draft_v1_',panel:'agendaPendingPanel',form:refs.form,fields,types:['reunion','tarea'],makeId:createId,busy:()=>false,ready:()=>agendaReady,
+      snapshot:()=>({clientId:getClientIdHint(),pedidoEnabled:isPedidoEnabled(),pedido:collectPedidoData()}),
+      valid:data=>!!(data && typeof data.clientId==='string' && typeof data.pedidoEnabled==='boolean' && data.pedido && typeof data.pedido==='object'),
+      label:record=>TYPE_LABELS[record.meta.type]+': '+(record.fields.agendaSubject || 'Sin asunto'),
+      restore:record=>{
+        loadRecords();state.activeSection=record.meta.type;state.activeFilter='pendiente';setAgendaView('operational');setTypeValue(record.meta.type);updateSectionCopy();
+        state.currentId=record.meta.mode==='edit'?record.meta.id:null;
+        applyClientSnapshot({client:record.fields.agendaClient,clientId:record.data.clientId});
+        if (record.fields.agendaClientSelect===CLIENT_SELECT_NEW_VALUE) {
+          renderClientOptions({creatingNew:true});setClientCreationMode(true,{preserveValue:true});
+        }
+        applyPedidoSnapshot(record.data.pedido);
+        for (const id of fields) {
+          if (id==='agendaClientSelect' || id==='agendaPedidoProduct') continue;
+          document.getElementById(id).value=record.fields[id];
+        }
+        setPedidoEnabled(record.data.pedidoEnabled,{preserveValues:true});applyTypeUI();syncPedidoTotal();
+        refs.deleteBtn.hidden=record.meta.mode!=='edit';setFormMeta(getCurrentRecord());setModeLabels();renderList();
+      }
+    });
+    refs.pedidoToggle.addEventListener('click',()=>{if(formPending)formPending.persist(true);});
+  }
 
   function getStorage(){
     return window.localStorage;
@@ -655,13 +832,14 @@ function compareProductDisplayAGENDA(a,b){
 
     try {
       if (window.A33Storage && typeof window.A33Storage.sharedRead === 'function' && typeof window.A33Storage.sharedSet === 'function') {
+        const baseData=typeof window.A33Storage.sharedGetBase==='function'?window.A33Storage.sharedGetBase(POS_CUSTOMER_CATALOG_KEY):undefined;
         const current = window.A33Storage.sharedRead(POS_CUSTOMER_CATALOG_KEY, [], 'local');
         const currentData = normalizeCustomerCatalog(current && current.data);
         const baseRev = current && current.meta && typeof current.meta.rev === 'number' ? current.meta.rev : null;
         const merged = sortCustomerObjectsAZ(mergeCustomerCatalogByIdKeep(currentData, safe));
         const result = window.A33Storage.sharedSet(POS_CUSTOMER_CATALOG_KEY, merged, {
           source: 'agenda',
-          baseRev: baseRev
+          baseRev: baseRev, baseData
         });
         return !!(result && result.ok);
       }
@@ -1232,19 +1410,16 @@ function compareProductDisplayAGENDA(a,b){
     }
 
     const parsed = raw ? safeParse(raw) : null;
-    state.records = sortRecords(normalizeStore(parsed));
+    const rows=Array.isArray(parsed)?parsed:parsed && Array.isArray(parsed.records)?parsed.records:[];
+    state.records = sortRecords(rows.map(raw=>{const record=normalizeRecord(raw);recordBases.set(record,raw);return record;}));
   }
 
-  function saveRecords(){
-    const payload = {
-      schemaVersion: AGENDA_BOOT.schemaVersion,
-      updatedAt: new Date().toISOString(),
-      records: state.records.map(normalizeRecord)
-    };
-
+  function saveRecords(operation){
     window.A33Notice.show('Guardando Agenda…', 'process');
     try{
-      getStorage().setItem(AGENDA_BOOT.storageKey, JSON.stringify(payload));
+      const payload=window.A33AgendaRecords.write(getStorage(), operation, 'agenda');
+      if (operation.record) recordBases.set(operation.record,payload.records.find(row=>row && row.id===operation.id));
+      state.records=sortRecords(payload.records.map(raw=>{const record=normalizeRecord(raw);recordBases.set(record,raw);return record;}));
       window.A33Notice.show('Agenda guardada correctamente.', 'success');
     }catch(error){
       window.A33Notice.show('No se pudo guardar Agenda. Revisa el almacenamiento del navegador.', 'error');
@@ -1684,6 +1859,7 @@ function compareProductDisplayAGENDA(a,b){
   }
 
   function openAgendaHome(options){
+    if (window.A33AgendaPending && !window.A33AgendaPending.canLeaveAll()) return false;
     const settings = options || {};
     state.activeSection = 'home';
     state.currentId = null;
@@ -1694,6 +1870,7 @@ function compareProductDisplayAGENDA(a,b){
   }
 
   function openAgendaSection(section, options){
+    if (window.A33AgendaPending && !window.A33AgendaPending.canLeaveAll()) return false;
     const settings = options || {};
     const target = normalizeType(section);
 
@@ -1964,6 +2141,10 @@ function compareProductDisplayAGENDA(a,b){
     const settings = options || {};
     const shouldFocus = settings.focus !== false;
     const formType = isOperationalSection(settings.type) ? settings.type : getActiveRecordType();
+    if (formPending && !formPending.recovering) {
+      if (!settings.pendingConfirmed && !formPending.leave()) return false;
+      formPending.begin(formType);
+    }
     state.currentId = null;
     refs.form.reset();
     setTypeValue(formType);
@@ -1990,6 +2171,10 @@ function compareProductDisplayAGENDA(a,b){
 
   function fillForm(record, options){
     const settings = options || {};
+    if (formPending && !formPending.recovering) {
+      if (!settings.pendingConfirmed && !formPending.leave()) return false;
+      formPending.begin(record.type,record.id,recordBases.get(record));
+    }
     state.currentId = record.id;
     setTypeValue(record.type);
     refs.subject.value = record.subject;
@@ -2081,14 +2266,10 @@ function compareProductDisplayAGENDA(a,b){
       updatedAt: new Date().toISOString()
     });
 
-    state.records = state.records.map(function(record){
-      return record.id === id ? updated : record;
-    });
-    state.records = sortRecords(state.records);
-    saveRecords();
+    saveRecords({kind:'update',id,expected:recordBases.get(existing),patch:{status:targetStatus,updatedAt:updated.updatedAt}});
 
     if (state.currentId === id) {
-      fillForm(updated, { focus: false });
+      fillForm(state.records.find(record=>record.id===id), { focus: false });
     } else {
       setModeLabels();
     }
@@ -2406,6 +2587,7 @@ function compareProductDisplayAGENDA(a,b){
   function upsertRecord(data){
     const now = new Date().toISOString();
     const existing = getCurrentRecord();
+    if (state.currentId && !existing) throw new Error('El registro ya no existe. La edición permanece pendiente.');
 
     if (existing) {
       const updateData = data.type === 'tarea'
@@ -2422,26 +2604,23 @@ function compareProductDisplayAGENDA(a,b){
         updatedAt: now
       });
 
-      state.records = state.records.map(function(record){
-        return record.id === updated.id ? updated : record;
-      });
-      state.records = sortRecords(state.records);
-      saveRecords();
-      fillForm(updated, { focus: false });
+      saveRecords({kind:'update',id:updated.id,expected:formPending?formPending.expected:recordBases.get(existing),record:updated});
+      if (formPending) formPending.confirmed();
+      fillForm(updated, { focus: false, pendingConfirmed: true });
       renderList();
       return;
     }
 
     const created = normalizeRecord({
-      id: createId(),
+      id: formPending ? formPending.id : createId(),
       ...data,
       createdAt: now,
       updatedAt: now
     });
 
-    state.records = sortRecords([created].concat(state.records));
-    saveRecords();
-    fillForm(created, { focus: false });
+    saveRecords({kind:'create',id:created.id,record:created});
+    if (formPending) formPending.confirmed();
+    fillForm(created, { focus: false, pendingConfirmed: true });
     renderList();
   }
 
@@ -2454,10 +2633,7 @@ function compareProductDisplayAGENDA(a,b){
     const ok = window.confirm('¿Eliminar este ítem de Agenda? Esta acción no se puede deshacer.');
     if (!ok) return;
 
-    state.records = state.records.filter(function(item){
-      return item.id !== id;
-    });
-    saveRecords();
+    saveRecords({kind:'delete',id,expected:recordBases.get(record)});
 
     if (state.currentId === id) {
       resetForm({ focus: false });
@@ -2490,6 +2666,7 @@ function compareProductDisplayAGENDA(a,b){
     refs.form.addEventListener('submit', function(event){
       event.preventDefault();
 
+      if (formPending && !formPending.beforeSave()) return;
       const type = getTypeValue();
       let clientSelection = { ok: true, id: '', displayName: '' };
 
@@ -2516,7 +2693,8 @@ function compareProductDisplayAGENDA(a,b){
       }
 
       if (!validateForm(data)) return;
-      upsertRecord(data);
+      try { upsertRecord(data); }
+      catch (_) { if (formPending) formPending.persist(true); }
     });
 
     refs.newBtn.addEventListener('click', function(){
@@ -2564,7 +2742,14 @@ function compareProductDisplayAGENDA(a,b){
       });
     });
 
-    window.addEventListener('a33:agenda-records-changed', function(){
+    window.addEventListener('storage', function(event){
+      if (event.key!==AGENDA_BOOT.storageKey && event.key!==null) return;
+      loadRecords();
+      if (isOperationalSection(state.activeSection)) renderList();
+    });
+
+    window.addEventListener('a33:agenda-records-changed', function(event){
+      if (event.detail && event.detail.source==='agenda') return;
       loadRecords();
       if (isOperationalSection(state.activeSection)) renderList();
     });
@@ -2619,6 +2804,7 @@ function compareProductDisplayAGENDA(a,b){
     loadRecords();
     loadClientCatalog();
     bindEvents();
+    setupFormPending();
 
     const openedRequested = openRequestedRecord();
     if (!openedRequested) openAgendaHome({ focus: false });
@@ -2629,6 +2815,8 @@ function compareProductDisplayAGENDA(a,b){
         applyPedidoSnapshot(current.pedido);
         syncPedidoTotal();
       }
+      agendaReady=true;
+      if (formPending) formPending.render();
       markReady();
     });
   }

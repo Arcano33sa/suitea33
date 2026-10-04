@@ -1,0 +1,104 @@
+'use strict';
+// Navegador con contexto temporal y origen localhost aleatorio: nunca usa datos reales.
+const assert = require('assert');
+const fs = require('fs');
+const http = require('http');
+const path = require('path');
+const os = require('os');
+let playwright;
+try{ playwright = require('playwright'); }
+catch(_){ playwright = require(path.join(os.homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright')); }
+const root = path.resolve(__dirname,'..');
+const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.webmanifest':'application/manifest+json'};
+const server=http.createServer((req,res)=>{
+  const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+  const file=path.resolve(root,'.'+pathname+(pathname.endsWith('/')?'index.html':''));
+  if(!file.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}
+  fs.readFile(file,(error,data)=>{if(error){res.writeHead(404);res.end();}else{res.writeHead(200,{'Content-Type':types[path.extname(file)]||'application/octet-stream','Cache-Control':'no-store'});res.end(data);}});
+});
+let browser;
+(async()=>{
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const url=`http://127.0.0.1:${server.address().port}/pos/index.html`;
+  const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  browser=await playwright.chromium.launch({headless:true,...(fs.existsSync(chrome)?{executablePath:chrome}:{})});
+  const context=await browser.newContext({viewport:{width:1280,height:900},serviceWorkers:'block'});
+  const page=await context.newPage();const errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  await page.goto(url);
+  await page.waitForFunction(()=>document.getElementById('purchase-modal')?.dataset.bound==='1');
+  await page.evaluate(async()=>{
+    await put('products',{id:9101,productId:'test-a',name:'Prueba A',price:100,unitCost:20,pos:true,isActive:true,manageStock:true});
+    await put('products',{id:9102,productId:'test-b',name:'Prueba B',price:50,unitCost:10,pos:true,isActive:true,manageStock:true});
+    await put('products',{id:9103,productId:'test-off',name:'No disponible',price:30,pos:false,isActive:true});
+    await put('events',{id:9100,name:'Evento Prueba',groupName:'Grupo Prueba',saleSeq:0,extras:[{id:1,name:'Extra Prueba',stock:10,unitCost:5,unitPrice:20,active:true}]});
+    await put('inventory',{id:9101,eventId:9100,productId:9101,qty:10,type:'restock',date:'2026-10-01',unitCost:20});
+    await put('inventory',{id:9102,eventId:9100,productId:9102,qty:10,type:'restock',date:'2026-10-01',unitCost:10});
+    await put('banks',{id:9101,name:'Banco Prueba',type:'tarjeta',commissionPct:7,isActive:true});
+    await put('banks',{id:9102,name:'Transferencia Prueba',type:'transferencia',commissionPct:0,isActive:true});
+    A33Storage.sharedSet('a33_pos_customersCatalog',[{id:'test-c',name:'Cliente Prueba',isActive:true,createdAt:'2026-10-01'}],{source:'test'});
+    A33Storage.sharedSet('suite_a33_currency_settings_v1',{exchangeRate:'36.80'},{source:'test'});
+    await setMeta('currentEventId',9100);
+    document.getElementById('sale-date').value='2026-10-01';
+    await refreshEventUI(); await renderDay();
+  });
+  let stockPrompts=0;
+  page.on('dialog',dialog=>{if(dialog.message().startsWith('Stock insuficiente de Prueba A')){stockPrompts++;return dialog.dismiss();}return dialog.accept();});
+  const baseline=await page.evaluate(async()=>({sales:await getAll('sales'),inventory:await getAll('inventory'),events:await getAll('events')}));
+  await page.locator('#btn-add').click();
+  await page.getByRole('button',{name:'Agregar Prueba A',exact:true}).click();
+  await page.getByRole('button',{name:'Agregar Extra Prueba',exact:true}).click();
+  await page.locator('#purchase-qty-0').fill('2');await page.locator('#purchase-discountPerUnit-0').fill('5');
+  await page.locator('#btn-pick-customer').click();await page.locator('#customer-picker-search').fill('Cliente Prueba');await page.getByRole('button',{name:'Cliente Prueba',exact:true}).click();
+  await page.locator('#purchase-more-options summary').click();await page.locator('#sale-notes').fill('Compra pendiente E54');
+  await page.locator('#sale-cash-mode').selectOption('usd_change_nio');await page.locator('#sale-cash-usd-received').fill('10');
+  const original=await page.evaluate(()=>({key:purchaseModalStatePOS.draftKey,record:JSON.parse(localStorage.getItem(purchaseModalStatePOS.draftKey))}));
+  assert.equal(original.record.items.length,2);assert.equal(original.record.customer.id,'test-c');
+  assert.equal(original.record.fields['sale-notes'],'Compra pendiente E54');
+  await page.locator('#purchase-cancel').click();await page.locator('#purchase-modal').waitFor({state:'hidden'});
+  assert.deepEqual(await page.evaluate(()=>getAll('sales')),baseline.sales);
+  await page.reload();await page.waitForFunction(()=>document.getElementById('purchase-modal')?.dataset.bound==='1');
+  assert.equal(await page.locator('#purchase-modal').isVisible(),false,'No recuperar automáticamente');
+  await page.evaluate(async()=>{document.getElementById('sale-date').value='2026-10-01';await refreshEventUI();await renderDay();});
+  await page.locator('#purchase-drafts-panel summary').click();await page.locator('#purchase-draft-refresh').click();
+  const beforeRecovery=await page.evaluate(async()=>({sales:await getAll('sales'),inventory:await getAll('inventory'),events:await getAll('events')}));
+  await page.locator('#purchase-draft-list').getByRole('button',{name:'Recuperar',exact:true}).click();
+  await page.locator('#purchase-modal').waitFor({state:'visible'});await page.waitForFunction(()=>purchaseModalStatePOS?.recovered && !purchaseModalStatePOS.restoring);
+  assert.equal(await page.evaluate(()=>purchaseModalStatePOS.purchaseUid),original.record.purchaseUid);
+  assert.equal(await page.locator('#purchase-qty-0').inputValue(),'2');assert.equal(await page.locator('#purchase-discountPerUnit-0').inputValue(),'5');
+  assert.equal(await page.locator('#sale-notes').inputValue(),'Compra pendiente E54');
+  assert.equal(await page.locator('#sale-cash-mode').inputValue(),'usd_change_nio');assert.equal(Number(await page.locator('#sale-cash-usd-received').inputValue()),10);
+  assert.deepEqual(await page.evaluate(async()=>({sales:await getAll('sales'),inventory:await getAll('inventory'),events:await getAll('events')})),beforeRecovery);
+  assert.equal(await page.evaluate(k=>JSON.parse(localStorage.getItem(k)).purchaseUid,original.key),original.record.purchaseUid);
+  const workingKey=await page.evaluate(()=>purchaseModalStatePOS.draftKey);assert.notEqual(workingKey,original.key);
+  // El stock vigente provoca la confirmación histórica; rechazarla conserva la compra.
+  await page.evaluate(async()=>{const inv=await getOne('inventory',9101);inv.qty=0;await put('inventory',inv);});
+  await page.locator('#purchase-save').click();await page.waitForFunction(()=>!purchaseModalStatePOS?.busy);
+  assert.equal(stockPrompts,1,'Se mantiene la confirmación histórica de stock insuficiente');
+  assert.equal(await page.locator('#purchase-modal').isVisible(),true);assert.equal((await page.evaluate(()=>getAll('sales'))).length,0);
+  await page.evaluate(async()=>{const inv=await getOne('inventory',9101);inv.qty=10;await put('inventory',inv);});
+  await page.locator('#purchase-save').click();await page.locator('#purchase-modal').waitFor({state:'hidden'});
+  const sales=await page.evaluate(()=>getAll('sales'));assert.equal(sales.length,2);assert(sales.every(s=>s.purchaseUid===original.record.purchaseUid));
+  assert.equal(await page.evaluate(k=>localStorage.getItem(k),workingKey),null);
+  const duplicate=await page.evaluate(record=>restorePurchaseDraftPOS(record),original.record);assert.equal(duplicate,false);
+  assert.equal((await page.evaluate(()=>getAll('sales'))).length,2);assert.match(await page.locator('#purchase-draft-status').textContent(),/ya fue registrada/);
+  // Another tab receives another working key and cannot overwrite the original copy.
+  const other=await context.newPage();await other.goto(url);await other.waitForFunction(()=>document.getElementById('purchase-modal')?.dataset.bound==='1');
+  await other.evaluate(async()=>{document.getElementById('sale-date').value='2026-10-01';await refreshEventUI();await openPurchaseModalPOS();});
+  assert.notEqual(await other.evaluate(()=>purchaseModalStatePOS.draftKey),original.key);
+  other.on('dialog',dialog=>dialog.dismiss());
+  await other.getByRole('button',{name:'Agregar Prueba B',exact:true}).click();
+  const failedKey=await other.evaluate(()=>purchaseModalStatePOS.draftKey);
+  const lastGood=await other.evaluate(k=>localStorage.getItem(k),failedKey);
+  await other.evaluate(()=>{window.__e54SetItem=A33Storage.setItem;A33Storage.setItem=(k,v,s)=>k.startsWith(PURCHASE_DRAFT_PREFIX_POS)?false:window.__e54SetItem.call(A33Storage,k,v,s);});
+  await other.locator('#purchase-qty-0').fill('3');assert.equal(await other.locator('#purchase-draft-warning').isVisible(),true);
+  await other.locator('#purchase-cancel').click();
+  assert.equal(await other.locator('#purchase-modal').isVisible(),true,'Rechazar pérdida conserva el modal');
+  assert.equal(await other.evaluate(k=>localStorage.getItem(k),failedKey),lastGood,'Fallo conserva la copia anterior');
+  await other.evaluate(()=>{A33Storage.setItem=window.__e54SetItem;persistPurchaseDraftPOS();});
+  await other.locator('#purchase-cancel').click();assert.equal(await other.locator('#purchase-modal').isVisible(),false);
+  assert.equal(JSON.parse(await other.evaluate(k=>localStorage.getItem(k),failedKey)).items[0].qty,'3');
+  assert.equal(await other.evaluate(k=>JSON.parse(localStorage.getItem(k)).purchaseUid,original.key),original.record.purchaseUid);
+  assert.deepEqual(errors,[]);
+  console.log('PASS E5.4 Chrome: recuperación explícita, campos y UID, copia independiente, datos intactos al recuperar, stock vigente, guardado posterior, duplicado bloqueado y cierre protegido ante fallo');
+})().catch(err=>{console.error(err);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();server.close();});

@@ -819,6 +819,12 @@
   </div>
 
   <!-- LISTA / HISTÓRICO -->
+  <details class="fin-card" id="rec-pending-panel">
+    <summary>Cambios pendientes de recibos</summary>
+    <p id="rec-pending-status" aria-live="polite"></p>
+    <button type="button" class="btn-secondary" id="rec-pending-refresh">Actualizar copias</button>
+    <div id="rec-pending-list"></div>
+  </details>
   <div id="recibos-list">
     <div class="fin-filters-row fin-filters-row--compact fin-receipts-toolbar">
       <div class="fin-inline-group">
@@ -899,6 +905,7 @@
       </div>
     </div>
 
+    <p id="rec-pending-warning" role="alert" hidden></p>
     <div id="rec-alert" class="fin-integrity-banner hidden"></div>
     <p id="rec-mode-hint" class="fin-help" style="margin-top:6px;"></p>
 

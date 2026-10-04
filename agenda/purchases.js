@@ -1,3 +1,44 @@
+// E5.7: ambos escritores aplican una operación sobre la lista vigente.
+(function(){
+  'use strict';
+  const key='a33_agenda_records_v1';
+  function read(storage){
+    const raw=storage.getItem(key);
+    if (raw===null) return {schemaVersion:9,records:[]};
+    let parsed;
+    try { parsed=JSON.parse(raw); } catch (_) { throw new Error('Agenda contiene datos ilegibles. No se ha guardado.'); }
+    if (Array.isArray(parsed)) return {schemaVersion:9,records:parsed};
+    if (!parsed || typeof parsed!=='object' || !Array.isArray(parsed.records)) throw new Error('Formato de Agenda no reconocido. No se ha guardado.');
+    return parsed;
+  }
+  function fingerprint(value){
+    return JSON.stringify(value,(key,item)=>item && typeof item==='object' && !Array.isArray(item)
+      ? Object.keys(item).sort().reduce((out,k)=>{out[k]=item[k];return out;},Object.create(null)) : item);
+  }
+  function write(storage,operation,source){
+    const payload=read(storage);
+    const records=payload.records.slice();
+    const matches=records.map((row,index)=>row && String(row.id)===String(operation.id)?index:-1).filter(index=>index>=0);
+    if (!['create','update','delete'].includes(operation.kind) || !operation.id || matches.length>1) throw new Error('Identificador de Agenda ambiguo. No se ha guardado.');
+    const index=matches.length?matches[0]:-1;
+    if (operation.kind==='create' && index>=0) throw new Error('Este registro ya existe. No se ha duplicado.');
+    if (operation.kind!=='create' && index<0) throw new Error('El registro ya no existe. No se ha vuelto a crear.');
+    if (operation.kind!=='create' && Object.prototype.hasOwnProperty.call(operation,'expected') &&
+      (!operation.expected || fingerprint(records[index])!==fingerprint(operation.expected))) {
+      throw new Error('Conflicto: este registro cambió. Los cambios pendientes se conservan; abre la versión vigente para revisarla.');
+    }
+    if (operation.kind==='delete') records.splice(index,1);
+    else if (operation.kind==='create') records.unshift(operation.record);
+    else records[index]={...records[index],...(operation.patch || operation.record)};
+    const next={...payload,schemaVersion:payload.schemaVersion || 9,updatedAt:new Date().toISOString(),records};
+    // Lectura y escritura síncronas, sin esperas intermedias en esta pestaña.
+    storage.setItem(key,JSON.stringify(next));
+    try { window.dispatchEvent(new CustomEvent('a33:agenda-records-changed',{detail:{source,storageKey:key}})); } catch (_) {}
+    return next;
+  }
+  window.A33AgendaRecords={read,write};
+})();
+
 (function(){
   'use strict';
 
@@ -19,9 +60,52 @@
     saving: false,
     adding: false,
     ready: false,
-    expandedId: ''
+    expandedId: '',
+    opening: false,
+    pendingArticleSnapshot: null
   };
   const refs = {};
+
+  // E5.6: conservar grupos y la edición cruda de la cantidad todavía no aplicada.
+  const recordBases=new WeakMap();
+  let purchasePending=null;
+  let purchaseEditingBase=null;
+  function setupPurchasePending(){
+    if (!window.A33AgendaPending) return;
+    const fields=['purchaseMaterial','purchaseQuantity','purchaseDate','purchasePriority','purchaseStatus','purchaseNotes'];
+    purchasePending=window.A33AgendaPending.create({kind:'purchase',prefix:'a33_agenda_purchase_draft_v1_',panel:'purchasePendingPanel',form:refs.form,fields,types:['compra'],makeId:()=>createId('agd'),busy:()=>state.saving || state.opening,ready:()=>state.ready && !state.opening,
+      snapshot:()=>{
+        const input=refs.draftList.querySelector('[data-draft-quantity]');
+        return {items:JSON.parse(JSON.stringify(state.draftItems)),article:state.pendingArticleSnapshot || selectedSnapshot(),editingDraftId:state.editingDraftId,editingQuantity:input?input.value:''};
+      },
+      valid:(data,meta)=>!!(data && Array.isArray(data.items) && typeof data.editingDraftId==='string' && typeof data.editingQuantity==='string'
+        && data.items.every(item=>item && typeof item.draftId==='string' && item.draftId && typeof item.name==='string' && typeof item.unit==='string' && (UNIT_SET.has(item.unit) || meta.mode==='edit')
+          && Number.isFinite(item.priceUsed) && item.priceUsed>=0 && (Number.isFinite(item.quantity) && (item.quantity>0 || meta.mode==='edit') || meta.mode==='edit' && item.quantity===null) && item.snapshot)
+        && new Set(data.items.map(item=>item.draftId)).size===data.items.length
+        && (!data.editingDraftId || data.items.some(item=>item.draftId===data.editingDraftId))
+        && (data.article===null || data.article && typeof data.article.materialId==='string' && typeof data.article.name==='string' && UNIT_SET.has(data.article.unit) && Number.isFinite(data.article.priceUsed) && data.article.priceUsed>=0)),
+      label:record=>'Compra: '+(record.data.items.map(item=>item.name).join(', ') || record.data.article && record.data.article.name || 'Sin artículos'),
+      restore:async record=>{
+        state.opening=true;refs.form.inert=true;
+        try { await loadMaterials(); }
+        finally { state.opening=false;refs.form.inert=false; }
+        if (window.A33AgendaPending.showPurchases) window.A33AgendaPending.showPurchases();
+        state.currentId=record.meta.mode==='edit'?record.meta.id:'';
+        state.draftItems=JSON.parse(JSON.stringify(record.data.items));state.editingDraftId=record.data.editingDraftId;
+        state.pendingArticleSnapshot=record.data.article?JSON.parse(JSON.stringify(record.data.article)):null;
+        if (record.fields.purchaseMaterial && !materialById(record.fields.purchaseMaterial)) {
+          const option=document.createElement('option');option.value=record.fields.purchaseMaterial;option.textContent=(record.data.article && record.data.article.name || 'Artículo anterior')+' · No disponible: revise la selección';refs.material.appendChild(option);
+        }
+        for (const id of fields) byId(id).value=record.fields[id];
+        applyMaterial({preservePending:true});renderDraftItems();
+        const input=refs.draftList.querySelector('[data-draft-quantity]');if(input)input.value=record.data.editingQuantity;
+        refs.deleteBtn.hidden=record.meta.mode!=='edit';refs.formTitle.textContent=state.currentId?'Editar Compra':'Nueva Compra';refs.formBadge.textContent='Recuperada';
+        refs.metaId.textContent=record.meta.mode==='edit'?record.meta.id:'Nuevo';refs.metaCreated.textContent=record.meta.base && record.meta.base.createdAt || '—';refs.metaUpdated.textContent=record.meta.base && record.meta.base.updatedAt || '—';
+        refs.saveBtn.disabled=!state.materials.length && !state.draftItems.length;refs.saveBtn.textContent=state.currentId?'Actualizar compra':'Guardar compra';
+        refs.formStatus.textContent='Recuperada sin registrar. Las líneas conservan su fotografía histórica; revise la selección pendiente antes de guardar.';render();
+      }
+    });
+  }
 
   function byId(id){ return document.getElementById(id); }
   function clean(value, max){
@@ -287,24 +371,18 @@
   function reloadRecords(){
     const payload = readStore();
     state.allRecords = payload.records.slice();
-    return state.allRecords.filter(function(item){ return clean(item && item.type, 20).toLowerCase() === 'compra'; }).map(normalizePurchaseRecord);
+    return state.allRecords.filter(function(item){ return clean(item && item.type, 20).toLowerCase() === 'compra'; }).map(raw=>{const record=normalizePurchaseRecord(raw);recordBases.set(record,raw);return record;});
   }
 
-  function saveAllRecords(records){
-    const payload = {
-      schemaVersion: SCHEMA_VERSION,
-      updatedAt: new Date().toISOString(),
-      records: Array.isArray(records) ? records : []
-    };
+  function saveAllRecords(operation){
     window.A33Notice.show('Guardando compra…', 'process');
     try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      window.A33AgendaRecords.write(localStorage, operation, 'compras');
       window.A33Notice.show('Compra guardada correctamente.', 'success');
     }catch(error){
       window.A33Notice.show('No se pudo guardar la compra. Revisa el almacenamiento del navegador.', 'error');
       throw error;
     }
-    try{ window.dispatchEvent(new CustomEvent('a33:agenda-records-changed', { detail:{ source:'compras', storageKey:STORAGE_KEY } })); }catch(_){ }
   }
 
   function currentPurchases(){ return reloadRecords(); }
@@ -423,6 +501,7 @@
   function selectedSnapshot(){
     const material = materialById(refs.material.value);
     if (!material) return null;
+    if (state.pendingArticleSnapshot && state.pendingArticleSnapshot.materialId===material.id) return JSON.parse(JSON.stringify(state.pendingArticleSnapshot));
     const now = new Date().toISOString();
     return {
       materialId: material.id,
@@ -441,8 +520,9 @@
     };
   }
 
-  function applyMaterial(){
-    const data = selectedSnapshot();
+  function applyMaterial(options){
+    if (!options || options.preservePending!==true) state.pendingArticleSnapshot=null;
+    const data = selectedSnapshot() || (options && options.preservePending ? state.pendingArticleSnapshot : null);
     refs.category.value = data ? data.category : '';
     refs.unit.value = data ? data.unit : '';
     refs.price.value = data ? formatMoney(data.priceUsed) : '';
@@ -460,6 +540,7 @@
   }
 
   function clearArticleInputs(focus){
+    state.pendingArticleSnapshot=null;
     refs.material.value = '';
     refs.quantity.value = '';
     refs.category.value = '';
@@ -473,6 +554,10 @@
 
   function resetForm(options){
     const settings = options || {};
+    if (purchasePending && !purchasePending.recovering) {
+      if (!settings.pendingConfirmed && !settings.pendingPrepared && !purchasePending.leave()) return false;
+      purchasePending.begin('compra');
+    }
     state.currentId = '';
     state.draftItems = [];
     state.editingDraftId = '';
@@ -481,8 +566,8 @@
     refs.priority.value = 'media';
     refs.status.value = 'pendiente';
     refs.material.disabled = !state.materials.length;
-    refs.addBtn.disabled = !state.materials.length;
-    refs.saveBtn.disabled = !state.materials.length;
+    refs.addBtn.disabled = state.saving || !state.materials.length;
+    refs.saveBtn.disabled = state.saving || !state.materials.length;
     refs.deleteBtn.hidden = true;
     refs.formTitle.textContent = 'Nueva Compra';
     refs.formBadge.textContent = 'Nuevo';
@@ -502,14 +587,20 @@
   }
 
   function requestNew(){
-    if (state.draftItems.length && !window.confirm('Hay artículos agregados sin guardar. ¿Deseas descartarlos y comenzar una compra nueva?')) return false;
+    if (purchasePending) { if (!purchasePending.leave()) return false; }
+    else if (state.draftItems.length && !window.confirm('Hay artículos agregados sin guardar. ¿Deseas descartarlos y comenzar una compra nueva?')) return false;
     resetForm();
     return true;
   }
 
   function fillForm(record, options){
+    purchaseEditingBase=recordBases.get(record) || null;
     if (!record) return;
     const settings = options || {};
+    if (purchasePending && !purchasePending.recovering) {
+      if (!settings.pendingConfirmed && !purchasePending.leave()) return false;
+      purchasePending.begin('compra',record.id,recordBases.has(record)?recordBases.get(record):record);
+    }
     state.currentId = record.id;
     state.draftItems = record.purchaseGroup.items.map(cloneItem);
     state.editingDraftId = '';
@@ -597,9 +688,10 @@
     state.editingDraftId = '';
     clearArticleInputs(settings.focus !== false);
     renderDraftItems();
+    if (purchasePending) purchasePending.persist(true);
     window.setTimeout(function(){
       state.adding = false;
-      refs.addBtn.disabled = !state.materials.length;
+      refs.addBtn.disabled = state.saving || !state.materials.length;
     }, 350);
     return true;
   }
@@ -608,12 +700,14 @@
     state.editingDraftId = clean(id,180);
     renderDraftItems();
     const input = refs.draftList.querySelector('[data-draft-quantity="' + state.editingDraftId + '"]');
+    if (purchasePending) purchasePending.persist(true);
     if (input) { input.focus(); if (typeof input.select === 'function') input.select(); }
   }
 
   function cancelDraftEdit(){
     state.editingDraftId = '';
     renderDraftItems();
+    if (purchasePending) purchasePending.persist(true);
   }
 
   function saveDraftEdit(id, input){
@@ -637,6 +731,7 @@
     refs.formStatus.textContent = 'Cantidad de ' + item.name + ' actualizada.';
     window.A33Notice.alert(refs.formStatus.textContent);
     renderDraftItems();
+    if (purchasePending) purchasePending.persist(true);
     return true;
   }
 
@@ -647,6 +742,7 @@
     refs.formStatus.textContent = item ? (item.name + ' fue quitado de la compra.') : 'Artículo quitado.';
     window.A33Notice.alert(refs.formStatus.textContent);
     renderDraftItems();
+    if (purchasePending) purchasePending.persist(true);
   }
 
   function iconButton(symbol, className, title, handler){
@@ -781,6 +877,12 @@
 
   function upsertPurchase(){
     if (state.saving) return false;
+    if (state.opening) return false;
+    if (purchasePending && !purchasePending.beforeSave()) return false;
+    if (purchasePending && state.editingDraftId) {
+      const input=refs.draftList.querySelector('[data-draft-quantity]');
+      if (!saveDraftEdit(state.editingDraftId,input)) return false;
+    }
     if (pendingArticleInputs() && !addDraftItem({ focus:false, report:true })) {
       refs.formStatus.textContent = 'Completa correctamente el último artículo antes de guardar.';
       window.A33Notice.alert(refs.formStatus.textContent);
@@ -793,15 +895,16 @@
     refs.addBtn.disabled = true;
     const now = new Date().toISOString();
     try{
-      const store = readStore();
-      const records = store.records.slice();
+      const store = window.A33AgendaRecords.read(localStorage);
+      const records = store.records;
       const index = state.currentId ? records.findIndex(function(item){ return clean(item && item.id,180) === state.currentId; }) : -1;
+      if (state.currentId && index<0) throw new Error('La compra ya no existe. La preparación permanece pendiente.');
       const existing = index >= 0 ? normalizePurchaseRecord(records[index]) : null;
       const purchaseGroup = buildStoredGroup(state.draftItems);
       const purchase = aggregatePurchase(purchaseGroup.items, { createdAt:existing ? existing.createdAt : now });
       const record = normalizePurchaseRecord({
         ...(existing || {}),
-        id: existing ? existing.id : createId('agd'),
+        id: existing ? existing.id : purchasePending ? purchasePending.id : createId('agd'),
         subject: purchaseGroup.items.length === 1 ? purchaseGroup.items[0].name : ('Compra agrupada · ' + purchaseGroup.items.length + ' artículos'),
         type: 'compra',
         client: '',
@@ -817,13 +920,13 @@
         purchase,
         purchaseGroup
       });
-      if (index >= 0) records[index] = record;
-      else records.unshift(record);
-      saveAllRecords(records);
+      saveAllRecords(existing?{kind:'update',id:record.id,expected:purchasePending?purchasePending.expected:purchaseEditingBase,record}:{kind:'create',id:record.id,record});
+      if (purchasePending) purchasePending.confirmed();
       const message = existing ? 'Compra agrupada actualizada correctamente.' : 'Compra agrupada guardada correctamente.';
       resetForm({ focus:false, statusMessage:message });
       return true;
     }catch(error){
+      if (purchasePending) purchasePending.persist(true);
       console.error('Agenda Compras · Guardar', error);
       refs.formStatus.textContent = 'No se pudo guardar la compra. La preparación se conserva para intentarlo nuevamente.';
       window.A33Notice.alert(refs.formStatus.textContent);
@@ -845,9 +948,8 @@
     const existing = normalizePurchaseRecord(store.records[index]);
     if (existing.status === target) return;
     const updated = normalizePurchaseRecord({ ...existing, status:target, updatedAt:new Date().toISOString() });
-    store.records[index] = updated;
-    saveAllRecords(store.records);
-    if (state.currentId === id) fillForm(updated, { focus:false });
+    saveAllRecords({kind:'update',id,expected:store.records[index],patch:{status:target,updatedAt:updated.updatedAt}});
+    if (state.currentId === id) fillForm(getRecord(id), { focus:false });
     else render();
   }
 
@@ -855,9 +957,7 @@
     const record = getRecord(id);
     if (!record) return;
     if (!window.confirm('¿Eliminar esta compra planificada? Esta acción no se puede deshacer.')) return;
-    const store = readStore();
-    const next = store.records.filter(function(item){ return clean(item && item.id,180) !== id; });
-    saveAllRecords(next);
+    saveAllRecords({kind:'delete',id,expected:recordBases.get(record)});
     if (state.expandedId === id) state.expandedId = '';
     if (state.currentId === id) resetForm({ focus:false, statusMessage:'Compra eliminada.' });
     else render();
@@ -1218,8 +1318,11 @@
   }
 
   function openPurchase(recordId){
-    if (!state.ready) return;
+    if (!state.ready || state.opening || state.saving) return;
+    if (purchasePending && !purchasePending.leave()) return;
+    state.opening=true;refs.form.inert=true;
     loadMaterials().finally(function(){
+      state.opening=false;refs.form.inert=false;
       const id = clean(recordId,180);
       const record = id ? getRecord(id) : null;
       if (record) fillForm(record,{focus:false});
@@ -1256,9 +1359,14 @@
     setRefs();
     if (!refs.form) return;
     bind();
+    setupPurchasePending();
     state.ready = true;
+    state.opening=true;refs.form.inert=true;
     loadMaterials().finally(function(){
-      resetForm({focus:false});
+      state.opening=false;refs.form.inert=false;
+      resetForm({focus:false,pendingPrepared:true});
+      refs.form.dataset.pendingReady='1';
+      if (purchasePending) purchasePending.render();
       const params = new URLSearchParams(window.location.search || '');
       const requested = clean(params.get('record'),180);
       const record = requested ? getRecord(requested) : null;

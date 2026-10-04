@@ -587,7 +587,9 @@ function writeInventarioMetaRaw(nextRev, writer){
     updatedAt: (new Date()).toISOString(),
     writer: String(writer || 'inventario')
   };
-  try{ A33Storage.setItem(mk, JSON.stringify(out), 'local'); }catch(_){ }
+  try{
+    if (!A33Storage.setItem(mk, JSON.stringify(out), 'local')) return null;
+  }catch(_){ return null; }
   try{
     if (window.A33Storage && A33Storage._sharedState) {
       A33Storage._sharedState[STORAGE_KEY_INVENTARIO] = { ...out, readAt: Date.now() };
@@ -800,6 +802,11 @@ function sharedCommitInventarioConservative(localInv){
   }
 
   const metaWritten = writeInventarioMetaRaw(curRev + 1, 'inventario');
+  if (!metaWritten){
+    try{ delete A33Storage._sharedState[STORAGE_KEY_INVENTARIO]; }catch(_){ }
+    return { ok:false, data:finalData, dataWritten:true, revisionWritten:false,
+      message:'Los datos de inventario se escribieron, pero no se pudo guardar su revisión. Guardado incompleto: comprobá los datos antes de reintentar.' };
+  }
   trackInventarioBase(finalData, metaWritten);
   return { ok:true, data: finalData, message:'' };
 }
