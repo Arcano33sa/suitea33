@@ -1797,9 +1797,17 @@ function ensureFinishedRow(tbody, def) {
   statusSpan.textContent = "—";
   tdEstado.appendChild(statusSpan);
   tr.appendChild(tdEstado);
+  const tdAcciones = tdLabel(document.createElement('td'), 'Acciones');
+  const btnCorregir = document.createElement('button');
+  btnCorregir.type = 'button';
+  btnCorregir.className = 'btn-secondary btn-pill';
+  btnCorregir.textContent = 'Corregir saldo';
+  btnCorregir.dataset.finishedCorrection = id;
+  tdAcciones.appendChild(btnCorregir);
+  tr.appendChild(tdAcciones);
   tbody.appendChild(tr);
 
-  row = { tr, tdNombre, tdStock, statusSpan, def };
+  row = { tr, tdNombre, tdStock, statusSpan, btnCorregir, def };
   INV_ROW_CACHE.finished.set(id, row);
   try { row.tr.classList.toggle('is-historical', def.operational === false); } catch (_) {}
   return row;
@@ -1814,6 +1822,7 @@ function updateFinishedRow(inv, id) {
   const estado = calcularEstadoProductoTerminado({ stock });
   row.statusSpan.className = "status-chip " + estado.className;
   row.statusSpan.textContent = estado.label;
+  if (row.btnCorregir) row.btnCorregir.disabled = !(stock > 0);
 }
 
 
@@ -2295,6 +2304,35 @@ function attachListeners(inv) {
   };
 
   const scheduleSave = debounce((section, id) => commitSave(section, id), 220);
+
+  const finishedBody = $('inv-productos-body');
+  let correctionPending = false;
+  if (finishedBody) finishedBody.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-finished-correction]');
+    if (!button || correctionPending) return;
+    const id = button.dataset.finishedCorrection;
+    const def = INV_FINISHED_DEFS.find(item => item.id === id);
+    const record = def && resolveFinishedStockRecord(inv, def);
+    const before = Number(record && record.item.stock);
+    if (!Number.isInteger(before) || before <= 0) return;
+    correctionPending = true;
+    try {
+      const raw = await openCantidadModal({ title:'Corregir saldo', message:`${def.nombre}: saldo actual ${before}. Esta corrección solo afecta Inventario central, no POS.`, label:'Unidades a descontar', step:'1', min:'1', mode:'numeric' });
+      if (raw == null) return;
+      const qty = Number(String(raw).trim());
+      if (!Number.isInteger(qty) || qty <= 0 || qty > before) {
+        safeAlert('Indica un número entero mayor que cero que no supere el saldo actual.');
+        return;
+      }
+      const reason = window.prompt('Motivo obligatorio de la corrección (incluye el código de lote si corresponde):');
+      if (reason == null) return;
+      if (!reason.trim()) { safeAlert('La corrección requiere un motivo.'); return; }
+      if (!window.confirm(`${def.nombre}\nSaldo actual: ${before}\nDescuento: ${qty}\nSaldo resultante: ${before - qty}\nMotivo: ${reason.trim()}\n\nSolo cambia Inventario central. ¿Aplicar corrección?`)) return;
+      const result = corregirSaldoProductoTerminado(inv, def, qty, reason, before);
+      if (!result.ok) { safeAlert(result.message); return; }
+      if (commitSave('finished', id)) setStatus('Corrección guardada con su movimiento histórico.', 'ok', { timeoutMs:2000 });
+    } finally { correctionPending = false; }
+  });
 
   if (finishedClearBtn){
     finishedClearBtn.addEventListener('click', () => {
@@ -2801,6 +2839,29 @@ function getFinishedStockRecord(inv, id){
     return { section:'finished', key, item:inv.finished[key] };
   }
   return null;
+}
+
+function corregirSaldoProductoTerminado(inv, def, cantidad, motivo, expectedStock){
+  const record = resolveFinishedStockRecord(inv, def);
+  const before = Number(record.item.stock);
+  const qty = Number(cantidad);
+  const reason = String(motivo || '').trim();
+  if (!def || !record.section || !inv[record.section] || !inv[record.section][record.key]) return { ok:false, message:'No se encontró el registro de producto terminado.' };
+  if (!Number.isInteger(before) || before !== expectedStock) return { ok:false, message:'El saldo cambió. Recarga y vuelve a intentar.' };
+  if (!Number.isInteger(qty) || qty <= 0 || qty > before || !reason) return { ok:false, message:'Cantidad o motivo inválidos; no se modificó el inventario.' };
+  const movement = {
+    id:`mov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    tipoItem:'producto', itemId:record.key,
+    nombreSnapshot:def.nombre, cantidad:qty, delta:-qty,
+    tipoMovimiento:'ajuste_correccion', fecha:new Date().toISOString(),
+    nota:reason, origen:'inventario/manual',
+    stockAnterior:before, stockNuevo:before - qty
+  };
+  if (def.productId) movement.productId = def.productId;
+  if (!Array.isArray(inv.movimientos)) inv.movimientos = [];
+  inv.movimientos.push(movement);
+  record.item.stock = before - qty;
+  return { ok:true, movement };
 }
 
 function registrarMovimientoProductoTerminado(inv, def, before){
