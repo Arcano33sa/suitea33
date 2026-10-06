@@ -186,6 +186,12 @@ html body .cat-e71 .cat-item-summary:focus-visible{outline:3px solid var(--a33-g
 html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-color:var(--a33-red,#7b1818);}
 @media(max-width:520px){html body .cat-e71 .cat-item-heading strong{flex-basis:100%;}html body .cat-e71 .cat-item-summary{padding:12px 14px;}}
 </style>
+<style id="a33-desktop-wide">
+/* Vista amplia automática; conserva la distribución táctil y de ventanas pequeñas. */
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  .cat-main{width:min(1600px, calc(100vw - 24px));}
+}
+</style>
 </head>
 <body>
   <header class="a33-header" role="banner" data-a33-module="catalogos" data-a33-context="catalogos">

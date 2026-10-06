@@ -132,6 +132,12 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
  html body :is(#backup-modal,#cfg-pos-events-modal) .modal-actions .cfg-btn { flex:1 1 120px; }
 }
 </style>
+<style id="a33-desktop-wide">
+/* Vista amplia automática; conserva la distribución táctil y de ventanas pequeñas. */
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  .cfg-main{width:min(1600px, calc(100vw - 48px));}
+}
+</style>
 </head>
 <body>
 <header class="a33-header" role="banner" data-a33-module="configuracion" data-a33-context="configuracion">

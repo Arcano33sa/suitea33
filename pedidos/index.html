@@ -119,6 +119,12 @@
       .pedidos-visual #quick-order-code-preview { white-space: nowrap; }
     }
   </style>
+<style id="a33-desktop-wide">
+/* Vista amplia automática; conserva la distribución táctil y de ventanas pequeñas. */
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  html body.pedidos-visual .app-main{max-width:1600px;}
+}
+</style>
 </head>
 <body class="pedidos-visual">
   <header class="a33-header" role="banner" data-a33-module="pedidos">

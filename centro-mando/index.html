@@ -40,6 +40,12 @@
 .cmd-modal-body strong{overflow-wrap:anywhere;line-height:1.4;padding:14px;border-radius:12px;background:var(--cmd-gold-soft);border:1px solid var(--cmd-border);}
 @media(max-width:560px){.cmd-block-head{flex-wrap:wrap;gap:12px;}.cmd-block-head>.cmd-pill-btn{width:100%;}.cmd-main{gap:16px;}.cmd-use-pos{padding:12px;}.cmd-modal-actions .cmd-btn{white-space:normal;}}
 </style>
+<style id="a33-desktop-wide">
+/* Vista amplia automática; conserva la distribución táctil y de ventanas pequeñas. */
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  .cmd-main{max-width:1600px;}
+}
+</style>
 </head>
 <body>
   <header class="a33-header" role="banner" data-a33-module="centro-mando">

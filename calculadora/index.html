@@ -853,6 +853,12 @@
       html body.calc-main-body #resumen-costos td { padding: 0.55rem 0.25rem; font-size: 0.8rem; }
     }
   </style>
+<style id="a33-desktop-wide">
+/* Vista amplia automática; conserva la distribución táctil y de ventanas pequeñas. */
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  html body.calc-main-body .app-container{max-width:1600px;}
+}
+</style>
 </head>
 <body class="calc-body calc-main-body">
   <header class="a33-header" role="banner" data-a33-module="produccion">

@@ -190,6 +190,12 @@ html body #agendaPurchasesView :is(button,input,select,textarea,a,.agenda-record
  html body #agendaPurchasesView .agenda-record-actions-group:last-child { margin:0; }
 }
 </style>
+<style id="a33-desktop-wide">
+/* Vista amplia automática; conserva la distribución táctil y de ventanas pequeñas. */
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  .agenda-main{width:min(1600px, calc(100vw - 48px));}
+}
+</style>
 </head>
 <body>
   <header class="a33-header" role="banner" data-a33-module="agenda" data-a33-context="agenda">

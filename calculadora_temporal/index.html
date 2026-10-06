@@ -593,6 +593,12 @@
       .calc-temporal-body .a33-temporal-checklist-item strong { grid-column: 2; }
     }
   </style>
+<style id="a33-desktop-wide">
+/* Vista amplia automática; conserva la distribución táctil y de ventanas pequeñas. */
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  html body.calc-temporal-body .app-container{max-width:1600px;}
+}
+</style>
 </head>
 <body class="calc-body calc-temporal-body">
   <header class="a33-header" role="banner" data-a33-module="temporal">
