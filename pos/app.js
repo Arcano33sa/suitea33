@@ -19351,9 +19351,14 @@ async function revertCupConsumptionFromSalePOS(sale){
 	async function renderInvLoteSelectorTablePOS(evId, opts){
 	  const options = opts || {};
 	  const tbody = document.querySelector('#inv-lote-selector-table tbody');
+	  const history = document.getElementById('inv-lote-selector-history');
+	  const historyList = document.getElementById('inv-lote-selector-history-list');
+	  const historyCount = document.getElementById('inv-lote-selector-history-count');
 	  const msgEl = document.getElementById('inv-lote-selector-msg');
 	  if (!tbody) return;
 	  tbody.innerHTML = '';
+	  if (history) history.hidden = true;
+	  if (historyList) historyList.innerHTML = '';
 
 	  const query = (options.query != null) ? String(options.query) : '';
 	  const q = query.toLowerCase().trim();
@@ -19398,11 +19403,27 @@ async function revertCupConsumptionFromSalePOS(sale){
 	    return ib.localeCompare(ia);
 	  });
 
-	  // Filtro rápido: código (case-insensitive). La Nota permanece intacta en Lotes,
-	  // pero deja de formar parte visible de este selector.
-	  let view = base;
-	  if (q){
-	    view = base.filter(l=> String(l?.codigo ?? '').toLowerCase().includes(q));
+	  const matchesCode = lote => String(lote?.codigo ?? '').toLowerCase().includes(q);
+	  const available = base.filter(loteIsUsablePOS);
+	  const view = available.filter(matchesCode);
+
+	  if (historyList){
+	    const used = base.filter(lote => matchesCode(lote) && !loteIsUsablePOS(lote));
+	    let count = 0;
+	    for (const lote of used){
+	      const assignments = Array.isArray(lote.assignmentHistory) ? lote.assignmentHistory : [];
+	      const lastAssignment = assignments.slice().reverse().find(entry => entry?.type === 'ASSIGN');
+	      const eventId = lote.assignedEventId || lastAssignment?.eventId;
+	      const eventName = lote.assignedEventName || lastAssignment?.eventName;
+	      if (!eventId && !eventName && !lote.assignedCargaId && !lastAssignment) continue;
+
+	      const row = document.createElement('li');
+	      row.textContent = (lote.codigo || '—') + ' · ' + (eventName || (eventId ? 'Evento #' + eventId : 'Evento sin identificar'));
+	      historyList.appendChild(row);
+	      count++;
+	    }
+	    historyCount.textContent = String(count);
+	    history.hidden = false;
 	  }
 
 	  let products = [];
@@ -19423,7 +19444,7 @@ async function revertCupConsumptionFromSalePOS(sale){
 	    // Si hay filas, NO se muestra este mensaje (aunque estén deshabilitadas).
 	    else if (!view.length) msg = 'No hay lotes disponibles.';
 	    if (q){
-	      msg = (msg ? (msg + ' ') : '') + ('Mostrando ' + view.length + ' de ' + base.length + '.');
+	      msg = (msg ? (msg + ' ') : '') + ('Mostrando ' + view.length + ' de ' + available.length + '.');
 	    }
 	    msgEl.textContent = msg;
 	  }
@@ -19449,7 +19470,28 @@ async function revertCupConsumptionFromSalePOS(sale){
 	    const content = document.createElement('span');
 	    content.className = 'inv-lote-content-summary';
 	    content.textContent = loadPlan.summary || '—';
-	    td3.appendChild(content);
+	    const detail = document.createElement('details');
+	    const summary = document.createElement('summary');
+	    summary.appendChild(content);
+	    detail.appendChild(summary);
+
+	    const metadata = document.createElement('div');
+	    metadata.textContent = 'Caducidad: ' + (l.caducidad || l.exp || l.expiryDate || '—');
+	    detail.appendChild(metadata);
+	    const note = document.createElement('div');
+	    note.textContent = 'Nota: ' + (l.notas || l.nota || l.note || '—');
+	    detail.appendChild(note);
+
+	    if (loadPlan.items.length){
+	      const items = document.createElement('ul');
+	      for (const item of loadPlan.items){
+	        const line = document.createElement('li');
+	        line.textContent = item.letra + ' · ' + (item.nombreSnapshot || 'Producto #' + item.productId) + ' · ' + item.qty + ' uds.';
+	        items.appendChild(line);
+	      }
+	      detail.appendChild(items);
+	    }
+	    td3.appendChild(detail);
 
 	    const td4 = document.createElement('td'); td4.textContent = estado;
 	    const td5 = document.createElement('td');
@@ -19550,6 +19592,9 @@ async function revertCupConsumptionFromSalePOS(sale){
 	  const evId = (evSel && evSel.value) ? parseInt(evSel.value,10) : null;
 	  const qEl = document.getElementById('inv-lote-selector-search');
 	  const q = qEl ? qEl.value : '';
+
+	  const history = document.getElementById('inv-lote-selector-history');
+	  if (history) history.open = false;
 
 	  // Lectura fresca + render inicial
 	  await renderInvLoteSelectorTablePOS(evId, { query: q, fresh: true });

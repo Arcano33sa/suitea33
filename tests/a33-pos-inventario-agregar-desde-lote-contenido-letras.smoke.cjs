@@ -65,6 +65,7 @@ let storedLotes = [{
   createdAt:'2026-07-30T20:00:00.000Z',
   status:'DISPONIBLE',
   notas:originalNote,
+  caducidad:"2026-09-30",
   disponibilidadPOS:[
     // Estructura real: sin snapshot exacto, disponible null, producción válida.
     { productId:'prod-g', Letra:'G', cantidadDisponible:null, cantidadDisponibleExiste:false, disponibilidadFuente:'sin_snapshot', cantidadProducida:2 },
@@ -146,9 +147,17 @@ class FakeNode {
 }
 const selectorTbody = new FakeNode('tbody');
 const selectorMsg = new FakeNode('div');
+const history = new FakeNode('details');
+const historyList = new FakeNode('ul');
+const historyCount = new FakeNode('span');
 context.document = {
   querySelector:(sel)=> sel === '#inv-lote-selector-table tbody' ? selectorTbody : null,
-  getElementById:(id)=> id === 'inv-lote-selector-msg' ? selectorMsg : null,
+  getElementById:(id)=> ({
+    'inv-lote-selector-msg':selectorMsg,
+    'inv-lote-selector-history':history,
+    'inv-lote-selector-history-list':historyList,
+    'inv-lote-selector-history-count':historyCount
+  })[id] || null,
   createElement:(tag)=>new FakeNode(tag)
 };
 context.readAllLotesFromSharedPOS = ()=>storedLotes.map(l=>JSON.parse(JSON.stringify(l)));
@@ -216,8 +225,12 @@ vm.runInContext(fnNames.map(name=>takeFunction(app,name)).join('\n')
   assert.strictEqual(selectorTbody.children.length, 1, 'Selector no renderizó el lote');
   const renderedCells = selectorTbody.children[0].children;
   assert.strictEqual(renderedCells.length, 5, 'Selector no conserva cinco columnas');
-  assert.strictEqual(renderedCells[2].children[0].textContent, '2G 3D 2T', 'Contenido no se renderizó desde datos reales');
-  assert.ok(!renderedCells.some(cell=>String(cell.textContent || '').includes(originalNote)), 'La Nota apareció en el selector');
+  const detail = renderedCells[2].children[0];
+  assert.strictEqual(detail.children[0].children[0].textContent, '2G 3D 2T', 'Resumen incorrecto');
+  assert.strictEqual(detail.children[1].textContent, 'Caducidad: 2026-09-30');
+  assert.strictEqual(detail.children[2].textContent, 'Nota: ' + originalNote);
+  assert.deepStrictEqual(detail.children[3].children.map(row=>row.textContent),
+    Array.from(plan.items, item=>item.letra + ' · ' + item.nombreSnapshot + ' · ' + item.qty + ' uds.'));
   assert.strictEqual(renderedCells[4].children[0].disabled, false, 'Usar quedó bloqueado con contenido legítimo');
 
   const result = await context.__import({evId:7,loteId:'lot-1',loteCodigo:'A33XXXX'});
@@ -232,6 +245,13 @@ vm.runInContext(fnNames.map(name=>takeFunction(app,name)).join('\n')
   assert.strictEqual(storedLotes[0].status, 'EN_EVENTO', 'Lote no quedó asignado');
   assert.strictEqual(sharedSets.length, 1, 'Persistencia de lote ejecutada más de una vez');
   assert.strictEqual(toasts.at(-1).message, 'Lote aplicado: “A33XXXX” · 2G 3D 2T · 7 unidades', 'Mensaje posterior incorrecto');
+
+  await context.__render(8, {fresh:true});
+  assert.strictEqual(historyCount.textContent, '1');
+  assert.match(historyList.children[0].textContent, /^A33XXXX · /);
+  assert.strictEqual(selectorTbody.children[0].children.length, 0, 'El lote usado sigue en la lista principal');
+  await context.__render(8, {query:'sin coincidencia', fresh:true});
+  assert.strictEqual(historyCount.textContent, '0');
 
   const before = restocks.length;
   const second = await context.__import({evId:7,loteId:'lot-1',loteCodigo:'A33XXXX'});
