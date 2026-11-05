@@ -104,6 +104,7 @@
     <div class="card sale-day-card">
       <div class="sale-day-heading">
         <h3>Listado del día</h3>
+        <button id="btn-event-sales" class="btn-outline" type="button">Ver ventas del evento</button>
         <div class="sale-day-total"><span>Total del día</span><strong>C$ <span id="day-total">0</span></strong></div>
       </div>
       <div class="table-scroll">
@@ -117,6 +118,25 @@
       </table>
       </div>
     </div>
+    <dialog id="event-sales-dialog" class="card" aria-labelledby="event-sales-title">
+      <div class="sale-day-heading">
+        <h3 id="event-sales-title">Ventas del evento</h3>
+        <form method="dialog"><button class="btn-outline" type="submit">Cerrar</button></form>
+      </div>
+      <p id="event-sales-name"></p>
+      <p><strong>Total del evento · C$ <span id="event-sales-total"></span></strong></p>
+      <p id="event-sales-status" role="status"></p>
+      <div class="table-scroll">
+      <table id="tbl-event-sales" class="compact">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Producto</th><th>Cantidad</th><th>Precio unitario</th><th>Descuento</th><th>Total</th><th>Pago</th><th>Cortesía</th><th>Devolución</th><th>Cliente asociado</th><th>Cortesía a</th><th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      </div>
+    </dialog>
     <section class="sale-event-admin" aria-labelledby="sale-event-admin-title">
       <h3 id="sale-event-admin-title">Administración del evento</h3>
       <div class="sale-event-create">

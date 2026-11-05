@@ -2011,12 +2011,12 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
 #tab-venta .sale-day-total{display:flex;flex-direction:column;gap:4px;text-align:right}
 #tab-venta .sale-day-total>span{font-size:13px;color:var(--a33-muted)}
 #tab-venta .sale-day-total>strong{font-size:24px;font-variant-numeric:tabular-nums;color:var(--a33-gold)}
-#tab-venta #tbl-day th{padding:12px;font-size:12px;color:var(--a33-muted);font-weight:600}
-#tab-venta #tbl-day td{padding:12px;vertical-align:top}
-#tab-venta #tbl-day td:nth-child(2){min-width:150px;max-width:260px;white-space:normal}
-#tab-venta #tbl-day :is(th,td):nth-child(n+3):nth-child(-n+6){text-align:right;font-variant-numeric:tabular-nums}
-#tab-venta #tbl-day td:nth-child(6){font-weight:800}
-#tab-venta #tbl-day tbody tr:hover td{background:var(--a33-surface-3)}
+#tab-venta :is(#tbl-day,#tbl-event-sales) th{padding:12px;font-size:12px;color:var(--a33-muted);font-weight:600}
+#tab-venta :is(#tbl-day,#tbl-event-sales) td{padding:12px;vertical-align:top}
+#tab-venta :is(#tbl-day,#tbl-event-sales) td:nth-child(2){min-width:150px;max-width:260px;white-space:normal}
+#tab-venta :is(#tbl-day,#tbl-event-sales) :is(th,td):nth-child(n+3):nth-child(-n+6){text-align:right;font-variant-numeric:tabular-nums}
+#tab-venta :is(#tbl-day,#tbl-event-sales) td:nth-child(6){font-weight:800}
+#tab-venta :is(#tbl-day,#tbl-event-sales) tbody tr:hover td{background:var(--a33-surface-3)}
 #tab-venta .sale-event-admin{margin-top:24px;padding-top:20px;border-top:1px solid var(--a33-border-soft)}
 #tab-venta .sale-event-admin h3{margin:0 0 12px;font-size:16px}
 #tab-venta .sale-event-create{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
@@ -2173,3 +2173,13 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
  .modal.pos-visual .panel{padding:14px;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px)}
  .pos-visual :is(th,td){padding:9px 8px}
 }
+
+#event-sales-dialog{
+  width:min(95vw, 1250px);
+  max-height:90vh;
+  overflow:auto;
+  background:var(--a33-surface, Canvas);
+  color:inherit;
+}
+#event-sales-dialog::backdrop{background:rgb(0 0 0 / 55%)}
+#event-sales-dialog summary{cursor:pointer}

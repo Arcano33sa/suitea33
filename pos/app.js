@@ -22599,6 +22599,67 @@ document.addEventListener('input', async (e)=>{
   }
 });
 
+function createSaleListRowPOS(s, bankMap, eventView = false){
+  const payKey = normalizePaymentMethodPOS(s.payment || '');
+  const payClass = payKey === 'efectivo'
+    ? 'pay-ef'
+    : (payKey === 'transferencia' ? 'pay-tr' : (payKey === 'tarjeta' ? 'pay-card' : 'pay-cr'));
+  const payTxt = getSalePaymentLabelPOS(s, bankMap);
+  const tenderDetail = getSaleCashTenderDetailTextPOS(s);
+  const tr = document.createElement('tr');
+  const seqTxt = getSaleSeqDisplayPOS(s);
+  const dateOrTime = eventView ? escapeHtml(s.date || '—') : getSaleTimeTextPOS(s);
+  const actions = eventView
+    ? `<details><summary>Ver detalle</summary><div>Hora: ${escapeHtml(getSaleTimeTextPOS(s) || '—')}</div><div>Notas: ${escapeHtml(s.notes || '—')}</div></details>`
+    : `<button ${s.purchaseUid ? 'disabled title="Usa VENDER → devolución para revertir la compra"' : 'title="Eliminar venta"'} data-id="${s.id}" class="btn-danger btn-mini del-sale">Eliminar</button>`;
+  tr.innerHTML = `<td>${seqTxt ? ('#' + seqTxt + ' · ') : ''}${dateOrTime}</td>
+    <td>${escapeHtml(uiProductNamePOS(s.productName))}${getSaleLotCodePOS(s) ? `<div class="muted"><small>Lote: ${escapeHtml(getSaleLotCodePOS(s))}</small></div>` : ''}</td>
+    <td>${s.qty}</td>
+    <td>${fmt(s.unitPrice)}</td>
+    <td>${fmt(getSaleDiscountTotalPOS(s))}</td>
+    <td>${fmt(s.total)}</td>
+    <td><span class="tag ${payClass}" title="${escapeHtml(tenderDetail)}">${payTxt}</span>${tenderDetail ? `<div class="muted"><small>${escapeHtml(tenderDetail)}</small></div>` : ''}</td>
+    <td>${s.courtesy?'✓':''}</td>
+    <td>${s.isReturn?'✓':''}</td>
+    <td>${escapeHtml(getSaleCustomerTableDisplayPOS(s))}</td>
+    <td>${escapeHtml(getSaleCourtesyRecipientSnapshotPOS(s))}</td>
+    <td>${actions}</td>`;
+  return tr;
+}
+
+async function openEventSalesPOS(){
+  const button = $('#btn-event-sales');
+  const dialog = $('#event-sales-dialog');
+  button.disabled = true;
+  try {
+    const event = await getEventByIdPOS(await getMeta('currentEventId'));
+    if (!event){
+      posNotify('Seleccioná un evento para consultar sus ventas.');
+      return;
+    }
+
+    const [allSales, banks] = await Promise.all([getAll('sales'), getAllBanksSafe()]);
+    if (String(await getMeta('currentEventId')) !== String(event.id)) return;
+
+    const bankMap = new Map(banks.filter(b => b && b.id != null).map(b => [Number(b.id), b.name || '']));
+    const sales = allSales.filter(s => s && String(s.eventId) === String(event.id));
+    sales.sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')) || saleSortKeyPOS(b) - saleSortKeyPOS(a));
+
+    $('#event-sales-name').textContent = event.name || '';
+    $('#event-sales-total').textContent = fmt(sales.reduce((total, sale) => total + Number(sale.total || 0), 0));
+    $('#event-sales-status').textContent = sales.length ? '' : 'Este evento todavía no tiene ventas.';
+    const tbody = $('#tbl-event-sales tbody');
+    tbody.replaceChildren();
+    for (const sale of sales) tbody.appendChild(createSaleListRowPOS(sale, bankMap, true));
+    dialog.showModal();
+  } catch (error) {
+    console.error('Error al consultar ventas del evento', error);
+    posNotify('No se pudieron cargar las ventas del evento.');
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // Day list filtered by current event
 async function renderDay(){
   try {
@@ -22623,27 +22684,7 @@ async function renderDay(){
     filtered.sort((a,b)=> (saleSortKeyPOS(b) - saleSortKeyPOS(a)));
     for (const s of filtered){
       total += Number(s.total || 0);
-      const payKey = normalizePaymentMethodPOS(s.payment || '');
-      const payClass = payKey === 'efectivo'
-        ? 'pay-ef'
-        : (payKey === 'transferencia' ? 'pay-tr' : (payKey === 'tarjeta' ? 'pay-card' : 'pay-cr'));
-      const payTxt = getSalePaymentLabelPOS(s, bankMap);
-      const tenderDetail = getSaleCashTenderDetailTextPOS(s);
-      const tr = document.createElement('tr');
-      const seqTxt = getSaleSeqDisplayPOS(s);
-      const timeTxt = getSaleTimeTextPOS(s);
-      tr.innerHTML = `<td>${seqTxt ? ('#' + seqTxt + ' · ') : ''}${timeTxt}</td>
-        <td>${escapeHtml(uiProductNamePOS(s.productName))}${getSaleLotCodePOS(s) ? `<div class="muted"><small>Lote: ${escapeHtml(getSaleLotCodePOS(s))}</small></div>` : ''}</td>
-        <td>${s.qty}</td>
-        <td>${fmt(s.unitPrice)}</td>
-        <td>${fmt(getSaleDiscountTotalPOS(s))}</td>
-        <td>${fmt(s.total)}</td>
-        <td><span class="tag ${payClass}" title="${escapeHtml(tenderDetail)}">${payTxt}</span>${tenderDetail ? `<div class="muted"><small>${escapeHtml(tenderDetail)}</small></div>` : ''}</td>
-        <td>${s.courtesy?'✓':''}</td>
-        <td>${s.isReturn?'✓':''}</td>
-        <td>${escapeHtml(getSaleCustomerTableDisplayPOS(s))}</td>
-        <td>${escapeHtml(getSaleCourtesyRecipientSnapshotPOS(s))}</td>
-        <td><button ${s.purchaseUid ? 'disabled title="Usa VENDER → devolución para revertir la compra"' : 'title="Eliminar venta"'} data-id="${s.id}" class="btn-danger btn-mini del-sale">Eliminar</button></td>`;
+      const tr = createSaleListRowPOS(s, bankMap);
       tbody.appendChild(tr);
     }
     $('#day-total').textContent = fmt(total);
@@ -27818,6 +27859,8 @@ async function init(){
       }
     }catch(_){ }
   });
+
+  $('#btn-event-sales').addEventListener('click', openEventSalesPOS);
 
   // Eliminar una venta específica desde la tabla
   $('#tbl-day').addEventListener('click', async (e)=>{
