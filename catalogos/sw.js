@@ -6,7 +6,7 @@ try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=57'); } catch (e) {}
 const SW_VERSION = (self.A33_RELEASE && self.A33_RELEASE.suiteVersion) ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const SW_REV = (self.A33_RELEASE && self.A33_RELEASE.rev !== undefined && self.A33_RELEASE.rev !== null) ? String(self.A33_RELEASE.rev) : '1';
 const MODULE = 'catalogos';
-const MODULE_CACHE_REV = '44';
+const MODULE_CACHE_REV = '45';
 const CACHE_NAME = `a33-v${SW_VERSION}-${MODULE}-r${SW_REV}-m${MODULE_CACHE_REV}`;
 
 function isLegacySuiteCache(name){
@@ -21,10 +21,11 @@ const PRECACHE_URLS = [
   '/assets/js/a33-notify-bridge.js?v=4.20.98&r=2',
   '/assets/css/a33-notify.css?v=4.20.98&r=1',
   './',
-  './index.html?v=4.20.98&r=35',
+  './index.html?v=4.20.98&r=36',
   './style.css?v=4.20.98&r=24',
-  './script.js?v=4.20.98&r=38',
+  './script.js?v=4.20.98&r=39',
   './manifest.webmanifest?v=4.20.98&r=13',
+  '../pos/vendor/xlsx.full.min.js',
   './offline.html',
   '../icon-a33-192.png',
   '../icon-a33-512.png',
@@ -98,7 +99,7 @@ async function handleNavigate(request){
     const cache = await caches.open(CACHE_NAME);
     return (
       (await cache.match(request)) ||
-      (await cache.match('./index.html?v=4.20.98&r=35')) ||
+      (await cache.match('./index.html?v=4.20.98&r=36')) ||
       (await cache.match('./index.html', { ignoreSearch:true })) ||
       (await cache.match('./offline.html')) ||
       new Response('Offline', { status:503, headers:{ 'Content-Type':'text/plain; charset=utf-8' } })

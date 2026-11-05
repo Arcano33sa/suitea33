@@ -1239,7 +1239,7 @@
   function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=9').then((reg)=>{
+      navigator.serviceWorker.register('./sw.js?v=4.20.98&r=10').then((reg)=>{
         try{ reg.update(); }catch(_){ }
       }).catch(() => {});
     }, { once:true });
@@ -4295,13 +4295,16 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     return { idTargets, nameTargets };
   }
 
-  function archivedSalesFromSnapshotCAT(archive){
+  function archivedSalesFromSnapshotCAT(archive, includeAmounts){
     const rows = [];
     if (!archive || typeof archive !== 'object') return rows;
     const snap = archive.snapshot && typeof archive.snapshot === 'object' ? archive.snapshot : archive;
     const directArrays = [snap.sales, snap.ventas, snap.salesDetail, snap.ventasDetalle, archive.sales, archive.ventas];
-    for (const arr of directArrays){
-      if (Array.isArray(arr)) rows.push(...arr.filter(Boolean));
+    for (const arr of new Set(directArrays)){
+      if (!Array.isArray(arr)) continue;
+      for (const sale of arr){
+        if (sale) rows.push(includeAmounts ? { ...sale, archivedSnapshot:true } : sale);
+      }
     }
     const sheets = Array.isArray(snap.sheets) ? snap.sheets : [];
     for (const sheet of sheets){
@@ -4316,6 +4319,9 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
       const customerIdIdx = findIndex(['customerid','clienteid','clientid']);
       const returnIdx = findIndex(['devolucion','isreturn','return']);
       const qtyIdx = findIndex(['cantidad','qty','quantity']);
+      const idIdx = findIndex(['id','saleid','ventaid']);
+      const totalIdx = findIndex(['totalc','total','nettotal','totalventa']);
+      const courtesyIdx = findIndex(['cortesia','courtesy','iscourtesy']);
       if (dateIdx < 0 || (customerIdx < 0 && customerIdIdx < 0)) continue;
       for (const row of data.slice(1)){
         if (!Array.isArray(row)) continue;
@@ -4325,11 +4331,80 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
           customerId: customerIdIdx >= 0 ? row[customerIdIdx] : null,
           isReturn: returnIdx >= 0 ? !!Number(row[returnIdx]) : false,
           qty: qtyIdx >= 0 ? row[qtyIdx] : 1,
+          id: idIdx >= 0 ? row[idIdx] : null,
+          total: includeAmounts && totalIdx >= 0 ? row[totalIdx] : undefined,
+          courtesy: includeAmounts && courtesyIdx >= 0 && !!Number(row[courtesyIdx]),
           archivedSnapshot: true
         });
       }
     }
     return rows;
+  }
+
+  function buildCustomerExportRowsCAT(customers, sales, archives){
+    const resolver = buildCustomerPurchaseResolverCAT(customers);
+    const purchases = new Map();
+    const seen = new Set();
+    const archived = archives.flatMap(archive=>archivedSalesFromSnapshotCAT(archive, true));
+    for (const sale of sales.concat(archived)){
+      if (!sale || typeof sale !== 'object') continue;
+      const saleId = String(sale.id ?? '').trim();
+      if (saleId && seen.has(saleId)) continue;
+      if (saleId) seen.add(saleId);
+      if (sale.deletedAt || sale.isDeleted || sale.cancelled || sale.canceled || sale.anulado || sale.voided) continue;
+      if (sale.courtesy || sale.isCourtesy) continue;
+
+      const idTargets = resolver.idTargets.get(saleCustomerIdCAT(sale));
+      const nameTargets = idTargets ? null : resolver.nameTargets.get(normalizeCustomerKeyCAT(saleCustomerNameCAT(sale)));
+      // Una venta con ID de un cliente fusionado se suma solo al destino.
+      const targetId = idTargets ? [...idTargets].pop()
+        : nameTargets?.size === 1 ? nameTargets.values().next().value : null;
+      if (!targetId) continue;
+
+      const date = saleDateKeyCAT(sale);
+      const qty = Number(sale.qty ?? sale.quantity ?? sale.cantidad ?? 1);
+      const amount = sale.total ?? sale.netTotal ?? sale.totalVenta;
+      const total = amount == null || String(amount).trim() === '' ? NaN : Number(amount);
+      const returned = sale.isReturn || sale.devolucion || sale.returned || qty < 0 || total < 0;
+      const purchase = purchases.get(targetId) || { date:'', cents:0, partial:false };
+      if (!returned && qty > 0 && (total > 0 || !Number.isFinite(total)) && date > purchase.date){
+        purchase.date = date;
+      }
+      if (!Number.isFinite(total) || (sale.archivedSnapshot && !saleId)){
+        purchase.partial = true;
+      } else {
+        purchase.cents += (returned ? -1 : 1) * Math.round(Math.abs(total) * 100);
+      }
+      purchases.set(targetId, purchase);
+    }
+
+    const sorted = customers.slice().sort((a,b)=>a.name.localeCompare(b.name, 'es-NI', { sensitivity:'base' }));
+    return [
+      ['Nombre', 'Celular', 'Estado', 'Última fecha de compra', 'Total comprado neto (C$) · Historial disponible', 'Observación'],
+      ...sorted.map(customer=>{
+        const purchase = purchases.get(String(customer.id));
+        const date = purchase?.date ? new Date(purchase.date + 'T00:00:00') : null;
+        return [
+          customer.name, getCustomerCellularCAT(customer),
+          customer.mergedIntoId ? 'Fusionado' : customerActiveCAT(customer) ? 'Activo' : 'Inactivo',
+          date, (purchase?.cents ?? 0) / 100, purchase?.partial ? 'Total parcial' : ''
+        ];
+      })
+    ];
+  }
+
+  async function exportCustomersExcelCAT(){
+    if (typeof XLSX === 'undefined') throw new Error('No se pudo cargar la librería de Excel.');
+    const customers = readCustomerCatalogCAT();
+    await openDB();
+    const [sales, archives] = await Promise.all([getAll('sales'), getAll('summaryArchives')]);
+    const rows = buildCustomerExportRowsCAT(customers, sales, archives);
+    const sheet = XLSX.utils.aoa_to_sheet(rows, { dateNF:'dd/mm/yyyy', cellDates:true });
+    sheet['!cols'] = [32, 20, 15, 24, 52, 20].map(wch=>({ wch }));
+    for (let row = 2; row <= rows.length; row++) sheet['E' + row].z = '#,##0.00';
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, 'Clientes');
+    XLSX.writeFile(book, 'A33_Clientes.xlsx');
   }
 
   function updateLastPurchaseForTargetCAT(byId, targetId, dateKey){
@@ -4746,6 +4821,18 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
       invalidateCustomerLastPurchaseCAT();
       await renderCustomers({ forceLastPurchase:true });
       toast('Clientes actualizados');
+    });
+    byId('cat-export-customers')?.addEventListener('click', async (event)=>{
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await exportCustomersExcelCAT();
+      } catch (err){
+        console.error(err);
+        toast('No se pudo exportar el Excel de clientes.');
+      } finally {
+        button.disabled = false;
+      }
     });
     byId('cat-customer-search')?.addEventListener('input', ()=>{
       clearTimeout(customerSearchTimerCAT);
