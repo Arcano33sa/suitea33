@@ -22627,6 +22627,34 @@ function createSaleListRowPOS(s, bankMap, eventView = false){
   return tr;
 }
 
+function exportEventSalesViewPOS(event, sales, bankMap, total){
+  const rows = [['Fecha', 'Producto', 'Cantidad', 'Precio unitario', 'Descuento', 'Total', 'Pago', 'Cortesía', 'Devolución', 'Cliente asociado', 'Cortesía a']];
+  for (const sale of sales){
+    const dateKey = String(sale.date || '');
+    const date = new Date(dateKey + 'T00:00:00');
+    const product = uiProductNamePOS(sale.productName);
+    const lot = getSaleLotCodePOS(sale);
+    const payment = getSalePaymentLabelPOS(sale, bankMap);
+    const tender = getSaleCashTenderDetailTextPOS(sale);
+    rows.push([
+      /^\d{4}-\d{2}-\d{2}$/.test(dateKey) && Number.isFinite(date.getTime()) ? date : dateKey,
+      lot ? product + ' · Lote: ' + lot : product,
+      Number(sale.qty || 0),
+      Number(sale.unitPrice || 0),
+      getSaleDiscountTotalPOS(sale),
+      Number(sale.total || 0),
+      tender ? payment + ' · ' + tender : payment,
+      sale.courtesy ? 'Sí' : '',
+      sale.isReturn ? 'Sí' : '',
+      getSaleCustomerTableDisplayPOS(sale),
+      getSaleCourtesyRecipientSnapshotPOS(sale)
+    ]);
+  }
+  rows.push([], ['Evento', event.name || ''], ['Total del evento (C$)', '', '', '', '', total]);
+  const safeName = String(event.name || 'evento').replace(/[^a-z0-9_ -]/gi, '_');
+  downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
+}
+
 async function openEventSalesPOS(){
   const button = $('#btn-event-sales');
   const dialog = $('#event-sales-dialog');
@@ -22646,11 +22674,22 @@ async function openEventSalesPOS(){
     sales.sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')) || saleSortKeyPOS(b) - saleSortKeyPOS(a));
 
     $('#event-sales-name').textContent = event.name || '';
-    $('#event-sales-total').textContent = fmt(sales.reduce((total, sale) => total + Number(sale.total || 0), 0));
+    const total = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+    $('#event-sales-total').textContent = fmt(total);
     $('#event-sales-status').textContent = sales.length ? '' : 'Este evento todavía no tiene ventas.';
     const tbody = $('#tbl-event-sales tbody');
     tbody.replaceChildren();
     for (const sale of sales) tbody.appendChild(createSaleListRowPOS(sale, bankMap, true));
+    const exportButton = $('#btn-export-event-sales');
+    exportButton.disabled = sales.length === 0;
+    exportButton.onclick = () => {
+      try {
+        exportEventSalesViewPOS(event, sales, bankMap, total);
+      } catch (error) {
+        console.error('Error al exportar ventas del evento', error);
+        $('#event-sales-status').textContent = 'No se pudo exportar el archivo. Volvé a intentarlo.';
+      }
+    };
     dialog.showModal();
   } catch (error) {
     console.error('Error al consultar ventas del evento', error);

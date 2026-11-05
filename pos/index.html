@@ -121,7 +121,10 @@
     <dialog id="event-sales-dialog" class="card" aria-labelledby="event-sales-title">
       <div class="sale-day-heading">
         <h3 id="event-sales-title">Ventas del evento</h3>
-        <form method="dialog"><button class="btn-outline" type="submit">Cerrar</button></form>
+        <form method="dialog">
+          <button id="btn-export-event-sales" class="btn-outline" type="button">Exportar Excel</button>
+          <button class="btn-outline" type="submit">Cerrar</button>
+        </form>
       </div>
       <p id="event-sales-name"></p>
       <p><strong>Total del evento · C$ <span id="event-sales-total"></span></strong></p>
