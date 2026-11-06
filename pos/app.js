@@ -28411,6 +28411,7 @@ function closePurchaseModalPOS({ committed = false, discardVolatile = false } = 
   document.getElementById('sale-payment').value = 'efectivo';
   resetSaleCashTenderPOS(); purchaseBackgroundInertPOS(false);
   if (state.lastFocus?.isConnected) state.lastFocus.focus();
+  if (committed) void renderPurchaseDraftsPOS();
 }
 
 function setPurchaseBusyPOS(busy){
@@ -29979,20 +29980,31 @@ async function restorePurchaseDraftPOS(record){
     purchaseDraftStatusPOS(err.message || 'No se pudo recuperar la compra. La copia se conserva.');return false;
   }finally{purchaseRecoveringPOS=false;}
 }
-function renderPurchaseDraftsPOS(){
-  const list=document.getElementById('purchase-draft-list');if(!list)return;list.replaceChildren();
+async function renderPurchaseDraftsPOS(){
+  const list=document.getElementById('purchase-draft-list');if(!list)return;
   try{
+    let registeredPurchases = null;
+    try {
+      registeredPurchases = new Set((await getAll('sales')).map(sale => sale.purchaseUid));
+    } catch (_) {
+      purchaseDraftStatusPOS('No se pudo verificar qué compras ya se registraron. Pulsá Actualizar para reintentar.');
+    }
+    list.replaceChildren();
     const keys=[];for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key?.startsWith(PURCHASE_DRAFT_PREFIX_POS))keys.push(key);}
     for(const key of keys.sort()){
       let record;try{record=JSON.parse(localStorage.getItem(key));}catch(_){}
       const row=document.createElement('div');row.className='row';const label=document.createElement('span');const valid=validatePurchaseDraftPOS(record);
       label.textContent=valid?`${record.customer.name || 'Sin cliente'} · Evento ${record.eventId} · ${record.date} · ${new Date(record.updatedAt).toLocaleString('es-NI')}`:'Copia incompatible: se conserva';
-      const recover=document.createElement('button');recover.type='button';recover.className='btn-outline';recover.textContent='Recuperar';recover.disabled=!valid;
+      const registered = valid && registeredPurchases?.has(record.purchaseUid);
+      if (registered) label.textContent += ' · Ya registrada';
+      const recover=document.createElement('button');recover.type='button';recover.className='btn-outline';recover.textContent='Recuperar';recover.disabled=!valid || !registeredPurchases;
       recover.addEventListener('click',async()=>{try{await restorePurchaseDraftPOS(JSON.parse(localStorage.getItem(key)));}catch(_){purchaseDraftStatusPOS('No se pudo leer la copia; se conserva.');}});
       const discard=document.createElement('button');discard.type='button';discard.className='btn-outline';discard.textContent='Descartar';
       discard.addEventListener('click',()=>{if(!confirm('¿Descartar únicamente esta copia provisional? No se modifican ventas, caja ni existencias.'))return;
         if(!A33Storage.removeItem(key,'local')){purchaseDraftStatusPOS('No se pudo descartar la copia.');return;}renderPurchaseDraftsPOS();});
-      row.append(label,recover,discard);list.appendChild(row);
+      row.append(label);
+      if (!registered) row.append(recover);
+      row.append(discard);list.appendChild(row);
     }
     if(!keys.length)list.textContent='No hay compras provisionales para recuperar.';
   }catch(_){purchaseDraftStatusPOS('No se pudieron leer las copias provisionales. Se conservan.');}

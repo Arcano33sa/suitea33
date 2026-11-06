@@ -82,6 +82,10 @@ let browser;
   await page.locator('#purchase-save').click();await page.locator('#purchase-modal').waitFor({state:'hidden'});
   const sales=await page.evaluate(()=>getAll('sales'));assert.equal(sales.length,2);assert(sales.every(s=>s.purchaseUid===original.record.purchaseUid));
   assert.equal(await page.evaluate(k=>localStorage.getItem(k),workingKey),null);
+  const drafts = page.locator('#purchase-draft-list');
+  await drafts.getByText(/Ya registrada/).waitFor();
+  assert.equal(await drafts.getByRole('button',{name:'Recuperar',exact:true}).count(),0);
+  assert(await page.evaluate(k=>localStorage.getItem(k),original.key));
   const duplicate=await page.evaluate(record=>restorePurchaseDraftPOS(record),original.record);assert.equal(duplicate,false);
   assert.equal((await page.evaluate(()=>getAll('sales'))).length,2);assert.match(await page.locator('#purchase-draft-status').textContent(),/ya fue registrada/);
   // Another tab receives another working key and cannot overwrite the original copy.
