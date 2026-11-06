@@ -169,7 +169,7 @@
     </section>
   </main>
 
-  <!-- Modal: Histórico de lotes archivados -->
+  <!-- Modal: Histórico de lotes -->
   <div class="modal" id="history-modal" aria-hidden="true">
     <div class="modal__backdrop" data-modal-close="1"></div>
     <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="history-title">
@@ -178,6 +178,11 @@
         <button type="button" class="btn secondary icon modal__close" id="history-close-btn" aria-label="Cerrar">✕</button>
       </div>
       <div class="modal__body">
+        <label for="history-category">Mostrar</label>
+        <select id="history-category">
+          <option value="sold">Vendidos</option>
+          <option value="archived">Archivados</option>
+        </select>
         <input type="text" id="history-search" aria-label="Buscar en el histórico de lotes" placeholder="Buscar por código, producto o evento…" autocomplete="off" inputmode="search" />
         <div class="modal__meta" id="history-meta" aria-live="polite"></div>
         <div class="history-list" id="history-list"></div>

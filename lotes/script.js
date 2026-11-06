@@ -2667,17 +2667,10 @@ function refreshListCacheIfNeeded(force){
 
 function applyListFilter(){
   const q = (listView.query || '').toString().trim().toLowerCase();
-  if (!q){
-    listView.filtered = listView.allSorted;
-  } else {
-    const out = [];
-    for (const l of listView.allSorted){
-      const id = stableLoteRecordId(l);
-      const s = listView.searchIndex.get(id) || '';
-      if (s.includes(q)) out.push(l);
-    }
-    listView.filtered = out;
-  }
+  listView.filtered = listView.allSorted.filter((lote) => {
+    if (getLoteDisplayStatus(lote) === 'VENDIDO') return false;
+    return !q || (listView.searchIndex.get(stableLoteRecordId(lote)) || '').includes(q);
+  });
 
   // Totales sobre el conjunto filtrado (no solo la página)
   listView.totals = computeRemainingTotals(listView.filtered);
@@ -2779,7 +2772,7 @@ function renderTable(opts){
   if (!listView.filtered.length){
     updateTotalsBarUI(computeRemainingTotals([]));
     clearContainers();
-    renderMessage('No hay lotes que coincidan con la búsqueda.');
+    renderMessage(listView.query ? 'No hay lotes que coincidan con la búsqueda.' : 'No hay lotes en la lista principal. Consulta el Histórico.');
     updateLegacyTableColumnVisibility([]);
     listView.rendered = 0;
     setListMetaUI();
@@ -3166,14 +3159,16 @@ function renderHistoryModal(){
   const inp = $("history-search");
   if (!listEl || !metaEl) return;
 
-  const all = loadArchivedLotes();
+  const sold = $("history-category").value === 'sold';
   const q = (inp ? inp.value : '').toString().trim().toLowerCase();
 
-  const sorted = [...all].sort((a,b) => archiveSortTs(b) - archiveSortTs(a));
+  const sorted = sold
+    ? loadLotes().filter((lote) => getLoteDisplayStatus(lote) === 'VENDIDO').sort(compareLotesNewestFirst)
+    : loadArchivedLotes().sort((a,b) => archiveSortTs(b) - archiveSortTs(a));
   const filtered = q ? sorted.filter((r) => {
     const haystack = [
       ...batchCodeSearchTerms(r.codigo || r.batchCode || ''), r.codigo, r.batchCode, r.fecha, r.caducidad, r.assignedEventName,
-      r.statusAtDelete, r.semaforoAtDelete, r.estadoAutomaticoAtDelete,
+      sold ? 'VENDIDO' : r.statusAtDelete, r.semaforoAtDelete, r.estadoAutomaticoAtDelete,
       formatLoteProductSummary(r, { includeLegacy: true, useRemaining: false })
     ].filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(q);
@@ -3181,7 +3176,7 @@ function renderHistoryModal(){
 
   metaEl.textContent = q
     ? `Mostrando ${filtered.length} de ${sorted.length} (filtro: "${(inp.value || '').toString().trim()}")`
-    : `Total archivados: ${sorted.length}`;
+    : `Total ${sold ? 'vendidos' : 'archivados'}: ${sorted.length}`;
 
   listEl.innerHTML = '';
   if (!filtered.length){
@@ -3189,7 +3184,7 @@ function renderHistoryModal(){
     empty.style.padding = '0.6rem 0.2rem';
     empty.style.color = 'var(--color-text-muted)';
     empty.style.fontSize = '0.82rem';
-    empty.textContent = q ? 'Sin resultados.' : 'Aún no hay lotes archivados.';
+    empty.textContent = q ? 'Sin resultados.' : sold ? 'Aún no hay lotes vendidos.' : 'Aún no hay lotes archivados.';
     listEl.appendChild(empty);
     return;
   }
@@ -3211,7 +3206,7 @@ function renderHistoryModal(){
     // Estado / semáforo
     const st = (arch.statusAtDelete || '').toString().trim().toUpperCase();
     const sem = (arch.semaforoAtDelete || '').toString().trim().toUpperCase();
-    const displaySt = (arch.estadoAutomaticoAtDelete || ((st === 'EN_EVENTO' && sem === 'VENDIDO') ? 'VENDIDO' : st)).toString().trim().toUpperCase();
+    const displaySt = sold ? 'VENDIDO' : (arch.estadoAutomaticoAtDelete || ((st === 'EN_EVENTO' && sem === 'VENDIDO') ? 'VENDIDO' : st)).toString().trim().toUpperCase();
     if (displaySt){
       const cls = displaySt === 'VENDIDO' ? 'chip--sold' : displaySt === 'DISPONIBLE' ? 'chip--available' : displaySt === 'EN_EVENTO' ? 'chip--in-event' : 'chip--closed';
       meta.appendChild(makeChip(displaySt === 'EN_EVENTO' ? 'EN EVENTO' : displaySt, cls));
@@ -3230,7 +3225,8 @@ function renderHistoryModal(){
 
     // Fechas
     const dates = document.createElement('span');
-    dates.textContent = `Creado ${formatDate(arch.createdAt)} · Archivado ${formatDate(arch.deletedAt)}`;
+    dates.textContent = `Creado ${formatDate(arch.createdAt)}`;
+    if (!sold) dates.textContent += ` · Archivado ${formatDate(arch.deletedAt)}`;
     meta.appendChild(dates);
 
     // Evento (si existe)
@@ -3253,7 +3249,7 @@ function renderHistoryModal(){
     viewBtn.title = 'Ver';
     viewBtn.setAttribute('aria-label', 'Ver');
     viewBtn.textContent = 'Ver';
-    viewBtn.addEventListener('click', () => showArchivedDetails(arch));
+    viewBtn.addEventListener('click', () => sold ? showLoteDetails(arch) : showArchivedDetails(arch));
 
     actions.appendChild(viewBtn);
 
@@ -3662,6 +3658,7 @@ ${code}`
     });
   }
 
+  $("history-category").addEventListener('change', renderHistoryModal);
   const histSearch = $("history-search");
   if (histSearch) {
     histSearch.addEventListener('input', () => renderHistoryModal());
@@ -3670,7 +3667,7 @@ ${code}`
   document.addEventListener('keydown', (e) => {
     if ($('lote-detail-dialog')?.open) return;
     if (e.key === 'Tab' && isHistoryModalOpen()) {
-      const controls = [...$('history-modal').querySelectorAll('button,input')].filter(el => !el.disabled && el.getClientRects().length);
+      const controls = [...$('history-modal').querySelectorAll('button,input,select')].filter(el => !el.disabled && el.getClientRects().length);
       const first = controls[0], last = controls[controls.length - 1];
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
