@@ -2931,6 +2931,9 @@ function openLoteDetailModal(title, lines){
   if (!dialog || !body) return;
   loteDetailPreviousFocus = document.activeElement;
   $('lote-detail-title').textContent = title;
+  $('lote-detail-export-status').textContent = '';
+  $('lote-detail-download').hidden = true;
+  $('lote-detail-download').removeAttribute('href');
   body.replaceChildren();
   let section;
   const startSection = (heading) => {
@@ -2965,7 +2968,7 @@ function openLoteDetailModal(title, lines){
   $('lote-detail-close').focus();
 }
 
-function exportLoteDetailImage() {
+function renderLoteDetailImage() {
   const canvas = document.createElement('canvas');
   canvas.width = 1080;
   canvas.height = 1920;
@@ -3025,10 +3028,50 @@ function exportLoteDetailImage() {
     ctx.fillStyle = color;
     ctx.fillText(line, 0, y);
   }
-  const link = document.createElement('a');
-  link.download = 'detalle-lote.png';
-  link.href = canvas.toDataURL('image/png');
-  link.click();
+  return canvas.toDataURL('image/png');
+}
+
+async function exportLoteDetailImage() {
+  const button = $('lote-detail-export');
+  const status = $('lote-detail-export-status');
+  const link = $('lote-detail-download');
+  button.disabled = true;
+  link.hidden = true;
+  link.removeAttribute('href');
+  status.textContent = '';
+  let url;
+  try {
+    url = renderLoteDetailImage();
+    link.href = url;
+    const bytes = Uint8Array.from(atob(url.split(',')[1]), char => char.charCodeAt(0));
+    const file = new File([bytes], link.download, { type: 'image/png' });
+    if (typeof window.showSaveFilePicker === 'function') {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: file.name,
+        types: [{ description: 'Imagen PNG', accept: { 'image/png': ['.png'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(file);
+      await writable.close();
+      if (link.getAttribute('href') === url) status.textContent = 'Imagen guardada.';
+      return;
+    }
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      return;
+    }
+    status.textContent = 'Busca el archivo en las descargas de tu navegador.';
+    link.hidden = false;
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+    if (url && link.getAttribute('href') !== url) return;
+    link.hidden = !link.hasAttribute('href');
+    status.textContent = link.hidden
+      ? 'No se pudo generar la imagen. Intenta exportarla de nuevo.'
+      : 'No se pudo guardar con el sistema. Puedes descargar el PNG desde aquí.';
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function isHistoryModalOpen(){
