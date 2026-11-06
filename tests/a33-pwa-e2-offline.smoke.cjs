@@ -19,15 +19,18 @@ function contract(module) {
  return {entries,assets,cacheId:context.cacheId};
 }
 async function main(){
- const contracts=Object.fromEntries(modules.map(m=>[m,contract(m)]));
- const metadata=vm.createContext({window:{A33_RELEASE:{suiteVersion:'4.20.98',rev:5}}});
- vm.runInContext(read('assets/js/a33-build.js'),metadata);
- for(const m of modules) assert.equal(metadata.window.A33_CACHE_NAME(m.replace('_','-')),contracts[m].cacheId);
- const listeners={},deleted=[];
- const calc=vm.createContext({self:{A33_RELEASE:{suiteVersion:'4.20.98',rev:5},addEventListener:(t,f)=>listeners[t]=f,clients:{async claim(){}}},importScripts(){},caches:{async keys(){return [contracts.calculadora.cacheId,contracts.calculadora_temporal.cacheId,'a33-v4.20.98-calculadora-r4-m16'];},async delete(k){deleted.push(k);return true;}}});
- vm.runInContext(read('calculadora/sw.js'),calc); let task; listeners.activate({waitUntil(p){task=p;}});await task;
- assert.deepEqual(deleted,['a33-v4.20.98-calculadora-r4-m16']);
- console.log('PASS: referencias/precache de nueve módulos, metadatos y aislamiento entre calculadoras.');
+ const configReport=process.argv.includes('--config-report');
+ const contracts=configReport ? null : Object.fromEntries(modules.map(m=>[m,contract(m)]));
+ if(!configReport){
+  const metadata=vm.createContext({window:{A33_RELEASE:{suiteVersion:'4.20.98',rev:5}}});
+  vm.runInContext(read('assets/js/a33-build.js'),metadata);
+  for(const m of modules) assert.equal(metadata.window.A33_CACHE_NAME(m.replace('_','-')),contracts[m].cacheId);
+  const listeners={},deleted=[];
+  const calc=vm.createContext({self:{A33_RELEASE:{suiteVersion:'4.20.98',rev:5},addEventListener:(t,f)=>listeners[t]=f,clients:{async claim(){}}},importScripts(){},caches:{async keys(){return [contracts.calculadora.cacheId,contracts.calculadora_temporal.cacheId,'a33-v4.20.98-calculadora-r4-m16'];},async delete(k){deleted.push(k);return true;}}});
+  vm.runInContext(read('calculadora/sw.js'),calc); let task; listeners.activate({waitUntil(p){task=p;}});await task;
+  assert.deepEqual(deleted,['a33-v4.20.98-calculadora-r4-m16']);
+  console.log('PASS: referencias/precache de nueve módulos, metadatos y aislamiento entre calculadoras.');
+ }
  const playwright=require(process.env.A33_PLAYWRIGHT_PATH || '/Users/juanguadamuz/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
  const activationTest=process.argv.includes('--activation');
  const updated=new Set();
@@ -52,17 +55,20 @@ async function main(){
  try{
   browser=await playwright.chromium.launch({headless:true,channel:'chrome'});
   const origin='http://127.0.0.1:'+server.address().port;
-  if(process.argv.includes('--config-report')){
+  if(configReport){
    const context=await browser.newContext({viewport:{width:390,height:844}});
    try{
     const page=await context.newPage();await page.goto(origin+'/configuracion/index.html');
     await page.locator('#cfg-tab-pwa').click();
+    const closeResult = () => page.locator('#backup-modal-primary').click();
     await page.locator('#cfg-pwa-check').click();
-    await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Revisión completa: sin actualizaciones pendientes');
+    await page.locator('#backup-modal').waitFor({state:'visible'});
+    assert.match(await page.locator('#backup-modal-body').textContent(),/Abre los módulos con conexión/);
     assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
-    assert.equal(await page.evaluate(async()=> (await navigator.serviceWorker.getRegistrations()).length),11);
+    assert.equal(await page.evaluate(async()=> (await navigator.serviceWorker.getRegistrations()).length),0);
     assert.equal(await page.locator('#cfg-pwa-apply').isDisabled(),true);
     assert.equal(await page.locator('#cfg-pwa-delivery').textContent(),'4.20.98 · PWA-E3');
+    await closeResult();
     await page.reload();assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
     if(!await page.locator('#cfg-pwa-check').isVisible()) await page.locator('#cfg-tab-pwa').click();
     await page.evaluate(async()=>{window.testReg=await navigator.serviceWorker.register('/pos/sw.js',{scope:'/pos/'});});
@@ -71,15 +77,17 @@ async function main(){
     await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Revisión completa: sin actualizaciones pendientes');
     assert((await page.locator('#cfg-pwa-report').textContent()).includes('POS: Sin actualización pendiente'));
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
-    console.log('PASS navegador: Configuración prepara once módulos, conserva el reporte, separa botones y respeta el ancho móvil.');
+    await closeResult();
+    console.log('PASS navegador: Configuración conserva el reporte, no registra módulos y respeta el ancho móvil.');
     const modulePage=await context.newPage();
     await modulePage.goto(origin+'/pos/__pwa_test.html');
     await modulePage.evaluate(()=>localStorage.setItem('a33_test_draft','conservar'));
     updated.add('pos');
     await page.locator('#cfg-pwa-check').click();
     await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Actualización disponible');
-    assert.equal(await page.locator('#cfg-pwa-check').textContent(),'Buscar actualizaciones');
+    assert.equal(await page.locator('#cfg-pwa-check').textContent(),'Buscar actualización');
     assert.equal(await page.locator('#cfg-pwa-apply').isDisabled(),false);
+    await closeResult();
     if(process.argv.includes('--reopen-report')){
      await page.evaluate(async()=>{window.beforeAutomatic=(await navigator.serviceWorker.getRegistration(new URL('../pos/',location.href).href)).active;});
      await modulePage.close();
@@ -104,6 +112,9 @@ async function main(){
      console.log('REAPERTURA '+(unconfirmed?'sin evidencia guardada':'tras activación observada')+': '+JSON.stringify(actual));
      assert.equal(actual.applyEnabled,false,'Al reabrir no debe ofrecer aplicar una actualización que ya está activa');
      assert.equal(actual.status,expectedStatus);assert.notEqual(actual.lastUpdate,'Sin registros');if(unconfirmed)assert.equal(actual.lastUpdate,'01/01/2020 00:00');assert.equal(await reopened.locator('#cfg-pwa-activation-notice').isVisible(),true);await reopened.reload();await reopened.locator('#cfg-tab-pwa').click();await reopened.waitForFunction(expected=>document.getElementById('cfg-pwa-status').textContent===expected,expectedStatus);assert.equal(await reopened.locator('#cfg-pwa-last-update').textContent(),actual.lastUpdate);
+     await reopened.locator('#cfg-pwa-check').click();
+     await reopened.locator('#backup-modal').waitFor({state:'visible'});
+     assert.match(await reopened.locator('#backup-modal-body').textContent(),unconfirmed ? /No se pudo confirmar su activación/ : /activó una actualización automáticamente en POS/);
      return;
     }
     page.once('dialog',dialog=>dialog.accept());
@@ -112,15 +123,19 @@ async function main(){
     assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
     assert.notEqual(await page.locator('#cfg-pwa-last-update').textContent(),'Sin registros');
     assert.equal(await modulePage.evaluate(()=>localStorage.getItem('a33_test_draft')),'conservar');
+    assert.equal(await page.locator('#backup-modal-title').textContent(),'Actualización instalada correctamente');
+    await closeResult();
     const lastUpdate=await page.locator('#cfg-pwa-last-update').textContent();
-    failedWorkers.add('analitica');
+    failedWorkers.add('pos');
     await page.locator('#cfg-pwa-check').click();
     await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='No se pudo verificar toda la Suite');
     assert.equal(await page.locator('#cfg-pwa-last-update').textContent(),lastUpdate);
     assert.equal(await page.locator('#cfg-pwa-apply').isDisabled(),true);
-    failedWorkers.delete('analitica');
+    await closeResult();
+    failedWorkers.delete('pos');
     await page.locator('#cfg-pwa-check').click();
     await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Revisión completa: sin actualizaciones pendientes');
+    await closeResult();
     const lastCheck=await page.locator('#cfg-pwa-last-check').textContent();
     await context.setOffline(true);
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));

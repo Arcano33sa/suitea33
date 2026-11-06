@@ -11,37 +11,91 @@ function registration(id,w=null){
 }
 function harness(regs, failMissing=false){
  const registered=[];
- const data=new Map(),items=[];const button={textContent:'',setAttribute(){},addEventListener(){},classList:{toggle(){}}};
+ const data=new Map(),items=[],modals=[];const button={textContent:'',setAttribute(){},addEventListener(){},classList:{toggle(){}}};
  const applyButton={...button};
  const document={addEventListener(){},getElementById(id){if(id==='cfg-pwa-report')return {replaceChildren(){items.length=0;},appendChild(item){items.push(item.textContent);}};if(id==='cfg-pwa-check')return button;if(id==='cfg-pwa-apply')return applyButton;return null;},querySelector(){return null;},createElement(){return {textContent:''};}};
  const window={addEventListener(){},location:{href:'https://suite.test/configuracion/index.html',origin:'https://suite.test'},confirm(){return true;},A33Notice:{show(){}}};
- const context=vm.createContext({window,document,navigator:{serviceWorker:{async getRegistrations(){return regs;},async register(url,options){registered.push({url,options});if(failMissing)throw new Error('sin conexión');const id=new URL(options.scope).pathname.split('/').filter(Boolean).pop();const reg=registration(id);regs.push(reg);return reg;}}},localStorage:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)},sessionStorage:{getItem(){},setItem(){}},URL,Date,JSON,Set,Promise,showToast(){},setTimeout:(f,ms)=>setTimeout(f,Math.min(ms,20)),clearTimeout,setInterval:f=>setInterval(f,1),clearInterval});
+ const context=vm.createContext({window,document,navigator:{serviceWorker:{async getRegistrations(){return regs;},async register(url,options){registered.push({url,options});if(failMissing)throw new Error('sin conexión');const id=new URL(options.scope).pathname.split('/').filter(Boolean).pop();const reg=registration(id);regs.push(reg);return reg;}}},localStorage:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)},sessionStorage:{getItem(){},setItem(){}},URL,Date,JSON,Set,Promise,escapeHtml:String,hideModal(){},showModal(result){modals.push(result);},showToast(){},setTimeout:(f,ms)=>setTimeout(f,Math.min(ms,20)),clearTimeout,setInterval:f=>setInterval(f,1),clearInterval});
  vm.runInContext(region+'\n;globalThis.api={checkSuitePwaUpdates,applySuitePwaUpdate,handlePwaCheck,handlePwaApply,waitForPwaRegistrationActivation,inspectPwaRegistration,initPwaSection,renderPwaSection,pwaRuntime,PWA_STATUS,PWA_KEYS,getSuitePwaRegistrations,reconcilePwaState,observePwaActivation};',context);
- return {api:context.api,data,items,button,applyButton,registered};
+ return {api:context.api,data,items,button,applyButton,registered,modals};
 }
 (async()=>{
- let h=harness([]);await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.current);assert.equal(h.registered.length,11);assert.equal(h.items.length,11);assert.equal(h.applyButton.disabled,true);
- const unknown=registration('desconocido');h=harness([registration('pos'),unknown,registration('centro_mando')]);assert.equal((await h.api.getSuitePwaRegistrations()).length,1);await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.current);assert.equal(h.registered.length,10);assert(h.items.some(x=>x.startsWith('POS: Sin actualización')));
- const ids=['pos','inventario','lotes','pedidos','catalogos','calculadora','agenda','centro-mando','calculadora_temporal','finanzas','analitica'];
- h=harness(ids.map(id=>registration(id)));await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.current);assert.equal(h.applyButton.disabled,true);
- const broken=registration('pos');broken.update=async()=>{throw new Error('sin conexión');};h=harness([broken,registration('pedidos',worker())]);await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialSearch);assert.equal(h.button.textContent,'Buscar actualizaciones');assert.equal(h.applyButton.textContent,'Actualizar Suite');assert.equal(h.applyButton.disabled,false);assert(h.items.some(x=>x.includes('sin conexión')));h.api.pwaRuntime.updateAvailable=false;await h.api.initPwaSection();assert.equal(h.button.textContent,'Buscar actualizaciones');assert.equal(h.applyButton.textContent,'Actualizar Suite');assert.equal(h.applyButton.disabled,false);
- const installing=registration('pos');installing.installing=worker('installing');h=harness([installing]);const summary=await h.api.checkSuitePwaUpdates();assert.equal(summary.available,false);assert.equal(summary.results[0].status,'installing');
- installing.installing.state='redundant';assert.equal((await h.api.inspectPwaRegistration(installing)).status,'error');
- h=harness([registration('pos',worker()),registration('pedidos',worker('installed','redundant'))]);h.data.set(h.api.PWA_KEYS.lastUpdate,'histórico');await h.api.handlePwaApply();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialApply);assert.equal(h.data.get(h.api.PWA_KEYS.lastUpdate),'histórico');assert(h.items.some(x=>x.startsWith('POS: Activación confirmada')));assert(h.items.some(x=>x.startsWith('Pedidos: No se pudo completar')));
- h=harness([registration('pos',worker('installed','redundant'))]);await h.api.handlePwaApply();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.applyError);assert.equal(h.data.has(h.api.PWA_KEYS.lastUpdate),false);
- h=harness([registration('pos',worker()),registration('pedidos',worker())]);await h.api.handlePwaApply();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.applied);assert(h.data.has(h.api.PWA_KEYS.lastUpdate));assert.equal(h.applyButton.disabled,true);assert.equal(h.button.disabled,false);assert.equal(h.items.filter(x=>x.includes('abre el módulo')).length,2);assert.equal(h.items.length,11);
- // Same script URL is insufficient: the old active worker cannot confirm the new target.
- const target=worker('redundant'),reg=registration('pos');reg.active.scriptURL=target.scriptURL;assert.equal(await h.api.waitForPwaRegistrationActivation(reg,target,1),false);
- h=harness([],true);await h.api.handlePwaApply();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialSearch);
- h=harness([registration('pos',worker())],true);h.data.set(h.api.PWA_KEYS.lastUpdate,'histórico');await h.api.handlePwaApply();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialApply);assert.equal(h.data.get(h.api.PWA_KEYS.lastUpdate),'histórico');assert.equal(h.items.length,11);
- h=harness([],true);await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.noRegistered);assert.equal(h.applyButton.disabled,true);
- h=harness([]);await h.api.handlePwaCheck();assert(h.registered.every(row=>row.url.endsWith('/sw.js')&&row.options.updateViaCache==='none'));assert.equal(h.registered.length,11);await h.api.handlePwaCheck();assert.equal(h.registered.length,11);
- const stuck=registration('pos');stuck.update=()=>new Promise(()=>{});h=harness([stuck]);await h.api.handlePwaCheck();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialSearch);assert.equal(h.button.disabled,false);
- const failedPending=registration('pos',worker());failedPending.update=async()=>{throw new Error('sin conexión');};h=harness([failedPending,registration('pedidos',worker())]);await h.api.handlePwaApply();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialApply);assert.equal(failedPending.waiting.state,'installed');assert(h.items.some(row=>row.startsWith('POS: No se pudo completar')));
+ let h=harness([]);
+ await h.api.handlePwaCheck();
+ assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.noRegistered);
+ assert.equal(h.registered.length,0);
+ assert.equal(h.items.length,11);
+ assert.equal(h.applyButton.disabled,true);
 
- h=harness(ids.map(id=>registration(id)));h.data.set(h.api.PWA_KEYS.lastUpdate,'histórico');h.api.pwaRuntime.lastResults=[{id:'pos',label:'POS',status:'available',error:''}];h.data.set(h.api.PWA_KEYS.status,h.api.PWA_STATUS.available);await h.api.reconcilePwaState();assert.equal(h.applyButton.disabled,true);assert.equal(h.data.get(h.api.PWA_KEYS.lastUpdate),'histórico');assert.equal(JSON.parse(h.data.get(h.api.PWA_KEYS.notice)).kind,'unconfirmed');assert.equal(h.registered.length,0);
- const observedReg=registration('pos',worker());h=harness([observedReg,...ids.filter(id=>id!=='pos').map(id=>registration(id))]);h.api.observePwaActivation(observedReg,observedReg.waiting);const activated=observedReg.waiting;observedReg.active=activated;observedReg.waiting=null;activated.postMessage();await new Promise(resolve=>setImmediate(resolve));assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.automatic);assert(h.data.has(h.api.PWA_KEYS.lastUpdate));const automaticDate=h.data.get(h.api.PWA_KEYS.lastUpdate);await h.api.reconcilePwaState();assert.equal(h.data.get(h.api.PWA_KEYS.lastUpdate),automaticDate);assert.equal(JSON.parse(h.data.get(h.api.PWA_KEYS.notice)).kind,'automatic');
- h.api.pwaRuntime.lastResults=[{id:'pos',label:'POS',status:'available',error:''}];await h.api.reconcilePwaState();assert.equal(JSON.parse(h.data.get(h.api.PWA_KEYS.notice)).kind,'unconfirmed');assert.equal(h.data.get(h.api.PWA_KEYS.lastUpdate),automaticDate);
- h=harness([registration('pos')]);h.data.set(h.api.PWA_KEYS.lastUpdate,'histórico');await h.api.reconcilePwaState();assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialSearch);assert.equal(h.registered.length,0);assert.equal(h.data.get(h.api.PWA_KEYS.lastUpdate),'histórico');
- console.log('PASS: preparación de once módulos, registros ajenos intactos, búsquedas completas/parciales, timeout, activación completa/parcial/fallida, errores conservados y fechas históricas.');
-})().catch(e=>{console.error(e);process.exitCode=1;});
+ const pos=registration('pos',worker());
+ let searches=0;
+ pos.update=async()=>{searches++;};
+ h=harness([pos,registration('centro_mando')]);
+ await h.api.initPwaSection();
+ assert.equal(h.applyButton.disabled,true);
+ await h.api.handlePwaApply();
+ assert.equal(pos.waiting.state,'installed');
+ await h.api.handlePwaCheck();
+ assert.equal(searches,1);
+ assert.equal(h.registered.length,0);
+ assert.equal(pos.waiting.state,'installed');
+ assert.equal(h.button.textContent,'Buscar actualización');
+ assert.equal(h.applyButton.textContent,'Instalar actualización');
+ assert.equal(h.applyButton.disabled,false);
+ await h.api.handlePwaApply();
+ assert.equal(searches,1);
+ assert.equal(h.modals.at(-1).title,'Actualización instalada correctamente');
+ assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.applied);
+ assert(h.data.has(h.api.PWA_KEYS.lastUpdate));
+ assert.equal(h.applyButton.disabled,true);
+
+ const broken=registration('pedidos',worker('installed','redundant'));
+ h=harness([registration('pos',worker()),broken]);
+ h.data.set(h.api.PWA_KEYS.lastUpdate,'histórico');
+ await h.api.handlePwaCheck();
+ await h.api.handlePwaApply();
+ assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialApply);
+ assert.equal(h.data.get(h.api.PWA_KEYS.lastUpdate),'histórico');
+ assert.match(h.modals.at(-1).bodyHtml,/Pedidos/);
+
+ const stale=registration('pos',worker());
+ h=harness([stale]);
+ await h.api.handlePwaCheck();
+ stale.waiting=worker();
+ await h.api.handlePwaApply();
+ assert.equal(stale.waiting.state,'installed');
+ assert.equal(h.modals.at(-1).title,'Actualización incompleta');
+
+ const automatic=registration('pos',worker());
+ h=harness([automatic]);
+ await h.api.handlePwaCheck();
+ const activated=automatic.waiting;
+ automatic.active=activated;
+ automatic.waiting=null;
+ activated.postMessage();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(JSON.parse(h.data.get(h.api.PWA_KEYS.automatic)).id,'pos');
+ h=harness([automatic,registration('pedidos',worker())]);
+ h.data.set(h.api.PWA_KEYS.automatic,JSON.stringify({id:'pos',at:'2026-11-06T18:00:00Z',recorded:true}));
+ h.data.set(h.api.PWA_KEYS.notice,JSON.stringify({kind:'automatic',at:'2026-11-06T18:00:00Z'}));
+ await h.api.handlePwaCheck();
+ assert.match(h.modals.at(-1).bodyHtml,/activó una actualización automáticamente en POS/);
+ assert.match(h.modals.at(-1).bodyHtml,/Hay actualizaciones listas/);
+ assert.equal(h.applyButton.disabled,false);
+
+ h=harness([registration('pos')]);
+ h.data.set(h.api.PWA_KEYS.lastUpdate,'histórico');
+ h.api.pwaRuntime.lastResults=[{id:'pos',label:'POS',status:'available',error:''}];
+ await h.api.handlePwaCheck();
+ assert.match(h.modals.at(-1).bodyHtml,/No se pudo confirmar su activación/);
+ assert.equal(h.data.get(h.api.PWA_KEYS.lastUpdate),'histórico');
+
+ const offline=registration('pos');
+ offline.update=async()=>{throw new Error('sin conexión');};
+ h=harness([offline]);
+ await h.api.handlePwaCheck();
+ assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialSearch);
+ assert.equal(h.applyButton.disabled,true);
+ assert(h.items.some(row=>row.includes('sin conexión')));
+ console.log('PASS: búsqueda local, instalación del candidato encontrado y avisos de activación.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

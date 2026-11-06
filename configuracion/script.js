@@ -658,6 +658,8 @@
     reconciling: false,
     needsReconcile: false,
     observedWorkers: new Set(),
+    pending: [],
+    manualWorkers: new WeakSet(),
     updateAvailable: false,
     lastResults: []
   };
@@ -741,9 +743,7 @@
     return 'idle';
   }
 
-  function isPwaUpdateAvailableStatus(status){
-    return getPwaStateKey(status) === 'available';
-  }
+
 
   function getWorkerUrl(reg){
     try{
@@ -754,10 +754,6 @@
 
   function isSuiteServiceWorkerRegistration(reg){
     return !!getPwaModule(reg);
-  }
-
-  function hasPwaPendingWorker(reg){
-    try{ return !!(reg && (reg.waiting || reg.installing)); }catch(_){ return false; }
   }
 
   async function getSuitePwaRegistrations(){
@@ -792,7 +788,7 @@
       worker.removeEventListener('statechange', onState);
       pwaRuntime.observedWorkers.delete(worker);
       // La misma URL no demuestra identidad: debe ser el worker observado.
-      if (worker.state === 'activated' && !pwaRuntime.applying){
+      if (worker.state === 'activated' && !pwaRuntime.manualWorkers.has(worker)){
         const record = { id:module[0], at:new Date().toISOString(), recorded:false };
         pwaStorageSet(PWA_KEYS.automatic, JSON.stringify(record));
         pwaStorageSet(PWA_KEYS.notice, JSON.stringify({ kind:'automatic', at:record.at }));
@@ -832,7 +828,7 @@
         if (previous?.status === 'available' || previous?.wasPending) disappeared = true;
         return { id, label, status:previous?.status === 'activated' ? 'activated' : 'current', error:'' };
       });
-      const incomplete = results.some(row => !['current', 'activated', 'available'].includes(row.status));
+      const incomplete = results.some(row => !['current', 'activated', 'available', 'missing'].includes(row.status));
       const automatic = readPwaRecord(PWA_KEYS.automatic);
       const confirmed = automatic && PWA_MODULES.some(([id]) => id === automatic.id) && Number.isFinite(Date.parse(automatic.at));
       if (disappeared && (!confirmed || automatic.recorded)){
@@ -847,11 +843,11 @@
       const confirmedNotice = confirmed && readPwaRecord(PWA_KEYS.notice)?.kind === 'automatic';
       const priorStatus = normalizePwaStatus(pwaStorageGet(PWA_KEYS.status));
       const incompleteStatus = [PWA_STATUS.partialApply, PWA_STATUS.applyError].includes(priorStatus) ? priorStatus : PWA_STATUS.partialSearch;
-      pwaRuntime.updateAvailable = results.some(row => row.status === 'available');
+      pwaRuntime.updateAvailable = pwaRuntime.pending.some(({ reg, worker }) => reg.waiting === worker && worker.state === 'installed');
       savePwaReport('reconcile', results);
       let status = PWA_STATUS.noPending;
       if (incomplete) status = incompleteStatus;
-      else if (pwaRuntime.updateAvailable) status = PWA_STATUS.available;
+      else if (results.some(row => row.status === 'available')) status = PWA_STATUS.available;
       else if (priorStatus === PWA_STATUS.applied) status = PWA_STATUS.applied;
       else if (confirmedNotice) status = PWA_STATUS.automatic;
       else if (priorStatus === PWA_STATUS.current) status = PWA_STATUS.current;
@@ -866,7 +862,7 @@
     }
   }
 
-  async function inspectPwaRegistration(reg, fresh = false){
+  async function inspectPwaRegistration(reg){
     const [id, label] = getPwaModule(reg);
     const result = { id, label, status: 'current', error: '' };
     let observed = reg.installing || reg.waiting;
@@ -874,10 +870,9 @@
     observePwaActivation(reg, observed);
     try{
       reg.addEventListener('updatefound', onFound);
-      if (!fresh) await withPwaTimeout(reg.update(), 12000);
+      await withPwaTimeout(reg.update(), 12000);
       const worker = reg.installing || reg.waiting || observed;
       if (worker && worker.state === 'installing') await waitForWorkerState(worker, ['installed', 'activated', 'redundant'], 6500);
-      if (fresh && worker && worker.state === 'installed' && !reg.active) await waitForWorkerState(worker, ['activated', 'redundant'], 6500);
       if (worker && worker.state === 'redundant') throw new Error('La instalación de la actualización falló.');
       if (reg.waiting && reg.waiting.state === 'installed') result.status = 'available';
       else if (reg.installing) result.status = 'installing';
@@ -893,27 +888,16 @@
 
   async function checkSuitePwaUpdates(){
     const regs = await withPwaTimeout(getSuitePwaRegistrations(), 12000);
-    const base = new URL('../', window.location.href);
+    const pending = [];
     const results = await Promise.all(PWA_MODULES.map(async ([id, label]) => {
-      let reg = regs.find(candidate => getPwaModule(candidate)?.[0] === id);
-      const fresh = !reg;
-      if (!reg){
-        try{
-          const scope = new URL(id + '/', base);
-          // Solo prepara registros faltantes. Conserva la URL de los existentes.
-          reg = await withPwaTimeout(navigator.serviceWorker.register(new URL('sw.js', scope).href, { scope:scope.href, updateViaCache:'none' }), 12000);
-        }catch(err){
-          return { id, label, status:'error', error:String(err && err.message || err) };
-        }
-      }
-      return inspectPwaRegistration(reg, fresh);
+      const reg = regs.find(candidate => getPwaModule(candidate)?.[0] === id);
+      if (!reg) return { id, label, status:'missing', error:'' };
+      const result = await inspectPwaRegistration(reg);
+      const worker = reg.waiting;
+      if (result.status === 'available' && worker?.state === 'installed') pending.push({ id, reg, worker });
+      return result;
     }));
-    return {
-      available: results.some(row => row.status === 'available'),
-      checked: results.filter(row => row.status !== 'error').length,
-      incomplete: results.some(row => ['missing', 'error', 'installing'].includes(row.status)),
-      errors: results.filter(row => row.error).map(row => row.error), results
-    };
+    return { pending, results };
   }
 
   function waitForWorkerState(worker, states, timeoutMs){
@@ -939,18 +923,6 @@
       try{ worker.addEventListener('statechange', onStateChange); }catch(_){ }
       timer = setTimeout(() => finish(String(worker.state || '').toLowerCase()), Number(timeoutMs) || 3000);
     });
-  }
-
-  async function resolvePwaWaitingWorker(reg){
-    try{
-      if (reg && reg.waiting) return reg.waiting;
-      const installing = reg && reg.installing;
-      if (!installing) return null;
-      const state = String(installing.state || '').toLowerCase();
-      if (state === 'installed' && reg.waiting) return reg.waiting;
-      await waitForWorkerState(installing, ['installed', 'activated', 'redundant'], 3500);
-      return reg.waiting || (String(installing.state || '').toLowerCase() === 'activated' ? installing : null);
-    }catch(_){ return null; }
   }
 
   function sendPwaSkipWaiting(worker){
@@ -1006,48 +978,46 @@
     });
   }
 
-  async function collectPendingPwaRegistrations(){
+  async function applySuitePwaUpdate(pending){
     const regs = await withPwaTimeout(getSuitePwaRegistrations(), 12000);
-    const pending = [];
-    for (const reg of regs){
-      if (!hasPwaPendingWorker(reg)) continue;
-      const observed = reg.waiting || reg.installing;
-      const worker = await resolvePwaWaitingWorker(reg);
-      pending.push({ reg, worker: worker || reg.waiting || reg.installing || observed });
-    }
-    return pending;
-  }
-
-  async function applySuitePwaUpdate(){
-    // Revisa el conjunto completo también cuando hay workers pendientes.
-    let summary = await checkSuitePwaUpdates();
-    const pending = (await collectPendingPwaRegistrations()).filter(({ reg }) => {
-      return summary.results.find(row => row.id === getPwaModule(reg)?.[0])?.status !== 'error';
-    });
-
-    if (!pending.length){
-      // El navegador pudo activar el worker entre la búsqueda y este paso.
-      if (summary.available) summary = await checkSuitePwaUpdates();
-      const incomplete = summary.incomplete || summary.available;
-      return { applied:false, noPending:!incomplete, searchIncomplete:incomplete, results:summary.results };
-    }
-
-    const results = await Promise.all(pending.map(async ({ reg, worker }) => {
-      const [id, label] = getPwaModule(reg);
-      const row = { id, label, status: 'error', error: '' };
+    return Promise.all(pending.map(async ({ id, worker }) => {
+      const label = PWA_MODULES.find(([moduleId]) => moduleId === id)[1];
+      const reg = regs.find(candidate => getPwaModule(candidate)?.[0] === id);
+      const row = { id, label, status:'error', error:'' };
       try{
-        const target = worker || await resolvePwaWaitingWorker(reg);
-        if (!target || !['installed', 'activated'].includes(target.state)) throw new Error('La actualización no está lista para aplicar.');
-        if (target.state !== 'activated' && !sendPwaSkipWaiting(target)) throw new Error('No se pudo solicitar la activación.');
-        if (!await waitForPwaRegistrationActivation(reg, target, 7000)) throw new Error('No se confirmó la activación de esta actualización.');
+        if (worker.state === 'activated' && reg?.active === worker){
+          row.status = 'activated';
+          return row;
+        }
+        if (reg?.waiting !== worker || worker.state !== 'installed') throw new Error('La actualización encontrada ya no está disponible. Vuelve a buscar.');
+        pwaRuntime.manualWorkers.add(worker);
+        if (!sendPwaSkipWaiting(worker)){
+          pwaRuntime.manualWorkers.delete(worker);
+          throw new Error('No se pudo solicitar la activación.');
+        }
+        if (!await waitForPwaRegistrationActivation(reg, worker, 7000)) throw new Error('No se confirmó la activación de esta actualización.');
         row.status = 'activated';
+        row.manual = true;
       }catch(err){ row.error = String(err && err.message || err); }
       return row;
     }));
-    const allResults = summary.results.map(row => results.find(applied => applied.id === row.id) || row);
-    const incomplete = allResults.some(row => !['current', 'activated'].includes(row.status));
-    const activated = results.some(row => row.status === 'activated');
-    return { applied:activated && !incomplete, partial:activated && incomplete, results:allResults };
+  }
+
+  function getPwaActivationMessage(){
+    const notice = readPwaRecord(PWA_KEYS.notice);
+    if (notice?.kind === 'unconfirmed') return 'Una actualización pendiente dejó de aparecer. No se pudo confirmar su activación.';
+    const record = readPwaRecord(PWA_KEYS.automatic);
+    if (notice?.kind !== 'automatic' || notice.at !== record?.at || !Number.isFinite(Date.parse(record?.at))) return '';
+    const label = PWA_MODULES.find(([id]) => id === record.id)?.[1];
+    return label ? 'El navegador ya activó una actualización automáticamente en ' + label + ' el ' + formatPwaTimestamp(record.at) + '.' : '';
+  }
+
+  function showPwaResult(title, messages){
+    showModal({
+      title,
+      bodyHtml: messages.filter(Boolean).map(message => '<p>' + escapeHtml(message) + '</p>').join(''),
+      primaryText:'Cerrar', onPrimary:hideModal, disableCancel:true
+    });
   }
 
   function renderPwaSection(){
@@ -1085,17 +1055,17 @@
       }
     }
 
-    const available = pwaRuntime.updateAvailable || isPwaUpdateAvailableStatus(status);
+    const available = pwaRuntime.updateAvailable;
     const busy = !!(pwaRuntime.checking || pwaRuntime.applying || pwaRuntime.reconciling);
     if (btn){
-      btn.textContent = pwaRuntime.checking ? 'Buscando...' : 'Buscar actualizaciones';
+      btn.textContent = pwaRuntime.checking ? 'Buscando...' : 'Buscar actualización';
       btn.disabled = busy;
       btn.setAttribute('data-pwa-action', 'check');
       btn.classList.toggle('cfg-btn-pwa-checking', !!pwaRuntime.checking);
     }
     const applyBtn = document.getElementById('cfg-pwa-apply');
     if (applyBtn){
-      applyBtn.textContent = pwaRuntime.applying ? 'Actualizando...' : 'Actualizar Suite';
+      applyBtn.textContent = pwaRuntime.applying ? 'Actualizando...' : 'Instalar actualización';
       applyBtn.disabled = busy || !available;
       applyBtn.classList.toggle('cfg-btn-pwa-apply', available && !busy);
       applyBtn.classList.toggle('cfg-btn-pwa-applying', !!pwaRuntime.applying);
@@ -1105,6 +1075,7 @@
   async function handlePwaCheck(){
     if (pwaRuntime.checking || pwaRuntime.applying || pwaRuntime.reconciling) return;
 
+    pwaRuntime.pending = [];
     pwaRuntime.checking = true;
     showToast('Buscando actualización…');
     pwaRuntime.updateAvailable = false;
@@ -1113,27 +1084,35 @@
     renderPwaSection();
 
     try{
-      const summary = await checkSuitePwaUpdates();
-      savePwaReport('check', summary.results);
-      pwaRuntime.updateAvailable = !!summary.available;
+      const previousAutomatic = readPwaRecord(PWA_KEYS.automatic);
+      const { pending, results } = await checkSuitePwaUpdates();
+      const automatic = readPwaRecord(PWA_KEYS.automatic);
+      const disappeared = results.some(row => row.status === 'current' &&
+        !(row.id === automatic?.id && (!automatic.recorded || automatic.at !== previousAutomatic?.at)) &&
+        pwaRuntime.lastResults.some(previous => previous.id === row.id && (previous.status === 'available' || previous.wasPending)));
+      const uncertain = disappeared ? 'Una actualización pendiente dejó de aparecer. No se pudo confirmar su activación.' : '';
+      if (disappeared && !getPwaActivationMessage()) pwaStorageSet(PWA_KEYS.notice, JSON.stringify({ kind:'unconfirmed' }));
+      savePwaReport('check', results);
+      pwaRuntime.pending = pending.filter(({ reg, worker }) => reg.waiting === worker && worker.state === 'installed');
+      pwaRuntime.updateAvailable = pwaRuntime.pending.length > 0;
 
-      if (!summary.checked){
-        pwaStorageSet(PWA_KEYS.status, PWA_STATUS.noRegistered);
-        showToast('No se pudo revisar la Suite. Vuelve a buscar con conexión.');
-      } else if (summary.incomplete){
-        pwaStorageSet(PWA_KEYS.status, PWA_STATUS.partialSearch);
-        showToast(summary.available ? 'Hay una actualización disponible, pero la revisión de la Suite quedó incompleta.' : 'No se pudo verificar toda la Suite. Vuelve a buscar con conexión.');
-      } else if (summary.available){
-        pwaStorageSet(PWA_KEYS.status, PWA_STATUS.available);
-        showToast('Hay actualizaciones listas para aplicar.');
-      } else {
-        pwaStorageSet(PWA_KEYS.status, PWA_STATUS.current);
-        showToast('Sin actualizaciones pendientes en los módulos revisados.');
-      }
+      const registered = results.filter(row => row.status !== 'missing');
+      const incomplete = registered.some(row => ['error', 'installing'].includes(row.status));
+      const status = !registered.length ? PWA_STATUS.noRegistered : incomplete ? PWA_STATUS.partialSearch :
+        pwaRuntime.updateAvailable ? PWA_STATUS.available : PWA_STATUS.current;
+      pwaStorageSet(PWA_KEYS.status, status);
+      const activation = getPwaActivationMessage();
+      showPwaResult('Resultado de la búsqueda', [
+        activation,
+        uncertain !== activation ? uncertain : '',
+        pwaRuntime.updateAvailable ? 'Hay actualizaciones listas. Pulsa Instalar actualización para aplicarlas.' : '',
+        !registered.length ? 'Abre los módulos con conexión para registrarlos y vuelve a buscar.' : '',
+        incomplete ? 'La revisión quedó incompleta. Consulta el resultado por módulo.' : '',
+        registered.length && !incomplete && !pwaRuntime.updateAvailable ? 'Sin actualizaciones pendientes en los módulos revisados.' : ''
+      ]);
     }catch(err){
-      pwaRuntime.updateAvailable = false;
       pwaStorageSet(PWA_KEYS.status, PWA_STATUS.searchError);
-      window.A33Notice.show(err && err.message ? err.message : 'Error al buscar actualización.', 'error');
+      showPwaResult('Error al buscar actualización', [err?.message, getPwaActivationMessage()]);
     }finally{
       pwaRuntime.checking = false;
       renderPwaSection();
@@ -1144,6 +1123,8 @@
   async function handlePwaApply(){
     if (pwaRuntime.checking || pwaRuntime.applying || pwaRuntime.reconciling) return;
 
+    if (!pwaRuntime.updateAvailable) return;
+
     const ready = window.confirm('Antes de actualizar, guarda el trabajo pendiente y cierra las demás pestañas y ventanas de Suite A33.\n\nLa aplicación no comprueba automáticamente si hay trabajo abierto. Una caja o evento guardado puede continuar después.\n\n¿Ya guardaste el trabajo y cerraste las demás pestañas y ventanas?');
     if (!ready) return;
 
@@ -1153,36 +1134,31 @@
     renderPwaSection();
 
     try{
-      const result = await applySuitePwaUpdate();
-      if (result.results) savePwaReport(result.searchIncomplete ? 'check' : 'apply', result.results);
-      if (result.searchIncomplete){
-        pwaRuntime.updateAvailable = false;
-        pwaStorageSet(PWA_KEYS.status, PWA_STATUS.partialSearch);
-        showToast('No se pudo confirmar una actualización lista para aplicar.');
-        return;
+      const results = await applySuitePwaUpdate(pwaRuntime.pending);
+      savePwaReport('apply', pwaRuntime.lastResults.map(row => results.find(result => result.id === row.id) || row));
+      const failed = results.filter(row => row.status === 'error');
+      const manual = results.some(row => row.manual);
+      const automatic = results.filter(row => row.status === 'activated' && !row.manual).map(row => row.label);
+      const automaticMessage = automatic.length ? 'El navegador ya había activado la actualización en ' + automatic.join(', ') + '.' : '';
+      if (failed.length){
+        pwaStorageSet(PWA_KEYS.status, manual ? PWA_STATUS.partialApply : PWA_STATUS.applyError);
+        showPwaResult('Actualización incompleta', [automaticMessage, ...failed.map(row => row.label + ': ' + row.error)]);
+      } else if (manual){
+        pwaStorageSet(PWA_KEYS.lastUpdate, formatPwaDateForStorage(new Date()));
+        const record = readPwaRecord(PWA_KEYS.automatic);
+        if (record && !record.recorded) pwaStorageSet(PWA_KEYS.automatic, JSON.stringify({ ...record, recorded:true }));
+        pwaStorageSet(PWA_KEYS.status, PWA_STATUS.applied);
+        showPwaResult('Actualización instalada correctamente', [automaticMessage, 'Vuelve a abrir los módulos para cargar el código actualizado.']);
+      } else {
+        pwaStorageSet(PWA_KEYS.status, PWA_STATUS.automatic);
+        showPwaResult('Activación automática confirmada', [automaticMessage, 'Vuelve a abrir los módulos para cargar el código actualizado.']);
       }
-      if (result.noPending){
-        pwaRuntime.updateAvailable = false;
-        pwaStorageSet(PWA_KEYS.status, PWA_STATUS.noPending);
-        showToast('No hay actualización pendiente en los módulos registrados.');
-        return;
-      }
-      pwaRuntime.updateAvailable = !!result.results?.some(row => row.status === 'available');
-      if (!result.applied){
-        pwaStorageSet(PWA_KEYS.status, result.partial ? PWA_STATUS.partialApply : PWA_STATUS.applyError);
-        showToast('La actualización no se completó. Vuelve a buscar para revisar lo pendiente.');
-        return;
-      }
-      pwaStorageSet(PWA_KEYS.lastUpdate, formatPwaDateForStorage(new Date()));
-      const automatic = readPwaRecord(PWA_KEYS.automatic);
-      if (automatic) pwaStorageSet(PWA_KEYS.automatic, JSON.stringify({ ...automatic, recorded:true }));
-      pwaStorageSet(PWA_KEYS.status, PWA_STATUS.applied);
-      showToast('Activación confirmada. Abre los módulos para cargar el código actualizado.');
     }catch(err){
-      pwaRuntime.updateAvailable = true;
       pwaStorageSet(PWA_KEYS.status, PWA_STATUS.applyError);
-      window.A33Notice.show(err && err.message ? err.message : 'Error al aplicar actualización.', 'error');
+      showPwaResult('Error al instalar actualización', [err?.message]);
     }finally{
+      pwaRuntime.pending = [];
+      pwaRuntime.updateAvailable = false;
       pwaRuntime.applying = false;
       renderPwaSection();
       if (pwaRuntime.needsReconcile) await reconcilePwaState();
@@ -1195,7 +1171,6 @@
       if (report && Array.isArray(report.results)) pwaRuntime.lastResults = report.results.filter(row => row && typeof row === 'object' && PWA_MODULES.some(([id]) => id === row.id));
     }catch(_){ }
     const storedStatus = normalizePwaStatus(pwaStorageGet(PWA_KEYS.status));
-    pwaRuntime.updateAvailable = isPwaUpdateAvailableStatus(storedStatus) || pwaRuntime.lastResults.some(row => row.status === 'available');
     if (storedStatus !== pwaStorageGet(PWA_KEYS.status)){
       pwaStorageSet(PWA_KEYS.status, storedStatus);
     }
