@@ -2084,7 +2084,7 @@ function showLoteDetails(lote) {
   const salidaPOSResumen = formatPOSAvailabilitySummary(lote);
   if (salidaPOSResumen) {
     lines.push('');
-    lines.push('Salida POS preparada:');
+    lines.push(loteDetailPOSHeading);
     lines.push(`  ${salidaPOSResumen}`);
   }
   if (lote.notas) {
@@ -2923,6 +2923,8 @@ function exportToCSV() {
 // Presentación de solo lectura: conserva las mismas líneas de detalle.
 let loteDetailPreviousFocus = null;
 let historyPreviousFocus = null;
+const loteDetailPOSHeading = Symbol('Salida POS preparada:');
+
 function openLoteDetailModal(title, lines){
   const dialog = $('lote-detail-dialog');
   const body = $('lote-detail-body');
@@ -2940,9 +2942,14 @@ function openLoteDetailModal(title, lines){
     body.appendChild(section);
   };
   startSection('Identificación y trazabilidad');
-  const headings = new Set(['Volúmenes (ml):','Productos del lote:','Salida POS preparada:','Notas:','Uso por evento (snapshot):']);
+  const headings = new Set(['Volúmenes (ml):','Productos del lote:','Notas:','Uso por evento (snapshot):']);
   let datesStarted = false;
   for (const raw of lines){
+    if (raw === loteDetailPOSHeading) {
+      startSection(raw.description);
+      section.dataset.excludeFromImage = '';
+      continue;
+    }
     const line = String(raw);
     if (!line.trim()) continue;
     if (headings.has(line)) { startSection(line); continue; }
@@ -2956,6 +2963,72 @@ function openLoteDetailModal(title, lines){
   }
   dialog.showModal();
   $('lote-detail-close').focus();
+}
+
+function exportLoteDetailImage() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080;
+  canvas.height = 1920;
+  const ctx = canvas.getContext('2d');
+  const margin = 72;
+  const width = canvas.width - margin * 2;
+  const rows = [];
+  let height = 0;
+
+  const addText = (value, size, bold, color, spacing) => {
+    const font = `${bold ? 'bold ' : ''}${size}px system-ui, sans-serif`;
+    ctx.font = font;
+    height += spacing;
+    const addLine = (line) => {
+      rows.push({ line, font, color, y: height });
+      height += size * 1.3;
+    };
+    for (const paragraph of value.trim().split(/\r?\n/)) {
+      let line = '';
+      for (const word of paragraph.split(/\s+/)) {
+        const next = line ? `${line} ${word}` : word;
+        if (ctx.measureText(next).width <= width) {
+          line = next;
+          continue;
+        }
+        if (line) addLine(line);
+        line = '';
+        for (const char of word) {
+          if (line && ctx.measureText(line + char).width > width) {
+            addLine(line);
+            line = '';
+          }
+          line += char;
+        }
+      }
+      addLine(line);
+    }
+  };
+
+  addText('Arcano 33', 28, true, '#6e4a28', 0);
+  addText($('lote-detail-title').textContent, 54, true, '#201913', 8);
+  for (const section of $('lote-detail-body').querySelectorAll('section:not([data-exclude-from-image])')) {
+    for (const item of section.children) {
+      const heading = item.tagName === 'H4';
+      addText(item.textContent, heading ? 36 : 32, heading, heading ? '#6e4a28' : '#201913', heading ? 32 : 4);
+    }
+  }
+
+  ctx.fillStyle = '#fffaf3';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const scale = Math.min(1, (canvas.height - margin * 2) / height);
+  ctx.translate(margin, margin);
+  ctx.scale(scale, scale);
+  ctx.textBaseline = 'top';
+  for (const { line, font, color, y } of rows) {
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.fillText(line, 0, y);
+  }
+  const link = document.createElement('a');
+  link.download = 'detalle-lote.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
 }
 
 function isHistoryModalOpen(){
@@ -3525,6 +3598,7 @@ ${code}`
   // Histórico (Etapa 5)
   const detailDialog = $('lote-detail-dialog');
   $('lote-detail-close')?.addEventListener('click', () => detailDialog.close());
+  $('lote-detail-export')?.addEventListener('click', exportLoteDetailImage);
   detailDialog?.addEventListener('close', () => {
     if (loteDetailPreviousFocus && loteDetailPreviousFocus.isConnected) loteDetailPreviousFocus.focus();
   });

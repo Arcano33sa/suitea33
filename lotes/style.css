@@ -1146,4 +1146,4 @@ tr:nth-child(even) td {
 #lote-detail-dialog h4{font-size:16px;line-height:1.5;color:var(--a33-gold);letter-spacing:0;margin:0 0 12px}
 #lote-detail-dialog p{font-size:15px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;font-variant-numeric:tabular-nums}
 :is(#history-modal,#lote-detail-dialog) :is(button,input):focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
-@media(max-width:540px){#history-modal .history-item{grid-template-columns:minmax(0,1fr)}#history-modal .history-actions{justify-content:flex-start}#lote-detail-dialog .lote-detail-header{padding:12px}#lote-detail-body{padding:12px}}
+@media(max-width:540px){#history-modal .history-item{grid-template-columns:minmax(0,1fr)}#history-modal .history-actions{justify-content:flex-start}#lote-detail-dialog .lote-detail-header{padding:12px;flex-wrap:wrap}#lote-detail-dialog .lote-detail-header h3{flex-basis:100%}#lote-detail-body{padding:12px}}
