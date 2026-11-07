@@ -448,6 +448,19 @@
       <button id="btn-exportar-eventos" class="btn-outline btn-pill">Exportar lista (Excel)</button>
       <button id="btn-exportar-evento-excel" class="btn-outline btn-pill">Exportar evento activo (Excel)</button>
     </div>
+    <details class="card" id="annual-events-panel">
+      <summary>Archivo anual</summary>
+      <form id="annual-events-form">
+        <label>Año de cierre <input id="annual-events-year" type="number" min="1000" max="9999" required></label>
+        <button type="submit">Revisar año</button>
+        <button id="annual-events-download" type="button" disabled>Descargar JSON anual</button>
+      </form>
+      <label>Consultar JSON anual <input id="annual-events-file" type="file" accept=".json,application/json"></label>
+      <p id="annual-events-status" role="status"></p>
+      <div id="annual-events-results"></div>
+      <div id="annual-events-cleanup-groups"></div>
+      <button id="annual-events-cleanup" type="button" disabled>Liberar espacio</button>
+    </details>
     <div class="table-scroll">
     <table id="tbl-eventos">
       <thead><tr><th>Evento</th><th>Grupo</th><th>Estado</th><th>Creado</th><th>Cerrado</th><th>Total</th><th>Acciones</th></tr></thead>

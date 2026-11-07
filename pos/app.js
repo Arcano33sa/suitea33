@@ -7956,6 +7956,7 @@ const HIDDEN_GROUPS_KEY = 'a33_pos_hiddenGroups';
 // - Se usa para mantener: nombres + orden de grupos, incluso después de Cerrar período.
 // - Compatibilidad: si no existe, se deriva de eventos existentes.
 const GROUP_CATALOG_KEY = 'a33_pos_groupCatalog_v1';
+const ANNUAL_REMOVED_GROUPS_KEY = 'a33_pos_annualRemovedGroups_v1';
 
 
 // --- Ventas: Cliente (selector + pegajoso; administración en Catálogos)
@@ -10254,6 +10255,12 @@ function recoverGroupCatalogFromLocalStoragePOS(){
       }catch(_){ return null; }
     };
 
+    // Los grupos retirados del archivo anual no deben volver desde copias legacy.
+    const retired = new Set(JSON.parse(readRaw(ANNUAL_REMOVED_GROUPS_KEY) || '[]'));
+    const pushLegacy = group=>{
+      if (!retired.has(String(group || '').trim())) push(group);
+    };
+
     // 3) Keys legacy conocidas (si existieran)
     const legacyKeys = ['a33_pos_groupCatalog','a33_pos_groupCatalog_v0','a33_pos_groupsCatalog','a33_pos_groupsCatalog_v1'];
     for (const k of legacyKeys){
@@ -10261,7 +10268,7 @@ function recoverGroupCatalogFromLocalStoragePOS(){
       if (!raw) continue;
       try{
         const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) arr.forEach(push);
+        if (Array.isArray(arr)) arr.forEach(pushLegacy);
       }catch(_){ }
     }
 
@@ -10276,7 +10283,7 @@ function recoverGroupCatalogFromLocalStoragePOS(){
         if (!raw) continue;
         try{
           const arr = JSON.parse(raw);
-          if (Array.isArray(arr)) arr.forEach(push);
+          if (Array.isArray(arr)) arr.forEach(pushLegacy);
         }catch(_){ }
       }
     }catch(_){ }
@@ -28151,7 +28158,324 @@ async function exportEventosExcel(){
   downloadExcel('eventos.xlsx', 'Eventos', rows);
 }
 
+const annualEventStoresPOS = [
+  'sales', 'inventory', 'reempaques', 'cashV2', 'cashv2hist', 'cashv2snap',
+  'dayLocks', 'dailyClosures', 'posRemindersIndex',
+];
+const annualEventYearFormatPOS = new Intl.DateTimeFormat('en', {
+  year: 'numeric', timeZone: 'America/Managua',
+});
+
+function annualEventYearPOS(value){
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)){
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+      ? Number(value.slice(0, 4)) : null;
+  }
+  if (typeof value !== 'number'){
+    if (typeof value !== 'string' ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+        !annualEventYearPOS(value.slice(0, 10))) return null;
+  }
+  const date = new Date(value);
+  return value && Number.isFinite(date.getTime()) ? Number(annualEventYearFormatPOS.format(date)) : null;
+}
+
+async function readAnnualEventsPOS(year){
+  if (!db) await openDB();
+  const stores = ['events', ...annualEventStoresPOS];
+  const transaction = db.transaction(stores, 'readonly');
+  const rows = await Promise.all(stores.map(name => new Promise((resolve, reject)=>{
+    const request = transaction.objectStore(name).getAll();
+    request.onsuccess = ()=>resolve(request.result);
+    request.onerror = ()=>reject(request.error);
+  })));
+  return buildAnnualEventsPOS(year, rows, snapshotGroupsPOS());
+}
+
+function buildAnnualEventsPOS(year, rows, groups){
+  const events = rows[0].filter(event=>annualEventYearPOS(event.closedAt) === year);
+  const ids = new Set(events.map(event=>Number(event.id)));
+  const eventGroups = new Set(events.map(event=>String(event.groupName || '').trim()).filter(Boolean));
+  const catalog = [...new Set([...groups.catalog.filter(group=>eventGroups.has(group)), ...eventGroups])];
+  const records = Object.fromEntries(annualEventStoresPOS.map((store, index)=>[
+    store, rows[index + 1].filter(row=>ids.has(Number(row.eventId))),
+  ]));
+  return {
+    year, events, records,
+    groups: { catalog, hidden: groups.hidden.filter(group=>eventGroups.has(group)),
+      last: eventGroups.has(groups.last) ? groups.last : '' },
+  };
+}
+
+async function annualEventsDigestPOS(data){
+  const bytes = new TextEncoder().encode(JSON.stringify(data));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), byte=>byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyAnnualEventsPOS(file){
+  const archive = JSON.parse(await file.text());
+  const data = archive?.data;
+  if (archive?.format !== 'a33-pos-eventos-anual' || archive.version !== 1 ||
+      !Number.isInteger(data?.year) || data.year < 1000 || data.year > 9999 ||
+      !Array.isArray(data.events) || !data.events.length ||
+      !Array.isArray(data.groups?.catalog) || !Array.isArray(data.groups.hidden) ||
+      typeof data.groups.last !== 'string' ||
+      !data.groups.catalog.every(group=>typeof group === 'string') ||
+      !data.groups.hidden.every(group=>data.groups.catalog.includes(group))){
+    throw new Error('El archivo no tiene el formato de un JSON anual de eventos.');
+  }
+  const ids = new Set(data.events.map(event=>Number(event?.id)));
+  if (ids.size !== data.events.length || data.events.some(event=>
+    !Number.isSafeInteger(Number(event?.id)) || Number(event.id) < 1 ||
+    annualEventYearPOS(event.closedAt) !== data.year ||
+    (String(event.groupName || '').trim() && !data.groups.catalog.includes(String(event.groupName).trim()))
+  ) || annualEventStoresPOS.some(store=>!Array.isArray(data.records?.[store]) ||
+    data.records[store].some(row=>!ids.has(Number(row?.eventId)))) ||
+    archive.sha256 !== await annualEventsDigestPOS(data)){
+    throw new Error('El archivo está incompleto, fue modificado o contiene registros inconsistentes.');
+  }
+  return data;
+}
+
+function annualEventsMatchPOS(local, archive){
+  return JSON.stringify(local) === JSON.stringify(archive);
+}
+
+function annualEventGroupsAvailablePOS(data, events){
+  const ids = new Set(data.events.map(event=>Number(event.id)));
+  const retained = new Set(events.filter(event=>!ids.has(Number(event.id)))
+    .map(event=>String(event.groupName || '').trim()));
+  return data.groups.catalog.filter(group=>!retained.has(group));
+}
+
+async function deleteAnnualEventsPOS(archive, selectedGroups){
+  if (!db) await openDB();
+  const stores = ['events', ...annualEventStoresPOS];
+  await new Promise((resolve, reject)=>{
+    const transaction = db.transaction([...stores, 'meta'], 'readwrite');
+    const requests = stores.map(name=>transaction.objectStore(name).getAll());
+    const meta = transaction.objectStore('meta');
+    const active = meta.get('currentEventId');
+    let failure;
+    transaction.oncomplete = resolve;
+    transaction.onabort = ()=>reject(failure || transaction.error || new Error('La limpieza se canceló.'));
+    active.onsuccess = ()=>{
+      try{
+        const rows = requests.map(request=>request.result);
+        const current = buildAnnualEventsPOS(archive.year, rows, snapshotGroupsPOS());
+        if (!annualEventsMatchPOS(current, archive)){
+          throw new Error('Los datos del año cambiaron. Revisa el año y exporta un JSON actualizado.');
+        }
+        const ids = new Set(current.events.map(event=>Number(event.id)));
+        if (readPhysicalCupRestoreQueuePOS().some(ticket=>ids.has(Number(ticket.saleRef?.eventId)))){
+          throw new Error('Hay reversiones de inventario pendientes para este año. Resuélvelas antes de liberar espacio.');
+        }
+        const eligible = annualEventGroupsAvailablePOS(current, rows[0]);
+        if (selectedGroups.some(group=>!eligible.includes(group))){
+          throw new Error('Uno de los grupos seleccionados todavía tiene eventos locales. Vuelve a revisar el archivo.');
+        }
+        for (const [name, records] of Object.entries({ events: current.events, ...current.records })){
+          const store = transaction.objectStore(name);
+          for (const record of records) store.delete(record[store.keyPath]);
+        }
+        if (ids.has(Number(active.result?.value))) meta.delete('currentEventId');
+      }catch(error){
+        failure = error;
+        transaction.abort();
+      }
+    };
+  });
+}
+
+async function removeAnnualEventGroupsPOS(selected){
+  if (!selected.length) return [];
+  // Group preferences use localStorage. Recheck event references after the IndexedDB commit.
+  return new Promise((resolve, reject)=>{
+    const request = db.transaction('events', 'readonly').objectStore('events').getAll();
+    request.onerror = ()=>reject(request.error);
+    request.onsuccess = ()=>{
+      const retained = new Set(request.result.map(event=>String(event.groupName || '').trim()));
+      const removable = selected.filter(group=>!retained.has(group));
+      const groups = snapshotGroupsPOS();
+      try{
+        if (!removable.length){
+          resolve(selected);
+          return;
+        }
+        const retired = JSON.parse(A33Storage.getItem(ANNUAL_REMOVED_GROUPS_KEY) || '[]');
+        const saved = A33Storage.setItem(ANNUAL_REMOVED_GROUPS_KEY, JSON.stringify([...new Set([...retired, ...removable])]));
+        if (!saved) throw new Error('No se pudo guardar el registro de grupos retirados.');
+        if (removable.includes(groups.last)) setLastGroupName('');
+        setHiddenGroups(groups.hidden.filter(group=>!removable.includes(group)));
+        writeGroupCatalogPOS(groups.catalog.filter(group=>!removable.includes(group)));
+        const after = snapshotGroupsPOS();
+        resolve(selected.filter(group=>retained.has(group) ||
+          after.catalog.includes(group) || after.hidden.includes(group) || after.last === group));
+      }catch(error){
+        reject(error);
+      }
+    };
+  });
+}
+
+function bindAnnualEventsPOS(){
+  const form = $('#annual-events-form');
+  if (!form) return;
+  const year = $('#annual-events-year');
+  const download = $('#annual-events-download');
+  const file = $('#annual-events-file');
+  const status = $('#annual-events-status');
+  const results = $('#annual-events-results');
+  const review = form.querySelector('[type="submit"]');
+  const cleanup = $('#annual-events-cleanup');
+  const groupChoices = $('#annual-events-cleanup-groups');
+  let snapshot = null;
+  let verified = null;
+  year.value = annualEventYearPOS(Date.now());
+
+  function render(data){
+    const groups = document.createElement('p');
+    groups.textContent = 'Grupos: ' + (data.groups.catalog.join(', ') || 'Ninguno');
+    results.replaceChildren(groups);
+    const list = document.createElement('ul');
+    results.append(list);
+    for (const event of data.events){
+      const item = document.createElement('li');
+      const detail = document.createElement('details');
+      const title = document.createElement('summary');
+      title.textContent = `${event.name || 'Evento'} #${event.id} · ${event.groupName || 'Sin grupo'} · Cierre: ${event.closedAt}`;
+      detail.append(title);
+      detail.addEventListener('toggle', ()=>{
+        if (!detail.open || detail.querySelector('pre')) return;
+        const content = document.createElement('pre');
+        content.style.whiteSpace = 'pre-wrap';
+        content.style.overflowWrap = 'anywhere';
+        const records = Object.fromEntries(annualEventStoresPOS.map(store=>[
+          store, data.records[store].filter(row=>Number(row.eventId) === Number(event.id)),
+        ]));
+        content.textContent = JSON.stringify({ event, records }, null, 2);
+        detail.append(content);
+      });
+      item.append(detail);
+      list.append(item);
+    }
+    const total = Object.values(data.records).reduce((sum, rows)=>sum + rows.length, 0);
+    status.textContent = `${data.year} · ${data.events.length} eventos cerrados · ${data.groups.catalog.length} grupos · ${total} registros vinculados.`;
+  }
+
+  function invalidate(){
+    snapshot = null;
+    verified = null;
+    cleanup.disabled = true;
+    groupChoices.replaceChildren();
+    download.disabled = true;
+    results.replaceChildren();
+    status.textContent = '';
+  }
+
+  async function run(action){
+    year.disabled = review.disabled = file.disabled = download.disabled = cleanup.disabled = true;
+    try{
+      await action();
+    }catch(error){
+      status.textContent = 'Archivo anual: ' + humanizeError(error);
+    }finally{
+      year.disabled = review.disabled = file.disabled = false;
+      download.disabled = !snapshot?.events.length;
+      cleanup.disabled = !verified;
+    }
+  }
+
+  year.addEventListener('input', invalidate);
+  form.addEventListener('submit', event=>{
+    event.preventDefault();
+    invalidate();
+    void run(async()=>{
+      snapshot = await readAnnualEventsPOS(Number(year.value));
+      render(snapshot);
+    });
+  });
+  download.addEventListener('click', ()=>{
+    if (!snapshot?.events.length) return;
+    void run(async()=>{
+      const data = snapshot;
+      const archive = {
+        format: 'a33-pos-eventos-anual', version: 1, exportedAt: new Date().toISOString(),
+        data, sha256: await annualEventsDigestPOS(data),
+      };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(archive)], {type:'application/json'}));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `suite-a33-eventos-${data.year}.json`;
+      link.click();
+      setTimeout(()=>URL.revokeObjectURL(url), 2000);
+      status.textContent = 'Descarga solicitada. Abre el JSON guardado para verificarlo.';
+    });
+  });
+  file.addEventListener('change', ()=>{
+    const selected = file.files[0];
+    file.value = '';
+    if (!selected) return;
+    invalidate();
+    void run(async()=>{
+      const archive = await verifyAnnualEventsPOS(selected);
+      render(archive);
+      status.textContent = 'JSON verificado · ' + status.textContent;
+      const current = await readAnnualEventsPOS(archive.year);
+      if (!annualEventsMatchPOS(current, archive)){
+        status.textContent += ' El archivo está disponible para consulta. Para liberar espacio, exporta los datos locales actuales.';
+        return;
+      }
+      const groups = annualEventGroupsAvailablePOS(archive, await getAll('events'));
+      for (const group of groups){
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = group;
+        label.append(checkbox, ' Quitar grupo «' + group + '»');
+        groupChoices.append(label, document.createElement('br'));
+      }
+      verified = archive;
+      status.textContent += ' Coincide con los datos locales.';
+    });
+  });
+  cleanup.addEventListener('click', ()=>{
+    if (!verified) return;
+    void run(async()=>{
+      const archive = verified;
+      const selectedGroups = Array.from(groupChoices.querySelectorAll('input:checked'), input=>input.value);
+      const groupMessage = selectedGroups.length ? ' Grupos seleccionados: ' + selectedGroups.join(', ') + '.' : '';
+      const confirmed = await showConfirmClosePOS({
+        title: 'Liberar espacio del archivo anual',
+        message: `Se retirarán ${archive.events.length} eventos de ${archive.year} y sus registros locales archivados.${groupMessage} Conserva el archivo JSON para consultar el historial.`,
+      });
+      if (!confirmed) return;
+      verified = null;
+      groupChoices.replaceChildren();
+      await deleteAnnualEventsPOS(archive, selectedGroups);
+      let pendingGroups = selectedGroups;
+      try{
+        pendingGroups = await removeAnnualEventGroupsPOS(selectedGroups);
+      }catch(error){
+        console.warn('Archivo anual: no se pudo completar la limpieza de grupos', error);
+      }
+      status.textContent = `Limpieza completada para ${archive.year}. El historial sigue disponible en el JSON.`;
+      if (pendingGroups.length) status.textContent += ' Grupos pendientes de retirar: ' + pendingGroups.join(', ') + '.';
+      try{
+        await refreshEventUI();
+        await renderEventos();
+      }catch(error){
+        status.textContent += ' Recarga el POS para actualizar la vista.';
+        console.warn('Archivo anual: no se pudo actualizar la vista', error);
+      }
+    });
+  });
+}
+
 // Eventos tab actions
+  bindAnnualEventsPOS();
   $('#filtro-eventos').addEventListener('change', renderEventos);
   const filtroGrupoEl = document.getElementById('filtro-grupo');
   if (filtroGrupoEl){
