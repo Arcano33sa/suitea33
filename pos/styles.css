@@ -630,6 +630,11 @@ html[data-theme="light"] .customer-quick-cancel{
 
 	/* Modal Inventario: Selector de lotes — Contenido por Letras */
 	#inv-lote-selector-modal .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+	.inv-lote-history-table{width:100%;table-layout:fixed;margin-top:8px}
+	.inv-lote-history-table th:first-child{width:44%}
+	.inv-lote-history-table th,
+	.inv-lote-history-table td{padding:7px 8px;text-align:left;vertical-align:top;white-space:normal;overflow-wrap:anywhere}
+
 	#inv-lote-selector-table{width:100%;table-layout:fixed}
 	#inv-lote-selector-table th,
 	#inv-lote-selector-table td{

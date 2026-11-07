@@ -148,7 +148,7 @@ class FakeNode {
 const selectorTbody = new FakeNode('tbody');
 const selectorMsg = new FakeNode('div');
 const history = new FakeNode('details');
-const historyList = new FakeNode('ul');
+const historyList = new FakeNode('tbody');
 const historyCount = new FakeNode('span');
 context.document = {
   querySelector:(sel)=> sel === '#inv-lote-selector-table tbody' ? selectorTbody : null,
@@ -173,7 +173,7 @@ const fnNames = [
   'lotesPOSQtyInfoFromContractRowPOS','lotesPOSQtyFromContractRowPOS','resolveProductFromLoteContractRowPOS',
   'normalizeLoteContentLetterPOS','formatLoteContentQtyPOS','buildLoteAvailableLoadPlanPOS',
   'isRecoverableLoteProductsReadErrorPOS','readProductsForLotePlanPOS',
-  'renderInvLoteSelectorTablePOS','importFromLoteToInventory'
+  'formatInvLoteHistoryProductsPOS','renderInvLoteSelectorTablePOS','importFromLoteToInventory'
 ];
 vm.runInContext(fnNames.map(name=>takeFunction(app,name)).join('\n')
   + '\n;globalThis.__plan=buildLoteAvailableLoadPlanPOS;globalThis.__render=renderInvLoteSelectorTablePOS;globalThis.__import=importFromLoteToInventory;', context);
@@ -248,7 +248,17 @@ vm.runInContext(fnNames.map(name=>takeFunction(app,name)).join('\n')
 
   await context.__render(8, {fresh:true});
   assert.strictEqual(historyCount.textContent, '1');
-  assert.match(historyList.children[0].textContent, /^A33XXXX · /);
+  assert.strictEqual(historyList.children[0].tagName, 'TR');
+  const historyCells = historyList.children[0].children.map(cell => cell.textContent);
+  assert.strictEqual(historyCells.length, 3);
+  assert.strictEqual(historyCells[0], 'A33XXXX');
+  assert.strictEqual(historyCells[1], storedLotes[0].assignedEventName);
+  assert.strictEqual(historyCells[2], '2G · 3D · 2T');
+  assert.strictEqual(context.formatInvLoteHistoryProductsPOS({djeba:'4'}), '4D');
+  assert.strictEqual(context.formatInvLoteHistoryProductsPOS({productosProducidos:[
+    {Letra:'D', cantidadProducida:4, cantidadDisponible:0},
+    {cantidadProducida:2}
+  ]}), '4D · Sin detalle');
   assert.strictEqual(selectorTbody.children[0].children.length, 0, 'El lote usado sigue en la lista principal');
   await context.__render(8, {query:'sin coincidencia', fresh:true});
   assert.strictEqual(historyCount.textContent, '0');

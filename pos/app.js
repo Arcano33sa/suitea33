@@ -19348,6 +19348,39 @@ async function revertCupConsumptionFromSalePOS(sale){
 	  }
 	}
 
+// El histórico muestra el contenido original del lote, aunque su saldo haya cambiado.
+function formatInvLoteHistoryProductsPOS(lote){
+  const sources = lotesPOSContractSourcesPOS(lote);
+  const produced = sources.find(source => source.source === 'productosProducidos');
+  const rows = (produced || sources[0])?.rows || [];
+  const parts = [];
+  const seenProducts = new Set();
+  let missing = false;
+
+  for (const row of rows){
+    const productId = String(row.productId ?? row.productoId ?? '').trim();
+    if (productId && seenProducts.has(productId)) continue;
+    const qty = ['cantidadProducida','cantidadBase','loaded','cantidad','unidades','qty','quantity']
+      .map(field => parseLoteContractQtyPOS(row[field])).find(value => value !== null);
+    const letter = normalizeLoteContentLetterPOS(row.Letra ?? row.letra ?? row.letter);
+    if (qty === undefined || (qty > 0 && !letter)){
+      missing = true;
+      continue;
+    }
+    if (productId) seenProducts.add(productId);
+    if (qty > 0) parts.push(formatLoteContentQtyPOS(qty) + letter);
+  }
+
+  if (!rows.length){
+    for (const [letter, field] of Object.entries({P:'pulso',M:'media',D:'djeba',L:'litro',G:'galon'})){
+      const qty = formatLoteContentQtyPOS(parseLoteContractQtyPOS(lote[field]));
+      if (qty) parts.push(qty + letter);
+    }
+  }
+  if (missing || !parts.length) parts.push('Sin detalle');
+  return parts.join(' · ');
+}
+
 	async function renderInvLoteSelectorTablePOS(evId, opts){
 	  const options = opts || {};
 	  const tbody = document.querySelector('#inv-lote-selector-table tbody');
@@ -19417,8 +19450,17 @@ async function revertCupConsumptionFromSalePOS(sale){
 	      const eventName = lote.assignedEventName || lastAssignment?.eventName;
 	      if (!eventId && !eventName && !lote.assignedCargaId && !lastAssignment) continue;
 
-	      const row = document.createElement('li');
-	      row.textContent = (lote.codigo || '—') + ' · ' + (eventName || (eventId ? 'Evento #' + eventId : 'Evento sin identificar'));
+	      const row = document.createElement('tr');
+	      const values = [
+	        lote.codigo || '—',
+	        eventName || (eventId ? 'Evento #' + eventId : 'Evento sin identificar'),
+	        formatInvLoteHistoryProductsPOS(lote)
+	      ];
+	      for (const value of values){
+	        const cell = document.createElement('td');
+	        cell.textContent = value;
+	        row.appendChild(cell);
+	      }
 	      historyList.appendChild(row);
 	      count++;
 	    }

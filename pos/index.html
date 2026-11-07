@@ -1743,7 +1743,12 @@
 	
 	    <details id="inv-lote-selector-history" hidden>
 	      <summary>Histórico (<span id="inv-lote-selector-history-count">0</span>)</summary>
-	      <ul id="inv-lote-selector-history-list"></ul>
+	      <table class="inv-lote-history-table">
+	        <thead>
+	          <tr><th scope="col">Código</th><th scope="col">Evento</th><th scope="col">Productos</th></tr>
+	        </thead>
+	        <tbody id="inv-lote-selector-history-list"></tbody>
+	      </table>
 	    </details>
 
 	    <small class="muted" style="display:block; margin-top:10px">Abre el contenido del lote para revisar el detalle antes de tocar “Usar”.</small>
