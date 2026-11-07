@@ -435,7 +435,10 @@
   </section>
 
   <section id="tab-eventos" class="tab card pos-visual" style="display:none">
-    <h2>Eventos e historial</h2>
+    <div class="annual-events-header">
+      <h2>Eventos e historial</h2>
+      <button id="annual-events-open" class="btn-primary btn-pill" type="button">Archivo anual</button>
+    </div>
     <div class="topbar">
       <select id="filtro-eventos" aria-label="Filtrar eventos por estado">
         <option value="todos" selected>Mostrar: Todos</option>
@@ -448,19 +451,6 @@
       <button id="btn-exportar-eventos" class="btn-outline btn-pill">Exportar lista (Excel)</button>
       <button id="btn-exportar-evento-excel" class="btn-outline btn-pill">Exportar evento activo (Excel)</button>
     </div>
-    <details class="card" id="annual-events-panel">
-      <summary>Archivo anual</summary>
-      <form id="annual-events-form">
-        <label>Año de cierre <input id="annual-events-year" type="number" min="1000" max="9999" required></label>
-        <button type="submit">Revisar año</button>
-        <button id="annual-events-download" type="button" disabled>Descargar JSON anual</button>
-      </form>
-      <label>Consultar JSON anual <input id="annual-events-file" type="file" accept=".json,application/json"></label>
-      <p id="annual-events-status" role="status"></p>
-      <div id="annual-events-results"></div>
-      <div id="annual-events-cleanup-groups"></div>
-      <button id="annual-events-cleanup" type="button" disabled>Liberar espacio</button>
-    </details>
     <div class="table-scroll">
     <table id="tbl-eventos">
       <thead><tr><th>Evento</th><th>Grupo</th><th>Estado</th><th>Creado</th><th>Cerrado</th><th>Total</th><th>Acciones</th></tr></thead>
@@ -477,6 +467,40 @@
       <div id="cierre-total-resumen" class="summary"></div>
       <div id="cierre-total-presentaciones" class="table-wrapper"></div>
     </div>
+  </section>
+
+  <section id="tab-archivo-anual" class="tab card pos-visual" style="display:none" aria-labelledby="annual-events-title">
+    <header class="annual-events-header">
+      <h2 id="annual-events-title" tabindex="-1">Archivo anual de eventos</h2>
+      <button id="annual-events-back" class="btn-outline btn-pill" type="button">Volver a Eventos</button>
+    </header>
+
+    <section class="card inner annual-events-step" aria-labelledby="annual-events-prepare">
+      <h3 id="annual-events-prepare">1. Preparar el año</h3>
+      <p class="muted">Elige el año de cierre de los eventos que quieres archivar.</p>
+      <form id="annual-events-form" class="annual-events-actions">
+        <label>Año de cierre <input id="annual-events-year" type="number" min="1000" max="9999" required></label>
+        <button class="btn-outline btn-pill" type="submit">Revisar año</button>
+        <button id="annual-events-download" class="btn-primary btn-pill" type="button" disabled>Descargar JSON anual</button>
+      </form>
+    </section>
+
+    <section class="card inner annual-events-step" aria-labelledby="annual-events-verify">
+      <h3 id="annual-events-verify">2. Verificar y consultar</h3>
+      <p class="muted">Abre el JSON que guardaste para verificarlo o consultar un año anterior.</p>
+      <button id="annual-events-open-file" class="btn-ok btn-pill" type="button">Abrir JSON anual</button>
+      <input id="annual-events-file" type="file" accept=".json,application/json" hidden>
+    </section>
+
+    <div id="annual-events-status" class="annual-events-status" role="status"></div>
+    <div id="annual-events-results" class="annual-events-results"></div>
+
+    <section class="card inner annual-events-step annual-events-danger" aria-labelledby="annual-events-remove">
+      <h3 id="annual-events-remove">3. Liberar espacio</h3>
+      <p id="annual-events-cleanup-help" class="muted">Abre un JSON anual que coincida con los datos locales para habilitar el borrado.</p>
+      <div id="annual-events-cleanup-groups"></div>
+      <button id="annual-events-cleanup" class="btn-danger btn-pill" type="button" aria-describedby="annual-events-cleanup-help" disabled>Liberar espacio</button>
+    </section>
   </section>
 
   <section id="tab-efectivo" class="tab card pos-visual" style="display:none">

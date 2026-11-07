@@ -14763,7 +14763,8 @@ const tabs = $$('.tab');
 
   // Botón activo en tabbar
   $$('.tabbar button').forEach(b=>b.classList.remove('active'));
-  const btn = document.querySelector(`.tabbar button[data-tab="${name}"]`);
+  const navTab = name === 'archivo-anual' ? 'eventos' : name;
+  const btn = document.querySelector(`.tabbar button[data-tab="${navTab}"]`);
   if (btn) btn.classList.add('active');
 
   // Tab actual visible (fallback robusto)
@@ -14781,13 +14782,14 @@ const tabs = $$('.tab');
   // Mostrar target con micro animación (sin reestructurar layout)
   if (current && current !== target){
     target.style.display = 'block';
+    target.classList.remove('a33-tab-out');
     target.classList.add('a33-tab-prep');
     void target.offsetHeight; // reflow
     target.classList.remove('a33-tab-prep');
 
     current.classList.add('a33-tab-out');
     setTimeout(()=>{
-      current.style.display = 'none';
+      if (current.id !== 'tab-' + window.__A33_ACTIVE_TAB) current.style.display = 'none';
       current.classList.remove('a33-tab-out');
     }, 160);
   } else {
@@ -24708,7 +24710,7 @@ function closeModalPOS(modalId){
 }
 
 // Confirm modal reutilizable (iPad-friendly) para acciones destructivas en POS
-function showConfirmClosePOS({ title, message } = {}){
+function showConfirmClosePOS({ title, message, confirmLabel } = {}){
   return new Promise((resolve)=>{
     const modalId = 'pos-confirm-modal';
     const modal = document.getElementById(modalId);
@@ -24729,12 +24731,15 @@ function showConfirmClosePOS({ title, message } = {}){
       elTitle.textContent = safeTitle || 'Confirmación';
     }
     elMsg.textContent = safeMsg;
+    const originalConfirmLabel = btnConfirm.textContent;
+    if (confirmLabel) btnConfirm.textContent = confirmLabel;
 
     let done = false;
     const cleanup = ()=>{
       try{ modal.onclick = null; }catch(_){ }
       try{ btnCancel.onclick = null; }catch(_){ }
       try{ btnConfirm.onclick = null; }catch(_){ }
+      if (confirmLabel) btnConfirm.textContent = originalConfirmLabel;
       try{ document.removeEventListener('keydown', onKey, true); }catch(_){ }
     };
     const finish = (v)=>{
@@ -28326,6 +28331,19 @@ function bindAnnualEventsPOS(){
   const year = $('#annual-events-year');
   const download = $('#annual-events-download');
   const file = $('#annual-events-file');
+  const openFile = $('#annual-events-open-file');
+  const open = $('#annual-events-open');
+  const cleanupHelp = $('#annual-events-cleanup-help');
+  const lockedMessage = cleanupHelp.textContent;
+  open.addEventListener('click', ()=>{
+    setTab('archivo-anual');
+    $('#annual-events-title').focus();
+  });
+  $('#annual-events-back').addEventListener('click', ()=>{
+    setTab('eventos');
+    open.focus();
+  });
+  openFile.addEventListener('click', ()=>file.click());
   const status = $('#annual-events-status');
   const results = $('#annual-events-results');
   const review = form.querySelector('[type="submit"]');
@@ -28369,6 +28387,7 @@ function bindAnnualEventsPOS(){
     snapshot = null;
     verified = null;
     cleanup.disabled = true;
+    cleanupHelp.textContent = lockedMessage;
     groupChoices.replaceChildren();
     download.disabled = true;
     results.replaceChildren();
@@ -28376,15 +28395,18 @@ function bindAnnualEventsPOS(){
   }
 
   async function run(action){
-    year.disabled = review.disabled = file.disabled = download.disabled = cleanup.disabled = true;
+    year.disabled = review.disabled = openFile.disabled = file.disabled = download.disabled = cleanup.disabled = true;
     try{
       await action();
     }catch(error){
       status.textContent = 'Archivo anual: ' + humanizeError(error);
     }finally{
-      year.disabled = review.disabled = file.disabled = false;
+      year.disabled = review.disabled = openFile.disabled = file.disabled = false;
       download.disabled = !snapshot?.events.length;
       cleanup.disabled = !verified;
+      cleanupHelp.textContent = verified
+        ? 'JSON verificado. Puedes elegir los grupos que deseas retirar antes de confirmar.'
+        : lockedMessage;
     }
   }
 
@@ -28448,7 +28470,8 @@ function bindAnnualEventsPOS(){
       const selectedGroups = Array.from(groupChoices.querySelectorAll('input:checked'), input=>input.value);
       const groupMessage = selectedGroups.length ? ' Grupos seleccionados: ' + selectedGroups.join(', ') + '.' : '';
       const confirmed = await showConfirmClosePOS({
-        title: 'Liberar espacio del archivo anual',
+        title: `¿Deseas borrar los datos locales de ${archive.year}?`,
+        confirmLabel: `Borrar datos locales de ${archive.year}`,
         message: `Se retirarán ${archive.events.length} eventos de ${archive.year} y sus registros locales archivados.${groupMessage} Conserva el archivo JSON para consultar el historial.`,
       });
       if (!confirmed) return;

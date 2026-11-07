@@ -2188,3 +2188,43 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
 }
 #event-sales-dialog::backdrop{background:rgb(0 0 0 / 55%)}
 #event-sales-dialog summary{cursor:pointer}
+
+/* Archivo anual de eventos */
+.annual-events-header,
+.annual-events-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.annual-events-header {
+  justify-content: space-between;
+}
+.annual-events-header h2,
+.annual-events-step h3 {
+  margin: 0;
+}
+.annual-events-step,
+.annual-events-results:not(:empty),
+.annual-events-status:not(:empty) {
+  margin-block-start: 1rem;
+}
+.annual-events-actions input {
+  width: 7rem;
+}
+.annual-events-status:not(:empty) {
+  padding: 0.75rem;
+  border-inline-start: 3px solid var(--accent);
+}
+.annual-events-results li {
+  margin-block: 0.35rem;
+}
+.annual-events-results summary {
+  cursor: pointer;
+}
+.annual-events-danger {
+  border-inline-start: 3px solid var(--danger, #c63040);
+}
+#annual-events-cleanup-groups:not(:empty) {
+  margin-block-end: 0.75rem;
+}
