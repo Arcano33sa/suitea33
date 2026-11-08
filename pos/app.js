@@ -1652,6 +1652,7 @@ function refreshSaleCashTenderUiPOS(opts){
   if (!card) return;
 
   const isCash = isSalePaymentCashPOS();
+  updateSaleNioCalculatorPOS();
   try{ card.style.display = isCash ? 'block' : 'none'; }catch(_){ }
   if (!isCash){
     try{ if (fields) fields.style.display = 'none'; }catch(_){ }
@@ -1678,7 +1679,34 @@ function refreshSaleCashTenderUiPOS(opts){
   updateSaleCashTenderComputedPOS();
 }
 
+// Calculadora de C$: no modifica los importes registrados en ventas o caja.
+function updateSaleNioCalculatorPOS(){
+  const total = getSaleTenderTotalPOS();
+  const applicable = isSalePaymentCashPOS() && getSaleCashTenderModePOS() === 'nio' &&
+    total > 0 && !document.getElementById('sale-return')?.checked;
+  const row = document.querySelector('.purchase-payment-row');
+  if (row) row.classList.toggle('has-nio-calculator', applicable);
+  document.querySelectorAll('.sale-cash-nio-field').forEach(el => { el.hidden = !applicable; });
+  const input = document.getElementById('sale-cash-nio-received');
+  const output = document.getElementById('sale-cash-nio-change');
+  const status = document.getElementById('sale-cash-nio-status');
+  if (!input || !output || !status) return { ok:true };
+  const raw = input.value.trim();
+  const received = saleTenderRound2POS(parseNumPOS(raw, NaN));
+  const invalid = input.validity.badInput || (raw !== '' && (!Number.isFinite(Number(raw.replace(',', '.'))) || received < total));
+  const error = applicable && invalid;
+  output.value = applicable && raw !== '' && !invalid ? saleTenderFmt2POS(received - total) : '';
+  toggleInvalidBorderPOS(input, error);
+  status.hidden = !error;
+  status.classList.toggle('warn', error);
+  status.textContent = error ? (Number.isFinite(Number(raw)) && raw !== '' && received >= 0
+    ? 'Faltan C$ ' + saleTenderFmt2POS(total - received) + ' para cubrir la compra.'
+    : 'Ingresa un monto recibido válido en córdobas.') : '';
+  return { ok:!error, msg:status.textContent };
+}
+
 function updateSaleCashTenderComputedPOS(){
+  updateSaleNioCalculatorPOS();
   const mode = getSaleCashTenderModePOS();
   const isCash = isSalePaymentCashPOS();
   if (!isCash || mode !== 'usd_change_nio') return;
@@ -1712,6 +1740,9 @@ function updateSaleCashTenderComputedPOS(){
 }
 
 function resetSaleCashTenderPOS(){
+  for (const id of ['sale-cash-nio-received','sale-cash-nio-change']){
+    const el = document.getElementById(id); if (el) el.value = '';
+  }
   try{ const sel = document.getElementById('sale-cash-mode'); if (sel) sel.value = 'nio'; }catch(_){ }
   try{ const usd = document.getElementById('sale-cash-usd-received'); if (usd) usd.value = ''; }catch(_){ }
   try{ const eq = document.getElementById('sale-cash-equivalent'); if (eq) eq.value = ''; }catch(_){ }
@@ -1728,6 +1759,10 @@ function validateSaleCashTenderPOS({ payment, total, courtesy, isReturn }){
 
   const mode = getSaleCashTenderModePOS();
   if (mode !== 'usd_change_nio'){
+    if (!courtesy && !isReturn && saleTotal > 0){
+      const check = updateSaleNioCalculatorPOS();
+      if (!check.ok) return check;
+    }
     return {
       ok:true,
       tender:{
@@ -1913,6 +1948,8 @@ function setupSaleCashTenderUIOnce(){
   if (!card || card.dataset.ready === '1') return;
   const mode = document.getElementById('sale-cash-mode');
   const usd = document.getElementById('sale-cash-usd-received');
+  const nio = document.getElementById('sale-cash-nio-received');
+  if (nio) nio.addEventListener('input', updateSaleCashTenderComputedPOS);
   if (mode) mode.addEventListener('change', ()=> refreshSaleCashTenderUiPOS({ forceFx:true }));
   if (usd){
     usd.addEventListener('input', updateSaleCashTenderComputedPOS);
@@ -30273,7 +30310,7 @@ document.addEventListener('DOMContentLoaded', init);
 
 // E5.4: copias provisionales de compra, separadas de sales e inventario.
 const PURCHASE_DRAFT_PREFIX_POS = 'a33_pos_purchase_draft_v1_';
-const PURCHASE_DRAFT_FIELDS_POS = ['sale-payment','sale-bank','sale-notes','sale-cash-mode','sale-cash-usd-received'];
+const PURCHASE_DRAFT_FIELDS_POS = ['sale-payment','sale-bank','sale-notes','sale-cash-mode','sale-cash-usd-received','sale-cash-nio-received'];
 function purchaseDraftStatusPOS(message){
   const el=document.getElementById('purchase-draft-status');if(el)el.textContent=message;
 }
@@ -30306,7 +30343,7 @@ function persistPurchaseDraftPOS({changed=false}={}){
 function validatePurchaseDraftPOS(record){
   if(!record || record.schemaVersion!==1 || !Number.isFinite(record.updatedAt) || !Number.isInteger(record.eventId) || record.eventId<=0)return false;
   if(typeof record.purchaseUid!=='string' || !record.purchaseUid || typeof record.date!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(record.date))return false;
-  if(!record.fields || !PURCHASE_DRAFT_FIELDS_POS.every(id=>typeof record.fields[id]==='string'))return false;
+  if(!record.fields || !PURCHASE_DRAFT_FIELDS_POS.every(id=>id==='sale-cash-nio-received' ? record.fields[id]===undefined || typeof record.fields[id]==='string' : typeof record.fields[id]==='string'))return false;
   if(!['efectivo','transferencia','tarjeta','credito'].includes(record.fields['sale-payment']))return false;
   if(!['nio','usd_change_nio'].includes(record.fields['sale-cash-mode']))return false;
   if(!record.customer || typeof record.customer.name!=='string' || typeof record.customer.id!=='string' || typeof record.isReturn!=='boolean' || typeof record.sticky!=='boolean')return false;
@@ -30349,7 +30386,7 @@ async function restorePurchaseDraftPOS(record){
     if(state.eventId!==record.eventId || state.date!==record.date)throw new Error('El evento o la fecha cambiaron durante la recuperación.');
     setPurchaseBusyPOS(true);state.restoring=true;state.recovered=true;state.purchaseUid=record.purchaseUid;
     state.items=record.items.map((item,index)=>({...state.catalog.find(p=>p.key===item.key),...item,index}));state.nextIndex=state.items.length;
-    for(const id of PURCHASE_DRAFT_FIELDS_POS)if(id!=='sale-bank')document.getElementById(id).value=record.fields[id];
+    for(const id of PURCHASE_DRAFT_FIELDS_POS)if(id!=='sale-bank')document.getElementById(id).value=record.fields[id] ?? '';
     document.getElementById('sale-return').checked=record.isReturn;
     document.getElementById('sale-customer-sticky').checked=record.sticky;
     document.getElementById('purchase-more-options').open=!!record.moreOpen;

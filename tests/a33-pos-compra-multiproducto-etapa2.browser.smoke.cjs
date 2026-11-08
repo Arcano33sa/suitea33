@@ -57,6 +57,38 @@ let browser;
   assert.equal(await page.locator('#purchase-search').count(),0);
   assert.equal(await page.locator('#purchase-products button').first().evaluate(el=>el===document.activeElement),true);
   await add('Prueba A');await add('Prueba B');
+  // Calculadora NIO: opcional, reactiva y sin alterar los registros contables.
+  const received=page.locator('#sale-cash-nio-received');
+  const change=page.locator('#sale-cash-nio-change');
+  assert.equal(await received.isVisible(),true);
+  assert.equal(await change.inputValue(),'');
+  await received.fill('500');assert.equal(await change.inputValue(),'350.00');
+  await page.locator('#purchase-qty-0').fill('2');
+  assert.equal(await change.inputValue(),'250.00');
+  await pick();
+  await received.fill('200');
+  await page.locator('#purchase-save').click();
+  assert.equal(await modal.isVisible(),true);assert.equal((await sales()).length,0);
+  await page.waitForFunction(()=>document.getElementById('purchase-error').textContent.includes('Faltan'));
+  assert.match(await page.locator('#purchase-error').textContent(),/Faltan C\$ 50.00/);
+  await received.fill('250');assert.equal(await change.inputValue(),'0.00');
+  await received.fill('-1');assert.equal(await change.inputValue(),'');
+  await received.fill('');
+  await page.locator('#sale-payment').selectOption('transferencia');assert.equal(await received.isVisible(),false);
+  await page.locator('#sale-payment').selectOption('efectivo');
+  await page.locator('#sale-cash-mode').selectOption('usd_change_nio');assert.equal(await received.isVisible(),false);
+  await page.locator('#sale-cash-mode').selectOption('nio');assert.equal(await received.isVisible(),true);
+  await received.fill('500');
+  const draft=await page.evaluate(()=>capturePurchaseDraftPOS());
+  assert.equal(draft.fields['sale-cash-nio-received'],'500');
+  assert.equal(await page.evaluate(record=>{delete record.fields['sale-cash-nio-received'];return validatePurchaseDraftPOS(record);},draft),true);
+  for(const width of [1280,390]){
+    await page.setViewportSize({width,height:900});
+    assert.equal(await page.locator('.purchase-payment-row').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),width===1280?4:2);
+    assert.equal(await modal.evaluate(el=>el.scrollWidth<=el.clientWidth),true);
+  }
+  await page.setViewportSize({width:1280,height:900});
+  await page.locator('#purchase-qty-0').fill('1');
   await pick();await page.locator('#purchase-cancel').click();assert.equal((await sales()).length,0);
   assert.equal(await page.evaluate(()=>document.getElementById('sale-customer').value),'');
   assert.equal(await page.evaluate(async()=>computeStock(9100,(await getAll('products')).find(p=>p.productId==='test-a'))),10);

@@ -1587,7 +1587,16 @@
         <label for="sale-total">Importe de la compra (C$)</label>
         <input id="sale-total" type="number" inputmode="decimal" step="0.01" disabled>
       </div>
+      <div class="sale-cash-nio-field" hidden>
+        <label for="sale-cash-nio-received">Recibido</label>
+        <input id="sale-cash-nio-received" class="a33-num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="C$" autocomplete="off" aria-describedby="sale-cash-nio-status">
+      </div>
+      <div class="sale-cash-nio-field" hidden>
+        <label for="sale-cash-nio-change">Vuelto</label>
+        <input id="sale-cash-nio-change" class="a33-num" type="number" step="0.01" readonly aria-label="Vuelto en córdobas">
+      </div>
     </div>
+    <small id="sale-cash-nio-status" class="muted" role="status" hidden></small>
 
     <div id="sale-cash-tender-card" class="card inner sale-cash-tender" style="display:none">
       <div class="sale-cash-tender-head">
