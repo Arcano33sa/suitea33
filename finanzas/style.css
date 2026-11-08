@@ -3723,3 +3723,8 @@ body.fin-body,
   #view-recibos .rec-editor-actions .fin-actions button{flex:1 1 140px}
  }
 }
+
+/* Entrada numérica sin flechas nativas; conserva tipo y validaciones. */
+input[type="number"]{appearance:textfield;-moz-appearance:textfield}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}

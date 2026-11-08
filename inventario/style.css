@@ -1009,3 +1009,8 @@ html[data-theme="light"] .inv-currency-note.is-warn{
 .inv-bottle-history{margin-top:1.25rem;border-top:1px solid var(--a33-border);padding-top:1rem}
 .inv-bottle-history summary{cursor:pointer;font-weight:700;padding:.75rem 0;color:var(--a33-text)}
 .inv-bottle-history summary:focus-visible{outline:2px solid var(--a33-gold);outline-offset:4px;border-radius:4px}
+
+/* Entrada numérica sin flechas nativas; conserva tipo y validaciones. */
+input[type="number"]{appearance:textfield;-moz-appearance:textfield}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
