@@ -2240,3 +2240,8 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
 @media(max-width:340px){
   #purchase-modal .purchase-payment-row.has-nio-calculator{grid-template-columns:1fr}
 }
+
+/* Recibido conserva entrada decimal sin controles de incremento. */
+#purchase-modal #sale-cash-nio-received{appearance:textfield;-moz-appearance:textfield}
+#purchase-modal #sale-cash-nio-received::-webkit-inner-spin-button,
+#purchase-modal #sale-cash-nio-received::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}

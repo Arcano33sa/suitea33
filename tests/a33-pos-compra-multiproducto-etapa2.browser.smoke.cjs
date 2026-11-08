@@ -52,10 +52,26 @@ let browser;
   // Botón verde, catálogo habilitado, foco y cancelación sin ventas ni stock.
   assert.equal(await sell.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(29, 185, 84)');
   await open();assert.equal(await page.locator('#purchase-save').isDisabled(),true);
+  assert.equal(await page.locator('#purchase-products button').first().evaluate(el=>el===document.activeElement),true);
+  // Campos presentes incluso sin productos; cálculo pendiente hasta tener importe.
+  for(const id of ['sale-cash-nio-received','sale-cash-nio-change']){
+    assert.equal(await page.locator('#'+id).isVisible(),true);
+  }
+  await page.locator('#sale-cash-nio-received').fill('500');
+  assert.equal(await page.locator('#sale-cash-nio-change').inputValue(),'');
+  assert.equal(await page.locator('#sale-cash-nio-status').isVisible(),false);
+  assert.equal(await page.locator('#sale-cash-nio-received').evaluate(el=>getComputedStyle(el).appearance),'textfield');
+  await page.locator('#sale-cash-nio-received').fill('');
+  for(const payment of ['transferencia','credito','tarjeta','efectivo']){
+    await page.locator('#sale-payment').selectOption(payment);
+    for(const id of ['sale-cash-nio-received','sale-cash-nio-change']){
+      assert.equal(await page.locator('#'+id).isVisible(),payment==='efectivo');
+    }
+  }
+
   assert.equal(await page.locator('#purchase-title').evaluate(el=>{const r=el.getBoundingClientRect();return document.elementFromPoint(r.left+4,r.top+4)===el;}),true);
   assert.equal(await page.getByRole('button',{name:'Agregar No disponible',exact:true}).count(),0);
   assert.equal(await page.locator('#purchase-search').count(),0);
-  assert.equal(await page.locator('#purchase-products button').first().evaluate(el=>el===document.activeElement),true);
   await add('Prueba A');await add('Prueba B');
   // Calculadora NIO: opcional, reactiva y sin alterar los registros contables.
   const received=page.locator('#sale-cash-nio-received');

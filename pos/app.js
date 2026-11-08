@@ -1682,11 +1682,12 @@ function refreshSaleCashTenderUiPOS(opts){
 // Calculadora de C$: no modifica los importes registrados en ventas o caja.
 function updateSaleNioCalculatorPOS(){
   const total = getSaleTenderTotalPOS();
-  const applicable = isSalePaymentCashPOS() && getSaleCashTenderModePOS() === 'nio' &&
-    total > 0 && !document.getElementById('sale-return')?.checked;
+  const visible = isSalePaymentCashPOS() && getSaleCashTenderModePOS() === 'nio' &&
+    !document.getElementById('sale-return')?.checked;
+  const applicable = visible && total > 0;
   const row = document.querySelector('.purchase-payment-row');
-  if (row) row.classList.toggle('has-nio-calculator', applicable);
-  document.querySelectorAll('.sale-cash-nio-field').forEach(el => { el.hidden = !applicable; });
+  if (row) row.classList.toggle('has-nio-calculator', visible);
+  document.querySelectorAll('.sale-cash-nio-field').forEach(el => { el.hidden = !visible; });
   const input = document.getElementById('sale-cash-nio-received');
   const output = document.getElementById('sale-cash-nio-change');
   const status = document.getElementById('sale-cash-nio-status');
