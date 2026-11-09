@@ -7,6 +7,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'pos/app.js'), 'utf8');
+const XLSX = require('../pos/vendor/xlsx.full.min.js');
 
 function between(source, startToken, endToken){
   const start = source.indexOf(startToken);
@@ -74,7 +75,7 @@ function between(source, startToken, endToken){
         {name:'Resumen',rows:[['resumen'],...tuples.map(item=>[item.dayKey,item.v])]},
         {name:'Movimientos',rows:[['movimientos']]},
         {name:'Conteo',rows:[['conteo']]}
-      ]};
+      ],fmt:{Resumen:{cols2dec:[4]},Movimientos:{cols2dec:[5]},Conteo:{cols2dec:[7,8]}}};
     },
     fmtDateTimePOS:value=>String(value),
     cashV2HistSafeTs:value=>value,
@@ -134,27 +135,63 @@ function between(source, startToken, endToken){
   assert.strictEqual(inventorySheets.find(sheet=>sheet.name === 'Inventario_Movimientos').rows.length, 4, 'Detalle de inventario perdió movimientos');
 
   const writerBlock = between(app, 'async function exportEventClosureWorkbookPOS(eventId, options={})', 'async function generateCorteCSV(eventId, options={})');
-  const appended = [];
   let writtenFilename = '';
+  let exported;
   const writerSandbox = {
     async buildEventClosureSheetsPOS(){
-      return {ev:{name:'Mi Evento'},sheets:[{name:'Resumen_Evento',rows:[[1]]},{name:'Caja_Resumen',rows:[[2]]}]};
+      return {ev:{name:'Mi Evento'},sheets:[
+        {name:'Resumen_Evento',rows:[['ID',10],['Venta neta C$',230],['Cortesías (unid.)',1]]},
+        {name:'Caja_Resumen',rows:[['eventId','día','versión','fecha','monto'],[10,'',1,'',12.5]],moneyFormat:{cols2dec:[4],startRowIdx:1}}
+      ]};
     },
-    XLSX:{
-      utils:{
-        book_new:()=>({}),
-        aoa_to_sheet:rows=>({rows}),
-        book_append_sheet(_workbook,_sheet,name){ appended.push(name); }
-      },
-      writeFile(_workbook,filename){ writtenFilename = filename; }
-    },
-    String
+    XLSX:{...XLSX,writeFile(workbook,filename){
+      writtenFilename = filename;
+      exported = XLSX.read(XLSX.write(workbook,{type:'buffer',bookType:'xlsx'}),{cellNF:true});
+    }}
   };
+  const moneyHelper = source=>between(source, 'function posExportMoneySheet(', 'function writeWorkbookFromSheetsPOS(');
+  const cashFormat = between(app, 'function cashV2HistExcelApply2Dec(', 'function cashV2HistWriteWorkbookExcel(');
   vm.createContext(writerSandbox);
-  vm.runInContext(`${writerBlock}\nthis.exportEventClosureWorkbookPOS=exportEventClosureWorkbookPOS;`, writerSandbox);
+  vm.runInContext(moneyHelper(app) + cashFormat + writerBlock, writerSandbox);
   await writerSandbox.exportEventClosureWorkbookPOS(10);
-  assert.deepStrictEqual(appended,['Resumen_Evento','Caja_Resumen'],'El escritor no agrega todas las hojas construidas');
-  assert.strictEqual(writtenFilename,'cierre_evento_Mi Evento.xlsx','Nombre final del archivo inesperado');
+  assert.deepStrictEqual(exported.SheetNames,['Resumen_Evento','Caja_Resumen']);
+  assert.strictEqual(writtenFilename,'cierre_evento_Mi Evento.xlsx');
+  assert.strictEqual(exported.Sheets.Resumen_Evento.B1.z,'General');
+  assert.strictEqual(exported.Sheets.Resumen_Evento.B2.w,'230.00');
+  assert.strictEqual(exported.Sheets.Resumen_Evento.B3.z,'General');
+  assert.strictEqual(exported.Sheets.Caja_Resumen.E2.w,'12.50');
+  assert.strictEqual(exported.Sheets.Caja_Resumen.C2.z,'General');
+
+  for (const source of [app, fs.readFileSync(path.join(root, 'pruebas/pos/app.js'), 'utf8')]){
+    const context = vm.createContext({XLSX});
+    vm.runInContext(moneyHelper(source),context);
+    const book = XLSX.utils.book_new();
+    for (const [name,rows] of [
+      ['Corte',[['Efectivo',230],['Merma final del evento (ml)','0.1234'],['Detalle de ventas'],
+        ['id','cant','PU','desc_C$','total','T/C usado','USD recibido'],[1,2,115,0,230.125,'36.50','10.00']]],
+      ['Reempaque',[['Costo origen total','Costo por ml'],[230,0.0032]]],
+      ['PorProducto',[['Producto','Vendido','Total C$'],['Galón',2,230]]],
+      ['Eventos',[['id','evento','total'],[1,'Evento',230]]],
+      ['Resumen',[['Eventos incluidos',1],['Banco','Total C$','Transacciones'],['Banco A',230,2]]]
+    ]) XLSX.utils.book_append_sheet(book,context.posExportMoneySheet(rows,name),name);
+    const {Sheets} = XLSX.read(XLSX.write(book,{type:'buffer',bookType:'xlsx'}),{cellNF:true});
+    assert.strictEqual(Sheets.Corte.B1.w,'230.00');
+    assert.strictEqual(Sheets.Corte.B2.v,'0.1234');
+    assert.strictEqual(Sheets.Corte.B5.z,'General');
+    assert.strictEqual(Sheets.Corte.C5.w,'115.00');
+    assert.strictEqual(Sheets.Corte.D5.w,'0.00');
+    assert.strictEqual(Sheets.Corte.E5.v,230.125);
+    assert.strictEqual(Sheets.Corte.E5.z,'0.00');
+    assert.strictEqual(Sheets.Corte.F5.t,'s');
+    assert.strictEqual(Sheets.Corte.G5.t,'n');
+    assert.strictEqual(Sheets.Reempaque.B2.v,0.0032);
+    assert.strictEqual(Sheets.Reempaque.B2.z,'General');
+    assert.strictEqual(Sheets.PorProducto.C2.w,'230.00');
+    assert.strictEqual(Sheets.Eventos.C2.w,'230.00');
+    assert.strictEqual(Sheets.Resumen.B1.z,'General');
+    assert.strictEqual(Sheets.Resumen.B3.w,'230.00');
+    assert.strictEqual(Sheets.Resumen.C3.z,'General');
+  }
 
   console.log('SMOKE OK — Suite A33 — POS cierre de evento — Excel integral Etapa 2');
 })().catch(err=>{

@@ -36,6 +36,21 @@ let posEventsLoadedAt = 0;
 
 const $ = (sel) => document.querySelector(sel);
 
+function finExcelMoneySheet(rows, columns, start = 1) {
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  finFormatExcelMoney(ws, columns, start, rows.length);
+  return ws;
+}
+
+function finFormatExcelMoney(ws, columns, start, end) {
+  for (let r = start; r < end; r++) {
+    for (const c of columns) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell && cell.t === 'n') cell.z = '0.00';
+    }
+  }
+}
+
 function finAttachExportCurrencyMetadata(wb, title = 'Referencia monetaria — Finanzas') {
   try {
     if (window.A33ExportCurrency && typeof window.A33ExportCurrency.appendWorkbookMetadataSheet === 'function') {
@@ -8456,8 +8471,8 @@ async function exportDiarioExcel() {
     return;
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
+  const ws = finExcelMoneySheet(rows, [9, 10, 13, 15], 1);
+  const wsDetail = finExcelMoneySheet(detailRows, [8, 9, 11, 13]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Diario');
   XLSX.utils.book_append_sheet(wb, wsDetail, 'Lineas_Debe_Haber');
@@ -8543,7 +8558,7 @@ async function exportEstadoResultadosExcel() {
   rows.push(['Utilidad bruta', num(bruta)]);
   rows.push(['Utilidad neta', num(neta)]);
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = finExcelMoneySheet(rows, [1], 5);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'EstadoResultados');
   const filename = `finanzas_ER_${todayStr()}.xlsx`;
@@ -8583,7 +8598,7 @@ async function exportBalanceGeneralExcel() {
   rows.push(['Patrimonio (3xxx)', num(patrimonio)]);
   rows.push(['Activos – Pasivos – Patrimonio', num(cuadre)]);
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = finExcelMoneySheet(rows, [1], 4);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'BalanceGeneral');
   const filename = `finanzas_BG_${todayStr()}.xlsx`;
@@ -8625,7 +8640,7 @@ async function exportFlujoCajaExcel() {
   rows.push(['Otros movimientos de caja', num(r.otros)]);
   rows.push(['Saldo final Caja + Banco', num(r.saldoFinal)]);
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = finExcelMoneySheet(rows, [1], 4);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'FlujoCaja');
   const filename = `finanzas_FC_${todayStr()}.xlsx`;
@@ -12022,7 +12037,20 @@ function finExportReportWorkbook(sheetName, rows, filename, title) {
     window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
     return;
   }
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const moneyColumns = {
+    Mayor: [5, [5, 6, 7, 9, 11]],
+    EstadoCuenta: [6, [5, 6, 7, 8, 9, 10, 12]],
+    Balanza: [7, [2, 3, 4, 5]],
+    LibroDiario: [5, [7, 8, 10]],
+    ResumenMoneda: [9, [5, 6]]
+  };
+  const [headerRow, columns] = moneyColumns[sheetName];
+  const ws = finExcelMoneySheet(rows, columns, headerRow + 1);
+  if (sheetName === 'Balanza') finFormatExcelMoney(ws, [1], 3, 6);
+  if (sheetName === 'ResumenMoneda') {
+    finFormatExcelMoney(ws, [1, 2, 3, 4], 5, 7);
+    finFormatExcelMoney(ws, [1], 7, 8);
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   finAttachExportCurrencyMetadata(wb, title);
@@ -17472,7 +17500,7 @@ function pcBuildWorkbook(payload) {
     ['Total General', totals.general]
   ];
 
-  const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
+  const wsResumen = finExcelMoneySheet(resumenRows, [1], 4);
   wsResumen['!cols'] = [{ wch: 24 }, { wch: 72 }];
 
   const buildDetailSheet = (lines) => {
@@ -17489,7 +17517,7 @@ function pcBuildWorkbook(payload) {
         pcGetLineTotal(l)
       ]);
     });
-    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const ws = finExcelMoneySheet(rows, [4, 5]);
     ws['!cols'] = [{ wch: 22 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
     return ws;
   };
@@ -17507,7 +17535,7 @@ function pcBuildWorkbook(payload) {
     productSummary.forEach(r => {
       rows.push([r.product, r.qty, r.total]);
     });
-    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const ws = finExcelMoneySheet(rows, [2]);
     ws['!cols'] = [{ wch: 34 }, { wch: 16 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Totales por Producto');
   }

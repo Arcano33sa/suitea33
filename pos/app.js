@@ -25323,6 +25323,43 @@ function buildSummarySheetsFromDataPOS(data){
   return sheets;
 }
 
+function posExportMoneySheet(rows, name){
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  if (!ws['!ref']) return ws;
+  const moneyHeader = /^(?:PU|[Tt]otal|Precio unitario|Descuento|USD recibido|Costo (?:origen total|líquido unitario|líquido total|adicional unitario|adicional total|unitario destino final|total asignado final|sobrante\/merma))$|C\$$/;
+  const mixedSummary = ['Resumen', 'RESUMEN', 'Resumen_Evento', 'Corte'].includes(name);
+  const nonMoneySummary = /^(?:ID|Eventos incluidos|Cortesías \((?:unid\.|unidades|movimientos)\)|Devoluciones (?:unidades|\(unid\.\))|Merma final \(ml\)|Merma final del evento (?:ml|\(ml\)))$/;
+  const detailRow = name === 'Corte' ? rows.findIndex(row => row[0] === 'Detalle de ventas') + 1 : 0;
+  if (mixedSummary){
+    const end = name === 'Corte' && detailRow ? detailRow : rows.length;
+    for (let r = 0; r < end; r++){
+      if (!nonMoneySummary.test(rows[r][0])) setMoneyCell(r, 1, false);
+    }
+    if (name !== 'Corte' || !detailRow) return ws;
+  }
+  if (['Ventas', 'Ventas_Detalle', 'Eventos', 'Corte', 'Reempaque', 'Presentaciones',
+       'PorEvento', 'PorDia', 'PorProducto', 'Descuentos', 'PorPago',
+       'ComisionesTarjeta', 'TransferenciasBanco', 'Cortesias'].includes(name)){
+    (rows[detailRow] || []).forEach((header, c)=>{
+      if (moneyHeader.test(header)){
+        for (let r = detailRow + 1; r < rows.length; r++) setMoneyCell(r, c);
+      }
+    });
+  }
+  return ws;
+
+  function setMoneyCell(r, c, convertText = true){
+    const cell = ws[XLSX.utils.encode_cell({ r, c })];
+    if (!cell) return;
+    // Algunos importes de exportaciones anteriores se preparaban como cadenas decimales.
+    if (convertText && (cell.t === 's' || cell.t === 'str') && /^-?\d+(?:\.\d+)?$/.test(cell.v)){
+      cell.t = 'n';
+      cell.v = Number(cell.v);
+    }
+    if (cell.t === 'n') cell.z = '0.00';
+  }
+}
+
 function writeWorkbookFromSheetsPOS(filename, sheets){
   if (typeof XLSX === 'undefined'){
     throw new Error('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá.');
@@ -25333,7 +25370,7 @@ function writeWorkbookFromSheetsPOS(filename, sheets){
     const rows = (String(sheetName) === 'PorProducto')
       ? sortSummaryPorProductoSheetRowsPOS(sh.rows || [])
       : ((String(sheetName) === 'Descuentos') ? sortSummaryDescuentosSheetRowsPOS(sh.rows || []) : (sh.rows || []));
-    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const ws = posExportMoneySheet(rows, sheetName);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
   }
   XLSX.writeFile(wb, filename);
@@ -26802,7 +26839,7 @@ function downloadExcel(filename, sheetName, rows){
     posNotify('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
     return;
   }
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = posExportMoneySheet(rows, sheetName);
   const header = Array.isArray(rows && rows[0]) ? rows[0] : [];
   ws['!cols'] = header.map((value) => ({ wch: /lote/i.test(String(value == null ? '' : value)) ? 25 : 16 }));
   const wb = XLSX.utils.book_new();
@@ -26833,7 +26870,7 @@ async function generateInventoryCSV(eventId){
 
   const rpRows = await reempaqueBuildExportRowsPOS(eventId);
   if (rpRows.length > 1){
-    const wsReempaque = XLSX.utils.aoa_to_sheet(rpRows);
+    const wsReempaque = posExportMoneySheet(rpRows, 'Reempaque');
     wsReempaque['!cols'] = rpRows[0].map((h) => ({ wch: /lote/i.test(String(h || '')) ? 25 : 18 }));
     XLSX.utils.book_append_sheet(wb, wsReempaque, 'Reempaque');
   }
@@ -27263,9 +27300,9 @@ async function buildEventCashExportSheetsPOS(eventId){
   }
 
   return [
-    { name:'Caja_Resumen', rows:summaryRows },
-    { name:'Caja_Movimientos', rows:movementRows },
-    { name:'Caja_Conteo', rows:countRows },
+    { name:'Caja_Resumen', rows:summaryRows, moneyFormat:officialBuilt.fmt.Resumen },
+    { name:'Caja_Movimientos', rows:movementRows, moneyFormat:officialBuilt.fmt.Movimientos },
+    { name:'Caja_Conteo', rows:countRows, moneyFormat:officialBuilt.fmt.Conteo },
     { name:'Caja_Auditoria', rows:auditRows }
   ];
 }
@@ -27444,7 +27481,9 @@ async function exportEventClosureWorkbookPOS(eventId, options={}){
   const result = await buildEventClosureSheetsPOS(eventId, options);
   const workbook = XLSX.utils.book_new();
   for (const sheet of result.sheets){
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(sheet.rows || []), String(sheet.name || 'Hoja').slice(0,31));
+    const ws = posExportMoneySheet(sheet.rows || [], sheet.name);
+    if (sheet.moneyFormat) cashV2HistExcelApply2Dec(ws, sheet.moneyFormat.cols2dec, sheet.moneyFormat.startRowIdx);
+    XLSX.utils.book_append_sheet(workbook, ws, String(sheet.name || 'Hoja').slice(0,31));
   }
   const safeName = String(result.ev.name || 'evento').replace(/[^a-z0-9_\- ]/gi,'_');
   const filename = options.filename || `cierre_evento_${safeName}.xlsx`;
@@ -28194,7 +28233,7 @@ async function exportEventosExcel(){
       estado,
       ev.createdAt || '',
       ev.closedAt || '',
-      tot.toFixed ? tot.toFixed(2) : tot
+      tot
     ]);
   }
 
@@ -29945,7 +29984,7 @@ async function exportCierreTotalGrupoExcel(){
 
   const wb = XLSX.utils.book_new();
   for (const sh of sheets){
-    const ws = XLSX.utils.aoa_to_sheet(sh.rows);
+    const ws = posExportMoneySheet(sh.rows, sh.name);
     XLSX.utils.book_append_sheet(wb, ws, sh.name);
   }
 

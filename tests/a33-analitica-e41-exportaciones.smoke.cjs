@@ -36,7 +36,7 @@ const sandbox = {
   XLSX: { ...XLSX, writeFile(workbook, filename){
     // Serialize and read the real XLSX binary in memory; no user files or storage.
     const bytes = XLSX.write(workbook, { type:'buffer', bookType:'xlsx' });
-    downloads.push({ filename, workbook:XLSX.read(bytes, { type:'buffer' }) });
+    downloads.push({ filename, workbook:XLSX.read(bytes, { type:'buffer', cellNF:true }) });
   }},
   fixtureSales:sales
 };
@@ -61,20 +61,24 @@ assert.deepStrictEqual(downloads.map(d => d.filename), [
 const rowsOf = (index, sheet) => XLSX.utils.sheet_to_json(downloads[index].workbook.Sheets[sheet], {header:1});
 const summary = rowsOf(0, 'Resumen');
 for (const [label, expected] of [['Ventas totales',80], ['Costo total',60], ['Utilidad total',20], ['Costo real de cortesías',30]]) {
-  assert.strictEqual(Number(summary.find(row => row[1] === label)[2]), expected, label);
+  assert.strictEqual(summary.find(row => row[1] === label)[2], expected, label);
 }
+assert.equal(downloads[0].workbook.Sheets.Resumen.C2.w, '80.00');
 const events = rowsOf(1, 'Eventos');
 assert.strictEqual(events[1][0], 'Evento de prueba');
 assert.strictEqual(events[1][1], '001-A');
-assert.strictEqual(Number(events[1][3]), 80);
+assert.strictEqual(events[1][3], 80);
 assert.strictEqual(Number(events[1][4]), 60);
 assert.strictEqual(Number(events[1][5]), 20);
 const products = rowsOf(2, 'Productos');
 assert.strictEqual(products[1][1], '001-A');
 assert.strictEqual(products[1][2], 'p1');
 assert.strictEqual(products[1][4], 2);
-assert.strictEqual(Number(products[1][9]), 80);
+assert.strictEqual(products[1][9], 80);
 assert.strictEqual(Number(products[1][13]), 30);
+assert.equal(downloads[1].workbook.Sheets.Eventos.I2.z, '0.00');
+assert.equal(downloads[2].workbook.Sheets.Productos.J2.z, '0.00');
+assert.equal(downloads[2].workbook.Sheets.Productos.E2.z, 'General');
 assert.strictEqual(alerts.length, 0);
 assert.strictEqual(notices.filter(n => n.type === 'success').length, 3);
 

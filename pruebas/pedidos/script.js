@@ -3153,7 +3153,7 @@ async function exportToCSV() {
       "Entregado"
     ];
 
-    const numOrEmpty = (v) => (typeof v === "number" && Number.isFinite(v) ? Number(v.toFixed(2)) : "");
+    const numOrEmpty = (v) => (typeof v === "number" && Number.isFinite(v) ? v : "");
     const detailsByPedido = new Map();
     const productColumns = new Map();
 
@@ -3264,11 +3264,26 @@ async function exportToCSV() {
     });
 
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const moneyHeaders = new Set([
+      'Subtotal productos', 'Subtotal presentaciones', 'Descuento total', 'Envío',
+      'Total a pagar', 'Monto pagado', 'Saldo pendiente', 'Precio snapshot', 'Subtotal'
+    ]);
+    const moneySheet = (headings, data) => {
+      const sheet = XLSX.utils.aoa_to_sheet([headings, ...data]);
+      headings.forEach((heading, c) => {
+        if (!moneyHeaders.has(heading) && !/ - (Precio|Subtotal)$/.test(heading)) return;
+        for (let r = 1; r <= data.length; r++) {
+          const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+          if (cell && cell.t === 'n') cell.z = '0.00';
+        }
+      });
+      return sheet;
+    };
+    const ws = moneySheet(headers, rows);
     ws['!cols'] = headers.map((h) => ({ wch: Math.min(42, Math.max(12, String(h).length + 2)) }));
     XLSX.utils.book_append_sheet(wb, ws, "Pedidos");
 
-    const wsDetail = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailRows]);
+    const wsDetail = moneySheet(detailHeaders, detailRows);
     wsDetail['!cols'] = [14, 26, 14, 14, 28, 30, 10, 15, 14, 18].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsDetail, "Detalle productos");
 

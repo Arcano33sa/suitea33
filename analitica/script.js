@@ -1920,6 +1920,28 @@ function rebuildHorasEventOptions(filteredSales){
     }, 0);
   }
 
+  function analyticsMoneySheet(rows, name){
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const isSummary = name === 'Resumen';
+    const headerIndex = isSummary ? rows.findIndex(row => row[0] === 'Mes') : 0;
+    const moneyKpis = /^(?:Ventas totales|Costo total|Utilidad total|Cortesías valor comercial|Costo real de cortesías|Costo de ventas|Utilidad bruta|Utilidad después de .+|Comisiones determinadas|Merma final \(C\$\))$/;
+    if (isSummary){
+      for (let r = 1; r < headerIndex; r++){
+        if (rows[r][0] === 'KPI' && moneyKpis.test(rows[r][1])) formatMoney(r, 2);
+      }
+    }
+    (rows[headerIndex] || []).forEach((header, c) => {
+      if (!/\(C\$\)$/.test(header) && header !== 'Ticket promedio') return;
+      for (let r = headerIndex + 1; r < rows.length; r++) formatMoney(r, c);
+    });
+    return ws;
+
+    function formatMoney(r, c){
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell && cell.t === 'n') cell.z = '0.00';
+    }
+  }
+
   function downloadExcel(filename, sheetName, rows){
     if (!rows || !rows.length) return;
     if (typeof XLSX === 'undefined'){
@@ -1927,13 +1949,13 @@ function rebuildHorasEventOptions(filteredSales){
       return;
     }
     window.A33Notice.show('Generando Excel…', 'process');
-    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const ws = analyticsMoneySheet(rows, sheetName);
     const header = Array.isArray(rows[0]) ? rows[0] : [];
     ws['!cols'] = header.map((h) => ({ wch: /lote/i.test(String(h == null ? '' : h)) ? 25 : 17 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Hoja1');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(analyticsScopeRows()), 'Alcance');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mermaExportRowsAnalytics()), 'Merma final');
+    XLSX.utils.book_append_sheet(wb, analyticsMoneySheet(mermaExportRowsAnalytics(), 'Merma final'), 'Merma final');
     try{
       if (window.A33ExportCurrency && typeof window.A33ExportCurrency.appendWorkbookMetadataSheet === 'function'){
         window.A33ExportCurrency.appendWorkbookMetadataSheet(wb, XLSX, {
@@ -1998,13 +2020,13 @@ function rebuildHorasEventOptions(filteredSales){
 
     const rows = [];
     rows.push(['Tipo', 'Métrica', 'Valor']);
-    rows.push(['KPI', 'Ventas totales', totalVentas.toFixed(2)]);
-    rows.push(['KPI', 'Costo total', totalCosto.toFixed(2)]);
-    rows.push(['KPI', 'Utilidad total', totalProfit.toFixed(2)]);
+    rows.push(['KPI', 'Ventas totales', totalVentas]);
+    rows.push(['KPI', 'Costo total', totalCosto]);
+    rows.push(['KPI', 'Utilidad total', totalProfit]);
     rows.push(['KPI', 'Margen global (%)', margenGlobal.toFixed(2)]);
     rows.push(['KPI', 'Cortesías (unid.)', totalCourtesyUnits]);
-    rows.push(['KPI', 'Cortesías valor comercial', totalCourtesyValue.toFixed(2)]);
-    rows.push(['KPI', 'Costo real de cortesías', totalCourtesyCost.toFixed(2)]);
+    rows.push(['KPI', 'Cortesías valor comercial', totalCourtesyValue]);
+    rows.push(['KPI', 'Costo real de cortesías', totalCourtesyCost]);
     const exportLotCodes = [];
     filtered.forEach((sale) => mergeLotCodesAnalytics(exportLotCodes, saleLotCodesAnalytics(sale)));
     rows.push(['KPI', 'Códigos de lote', analyticsLotExcelCell(exportLotCodes)]);
@@ -2032,13 +2054,13 @@ function rebuildHorasEventOptions(filteredSales){
       const margen = bucket.ventas ? (bucket.profit / bucket.ventas * 100) : 0;
       rows.push([
         key === 'sin-fecha' ? 'Sin fecha' : formatMonthKey(key),
-        bucket.ventas.toFixed(2),
-        bucket.costo.toFixed(2),
-        bucket.profit.toFixed(2),
+        bucket.ventas,
+        bucket.costo,
+        bucket.profit,
         margen.toFixed(2),
         bucket.courtesyUnits,
-        bucket.courtesyValue.toFixed(2),
-        bucket.courtesyCost.toFixed(2),
+        bucket.courtesyValue,
+        bucket.courtesyCost,
         analyticsRoundMoney(result.grossProfit), result.commissionTotal, result.commissionUndeterminedCount,
         result.profitAfterCommission, analyticsResultStatus(result), result.mermaCost, result.profitAfterMerma, result.mermaPartial || result.commissionUndeterminedCount ? 'Parcial' : 'Determinado'
       ]);
@@ -2068,16 +2090,16 @@ function rebuildHorasEventOptions(filteredSales){
         nombre,
         analyticsLotExcelCell(ev.lotCodes || []),
         estado,
-        (ev.ventas || 0).toFixed(2),
-        (ev.costo || 0).toFixed(2),
-        (ev.profit || 0).toFixed(2),
+        (ev.ventas || 0),
+        (ev.costo || 0),
+        (ev.profit || 0),
         margen.toFixed(2),
         ev.botellas || 0,
-        ticketProm.toFixed(2),
+        ticketProm,
         perc.toFixed(2),
         ev.courtesyUnits || 0,
-        Number(ev.courtesyValue || 0).toFixed(2),
-        Number(ev.courtesyCost || 0).toFixed(2),
+        Number(ev.courtesyValue || 0),
+        Number(ev.courtesyCost || 0),
         analyticsRoundMoney(ev.economicResults.paidCost), analyticsRoundMoney(ev.economicResults.grossProfit),
         analyticsRoundMoney(ev.economicResults.profitAfterCourtesy), ev.economicResults.commissionTotal,
         ev.economicResults.commissionUndeterminedCount, ev.economicResults.profitAfterCommission, analyticsResultStatus(ev.economicResults), ev.economicResults.mermaCost, ev.economicResults.profitAfterMerma, ev.economicResults.mermaPartial || ev.economicResults.commissionUndeterminedCount ? 'Parcial' : 'Determinado'
@@ -2106,15 +2128,15 @@ function rebuildHorasEventOptions(filteredSales){
         row.productId || row.id,
         row.operational ? 'Operativo actual' : (row.legacy ? 'Histórico legacy' : 'Inactivo/borrado · histórico'),
         row.unidades,
-        Number(row.unitPrice || 0).toFixed(2),
-        Number(row.unitCost || 0).toFixed(2),
-        Number(row.utilUnit || 0).toFixed(2),
+        Number(row.unitPrice || 0),
+        Number(row.unitCost || 0),
+        Number(row.utilUnit || 0),
         Number(row.marginUnit || 0).toFixed(2),
-        Number(row.ventas || 0).toFixed(2),
+        Number(row.ventas || 0),
         perc.toFixed(2),
         Number(row.courtesyUnits || 0),
-        Number(row.courtesyValue || 0).toFixed(2),
-        Number(row.courtesyCost || 0).toFixed(2),
+        Number(row.courtesyValue || 0),
+        Number(row.courtesyCost || 0),
         analyticsRoundMoney(row.economicResults.paidCost), analyticsRoundMoney(row.economicResults.grossProfit),
         analyticsRoundMoney(row.economicResults.profitAfterCourtesy), row.economicResults.commissionTotal,
         row.economicResults.commissionUndeterminedCount, row.economicResults.profitAfterCommission, analyticsResultStatus(row.economicResults)
