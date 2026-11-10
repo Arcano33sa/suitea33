@@ -54,7 +54,7 @@ let browser;
     request.onsuccess = () => {
       const db = request.result;
       const tx = db.transaction(['sales','events','products','reempaques'], 'readwrite');
-      const base={date:'2026-10-10',eventId:1,eventName:'Evento E4.6',productId:'p1',productName:'Producto E4.6',unitPrice:100,loteCodigo:'001-A'};
+      const base={date:'2026-10-10',eventId:1,eventName:'Evento E4.6',productId:'p1',productName:'Producto E4.6',customerName:'Cliente privado de prueba',time:'13:15',unitPrice:100,loteCodigo:'001-A'};
       const rows=[
         {...base,id:1,qty:2,total:180,discount:20,lineCost:60,payment:'tarjeta',commissionAmountSnapshot:9,commissionLabelSnapshot:'Banco histórico 5%'},
         {...base,id:2,date:'2026-10-20',qty:-1,total:-100,lineCost:-30,isReturn:true,payment:'tarjeta',commissionAmountSnapshot:-5,commissionLabelSnapshot:'Banco histórico 5%'},
@@ -90,7 +90,8 @@ let browser;
     const chunks = []; for await (const chunk of stream) chunks.push(chunk);
     const workbook = XLSX.read(Buffer.concat(chunks), {type:'buffer'});
     assert.ok(workbook.SheetNames.includes(sheet));
-    assert.ok(workbook.SheetNames.includes('Merma final'));books.push(workbook);
+    if (filename !== 'analitica_consolidada.xlsx') assert.ok(workbook.SheetNames.includes('Merma final'));
+    books.push(workbook);
     return XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {header:1});
   }
   await page.goto(origin + '/analitica/index.html');
@@ -154,6 +155,38 @@ let browser;
   await page.locator('[data-tab="eventos"]').click();
   const onlyEvent=await download(()=>page.locator('#btn-export-eventos').click(),'analitica_eventos.xlsx','Eventos');
   assert.strictEqual(onlyEvent[1][0],'Evento solo merma');
+  await page.locator('#btn-export-consolidado').click();
+  const modal = page.locator('#analytics-export-dialog');
+  assert.strictEqual(await modal.locator('[name="from"]').inputValue(), '2026-11-01');
+  await modal.locator('[name="from"]').fill('2026-10-22');
+  await modal.locator('[name="to"]').fill('2026-10-21');
+  await modal.getByRole('button', {name:'Descargar Excel'}).click();
+  assert.match(await modal.getByRole('alert').textContent(), /fecha inicial/);
+  await modal.locator('[name="from"]').fill('2026-10-20');
+  await modal.locator('[name="to"]').fill('2026-10-29');
+  await modal.locator('[name="previous"]').check();
+  await modal.locator('[value="Clientes"]').check();
+  await modal.locator('[value="Cortesías"]').check();
+  await modal.locator('[value="Avanzado"]').check();
+  await modal.locator('[value="Productos"]').uncheck();
+  const consolidated = await download(() => modal.getByRole('button', {name:'Descargar Excel'}).click(),
+    'analitica_consolidada.xlsx', 'Resumen');
+  assert.strictEqual(await modal.isVisible(), false);
+  assert.strictEqual(await page.locator('#date-from').inputValue(), '2026-11-01');
+  const book = books.at(-1);
+  assert.ok(!book.SheetNames.some(name => name.startsWith('Productos')));
+  const rowsFor = name => XLSX.utils.sheet_to_json(book.Sheets[name], {header:1});
+  const kpi = (rows, label) => rows.find(row => row[1] === label)[2];
+  assert.strictEqual(kpi(consolidated, 'Ventas totales'), 0);
+  assert.strictEqual(kpi(consolidated, 'Merma final (C$)'), 8);
+  assert.strictEqual(kpi(rowsFor('Resumen anterior'), 'Ventas totales'), 180);
+  assert.strictEqual(kpi(rowsFor('Resumen anterior'), 'Merma final (C$)'), 0);
+  assert.deepStrictEqual(rowsFor('Evento por producto')[1].slice(4, 8), [1, 0, -25, 1]);
+  assert.deepStrictEqual(rowsFor('Clientes')[1], [0, 1, 3, 100]);
+  assert.ok(!JSON.stringify(book).includes('Cliente privado de prueba'));
+  assert.strictEqual(rowsFor('Cortesías').length, 2);
+  assert.deepStrictEqual(rowsFor('Avanzado').find(row => row[0] === '13:00'), ['13:00', 0, 1]);
+  assert.ok(rowsFor('Alcance').some(row => row[0] === 'Anterior · desde' && row[1] === '2026-10-10'));
   // Real read failure: a new isolated page injects getAll failure for this store only.
   await context.setOffline(false);
   const fault=await context.newPage();fault.on('pageerror',error=>errors.push(error.message));

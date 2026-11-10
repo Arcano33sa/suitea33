@@ -1134,3 +1134,17 @@ textarea{
 
 #tab-clientes .recs-item .btn-secondary{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:64px;background:var(--a33-surface);color:var(--a33-text);border-color:var(--a33-border)}
 #tab-clientes .recs-item a:focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
+
+.analytics-export-dialog {
+  width: min(34rem, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  background: Canvas;
+  color: CanvasText;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.analytics-export-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.analytics-export-dialog fieldset { margin: 0.75rem 0; }
+.analytics-export-dialog label { display: block; padding: 0.2rem 0; }

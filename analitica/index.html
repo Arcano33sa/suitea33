@@ -73,6 +73,37 @@
         </div>
       </section>
 
+      <div class="export-buttons">
+        <button type="button" id="btn-export-consolidado" class="btn-secondary" disabled>Exportar Excel</button>
+      </div>
+      <dialog id="analytics-export-dialog" class="analytics-export-dialog" aria-labelledby="analytics-export-title">
+        <form id="analytics-export-form">
+          <h3 id="analytics-export-title">Exportar Excel</h3>
+          <fieldset>
+            <legend>Período de exportación</legend>
+            <label>Desde <input type="date" name="from"></label>
+            <label>Hasta <input type="date" name="to"></label>
+            <p class="hint">Deja una fecha vacía para exportar sin ese límite.</p>
+            <label><input type="checkbox" name="previous"> Incluir período anterior equivalente</label>
+          </fieldset>
+          <fieldset>
+            <legend>Secciones</legend>
+            <label><input type="checkbox" name="section" value="Resumen" checked> Resumen</label>
+            <label><input type="checkbox" name="section" value="Eventos" checked> Eventos</label>
+            <label><input type="checkbox" name="section" value="Productos" checked> Productos</label>
+            <label><input type="checkbox" name="section" value="Evento por producto" checked> Evento por producto</label>
+            <label><input type="checkbox" name="section" value="Clientes"> Clientes (sin datos identificativos)</label>
+            <label><input type="checkbox" name="section" value="Cortesías"> Cortesías</label>
+            <label><input type="checkbox" name="section" value="Avanzado"> Avanzado (horas pico)</label>
+          </fieldset>
+          <p id="analytics-export-error" role="alert" hidden></p>
+          <div class="export-buttons">
+            <button type="button" id="btn-cancel-export" class="btn-secondary">Cancelar</button>
+            <button type="submit" class="btn-secondary">Descargar Excel</button>
+          </div>
+        </form>
+      </dialog>
+
       <section class="analytics-tabs" aria-label="Pestañas de analítica">
         <button class="tab-btn active" data-tab="resumen" type="button">Resumen</button>
         <button class="tab-btn" data-tab="eventos" type="button">Eventos</button>

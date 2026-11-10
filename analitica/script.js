@@ -204,6 +204,8 @@
       await readFinalMermaAnalytics();
       loadCostosPresentacion();
       recompute();
+      const exportButton = document.getElementById('btn-export-consolidado');
+      if (exportButton) exportButton.disabled = false;
     } catch (err) {
       console.error('Error al inicializar Analítica', err);
       const errEl = document.getElementById('analytics-error');
@@ -810,7 +812,7 @@
     return { rows, totalVentas, totalUnits };
   }
 
-  function buildEventStats(filteredSales, events){
+  function buildEventStats(filteredSales, events, finalRows = selectedMermaAnalytics()){
     const byEvent = new Map();
     let totalVentasPeriodo = 0;
 
@@ -860,7 +862,6 @@
       }
     }
 
-    const finalRows = selectedMermaAnalytics();
     for (const row of finalRows){
       const id = row.eventId != null ? row.eventId : 'sin-evento';
       const existing = Array.from(byEvent.values()).find(event => String(event.id) === String(id));
@@ -1893,6 +1894,164 @@ function rebuildHorasEventOptions(filteredSales){
     if (bRes) bRes.addEventListener('click', exportResumenCsv);
     if (bEvt) bEvt.addEventListener('click', exportEventosCsv);
     if (bPres) bPres.addEventListener('click', exportPresentacionesCsv);
+    setupConsolidatedExport();
+  }
+
+  function exportDateLabel(date){
+    if (!date) return '';
+    return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
+      .map((part, index) => String(part).padStart(index === 0 ? 4 : 2, '0')).join('-');
+  }
+
+  function setupConsolidatedExport(){
+    const dialog = document.getElementById('analytics-export-dialog');
+    if (!dialog) return;
+    const form = document.getElementById('analytics-export-form');
+    const error = document.getElementById('analytics-export-error');
+    const { from, to, previous } = form.elements;
+
+    function updateComparison(){
+      previous.disabled = !from.value || !to.value;
+      if (previous.disabled) previous.checked = false;
+    }
+
+    document.getElementById('btn-export-consolidado').addEventListener('click', () => {
+      const range = getCurrentRange();
+      from.value = exportDateLabel(range.from);
+      to.value = exportDateLabel(range.to);
+      error.hidden = true;
+      updateComparison();
+      dialog.showModal();
+    });
+    document.getElementById('btn-cancel-export').addEventListener('click', () => dialog.close());
+    from.addEventListener('input', updateComparison);
+    to.addEventListener('input', updateComparison);
+
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const sections = Array.from(form.querySelectorAll('[name="section"]:checked'), input => input.value);
+      const range = { from: parseSaleDate(from.value), to: parseSaleDate(to.value) };
+      error.hidden = true;
+      try {
+        if (range.from && range.to && range.from > range.to) {
+          throw new Error('La fecha inicial debe ser anterior o igual a la fecha final.');
+        }
+        if (!sections.length) throw new Error('Selecciona al menos una sección.');
+        if (typeof XLSX === 'undefined') throw new Error('No se cargó la librería de Excel.');
+        const workbook = buildConsolidatedWorkbook(range, sections, previous.checked);
+        XLSX.writeFile(workbook, 'analitica_consolidada.xlsx');
+        dialog.close();
+        window.A33Notice.show('Excel exportado correctamente.', 'success');
+      } catch (failure) {
+        error.textContent = failure.message || 'No se pudo exportar el Excel.';
+        error.hidden = false;
+      }
+    });
+  }
+
+  function buildConsolidatedWorkbook(range, sections, includePrevious){
+    const periods = [{ label:'Seleccionado', suffix:'', range }];
+    if (includePrevious && range.from && range.to){
+      const dayNumber = date => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
+      const days = dayNumber(range.to) - dayNumber(range.from) + 1;
+      periods.push({ label:'Anterior', suffix:' anterior', range:{
+        from:addDays(range.from, -days), to:addDays(range.from, -1)
+      }});
+    }
+
+    const workbook = XLSX.utils.book_new();
+    const metadata = [['Concepto', 'Valor'],
+      ['Moneda', 'Córdoba nicaragüense (NIO, C$)'],
+      ['Fuente', 'Ventas del POS y merma final disponibles en este navegador'],
+      ['Fechas', 'Límites inclusivos. Una fecha vacía indica que no hay límite.'],
+      ['Utilidad bruta', 'Ventas menos costo de ventas pagadas'],
+      ['Utilidad después de cortesías', 'Utilidad bruta menos costo de cortesías'],
+      ['Utilidad después de comisión y merma', 'Utilidad después de cortesías menos comisiones determinadas y costo de merma final'],
+      ['Resultados parciales', 'Revisar comisiones no determinadas y estado de merma. No se descuentan gastos de participación.'],
+      ['Clientes', 'Filas sin nombres ni identificadores. El orden no vincula clientes entre períodos.'],
+      ['Avanzado', 'Actividad por hora registrada en el POS'],
+      ['Evento por producto', 'Utilidad después de cortesías y comisiones determinadas, antes de merma final']];
+    const scope = XLSX.utils.aoa_to_sheet(metadata);
+    XLSX.utils.book_append_sheet(workbook, scope, 'Alcance');
+
+    for (const period of periods){
+      const filtered = sales.filter(sale => saleInRange(sale, period.range));
+      const merma = selectedMermaAnalytics(period.range);
+      XLSX.utils.sheet_add_aoa(scope, [
+        [period.label + ' · desde', exportDateLabel(period.range.from)],
+        [period.label + ' · hasta', exportDateLabel(period.range.to)],
+        [period.label + ' · líneas POS', filtered.length],
+        [period.label + ' · registros de merma final', merma.length]
+      ], {origin:-1});
+
+      const sectionsForPeriod = {
+        Resumen: () => summaryExportRows(filtered, merma),
+        Eventos: () => eventExportRows(buildEventStats(filtered, events, merma)),
+        Productos: () => productExportRows(buildPresentationStats(filtered)),
+        'Evento por producto': () => eventProductExportRows(filtered),
+        Clientes: () => [
+          ['Ventas netas (C$)', 'Líneas pagadas', 'Líneas registradas', 'Devoluciones (C$)'],
+          ...buildClientsIndex(filtered).rows.map(client =>
+            [client.totalNet, client.paidCount, client.txCount, client.returnsValueAbs])
+        ],
+        Cortesías: () => [
+          ['Fecha', 'Evento', 'Producto', 'Código de lote', 'Unidades', 'Valor comercial (C$)', 'Costo (C$)'],
+          ...filtered.filter(sale => sale.courtesy || sale.isCourtesy).map(sale => {
+            const metrics = computeLineMetrics(sale);
+            return [sale.date, sale.eventName || 'General', saleProductName(sale, 'Producto'),
+              analyticsLotExcelCell(saleLotCodesAnalytics(sale)), Math.abs(metrics.finalQty),
+              getCourtesyCommercialValue(sale), metrics.lineCost];
+          })
+        ],
+        Avanzado: () => hourlyExportRows(filtered)
+      };
+      for (const name of sections){
+        const rows = sectionsForPeriod[name]();
+        const sheet = analyticsMoneySheet(rows, name);
+        sheet['!cols'] = rows[0].map(() => ({wch:24}));
+        XLSX.utils.book_append_sheet(workbook, sheet, name + period.suffix);
+      }
+    }
+    scope['!cols'] = [{wch:40}, {wch:92}];
+    return workbook;
+  }
+
+  function eventProductExportRows(filtered){
+    const groups = new Map();
+    for (const sale of filtered){
+      const id = sale.eventId ?? 'sin-evento';
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(sale);
+    }
+
+    const rows = [['ID evento', 'Evento', 'ID producto / clave histórica', 'Producto', 'Unidades netas',
+      'Ventas (C$)', 'Utilidad después de comisión (C$)', 'Comisiones no determinadas']];
+    const eventNames = new Map(events.map(event => [event.id, event.name]));
+    for (const [id, group] of groups){
+      const name = eventNames.get(id) || group[0].eventName || 'General';
+      for (const product of buildPresentationStats(group).rows){
+        rows.push([String(id), name, product.productId || product.id, product.label, product.unidades,
+          product.ventas, product.economicResults.profitAfterCommission, product.economicResults.commissionUndeterminedCount]);
+      }
+    }
+    return rows;
+  }
+
+  function hourlyExportRows(filtered){
+    const hours = Array.from({length:24}, (_, hour) => [String(hour).padStart(2, '0') + ':00', 0, 0]);
+    let withoutHour = 0;
+    for (const sale of filtered){
+      const hour = parseInt(String(sale.time || '').slice(0, 2), 10);
+      if (!hours[hour]){
+        withoutHour++;
+        continue;
+      }
+      const metrics = computeLineMetrics(sale);
+      hours[hour][1] += metrics.revenue;
+      hours[hour][2] += metrics.finalQty;
+    }
+    return [['Hora', 'Ventas (C$)', 'Unidades netas'], ...hours, [],
+      ['Líneas sin hora válida', withoutHour]];
   }
 
   function downloadCsv(filename, rows){
@@ -1980,6 +2139,10 @@ function rebuildHorasEventOptions(filteredSales){
       return;
     }
 
+    downloadExcel('analitica_resumen.xlsx', 'Resumen', summaryExportRows(filtered, selectedMermaAnalytics()));
+  }
+
+  function summaryExportRows(filtered, merma){
     let totalVentas = 0;
     let totalCosto = 0;
     let totalProfit = 0;
@@ -2023,14 +2186,14 @@ function rebuildHorasEventOptions(filteredSales){
     rows.push(['KPI', 'Ventas totales', totalVentas]);
     rows.push(['KPI', 'Costo total', totalCosto]);
     rows.push(['KPI', 'Utilidad total', totalProfit]);
-    rows.push(['KPI', 'Margen global (%)', margenGlobal.toFixed(2)]);
+    rows.push(['KPI', 'Margen global (%)', Number(margenGlobal.toFixed(2))]);
     rows.push(['KPI', 'Cortesías (unid.)', totalCourtesyUnits]);
     rows.push(['KPI', 'Cortesías valor comercial', totalCourtesyValue]);
     rows.push(['KPI', 'Costo real de cortesías', totalCourtesyCost]);
     const exportLotCodes = [];
     filtered.forEach((sale) => mergeLotCodesAnalytics(exportLotCodes, saleLotCodesAnalytics(sale)));
     rows.push(['KPI', 'Códigos de lote', analyticsLotExcelCell(exportLotCodes)]);
-    const economicResults = withFinalMermaAnalytics(buildEconomicResults(filtered), selectedMermaAnalytics());
+    const economicResults = withFinalMermaAnalytics(buildEconomicResults(filtered), merma);
     rows.push(['KPI', 'Costo de ventas', analyticsRoundMoney(economicResults.paidCost)]);
     rows.push(['KPI', 'Utilidad bruta', analyticsRoundMoney(economicResults.grossProfit)]);
     rows.push(['KPI', 'Utilidad después de cortesías', analyticsRoundMoney(economicResults.profitAfterCourtesy)]);
@@ -2039,7 +2202,7 @@ function rebuildHorasEventOptions(filteredSales){
     rows.push(['KPI', 'Utilidad después de comisión', economicResults.profitAfterCommission]);
     rows.push(['KPI', 'Estado después de comisión', analyticsResultStatus(economicResults)]);
     rows.push(['KPI','Merma final (C$)',economicResults.mermaCost],['KPI','Merma final (ml)',economicResults.mermaMl],['KPI','Utilidad después de comisión y merma',economicResults.profitAfterMerma],['KPI','Estado después de merma',economicResults.mermaPartial || economicResults.commissionUndeterminedCount ? 'Parcial' : 'Determinado']);
-    for (const row of selectedMermaAnalytics()){
+    for (const row of merma){
       const key = mermaDateAnalytics(row).slice(0,7) || 'sin-fecha';
       if (!byMonth.has(key)) byMonth.set(key,{ventas:0,costo:0,profit:0,courtesyUnits:0,courtesyValue:0,courtesyCost:0});
     }
@@ -2050,14 +2213,14 @@ function rebuildHorasEventOptions(filteredSales){
     const keys = Array.from(byMonth.keys()).sort();
     for (const key of keys){
       const bucket = byMonth.get(key);
-      const result = withFinalMermaAnalytics(buildEconomicResults(filtered.filter(s => String(s.date || '').startsWith(key + '-'))), selectedMermaAnalytics().filter(row => (mermaDateAnalytics(row).slice(0,7) || 'sin-fecha') === key));
+      const result = withFinalMermaAnalytics(buildEconomicResults(filtered.filter(s => String(s.date || '').startsWith(key + '-'))), merma.filter(row => (mermaDateAnalytics(row).slice(0,7) || 'sin-fecha') === key));
       const margen = bucket.ventas ? (bucket.profit / bucket.ventas * 100) : 0;
       rows.push([
         key === 'sin-fecha' ? 'Sin fecha' : formatMonthKey(key),
         bucket.ventas,
         bucket.costo,
         bucket.profit,
-        margen.toFixed(2),
+        Number(margen.toFixed(2)),
         bucket.courtesyUnits,
         bucket.courtesyValue,
         bucket.courtesyCost,
@@ -2066,7 +2229,7 @@ function rebuildHorasEventOptions(filteredSales){
       ]);
     }
 
-    downloadExcel('analitica_resumen.xlsx', 'Resumen', rows);
+    return rows;
   }
 
   function exportEventosCsv(){
@@ -2076,6 +2239,10 @@ function rebuildHorasEventOptions(filteredSales){
       return;
     }
 
+    downloadExcel('analitica_eventos.xlsx', 'Eventos', eventExportRows(stats));
+  }
+
+  function eventExportRows(stats){
     const rows = [];
     rows.push(['Evento', 'Código de lote', 'Estado', 'Ventas (C$)', 'Costo (C$)', 'Utilidad (C$)', 'Margen %', 'Unidades', 'Ticket promedio', '% del total', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)', 'Costo de ventas (C$)', 'Utilidad bruta (C$)', 'Utilidad después de cortesías (C$)', 'Comisiones determinadas (C$)', 'Comisiones no determinadas', 'Utilidad después de comisión (C$)', 'Estado después de comisión', 'Merma final (C$)', 'Utilidad después de comisión y merma (C$)', 'Estado después de merma']);
     const totalVentas = stats.totalVentasPeriodo || 0;
@@ -2093,10 +2260,10 @@ function rebuildHorasEventOptions(filteredSales){
         (ev.ventas || 0),
         (ev.costo || 0),
         (ev.profit || 0),
-        margen.toFixed(2),
+        Number(margen.toFixed(2)),
         ev.botellas || 0,
         ticketProm,
-        perc.toFixed(2),
+        Number(perc.toFixed(2)),
         ev.courtesyUnits || 0,
         Number(ev.courtesyValue || 0),
         Number(ev.courtesyCost || 0),
@@ -2106,7 +2273,7 @@ function rebuildHorasEventOptions(filteredSales){
       ]);
     }
 
-    downloadExcel('analitica_eventos.xlsx', 'Eventos', rows);
+    return rows;
   }
 
   function exportPresentacionesCsv(){
@@ -2116,6 +2283,10 @@ function rebuildHorasEventOptions(filteredSales){
       return;
     }
 
+    downloadExcel('analitica_productos.xlsx', 'Productos', productExportRows(stats));
+  }
+
+  function productExportRows(stats){
     const rows = [];
     rows.push(['Producto', 'Código de lote', 'productId / clave histórica', 'Estado', 'Unidades netas', 'Precio unitario prom. (C$)', 'Costo unitario snapshot (C$)', 'Utilidad unitaria (C$)', 'Margen unitario %', 'Ventas totales (C$)', '% de ventas', 'Cortesías (unid.)', 'Cortesías valor (C$)', 'Cortesías costo (C$)', 'Costo de ventas (C$)', 'Utilidad bruta (C$)', 'Utilidad después de cortesías (C$)', 'Comisiones determinadas (C$)', 'Comisiones no determinadas', 'Utilidad después de comisión (C$)', 'Estado después de comisión']);
     const totalVentas = stats.totalVentas || 0;
@@ -2131,9 +2302,9 @@ function rebuildHorasEventOptions(filteredSales){
         Number(row.unitPrice || 0),
         Number(row.unitCost || 0),
         Number(row.utilUnit || 0),
-        Number(row.marginUnit || 0).toFixed(2),
+        Number(Number(row.marginUnit || 0).toFixed(2)),
         Number(row.ventas || 0),
-        perc.toFixed(2),
+        Number(perc.toFixed(2)),
         Number(row.courtesyUnits || 0),
         Number(row.courtesyValue || 0),
         Number(row.courtesyCost || 0),
@@ -2143,7 +2314,7 @@ function rebuildHorasEventOptions(filteredSales){
       ]);
     }
 
-    downloadExcel('analitica_productos.xlsx', 'Productos', rows);
+    return rows;
   }
 
   // --- Gráficas simples en canvas ---
