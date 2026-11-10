@@ -81,9 +81,12 @@
           <h3 id="analytics-export-title">Exportar Excel</h3>
           <fieldset>
             <legend>Período de exportación</legend>
-            <label>Desde <input type="date" name="from"></label>
-            <label>Hasta <input type="date" name="to"></label>
-            <p class="hint">Deja una fecha vacía para exportar sin ese límite.</p>
+            <label>Período <select name="period"></select></label>
+            <div id="analytics-export-custom-range" hidden>
+              <label>Desde <input type="date" name="from"></label>
+              <label>Hasta <input type="date" name="to"></label>
+              <p class="hint">Deja una fecha vacía para exportar sin ese límite.</p>
+            </div>
             <label><input type="checkbox" name="previous"> Incluir período anterior equivalente</label>
           </fieldset>
           <fieldset>

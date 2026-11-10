@@ -396,11 +396,14 @@
     const fromInput = document.getElementById('date-from');
     const toInput = document.getElementById('date-to');
 
+    return resolvePeriodRange(periodSelect?.value || '30d', fromInput?.value, toInput?.value);
+  }
+
+  function resolvePeriodRange(val, fromDate, toDate){
     const today = new Date();
     let from = null;
     let to = null;
 
-    const val = periodSelect ? periodSelect.value : '30d';
     if (val === 'today') {
       from = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       to = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
@@ -420,10 +423,8 @@
       from = null;
       to = null;
     } else if (val === 'custom') {
-      const fromVal = fromInput && fromInput.value ? new Date(fromInput.value + 'T00:00:00') : null;
-      const toVal = toInput && toInput.value ? new Date(toInput.value + 'T23:59:59') : null;
-      from = fromVal;
-      to = toVal;
+      from = fromDate ? new Date(fromDate + 'T00:00:00') : null;
+      to = toDate ? new Date(toDate + 'T23:59:59') : null;
     }
 
     return { from, to };
@@ -1908,29 +1909,35 @@ function rebuildHorasEventOptions(filteredSales){
     if (!dialog) return;
     const form = document.getElementById('analytics-export-form');
     const error = document.getElementById('analytics-export-error');
-    const { from, to, previous } = form.elements;
+    const { period, from, to, previous } = form.elements;
+    const analyticsPeriod = document.getElementById('period-select');
+    const customRange = document.getElementById('analytics-export-custom-range');
+    period.replaceChildren(...Array.from(analyticsPeriod.options, option => option.cloneNode(true)));
 
-    function updateComparison(){
-      previous.disabled = !from.value || !to.value;
+    function updatePeriodFields(){
+      customRange.hidden = period.value !== 'custom';
+      const range = resolvePeriodRange(period.value, from.value, to.value);
+      previous.disabled = !range.from || !range.to;
       if (previous.disabled) previous.checked = false;
     }
 
     document.getElementById('btn-export-consolidado').addEventListener('click', () => {
-      const range = getCurrentRange();
-      from.value = exportDateLabel(range.from);
-      to.value = exportDateLabel(range.to);
+      period.value = analyticsPeriod.value;
+      from.value = document.getElementById('date-from').value;
+      to.value = document.getElementById('date-to').value;
       error.hidden = true;
-      updateComparison();
+      updatePeriodFields();
       dialog.showModal();
     });
     document.getElementById('btn-cancel-export').addEventListener('click', () => dialog.close());
-    from.addEventListener('input', updateComparison);
-    to.addEventListener('input', updateComparison);
+    period.addEventListener('change', updatePeriodFields);
+    from.addEventListener('input', updatePeriodFields);
+    to.addEventListener('input', updatePeriodFields);
 
     form.addEventListener('submit', event => {
       event.preventDefault();
       const sections = Array.from(form.querySelectorAll('[name="section"]:checked'), input => input.value);
-      const range = { from: parseSaleDate(from.value), to: parseSaleDate(to.value) };
+      const range = resolvePeriodRange(period.value, from.value, to.value);
       error.hidden = true;
       try {
         if (range.from && range.to && range.from > range.to) {
