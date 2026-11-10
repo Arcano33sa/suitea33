@@ -1986,6 +1986,8 @@ function rebuildHorasEventOptions(filteredSales){
       ['Resultados parciales', 'Revisar comisiones no determinadas y estado de merma. No se descuentan gastos de participación.'],
       ['Clientes', 'El código permite vincular al mismo cliente entre hojas y buscarlo en Analítica → Clientes, con Todo el histórico.'],
       ['Corte de clientes', 'Fin del período exportado o fecha de exportación si no tiene fin. Se usa el historial disponible hasta el corte.'],
+      ['Conciliación de clientes', 'Se cruza el historial al corte con el catálogo actual. Las fichas fusionadas se consolidan en el destino. Una ficha sin movimientos vinculados puede ser posterior al corte.'],
+      ['Estado de ficha', 'Estado actual del catálogo. Es independiente de Activo o Dormido según la última compra.'],
       ['Compras de clientes', 'Solo compras pagadas. Las devoluciones y cortesías se muestran por separado. Frecuencia medida en líneas pagadas y días con compras.'],
       ['Productos de clientes', 'Unidades compradas por producto. Preferencias históricas según unidades pagadas, antes de devoluciones.'],
       ['Avanzado', 'Actividad por hora registrada en el POS'],
@@ -2009,7 +2011,10 @@ function rebuildHorasEventOptions(filteredSales){
         XLSX.utils.sheet_add_aoa(scope, [
           [period.label + ' · corte de clientes', exportDateLabel(clients.cutoff)],
           [period.label + ' · umbral de dormidos (días)', dormidosDays],
-          [period.label + ' · nombres de clientes', includeCustomerNames ? 'Incluidos' : 'Omitidos']
+          [period.label + ' · nombres de clientes', includeCustomerNames ? 'Incluidos' : 'Omitidos'],
+          [period.label + ' · fichas conciliadas con movimientos', clients.linkedCount],
+          [period.label + ' · fichas sin movimientos vinculados', clients.catalogOnlyCount],
+          [period.label + ' · clientes históricos sin ficha vinculada', clients.historyOnlyCount]
         ], {origin:-1});
       }
 
@@ -2036,6 +2041,7 @@ function rebuildHorasEventOptions(filteredSales){
         sheet['!cols'] = rows[0].map(() => ({wch:24}));
         XLSX.utils.book_append_sheet(workbook, sheet, name + period.suffix);
         if (name === 'Clientes'){
+          sheet['!autofilter'] = {ref:sheet['!ref']};
           const products = XLSX.utils.aoa_to_sheet(clients.products);
           products['!cols'] = [{wch:24}, {wch:30}, {wch:28}, {wch:28}];
           XLSX.utils.book_append_sheet(workbook, products, 'Clientes por producto' + period.suffix);
@@ -2058,15 +2064,21 @@ function rebuildHorasEventOptions(filteredSales){
   function clientExportRows(range, includeNames){
     const cutoff = range.to || new Date();
     const history = sales.filter(sale => saleInRange(sale, {to:cutoff}));
+    const resolver = buildCustomerResolver(loadPosCustomerCatalog());
+    const rows = buildClientsIndex(history, resolver).rows;
+    const historicalKeys = new Set(rows.map(client => client.key));
+    const catalogOnly = catalogClientRows(resolver).filter(client => !historicalKeys.has(client.key));
+    const linkedCount = rows.filter(client => client.customerId).length;
     const summary = [['Código de seguimiento', ...(includeNames ? ['Nombre'] : []),
       'Estado al corte', 'Última compra pagada', 'Días desde la última compra',
       'Unidades compradas en período', 'Unidades devueltas en período', 'Unidades netas en período',
       'Unidades de cortesía en período', 'Ventas netas en período (C$)', 'Devoluciones en período (C$)',
       'Líneas pagadas en período', 'Días con compras en período', 'Unidades compradas históricas',
-      'Líneas pagadas históricas', 'Días con compras históricos', 'Producto más comprado histórico']];
+      'Líneas pagadas históricas', 'Días con compras históricos', 'Producto más comprado histórico',
+      'Origen', 'Estado de ficha', 'Líneas históricas vinculadas']];
     const products = [['Código de seguimiento', 'Producto', 'Unidades compradas en período', 'Unidades compradas históricas']];
 
-    for (const client of buildClientsIndex(history).rows){
+    for (const client of [...rows, ...catalogOnly]){
       const code = clientFollowupCode(client.key);
       const historicalDays = new Set();
       const periodDays = new Set();
@@ -2104,15 +2116,20 @@ function rebuildHorasEventOptions(filteredSales){
       const last = client.lastPaidAt;
       const elapsed = last ? Math.max(0, exportCalendarDay(cutoff) - exportCalendarDay(last)) : null;
       const state = elapsed == null ? 'Sin compras pagadas' : elapsed >= dormidosDays ? 'Dormido' : 'Activo';
+      const record = resolver.byId.get(client.customerId);
+      const origin = client.catalogOnly ? 'Solo catálogo' : record ? 'Catálogo e historial' : 'Solo historial';
+      const recordStatus = !record ? 'Sin ficha vinculada' : (record.isActive ?? record.active) === false ? 'Inactiva' : 'Vigente';
       summary.push([code, ...(includeNames ? [client.name] : []), state, exportDateLabel(last), elapsed,
         bought, returned, bought - returned, courtesy, analyticsRoundMoney(netSales), analyticsRoundMoney(refund),
-        paid, periodDays.size, historicalUnits, client.paidCount, historicalDays.size, ranked[0]?.label || '']);
+        paid, periodDays.size, historicalUnits, client.paidCount, historicalDays.size, ranked[0]?.label || '',
+        origin, recordStatus, client.lines.length]);
       for (const product of ranked){
         products.push([code, product.label, product.period, product.historical]);
       }
     }
 
-    return {summary, products, cutoff};
+    return {summary, products, cutoff, linkedCount, catalogOnlyCount:catalogOnly.length,
+      historyOnlyCount:rows.length - linkedCount};
   }
 
   function eventProductExportRows(filtered){
@@ -2994,21 +3011,28 @@ function rebuildHorasEventOptions(filteredSales){
     return { byId, resolveFinalId, matchNameToFinalId, getDisplayName };
   }
 
+  function catalogClientRows(resolver){
+    const rows = [];
+    for (const [id, record] of resolver.byId){
+      if (String(record.mergedIntoId ?? '').trim()) continue;
+      const name = sanitizeCustomerName(record.name || record.nombre);
+      if (!name) continue;
+      rows.push({key:'id:' + id, customerId:id, name, catalogOnly:true, paidCount:0, lines:[], pres:new Map()});
+    }
+    return rows;
+  }
+
   function classifyFormat(sale){
     const productId = saleProductId(sale);
     return productId && catalogProductMap().has(productId) ? productId : '';
   }
 
-  function buildClientsIndex(filteredSales){
+  function buildClientsIndex(filteredSales, resolver = buildCustomerResolver(loadPosCustomerCatalog())){
     const map = new Map();
-
-    const catalog = loadPosCustomerCatalog();
-    const resolver = buildCustomerResolver(catalog);
 
     for (const s of (filteredSales || [])){
       const rawName = (s && (s.customerName || s.customer)) || '';
       const name = sanitizeCustomerName(rawName);
-      if (!name) continue;
 
       const saleCustomerId = (s && s.customerId != null) ? String(s.customerId).trim() : '';
       let finalId = '';
@@ -3030,6 +3054,7 @@ function rebuildHorasEventOptions(filteredSales){
         }
       }
 
+      if (!name && !finalId) continue;
       const key = finalId ? `id:${finalId}` : `name:${normalizeKey(name) || name}`;
       if (!map.has(key)){
         const disp = finalId ? (resolver.getDisplayName(finalId) || name) : name;
@@ -3171,8 +3196,7 @@ function rebuildHorasEventOptions(filteredSales){
 
     if (!total){
       res.textContent = 'Sin datos: aún no hay ventas con Cliente en el periodo seleccionado.';
-      listEl.innerHTML = '';
-      emptyEl.style.display = 'block';
+      renderClientList(lastClientsIndex);
       renderClientDetail(null, lastClientsIndex);
       writeRecosCache(lastClientsIndex, presStats, eventStats, range);
       renderRecosPreview();
@@ -3207,7 +3231,11 @@ function rebuildHorasEventOptions(filteredSales){
 
     const q = normalizeKey(clientesSearch || '');
     const rowsAll = (index && Array.isArray(index.rows)) ? index.rows : [];
-    const rows = q ? rowsAll.filter(c => normalizeKey(c.name).includes(q) || normalizeKey(clientFollowupCode(c.key)) === q) : rowsAll;
+    let rows = q ? rowsAll.filter(c => normalizeKey(c.name).includes(q) || normalizeKey(clientFollowupCode(c.key)) === q) : rowsAll;
+    if (!rows.length && /^c-[0-9a-f]{16}$/i.test(clientesSearch)){
+      const resolver = buildCustomerResolver(loadPosCustomerCatalog());
+      rows = catalogClientRows(resolver).filter(client => normalizeKey(clientFollowupCode(client.key)) === q);
+    }
 
     if (countEl) countEl.textContent = rows.length ? `${rows.length} visibles` : '';
 
@@ -3220,7 +3248,7 @@ function rebuildHorasEventOptions(filteredSales){
 
     const html = rows.map(c => {
       const last = c.lastPaidAt ? formatDateCompact(c.lastPaidAt) : '—';
-      const dormChip = c.isDormido ? `<span class="chip red">Dormido</span>` : `<span class="chip green">Activo</span>`;
+      const dormChip = c.catalogOnly ? '<span class="chip">Ficha de catálogo</span>' : c.isDormido ? `<span class="chip red">Dormido</span>` : `<span class="chip green">Activo</span>`;
       const active = (selectedClientKey === c.key) ? 'active' : '';
       return `
         <li class="cliente-row ${active}" data-client="${escapeHtml(c.key)}">
@@ -3247,7 +3275,7 @@ function rebuildHorasEventOptions(filteredSales){
         selectedClientKey = key;
         // marcar activo
         listEl.querySelectorAll('.cliente-row').forEach(x => x.classList.toggle('active', x === li));
-        renderClientDetail(key, index);
+        renderClientDetail(key, { ...index, rows });
       });
     });
   }
@@ -3302,7 +3330,7 @@ function rebuildHorasEventOptions(filteredSales){
     // Badges
     if (badgesEl){
       const lastText = c.lastPaidAt ? `Última: ${formatDateCompact(c.lastPaidAt)}` : 'Sin compras pagadas';
-      const dormText = c.isDormido ? `Dormido (≥${dormidosDays}d)` : 'Activo';
+      const dormText = c.catalogOnly ? 'Ficha de catálogo' : c.isDormido ? `Dormido (≥${dormidosDays}d)` : 'Activo';
       badgesEl.innerHTML = `
         <span class="chip ${c.isDormido ? 'red' : 'green'}">${escapeHtml(dormText)}</span>
         <span class="chip">${escapeHtml(lastText)}</span>
@@ -3324,7 +3352,8 @@ function rebuildHorasEventOptions(filteredSales){
     // Segmento
     if (segEl){
       const segItems = [];
-      if (c.isDormido) segItems.push(['Dormido', `≥${dormidosDays} días sin comprar`]);
+      if (c.catalogOnly) segItems.push(['Catálogo', 'Sin movimientos en el listado actual']);
+      else if (c.isDormido) segItems.push(['Dormido', `≥${dormidosDays} días sin comprar`]);
       else segItems.push(['Activo', `${Math.max(0, c.daysSinceLast || 0)} días desde la última compra`]);
       if (compras >= 5) segItems.push(['Frecuente', '5+ compras en el rango']);
       if (ticket >= 250) segItems.push(['Ticket alto', 'Promedio ≥ C$ 250']);

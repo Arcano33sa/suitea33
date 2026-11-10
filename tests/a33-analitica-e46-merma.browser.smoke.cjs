@@ -45,6 +45,12 @@ let browser;
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(origin + '/__e46_seed.html');
+  await page.evaluate(() => localStorage.setItem('a33_pos_customersCatalog', JSON.stringify([
+    {id:'active', name:'Cliente privado de prueba'},
+    {id:'merged', name:'Nombre anterior de prueba', mergedIntoId:'active'},
+    {id:'catalog-only', name:'Cliente solo catálogo de prueba', celular:'55500000'},
+    {id:'inactive', name:'Cliente de ficha inactiva', isActive:false}
+  ])));
   await page.evaluate(() => new Promise((resolve, reject) => {
     const request = indexedDB.open('a33-pos', 1);
     request.onupgradeneeded = () => {
@@ -56,7 +62,7 @@ let browser;
       const tx = db.transaction(['sales','events','products','reempaques'], 'readwrite');
       const base={date:'2026-10-10',eventId:1,eventName:'Evento E4.6',productId:'p1',productName:'Producto E4.6',customerName:'Cliente privado de prueba',time:'13:15',unitPrice:100,loteCodigo:'001-A'};
       const rows=[
-        {...base,id:1,qty:2,total:180,discount:20,lineCost:60,payment:'tarjeta',commissionAmountSnapshot:9,commissionLabelSnapshot:'Banco histórico 5%'},
+        {...base,id:1,customerId:'merged',customerName:'',qty:2,total:180,discount:20,lineCost:60,payment:'tarjeta',commissionAmountSnapshot:9,commissionLabelSnapshot:'Banco histórico 5%'},
         {...base,id:2,date:'2026-10-20',qty:-1,total:-100,lineCost:-30,isReturn:true,payment:'tarjeta',commissionAmountSnapshot:-5,commissionLabelSnapshot:'Banco histórico 5%'},
         {...base,id:3,date:'2026-10-20',qty:1,total:0,lineCost:30,courtesy:true},
         {...base,id:4,date:'2026-10-21',qty:1,total:100,lineCost:30,payment:'tarjeta',commissionSnapshotStatus:'no_determinada'},
@@ -204,13 +210,23 @@ let browser;
   assert.strictEqual(kpi(rowsFor('Resumen anterior'), 'Ventas totales'), 180);
   assert.strictEqual(kpi(rowsFor('Resumen anterior'), 'Merma final (C$)'), 0);
   assert.deepStrictEqual(rowsFor('Evento por producto')[1].slice(4, 8), [1, 0, -25, 1]);
-  const [, activeClient, dormantClient, unpaidClient] = rowsFor('Clientes');
+  const [, activeClient, dormantClient, unpaidClient, catalogClient, inactiveClient] = rowsFor('Clientes');
   const [activeCode] = activeClient;
   const [dormantCode] = dormantClient;
   assert.match(activeCode, /^C-[0-9A-F]{16}$/);
-  assert.deepStrictEqual(activeClient.slice(1), ['Activo', '2026-10-21', 8, 1, 1, 0, 1, 0, 100, 1, 1, 4, 3, 3, 'Producto E4.6']);
-  assert.deepStrictEqual(dormantClient.slice(1), ['Dormido', '2026-08-01', 89, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 'Producto E4.6']);
+  assert.deepStrictEqual(activeClient.slice(1, -3), ['Activo', '2026-10-21', 8, 1, 1, 0, 1, 0, 100, 1, 1, 4, 3, 3, 'Producto E4.6']);
+  assert.deepStrictEqual(dormantClient.slice(1, -3), ['Dormido', '2026-08-01', 89, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 'Producto E4.6']);
   assert.strictEqual(unpaidClient[1], 'Sin compras pagadas');
+  assert.deepStrictEqual(activeClient.slice(-3), ['Catálogo e historial', 'Vigente', 5]);
+  assert.deepStrictEqual(dormantClient.slice(-3), ['Solo historial', 'Sin ficha vinculada', 1]);
+  assert.strictEqual(catalogClient[1], 'Sin compras pagadas');
+  assert.strictEqual(catalogClient[2], '');
+  assert.deepStrictEqual(catalogClient.slice(-3), ['Solo catálogo', 'Vigente', 0]);
+  assert.deepStrictEqual(inactiveClient.slice(-3), ['Solo catálogo', 'Inactiva', 0]);
+  assert.strictEqual(rowsFor('Clientes').length, 6);
+  assert.strictEqual(book.Sheets.Clientes['!autofilter'].ref, book.Sheets.Clientes['!ref']);
+  assert.ok(rowsFor('Alcance').some(row => row[0] === 'Seleccionado · fichas sin movimientos vinculados' && row[1] === 2));
+  assert.ok(!JSON.stringify(book).includes('55500000'));
   assert.strictEqual(rowsFor('Clientes anterior')[1][0], activeCode);
   assert.deepStrictEqual(rowsFor('Clientes anterior')[1].slice(1, 4), ['Activo', '2026-10-10', 9]);
   assert.deepStrictEqual(rowsFor('Clientes por producto')[1], [activeCode, 'Producto E4.6', 1, 4]);
@@ -224,11 +240,17 @@ let browser;
   await page.locator('#clientes-buscar').fill(dormantCode);
   assert.strictEqual(await page.locator('#clientes-list .cliente-row').count(), 1);
   assert.match(await page.locator('#clientes-list').textContent(), /Cliente dormido de prueba/);
+  await page.locator('#clientes-buscar').fill(catalogClient[0]);
+  await page.locator('#clientes-list .cliente-select').click();
+  assert.strictEqual(await page.locator('#cliente-nombre').textContent(), 'Cliente solo catálogo de prueba');
   await page.locator('#btn-export-consolidado').click();
   await customerNames.check();
   const named = await download(() => modal.getByRole('button', {name:'Descargar Excel'}).click(),
     'analitica_consolidada.xlsx', 'Clientes');
   assert.deepStrictEqual(named[1].slice(0, 2), [activeCode, 'Cliente privado de prueba']);
+  assert.ok(named.some(row => row[1] === 'Cliente solo catálogo de prueba'));
+  assert.ok(!named.some(row => row[1] === 'Nombre anterior de prueba'));
+  assert.ok(!JSON.stringify(books.at(-1)).includes('55500000'));
   await page.locator('#btn-export-consolidado').click();
   assert.strictEqual(await customerNames.isChecked(), false);
   await modal.getByRole('button', {name:'Cancelar'}).click();
