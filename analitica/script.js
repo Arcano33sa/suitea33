@@ -1989,6 +1989,9 @@ function rebuildHorasEventOptions(filteredSales){
       ['Conciliación de clientes', 'Se cruza el historial al corte con el catálogo actual. Las fichas fusionadas se consolidan en el destino. Una ficha sin movimientos vinculados puede ser posterior al corte.'],
       ['Estado de ficha', 'Estado actual del catálogo. Es independiente de Activo o Dormido según la última compra.'],
       ['Compras de clientes', 'Solo compras pagadas. Las devoluciones y cortesías se muestran por separado. Frecuencia medida en líneas pagadas y días con compras.'],
+      ['Ritmo de compra', 'Mediana de días calendario entre fechas consecutivas con compras pagadas hasta el corte. Se calcula desde tres días de compra distintos.'],
+      ['Último día de compra', 'Suma de líneas pagadas y productos de la última fecha con compras. Las devoluciones y cortesías se excluyen. Un día puede contener varias compras.'],
+      ['Ventas netas históricas de clientes', 'Importes del historial hasta el corte, incluidas las devoluciones y excluidas las cortesías.'],
       ['Productos de clientes', 'Unidades compradas por producto. Preferencias históricas según unidades pagadas, antes de devoluciones.'],
       ['Avanzado', 'Actividad por hora registrada en el POS'],
       ['Evento por producto', 'Utilidad después de cortesías y comisiones determinadas, antes de merma final']];
@@ -2075,12 +2078,15 @@ function rebuildHorasEventOptions(filteredSales){
       'Unidades de cortesía en período', 'Ventas netas en período (C$)', 'Devoluciones en período (C$)',
       'Líneas pagadas en período', 'Días con compras en período', 'Unidades compradas históricas',
       'Líneas pagadas históricas', 'Días con compras históricos', 'Producto más comprado histórico',
+      'Ventas netas históricas (C$)', 'Penúltimo día con compra pagada', 'Antepenúltimo día con compra pagada',
+      'Intervalo mediano entre días de compra', 'Importe pagado del último día de compra (C$)',
+      'Unidades compradas del último día de compra', 'Productos comprados del último día de compra',
       'Origen', 'Estado de ficha', 'Líneas históricas vinculadas']];
     const products = [['Código de seguimiento', 'Producto', 'Unidades compradas en período', 'Unidades compradas históricas']];
 
     for (const client of [...rows, ...catalogOnly]){
       const code = clientFollowupCode(client.key);
-      const historicalDays = new Set();
+      const purchaseDays = new Map();
       const periodDays = new Set();
       const purchases = new Map();
       let bought = 0, returned = 0, courtesy = 0, netSales = 0, refund = 0, paid = 0, historicalUnits = 0;
@@ -2088,7 +2094,12 @@ function rebuildHorasEventOptions(filteredSales){
         const inPeriod = saleInRange(line, range);
         const paidPurchase = !line.isCourtesy && !line.isReturn && line.total > 0;
         if (paidPurchase){
-          historicalDays.add(line.date);
+          const day = exportDateLabel(parseSaleDate(line.date));
+          if (!purchaseDays.has(day)) purchaseDays.set(day, {total:0, units:0, products:new Map()});
+          const daily = purchaseDays.get(day);
+          daily.total += line.total;
+          daily.units += line.units;
+          daily.products.set(line.productKey, line.productLabel);
           historicalUnits += line.units;
           if (!purchases.has(line.productKey)) {
             purchases.set(line.productKey, {label:line.productLabel, period:0, historical:0});
@@ -2113,16 +2124,21 @@ function rebuildHorasEventOptions(filteredSales){
         }
       }
       const ranked = Array.from(purchases.values()).sort((a,b) => b.historical - a.historical);
-      const last = client.lastPaidAt;
-      const elapsed = last ? Math.max(0, exportCalendarDay(cutoff) - exportCalendarDay(last)) : null;
+      const dates = Array.from(purchaseDays.keys()).sort();
+      const last = dates.at(-1);
+      const lastDay = purchaseDays.get(last);
+      const elapsed = last ? Math.max(0, exportCalendarDay(cutoff) - exportCalendarDay(parseSaleDate(last))) : null;
+      const medianInterval = medianPurchaseInterval(dates);
       const state = elapsed == null ? 'Sin compras pagadas' : elapsed >= dormidosDays ? 'Dormido' : 'Activo';
       const record = resolver.byId.get(client.customerId);
       const origin = client.catalogOnly ? 'Solo catálogo' : record ? 'Catálogo e historial' : 'Solo historial';
       const recordStatus = !record ? 'Sin ficha vinculada' : (record.isActive ?? record.active) === false ? 'Inactiva' : 'Vigente';
-      summary.push([code, ...(includeNames ? [client.name] : []), state, exportDateLabel(last), elapsed,
+      summary.push([code, ...(includeNames ? [client.name] : []), state, last || '', elapsed,
         bought, returned, bought - returned, courtesy, analyticsRoundMoney(netSales), analyticsRoundMoney(refund),
-        paid, periodDays.size, historicalUnits, client.paidCount, historicalDays.size, ranked[0]?.label || '',
-        origin, recordStatus, client.lines.length]);
+        paid, periodDays.size, historicalUnits, client.paidCount, dates.length, ranked[0]?.label || '',
+        analyticsRoundMoney(client.totalNet || 0), dates.at(-2) || '', dates.at(-3) || '', medianInterval,
+        lastDay ? analyticsRoundMoney(lastDay.total) : null, lastDay?.units ?? null,
+        lastDay ? Array.from(lastDay.products.values()).join(', ') : '', origin, recordStatus, client.lines.length]);
       for (const product of ranked){
         products.push([code, product.label, product.period, product.historical]);
       }
@@ -2130,6 +2146,14 @@ function rebuildHorasEventOptions(filteredSales){
 
     return {summary, products, cutoff, linkedCount, catalogOnlyCount:catalogOnly.length,
       historyOnlyCount:rows.length - linkedCount};
+  }
+
+  function medianPurchaseInterval(dates){
+    if (dates.length < 3) return null;
+    const days = dates.map(date => exportCalendarDay(parseSaleDate(date)));
+    const intervals = days.slice(1).map((day, index) => day - days[index]).sort((a,b) => a - b);
+    const middle = Math.floor(intervals.length / 2);
+    return intervals.length % 2 ? intervals[middle] : (intervals[middle - 1] + intervals[middle]) / 2;
   }
 
   function eventProductExportRows(filtered){
