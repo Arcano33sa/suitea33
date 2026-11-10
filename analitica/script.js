@@ -1909,7 +1909,12 @@ function rebuildHorasEventOptions(filteredSales){
     if (!dialog) return;
     const form = document.getElementById('analytics-export-form');
     const error = document.getElementById('analytics-export-error');
-    const { period, from, to, previous } = form.elements;
+    const { period, from, to, previous, customerNames } = form.elements;
+    const clientsSection = form.querySelector('[name="section"][value="Clientes"]');
+    clientsSection.addEventListener('change', () => {
+      customerNames.disabled = !clientsSection.checked;
+      if (customerNames.disabled) customerNames.checked = false;
+    });
     const analyticsPeriod = document.getElementById('period-select');
     const customRange = document.getElementById('analytics-export-custom-range');
     period.replaceChildren(...Array.from(analyticsPeriod.options, option => option.cloneNode(true)));
@@ -1922,6 +1927,7 @@ function rebuildHorasEventOptions(filteredSales){
     }
 
     document.getElementById('btn-export-consolidado').addEventListener('click', () => {
+      customerNames.checked = false;
       period.value = analyticsPeriod.value;
       from.value = document.getElementById('date-from').value;
       to.value = document.getElementById('date-to').value;
@@ -1945,7 +1951,7 @@ function rebuildHorasEventOptions(filteredSales){
         }
         if (!sections.length) throw new Error('Selecciona al menos una sección.');
         if (typeof XLSX === 'undefined') throw new Error('No se cargó la librería de Excel.');
-        const workbook = buildConsolidatedWorkbook(range, sections, previous.checked);
+        const workbook = buildConsolidatedWorkbook(range, sections, previous.checked, customerNames.checked);
         XLSX.writeFile(workbook, 'analitica_consolidada.xlsx');
         dialog.close();
         window.A33Notice.show('Excel exportado correctamente.', 'success');
@@ -1956,11 +1962,14 @@ function rebuildHorasEventOptions(filteredSales){
     });
   }
 
-  function buildConsolidatedWorkbook(range, sections, includePrevious){
+  function exportCalendarDay(date){
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
+  }
+
+  function buildConsolidatedWorkbook(range, sections, includePrevious, includeCustomerNames = false){
     const periods = [{ label:'Seleccionado', suffix:'', range }];
     if (includePrevious && range.from && range.to){
-      const dayNumber = date => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
-      const days = dayNumber(range.to) - dayNumber(range.from) + 1;
+      const days = exportCalendarDay(range.to) - exportCalendarDay(range.from) + 1;
       periods.push({ label:'Anterior', suffix:' anterior', range:{
         from:addDays(range.from, -days), to:addDays(range.from, -1)
       }});
@@ -1975,7 +1984,10 @@ function rebuildHorasEventOptions(filteredSales){
       ['Utilidad después de cortesías', 'Utilidad bruta menos costo de cortesías'],
       ['Utilidad después de comisión y merma', 'Utilidad después de cortesías menos comisiones determinadas y costo de merma final'],
       ['Resultados parciales', 'Revisar comisiones no determinadas y estado de merma. No se descuentan gastos de participación.'],
-      ['Clientes', 'Filas sin nombres ni identificadores. El orden no vincula clientes entre períodos.'],
+      ['Clientes', 'El código permite vincular al mismo cliente entre hojas y buscarlo en Analítica → Clientes, con Todo el histórico.'],
+      ['Corte de clientes', 'Fin del período exportado o fecha de exportación si no tiene fin. Se usa el historial disponible hasta el corte.'],
+      ['Compras de clientes', 'Solo compras pagadas. Las devoluciones y cortesías se muestran por separado. Frecuencia medida en líneas pagadas y días con compras.'],
+      ['Productos de clientes', 'Unidades compradas por producto. Preferencias históricas según unidades pagadas, antes de devoluciones.'],
       ['Avanzado', 'Actividad por hora registrada en el POS'],
       ['Evento por producto', 'Utilidad después de cortesías y comisiones determinadas, antes de merma final']];
     const scope = XLSX.utils.aoa_to_sheet(metadata);
@@ -1991,16 +2003,22 @@ function rebuildHorasEventOptions(filteredSales){
         [period.label + ' · registros de merma final', merma.length]
       ], {origin:-1});
 
+      const clients = sections.includes('Clientes')
+        ? clientExportRows(period.range, includeCustomerNames) : null;
+      if (clients){
+        XLSX.utils.sheet_add_aoa(scope, [
+          [period.label + ' · corte de clientes', exportDateLabel(clients.cutoff)],
+          [period.label + ' · umbral de dormidos (días)', dormidosDays],
+          [period.label + ' · nombres de clientes', includeCustomerNames ? 'Incluidos' : 'Omitidos']
+        ], {origin:-1});
+      }
+
       const sectionsForPeriod = {
         Resumen: () => summaryExportRows(filtered, merma),
         Eventos: () => eventExportRows(buildEventStats(filtered, events, merma)),
         Productos: () => productExportRows(buildPresentationStats(filtered)),
         'Evento por producto': () => eventProductExportRows(filtered),
-        Clientes: () => [
-          ['Ventas netas (C$)', 'Líneas pagadas', 'Líneas registradas', 'Devoluciones (C$)'],
-          ...buildClientsIndex(filtered).rows.map(client =>
-            [client.totalNet, client.paidCount, client.txCount, client.returnsValueAbs])
-        ],
+        Clientes: () => clients.summary,
         Cortesías: () => [
           ['Fecha', 'Evento', 'Producto', 'Código de lote', 'Unidades', 'Valor comercial (C$)', 'Costo (C$)'],
           ...filtered.filter(sale => sale.courtesy || sale.isCourtesy).map(sale => {
@@ -2017,10 +2035,84 @@ function rebuildHorasEventOptions(filteredSales){
         const sheet = analyticsMoneySheet(rows, name);
         sheet['!cols'] = rows[0].map(() => ({wch:24}));
         XLSX.utils.book_append_sheet(workbook, sheet, name + period.suffix);
+        if (name === 'Clientes'){
+          const products = XLSX.utils.aoa_to_sheet(clients.products);
+          products['!cols'] = [{wch:24}, {wch:30}, {wch:28}, {wch:28}];
+          XLSX.utils.book_append_sheet(workbook, products, 'Clientes por producto' + period.suffix);
+        }
       }
     }
     scope['!cols'] = [{wch:40}, {wch:92}];
     return workbook;
+  }
+
+  function clientFollowupCode(key){
+    let hash = 0xcbf29ce484222325n;
+    for (const character of key){
+      hash ^= BigInt(character.codePointAt(0));
+      hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+    }
+    return 'C-' + hash.toString(16).padStart(16, '0').toUpperCase();
+  }
+
+  function clientExportRows(range, includeNames){
+    const cutoff = range.to || new Date();
+    const history = sales.filter(sale => saleInRange(sale, {to:cutoff}));
+    const summary = [['Código de seguimiento', ...(includeNames ? ['Nombre'] : []),
+      'Estado al corte', 'Última compra pagada', 'Días desde la última compra',
+      'Unidades compradas en período', 'Unidades devueltas en período', 'Unidades netas en período',
+      'Unidades de cortesía en período', 'Ventas netas en período (C$)', 'Devoluciones en período (C$)',
+      'Líneas pagadas en período', 'Días con compras en período', 'Unidades compradas históricas',
+      'Líneas pagadas históricas', 'Días con compras históricos', 'Producto más comprado histórico']];
+    const products = [['Código de seguimiento', 'Producto', 'Unidades compradas en período', 'Unidades compradas históricas']];
+
+    for (const client of buildClientsIndex(history).rows){
+      const code = clientFollowupCode(client.key);
+      const historicalDays = new Set();
+      const periodDays = new Set();
+      const purchases = new Map();
+      let bought = 0, returned = 0, courtesy = 0, netSales = 0, refund = 0, paid = 0, historicalUnits = 0;
+      for (const line of client.lines){
+        const inPeriod = saleInRange(line, range);
+        const paidPurchase = !line.isCourtesy && !line.isReturn && line.total > 0;
+        if (paidPurchase){
+          historicalDays.add(line.date);
+          historicalUnits += line.units;
+          if (!purchases.has(line.productKey)) {
+            purchases.set(line.productKey, {label:line.productLabel, period:0, historical:0});
+          }
+          const product = purchases.get(line.productKey);
+          product.historical += line.units;
+          if (inPeriod) product.period += line.units;
+        }
+        if (!inPeriod) continue;
+        if (line.isCourtesy){
+          courtesy += line.isReturn ? -line.units : line.units;
+          continue;
+        }
+        netSales += line.total;
+        if (line.isReturn){
+          returned += line.units;
+          refund += Math.max(0, -line.total);
+        } else if (paidPurchase){
+          bought += line.units;
+          paid++;
+          periodDays.add(line.date);
+        }
+      }
+      const ranked = Array.from(purchases.values()).sort((a,b) => b.historical - a.historical);
+      const last = client.lastPaidAt;
+      const elapsed = last ? Math.max(0, exportCalendarDay(cutoff) - exportCalendarDay(last)) : null;
+      const state = elapsed == null ? 'Sin compras pagadas' : elapsed >= dormidosDays ? 'Dormido' : 'Activo';
+      summary.push([code, ...(includeNames ? [client.name] : []), state, exportDateLabel(last), elapsed,
+        bought, returned, bought - returned, courtesy, analyticsRoundMoney(netSales), analyticsRoundMoney(refund),
+        paid, periodDays.size, historicalUnits, client.paidCount, historicalDays.size, ranked[0]?.label || '']);
+      for (const product of ranked){
+        products.push([code, product.label, product.period, product.historical]);
+      }
+    }
+
+    return {summary, products, cutoff};
   }
 
   function eventProductExportRows(filtered){
@@ -3028,6 +3120,9 @@ function rebuildHorasEventOptions(filteredSales){
         dt,
         eventName: s.eventName || 'General',
         productName: uiProdName(s.productName || '—'),
+        productKey: presKey,
+        productLabel: presLabel,
+        units: qtyAbs,
         total,
         isReturn,
         isCourtesy
@@ -3112,7 +3207,7 @@ function rebuildHorasEventOptions(filteredSales){
 
     const q = normalizeKey(clientesSearch || '');
     const rowsAll = (index && Array.isArray(index.rows)) ? index.rows : [];
-    const rows = q ? rowsAll.filter(c => normalizeKey(c.name).includes(q)) : rowsAll;
+    const rows = q ? rowsAll.filter(c => normalizeKey(c.name).includes(q) || normalizeKey(clientFollowupCode(c.key)) === q) : rowsAll;
 
     if (countEl) countEl.textContent = rows.length ? `${rows.length} visibles` : '';
 

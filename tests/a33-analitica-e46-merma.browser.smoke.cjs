@@ -60,7 +60,9 @@ let browser;
         {...base,id:2,date:'2026-10-20',qty:-1,total:-100,lineCost:-30,isReturn:true,payment:'tarjeta',commissionAmountSnapshot:-5,commissionLabelSnapshot:'Banco histórico 5%'},
         {...base,id:3,date:'2026-10-20',qty:1,total:0,lineCost:30,courtesy:true},
         {...base,id:4,date:'2026-10-21',qty:1,total:100,lineCost:30,payment:'tarjeta',commissionSnapshotStatus:'no_determinada'},
-        {...base,id:5,date:'2026-10-09',qty:1,total:900,lineCost:30}
+        {...base,id:5,date:'2026-10-09',qty:1,total:900,lineCost:30},
+        {...base,id:6,date:'2026-08-01',customerName:'Cliente dormido de prueba',qty:1,total:50,lineCost:30},
+        {...base,id:7,date:'2026-08-01',customerName:'Cliente sin compras de prueba',qty:1,total:0,lineCost:30,courtesy:true}
       ];
       for(const row of rows)tx.objectStore('sales').put(row);
       const merma={tipo:'REEMPAQUE_MERMA_FINAL_EVENTO',date:'2026-10-20',eventId:1,mermaFinalMl:100,costoMermaFinal:5,costReliable:true};
@@ -170,7 +172,7 @@ let browser;
   assert.ok(await modal.locator('[name="previous"]').isDisabled());
   const historical = await download(() => modal.getByRole('button', {name:'Descargar Excel'}).click(),
     'analitica_consolidada.xlsx', 'Resumen');
-  assert.strictEqual(historical.find(row => row[1] === 'Ventas totales')[2], 1080);
+  assert.strictEqual(historical.find(row => row[1] === 'Ventas totales')[2], 1130);
   await page.locator('#btn-export-consolidado').click();
   assert.strictEqual(await modalPeriod.inputValue(), 'custom');
   assert.strictEqual(await modal.locator('[name="from"]').inputValue(), '2026-11-01');
@@ -181,7 +183,11 @@ let browser;
   await modal.locator('[name="from"]').fill('2026-10-20');
   await modal.locator('[name="to"]').fill('2026-10-29');
   await modal.locator('[name="previous"]').check();
+  const customerNames = modal.locator('[name="customerNames"]');
+  assert.ok(await customerNames.isDisabled());
   await modal.locator('[value="Clientes"]').check();
+  assert.ok(await customerNames.isEnabled());
+  assert.strictEqual(await customerNames.isChecked(), false);
   await modal.locator('[value="Cortesías"]').check();
   await modal.locator('[value="Avanzado"]').check();
   await modal.locator('[value="Productos"]').uncheck();
@@ -198,11 +204,34 @@ let browser;
   assert.strictEqual(kpi(rowsFor('Resumen anterior'), 'Ventas totales'), 180);
   assert.strictEqual(kpi(rowsFor('Resumen anterior'), 'Merma final (C$)'), 0);
   assert.deepStrictEqual(rowsFor('Evento por producto')[1].slice(4, 8), [1, 0, -25, 1]);
-  assert.deepStrictEqual(rowsFor('Clientes')[1], [0, 1, 3, 100]);
+  const [, activeClient, dormantClient, unpaidClient] = rowsFor('Clientes');
+  const [activeCode] = activeClient;
+  const [dormantCode] = dormantClient;
+  assert.match(activeCode, /^C-[0-9A-F]{16}$/);
+  assert.deepStrictEqual(activeClient.slice(1), ['Activo', '2026-10-21', 8, 1, 1, 0, 1, 0, 100, 1, 1, 4, 3, 3, 'Producto E4.6']);
+  assert.deepStrictEqual(dormantClient.slice(1), ['Dormido', '2026-08-01', 89, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 'Producto E4.6']);
+  assert.strictEqual(unpaidClient[1], 'Sin compras pagadas');
+  assert.strictEqual(rowsFor('Clientes anterior')[1][0], activeCode);
+  assert.deepStrictEqual(rowsFor('Clientes anterior')[1].slice(1, 4), ['Activo', '2026-10-10', 9]);
+  assert.deepStrictEqual(rowsFor('Clientes por producto')[1], [activeCode, 'Producto E4.6', 1, 4]);
+  assert.ok(!JSON.stringify(book).includes('Cliente dormido de prueba'));
   assert.ok(!JSON.stringify(book).includes('Cliente privado de prueba'));
   assert.strictEqual(rowsFor('Cortesías').length, 2);
   assert.deepStrictEqual(rowsFor('Avanzado').find(row => row[0] === '13:00'), ['13:00', 0, 1]);
   assert.ok(rowsFor('Alcance').some(row => row[0] === 'Anterior · desde' && row[1] === '2026-10-10'));
+  await page.selectOption('#period-select', 'all');
+  await page.locator('[data-tab="clientes"]').click();
+  await page.locator('#clientes-buscar').fill(dormantCode);
+  assert.strictEqual(await page.locator('#clientes-list .cliente-row').count(), 1);
+  assert.match(await page.locator('#clientes-list').textContent(), /Cliente dormido de prueba/);
+  await page.locator('#btn-export-consolidado').click();
+  await customerNames.check();
+  const named = await download(() => modal.getByRole('button', {name:'Descargar Excel'}).click(),
+    'analitica_consolidada.xlsx', 'Clientes');
+  assert.deepStrictEqual(named[1].slice(0, 2), [activeCode, 'Cliente privado de prueba']);
+  await page.locator('#btn-export-consolidado').click();
+  assert.strictEqual(await customerNames.isChecked(), false);
+  await modal.getByRole('button', {name:'Cancelar'}).click();
   // Real read failure: a new isolated page injects getAll failure for this store only.
   await context.setOffline(false);
   const fault=await context.newPage();fault.on('pageerror',error=>errors.push(error.message));
@@ -219,7 +248,7 @@ let browser;
   const waste=await page.evaluate(()=>new Promise(resolve=>{const req=indexedDB.open('a33-pos');req.onsuccess=()=>{const db=req.result;const read=db.transaction('reempaques').objectStore('reempaques').getAll();read.onsuccess=()=>{resolve(read.result);db.close();};};}));
   assert.strictEqual(waste.length,7);assert.strictEqual(waste.find(row=>row.id==='provisional').provisionalClose,true);
   assert.strictEqual(waste.find(row=>row.id==='m1').costoMermaFinal,5);
-  assert.strictEqual(intact.length,5);assert.strictEqual(intact[0].commissionAmountSnapshot,9);assert.strictEqual(intact[1].total,-100);
+  assert.strictEqual(intact.length,7);assert.strictEqual(intact[0].commissionAmountSnapshot,9);assert.strictEqual(intact[1].total,-100);
   assert.deepStrictEqual(external.filter(url => !url.startsWith('https://fonts.googleapis.com/')), [], 'Peticiones externas inesperadas: ' + JSON.stringify(external));
   assert.deepStrictEqual(errors, [], 'Errores de página: ' + JSON.stringify(errors));
   console.log('APROBADA E4.6 Chrome: merma confirmada, eventos y meses sin ventas, costo no fiable y lectura fallida parciales, exclusiones y fechas, tres XLSX offline, tablas escritorio/móvil y datos aislados intactos.');

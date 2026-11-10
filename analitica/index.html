@@ -95,7 +95,8 @@
             <label><input type="checkbox" name="section" value="Eventos" checked> Eventos</label>
             <label><input type="checkbox" name="section" value="Productos" checked> Productos</label>
             <label><input type="checkbox" name="section" value="Evento por producto" checked> Evento por producto</label>
-            <label><input type="checkbox" name="section" value="Clientes"> Clientes (sin datos identificativos)</label>
+            <label><input type="checkbox" name="section" value="Clientes"> Clientes (con código de seguimiento)</label>
+            <label><input type="checkbox" name="customerNames" disabled> Incluir nombres de clientes en el Excel</label>
             <label><input type="checkbox" name="section" value="Cortesías"> Cortesías</label>
             <label><input type="checkbox" name="section" value="Avanzado"> Avanzado (horas pico)</label>
           </fieldset>
@@ -423,7 +424,7 @@
         <div class="clientes-top">
           <div class="field" style="max-width:320px;">
             <label for="clientes-buscar">Buscar cliente</label>
-            <input type="text" id="clientes-buscar" placeholder="Nombre del cliente…" autocomplete="off" />
+            <input type="text" id="clientes-buscar" placeholder="Nombre o código de seguimiento…" autocomplete="off" />
           </div>
 
           <div class="field small" style="max-width:220px;">
