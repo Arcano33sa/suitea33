@@ -56,18 +56,34 @@
       <section id="view-tablero" class="fin-view active">
         <header class="fin-section-header">
           <h2>Tablero Finanzas</h2>
-          <p>Resultados y movimiento de dinero del mes o evento seleccionado.</p>
+          <p>Resultados y movimiento de dinero del período o evento seleccionado.</p>
         </header>
 
         <div class="fin-dashboard-band" aria-label="Filtros y referencia monetaria del Tablero operativo">
           <div class="fin-filters-row fin-filters-row--tablero">
-            <label>
+            <label id="tab-periodo-wrap">
+              Período
+              <select id="tab-periodo">
+                <option value="mes">Un mes</option>
+                <option value="rango">Rango de meses</option>
+                <option value="anio">Año completo</option>
+              </select>
+            </label>
+            <label id="tab-mes-wrap">
               Mes
               <select id="tab-mes"></select>
             </label>
-            <label>
+            <label id="tab-anio-wrap">
               Año
               <select id="tab-anio"></select>
+            </label>
+            <label id="tab-desde-wrap" class="hidden">
+              Desde
+              <input id="tab-desde" type="month" required>
+            </label>
+            <label id="tab-hasta-wrap" class="hidden">
+              Hasta
+              <input id="tab-hasta" type="month" required>
             </label>
             <label>
               Vista
@@ -89,6 +105,7 @@
           </div>
         </div>
 
+        <p id="tab-periodo-aplicado" class="fin-muted" aria-live="polite"></p>
         <div id="tab-read-status" class="fin-report-alert warn hidden" role="alert" hidden></div>
 
         <section class="fin-dashboard-group" aria-labelledby="tab-results-title">

@@ -10494,6 +10494,35 @@ function finRenderCardCommissionBreakdown(result) {
   }
 }
 
+function finResolveDashboardPeriod(isEventView, year, month) {
+  const mode = isEventView ? 'mes' : $('#tab-periodo')?.value || 'mes';
+  const isRange = mode === 'rango';
+  $('#tab-periodo-wrap')?.classList.toggle('hidden', isEventView);
+  $('#tab-mes-wrap')?.classList.toggle('hidden', mode !== 'mes');
+  $('#tab-anio-wrap')?.classList.toggle('hidden', isRange);
+  $('#tab-desde-wrap')?.classList.toggle('hidden', !isRange);
+  $('#tab-hasta-wrap')?.classList.toggle('hidden', !isRange);
+
+  const selectedMonth = monthRange(year, month);
+  if (isEventView) return selectedMonth;
+
+  let { start, end } = selectedMonth;
+  if (mode === 'anio') {
+    start = monthRange(year, 1).start;
+    end = monthRange(year, 12).end;
+  } else if (isRange) {
+    const from = $('#tab-desde');
+    const to = $('#tab-hasta');
+    const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+    if (!monthPattern.test(from.value)) from.value = start.slice(0, 7);
+    if (!monthPattern.test(to.value) || to.value < from.value) to.value = from.value;
+    const [endYear, endMonth] = to.value.split('-').map(Number);
+    start = from.value + '-01';
+    end = monthRange(endYear, endMonth).end;
+  }
+  return { start, end };
+}
+
 function renderTablero(data) {
   const mesSel = $('#tab-mes');
   const anioSel = $('#tab-anio');
@@ -10504,9 +10533,16 @@ function renderTablero(data) {
 
   const mes = mesSel.value || pad2(new Date().getMonth() + 1);
   const anio = anioSel.value || String(new Date().getFullYear());
-  const { start, end } = monthRange(Number(anio), Number(mes));
   const vista = String(vistaSel && vistaSel.value || 'GLOBAL').toUpperCase();
   const isEventView = vista === 'EVENT';
+  const { start, end } = finResolveDashboardPeriod(isEventView, Number(anio), Number(mes));
+  const monthLabel = new Intl.DateTimeFormat('es-NI', {
+    month: 'long', year: 'numeric', timeZone: 'UTC'
+  });
+  const firstMonth = monthLabel.format(new Date(start));
+  const lastMonth = monthLabel.format(new Date(end));
+  finSetText('tab-periodo-aplicado', isEventView ? '' :
+    firstMonth === lastMonth ? firstMonth : firstMonth + ' – ' + lastMonth);
   if (eventoWrap) eventoWrap.classList.toggle('hidden', !isEventView);
   if (eventoSel) eventoSel.disabled = !isEventView;
   const eventFilter = finResolveDashboardEventFilter(vista, eventoSel);
@@ -20238,7 +20274,7 @@ function setupModoERToggle() {
 
 function setupFilterListeners() {
   // Tablero
-  ['tab-mes', 'tab-anio', 'tab-vista', 'tab-evento'].forEach(id => {
+  ['tab-periodo', 'tab-mes', 'tab-anio', 'tab-desde', 'tab-hasta', 'tab-vista', 'tab-evento'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', () => {
       if (finCachedData) renderTablero(finCachedData);
