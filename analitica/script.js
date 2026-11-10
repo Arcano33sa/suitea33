@@ -1940,8 +1940,10 @@ function rebuildHorasEventOptions(filteredSales){
     from.addEventListener('input', updatePeriodFields);
     to.addEventListener('input', updatePeriodFields);
 
-    form.addEventListener('submit', event => {
+    form.addEventListener('submit', async event => {
       event.preventDefault();
+      const submit = form.querySelector('[type=submit]');
+      if (submit.disabled) return;
       const sections = Array.from(form.querySelectorAll('[name="section"]:checked'), input => input.value);
       const range = resolvePeriodRange(period.value, from.value, to.value);
       error.hidden = true;
@@ -1951,22 +1953,180 @@ function rebuildHorasEventOptions(filteredSales){
         }
         if (!sections.length) throw new Error('Selecciona al menos una sección.');
         if (typeof XLSX === 'undefined') throw new Error('No se cargó la librería de Excel.');
-        const workbook = buildConsolidatedWorkbook(range, sections, previous.checked, customerNames.checked);
+        const includePrevious = previous.checked;
+        const includeNames = customerNames.checked;
+        submit.disabled = true;
+        const expenses = sections.includes('Eventos') ? await readEventExpensesAnalytics() : null;
+        if (!dialog.open) return;
+        const workbook = buildConsolidatedWorkbook(range, sections, includePrevious, includeNames, expenses);
         XLSX.writeFile(workbook, 'analitica_consolidada.xlsx');
         dialog.close();
         window.A33Notice.show('Excel exportado correctamente.', 'success');
       } catch (failure) {
         error.textContent = failure.message || 'No se pudo exportar el Excel.';
         error.hidden = false;
+      } finally {
+        submit.disabled = false;
       }
     });
+  }
+
+  function readFinanceExpenseStores(){
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('finanzasDB');
+      request.onupgradeneeded = () => request.transaction.abort();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const financeDb = request.result;
+        const stores = ['journalEntries', 'receipts'].filter(name => financeDb.objectStoreNames.contains(name));
+        if (!stores.length){
+          financeDb.close();
+          resolve({entries:[], receipts:[], complete:false});
+          return;
+        }
+        const tx = financeDb.transaction(stores, 'readonly');
+        const entries = stores.includes('journalEntries') ? tx.objectStore('journalEntries').getAll() : null;
+        const receipts = stores.includes('receipts') ? tx.objectStore('receipts').getAll() : null;
+        tx.oncomplete = () => {
+          financeDb.close();
+          resolve({entries:entries?.result || [], receipts:receipts?.result || [], complete:stores.length === 2});
+        };
+        tx.onabort = () => {
+          financeDb.close();
+          reject(tx.error);
+        };
+      };
+    });
+  }
+
+  async function readEventExpensesAnalytics(){
+    const [finance, cash] = await Promise.allSettled([
+      readFinanceExpenseStores(),
+      db?.objectStoreNames.contains('cashV2') ? getAll('cashV2') : Promise.reject(new Error('Sin almacén cashV2'))
+    ]);
+    const {entries = [], receipts = [], complete = false} = finance.value || {};
+    const rows = [];
+    const seen = new Set();
+    const isExpense = (record, legacy, explicit = record.operationalClass || record.clasificacionOperativa || record.tipoOperativo) => {
+      const type = String(explicit || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+      return type ? ['EXPENSE', 'GASTO', 'EGRESO_OPERATIVO'].includes(type) : legacy;
+    };
+    const isUsd = value => /^(USD|US\$|\$|SECONDARY|D[ÓO]LAR(?:ES)?)$/i.test(String(value || '').trim());
+    const positiveAmount = values => values.map(Number).find(value => Number.isFinite(value) && value !== 0);
+    function add(source, id, eventId, date, amount, reference, note, channel){
+      if (eventId == null || eventId === '') return;
+      const dateISO = String(date || '').slice(0, 10);
+      const value = analyticsRoundMoney(Math.abs(amount || 0));
+      const key = id ? JSON.stringify([source, String(id)]) : JSON.stringify([
+        source, dateISO, String(eventId), String(reference || '').trim().toLowerCase(),
+        String(note || '').trim().toLowerCase(), String(channel || '').trim().toLowerCase(), value
+      ]);
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({eventId:String(eventId), date:dateISO, amount:value || null});
+    }
+    for (const entry of entries){
+      const source = String(entry?.source || entry?.origen || '').trim();
+      const type = String(entry?.tipoMovimiento || '').trim().toLowerCase();
+      if (!entry || !(source === 'manual_financial_account' || source === 'Interno' || (!source && type))) continue;
+      if (!isExpense(entry, ['egreso', 'gasto'].includes(type),
+        entry.operationalClass || entry.clasificacionOperativa || entry.tipoOperativo || entry.cashOperationalClass)) continue;
+      const base = [entry.baseAmountNio, entry.equivalenteNIO, entry.equivalenteCordobas, entry.totalNio,
+        entry.totalDebe, entry.totalHaber];
+      const amount = positiveAmount(isUsd(entry.originalCurrency || entry.moneda)
+        ? base : [...base, entry.total, entry.amount, entry.monto]);
+      add(source || 'manual', entry.id, entry.posEventId, entry.fecha || entry.date, amount,
+        entry.reference || entry.referencia, entry.descripcion, entry.paymentMethod || entry.medio || entry.financialAccountType);
+    }
+    for (const receipt of receipts){
+      if (!receipt) continue;
+      const status = String(receipt.status || receipt.estado || '').trim().toUpperCase();
+      if (status && !['ISSUED', 'EMITIDO', 'EMITIDA'].includes(status)) continue;
+      if (!isExpense(receipt, false, receipt.operationalClass || receipt.clasificacionOperativa ||
+        receipt.tipoOperativo || receipt.receiptOperationalClass)) continue;
+      const original = receipt.totalOriginal || receipt.originalAmount || receipt.montoOriginal ||
+        receipt.totals?.total || receipt.total || receipt.monto || receipt.amount;
+      const amount = positiveAmount([receipt.baseAmountNio, receipt.equivalenteNIO, receipt.equivalenteCordobas,
+        isUsd(receipt.originalCurrency || receipt.monedaOriginal || receipt.currency || receipt.moneda) ? null : original]);
+      add('receipts', receipt.receiptId || receipt.id, receipt.posEventId, receipt.dateISO || receipt.fecha || receipt.date,
+        amount, receipt.paymentRef || receipt.referenciaPago || receipt.reference, receipt.clientName || receipt.descripcion,
+        receipt.paymentType || receipt.paymentMethod || receipt.medio || receipt.metodoPago || 'cash');
+    }
+    for (const record of cash.value || []){
+      for (const movement of record?.movements || []){
+        if (!movement || !isExpense(movement, String(movement.kind || '').toUpperCase() === 'OUT')) continue;
+        const fx = Number(movement.exchangeRateUsed || movement.fxUsed || record.fx || record.exchangeRateUsed);
+        const amount = Number(movement.amount || 0);
+        const amountNio = isUsd(movement.currency) ? (fx > 0 && Number.isFinite(fx) ? amount * fx : null) : amount;
+        add('pos_cashV2', movement.id, record.eventId || record.posEventId, record.dayKey || record.dateKey || record.fecha,
+          amountNio, record.key, movement.desc || movement.note, 'cash');
+      }
+    }
+    return {rows, complete:complete && cash.status === 'fulfilled'};
+  }
+
+  function consolidatedEventExportRows(filtered, merma, range, expenses){
+    const daysByEvent = new Map();
+    for (const sale of filtered){
+      if (computeLineMetrics(sale).revenue <= 0) continue;
+      const id = String(sale.eventId ?? 'sin-evento');
+      if (!daysByEvent.has(id)) daysByEvent.set(id, new Set());
+      daysByEvent.get(id).add(exportDateLabel(parseSaleDate(sale.date)));
+    }
+
+    const costs = new Map();
+    for (const expense of expenses?.rows || []){
+      const hasDate = !!parseSaleDate(expense.date);
+      if (hasDate && !saleInRange(expense, range)) continue;
+      if (!costs.has(expense.eventId)) costs.set(expense.eventId, {total:0, count:0, partial:false});
+      const cost = costs.get(expense.eventId);
+      if (hasDate && expense.amount != null){
+        cost.total = analyticsRoundMoney(cost.total + expense.amount);
+        cost.count++;
+      } else {
+        cost.partial = true;
+      }
+    }
+
+    const stats = buildEventStats(filtered, events, merma);
+    const eventCatalog = new Map(events.map(event => [String(event.id), event]));
+    const exportedIds = new Set(stats.rows.map(event => String(event.id)));
+    for (const id of costs.keys()){
+      if (exportedIds.has(id)) continue;
+      const event = eventCatalog.get(id);
+      stats.rows.push({
+        id, name:event?.name || 'Evento ' + id, closedAt:event?.closedAt,
+        economicResults:withFinalMermaAnalytics(buildEconomicResults([]), [])
+      });
+    }
+
+    const rows = eventExportRows(stats);
+    rows[0].push('ID del evento POS', 'Grupo del POS', 'Días con ventas registradas',
+      'Gastos vinculados registrados (C$)', 'Movimientos de gasto incluidos',
+      'Cobertura de gastos', 'Resultado después de gastos vinculados (C$)', 'Estado del resultado con gastos');
+    stats.rows.forEach((event, index) => {
+      const id = String(event.id);
+      const cost = costs.get(id);
+      const hasExpenses = !!cost?.count;
+      const complete = expenses?.complete && !cost?.partial;
+      const amount = hasExpenses ? cost.total : complete && id !== 'sin-evento' ? 0 : null;
+      const coverage = id === 'sin-evento' ? 'Sin ID de evento' : !complete ? 'Lectura o datos parciales'
+        : hasExpenses ? 'Gastos registrados' : 'Sin gastos vinculados registrados';
+      const result = event.economicResults;
+      rows[index + 1].push(id === 'sin-evento' ? '' : id, eventCatalog.get(id)?.groupName || '',
+        daysByEvent.get(id)?.size || 0, amount, cost?.count || 0, coverage,
+        amount == null ? null : analyticsRoundMoney(result.profitAfterMerma - amount),
+        amount == null ? 'No disponible' : !complete || result.mermaPartial || result.commissionUndeterminedCount
+          ? 'Parcial' : hasExpenses ? 'Según gastos registrados' : 'Sin gastos vinculados registrados');
+    });
+    return rows;
   }
 
   function exportCalendarDay(date){
     return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
   }
 
-  function buildConsolidatedWorkbook(range, sections, includePrevious, includeCustomerNames = false){
+  function buildConsolidatedWorkbook(range, sections, includePrevious, includeCustomerNames = false, expenses = null){
     const periods = [{ label:'Seleccionado', suffix:'', range }];
     if (includePrevious && range.from && range.to){
       const days = exportCalendarDay(range.to) - exportCalendarDay(range.from) + 1;
@@ -1994,6 +2154,9 @@ function rebuildHorasEventOptions(filteredSales){
       ['Ventas netas históricas de clientes', 'Importes del historial hasta el corte, incluidas las devoluciones y excluidas las cortesías.'],
       ['Productos de clientes', 'Unidades compradas por producto. Preferencias históricas según unidades pagadas, antes de devoluciones.'],
       ['Avanzado', 'Actividad por hora registrada en el POS'],
+      ['Eventos · días con ventas', 'Fechas distintas con importe de venta positivo. No incluye jornadas sin ventas registradas.'],
+      ['Eventos · gastos', 'Movimientos operativos vinculados por ID de evento y fecha. Cero registros no confirma ausencia de gastos de participación.'],
+      ['Eventos · resultado', 'Utilidad después de comisiones y merma menos gastos vinculados registrados. No incorpora ingresos adicionales de Finanzas.'],
       ['Evento por producto', 'Utilidad después de cortesías y comisiones determinadas, antes de merma final']];
     const scope = XLSX.utils.aoa_to_sheet(metadata);
     XLSX.utils.book_append_sheet(workbook, scope, 'Alcance');
@@ -2023,7 +2186,7 @@ function rebuildHorasEventOptions(filteredSales){
 
       const sectionsForPeriod = {
         Resumen: () => summaryExportRows(filtered, merma),
-        Eventos: () => eventExportRows(buildEventStats(filtered, events, merma)),
+        Eventos: () => consolidatedEventExportRows(filtered, merma, period.range, expenses),
         Productos: () => productExportRows(buildPresentationStats(filtered)),
         'Evento por producto': () => eventProductExportRows(filtered),
         Clientes: () => clients.summary,

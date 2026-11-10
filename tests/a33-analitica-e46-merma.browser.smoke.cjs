@@ -52,6 +52,22 @@ let browser;
     {id:'inactive', name:'Cliente de ficha inactiva', isActive:false}
   ])));
   await page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('finanzasDB', 1);
+    request.onerror = () => reject(request.error);
+    request.onupgradeneeded = () => {
+      const entries = request.result.createObjectStore('journalEntries', {keyPath:'id'});
+      const receipts = request.result.createObjectStore('receipts', {keyPath:'receiptId'});
+      const entry = {source:'manual_financial_account', tipoMovimiento:'egreso', posEventId:'1', fecha:'2026-10-20', totalDebe:210};
+      entries.put({...entry, id:1});
+      entries.put({...entry, id:2, fecha:'2026-10-10', totalDebe:20});
+      entries.put({...entry, id:3, source:'POS', totalDebe:999});
+      entries.put({...entry, id:4, posEventId:3, totalDebe:15});
+      receipts.put({receiptId:'a', status:'ISSUED', operationalClass:'EXPENSE', posEventId:1, dateISO:'2026-10-20', total:5});
+      receipts.put({receiptId:'b', status:'VOID', operationalClass:'EXPENSE', posEventId:1, dateISO:'2026-10-20', total:999});
+    };
+    request.onsuccess = () => { request.result.close(); resolve(); };
+  }));
+  await page.evaluate(() => new Promise((resolve, reject) => {
     const request = indexedDB.open('a33-pos', 1);
     request.onupgradeneeded = () => {
       for (const store of ['sales','events','products','banks','dailyClosures','cashV2','reempaques']) request.result.createObjectStore(store, {keyPath:'id'});
@@ -59,7 +75,7 @@ let browser;
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
-      const tx = db.transaction(['sales','events','products','reempaques'], 'readwrite');
+      const tx = db.transaction(['sales','events','products','reempaques','cashV2'], 'readwrite');
       const base={date:'2026-10-10',eventId:1,eventName:'Evento E4.6',productId:'p1',productName:'Producto E4.6',customerName:'Cliente privado de prueba',time:'13:15',unitPrice:100,loteCodigo:'001-A'};
       const rows=[
         {...base,id:1,customerId:'merged',customerName:'',qty:2,total:180,discount:20,lineCost:60,payment:'tarjeta',commissionAmountSnapshot:9,commissionLabelSnapshot:'Banco histórico 5%'},
@@ -82,7 +98,12 @@ let browser;
       ])tx.objectStore('reempaques').put(row);
       tx.objectStore('events').put({id:2,name:'Evento solo merma'});
 
-      tx.objectStore('events').put({id:1,name:'Evento E4.6'});
+      tx.objectStore('events').put({id:1,name:'Evento E4.6',groupName:'FERIAS'});
+      tx.objectStore('events').put({id:3,name:'Evento solo gastos'});
+      tx.objectStore('cashV2').put({id:'cash',eventId:1,dayKey:'2026-10-21',fx:36.6,movements:[
+        {id:'expense',kind:'OUT',currency:'USD',amount:1},
+        {id:'withdrawal',kind:'OUT',operationalClass:'CASH_OUT',amount:999}
+      ]});
       tx.objectStore('products').put({id:'p1',productId:'p1',name:'Producto E4.6',price:100});
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror = () => reject(tx.error);
@@ -210,6 +231,20 @@ let browser;
   assert.strictEqual(kpi(rowsFor('Resumen anterior'), 'Ventas totales'), 180);
   assert.strictEqual(kpi(rowsFor('Resumen anterior'), 'Merma final (C$)'), 0);
   assert.deepStrictEqual(rowsFor('Evento por producto')[1].slice(4, 8), [1, 0, -25, 1]);
+  const eventColumns = rowsFor('Eventos')[0];
+  const eventData = (sheet, name) => Object.fromEntries(
+    rowsFor(sheet).find(row => row[0] === name).map((value, index) => [eventColumns[index], value])
+  );
+  const eventRow = eventData('Eventos', 'Evento E4.6');
+  assert.strictEqual(eventRow['Grupo del POS'], 'FERIAS');
+  assert.strictEqual(eventRow['Días con ventas registradas'], 1);
+  assert.strictEqual(eventRow['Gastos vinculados registrados (C$)'], 251.6);
+  assert.strictEqual(eventRow['Movimientos de gasto incluidos'], 3);
+  assert.strictEqual(eventRow['Resultado después de gastos vinculados (C$)'],
+    Number((eventRow['Utilidad después de comisión y merma (C$)'] - 251.6).toFixed(2)));
+  assert.strictEqual(eventRow['Estado del resultado con gastos'], 'Parcial');
+  assert.strictEqual(eventData('Eventos anterior', 'Evento E4.6')['Gastos vinculados registrados (C$)'], 20);
+  assert.strictEqual(eventData('Eventos', 'Evento solo gastos')['Resultado después de gastos vinculados (C$)'], -15);
   const [, activeClient, dormantClient, unpaidClient, catalogClient, inactiveClient] = rowsFor('Clientes');
   const [activeCode] = activeClient;
   const [dormantCode] = dormantClient;
