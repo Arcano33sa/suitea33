@@ -123,7 +123,25 @@ let browser;
     books.push(workbook);
     return XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {header:1});
   }
+  async function downloadSummary(){
+    await page.locator('#btn-export-consolidado').click();
+    const dialog = page.locator('#analytics-export-dialog');
+    const sections = ['Eventos', 'Productos', 'Evento por producto'];
+    for (const section of sections){
+      await dialog.locator(`[value="${section}"]`).uncheck();
+    }
+    const summary = await download(() => dialog.getByRole('button', {name:'Descargar Excel'}).click(),
+      'analitica_consolidada.xlsx', 'Resumen');
+    assert.deepStrictEqual(books.at(-1).SheetNames, ['Alcance', 'Resumen']);
+    await page.locator('#btn-export-consolidado').click();
+    for (const section of sections){
+      await dialog.locator(`[value="${section}"]`).check();
+    }
+    await dialog.getByRole('button', {name:'Cancelar'}).click();
+    return summary;
+  }
   await page.goto(origin + '/analitica/index.html');
+  assert.strictEqual(await page.locator('#btn-export-resumen').count(), 0);
   await page.selectOption('#period-select', 'custom');
   await page.fill('#date-from','2026-10-10');
   await page.fill('#date-to','2026-10-20');
@@ -136,7 +154,7 @@ let browser;
   assert.ok((await page.locator('#kpi-merma-final').textContent()).includes('7.00'));
   assert.ok((await page.locator('#kpi-utilidad-despues-merma').textContent()).includes('9.00'));
   await context.setOffline(true);
-  const summary = await download(() => page.locator('#btn-export-resumen').click(), 'analitica_resumen.xlsx', 'Resumen');
+  const summary = await downloadSummary();
   assert.strictEqual(Number(summary.find(row => row[1] === 'Ventas totales')[2]), 80);
   assert.strictEqual(Number(summary.find(row=>row[1]==='Utilidad bruta')[2]),50);
   assert.strictEqual(Number(summary.find(row=>row[1]==='Comisiones determinadas')[2]),4);
@@ -167,11 +185,11 @@ let browser;
   await page.fill('#date-from','2026-10-21');await page.fill('#date-to','2026-10-21');await page.locator('#date-to').dispatchEvent('change');
   await page.waitForFunction(()=>document.getElementById('kpi-utilidad-despues-comision').textContent.includes('parcial'));
   assert.ok((await page.locator('#kpi-comisiones-estado').textContent()).includes('1'));
-  const unknown=await download(()=>page.locator('#btn-export-resumen').click(),'analitica_resumen.xlsx','Resumen');
+  const unknown=await downloadSummary();
   assert.ok(unknown.some(row=>row.some(cell=>String(cell).startsWith('Parcial'))));
   assert.ok((await page.locator('#kpi-utilidad-despues-merma').textContent()).includes('parcial'));
   assert.ok((await page.locator('#kpi-merma-estado').textContent()).includes('1'));
-  for(const book of books.slice(0,3)){
+  for(const book of books.slice(1,3)){
     const merma=XLSX.utils.sheet_to_json(book.Sheets['Merma final'],{header:1});
     assert.strictEqual(merma[1][0],'m1');assert.strictEqual(merma[2][0],'m2');
     assert.ok(!merma.some(row=>['provisional','anulada','normal','otro-periodo'].includes(row[0])));
@@ -179,7 +197,7 @@ let browser;
   await page.fill('#date-from','2026-11-01');await page.fill('#date-to','2026-11-01');await page.locator('#date-to').dispatchEvent('change');
   await page.waitForFunction(()=>document.getElementById('kpi-utilidad-despues-merma').textContent.includes('-8.00'));
   assert.strictEqual(await page.locator('#tbody-resumen-mensual tr').count(),1);
-  const only=await download(()=>page.locator('#btn-export-resumen').click(),'analitica_resumen.xlsx','Resumen');
+  const only=await downloadSummary();
   assert.strictEqual(Number(only.find(row=>row[1]==='Utilidad después de comisión y merma')[2]),-8);
   await page.locator('[data-tab="eventos"]').click();
   const onlyEvent=await download(()=>page.locator('#btn-export-eventos').click(),'analitica_eventos.xlsx','Eventos');
