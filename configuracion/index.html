@@ -440,7 +440,7 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <div>
 <span class="cfg-report-mini-label">Guardado funcional</span>
 <strong>Preferencias generales listas para conservarse</strong>
-<p>Estos ajustes solo preparan la base futura de reportes. No modifican PDFs, Excel, POS, Finanzas ni exportaciones reales.</p>
+<p>Las preferencias de contenido se aplican al Excel y al PDF de cierre de evento de POS y a los Excel de cierre total por grupo e inventario por evento.</p>
 </div>
 <span class="cfg-report-seal">A33</span>
 </div>
@@ -450,7 +450,7 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <span class="cfg-report-icon">◇</span>
 <div>
 <h3 id="reports-identity-title">Identidad en reportes</h3>
-<p>Elegí qué datos de Configuración → Identidad podrán usarse en reportes futuros. Todas las opciones inician activadas.</p>
+<p>Elegí qué datos de Identidad incluir en el cierre de POS. El logo se puede incluir en el PDF.</p>
 </div>
 </div>
 <div class="cfg-report-options" aria-label="Datos de Identidad permitidos en reportes futuros">
@@ -523,7 +523,7 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <span class="cfg-report-icon">⇩</span>
 <div>
 <h3 id="reports-export-title">Exportaciones y nombre de archivos</h3>
-<p>Preferencias futuras para nombrar archivos y ordenar formatos por módulo, sin activar exportadores reales todavía.</p>
+<p>El nombre base se aplica a los archivos de cierre e inventario por evento de POS. Este Excel es obligatorio para cerrar el evento. Habilitá PDF para POS si también querés compartir el cierre como PDF.</p>
 </div>
 </div>
 <div class="cfg-report-file-grid" aria-label="Nombre base futuro de archivos exportados">
@@ -533,9 +533,8 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <small id="cfg-reports-file-base-hint">Se recomienda usar el Nombre comercial de Identidad. Si no existe, se usa SuiteA33.</small>
 </label>
 <div class="cfg-report-file-example" aria-live="polite">
-<span>Ejemplo futuro</span>
+<span>Ejemplo de nombre</span>
 <strong id="cfg-reports-file-example">SuiteA33_Modulo_TipoReporte_2026-05-21.xlsx</strong>
-<small>Vista conceptual. No cambia nombres reales ni genera archivos desde Reportes.</small>
 </div>
 </div>
 <div class="cfg-report-finance-rule" aria-label="Regla fija de Finanzas">
@@ -608,12 +607,12 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <span class="cfg-report-icon">◆</span>
 <div>
 <h3 id="reports-privacy-title">Privacidad / Información sensible</h3>
-<p>Preferencias futuras para controlar datos delicados. Costos y utilidad inician ocultos; comisiones internas quedan protegidas por regla fija.</p>
+<p>Costos y utilidad inician ocultos. Los archivos de cierre protegen las comisiones internas.</p>
 </div>
 </div>
 <div class="cfg-report-options cfg-report-options--sensitive" aria-label="Preferencias de privacidad para reportes futuros">
-<label class="cfg-report-option" for="cfg-reports-privacy-show-costs"><input id="cfg-reports-privacy-show-costs" data-reports-privacy="showCosts" type="checkbox"/><span><strong>Mostrar costos en reportes futuros</strong><small>Desactivado por defecto. Solo se usará cuando una etapa futura conecte reportes reales.</small></span></label>
-<label class="cfg-report-option" for="cfg-reports-privacy-show-profit"><input id="cfg-reports-privacy-show-profit" data-reports-privacy="showProfit" type="checkbox"/><span><strong>Mostrar utilidad en reportes futuros</strong><small>Desactivado por defecto. Se guarda como preferencia, no cambia cálculos actuales.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-privacy-show-costs"><input id="cfg-reports-privacy-show-costs" data-reports-privacy="showCosts" type="checkbox"/><span><strong>Mostrar costos</strong><small>Incluye costos en el cierre de evento y en Reempaque. En el resumen compartible de Finanzas, incluye costos de venta y gastos de operación.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-privacy-show-profit"><input id="cfg-reports-privacy-show-profit" data-reports-privacy="showProfit" type="checkbox"/><span><strong>Mostrar utilidad</strong><small>Requiere activar también los costos, ya que la utilidad permite deducirlos.</small></span></label>
 <label class="cfg-report-option cfg-report-option--protected" for="cfg-reports-privacy-protect-commissions"><input id="cfg-reports-privacy-protect-commissions" data-reports-privacy="protectInternalCommissions" checked="" disabled="" type="checkbox"/><span><strong>Comisiones internas protegidas</strong><small>Regla fija: pueden existir como lógica interna, pero no se exponen desde Reportes.</small></span><em>Protegido</em></label>
 <label class="cfg-report-option cfg-report-option--protected" for="cfg-reports-privacy-hide-commission-sale"><input id="cfg-reports-privacy-hide-commission-sale" data-reports-privacy="hideCommissionPerSale" checked="" disabled="" type="checkbox"/><span><strong>Ocultar comisión por venta</strong><small>Regla fija: no se crea opción para mostrar comisión usada por venta.</small></span><em>Protegido</em></label>
 </div>
@@ -626,15 +625,15 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <div class="cfg-report-card-head">
 <span class="cfg-report-icon">▣</span>
 <div>
-<h3 id="reports-pos-title">POS en reportes futuros</h3>
-<p>Opciones futuras para reportes POS. Todas inician activadas y no modifican ventas, resumen, cierres ni reportes reales todavía.</p>
+<h3 id="reports-pos-title">POS en reportes</h3>
+<p>Elegí qué desgloses incluir en el Excel y el PDF de cierre. Todas las opciones inician activadas.</p>
 </div>
 </div>
 <div class="cfg-report-options" aria-label="Preferencias POS para reportes futuros">
-<label class="cfg-report-option" for="cfg-reports-pos-discounts"><input id="cfg-reports-pos-discounts" data-reports-pos="includeDiscounts" type="checkbox"/><span><strong>Incluir descuentos</strong><small>Preferencia futura para reportes POS.</small></span></label>
-<label class="cfg-report-option" for="cfg-reports-pos-courtesy"><input id="cfg-reports-pos-courtesy" data-reports-pos="includeCourtesy" type="checkbox"/><span><strong>Incluir cortesías</strong><small>Preferencia futura para reportes POS.</small></span></label>
-<label class="cfg-report-option" for="cfg-reports-pos-bank-transfers"><input id="cfg-reports-pos-bank-transfers" data-reports-pos="includeBankTransfers" type="checkbox"/><span><strong>Incluir transferencias por banco</strong><small>Preferencia futura para consolidar transferencias por banco.</small></span></label>
-<label class="cfg-report-option" for="cfg-reports-pos-payment-method"><input id="cfg-reports-pos-payment-method" data-reports-pos="includePaymentMethod" type="checkbox"/><span><strong>Incluir método de pago</strong><small>Preferencia futura para reportar efectivo, transferencia, tarjeta o crédito.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-discounts"><input id="cfg-reports-pos-discounts" data-reports-pos="includeDiscounts" type="checkbox"/><span><strong>Incluir descuentos</strong><small>Aplica al resumen y al detalle de ventas.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-courtesy"><input id="cfg-reports-pos-courtesy" data-reports-pos="includeCourtesy" type="checkbox"/><span><strong>Incluir cortesías</strong><small>Aplica al resumen y al detalle de ventas.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-bank-transfers"><input id="cfg-reports-pos-bank-transfers" data-reports-pos="includeBankTransfers" type="checkbox"/><span><strong>Incluir transferencias por banco</strong><small>Incluye el banco de cada transferencia y su consolidado.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-pos-payment-method"><input id="cfg-reports-pos-payment-method" data-reports-pos="includePaymentMethod" type="checkbox"/><span><strong>Incluir método de pago</strong><small>Incluye los medios de pago y las hojas de caja.</small></span></label>
 </div>
 </section>
 <section class="cfg-report-card cfg-report-card--wide" aria-labelledby="reports-preview-title">
@@ -642,16 +641,16 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <span class="cfg-report-icon">◈</span>
 <div>
 <h3 id="reports-preview-title">Vista previa</h3>
-<p>Preferencia para reportes futuros, activada por defecto. Esta sección no genera archivos.</p>
+<p>Permite revisar el resumen y las secciones incluidas antes de exportar.</p>
 </div>
 </div>
 <div class="cfg-report-options cfg-report-options--single" aria-label="Preferencia futura de vista previa">
-<label class="cfg-report-option" for="cfg-reports-preview-before-export"><input id="cfg-reports-preview-before-export" data-reports-preview="beforeExport" type="checkbox"/><span><strong>Vista previa antes de exportar</strong><small>Activada por defecto. No genera reportes ni archivos desde esta sección.</small></span></label>
+<label class="cfg-report-option" for="cfg-reports-preview-before-export"><input id="cfg-reports-preview-before-export" data-reports-preview="beforeExport" type="checkbox"/><span><strong>Vista previa antes de exportar</strong><small>Se muestra antes de abrir la descarga o impresión si está habilitada también para POS.</small></span></label>
 </div>
 </section>
 <div class="cfg-report-final-note" aria-label="Cierre funcional de Reportes">
-<strong>Aplicación futura por módulos</strong>
-<p>Estas preferencias quedan guardadas. Aún no modifican reportes ni exportaciones de otros módulos.</p>
+<strong>Aplicación de preferencias</strong>
+<p>El resumen compartible del Estado de Resultados de Finanzas aplica la identidad y la privacidad seleccionadas. Los archivos de cierre usan las preferencias guardadas al momento de exportar. Las notas y los nombres de clientes forman parte del detalle de ventas.</p>
 </div>
 <div class="cfg-actions cfg-reports-actions">
 <button class="cfg-btn cfg-btn-primary" id="cfg-reports-save" type="submit">Guardar preferencias</button>
@@ -675,14 +674,14 @@ html body :is(.cfg-e74,#backup-modal,#cfg-pos-events-modal) :is(button,input,sel
 <li>Usa el nombre comercial como referencia; si está vacío, propone SuiteA33.</li>
 <li>Protege Finanzas como Excel exclusivo, sin CSV ni TXT.</li>
 <li>Guarda privacidad sensible: costos, utilidad y comisiones internas.</li>
-<li>Prepara preferencias POS: descuentos, cortesías, transferencias y método de pago.</li>
-<li>Mantiene vista previa futura activada por defecto.</li>
-<li>No toca reportes reales, exportaciones, POS, Finanzas ni módulos sensibles.</li>
+<li>Permite elegir descuentos, cortesías, transferencias por banco y método de pago.</li>
+<li>Activa la vista previa por defecto.</li>
+<li>Aplica las preferencias de contenido a los archivos de cierre y al Excel de inventario por evento.</li>
 <li>Respeta Oscuro, Claro y Automático/Sistema.</li>
 </ul>
 <div class="cfg-report-lockbox">
 <strong>Regla de oro</strong>
-<p>Guardar preferencias no cambia los reportes ni las exportaciones actuales.</p>
+<p>Los archivos ya descargados conservan la información con la que se generaron.</p>
 </div>
 </aside>
 </div>

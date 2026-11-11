@@ -53,6 +53,11 @@ function between(source, startToken, endToken){
   assert.strictEqual(rollbackCalls, 1, 'Fallo de Excel no revierte la merma provisional');
   assert.strictEqual(eventWrites, 0, 'El evento se guardó como cerrado aunque falló el Excel');
 
+  closeSandbox.generateCorteCSV = async()=>({cancelled:true});
+  await closeSandbox.closeEvent(10);
+  assert.strictEqual(rollbackCalls, 2, 'Cancelar la descarga no revierte la merma provisional');
+  assert.strictEqual(eventWrites, 0, 'El evento se guardó como cerrado al cancelar la descarga');
+
   const cashBlock = between(app, 'async function buildEventCashExportSheetsPOS(eventId)', 'function eventInventoryProductForRefPOS(products, ref)');
   let cashRows = [];
   let historyDays = [];
@@ -161,6 +166,228 @@ function between(source, startToken, endToken){
   assert.strictEqual(exported.Sheets.Resumen_Evento.B3.z,'General');
   assert.strictEqual(exported.Sheets.Caja_Resumen.E2.w,'12.50');
   assert.strictEqual(exported.Sheets.Caja_Resumen.C2.z,'General');
+
+  const sale = {
+    eventId:10, id:1, productName:'Producto', payment:'transferencia', total:100, qty:2,
+    commissionLabelSnapshot:'Comisión privada', commissionPctSnapshot:5, commissionAmountSnapshot:5,
+    utilidadAntesComision:60, utilidadDespuesComision:55
+  };
+  const identity = {commercialName:'Mi Negocio',taxId:'RUC privado'};
+  let preferences = {
+    identityFields:{taxId:false},
+    exports:{fileBaseName:'Mi Negócio'},
+    privacy:{showProfit:true},
+    pos:{includeDiscounts:false,includeCourtesy:false,includeBankTransfers:false,includePaymentMethod:false}
+  };
+  let confirmed = false;
+  let previewMessage;
+  exported = null;
+  const reportsSandbox = vm.createContext({
+    window:{A33Storage:{getJSON:key=>key === 'suite_a33_identity_v1' ? identity : preferences}},
+    XLSX:writerSandbox.XLSX,
+    async getAll(store){
+      return store === 'events' ? [{id:10,name:'Mi Evento'}] : [
+        sale, {...sale,id:2,productName:'Cortesía privada',isCourtesy:true,total:0}
+      ];
+    },
+    async backfillSaleSeqIdsForEventPOS(){},
+    async getAllBanksSafe(){ return []; },
+    async reempaqueGetFinalMermaTotalsPOS(){ return {cost:5,ml:8}; },
+    async buildEventCashExportSheetsPOS(){ return [{name:'Caja_Resumen',rows:[['Efectivo',20]]}]; },
+    async buildEventInventoryExportSheetsPOS(){ return [{name:'Inventario_Resumen',rows:[['Producto','Vendido'],['Producto',2]]}]; },
+    async reempaqueBuildExportRowsPOS(){
+      return [['Producto origen','Costo origen total','Costo por ml'],['Producto',31,0.25]];
+    },
+    async showConfirmClosePOS({message}){ previewMessage = message; return confirmed; },
+    buildCorteSummaryRows:()=>({
+      ventaNeta:100, descuentos:20, cortesiasU:2, cortesiasVal:120, costoCortesias:40,
+      costoVentas:40, mermaFinalCosto:5, costoTotal:85, utilidadBruta:60, utilidadDespuesCortesias:20,
+      efectivo:0, trans:100, tarjeta:0, credito:0
+    }),
+    normalizePaymentMethodPOS:value=>value,
+    isBankPaymentMethodPOS:value=>value === 'transferencia',
+    getSaleBankLabel:()=> 'Banco privado',
+    getSaleCashTenderPartsPOS:()=> ({}),
+    getSaleSeqDisplayPOS:s=>s.id,
+    getSaleTimeTextPOS:()=> '',
+    getSaleProductNameSnapshotPOS:s=>s.productName,
+    lotCodeExcelCellPOS:value=>value,
+    getSaleLotCodePOS:()=> '',
+    getSaleUnitPriceSnapshotPOS:()=>60,
+    getSaleDiscountTotalPOS:()=>20,
+    getSaleCostUnitSnapshotPOS:()=>20,
+    getSaleLineCostSnapshotPOS:()=>40,
+    getPaymentMethodLabelPOS:()=> 'Transferencia',
+    readFiniteSaleSnapshotNumberPOS:(s,key)=>s[key],
+    getSaleCourtesyRecipientSnapshotPOS:()=> '',
+    getSaleCustomerSnapshotNamePOS:()=> '',
+    todayYMD:()=> '2026-11-11'
+  });
+  const reportBlock = between(app, 'function buildEventSalesExportRowsPOS(sales, bankMap)', 'async function generateCorteCSV(eventId, options={})');
+  vm.runInContext(moneyHelper(app) + reportBlock, reportsSandbox);
+  const canceled = await reportsSandbox.exportEventClosureWorkbookPOS(10);
+  assert.strictEqual(canceled.cancelled,true);
+  assert.strictEqual(exported,null,'Cancelar vista previa generó un Excel');
+  assert.ok(previewMessage.includes('Mi Negocio'));
+  assert.ok(!previewMessage.includes('RUC privado'));
+  confirmed = true;
+  await reportsSandbox.exportEventClosureWorkbookPOS(10);
+  assert.strictEqual(writtenFilename,'Mi_Negocio_POS_CierreEvento_2026-11-11.xlsx');
+  assert.deepStrictEqual(exported.SheetNames,['Resumen_Evento','Inventario_Resumen','Ventas_Detalle','Reempaque','Identidad']);
+  const exportedText = exported.SheetNames.map(name=>XLSX.utils.sheet_to_csv(exported.Sheets[name])).join('\n');
+  assert.match(exportedText,/Venta neta C\$,100/);
+  assert.doesNotMatch(exportedText,/RUC privado|Banco privado|Cortesía privada|cortesia|costo|utilidad|comisi[oó]n|descuento|Transferencia|PU_C\$/i);
+
+  preferences = {
+    privacy:{showCosts:true,showProfit:true},
+    pos:{includeBankTransfers:false},
+    preview:{beforeExport:false}
+  };
+  confirmed = false;
+  await reportsSandbox.exportEventClosureWorkbookPOS(10);
+  assert.ok(exported.Sheets.Caja_Resumen);
+  const fullSalesText = XLSX.utils.sheet_to_csv(exported.Sheets.Ventas_Detalle);
+  assert.match(fullSalesText,/costo_unit_C\$.*utilidad_bruta_C\$/);
+  assert.match(fullSalesText,/Transferencia/);
+  assert.doesNotMatch(fullSalesText,/Banco privado|comisi[oó]n/i);
+  assert.match(XLSX.utils.sheet_to_csv(exported.Sheets.Reempaque),/Costo por ml/);
+
+  const pdfBlock = between(app, 'function buildEventClosurePrintDocumentPOS(', 'async function generateCorteCSV(eventId, options={})');
+  vm.runInContext(between(app, 'function escapeHtml(str)', '// Productos') + pdfBlock, reportsSandbox);
+  identity.logo = {dataUrl:'data:image/png;base64,iVBORw0KGgo='};
+  let printCalls = 0;
+  let framesRemoved = 0;
+  let printFrame;
+  reportsSandbox.XLSX = undefined;
+  reportsSandbox.backfillSaleSeqIdsForEventPOS = async()=>assert.fail('El PDF no debe actualizar ventas');
+  reportsSandbox.document = {
+    getElementById:()=>null,
+    createElement(){
+      let afterPrint;
+      printFrame = {
+        style:{}, setAttribute(){},
+        addEventListener(_name, callback){ this.onLoad = callback; },
+        remove(){ framesRemoved++; },
+        contentWindow:{
+          addEventListener(_name,callback){ afterPrint = callback; },
+          focus(){},
+          print(){ printCalls++; afterPrint(); }
+        }
+      };
+      return printFrame;
+    },
+    body:{appendChild:frame=>frame.onLoad()}
+  };
+
+  preferences = {exports:{moduleFormats:{pos:{pdf:false}}}};
+  await assert.rejects(reportsSandbox.exportEventClosurePdfPOS(10), /Activá PDF/);
+  preferences = {
+    identityFields:{taxId:false},
+    pos:{includeDiscounts:false,includeCourtesy:false,includePaymentMethod:false}
+  };
+  await reportsSandbox.exportEventClosurePdfPOS(10);
+  assert.strictEqual(printFrame,undefined,'Cancelar la vista previa abrió la impresión');
+  assert.match(previewMessage,/Guardar como PDF/);
+
+  confirmed = true;
+  await reportsSandbox.exportEventClosurePdfPOS(10);
+  assert.strictEqual(printCalls,1);
+  assert.strictEqual(framesRemoved,1);
+  assert.match(printFrame.srcdoc,/Cierre de evento.*Mi Evento/);
+  assert.match(printFrame.srcdoc,/Venta neta C\$/);
+  assert.match(printFrame.srcdoc,/Logo del negocio/);
+  assert.doesNotMatch(printFrame.srcdoc,/RUC privado|Banco privado|Cortesía privada|comisi[oó]n|descuento|Costo por ml|Resumen de caja/i);
+
+  preferences = {identityFields:{logo:false},preview:{beforeExport:false}};
+  confirmed = false;
+  await reportsSandbox.exportEventClosurePdfPOS(10);
+  assert.strictEqual(printCalls,2);
+  assert.doesNotMatch(printFrame.srcdoc,/Logo del negocio/);
+  assert.match(printFrame.srcdoc,/RUC privado/);
+  const escapedPdf = reportsSandbox.buildEventClosurePrintDocumentPOS(
+    {ev:{name:'<script>'},sheets:[{name:'Identidad',rows:[['Correo','<img src=x>']]}]}, 'A&B'
+  );
+  assert.match(escapedPdf,/&lt;script&gt;|&lt;img src=x&gt;/);
+  assert.doesNotMatch(escapedPdf,/<script>|<img src=x>/);
+  assert.match(escapedPdf,/<title>A&amp;B<\/title>/);
+
+  const groupBlock = between(app, 'async function getCierreTotalGrupoData(', 'async function computeCierreTotalGrupo()');
+  const groupExport = between(app, 'async function exportCierreTotalGrupoExcel()', '// POS · Calculadora (tab)');
+  vm.runInContext(
+    between(app, 'function writeWorkbookFromSheetsPOS(', 'async function exportSummaryPeriodExcelPOS(') + groupBlock + groupExport,
+    reportsSandbox
+  );
+  reportsSandbox.XLSX = writerSandbox.XLSX;
+  reportsSandbox.$ = ()=>({value:'Feria / Sur'});
+  reportsSandbox.getAll = async store=>store === 'events' ? [
+    {id:10,name:'Sábado',groupName:'Feria / Sur'}, {id:11,name:'Domingo',groupName:'Feria / Sur'}
+  ] : [
+    {...sale,productName:'Producto A'},
+    {...sale,eventId:11,productName:'Producto B',total:40,payment:'efectivo'},
+    {...sale,eventId:11,productName:'Cortesía privada',total:0,isCourtesy:true}
+  ];
+  reportsSandbox.getPaymentMethodLabelPOS = method=>({efectivo:'Efectivo',transferencia:'Transferencia'})[method];
+  preferences = {
+    identityFields:{taxId:false},
+    exports:{fileBaseName:'Mi Negócio'},
+    pos:{includeCourtesy:false,includePaymentMethod:false}
+  };
+  exported = null;
+  await reportsSandbox.exportCierreTotalGrupoExcel();
+  assert.strictEqual(exported,null,'Cancelar la vista previa descargó el cierre de grupo');
+  assert.doesNotMatch(previewMessage,/Banco privado|Cortesía|RUC privado|Forma de pago/i);
+
+  confirmed = true;
+  await reportsSandbox.exportCierreTotalGrupoExcel();
+  assert.strictEqual(writtenFilename,'Mi_Negocio_POS_CierreGrupo_Feria_Sur_2026-11-11.xlsx');
+  assert.deepStrictEqual(exported.SheetNames,['Resumen','Eventos','Presentaciones','Identidad']);
+  assert.strictEqual(exported.Sheets.Resumen.B3.v,140);
+  assert.strictEqual(exported.Sheets.Eventos.E2.v,100);
+  assert.strictEqual(exported.Sheets.Eventos.E3.v,40);
+  const groupText = exported.SheetNames.map(name=>XLSX.utils.sheet_to_csv(exported.Sheets[name])).join('\n');
+  assert.doesNotMatch(groupText,/Banco privado|Cortesía|RUC privado|Forma de pago|Transferencia/i);
+
+  preferences = {pos:{includeBankTransfers:false},preview:{beforeExport:false}};
+  confirmed = false;
+  await reportsSandbox.exportCierreTotalGrupoExcel();
+  const groupSummary = XLSX.utils.sheet_to_csv(exported.Sheets.Resumen);
+  assert.match(groupSummary,/Transferencia,100/);
+  assert.match(groupSummary,/Cortesías/);
+  assert.doesNotMatch(groupSummary,/Banco privado|Transferencias por banco/);
+
+  preferences = {preview:{beforeExport:false}};
+  await reportsSandbox.exportCierreTotalGrupoExcel();
+  assert.match(XLSX.utils.sheet_to_csv(exported.Sheets.Resumen),/Banco privado,100/);
+
+  const inventoryExport = between(app, 'async function exportEventInventoryExcelPOS(eventId)', '// Eventos UI');
+  vm.runInContext(inventoryExport, reportsSandbox);
+  reportsSandbox.getAll = async store=>store === 'products'
+    ? [{id:1,name:'Producto'}]
+    : [{eventId:10,productId:1,qty:3},{eventId:11,productId:1,qty:2}];
+  reportsSandbox.getInventoryEntries = async()=>[
+    {productId:1,type:'init',qty:10},{productId:1,type:'restock',qty:5},{productId:1,type:'adjust',qty:-2}
+  ];
+  reportsSandbox.saleMatchesCatalogProductPOS = (sale,product)=>sale.productId === product.id;
+  preferences = {identityFields:{taxId:false},exports:{fileBaseName:'Mi Negócio'}};
+  exported = null;
+  await reportsSandbox.exportEventInventoryExcelPOS(10);
+  assert.strictEqual(exported,null,'Cancelar vista previa descargó el Excel de inventario');
+  assert.doesNotMatch(previewMessage,/Costo por ml|RUC privado/);
+
+  confirmed = true;
+  await reportsSandbox.exportEventInventoryExcelPOS(10);
+  assert.strictEqual(writtenFilename,'Mi_Negocio_POS_InventarioEvento_2026-11-11.xlsx');
+  assert.deepStrictEqual(exported.SheetNames,['Inventario','Reempaque','Identidad']);
+  const stockRows = XLSX.utils.sheet_to_json(exported.Sheets.Inventario,{header:1});
+  assert.deepStrictEqual(stockRows[1],['Producto',1,10,5,-2,3,10]);
+  assert.doesNotMatch(XLSX.utils.sheet_to_csv(exported.Sheets.Reempaque),/Costo/i);
+  assert.doesNotMatch(XLSX.utils.sheet_to_csv(exported.Sheets.Identidad),/RUC privado/);
+
+  preferences = {privacy:{showCosts:true},preview:{beforeExport:false}};
+  confirmed = false;
+  await reportsSandbox.exportEventInventoryExcelPOS(10);
+  assert.match(XLSX.utils.sheet_to_csv(exported.Sheets.Reempaque),/Costo origen total,Costo por ml/);
+  assert.deepStrictEqual(XLSX.utils.sheet_to_json(exported.Sheets.Inventario,{header:1}),stockRows);
 
   for (const source of [app, fs.readFileSync(path.join(root, 'pruebas/pos/app.js'), 'utf8')]){
     const context = vm.createContext({XLSX});

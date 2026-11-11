@@ -4393,18 +4393,103 @@ Solo se quitará del catálogo maestro. No se borrarán productos asociados, pro
     ];
   }
 
+  function writeCustomersExcelCAT(rows, widths, amountColumn, filename){
+    const sheet = XLSX.utils.aoa_to_sheet(rows, { dateNF:'dd/mm/yyyy', cellDates:true });
+    sheet['!cols'] = widths.map(wch=>({ wch }));
+    if (amountColumn >= 0){
+      for (let row = 1; row < rows.length; row++){
+        const cell = sheet[XLSX.utils.encode_cell({r:row,c:amountColumn})];
+        if (cell) cell.z = '#,##0.00';
+      }
+    }
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, 'Clientes');
+    XLSX.writeFile(book, filename);
+  }
+
   async function exportCustomersExcelCAT(){
     if (typeof XLSX === 'undefined') throw new Error('No se pudo cargar la librería de Excel.');
     const customers = readCustomerCatalogCAT();
     await openDB();
     const [sales, archives] = await Promise.all([getAll('sales'), getAll('summaryArchives')]);
     const rows = buildCustomerExportRowsCAT(customers, sales, archives);
-    const sheet = XLSX.utils.aoa_to_sheet(rows, { dateNF:'dd/mm/yyyy', cellDates:true });
-    sheet['!cols'] = [32, 20, 15, 24, 52, 20].map(wch=>({ wch }));
-    for (let row = 2; row <= rows.length; row++) sheet['E' + row].z = '#,##0.00';
-    const book = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(book, sheet, 'Clientes');
-    XLSX.writeFile(book, 'A33_Clientes.xlsx');
+    writeCustomersExcelCAT(rows, [32,20,15,24,52,20], 4, 'A33_Clientes.xlsx');
+  }
+
+  async function exportCustomersForSharingCAT({includeName, includePhone, includeHistory}){
+    if (!includeName && !includePhone && !includeHistory) return;
+    if (typeof XLSX === 'undefined') throw new Error('No se pudo cargar la librería de Excel.');
+
+    const customers = readCustomerCatalogCAT();
+    let rows = [['Nombre','Celular'], ...customers.map(customer=>[customer.name,getCustomerCellularCAT(customer)])];
+    if (includeHistory){
+      await openDB();
+      const [sales, archives] = await Promise.all([getAll('sales'), getAll('summaryArchives')]);
+      rows = buildCustomerExportRowsCAT(customers, sales, archives);
+    }
+
+    const columns = [];
+    if (includeName) columns.push(0);
+    if (includePhone) columns.push(1);
+    if (includeHistory) columns.push(3,4,5);
+    const [headers, ...details] = rows.map(row=>columns.map(column=>row[column]));
+    const collator = new Intl.Collator('es-NI', {sensitivity:'base', numeric:true});
+    details.sort((a,b)=>{
+      for (let i = 0; i < columns.length; i++){
+        const comparison = collator.compare(String(a[i] ?? ''), String(b[i] ?? ''));
+        if (comparison) return comparison;
+      }
+      return 0;
+    });
+    const widths = [32,20,15,24,52,20];
+    writeCustomersExcelCAT([headers,...details], columns.map(column=>widths[column]), columns.indexOf(4), 'A33_Clientes_Compartir.xlsx');
+  }
+
+  function bindCustomerShareUiCAT(){
+    const open = byId('cat-share-customers');
+    const panel = byId('cat-share-customers-panel');
+    const form = byId('cat-share-customers-form');
+    const download = byId('cat-share-customers-download');
+    const cancel = byId('cat-share-customers-cancel');
+    if (!open || !panel || !form || !download || !cancel) return;
+
+    const inputs = Array.from(form.querySelectorAll('input[type="checkbox"]'));
+    const hide = ()=>{
+      panel.hidden = true;
+      open.setAttribute('aria-expanded','false');
+      form.reset();
+      download.disabled = true;
+      open.focus();
+    };
+    open.addEventListener('click', ()=>{
+      if (!panel.hidden){ hide(); return; }
+      form.reset();
+      download.disabled = true;
+      panel.hidden = false;
+      open.setAttribute('aria-expanded','true');
+      inputs[0]?.focus();
+    });
+    cancel.addEventListener('click', hide);
+    form.addEventListener('change', ()=>{
+      download.disabled = !inputs.some(input=>input.checked);
+    });
+    form.addEventListener('submit', async event=>{
+      event.preventDefault();
+      if (download.disabled) return;
+      const options = Object.fromEntries(inputs.map(input=>[input.name,input.checked]));
+      for (const control of [open,cancel,download,...inputs]) control.disabled = true;
+      try{
+        await exportCustomersForSharingCAT(options);
+        open.disabled = false;
+        hide();
+      }catch(error){
+        console.error(error);
+        toast('No se pudo preparar el Excel para compartir.');
+      }finally{
+        for (const control of [open,cancel,...inputs]) control.disabled = false;
+        download.disabled = !inputs.some(input=>input.checked);
+      }
+    });
   }
 
   function updateLastPurchaseForTargetCAT(byId, targetId, dateKey){
@@ -4781,6 +4866,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   function bindCustomerUi(){
+    bindCustomerShareUiCAT();
     const list = byId('cat-customers-list');
     if (list){
       list.addEventListener('click', async (e)=>{

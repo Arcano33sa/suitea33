@@ -8482,7 +8482,7 @@ async function exportDiarioExcel() {
   showToast('Diario exportado a Excel');
 }
 
-async function exportEstadoResultadosExcel() {
+async function exportEstadoResultadosExcel({ share = false } = {}) {
   if (typeof XLSX === 'undefined') {
     window.A33Notice.alert('No se pudo generar el archivo de Excel (librería XLSX no cargada). Revisa tu conexión a internet.');
     return;
@@ -8531,7 +8531,6 @@ async function exportEstadoResultadosExcel() {
   });
 
   const bruta = ingresos - costos;
-  const postCortesias = bruta - cortesias;
   const neta = bruta - gastos;
 
   let eventoLabel = 'Todos los eventos';
@@ -8546,25 +8545,49 @@ async function exportEstadoResultadosExcel() {
 
   const num = (v) => Number((v || 0).toFixed(2));
 
-  const rows = [];
-  rows.push(['Estado de Resultados', '']);
-  rows.push(['Periodo', `${desde} a ${hasta}`]);
-  rows.push(['Evento', eventoLabel]);
-  rows.push([]);
-  rows.push(['Concepto', finPrimaryAmountHeader()]);
-  rows.push(['Ingresos (4xxx)', num(ingresos)]);
-  rows.push(['Costos de venta (5xxx)', num(costos)]);
-  rows.push(['Gastos de operación (6xxx)', num(gastos)]);
-  rows.push(['Utilidad bruta', num(bruta)]);
-  rows.push(['Utilidad neta', num(neta)]);
+  const prefs = share
+    ? window.A33Storage?.getJSON('suite_a33_reports_preferences_v1', {}, 'local') || {}
+    : {};
+  const showCosts = !share || prefs.privacy?.showCosts === true;
+  // Ingresos y utilidad juntos permiten deducir costos o gastos.
+  const showProfit = showCosts && (!share || prefs.privacy?.showProfit === true);
+  const rows = [
+    [share ? 'Resumen del Estado de Resultados para compartir' : 'Estado de Resultados', ''],
+    ['Periodo', `${desde} a ${hasta}`],
+    ['Evento', eventoLabel],
+    [],
+    ['Concepto', finPrimaryAmountHeader()],
+    [share ? 'Ingresos' : 'Ingresos (4xxx)', num(ingresos)]
+  ];
+  if (showCosts) {
+    rows.push([share ? 'Costos de venta' : 'Costos de venta (5xxx)', num(costos)]);
+    rows.push([share ? 'Gastos de operación' : 'Gastos de operación (6xxx)', num(gastos)]);
+  }
+  if (showProfit) {
+    rows.push(['Utilidad bruta', num(bruta)], ['Utilidad neta', num(neta)]);
+  }
 
   const ws = finExcelMoneySheet(rows, [1], 5);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'EstadoResultados');
-  const filename = `finanzas_ER_${todayStr()}.xlsx`;
+  const filename = share ? `finanzas_ER_compartir_${todayStr()}.xlsx` : `finanzas_ER_${todayStr()}.xlsx`;
+  if (share) {
+    const identity = window.A33Storage?.getJSON('suite_a33_identity_v1', {}, 'local') || {};
+    const identityLabels = {
+      commercialName:'Nombre comercial', legalName:'Nombre legal', taxId:'RUC / identificación fiscal',
+      phone:'Teléfono', whatsapp:'WhatsApp', email:'Correo', address:'Dirección', tagline:'Descripción corta / lema'
+    };
+    const identityRows = Object.entries(identityLabels).flatMap(([key, label]) => {
+      const value = typeof identity[key] === 'string' ? identity[key].trim() : '';
+      return prefs.identityFields?.[key] !== false && value ? [[label, value]] : [];
+    });
+    if (identityRows.length) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(identityRows), 'Identidad');
+    }
+  }
   finAttachExportCurrencyMetadata(wb);
   XLSX.writeFile(wb, filename);
-  showToast('Estado de Resultados exportado a Excel');
+  showToast(share ? 'Resumen para compartir exportado a Excel' : 'Estado de Resultados exportado a Excel');
 }
 
 async function exportBalanceGeneralExcel() {
@@ -21685,6 +21708,21 @@ function setupExportButtons() {
         console.error('Error exportando ER a Excel', err);
         window.A33Notice.alert('Ocurrió un error exportando el Estado de Resultados a Excel.');
       });
+    });
+  }
+
+  const btnShareER = document.getElementById('btn-share-er');
+  if (btnShareER) {
+    btnShareER.addEventListener('click', async () => {
+      btnShareER.disabled = true;
+      try {
+        await exportEstadoResultadosExcel({ share:true });
+      } catch (error) {
+        console.error('Error preparando el resumen del Estado de Resultados', error);
+        window.A33Notice.alert('Ocurrió un error preparando el Excel para compartir.');
+      } finally {
+        btnShareER.disabled = false;
+      }
     });
   }
 

@@ -26847,11 +26847,12 @@ function downloadExcel(filename, sheetName, rows){
   XLSX.writeFile(wb, filename);
 }
 
-async function generateInventoryCSV(eventId){
+async function exportEventInventoryExcelPOS(eventId){
   if (typeof XLSX === 'undefined'){
     posNotify('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
     return;
   }
+  const prefs = readPosReportPreferencesPOS();
   const prods = await getAll('products');
   const inv = await getInventoryEntries(eventId);
   const sales = await getAll('sales');
@@ -26865,17 +26866,42 @@ async function generateInventoryCSV(eventId){
     rows.push([p.name, p.manageStock!==false?1:0, inits, repo, adj, sold, stock]);
   }
 
+  const reempaqueRows = await reempaqueBuildExportRowsPOS(eventId);
+  const rpRows = prefs.showCosts ? reempaqueRows : omitPosReportColumns(reempaqueRows, name=>name.startsWith('Costo '));
+  const identity = window.A33Storage?.getJSON('suite_a33_identity_v1', {}, 'local') || {};
+  const identityRows = posReportIdentityRows(identity, prefs.identityFields);
+  const base = prefs.fileBaseName || identityRows.find(row=>row[0] === 'Nombre comercial')?.[1] || 'SuiteA33';
+  const filename = posReportFileName(base, 'InventarioEvento') || 'inventario_evento.xlsx';
+
+  if (prefs.preview){
+    const sheets = ['Inventario'];
+    if (rpRows.length > 1) sheets.push('Reempaque');
+    if (identityRows.length) sheets.push('Identidad');
+    const message = [
+      filename,
+      `Productos en inventario — ${rows.length - 1}`,
+      'Hojas incluidas — ' + sheets.join(', '),
+      ...identityRows.map(([label,value])=>`${label} — ${value}`)
+    ];
+    if (rpRows.length > 1) message.push('Columnas de reempaque — ' + rpRows[0].join(', '));
+    const confirmed = await showConfirmClosePOS({
+      title:'Vista previa del Excel de inventario', message:message.join('\n'), confirmLabel:'Descargar Excel'
+    });
+    if (!confirmed) return;
+  }
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Inventario');
-
-  const rpRows = await reempaqueBuildExportRowsPOS(eventId);
   if (rpRows.length > 1){
     const wsReempaque = posExportMoneySheet(rpRows, 'Reempaque');
     wsReempaque['!cols'] = rpRows[0].map((h) => ({ wch: /lote/i.test(String(h || '')) ? 25 : 18 }));
     XLSX.utils.book_append_sheet(wb, wsReempaque, 'Reempaque');
   }
 
-  XLSX.writeFile(wb, 'inventario_evento.xlsx');
+  if (identityRows.length){
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(identityRows), 'Identidad');
+  }
+  XLSX.writeFile(wb, filename);
 }
 
 // Eventos UI
@@ -26953,8 +26979,9 @@ async function renderEventos(){
         <button class="act-activar" data-id="${ev.id}">Activar</button>
         ${ev.closedAt?'<button class="act-reabrir" data-id="'+ev.id+'">Reabrir</button>':'<button class="act-cerrar" data-id="'+ev.id+'">Cerrar</button>'}
         <button class="act-corte" data-id="${ev.id}">Excel cierre</button>
+        <button class="act-corte-pdf" data-id="${ev.id}">PDF cierre</button>
         <button class="act-ventas" data-id="${ev.id}">CSV Ventas</button>
-        <button class="act-inv" data-id="${ev.id}">CSV Inv</button>
+        <button class="act-inv" data-id="${ev.id}">Excel Inv</button>
         <button class="act-eliminar btn-danger" data-id="${ev.id}">Eliminar</button>
       </td>
     `;
@@ -27413,82 +27440,291 @@ function buildEventSalesExportRowsPOS(sales, bankMap){
   return rows;
 }
 
+function readPosReportPreferencesPOS(){
+  const prefs = window.A33Storage?.getJSON('suite_a33_reports_preferences_v1', {}, 'local') || {};
+  const showCosts = prefs.privacy?.showCosts === true;
+  return {
+    identityFields: prefs.identityFields || {},
+    showCosts,
+    // Con venta neta visible, la utilidad permite reconstruir el costo.
+    showProfit: showCosts && prefs.privacy?.showProfit === true,
+    includeDiscounts: prefs.pos?.includeDiscounts !== false,
+    includeCourtesy: prefs.pos?.includeCourtesy !== false,
+    includeBankTransfers: prefs.pos?.includeBankTransfers !== false,
+    includePaymentMethod: prefs.pos?.includePaymentMethod !== false,
+    pdfEnabled: prefs.exports?.moduleFormats?.pos?.pdf !== false,
+    preview: prefs.preview?.beforeExport !== false && prefs.exports?.moduleFormats?.pos?.preview !== false,
+    fileBaseName: typeof prefs.exports?.fileBaseName === 'string' ? prefs.exports.fileBaseName.trim() : ''
+  };
+}
+
+function posReportIdentityRows(identity, fields){
+  const labels = {
+    commercialName:'Nombre comercial', legalName:'Nombre legal', taxId:'RUC / identificación fiscal',
+    phone:'Teléfono', whatsapp:'WhatsApp', email:'Correo', address:'Dirección', tagline:'Descripción corta / lema'
+  };
+  return Object.entries(labels).flatMap(([key,label])=>{
+    const value = typeof identity[key] === 'string' ? identity[key].trim() : '';
+    return fields[key] !== false && value ? [[label,value]] : [];
+  });
+}
+
+function omitPosReportColumns(rows, omit){
+  const columns = rows[0].map((name,index)=>omit(name) ? -1 : index).filter(index=>index >= 0);
+  return rows.map(row=>columns.map(index=>row[index]));
+}
+
+function posReportFileSegment(value){
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,64);
+}
+
+function posReportFileName(base, reportType){
+  const segment = posReportFileSegment(base);
+  if (!segment) return '';
+  return `${segment}_POS_${reportType}_${todayYMD()}.xlsx`;
+}
+
 async function buildEventClosureSheetsPOS(eventId, options={}){
-  if (typeof XLSX === 'undefined') throw new Error('No se pudo generar el archivo de Excel (librería XLSX no cargada).');
+  const prefs = readPosReportPreferencesPOS();
+  const forPdf = options.format === 'pdf';
+  if (forPdf && !prefs.pdfEnabled){
+    throw new Error('Activá PDF para POS en Configuración → Reportes.');
+  }
   const events = await getAll('events');
   const ev = (events || []).find(event=>event && String(event.id) === String(eventId));
   if (!ev) throw new Error('Evento no encontrado.');
   const sales = (await getAll('sales')).filter(sale=>sale && String(sale.eventId) === String(eventId));
-  try{ await backfillSaleSeqIdsForEventPOS(eventId, ev, sales); }catch(err){ console.warn('backfillSaleSeqIdsForEventPOS (cierre) failed', err); }
+  if (!forPdf){
+    try{ await backfillSaleSeqIdsForEventPOS(eventId, ev, sales); }catch(err){ console.warn('backfillSaleSeqIdsForEventPOS (cierre) failed', err); }
+  }
   const banks = await getAllBanksSafe();
   const bankMap = new Map();
   for (const bank of banks){ if (bank && bank.id != null) bankMap.set(Number(bank.id), bank.name || ''); }
   const transferByBank = new Map();
   for (const sale of sales){
-    if (normalizePaymentMethodPOS(sale.payment || '') !== 'transferencia') continue;
+    if (!prefs.includeBankTransfers || !prefs.includePaymentMethod || sale.courtesy || sale.isCourtesy ||
+        normalizePaymentMethodPOS(sale.payment || '') !== 'transferencia') continue;
     const label = getSaleBankLabel(sale, bankMap);
     const current = transferByBank.get(label) || { total:0, count:0 };
     current.total += Number(sale.total || 0);
     current.count += 1;
     transferByBank.set(label, current);
   }
-  const finalMerma = await reempaqueGetFinalMermaTotalsPOS(eventId, { includeProvisional:true });
+  const finalMerma = await reempaqueGetFinalMermaTotalsPOS(eventId, { includeProvisional:!forPdf });
   const summary = buildCorteSummaryRows(ev.name, sales, finalMerma.cost);
   const closedAtIso = options.closedAtIso || ev.closedAt || '';
   const summaryRows = [
     ['Evento',ev.name || ''], ['ID',ev.id], ['Estado',closedAtIso ? 'Cerrado' : 'Abierto'],
     ['Creado',ev.createdAt ? new Date(ev.createdAt).toLocaleString() : ''],
     ['Cerrado',closedAtIso ? new Date(closedAtIso).toLocaleString() : ''], [],
-    ['Resumen de ventas'], ['Venta neta C$',summary.ventaNeta], ['Descuentos C$',summary.descuentos],
-    ['Cortesías (unid.)',summary.cortesiasU], ['Cortesías valor comercial C$',summary.cortesiasVal],
-    ['Costo real de cortesías C$',summary.costoCortesias], ['Costos de ventas C$',summary.costoVentas],
-    ['Merma final del evento ml',finalMerma.ml], ['Costo Merma final C$',summary.mermaFinalCosto],
-    ['Costos totales C$',summary.costoTotal], ['Utilidad bruta C$',summary.utilidadBruta],
-    ['Utilidad después de cortesías C$',summary.utilidadDespuesCortesias], ['Comisiones Tarjeta C$',summary.comisionTarjetaTotal]
+    ['Resumen de ventas'], ['Venta neta C$',summary.ventaNeta]
   ];
-  for (const item of (summary.comisionesTarjeta || [])) summaryRows.push([item.label,item.total || 0]);
-  if (summary.commissionUndeterminedCount) summaryRows.push(['Comisión no determinada',`${summary.commissionUndeterminedCount} venta(s)`]);
-  summaryRows.push(['Utilidad después de comisión C$',summary.utilidadDespuesComision]);
-  summaryRows.push(['Utilidad después de comisión y merma C$',summary.utilidadDespuesMerma]);
+  if (prefs.includeDiscounts) summaryRows.push(['Descuentos C$',summary.descuentos]);
+  if (prefs.includeCourtesy){
+    summaryRows.push(['Cortesías (unid.)',summary.cortesiasU], ['Cortesías valor comercial C$',summary.cortesiasVal]);
+    if (prefs.showCosts) summaryRows.push(['Costo real de cortesías C$',summary.costoCortesias]);
+  }
+  summaryRows.push(['Merma final del evento ml',finalMerma.ml]);
+  if (prefs.showCosts){
+    summaryRows.push(['Costos de ventas C$',summary.costoVentas], ['Costo Merma final C$',summary.mermaFinalCosto]);
+    if (prefs.includeCourtesy) summaryRows.push(['Costos totales C$',summary.costoTotal]);
+  }
+  if (prefs.showProfit){
+    summaryRows.push(['Utilidad bruta C$',summary.utilidadBruta]);
+    if (prefs.includeCourtesy) summaryRows.push(['Utilidad después de cortesías C$',summary.utilidadDespuesCortesias]);
+  }
   const lotCodes = [];
   for (const sale of sales){
     const code = getSaleLotCodePOS(sale);
     if (code && !lotCodes.some(item=>lotCodeKeyPOS(item) === lotCodeKeyPOS(code))) lotCodes.push(code);
   }
-  summaryRows.push(['Códigos de lote',lotCodeExcelCellPOS(lotCodes.join(' + '))],[],['Cobros por forma de pago']);
-  const byPay = sales.reduce((map,sale)=>{
-    if (sale.courtesy || sale.isCourtesy) return map;
-    const payment = normalizePaymentMethodPOS(sale.payment || '') || 'desconocido';
-    map[payment] = (map[payment] || 0) + Number(sale.total || 0);
-    return map;
-  },{});
-  summaryRows.push(['Efectivo C$',byPay.efectivo || 0],['Transferencia C$',byPay.transferencia || 0],['Tarjeta C$',byPay.tarjeta || 0],['Crédito cliente C$',byPay.credito || 0]);
+  summaryRows.push(['Códigos de lote',lotCodeExcelCellPOS(lotCodes.join(' + '))]);
+  if (prefs.includePaymentMethod){
+    summaryRows.push([],['Cobros por forma de pago'],['Efectivo C$',summary.efectivo]);
+    summaryRows.push(['Transferencia C$',summary.trans], ['Tarjeta C$',summary.tarjeta], ['Crédito cliente C$',summary.credito]);
+  }
   if (transferByBank.size){
     summaryRows.push([],['Transferencias por banco'],['Banco','Total C$','Transacciones']);
     for (const [label,value] of Array.from(transferByBank.entries()).sort((a,b)=>b[1].total-a[1].total)) summaryRows.push([label,value.total,value.count]);
   }
 
-  const cashSheets = await buildEventCashExportSheetsPOS(eventId);
+  const sharedSales = sales.filter(sale=>prefs.includeCourtesy || !(sale.courtesy || sale.isCourtesy));
+  const salesRows = buildEventSalesExportRowsPOS(sharedSales, bankMap);
+  if (prefs.includePaymentMethod && !prefs.includeBankTransfers){
+    const bankIndex = salesRows[0].indexOf('banco');
+    sharedSales.forEach((sale,index)=>{
+      if (normalizePaymentMethodPOS(sale.payment) === 'transferencia') salesRows[index + 1][bankIndex] = '';
+    });
+  }
+  salesRows[0][salesRows[0].indexOf('utilidad_antes_comision_C$')] = 'utilidad_bruta_C$';
+  const detail = omitPosReportColumns(salesRows, name=>
+    /comision/.test(name) ||
+    (!prefs.showProfit && name === 'utilidad_bruta_C$') ||
+    (!prefs.showCosts && name.startsWith('costo_')) ||
+    (!prefs.includeDiscounts && ['descuento_C$','PU_C$'].includes(name)) ||
+    (!prefs.includeCourtesy && name.startsWith('cortesia')) ||
+    (!prefs.includePaymentMethod && ['pago','banco','T/C usado','USD recibido','Vuelto C$','Equivalente C$'].includes(name))
+  );
+
+  const cashSheets = prefs.includePaymentMethod ? await buildEventCashExportSheetsPOS(eventId) : [];
   const inventorySheets = await buildEventInventoryExportSheetsPOS(eventId, sales);
   const sheets = [{ name:'Resumen_Evento', rows:summaryRows }]
-    .concat(cashSheets, inventorySheets, [{ name:'Ventas_Detalle', rows:buildEventSalesExportRowsPOS(sales, bankMap) }]);
+    .concat(cashSheets, inventorySheets, [{ name:'Ventas_Detalle', rows:detail }]);
   const reempaqueRows = await reempaqueBuildExportRowsPOS(eventId);
-  if (reempaqueRows.length > 1) sheets.push({ name:'Reempaque', rows:reempaqueRows });
-  return { ev, sales, sheets, closedAtIso };
+  if (reempaqueRows.length > 1){
+    const rows = prefs.showCosts ? reempaqueRows : omitPosReportColumns(reempaqueRows, name=>name.startsWith('Costo '));
+    sheets.push({ name:'Reempaque', rows });
+  }
+  const identity = window.A33Storage?.getJSON('suite_a33_identity_v1', {}, 'local') || {};
+  const identityRows = posReportIdentityRows(identity, prefs.identityFields);
+  const logo = forPdf && prefs.identityFields.logo !== false ? identity.logo?.dataUrl : '';
+  if (identityRows.length) sheets.push({ name:'Identidad', rows:identityRows });
+  const base = prefs.fileBaseName || identityRows.find(row=>row[0] === 'Nombre comercial')?.[1] || 'SuiteA33';
+  return { ev, sheets, closedAtIso, logo, preview:prefs.preview, reportFilename:posReportFileName(base, 'CierreEvento') };
 }
 
 async function exportEventClosureWorkbookPOS(eventId, options={}){
+  if (typeof XLSX === 'undefined') throw new Error('No se pudo generar el archivo de Excel (librería XLSX no cargada).');
   const result = await buildEventClosureSheetsPOS(eventId, options);
+  const safeName = String(result.ev.name || 'evento').replace(/[^a-z0-9_\- ]/gi,'_');
+  const filename = options.filename || result.reportFilename || `cierre_evento_${safeName}.xlsx`;
+  if (result.preview){
+    const summary = result.sheets[0].rows.filter(row=>row.length === 2)
+      .map(([label,value])=>`${label} — ${value}`).join('\n');
+    const detail = result.sheets.find(sheet=>sheet.name === 'Ventas_Detalle').rows[0].join(', ');
+    const identity = result.sheets.find(sheet=>sheet.name === 'Identidad')?.rows || [];
+    const message = [
+      filename, summary,
+      ...identity.map(([label,value])=>`${label} — ${value}`),
+      'Hojas incluidas — ' + result.sheets.map(sheet=>sheet.name).join(', '),
+      'Columnas de ventas — ' + detail
+    ].join('\n\n');
+    const confirmed = await showConfirmClosePOS({
+      title:'Vista previa del Excel de cierre', message, confirmLabel:'Descargar Excel'
+    });
+    if (!confirmed) return { cancelled:true };
+  }
   const workbook = XLSX.utils.book_new();
   for (const sheet of result.sheets){
     const ws = posExportMoneySheet(sheet.rows || [], sheet.name);
     if (sheet.moneyFormat) cashV2HistExcelApply2Dec(ws, sheet.moneyFormat.cols2dec, sheet.moneyFormat.startRowIdx);
     XLSX.utils.book_append_sheet(workbook, ws, String(sheet.name || 'Hoja').slice(0,31));
   }
-  const safeName = String(result.ev.name || 'evento').replace(/[^a-z0-9_\- ]/gi,'_');
-  const filename = options.filename || `cierre_evento_${safeName}.xlsx`;
   XLSX.writeFile(workbook, filename);
   return { ...result, filename };
+}
+
+function buildEventClosurePrintDocumentPOS(result, filename){
+  const labels = {
+    Resumen_Evento:'Resumen del evento', Caja_Resumen:'Resumen de caja', Caja_Movimientos:'Movimientos de caja',
+    Caja_Conteo:'Conteo de caja', Caja_Auditoria:'Auditoría de caja', Inventario_Resumen:'Inventario',
+    Inventario_Movimientos:'Movimientos de inventario', Ventas_Detalle:'Detalle de ventas',
+    Reempaque:'Reempaque', Identidad:'Identidad del negocio'
+  };
+  const cell = value=>escapeHtml(String(value ?? ''));
+  const heading = value=>cell(String(value ?? '').replace(/_/g,' '));
+  const logo = typeof result.logo === 'string' &&
+    /^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(result.logo)
+    ? `<img class="logo" src="${cell(result.logo)}" alt="Logo del negocio">` : '';
+  const identity = result.sheets.find(sheet=>sheet.name === 'Identidad');
+  const printSheets = result.sheets.filter(sheet=>sheet !== identity);
+  if (identity) printSheets.unshift(identity);
+  const sections = printSheets.map(({name,rows})=>{
+    const title = labels[name] || name;
+    if (name === 'Resumen_Evento' || name === 'Identidad'){
+      const body = rows.filter(row=>row.length).map(row=>row.length === 1
+        ? `<tr><th class="group" colspan="3">${cell(row[0])}</th></tr>`
+        : `<tr><th scope="row">${cell(row[0])}</th><td>${cell(row[1])}</td><td>${cell(row[2])}</td></tr>`
+      ).join('');
+      return `<section><h2>${cell(title)}</h2><table class="summary"><tbody>${body}</tbody></table></section>`;
+    }
+    const [headers, ...records] = rows;
+    if (!headers || !records.length){
+      const status = headers?.[0] === 'Estado' ? headers[1] : 'Sin registros.';
+      return `<section><h2>${cell(title)}</h2><p class="empty">${cell(status)}</p></section>`;
+    }
+    if (headers.length <= 8){
+      const head = headers.map(value=>`<th scope="col">${heading(value)}</th>`).join('');
+      const body = records.map(row=>`<tr>${headers.map((_,i)=>`<td>${cell(row[i])}</td>`).join('')}</tr>`).join('');
+      return `<section><h2>${cell(title)}</h2><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></section>`;
+    }
+    // Las hojas anchas se leen como fichas para conservar columnas y tamaños de letra al imprimir.
+    const cards = records.map(row=>`<dl class="record">${headers.map((header,index)=>{
+      const value = row[index];
+      return value === '' || value == null ? '' : `<div><dt>${heading(header)}</dt><dd>${cell(value)}</dd></div>`;
+    }).join('')}</dl>`).join('');
+    return `<section><h2>${cell(title)}</h2>${cards}</section>`;
+  });
+  return `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>${cell(filename)}</title>
+<style>
+  @page { size: A4; margin: 13mm 15mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #192522; font: 10pt/1.35 Arial, sans-serif; overflow-wrap: anywhere; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 18pt; border-bottom: 2pt solid #28524a; padding-bottom: 12pt; margin-bottom: 16pt; }
+  h1 { font-size: 22pt; margin: 0 0 3pt; }
+  header p { font-size: 13pt; margin: 0; }
+  .logo { max-width: 100pt; max-height: 48pt; object-fit: contain; }
+  section { margin: 0 0 15pt; }
+  h2 { font-size: 13pt; margin: 0 0 6pt; break-after: avoid; }
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 9pt; }
+  thead { display: table-header-group; }
+  th, td { padding: 4pt 5pt; border-bottom: 0.5pt solid #aab8b4; text-align: left; vertical-align: top; }
+  thead th, .group { background: #e7efec; print-color-adjust: exact; }
+  thead th { font-size: 8.5pt; }
+  .summary th[scope=row] { width: 46%; }
+  .summary td:nth-child(2) { width: 39%; }
+  tr, .record { break-inside: avoid; }
+  .record { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4pt 8pt; margin: 0 0 6pt; padding: 6pt; border: 0.5pt solid #aab8b4; }
+  dt { color: #345750; font-size: 8pt; }
+  dd { margin: 0; font-size: 9pt; }
+  .empty { margin: 0; color: #455954; }
+</style></head>
+<body><header><div><h1>Cierre de evento</h1><p>${cell(result.ev.name)}</p></div>${logo}</header>
+${sections.join('')}
+</body></html>`;
+}
+
+async function exportEventClosurePdfPOS(eventId){
+  const report = await buildEventClosureSheetsPOS(eventId, {format:'pdf'});
+  const filename = report.reportFilename?.replace(/\.xlsx$/i,'') || 'POS_CierreEvento';
+  if (report.preview){
+    const summary = report.sheets[0].rows.filter(row=>row.length === 2)
+      .map(([label,value])=>`${label} — ${value}`).join('\n');
+    const confirmed = await showConfirmClosePOS({
+      title:'Vista previa del PDF de cierre',
+      message:`${summary}\n\nEn el diálogo de impresión, elegí Guardar como PDF.`,
+      confirmLabel:'Abrir impresión'
+    });
+    if (!confirmed) return;
+  }
+
+  const frame = document.createElement('iframe');
+  frame.title = 'Impresión del cierre de evento';
+  frame.setAttribute('aria-hidden','true');
+  frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0;pointer-events:none';
+  document.getElementById('pos-event-closure-print')?.remove();
+  frame.id = 'pos-event-closure-print';
+  frame.srcdoc = buildEventClosurePrintDocumentPOS(report, filename);
+  await new Promise((resolve,reject)=>{
+    frame.addEventListener('load', ()=>{
+      try{
+        const printWindow = frame.contentWindow;
+        if (!printWindow || typeof printWindow.print !== 'function'){
+          throw new Error('La impresión no está disponible en este navegador.');
+        }
+        printWindow.addEventListener('afterprint', ()=>frame.remove(), {once:true});
+        printWindow.focus();
+        printWindow.print();
+        resolve();
+      }catch(error){
+        frame.remove();
+        reject(error);
+      }
+    }, {once:true});
+    document.body.appendChild(frame);
+  });
 }
 
 async function generateCorteCSV(eventId, options={}){
@@ -27566,7 +27802,12 @@ async function closeEvent(eventId){
   // El Excel integral es parte obligatoria del cierre.
   const closedAtIso = new Date().toISOString();
   try{
-    await generateCorteCSV(eventId, { closedAtIso });
+    const excel = await generateCorteCSV(eventId, { closedAtIso });
+    if (excel?.cancelled){
+      await reempaqueRollbackFinalMermaForEventPOS(finalMerma);
+      posNotify('Descarga cancelada. El evento permanece abierto.');
+      return;
+    }
   } catch(err){
     console.error('generateCorteCSV error', err);
     try{ await reempaqueRollbackFinalMermaForEventPOS(finalMerma); }catch(rollbackErr){ console.error('rollback merma provisional', rollbackErr); }
@@ -28587,7 +28828,12 @@ function bindAnnualEventsPOS(){
   }
   const cierreExcelBtn = document.getElementById('btn-cierre-total-excel');
   if (cierreExcelBtn){
-    cierreExcelBtn.addEventListener('click', exportCierreTotalGrupoExcel);
+    cierreExcelBtn.addEventListener('click', async()=>{
+      cierreExcelBtn.disabled = true;
+      try{ await exportCierreTotalGrupoExcel(); }
+      catch(error){ posNotify('No se pudo generar el Excel de cierre total.\n\nDetalle: ' + humanizeError(error)); }
+      finally{ cierreExcelBtn.disabled = false; }
+    });
   }
   $('#btn-exportar-eventos').addEventListener('click', async()=>{
     await exportEventosExcel();
@@ -28624,8 +28870,15 @@ function bindAnnualEventsPOS(){
         posNotify('No se pudo generar el Excel del evento.\n\nDetalle: ' + humanizeError(err));
       }
     }
+    else if (btn.classList.contains('act-corte-pdf')){
+      btn.disabled = true;
+      try{ await exportEventClosurePdfPOS(id); }
+      catch(err){ posNotify('No se pudo abrir el PDF del evento.\n\nDetalle: ' + humanizeError(err)); }
+      finally{ btn.disabled = false; }
+      return;
+    }
     else if (btn.classList.contains('act-ventas')) await exportEventSalesCSV(id);
-    else if (btn.classList.contains('act-inv')) await generateInventoryCSV(id);
+    else if (btn.classList.contains('act-inv')) await exportEventInventoryExcelPOS(id);
     else if (btn.classList.contains('act-eliminar')) await deleteEvent(id);
     await renderEventos(); await renderSummary();
   });
@@ -28637,7 +28890,7 @@ function bindAnnualEventsPOS(){
   // Inventario tab
   $('#inv-event').addEventListener('change', renderInventario);
   $('#btn-inv-ref').addEventListener('click', renderInventario);
-  $('#btn-inv-csv').addEventListener('click', async()=>{ const id = parseInt($('#inv-event').value||'0',10); if (!id) return posNotify('Selecciona un evento'); await generateInventoryCSV(id); });
+  $('#btn-inv-csv').addEventListener('click', async()=>{ const id = parseInt($('#inv-event').value||'0',10); if (!id) return posNotify('Selecciona un evento'); await exportEventInventoryExcelPOS(id); });
   const btnFromLote = document.getElementById('btn-inv-from-lote');
 	  try{ setupInvLoteSelectorModalPOS(); }catch(_){ }
 	  if (btnFromLote) btnFromLote.addEventListener('click', openInvLoteSelectorModalPOS);
@@ -29718,7 +29971,7 @@ async function addExtraSale(extraId){
 
 
 
-async function getCierreTotalGrupoData(){
+async function getCierreTotalGrupoData({includeCourtesy = true} = {}){
   const groupSelect = $('#filtro-grupo');
   if (!groupSelect){
     posNotify('No se encontró el filtro de grupo en la pestaña de eventos.');
@@ -29793,11 +30046,14 @@ async function getCierreTotalGrupoData(){
     const qty = s.qty || 0;
     const pago = normalizePaymentMethodPOS(s.payment || '') || 'otro';
 
+    const hideCourtesy = !includeCourtesy && (s.courtesy || s.isCourtesy || pago === 'cortesía' || pago === 'cortesia');
     data.totalGrupo += t;
-    if (!data.porPago[pago]) data.porPago[pago] = 0;
-    data.porPago[pago] += t;
+    if (!hideCourtesy){
+      if (!data.porPago[pago]) data.porPago[pago] = 0;
+      data.porPago[pago] += t;
+    }
 
-    if (normalizePaymentMethodPOS(s.payment || '') === 'transferencia'){
+    if (!hideCourtesy && pago === 'transferencia'){
       const label = getSaleBankLabel(s, bankMap);
       const cur = transferByBankMap.get(label) || { total: 0, count: 0 };
       cur.total += Number(s.total || 0);
@@ -29817,7 +30073,7 @@ async function getCierreTotalGrupoData(){
       totalsPorEvento.set(s.eventId, totalsPorEvento.get(s.eventId) + t);
     }
 
-    if (!s.courtesy && !s.isReturn){
+    if (!hideCourtesy && !s.courtesy && !s.isReturn){
       const nombre = s.productName || 'N/D';
       let acc = presentacionesMap.get(nombre);
       if (!acc) acc = { unidades: 0, monto: 0 };
@@ -29913,84 +30169,68 @@ async function computeCierreTotalGrupo(){
 }
 
 async function exportCierreTotalGrupoExcel(){
-  const data = await getCierreTotalGrupoData();
+  const prefs = readPosReportPreferencesPOS();
+  const data = await getCierreTotalGrupoData({includeCourtesy:prefs.includeCourtesy});
   if (!data) return;
 
-  if (typeof XLSX === 'undefined'){
-    posNotify('No se pudo generar el archivo de Excel (librería XLSX no cargada). Si estás sin conexión por primera vez, abrí el POS con internet una vez para cachear todo y reintentá. Revisa tu conexión a internet.');
-    return;
-  }
-
-  const sheets = [];
-
-  // Hoja Resumen
-  const resumenRows = [];
-  resumenRows.push(['Grupo', data.groupLabel]);
-  resumenRows.push(['Eventos incluidos', data.eventos.length]);
-  resumenRows.push(['Ventas totales del grupo (C$)', data.totalGrupo]);
-  resumenRows.push([]);
-  resumenRows.push(['Forma de pago', 'Monto C$']);
-
-  const ordenPagos = ['efectivo','transferencia','tarjeta','credito'];
-  const ya = new Set();
-  for (const metodo of ordenPagos){
-    if (data.porPago[metodo] != null){
-      resumenRows.push([getPaymentMethodLabelPOS(metodo), data.porPago[metodo]]);
-      ya.add(metodo);
+  const resumenRows = [
+    ['Grupo', data.groupLabel],
+    ['Eventos incluidos', data.eventos.length],
+    ['Ventas totales del grupo (C$)', data.totalGrupo]
+  ];
+  if (prefs.includePaymentMethod){
+    resumenRows.push([], ['Forma de pago', 'Monto C$']);
+    const ordenPagos = new Set(['efectivo','transferencia','tarjeta','credito', ...Object.keys(data.porPago)]);
+    for (const metodo of ordenPagos){
+      if (data.porPago[metodo] != null){
+        resumenRows.push([getPaymentMethodLabelPOS(metodo), data.porPago[metodo]]);
+      }
+    }
+    if (prefs.includeBankTransfers && data.transferByBank.length){
+      resumenRows.push([], ['Transferencias por banco'], ['Banco','Total C$','Transacciones']);
+      for (const {bank,total,count} of data.transferByBank){
+        resumenRows.push([bank, total || 0, count || 0]);
+      }
     }
   }
-  for (const metodo in data.porPago){
-    if (!ya.has(metodo)){
-      resumenRows.push([getPaymentMethodLabelPOS(metodo), data.porPago[metodo]]);
-    }
-  }
-  resumenRows.push([]);
-  if (data.transferByBank && Array.isArray(data.transferByBank) && data.transferByBank.length){
-    resumenRows.push(['Transferencias por banco']);
-    resumenRows.push(['Banco','Total C$','Transacciones']);
-    const entries = data.transferByBank.slice().sort((a,b)=> (Number(b.total||0) - Number(a.total||0)));
-    for (const it of entries){
-      resumenRows.push([it.bank, it.total || 0, it.count || 0]);
-    }
-  }
-  resumenRows.push(['Cortesías (unidades)', data.cortesiasUnid]);
-  resumenRows.push(['Devoluciones unidades', data.devolUnid]);
-  resumenRows.push(['Devoluciones monto C$', data.devolMonto]);
-  sheets.push({ name: 'Resumen', rows: resumenRows });
+  if (prefs.includeCourtesy) resumenRows.push(['Cortesías (unidades)', data.cortesiasUnid]);
+  resumenRows.push(['Devoluciones unidades', data.devolUnid], ['Devoluciones monto C$', data.devolMonto]);
 
-  // Hoja Eventos
-  const eventosRows = [];
-  eventosRows.push(['id','evento','creado','cerrado','total C$']);
-  for (const ev of data.eventos){
-    eventosRows.push([
-      ev.id,
-      ev.name,
-      ev.createdAt,
-      ev.closedAt,
-      ev.total
-    ]);
-  }
-  sheets.push({ name: 'Eventos', rows: eventosRows });
+  const sheets = [
+    {name:'Resumen', rows:resumenRows},
+    {name:'Eventos', rows:[
+      ['id','evento','creado','cerrado','total C$'],
+      ...data.eventos.map(ev=>[ev.id,ev.name,ev.createdAt,ev.closedAt,ev.total])
+    ]},
+    {name:'Presentaciones', rows:[
+      ['presentacion','unidades vendidas','ventas C$'],
+      ...data.presentaciones.map(p=>[p.name,p.unidades,p.monto])
+    ]}
+  ];
 
-  // Hoja Presentaciones
-  const presRows = [];
-  presRows.push(['presentacion','unidades vendidas','ventas C$']);
-  if (data.presentaciones.length){
-    for (const p of data.presentaciones){
-      presRows.push([p.name, p.unidades, p.monto]);
-    }
-  }
-  sheets.push({ name: 'Presentaciones', rows: presRows });
+  const identity = window.A33Storage?.getJSON('suite_a33_identity_v1', {}, 'local') || {};
+  const identityRows = posReportIdentityRows(identity, prefs.identityFields);
+  if (identityRows.length) sheets.push({name:'Identidad', rows:identityRows});
 
-  const wb = XLSX.utils.book_new();
-  for (const sh of sheets){
-    const ws = posExportMoneySheet(sh.rows, sh.name);
-    XLSX.utils.book_append_sheet(wb, ws, sh.name);
+  const base = prefs.fileBaseName || identityRows.find(row=>row[0] === 'Nombre comercial')?.[1] || 'SuiteA33';
+  const group = posReportFileSegment(data.groupLabel) || 'Grupo';
+  const reportType = `CierreGrupo_${group}`;
+  const filename = posReportFileName(base, reportType) || posReportFileName('SuiteA33', reportType);
+
+  if (prefs.preview){
+    const summary = resumenRows.filter(row=>row.length > 0).map(row=>row.join(' — '));
+    const message = [
+      filename, '', ...summary, '',
+      ...identityRows.map(([label,value])=>`${label} — ${value}`),
+      'Hojas incluidas — ' + sheets.map(sheet=>sheet.name).join(', ')
+    ].join('\n');
+    const confirmed = await showConfirmClosePOS({
+      title:'Vista previa del Excel de cierre total', message, confirmLabel:'Descargar Excel'
+    });
+    if (!confirmed) return;
   }
 
-  const safeGroup = data.groupLabel.replace(/[\\/:*?\[\]]/g,' ');
-  const filename = `cierre_total_${safeGroup || 'grupo'}.xlsx`;
-  XLSX.writeFile(wb, filename);
+  writeWorkbookFromSheetsPOS(filename, sheets);
 }
 
 

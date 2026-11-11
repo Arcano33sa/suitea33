@@ -774,8 +774,24 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
               </div>
               <div class="cat-toolbar-actions">
                 <button id="cat-export-customers" class="cat-btn cat-btn-secondary" type="button">Exportar a Excel</button>
+                <button id="cat-share-customers" class="cat-btn cat-btn-secondary" type="button" aria-expanded="false" aria-controls="cat-share-customers-panel">Compartir Excel</button>
                 <button id="cat-refresh-customers" class="cat-btn cat-btn-secondary" type="button">Actualizar</button>
               </div>
+            </div>
+            <div id="cat-share-customers-panel" hidden>
+              <form id="cat-share-customers-form" class="cat-product-form">
+                <div class="cat-field-full">
+                  <p>Elegí qué datos incluir en el Excel del catálogo de clientes.</p>
+                  <label class="cat-flag"><input type="checkbox" name="includeName"> Nombre</label>
+                  <label class="cat-flag"><input type="checkbox" name="includePhone"> Celular</label>
+                  <label class="cat-flag"><input type="checkbox" name="includeHistory"> Historial de compras</label>
+                  <small class="cat-muted">Incluye la última compra, el total neto y el aviso de historial parcial cuando corresponda.</small>
+                </div>
+                <div class="cat-toolbar-actions cat-field-full">
+                  <button id="cat-share-customers-download" class="cat-btn cat-btn-ok" type="submit" disabled>Descargar Excel</button>
+                  <button id="cat-share-customers-cancel" class="cat-btn cat-btn-secondary" type="button">Cancelar</button>
+                </div>
+              </form>
             </div>
             <div class="cat-search-row">
               <label>Buscar cliente
