@@ -1120,8 +1120,41 @@ tr:nth-child(even) td {
 .lotes-visual .mini-kpi-val{font-size:18px;line-height:1.5;color:var(--a33-text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .lotes-visual .qty-stack{line-height:1.5}
 .lotes-visual .qty-stack .qty-remaining{color:var(--a33-gold)}
-.lotes-visual .lote-card-grid{gap:8px}
-@media(max-width:540px){.lotes-visual .lote-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lotes-visual .lote-card-grid{
+  --lote-card-quantity-width: calc((100% - 40px) / 6);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.lotes-visual .lote-card-grid > .mini-kpi{
+  box-sizing: border-box;
+  flex: 0 0 var(--lote-card-quantity-width);
+  min-width: 0;
+}
+.lotes-visual .lote-card-grid > .lote-card-expiry{
+  flex-basis: auto;
+  min-width: max-content;
+}
+.lote-card-expiry-value{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.lotes-visual .lote-card-grid > .lote-card-notes{
+  flex: 1 1 120px;
+  text-align: left;
+}
+.lotes-visual .lote-card-notes .mini-kpi-val{
+  display: block;
+  font-size: 14px;
+  font-weight: 400;
+  white-space: pre-wrap;
+}
+@media(max-width:540px){
+  .lotes-visual .lote-card-grid{--lote-card-quantity-width: calc((100% - 8px) / 2)}
+}
 
 /* Mejora visual Lotes E4D: detalle e histórico. */
 #history-modal .modal__panel{background:var(--a33-surface);color:var(--a33-text);border-color:var(--a33-border);width:min(860px,calc(100vw - 24px))}

@@ -2576,9 +2576,7 @@ function buildLoteCard(lote){
 
   const cadStr = formatDate(lote.caducidad);
   const cadWrap = document.createElement('div');
-  cadWrap.style.display = 'inline-flex';
-  cadWrap.style.alignItems = 'center';
-  cadWrap.style.gap = '6px';
+  cadWrap.className = 'lote-card-expiry-value';
   const cadTxt = document.createElement('span');
   cadTxt.textContent = cadStr;
   cadWrap.appendChild(cadTxt);
@@ -2591,7 +2589,16 @@ function buildLoteCard(lote){
       cadWrap.appendChild(b);
     }
   }
-  grid.appendChild(mk('Cad', cadWrap));
+  const expiry = mk('Cad', cadWrap);
+  expiry.classList.add('lote-card-expiry');
+  grid.appendChild(expiry);
+
+  const notesText = lote.notas?.trim();
+  if (notesText){
+    const notes = mk('Notas', notesText);
+    notes.classList.add('lote-card-notes');
+    grid.appendChild(notes);
+  }
 
   card.appendChild(grid);
 
