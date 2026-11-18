@@ -1600,6 +1600,10 @@ function buildArchiveSnapshot(lote, deletedAtIso){
     batchCode: canonicalBatchCode(lote?.batchCode || lote?.codigo || ''),
     createdAt,
     deletedAt,
+    // Conservar los datos disponibles para futuras exportaciones del histórico.
+    fecha: lote?.fecha ?? '',
+    caducidad: lote?.caducidad ?? '',
+    notas: lote?.notas ?? '',
     statusAtDelete: st,
     semaforoAtDelete: sem,
     estadoAutomaticoAtDelete: getLoteDisplayStatus(lote),
@@ -2808,10 +2812,32 @@ function renderTable(opts){
   updateLoadMoreUI();
 }
 
+function getLotesForExcelExport(current, archived){
+  const seen = new Set();
+  const rows = [];
+  // El registro vigente prevalece si una eliminación no llegó a completarse.
+  const entries = [
+    ...current.map(lote => ({ lote, eliminado:false })),
+    ...[...archived].sort((a,b) => (toTimestamp(b?.deletedAt) || 0) - (toTimestamp(a?.deletedAt) || 0))
+      .map(lote => ({ lote, eliminado:true })),
+  ];
+  for (const entry of entries){
+    const lote = entry.lote;
+    if (!lote || typeof lote !== 'object') continue;
+    const ids = [lote.originalId, lote.id, lote.loteId].map(id => String(id ?? '').trim()).filter(Boolean);
+    const keys = ids.length ? ids.map(id => 'id:' + id)
+      : [batchCodeIdentityKey(lote.codigo || lote.batchCode || '')].filter(Boolean).map(code => 'code:' + code);
+    if (keys.some(key => seen.has(key))) continue;
+    keys.forEach(key => seen.add(key));
+    rows.push({ ...entry, lote: { ...lote, id:lote.originalId || lote.id || lote.loteId } });
+  }
+  return rows.sort((a,b) => compareLotesNewestFirst(a.lote, b.lote));
+}
+
 function exportToCSV() {
   if (isExporting) return;
 
-  const lotes = loadLotes();
+  const lotes = getLotesForExcelExport(loadLotes(), loadArchivedLotes());
   if (!lotes.length) {
     window.A33Notice.alert("No hay lotes para exportar.");
     return;
@@ -2836,57 +2862,36 @@ function exportToCSV() {
     }
 
     const headers = [
-      "Fecha",
       "Código",
-      "Volumen total",
-      "Volumen vino",
-      "Volumen vodka",
-      "Volumen jugo",
-      "Volumen sirope",
-      "Volumen agua",
-      "Pulso 250 ml",
-      "Media 375 ml",
-      "Djeba 750 ml",
-      "Litro 1000 ml",
-      "Galón 3750 ml",
-      "Productos dinámicos",
-      "Salida POS por productId",
-      "Fecha caducidad",
-      "Notas",
       "Estado",
       "Evento",
+      "Creado",
+      "Elaborado",
+      "Caducidad",
+      "Productos",
+      "Notas",
     ];
 
-    const sorted = [...lotes].sort(compareLotesNewestFirst);
-
-    const rows = sorted.map((l) => {
+    const states = { VENDIDO:'Vendido', EN_EVENTO:'En evento', DISPONIBLE:'Disponible', CERRADO:'Cerrado' };
+    const rows = lotes.map(({ lote:l, eliminado }) => {
       const createdByLetter = getLoteCreatedQuantitiesByLetter(l);
+      const created = getCreatedTimestamp(l);
       return [
-        formatDate(l.fecha),
         batchCodeExcelText(l.codigo || l.batchCode || ""),
-        l.volTotal || "",
-        l.volVino || "",
-        l.volVodka || "",
-        l.volJugo || "",
-        l.volSirope || "",
-        l.volAgua || "",
-        displayQtyFromMap(createdByLetter, "P", l.pulso ?? ""),
-        displayQtyFromMap(createdByLetter, "M", l.media ?? ""),
-        displayQtyFromMap(createdByLetter, "D", l.djeba ?? ""),
-        displayQtyFromMap(createdByLetter, "L", l.litro ?? ""),
-        displayQtyFromMap(createdByLetter, "G", l.galon ?? ""),
-        formatDynamicProductSummary(l, false),
-        formatPOSAvailabilitySummary(l),
-        formatDate(l.caducidad),
-        (l.notas || "").replace(/\r?\n/g, " "),
-        getLoteDisplayStatus(l),
+        eliminado ? 'Eliminado' : (states[getLoteDisplayStatus(l)] || getLoteDisplayStatus(l)),
         (l.assignedEventName || "").toString().trim(),
+        created ? formatDateTime(created) : '',
+        l.fecha ? formatDate(l.fecha) : '',
+        l.caducidad ? formatDate(l.caducidad) : '',
+        Object.entries(createdByLetter).map(([letter, qty]) => `${letter}${qty}`).join(', '),
+        String(l.notas ?? ''),
       ];
     });
 
     const aoa = [headers, ...rows];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = headers.map((_, index) => ({ wch: index === 1 ? 24 : (index === 13 || index === 14 ? 34 : 18) }));
+    ws['!cols'] = [24, 16, 28, 24, 16, 16, 36, 48].map(wch => ({ wch }));
+    ws['!autofilter'] = { ref:ws['!ref'] };
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Lotes");
 
