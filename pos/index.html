@@ -32,7 +32,7 @@
   })();
 </script>
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
-<link rel="stylesheet" href="styles.css?v=4.20.98&r=27">
+<link rel="stylesheet" href="styles.css?v=4.20.98&r=28">
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=13" />
   <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=3" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=13" />
@@ -141,22 +141,112 @@
       </table>
       </div>
     </dialog>
-    <section class="sale-event-admin" aria-labelledby="sale-event-admin-title">
-      <h3 id="sale-event-admin-title">Administración del evento</h3>
-      <div class="sale-event-create">
-        <div>
-          <label for="new-event">Nuevo evento</label>
-          <input id="new-event" placeholder="Nombre del evento">
-        </div>
-        <button id="btn-add-event" class="btn-ok btn-pill">+ Crear y activar evento</button>
+    <details class="card" id="credit-sales-panel">
+      <summary>Ventas Crédito</summary>
+      <div class="topbar">
+        <label for="credit-sales-filter">Mostrar</label>
+        <select id="credit-sales-filter">
+          <option value="pending">Pendientes</option>
+          <option value="paid">Pagadas</option>
+          <option value="all">Todas</option>
+        </select>
       </div>
-      <p class="muted sale-admin-hint">Usa el grupo seleccionado arriba para reunir los días del mismo evento maestro.</p>
-      <div class="actions">
-        <button type="button" id="btn-manage-groups" class="btn-outline btn-pill">Gestionar grupos</button>
-        <button id="btn-close-event" class="btn-danger btn-pill">Cerrar evento (Corte)</button>
-        <button id="btn-reopen-event" class="btn-ok btn-pill">Reabrir evento</button>
+      <p id="credit-sales-status" class="muted" role="status" aria-live="polite"></p>
+      <div class="table-scroll">
+        <table id="tbl-credit-sales" class="compact">
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Evento</th><th>Referencia / Producto</th><th>Monto original C$</th><th>Abonado C$</th><th>Saldo C$</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody></tbody>
+        </table>
       </div>
-    </section>
+    </details>
+    <dialog id="credit-edit-dialog" class="card" aria-labelledby="credit-edit-title">
+      <div class="sale-day-heading">
+        <h3 id="credit-edit-title">Editar venta al crédito</h3>
+        <button id="credit-edit-close" type="button" class="btn-outline">Cerrar</button>
+      </div>
+      <p id="credit-edit-summary"></p>
+      <form id="credit-edit-form">
+        <fieldset id="credit-edit-fields">
+          <label for="credit-edit-customer">Cliente</label>
+          <select id="credit-edit-customer" required></select>
+          <label for="credit-edit-product">Producto</label>
+          <select id="credit-edit-product" required></select>
+          <div class="row">
+            <div><label for="credit-edit-qty">Cantidad</label><input id="credit-edit-qty" type="number" min="0" step="any" inputmode="decimal" required></div>
+            <div><label for="credit-edit-price">Precio unitario C$</label><input id="credit-edit-price" type="number" min="0" step="0.01" inputmode="decimal" required></div>
+          </div>
+          <p id="credit-edit-discount" class="muted"></p>
+          <label for="credit-edit-notes">Notas</label>
+          <textarea id="credit-edit-notes" rows="3"></textarea>
+          <p id="credit-edit-preview" aria-live="polite"></p>
+          <button type="submit" class="btn-ok">Guardar cambios</button>
+        </fieldset>
+      </form>
+      <p id="credit-edit-message" role="status" aria-live="polite"></p>
+      <button id="credit-edit-recover" type="button" class="btn-outline" hidden>Completar ajuste pendiente</button>
+      <details id="credit-edit-history"><summary>Historial de cambios</summary><div id="credit-edit-history-list"></div></details>
+    </dialog>
+    <dialog id="credit-finance-dialog" class="card" aria-labelledby="credit-finance-title">
+      <div class="sale-day-heading">
+        <h3 id="credit-finance-title">Integrar cobro en Finanzas</h3>
+        <button id="credit-finance-close" type="button" class="btn-outline">Cerrar</button>
+      </div>
+      <p id="credit-finance-summary"></p>
+      <form id="credit-finance-form">
+        <fieldset id="credit-finance-fields">
+          <label for="credit-finance-account">Cuenta financiera de destino</label>
+          <select id="credit-finance-account" required></select>
+          <button type="submit" class="btn-ok">Integrar cobro</button>
+        </fieldset>
+      </form>
+      <p id="credit-finance-message" role="status" aria-live="polite"></p>
+    </dialog>
+    <dialog id="credit-collection-dialog" class="card" aria-labelledby="credit-collection-title">
+      <div class="sale-day-heading">
+        <h3 id="credit-collection-title">Cobrar</h3>
+        <button id="credit-collection-close" type="button" class="btn-outline">Cerrar</button>
+      </div>
+      <p id="credit-collection-summary"></p>
+      <form id="credit-collection-form">
+        <fieldset id="credit-collection-fields">
+          <div class="row">
+            <div>
+              <label for="credit-collection-date">Fecha del pago</label>
+              <input id="credit-collection-date" type="date" required>
+            </div>
+            <div>
+              <label for="credit-collection-amount">Monto C$</label>
+              <input id="credit-collection-amount" type="number" min="0.01" step="0.01" inputmode="decimal" required>
+            </div>
+            <div>
+              <label for="credit-collection-method">Medio de pago</label>
+              <select id="credit-collection-method">
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="tarjeta">Tarjeta</option>
+              </select>
+            </div>
+          </div>
+          <label for="credit-collection-financial-account">Cuenta financiera de destino</label>
+          <select id="credit-collection-financial-account"><option value="">Pendiente de asignar</option></select>
+          <p id="credit-collection-finance-hint" class="muted"></p>
+          <label for="credit-collection-account">Detalle del destino (opcional)</label>
+          <input id="credit-collection-account" maxlength="120" placeholder="Opcional">
+          <label for="credit-collection-reference">Referencia o nota</label>
+          <input id="credit-collection-reference" maxlength="300" placeholder="Opcional">
+          <p id="credit-collection-cash-hint" class="muted"></p>
+          <button type="submit" class="btn-ok">Registrar pago</button>
+        </fieldset>
+      </form>
+      <p id="credit-collection-message" role="status" aria-live="polite"></p>
+      <h4>Historial de cobros</h4>
+      <div class="table-scroll">
+        <table class="compact" id="tbl-credit-payments">
+          <thead><tr><th>Fecha</th><th>Monto C$</th><th>Medio de pago</th><th>Destino</th><th>Referencia</th><th>Estado</th><th>Finanzas</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </dialog>
   </section>
 
   <section id="tab-inventario" class="tab card pos-visual" style="display:none">
@@ -440,6 +530,30 @@
       <h2>Eventos e historial</h2>
       <button id="annual-events-open" class="btn-primary btn-pill" type="button">Archivo anual</button>
     </div>
+    <section class="sale-event-admin" aria-labelledby="sale-event-admin-title">
+      <h3 id="sale-event-admin-title">Administración del evento</h3>
+      <div class="row">
+        <div>
+          <label for="event-admin-group">Evento maestro / Grupo</label>
+          <select id="event-admin-group"></select>
+          <input id="event-admin-group-new" placeholder="Nombre de nuevo grupo" aria-label="Nombre de nuevo grupo" style="display:none">
+        </div>
+        <div><label for="event-admin-event">Evento activo</label><select id="event-admin-event"></select></div>
+      </div>
+      <div class="sale-event-create">
+        <div>
+          <label for="new-event">Nuevo evento</label>
+          <input id="new-event" placeholder="Nombre del evento">
+        </div>
+        <button id="btn-add-event" class="btn-ok btn-pill">+ Crear y activar evento</button>
+      </div>
+      <p class="muted sale-admin-hint">Selecciona el grupo y el evento que deseas administrar. El nuevo evento se creará en el grupo seleccionado.</p>
+      <div class="actions">
+        <button type="button" id="btn-manage-groups" class="btn-outline btn-pill">Gestionar grupos</button>
+        <button id="btn-close-event" class="btn-danger btn-pill">Cerrar evento (Corte)</button>
+        <button id="btn-reopen-event" class="btn-ok btn-pill">Reabrir evento</button>
+      </div>
+    </section>
     <div class="topbar">
       <select id="filtro-eventos" aria-label="Filtrar eventos por estado">
         <option value="todos" selected>Mostrar: Todos</option>
@@ -1844,7 +1958,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m62').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m63').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1853,7 +1967,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m62')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m63')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1863,7 +1977,8 @@
 
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
-<script src="app.js?v=4.20.98&r=56"></script>
+<script src="/assets/js/a33-credit-finance.js?v=4.20.98&r=1"></script>
+<script src="app.js?v=4.20.98&r=57"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=13"></script>
 <script>
   (function(){

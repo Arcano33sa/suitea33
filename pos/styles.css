@@ -2022,13 +2022,25 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
 #tab-venta :is(#tbl-day,#tbl-event-sales) :is(th,td):nth-child(n+3):nth-child(-n+6){text-align:right;font-variant-numeric:tabular-nums}
 #tab-venta :is(#tbl-day,#tbl-event-sales) td:nth-child(6){font-weight:800}
 #tab-venta :is(#tbl-day,#tbl-event-sales) tbody tr:hover td{background:var(--a33-surface-3)}
-#tab-venta .sale-event-admin{margin-top:24px;padding-top:20px;border-top:1px solid var(--a33-border-soft)}
-#tab-venta .sale-event-admin h3{margin:0 0 12px;font-size:16px}
-#tab-venta .sale-event-create{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
-#tab-venta .sale-event-create>div{flex:1 1 240px;max-width:480px;min-width:0}
-#tab-venta .sale-event-create>button{min-height:44px}
-#tab-venta .sale-admin-hint{font-size:13px;line-height:1.5;margin:12px 0}
-#tab-venta .sale-event-admin .actions button{min-height:44px;box-shadow:none}
+#tab-eventos .sale-event-admin{margin-top:24px;padding-top:20px;border-top:1px solid var(--a33-border-soft)}
+#tab-eventos .sale-event-admin h3{margin:0 0 12px;font-size:16px}
+#tab-eventos .sale-event-create{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+#tab-eventos .sale-event-create>div{flex:1 1 240px;max-width:480px;min-width:0}
+#tab-eventos .sale-event-create>button{min-height:44px}
+#tab-eventos .sale-admin-hint{font-size:13px;line-height:1.5;margin:12px 0}
+#tab-eventos .sale-event-admin .actions button{min-height:44px;box-shadow:none}
+:is(#credit-collection-dialog,#credit-edit-dialog,#credit-finance-dialog){width:min(900px,calc(100vw - 32px));max-height:calc(100dvh - 32px);margin:auto;overflow:auto;box-sizing:border-box}
+:is(#credit-collection-dialog,#credit-edit-dialog,#credit-finance-dialog)::backdrop{background:rgba(0,0,0,.65)}
+:is(#credit-collection-fields,#credit-edit-fields,#credit-finance-fields){border:0;padding:0;margin:0;min-width:0}
+:is(#credit-collection-summary,#credit-edit-summary,#credit-edit-history-list){line-height:1.6;overflow-wrap:anywhere}
+:is(#credit-collection-message,#credit-edit-message,#credit-finance-message){white-space:pre-wrap}
+#credit-edit-history{margin-top:18px}
+#credit-collection-finance-hint:empty{display:none}
+#credit-edit-history-list p{padding:10px 0;border-bottom:1px solid var(--chip-bd)}
+#tbl-credit-sales .credit-sales-actions{white-space:nowrap}
+#tbl-credit-sales .credit-sales-actions button+button{margin-left:8px}
+#tbl-credit-sales .credit-sales-actions button:disabled{opacity:.5;cursor:not-allowed}
+#tbl-credit-sales :is(th,td):nth-child(n+5):nth-child(-n+7){text-align:right;font-variant-numeric:tabular-nums}
 #tab-venta :is(button,input,select):focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
 @media(max-width:1000px){#tab-venta .sale-context{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:540px){
@@ -2037,7 +2049,7 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
   #tab-venta .sale-main-actions{align-items:stretch}
   #tab-venta #btn-add{max-width:none}
   #tab-venta .sale-day-total>strong{font-size:22px}
-  #tab-venta .sale-event-create>div{max-width:none;flex-basis:100%}
+  #tab-eventos .sale-event-create>div{max-width:none;flex-basis:100%}
 }
 
 /* Etapa visual POS 1B: jerarquía de la compra y modales de clientes. */

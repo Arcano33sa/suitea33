@@ -3909,14 +3909,38 @@ function finOperationalDedupeRows(rows) {
   return out;
 }
 
+function finGetOperationalCreditCollectionsSource(data){
+  return finOperationalArray(data && data.entries)
+    .filter(entry=>entry.source === 'POS_CREDIT_COLLECTION')
+    .map(entry=>{
+      const bank = entry.paymentMethod === 'bank';
+      const amount = finRoundCurrency2(entry.originalAmount || entry.totalDebe || 0);
+      return {source:'POS_CREDIT_COLLECTION',id:entry.creditPaymentKey || entry.id,
+        creditPaymentKey:entry.creditPaymentKey,posEventId:entry.posEventId,eventScope:'POS',
+        dateISO:String(entry.fecha || entry.date || '').slice(0,10),fecha:String(entry.fecha || entry.date || '').slice(0,10),
+        paymentMethod:bank ? 'bank' : 'cash',channel:bank ? 'bank' : 'cash',
+        originalCurrency:'NIO',originalAmount:amount,amountNio:amount,amount,
+        operationalClass:FIN_OPERATIONAL_CLASSES.CASH_IN,
+        operationalClassLabel:'Cobro de crédito',
+        affectsUtility:false,affectsCash:!bank,affectsBank:bank,
+        countsAsAdditionalIncome:false,countsAsExpense:false,countsAsCashIn:true,countsAsCashOut:false,
+        reference:String(entry.reference || ''),note:String(entry.descripcion || '')};
+    });
+}
+
 function finBuildOperationalManualTotals(data, filters = {}) {
   const manual = finGetOperationalManualMovementsSource(data);
   const receipts = finGetOperationalReceiptsSource(data).filter(r => {
     const st = String(r.status || '').toUpperCase();
     return !st || st === 'ISSUED' || st === 'EMITIDO' || st === 'EMITIDA';
   });
-  const posCash = finGetOperationalPosCashMovementsSource(data && data.posCashV2);
-  const rawRows = manual.concat(receipts, posCash).filter(row => finApplyOperationalFilters(row, filters));
+  const collections = finGetOperationalCreditCollectionsSource(data);
+  const integratedCashIds = new Set(finOperationalArray(data && data.entries).filter(entry=>entry.source === 'POS_CREDIT_COLLECTION')
+    .map(entry=>String(entry.creditSaleId) + '|' + String(entry.creditPaymentId || '')));
+  const cashRows = finOperationalArray(data && data.posCashV2).map(row=>({...row,movements:finOperationalArray(row.movements)
+    .filter(movement=>!integratedCashIds.has(String(movement.creditSaleId ?? movement.ventaCreditoId) + '|' + String(movement.creditPaymentId || movement.id || '')))}));
+  const posCash = finGetOperationalPosCashMovementsSource(cashRows);
+  const rawRows = manual.concat(receipts,posCash,collections).filter(row => finApplyOperationalFilters(row, filters));
   const rows = finOperationalDedupeRows(rawRows);
   const totals = {
     stage: FIN_OPERATIONAL_CLASS_STAGE,
@@ -3933,6 +3957,7 @@ function finBuildOperationalManualTotals(data, filters = {}) {
       manual: manual.length,
       receipts: receipts.length,
       posCash: posCash.length,
+      creditCollections: collections.length,
       filtered: rawRows.length,
       used: rows.length
     },
@@ -4650,6 +4675,7 @@ function finIsBankAccount(accOrCode) {
     if (role.includes('bank') || role.includes('banco')) return true;
     const name = String(accOrCode.nombre || accOrCode.name || '').toLowerCase();
     if (name.includes('banco') || name.includes('bank')) return true;
+    if (/clientes|cuentas.*cobrar|receivable/.test(name)) return false;
     return finIsDynamicBankAccountCode(code);
   }
   const code = finNormalizeAccountCode(accOrCode);
@@ -11108,9 +11134,11 @@ function finEntryOriginMatchesFilter(entry, filterValue) {
   const info = finGetEntryOriginPresentation(entry);
   const base = info.base;
 
-  if (filter === 'POS' || filter === 'POS_CIERRES' || filter === 'POS_LEGACY') {
+  if (filter === 'POS' || filter === 'POS_CIERRES' || filter === 'POS_LEGACY' || filter === 'POS_COBROS') {
     if (base !== 'POS') return false;
     if (filter === 'POS') return true;
+    if (filter === 'POS_COBROS') return entry.source === 'POS_CREDIT_COLLECTION';
+    if (entry.source === 'POS_CREDIT_COLLECTION') return false;
     const close = isPosDailyCloseEntry(entry);
     if (filter === 'POS_CIERRES') return close;
     if (filter === 'POS_LEGACY') return !close;
@@ -11120,6 +11148,7 @@ function finEntryOriginMatchesFilter(entry, filterValue) {
 }
 
 function finEntryOriginLabelForHistory(entry) {
+  if (entry && entry.source === 'POS_CREDIT_COLLECTION') return 'POS — Cobro de crédito';
   const info = finGetEntryOriginPresentation(entry);
   if (info.base === 'POS') return isPosDailyCloseEntry(entry) ? 'POS — Cierre diario' : 'POS — Legacy';
   return info.label || info.base || 'Legacy / histórico';
@@ -20407,7 +20436,19 @@ function finSafeRenderBlock(label, fn) {
   return null;
 }
 
+async function finSyncPosCreditPayments(){
+  if (!window.A33CreditFinance) return;
+  let connection;
+  try{
+    connection = await finOpenPosDashboardReadonly();
+    if (!connection || !connection.objectStoreNames.contains('sales') || !connection.objectStoreNames.contains('cashV2')) return;
+    await A33CreditFinance.sync({posDb:connection,finDb:finDB});
+  }catch(error){ console.warn('Cobros POS pendientes de integrar a Finanzas',error); }
+  finally{ if (connection) connection.close(); }
+}
+
 async function refreshAllFin() {
+  await finSyncPosCreditPayments();
   try { finCachedData = await getAllFinData(); }
   catch (err) {
     finRenderDashboardReadStatus({ incomplete:true, issues:[`No se pudo actualizar Finanzas: ${String(err && err.message || err)}. Los valores visibles no fueron actualizados`] });
@@ -21802,6 +21843,10 @@ document.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('storage', (ev) => {
   try {
     const key = ev && ev.key ? String(ev.key) : '';
+    if (key === 'a33_pos_credit_finance_pulse' && finDB){
+      refreshAllFin().catch(error=>console.warn('No se pudo actualizar Finanzas después del cobro',error));
+      return;
+    }
     const expected = (window.A33Currency && window.A33Currency.storageKey) || 'suite_a33_currency_settings_v1';
     if (!key || key === expected) {
       finRenderCurrencyReference();

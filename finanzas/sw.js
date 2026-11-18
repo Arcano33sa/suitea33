@@ -2,12 +2,12 @@
 try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=54'); } catch (_) {}
 const VERSION = self.A33_RELEASE ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const REV = self.A33_RELEASE ? String(self.A33_RELEASE.rev) : '5';
-const CACHE = `a33-v${VERSION}-finanzas-r${REV}-m2`;
+const CACHE = `a33-v${VERSION}-finanzas-r${REV}-m3`;
 const PRECACHE = [
   './',
   './index.html',
   './style.css?v=4.20.98&r=1',
-  './script.js?v=4.20.98&r=6',
+  './script.js?v=4.20.98&r=7',
   './images/logo.png',
   '/assets/js/a33-theme.js?v=4.20.98&r=10',
   '/assets/css/a33-theme.css?v=4.20.98&r=1',
@@ -20,6 +20,7 @@ const PRECACHE = [
   '/assets/js/a33-release.js?v=4.20.98&r=54',
   '/assets/js/a33-module-nav.js?v=4.20.98&r=3',
   '/assets/js/a33-storage.js?v=4.20.98&r=22',
+  '/assets/js/a33-credit-finance.js?v=4.20.98&r=1',
   '/assets/js/a33-presentations.js?v=4.20.98&r=15',
   '/assets/css/a33-header.css?v=4.20.98&r=7',
   '/assets/css/a33-module-nav.css?v=4.20.98&r=3',
