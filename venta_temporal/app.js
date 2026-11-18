@@ -130,7 +130,7 @@ function renderItems() {
     for (const [key, title, step, min] of [
       ['quantity', 'Cantidad', '1', '1'],
       ['unitPrice', 'Precio (C$)', '0.01', '0'],
-      ['unitCost', 'Costo unitario (C$)', '0.01', '0'],
+      ['unitCost', 'Costo (C$)', '0.01', '0'],
       ['discount', 'Desc./unidad (C$)', '0.01', '0']
     ]) {
       const label = element('label', title);
@@ -141,7 +141,8 @@ function renderItems() {
       input.min = min;
       input.required = key !== 'discount';
       input.value = item[key];
-      input.setAttribute('aria-label', title + ' de ' + item.name);
+      const accessibleTitle = key === 'unitCost' ? 'Costo (C$) por unidad' : title;
+      input.setAttribute('aria-label', accessibleTitle + ' de ' + item.name);
       input.addEventListener('input', () => {
         item[key] = input.value;
         refreshPreview();

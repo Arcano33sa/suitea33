@@ -52,12 +52,18 @@ body {
   gap: 8px;
   margin: 8px 0;
 }
-.item-fields label { min-width: 0; font-size: .79rem; }
+.item-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: .79rem;
+}
 .item-fields input {
   display: block;
   width: 100%;
   min-height: 44px;
-  margin-top: 4px;
+  margin-top: auto;
   padding: 7px;
   font-size: 1rem;
 }
