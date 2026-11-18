@@ -515,13 +515,15 @@ input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0
     }
     @media (min-width: 761px) {
       .a33-checklist-history-table th:nth-child(1),
-      .a33-checklist-history-table td:nth-child(1) { width: 23%; }
+      .a33-checklist-history-table td:nth-child(1) { width: 18%; }
       .a33-checklist-history-table th:nth-child(2),
-      .a33-checklist-history-table td:nth-child(2) { width: 39%; }
+      .a33-checklist-history-table td:nth-child(2) { width: 28%; }
       .a33-checklist-history-table th:nth-child(3),
-      .a33-checklist-history-table td:nth-child(3) { width: 21%; }
+      .a33-checklist-history-table td:nth-child(3) { width: 24%; }
       .a33-checklist-history-table th:nth-child(4),
-      .a33-checklist-history-table td:nth-child(4) { width: 17%; }
+      .a33-checklist-history-table td:nth-child(4) { width: 16%; }
+      .a33-checklist-history-table th:nth-child(5),
+      .a33-checklist-history-table td:nth-child(5) { width: 14%; }
     }
     .a33-checklist-lot {
       text-align: center;
@@ -718,10 +720,12 @@ input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0
         padding: 0.58rem 0.62rem;
         text-align: center;
       }
-      .a33-checklist-history-table td:nth-child(3),
-      .a33-checklist-history-table td:nth-child(4) { border-bottom: 0; }
-      .a33-checklist-history-table td:nth-child(4) { align-items: stretch; }
-      .a33-checklist-history-table td:nth-child(4)::before { text-align: center; }
+      .a33-checklist-history-table td:nth-child(5) {
+        grid-column: 1 / -1;
+        border-bottom: 0;
+        align-items: stretch;
+      }
+      .a33-checklist-history-table td:nth-child(5)::before { text-align: center; }
       .a33-checklist-history-table .a33-checklist-use { width: 100%; min-width: 0; }
       .a33-checklist-items-table tr {
         grid-template-columns: 70px minmax(0, 1fr);
@@ -3442,7 +3446,7 @@ function a33WireNumericInput(el, mode) {
       wrap.className = "a33-checklist-table-wrap";
       const table = document.createElement("table");
       table.className = "a33-checklist-table a33-checklist-history-table";
-      table.innerHTML = "<thead><tr><th>Fecha</th><th>Producción / Lote</th><th>Volumen</th><th>Acción</th></tr></thead>";
+      table.innerHTML = "<thead><tr><th>Fecha</th><th>Producción / Lote</th><th>Productos</th><th>Volumen</th><th>Acción</th></tr></thead>";
       const tbody = document.createElement("tbody");
 
       rows.forEach((lote) => {
@@ -3459,6 +3463,9 @@ function a33WireNumericInput(el, mode) {
         lotTd.className = "a33-checklist-lot";
         lotTd.dataset.label = "Producción / Lote";
         lotTd.textContent = a33ChecklistLotCode(lote);
+        const productsTd = document.createElement("td");
+        productsTd.dataset.label = "Productos";
+        productsTd.textContent = a33ChecklistProductionDetail(lote) || "Sin detalle de productos";
         const volumeTd = document.createElement("td");
         volumeTd.className = "a33-checklist-value";
         volumeTd.dataset.label = "Volumen";
@@ -3475,7 +3482,7 @@ function a33WireNumericInput(el, mode) {
         button.dataset.checklistMode = isHistory ? "history" : "pending";
         button.setAttribute("aria-label", actionLabel + " " + (a33IsStandaloneProduction(lote) ? "producción " : "lote ") + a33ChecklistLotCode(lote));
         actionTd.appendChild(button);
-        tr.append(dateTd, lotTd, volumeTd, actionTd);
+        tr.append(dateTd, lotTd, productsTd, volumeTd, actionTd);
         tbody.appendChild(tr);
       });
 
