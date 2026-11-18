@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Venta Temporal · Suite A33</title>
+  <link rel="stylesheet" href="../assets/css/a33-header.css">
+  <link rel="stylesheet" href="../assets/css/a33-theme.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="../assets/js/a33-theme.js"></script>
+  <script src="../assets/js/a33-storage.js?module=venta-temporal" data-a33-read-only defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="a33-header">
+    <a class="a33-btn-menu" href="../index.html">← Menú principal</a>
+    <h1 class="a33-title">Venta Temporal</h1>
+  </header>
+  <main class="sale-page">
+    <form id="sale-form" class="card">
+      <div class="sale-layout">
+        <section aria-labelledby="catalog-title">
+          <h2 id="catalog-title">Productos disponibles</h2>
+          <div id="catalog" class="catalog-list" aria-live="polite">Cargando Catálogos…</div>
+        </section>
+        <section aria-labelledby="items-title">
+          <h2 id="items-title">Productos de la venta</h2>
+          <div id="items" class="item-list"></div>
+        </section>
+      </div>
+      <section class="sale-breakdown" aria-labelledby="breakdown-title">
+        <h2 id="breakdown-title">Desglose de la venta</h2>
+        <div id="preview"></div>
+      </section>
+      <div class="sale-actions">
+        <button id="save" class="btn-ok" type="submit" disabled>Guardar simulación</button>
+        <button id="cancel" class="btn-outline" type="button" disabled>Cancelar</button>
+      </div>
+      <p id="save-status" class="sale-status" role="status"></p>
+    </form>
+    <section class="card" aria-labelledby="history-title">
+      <h2 id="history-title">Histórico</h2>
+      <p id="history-status" role="status">Cargando histórico…</p>
+      <div id="history" class="history-list"></div>
+    </section>
+  </main>
+</body>
+</html>

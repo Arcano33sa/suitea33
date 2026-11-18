@@ -1053,13 +1053,19 @@
     return normalizeProductRecord(merged, { forExisting:true, origin:opts.origin || '' });
   }
 
-  function openProductsDb(){
+  function openProductsDb({ readOnly = false } = {}){
     if (productsDb) return Promise.resolve(productsDb);
     return new Promise((resolve, reject) => {
       try{
         if (!window.indexedDB) throw new Error('indexeddb_unavailable');
         const req = window.indexedDB.open(PRODUCTS_DB_NAME);
+        let missing = false;
         req.onupgradeneeded = (event) => {
+          if (readOnly){
+            missing = true;
+            req.transaction.abort();
+            return;
+          }
           const d = event.target.result;
           if (!d.objectStoreNames.contains(PRODUCTS_STORE_NAME)){
             const store = d.createObjectStore(PRODUCTS_STORE_NAME, { keyPath:'id', autoIncrement:true });
@@ -1071,15 +1077,15 @@
           try{ productsDb.onversionchange = () => { try{ productsDb.close(); }catch(_){ } productsDb = null; }; }catch(_){ }
           resolve(productsDb);
         };
-        req.onerror = () => reject(req.error || new Error('products_db_open_failed'));
+        req.onerror = () => missing ? resolve(null) : reject(req.error || new Error('products_db_open_failed'));
         req.onblocked = () => reject(new Error('products_db_blocked'));
       }catch(error){ reject(error); }
     });
   }
 
-  async function getAllProductsRaw(){
-    const d = await openProductsDb();
-    if (!d.objectStoreNames.contains(PRODUCTS_STORE_NAME)) return [];
+  async function getAllProductsRaw(options){
+    const d = await openProductsDb(options);
+    if (!d || !d.objectStoreNames.contains(PRODUCTS_STORE_NAME)) return [];
     return new Promise((resolve, reject) => {
       const tx = d.transaction(PRODUCTS_STORE_NAME, 'readonly');
       const req = tx.objectStore(PRODUCTS_STORE_NAME).getAll();
@@ -1152,6 +1158,25 @@
       return value === true || value === 1 || String(value).toLowerCase() === 'true';
     }
     return false;
+  }
+
+  async function readProductsForPOS(){
+    const rows = await getAllProductsRaw({ readOnly:true });
+    const deletedIds = new Set(readDeletedProductMarkers().map((row) => productString(row.productId)));
+    const products = new Map();
+    const truthy = ['true', '1', 'si', 'sí', 'yes', 'y', 'on'];
+    const falsy = ['false', '0', 'no', 'n', 'off'];
+    for (const row of rows){
+      if (!isPlainObject(row) || row.deleted === true) continue;
+      const activeKey = ['active', 'activo', 'isActive', 'enabled'].find((key) => Object.prototype.hasOwnProperty.call(row, key));
+      const posKey = ['pos', 'POS', 'posEnabled', 'showInPOS', 'visiblePOS', 'vendible', 'sellable', 'saleEnabled'].find((key) => Object.prototype.hasOwnProperty.call(row, key));
+      if (falsy.includes(productString(row[activeKey]).toLowerCase())) continue;
+      if (!truthy.includes(productString(row[posKey]).toLowerCase())) continue;
+      const productId = productIdFromRecord(row) || legacyStableProductId(row);
+      if (!productId || deletedIds.has(productId) || products.has(productId)) continue;
+      products.set(productId, { ...row, productId });
+    }
+    return Array.from(products.values());
   }
 
   async function getProductByProductId(productId){
@@ -1256,6 +1281,7 @@
     async getActive(){ return (await getAllProducts()).filter(isProductActive); },
     async getActiveWithRecipe(){ return (await getAllProducts()).filter((row) => isProductActive(row) && hasProductRecipe(row)); },
     async getActiveForPOS(){ return (await getAllProducts()).filter((row) => isProductActive(row) && isProductForPos(row)); },
+    readForPOS: readProductsForPOS,
     getByProductId: getProductByProductId,
     exists: productIdExists,
     isRealProduct: isRealProductReference,
@@ -1615,7 +1641,7 @@
   };
 
   try{
-    if (!window.__A33_LEGACY_ACCESS_PURGE_PROMISE){
+    if (!document.currentScript?.hasAttribute('data-a33-read-only') && !window.__A33_LEGACY_ACCESS_PURGE_PROMISE){
       window.__A33_LEGACY_ACCESS_PURGE_PROMISE = Promise.resolve()
         .then(() => cleanupRetiredGateResidueImpl())
         .catch(() => ({ local:[], session:[], indexedDB:[], caches:[], serviceWorkers:[] }));
