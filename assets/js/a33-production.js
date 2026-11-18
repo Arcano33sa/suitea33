@@ -1115,6 +1115,80 @@
     }
   }
 
+  // Compensar movimientos originales, nunca recalcular con recetas actuales.
+  function cancelOfficialProduction(expectedLote, normalizeLote) {
+    const lock = acquireCommitLock('cancel-production');
+    if (!lock.ok) return lock;
+    try {
+      const lots = readSharedStrict(LOTES_KEY, []);
+      const inventory = readSharedStrict(INVENTORY_KEY, defaultInventory());
+      if (!lots.ok || !inventory.ok) return { ok:false, message:'No se pudieron leer Lotes e Inventario.' };
+      const lote = lots.data.find(row => str(row.id) === str(expectedLote.id));
+      if (!lote) return { ok:false, message:'El lote ya no está activo. Actualiza la lista.' };
+      if (JSON.stringify(typeof normalizeLote === 'function' ? normalizeLote(clone(lote)) : lote) !== JSON.stringify(expectedLote)) return { ok:false, message:'El lote cambió. Actualiza la lista antes de anularlo.' };
+      if (str(lote.assignedEventId) || str(lote.assignedAt) || str(lote.sourceEventId)
+          || (lote.assignmentHistory && Object.keys(lote.assignmentHistory).length)
+          || (lote.eventUsage && Object.keys(lote.eventUsage).length)
+          || !['', 'DISPONIBLE'].includes(str(lote.status).toUpperCase())) {
+        return { ok:false, message:'Solo se puede anular una producción antes de enviarla a un evento.' };
+      }
+      const operationId = str(lote.operationId || lote.productionOperationId);
+      const after = ensureInventoryShape(inventory.data);
+      const operation = exactInventoryOperation(after, operationId);
+      if (!operation || str(operation.loteId) !== str(lote.loteId || lote.id)) {
+        return { ok:false, message:'Este lote no tiene consumos originales verificables. No se borró ni se modificó Inventario.' };
+      }
+      const alreadyCancelled = operation.status === 'cancelled';
+      if (!alreadyCancelled) {
+        if (operation.status !== 'committed') return { ok:false, message:'La producción no está completa. Revisa la operación antes de anularla.' };
+        const movements = after.movimientos.filter(m => str(m.operationId) === operationId
+          && ['consumo_produccion', 'alta_produccion'].includes(m.tipoMovimiento));
+        const buckets = { liquido:'liquids', envase:'bottles', tapa:'caps', producto_terminado:'finishedByProductId' };
+        if (!movements.some(m => m.tipoMovimiento === 'alta_produccion')
+            || !['liquido','envase','tapa'].every(type => movements.some(m => m.tipoItem === type))) {
+          return { ok:false, message:'El registro de consumos está incompleto; no se modificó Inventario.' };
+        }
+        const timestamp = nowIso();
+        for (const m of movements) {
+          const bucket = buckets[m.tipoItem];
+          const delta = Number(m.delta);
+          const row = bucket && after[bucket][m.itemId];
+          if (!row || !Number.isFinite(delta) || !Number.isFinite(Number(row.stock))
+              || (m.tipoMovimiento === 'alta_produccion' ? delta <= 0 : delta >= 0)) {
+            return { ok:false, message:'No se pudieron verificar los movimientos originales; no se modificó Inventario.' };
+          }
+          const previous = Number(row.stock);
+          const next = previous - delta;
+          if (next < -0.0000001) return { ok:false, message:'El producto terminado ya no está disponible para anular esta producción.' };
+          row.stock = Math.max(0, next);
+          after.movimientos.push({ ...m, id:'cancel::' + m.id, operationId:'cancel::' + operationId,
+            originalOperationId:operationId, fecha:timestamp, origen:'Anulación de producción',
+            tipoMovimiento:'anulacion_produccion', delta:-delta, stockAnterior:previous, stockNuevo:row.stock });
+        }
+        operation.status = 'cancelled';
+        operation.cancelledAt = timestamp;
+        operation.cancelledLote = clone(lote);
+        const written = sharedReplaceExact(INVENTORY_KEY, after, inventory.meta && inventory.meta.rev, 'anulacion-produccion');
+        if (!written || written.ok === false) return { ok:false, message:'No se pudo guardar la devolución. El lote sigue activo.' };
+        const removed = sharedReplaceExact(LOTES_KEY, lots.data.filter(row => str(row.id) !== str(lote.id)), lots.meta && lots.meta.rev, 'anulacion-produccion');
+        if (!removed || removed.ok === false) {
+          const rollback = sharedReplaceExact(INVENTORY_KEY, inventory.data, written.meta && written.meta.rev, 'anulacion-rollback');
+          return { ok:false, message:rollback && rollback.ok !== false
+            ? 'No se pudo retirar el lote. Se revirtió la devolución; intenta nuevamente.'
+            : 'La devolución quedó registrada, pero falta retirar el lote. Reintenta la anulación; los materiales no se devolverán dos veces.' };
+        }
+      } else {
+        const removed = sharedReplaceExact(LOTES_KEY, lots.data.filter(row => str(row.id) !== str(lote.id)), lots.meta && lots.meta.rev, 'anulacion-produccion');
+        if (!removed || removed.ok === false) return { ok:false, message:'No se pudo retirar el lote. La devolución ya está registrada y no se repetirá.' };
+      }
+      return { ok:true, alreadyCancelled, message:'Producción anulada. Los materiales regresaron al inventario.' };
+    } catch (error) {
+      return { ok:false, message:'No se pudo completar la anulación. Actualiza y revisa Inventario antes de continuar. ' + error.message };
+    } finally {
+      releaseCommitLock(lock.token);
+    }
+  }
+
   g.A33Production = Object.freeze({
     inventoryKey: INVENTORY_KEY,
     lotesKey: LOTES_KEY,
@@ -1129,6 +1203,7 @@
     loadFabricableProducts,
     buildInventoryPlan,
     commitOfficialProduction,
+    cancelOfficialProduction,
     recoverPendingTransactions,
     hasInventoryOperation,
     exactLoteOperation

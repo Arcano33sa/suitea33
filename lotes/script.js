@@ -2413,9 +2413,9 @@ function buildLoteRow(lote){
 
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
-  deleteBtn.textContent = "Borrar";
-  deleteBtn.title = "Borrar";
-  deleteBtn.setAttribute("aria-label", "Borrar");
+  deleteBtn.textContent = effectiveLoteStatus(lote) === 'DISPONIBLE' ? "Anular" : "Borrar";
+  deleteBtn.title = deleteBtn.textContent;
+  deleteBtn.setAttribute("aria-label", deleteBtn.textContent);
   deleteBtn.className = "btn danger icon";
   deleteBtn.dataset.action = 'delete';
   deleteBtn.dataset.id = stableLoteRecordId(lote);
@@ -2620,7 +2620,8 @@ function buildLoteCard(lote){
 
   actions.appendChild(mkBtn('Ver','Ver','btn icon','view'));
   actions.appendChild(mkBtn('Editar','Editar','btn secondary icon','edit'));
-  actions.appendChild(mkBtn('Borrar','Borrar','btn danger icon','delete'));
+  const deleteLabel = effectiveLoteStatus(lote) === 'DISPONIBLE' ? 'Anular' : 'Borrar';
+  actions.appendChild(mkBtn(deleteLabel,deleteLabel,'btn danger icon','delete'));
 
   card.appendChild(actions);
 
@@ -3524,6 +3525,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       if (action === 'delete') {
+        if (effectiveLoteStatus(lote) === 'DISPONIBLE') {
+          if (!confirm(`¿Anular la producción del lote ${lote.codigo || ''}?\n\nLos líquidos, envases y tapas descontados regresarán al inventario y se retirará el producto terminado.`)) return;
+          const result = window.A33Production && window.A33Production.cancelOfficialProduction(lote, normalizeLoteRecord);
+          if (!result || !result.ok) {
+            window.A33Notice.alert(result && result.message || 'No está disponible la anulación segura. No se borró el lote.');
+            return;
+          }
+          try { archiveLote(lote, new Date().toISOString()); } catch (error) { console.warn('El respaldo de la anulación está en Inventario', error); }
+          if (editingId === lote.id) clearForm();
+          renderTable({ reset:true, forceRefresh:true });
+          if (isHistoryModalOpen()) renderHistoryModal();
+          window.A33Notice.alert(result.message);
+          return;
+        }
         const code = (lote.codigo || '').toString().trim();
         const _stForDelete = effectiveLoteStatus(lote);
         const _semForDelete = _stForDelete === 'EN_EVENTO' ? getLoteSemaforoState(lote) : '';
@@ -3590,6 +3605,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       if (action === 'delete') {
+        if (effectiveLoteStatus(lote) === 'DISPONIBLE') {
+          if (!confirm(`¿Anular la producción del lote ${lote.codigo || ''}?\n\nLos líquidos, envases y tapas descontados regresarán al inventario y se retirará el producto terminado.`)) return;
+          const result = window.A33Production && window.A33Production.cancelOfficialProduction(lote, normalizeLoteRecord);
+          if (!result || !result.ok) {
+            window.A33Notice.alert(result && result.message || 'No está disponible la anulación segura. No se borró el lote.');
+            return;
+          }
+          try { archiveLote(lote, new Date().toISOString()); } catch (error) { console.warn('El respaldo de la anulación está en Inventario', error); }
+          if (editingId === lote.id) clearForm();
+          renderTable({ reset:true, forceRefresh:true });
+          if (isHistoryModalOpen()) renderHistoryModal();
+          window.A33Notice.alert(result.message);
+          return;
+        }
         const code = (lote.codigo || '').toString().trim();
         const _stForDelete = effectiveLoteStatus(lote);
         const _semForDelete = _stForDelete === 'EN_EVENTO' ? getLoteSemaforoState(lote) : '';
