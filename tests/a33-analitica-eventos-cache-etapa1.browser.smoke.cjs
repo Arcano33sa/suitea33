@@ -83,8 +83,8 @@ let browser;
   await page.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting);
   // Simula la aprobación explícita en Configuración solo en este perfil de prueba.
   await page.evaluate(async()=>{(await navigator.serviceWorker.getRegistration()).waiting.postMessage({type:'SKIP_WAITING'});});
-  await page.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('r=6'));
-  await page.waitForFunction(async()=>!!(await caches.keys()).find(key=>key.endsWith('-m7')));
+  await page.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('r=7'));
+  await page.waitForFunction(async()=>!!(await caches.keys()).find(key=>key.endsWith('-m8')));
   await context.setOffline(true);
   await page.reload();
   await page.waitForFunction(()=>!!document.querySelector('#analytics-event-picker input[value="17"]'));

@@ -1154,7 +1154,7 @@ textarea{
 .a33-analytics-page .analytics-event-picker .field{flex:1 1 200px;min-width:0}
 .analytics-event-picker label{display:block}
 .analytics-event-picker select{display:block;width:100%}
-.analytics-events-menu{position:relative;margin-top:6px}
+.analytics-events-menu{position:relative;margin:0}
 .analytics-events-menu summary{min-height:44px;padding:10px 12px;box-sizing:border-box;border:1px solid var(--a33-border);border-radius:8px;background:var(--a33-surface);color:var(--a33-text);cursor:pointer;overflow-wrap:anywhere}
 .analytics-events-menu summary:focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
 .analytics-events-panel{position:absolute;z-index:30;top:100%;left:0;width:100%;min-width:240px;max-width:calc(100vw - 64px);box-sizing:border-box;padding:12px;border:1px solid var(--a33-border);border-radius:8px;background:var(--a33-surface);color:var(--a33-text);box-shadow:0 8px 24px #0003}
@@ -1169,3 +1169,15 @@ textarea{
  .a33-analytics-page .analytics-event-picker .field{flex-basis:100%}
  .analytics-events-panel{min-width:0}
 }
+
+/* Alineación uniforme de títulos y controles del filtro. */
+.a33-analytics-page .analytics-filters{align-items:flex-start}
+.a33-analytics-page .analytics-event-picker{align-items:flex-start}
+.a33-analytics-page .analytics-filters .field > label,
+.a33-analytics-page .analytics-event-picker .field > label,
+.a33-analytics-page .analytics-picker-label{margin:0;padding:0;font-size:14px;line-height:21px;color:var(--a33-text)}
+.a33-analytics-page .analytics-event-picker .field{gap:0.25rem}
+.a33-analytics-page .analytics-filters select,
+.a33-analytics-page .analytics-event-picker select,
+.a33-analytics-page .analytics-events-menu summary{height:44px;min-height:44px;box-sizing:border-box;line-height:22px;font-size:16px}
+.a33-analytics-page .analytics-event-picker > [data-empty]{flex:1 0 100%;margin:0}

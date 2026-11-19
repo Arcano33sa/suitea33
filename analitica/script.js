@@ -462,11 +462,11 @@
   function createAnalyticsEventPicker(root, onChange){
     if (!root) return null;
     // Solo estructura fija; nombres de grupos/eventos se insertan como texto.
-    root.innerHTML = '<div class="field"><label>Grupo<select data-group aria-label="Grupo"></select></label></div>' +
-      '<div class="field"><span>Eventos</span><details class="analytics-events-menu"><summary aria-label="Seleccionar eventos"></summary>' +
+    root.innerHTML = '<div class="field"><label for="' + root.id + '-group">Grupo</label><select id="' + root.id + '-group" data-group></select></div>' +
+      '<div class="field"><span class="analytics-picker-label">Eventos</span><details class="analytics-events-menu"><summary aria-label="Seleccionar eventos"></summary>' +
       '<div class="analytics-events-panel"><div class="analytics-events-actions"><button type="button" data-all>Seleccionar todos</button>' +
       '<button type="button" data-clear>Limpiar selección</button></div><div data-options></div></div></details>' +
-      '<p class="hint small" data-empty role="status" hidden>Selecciona al menos un evento.</p></div>';
+      '</div><p class="hint small" data-empty role="status" hidden>Selecciona al menos un evento.</p>';
     const group = root.querySelector('[data-group]');
     const list = root.querySelector('[data-options]');
     let selected = new Set();
