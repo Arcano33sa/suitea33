@@ -57,6 +57,7 @@
           <select id="period-select">
             <option value="mtd" selected>Mes actual</option>
             <option value="previous-month">Mes anterior</option>
+            <option value="group">Grupo</option>
             <option value="today">Hoy</option>
             <option value="7d">Últimos 7 días</option>
             <option value="30d">Últimos 30 días</option>
@@ -688,11 +689,11 @@
   <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
   <script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
 
-  <script src="script.js?v=4.20.98&r=16"></script>
+  <script src="script.js?v=4.20.98&r=17"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=5').catch(error => console.warn('Analítica SW no disponible', error));
+    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=6').catch(error => console.warn('Analítica SW no disponible', error));
   }
 </script>
 </body>

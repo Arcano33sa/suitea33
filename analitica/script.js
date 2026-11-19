@@ -549,7 +549,7 @@
     } else if (val === 'ytd') {
       to = today;
       from = new Date(today.getFullYear(), 0, 1);
-    } else if (val === 'all') {
+    } else if (val === 'all' || val === 'group') {
       from = null;
       to = null;
     } else if (val === 'custom') {
@@ -557,7 +557,7 @@
       to = toDate ? new Date(toDate + 'T23:59:59') : null;
     }
 
-    return { from, to };
+    return { from, to, ...(val === 'group' ? {period:'group'} : {}) };
   }
 
   function addDays(date, delta){
@@ -856,6 +856,7 @@
   }
 
   function analyticsRangeLabel(range = getCurrentRange()){
+    if (range.period === 'group') return 'Sin límite de fechas';
     const dateText = date => date ? `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}` : '';
     return range.from || range.to ? `${dateText(range.from) || 'Sin inicio'} → ${dateText(range.to) || 'Sin fin'}` : 'Todo el histórico';
   }
@@ -2277,6 +2278,7 @@ function rebuildHorasEventOptions(filteredSales){
 
     const workbook = XLSX.utils.book_new();
     const metadata = [['Concepto', 'Valor'],
+      ['Período seleccionado', range.period === 'group' ? 'Grupo' : analyticsRangeLabel(range)],
       ['Grupo seleccionado', analyticsGroupLabel(range.groupFilter)],
       ['Eventos seleccionados', analyticsEventLabel(range.eventFilter)],
       ['Moneda', 'Córdoba nicaragüense (NIO, C$)'],
