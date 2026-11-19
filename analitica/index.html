@@ -123,6 +123,7 @@
         <p id="analytics-result-scope" class="hint small" aria-live="polite"></p>
         <section class="analytics-kpi-group analytics-kpi-results" aria-labelledby="analytics-results-title">
           <h3 id="analytics-results-title" class="analytics-group-title">Resultados</h3>
+          <p class="hint small">Utilidad neta del POS: no incluye gastos adicionales de Finanzas.</p>
           <div class="kpi-grid">
           <article class="kpi-card">
             <p class="kpi-label">Ventas totales</p>
@@ -130,38 +131,49 @@
           </article>
 
           <article class="kpi-card">
-            <p class="kpi-label">Utilidad después de cortesías</p>
-            <p class="kpi-value" id="kpi-total-utilidad">C$ 0.00</p>
+            <p class="kpi-label">Costo de ventas</p>
+            <p class="kpi-value" id="kpi-costos-ventas">C$ 0.00</p>
           </article>
+
           <article class="kpi-card">
             <p class="kpi-label">Utilidad bruta</p>
             <p class="kpi-value" id="kpi-utilidad-bruta">C$ 0.00</p>
           </article>
+
           <article class="kpi-card">
-            <p class="kpi-label">Comisiones determinadas</p>
+            <p class="kpi-label">Costo de cortesías</p>
+            <p class="kpi-value" id="kpi-costo-cortesias">C$ 0.00</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Utilidad después de cortesías</p>
+            <p class="kpi-value" id="kpi-total-utilidad">C$ 0.00</p>
+          </article>
+
+          <article class="kpi-card">
+            <p class="kpi-label">Comisiones</p>
             <p class="kpi-value" id="kpi-comisiones">C$ 0.00</p>
             <p class="kpi-sub" id="kpi-comisiones-estado">0 comisión(es) no determinada(s)</p>
             <p class="kpi-sub" id="kpi-comisiones-detalle"></p>
           </article>
+
           <article class="kpi-card">
-            <p class="kpi-label">Utilidad después de comisión</p>
-            <p class="kpi-value" id="kpi-utilidad-despues-comision">C$ 0.00</p>
-          </article>
-          <article class="kpi-card">
-            <p class="kpi-label">Merma final confirmada</p>
+            <p class="kpi-label">Mermas</p>
             <p class="kpi-value" id="kpi-merma-final">C$ 0.00</p>
+            <p class="kpi-sub">Merma final confirmada</p>
             <p class="kpi-sub" id="kpi-merma-final-ml">0.00 ml</p>
             <p class="kpi-sub" id="kpi-merma-estado" aria-live="polite"></p>
           </article>
+
           <article class="kpi-card">
-            <p class="kpi-label">Utilidad después de comisión y merma</p>
+            <p class="kpi-label">Utilidad neta</p>
             <p class="kpi-value" id="kpi-utilidad-despues-merma">C$ 0.00</p>
           </article>
           </div>
         </section>
 
         <section class="analytics-kpi-group analytics-kpi-profit" aria-labelledby="analytics-profit-title">
-          <h3 id="analytics-profit-title" class="analytics-group-title">Costo y margen</h3>
+          <h3 id="analytics-profit-title" class="analytics-group-title">Indicadores complementarios</h3>
           <div class="kpi-grid">
           <article class="kpi-card">
             <p class="kpi-label">Costo de ventas y cortesías</p>
@@ -169,8 +181,8 @@
           </article>
 
           <article class="kpi-card">
-            <p class="kpi-label">Costo de ventas</p>
-            <p class="kpi-value" id="kpi-costos-ventas">C$ 0.00</p>
+            <p class="kpi-label">Utilidad después de comisión</p>
+            <p class="kpi-value" id="kpi-utilidad-despues-comision">C$ 0.00</p>
           </article>
 
           <article class="kpi-card">

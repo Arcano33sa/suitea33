@@ -1014,6 +1014,7 @@
     const economicResults = withFinalMermaAnalytics(buildEconomicResults(filteredSales), selectedMermaAnalytics());
     for (const [id, value] of [
       ['kpi-utilidad-bruta', formatCurrency(economicResults.grossProfit)],
+      ['kpi-costo-cortesias', formatCurrency(economicResults.courtesyCost)],
       ['kpi-merma-final', mermaReadStatus === 'error' ? 'No disponible' : formatCurrency(economicResults.mermaCost) + (economicResults.mermaUncertainCount ? ' (parcial)' : '')],
       ['kpi-merma-final-ml', mermaReadStatus === 'error' ? 'Lectura no completada' : `${economicResults.mermaMl.toFixed(2)} ml`],
       ['kpi-utilidad-despues-merma', profitAfterMermaTextAnalytics(economicResults)],
