@@ -202,6 +202,7 @@
       products = Array.isArray(p) ? p : [];
 
       await readFinalMermaAnalytics();
+      populateAnalyticsEvents(document.getElementById('analytics-event-select'));
       loadCostosPresentacion();
       recompute();
       const exportButton = document.getElementById('btn-export-consolidado');
@@ -281,8 +282,9 @@
 
   function selectedMermaAnalytics(range = getCurrentRange()){
     return mermaRows.filter(row => row && (row.tipo === 'REEMPAQUE_MERMA_FINAL_EVENTO' || row.isFinalEventMerma === true)
+      && analyticsEventMatches(row, range.eventFilter)
       && row.provisionalClose !== true && row.anulado !== true && row.cancelled !== true && String(row.estado || '').toUpperCase() !== 'ANULADO'
-      && ((!range.from && !range.to) || saleInRange({date:mermaDateAnalytics(row)}, range)));
+      && ((!range.from && !range.to) || saleInRange({date:mermaDateAnalytics(row), eventId:row.eventId}, range)));
   }
 
   function mermaValuesAnalytics(row){
@@ -368,6 +370,17 @@
     const toInput = document.getElementById('date-to');
 
     if (!periodSelect) return;
+    const eventSelect = document.getElementById('analytics-event-select');
+    if (eventSelect) eventSelect.addEventListener('change', () => {
+      for (const id of ['cortesias-event-select', 'horas-event-select']){
+        const select = document.getElementById(id);
+        if (select) {
+          select.value = 'all';
+          select.disabled = eventSelect.value !== 'all';
+        }
+      }
+      recompute();
+    });
 
     periodSelect.addEventListener('change', () => {
       const val = periodSelect.value;
@@ -381,6 +394,8 @@
 
     if (fromInput) fromInput.addEventListener('change', recompute);
     if (toInput) toInput.addEventListener('change', recompute);
+    const rangeLabel = document.getElementById('analytics-period-range');
+    if (rangeLabel) rangeLabel.textContent = analyticsSelectionLabel(getCurrentRange());
   }
 
   function setupOrdenEventos(){
@@ -396,7 +411,45 @@
     const fromInput = document.getElementById('date-from');
     const toInput = document.getElementById('date-to');
 
-    return resolvePeriodRange(periodSelect?.value || '30d', fromInput?.value, toInput?.value);
+    return {...resolvePeriodRange(periodSelect?.value || 'mtd', fromInput?.value, toInput?.value),
+      eventFilter:document.getElementById('analytics-event-select')?.value || 'all'};
+  }
+
+  function analyticsEventMatches(row, eventFilter = 'all'){
+    return eventFilter === 'all' || String(row.eventId ?? 'sin-evento') === String(eventFilter);
+  }
+
+  function analyticsEventOptions(){
+    const map = new Map();
+    for (const event of events){
+      if (event.id != null) map.set(String(event.id), event.name || 'Evento ' + event.id);
+    }
+    for (const row of [...sales, ...mermaRows]){
+      if (row.eventId != null && !map.has(String(row.eventId))) map.set(String(row.eventId), row.eventName || 'Evento ' + row.eventId);
+    }
+    map.delete('sin-evento');
+    return [['all', 'Todos los eventos'], ['sin-evento', 'Sin evento / General'],
+      ...Array.from(map, ([id, name]) => [id, `${name} · ID ${id}`])];
+  }
+
+  function populateAnalyticsEvents(select){
+    if (!select) return;
+    const previous = select.value;
+    select.replaceChildren(...analyticsEventOptions().map(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      return option;
+    }));
+    select.value = Array.from(select.options).some(option => option.value === previous) ? previous : 'all';
+  }
+
+  function analyticsEventLabel(eventFilter = 'all'){
+    return analyticsEventOptions().find(([id]) => id === String(eventFilter))?.[1] || 'Evento ' + eventFilter;
+  }
+
+  function analyticsSelectionLabel(range){
+    return analyticsRangeLabel(range) + ' · ' + analyticsEventLabel(range.eventFilter);
   }
 
   function resolvePeriodRange(val, fromDate, toDate){
@@ -404,7 +457,13 @@
     let from = null;
     let to = null;
 
-    if (val === 'today') {
+    if (val === 'mtd') {
+      from = new Date(today.getFullYear(), today.getMonth(), 1);
+      to = today;
+    } else if (val === 'previous-month') {
+      from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      to = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
+    } else if (val === 'today') {
       from = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       to = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
     } else if (val === '7d') {
@@ -448,6 +507,7 @@
   }
 
   function saleInRange(sale, range){
+    if (!analyticsEventMatches(sale, range.eventFilter)) return false;
     const { from, to } = range;
     const d = parseSaleDate(sale.date);
     if (!d) return false;
@@ -724,8 +784,7 @@
     return formatCurrency(result.profitAfterCommission) + (result.commissionUndeterminedCount ? ' (parcial)' : '');
   }
 
-  function analyticsRangeLabel(){
-    const range = getCurrentRange();
+  function analyticsRangeLabel(range = getCurrentRange()){
     const dateText = date => date ? `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}` : '';
     return range.from || range.to ? `${dateText(range.from) || 'Sin inicio'} → ${dateText(range.to) || 'Sin fin'}` : 'Todo el histórico';
   }
@@ -734,7 +793,7 @@
     const results = buildEconomicResults(lastFilteredSales);
     return [
       ['Referencia', 'Valor'], ['Fuente', 'Ventas individuales del POS de este navegador'],
-      ['Período', analyticsRangeLabel()], ['Ventas', 'Total neto guardado en cada venta; Finanzas usa bruto y descuentos guardados, que pueden diferir en históricos incompletos'], ['Costos', 'Campos guardados en las ventas; cálculos históricos conservados'],
+      ['Período', analyticsRangeLabel()], ['Evento', analyticsEventLabel(getCurrentRange().eventFilter)], ['Ventas', 'Total neto guardado en cada venta; Finanzas usa bruto y descuentos guardados, que pueden diferir en históricos incompletos'], ['Costos', 'Campos guardados en las ventas; cálculos históricos conservados'],
       ['Comisiones', 'Importes y etiquetas guardados en cada venta; no se usan tasas actuales'],
       ['Comisiones no determinadas', results.commissionUndeterminedCount], ['Resultado después de comisión', analyticsResultStatus(results)],
       ['Registros con decimales adicionales', results.extraDecimalsCount],
@@ -900,6 +959,8 @@
 
   function recompute(){
     const range = getCurrentRange();
+    const rangeLabel = document.getElementById('analytics-period-range');
+    if (rangeLabel) rangeLabel.textContent = analyticsSelectionLabel(range);
     const hasSales = Array.isArray(sales) && sales.length;
     const filteredSales = hasSales ? sales.filter(s => saleInRange(s, range)) : [];
 
@@ -1024,7 +1085,7 @@
       ['kpi-utilidad-despues-comision', analyticsProfitAfterCommission(economicResults)],
       ['kpi-comisiones-estado', `${economicResults.commissionUndeterminedCount} comisión(es) no determinada(s)`],
       ['kpi-comisiones-detalle', economicResults.commissionDetails.map(item => `${item.label}: ${formatCurrency(item.total)}`).join(' · ') || 'Sin comisiones determinadas en el período'],
-      ['analytics-result-scope', `Ventas individuales del POS · ${analyticsRangeLabel()}. La utilidad después de cortesías conserva el cálculo anterior. El resultado después de comisión resta solo importes determinados. La merma final confirmada se descuenta por su fecha registrada, sin reparto entre productos. No incluye movimientos adicionales de Finanzas. Finanzas también puede usar cierres sin ventas individuales y reconstruye ventas netas con bruto y descuentos guardados; compara el mismo período y fuentes.${economicResults.extraDecimalsCount ? ` Hay ${economicResults.extraDecimalsCount} registro(s) con decimales adicionales: pueden diferir por redondeo entre módulos; se conservan sus cálculos históricos.` : ''}`]
+      ['analytics-result-scope', `Ventas individuales del POS · ${analyticsSelectionLabel(getCurrentRange())}. La utilidad después de cortesías conserva el cálculo anterior. El resultado después de comisión resta solo importes determinados. La merma final confirmada se descuenta por su fecha registrada, sin reparto entre productos. No incluye movimientos adicionales de Finanzas. Finanzas también puede usar cierres sin ventas individuales y reconstruye ventas netas con bruto y descuentos guardados; compara el mismo período y fuentes.${economicResults.extraDecimalsCount ? ` Hay ${economicResults.extraDecimalsCount} registro(s) con decimales adicionales: pueden diferir por redondeo entre módulos; se conservan sus cálculos históricos.` : ''}`]
     ]){
       const element = document.getElementById(id);
       if (element) element.textContent = value;
@@ -1672,6 +1733,7 @@ function rebuildHorasEventOptions(filteredSales){
     const consumo = new Map();
 
     (sales || []).forEach((sale) => {
+      if (!analyticsEventMatches(sale, getCurrentRange().eventFilter)) return;
       const d = parseSaleDate(sale.date);
       if (!d || d < from || d > today) return;
       const productId = saleProductId(sale);
@@ -1910,7 +1972,7 @@ function rebuildHorasEventOptions(filteredSales){
     if (!dialog) return;
     const form = document.getElementById('analytics-export-form');
     const error = document.getElementById('analytics-export-error');
-    const { period, from, to, previous, customerNames } = form.elements;
+    const { period, from, to, previous, customerNames, eventFilter } = form.elements;
     const clientsSection = form.querySelector('[name="section"][value="Clientes"]');
     clientsSection.addEventListener('change', () => {
       customerNames.disabled = !clientsSection.checked;
@@ -1922,7 +1984,9 @@ function rebuildHorasEventOptions(filteredSales){
 
     function updatePeriodFields(){
       customRange.hidden = period.value !== 'custom';
-      const range = resolvePeriodRange(period.value, from.value, to.value);
+      const range = {...resolvePeriodRange(period.value, from.value, to.value), eventFilter:eventFilter.value};
+      const rangeLabel = document.getElementById('analytics-export-period-range');
+      if (rangeLabel) rangeLabel.textContent = analyticsSelectionLabel(range);
       previous.disabled = !range.from || !range.to;
       if (previous.disabled) previous.checked = false;
     }
@@ -1930,6 +1994,8 @@ function rebuildHorasEventOptions(filteredSales){
     document.getElementById('btn-export-consolidado').addEventListener('click', () => {
       customerNames.checked = false;
       period.value = analyticsPeriod.value;
+      populateAnalyticsEvents(eventFilter);
+      eventFilter.value = getCurrentRange().eventFilter;
       from.value = document.getElementById('date-from').value;
       to.value = document.getElementById('date-to').value;
       error.hidden = true;
@@ -1938,6 +2004,7 @@ function rebuildHorasEventOptions(filteredSales){
     });
     document.getElementById('btn-cancel-export').addEventListener('click', () => dialog.close());
     period.addEventListener('change', updatePeriodFields);
+    eventFilter.addEventListener('change', updatePeriodFields);
     from.addEventListener('input', updatePeriodFields);
     to.addEventListener('input', updatePeriodFields);
 
@@ -1946,7 +2013,7 @@ function rebuildHorasEventOptions(filteredSales){
       const submit = form.querySelector('[type=submit]');
       if (submit.disabled) return;
       const sections = Array.from(form.querySelectorAll('[name="section"]:checked'), input => input.value);
-      const range = resolvePeriodRange(period.value, from.value, to.value);
+      const range = {...resolvePeriodRange(period.value, from.value, to.value), eventFilter:eventFilter.value};
       error.hidden = true;
       try {
         if (range.from && range.to && range.from > range.to) {
@@ -2077,6 +2144,7 @@ function rebuildHorasEventOptions(filteredSales){
 
     const costs = new Map();
     for (const expense of expenses?.rows || []){
+      if (!analyticsEventMatches(expense, range.eventFilter)) continue;
       const hasDate = !!parseSaleDate(expense.date);
       if (hasDate && !saleInRange(expense, range)) continue;
       if (!costs.has(expense.eventId)) costs.set(expense.eventId, {total:0, count:0, partial:false});
@@ -2132,12 +2200,13 @@ function rebuildHorasEventOptions(filteredSales){
     if (includePrevious && range.from && range.to){
       const days = exportCalendarDay(range.to) - exportCalendarDay(range.from) + 1;
       periods.push({ label:'Anterior', suffix:' anterior', range:{
-        from:addDays(range.from, -days), to:addDays(range.from, -1)
+        from:addDays(range.from, -days), to:addDays(range.from, -1), eventFilter:range.eventFilter
       }});
     }
 
     const workbook = XLSX.utils.book_new();
     const metadata = [['Concepto', 'Valor'],
+      ['Evento seleccionado', analyticsEventLabel(range.eventFilter)],
       ['Moneda', 'Córdoba nicaragüense (NIO, C$)'],
       ['Fuente', 'Ventas del POS y merma final disponibles en este navegador'],
       ['Fechas', 'Límites inclusivos. Una fecha vacía indica que no hay límite.'],
@@ -2147,6 +2216,7 @@ function rebuildHorasEventOptions(filteredSales){
       ['Resultados parciales', 'Revisar comisiones no determinadas y estado de merma. No se descuentan gastos de participación.'],
       ['Clientes', 'El código permite vincular al mismo cliente entre hojas y buscarlo en Analítica → Clientes, con Todo el histórico.'],
       ['Corte de clientes', 'Fin del período exportado o fecha de exportación si no tiene fin. Se usa el historial disponible hasta el corte.'],
+      ['Clientes · evento', 'Al seleccionar un evento, el historial de clientes se limita a sus movimientos en ese evento; se omiten fichas sin movimientos vinculados.'],
       ['Conciliación de clientes', 'Se cruza el historial al corte con el catálogo actual. Las fichas fusionadas se consolidan en el destino. Una ficha sin movimientos vinculados puede ser posterior al corte.'],
       ['Estado de ficha', 'Estado actual del catálogo. Es independiente de Activo o Dormido según la última compra.'],
       ['Compras de clientes', 'Solo compras pagadas. Las devoluciones y cortesías se muestran por separado. Frecuencia medida en líneas pagadas y días con compras.'],
@@ -2230,11 +2300,11 @@ function rebuildHorasEventOptions(filteredSales){
 
   function clientExportRows(range, includeNames){
     const cutoff = range.to || new Date();
-    const history = sales.filter(sale => saleInRange(sale, {to:cutoff}));
+    const history = sales.filter(sale => saleInRange(sale, {to:cutoff, eventFilter:range.eventFilter}));
     const resolver = buildCustomerResolver(loadPosCustomerCatalog());
     const rows = buildClientsIndex(history, resolver).rows;
     const historicalKeys = new Set(rows.map(client => client.key));
-    const catalogOnly = catalogClientRows(resolver).filter(client => !historicalKeys.has(client.key));
+    const catalogOnly = range.eventFilter && range.eventFilter !== 'all' ? [] : catalogClientRows(resolver).filter(client => !historicalKeys.has(client.key));
     const linkedCount = rows.filter(client => client.customerId).length;
     const summary = [['Código de seguimiento', ...(includeNames ? ['Nombre'] : []),
       'Estado al corte', 'Última compra pagada', 'Días desde la última compra',
@@ -3331,6 +3401,7 @@ function rebuildHorasEventOptions(filteredSales){
         date: s.date || '',
         time: s.time || '',
         dt,
+        eventId: s.eventId,
         eventName: s.eventName || 'General',
         productName: uiProdName(s.productName || '—'),
         productKey: presKey,
