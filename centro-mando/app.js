@@ -678,20 +678,38 @@ function creditSaleSnapshotCDM(sale, cashRows, paidMap){
   return { id:row.id, sale:row, eventId, eventName, customer, product:creditProductNameCDM(row), reference, date, original, paid, balance, status };
 }
 
+// Distinguish read errors from a genuinely empty credit ledger.
+function readCreditRowsCDM(name){
+  return new Promise((resolve)=>{
+    try{
+      const transaction = state.db.transaction(name, 'readonly');
+      const request = transaction.objectStore(name).getAll();
+      let rows = null;
+      request.onsuccess = ()=>{ rows = Array.isArray(request.result) ? request.result : null; };
+      request.onerror = ()=>resolve(null);
+      transaction.onabort = ()=>resolve(null);
+      transaction.onerror = ()=>resolve(null);
+      transaction.oncomplete = ()=>resolve(rows);
+    }catch(_){ resolve(null); }
+  });
+}
+
 async function readPendingCreditSales(eventIds){
+  // Without a filter, include every debt, even closed/missing events.
+  const allEvents = eventIds == null;
   const ids = normalizeEventIds(eventIds);
-  if (!ids.length) return { ok:true, count:0, totalBalance:0, items:[] };
+  if (!allEvents && !ids.length) return { ok:true, count:0, totalBalance:0, items:[] };
   if (!state.db || !hasStore(state.db, 'sales')) return { ok:false, count:0, totalBalance:0, items:[] };
   const [sales, cashRows] = await Promise.all([
-    idbGetAll(state.db, 'sales'),
-    hasStore(state.db, 'cashV2') ? idbGetAll(state.db, 'cashV2') : Promise.resolve([])
+    readCreditRowsCDM('sales'),
+    hasStore(state.db, 'cashV2') ? readCreditRowsCDM('cashV2') : Promise.resolve([])
   ]);
-  if (!Array.isArray(sales) || sales.length > MAX_SAFE_ROWS) return { ok:false, count:0, totalBalance:0, items:[] };
+  if (!Array.isArray(sales) || !Array.isArray(cashRows) || sales.length > MAX_SAFE_ROWS) return { ok:false, count:0, totalBalance:0, items:[] };
   const idSet = new Set(ids.map(String));
   const paidMap = creditPaidMapFromCashCDM(cashRows);
   const unique = new Map();
   sales.forEach((sale)=>{
-    if (!sale || !idSet.has(String(sale.eventId ?? sale.eventoId))) return;
+    if (!sale || (!allEvents && !idSet.has(String(sale.eventId ?? sale.eventoId)))) return;
     if (normalizePaymentMethodCDM(sale.payment ?? sale.paymentMethod ?? sale.metodoPago) !== 'credito') return;
     if (!isCollectibleCreditSaleCDM(sale) || !(creditOriginalAmountCDM(sale) > 0)) return;
     const snapshot = creditSaleSnapshotCDM(sale, cashRows, paidMap);
@@ -829,9 +847,9 @@ function renderCurrencySummary(signal){
   setText('exchangeRateHint', fx.hasRate ? (updated ? `Actualizado: ${updated}` : 'Configuración → Moneda') : 'Configura el T/C en Moneda.');
 }
 
-function clearEventSummary(reason){
+function clearEventSummary(reason, credits){
   state.summarySignals = null;
-  state.creditSignal = null;
+  state.creditSignal = credits || null;
   setText('salesToday', '—');
   setText('salesTodayHint', reason || 'No disponible');
   setText('salesTodayCount', '—');
@@ -847,21 +865,21 @@ async function refreshEventSummary(){
   const requestedMode = state.visualMode;
   const requestedEventId = state.visualEventId == null ? null : Number(state.visualEventId);
   const events = visualScopeEvents();
-  if (state.visualMode === MODE_EVENT && !state.visualEvent){
-    clearEventSummary('Selecciona un evento concreto.');
-    return;
-  }
   const ids = events.map((event)=>Number(event.id));
   const fx = readCurrencySignal();
   const [sales, cash, credits] = await Promise.all([
     readSalesToday(ids),
     readCashToday(events),
-    readPendingCreditSales(ids)
+    readPendingCreditSales()
   ]);
   const currentEventId = state.visualEventId == null ? null : Number(state.visualEventId);
   if (token !== state.summaryRenderToken || requestedMode !== state.visualMode || requestedEventId !== currentEventId) return;
   state.fxSignal = fx;
   state.creditSignal = credits;
+  if (state.visualMode === MODE_EVENT && !state.visualEvent){
+    clearEventSummary('Selecciona un evento concreto.', credits);
+    return;
+  }
   state.summarySignals = { sales, cash, credits, eventIds:ids, mode:state.visualMode };
   setText('salesToday', sales.ok ? formatMoney(sales.total) : '—');
   setText('salesTodayHint', sales.ok ? `Excluye cortesías · ${ymdToDisplay(state.today)}` : 'No disponible');
@@ -1544,30 +1562,51 @@ function createCreditAttentionItem(signal){
   head.append(headTitle, close);
   detail.appendChild(head);
 
+  const scope = document.createElement('p');
+  scope.className = 'cmd-credit-scope';
+  scope.textContent = 'Todos los eventos, incluidos cerrados. Este total no cambia con el selector de evento. Registra los abonos en POS → Ventas Crédito.';
+  detail.appendChild(scope);
   const list = document.createElement('div');
   list.className = 'cmd-credit-list';
-  (signal.items || []).forEach((item)=>{
-    const card = document.createElement('article');
-    card.className = 'cmd-credit-row';
-    const cardHead = document.createElement('div');
-    cardHead.className = 'cmd-credit-row-head';
-    const customer = document.createElement('strong');
-    customer.textContent = item.customer;
-    const status = document.createElement('span');
-    status.className = 'cmd-credit-status ' + (item.status === 'ABONADA' ? 'is-partial' : 'is-pending');
-    status.textContent = item.status === 'ABONADA' ? 'Abonada' : 'Pendiente';
-    cardHead.append(customer, status);
-    card.appendChild(cardHead);
-    const grid = document.createElement('div');
-    grid.className = 'cmd-credit-grid';
-    appendCreditFieldCDM(grid, 'Fecha de venta', ymdToDisplay(item.date));
-    appendCreditFieldCDM(grid, 'Evento', item.eventName);
-    appendCreditFieldCDM(grid, 'Producto / referencia', `${item.product} · ${item.reference}`, 'is-wide');
-    appendCreditFieldCDM(grid, 'Total original', formatMoney(item.original), 'is-money');
-    appendCreditFieldCDM(grid, 'Total cobrado', formatMoney(item.paid), 'is-money');
-    appendCreditFieldCDM(grid, 'Saldo pendiente', formatMoney(item.balance), 'is-money is-balance');
-    card.appendChild(grid);
-    list.appendChild(card);
+  const groups = new Map();
+  (signal.items || []).forEach(item=>{
+    const key = text(item.customer).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ');
+    if (!groups.has(key)) groups.set(key, {customer:item.customer,items:[],balance:0});
+    const group = groups.get(key);
+    group.items.push(item);
+    group.balance += num(item.balance);
+  });
+  Array.from(groups.values()).sort((a,b)=>a.customer.localeCompare(b.customer,'es')).forEach(group=>{
+    const section = document.createElement('section');
+    section.className = 'cmd-credit-customer';
+    const heading = document.createElement('h3');
+    heading.className = 'cmd-credit-customer-title';
+    heading.textContent = `${group.customer} · ${group.items.length} ${group.items.length === 1 ? 'venta' : 'ventas'} · ${formatMoney(group.balance)}`;
+    section.appendChild(heading);
+    group.items.forEach((item)=>{
+      const card = document.createElement('article');
+      card.className = 'cmd-credit-row';
+      const cardHead = document.createElement('div');
+      cardHead.className = 'cmd-credit-row-head';
+      const customer = document.createElement('strong');
+      customer.textContent = item.customer;
+      const status = document.createElement('span');
+      status.className = 'cmd-credit-status ' + (item.status === 'ABONADA' ? 'is-partial' : 'is-pending');
+      status.textContent = item.status === 'ABONADA' ? 'Abonada' : 'Pendiente';
+      cardHead.append(customer, status);
+      card.appendChild(cardHead);
+      const grid = document.createElement('div');
+      grid.className = 'cmd-credit-grid';
+      appendCreditFieldCDM(grid, 'Fecha de venta', ymdToDisplay(item.date));
+      appendCreditFieldCDM(grid, 'Evento', item.eventName);
+      appendCreditFieldCDM(grid, 'Producto / referencia', `${item.product} · ${item.reference}`, 'is-wide');
+      appendCreditFieldCDM(grid, 'Total original', formatMoney(item.original), 'is-money');
+      appendCreditFieldCDM(grid, 'Total cobrado', formatMoney(item.paid), 'is-money');
+      appendCreditFieldCDM(grid, 'Saldo pendiente', formatMoney(item.balance), 'is-money is-balance');
+      card.appendChild(grid);
+      section.appendChild(card);
+    });
+    list.appendChild(section);
   });
   detail.appendChild(list);
   row.appendChild(detail);
@@ -1600,9 +1639,10 @@ function renderAttention(){
     type:'credit',
     kind:'warning',
     title:'Ventas al crédito pendientes',
-    subtitle:`${credits.count} ${credits.count === 1 ? 'venta' : 'ventas'} · ${formatMoney(credits.totalBalance)} por cobrar`,
+    subtitle:`${credits.count} ${credits.count === 1 ? 'venta' : 'ventas'} · ${formatMoney(credits.totalBalance)} por cobrar · Todos los eventos, incluidos cerrados`,
     items:credits.items
   });
+  if (credits && !credits.ok) add({ key:'credit-unavailable', kind:'warning', title:'Créditos pendientes no disponibles', subtitle:'No se pudo consultar el total de todos los eventos. Actualiza para reintentar.', route:ROUTES.pos, actionLabel:'Abrir POS' });
   if (orders && orders.overdue > 0) add({ key:'orders-overdue', kind:'danger', title:`Pedidos vencidos: ${orders.overdue}`, subtitle:'Hay entregas pendientes con fecha anterior a hoy.', route:ROUTES.orders, actionLabel:'Ver Pedidos' });
   if (orders && orders.today > 0) add({ key:'orders-delivery-today', kind:'warning', title:`Pedidos para entregar hoy: ${orders.today}`, subtitle:'Revisa las entregas programadas para la fecha actual.', route:ROUTES.orders, actionLabel:'Ver Pedidos' });
   if (orders && orders.manufactureToday > 0) add({ key:'orders-manufacture-today', kind:'warning', title:`Pedidos para fabricar hoy: ${orders.manufactureToday}`, subtitle:'Hay pedidos pendientes cuya fabricación corresponde a hoy.', route:ROUTES.orders, actionLabel:'Ver Pedidos' });
@@ -1981,7 +2021,7 @@ async function init(){
     console.warn('Centro de Mando: no se pudo abrir la base del POS.', error);
     setHidden('emptyState', false);
     renderVisualHeader();
-    clearEventSummary('No disponible');
+    clearEventSummary('No disponible', {ok:false});
     return;
   }
 
@@ -1993,7 +2033,7 @@ async function init(){
 
   if (!state.events.length){
     renderVisualHeader();
-    clearEventSummary('No hay eventos disponibles.');
+    clearEventSummary('No hay eventos disponibles.', await readPendingCreditSales());
     return;
   }
 

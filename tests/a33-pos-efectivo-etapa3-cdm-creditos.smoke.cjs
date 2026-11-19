@@ -17,8 +17,8 @@ const posSw = read('pos/sw.js');
 const release = read('assets/js/a33-release.js');
 
 assert(app.includes('function readPendingCreditSales(eventIds)'), 'Falta lectura normalizada de créditos');
-assert(app.includes("idbGetAll(state.db, 'sales')"), 'CDM no consume sales');
-assert(app.includes("idbGetAll(state.db, 'cashV2')"), 'CDM no consume cashV2');
+assert(app.includes("readCreditRowsCDM('sales')"), 'CDM no consume sales');
+assert(app.includes("readCreditRowsCDM('cashV2')"), 'CDM no consume cashV2');
 assert(app.includes("title:'Ventas al crédito pendientes'"), 'Indicador no integrado en Atención requerida');
 assert(app.includes('createCreditAttentionItem'), 'Falta detalle compacto de créditos');
 assert(app.includes('state.visualMode === MODE_GLOBAL'), 'Falta alcance GLOBAL');
@@ -75,11 +75,12 @@ function makeDb(sales,cash){
   return {
     objectStoreNames:{ contains:(name)=>Object.prototype.hasOwnProperty.call(data,name) },
     transaction(name){
-      return { objectStore(){ return {
-        getAll(){ const req={}; queueMicrotask(()=>{ req.result=structuredClone(data[name]||[]); req.onsuccess&&req.onsuccess(); }); return req; },
+      const tx = { objectStore(){ return {
+        getAll(){ const req={}; queueMicrotask(()=>{ req.result=structuredClone(data[name]||[]); req.onsuccess&&req.onsuccess(); queueMicrotask(()=>tx.oncomplete&&tx.oncomplete()); }); return req; },
         get(){ const req={}; queueMicrotask(()=>{ req.result=null; req.onsuccess&&req.onsuccess(); }); return req; },
         indexNames:{ contains(){ return false; } }
       }; } };
+      return tx;
     }
   };
 }
@@ -91,7 +92,7 @@ const context = vm.createContext({
   IDBKeyRange:{ only:(v)=>v }
 });
 context.globalThis=context;
-vm.runInContext(app + '\n;globalThis.__creditTest={state,readPendingCreditSales,renderAttention};', context, {filename:'centro-mando-app.js'});
+vm.runInContext(app + '\n;globalThis.__creditTest={state,readPendingCreditSales,renderAttention,refreshEventSummary};', context, {filename:'centro-mando-app.js'});
 const api = context.__creditTest;
 api.state.events = [
   {id:1,name:'Expo Julio'}, {id:2,name:'Feria Agosto'}, {id:3,name:'Cerrado',closed:true}
@@ -129,7 +130,18 @@ api.state.db = makeDb(sales,cash);
   assert(global.items.some((x)=>x.id===5 && x.balance===150),'Movimiento revertido no restauró saldo');
   assert(global.items.every((x)=>[1,2].includes(x.eventId)),'GLOBAL mezcló evento fuera de alcance');
 
-  api.state.creditSignal=global;
+  const all = await api.readPendingCreditSales();
+  assert.strictEqual(all.totalBalance,1749,'Total completo debe incluir eventos cerrados');
+  assert.strictEqual(all.count,4);
+  assert(all.items.some(item=>item.eventId===3));
+  api.state.visualMode='EVENTO'; api.state.visualEventId=1; api.state.visualEvent=api.state.events[0];
+  await api.refreshEventSummary();
+  assert.strictEqual(api.state.creditSignal.totalBalance,1749,'Selector por evento no debe recortar las deudas');
+  api.state.visualEvent=null;api.state.visualEventId=null;
+  await api.refreshEventSummary();
+  assert.strictEqual(api.state.creditSignal.totalBalance,1749,'Sin selección deben conservarse todas las deudas');
+
+  api.state.creditSignal=all;
   api.state.fxSignal={hasRate:true};
   api.state.summarySignals={cash:{openCount:0},credits:global};
   api.state.orderSignals=null; api.state.agendaSignals=null; api.state.inventorySignals=null;
@@ -138,6 +150,11 @@ api.state.db = makeDb(sales,cash);
   assert.strictEqual(getEl('attentionList').children.length,1,'Indicador no quedó dentro de Atención requerida');
   assert(String(getEl('attentionList').children[0].className).includes('cmd-credit-attention'),'No se renderizó el indicador especializado');
 
+  const treeText = node => String(node.textContent) + (node.children || []).map(treeText).join(' ');
+  assert(treeText(getEl('attentionList')).includes('Todos los eventos, incluidos cerrados'));
+  assert(treeText(getEl('attentionList')).includes('Carlos · 1 venta'));
+  assert(treeText(getEl('attentionList')).includes('Cerrado'));
+
   const cashPaid = structuredClone(cash);
   cashPaid[0].movements.push({id:'P1-FINAL',movementType:'CREDIT_COLLECTION',creditSaleId:1,creditPaymentId:'P-1F',amount:300});
   api.state.db=makeDb(sales,cashPaid);
@@ -145,5 +162,14 @@ api.state.db = makeDb(sales,cash);
   assert.strictEqual(afterFinal.count,1,'Pago final no retiró la venta de pendientes');
   assert.strictEqual(afterFinal.totalBalance,300,'Saldo después del pago final incorrecto');
 
-  console.log('PASS a33-pos-efectivo-etapa3-cdm-creditos: 33/33 controles cubiertos');
+  api.state.db={objectStoreNames:{contains:()=>true}, transaction(){throw Error('Read failure');}};
+  const unavailable=await api.readPendingCreditSales();
+  assert.strictEqual(unavailable.ok,false,'Error de lectura no debe parecer cero deudas');
+  api.state.creditSignal=unavailable;api.renderAttention();
+  assert(treeText(getEl('attentionList')).includes('Créditos pendientes no disponibles'));
+  api.state.db=makeDb([{id:22,eventId:999,payment:'credito',total:10,customer:'Sin evento'}],[]);
+  const orphan=await api.readPendingCreditSales();assert.strictEqual(orphan.totalBalance,10);
+  api.state.db=makeDb([],[]);const empty=await api.readPendingCreditSales();
+  assert.strictEqual(empty.ok,true);assert.strictEqual(empty.count,0);
+  console.log('PASS: créditos filtrados y completos, eventos cerrados/ausentes, abonos, reversiones, pago final, selección vacía, agrupación por cliente, errores y lista vacía.');
 })().catch((error)=>{ console.error(error.stack||error); process.exitCode=1; });
