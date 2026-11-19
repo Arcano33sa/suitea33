@@ -1148,3 +1148,24 @@ textarea{
 .analytics-export-dialog::backdrop { background: rgb(0 0 0 / 55%); }
 .analytics-export-dialog fieldset { margin: 0.75rem 0; }
 .analytics-export-dialog label { display: block; padding: 0.2rem 0; }
+
+/* Grupo y selección conjunta de eventos (pantalla y exportación). */
+.a33-analytics-page .analytics-event-picker{display:flex;flex-wrap:wrap;gap:16px;flex:1 1 440px;min-width:0}
+.a33-analytics-page .analytics-event-picker .field{flex:1 1 200px;min-width:0}
+.analytics-event-picker label{display:block}
+.analytics-event-picker select{display:block;width:100%}
+.analytics-events-menu{position:relative;margin-top:6px}
+.analytics-events-menu summary{min-height:44px;padding:10px 12px;box-sizing:border-box;border:1px solid var(--a33-border);border-radius:8px;background:var(--a33-surface);color:var(--a33-text);cursor:pointer;overflow-wrap:anywhere}
+.analytics-events-menu summary:focus-visible{outline:2px solid var(--a33-gold);outline-offset:3px}
+.analytics-events-panel{position:absolute;z-index:30;top:100%;left:0;width:100%;min-width:240px;max-width:calc(100vw - 64px);box-sizing:border-box;padding:12px;border:1px solid var(--a33-border);border-radius:8px;background:var(--a33-surface);color:var(--a33-text);box-shadow:0 8px 24px #0003}
+.analytics-events-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.analytics-events-actions button{min-height:40px;white-space:normal}
+.analytics-events-panel [data-options]{max-height:260px;overflow:auto}
+.analytics-events-panel [data-options] label{display:flex;align-items:center;gap:10px;min-height:44px;overflow-wrap:anywhere;padding:4px}
+.analytics-events-panel input[type="checkbox"]{flex:0 0 auto;width:18px;min-height:18px;height:18px;margin:0}
+.analytics-export-dialog .analytics-events-panel{position:static;min-width:0;max-width:100%;box-shadow:none;margin-top:8px}
+@media(max-width:600px){
+ .a33-analytics-page .analytics-event-picker{flex-basis:100%;gap:12px}
+ .a33-analytics-page .analytics-event-picker .field{flex-basis:100%}
+ .analytics-events-panel{min-width:0}
+}

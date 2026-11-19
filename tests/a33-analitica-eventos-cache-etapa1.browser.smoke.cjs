@@ -25,7 +25,7 @@ const server = http.createServer((req,res) => {
   if (pathname === '/seed.html') {res.end('<!doctype html><title>Prueba aislada</title>');return;}
   const data = phase === 'old' ? old : current;
   if (pathname === '/analitica/' || pathname === '/analitica/index.html') {
-    res.setHeader('Content-Type','text/html');res.end(phase === 'mixed' ? current.html.replace(scriptRef,'script.js?v=4.20.98&r=14').replace('sw.js?v=4.20.98&r=4','sw.js?v=4.20.98&r=3') : data.html);return;
+    res.setHeader('Content-Type','text/html');res.end(phase === 'mixed' ? current.html.replace(scriptRef,'script.js?v=4.20.98&r=14').replace(/sw.js\?v=4.20.98&r=\d+/, 'sw.js?v=4.20.98&r=3') : data.html);return;
   }
   if (pathname === '/analitica/sw.js') {res.setHeader('Content-Type','text/javascript');res.end(phase === 'mixed' ? old.sw : data.sw);return;}
   if (pathname === '/analitica/script.js') {res.setHeader('Content-Type','text/javascript');res.end(data.script);return;}
@@ -66,27 +66,29 @@ let browser;
   // Reproduce el fallo: HTML nuevo, misma URL de script y SW anterior activo.
   phase='mixed';
   await page.reload();
-  assert.equal(await page.locator('#analytics-event-select option').count(),1);
-  assert.equal(await page.textContent('#analytics-event-select'),'Todos los eventos');
+  assert.equal(await page.locator('#analytics-event-picker').innerHTML(),'');
   // Nueva referencia: funciona incluso mientras el nuevo SW espera aprobación.
   phase='new';
   await page.reload();
-  await page.waitForFunction(()=>!!document.querySelector('#analytics-event-select option[value="17"]'));
+  await page.waitForFunction(()=>!!document.querySelector('#analytics-event-picker input[value="17"]'));
   await page.selectOption('#period-select','all');
-  await page.selectOption('#analytics-event-select','17');
+  await page.locator('#analytics-event-picker summary').click();
+  await page.locator('#analytics-event-picker [data-clear]').click();
+  await page.locator('#analytics-event-picker input[value="17"]').check();
+  await page.locator('#analytics-event-picker summary').click();
   assert.ok((await page.textContent('#kpi-total-ventas')).includes('100.00'));
   await page.click('#btn-export-consolidado');
-  assert.equal(await page.inputValue('[name="eventFilter"]'),'17');
+  assert.equal(await page.locator('#analytics-export-event-picker input:checked').inputValue(),'17');
   await page.click('#btn-cancel-export');
   await page.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting);
   // Simula la aprobación explícita en Configuración solo en este perfil de prueba.
   await page.evaluate(async()=>{(await navigator.serviceWorker.getRegistration()).waiting.postMessage({type:'SKIP_WAITING'});});
-  await page.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('r=4'));
-  await page.waitForFunction(async()=>!!(await caches.keys()).find(key=>key.endsWith('-m5')));
+  await page.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('r=5'));
+  await page.waitForFunction(async()=>!!(await caches.keys()).find(key=>key.endsWith('-m6')));
   await context.setOffline(true);
   await page.reload();
-  await page.waitForFunction(()=>!!document.querySelector('#analytics-event-select option[value="17"]'));
-  assert.equal(await page.locator('#analytics-event-select option').count(),3);
+  await page.waitForFunction(()=>!!document.querySelector('#analytics-event-picker input[value="17"]'));
+  assert.equal(await page.locator('#analytics-event-picker [data-options] input').count(),2);
   assert.equal(await page.evaluate(()=>localStorage.getItem('a33_cache_test_marker')),'conservar');
   const after = await page.evaluate(()=>caches.keys());
   for(const key of oldCaches) assert.ok(after.includes(key),'Conservar caché: ' + key);

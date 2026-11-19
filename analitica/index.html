@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=4.20.98&r=9" />
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=10" />
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=7" />
   <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=3" />
 <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
@@ -66,10 +66,7 @@
             <option value="custom">Rango personalizado</option>
           </select>
         </div>
-        <div class="field">
-          <label for="analytics-event-select">Evento</label>
-          <select id="analytics-event-select"><option value="all">Todos los eventos</option></select>
-        </div>
+        <div id="analytics-event-picker" class="analytics-event-picker"></div>
         <div class="field field-inline" id="custom-range" style="display:none;">
           <label>Rango personalizado</label>
           <div class="range-inputs">
@@ -90,7 +87,7 @@
           <fieldset>
             <legend>Período de exportación</legend>
             <label>Período <select name="period"></select></label>
-            <label>Evento <select name="eventFilter"><option value="all">Todos los eventos</option></select></label>
+            <div id="analytics-export-event-picker" class="analytics-event-picker"></div>
             <div id="analytics-export-custom-range" hidden>
               <label>Desde <input type="date" name="from"></label>
               <label>Hasta <input type="date" name="to"></label>
@@ -691,11 +688,11 @@
   <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
   <script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
 
-  <script src="script.js?v=4.20.98&r=15"></script>
+  <script src="script.js?v=4.20.98&r=16"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=4').catch(error => console.warn('Analítica SW no disponible', error));
+    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=5').catch(error => console.warn('Analítica SW no disponible', error));
   }
 </script>
 </body>

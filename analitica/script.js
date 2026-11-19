@@ -10,6 +10,7 @@
   const RECETAS_KEY = 'arcano33_recetas_v1';
 
   let db = null;
+  let mainEventPicker = null;
   let sales = [];
   let mermaRows = [];
   let mermaReadStatus = 'pending';
@@ -202,7 +203,7 @@
       products = Array.isArray(p) ? p : [];
 
       await readFinalMermaAnalytics();
-      populateAnalyticsEvents(document.getElementById('analytics-event-select'));
+      if (mainEventPicker) mainEventPicker.refresh();
       loadCostosPresentacion();
       recompute();
       const exportButton = document.getElementById('btn-export-consolidado');
@@ -370,13 +371,13 @@
     const toInput = document.getElementById('date-to');
 
     if (!periodSelect) return;
-    const eventSelect = document.getElementById('analytics-event-select');
-    if (eventSelect) eventSelect.addEventListener('change', () => {
+    mainEventPicker = createAnalyticsEventPicker(document.getElementById('analytics-event-picker'), () => {
+      const selection = mainEventPicker.selection();
       for (const id of ['cortesias-event-select', 'horas-event-select']){
         const select = document.getElementById(id);
         if (select) {
           select.value = 'all';
-          select.disabled = eventSelect.value !== 'all';
+          select.disabled = selection.eventFilter !== 'all';
         }
       }
       recompute();
@@ -412,11 +413,12 @@
     const toInput = document.getElementById('date-to');
 
     return {...resolvePeriodRange(periodSelect?.value || 'mtd', fromInput?.value, toInput?.value),
-      eventFilter:document.getElementById('analytics-event-select')?.value || 'all'};
+      ...(mainEventPicker ? mainEventPicker.selection() : {eventFilter:'all', groupFilter:'all'})};
   }
 
   function analyticsEventMatches(row, eventFilter = 'all'){
-    return eventFilter === 'all' || String(row.eventId ?? 'sin-evento') === String(eventFilter);
+    const id = String(row.eventId ?? 'sin-evento');
+    return Array.isArray(eventFilter) ? eventFilter.includes(id) : eventFilter === 'all' || id === String(eventFilter);
   }
 
   function analyticsEventOptions(){
@@ -432,24 +434,93 @@
       ...Array.from(map, ([id, name]) => [id, `${name} · ID ${id}`])];
   }
 
-  function populateAnalyticsEvents(select){
-    if (!select) return;
-    const previous = select.value;
-    select.replaceChildren(...analyticsEventOptions().map(([value, label]) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = label;
-      return option;
-    }));
-    select.value = Array.from(select.options).some(option => option.value === previous) ? previous : 'all';
+  function analyticsGroupNames(){
+    let catalog = [];
+    try {
+      const raw = window.A33Storage ? window.A33Storage.getItem('a33_pos_groupCatalog_v1') : localStorage.getItem('a33_pos_groupCatalog_v1');
+      const parsed = JSON.parse(raw || '[]');
+      if (Array.isArray(parsed)) catalog = parsed.filter(value => typeof value === 'string');
+    } catch (_) {}
+    return [...new Set([...catalog, ...events.map(event => event.groupName || '')].map(name => name.trim()).filter(Boolean))];
+  }
+
+  function analyticsEventGroup(id){
+    if (id === 'sin-evento') return '';
+    const event = events.find(event => String(event.id) === String(id));
+    return event ? String(event.groupName || '').trim() : null;
+  }
+
+  function analyticsGroupLabel(group = 'all'){
+    return group === 'all' ? 'Todos los grupos' : group === 'ungrouped' ? 'Sin grupo' : group.slice(6);
+  }
+
+  function analyticsEventsForGroup(group = 'all'){
+    return analyticsEventOptions().filter(([id]) => id !== 'all' && (group === 'all' ||
+      (group === 'ungrouped' ? analyticsEventGroup(id) === '' : analyticsEventGroup(id) === group.slice(6))));
+  }
+
+  function createAnalyticsEventPicker(root, onChange){
+    if (!root) return null;
+    // Solo estructura fija; nombres de grupos/eventos se insertan como texto.
+    root.innerHTML = '<div class="field"><label>Grupo<select data-group aria-label="Grupo"></select></label></div>' +
+      '<div class="field"><span>Eventos</span><details class="analytics-events-menu"><summary aria-label="Seleccionar eventos"></summary>' +
+      '<div class="analytics-events-panel"><div class="analytics-events-actions"><button type="button" data-all>Seleccionar todos</button>' +
+      '<button type="button" data-clear>Limpiar selección</button></div><div data-options></div></div></details>' +
+      '<p class="hint small" data-empty role="status" hidden>Selecciona al menos un evento.</p></div>';
+    const group = root.querySelector('[data-group]');
+    const list = root.querySelector('[data-options]');
+    let selected = new Set();
+    let available = [];
+    function selection(){
+      const ids = available.filter(([id]) => selected.has(id)).map(([id]) => id);
+      return {groupFilter:group.value || 'all', eventFilter:group.value === 'all' && ids.length > 0 && ids.length === available.length ? 'all' : ids};
+    }
+    function updateSummary(){
+      const count = available.filter(([id]) => selected.has(id)).length;
+      root.querySelector('summary').textContent = count + ' de ' + available.length + ' seleccionados';
+      root.querySelector('[data-empty]').hidden = count > 0;
+      for (const input of list.querySelectorAll('input')) input.checked = selected.has(input.value);
+    }
+    function renderEvents(ids){
+      available = analyticsEventsForGroup(group.value);
+      selected = new Set(ids == null || ids === 'all' ? available.map(([id]) => id) : ids);
+      list.replaceChildren(...available.map(([id,name]) => {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'checkbox'; input.value = id;
+        input.addEventListener('change', () => {
+          if (input.checked) selected.add(id); else selected.delete(id);
+          updateSummary(); onChange();
+        });
+        label.append(input, document.createTextNode(name));
+        return label;
+      }));
+      updateSummary();
+    }
+    function refresh(snapshot){
+      root.querySelector('details').open = false;
+      const options = [['all','Todos los grupos'],['ungrouped','Sin grupo'], ...analyticsGroupNames().map(name => ['group:' + name,name])];
+      group.replaceChildren(...options.map(([value,name]) => {
+        const option = document.createElement('option'); option.value = value; option.textContent = name; return option;
+      }));
+      group.value = options.some(([id]) => id === snapshot?.groupFilter) ? snapshot.groupFilter : 'all';
+      const filter = snapshot?.eventFilter;
+      renderEvents(filter == null || filter === 'all' ? null : Array.isArray(filter) ? filter : [filter]);
+    }
+    group.addEventListener('change', () => {renderEvents(); onChange();});
+    root.querySelector('[data-all]').addEventListener('click', () => {selected = new Set(available.map(([id]) => id)); updateSummary(); onChange();});
+    root.querySelector('[data-clear]').addEventListener('click', () => {selected.clear(); updateSummary(); onChange();});
+    refresh();
+    return {selection, refresh};
   }
 
   function analyticsEventLabel(eventFilter = 'all'){
+    if (Array.isArray(eventFilter)) return eventFilter.length ? eventFilter.map(id => analyticsEventLabel(id)).join(', ') : 'Selecciona al menos un evento';
     return analyticsEventOptions().find(([id]) => id === String(eventFilter))?.[1] || 'Evento ' + eventFilter;
   }
 
   function analyticsSelectionLabel(range){
-    return analyticsRangeLabel(range) + ' · ' + analyticsEventLabel(range.eventFilter);
+    return analyticsRangeLabel(range) + ' · ' + analyticsGroupLabel(range.groupFilter) + ' · ' + analyticsEventLabel(range.eventFilter);
   }
 
   function resolvePeriodRange(val, fromDate, toDate){
@@ -793,7 +864,7 @@
     const results = buildEconomicResults(lastFilteredSales);
     return [
       ['Referencia', 'Valor'], ['Fuente', 'Ventas individuales del POS de este navegador'],
-      ['Período', analyticsRangeLabel()], ['Evento', analyticsEventLabel(getCurrentRange().eventFilter)], ['Ventas', 'Total neto guardado en cada venta; Finanzas usa bruto y descuentos guardados, que pueden diferir en históricos incompletos'], ['Costos', 'Campos guardados en las ventas; cálculos históricos conservados'],
+      ['Período', analyticsRangeLabel()], ['Grupo', analyticsGroupLabel(getCurrentRange().groupFilter)], ['Eventos', analyticsEventLabel(getCurrentRange().eventFilter)], ['Ventas', 'Total neto guardado en cada venta; Finanzas usa bruto y descuentos guardados, que pueden diferir en históricos incompletos'], ['Costos', 'Campos guardados en las ventas; cálculos históricos conservados'],
       ['Comisiones', 'Importes y etiquetas guardados en cada venta; no se usan tasas actuales'],
       ['Comisiones no determinadas', results.commissionUndeterminedCount], ['Resultado después de comisión', analyticsResultStatus(results)],
       ['Registros con decimales adicionales', results.extraDecimalsCount],
@@ -1972,7 +2043,8 @@ function rebuildHorasEventOptions(filteredSales){
     if (!dialog) return;
     const form = document.getElementById('analytics-export-form');
     const error = document.getElementById('analytics-export-error');
-    const { period, from, to, previous, customerNames, eventFilter } = form.elements;
+    const { period, from, to, previous, customerNames } = form.elements;
+    const exportEventPicker = createAnalyticsEventPicker(document.getElementById('analytics-export-event-picker'), updatePeriodFields);
     const clientsSection = form.querySelector('[name="section"][value="Clientes"]');
     clientsSection.addEventListener('change', () => {
       customerNames.disabled = !clientsSection.checked;
@@ -1984,7 +2056,7 @@ function rebuildHorasEventOptions(filteredSales){
 
     function updatePeriodFields(){
       customRange.hidden = period.value !== 'custom';
-      const range = {...resolvePeriodRange(period.value, from.value, to.value), eventFilter:eventFilter.value};
+      const range = {...resolvePeriodRange(period.value, from.value, to.value), ...exportEventPicker.selection()};
       const rangeLabel = document.getElementById('analytics-export-period-range');
       if (rangeLabel) rangeLabel.textContent = analyticsSelectionLabel(range);
       previous.disabled = !range.from || !range.to;
@@ -1994,8 +2066,7 @@ function rebuildHorasEventOptions(filteredSales){
     document.getElementById('btn-export-consolidado').addEventListener('click', () => {
       customerNames.checked = false;
       period.value = analyticsPeriod.value;
-      populateAnalyticsEvents(eventFilter);
-      eventFilter.value = getCurrentRange().eventFilter;
+      exportEventPicker.refresh(getCurrentRange());
       from.value = document.getElementById('date-from').value;
       to.value = document.getElementById('date-to').value;
       error.hidden = true;
@@ -2004,7 +2075,6 @@ function rebuildHorasEventOptions(filteredSales){
     });
     document.getElementById('btn-cancel-export').addEventListener('click', () => dialog.close());
     period.addEventListener('change', updatePeriodFields);
-    eventFilter.addEventListener('change', updatePeriodFields);
     from.addEventListener('input', updatePeriodFields);
     to.addEventListener('input', updatePeriodFields);
 
@@ -2013,12 +2083,13 @@ function rebuildHorasEventOptions(filteredSales){
       const submit = form.querySelector('[type=submit]');
       if (submit.disabled) return;
       const sections = Array.from(form.querySelectorAll('[name="section"]:checked'), input => input.value);
-      const range = {...resolvePeriodRange(period.value, from.value, to.value), eventFilter:eventFilter.value};
+      const range = {...resolvePeriodRange(period.value, from.value, to.value), ...exportEventPicker.selection()};
       error.hidden = true;
       try {
         if (range.from && range.to && range.from > range.to) {
           throw new Error('La fecha inicial debe ser anterior o igual a la fecha final.');
         }
+        if (Array.isArray(range.eventFilter) && !range.eventFilter.length) throw new Error('Selecciona al menos un evento.');
         if (!sections.length) throw new Error('Selecciona al menos una sección.');
         if (typeof XLSX === 'undefined') throw new Error('No se cargó la librería de Excel.');
         const includePrevious = previous.checked;
@@ -2200,13 +2271,14 @@ function rebuildHorasEventOptions(filteredSales){
     if (includePrevious && range.from && range.to){
       const days = exportCalendarDay(range.to) - exportCalendarDay(range.from) + 1;
       periods.push({ label:'Anterior', suffix:' anterior', range:{
-        from:addDays(range.from, -days), to:addDays(range.from, -1), eventFilter:range.eventFilter
+        from:addDays(range.from, -days), to:addDays(range.from, -1), eventFilter:range.eventFilter, groupFilter:range.groupFilter
       }});
     }
 
     const workbook = XLSX.utils.book_new();
     const metadata = [['Concepto', 'Valor'],
-      ['Evento seleccionado', analyticsEventLabel(range.eventFilter)],
+      ['Grupo seleccionado', analyticsGroupLabel(range.groupFilter)],
+      ['Eventos seleccionados', analyticsEventLabel(range.eventFilter)],
       ['Moneda', 'Córdoba nicaragüense (NIO, C$)'],
       ['Fuente', 'Ventas del POS y merma final disponibles en este navegador'],
       ['Fechas', 'Límites inclusivos. Una fecha vacía indica que no hay límite.'],
