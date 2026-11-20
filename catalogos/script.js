@@ -5376,14 +5376,15 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     const categories = state.categories.slice().sort((a,b)=>a.name.localeCompare(b.name,'es'));
     byId('cat-expense-category').innerHTML = '<option value="">Seleccione categoría…</option>' + categories.filter(row=>row.active || editing?.categoryId === row.id).map(row=>`<option value="${escapeHtml(row.id)}">${escapeHtml(row.name)}${row.active ? '' : ' (inactiva)'}</option>`).join('');
     byId('cat-expense-category').value = selected;
-    const buttons = (kind, row) => `<div class="cat-product-actions"><button type="button" class="cat-btn" data-expense-action="edit-${kind}" data-id="${escapeHtml(row.id)}">Editar</button><button type="button" class="cat-btn" data-expense-action="toggle-${kind}" data-id="${escapeHtml(row.id)}">${row.active ? 'Desactivar' : 'Activar'}</button></div>`;
-    byId('cat-expense-categories').innerHTML = categories.map(row=>`<article class="cat-product-card"><strong>${escapeHtml(row.name)}</strong><span>${row.active ? 'Activa' : 'Inactiva'}</span>${buttons('category',row)}</article>`).join('') || '<p>No hay categorías. Crea la primera para registrar artículos.</p>';
-    byId('cat-expense-items').innerHTML = state.items.slice().sort((a,b)=>a.name.localeCompare(b.name,'es')).map(row=>{
+    const buttons = (kind, row) => `<div class="cat-expense-actions"><button type="button" class="cat-btn" data-expense-action="edit-${kind}" data-id="${escapeHtml(row.id)}">Editar</button><button type="button" class="cat-btn" data-expense-action="toggle-${kind}" data-id="${escapeHtml(row.id)}">${row.active ? 'Desactivar' : 'Activar'}</button></div>`;
+    const table = (label, headers, rows) => `<div class="cat-expense-table-scroll" role="region" aria-label="${label}" tabindex="0"><table class="cat-expense-table"><thead><tr>${headers.map(header=>`<th scope="col">${header}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    byId('cat-expense-categories').innerHTML = categories.length ? table('Categorías de gastos', ['Categoría','Estado','Acciones'], categories.map(row=>`<tr><th scope="row">${escapeHtml(row.name)}</th><td>${row.active ? 'Activa' : 'Inactiva'}</td><td>${buttons('category',row)}</td></tr>`).join('')) : '<p>No hay categorías. Crea la primera para registrar artículos.</p>';
+    const items = state.items.slice().sort((a,b)=>a.name.localeCompare(b.name,'es'));
+    byId('cat-expense-items').innerHTML = items.length ? table('Artículos de gastos', ['Artículo','Categoría','Precio unidad','Precio caja','Unidades/caja','Estado','Acciones'], items.map(row=>{
       const category = state.categories.find(cat=>cat.id===row.categoryId);
       const money = value => 'C$ ' + Number(value).toFixed(2);
-      const prices = [row.presentation !== 'box' ? 'Unidad: ' + money(row.unitPrice) : '', row.presentation !== 'unit' ? 'Caja: ' + money(row.boxPrice) + ' · ' + row.unitsPerBox + ' unidades por caja' : ''].filter(Boolean).join(' · ');
-      return `<article class="cat-product-card"><strong>${escapeHtml(row.name)}</strong><div>${escapeHtml(category?.name || 'Categoría no disponible')}${category && !category.active ? ' (inactiva)' : ''} · ${row.active ? 'Activo' : 'Inactivo'}</div><div>${escapeHtml(prices)}</div>${buttons('item',row)}</article>`;
-    }).join('') || '<p>No hay artículos de gasto registrados.</p>';
+      return `<tr><th scope="row">${escapeHtml(row.name)}</th><td>${escapeHtml(category?.name || 'Categoría no disponible')}${category && !category.active ? ' (inactiva)' : ''}</td><td class="cat-expense-number">${row.presentation !== 'box' ? money(row.unitPrice) : '—'}</td><td class="cat-expense-number">${row.presentation !== 'unit' ? money(row.boxPrice) : '—'}</td><td class="cat-expense-number">${row.presentation !== 'unit' ? escapeHtml(row.unitsPerBox) : '—'}</td><td>${row.active ? 'Activo' : 'Inactivo'}</td><td>${buttons('item',row)}</td></tr>`;
+    }).join('')) : '<p>No hay artículos de gasto registrados.</p>';
   }
   function expenseCatalogAction(action){
     try{ action(); }catch(error){ console.error('Catálogo Gastos:',error); expenseMessage(error.message || 'No se pudo guardar el catálogo.'); }

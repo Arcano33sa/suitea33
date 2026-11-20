@@ -193,6 +193,25 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
   .cat-main{width:min(1600px, calc(100vw - 24px));}
 }
 </style>
+<style id="catalogos-gastos-compacto">
+#panel-gastos .cat-expense-list{min-width:0;margin-top:16px;max-width:100%}
+#panel-gastos .cat-expense-table-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--a33-border);border-radius:12px}
+#panel-gastos .cat-expense-table{width:100%;border-collapse:collapse;font-size:14px;color:var(--a33-text)}
+#panel-gastos .cat-expense-table :is(th,td){padding:10px 12px;text-align:left;border-bottom:1px solid var(--a33-border-soft);vertical-align:middle}
+#panel-gastos .cat-expense-table thead th{background:var(--a33-surface-2);font-size:12px;color:var(--a33-muted);white-space:nowrap}
+#panel-gastos .cat-expense-table tbody th{font-weight:650;overflow-wrap:anywhere;min-width:130px;max-width:260px}
+#panel-gastos .cat-expense-table tbody tr:last-child > *{border-bottom:0}
+#panel-gastos .cat-expense-table td{overflow-wrap:anywhere;max-width:260px}
+#panel-gastos .cat-expense-table .cat-expense-number{text-align:right;white-space:nowrap}
+#panel-gastos .cat-expense-actions{display:flex;gap:8px;flex-wrap:nowrap}
+#panel-gastos .cat-expense-actions .cat-btn{margin:0;white-space:nowrap;min-height:44px;padding:8px 12px}
+#panel-gastos .cat-expense-table-scroll:focus-visible{outline:3px solid var(--a33-gold);outline-offset:3px}
+@media(max-width:740px){
+ #panel-gastos .cat-expense-table :is(th,td){padding:8px}
+ #cat-expense-items .cat-expense-table{min-width:850px}
+ #cat-expense-categories .cat-expense-table{min-width:440px}
+}
+</style>
 </head>
 <body>
   <header class="a33-header" role="banner" data-a33-module="catalogos" data-a33-context="catalogos">
@@ -278,7 +297,7 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
               <label>Nombre de categoría<input id="cat-expense-category-name" required maxlength="80" autocomplete="off"></label>
               <div class="cat-actions-end"><button class="cat-btn cat-btn-ok" type="submit">Guardar categoría</button><button class="cat-btn" type="button" id="cat-expense-category-cancel" hidden>Cancelar edición</button></div>
             </form>
-            <div id="cat-expense-categories" class="cat-products-list"></div>
+            <div id="cat-expense-categories" class="cat-expense-list"></div>
           </div>
           <div class="cat-product-form-card">
             <h3 id="cat-expense-editor-title">Nuevo artículo</h3>
@@ -293,7 +312,7 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
             </form>
           </div>
           <p id="cat-expense-status" role="status" aria-live="polite"></p>
-          <div id="cat-expense-items" class="cat-products-list"></div>
+          <div id="cat-expense-items" class="cat-expense-list"></div>
         </section>
         <section class="cat-panel cat-e71" id="panel-productos" role="region" aria-labelledby="tab-productos" data-panel="productos" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
@@ -1137,7 +1156,7 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
   <script src="/assets/js/a33-product-integrity.js?v=4.20.98&r=1"></script>
   <script src="/assets/js/a33-materials.js?v=4.20.98&r=2"></script>
   <script src="../pos/vendor/xlsx.full.min.js"></script>
-  <script src="script.js?v=4.20.98&r=40"></script>
+  <script src="script.js?v=4.20.98&r=41"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=11"></script>
 </body>
 </html>

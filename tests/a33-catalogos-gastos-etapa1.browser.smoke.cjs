@@ -130,6 +130,21 @@ let browser;
   await page.setViewportSize({width:1280,height:900});
   await page.evaluate(()=>window.scrollTo(0,0));
   await page.screenshot({path:'/tmp/a33-gastos-e1-desktop.png',fullPage:true});
+  assert.equal(await page.locator('#cat-expense-categories thead th').count(),3);
+  assert.equal(await page.locator('#cat-expense-items thead th').count(),7);
+  assert.equal(await page.locator('#cat-expense-items tbody tr').count(),3);
+  await page.locator('#cat-expense-categories .cat-expense-table-scroll').screenshot({path:'/tmp/a33-categorias-compactas.png'});
+  await page.locator('#cat-expense-items .cat-expense-table-scroll').screenshot({path:'/tmp/a33-articulos-compactos.png'});
+  const rowHeights=await page.locator('#cat-expense-items tbody tr').evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height));
+  assert(rowHeights.every(height=>height<=80),'Los artículos deben ocupar una fila compacta');
+  assert(await page.locator('#cat-expense-categories tbody tr').evaluate(row=>row.getBoundingClientRect().height<=80));
+  assert.equal(await page.locator('#cat-expense-items tbody tr').filter({hasText:'Gorro'}).locator('td').nth(2).innerText(),'—');
+  const storedBeforeLayout=await read();
+  await page.setViewportSize({width:390,height:844});
+  assert(await page.locator('#cat-expense-items .cat-expense-table-scroll').evaluate(el=>el.scrollWidth>el.clientWidth));
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.deepEqual(await read(),storedBeforeLayout);
+
   // Datos incompatibles no se reemplazan por un catálogo vacío.
   await page.evaluate(key=>localStorage.setItem(key,'{"version":99}'),key);
   await page.reload();
