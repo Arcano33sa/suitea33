@@ -246,6 +246,9 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
             <small>Complementos operativos</small>
           </span>
         </button>
+        <button class="cat-tab" id="tab-gastos" type="button" aria-expanded="false" aria-controls="panel-gastos" data-target="gastos">
+          <span class="cat-tab-icon">🧾</span><span><strong>Gastos</strong><small>Categorías, artículos y precios</small></span>
+        </button>
         <button class="cat-tab" id="tab-bancos" type="button" aria-expanded="false" aria-controls="panel-bancos" data-target="bancos">
           <span class="cat-tab-icon">🏦</span>
           <span>
@@ -267,6 +270,31 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
           <button class="cat-nav-chip cat-nav-chip--back" data-cat-back type="button">← Catálogos</button>
           <a class="cat-nav-chip cat-nav-chip--home" href="../index.html" aria-label="Ir al Menú principal">⌂ Menú principal</a>
         </nav>
+        <section class="cat-panel cat-e71" id="panel-gastos" role="region" aria-labelledby="tab-gastos" data-panel="gastos" aria-hidden="true" tabindex="-1" hidden>
+          <div class="cat-panel-card cat-products-intro"><h2>Catálogo de gastos</h2><p>Organiza los artículos para compras generales. Los precios se expresan en C$. Los cambios aplican a registros futuros.</p></div>
+          <div class="cat-product-form-card">
+            <h3>Categorías</h3>
+            <form id="cat-expense-category-form" class="cat-product-form">
+              <label>Nombre de categoría<input id="cat-expense-category-name" required maxlength="80" autocomplete="off"></label>
+              <div class="cat-actions-end"><button class="cat-btn cat-btn-ok" type="submit">Guardar categoría</button><button class="cat-btn" type="button" id="cat-expense-category-cancel" hidden>Cancelar edición</button></div>
+            </form>
+            <div id="cat-expense-categories" class="cat-products-list"></div>
+          </div>
+          <div class="cat-product-form-card">
+            <h3 id="cat-expense-editor-title">Nuevo artículo</h3>
+            <form id="cat-expense-item-form" class="cat-product-form">
+              <label>Artículo<input id="cat-expense-name" required maxlength="120" autocomplete="off"></label>
+              <label>Categoría<select id="cat-expense-category" required></select></label>
+              <label>Presentación<select id="cat-expense-presentation"><option value="unit">Unidad</option><option value="box">Caja</option><option value="both">Unidad y caja</option></select></label>
+              <label id="cat-expense-unit-wrap">Precio por unidad (C$)<input id="cat-expense-unit-price" type="number" min="0" step="0.01" required></label>
+              <label id="cat-expense-box-wrap" hidden>Precio por caja (C$)<input id="cat-expense-box-price" type="number" min="0" step="0.01"></label>
+              <label id="cat-expense-units-wrap" hidden>Unidades por caja<input id="cat-expense-units" type="number" min="1" step="1"></label>
+              <div class="cat-actions-end"><button class="cat-btn cat-btn-ok" type="submit">Guardar artículo</button><button class="cat-btn" id="cat-expense-item-cancel" type="button" hidden>Cancelar edición</button></div>
+            </form>
+          </div>
+          <p id="cat-expense-status" role="status" aria-live="polite"></p>
+          <div id="cat-expense-items" class="cat-products-list"></div>
+        </section>
         <section class="cat-panel cat-e71" id="panel-productos" role="region" aria-labelledby="tab-productos" data-panel="productos" aria-hidden="true" tabindex="-1" hidden>
           <article class="cat-panel-card cat-products-intro">
             <div>

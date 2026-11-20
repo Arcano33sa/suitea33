@@ -35,7 +35,7 @@
   const COSTS_RECIPES_STORAGE_KEY = 'arcano33_recetas_v1';
   const COSTS_SCHEMA_VERSION = 2;
   const CATALOG_ACTIVE_TAB_KEY = 'a33_catalogos_active_tab_v1';
-  const CATALOG_ALLOWED_TABS = new Set(['productos','costos','materia-prima','envases','tapas','extras','bancos','clientes']);
+  const CATALOG_ALLOWED_TABS = new Set(['productos','costos','materia-prima','envases','tapas','extras','bancos','clientes','gastos']);
   const COST_LIQUIDS = [
     { key:'vino', label:'Vino' },
     { key:'vodka', label:'Vodka' },
@@ -140,6 +140,7 @@
     'tapas':'Tapas',
     'extras':'Extras',
     'bancos':'Bancos',
+    'gastos':'Gastos',
     'clientes':'Clientes'
   });
   let catalogCurrentSection = '';
@@ -5328,8 +5329,142 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     await renderProducts();
   }
 
+  // Catálogo independiente: IDs estables; sin borrar categorías ni artículos.
+  const EXPENSE_CATALOG_KEY = 'a33_catalogos_gastos_v1';
+  let expenseCategoryEditId = '';
+  let expenseItemEditId = '';
+  const expenseNameKey = value => String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').replace(/\s+/g, ' ');
+  function readExpenseCatalog(){
+    const raw = localStorage.getItem(EXPENSE_CATALOG_KEY);
+    if (raw === null) return {version:1, categories:[], items:[]};
+    const state = JSON.parse(raw);
+    if (!state || state.version !== 1 || !Array.isArray(state.categories) || !Array.isArray(state.items)) throw new Error('El catálogo guardado no tiene un formato compatible. No se modificó.');
+    return state;
+  }
+  function expenseMessage(message){ byId('cat-expense-status').textContent = message; }
+  function saveExpenseCatalog(state){
+    localStorage.setItem(EXPENSE_CATALOG_KEY, JSON.stringify(state));
+    renderExpenseCatalog();
+    expenseMessage('Catálogo guardado.');
+  }
+  function expenseId(){ return window.crypto?.randomUUID ? window.crypto.randomUUID() : 'expense-' + Date.now() + '-' + Math.random().toString(36).slice(2); }
+  function expensePresentationFields(){
+    const presentation = byId('cat-expense-presentation').value;
+    for (const [wrap, input, enabled] of [['unit-wrap','unit-price',presentation !== 'box'],['box-wrap','box-price',presentation !== 'unit'],['units-wrap','units',presentation !== 'unit']]){
+      byId('cat-expense-' + wrap).hidden = !enabled;
+      byId('cat-expense-' + input).disabled = !enabled;
+      byId('cat-expense-' + input).required = enabled;
+    }
+  }
+  function resetExpenseItem(){
+    expenseItemEditId = '';
+    byId('cat-expense-item-form').reset();
+    byId('cat-expense-item-cancel').hidden = true;
+    byId('cat-expense-editor-title').textContent = 'Nuevo artículo';
+    expensePresentationFields();
+    renderExpenseCatalog();
+  }
+  function resetExpenseCategory(){
+    expenseCategoryEditId = '';
+    byId('cat-expense-category-form').reset();
+    byId('cat-expense-category-cancel').hidden = true;
+  }
+  function renderExpenseCatalog(){
+    const state = readExpenseCatalog();
+    const selected = byId('cat-expense-category').value;
+    const editing = state.items.find(row => row.id === expenseItemEditId);
+    const categories = state.categories.slice().sort((a,b)=>a.name.localeCompare(b.name,'es'));
+    byId('cat-expense-category').innerHTML = '<option value="">Seleccione categoría…</option>' + categories.filter(row=>row.active || editing?.categoryId === row.id).map(row=>`<option value="${escapeHtml(row.id)}">${escapeHtml(row.name)}${row.active ? '' : ' (inactiva)'}</option>`).join('');
+    byId('cat-expense-category').value = selected;
+    const buttons = (kind, row) => `<div class="cat-product-actions"><button type="button" class="cat-btn" data-expense-action="edit-${kind}" data-id="${escapeHtml(row.id)}">Editar</button><button type="button" class="cat-btn" data-expense-action="toggle-${kind}" data-id="${escapeHtml(row.id)}">${row.active ? 'Desactivar' : 'Activar'}</button></div>`;
+    byId('cat-expense-categories').innerHTML = categories.map(row=>`<article class="cat-product-card"><strong>${escapeHtml(row.name)}</strong><span>${row.active ? 'Activa' : 'Inactiva'}</span>${buttons('category',row)}</article>`).join('') || '<p>No hay categorías. Crea la primera para registrar artículos.</p>';
+    byId('cat-expense-items').innerHTML = state.items.slice().sort((a,b)=>a.name.localeCompare(b.name,'es')).map(row=>{
+      const category = state.categories.find(cat=>cat.id===row.categoryId);
+      const money = value => 'C$ ' + Number(value).toFixed(2);
+      const prices = [row.presentation !== 'box' ? 'Unidad: ' + money(row.unitPrice) : '', row.presentation !== 'unit' ? 'Caja: ' + money(row.boxPrice) + ' · ' + row.unitsPerBox + ' unidades por caja' : ''].filter(Boolean).join(' · ');
+      return `<article class="cat-product-card"><strong>${escapeHtml(row.name)}</strong><div>${escapeHtml(category?.name || 'Categoría no disponible')}${category && !category.active ? ' (inactiva)' : ''} · ${row.active ? 'Activo' : 'Inactivo'}</div><div>${escapeHtml(prices)}</div>${buttons('item',row)}</article>`;
+    }).join('') || '<p>No hay artículos de gasto registrados.</p>';
+  }
+  function expenseCatalogAction(action){
+    try{ action(); }catch(error){ console.error('Catálogo Gastos:',error); expenseMessage(error.message || 'No se pudo guardar el catálogo.'); }
+  }
+  function bindExpenseCatalog(){
+    if (!byId('cat-expense-item-form')) return;
+    byId('cat-expense-presentation').addEventListener('change', expensePresentationFields);
+    byId('cat-expense-category-cancel').addEventListener('click', resetExpenseCategory);
+    byId('cat-expense-item-cancel').addEventListener('click', resetExpenseItem);
+    byId('cat-expense-category-form').addEventListener('submit', event=>{
+      event.preventDefault();
+      expenseCatalogAction(()=>{
+        const state = readExpenseCatalog();
+        const name = byId('cat-expense-category-name').value.trim();
+        if (!/[\p{L}\p{N}]/u.test(name)) throw new Error('Escribe un nombre válido para la categoría.');
+        if (state.categories.some(row=>row.id !== expenseCategoryEditId && expenseNameKey(row.name) === expenseNameKey(name))) throw new Error('Ya existe una categoría con ese nombre, activa o inactiva.');
+        const existing = state.categories.find(row=>row.id===expenseCategoryEditId);
+        if (expenseCategoryEditId && !existing) throw new Error('La categoría ya no está disponible.');
+        const now = new Date().toISOString();
+        const row = {...existing, id:existing?.id || expenseId(), name, active:existing ? existing.active : true, createdAt:existing?.createdAt || now, updatedAt:now};
+        state.categories = existing ? state.categories.map(cat=>cat.id===row.id ? row : cat) : [...state.categories,row];
+        saveExpenseCatalog(state); resetExpenseCategory();
+      });
+    });
+    byId('cat-expense-item-form').addEventListener('submit', event=>{
+      event.preventDefault();
+      expenseCatalogAction(()=>{
+        const state = readExpenseCatalog();
+        const existing = state.items.find(row=>row.id===expenseItemEditId);
+        if (expenseItemEditId && !existing) throw new Error('El artículo ya no está disponible.');
+        const name = byId('cat-expense-name').value.trim();
+        if (!/[\p{L}\p{N}]/u.test(name)) throw new Error('Escribe un nombre válido para el artículo.');
+        if (state.items.some(row=>row.id!==expenseItemEditId && expenseNameKey(row.name)===expenseNameKey(name))) throw new Error('Ya existe un artículo con ese nombre, activo o inactivo.');
+        const categoryId = byId('cat-expense-category').value;
+        const category = state.categories.find(row=>row.id===categoryId);
+        if (!category || (!category.active && existing?.categoryId!==categoryId)) throw new Error('Selecciona una categoría activa.');
+        const presentation = byId('cat-expense-presentation').value;
+        if (!['unit','box','both'].includes(presentation)) throw new Error('Selecciona una presentación válida.');
+        const price = id => {
+          const value = byId(id).value.trim();
+          const number = Number(value);
+          if (!value || !Number.isFinite(number) || number < 0) throw new Error('Introduce precios válidos, iguales o mayores que cero.');
+          return Math.round(number * 100) / 100;
+        };
+        const unitPrice = presentation === 'box' ? null : price('cat-expense-unit-price');
+        const boxPrice = presentation === 'unit' ? null : price('cat-expense-box-price');
+        const unitsPerBox = presentation === 'unit' ? null : Number(byId('cat-expense-units').value);
+        if (presentation !== 'unit' && (!Number.isSafeInteger(unitsPerBox) || unitsPerBox < 1)) throw new Error('Indica una cantidad entera de unidades por caja mayor que cero.');
+        const now = new Date().toISOString();
+        const row = {...existing, id:existing?.id || expenseId(), name, categoryId, presentation, unitPrice, boxPrice, unitsPerBox, active:existing ? existing.active : true, createdAt:existing?.createdAt || now, updatedAt:now};
+        state.items = existing ? state.items.map(item=>item.id===row.id ? row : item) : [...state.items,row];
+        saveExpenseCatalog(state); resetExpenseItem();
+      });
+    });
+    byId('panel-gastos').addEventListener('click',event=>{
+      const button = event.target.closest('[data-expense-action]');
+      if (!button) return;
+      expenseCatalogAction(()=>{
+        const state = readExpenseCatalog();
+        const [action,kind] = button.dataset.expenseAction.split('-');
+        const row = (kind === 'category' ? state.categories : state.items).find(row=>row.id===button.dataset.id);
+        if (!row) throw new Error('El registro ya no está disponible.');
+        if (action === 'toggle'){
+          row.active = !row.active; row.updatedAt = new Date().toISOString(); saveExpenseCatalog(state); return;
+        }
+        if (kind === 'category'){
+          expenseCategoryEditId = row.id; byId('cat-expense-category-name').value = row.name; byId('cat-expense-category-cancel').hidden = false; byId('cat-expense-category-name').focus();
+        }else{
+          expenseItemEditId = row.id; renderExpenseCatalog();
+          for (const [key,value] of Object.entries({name:row.name,category:row.categoryId,presentation:row.presentation,'unit-price':row.unitPrice,'box-price':row.boxPrice,units:row.unitsPerBox})) byId('cat-expense-' + key).value = value ?? '';
+          byId('cat-expense-editor-title').textContent = 'Editar artículo'; byId('cat-expense-item-cancel').hidden = false; expensePresentationFields(); byId('cat-expense-name').focus();
+        }
+      });
+    });
+    window.addEventListener('storage',event=>{ if (event.key===EXPENSE_CATALOG_KEY) expenseCatalogAction(renderExpenseCatalog); });
+    expensePresentationFields(); expenseCatalogAction(renderExpenseCatalog);
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     if (document.body.dataset.a33Exports === 'catalogos') return;
+    bindExpenseCatalog();
     bindCatalogNavigation();
     bindCatalogModalHardening();
     bindProductUi();

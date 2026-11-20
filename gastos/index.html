@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#7b1818">
+  <title>Gastos · Suite A33</title>
+  <script src="../assets/js/a33-theme.js?v=4.20.98&r=13"></script>
+  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.98&r=13">
+  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.98&r=13">
+  <link rel="stylesheet" href="../assets/css/a33-module-nav.css?v=4.20.98&r=3">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="a33-header" data-a33-module="gastos">
+    <a class="a33-btn-menu" href="../index.html">← Menú principal</a>
+    <div class="a33-title">Gastos</div>
+    <div class="a33-version" data-a33-version="1">v4.20.98</div>
+  </header>
+  <main>
+    <div class="intro"><p class="eyebrow">Gestión y análisis</p><h1>Gastos</h1><p>Registra las compras generales del negocio y consulta su historial.</p><a href="../catalogos/index.html#gastos">Administrar artículos y categorías →</a></div>
+    <section class="panel" aria-labelledby="new-title">
+      <h2 id="new-title">Nueva compra</h2>
+      <form id="purchase-form">
+        <div class="fields">
+          <label>Fecha<input id="purchase-date" type="date" required></label>
+          <label>Proveedor <span>(opcional)</span><input id="purchase-supplier" maxlength="120" autocomplete="organization"></label>
+          <label>Referencia del comprobante <span>(opcional)</span><input id="purchase-reference" maxlength="100"></label>
+          <label>Observación <span>(opcional)</span><input id="purchase-note" maxlength="500"></label>
+        </div>
+        <div class="section-heading"><h3>Artículos</h3><button type="button" id="add-line" class="secondary">+ Agregar artículo</button></div>
+        <p id="catalog-status" role="status"></p>
+        <div id="purchase-lines"></div>
+        <div class="purchase-footer"><div>Total de la compra<strong id="draft-total">C$ 0.00</strong></div><button id="save-purchase" type="submit">Guardar compra</button></div>
+      </form>
+      <p id="purchase-status" role="status" aria-live="polite"></p>
+    </section>
+    <section class="panel" aria-labelledby="history-title">
+      <div class="section-heading"><h2 id="history-title">Historial de gastos</h2><button id="refresh-history" class="secondary" type="button">Actualizar</button></div>
+      <form id="filters" class="fields">
+        <label>Desde<input id="filter-from" type="date"></label>
+        <label>Hasta<input id="filter-to" type="date"></label>
+        <label>Buscar<input id="filter-search" type="search" placeholder="Artículo, categoría, proveedor…"></label>
+        <div class="actions"><button type="submit" class="secondary">Consultar</button><button type="button" id="clear-filters" class="secondary">Ver todo</button></div>
+      </form>
+      <p id="history-status" role="status" aria-live="polite"></p>
+      <div class="history-summary"><span id="history-count">0 compras</span><div>Total consultado<strong id="history-total">C$ 0.00</strong></div></div>
+      <div id="purchase-history"></div>
+    </section>
+  </main>
+  <script src="../assets/js/a33-release.js?v=4.20.98&r=57"></script>
+  <script src="../assets/js/a33-module-nav.js?v=4.20.98&r=3"></script>
+  <script src="script.js"></script>
+</body>
+</html>

@@ -10140,11 +10140,44 @@ function finDashboardSafeMoney(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Lectura de compras generales: solo snapshots; no crea asientos ni mueve caja/bancos.
+function finReadGeneralExpensesForFilter(filtros = {}) {
+  const event = String(filtros.evento || 'ALL').toUpperCase();
+  if (event !== 'ALL' && event !== 'GLOBAL') return { ok:true, applies:false, total:0, count:0 };
+  try {
+    const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem('a33_gastos_v1');
+    if (raw === null) return { ok:true, applies:true, total:0, count:0 };
+    const state = JSON.parse(raw);
+    if (!state || state.version !== 1 || !Array.isArray(state.purchases)) throw new Error('formato incompatible');
+    let cents = 0, count = 0;
+    const ids = new Set();
+    for (const row of state.purchases) {
+      const date = String(row && row.date || '');
+      const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(date + 'T12:00:00Z') : null;
+      if (!row || typeof row.id !== 'string' || !row.id || ids.has(row.id) || row.currency !== 'NIO' || !parsedDate || !Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0,10) !== date || !Array.isArray(row.lines) || !row.lines.length || !Number.isSafeInteger(row.totalCents) || row.totalCents < 0) throw new Error('compra incompatible');
+      ids.add(row.id);
+      let lineTotal = 0;
+      for (const line of row.lines) {
+        if (!line || typeof line.articleId !== 'string' || typeof line.articleName !== 'string' || typeof line.categoryId !== 'string' || typeof line.categoryName !== 'string' || !['unit','box'].includes(line.presentation) || !Number.isSafeInteger(line.quantity) || line.quantity < 1 || !Number.isSafeInteger(line.unitPriceCents) || line.unitPriceCents < 0 || !Number.isSafeInteger(line.totalCents) || line.totalCents !== line.quantity * line.unitPriceCents || (line.presentation === 'box' && (!Number.isSafeInteger(line.unitsPerBox) || line.unitsPerBox < 1))) throw new Error('detalle incompatible');
+        lineTotal += line.totalCents;
+      }
+      if (!Number.isSafeInteger(lineTotal) || lineTotal !== row.totalCents) throw new Error('total inconsistente');
+      if (!finDashboardInRange(row, filtros)) continue;
+      cents += row.totalCents;
+      count++;
+      if (!Number.isSafeInteger(cents)) throw new Error('total fuera de rango');
+    }
+    return { ok:true, applies:true, total:cents / 100, count };
+  } catch (error) {
+    return { ok:false, applies:true, total:0, count:0, issue:'No se pudieron leer los Gastos generales (a33_gastos_v1): ' + String(error.message || error) };
+  }
+}
+
 function finDashboardFinalizeTotals(totals) {
   if (!totals || typeof totals !== 'object') return totals;
   [
     'ventaTotal', 'descuentos', 'cortesias', 'ventaNeta', 'costosVentas', 'costoCortesias', 'costosTotales',
-    'utilidadBruta', 'comisionesTarjeta', 'ingresosAdicionales', 'gastos', 'utilidadNeta',
+    'utilidadBruta', 'utilidadPrevia', 'comisionesTarjeta', 'ingresosAdicionales', 'gastos', 'gastosGenerales', 'utilidadNeta',
     'flujoCaja', 'cajaPeriodo', 'bancosPeriodo', 'entradasRealesDinero',
     'salidasRealesDinero'
   ].forEach((key) => { totals[key] = finDashboardSafeMoney(totals[key]); });
@@ -10271,12 +10304,24 @@ function calcTableroClasificadoForFilter(data, filtros) {
   totals.ventaNeta = finDashboardSafeMoney(totals.ventaTotal - totals.descuentos);
   totals.utilidadBruta = finDashboardSafeMoney(totals.ventaNeta - totals.costosVentas);
   totals.comisionesTarjeta = finDashboardSafeMoney(totals.comisionesTarjeta);
-  totals.utilidadNeta = finDashboardSafeMoney(totals.utilidadBruta - totals.costoCortesias - totals.comisionesTarjeta - totals.mermaFinal + totals.ingresosAdicionales - totals.gastos);
+  totals.utilidadPrevia = finDashboardSafeMoney(totals.utilidadBruta - totals.costoCortesias - totals.comisionesTarjeta - totals.mermaFinal);
+  totals.generalExpensesRead = finReadGeneralExpensesForFilter(filtros || {});
+  totals.gastosGenerales = totals.generalExpensesRead.total;
+  totals.utilidadNeta = finDashboardSafeMoney(totals.utilidadPrevia + totals.ingresosAdicionales - totals.gastos - totals.gastosGenerales);
+  if (!totals.generalExpensesRead.ok) {
+    readIntegrity.incomplete = true;
+    readIntegrity.issues.push(totals.generalExpensesRead.issue);
+  }
   totals.flujoCaja = finDashboardSafeMoney(totals.entradasRealesDinero - totals.salidasRealesDinero);
   totals.numeroEventos = eventFilter && eventFilter !== 'ALL' && eventFilter !== 'GLOBAL'
     ? (totals.eventKeys.size ? 1 : 0)
     : Array.from(totals.eventKeys).filter(k => k && k !== 'NONE').length;
   finDashboardFinalizeTotals(totals);
+  if (!totals.generalExpensesRead.ok) {
+    totals.gastosGenerales = null;
+    totals.utilidadNeta = null;
+    totals.margenNeto = null;
+  }
 
   totals.liquidityPeriod = {
     cutoff: filtros && filtros.hasta,
@@ -10304,7 +10349,7 @@ function calcTableroClasificadoForFilter(data, filtros) {
     const missing = readIntegrity.missingStores.map(name => `a33-pos.${name}`).concat(safeData.dashboardMissingSources || []);
     totals.alerts.push({ text:`Almacenes ausentes en esta base (compatibilidad con esquemas anteriores): ${missing.join(', ')}.` });
   }
-  if (!readIntegrity.incomplete && !totals.stats.posSales && !totals.stats.closureFallback && !totals.stats.posFinalMerma && !(manualTotals.rows || []).length) {
+  if (!readIntegrity.incomplete && !totals.stats.posSales && !totals.stats.closureFallback && !totals.stats.posFinalMerma && !(manualTotals.rows || []).length && !totals.generalExpensesRead.count) {
     totals.alerts.push({ text: 'No hay datos operativos para el filtro seleccionado.' });
   }
   if (totals.stats.closureFallback) {
@@ -10356,8 +10401,9 @@ function renderTableroChart(result) {
     ['Venta Total', n0(result && result.ventaTotal), gold],
     ['Venta Neta', n0(result && result.ventaNeta), '#9f8b4a'],
     ['Costos totales', n0(result && result.costosTotales), red],
-    ['Gastos', n0(result && result.gastos), '#8b1f26'],
-    ['Utilidad neta', n0(result && result.utilidadNeta), (n0(result && result.utilidadNeta) >= 0 ? gold : red)]
+    ['Gastos operativos', n0(result && result.gastos), '#8b1f26'],
+    ...(result && result.generalExpensesRead && result.generalExpensesRead.applies && result.generalExpensesRead.ok ? [['Gastos', result.gastosGenerales, '#a14f2a']] : []),
+    ...(result && result.utilidadNeta != null ? [['Utilidad neta', result.utilidadNeta, result.utilidadNeta >= 0 ? gold : red]] : [])
   ];
   const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r[1])));
   const hasData = rows.some(r => Math.abs(r[1]) > 0.005);
@@ -10616,11 +10662,21 @@ function renderTablero(data) {
   finSetText('tab-costos-total', `Total con cortesías y merma: ${finFormatCordobas(result.costosTotales)}`);
   finSetText('tab-utilidad-bruta', finFormatCordobas(result.utilidadBruta));
   finSetText('tab-ingresos-adicionales', finFormatCordobas(result.ingresosAdicionales));
-  finSetText('tab-gastos', finFormatCordobas(result.gastos));
-  finSetText('tab-utilidad-neta', finFormatCordobas(result.utilidadNeta));
+  finSetText('tab-utilidad-previa', finFormatCordobas(result.utilidadPrevia));
+  finSetText('tab-gastos-operativos', finFormatCordobas(result.gastos));
+  finSetText('tab-gastos', result.gastosGenerales == null ? 'No disponible' : finFormatCordobas(result.gastosGenerales));
+  const generalExpenseCard = document.getElementById('tab-gastos-card');
+  if (generalExpenseCard) {
+    generalExpenseCard.hidden = !result.generalExpensesRead.applies;
+    generalExpenseCard.classList.toggle('hidden', !result.generalExpensesRead.applies);
+  }
+  finSetText('tab-utilidad-neta', result.utilidadNeta == null ? 'No disponible' : finFormatCordobas(result.utilidadNeta));
+  finSetText('tab-result-scope', result.generalExpensesRead.applies
+    ? 'Utilidad Neta = Utilidad Previa + Ingresos Adicionales − Gastos operativos − Gastos.'
+    : 'Resultado del evento: conserva sus ingresos y gastos operativos; no descuenta las compras generales del negocio.');
   finRenderCardCommissionBreakdown(result);
   finSetText('tab-margen-bruto', finDashboardFormatPct(result.margenBruto));
-  finSetText('tab-margen-neto', finDashboardFormatPct(result.margenNeto));
+  finSetText('tab-margen-neto', result.margenNeto == null ? 'No disponible' : finDashboardFormatPct(result.margenNeto));
   finSetText('tab-num-eventos', String(result.numeroEventos || 0));
   finSetText('tab-flujo-caja', finFormatCordobas(result.flujoCaja));
   finSetText('tab-caja-periodo', finFormatCordobas(result.cajaPeriodo));
@@ -10630,7 +10686,7 @@ function renderTablero(data) {
   finSetText('tab-ingresos', finFormatCordobas(result.ventaTotal));
   finSetText('tab-post-cortesias', finFormatCordobas(result.ingresosAdicionales));
   finSetText('tab-bruta', finFormatCordobas(result.utilidadBruta));
-  finSetText('tab-resultado', finFormatCordobas(result.utilidadNeta));
+  finSetText('tab-resultado', result.utilidadNeta == null ? 'No disponible' : finFormatCordobas(result.utilidadNeta));
   finSetText('tab-caja', finFormatCordobas(result.cajaPeriodo));
   finSetText('tab-banco', finFormatCordobas(result.bancosPeriodo));
 
@@ -21835,6 +21891,10 @@ window.addEventListener('storage', (ev) => {
   if (document.body.dataset.a33Exports === 'finanzas') return;
   try {
     const key = ev && ev.key ? String(ev.key) : '';
+    if (key === 'a33_gastos_v1') {
+      if (finCachedData) renderTablero(finCachedData);
+      return;
+    }
     if (key === 'a33_pos_credit_finance_pulse' && finDB){
       refreshAllFin().catch(error=>console.warn('No se pudo actualizar Finanzas después del cobro',error));
       return;
@@ -21854,4 +21914,9 @@ window.addEventListener('storage', (ev) => {
       }
     }
   } catch (_) {}
+});
+
+// Regreso desde Gastos en la misma pestaña: releer solo el cálculo operativo.
+window.addEventListener('pageshow', () => {
+  if (document.body.dataset.a33Exports !== 'finanzas' && finCachedData) renderTablero(finCachedData);
 });

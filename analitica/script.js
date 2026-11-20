@@ -216,6 +216,16 @@
     }
   }
 
+  function refreshGeneralExpensesSummary(){
+    if (db && document.body.dataset.a33Exports !== 'analitica' && lastPresStats && lastEventStats) {
+      updateResumen(lastFilteredSales, lastPresStats, lastEventStats);
+    }
+  }
+  window.addEventListener('storage', event => {
+    if (event.key === 'a33_gastos_v1' || event.key === null) refreshGeneralExpensesSummary();
+  });
+  window.addEventListener('pageshow', refreshGeneralExpensesSummary);
+
   function openDB(){
     return new Promise((resolve, reject) => {
       if (!('indexedDB' in window)) {
@@ -308,6 +318,38 @@
     const mermaPartial = mermaReadStatus === 'error' || mermaReadStatus === 'pending' || mermaUncertainCount > 0;
     return {...result, mermaCost, mermaMl, mermaUncertainCount, mermaPartial,
       profitAfterMerma:analyticsRoundMoney(result.profitAfterCommission - mermaCost)};
+  }
+
+  // Compras generales: lectura de snapshots, sin asignación a grupos o eventos.
+  function readGeneralExpensesAnalytics(range = getCurrentRange()) {
+    if (range.eventFilter !== 'all' || range.groupFilter !== 'all') return { ok:true, applies:false, total:0, count:0 };
+    try {
+      const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem('a33_gastos_v1');
+      if (raw === null) return { ok:true, applies:true, total:0, count:0 };
+      const state = JSON.parse(raw);
+      if (!state || state.version !== 1 || !Array.isArray(state.purchases)) throw new Error('formato incompatible');
+      let cents = 0, count = 0;
+      const ids = new Set();
+      for (const row of state.purchases) {
+        const date = String(row && row.date || '');
+        const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(date + 'T12:00:00Z') : null;
+        if (!row || typeof row.id !== 'string' || !row.id || ids.has(row.id) || row.currency !== 'NIO' || !parsedDate || !Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0,10) !== date || !Array.isArray(row.lines) || !row.lines.length || !Number.isSafeInteger(row.totalCents) || row.totalCents < 0) throw new Error('compra incompatible');
+        ids.add(row.id);
+        let lineTotal = 0;
+        for (const line of row.lines) {
+          if (!line || typeof line.articleId !== 'string' || typeof line.articleName !== 'string' || typeof line.categoryId !== 'string' || typeof line.categoryName !== 'string' || !['unit','box'].includes(line.presentation) || !Number.isSafeInteger(line.quantity) || line.quantity < 1 || !Number.isSafeInteger(line.unitPriceCents) || line.unitPriceCents < 0 || !Number.isSafeInteger(line.totalCents) || line.totalCents !== line.quantity * line.unitPriceCents || (line.presentation === 'box' && (!Number.isSafeInteger(line.unitsPerBox) || line.unitsPerBox < 1))) throw new Error('detalle incompatible');
+          lineTotal += line.totalCents;
+        }
+        if (!Number.isSafeInteger(lineTotal) || lineTotal !== row.totalCents) throw new Error('total inconsistente');
+        if ((range.from && date < exportDateLabel(range.from)) || (range.to && date > exportDateLabel(range.to))) continue;
+        cents += row.totalCents;
+        count++;
+        if (!Number.isSafeInteger(cents)) throw new Error('total fuera de rango');
+      }
+      return { ok:true, applies:true, total:cents / 100, count };
+    } catch (error) {
+      return { ok:false, applies:true, total:0, count:0, issue:'No se pudieron leer los Gastos generales (a33_gastos_v1): ' + String(error.message || error) };
+    }
   }
 
   function profitAfterMermaTextAnalytics(result){
@@ -1164,6 +1206,27 @@
       const element = document.getElementById(id);
       if (element) element.textContent = value;
     }
+    const generalExpenses = readGeneralExpensesAnalytics();
+    const showGeneralExpenses = generalExpenses.applies;
+    for (const id of ['analytics-general-expenses-card','analytics-net-profit-card']) {
+      const card = document.getElementById(id);
+      if (card) card.hidden = !showGeneralExpenses;
+    }
+    const expensesValue = document.getElementById('kpi-gastos-generales');
+    const netValue = document.getElementById('kpi-utilidad-neta');
+    const expensesStatus = document.getElementById('analytics-expenses-status');
+    if (expensesValue) expensesValue.textContent = generalExpenses.ok ? formatCurrency(generalExpenses.total) : 'No disponible';
+    if (netValue) netValue.textContent = generalExpenses.ok
+      ? formatCurrency(analyticsRoundMoney(economicResults.profitAfterMerma - generalExpenses.total)) + (economicResults.mermaPartial || economicResults.commissionUndeterminedCount ? ' (parcial)' : '')
+      : 'No disponible';
+    if (expensesStatus) {
+      expensesStatus.hidden = !showGeneralExpenses || generalExpenses.ok;
+      expensesStatus.textContent = generalExpenses.ok ? '' : generalExpenses.issue;
+    }
+    const scope = document.getElementById('analytics-result-scope');
+    if (scope) scope.textContent += showGeneralExpenses
+      ? ' Utilidad Neta = Utilidad Previa − Gastos generales del período.'
+      : ' Las compras generales no se reparten entre grupos ni eventos; el resumen muestra hasta Utilidad Previa.';
     const margenGlobal = totalVentas ? totalProfit / totalVentas * 100 : 0;
     if (kpiMargenGlobal) kpiMargenGlobal.textContent = formatPercent(margenGlobal);
     const courtesyRatioGlobal = courtesyValueTotal ? courtesyValueTotal / (totalVentas + courtesyValueTotal) * 100 : 0;

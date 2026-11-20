@@ -97,7 +97,7 @@
         <p id="analytics-result-scope" class="hint small" aria-live="polite"></p>
         <section class="analytics-kpi-group analytics-kpi-results" aria-labelledby="analytics-results-title">
           <h3 id="analytics-results-title" class="analytics-group-title">Resultados</h3>
-          <p class="hint small">Utilidad neta del POS: no incluye gastos adicionales de Finanzas.</p>
+          <p class="hint small">Utilidad Previa del POS y resultado después de compras generales. Los ingresos adicionales y gastos operativos de Finanzas se consultan en ese módulo.</p>
           <div class="kpi-grid">
           <article class="kpi-card">
             <p class="kpi-label">Ventas totales</p>
@@ -140,12 +140,21 @@
           </article>
 
           <article class="kpi-card">
-            <p class="kpi-label">Utilidad neta</p>
+            <p class="kpi-label">Utilidad Previa</p>
             <p class="kpi-value" id="kpi-utilidad-despues-merma">C$ 0.00</p>
+          </article>
+          <article class="kpi-card" id="analytics-general-expenses-card" hidden>
+            <p class="kpi-label">Gastos</p>
+            <p class="kpi-value" id="kpi-gastos-generales">C$ 0.00</p>
+          </article>
+          <article class="kpi-card" id="analytics-net-profit-card" hidden>
+            <p class="kpi-label">Utilidad Neta</p>
+            <p class="kpi-value" id="kpi-utilidad-neta">C$ 0.00</p>
           </article>
           </div>
         </section>
 
+        <p id="analytics-expenses-status" class="hint small" role="status" aria-live="polite" hidden></p>
         <section class="analytics-kpi-group analytics-kpi-profit" aria-labelledby="analytics-profit-title">
           <h3 id="analytics-profit-title" class="analytics-group-title">Indicadores complementarios</h3>
           <div class="kpi-grid">
@@ -654,11 +663,11 @@
   <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
   <script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
 
-  <script src="script.js?v=4.20.98&r=19"></script>
+  <script src="script.js?v=4.20.98&r=20"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=7').catch(error => console.warn('Analítica SW no disponible', error));
+    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=8').catch(error => console.warn('Analítica SW no disponible', error));
   }
 </script>
 </body>
