@@ -35,7 +35,7 @@
   const COSTS_RECIPES_STORAGE_KEY = 'arcano33_recetas_v1';
   const COSTS_SCHEMA_VERSION = 2;
   const CATALOG_ACTIVE_TAB_KEY = 'a33_catalogos_active_tab_v1';
-  const CATALOG_ALLOWED_TABS = new Set(['productos','costos','materia-prima','envases','tapas','extras','bancos','clientes','gastos']);
+  const CATALOG_ALLOWED_TABS = new Set(['productos','costos','materia-prima','envases','tapas','extras','bancos','clientes','gastos','proveedores']);
   const COST_LIQUIDS = [
     { key:'vino', label:'Vino' },
     { key:'vodka', label:'Vodka' },
@@ -141,6 +141,7 @@
     'extras':'Extras',
     'bancos':'Bancos',
     'gastos':'Gastos',
+    'proveedores':'Proveedores',
     'clientes':'Clientes'
   });
   let catalogCurrentSection = '';
@@ -5463,9 +5464,87 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     expensePresentationFields(); expenseCatalogAction(renderExpenseCatalog);
   }
 
+  // Maestro de proveedores para compras generales; independiente de Finanzas legacy.
+  const SUPPLIERS_CATALOG_KEY = 'a33_catalogos_proveedores_v1';
+  let supplierEditId = '';
+  function readSuppliersCatalog(){
+    const raw = localStorage.getItem(SUPPLIERS_CATALOG_KEY);
+    if (raw === null) return {version:1, suppliers:[]};
+    const state = JSON.parse(raw);
+    const ids = new Set();
+    if (state?.version !== 1 || !Array.isArray(state.suppliers) || state.suppliers.some(row=>{
+      if (!row || typeof row.id !== 'string' || !row.id || ids.has(row.id) || typeof row.name !== 'string' || !row.name.trim() || typeof row.active !== 'boolean' || ['contact','phone','note'].some(key=>typeof row[key] !== 'string')) return true;
+      ids.add(row.id); return false;
+    })) throw new Error('El catálogo de proveedores tiene un formato incompatible. No se modificaron sus datos.');
+    return state;
+  }
+  function supplierMessage(message){ byId('cat-supplier-status').textContent = message; }
+  function supplierAction(action){
+    try { action(); } catch(error){ console.error('Catálogo Proveedores:',error); supplierMessage(error.message || 'No se pudo guardar el proveedor.'); }
+  }
+  function renderSuppliersCatalog(){
+    const state = readSuppliersCatalog();
+    const suppliers = state.suppliers.slice().sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
+    byId('cat-suppliers-list').innerHTML = suppliers.length ? `<div class="cat-expense-table-scroll" role="region" aria-label="Proveedores" tabindex="0"><table class="cat-expense-table"><thead><tr><th scope="col">Proveedor</th><th scope="col">Referencia</th><th scope="col">Celular</th><th scope="col">Observaciones</th><th scope="col">Estado</th><th scope="col">Acciones</th></tr></thead><tbody>${suppliers.map(row=>`<tr><th scope="row">${escapeHtml(row.name)}</th><td>${escapeHtml(row.contact || '—')}</td><td>${escapeHtml(row.phone || '—')}</td><td>${escapeHtml(row.note || '—')}</td><td>${row.active ? 'Activo' : 'Inactivo'}</td><td><div class="cat-expense-actions"><button type="button" class="cat-btn" data-supplier-action="edit" data-id="${escapeHtml(row.id)}">Editar</button><button type="button" class="cat-btn" data-supplier-action="toggle" data-id="${escapeHtml(row.id)}">${row.active ? 'Desactivar' : 'Activar'}</button></div></td></tr>`).join('')}</tbody></table></div>` : '<p>No hay proveedores registrados.</p>';
+  }
+  function resetSupplierEditor(){
+    supplierEditId = '';
+    byId('cat-supplier-form').reset();
+    byId('cat-supplier-cancel').hidden = true;
+    byId('cat-supplier-editor-title').textContent = 'Nuevo proveedor';
+  }
+  function saveSuppliersCatalog(state){
+    localStorage.setItem(SUPPLIERS_CATALOG_KEY, JSON.stringify(state));
+    renderSuppliersCatalog();
+    supplierMessage('Catálogo de proveedores guardado.');
+  }
+  function bindSuppliersCatalog(){
+    byId('cat-supplier-cancel').addEventListener('click',resetSupplierEditor);
+    byId('cat-supplier-form').addEventListener('submit',event=>{
+      event.preventDefault();
+      supplierAction(()=>{
+        const state = readSuppliersCatalog();
+        const name = byId('cat-supplier-name').value.trim();
+        if (!/[\p{L}\p{N}]/u.test(name) || name.length>120) throw new Error('Escribe un nombre de proveedor válido, de hasta 120 caracteres.');
+        if (state.suppliers.some(row=>row.id!==supplierEditId && expenseNameKey(row.name)===expenseNameKey(name))) throw new Error('Ya existe un proveedor con ese nombre, activo o inactivo.');
+        const existing = state.suppliers.find(row=>row.id===supplierEditId);
+        if (supplierEditId && !existing) throw new Error('El proveedor ya no está disponible.');
+        const contact = byId('cat-supplier-contact').value.trim();
+        const phone = byId('cat-supplier-phone').value.trim();
+        const note = byId('cat-supplier-note').value.trim();
+        if (contact.length>120 || phone.length>40 || note.length>500) throw new Error('Revisa la longitud de los datos del proveedor.');
+        const now = new Date().toISOString();
+        const row = {...existing,id:existing?.id || expenseId(),name,contact,phone,note,active:existing ? existing.active : true,createdAt:existing?.createdAt || now,updatedAt:now};
+        state.suppliers = existing ? state.suppliers.map(item=>item.id===row.id ? row : item) : [...state.suppliers,row];
+        saveSuppliersCatalog(state); resetSupplierEditor();
+      });
+    });
+    byId('cat-suppliers-list').addEventListener('click',event=>{
+      const button = event.target.closest('[data-supplier-action]');
+      if (!button) return;
+      supplierAction(()=>{
+        const state = readSuppliersCatalog();
+        const row = state.suppliers.find(item=>item.id===button.dataset.id);
+        if (!row) throw new Error('El proveedor ya no está disponible.');
+        if (button.dataset.supplierAction==='toggle'){
+          row.active = !row.active; row.updatedAt = new Date().toISOString(); saveSuppliersCatalog(state); return;
+        }
+        supplierEditId = row.id;
+        for (const key of ['name','contact','phone','note']) byId('cat-supplier-'+key).value = row[key];
+        byId('cat-supplier-editor-title').textContent = 'Editar proveedor';
+        byId('cat-supplier-cancel').hidden = false;
+        byId('cat-supplier-name').focus();
+      });
+    });
+    window.addEventListener('storage',event=>{if(event.key===SUPPLIERS_CATALOG_KEY || event.key===null) supplierAction(renderSuppliersCatalog);});
+    window.addEventListener('pageshow',()=>supplierAction(renderSuppliersCatalog));
+    supplierAction(renderSuppliersCatalog);
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     if (document.body.dataset.a33Exports === 'catalogos') return;
     bindExpenseCatalog();
+    bindSuppliersCatalog();
     bindCatalogNavigation();
     bindCatalogModalHardening();
     bindProductUi();

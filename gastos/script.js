@@ -3,6 +3,7 @@
   'use strict';
   const CATALOG_KEY = 'a33_catalogos_gastos_v1';
   const PURCHASES_KEY = 'a33_gastos_v1';
+  const SUPPLIERS_KEY = 'a33_catalogos_proveedores_v1';
   const $ = id => document.getElementById(id);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const money = cents => 'C$ ' + (cents / 100).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -31,6 +32,36 @@
     }catch(error){
       catalog = {categories:[],items:[]};
       $('catalog-status').textContent = 'No se pudo leer el catálogo. Revisa Catálogos → Gastos. No se modificaron sus datos.';
+    }
+  }
+  function readSuppliers(){
+    const raw = localStorage.getItem(SUPPLIERS_KEY);
+    if (raw === null) return [];
+    const state = JSON.parse(raw);
+    const ids = new Set();
+    if (state?.version!==1 || !Array.isArray(state.suppliers) || state.suppliers.some(row=>{
+      if (!row || typeof row.id!=='string' || !row.id || ids.has(row.id) || typeof row.name!=='string' || !row.name.trim() || typeof row.active!=='boolean' || ['contact','phone','note'].some(key=>typeof row[key]!=='string')) return true;
+      ids.add(row.id); return false;
+    })) throw new Error('El catálogo de proveedores tiene un formato incompatible.');
+    return state.suppliers;
+  }
+  function renderSuppliers(){
+    const select = $('purchase-supplier');
+    const selected = select.value;
+    const selectedLabel = select.selectedOptions[0]?.textContent || 'Proveedor no disponible';
+    try{
+      const suppliers = readSuppliers().filter(row=>row.active).sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
+      select.innerHTML = '<option value="">Sin proveedor</option>' + suppliers.map(row=>`<option value="${escape(row.id)}">${escape(row.name)}</option>`).join('');
+      if (selected && !suppliers.some(row=>row.id===selected)) select.add(new Option(selectedLabel.replace(/ \(no disponible\)$/, '') + ' (no disponible)',selected));
+      select.value = selected;
+      $('supplier-status').textContent = selected && !suppliers.some(row=>row.id===selected)
+        ? 'El proveedor seleccionado ya no está activo. Elige otro o selecciona Sin proveedor.'
+        : suppliers.length ? '' : 'No hay proveedores activos. Puedes crearlos en Administrar proveedores.';
+    }catch(error){
+      select.innerHTML = '<option value="">Sin proveedor</option>';
+      if (selected) select.add(new Option(selectedLabel,selected));
+      select.value = selected;
+      $('supplier-status').textContent = 'No se pudo leer el catálogo de proveedores. Revisa Administrar proveedores.';
     }
   }
   function availableItems(){ return catalog.items.filter(item=>item.active && catalog.categories.some(cat=>cat.id===item.categoryId && cat.active)).sort((a,b)=>a.name.localeCompare(b.name,'es')); }
@@ -109,7 +140,10 @@
     });
     const totalCents = lines.reduce((sum,line)=>sum+line.totalCents,0);
     if (!Number.isSafeInteger(totalCents)) throw new Error('El total está fuera del rango permitido.');
-    return {id:window.crypto?.randomUUID ? window.crypto.randomUUID() : 'gasto-'+Date.now()+'-'+Math.random().toString(36).slice(2),date,supplier:$('purchase-supplier').value.trim(),reference:$('purchase-reference').value.trim(),note:$('purchase-note').value.trim(),currency:'NIO',lines,totalCents,createdAt:new Date().toISOString()};
+    const supplierId = $('purchase-supplier').value;
+    const supplier = supplierId ? readSuppliers().find(row=>row.id===supplierId && row.active) : null;
+    if (supplierId && !supplier) throw new Error('El proveedor seleccionado no está activo. Elige otro o selecciona Sin proveedor.');
+    return {id:window.crypto?.randomUUID ? window.crypto.randomUUID() : 'gasto-'+Date.now()+'-'+Math.random().toString(36).slice(2),date,supplierId:supplier?.id || null,supplier:supplier?.name || '',reference:$('purchase-reference').value.trim(),note:$('purchase-note').value.trim(),currency:'NIO',lines,totalCents,createdAt:new Date().toISOString()};
   }
   async function savePurchase(event){
     event.preventDefault();
@@ -153,7 +187,7 @@
   }
   $('purchase-date').value = localDate();
   $('filter-from').value = localDate().slice(0,7)+'-01'; $('filter-to').value = localDate();
-  loadCatalog(); addLine(); renderHistory();
+  loadCatalog(); renderSuppliers(); addLine(); renderHistory();
   $('add-line').addEventListener('click',()=>{ addLine(); $('purchase-lines').lastElementChild.querySelector('select').focus(); });
   $('purchase-lines').addEventListener('input',event=>{
     const field = event.target.dataset.field;
@@ -175,10 +209,11 @@
     if (!button) return;
     draft = draft.filter(row=>row.id!==Number(button.dataset.remove)); renderLines(); $('add-line').focus();
   });
+  $('purchase-supplier').addEventListener('change',renderSuppliers);
   $('purchase-form').addEventListener('submit',savePurchase);
   $('filters').addEventListener('submit',event=>{event.preventDefault();renderHistory();});
   $('clear-filters').addEventListener('click',()=>{$('filters').reset();renderHistory();});
-  $('refresh-history').addEventListener('click',()=>{loadCatalog();renderLines();renderHistory();});
-  window.addEventListener('storage',event=>{if(event.key===CATALOG_KEY){loadCatalog();renderLines();}if(event.key===PURCHASES_KEY)renderHistory();});
-  window.addEventListener('pageshow',()=>{loadCatalog();renderLines();renderHistory();});
+  $('refresh-history').addEventListener('click',()=>{loadCatalog();renderSuppliers();renderLines();renderHistory();});
+  window.addEventListener('storage',event=>{if(event.key===SUPPLIERS_KEY || event.key===null)renderSuppliers();if(event.key===CATALOG_KEY){loadCatalog();renderLines();}if(event.key===PURCHASES_KEY)renderHistory();});
+  window.addEventListener('pageshow',()=>{loadCatalog();renderSuppliers();renderLines();renderHistory();});
 })();

@@ -194,23 +194,29 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
 }
 </style>
 <style id="catalogos-gastos-compacto">
-#panel-gastos .cat-expense-list{min-width:0;margin-top:16px;max-width:100%}
-#panel-gastos .cat-expense-table-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--a33-border);border-radius:12px}
-#panel-gastos .cat-expense-table{width:100%;border-collapse:collapse;font-size:14px;color:var(--a33-text)}
-#panel-gastos .cat-expense-table :is(th,td){padding:10px 12px;text-align:left;border-bottom:1px solid var(--a33-border-soft);vertical-align:middle}
-#panel-gastos .cat-expense-table thead th{background:var(--a33-surface-2);font-size:12px;color:var(--a33-muted);white-space:nowrap}
-#panel-gastos .cat-expense-table tbody th{font-weight:650;overflow-wrap:anywhere;min-width:130px;max-width:260px}
-#panel-gastos .cat-expense-table tbody tr:last-child > *{border-bottom:0}
-#panel-gastos .cat-expense-table td{overflow-wrap:anywhere;max-width:260px}
-#panel-gastos .cat-expense-table .cat-expense-number{text-align:right;white-space:nowrap}
-#panel-gastos .cat-expense-actions{display:flex;gap:8px;flex-wrap:nowrap}
-#panel-gastos .cat-expense-actions .cat-btn{margin:0;white-space:nowrap;min-height:44px;padding:8px 12px}
-#panel-gastos .cat-expense-table-scroll:focus-visible{outline:3px solid var(--a33-gold);outline-offset:3px}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-list{min-width:0;margin-top:16px;max-width:100%}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-table-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--a33-border);border-radius:12px}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-table{width:100%;border-collapse:collapse;font-size:14px;color:var(--a33-text)}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-table :is(th,td){padding:10px 12px;text-align:left;border-bottom:1px solid var(--a33-border-soft);vertical-align:middle}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-table thead th{background:var(--a33-surface-2);font-size:12px;color:var(--a33-muted);white-space:nowrap}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-table tbody th{font-weight:650;overflow-wrap:anywhere;min-width:130px;max-width:260px}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-table tbody tr:last-child > *{border-bottom:0}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-table td{overflow-wrap:anywhere;max-width:260px}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-table .cat-expense-number{text-align:right;white-space:nowrap}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-actions{display:flex;gap:8px;flex-wrap:nowrap}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-actions .cat-btn{margin:0;white-space:nowrap;min-height:44px;padding:8px 12px}
+:is(#panel-gastos,#panel-proveedores) .cat-expense-table-scroll:focus-visible{outline:3px solid var(--a33-gold);outline-offset:3px}
 @media(max-width:740px){
- #panel-gastos .cat-expense-table :is(th,td){padding:8px}
+ :is(#panel-gastos,#panel-proveedores) .cat-expense-table :is(th,td){padding:8px}
  #cat-expense-items .cat-expense-table{min-width:850px}
  #cat-expense-categories .cat-expense-table{min-width:440px}
 }
+</style>
+<style id="catalogos-proveedores-visual">
+#panel-proveedores .cat-supplier-caption{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-height:20px}
+#panel-proveedores .cat-supplier-caption>span{font-weight:400;color:var(--a33-muted);white-space:nowrap}
+#panel-proveedores .cat-expense-table{min-width:900px}
+#panel-proveedores #cat-supplier-status{min-height:20px}
 </style>
 </head>
 <body>
@@ -265,6 +271,9 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
             <small>Complementos operativos</small>
           </span>
         </button>
+        <button class="cat-tab" id="tab-proveedores" type="button" aria-expanded="false" aria-controls="panel-proveedores" data-target="proveedores">
+          <span class="cat-tab-icon">🚚</span><span><strong>Proveedores</strong><small>Contactos y datos de atención</small></span>
+        </button>
         <button class="cat-tab" id="tab-gastos" type="button" aria-expanded="false" aria-controls="panel-gastos" data-target="gastos">
           <span class="cat-tab-icon">🧾</span><span><strong>Gastos</strong><small>Categorías, artículos y precios</small></span>
         </button>
@@ -289,6 +298,21 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
           <button class="cat-nav-chip cat-nav-chip--back" data-cat-back type="button">← Catálogos</button>
           <a class="cat-nav-chip cat-nav-chip--home" href="../index.html" aria-label="Ir al Menú principal">⌂ Menú principal</a>
         </nav>
+        <section class="cat-panel cat-e71" id="panel-proveedores" role="region" aria-labelledby="tab-proveedores" data-panel="proveedores" aria-hidden="true" tabindex="-1" hidden>
+          <div class="cat-product-form-card">
+            <h2>Proveedores</h2>
+            <h3 id="cat-supplier-editor-title">Nuevo proveedor</h3>
+            <form id="cat-supplier-form" class="cat-product-form">
+              <label><span class="cat-supplier-caption">Proveedor</span><input id="cat-supplier-name" required maxlength="120" autocomplete="organization"></label>
+              <label><span class="cat-supplier-caption">Referencia <span>(opcional)</span></span><input id="cat-supplier-contact" maxlength="120" autocomplete="name" placeholder="Persona que nos atiende"></label>
+              <label><span class="cat-supplier-caption">Celular <span>(opcional)</span></span><input id="cat-supplier-phone" type="tel" maxlength="40" autocomplete="tel"></label>
+              <label><span class="cat-supplier-caption">Observaciones <span>(opcional)</span></span><input id="cat-supplier-note" maxlength="500"></label>
+              <div class="cat-actions-end"><button class="cat-btn cat-btn-ok" type="submit">Guardar proveedor</button><button class="cat-btn" type="button" id="cat-supplier-cancel" hidden>Cancelar edición</button></div>
+            </form>
+            <p id="cat-supplier-status" role="status" aria-live="polite"></p>
+            <div id="cat-suppliers-list" class="cat-expense-list"></div>
+          </div>
+        </section>
         <section class="cat-panel cat-e71" id="panel-gastos" role="region" aria-labelledby="tab-gastos" data-panel="gastos" aria-hidden="true" tabindex="-1" hidden>
           <div class="cat-panel-card cat-products-intro"><h2>Catálogo de gastos</h2><p>Organiza los artículos para compras generales. Los precios se expresan en C$. Los cambios aplican a registros futuros.</p></div>
           <div class="cat-product-form-card">
@@ -1156,7 +1180,7 @@ html[data-theme="light"] body .cat-e71 .cat-item-summary:focus-visible{outline-c
   <script src="/assets/js/a33-product-integrity.js?v=4.20.98&r=1"></script>
   <script src="/assets/js/a33-materials.js?v=4.20.98&r=2"></script>
   <script src="../pos/vendor/xlsx.full.min.js"></script>
-  <script src="script.js?v=4.20.98&r=41"></script>
+  <script src="script.js?v=4.20.98&r=42"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=11"></script>
 </body>
 </html>

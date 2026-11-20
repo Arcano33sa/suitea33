@@ -32,6 +32,7 @@ let browser;
   assert.match(await page.locator('#catalog-status').innerText(),/No hay artículos/);
   await page.evaluate(catalogKey=>{
     localStorage.setItem('a33_test_existing_finance','sin cambios');
+    localStorage.setItem('a33_catalogos_proveedores_v1',JSON.stringify({version:1,suppliers:[{id:'provider-test',name:'Proveedor de prueba',contact:'',phone:'',note:'',active:true}]}));
     localStorage.setItem(catalogKey,JSON.stringify({version:1,categories:[{id:'h',name:'Higiene',active:true},{id:'x',name:'Inactiva',active:false}],items:[
       {id:'g',name:'Guantes',categoryId:'h',active:true,presentation:'both',unitPrice:3.5,boxPrice:300,unitsPerBox:100},
       {id:'c',name:'Gorros',categoryId:'h',active:true,presentation:'unit',unitPrice:2},
@@ -42,7 +43,7 @@ let browser;
   await page.reload();
   assert.equal(await page.locator('[data-field=itemId] option').count(),3);
   await page.locator('#purchase-date').fill('2026-11-10');
-  await page.locator('#purchase-supplier').fill('Proveedor de prueba');
+  await page.locator('#purchase-supplier').selectOption('provider-test');
   await page.locator('#purchase-reference').fill('Factura 001');
   await page.locator('#purchase-note').fill('Compra general');
   await page.locator('[data-field=itemId]').selectOption('g');

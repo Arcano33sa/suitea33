@@ -18,16 +18,17 @@
     <div class="a33-version" data-a33-version="1">v4.20.98</div>
   </header>
   <main>
-    <div class="intro"><p class="eyebrow">Gestión y análisis</p><h1>Gastos</h1><p>Registra las compras generales del negocio y consulta su historial.</p><a class="catalog-button" href="../catalogos/index.html#gastos">Administrar artículos y categorías</a></div>
+    <div class="intro"><p class="eyebrow">Gestión y análisis</p><h1>Gastos</h1><p>Registra las compras generales del negocio y consulta su historial.</p><div class="actions"><a class="catalog-button" href="../catalogos/index.html#gastos">Administrar artículos y categorías</a> <a class="catalog-button" href="../catalogos/index.html#proveedores">Administrar proveedores</a></div></div>
     <section class="panel" aria-labelledby="new-title">
       <h2 id="new-title">Nueva compra</h2>
       <form id="purchase-form">
         <div class="fields">
           <label>Fecha<input id="purchase-date" type="date" required></label>
-          <label><span class="field-caption">Proveedor <span>(opcional)</span></span><input id="purchase-supplier" maxlength="120" autocomplete="organization"></label>
+          <label><span class="field-caption">Proveedor <span>(opcional)</span></span><select id="purchase-supplier" aria-describedby="supplier-status"><option value="">Sin proveedor</option></select></label>
           <label><span class="field-caption">Referencia del comprobante <span>(opcional)</span></span><input id="purchase-reference" maxlength="100"></label>
           <label><span class="field-caption">Observación <span>(opcional)</span></span><input id="purchase-note" maxlength="500"></label>
         </div>
+        <p id="supplier-status" class="muted" role="status" aria-live="polite"></p>
         <div class="section-heading"><h3>Artículos</h3><button type="button" id="add-line" class="secondary">+ Agregar artículo</button></div>
         <p id="catalog-status" role="status"></p>
         <div id="purchase-lines"></div>
