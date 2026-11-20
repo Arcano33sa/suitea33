@@ -18,7 +18,7 @@ const PRECACHE = [
   '/assets/js/a33-notify-bridge.js?v=4.20.98&r=2',
   '/assets/css/a33-notify.css?v=4.20.98&r=1',
   '/assets/js/a33-release.js?v=4.20.98&r=54',
-  '/assets/js/a33-module-nav.js?v=4.20.98&r=3',
+  '/assets/js/a33-module-nav.js?v=4.20.98&r=5',
   '/assets/js/a33-storage.js?v=4.20.98&r=22',
   '/assets/js/a33-credit-finance.js?v=4.20.98&r=1',
   '/assets/js/a33-presentations.js?v=4.20.98&r=15',

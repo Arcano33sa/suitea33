@@ -36,7 +36,7 @@ const PRECACHE_URLS = [
   '/assets/js/a33-materials.js?v=4.20.98&r=2',
   '/assets/js/a33-input-ux.js?v=4.20.98&r=11',
   '/assets/js/a33-theme.js?v=4.20.98&r=11',
-  '/assets/js/a33-module-nav.js?v=4.20.98&r=3',
+  '/assets/js/a33-module-nav.js?v=4.20.98&r=5',
   '/assets/css/a33-header.css?v=4.20.98&r=11',
   '/assets/css/a33-module-nav.css?v=4.20.98&r=3',
   '/assets/css/a33-theme.css?v=4.20.98&r=11'

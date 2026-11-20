@@ -10,6 +10,8 @@
     { id: 'analitica', label: 'Analítica', href: '/analitica/index.html' },
     { id: 'pedidos', label: 'Pedidos', href: '/pedidos/index.html' },
     { id: 'finanzas', label: 'Finanzas', href: '/finanzas/index.html' },
+    { id: 'gastos', label: 'Gastos', href: '/gastos/index.html' },
+    { id: 'exportaciones', label: 'Exportaciones', href: '/exportaciones/index.html' },
     { id: 'catalogos', label: 'Catálogos', href: '/catalogos/index.html' },
     { id: 'agenda', label: 'Agenda', href: '/agenda/index.html' },
     { id: 'centro-mando', label: 'CdM', href: '/centro-mando/index.html' },

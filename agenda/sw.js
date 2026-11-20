@@ -20,7 +20,7 @@ const PRECACHE = [
   '/assets/js/a33-storage.js?v=4.20.98&r=22',
   '/assets/js/a33-materials.js?v=4.20.98&r=2',
   '/assets/js/a33-theme.js?v=4.20.98&r=7',
-  '/assets/js/a33-module-nav.js?v=4.20.98&r=3',
+  '/assets/js/a33-module-nav.js?v=4.20.98&r=5',
   '/assets/css/a33-header.css?v=4.20.98&r=7',
   '/assets/css/a33-module-nav.css?v=4.20.98&r=3',
   '/assets/css/a33-theme.css?v=4.20.98&r=7'

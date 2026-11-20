@@ -17,7 +17,7 @@ const PRECACHE = [
   "style.css?v=4.20.98&r=3",
   "../pos/vendor/xlsx.full.min.js?v=4.20.98&r=13",
   "../assets/js/a33-release.js?v=4.20.98&r=57",
-  "../assets/js/a33-module-nav.js?v=4.20.98&r=3",
+  "../assets/js/a33-module-nav.js?v=4.20.98&r=5",
   "../assets/js/a33-storage.js?v=4.20.98&r=22",
   "../assets/js/a33-currency.js?v=4.20.98&r=14",
   "../assets/js/a33-presentations.js?v=4.20.98&r=15",
