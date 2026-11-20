@@ -3472,6 +3472,7 @@ window.addEventListener('storage', (event) => {
 
 
 document.addEventListener("DOMContentLoaded", async () => {
+  if (document.body.dataset.a33Exports === 'pedidos') return;
   document.addEventListener('keydown', (event) => {
     try{
       if (event && event.key === 'Escape'){
@@ -3777,7 +3778,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   $("reset-btn").addEventListener("click", () => clearForm());
-  $("export-btn").addEventListener("click", () => { try{ exportToCSV(); }catch(_){ } });
     $("clear-all-btn").addEventListener("click", async () => {
     if (!confirm("¿Borrar todos los pedidos registrados?")) return;
 
@@ -4242,7 +4242,6 @@ function renderPedidoDisponibilidadPED(demand){
 function renderPedidoDemandaPED(){
   const host=$('pedido-demanda-body');if(!host)return;
   const data=getPedidoDemandaPED();renderPedidoDisponibilidadPED(data);host.replaceChildren();$('pedido-demanda-sources').replaceChildren();$('pedido-demanda-review').replaceChildren();
-  $('pedido-demanda-export').disabled=!!data.error;
   if(data.error){$('pedido-demanda-status').textContent=data.error;return;}
   $('pedido-demanda-status').textContent=`Total informativo: ${data.total} · Pendiente con registro: ${data.totalRegistrado} · Estimado sin registro: ${data.totalEstimado}. ${data.review.length} pedidos para revisión no incluidos en el total. Todas las fechas si no se indica un período.`;
   data.rows.forEach(row=>{
@@ -4278,7 +4277,6 @@ function initPedidoDemandaPED(){
   panel.addEventListener('toggle',()=>{if(panel.open)renderPedidoDemandaPED();});
   $('pedido-demanda-refresh').addEventListener('click',renderPedidoDemandaPED);
   for(const id of ['pedido-demanda-desde','pedido-demanda-hasta'])$(id).addEventListener('change',renderPedidoDemandaPED);
-  $('pedido-demanda-export').addEventListener('click',exportPedidoDemandaPED);
 }
 window.addEventListener('storage',event=>{if(event.key===null || [STORAGE_KEY_PEDIDOS,STORAGE_KEY_PEDIDOS_RAPIDOS,'arcano33_inventario'].includes(event.key))refreshPedidoDemandaIfOpenPED();});
 

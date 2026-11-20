@@ -12,7 +12,11 @@ const start = source.indexOf('  function buildCustomerExportRowsCAT(');
 const end = source.indexOf('  function updateLastPurchaseForTargetCAT(',start);
 assert.ok(start >= 0 && end > start);
 assert.match(source,/function bindCustomerUi\(\)\{\s*bindCustomerShareUiCAT\(\)/);
-assert.match(markup,/id="cat-share-customers-download"[^>]* disabled/);
+assert.ok(!markup.includes('id="cat-share-customers-download"'), 'La descarga se retiró del módulo');
+const exportMarkup = fs.readFileSync(path.join(__dirname,'../exportaciones/catalogos.html'),'utf8');
+const exportAdapter = fs.readFileSync(path.join(__dirname,'../exportaciones/modulos.js'),'utf8');
+assert.match(exportMarkup,/id="includeName" type="checkbox"/);
+assert.match(exportAdapter,/querySelector\('\[type="submit"\]'\)\.disabled = report === 'share'/);
 
 (async()=>{
   const customers = [

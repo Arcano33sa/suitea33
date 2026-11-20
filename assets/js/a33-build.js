@@ -11,8 +11,8 @@
   const REV = String(release.rev != null ? release.rev : '5'); // revisión global; distinta de la revisión de cada recurso
 
   const MODULE_REVISIONS = Object.freeze({
-    calculadora:'17', catalogos:'44', inventario:'24', lotes:'28', pedidos:'24', pos:'63',
-    agenda:'8', 'centro-mando':'10', 'calculadora-temporal':'6', finanzas:'3', analitica:'3'
+    calculadora:'17', catalogos:'46', inventario:'24', lotes:'29', pedidos:'25', pos:'63',
+    agenda:'8', 'centro-mando':'10', 'calculadora-temporal':'6', finanzas:'4', analitica:'9'
   });
 
   function cacheName(module){

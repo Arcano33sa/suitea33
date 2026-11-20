@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#060606">
+  <title>Exportaciones · Suite A33</title>
+  <script src="../assets/js/a33-theme.js?v=4.20.98&r=13"></script>
+  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.98&r=13">
+  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.98&r=13">
+  <link rel="stylesheet" href="../assets/css/a33-module-nav.css?v=4.20.98&r=3">
+  <link rel="stylesheet" href="../assets/css/a33-notify.css?v=4.20.98&r=1">
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=3">
+</head>
+<body data-a33-exports="pos">
+  <header class="a33-header" data-a33-module="exportaciones">
+    <a class="a33-btn-menu" href="../index.html">← Menú principal</a>
+    <div class="a33-title">Exportaciones</div>
+    <div class="a33-version" data-a33-version="1">v4.20.98</div>
+  </header>
+  <main>
+    <div class="intro"><p class="eyebrow">Gestión y análisis</p><h1>Exportaciones</h1>
+      <p>Los reportes de cada módulo, con su contenido, formato e identidad actuales.</p></div>
+    <nav class="export-modules" aria-label="Módulos de exportación"><a href="index.html" aria-current="page">POS · Eventos</a><a href="finanzas.html">Finanzas</a><a href="analitica.html">Analítica</a><a href="pedidos.html">Pedidos</a><a href="lotes.html">Lotes</a><a href="catalogos.html">Catálogos</a></nav>
+    <section class="export-card" aria-labelledby="pos-exports-title">
+      <div class="section-heading"><div><p class="eyebrow">Módulo</p><h2 id="pos-exports-title">POS · Eventos</h2></div>
+        <a href="../pos/index.html">Abrir POS →</a></div>
+      <p>Elegí el reporte y la referencia que necesita. Las exportaciones obligatorias de los cierres permanecen en el POS.</p>
+      <form id="exports-form">
+        <fieldset id="exports-fields" disabled>
+          <label for="export-report">Reporte</label>
+          <select id="export-report">
+            <option value="events">Lista de eventos · Excel</option>
+            <option value="closure">Cierre de evento · Excel</option>
+            <option value="pdf">Cierre de evento · PDF</option>
+            <option value="sales">Ventas del evento · Excel</option>
+            <option value="inventory">Inventario del evento · Excel</option>
+            <option value="group">Cierre total por grupo · Excel</option>
+            <option value="summary">Resumen del período · Excel</option>
+            <option value="archive">Período archivado · Excel</option>
+            <option value="manager">Consolidado de gerente · Excel</option>
+            <option value="cash-event">Histórico de efectivo del evento · Excel</option>
+            <option value="cash-day">Histórico de efectivo del día · Excel</option>
+          </select>
+          <p id="export-description" class="hint"></p>
+          <div class="references">
+            <div id="export-event-field" hidden><label for="export-event">Evento</label><select id="export-event"></select></div>
+            <div id="export-summary-event-field" hidden><label for="export-summary-event">Evento del resumen</label><select id="export-summary-event"></select></div>
+            <div id="export-group-field" hidden><label for="filtro-grupo">Grupo</label><select id="filtro-grupo"></select></div>
+            <div id="export-period-field" hidden><label for="summary-period">Período</label><input id="summary-period" type="month"></div>
+            <div id="export-archive-field" hidden><label for="export-archive">Período archivado</label><select id="export-archive"></select></div>
+            <div id="export-day-field" hidden><label for="export-day">Día de caja</label><select id="export-day"></select></div>
+            <div id="export-version-field" hidden><label for="export-version">Versión del cierre</label><select id="export-version"></select></div>
+          </div>
+          <div class="actions"><button id="export-download" type="submit">Descargar Excel</button><button id="export-refresh" type="button" class="secondary">Actualizar referencias</button></div>
+        </fieldset>
+      </form>
+      <p id="exports-status" role="status" aria-live="polite">Cargando referencias del POS…</p>
+      <button id="export-retry" type="button" class="secondary" hidden>Reintentar carga</button>
+    </section>
+  </main>
+  <div id="pos-confirm-modal" class="export-modal" role="dialog" aria-modal="true" aria-labelledby="pos-confirm-title" style="display:none">
+    <div class="export-card"><h2 id="pos-confirm-title">Vista previa</h2><div id="pos-confirm-message"></div>
+      <div class="actions"><button id="pos-confirm-cancel" class="secondary" type="button">Cancelar</button><button id="pos-confirm-confirm" type="button">Descargar</button></div>
+    </div>
+  </div>
+  <script src="../pos/vendor/xlsx.full.min.js?v=4.20.98&r=13"></script>
+  <script src="../assets/js/a33-release.js?v=4.20.98&r=57"></script>
+  <script src="../assets/js/a33-module-nav.js?v=4.20.98&r=3"></script>
+  <script src="../assets/js/a33-storage.js?v=4.20.98&r=22"></script>
+  <script src="../assets/js/a33-currency.js?v=4.20.98&r=14"></script>
+  <script src="../assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+  <script src="../assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
+  <script src="../assets/js/a33-notify.js?v=4.20.98&r=1"></script>
+  <script src="../assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+  <script src="../pos/app.js?v=4.20.98&r=58"></script>
+  <script src="script.js?v=4.20.98&r=3"></script>
+</body>
+</html>

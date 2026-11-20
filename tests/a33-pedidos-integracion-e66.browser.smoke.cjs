@@ -79,18 +79,18 @@ let browser;
   await page.locator('#pedido-demanda-panel').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(os.tmpdir(),'a33-e66-integracion.png')});
   await page.evaluate(()=>{window.__demandBooks=[];window.__demandWriteFile=XLSX.writeFile;XLSX.writeFile=wb=>{const bytes=XLSX.write(wb,{bookType:'xlsx',type:'array'});const parsed=XLSX.read(bytes,{type:'array'});window.__demandBooks.push(Object.fromEntries(parsed.SheetNames.map(name=>[name,XLSX.utils.sheet_to_json(parsed.Sheets[name],{header:1,defval:''})])));};});
   await context.setOffline(true);
-  await page.locator('#pedido-demanda-export').click();
+  await page.evaluate(()=>exportPedidoDemandaPED());
   await context.setOffline(false);
   const sheets=await page.evaluate(()=>window.__demandBooks[0]);assert.equal(sheets.Demanda.length,4);assert.equal(sheets.Demanda.slice(1).reduce((sum,row)=>sum+row[5],0),14);assert.equal(sheets['Pedidos considerados'].length,6);assert.equal(sheets['Revisión'].length,5);assert.deepEqual(sheets['Período'][1].slice(0,2),['2026-10-15','2026-10-15']);
   assert.equal(sheets.Disponibilidad.length,4);
   const identified=sheets.Disponibilidad.find(row=>row[1]==='p-e56');assert.deepEqual(identified.slice(2,8),[5,4,9,8,-1,'Saldo identificado']);
   for(const row of sheets.Disponibilidad.slice(1).filter(row=>row[7]==='Sin confirmar')){assert.equal(row[5],'');assert.equal(row[6],'');}
   assert.equal(sheets['Contexto disponibilidad'].length,2);assert.match(sheets['Contexto disponibilidad'][1][2],/No suma Lotes\/POS/);
-  await page.evaluate(()=>localStorage.setItem('arcano33_inventario','{broken'));await page.locator('#pedido-demanda-export').click();
+  await page.evaluate(()=>localStorage.setItem('arcano33_inventario','{broken'));await page.evaluate(()=>exportPedidoDemandaPED());
   const missing=await page.evaluate(()=>window.__demandBooks.pop());assert.ok(missing.Disponibilidad.slice(1).every(row=>row[7]==='Sin confirmar' && row[5]==='' && row[6]===''));
   await page.evaluate(value=>localStorage.setItem('arcano33_inventario',value),invBefore);
   assert.deepEqual(await readKeys(),initial,'Consultar, filtrar y exportar no escribe pedidos, históricos o lotes');
-  await page.locator('#pedido-demanda-desde').fill('2026-10-16');await page.locator('#pedido-demanda-desde').dispatchEvent('change');assert.match(await page.locator('#pedido-demanda-status').innerText(),/Desde no puede/);assert.equal(await page.locator('#pedido-demanda-export').isDisabled(),true);
+  await page.locator('#pedido-demanda-desde').fill('2026-10-16');await page.locator('#pedido-demanda-desde').dispatchEvent('change');assert.match(await page.locator('#pedido-demanda-status').innerText(),/Desde no puede/);assert.equal(await page.locator('#pedido-demanda-export').count(),0);
   await page.locator('#pedido-demanda-hasta').fill('2026-10-16');await page.locator('#pedido-demanda-hasta').dispatchEvent('change');assert.match(await page.locator('#pedido-demanda-status').innerText(),/Total informativo: 2/);
   await page.locator('#pedido-demanda-desde').fill('2026-10-15');await page.locator('#pedido-demanda-desde').dispatchEvent('change');await page.locator('#pedido-demanda-hasta').fill('2026-10-15');await page.locator('#pedido-demanda-hasta').dispatchEvent('change');
   // Evento de otra pestaña actualiza el panel abierto.
@@ -104,6 +104,6 @@ let browser;
   await page.evaluate(()=>openPedidoEntregasPED('f1','completo'));await page.locator('#pedido-entregas-lines input').fill('3');await page.locator('#pedido-entregas-save').click();await page.waitForFunction(()=>document.getElementById('pedido-entregas-notice').textContent.includes('guardadas'));await page.locator('#pedido-entregas-close').click();assert.match(await page.locator('#pedido-demanda-status').innerText(),/Total informativo: 11/);
   const current=await readKeys();assert.equal(current.arcano33_lotes,initial.arcano33_lotes);assert.equal(current.arcano33_pedidos_archived,initial.arcano33_pedidos_archived);assert.equal(current.arcano33_pedidos_rapidos_v1,initial.arcano33_pedidos_rapidos_v1);
   // Colección ilegible: ninguna demanda parcial ni archivo con apariencia de completo.
-  await page.evaluate(()=>localStorage.setItem('arcano33_pedidos_rapidos_v1','{corrupto'));await page.locator('#pedido-demanda-refresh').click();assert.match(await page.locator('#pedido-demanda-status').innerText(),/No se pudo leer Pedidos rápidos/);assert.equal(await page.locator('#pedido-demanda-body tr').count(),0);assert.equal(await page.locator('#pedido-demanda-export').isDisabled(),true);await page.evaluate(()=>exportPedidoDemandaPED());assert.equal(await page.evaluate(()=>window.__demandBooks.length),1);assert.equal(await page.evaluate(()=>localStorage.getItem('arcano33_pedidos_rapidos_v1')),'{corrupto');
+  await page.evaluate(()=>localStorage.setItem('arcano33_pedidos_rapidos_v1','{corrupto'));await page.locator('#pedido-demanda-refresh').click();assert.match(await page.locator('#pedido-demanda-status').innerText(),/No se pudo leer Pedidos rápidos/);assert.equal(await page.locator('#pedido-demanda-body tr').count(),0);assert.equal(await page.locator('#pedido-demanda-export').count(),0);await page.evaluate(()=>exportPedidoDemandaPED());assert.equal(await page.evaluate(()=>window.__demandBooks.length),1);assert.equal(await page.evaluate(()=>localStorage.getItem('arcano33_pedidos_rapidos_v1')),'{corrupto');
   assert.deepEqual(await snapshot(),operational);assert.deepEqual(errors,[]);console.log('PASS Chrome E6.6: Excel offline y disponibilidad integrada; demanda por período, estimaciones y revisión, Excel coherente, actualización entre pestañas y por entrega, fuentes ilegibles y consulta sin escrituras');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));});

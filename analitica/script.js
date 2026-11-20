@@ -180,6 +180,7 @@
   document.addEventListener('DOMContentLoaded', init);
 
   async function init(){
+    if (document.body.dataset.a33Exports === 'analitica') return;
     setupTabs();
     setupPeriodFilter();
     setupOrdenEventos();
@@ -1043,6 +1044,7 @@
 
     lastPresStats = presStats;
     lastEventStats = eventStats;
+    if (document.body.dataset.a33Exports === 'analitica') return;
 
     const resumenStats = updateResumen(filteredSales, presStats, eventStats);
     updateEventos(eventStats);
@@ -4011,4 +4013,26 @@ function rebuildHorasEventOptions(filteredSales){
       .replace(/'/g, '&#39;');
   }
 
+
+  // Solo lectura para el centro: mismos datos, filtros y constructores de reportes.
+  let exportsUiReady = false;
+  window.A33AnalyticsExports = Object.freeze({
+    async refresh(){
+      const selection = exportsUiReady ? getCurrentRange() : null;
+      db = await window.A33Exports.openExisting(DB_NAME, ['sales', 'events', 'products']);
+      [sales, events, products] = await Promise.all([getAll('sales'), getAll('events'), getAll('products')]);
+      await readFinalMermaAnalytics();
+      loadCostosPresentacion();
+      if (!exportsUiReady){
+        setupPeriodFilter(); setupExportButtons();
+        const dormant = document.getElementById('clientes-dormidos-days');
+        if (dormant) dormant.addEventListener('change', () => { dormidosDays = Number(dormant.value) || 45; });
+        exportsUiReady = true;
+      }
+      else if (mainEventPicker) mainEventPicker.refresh(selection);
+      recompute();
+    },
+    events: exportEventosCsv,
+    products: exportPresentacionesCsv
+  });
 })();

@@ -2,12 +2,12 @@
 try { importScripts('/assets/js/a33-release.js?v=4.20.98&r=54'); } catch (_) {}
 const VERSION = self.A33_RELEASE ? String(self.A33_RELEASE.suiteVersion) : '4.20.98';
 const REV = self.A33_RELEASE ? String(self.A33_RELEASE.rev) : '5';
-const CACHE = `a33-v${VERSION}-finanzas-r${REV}-m3`;
+const CACHE = `a33-v${VERSION}-finanzas-r${REV}-m4`;
 const PRECACHE = [
   './',
   './index.html',
   './style.css?v=4.20.98&r=1',
-  './script.js?v=4.20.98&r=7',
+  './script.js?v=4.20.98&r=8',
   './images/logo.png',
   '/assets/js/a33-theme.js?v=4.20.98&r=10',
   '/assets/css/a33-theme.css?v=4.20.98&r=1',

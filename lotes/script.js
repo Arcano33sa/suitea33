@@ -3294,6 +3294,7 @@ try {
 } catch(_){ }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  if (document.body.dataset.a33Exports === 'lotes') return;
   // Inicializar fecha y caducidad
   const fechaInput = $("fecha");
   const cadInput = $("caducidad");
@@ -3673,7 +3674,6 @@ ${code}`
     mq.addEventListener('change', () => renderTable({ reset: true }));
   }catch(_){ }
 
-  $("export-btn").addEventListener("click", () => exportToCSV());
 
   // Histórico (Etapa 5)
   const detailDialog = $('lote-detail-dialog');

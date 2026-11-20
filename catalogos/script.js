@@ -5329,6 +5329,7 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    if (document.body.dataset.a33Exports === 'catalogos') return;
     bindCatalogNavigation();
     bindCatalogModalHardening();
     bindProductUi();
@@ -5400,5 +5401,12 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
       setStatusById('cat-customers-status', 'No se pudo abrir Catálogos → Clientes.', 'warn');
     });
     registerServiceWorker();
+  });
+
+  // Adaptador de solo lectura del centro; no inicia Catálogos ni modifica su esquema.
+  window.A33CatalogExports = Object.freeze({
+    async refresh(){ db = await window.A33Exports.openExisting('a33-pos', ['sales', 'summaryArchives']); },
+    full: exportCustomersExcelCAT,
+    share: exportCustomersForSharingCAT
   });
 })();

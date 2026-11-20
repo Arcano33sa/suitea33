@@ -128,6 +128,7 @@ let browser;
     books.push(workbook);
     return XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {header:1});
   }
+  await require('./analytics-export-center.cjs')(page,context,origin,errors);
   await page.goto(origin + '/analitica/index.html');
   const main = page.locator('#analytics-event-picker');
   await page.waitForFunction(()=>document.querySelector('#analytics-event-picker [data-group] option[value="group:2026"]'));

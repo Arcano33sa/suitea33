@@ -80,41 +80,8 @@
       <p id="analytics-period-range" class="hint small" aria-live="polite"></p>
 
       <div class="export-buttons">
-        <button type="button" id="btn-export-consolidado" class="btn-secondary" disabled>Exportar Excel</button>
       </div>
-      <dialog id="analytics-export-dialog" class="analytics-export-dialog" aria-labelledby="analytics-export-title">
-        <form id="analytics-export-form">
-          <h3 id="analytics-export-title">Exportar Excel</h3>
-          <fieldset>
-            <legend>Período de exportación</legend>
-            <label>Período <select name="period"></select></label>
-            <div id="analytics-export-event-picker" class="analytics-event-picker"></div>
-            <div id="analytics-export-custom-range" hidden>
-              <label>Desde <input type="date" name="from"></label>
-              <label>Hasta <input type="date" name="to"></label>
-              <p class="hint">Deja una fecha vacía para exportar sin ese límite.</p>
-            </div>
-            <p id="analytics-export-period-range" class="hint small" aria-live="polite"></p>
-            <label><input type="checkbox" name="previous"> Incluir período anterior equivalente</label>
-          </fieldset>
-          <fieldset>
-            <legend>Secciones</legend>
-            <label><input type="checkbox" name="section" value="Resumen" checked> Resumen</label>
-            <label><input type="checkbox" name="section" value="Eventos" checked> Eventos</label>
-            <label><input type="checkbox" name="section" value="Productos" checked> Productos</label>
-            <label><input type="checkbox" name="section" value="Evento por producto" checked> Evento por producto</label>
-            <label><input type="checkbox" name="section" value="Clientes"> Clientes (con código de seguimiento)</label>
-            <label><input type="checkbox" name="customerNames" disabled> Incluir nombres de clientes en el Excel</label>
-            <label><input type="checkbox" name="section" value="Cortesías"> Cortesías</label>
-            <label><input type="checkbox" name="section" value="Avanzado"> Avanzado (horas pico)</label>
-          </fieldset>
-          <p id="analytics-export-error" role="alert" hidden></p>
-          <div class="export-buttons">
-            <button type="button" id="btn-cancel-export" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-secondary">Descargar Excel</button>
-          </div>
-        </form>
-      </dialog>
+
 
       <section class="analytics-tabs" aria-label="Pestañas de analítica">
         <button class="tab-btn active" data-tab="resumen" type="button">Resumen</button>
@@ -365,7 +332,6 @@
         </div>
 
         <div class="export-buttons">
-          <button type="button" id="btn-export-eventos" class="btn-secondary">Exportar Excel · Eventos</button>
         </div>
       </section>
 
@@ -431,7 +397,6 @@
         </div>
 
         <div class="export-buttons">
-          <button type="button" id="btn-export-presentaciones" class="btn-secondary">Exportar Excel · Productos</button>
         </div>
       </section>
 
@@ -689,7 +654,7 @@
   <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
   <script src="/assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
 
-  <script src="script.js?v=4.20.98&r=18"></script>
+  <script src="script.js?v=4.20.98&r=19"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=7"></script>
 <script>
   if ('serviceWorker' in navigator) {

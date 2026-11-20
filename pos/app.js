@@ -4763,29 +4763,6 @@ async function cashV2RenderHistModal(){
     head.appendChild(title);
     head.appendChild(when);
 
-    // Etapa 5/5: Exportar Excel (Evento)
-    try{
-      const actions = document.createElement('div');
-      actions.className = 'actions';
-      actions.style.gap = '8px';
-      actions.style.flexWrap = 'wrap';
-      actions.style.alignItems = 'center';
-
-      const btnExport = document.createElement('button');
-      btnExport.type = 'button';
-      btnExport.className = 'btn-outline btn-pill btn-pill-mini';
-      btnExport.textContent = 'Exportar Excel (Evento)';
-      btnExport.addEventListener('click', async()=>{
-        if (btnExport.disabled) return;
-        btnExport.disabled = true;
-        try{ await cashV2ExportHistExcelEvent(eid); }
-        catch(err){ console.error(err); try{ showToast('No se pudo exportar el Excel.', 'error', 4500); }catch(_){ } }
-        finally{ btnExport.disabled = false; }
-      });
-      actions.appendChild(btnExport);
-      head.appendChild(actions);
-    }catch(_){ }
-
     wrap.appendChild(head);
 
     const daysBox = document.createElement('div');
@@ -22950,34 +22927,6 @@ function createSaleListRowPOS(s, bankMap, eventView = false){
   return tr;
 }
 
-function exportEventSalesViewPOS(event, sales, bankMap, total){
-  const rows = [['Fecha', 'Producto', 'Cantidad', 'Precio unitario', 'Descuento', 'Total', 'Pago', 'Cortesía', 'Devolución', 'Cliente asociado', 'Cortesía a']];
-  for (const sale of sales){
-    const dateKey = String(sale.date || '');
-    const date = new Date(dateKey + 'T00:00:00');
-    const product = uiProductNamePOS(sale.productName);
-    const lot = getSaleLotCodePOS(sale);
-    const payment = getSalePaymentLabelPOS(sale, bankMap);
-    const tender = getSaleCashTenderDetailTextPOS(sale);
-    rows.push([
-      /^\d{4}-\d{2}-\d{2}$/.test(dateKey) && Number.isFinite(date.getTime()) ? date : dateKey,
-      lot ? product + ' · Lote: ' + lot : product,
-      Number(sale.qty || 0),
-      Number(sale.unitPrice || 0),
-      getSaleDiscountTotalPOS(sale),
-      Number(sale.total || 0),
-      tender ? payment + ' · ' + tender : payment,
-      sale.courtesy ? 'Sí' : '',
-      sale.isReturn ? 'Sí' : '',
-      getSaleCustomerTableDisplayPOS(sale),
-      getSaleCourtesyRecipientSnapshotPOS(sale)
-    ]);
-  }
-  rows.push([], ['Evento', event.name || ''], ['Total del evento (C$)', '', '', '', '', total]);
-  const safeName = String(event.name || 'evento').replace(/[^a-z0-9_ -]/gi, '_');
-  downloadExcel(`ventas_${safeName}.xlsx`, 'Ventas', rows);
-}
-
 async function openEventSalesPOS(){
   const button = $('#btn-event-sales');
   const dialog = $('#event-sales-dialog');
@@ -22997,22 +22946,11 @@ async function openEventSalesPOS(){
     sales.sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')) || saleSortKeyPOS(b) - saleSortKeyPOS(a));
 
     $('#event-sales-name').textContent = event.name || '';
-    const total = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
-    $('#event-sales-total').textContent = fmt(total);
+    $('#event-sales-total').textContent = fmt(sales.reduce((total, sale) => total + Number(sale.total || 0), 0));
     $('#event-sales-status').textContent = sales.length ? '' : 'Este evento todavía no tiene ventas.';
     const tbody = $('#tbl-event-sales tbody');
     tbody.replaceChildren();
     for (const sale of sales) tbody.appendChild(createSaleListRowPOS(sale, bankMap, true));
-    const exportButton = $('#btn-export-event-sales');
-    exportButton.disabled = sales.length === 0;
-    exportButton.onclick = () => {
-      try {
-        exportEventSalesViewPOS(event, sales, bankMap, total);
-      } catch (error) {
-        console.error('Error al exportar ventas del evento', error);
-        $('#event-sales-status').textContent = 'No se pudo exportar el archivo. Volvé a intentarlo.';
-      }
-    };
     dialog.showModal();
   } catch (error) {
     console.error('Error al consultar ventas del evento', error);
@@ -26941,27 +26879,7 @@ function renderSummaryArchivesTablePOS(list){
       }
     });
 
-    const btnRe = document.createElement('button');
-    btnRe.type = 'button';
-    btnRe.className = 'btn-pill btn-pill-mini';
-    btnRe.textContent = 'Re-exportar Excel';
-    btnRe.addEventListener('click', async()=>{
-      try{
-        const rec = await getOne('summaryArchives', a.id);
-        const use = rec || a;
-        const snap = use.snapshot || {};
-        const sheets = snap.sheets || [];
-        const fname = use.fileName || (`${use.seqStr || pad3POS(use.seq || 0)}-${periodFilePartPOS(use.periodKey || '')}.xlsx`);
-        writeWorkbookFromSheetsPOS(fname, sheets);
-        showToast('Excel re-exportado.', 'ok', 2500);
-      }catch(err){
-        console.error('re-export', err);
-        posNotify('No se pudo re-exportar el Excel: ' + humanizeError(err));
-      }
-    });
-
     actions.appendChild(btnView);
-    actions.appendChild(btnRe);
     tdAct.appendChild(actions);
 
     tr.appendChild(tdSeq);
@@ -28178,10 +28096,6 @@ async function renderEventos(){
         <button class="act-ver" data-id="${ev.id}">VER</button>
         <button class="act-activar" data-id="${ev.id}">Activar</button>
         ${ev.closedAt?'<button class="act-reabrir" data-id="'+ev.id+'">Reabrir</button>':'<button class="act-cerrar" data-id="'+ev.id+'">Cerrar</button>'}
-        <button class="act-corte" data-id="${ev.id}">Excel cierre</button>
-        <button class="act-corte-pdf" data-id="${ev.id}">PDF cierre</button>
-        <button class="act-ventas" data-id="${ev.id}">CSV Ventas</button>
-        <button class="act-inv" data-id="${ev.id}">Excel Inv</button>
         <button class="act-eliminar btn-danger" data-id="${ev.id}">Eliminar</button>
       </td>
     `;
@@ -29136,7 +29050,32 @@ async function restoreSeed(){
 }
 
 // Init & bindings
+async function exportEventosExcel(){
+  const events = await getAll('events');
+  const sales = await getAll('sales');
+  const rows = [['id','evento','grupo','estado','creado','cerrado','total']];
+
+  for (const ev of events){
+    const tot = sales.filter(s=>s.eventId===ev.id).reduce((a,b)=>a+(b.total||0),0);
+    const estado = ev.closedAt ? 'Cerrado' : 'Abierto';
+    rows.push([
+      ev.id,
+      ev.name || '',
+      ev.groupName || '',
+      estado,
+      ev.createdAt || '',
+      ev.closedAt || '',
+      tot
+    ]);
+  }
+
+  downloadExcel('eventos.xlsx', 'Eventos', rows);
+}
+
+
 async function init(){
+  // El centro reutiliza reportes sin iniciar ventas, migraciones ni conciliaciones.
+  if (document.body.dataset.a33Exports === 'pos') return;
   // Paso 1: abrir base de datos POS
   try{
     await openDB();
@@ -29701,27 +29640,6 @@ async function init(){
   }
 
   
-async function exportEventosExcel(){
-  const events = await getAll('events');
-  const sales = await getAll('sales');
-  const rows = [['id','evento','grupo','estado','creado','cerrado','total']];
-
-  for (const ev of events){
-    const tot = sales.filter(s=>s.eventId===ev.id).reduce((a,b)=>a+(b.total||0),0);
-    const estado = ev.closedAt ? 'Cerrado' : 'Abierto';
-    rows.push([
-      ev.id,
-      ev.name || '',
-      ev.groupName || '',
-      estado,
-      ev.createdAt || '',
-      ev.closedAt || '',
-      tot
-    ]);
-  }
-
-  downloadExcel('eventos.xlsx', 'Eventos', rows);
-}
 
 const annualEventStoresPOS = [
   'sales', 'inventory', 'reempaques', 'cashV2', 'cashv2hist', 'cashv2snap',
@@ -30068,26 +29986,6 @@ function bindAnnualEventsPOS(){
   if (cierreBtn){
     cierreBtn.addEventListener('click', computeCierreTotalGrupo);
   }
-  const cierreExcelBtn = document.getElementById('btn-cierre-total-excel');
-  if (cierreExcelBtn){
-    cierreExcelBtn.addEventListener('click', async()=>{
-      cierreExcelBtn.disabled = true;
-      try{ await exportCierreTotalGrupoExcel(); }
-      catch(error){ posNotify('No se pudo generar el Excel de cierre total.\n\nDetalle: ' + humanizeError(error)); }
-      finally{ cierreExcelBtn.disabled = false; }
-    });
-  }
-  $('#btn-exportar-eventos').addEventListener('click', async()=>{
-    await exportEventosExcel();
-  });
-  $('#btn-exportar-evento-excel').addEventListener('click', async()=>{
-    const evId = await getMeta('currentEventId');
-    if (!evId){
-      posNotify('Debes activar un evento en la pestaña Vender antes de exportar a Excel.');
-      return;
-    }
-    await exportEventExcel(evId);
-  });
   $('#tbl-eventos').addEventListener('click', async(e)=>{ const btn = e.target.closest('button'); if (!btn) return; const id = parseInt(btn.dataset.id,10);
     if (btn.classList.contains('act-ver')) await openEventView(id);
     else if (btn.classList.contains('act-activar')) await activateEvent(id);
@@ -30105,22 +30003,6 @@ function bindAnnualEventsPOS(){
       });
       setBtnSavingStatePOS(btn, false);
     }
-    else if (btn.classList.contains('act-corte')){
-      try{ await generateCorteCSV(id); }
-      catch(err){
-        console.error('generateCorteCSV manual error', err);
-        posNotify('No se pudo generar el Excel del evento.\n\nDetalle: ' + humanizeError(err));
-      }
-    }
-    else if (btn.classList.contains('act-corte-pdf')){
-      btn.disabled = true;
-      try{ await exportEventClosurePdfPOS(id); }
-      catch(err){ posNotify('No se pudo abrir el PDF del evento.\n\nDetalle: ' + humanizeError(err)); }
-      finally{ btn.disabled = false; }
-      return;
-    }
-    else if (btn.classList.contains('act-ventas')) await exportEventSalesCSV(id);
-    else if (btn.classList.contains('act-inv')) await exportEventInventoryExcelPOS(id);
     else if (btn.classList.contains('act-eliminar')) await deleteEvent(id);
     await renderEventos(); await renderSummary();
   });
@@ -30132,7 +30014,6 @@ function bindAnnualEventsPOS(){
   // Inventario tab
   $('#inv-event').addEventListener('change', renderInventario);
   $('#btn-inv-ref').addEventListener('click', renderInventario);
-  $('#btn-inv-csv').addEventListener('click', async()=>{ const id = parseInt($('#inv-event').value||'0',10); if (!id) return posNotify('Selecciona un evento'); await exportEventInventoryExcelPOS(id); });
   const btnFromLote = document.getElementById('btn-inv-from-lote');
 	  try{ setupInvLoteSelectorModalPOS(); }catch(_){ }
 	  if (btnFromLote) btnFromLote.addEventListener('click', openInvLoteSelectorModalPOS);

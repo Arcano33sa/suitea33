@@ -140,6 +140,7 @@ let browser;
     await dialog.getByRole('button', {name:'Cancelar'}).click();
     return summary;
   }
+  await require('./analytics-export-center.cjs')(page,context,origin,errors);
   await page.goto(origin + '/analitica/index.html');
   assert.strictEqual(await page.locator('#btn-export-resumen').count(), 0);
   await page.selectOption('#period-select', 'custom');

@@ -11672,7 +11672,7 @@ function finReportVisibleRows(rows, limit = FIN_REPORT_UI_LIMIT) {
 function finReportLimitNotice(hidden, limit, label = 'movimientos') {
   const h = Number(hidden || 0);
   if (!(h > 0)) return '';
-  return `<div class="fin-empty fin-report-limit-note">Se muestran ${escapeHtml(String(limit))} ${escapeHtml(label)}. Hay ${escapeHtml(String(h))} más; usa Exportar Excel para el detalle completo.</div>`;
+  return `<div class="fin-empty fin-report-limit-note">Se muestran ${escapeHtml(String(limit))} ${escapeHtml(label)}. Hay ${escapeHtml(String(h))} más; usa Gestión y análisis → Exportaciones para descargar el detalle completo.</div>`;
 }
 
 function finReportEnsureSelectors(data) {
@@ -17430,14 +17430,6 @@ function pcRenderHistoryList() {
         showToast('Compra copiada a Compra Actual');
       });
 
-      const btnXls = document.createElement('button');
-      btnXls.type = 'button';
-      btnXls.className = 'btn-small';
-      btnXls.textContent = 'Excel';
-      btnXls.addEventListener('click', () => {
-        pcExportRecordExcel(rec);
-      });
-
       const btnDel = document.createElement('button');
       btnDel.type = 'button';
       btnDel.className = 'btn-danger';
@@ -17454,7 +17446,6 @@ function pcRenderHistoryList() {
 
       tdA.appendChild(btnVer);
       tdA.appendChild(btnDup);
-      tdA.appendChild(btnXls);
       tdA.appendChild(btnDel);
 
       tr.appendChild(tdF);
@@ -18668,7 +18659,6 @@ function rcRenderList(){
       <td class="fin-actions-cell">
         <div class="fin-actions-inline">
           <button type="button" class="btn-small" data-act="view">Ver</button>
-          ${canPrint ? `<button type="button" class="btn-small" data-act="print">Imprimir/PDF</button>` : ``}
           ${canEdit ? `<button type="button" class="btn-small" data-act="edit">Editar</button>` : ``}
           ${canVoid ? `<button type="button" class="btn-small" data-act="void">Anular</button>` : ``}
           ${canReemit ? `<button type="button" class="btn-small" data-act="reemit">Reemitir</button>` : ``}
@@ -19317,7 +19307,7 @@ function rcBuildPrintReceiptInnerHTML(r){
   return `
     <div class="rc-print-header">
       <div class="rc-print-title">RECIBO DE CAJA</div>
-      <img class="rc-print-logo" src="images/logo.png" alt="Arcano 33">
+      <img class="rc-print-logo" src="${document.body.dataset.a33Exports === 'finanzas' ? '../finanzas/images/logo.png' : 'images/logo.png'}" alt="Arcano 33">
     </div>
 
     <div class="rc-print-meta">
@@ -21791,6 +21781,7 @@ function setupExportButtons() {
 }
 
 async function initFinanzas() {
+  if (document.body.dataset.a33Exports === 'finanzas') return;
   try {
     await openFinDB();
     await ensureBaseAccounts();
@@ -21841,6 +21832,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('storage', (ev) => {
+  if (document.body.dataset.a33Exports === 'finanzas') return;
   try {
     const key = ev && ev.key ? String(ev.key) : '';
     if (key === 'a33_pos_credit_finance_pulse' && finDB){

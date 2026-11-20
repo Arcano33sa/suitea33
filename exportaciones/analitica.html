@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#060606">
+  <title>Exportaciones · Suite A33</title>
+  <script src="../assets/js/a33-theme.js?v=4.20.98&r=13"></script>
+  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.98&r=13">
+  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.98&r=13">
+  <link rel="stylesheet" href="../assets/css/a33-module-nav.css?v=4.20.98&r=3">
+  <link rel="stylesheet" href="../assets/css/a33-notify.css?v=4.20.98&r=1">
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=3">
+</head>
+<body data-a33-exports="analitica">
+  <header class="a33-header" data-a33-module="exportaciones">
+    <a class="a33-btn-menu" href="../index.html">← Menú principal</a>
+    <div class="a33-title">Exportaciones</div>
+    <div class="a33-version" data-a33-version="1">v4.20.98</div>
+  </header>
+  <main>
+    <div class="intro"><p class="eyebrow">Gestión y análisis</p><h1>Exportaciones</h1><p>Los reportes de cada módulo, con su contenido, formato e identidad actuales.</p></div>
+    <nav class="export-modules" aria-label="Módulos de exportación"><a href="index.html">POS · Eventos</a><a href="finanzas.html">Finanzas</a><a href="analitica.html" aria-current="page">Analítica</a><a href="pedidos.html">Pedidos</a><a href="lotes.html">Lotes</a><a href="catalogos.html">Catálogos</a></nav>
+    <section class="export-card" aria-labelledby="module-export-title">
+      <div class="section-heading"><div><p class="eyebrow">Módulo</p><h2 id="module-export-title">Analítica de Ventas</h2></div><a href="../analitica/index.html">Abrir módulo →</a></div>
+      <form id="module-export-form"><fieldset id="module-export-fields" disabled>
+      <section class="analytics-filters" aria-label="Periodo de análisis">
+        <div class="field">
+          <label for="period-select">Periodo</label>
+          <select id="period-select">
+            <option value="mtd" selected>Mes actual</option>
+            <option value="previous-month">Mes anterior</option>
+            <option value="group">Grupo</option>
+            <option value="today">Hoy</option>
+            <option value="7d">Últimos 7 días</option>
+            <option value="30d">Últimos 30 días</option>
+            <option value="90d">Últimos 3 meses</option>
+            <option value="ytd">Año actual</option>
+            <option value="all">Todo el histórico</option>
+            <option value="custom">Rango personalizado</option>
+          </select>
+        </div>
+        <div id="analytics-event-picker" class="analytics-event-picker"></div>
+        <div class="field field-inline" id="custom-range" style="display:none;">
+          <label>Rango personalizado</label>
+          <div class="range-inputs">
+            <input type="date" id="date-from" aria-label="Fecha inicial" />
+            <span>→</span>
+            <input type="date" id="date-to" aria-label="Fecha final" />
+          </div>
+        </div>
+      </section>
+      <p id="analytics-period-range" class="hint small" aria-live="polite"></p>
+
+<div><label for="clientes-dormidos-days">Considerar cliente dormido después de</label><select id="clientes-dormidos-days">
+              <option value="14">14 días</option>
+              <option value="30">30 días</option>
+              <option value="45" selected>45 días</option>
+              <option value="60">60 días</option>
+              <option value="90">90 días</option>
+              <option value="180">180 días</option>
+            </select></div><div class="actions"><button id="btn-export-consolidado" type="button" disabled>Excel consolidado</button><button id="btn-export-eventos" type="button">Excel · Eventos</button><button id="btn-export-presentaciones" type="button">Excel · Productos</button></div>
+      <div class="actions"><button id="module-export-refresh" type="button" class="secondary">Actualizar referencias</button></div>
+      </fieldset></form>
+      <p id="module-export-status" role="status" aria-live="polite">Cargando referencias…</p>
+      <button id="module-export-retry" type="button" class="secondary" hidden>Reintentar carga</button>
+    </section>
+  </main>
+      <dialog id="analytics-export-dialog" class="analytics-export-dialog" aria-labelledby="analytics-export-title">
+        <form id="analytics-export-form">
+          <h3 id="analytics-export-title">Exportar Excel</h3>
+          <fieldset>
+            <legend>Período de exportación</legend>
+            <label>Período <select name="period"></select></label>
+            <div id="analytics-export-event-picker" class="analytics-event-picker"></div>
+            <div id="analytics-export-custom-range" hidden>
+              <label>Desde <input type="date" name="from"></label>
+              <label>Hasta <input type="date" name="to"></label>
+              <p class="hint">Deja una fecha vacía para exportar sin ese límite.</p>
+            </div>
+            <p id="analytics-export-period-range" class="hint small" aria-live="polite"></p>
+            <label><input type="checkbox" name="previous"> Incluir período anterior equivalente</label>
+          </fieldset>
+          <fieldset>
+            <legend>Secciones</legend>
+            <label><input type="checkbox" name="section" value="Resumen" checked> Resumen</label>
+            <label><input type="checkbox" name="section" value="Eventos" checked> Eventos</label>
+            <label><input type="checkbox" name="section" value="Productos" checked> Productos</label>
+            <label><input type="checkbox" name="section" value="Evento por producto" checked> Evento por producto</label>
+            <label><input type="checkbox" name="section" value="Clientes"> Clientes (con código de seguimiento)</label>
+            <label><input type="checkbox" name="customerNames" disabled> Incluir nombres de clientes en el Excel</label>
+            <label><input type="checkbox" name="section" value="Cortesías"> Cortesías</label>
+            <label><input type="checkbox" name="section" value="Avanzado"> Avanzado (horas pico)</label>
+          </fieldset>
+          <p id="analytics-export-error" role="alert" hidden></p>
+          <div class="export-buttons">
+            <button type="button" id="btn-cancel-export" class="btn-secondary">Cancelar</button>
+            <button type="submit" class="btn-secondary">Descargar Excel</button>
+          </div>
+        </form>
+      </dialog>
+  <script src="../pos/vendor/xlsx.full.min.js?v=4.20.98&r=13"></script>
+  <script src="../assets/js/a33-release.js?v=4.20.98&r=57"></script>
+  <script src="../assets/js/a33-module-nav.js?v=4.20.98&r=3"></script>
+  <script src="../assets/js/a33-storage.js?v=4.20.98&r=22"></script>
+  <script src="../assets/js/a33-currency.js?v=4.20.98&r=14"></script>
+  <script src="../assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+  <script src="../assets/js/a33-notify.js?v=4.20.98&r=1"></script>
+  <script src="../assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+  <script src="../assets/js/a33-lot-code.js?v=4.20.98&r=6"></script>
+  <script src="../assets/js/a33-export-currency.js?v=4.20.98&r=2"></script>
+  <script src="lectura.js?v=4.20.98&r=1"></script>
+  <script src="../analitica/script.js?v=4.20.98&r=19"></script>
+  <script src="modulos.js?v=4.20.98&r=1"></script>
+</body>
+</html>

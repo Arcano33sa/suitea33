@@ -122,10 +122,7 @@
     <dialog id="event-sales-dialog" class="card" aria-labelledby="event-sales-title">
       <div class="sale-day-heading">
         <h3 id="event-sales-title">Ventas del evento</h3>
-        <form method="dialog">
-          <button id="btn-export-event-sales" class="btn-outline" type="button">Exportar Excel</button>
-          <button class="btn-outline" type="submit">Cerrar</button>
-        </form>
+        <form method="dialog"><button class="btn-outline" type="submit">Cerrar</button></form>
       </div>
       <p id="event-sales-name"></p>
       <p><strong>Total del evento · C$ <span id="event-sales-total"></span></strong></p>
@@ -257,7 +254,6 @@
         <select id="inv-event"></select>
       </div>
       <div class="actions end">
-  <button id="btn-inv-csv" class="btn-outline btn-pill">Excel Inventario</button>
   <button id="btn-inv-ref" class="btn-ok btn-pill">Actualizar</button>
   <button id="btn-inv-from-lote" class="btn-ok btn-pill" type="button">Agregar desde lote</button>
 </div>
@@ -563,8 +559,6 @@
       <select id="filtro-grupo" aria-label="Filtrar eventos por grupo">
         <option value="">Grupos: Todos</option>
       </select>
-      <button id="btn-exportar-eventos" class="btn-outline btn-pill">Exportar lista (Excel)</button>
-      <button id="btn-exportar-evento-excel" class="btn-outline btn-pill">Exportar evento activo (Excel)</button>
     </div>
     <div class="table-scroll">
     <table id="tbl-eventos">
@@ -577,7 +571,6 @@
       <p class="muted">Selecciona un grupo arriba y genera un corte consolidado de todos sus eventos diarios.</p>
       <div class="actions">
   <button id="btn-cierre-total" class="btn-ok btn-pill">Cierre Total del grupo</button>
-  <button id="btn-cierre-total-excel" class="btn-outline btn-pill">Exportar Cierre Total (Excel)</button>
 </div>
       <div id="cierre-total-resumen" class="summary"></div>
       <div id="cierre-total-presentaciones" class="table-wrapper"></div>
@@ -910,7 +903,6 @@
         <small id="summary-period-hint" class="muted">Filtra el Resumen por mes. Para ver el historial completo, usa el botón “Todo”.</small>
       </div>
 	      <div class="summary-controls-right actions end">
-	        <button id="btn-summary-export" class="btn-outline btn-pill" type="button">Exportar Excel</button>
 	        <button id="btn-summary-close-period" class="btn-warn btn-pill" type="button">Cerrar período</button>
 	        <button id="btn-summary-all" class="btn-outline btn-pill btn-pill-mini" type="button" title="Ver todo el historial">Todo</button>
 	        <!-- Archivo debe verse como botón (no como link) -->
@@ -1438,7 +1430,7 @@
         </table>
       </div>
 
-      <div class="info"><small>Los archivos son snapshots (solo lectura). Puedes re-exportar Excel cuando quieras.</small></div>
+      <div class="info"><small>Los archivos son snapshots (solo lectura). Puedes re-exportar Excel desde Gestión y análisis → Exportaciones.</small></div>
     </div>
 
     <div id="summary-archive-view-consolidated" style="display:none">
@@ -1449,7 +1441,6 @@
           <div id="summary-consolidated-updated" class="muted small">Actualizado: …</div>
         </div>
         <div class="a33-guard-actions">
-          <button id="summary-consolidated-export-gerente" class="btn-pill btn-pill-mini" type="button">Exportar Excel (Gerente)</button>
           <button id="summary-archive-consolidated-back" class="btn-pill btn-pill-mini" type="button">Volver</button>
         </div>
       </div>
@@ -1618,7 +1609,6 @@
       <div class="actions" style="justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center">
         <div class="actions" style="gap:8px; flex-wrap:wrap; align-items:center">
           <button id="cashv2-hist-back" class="btn-outline btn-pill btn-pill-mini" type="button">← Volver</button>
-          <button id="cashv2-hist-export-day" class="btn-outline btn-pill btn-pill-mini" type="button">Exportar Excel (Día)</button>
         </div>
         <div class="cashv2-hist-detail-head">
           <div class="cashv2-hist-detail-line">
@@ -1958,7 +1948,7 @@
       const rev = (relObj && relObj.rev !== undefined && relObj.rev !== null) ? String(relObj.rev) : '1'; // revisión global coordinada
       try{ window.A33_VERSION = v; }catch(_){ }
       try{ window.A33_ASSET_REV = rev; }catch(_){ }
-      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m63').toString(); }catch(_){ }
+      try{ window.A33_POS_CACHE_NAME = ('a33-v'+v+'-pos-r'+rev+'-m64').toString(); }catch(_){ }
       try{ window.A33_BUILD_TAG = (v + '-r' + rev).toString(); }catch(_){ }
       const verEl = document.getElementById('a33-version-text');
       const shown = 'v' + v + ' r' + rev;
@@ -1967,7 +1957,7 @@
       if (bEl) bEl.textContent = 'POS Build: ' + v;
       const cEl = document.getElementById('pos-sw-cache-id');
       if (cEl){
-	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m63')).toString();
+	        const cn = (window.A33_POS_CACHE_NAME || ('a33-v'+v+'-pos-r'+rev+'-m64')).toString();
         cEl.textContent = 'SW Cache: ' + cn;
         cEl.title = cn;
       }
@@ -1978,7 +1968,7 @@
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
 <script src="/assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
 <script src="/assets/js/a33-credit-finance.js?v=4.20.98&r=1"></script>
-<script src="app.js?v=4.20.98&r=57"></script>
+<script src="app.js?v=4.20.98&r=58"></script>
 <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=13"></script>
 <script>
   (function(){

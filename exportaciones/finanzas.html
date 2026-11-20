@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#060606">
+  <title>Exportaciones · Suite A33</title>
+  <script src="../assets/js/a33-theme.js?v=4.20.98&r=13"></script>
+  <link rel="stylesheet" href="../assets/css/a33-theme.css?v=4.20.98&r=13">
+  <link rel="stylesheet" href="../assets/css/a33-header.css?v=4.20.98&r=13">
+  <link rel="stylesheet" href="../assets/css/a33-module-nav.css?v=4.20.98&r=3">
+  <link rel="stylesheet" href="../assets/css/a33-notify.css?v=4.20.98&r=1">
+  <link rel="stylesheet" href="../finanzas/style.css?v=4.20.98&r=1">
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=3">
+</head>
+<body data-a33-exports="finanzas" class="fin-body">
+  <header class="a33-header" data-a33-module="exportaciones">
+    <a class="a33-btn-menu" href="../index.html">← Menú principal</a>
+    <div class="a33-title">Exportaciones</div>
+    <div class="a33-version" data-a33-version="1">v4.20.98</div>
+  </header>
+  <main>
+    <div class="intro"><p class="eyebrow">Gestión y análisis</p><h1>Exportaciones</h1><p>Los reportes de cada módulo, con su contenido, formato e identidad actuales.</p></div>
+    <nav class="export-modules" aria-label="Módulos de exportación"><a href="index.html">POS · Eventos</a><a href="finanzas.html" aria-current="page">Finanzas</a><a href="analitica.html">Analítica</a><a href="pedidos.html">Pedidos</a><a href="lotes.html">Lotes</a><a href="catalogos.html">Catálogos</a></nav>
+    <section class="export-card" aria-labelledby="finance-exports-title">
+      <div class="section-heading"><div><p class="eyebrow">Módulo</p><h2 id="finance-exports-title">Finanzas</h2></div><a href="../finanzas/index.html">Abrir Finanzas →</a></div>
+      <p>Elegí el reporte y sus referencias habituales. Se conservan los filtros, cálculos y preferencias de cada exportación.</p>
+      <form id="finance-exports-form">
+        <fieldset id="finance-exports-fields" disabled>
+          <label for="finance-export-report">Reporte</label><select id="finance-export-report"></select>
+          <p id="finance-export-description" class="hint"></p>
+<div class="references" data-fin-group="diary" hidden><div data-fin-field="filtro-tipo"><label for="filtro-tipo">Tipo</label><select id="filtro-tipo">
+              <option value="todos">Todos</option>
+              <option value="ingreso">Ingresos</option>
+              <option value="egreso">Egresos</option>
+              <option value="cobro">Cobros de crédito</option>
+              <option value="ajuste">Ajustes</option>
+                          <option value="transferencia">Transferencias</option>
+            </select></div>
+<div data-fin-field="filtro-evento-diario"><label for="filtro-evento-diario">Evento</label><select id="filtro-evento-diario"></select></div>
+<div data-fin-field="filtro-origen"><label for="filtro-origen">Origen</label><select id="filtro-origen">
+              <option value="todos">Todos</option>
+              <option value="Manual">Manual</option>
+              <option value="POS">POS (todo)</option>
+              <option value="POS_CIERRES">POS — Cierres diarios</option>
+              <option value="POS_COBROS">POS — Cobros de crédito</option>
+              <option value="POS_LEGACY">POS — Legacy histórico</option>
+              <option value="Compra">Compra</option>
+              <option value="Recibo">Recibo</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Legacy">Legacy / histórico</option>
+            </select></div>
+<div data-fin-field="filtro-proveedor"><label for="filtro-proveedor">Proveedor</label><select id="filtro-proveedor"></select></div>
+<div data-fin-field="diario-desde"><label for="diario-desde">Desde</label><input type="date" id="diario-desde"></div>
+<div data-fin-field="diario-hasta"><label for="diario-hasta">Hasta</label><input type="date" id="diario-hasta"></div></div>
+<div class="references" data-fin-group="period" hidden><div data-fin-field="er-modo"><label for="er-modo">Período</label><select id="er-modo">
+                <option value="mes">Por mes</option>
+                <option value="rango">Por rango de fechas</option>
+              </select></div>
+<div data-fin-field="er-mes"><label for="er-mes">Mes</label><select id="er-mes"></select></div>
+<div data-fin-field="er-anio"><label for="er-anio">Año</label><select id="er-anio"></select></div>
+<div data-fin-field="er-desde"><label for="er-desde">Desde</label><input type="date" id="er-desde"></div>
+<div data-fin-field="er-hasta"><label for="er-hasta">Hasta</label><input type="date" id="er-hasta"></div>
+<div data-fin-field="er-evento"><label for="er-evento">Evento</label><select id="er-evento"></select></div></div>
+<div class="references" data-fin-group="balance" hidden><div data-fin-field="bg-fecha"><label for="bg-fecha">Fecha de corte</label><input type="date" id="bg-fecha"></div></div>
+<div class="references" data-fin-group="mayor" hidden><div data-fin-field="rep-mayor-cuenta"><label for="rep-mayor-cuenta">Cuenta contable</label><select id="rep-mayor-cuenta"></select></div>
+<div data-fin-field="rep-mayor-desde"><label for="rep-mayor-desde">Desde</label><input type="date" id="rep-mayor-desde"></div>
+<div data-fin-field="rep-mayor-hasta"><label for="rep-mayor-hasta">Hasta</label><input type="date" id="rep-mayor-hasta"></div>
+<div data-fin-field="rep-mayor-buscar"><label for="rep-mayor-buscar">Buscar</label><input type="text" id="rep-mayor-buscar" placeholder="Descripción, referencia, asiento…"></div></div>
+<div class="references" data-fin-group="account" hidden><div data-fin-field="rep-estado-fa"><label for="rep-estado-fa">Cuenta financiera</label><select id="rep-estado-fa"></select></div>
+<div data-fin-field="rep-estado-desde"><label for="rep-estado-desde">Desde</label><input type="date" id="rep-estado-desde"></div>
+<div data-fin-field="rep-estado-hasta"><label for="rep-estado-hasta">Hasta</label><input type="date" id="rep-estado-hasta"></div>
+<div data-fin-field="rep-estado-buscar"><label for="rep-estado-buscar">Buscar</label><input type="text" id="rep-estado-buscar" placeholder="Descripción, referencia, operación…"></div></div>
+<div class="references" data-fin-group="balanza" hidden><div data-fin-field="rep-balanza-desde"><label for="rep-balanza-desde">Desde</label><input type="date" id="rep-balanza-desde"></div>
+<div data-fin-field="rep-balanza-hasta"><label for="rep-balanza-hasta">Hasta</label><input type="date" id="rep-balanza-hasta"></div>
+<div data-fin-field="rep-balanza-buscar"><label for="rep-balanza-buscar">Buscar cuenta</label><input type="text" id="rep-balanza-buscar" placeholder="Código o nombre…"></div></div>
+<div class="references" data-fin-group="book" hidden><div data-fin-field="rep-libro-desde"><label for="rep-libro-desde">Desde</label><input type="date" id="rep-libro-desde"></div>
+<div data-fin-field="rep-libro-hasta"><label for="rep-libro-hasta">Hasta</label><input type="date" id="rep-libro-hasta"></div>
+<div data-fin-field="rep-libro-origen"><label for="rep-libro-origen">Origen / operación</label><select id="rep-libro-origen">
+                <option value="todos">Todos</option>
+                <option value="manual">Registro manual</option>
+                <option value="transferencia">Transferencia interna</option>
+                <option value="compra">Compra a proveedor</option>
+                <option value="recibo">Recibo</option>
+                <option value="pos">Importación POS</option>
+                <option value="legacy">Legacy / histórico</option>
+              </select></div>
+<div data-fin-field="rep-libro-buscar"><label for="rep-libro-buscar">Buscar</label><input type="text" id="rep-libro-buscar" placeholder="Descripción, referencia, cuenta…"></div></div>
+<div class="references" data-fin-group="currency" hidden><div data-fin-field="rep-moneda-desde"><label for="rep-moneda-desde">Desde</label><input type="date" id="rep-moneda-desde"></div>
+<div data-fin-field="rep-moneda-hasta"><label for="rep-moneda-hasta">Hasta</label><input type="date" id="rep-moneda-hasta"></div></div>
+          <div class="references" data-fin-group="history" hidden><div><label for="finance-export-history">Compra histórica</label><select id="finance-export-history"></select></div></div>
+          <div class="references" data-fin-group="receipt" hidden><div><label for="finance-export-receipt">Recibo emitido o anulado</label><select id="finance-export-receipt"></select></div></div>
+          <div class="actions"><button id="finance-export-download" type="submit">Descargar Excel</button><button id="finance-export-refresh" type="button" class="secondary">Actualizar referencias</button></div>
+        </fieldset>
+      </form>
+      <p id="finance-exports-status" role="status" aria-live="polite">Cargando referencias de Finanzas…</p>
+      <button id="finance-export-retry" type="button" class="secondary" hidden>Reintentar carga</button>
+    </section>
+    <p class="hint">Los recibos mantienen su presentación original de dos copias y se guardan como PDF desde el diálogo de impresión.</p>
+  </main>
+  <div id="rc-print-root" class="rc-print-root" aria-hidden="true"></div>
+  <script src="../pos/vendor/xlsx.full.min.js?v=4.20.98&r=13"></script>
+  <script src="../assets/js/a33-release.js?v=4.20.98&r=57"></script>
+  <script src="../assets/js/a33-module-nav.js?v=4.20.98&r=3"></script>
+  <script src="../assets/js/a33-storage.js?v=4.20.98&r=22"></script>
+  <script src="../assets/js/a33-currency.js?v=4.20.98&r=1"></script>
+  <script src="../assets/js/a33-export-currency.js?v=4.20.98&r=1"></script>
+  <script src="../assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
+  <script src="../assets/js/a33-notify.js?v=4.20.98&r=1"></script>
+  <script src="../assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
+  <script src="../finanzas/script.js?v=4.20.98&r=8"></script>
+  <script src="finanzas.js?v=4.20.98&r=2"></script>
+</body>
+</html>

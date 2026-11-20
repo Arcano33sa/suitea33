@@ -77,6 +77,7 @@ let browser;
   await page.locator('#analytics-event-picker input[value="17"]').check();
   await page.locator('#analytics-event-picker summary').click();
   assert.ok((await page.textContent('#kpi-total-ventas')).includes('100.00'));
+  await require('./analytics-export-center.cjs')(page,context,origin,errors);
   await page.click('#btn-export-consolidado');
   assert.equal(await page.locator('#analytics-export-event-picker input:checked').inputValue(),'17');
   await page.click('#btn-cancel-export');
@@ -84,7 +85,7 @@ let browser;
   // Simula la aprobación explícita en Configuración solo en este perfil de prueba.
   await page.evaluate(async()=>{(await navigator.serviceWorker.getRegistration()).waiting.postMessage({type:'SKIP_WAITING'});});
   await page.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('r=7'));
-  await page.waitForFunction(async()=>!!(await caches.keys()).find(key=>key.endsWith('-m8')));
+  await page.waitForFunction(async()=>!!(await caches.keys()).find(key=>key.endsWith('-m9')));
   await context.setOffline(true);
   await page.reload();
   await page.waitForFunction(()=>!!document.querySelector('#analytics-event-picker input[value="17"]'));

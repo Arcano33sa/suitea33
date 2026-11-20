@@ -423,7 +423,6 @@
         </div>
 
         <div class="cc-actions" id="diario-actions-bar">
-          <button type="button" id="btn-export-diario" class="fin-btn-export">Exportar Diario a Excel</button>
           <button type="button" id="btn-import-pos-closures" class="fin-btn-export">Importar cierres POS</button>
           <span id="import-pos-closures-msg" class="cc-msg"></span>
         </div>
@@ -476,7 +475,6 @@
       <button type="button" id="pc-save" class="btn-primary">Guardar</button>
       <button type="button" id="pc-save-history" class="btn-small">Guardar en Histórico</button>
       <button type="button" id="pc-delete-all" class="btn-danger">Borrar todo</button>
-      <button type="button" id="pc-export" class="fin-btn-export">Exportar Excel</button>
       <span id="pc-msg" class="cc-msg"></span>
     </div>
 
@@ -1036,7 +1034,6 @@
         <div class="fin-actions">
           <button type="button" id="rec-save" class="btn-ghost">Guardar borrador</button>
           <button type="button" id="rec-issue" class="btn-primary">Emitir</button>
-          <button type="button" id="rec-print" class="btn-primary hidden">Imprimir/PDF</button>
           <button type="button" id="rec-cancel" class="btn-ghost">Cancelar</button>
         </div>
       </div>
@@ -1062,7 +1059,6 @@
     <div class="fin-inline-group fin-catalog-actions">
       <button type="button" id="cat-new" class="btn-small" title="Crear subcuenta con código automático">+ Nueva subcuenta</button>
       <button type="button" id="cat-refresh" class="btn-small">Actualizar</button>
-      <button type="button" id="cat-export" class="btn-small">Exportar Excel</button>
     </div>
   </div>
 
@@ -1634,13 +1630,7 @@
           </div>
 
           <!-- Exportar Estado de Resultados -->
-          <button type="button" id="btn-export-er" class="fin-btn-export">
-            Exportar Estado de Resultados a Excel
-          </button>
-          <button type="button" id="btn-share-er" class="fin-btn-export">
-            Compartir Excel
-          </button>
-          <p class="fin-help">Compartir Excel genera un resumen con la identidad, los costos y la utilidad que permitás en Configuración → Reportes.</p>
+          <p class="fin-help">El resumen para compartir está disponible en Gestión y análisis → Exportaciones y conserva las preferencias de Configuración → Reportes.</p>
 
           <p class="fin-help">
             Nota: los costos (5xxx) se pueden registrar manualmente. La generación automática de costos de venta desde POS queda para una fase futura segura.
@@ -1691,9 +1681,6 @@
           </div>
 
           <!-- Exportar Balance General -->
-          <button type="button" id="btn-export-bg" class="fin-btn-export">
-            Exportar Balance General a Excel
-          </button>
 
           <p class="fin-help">
             Idealmente el Balance cuadra (Activos = Pasivos + Patrimonio). Se consideran las cuentas 1xxx, 2xxx y 3xxx presentes en los asientos registrados.
@@ -1728,9 +1715,6 @@
           </div>
 
           <!-- Exportar Flujo de Caja -->
-          <button type="button" id="btn-export-fc" class="fin-btn-export">
-            Exportar Flujo de Caja a Excel
-          </button>
         </section>
 
         <!-- Reportes Contables Multibanco / Multimoneda -->
@@ -1748,7 +1732,6 @@
             <label>Desde<input type="date" id="rep-mayor-desde"></label>
             <label>Hasta<input type="date" id="rep-mayor-hasta"></label>
             <label class="fin-form-grow">Buscar<input type="text" id="rep-mayor-buscar" placeholder="Descripción, referencia, asiento…"></label>
-            <button type="button" id="btn-export-mayor" class="fin-btn-export">Exportar Mayor a Excel</button>
           </div>
           <div id="rep-mayor-summary" class="fin-report-summary"></div>
           <div id="rep-mayor-list" class="fin-report-list" aria-label="Mayor por cuenta"></div>
@@ -1768,7 +1751,6 @@
             <label>Desde<input type="date" id="rep-estado-desde"></label>
             <label>Hasta<input type="date" id="rep-estado-hasta"></label>
             <label class="fin-form-grow">Buscar<input type="text" id="rep-estado-buscar" placeholder="Descripción, referencia, operación…"></label>
-            <button type="button" id="btn-export-estado" class="fin-btn-export">Exportar Estado de cuenta a Excel</button>
           </div>
           <div id="rep-estado-summary" class="fin-report-summary"></div>
           <div id="rep-estado-list" class="fin-report-list" aria-label="Estado de cuenta financiera"></div>
@@ -1784,7 +1766,6 @@
             <label>Desde<input type="date" id="rep-balanza-desde"></label>
             <label>Hasta<input type="date" id="rep-balanza-hasta"></label>
             <label class="fin-form-grow">Buscar cuenta<input type="text" id="rep-balanza-buscar" placeholder="Código o nombre…"></label>
-            <button type="button" id="btn-export-balanza" class="fin-btn-export">Exportar Balanza a Excel</button>
           </div>
           <div id="rep-balanza-summary" class="fin-report-summary"></div>
           <div id="rep-balanza-list" class="fin-report-list" aria-label="Balanza de comprobación"></div>
@@ -1812,7 +1793,6 @@
               </select>
             </label>
             <label class="fin-form-grow">Buscar<input type="text" id="rep-libro-buscar" placeholder="Descripción, referencia, cuenta…"></label>
-            <button type="button" id="btn-export-libro" class="fin-btn-export">Exportar Libro Diario a Excel</button>
           </div>
           <div id="rep-libro-summary" class="fin-report-summary"></div>
           <div id="rep-libro-list" class="fin-report-list" aria-label="Libro Diario mejorado"></div>
@@ -1827,7 +1807,6 @@
           <div class="fin-filters-row fin-report-filters">
             <label>Desde<input type="date" id="rep-moneda-desde"></label>
             <label>Hasta<input type="date" id="rep-moneda-hasta"></label>
-            <button type="button" id="btn-export-moneda" class="fin-btn-export">Exportar Resumen por moneda a Excel</button>
           </div>
           <div id="rep-moneda-summary" class="fin-report-summary fin-report-summary--wide"></div>
           <div id="rep-moneda-list" class="fin-report-list" aria-label="Resumen por moneda"></div>
@@ -1881,11 +1860,11 @@
   <script src="/assets/js/a33-presentations.js?v=4.20.98&r=15"></script>
 
 <script src="/assets/js/a33-credit-finance.js?v=4.20.98&r=1"></script>
-  <script src="script.js?v=4.20.98&r=7"></script>
+  <script src="script.js?v=4.20.98&r=8"></script>
   <script src="/assets/js/a33-input-ux.js?v=4.20.98&r=1"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=2').catch(error => console.warn('Finanzas SW no disponible', error));
+    navigator.serviceWorker.register('./sw.js?v=4.20.98&r=3').catch(error => console.warn('Finanzas SW no disponible', error));
   }
 </script>
 </body>

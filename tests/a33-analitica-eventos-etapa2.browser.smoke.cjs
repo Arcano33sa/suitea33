@@ -123,6 +123,7 @@ let browser;
     books.push(workbook);
     return XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {header:1});
   }
+  await require('./analytics-export-center.cjs')(page,context,origin,errors);
   await page.goto(origin + '/analitica/index.html');
   const mainPicker = page.locator('#analytics-event-picker');
   const exportPicker = page.locator('#analytics-export-event-picker');
