@@ -5618,9 +5618,63 @@ Solo se quitará del catálogo maestro/lista seleccionable. No se borrarán vent
     registerServiceWorker();
   });
 
+  async function exportCostsExcelCAT(){
+    if (typeof XLSX === 'undefined') throw new Error('No se pudo cargar la librería de Excel.');
+    const all = await window.A33Exports.readProducts();
+    const products = costsProductsInOperationalOrder(all).filter(product =>
+      product && product.active !== false && product.deleted !== true && costsProductId(product) && productHasRecipe(product));
+    if (!products.length) throw new Error('No hay productos activos con Receta para exportar.');
+    const envases = readEnvaseCatalog();
+    products.sort((a, b) => (costsProductCapacityMl(a, envases) || Infinity) - (costsProductCapacityMl(b, envases) || Infinity));
+    const recipes = readCostsRecipesPayload();
+    if (recipes.state === 'damaged') throw new Error(recipes.message);
+    const state = readCostsState();
+    const names = new Map();
+    products.forEach(product => {
+      const key = costsLookupKey(costsProductHeaderName(product));
+      names.set(key, (names.get(key) || 0) + 1);
+    });
+    const contexts = products.map(product => {
+      const id = costsProductId(product);
+      const name = costsProductHeaderName(product);
+      const label = names.get(costsLookupKey(name)) > 1 ? `${name} · ${id.slice(-6)}` : name;
+      const ml = costsProductCapacityMl(product, envases);
+      return { id, label:`${label}\n${ml > 0 ? ml + ' ml' : 'ML no definido'}`,
+        calculation:calculateCostsForProduct(resolveCostsProductRecipe(product, recipes), state) };
+    });
+    const rows = [['Referencia', 'Precio (C$)', 'Contenido (ml)', ...contexts.map(ctx => ctx.label)]];
+    COST_LIQUIDS.forEach(liquid => {
+      const reference = state.liquids[liquid.key];
+      rows.push([liquid.label, reference.price ?? 'Pendiente', reference.ml ?? 'Pendiente', ...contexts.map(({calculation:c}) => {
+        if (c.status === 'no_recipe') return 'Sin receta';
+        if (c.status === 'unresolved') return 'Sin relación';
+        const item = c.liquidCosts[liquid.key];
+        return item?.status === 'ok' ? item.cost : item?.status === 'invalid_recipe' ? 'Revisar receta' : 'Pendiente';
+      })]);
+    });
+    for (const [key, label] of [['botella','Botella'], ['calcomania','Calcomanía']]) {
+      rows.push([label, '—', '—', ...contexts.map(ctx => costsConsumableItem(state, ctx.id)[key] ?? 'Pendiente')]);
+    }
+    rows.push(['Total', '—', '—', ...contexts.map(({calculation:c}) =>
+      c.status === 'complete' ? c.total : c.status === 'no_recipe' ? 'Sin receta' :
+        c.status === 'unresolved' ? 'Costo incompleto' : `${costsMoney(c.total)} · Pendiente: ${c.missing.join(', ')}`)]);
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    sheet['!cols'] = [{wch:22}, {wch:18}, {wch:18}, ...contexts.map(() => ({wch:26}))];
+    sheet['!rows'] = [{hpt:32}];
+    for (const address of Object.keys(sheet)) {
+      if (address.startsWith('!')) continue;
+      const cell = sheet[address];
+      if (cell.t === 'n' && XLSX.utils.decode_cell(address).c !== 2) cell.z = '"C$"#,##0.00';
+    }
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, 'Costos');
+    XLSX.writeFile(book, 'A33_Costos.xlsx');
+  }
+
   // Adaptador de solo lectura del centro; no inicia Catálogos ni modifica su esquema.
   window.A33CatalogExports = Object.freeze({
     async refresh(){ db = await window.A33Exports.openExisting('a33-pos', ['sales', 'summaryArchives']); },
+    costs: exportCostsExcelCAT,
     full: exportCustomersExcelCAT,
     share: exportCustomersForSharingCAT
   });

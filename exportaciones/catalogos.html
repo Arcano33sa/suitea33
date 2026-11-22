@@ -22,9 +22,9 @@
     <div class="intro"><p class="eyebrow">Gestión y análisis</p><h1>Exportaciones</h1><p>Los reportes de cada módulo, con su contenido, formato e identidad actuales.</p></div>
     <nav class="export-modules" aria-label="Módulos de exportación"><a href="index.html">POS · Eventos</a><a href="finanzas.html">Finanzas</a><a href="analitica.html">Analítica</a><a href="pedidos.html">Pedidos</a><a href="lotes.html">Lotes</a><a href="catalogos.html" aria-current="page">Catálogos</a></nav>
     <section class="export-card" aria-labelledby="module-export-title">
-      <div class="section-heading"><div><p class="eyebrow">Módulo</p><h2 id="module-export-title">Catálogos · Clientes</h2></div><a href="../catalogos/index.html">Abrir módulo →</a></div>
+      <div class="section-heading"><div><p class="eyebrow">Módulo</p><h2 id="module-export-title">Catálogos</h2></div><a href="../catalogos/index.html">Abrir módulo →</a></div>
       <form id="module-export-form"><fieldset id="module-export-fields" disabled>
-<label for="module-export-report">Reporte</label><select id="module-export-report"><option value="full">Clientes · Excel completo</option><option value="share">Clientes · Excel para compartir</option></select><p class="hint">Conserva los datos y el tratamiento del historial de compras del catálogo original.</p><div class="export-options" data-report="share" hidden><p>Elegí qué datos incluir, igual que en Compartir Excel.</p><label><input id="includeName" type="checkbox"> Nombre</label><label><input id="includePhone" type="checkbox"> Celular</label><label><input id="includeHistory" type="checkbox"> Historial de compras</label><p class="hint">Incluye la última compra, el total neto y el aviso de historial parcial cuando corresponda.</p></div><button type="submit">Descargar Excel</button>
+<label for="module-export-report">Reporte</label><select id="module-export-report"><option value="full">Clientes · Excel completo</option><option value="costs">Costos · Excel completo</option><option value="share">Clientes · Excel para compartir</option></select><p class="hint">Clientes conserva su historial de compras. Costos exporta las referencias guardadas y los productos dinámicos en columnas, como en el catálogo.</p><div class="export-options" data-report="share" hidden><p>Elegí qué datos incluir, igual que en Compartir Excel.</p><label><input id="includeName" type="checkbox"> Nombre</label><label><input id="includePhone" type="checkbox"> Celular</label><label><input id="includeHistory" type="checkbox"> Historial de compras</label><p class="hint">Incluye la última compra, el total neto y el aviso de historial parcial cuando corresponda.</p></div><button type="submit">Descargar Excel</button>
       <div class="actions"><button id="module-export-refresh" type="button" class="secondary">Actualizar referencias</button></div>
       </fieldset></form>
       <p id="module-export-status" role="status" aria-live="polite">Cargando referencias…</p>
@@ -40,7 +40,8 @@
   <script src="../assets/js/a33-notify.js?v=4.20.98&r=1"></script>
   <script src="../assets/js/a33-notify-bridge.js?v=4.20.98&r=2"></script>
   <script src="lectura.js?v=4.20.98&r=1"></script>
-  <script src="../catalogos/script.js?v=4.20.98&r=40"></script>
-  <script src="modulos.js?v=4.20.98&r=1"></script>
+  <script src="../assets/js/a33-catalog-costs.js?v=4.20.98&r=1"></script>
+  <script src="../catalogos/script.js?v=4.20.98&r=41"></script>
+  <script src="modulos.js?v=4.20.98&r=2"></script>
 </body>
 </html>

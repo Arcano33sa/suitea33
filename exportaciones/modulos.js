@@ -43,6 +43,7 @@
     try {
       if (module === 'catalogos') {
         if (report === 'full') { await window.A33CatalogExports.refresh(); await window.A33CatalogExports.full(); }
+        else if (report === 'costs') await window.A33CatalogExports.costs();
         else {
           if (node('includeHistory').checked) await window.A33CatalogExports.refresh();
           await window.A33CatalogExports.share(Object.fromEntries(['includeName','includePhone','includeHistory'].map(name => [name,node(name).checked])));

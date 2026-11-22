@@ -1,5 +1,5 @@
 /* Exportaciones: caché independiente; conserva los datos y las cachés de otros módulos. */
-const CACHE = 'a33-exportaciones-e3-r4';
+const CACHE = 'a33-exportaciones-e3-r5';
 const PRECACHE = [
   "./",
   "./index.html",
@@ -34,11 +34,12 @@ const PRECACHE = [
   "../assets/js/a33-export-currency.js?v=4.20.98&r=2",
   "lectura.js?v=4.20.98&r=1",
   "../analitica/script.js?v=4.20.98&r=19",
-  "modulos.js?v=4.20.98&r=1",
+  "modulos.js?v=4.20.98&r=2",
   "../pedidos/script.js?v=4.20.98&r=19",
   "../assets/js/a33-production.js?v=4.20.98&r=5",
   "../lotes/script.js?v=4.20.98&r=23",
-  "../catalogos/script.js?v=4.20.98&r=40"
+  "../assets/js/a33-catalog-costs.js?v=4.20.98&r=1",
+  "../catalogos/script.js?v=4.20.98&r=41"
 ];
 self.addEventListener('install', event => {
   // Solo sirve recursos con revisión explícita. Activar no recarga la pantalla ni interrumpe un reporte.
