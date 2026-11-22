@@ -1,5 +1,5 @@
 /* Exportaciones: caché independiente; conserva los datos y las cachés de otros módulos. */
-const CACHE = 'a33-exportaciones-e3-r3';
+const CACHE = 'a33-exportaciones-e3-r4';
 const PRECACHE = [
   "./",
   "./index.html",
@@ -14,7 +14,7 @@ const PRECACHE = [
   "../assets/css/a33-header.css?v=4.20.98&r=13",
   "../assets/css/a33-module-nav.css?v=4.20.98&r=3",
   "../assets/css/a33-notify.css?v=4.20.98&r=1",
-  "style.css?v=4.20.98&r=3",
+  "style.css?v=4.20.98&r=4",
   "../pos/vendor/xlsx.full.min.js?v=4.20.98&r=13",
   "../assets/js/a33-release.js?v=4.20.98&r=57",
   "../assets/js/a33-module-nav.js?v=4.20.98&r=5",

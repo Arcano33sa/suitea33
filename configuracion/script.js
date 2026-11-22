@@ -632,7 +632,8 @@
     ['pedidos', 'Pedidos'], ['catalogos', 'Catálogos'], ['calculadora', 'Calculadora'],
     ['agenda', 'Agenda'], ['centro-mando', 'Centro de Mando'],
     ['calculadora_temporal', 'Calculadora Temporal'],
-    ['finanzas', 'Finanzas'], ['analitica', 'Analítica']
+    ['finanzas', 'Finanzas'], ['analitica', 'Analítica'],
+    ['exportaciones', 'Exportaciones']
   ];
 
   function getPwaModule(reg){

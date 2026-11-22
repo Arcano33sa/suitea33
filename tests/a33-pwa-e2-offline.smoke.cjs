@@ -64,12 +64,12 @@ async function main(){
     await page.locator('#cfg-pwa-check').click();
     await page.locator('#backup-modal').waitFor({state:'visible'});
     assert.match(await page.locator('#backup-modal-body').textContent(),/Abre los módulos con conexión/);
-    assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
+    assert.equal(await page.locator('#cfg-pwa-report li').count(),12);
     assert.equal(await page.evaluate(async()=> (await navigator.serviceWorker.getRegistrations()).length),0);
     assert.equal(await page.locator('#cfg-pwa-apply').isDisabled(),true);
     assert.equal(await page.locator('#cfg-pwa-delivery').textContent(),'4.20.98 · PWA-E3');
     await closeResult();
-    await page.reload();assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
+    await page.reload();assert.equal(await page.locator('#cfg-pwa-report li').count(),12);
     if(!await page.locator('#cfg-pwa-check').isVisible()) await page.locator('#cfg-tab-pwa').click();
     await page.evaluate(async()=>{window.testReg=await navigator.serviceWorker.register('/pos/sw.js',{scope:'/pos/'});});
     await page.waitForFunction(()=>window.testReg.active && window.testReg.active.state==='activated');
@@ -79,6 +79,13 @@ async function main(){
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
     await closeResult();
     console.log('PASS navegador: Configuración conserva el reporte, no registra módulos y respeta el ancho móvil.');
+    await page.evaluate(async()=>{window.exportsReg=await navigator.serviceWorker.register('/exportaciones/sw.js',{scope:'/exportaciones/'});});
+    await page.waitForFunction(()=>window.exportsReg.active && window.exportsReg.active.state==='activated');
+    await page.locator('#cfg-pwa-check').click();
+    await page.locator('#backup-modal').waitFor({state:'visible'});
+    assert((await page.locator('#cfg-pwa-report').textContent()).includes('Exportaciones: Sin actualización pendiente'));
+    await closeResult();
+    console.log('PASS navegador: Configuración revisa el Service Worker real de Exportaciones.');
     const modulePage=await context.newPage();
     await modulePage.goto(origin+'/pos/__pwa_test.html');
     await modulePage.evaluate(()=>localStorage.setItem('a33_test_draft','conservar'));
@@ -120,7 +127,7 @@ async function main(){
     page.once('dialog',dialog=>dialog.accept());
     await page.locator('#cfg-pwa-apply').click();
     await page.waitForFunction(()=>document.getElementById('cfg-pwa-status').textContent==='Activación confirmada');
-    assert.equal(await page.locator('#cfg-pwa-report li').count(),11);
+    assert.equal(await page.locator('#cfg-pwa-report li').count(),12);
     assert.notEqual(await page.locator('#cfg-pwa-last-update').textContent(),'Sin registros');
     assert.equal(await modulePage.evaluate(()=>localStorage.getItem('a33_test_draft')),'conservar');
     assert.equal(await page.locator('#backup-modal-title').textContent(),'Actualización instalada correctamente');

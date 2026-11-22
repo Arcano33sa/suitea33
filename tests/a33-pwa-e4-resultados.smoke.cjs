@@ -24,7 +24,31 @@ function harness(regs, failMissing=false){
  await h.api.handlePwaCheck();
  assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.noRegistered);
  assert.equal(h.registered.length,0);
- assert.equal(h.items.length,11);
+ assert.equal(h.items.length,12);
+ assert(h.items.some(row=>row==='Exportaciones: No registrado; no se revisó'));
+
+ const exportsReg=registration('exportaciones',worker());
+ let exportsChecks=0;
+ exportsReg.update=async()=>{exportsChecks++;};
+ h=harness([exportsReg]);
+ await h.api.handlePwaCheck();
+ assert.equal(exportsChecks,1);
+ assert(h.items.some(row=>row==='Exportaciones: Actualización lista para aplicar'));
+ assert.equal(h.applyButton.disabled,false);
+ await h.api.handlePwaApply();
+ assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.applied);
+
+ h=harness([registration('exportaciones')]);
+ await h.api.handlePwaCheck();
+ assert(h.items.some(row=>row==='Exportaciones: Sin actualización pendiente'));
+ assert.equal(h.applyButton.disabled,true);
+
+ const exportsOffline=registration('exportaciones');
+ exportsOffline.update=async()=>{throw new Error('sin conexión');};
+ h=harness([exportsOffline]);
+ await h.api.handlePwaCheck();
+ assert.equal(h.data.get(h.api.PWA_KEYS.status),h.api.PWA_STATUS.partialSearch);
+ assert(h.items.some(row=>row.includes('Exportaciones: No se pudo completar')));
  assert.equal(h.applyButton.disabled,true);
 
  const pos=registration('pos',worker());
