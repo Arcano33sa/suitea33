@@ -18,7 +18,7 @@
 
   <link rel="stylesheet" href="/assets/css/a33-header.css?v=4.20.98&r=7" />
   <link rel="stylesheet" href="/assets/css/a33-module-nav.css?v=4.20.98&r=3" />
-  <link rel="stylesheet" href="style.css?v=4.20.98&r=11" />
+  <link rel="stylesheet" href="style.css?v=4.20.98&r=12" />
   <link rel="stylesheet" href="/assets/css/a33-theme.css?v=4.20.98&r=7" />
 <link rel="stylesheet" href="/assets/css/a33-notify.css?v=4.20.98&r=1">
 <script src="/assets/js/a33-notify.js?v=4.20.98&r=1"></script>
@@ -145,12 +145,8 @@ html body #agendaPurchasesView :is(.agenda-chip,.agenda-status,.agenda-badge) { 
 html body #agendaPurchasesView .agenda-status--cancelado { color:var(--a33-danger); }
 html body #agendaPurchasesView .purchase-money-chip { font-size:14px; font-weight:800; border-color:var(--a33-border); }
 html body #agendaPurchasesView #purchaseSaveBtn { margin-left:auto; }
-html body #agendaPurchasesView .purchase-draft-row { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-areas:"name name" "quantity unit" "price subtotal" "actions actions"; gap:12px; padding:14px; background:var(--a33-surface); border-color:var(--a33-border-soft); }
 html body #agendaPurchasesView :is(.purchase-draft-name strong,.purchase-draft-name small,.purchase-detail-name strong,.purchase-detail-name small) { white-space:normal; overflow-wrap:anywhere; overflow:visible; }
 html body #agendaPurchasesView .purchase-draft-name strong { font-size:14px; }
-html body #agendaPurchasesView .purchase-draft-cell { white-space:normal; display:block; overflow-wrap:anywhere; }
-html body #agendaPurchasesView .purchase-draft-cell::before { display:block; margin-bottom:4px; font-size:11px; }
-html body #agendaPurchasesView .purchase-draft-actions { justify-content:flex-end; border-top:1px solid var(--a33-border-soft); padding-top:10px; }
 html body #agendaPurchasesView .purchase-draft-action { width:44px; height:44px; background:var(--a33-surface-2); color:var(--a33-text); border-color:var(--a33-border); }
 html body #agendaPurchasesView .purchase-draft-action--danger { color:var(--a33-danger); }
 html body #agendaPurchasesView :is(#purchaseSubtotal,.purchase-draft-total strong) { color:var(--a33-text); font-weight:800; font-variant-numeric:tabular-nums; }
@@ -589,7 +585,13 @@ html body #agendaPurchasesView :is(button,input,select,textarea,a,.agenda-record
               <div class="purchase-draft-empty" id="purchaseDraftEmpty">
                 Agrega uno o varios artículos antes de guardar la compra.
               </div>
-              <div class="purchase-draft-list" id="purchaseDraftList" aria-live="polite"></div>
+              <div class="purchase-draft-table-wrap" id="purchaseDraftTableWrap" role="region" aria-label="Artículos agregados, tabla desplazable" tabindex="0" hidden>
+                <table class="purchase-draft-table">
+                  <caption class="purchase-draft-caption">Artículos de la compra en preparación</caption>
+                  <thead><tr><th scope="col">Artículo</th><th scope="col">Categoría</th><th scope="col">Cantidad</th><th scope="col">Unidad</th><th scope="col">Precio unitario</th><th scope="col">Subtotal</th><th scope="col">Acciones</th></tr></thead>
+                  <tbody id="purchaseDraftList" aria-live="polite"></tbody>
+                </table>
+              </div>
               <div class="purchase-draft-total">
                 <span>Total de la compra planificada:</span>
                 <strong id="purchaseDraftTotal">C$0.00</strong>
@@ -671,6 +673,6 @@ html body #agendaPurchasesView :is(button,input,select,textarea,a,.agenda-record
   <script src="/assets/js/a33-storage.js?v=4.20.98&r=22"></script>
   <script src="../assets/js/a33-materials.js?v=4.20.98&r=2"></script>
   <script src="script.js?v=4.20.98&r=17"></script>
-  <script src="purchases.js?v=4.20.98&r=5"></script>
+  <script src="purchases.js?v=4.20.98&r=6"></script>
 </body>
 </html>

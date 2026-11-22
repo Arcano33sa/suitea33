@@ -1578,3 +1578,21 @@ code{
 input[type="number"]{appearance:textfield;-moz-appearance:textfield}
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
+/* Compras: artículos del borrador en filas compactas, también en móvil. */
+html body #agendaPurchasesView .purchase-draft-table-wrap { max-width:100%; min-width:0; overflow-x:auto; border:1px solid var(--a33-border); border-radius:12px; }
+html body #agendaPurchasesView .purchase-draft-table-wrap[hidden] { display:none; }
+html body #agendaPurchasesView .purchase-draft-table { width:100%; min-width:840px; border-collapse:collapse; font-size:13px; }
+.purchase-draft-caption { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+html body #agendaPurchasesView .purchase-draft-table :is(th,td) { padding:8px 12px; text-align:left; vertical-align:middle; border-bottom:1px solid var(--a33-border-soft); color:var(--a33-text); }
+html body #agendaPurchasesView .purchase-draft-table th { background:var(--a33-surface-2); white-space:nowrap; font-size:12px; }
+html body #agendaPurchasesView .purchase-draft-table .purchase-draft-row { display:table-row; background:var(--a33-surface); border:0; box-shadow:none; }
+html body #agendaPurchasesView .purchase-draft-table .purchase-draft-row.is-editing { background:var(--a33-surface-2); outline:1px solid var(--a33-gold); outline-offset:-1px; }
+html body #agendaPurchasesView .purchase-draft-table :is(.purchase-draft-name,.purchase-draft-cell) { display:table-cell; }
+html body #agendaPurchasesView .purchase-draft-table .purchase-draft-name { min-width:140px; max-width:240px; }
+html body #agendaPurchasesView .purchase-draft-table .purchase-draft-cell::before { display:none; }
+html body #agendaPurchasesView .purchase-draft-table :is(.purchase-draft-money,.purchase-draft-quantity) { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+html body #agendaPurchasesView .purchase-draft-table .purchase-draft-quantity input { width:85px; }
+html body #agendaPurchasesView .purchase-draft-table .purchase-draft-actions { display:table-cell; white-space:nowrap; text-align:right; }
+html body #agendaPurchasesView .purchase-draft-table .purchase-draft-action { display:inline-grid; vertical-align:middle; margin-left:6px; }
+html body #agendaPurchasesView .purchase-draft-table tr:last-child td { border-bottom:0; }

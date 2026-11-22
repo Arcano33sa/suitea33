@@ -757,19 +757,20 @@
   }
 
   function draftRow(item){
-    const row = document.createElement('article');
+    const row = document.createElement('tr');
     row.className = 'purchase-draft-row' + (state.editingDraftId === item.draftId ? ' is-editing' : '');
     row.dataset.draftId = item.draftId;
 
-    const name = document.createElement('div');
+    const name = document.createElement('td');
     name.className = 'purchase-draft-name';
     const strong = document.createElement('strong');
     strong.textContent = item.name;
-    const small = document.createElement('small');
-    small.textContent = item.category || 'Sin categoría';
-    name.append(strong, small);
+    name.appendChild(strong);
+    const category = document.createElement('td');
+    category.className = 'purchase-draft-category';
+    category.textContent = item.category || 'Sin categoría';
 
-    const quantity = document.createElement('div');
+    const quantity = document.createElement('td');
     quantity.className = 'purchase-draft-cell purchase-draft-quantity';
     quantity.setAttribute('data-label','Cantidad');
     if (state.editingDraftId === item.draftId) {
@@ -790,22 +791,22 @@
       quantity.textContent = formatNumber(item.quantity);
     }
 
-    const unit = document.createElement('div');
+    const unit = document.createElement('td');
     unit.className = 'purchase-draft-cell purchase-draft-unit';
     unit.setAttribute('data-label','Unidad');
     unit.textContent = item.unit;
 
-    const price = document.createElement('div');
+    const price = document.createElement('td');
     price.className = 'purchase-draft-cell purchase-draft-money purchase-draft-price';
     price.setAttribute('data-label','Precio unitario');
     price.textContent = formatMoney(item.priceUsed);
 
-    const subtotal = document.createElement('div');
+    const subtotal = document.createElement('td');
     subtotal.className = 'purchase-draft-cell purchase-draft-money purchase-draft-subtotal';
     subtotal.setAttribute('data-label','Subtotal');
     subtotal.textContent = formatMoney(item.subtotal);
 
-    const actions = document.createElement('div');
+    const actions = document.createElement('td');
     actions.className = 'purchase-draft-actions';
     actions.setAttribute('data-label','Acciones');
     if (state.editingDraftId === item.draftId) {
@@ -823,7 +824,7 @@
       );
     }
 
-    row.append(name, quantity, unit, price, subtotal, actions);
+    row.append(name, category, quantity, unit, price, subtotal, actions);
     return row;
   }
 
@@ -832,6 +833,8 @@
     refs.draftList.innerHTML = '';
     state.draftItems.forEach(function(item){ refs.draftList.appendChild(draftRow(item)); });
     refs.draftEmpty.hidden = state.draftItems.length > 0;
+    const tableWrap = byId('purchaseDraftTableWrap');
+    if (tableWrap) tableWrap.hidden = state.draftItems.length === 0;
     refs.draftCount.textContent = state.draftItems.length + ' artículo' + (state.draftItems.length === 1 ? '' : 's');
     refs.draftTotal.textContent = formatMoney(groupTotal(state.draftItems));
     refs.draftPanel.classList.toggle('has-items', state.draftItems.length > 0);
