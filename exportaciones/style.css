@@ -18,6 +18,8 @@ a { color: var(--a33-gold, #d8b776); }
 .export-modules a[aria-current="page"] { background: var(--a33-surface-2); border-color: var(--a33-gold); font-weight: 700; }
 .export-card { background: var(--a33-surface, #151515); border: 1px solid var(--a33-border, #49402f); border-radius: 18px; padding: 26px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.section-heading > a { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 10px 18px; border: 1px solid var(--a33-gold, #d8b776); border-radius: 9px; background: #151515; color: var(--a33-gold, #d8b776); font-weight: 650; text-decoration: none; }
+.section-heading > a:hover { background: #222; }
 fieldset { border: 0; padding: 0; margin: 24px 0 0; min-width: 0; }
 label { display: block; font-size: 14px; font-weight: 650; margin-bottom: 8px; }
 select, input, button { font: inherit; min-height: 46px; border-radius: 9px; }
