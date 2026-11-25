@@ -12,6 +12,7 @@
   let draft = [];
   let sequence = 0;
   let saving = false;
+  let editing = null;
   function localDate(){
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
@@ -55,7 +56,7 @@
       if (selected && !suppliers.some(row=>row.id===selected)) select.add(new Option(selectedLabel.replace(/ \(no disponible\)$/, '') + ' (no disponible)',selected));
       select.value = selected;
       $('supplier-status').textContent = selected && !suppliers.some(row=>row.id===selected)
-        ? 'El proveedor seleccionado ya no está activo. Elige otro o selecciona Sin proveedor.'
+        ? editing && selected===editing.supplierId ? 'Proveedor histórico no disponible. Puedes conservarlo en esta compra o seleccionar otro.' : 'El proveedor seleccionado ya no está activo. Elige otro o selecciona Sin proveedor.'
         : suppliers.length ? '' : 'No hay proveedores activos. Puedes crearlos en Administrar proveedores.';
     }catch(error){
       select.innerHTML = '<option value="">Sin proveedor</option>';
@@ -89,11 +90,13 @@
   function renderLines(){
     const items = availableItems();
     $('purchase-lines').innerHTML = draft.map((line,index)=>{
-      const item = items.find(row=>row.id===line.itemId);
-      const presentations = availablePresentations(item);
-      const category = catalog.categories.find(row=>row.id===item?.categoryId);
+      const historical = line.original && line.itemId===line.original.articleId ? line.original : null;
+      const item = historical ? {id:historical.articleId,name:historical.articleName,categoryId:historical.categoryId,unitsPerBox:historical.unitsPerBox} : items.find(row=>row.id===line.itemId);
+      const presentations = [...new Set([...availablePresentations(items.find(row=>row.id===line.itemId)), ...(historical ? [historical.presentation] : [])])];
+      const category = historical ? {name:historical.categoryName} : catalog.categories.find(row=>row.id===item?.categoryId);
+      const options = historical ? [item,...items.filter(row=>row.id!==item.id)] : items;
       return `<div class="line" data-line="${line.id}"><div class="line-fields">
-        <label>Artículo ${index+1}<select data-field="itemId" required><option value="">Seleccione artículo…</option>${items.map(row=>`<option value="${escape(row.id)}" ${line.itemId===row.id ? 'selected' : ''}>${escape(row.name)}</option>`).join('')}${line.itemId && !item ? '<option selected value="'+escape(line.itemId)+'">Artículo no disponible</option>' : ''}</select></label>
+        <label>Artículo ${index+1}<select data-field="itemId" required><option value="">Seleccione artículo…</option>${options.map(row=>`<option value="${escape(row.id)}" ${line.itemId===row.id ? 'selected' : ''}>${escape(row.name)}</option>`).join('')}${line.itemId && !item ? '<option selected value="'+escape(line.itemId)+'">Artículo no disponible</option>' : ''}</select></label>
         <label>Presentación<select data-field="presentation" required ${item ? '' : 'disabled'}><option value="">Seleccione…</option>${presentations.map(value=>`<option value="${value}" ${line.presentation===value ? 'selected' : ''}>${value==='unit' ? 'Unidad' : 'Caja'}</option>`).join('')}</select></label>
         <label>Cantidad<input data-field="quantity" type="number" min="1" step="1" required value="${escape(line.quantity)}"></label>
         <label>Precio por ${line.presentation==='box' ? 'caja' : 'unidad'} (C$)<input data-field="price" type="number" min="0" step="0.01" required value="${escape(line.price)}"></label>
@@ -131,6 +134,9 @@
     if (!draft.length) throw new Error('Agrega al menos un artículo.');
     const items = availableItems();
     const lines = draft.map(line=>{
+      if (line.original && line.itemId===line.original.articleId && line.presentation===line.original.presentation) {
+        return {...line.original,quantity:Number(line.quantity),unitPriceCents:priceCents(line.price),totalCents:lineCents(line)};
+      }
       const item = items.find(row=>row.id===line.itemId);
       if (!item) throw new Error('Selecciona artículos y categorías activos. Revisa los artículos no disponibles.');
       if (!availablePresentations(item).includes(line.presentation)) throw new Error('Selecciona una presentación disponible para cada artículo.');
@@ -141,9 +147,9 @@
     const totalCents = lines.reduce((sum,line)=>sum+line.totalCents,0);
     if (!Number.isSafeInteger(totalCents)) throw new Error('El total está fuera del rango permitido.');
     const supplierId = $('purchase-supplier').value;
-    const supplier = supplierId ? readSuppliers().find(row=>row.id===supplierId && row.active) : null;
+    const supplier = supplierId && editing && supplierId===editing.supplierId ? {id:supplierId,name:editing.supplier} : supplierId ? readSuppliers().find(row=>row.id===supplierId && row.active) : null;
     if (supplierId && !supplier) throw new Error('El proveedor seleccionado no está activo. Elige otro o selecciona Sin proveedor.');
-    return {id:window.crypto?.randomUUID ? window.crypto.randomUUID() : 'gasto-'+Date.now()+'-'+Math.random().toString(36).slice(2),date,supplierId:supplier?.id || null,supplier:supplier?.name || '',reference:$('purchase-reference').value.trim(),note:$('purchase-note').value.trim(),currency:'NIO',lines,totalCents,createdAt:new Date().toISOString()};
+    return {id:window.crypto?.randomUUID ? window.crypto.randomUUID() : 'gasto-'+Date.now()+'-'+Math.random().toString(36).slice(2),date,supplierId:supplier?.id || null,supplier:supplier?.name || (editing && !editing.supplierId && !supplierId ? editing.supplier || '' : ''),reference:$('purchase-reference').value.trim(),note:$('purchase-note').value.trim(),currency:'NIO',lines,totalCents,createdAt:new Date().toISOString()};
   }
   async function savePurchase(event){
     event.preventDefault();
@@ -154,17 +160,60 @@
       const purchase = buildPurchase();
       const persist = ()=>{
         const state = readPurchases();
-        if (state.purchases.some(row=>row.id===purchase.id)) throw new Error('La compra ya fue registrada.');
-        state.purchases.push(purchase);
+        if (editing) {
+          const index = state.purchases.findIndex(row=>row.id===editing.id);
+          if (index<0 || JSON.stringify(state.purchases[index])!==JSON.stringify(editing)) throw new Error('La compra cambió en otra pestaña. Cancela la edición y vuelve a abrirla para revisar los datos actuales.');
+          state.purchases[index] = {...editing,...purchase,id:editing.id,createdAt:editing.createdAt,updatedAt:new Date().toISOString()};
+        } else {
+          if (state.purchases.some(row=>row.id===purchase.id)) throw new Error('La compra ya fue registrada.');
+          state.purchases.push(purchase);
+        }
         localStorage.setItem(PURCHASES_KEY,JSON.stringify(state));
       };
       if (navigator.locks?.request) await navigator.locks.request(PURCHASES_KEY,persist);
       else persist();
-      $('purchase-form').reset(); $('purchase-date').value = localDate(); draft = []; addLine();
-      $('purchase-status').textContent = `Compra guardada · ${purchase.date} · ${money(purchase.totalCents)}.`;
+      const wasEditing = Boolean(editing);
+      resetForm();
+      $('purchase-status').textContent = `Compra ${wasEditing ? 'actualizada' : 'guardada'} · ${purchase.date} · ${money(purchase.totalCents)}.`;
       renderHistory();
     }catch(error){ $('purchase-status').textContent = 'No se guardó la compra. ' + error.message; }
     finally{ saving=false; $('save-purchase').disabled=false; }
+  }
+  function resetForm(){
+    editing = null;
+    $('purchase-form').reset();
+    $('purchase-date').value = localDate();
+    $('new-title').textContent = 'Nueva compra';
+    $('save-purchase').textContent = 'Guardar compra';
+    $('cancel-edit').hidden = true;
+    renderSuppliers();
+    draft = []; addLine();
+  }
+  function editPurchase(id){
+    if (saving) return;
+    if ((editing || draft.some(line=>line.itemId) || $('purchase-reference').value || $('purchase-note').value || $('purchase-supplier').value) && !window.confirm('Hay datos en el formulario. ¿Descartarlos y editar esta compra?')) return;
+    try{
+      const purchase = readPurchases().purchases.find(row=>row.id===id);
+      if (!purchase) throw new Error('La compra ya no está disponible. Actualiza el historial.');
+      editing = JSON.parse(JSON.stringify(purchase));
+      loadCatalog();
+      $('purchase-date').value = purchase.date;
+      $('purchase-reference').value = purchase.reference || '';
+      $('purchase-note').value = purchase.note || '';
+      const select = $('purchase-supplier');
+      select.replaceChildren(new Option('Sin proveedor',''));
+      if (purchase.supplierId) select.add(new Option(purchase.supplier || 'Proveedor histórico',purchase.supplierId));
+      select.value = purchase.supplierId || '';
+      renderSuppliers();
+      draft = purchase.lines.map(line=>({id:++sequence,itemId:line.articleId,presentation:line.presentation,quantity:String(line.quantity),price:(line.unitPriceCents/100).toFixed(2),original:{...line}}));
+      renderLines();
+      $('new-title').textContent = 'Editar compra';
+      $('save-purchase').textContent = 'Guardar cambios';
+      $('cancel-edit').hidden = false;
+      $('purchase-status').textContent = 'Editando la compra completa. Puedes agregar o quitar artículos; debe quedar al menos uno.';
+      $('purchase-date').focus();
+      $('purchase-form').scrollIntoView({block:'start'});
+    }catch(error){ $('history-status').textContent = error.message; }
   }
   function renderHistory(){
     try{
@@ -178,6 +227,7 @@
       $('history-count').textContent = `${rows.length} compra(s)`;
       $('history-status').textContent = rows.length ? '' : 'No hay compras para esta consulta.';
       $('purchase-history').innerHTML = rows.map(row=>`<details class="purchase"><summary><strong>${escape(row.date)} · ${money(row.totalCents)}</strong> ${escape(row.supplier || 'Sin proveedor')} · ${row.lines.length} artículo(s)</summary>
+        <div class="actions"><span>Acciones</span><button type="button" class="secondary" data-edit="${escape(row.id)}">Editar</button></div>
         <dl><dt>Referencia</dt><dd>${escape(row.reference || '—')}</dd><dt>Observación</dt><dd>${escape(row.note || '—')}</dd><dt>Registro</dt><dd>${escape(row.id)}</dd></dl>
         <div class="table-wrap" role="region" aria-label="Artículos de la compra" tabindex="0"><table><thead><tr><th>Artículo / categoría</th><th>Presentación</th><th>Cantidad</th><th>Precio</th><th>Total</th></tr></thead><tbody>${row.lines.map(line=>`<tr><td>${escape(line.articleName)}<small>${escape(line.categoryName)}</small></td><td>${line.presentation==='box' ? 'Caja<small>'+escape(line.unitsPerBox)+' unidades</small>' : 'Unidad'}</td><td>${escape(line.quantity)}</td><td>${money(line.unitPriceCents)}</td><td>${money(line.totalCents)}</td></tr>`).join('')}</tbody></table></div></details>`).join('');
     }catch(error){
@@ -200,6 +250,7 @@
     if (!['itemId','presentation'].includes(field)) return;
     const line = draft.find(row=>row.id===Number(event.target.closest('[data-line]').dataset.line));
     line[field] = event.target.value;
+    if (field==='itemId') { delete line.original; }
     if (field==='itemId') line.presentation = availablePresentations(catalog.items.find(row=>row.id===line.itemId))[0] || '';
     setReferencePrice(line); renderLines();
     $('purchase-lines').querySelector(`[data-line="${line.id}"] [data-field="${field}"]`).focus();
@@ -209,6 +260,8 @@
     if (!button) return;
     draft = draft.filter(row=>row.id!==Number(button.dataset.remove)); renderLines(); $('add-line').focus();
   });
+  $('cancel-edit').addEventListener('click',()=>{if(saving)return;resetForm();$('purchase-status').textContent='Edición cancelada. No se modificó la compra.';});
+  $('purchase-history').addEventListener('click',event=>{const button=event.target.closest('[data-edit]');if(button)editPurchase(button.dataset.edit);});
   $('purchase-supplier').addEventListener('change',renderSuppliers);
   $('purchase-form').addEventListener('submit',savePurchase);
   $('filters').addEventListener('submit',event=>{event.preventDefault();renderHistory();});
