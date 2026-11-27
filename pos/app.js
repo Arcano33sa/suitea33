@@ -22727,10 +22727,10 @@ async function renderInventario(){
       <td>${p.name}</td>
       <td><input type="checkbox" class="inv-active" data-id="${p.id}" ${p.active===false?'':'checked'} disabled title="Administra Activo en Catálogos → Productos"></td>
       <td><input type="checkbox" class="inv-manage" data-id="${p.id}" ${p.manageStock===false?'':'checked'} disabled title="Administra Manejar inventario en Catálogos → Productos"></td>
+      <td><span class="stockpill ${st<=0?'low':''}">${st}</span></td>
       <td><input class="inv-inicial a33-num" data-a33-default="${init?init.qty:0}" data-id="${p.id}" type="number" inputmode="numeric" step="1" value="${init?init.qty:0}" ${disabled}></td>
       <td><input class="inv-repo" data-id="${p.id}" type="number" inputmode="numeric" step="1" placeholder="+" ${disabled}></td>
       <td><input class="inv-ajuste" data-id="${p.id}" type="number" inputmode="numeric" step="1" placeholder="+/-" ${disabled}></td>
-      <td><span class="stockpill ${st<=0?'low':''}">${st}</span></td>
       <td class="actions">
         <button class="act-guardar-inicial" data-id="${p.id}" ${disabled}>Guardar inicial</button>
         <button class="act-reponer" data-id="${p.id}" ${disabled}>Reponer</button>
