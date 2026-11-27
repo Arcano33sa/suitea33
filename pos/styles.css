@@ -2257,3 +2257,10 @@ body.purchase-modal-open #customer-picker-modal,body.purchase-modal-open #custom
 input[type="number"]{appearance:textfield;-moz-appearance:textfield}
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
+/* Acciones compactas de la compra completa. */
+#tbl-day .sale-actions{display:flex;gap:6px;flex-wrap:nowrap}
+#tbl-day .sale-action-icon{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:8px;flex:0 0 36px}
+#tbl-day .sale-action-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+#tbl-day .sale-action-icon:disabled{opacity:.4;cursor:not-allowed}
+.purchase-edit-product{min-width:0;flex:1;max-width:100%}

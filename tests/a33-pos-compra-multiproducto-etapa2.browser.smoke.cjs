@@ -141,7 +141,8 @@ let browser;
   assert.equal(rows.reduce((sum,s)=>sum+s.total,0),260);assert.equal(rows[0].discount,10);
   assert(rows.every(s=>s.customerId==='test-c'&&s.notes==='Compra de prueba'));
   assert.equal(await page.evaluate(async()=>(await getEventByIdPOS(9100)).extras[0].stock),9);
-  assert.equal(await page.locator('#tbl-day button.del-sale:disabled').count(),3);
+  // La eliminación completa de la compra está habilitada desde E2.
+  assert.equal(await page.locator('#tbl-day button.del-sale:disabled').count(),0);
   // USD con vuelto sobre toda la compra y cortesía por producto.
   await open();await add('Prueba A');await add('Prueba B');await pick();
   await page.locator('#purchase-more-options summary').click();await page.getByLabel('Cortesía: Prueba B',{exact:true}).check();

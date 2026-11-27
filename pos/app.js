@@ -1644,6 +1644,11 @@ function clearSaleCashTenderInvalidPOS(){
   });
 }
 
+function saleCashTenderExchangeRatePOS(){
+  const state = purchaseModalStatePOS;
+  return state?.editing && state.originalFx > 0 ? state.originalFx : posCurrencyCentralExchangeRatePOS();
+}
+
 function refreshSaleCashTenderUiPOS(opts){
   opts = opts || {};
   const card = document.getElementById('sale-cash-tender-card');
@@ -1666,7 +1671,7 @@ function refreshSaleCashTenderUiPOS(opts){
   try{ if (fields) fields.style.display = isUsd ? 'grid' : 'none'; }catch(_){ }
 
   if (fxUsed){
-    const saleFx = posCurrencyCentralExchangeRatePOS();
+    const saleFx = saleCashTenderExchangeRatePOS();
     if (opts.forceFx || document.activeElement !== fxUsed) fxUsed.value = saleFx != null ? formatExchangeRate2(saleFx) : '';
   }
 
@@ -1713,7 +1718,7 @@ function updateSaleCashTenderComputedPOS(){
   if (!isCash || mode !== 'usd_change_nio') return;
 
   const total = getSaleTenderTotalPOS();
-  const fx = posCurrencyCentralExchangeRatePOS();
+  const fx = saleCashTenderExchangeRatePOS();
   const usdRaw = parseNumPOS(document.getElementById('sale-cash-usd-received')?.value || '', NaN);
   const usd = Number.isFinite(usdRaw) ? saleTenderRound2POS(usdRaw) : NaN;
   const eq = (fx != null && Number.isFinite(usd)) ? saleTenderRound2POS(usd * fx) : NaN;
@@ -1788,7 +1793,7 @@ function validateSaleCashTenderPOS({ payment, total, courtesy, isReturn }){
     return { ok:false, msg:'El cobro USD con vuelto C$ solo aplica a ventas normales con total mayor que 0.' };
   }
 
-  const fx = posCurrencyCentralExchangeRatePOS();
+  const fx = saleCashTenderExchangeRatePOS();
   if (fx == null){
     try{ toggleInvalidBorderPOS(document.getElementById('sale-cash-fx-used'), true); }catch(_){ }
     return { ok:false, msg: POS_CURRENCY_TC_REQUIRED_MSG };
@@ -2455,6 +2460,7 @@ function cashV2CreditSaleOriginalAmount(sale){
   const s = sale && typeof sale === 'object' ? sale : {};
   const explicit = Number(s.creditOriginalAmount ?? s.montoCreditoOriginal);
   if (Number.isFinite(explicit) && explicit > 0) return round2(Math.abs(explicit));
+  if (s.purchaseCreditAllocated === true && explicit === 0) return 0;
   const total = Number(s.total || 0);
   return Number.isFinite(total) ? round2(Math.abs(total)) : 0;
 }
@@ -6532,11 +6538,39 @@ async function deleteFinanzasEntriesForSalePOS(saleId) {
   // para que el POS no se rompa al hacer: Promise.resolve(...).catch(...)
   if (saleId == null || saleId === '' || Number.isNaN(saleId)) return Promise.resolve();
 
+  const strict = arguments[1]?.strict === true;
   try {
     await ensureFinanzasDB();
   } catch (e) {
-    // Si no se puede abrir finanzasDB, no bloqueamos el borrado de la venta
+    if (strict) throw e;
+    // Si no se puede abrir finanzasDB, el flujo legacy conserva su aviso posterior.
     return Promise.resolve();
+  }
+
+  if (strict){
+    return await new Promise((resolve,reject)=>{
+      const transaction = finDb.transaction(['journalEntries','journalLines'],'readwrite');
+      const entries = transaction.objectStore('journalEntries'), lines = transaction.objectStore('journalLines');
+      const data = {};
+      let pending = 2, failure;
+      transaction.oncomplete = resolve;
+      transaction.onabort = ()=>reject(failure || transaction.error || new Error('No se pudieron revertir los asientos de la compra.'));
+      transaction.onerror = ()=>{};
+      for (const [name,store] of [['entries',entries],['lines',lines]]){
+        const request = store.getAll();
+        request.onsuccess = ()=>{
+          data[name] = request.result || [];
+          if (--pending) return;
+          try{
+            const targets = data.entries.filter(entry=>entry.origen === 'POS' && entry.origenId === saleId);
+            const ids = new Set(targets.map(entry=>String(entry.id)));
+            data.lines.filter(line=>ids.has(String(line.entryId)) || ids.has(String(line.idEntry)))
+              .forEach(line=>lines.delete(line.id));
+            targets.forEach(entry=>entries.delete(entry.id));
+          }catch(error){failure = error;transaction.abort();}
+        };
+      }
+    });
   }
 
   return new Promise((resolve, reject) => {
@@ -12565,7 +12599,10 @@ function validateSaleMinimalPOS(sale){
     const ex = Number(sale.extraId);
     if (!(Number.isFinite(ex) && ex > 0)) return { ok:false, msg:'Venta inválida: extra inválido.' };
   } else {
-    if (!pid) return { ok:false, msg:'Venta inválida: producto inválido.' };
+    const original = arguments[1];
+    const historicalIdentity = original && !original.isExtra && original.productId == null
+      && original.id === sale.id && getSaleProductNameSnapshotPOS(original) === name;
+    if (!pid && !historicalIdentity) return { ok:false, msg:'Venta inválida: producto inválido.' };
   }
 
   const pay = normalizePaymentMethodPOS(sale.payment || '');
@@ -13817,7 +13854,7 @@ function setSellControlsDisabledPOS(disabled){
   });
 
   // Botones borrar en tabla del día
-  document.querySelectorAll('#tbl-day button.del-sale').forEach(btn=>{
+  document.querySelectorAll('#tbl-day button.del-sale, #tbl-day button.edit-purchase').forEach(btn=>{
     btn.disabled = !!disabled;
   });
 
@@ -17097,6 +17134,14 @@ async function addAdjust(eventId, productId, qty, notes){
   // Ajustes/recálculos y sus reversiones deben refrescar el disponible del lote.
   try{ await queueLotsUsageSyncPOS(eventId); }catch(_){ }
 }
+function salesWithEditExclusionPOS(sales, exclusion){
+  if (exclusion && typeof exclusion === 'object'){
+    const ids = new Set((exclusion.ids || []).map(String));
+    return sales.filter(sale=>!ids.has(String(sale.id))).concat(exclusion.prepared || []);
+  }
+  return sales.filter(sale=>exclusion == null || String(sale.id) !== String(exclusion));
+}
+
 async function computeStock(eventId, productRef){
   const excludeSaleId = arguments[2];
   const evId = Number(eventId);
@@ -17120,9 +17165,8 @@ async function computeStock(eventId, productRef){
     .reduce((a,b)=> a + (Number(b && b.qty) || 0), 0);
 
   const allSales = await getAll('sales');
-  const salesForProduct = (Array.isArray(allSales) ? allSales : [])
-    .filter(s => s && Number(s.eventId) === evId && saleMatchesCatalogProductPOS(s, product))
-    .filter(s => excludeSaleId == null || String(s.id) !== String(excludeSaleId));
+  const salesForProduct = salesWithEditExclusionPOS(allSales || [],excludeSaleId)
+    .filter(s => s && Number(s.eventId) === evId && saleMatchesCatalogProductPOS(s, product));
 
   // Compatibilidad: event.fractionBatches solo representa Vaso ya convertido/disponible en flujos viejos.
   const isVaso = normName(product.name || product.nombre || '') === 'vaso';
@@ -18251,8 +18295,8 @@ async function computeLotFifoForEvent(eventId){
 
   // Si no hay evidencia de entrada por lote, devolvemos solo el debug "unassigned" (sin asignar consumo a lotes).
   const allSales = await getAll('sales');
-  const sales = (allSales || []).filter(s => s && Number(s.eventId) === evId && s.productId != null)
-    .filter(s => excludeSaleId == null || String(s.id) !== String(excludeSaleId));
+  const sales = salesWithEditExclusionPOS(allSales || [],excludeSaleId)
+    .filter(s => s && Number(s.eventId) === evId && s.productId != null);
 
   const soldNeedByKey = {};
   for (const s of sales){
@@ -22911,7 +22955,7 @@ function createSaleListRowPOS(s, bankMap, eventView = false){
   const dateOrTime = eventView ? escapeHtml(s.date || '—') : getSaleTimeTextPOS(s);
   const actions = eventView
     ? `<details><summary>Ver detalle</summary><div>Hora: ${escapeHtml(getSaleTimeTextPOS(s) || '—')}</div><div>Notas: ${escapeHtml(s.notes || '—')}</div></details>`
-    : `<button ${s.purchaseUid ? 'disabled title="Usa VENDER → devolución para revertir la compra"' : 'title="Eliminar venta"'} data-id="${s.id}" class="btn-danger btn-mini del-sale">Eliminar</button>`;
+    : `<div class="sale-actions"><button type="button" data-id="${s.id}" class="btn-outline btn-mini edit-purchase sale-action-icon" title="Editar compra completa" aria-label="Editar compra completa"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></svg></button><button type="button" title="Eliminar compra completa" aria-label="Eliminar compra completa" data-id="${s.id}" class="btn-danger btn-mini del-sale sale-action-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18 M9 6V3h6v3 M5 6l1 15h12l1-15 M10 10v7 M14 10v7"/></svg></button></div>`;
   tr.innerHTML = `<td>${seqTxt ? ('#' + seqTxt + ' · ') : ''}${dateOrTime}</td>
     <td>${escapeHtml(uiProductNamePOS(s.productName))}${getSaleLotCodePOS(s) ? `<div class="muted"><small>Lote: ${escapeHtml(getSaleLotCodePOS(s))}</small></div>` : ''}</td>
     <td>${s.qty}</td>
@@ -23041,7 +23085,7 @@ function editLegacyCupBatchesPOS(event,before,after,operationId){
 }
 
 function creditEditInventoryAppliedPOS(inventory,operationId){
-  return (inventory.movimientos || []).some(movement=>movement.id === operationId && movement.origen === 'pos/edicion-credito' && movement.state === 'APPLIED');
+  return (inventory.movimientos || []).some(movement=>movement.id === operationId && ['pos/edicion-credito','pos/edicion-compra','pos/eliminacion-compra'].includes(movement.origen) && movement.state === 'APPLIED');
 }
 
 function applyCreditEditInventoryPOS(operation,inventory){
@@ -23051,7 +23095,7 @@ function applyCreditEditInventoryPOS(operation,inventory){
   const after = operation.after;
   applyFinishedSaleToInventoryPOS(inv,before,-1);
   applyFinishedSaleToInventoryPOS(inv,after,1);
-  if (salePhysicalCupInventoryIdPOS(before)){
+  if (salePhysicalCupInventoryIdPOS(before) && physicalCupQtyFromSalePOS(before) > 0){
     let original = before;
     if (!physicalCupEffectTraceFromSalePOS(original)){
       const consumed = applyPhysicalCupEffectToInventoryPOS(inv,before);
@@ -23065,7 +23109,7 @@ function applyCreditEditInventoryPOS(operation,inventory){
     const restored = applyPhysicalCupRestoreToInventoryPOS(inv,original);
     if (!restored.ok || restored.reason === 'item_missing') throw new Error(restored.message || 'No se pudo restaurar el Vaso físico original.');
   }
-  if (salePhysicalCupInventoryIdPOS(after)){
+  if (salePhysicalCupInventoryIdPOS(after) && physicalCupQtyFromSalePOS(after) > 0){
     const consumed = applyPhysicalCupEffectToInventoryPOS(inv,after);
     if (!consumed.ok || consumed.reason === 'item_missing') throw new Error(consumed.message || 'El Vaso físico seleccionado ya no existe en Inventario Varios.');
   }
@@ -23086,8 +23130,8 @@ function applyCreditEditInventoryPOS(operation,inventory){
     }
   }
   inv.movimientos.push({id:operation.id,sourceId:operation.id,state:'APPLIED',
-    tipoItem:'venta_credito',itemId:String(after.id),tipoMovimiento:'edicion',cantidad:0,delta:0,
-    origen:'pos/edicion-credito',fecha:new Date(operation.ts).toISOString(),
+    tipoItem:operation.purchaseEdit ? 'venta_pos' : 'venta_credito',itemId:String(after.id),tipoMovimiento:operation.purchaseDelete ? 'eliminacion' : 'edicion',cantidad:0,delta:0,
+    origen:operation.purchaseDelete ? 'pos/eliminacion-compra' : operation.purchaseEdit ? 'pos/edicion-compra' : 'pos/edicion-credito',fecha:new Date(operation.ts).toISOString(),
     nota:`Venta #${after.seqId || after.id} · ${before.qty} ${before.productName || 'Producto'} → ${after.qty} ${after.productName || 'Producto'}`});
   return inv;
 }
@@ -23114,10 +23158,11 @@ function persistCreditEditInventoryPOS(operation){
 
 function processPendingCreditEditsPOS(saleId){
   const run = ()=>{
+    const complete = async()=>{ await processPurchaseEditOperationsPOS(); return processCreditEditOperationsPOS(saleId); };
     if (globalThis.navigator?.locks?.request){
-      return navigator.locks.request('a33-pos-credit-edit-effects',()=>processCreditEditOperationsPOS(saleId));
+      return navigator.locks.request('a33-pos-credit-edit-effects',complete);
     }
-    return processCreditEditOperationsPOS(saleId);
+    return complete();
   };
   const pending = creditEditEffectsPromisePOS.then(run,run);
   creditEditEffectsPromisePOS = pending.catch(()=>{});
@@ -23130,7 +23175,7 @@ async function syncCreditEditJournalPOS(sale){
   const cost = getSaleLineCostSnapshotPOS(sale);
   const unitCost = getSaleCostUnitSnapshotPOS(sale) || getCostoUnitarioProducto(getSaleProductNameSnapshotPOS(sale));
   const amountCost = Math.abs(cost) > 0.000001 ? round2(Math.abs(cost)) : round2(Math.max(0,unitCost) * Math.abs(Number(sale.qty)));
-  const expected = posFinBuildSaleAutoLinesPOS(sale,accounts,{amount:round2(Math.abs(Number(sale.total))),amountCost,isCourtesy:false,isReturn:false});
+  const expected = posFinBuildSaleAutoLinesPOS(sale,accounts,{amount:round2(Math.abs(Number(sale.total))),amountCost,isCourtesy:!!sale.courtesy,isReturn:!!sale.isReturn});
   const validation = posFinValidateAutoLinesPOS(expected,accounts);
   if (!validation.ok) throw new Error(validation.errors.join(' '));
   await createJournalEntryForSalePOS(sale);
@@ -23393,6 +23438,518 @@ async function saveCreditSaleEditPOS(draft){
   return {sale:prepared.sale,duplicate:false,warnings};
 }
 
+// Edición de una compra completa: conserva identidades y confirma todas las líneas juntas.
+async function preparePurchaseEditLinePOS(context,draft,operationId){
+  const {sale,event,data} = context;
+  if (!sale) throw new Error('No se pudo cargar el producto de la compra.');
+  if (!event || event.closedAt) throw new Error('Reabre el evento antes de editar esta venta.');
+  const lock = data.dayLocks.find(row=>row.key === makeDayLockKeyPOS(sale.eventId,sale.date));
+  if (lock?.isClosed) throw new Error('Reabre el día en Resumen antes de editar esta venta.');
+  const qty = Number(draft.qty);
+  const price = round2(Number(draft.unitPrice));
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('La cantidad debe ser mayor que cero.');
+  if (draft.unitPrice === '' || !Number.isFinite(Number(draft.unitPrice)) || price < 0) throw new Error('El precio debe ser válido y mayor o igual a cero.');
+  const next = structuredClone(sale);
+  const updatedEvent = structuredClone(event);
+  const originalItem = draft.itemKey === 'original';
+  let product = data.products.find(item=>saleMatchesCatalogProductPOS(sale,item));
+  if (!originalItem){
+    const selected = parseSelectedSellItemValue(String(draft.itemKey || ''));
+    if (selected?.kind === 'product'){
+      product = findCatalogProductByStableIdPOS(data.products,selected.productId);
+      if (!product || !productSellableInPOS(product)) throw new Error('Selecciona un producto activo y habilitado para POS.');
+      const snapshot = buildSaleProductSnapshotPOS(product,price);
+      Object.assign(next,snapshot,{isExtra:false,extraId:null,extraSnapshot:null,
+        manageStock:snapshot.productSnapshot.manageStock,vaso:false,fifoBreakdown:[]});
+    }else if (selected?.kind === 'extra'){
+      const extra = (event.extras || []).find(item=>String(item.id) === String(selected.id));
+      if (!extra || extra.active === false) throw new Error('El Extra seleccionado ya no está activo en este evento.');
+      product = null;
+      Object.assign(next,{isExtra:true,extraId:extra.id,productId:null,productInternalId:null,
+        productName:extra.name,productNameSnapshot:extra.name,productSnapshot:null,
+        vasoFisicoId:'',physicalCupInventoryIdSnapshot:'',productClassSnapshot:'',
+        manageStock:false,vaso:false,fifoBreakdown:[],extraSnapshot:{kind:'extra',extraId:extra.id,
+          name:extra.name,unitPrice:price,unitCost:Number(extra.unitCost) || 0,capturedAt:new Date().toISOString()}});
+    }else throw new Error('Selecciona un producto válido.');
+  }
+  const sameProduct = !!next.isExtra === !!sale.isExtra && (next.isExtra
+    ? String(next.extraId) === String(sale.extraId)
+    : String(next.productId ?? '') === String(sale.productId ?? '') && (next.productId != null || next.productName === sale.productName));
+  const inventoryChanged = !sameProduct || qty !== Math.abs(Number(sale.qty));
+  if (inventoryChanged && (salePhysicalCupInventoryIdPOS(next) || isLegacyCupSaleRecordPOS(next)) && !Number.isInteger(qty)) throw new Error('La cantidad de vasos debe ser un número entero.');
+  let customerId = sale.customerId;
+  let customerName = sale.customerName || sale.customer || '';
+  if (String(draft.customerId) !== 'original'){
+    const catalog = loadCustomerCatalogPOS();
+    const customer = catalog.find(item=>String(item.id) === String(draft.customerId) && item.isActive !== false && !item.mergedIntoId);
+    if (!customer) throw new Error('Selecciona un cliente activo del catálogo.');
+    customerId = customer.id; customerName = customer.name;
+  }
+  next.customerId = customerId ?? null;
+  next.customer = next.customerName = customerName;
+  next.notes = String(draft.notes ?? '');
+  next.qty = sale.isReturn ? -qty : qty;
+  next.unitPrice = next.unitPriceSnapshot = price;
+  const economicChanged = true;
+  const perUnit = draft.courtesy ? 0 : Number(draft.discountPerUnit || 0);
+  if (!Number.isFinite(perUnit) || perUnit < 0) throw new Error('Descuento inválido.');
+  next.courtesy = !!draft.courtesy;
+  next.courtesyTo = next.courtesy ? customerName : '';
+  next.isReturn = !!sale.isReturn;
+  if (economicChanged && perUnit > price) throw new Error('El precio unitario debe cubrir el descuento por unidad de esta venta.');
+  const total = next.courtesy ? 0 : (next.isReturn ? -1 : 1)*round2(round2(qty*price)-round2(qty*perUnit));
+  if (!Number.isFinite(total)) throw new Error('Total inválido.');
+  const warnings = [];
+  {
+    if (inventoryChanged){ next.creditInventoryRevision = operationId; next.invEffects = {}; }
+    editLegacyCupBatchesPOS(updatedEvent,emptyPurchaseEditLinePOS(sale),next,operationId);
+    if (next.isExtra){
+      const extra = (updatedEvent.extras || []).find(item=>String(item.id) === String(next.extraId));
+      if (!extra || (!next.isReturn && Number(extra.stock || 0) < qty)) throw new Error('El Extra no tiene suficiente stock para esta cantidad.');
+      extra.stock = Number(extra.stock || 0) - next.qty;
+      extra.updatedAt = Date.now();
+    }else if (inventoryChanged && !isLegacyCupSaleRecordPOS(next) && !next.isReturn){
+      if (product){
+        const guard = await guardLotAvailabilityBeforeSalePOS(sale.eventId,next.productName,qty,next.productId,product,draft.exclusion);
+        if (!guard.ok) throw new Error(guard.msg);
+        if (guard.warn) warnings.push(`Lotes insuficientes. Disponible ${guard.remaining}, cantidad ${qty}.`);
+        if (saleManagesFinishedInventoryPOS(next)){
+          const available = await computeStock(sale.eventId,product,draft.exclusion);
+          if (available < qty) warnings.push(`Stock insuficiente de ${next.productName}. Disponible ${available}, cantidad ${qty}.`);
+        }
+        const availableLots = await getAvailableLotsForProductPOS(sale.eventId,next.productId,next.productName,data.products,draft.exclusion);
+        let need = qty;
+        const allocations = [];
+        for (const lot of availableLots){
+          const taken = Math.min(need,Number(lot.remaining) || 0);
+          if (taken > 0){ allocations.push({...lot,qty:taken,cantidad:taken}); need -= taken; }
+          if (need <= 0) break;
+        }
+        const primary = allocations[0];
+        Object.assign(next,{loteAllocations:allocations,lotAllocations:allocations,
+          loteId:primary?.loteId ?? null,loteCargaId:primary?.loteCargaId ?? null,
+          loteGroupKey:primary?.loteGroupKey || '',loteCodigo:primary?.loteCodigo || '',
+          lotCode:primary?.loteCodigo || '',batchCode:primary?.loteCodigo || '',
+          lotTrace:{...(primary || {}),allocations}});
+      }else if (qty > Number(sale.qty) && saleManagesFinishedInventoryPOS(next)){
+        warnings.push('El producto original ya no está en Catálogos. Revisa el stock antes de aumentar la cantidad.');
+      }
+    }
+    if (inventoryChanged && next.isReturn && !next.isExtra && !isLegacyCupSaleRecordPOS(next)){
+      const returned = await resolveReturnLotAllocationPOS(sale.eventId,next.productId,qty);
+      const allocations = returned.allocations || [], primary = allocations[0];
+      Object.assign(next,{loteAllocations:allocations,lotAllocations:allocations,loteId:primary?.loteId ?? null,
+        loteCargaId:primary?.loteCargaId ?? null,loteGroupKey:primary?.loteGroupKey || '',loteCodigo:primary?.loteCodigo || '',
+        lotCode:primary?.loteCodigo || '',batchCode:primary?.loteCodigo || '',lotTrace:{...(primary || {}),allocations}});
+    }
+    if (next.isExtra || isLegacyCupSaleRecordPOS(next)){
+      Object.assign(next,{loteAllocations:[],lotAllocations:[],loteId:null,loteCargaId:null,
+        loteGroupKey:'',loteCodigo:'',lotCode:'',batchCode:'',lotTrace:{allocations:[]}});
+    }
+    const physicalId = salePhysicalCupInventoryIdPOS(next);
+    if (physicalId && inventoryChanged){
+      const sourceId = physicalCupSourceIdPOS(next,physicalId);
+      next.invEffects.physicalCup = {itemId:physicalId,qtyApplied:qty,state:'APPLIED',sourceId,movementId:physicalCupMovementIdPOS(sourceId)};
+    }
+    if (inventoryChanged && isLegacyCupSaleRecordPOS(next)) next.invEffects.vasos12oz = {qtyApplied:qty,sourceId:getVasos12ozSourceIdFromSalePOS(next),state:'APPLIED'};
+  }
+  if (economicChanged){
+    let unitCost = getSaleCostUnitSnapshotPOS(sale);
+    let costSource = sale.costSourceSnapshot || sale.costSource || 'snapshot_original';
+    if (next.isExtra && !sameProduct){ unitCost = Number(next.extraSnapshot?.unitCost) || 0; costSource = 'extra_catalogo'; }
+    else if (product && (!sameProduct || (inventoryChanged && saleLotAllocationsPOS(next).length))){
+      const cost = await resolveSaleUnitCostPOS(sale.eventId,next.productId,next.productName,product,data.products,saleLotAllocationsPOS(next));
+      unitCost = cost.unitCost; costSource = cost.source;
+    }
+    const economic = buildSaleEconomicSnapshotPOS({unitPrice:price,qty:next.qty,discount:round2(qty * perUnit),total,unitCost,costSource,courtesy:next.courtesy,isReturn:next.isReturn});
+    Object.assign(next,economic,{total,discount:round2(qty * perUnit),discountPerUnit:perUnit});
+    next.economicSnapshot = {...(next.economicSnapshot || {}),...economic,kind:next.isExtra ? 'extra' : 'product',
+      extraId:next.isExtra ? next.extraId : null,productId:next.productId,
+      productName:next.productName,qty:next.qty,unitPriceSnapshot:price,loteAllocations:saleLotAllocationsPOS(next),
+      loteCodigo:next.loteCodigo || '',loteId:next.loteId ?? null,capturedAt:new Date().toISOString()};
+    if (next.productSnapshot) next.productSnapshot = {...next.productSnapshot,price,unitPrice:price};
+    if (next.extraSnapshot) next.extraSnapshot = {...next.extraSnapshot,unitPrice:price};
+  }
+  next.updatedAt = Date.now();
+  return {sale:next,event:updatedEvent,inventoryChanged,warnings};
+}
+
+const PURCHASE_EDIT_QUEUE_PREFIX_POS = 'a33_pos_purchase_edit:';
+
+function purchaseEditIsInactivePOS(sale){
+  const status = String(sale.status || sale.estado || sale.saleStatus || sale.state || '').trim().toUpperCase();
+  return saleIsInactiveForPhysicalCupPOS(sale) || /^(ANULAD[AO]|VOID(ED)?|CANCELAD[AO]|CANCELLED|CANCELED|REVERTID[AO]|REVERSED|ELIMINAD[AO]|DELETED)$/.test(status);
+}
+
+function purchaseEditLinesPOS(sales,sale){
+  return sales.filter(item=>sale.purchaseUid ? item.purchaseUid === sale.purchaseUid : item.id === sale.id)
+    .sort((a,b)=>Number(a.purchaseLineIndex || 0)-Number(b.purchaseLineIndex || 0));
+}
+
+function emptyPurchaseEditLinePOS(sale){
+  return {...sale,qty:0,total:0,isExtra:false,vaso:false,productId:null,productName:'',
+    productNameSnapshot:'',productSnapshot:null,manageStock:false,vasoFisicoId:'',
+    physicalCupInventoryIdSnapshot:'',productClassSnapshot:'',invEffects:{},fifoBreakdown:[]};
+}
+
+function purchaseEditInventoryPOS(operation,inventory){
+  let result = inventory;
+  // Restore the whole purchase before consuming its replacement (also permits swapping products).
+  for (const pair of operation.pairs.filter(pair=>pair.inventoryChanged)){
+    result = applyCreditEditInventoryPOS({id:pair.id+':restore',ts:operation.ts,inventoryChanged:true,purchaseEdit:true,purchaseDelete:operation.kind === 'DELETE_PURCHASE',
+      before:pair.before,after:emptyPurchaseEditLinePOS(pair.before)},result);
+  }
+  for (const pair of operation.pairs.filter(pair=>pair.inventoryChanged)){
+    result = applyCreditEditInventoryPOS({id:pair.id,ts:operation.ts,inventoryChanged:true,purchaseEdit:true,purchaseDelete:operation.kind === 'DELETE_PURCHASE',
+      before:emptyPurchaseEditLinePOS(pair.after),after:pair.after},result);
+  }
+  return result;
+}
+
+function persistPurchaseEditInventoryPOS(operation){
+  const pairs = operation.pairs.filter(pair=>pair.inventoryChanged);
+  if (!pairs.length) return;
+  const applied = inv=>pairs.every(pair=>creditEditInventoryAppliedPOS(inv,pair.id));
+  for (let attempt=0;attempt<3;attempt++){
+    const current = readPhysicalCupInventorySharedPOS();
+    if (applied(current.data)) return;
+    const updated = purchaseEditInventoryPOS(operation,current.data);
+    if (window.A33Storage && typeof A33Storage.sharedSet === 'function'){
+      const saved = A33Storage.sharedSet(STORAGE_KEY_INVENTARIO,updated,{
+        source:operation.kind === 'DELETE_PURCHASE' ? 'pos/eliminacion-compra' : 'pos/edicion-compra',baseRev:current.meta.rev ?? null,conflictPolicy:'block'});
+      if (saved?.conflict) continue;
+      if (!saved?.ok) throw new Error(saved?.message || 'No se pudo guardar el inventario de la compra.');
+    }else if (!A33Storage.setItem(STORAGE_KEY_INVENTARIO,JSON.stringify(updated))){
+      throw new Error('No se pudo guardar el inventario de la compra.');
+    }
+    if (!applied(invCentralLoadPOS())) throw new Error('No se pudo verificar el inventario de la compra.');
+    return;
+  }
+  throw new Error('El inventario cambió. Recarga para completar el ajuste pendiente.');
+}
+
+async function processPurchaseEditOperationsPOS(){
+  if (!db) await openDB();
+  const pending = (await getAll('meta')).filter(row=>String(row.id).startsWith(PURCHASE_EDIT_QUEUE_PREFIX_POS) && row.value?.status === 'PENDING');
+  for (const row of pending){
+    const operation = row.value;
+    persistPurchaseEditInventoryPOS(operation);
+    const period = periodKeyFromDatePOS(operation.date);
+    bumpConsolSalesRevPOS(period); clearConsolLiveCachePOS(period);
+    if (operation.pairs.some(pair=>pair.inventoryChanged && (saleTouchesLotsPOS(pair.before) || saleTouchesLotsPOS(pair.after)))){
+      const lots = await queueLotsUsageSyncPOS(operation.eventId);
+      if (lots?.ok === false) throw new Error('El ajuste de lotes quedó pendiente. Recarga para reintentar.');
+    }
+    if (isFinanzasPerSaleEnabled() || operation.kind === 'DELETE_PURCHASE'){
+      await ensureFinanzasDB();
+      for (const pair of operation.pairs){
+        if (pair.removed || (!Number(pair.after.total) && !Number(getSaleLineCostSnapshotPOS(pair.after)))){
+          await deleteFinanzasEntriesForSalePOS(pair.before.id,{strict:operation.kind === 'DELETE_PURCHASE'});
+          await new Promise((resolve,reject)=>{
+            const tx = finDb.transaction('journalEntries','readonly');
+            const request = tx.objectStore('journalEntries').getAll();
+            let remains = false;
+            request.onsuccess = ()=>{ remains = request.result.some(entry=>entry.origen === 'POS' && entry.origenId === pair.before.id); };
+            tx.oncomplete = ()=>remains ? reject(new Error('El asiento del producto retirado quedó pendiente.')) : resolve();
+            tx.onabort = ()=>reject(tx.error || new Error('No se pudo verificar el asiento retirado.'));
+            tx.onerror = ()=>{};
+          });
+        }else await syncCreditEditJournalPOS(pair.after);
+      }
+    }
+    await put('meta',{id:row.id,value:{...operation,status:'DONE',completedAt:Date.now()}});
+    notifyCreditStateChangedPOS({eventId:operation.eventId,reason:operation.kind === 'DELETE_PURCHASE' ? 'purchase-delete-completed' : 'purchase-edit-completed'});
+  }
+}
+
+async function savePurchaseEditPOS(draft){
+  if (!draft.operationId || !draft.saleId || !draft.items?.length) throw new Error('La compra debe conservar al menos un producto.');
+  await processPendingCreditEditsPOS();
+  const context = await readCreditEditContextPOS(draft.saleId);
+  const old = context.sale && purchaseEditLinesPOS(context.data.sales,context.sale);
+  const prior = context.data.meta.find(row=>row.id === PURCHASE_EDIT_QUEUE_PREFIX_POS+draft.operationId);
+  const fingerprint = JSON.stringify(draft);
+  if (prior){
+    if (prior.value.fingerprint !== fingerprint) throw new Error('Esta edición ya se guardó con otros datos. Cierra y vuelve a abrir la compra.');
+    return {records:old || [],warnings:[],duplicate:true};
+  }
+  if (!old?.length || JSON.stringify(old) !== draft.expectedLines) throw new Error('La compra cambió. Cierra el editor y vuelve a abrirlo.');
+  const {event,data} = context;
+  if (old.some(purchaseEditIsInactivePOS)) throw new Error('La compra contiene una venta anulada y no admite edición.');
+  if (!event || event.closedAt) throw new Error('Reabre el evento antes de editar esta compra.');
+  if (data.dayLocks.some(lock=>lock.key === makeDayLockKeyPOS(event.id,context.sale.date) && lock.isClosed)) throw new Error('Reabre el día en Resumen antes de editar esta compra.');
+  const payment = normalizePaymentMethodPOS(draft.payment);
+  const cashDay = data[CASH_V2_STORE].find(row=>String(row.eventId) === String(event.id) && row.dayKey === context.sale.date);
+  if (cashDay && cashV2NormStatus(cashDay.status) === 'CLOSED' && cashV2GetFlagForEventObj(event)) throw new Error('Reabre la caja de este día antes de editar la compra.');
+  if (!['efectivo','transferencia','tarjeta','credito'].includes(payment)) throw new Error('Método de pago inválido.');
+  const paidById = new Map(old.map(sale=>[sale.id,cashV2CreditSaleSnapshot(sale,data[CASH_V2_STORE]).paid]));
+  const paid = round2([...paidById.values()].reduce((sum,value)=>sum+value,0));
+  if (paid > 0.009 && payment !== 'credito') throw new Error('La compra tiene abonos. Debe conservar el método crédito.');
+  let customer = resolveCustomerIdForSalePOS(draft.customerName,draft.customerId);
+  if (!customer?.id && String(draft.customerId || '') === String(context.sale.customerId || '') && String(draft.customerName || '') === String(context.sale.customerName || context.sale.customer || '')){
+    customer = {id:context.sale.customerId || null,displayName:context.sale.customerName || context.sale.customer || ''};
+  }
+  if (!customer?.id && String(draft.customerName || '').trim()) throw new Error('Selecciona un cliente del catálogo.');
+  if ((payment === 'credito' || draft.items.some(item=>item.courtesy)) && !customer?.id) throw new Error('Selecciona un cliente para el crédito o la cortesía.');
+  let bank = null;
+  if (isBankPaymentMethodPOS(payment)){
+    bank = (await getAllBanksSafe()).find(item=>String(item.id) === String(draft.bankId) && isBankForPaymentPOS(item,payment));
+    if (!bank) throw new Error('Selecciona un banco activo para este método de pago.');
+  }
+  const banksSnapshot = JSON.stringify(await getAllBanksSafe());
+  let updatedEvent = structuredClone(event);
+  // Restore event-local stock in memory; nothing is persisted until every line passes validation.
+  for (const sale of old){
+    if (sale.isExtra){
+      const extra = (updatedEvent.extras || []).find(item=>String(item.id) === String(sale.extraId));
+      if (!extra) throw new Error('Un Extra original ya no existe. No se puede restaurar su stock.');
+      extra.stock = Number(extra.stock || 0)+Number(sale.qty);
+    }
+    editLegacyCupBatchesPOS(updatedEvent,sale,emptyPurchaseEditLinePOS(sale),draft.operationId);
+  }
+  const records = [], pairs = [], warnings = [], used = new Set(), keys = new Set();
+  let nextId = data.sales.reduce((max,sale)=>Math.max(max,Number(sale.id) || 0),0)+1;
+  const purchaseUid = context.sale.purchaseUid || ('edit:'+context.sale.uid+':'+context.sale.id);
+  for (const [index,item] of draft.items.entries()){
+    if (keys.has(item.key) && !old.some(sale=>String(sale.id) === String(item.saleId) && (item.isExtra ? sale.isExtra && String(sale.extraId) === String(item.extraId) : !sale.isExtra && String(saleStableProductIdPOS(sale)) === String(item.productId || '')))) throw new Error('Consolida cada producto en una sola línea.');
+    keys.add(item.key);
+    let original = old.find(sale=>String(sale.id) === String(item.saleId));
+    if (item.saleId != null && !original) throw new Error('Un producto ya no pertenece a esta compra.');
+    if (original && used.has(original.id)) throw new Error('Producto repetido en la edición.');
+    if (original) used.add(original.id);
+    const added = !original;
+    const id = original?.id ?? nextId++;
+    const before = original || emptyPurchaseEditLinePOS({...context.sale,id,uid:purchaseUid+':edit:'+draft.operationId+':'+index,
+      creditPayments:[],creditPaidAmount:0,creditOriginalAmount:0,creditInventoryRevision:null});
+    if (added){
+      for (const key of ['creditEditHistory','montoCreditoPagado','montoCreditoOriginal','paidAmount','amountPaid','creditBalance','creditStatus','estadoCredito','creditUpdatedAt','purchaseCreditAllocated']) delete before[key];
+      before.createdAt = Date.now();
+    }
+    const opId = draft.operationId+':'+id;
+    const prepared = await preparePurchaseEditLinePOS({sale:before,event:updatedEvent,data},
+      {itemKey:original && (original.isExtra ? item.isExtra && String(original.extraId) === String(item.extraId) : !item.isExtra && String(saleStableProductIdPOS(original)) === String(item.productId || '')) ? 'original' : item.isExtra ? 'extra:'+item.extraId : 'product:'+encodeURIComponent(item.productId),
+        qty:item.qty,unitPrice:item.unitPrice,discountPerUnit:item.discountPerUnit,courtesy:item.courtesy,
+        customerId:customer?.id && loadCustomerCatalogPOS().some(item=>String(item.id) === String(customer.id) && item.isActive !== false && !item.mergedIntoId) ? customer.id : 'original',notes:draft.notes,
+        exclusion:{ids:old.map(sale=>sale.id),prepared:records}},opId);
+    updatedEvent = prepared.event;
+    const sale = prepared.sale;
+    sale.customerId = customer?.id ?? null;
+    sale.customer = sale.customerName = customer?.displayName || '';
+    sale.courtesyTo = sale.courtesy ? sale.customerName : '';
+    Object.assign(sale,{payment,paymentMethod:payment,bankId:bank?.id ?? null,bankName:bank?.name ?? null,bankType:bank ? getBankTypePOS(bank) : null});
+    // Reset tender data before applying the new purchase-wide tender.
+    for (const key of ['cashTenderMode','cashTenderLabel','cashPaymentCurrency','cashExpectedDelta','cashBreakdown','fxUsed','exchangeRateUsed','usdReceived','receivedUSD','equivalentC','equivalentNIO','changeC','changeNIO','changeCurrency','purchaseTenderOwner']) delete sale[key];
+    const commission = buildSaleCardCommissionSnapshotPOS({payment,bank,ventaNeta:sale.ventaNeta,utilidadAntesComision:sale.utilidad,courtesy:sale.courtesy});
+    for (const target of [sale,sale.economicSnapshot]){
+      for (const key of ['commissionPctSnapshot','commissionAmountSnapshot','commissionLabelSnapshot','utilidadAntesComision','utilidadDespuesComision']) delete target[key];
+      applySaleCardCommissionSnapshotPOS(target,commission);
+    }
+    if (added){
+      const seq = reserveSaleSeqInMemoryPOS(updatedEvent,sale,data.sales.concat(records));
+      if (seq.nextSeq == null) throw new Error('No se pudo reservar el número de venta.');
+      updatedEvent = seq.eventUpdated;
+    }
+    records.push(sale); warnings.push(...prepared.warnings);
+    pairs.push({id:opId,before,after:sale,inventoryChanged:prepared.inventoryChanged,added});
+  }
+  const total = round2(records.reduce((sum,sale)=>sum+Number(sale.total),0));
+  if (paid > 0.009 && paid-total > 0.009) throw new Error('El total no puede ser menor que los C$ '+cashV2FmtMoney(paid)+' ya cobrados.');
+  for (const sale of old.filter(sale=>!used.has(sale.id))){
+    if (paidById.get(sale.id) > 0.009) throw new Error('Este producto tiene abonos vinculados. Conserva su línea para mantener el historial de cobros; puedes cambiar sus cantidades y precio.');
+    pairs.push({id:draft.operationId+':'+sale.id,before:sale,after:emptyPurchaseEditLinePOS(sale),inventoryChanged:true,removed:true});
+  }
+  // Preserve collection identities. Allocate credit between the retained lines without moving a payment.
+  let creditRemainder = round2(total-paid);
+  for (const sale of records){
+    const linePaid = paidById.get(sale.id) || 0;
+    if (payment === 'credito'){
+      const extra = Math.min(Math.max(0,round2(sale.total-linePaid)),Math.max(0,creditRemainder));
+      const originalAmount = round2(linePaid+extra);
+      creditRemainder = round2(creditRemainder-extra);
+      Object.assign(sale,{purchaseCreditAllocated:true,creditOriginalAmount:originalAmount,creditPaidAmount:linePaid,creditBalance:extra,
+        creditStatus:extra <= 0.009 ? 'PAGADA' : linePaid > 0 ? 'ABONADA' : 'PENDIENTE',creditUpdatedAt:Date.now()});
+      sale.estadoCredito = sale.creditStatus;
+    }else{
+      for (const key of ['purchaseCreditAllocated','creditOriginalAmount','creditPaidAmount','creditBalance','creditStatus','estadoCredito','creditUpdatedAt','montoCreditoOriginal','montoCreditoPagado','paidAmount','amountPaid']) delete sale[key];
+    }
+  }
+  if (payment === 'credito' && (total <= 0 || records.some(sale=>sale.courtesy || sale.isReturn))) throw new Error('El crédito requiere una compra con importe positivo y sin cortesías ni devoluciones.');
+  const tender = validateSaleCashTenderPOS({payment,total,courtesy:records.every(sale=>sale.courtesy),isReturn:!!context.sale.isReturn});
+  if (!tender.ok) throw new Error(tender.msg);
+  applyPurchaseTenderPOS(records,tender.tender);
+  const purchaseFingerprint = purchaseFingerprintPOS(records);
+  records.forEach((sale,index)=>{
+    Object.assign(sale,{purchaseUid,purchaseTotal:total,purchaseLineCount:records.length,purchaseLineIndex:index,purchaseFingerprint});
+    const minimal = validateSaleMinimalPOS(sale,old.find(original=>original.id === sale.id)), card = validateSaleCardCommissionSnapshotPOS(sale);
+    if (!minimal.ok || !card.ok) throw new Error(minimal.msg || card.msg);
+  });
+  const operation = {id:draft.operationId,ts:Date.now(),date:context.sale.date,eventId:event.id,pairs,fingerprint,status:'PENDING',
+    before:old,after:records};
+  purchaseEditInventoryPOS(operation,readPhysicalCupInventorySharedPOS().data);
+  if (warnings.length && !draft.allowOversell){
+    const error = new Error(warnings.join('\n')); error.stockWarning = true; throw error;
+  }
+  if (JSON.stringify(await getAllBanksSafe()) !== banksSnapshot) throw new Error('Los bancos cambiaron durante la edición. Reintenta.');
+  await new Promise((resolve,reject)=>{
+    const names = Object.keys(data), transaction = db.transaction(names,'readwrite');
+    let pending = names.length, failure;
+    transaction.oncomplete = resolve;
+    transaction.onabort = ()=>reject(failure || transaction.error || new Error('No se guardó la edición.'));
+    transaction.onerror = ()=>{};
+    for (const name of names){
+      const request = transaction.objectStore(name).getAll();
+      request.onsuccess = ()=>{
+        try{
+          if (JSON.stringify(request.result || []) !== JSON.stringify(data[name])){
+            failure = new Error('Los datos cambiaron durante la edición. Reintenta para verificar inventario y cobros.'); transaction.abort(); return;
+          }
+          if (--pending) return;
+          const store = transaction.objectStore('sales');
+          pairs.filter(pair=>pair.removed).forEach(pair=>store.delete(pair.before.id));
+          records.forEach(sale=>store.put(sale));
+          transaction.objectStore('events').put(updatedEvent);
+          transaction.objectStore('meta').put({id:PURCHASE_EDIT_QUEUE_PREFIX_POS+draft.operationId,value:operation});
+        }catch(error){ failure = error; transaction.abort(); }
+      };
+    }
+  });
+  const notices = [];
+  try{ await processPendingCreditEditsPOS(); }
+  catch(error){ notices.push({area:'ajustes pendientes',message:'Edición guardada. '+error.message}); }
+  notifyCreditStateChangedPOS({eventId:event.id,reason:'purchase-edited'});
+  return {records,warnings:notices};
+}
+
+
+// Eliminación de compra completa: confirmación sobre una foto exacta y reversos recuperables.
+function validatePurchaseDeletionPOS(context){
+  const {sale,event,data} = context;
+  if (!sale) throw new Error('La compra ya no existe. Actualiza el listado.');
+  const lines = purchaseEditLinesPOS(data.sales,sale);
+  if (lines.some(line=>line.eventId !== sale.eventId || line.date !== sale.date || !!line.isReturn !== !!sale.isReturn)){
+    throw new Error('Los productos tienen datos incompatibles. No se puede eliminar la compra de forma segura.');
+  }
+  if (lines.some(purchaseEditIsInactivePOS)) throw new Error('La compra contiene ventas anuladas. Revisa su historial antes de eliminarla.');
+  if (!event || event.closedAt) throw new Error('Reabre el evento antes de eliminar esta compra.');
+  if (data.dayLocks.some(lock=>lock.key === makeDayLockKeyPOS(event.id,sale.date) && lock.isClosed)){
+    throw new Error('Reabre el día en Resumen antes de eliminar esta compra.');
+  }
+  const cashDay = data[CASH_V2_STORE].find(row=>String(row.eventId) === String(event.id) && row.dayKey === sale.date);
+  if (cashDay && cashV2NormStatus(cashDay.status) === 'CLOSED' && cashV2GetFlagForEventObj(event)){
+    throw new Error('Reabre la caja de este día antes de eliminar la compra.');
+  }
+  for (const line of lines){
+    if (!Number.isFinite(Number(line.qty)) || !Number(line.qty) || !Number.isFinite(Number(line.total))){
+      throw new Error('Un producto tiene cantidad o importe inválido. No se puede revertir la compra de forma segura.');
+    }
+    const linkedPaid = cashV2CreditPaidFromMovements(data[CASH_V2_STORE],line.id);
+    const hasCredit = normalizePaymentMethodPOS(line.payment || line.paymentMethod || '') === 'credito'
+      || (Array.isArray(line.creditPayments) && line.creditPayments.length) || linkedPaid > 0.009;
+    if (hasCredit && cashV2CreditSaleSnapshot(line,data[CASH_V2_STORE]).paid > 0.009){
+      throw new Error('Esta compra tiene abonos o cobros vinculados. No puede eliminarse sin una reversión contable completa.');
+    }
+  }
+  return lines;
+}
+
+async function deletePurchaseAtomicPOS({saleId,operationId,expectedLines}){
+  if (saleId == null || !String(operationId || '').trim() || typeof expectedLines !== 'string'){
+    throw new Error('Faltan los datos de confirmación de la compra.');
+  }
+  await processPendingCreditEditsPOS();
+  const context = await readCreditEditContextPOS(saleId);
+  const fingerprint = JSON.stringify({saleId:String(saleId),expectedLines});
+  const prior = context.data.meta.find(row=>row.id === PURCHASE_EDIT_QUEUE_PREFIX_POS+operationId);
+  if (prior){
+    if (prior.value.kind !== 'DELETE_PURCHASE' || prior.value.fingerprint !== fingerprint){
+      throw new Error('Este intento de eliminación ya se utilizó para otros datos.');
+    }
+    return {ok:true,duplicate:true,deletedCount:prior.value.before.length,warnings:[]};
+  }
+  const lines = validatePurchaseDeletionPOS(context);
+  if (JSON.stringify(lines) !== expectedLines) throw new Error('La compra cambió desde la confirmación. Revisa sus datos y vuelve a intentarlo.');
+  const {event,data} = context, updatedEvent = structuredClone(event);
+  for (const line of lines){
+    if (line.isExtra){
+      const extra = (updatedEvent.extras || []).find(item=>String(item.id) === String(line.extraId));
+      if (!extra) throw new Error('Un Extra de la compra ya no existe. No se puede restaurar su stock de forma segura.');
+      if (!Number.isFinite(Number(extra.stock || 0))) throw new Error('El stock del Extra es inválido. No se eliminó la compra.');
+      extra.stock = Number(extra.stock || 0)+Number(line.qty);
+      extra.updatedAt = Date.now();
+    }
+    editLegacyCupBatchesPOS(updatedEvent,line,emptyPurchaseEditLinePOS(line),operationId);
+  }
+  const operation = {id:operationId,kind:'DELETE_PURCHASE',ts:Date.now(),date:context.sale.date,eventId:event.id,
+    purchaseUid:context.sale.purchaseUid || null,fingerprint,status:'PENDING',before:lines,after:[],
+    pairs:lines.map(line=>({id:operationId+':'+line.id,before:line,after:emptyPurchaseEditLinePOS(line),inventoryChanged:true,removed:true}))};
+  // Verify reversibility before deleting anything; this only changes an in-memory copy.
+  purchaseEditInventoryPOS(operation,readPhysicalCupInventorySharedPOS().data);
+  await new Promise((resolve,reject)=>{
+    const names = Object.keys(data), transaction = db.transaction(names,'readwrite');
+    let pending = names.length, failure;
+    transaction.oncomplete = resolve;
+    transaction.onabort = ()=>reject(failure || transaction.error || new Error('No se eliminó la compra.'));
+    transaction.onerror = ()=>{};
+    for (const name of names){
+      const request = transaction.objectStore(name).getAll();
+      request.onsuccess = ()=>{
+        try{
+          if (JSON.stringify(request.result || []) !== JSON.stringify(data[name])){
+            throw new Error('Los datos cambiaron durante la eliminación. Revisa la compra, el inventario y los cobros antes de reintentar.');
+          }
+          if (--pending) return;
+          const sales = transaction.objectStore('sales');
+          lines.forEach(line=>sales.delete(line.id));
+          transaction.objectStore('events').put(updatedEvent);
+          transaction.objectStore('meta').put({id:PURCHASE_EDIT_QUEUE_PREFIX_POS+operationId,value:operation});
+        }catch(error){ failure = error; transaction.abort(); }
+      };
+    }
+  });
+  const warnings = [];
+  try{ await processPendingCreditEditsPOS(); }
+  catch(error){ warnings.push('Compra eliminada. Reversión pendiente de completar: '+error.message+' Recarga para reintentar.'); }
+  notifyCreditStateChangedPOS({eventId:event.id,reason:'purchase-deleted'});
+  return {ok:true,duplicate:false,deletedCount:lines.length,warnings};
+}
+
+const purchaseDeletionRequestsPOS = new Set();
+async function requestPurchaseDeletionPOS(saleId){
+  await processPendingCreditEditsPOS();
+  const context = await readCreditEditContextPOS(saleId);
+  const lines = validatePurchaseDeletionPOS(context);
+  const key = context.sale.purchaseUid || 'sale:'+context.sale.id;
+  if (purchaseDeletionRequestsPOS.has(key)){ toast('La eliminación de esta compra está en curso'); return; }
+  purchaseDeletionRequestsPOS.add(key);
+  const ids = new Set(lines.map(line=>String(line.id)));
+  const controls = Array.from(document.querySelectorAll('#tbl-day button, #tbl-credit-sales button, #btn-undo'))
+    .filter(button=>button.id === 'btn-undo' || ids.has(button.dataset.id || button.dataset.saleId));
+  const previous = controls.map(button=>({button,disabled:button.disabled}));
+  controls.forEach(button=>{button.disabled = true;button.setAttribute('aria-busy','true');});
+  try{
+    const total = round2(lines.reduce((sum,line)=>sum+Number(line.total || 0),0));
+    const detail = lines.map(line=>`${Math.abs(Number(line.qty))} × ${getSaleProductNameSnapshotPOS(line)} · C$ ${fmt(line.total)}`).join('\n');
+    const message = `¿Eliminar la compra completa?\n\n${context.event.name || 'Evento'} · ${context.sale.date}\nCliente: ${context.sale.customerName || context.sale.customer || 'Sin cliente'}\n\n${detail}\n\nTotal: C$ ${fmt(total)}\n\nSe eliminarán todos sus productos y se revertirán sus efectos en inventario, caja y Finanzas. Esta acción no se puede deshacer.`;
+    if (!confirm(message)) return {cancelled:true};
+    const result = await deletePurchaseAtomicPOS({saleId:context.sale.id,operationId:cashV2NewRequestId('DELETE-PURCHASE'),expectedLines:JSON.stringify(lines)});
+    try{
+      await renderDay(); await renderSummary(); await renderCreditSalesPOS();
+      await refreshSaleStockLabel(); await renderInventario(); await renderExtrasUI();
+      await refreshProductSelect({keepSelection:true});
+    }catch(error){
+      console.error('Compra eliminada; falló el refresco',error);
+      result.warnings.push('La compra se eliminó. Recarga para actualizar los listados.');
+    }
+    toast('Compra eliminada');
+    if (result.warnings.length) posNotify(result.warnings.join('\n\n'));
+    return result;
+  }finally{
+    previous.forEach(({button,disabled})=>{if(button.isConnected){button.disabled = disabled;button.removeAttribute('aria-busy');}});
+    purchaseDeletionRequestsPOS.delete(key);
+  }
+}
+
+
 let creditSalesRenderTokenPOS = 0;
 let creditCollectionStatePOS = null;
 
@@ -23523,35 +24080,7 @@ async function submitCreditCollectionPOS(event){
 }
 
 async function deleteCreditSalePOS(rawId){
-  const [sales,cashRows,events] = await Promise.all([getAll('sales'),getAll(CASH_V2_STORE),getAll('events')]);
-  const sale = sales.find(item=>String(item.id) === String(rawId));
-  if (!sale || normalizePaymentMethodPOS(sale.payment || sale.paymentMethod || '') !== 'credito') throw new Error('La venta al crédito ya no existe.');
-  const snapshot = cashV2CreditSaleSnapshot(sale,cashRows);
-  if (snapshot.paid > 0.009) throw new Error('Esta venta tiene cobros vinculados y no puede eliminarse.');
-  const event = events.find(item=>String(item.id) === String(sale.eventId));
-  if (!event || event.closedAt) throw new Error('Reabre el evento antes de eliminar esta venta.');
-  if (!(await guardSellDayOpenOrToastPOS(event,sale.date))) return;
-  if (!confirm(`¿Eliminar ${snapshot.reference} de ${snapshot.customer} por C$ ${cashV2FmtMoney(snapshot.original)}? Se restaurará el inventario correspondiente.`)) return;
-  const result = await del('sales',sale.id);
-  const warnings = [...(result.warnings || [])];
-  try{ await revertExtraStockForSaleDeletePOS(sale); }catch(error){
-    console.error('Venta eliminada; falló el reverso del Extra',error);
-    warnings.push('No se pudo restaurar el stock del Extra.');
-  }
-  try{
-    const period = periodKeyFromDatePOS(sale.date);
-    bumpConsolSalesRevPOS(period); clearConsolLiveCachePOS(period);
-    if (saleTouchesLotsPOS(sale)){
-      const lots = await queueLotsUsageSyncPOS(sale.eventId);
-      if (lots && lots.ok === false) warnings.push('No se pudo actualizar el uso de lotes del evento.');
-    }
-    await renderDay(); await renderSummary(); await refreshSaleStockLabel(); await renderInventario();
-  }catch(error){
-    console.error('Venta eliminada; falló la actualización',error);
-    warnings.push('Recarga el POS para revisar los listados y el inventario.');
-  }
-  toast('Venta eliminada');
-  if (warnings.length) posNotify('Venta eliminada, con avisos.\n\n' + warnings.join('\n'));
+  return requestPurchaseDeletionPOS(rawId);
 }
 
 function updateCreditEditPreviewPOS(){
@@ -28986,6 +29515,7 @@ async function deleteEvent(eventId){
   try{
     const pendingEdits = (await getAll('meta')).filter(row=>String(row.id).startsWith(CREDIT_EDIT_QUEUE_PREFIX_POS)
       && row.value?.status === 'PENDING' && String(row.value.after.eventId) === String(eventId));
+    await processPendingCreditEditsPOS();
     for (const row of pendingEdits) await processPendingCreditEditsPOS(row.value.after.id);
     eventSales = (await getAll('sales')).filter(s=>s && s.eventId===eventId);
     const pending = (await getAll('meta')).some(row=>String(row.id).startsWith(CREDIT_EDIT_QUEUE_PREFIX_POS)
@@ -29442,141 +29972,32 @@ async function init(){
 
   // Flujo legacy de vasos desactivado: Vender solo vende stock existente.
 
-  // Deshacer última venta del día para el evento activo
-  $('#btn-undo').addEventListener('click', async ()=>{
-    const curId = await getMeta('currentEventId');
-    if (!curId) {
-      posNotify('No hay evento activo.');
-      return;
-    }
-    const d = $('#sale-date').value;
-
-    // Candado: si sección está activada y el día está cerrado, NO permitir cambios de ventas
+  // Deshacer la última compra del día mediante el mismo reverso completo.
+  $('#btn-undo').addEventListener('click',async()=>{
     try{
-      const ev = await getEventByIdPOS(curId);
-      if (!ev || ev.closedAt){ posNotify('No hay un evento activo válido.'); return; }
-      if (!(await guardSellDayOpenOrToastPOS(ev, d))) return;
-    }catch(e){}
-
-    const allSales = await getAll('sales');
-    const filtered = allSales.filter(s => s.eventId === curId && s.date === d);
-    if (!filtered.length) {
-      posNotify('No hay ventas para deshacer en este día.');
-      return;
-    }
-    const last = filtered.sort((a,b)=> a.id - b.id)[filtered.length - 1];
-    if (last.purchaseUid){ posNotify('Esta venta pertenece a una compra con varios productos. Registra una devolución desde VENDER para revertir los productos.'); return; }
-    if (!confirm('¿Eliminar la última venta registrada?')) return;
-    const delRes = await del('sales', last.id);
-
-    // Invalida cache liviano de Consolidado (ventas del período)
-    try{
-      const pk = periodKeyFromDatePOS(last.date);
-      bumpConsolSalesRevPOS(pk);
-      clearConsolLiveCachePOS(pk);
-    }catch(_){ }
-    try{ await revertExtraStockForSaleDeletePOS(last); }catch(e){}
-    await renderDay();
-    await renderSummary();
-    await refreshSaleStockLabel();
-    await renderInventario();
-    if (delRes && delRes.warnings && delRes.warnings.length){
-      posNotify('Venta eliminada, pero con avisos:\n\n- ' + delRes.warnings.join('\n- '));
-    }
-    toast('Venta eliminada');
-
-    // FIFO (Etapa 2): re-sincronizar snapshot por evento/lote
-    try{
-      if (last && saleTouchesLotsPOS(last)) {
-        queueLotsUsageSyncPOS(last.eventId).then(res=>{
-          if (res && res.ok===false){
-            showToast('FIFO/Lotes: no se pudo actualizar el uso de lotes para este evento. Revisa asignación de lotes.', 'error', 7000);
-          }
-        });
-      }
-    }catch(_){ }
+      const eventId = await getMeta('currentEventId');
+      if (!eventId){ posNotify('No hay evento activo.'); return; }
+      const date = $('#sale-date').value;
+      const sales = (await getAll('sales')).filter(sale=>sale.eventId === eventId && sale.date === date);
+      const last = sales.sort((a,b)=>Number(b.id)-Number(a.id))[0];
+      if (!last){ posNotify('No hay ventas para deshacer en este día.'); return; }
+      await requestPurchaseDeletionPOS(last.id);
+    }catch(error){ posNotify(error.message || humanizeError(error)); }
   });
 
   $('#btn-event-sales').addEventListener('click', openEventSalesPOS);
 
-  // Eliminar una venta específica desde la tabla
-  $('#tbl-day').addEventListener('click', async (e)=>{
-    const btn = e.target.closest('button.del-sale');
-    if (!btn) return;
+  $('#tbl-day').addEventListener('click',e=>{
+    const button = e.target.closest('button.edit-purchase');
+    if (!button || button.disabled) return;
+    void openPurchaseModalPOS({editId:button.dataset.id}).catch(error=>posNotify(error.message));
+  });
 
-    const rawId = btn.dataset.id;
-    const id = Number(rawId);
-
-    if (!Number.isFinite(id)){
-      posNotify('No pude identificar la venta a eliminar (id inválido). Recarga el POS y vuelve a intentar.');
-      return;
-    }
-
-    const saleToDelete = (await getAll('sales')).find(s=>s.id===id) || null;
-    if (!saleToDelete){
-      posNotify('No pude cargar la venta a eliminar. Recarga el POS y vuelve a intentar.');
-      return;
-    }
-
-    // Candado: si sección está activada y el día está cerrado, NO permitir cambios de ventas
-    try{
-      const ev = await getEventByIdPOS(saleToDelete.eventId);
-      if (!ev || ev.closedAt){ posNotify('No hay un evento activo válido.'); return; }
-      if (!(await guardSellDayOpenOrToastPOS(ev, saleToDelete.date))) return;
-    }catch(e){}
-
-    if (saleToDelete.purchaseUid){ posNotify('Esta venta pertenece a una compra. Registra una devolución desde VENDER para conservar el cobro compartido.'); return; }
-    if (!confirm('¿Eliminar esta venta?')) return;
-
-    const prevText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Eliminando…';
-
-    try{
-      const delRes = await del('sales', id);
-
-      // Invalida cache liviano de Consolidado (ventas del período)
-      try{
-        const pk = periodKeyFromDatePOS(saleToDelete.date);
-        bumpConsolSalesRevPOS(pk);
-        clearConsolLiveCachePOS(pk);
-      }catch(_){ }
-      try{ if (saleToDelete) await revertExtraStockForSaleDeletePOS(saleToDelete); }catch(e){ console.warn('revertExtraStockForSaleDeletePOS (delete) failed', e); }
-
-      // Refrescar UI
-      try{
-        await renderDay();
-        await renderSummary();
-        await refreshSaleStockLabel();
-        await renderInventario();
-      }catch(uiErr){
-        console.error('Error refrescando UI después de eliminar venta', uiErr);
-      }
-
-      if (delRes && delRes.warnings && delRes.warnings.length){
-        posNotify('Venta eliminada, pero con avisos:\n\n- ' + delRes.warnings.join('\n- '));
-      }
-
-      toast('Venta eliminada');
-
-      // FIFO (Etapa 2): re-sincronizar snapshot por evento/lote
-      try{
-        if (saleToDelete && saleTouchesLotsPOS(saleToDelete)) {
-          queueLotsUsageSyncPOS(saleToDelete.eventId).then(res=>{
-            if (res && res.ok===false){
-              showToast('FIFO/Lotes: no se pudo actualizar el uso de lotes para este evento. Revisa asignación de lotes.', 'error', 7000);
-            }
-          });
-        }
-      }catch(_){ }
-
-    }catch(err){
-      console.error('Error eliminando la venta', err);
-      posNotify('No se pudo eliminar la venta.\n\nDetalle: ' + humanizeError(err));
-    }finally{
-      btn.disabled = false;
-      btn.textContent = prevText || 'Eliminar';
-    }
+  // La papelera de cualquier fila elimina la compra completa, con confirmación.
+  $('#tbl-day').addEventListener('click',e=>{
+    const button = e.target.closest('button.del-sale');
+    if (!button || button.disabled) return;
+    void requestPurchaseDeletionPOS(button.dataset.id).catch(error=>posNotify(error.message || humanizeError(error)));
   });
   // Stepper
   $('#qty-minus').addEventListener('click', ()=>{ const v = Math.max(1, parseInt($('#sale-qty').value||'1',10) - 1); $('#sale-qty').value = v; recomputeTotal(); });
@@ -30083,10 +30504,10 @@ function recomputePurchaseTotalPOS(){
   }
   document.getElementById('sale-total').value = total.toFixed(2);
   document.getElementById('purchase-total-display').textContent = total.toFixed(2);
-  document.getElementById('purchase-title').textContent = isReturn ? 'Nueva devolución' : 'Nueva compra';
+  document.getElementById('purchase-title').textContent = state.editing ? (isReturn ? 'Editar devolución completa' : 'Editar compra completa') : isReturn ? 'Nueva devolución' : 'Nueva compra';
   const save = document.getElementById('purchase-save');
   save.disabled = state.busy || !state.items.length || invalid || document.getElementById('tab-venta').classList.contains('sell-locked');
-  save.textContent = state.busy ? 'Guardando…' : 'Guardar';
+  save.textContent = state.busy ? 'Guardando…' : state.editing ? 'Guardar cambios' : 'Guardar';
   updateSaleCashTenderComputedPOS();
 }
 
@@ -30153,14 +30574,38 @@ function renderPurchaseItemsPOS(){
     const title = document.createElement('strong'); title.textContent = item.name;
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn-outline btn-pill btn-pill-mini';
     remove.textContent = 'Quitar'; remove.setAttribute('aria-label','Quitar ' + item.name);
+    if (state.editing && item.saleId != null){
+      const original = state.originals.find(sale=>sale.id === item.saleId);
+      if (original && state.paidById[original.id] > 0.009){
+        remove.disabled = true; remove.title = 'Esta línea conserva abonos. Puedes cambiar su producto, cantidad y precio.';
+      }
+    }
     remove.addEventListener('click',()=>{ state.items = state.items.filter(x => x.index !== item.index); renderPurchaseItemsPOS();persistPurchaseDraftPOS({changed:true}); });
     head.append(title,remove);
+    if (state.editing){
+      const select = document.createElement('select'); select.className = 'purchase-edit-product';
+      select.setAttribute('aria-label','Producto de la línea '+(item.index+1));
+      for (const product of state.catalog){
+        select.appendChild(new Option(product.name,product.key));
+      }
+      select.value = item.key;
+      select.addEventListener('change',()=>{
+        const chosen = state.catalog.find(product=>product.key === select.value);
+        if (state.items.some(other=>other !== item && other.key === chosen.key)){
+          select.value = item.key; setPurchaseMessagePOS('Ese producto ya está en la compra. Ajusta su cantidad.'); return;
+        }
+        Object.assign(item,{...chosen,productId:chosen.productId || '',extraId:chosen.extraId ?? null,
+          isExtra:!!chosen.isExtra,discountPerUnit:0});
+        setPurchaseMessagePOS(''); renderPurchaseItemsPOS();
+      });
+      head.replaceChild(select,title);
+    }
     const fields = document.createElement('div'); fields.className = 'purchase-item-fields';
     for (const [field,labelText,step,min] of [['qty','Cantidad','1','1'],['unitPrice','Precio (C$)','0.01','0'],['discountPerUnit','Descuento por unidad (C$)','0.01','0']]){
       const label = document.createElement('label'); label.textContent = field === 'discountPerUnit' ? 'Desc./unidad (C$)' : labelText;
       const input = document.createElement('input'); input.type = 'number'; input.inputMode = field === 'qty' ? 'numeric' : 'decimal';
       input.id = 'purchase-' + field + '-' + item.index; input.value = item[field]; input.step = step; input.min = min;
-      input.disabled = (field === 'discountPerUnit' && item.courtesy) || (field === 'unitPrice' && item.isExtra);
+      input.disabled = (field === 'discountPerUnit' && item.courtesy) || (field === 'unitPrice' && item.isExtra && !state.editing);
       input.setAttribute('aria-label',labelText + ' de ' + item.name);
       const selectValue = ()=>{ if (input.value !== '') input.select(); };
       input.addEventListener('focus',selectValue);
@@ -30197,19 +30642,31 @@ function purchaseBackgroundInertPOS(active){
   document.body.classList.toggle('purchase-modal-open',active);
 }
 
-async function openPurchaseModalPOS({recovery=false}={}){
+async function openPurchaseModalPOS({recovery=false,editId=null}={}){
   if (purchaseModalStatePOS || purchaseOpeningPOS || (purchaseRecoveringPOS && !recovery)) return;
   purchaseOpeningPOS = true;
   try{
-    const event = await getActiveEventPOS();
-    const date = document.getElementById('sale-date').value;
+    let editContext = null, originals = null;
+    if (editId != null){
+      await processPendingCreditEditsPOS();
+      editContext = await readCreditEditContextPOS(editId);
+      if (!editContext.sale) throw new Error('La compra ya no existe.');
+      originals = purchaseEditLinesPOS(editContext.data.sales,editContext.sale);
+      if (originals.some(sale=>sale.eventId !== editContext.sale.eventId || sale.date !== editContext.sale.date || !!sale.isReturn !== !!editContext.sale.isReturn)) throw new Error('La compra tiene datos incompatibles entre productos. No se puede editar como una sola compra.');
+      if (originals.some(purchaseEditIsInactivePOS)) throw new Error('La compra contiene una venta anulada y no admite edición.');
+    }
+    const event = editContext ? editContext.event : await getActiveEventPOS();
+    const date = editContext ? editContext.sale.date : document.getElementById('sale-date').value;
     if (!event || !date) throw new Error('Selecciona un evento activo y una fecha.');
+    if (event.closedAt) throw new Error('Reabre el evento antes de editar esta compra.');
     if (!(await guardSellDayOpenOrToastPOS(event,date))) return;
     const catalog = await loadPurchaseCatalogPOS(event);
     const customer = document.getElementById('sale-customer');
     purchaseModalStatePOS = { eventId:event.id, date, catalog, items:[], nextIndex:0,
       purchaseUid:genSaleUidPOS(), draftKey:PURCHASE_DRAFT_PREFIX_POS+genSaleUidPOS(), draftDirty:false, busy:false, lastFocus:document.activeElement,
       priorCustomer:{ name:customer.value, id:customer.dataset.customerId || '', sticky:isCustomerStickyPOS() } };
+    document.getElementById('sale-payment').disabled = false;
+    document.getElementById('sale-return').disabled = false;
     document.getElementById('sale-payment').value = 'efectivo';
     document.getElementById('sale-return').checked = false;
     document.getElementById('sale-courtesy').checked = false;
@@ -30217,6 +30674,41 @@ async function openPurchaseModalPOS({recovery=false}={}){
     document.getElementById('purchase-more-options').open = false;
     document.getElementById('purchase-context').textContent = (event.name || 'Evento') + ' · ' + date;
     await refreshSaleBankSelect(); resetSaleCashTenderPOS(); setPurchaseMessagePOS('');
+    if (originals){
+      const state = purchaseModalStatePOS, first = originals[0];
+      const paid = originals.reduce((sum,sale)=>sum+cashV2CreditSaleSnapshot(sale,editContext.data[CASH_V2_STORE]).paid,0);
+      Object.assign(state,{editing:true,saleId:first.id,originals,expectedLines:JSON.stringify(originals),
+        operationId:cashV2NewRequestId('PURCHASE-EDIT'),purchaseUid:first.purchaseUid,paid,
+        paidById:Object.fromEntries(originals.map(sale=>[sale.id,cashV2CreditSaleSnapshot(sale,editContext.data[CASH_V2_STORE]).paid]))});
+      for (const sale of originals){
+        const key = sale.isExtra ? 'extra:'+sale.extraId : 'product:'+(saleStableProductIdPOS(sale) || ('historical:'+sale.id));
+        let product = catalog.find(item=>sale.isExtra ? String(item.extraId) === String(sale.extraId) : item.productId && saleMatchesCatalogProductPOS(sale,editContext.data.products.find(p=>catalogProductStableIdPOS(p) === item.productId)));
+        if (!product){
+          product = {key,productId:saleStableProductIdPOS(sale),extraId:sale.extraId,isExtra:!!sale.isExtra,
+            name:sale.productNameSnapshot || sale.productName || 'Producto histórico',unitPrice:sale.unitPrice,stock:null};
+          catalog.push(product);
+        }
+        if (product.stock != null) product.stock += Number(sale.qty);
+        state.items.push({...product,saleId:sale.id,index:state.nextIndex++,qty:Math.abs(Number(sale.qty)),
+          unitPrice:Number(sale.unitPrice),discountPerUnit:creditEditDiscountPerUnitPOS(sale),courtesy:!!sale.courtesy});
+      }
+      setCustomerSelectionUI_POS({name:first.customerName || first.customer || '',id:first.customerId || ''});
+      document.getElementById('sale-payment').value = normalizePaymentMethodPOS(first.payment || first.paymentMethod);
+      document.getElementById('sale-payment').disabled = paid > 0.009;
+      document.getElementById('sale-return').checked = !!first.isReturn;
+      document.getElementById('sale-return').disabled = true;
+      document.getElementById('sale-notes').value = first.notes || '';
+      await refreshSaleBankSelect();
+      document.getElementById('sale-bank').value = first.bankId || '';
+      document.getElementById('purchase-context').textContent = (event.name || 'Evento')+' · '+date+' · Se editarán todos los productos'+(paid > 0.009 ? ' · Abonado C$ '+fmt(paid)+' (se conserva crédito)' : '');
+      const owner = originals.find(sale=>sale.cashTenderMode === 'USD_CHANGE_NIO');
+      if (owner){
+        state.originalFx = Number(owner.fxUsed || owner.cashBreakdown?.fxUsed) || null;
+        document.getElementById('sale-cash-mode').value = 'usd_change_nio';
+        document.getElementById('sale-cash-usd-received').value = owner.receivedUSD || owner.cashBreakdown?.receivedUSD || '';
+      }
+    }
+    refreshSaleCashTenderUiPOS({forceFx:true});
     const draftWarning=document.getElementById('purchase-draft-warning');if(draftWarning){draftWarning.hidden=true;draftWarning.textContent='';}
     const modal = document.getElementById('purchase-modal'); modal.inert = false;
     modal.setAttribute('aria-hidden','false'); modal.style.display = 'flex';
@@ -30233,7 +30725,8 @@ function closePurchaseModalPOS({ committed = false, discardVolatile = false } = 
   const state = purchaseModalStatePOS;
   if (!state || state.busy) return;
   if(!committed && !discardVolatile && !persistPurchaseDraftPOS() && !confirm('No se pudo conservar la edición más reciente. ¿Cerrar de todos modos y perder los cambios que no se guardaron?'))return;
-  if(committed){
+  if (state.editing && !committed && !discardVolatile && !confirm('¿Cerrar la edición sin guardar los cambios?')) return;
+  if(committed && !state.editing){
     state.committed=true;
     try{
       if(!A33Storage.removeItem(state.draftKey,'local'))throw new Error('No se pudo quitar la copia');
@@ -30249,7 +30742,9 @@ function closePurchaseModalPOS({ committed = false, discardVolatile = false } = 
   modal.style.display = 'none'; modal.inert = true; modal.setAttribute('aria-hidden','true');
   purchaseModalStatePOS = null;
   document.getElementById('sale-return').checked = false;
+  document.getElementById('sale-return').disabled = false;
   document.getElementById('sale-notes').value = '';
+  document.getElementById('sale-payment').disabled = false;
   document.getElementById('sale-payment').value = 'efectivo';
   resetSaleCashTenderPOS(); purchaseBackgroundInertPOS(false);
   if (state.lastFocus?.isConnected) state.lastFocus.focus();
@@ -30280,7 +30775,7 @@ async function submitPurchaseModalPOS(){
   }
   const draft = { purchaseUid:state.purchaseUid, eventId:state.eventId, date:state.date,
     items:state.items.map(item => ({ productId:item.productId, extraId:item.extraId,
-      qty:parseNumPOS(item.qty), unitPrice:parseNumPOS(item.unitPrice), discountPerUnit:parseNumPOS(item.discountPerUnit), courtesy:item.courtesy })),
+      key:item.key,saleId:item.saleId,isExtra:!!item.isExtra,qty:parseNumPOS(item.qty), unitPrice:parseNumPOS(item.unitPrice), discountPerUnit:parseNumPOS(item.discountPerUnit), courtesy:item.courtesy })),
     payment:document.getElementById('sale-payment').value, bankId:document.getElementById('sale-bank').value,
     customerName:getCustomerNameFromUI_POS(), customerId:getCustomerIdHintFromUI_POS(),
     notes:document.getElementById('sale-notes').value, isReturn };
@@ -30294,7 +30789,14 @@ async function submitPurchaseModalPOS(){
       const problem=recoveredPurchaseCatalogProblemPOS(state.items,catalog);
       if(problem)throw new Error(problem);
     }
-    result = await savePurchasePOS(draft);
+    if (state.editing){
+      Object.assign(draft,{saleId:state.saleId,operationId:state.operationId,expectedLines:state.expectedLines});
+      try{ result = await savePurchaseEditPOS(draft); }
+      catch(error){
+        if (!error.stockWarning || !confirm(error.message+'\n\n¿Continuar de todos modos?')) throw error;
+        result = await savePurchaseEditPOS({...draft,allowOversell:true});
+      }
+    }else result = await savePurchasePOS(draft);
   }
   catch(error){ setPurchaseMessagePOS(error.message || 'No se pudo guardar la compra.'); }
   finally{ setPurchaseBusyPOS(false); }
@@ -30310,7 +30812,7 @@ async function submitPurchaseModalPOS(){
     await renderDay(); await renderSummary(); await renderInventario(); await renderExtrasUI();
     await refreshProductSelect({keepSelection:true});
   }catch(error){ console.error('Compra guardada; falló el refresco',error); result.warnings.push({area:'pantalla',message:'Recarga para actualizar los listados.'}); }
-  toast(isReturn ? 'Devolución guardada' : 'Compra guardada');
+  toast(state.editing ? 'Compra actualizada' : isReturn ? 'Devolución guardada' : 'Compra guardada');
   if (result.warnings?.length){
     posBlockingAlert('Compra guardada, con avisos:\n\n' + result.warnings.map(w => w.area + ': ' + w.message).join('\n'));
   }
@@ -31729,7 +32231,7 @@ function capturePurchaseDraftPOS(){
 }
 function persistPurchaseDraftPOS({changed=false}={}){
   const state=purchaseModalStatePOS;
-  if(!state || state.restoring || state.closing || state.committed)return true;
+  if(!state || state.editing || state.restoring || state.closing || state.committed)return true;
   if(changed)state.draftDirty=true;
   if(!state.draftDirty)return true;
   try{

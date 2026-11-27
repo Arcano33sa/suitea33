@@ -179,8 +179,8 @@ let browser;
   await remove(810).click();
   await page.evaluate(()=>window.__creditDeletion);
   assert.equal(await page.evaluate(()=>getOne('sales',810)),null);
-  const sibling = await page.evaluate(()=>getOne('sales',811));
-  assert.equal(sibling.purchaseTotal,200); assert.equal(sibling.purchaseLineCount,1); assert.equal(sibling.purchaseLineIndex,0);
+  // La eliminación desde créditos también revierte la compra completa.
+  assert.equal(await page.evaluate(()=>getOne('sales',811)),null);
   await remove(812).click();
   await page.evaluate(()=>window.__creditDeletion);
   assert.equal(await page.evaluate(()=>getOne('sales',812)),null);
